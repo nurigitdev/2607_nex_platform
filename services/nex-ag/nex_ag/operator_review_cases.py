@@ -77,6 +77,15 @@ ALLOWED_CASE_STATUSES = (
     "REOPENED",
 )
 ALLOWED_CASE_PRIORITIES = ("LOW", "MEDIUM", "HIGH", "URGENT")
+ALLOWED_CASE_QUEUE_ATTENTION_STATUSES = ("BLOCKED", "ATTENTION", "OPEN", "OK")
+ALLOWED_CASE_QUEUE_SORT_FIELDS = (
+    "attention",
+    "updated_at",
+    "priority",
+    "status",
+    "case_id",
+)
+ALLOWED_CASE_QUEUE_SORT_DIRECTIONS = ("asc", "desc")
 CASE_ACTION_TARGET_STATUSES = {
     "ACKNOWLEDGE": "ACKNOWLEDGED",
     "ASSIGN": "ASSIGNED",
@@ -420,6 +429,11 @@ class OperatorReviewCaseService:
         operator_type: str | None = None,
         operator_id: str | None = None,
         assignee_id: str | None = None,
+        latest_action_type: str | None = None,
+        attention_status: str | None = None,
+        search: str | None = None,
+        sort_by: str | None = None,
+        sort_direction: str | None = None,
         updated_from: str | None = None,
         updated_to: str | None = None,
         limit: int | None = None,
@@ -440,7 +454,14 @@ class OperatorReviewCaseService:
             updated_to=updated_to,
             limit=limit,
         )
-        return build_operator_review_case_queue_projection(case_list)
+        return build_operator_review_case_queue_projection(
+            case_list,
+            latest_action_type=latest_action_type,
+            attention_status=attention_status,
+            search=search,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
+        )
 
     def apply_action(
         self,
@@ -648,6 +669,11 @@ def register_operator_review_case_routes(
         operator_type: str | None = None,
         operator_id: str | None = None,
         assignee_id: str | None = None,
+        latest_action_type: str | None = None,
+        attention_status: str | None = None,
+        search: str | None = Query(default=None, alias="q"),
+        sort_by: str | None = None,
+        sort_direction: str | None = None,
         updated_from: str | None = None,
         updated_to: str | None = None,
         limit: int | None = None,
@@ -669,6 +695,11 @@ def register_operator_review_case_routes(
                 operator_type=operator_type,
                 operator_id=operator_id,
                 assignee_id=assignee_id,
+                latest_action_type=latest_action_type,
+                attention_status=attention_status,
+                search=search,
+                sort_by=sort_by,
+                sort_direction=sort_direction,
                 updated_from=updated_from,
                 updated_to=updated_to,
                 limit=limit,
@@ -947,14 +978,64 @@ def build_operator_review_case_mutation_response(
 
 def build_operator_review_case_queue_projection(
     case_list: dict[str, Any],
+    *,
+    latest_action_type: str | None = None,
+    attention_status: str | None = None,
+    search: str | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ) -> dict[str, Any]:
+    normalized_latest_action_type = optional_choice(
+        latest_action_type,
+        key="latest_action_type",
+        choices=ALLOWED_CASE_ACTIONS,
+        default="",
+    )
+    normalized_attention_status = optional_choice(
+        attention_status,
+        key="attention_status",
+        choices=ALLOWED_CASE_QUEUE_ATTENTION_STATUSES,
+        default="",
+    )
+    normalized_sort_by = optional_choice(
+        sort_by,
+        key="sort_by",
+        choices=ALLOWED_CASE_QUEUE_SORT_FIELDS,
+        default="attention",
+    )
+    normalized_sort_direction = optional_choice(
+        sort_direction,
+        key="sort_direction",
+        choices=ALLOWED_CASE_QUEUE_SORT_DIRECTIONS,
+        default="asc",
+    )
+    normalized_search = optional_text(search)
     cases = list(case_list.get("items") or [])
     items = [_case_queue_item(record) for record in cases]
-    items.sort(key=_case_queue_sort_key)
+    items = _filter_case_queue_items(
+        items,
+        latest_action_type=normalized_latest_action_type or None,
+        attention_status=normalized_attention_status or None,
+        search=normalized_search,
+    )
+    items = _sort_case_queue_items(
+        items,
+        sort_by=normalized_sort_by,
+        sort_direction=normalized_sort_direction,
+    )
     return {
         "case_queue_schema_version": OPERATOR_REVIEW_CASE_QUEUE_SCHEMA_VERSION,
         "trace_id": case_list.get("trace_id"),
         "request_id": case_list.get("request_id"),
+        "filters": {
+            "latest_action_type": normalized_latest_action_type or None,
+            "attention_status": normalized_attention_status or None,
+            "q": normalized_search,
+        },
+        "sort": {
+            "sort_by": normalized_sort_by,
+            "sort_direction": normalized_sort_direction,
+        },
         "items": items,
         "summary": _case_queue_summary(items),
         "paths": {
@@ -1604,12 +1685,93 @@ def _case_queue_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _case_queue_sort_key(item: dict[str, Any]) -> tuple[int, str, str]:
-    return (
-        _case_attention_sort_rank(str(item.get("attention_status") or "")),
-        _reverse_text_sort_token(item.get("updated_at")),
-        str(item.get("case_id") or ""),
+def _filter_case_queue_items(
+    items: list[dict[str, Any]],
+    *,
+    latest_action_type: str | None,
+    attention_status: str | None,
+    search: str | None,
+) -> list[dict[str, Any]]:
+    selected = list(items)
+    if latest_action_type is not None:
+        selected = [
+            item
+            for item in selected
+            if (item.get("latest_action") or {}).get("action_type")
+            == latest_action_type
+        ]
+    if attention_status is not None:
+        selected = [
+            item
+            for item in selected
+            if item.get("attention_status") == attention_status
+        ]
+    if search is not None:
+        selected = [
+            item for item in selected if _case_queue_item_matches_query(item, search)
+        ]
+    return selected
+
+
+def _sort_case_queue_items(
+    items: list[dict[str, Any]],
+    *,
+    sort_by: str,
+    sort_direction: str,
+) -> list[dict[str, Any]]:
+    reverse = sort_direction == "desc"
+    return sorted(
+        items,
+        key=lambda item: _case_queue_sort_key(item, sort_by),
+        reverse=reverse,
     )
+
+
+def _case_queue_sort_key(item: dict[str, Any], sort_by: str) -> tuple[Any, ...]:
+    if sort_by == "attention":
+        return (
+            _case_attention_sort_rank(str(item.get("attention_status") or "")),
+            _reverse_text_sort_token(item.get("updated_at")),
+            str(item.get("case_id") or ""),
+        )
+    if sort_by == "updated_at":
+        return (str(item.get("updated_at") or ""), str(item.get("case_id") or ""))
+    if sort_by == "priority":
+        return (
+            _case_priority_sort_rank(str(item.get("case_priority") or "")),
+            str(item.get("case_id") or ""),
+        )
+    if sort_by == "status":
+        return (str(item.get("case_status") or ""), str(item.get("case_id") or ""))
+    return (str(item.get("case_id") or ""),)
+
+
+def _case_queue_item_matches_query(item: dict[str, Any], query: str) -> bool:
+    needle = query.strip().lower()
+    if not needle:
+        return True
+    searchable_values = [
+        item.get("case_id"),
+        item.get("case_status"),
+        item.get("case_priority"),
+        item.get("attention_status"),
+        item.get("resolution_hash"),
+        item.get("resolution_preview"),
+    ]
+    searchable_values.extend((item.get("target_ref") or {}).values())
+    searchable_values.extend((item.get("operator_ref") or {}).values())
+    searchable_values.extend((item.get("assignment_ref") or {}).values())
+    searchable_values.extend((item.get("source_ref") or {}).values())
+    searchable_values.extend(item.get("attention_reason_codes") or [])
+    searchable_values.extend(item.get("recommended_actions") or [])
+    latest_action = item.get("latest_action") or {}
+    if isinstance(latest_action, dict):
+        searchable_values.extend(
+            value
+            for key, value in latest_action.items()
+            if key not in {"action_comment_hash", "resolution_hash"}
+        )
+    return any(needle in str(value).lower() for value in searchable_values if value)
 
 
 def _case_attention_item(record: dict[str, Any]) -> dict[str, Any]:
@@ -1703,6 +1865,10 @@ def _case_operator_ref(record: dict[str, Any]) -> dict[str, str | None]:
 
 def _case_attention_sort_rank(status: str) -> int:
     return {"BLOCKED": 0, "ATTENTION": 1, "OPEN": 2}.get(status, 3)
+
+
+def _case_priority_sort_rank(priority: str) -> int:
+    return {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "URGENT": 3}.get(priority, 4)
 
 
 def _reverse_text_sort_token(value: Any) -> str:

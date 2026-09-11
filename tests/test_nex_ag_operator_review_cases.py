@@ -26,6 +26,7 @@ from nex_ag.operator_review_cases import (
     OperatorReviewCaseStore,
     SqlAlchemyOperatorReviewCaseStore,
     _operator_review_case_filter_clause,
+    _case_queue_item_matches_query,
     _latest_case_action_summary,
     _operator_review_case_record_params,
     _operator_review_case_select_sql,
@@ -683,6 +684,177 @@ def test_case_queue_projection_handles_empty_and_malformed_refs() -> None:
         "source_service": None,
         "workbench_path": None,
     }
+    assert build_operator_review_case_queue_projection(
+        build_operator_review_case_list_response(
+            [{**malformed, "case_priority": None}],
+            request_id=REQUEST_ID,
+            trace_id=None,
+        ),
+        sort_by="priority",
+    )["items"][0]["case_priority"] is None
+
+
+def test_case_queue_projection_filters_searches_and_sorts() -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+    open_case = service.create_case(
+        sample_case_payload(
+            case_id="case-0653-open",
+            assignment_ref=None,
+            case_priority="MEDIUM",
+            target_ref={
+                "target_service": "nex-ag",
+                "target_kind": "operator_review_workbench",
+                "target_id": "target-0653-open",
+            },
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0653-open",
+    )["case"]
+    urgent_case = service.create_case(
+        sample_case_payload(
+            case_id="case-0653-urgent",
+            case_priority="URGENT",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0653",
+                "tenant_id": "local-tenant",
+            },
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0653-urgent",
+    )["case"]
+    resolved_case = service.create_case(
+        sample_case_payload(
+            case_id="case-0653-resolved",
+            case_status="RESOLVED",
+            case_priority="LOW",
+            target_ref={
+                "target_service": "nex-cx",
+                "target_kind": "retrieval_package",
+                "target_id": "retrieval-0653",
+            },
+            resolution_comment="safe searchable resolution preview",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0653-resolved",
+    )["case"]
+    assigned = service.apply_action(
+        urgent_case["case_id"],
+        sample_action_payload(
+            action_type="ASSIGN",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0653",
+            },
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0653-action",
+    )["case"]
+    case_list = build_operator_review_case_list_response(
+        [open_case, assigned, resolved_case],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    filtered = build_operator_review_case_queue_projection(
+        case_list,
+        latest_action_type="ASSIGN",
+        attention_status="BLOCKED",
+        search="employee-0653",
+        sort_by="updated_at",
+        sort_direction="desc",
+    )
+    priority_sorted = build_operator_review_case_queue_projection(
+        case_list,
+        sort_by="priority",
+        sort_direction="desc",
+    )
+    status_sorted = build_operator_review_case_queue_projection(
+        case_list,
+        sort_by="status",
+        sort_direction="asc",
+    )
+    case_id_sorted = build_operator_review_case_queue_projection(
+        case_list,
+        sort_by="case_id",
+        sort_direction="desc",
+    )
+    search_resolved = build_operator_review_case_queue_projection(
+        case_list,
+        search="retrieval-0653",
+    )
+
+    assert filtered["filters"] == {
+        "latest_action_type": "ASSIGN",
+        "attention_status": "BLOCKED",
+        "q": "employee-0653",
+    }
+    assert filtered["sort"] == {"sort_by": "updated_at", "sort_direction": "desc"}
+    assert [item["case_id"] for item in filtered["items"]] == [assigned["case_id"]]
+    assert [item["case_priority"] for item in priority_sorted["items"]] == [
+        "URGENT",
+        "MEDIUM",
+        "LOW",
+    ]
+    assert [item["case_status"] for item in status_sorted["items"]] == [
+        "ASSIGNED",
+        "OPEN",
+        "RESOLVED",
+    ]
+    assert [item["case_id"] for item in case_id_sorted["items"]] == sorted(
+        [open_case["case_id"], assigned["case_id"], resolved_case["case_id"]],
+        reverse=True,
+    )
+    assert [item["case_id"] for item in search_resolved["items"]] == [
+        resolved_case["case_id"]
+    ]
+    assert _case_queue_item_matches_query(filtered["items"][0], " ") is True
+    assert (
+        _case_queue_item_matches_query(
+            {**filtered["items"][0], "latest_action": "bad-action-shape"},
+            assigned["case_id"],
+        )
+        is True
+    )
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error_code"),
+    [
+        (
+            {"attention_status": "STALE"},
+            "ag.operator_review_note_attention_status_unsupported",
+        ),
+        (
+            {"latest_action_type": "ESCALATE"},
+            "ag.operator_review_note_latest_action_type_unsupported",
+        ),
+        ({"sort_by": "age"}, "ag.operator_review_note_sort_by_unsupported"),
+        (
+            {"sort_direction": "sideways"},
+            "ag.operator_review_note_sort_direction_unsupported",
+        ),
+    ],
+)
+def test_case_queue_projection_rejects_invalid_controls(
+    kwargs: dict[str, str],
+    error_code: str,
+) -> None:
+    case_list = build_operator_review_case_list_response(
+        [build_case()],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as exc:
+        build_operator_review_case_queue_projection(case_list, **kwargs)
+
+    assert exc.value.status_code == 422
+    assert exc.value.error_code == error_code
 
 
 def test_case_idempotency_signature_is_safe_and_stable() -> None:

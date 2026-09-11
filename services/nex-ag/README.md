@@ -959,6 +959,11 @@ Unified operations:
   attention status, recommended actions, latest safe action summaries, and
   detail/action links, and keeps raw comments, raw resolution text, prompts,
   source text, storage paths, and idempotency keys out of the payload.
+- Slice 0653 hardens that case queue with queue-specific
+  `latest_action_type`, `attention_status`, `q`, `sort_by`, and
+  `sort_direction` controls. The projection returns normalized filter/sort
+  metadata, searches only safe queue fields, keeps the default attention-first
+  ordering, and adds no new table or migration.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
