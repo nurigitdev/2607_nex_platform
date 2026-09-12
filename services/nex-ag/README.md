@@ -1139,6 +1139,10 @@ Unified operations:
   models through protected static routes under
   `/admin/v1/operator-review/cases/`, registered before dynamic `{case_id}`
   routes to avoid route shadowing.
+- Slice 0686 adds SLA policy, aging, and escalation summary blocks to the AG
+  operations dashboard `operator_review_cases` section, using the same case-list
+  read model and keeping outbound notification/external incident execution
+  deferred.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

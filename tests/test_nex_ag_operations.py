@@ -3134,6 +3134,24 @@ def test_operations_dashboard_snapshot_includes_operator_review_workbench() -> N
     )
     assert cases["queue_summary"]["case_count"] == 1
     assert cases["queue_summary"]["by_attention_status"] == {"BLOCKED": 1}
+    assert cases["sla_policy"]["schema_version"] == (
+        "ag_operator_review_case_sla_policy.v1"
+    )
+    assert cases["sla_policy"]["summary"]["rule_count"] == 4
+    assert cases["sla_aging"]["schema_version"] == "ag_operator_review_case_aging.v1"
+    assert cases["sla_aging"]["summary"]["overdue_case_count"] == 1
+    assert cases["sla_aging"]["path"] == "/admin/v1/operator-review/cases/aging"
+    assert cases["escalations"]["schema_version"] == (
+        "ag_operator_review_case_escalations.v1"
+    )
+    assert cases["escalations"]["summary"]["candidate_count"] == 1
+    assert cases["escalations"]["summary"]["by_escalation_level"] == {"BLOCKED": 1}
+    assert cases["escalations"]["items"][0]["case_id"] == (
+        cases["attention"][0]["case_id"]
+    )
+    assert cases["escalations"]["path"] == (
+        "/admin/v1/operator-review/cases/escalations"
+    )
     assert cases["assignment_workload"]["schema_version"] == (
         "ag_operator_review_case_assignment_workload.v1"
     )
@@ -3227,6 +3245,12 @@ def test_operations_dashboard_operator_review_cases_handles_filters_and_errors()
     assert filtered["operator_review_cases"]["summary"]["case_count"] == 0
     assert filtered["operator_review_cases"]["assignment_workload"]["summary"][
         "case_count"
+    ] == 0
+    assert filtered["operator_review_cases"]["sla_aging"]["summary"][
+        "case_count"
+    ] == 0
+    assert filtered["operator_review_cases"]["escalations"]["summary"][
+        "candidate_count"
     ] == 0
     assert filtered["operator_review_cases"]["source_statuses"]["nex-ag"][
         "status"

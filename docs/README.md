@@ -789,6 +789,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0683`](slices/0683_ag_operator_review_case_aging_stale_assignment.md) | `S69-003` AG operator review case aging/stale assignment projection. |
 | [`Slice 0684`](slices/0684_ag_operator_review_case_escalation_candidate_projection.md) | `S69-004` AG operator review case escalation candidate projection. |
 | [`Slice 0685`](slices/0685_ag_operator_review_case_sla_escalation_routes.md) | `S69-005` AG operator review case SLA/escalation protected route wiring. |
+| [`Slice 0686`](slices/0686_ag_operator_review_case_sla_escalation_dashboard.md) | `S69-006` AG operator review case SLA/escalation operations dashboard integration. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

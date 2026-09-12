@@ -2425,6 +2425,18 @@
           "type": "string",
           "minLength": 1
         },
+        "sla_policy": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "sla_aging": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "escalations": {
+          "type": "object",
+          "additionalProperties": true
+        },
         "queue_summary": {
           "type": "object",
           "additionalProperties": true

@@ -97,10 +97,13 @@ from nex_ag.operator_review_workbench import (
     build_operator_review_workbench_rollup_metrics,
 )
 from nex_ag.operator_review_cases import (
+    build_operator_review_case_aging_projection,
     build_operator_review_case_assignment_workload_projection,
+    build_operator_review_case_escalation_projection,
     build_operator_review_case_list_response,
     build_operator_review_case_queue_projection,
     build_operator_review_case_rollup_metrics,
+    build_operator_review_case_sla_policy_projection,
 )
 from nex_ag.operator_reviews import ALLOWED_TARGET_SERVICES
 from nex_runtime.retrieval_policies import list_retrieval_policy_records
@@ -6410,6 +6413,19 @@ def _dashboard_operator_review_case_section(
         assignment_workload = (
             build_operator_review_case_assignment_workload_projection(case_list)
         )
+        sla_policy = build_operator_review_case_sla_policy_projection(
+            request_id=request_trace_id or "ag-operations-dashboard",
+            trace_id=request_trace_id,
+        )
+        sla_reference_time = options.until or _utc_now()
+        sla_aging = build_operator_review_case_aging_projection(
+            case_list,
+            now=sla_reference_time,
+        )
+        escalations = build_operator_review_case_escalation_projection(
+            case_list,
+            now=sla_reference_time,
+        )
     except Exception as exc:
         source_statuses["nex-ag"] = _dashboard_operator_review_case_source_status(
             case_store=case_store,
@@ -6462,6 +6478,27 @@ def _dashboard_operator_review_case_section(
             "/admin/v1/operator-review/cases/{case_id}/closure-packet"
         ),
         "rollup_path": "/admin/v1/operator-review/cases/rollups",
+        "sla_policy": {
+            "schema_version": sla_policy["case_sla_policy_schema_version"],
+            "policy_id": sla_policy["policy_id"],
+            "summary": dict(sla_policy["summary"]),
+            "path": sla_policy["paths"]["case_sla_policy_path"],
+        },
+        "sla_aging": {
+            "schema_version": sla_aging["case_aging_schema_version"],
+            "policy_id": sla_aging["policy_id"],
+            "reference_time": sla_aging["reference_time"],
+            "summary": dict(sla_aging["summary"]),
+            "path": sla_aging["paths"]["case_aging_path"],
+        },
+        "escalations": {
+            "schema_version": escalations["case_escalations_schema_version"],
+            "policy_id": escalations["policy_id"],
+            "reference_time": escalations["reference_time"],
+            "summary": dict(escalations["summary"]),
+            "items": list(escalations["items"])[:limit],
+            "path": escalations["paths"]["case_escalations_path"],
+        },
         "queue_summary": dict(queue["summary"]),
         "assignment_workload": {
             "schema_version": assignment_workload[
@@ -6501,6 +6538,49 @@ def _empty_dashboard_operator_review_case_section(
             "/admin/v1/operator-review/cases/{case_id}/closure-packet"
         ),
         "rollup_path": "/admin/v1/operator-review/cases/rollups",
+        "sla_policy": {
+            "schema_version": "ag_operator_review_case_sla_policy.v1",
+            "policy_id": None,
+            "summary": {
+                "rule_count": 0,
+                "priority_order": [],
+                "minimum_warning_after_seconds": None,
+                "minimum_overdue_after_seconds": None,
+            },
+            "path": "/admin/v1/operator-review/cases/sla-policy",
+        },
+        "sla_aging": {
+            "schema_version": "ag_operator_review_case_aging.v1",
+            "policy_id": None,
+            "reference_time": None,
+            "summary": {
+                "case_count": 0,
+                "open_case_count": 0,
+                "closed_case_count": 0,
+                "watch_case_count": 0,
+                "warning_case_count": 0,
+                "overdue_case_count": 0,
+                "stale_assignment_count": 0,
+                "max_age_seconds": 0,
+            },
+            "path": "/admin/v1/operator-review/cases/aging",
+        },
+        "escalations": {
+            "schema_version": "ag_operator_review_case_escalations.v1",
+            "policy_id": None,
+            "reference_time": None,
+            "summary": {
+                "candidate_count": 0,
+                "overdue_candidate_count": 0,
+                "warning_candidate_count": 0,
+                "watch_candidate_count": 0,
+                "stale_assignment_count": 0,
+                "by_escalation_level": {},
+                "by_case_priority": {},
+            },
+            "items": [],
+            "path": "/admin/v1/operator-review/cases/escalations",
+        },
         "queue_summary": {
             "case_count": 0,
             "open_case_count": 0,
