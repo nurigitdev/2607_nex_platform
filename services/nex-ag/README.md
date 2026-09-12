@@ -1115,6 +1115,10 @@ Unified operations:
   `NEX_AG_OPERATOR_REVIEW_CASE_LIFECYCLE_POSTGRES_SMOKE=1`, migrates
   `nex_ag_test`, checks closure packet/timeline/action outcome/workload
   projections, observes existing AG tables, and cleans up smoke rows.
+- Slice 0680 closes S68 with
+  `scripts/smoke/run_s68_operator_review_case_decision_lifecycle_closure.py`.
+  The closure confirms the lifecycle remains AG-owned, read-model-only, backed
+  by existing tables/events, and covered by protected PostgreSQL smoke evidence.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
