@@ -62,6 +62,9 @@ OPERATOR_REVIEW_CASE_EVIDENCE_LINKS_SCHEMA_VERSION = (
 OPERATOR_REVIEW_CASE_ACTION_ADMISSION_SCHEMA_VERSION = (
     "ag_operator_review_case_action_admission.v1"
 )
+OPERATOR_REVIEW_CASE_ACTION_OUTCOMES_SCHEMA_VERSION = (
+    "ag_operator_review_case_action_outcomes.v1"
+)
 OPERATOR_REVIEW_CASE_MUTATION_SCHEMA_VERSION = "ag_operator_review_case_mutation.v1"
 OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION = "ag_operator_review_case_action.v1"
 OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION = (
@@ -462,6 +465,24 @@ class OperatorReviewCaseService:
             request_id=request_id,
             trace_id=trace_id,
             action_type=action_type,
+        )
+
+    def get_case_action_outcomes(
+        self,
+        case_id: str,
+        *,
+        event_store: OperationalEventStore,
+        request_id: str,
+        trace_id: str | None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        record = self.get_case(case_id)
+        return build_operator_review_case_action_outcome_projection(
+            record,
+            event_store=event_store,
+            request_id=request_id,
+            trace_id=trace_id,
+            limit=limit,
         )
 
     def rollup_cases(
@@ -1708,6 +1729,95 @@ def build_operator_review_case_timeline_projection(
     }
 
 
+def build_operator_review_case_action_outcome_projection(
+    record: dict[str, Any],
+    *,
+    event_store: OperationalEventStore,
+    request_id: str,
+    trace_id: str | None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    timeline = build_operator_review_case_timeline_projection(
+        record,
+        event_store=event_store,
+        request_id=request_id,
+        trace_id=trace_id,
+        limit=limit,
+    )
+    items = [
+        _case_action_outcome_item(item)
+        for item in timeline["items"]
+        if item.get("timeline_kind") == "CASE_ACTION"
+    ]
+    return {
+        "case_action_outcomes_schema_version": (
+            OPERATOR_REVIEW_CASE_ACTION_OUTCOMES_SCHEMA_VERSION
+        ),
+        "trace_id": optional_text(trace_id),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "case": {
+            "case_id": record.get("case_id"),
+            "target_ref": _case_target_ref(record),
+            "case_status": record.get("case_status"),
+            "case_priority": record.get("case_priority"),
+            "assignment_ref": _case_assignment_ref(record),
+            "latest_action": _safe_case_last_action_ref(record),
+            "updated_at": record.get("updated_at"),
+            "closed_at": record.get("closed_at"),
+        },
+        "items": items,
+        "summary": {
+            "outcome_status": timeline["summary"]["timeline_status"],
+            "action_count": len(items),
+            "status_transition_count": sum(
+                1 for item in items if item.get("status_changed") is True
+            ),
+            "assignment_action_count": sum(
+                1 for item in items if item.get("assignment_changed") is True
+            ),
+            "terminal_action_count": sum(
+                1 for item in items if item.get("terminal_action") is True
+            ),
+            "resolution_recorded_count": sum(
+                1 for item in items if item.get("resolution_recorded") is True
+            ),
+            "first_action_at": items[0]["acted_at"] if items else None,
+            "latest_action_at": items[-1]["acted_at"] if items else None,
+            "latest_action_type": items[-1]["action_type"] if items else None,
+            "latest_to_status": items[-1]["to_status"] if items else None,
+            "source_error": timeline["summary"]["source_error"],
+            "source_projection": "case_timeline_operational_events",
+        },
+        "paths": {
+            "case_detail_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+            ),
+            "case_timeline_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}/timeline"
+            ),
+            "case_action_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}/actions"
+            ),
+        },
+        "redaction": {
+            "raw_case_comment_included": False,
+            "raw_action_comment_included": False,
+            "raw_resolution_comment_included": False,
+            "raw_event_details_included": False,
+            "raw_prompt_included": False,
+            "raw_generation_output_included": False,
+            "raw_source_text_included": False,
+            "storage_paths_included": False,
+            "provider_payloads_included": False,
+            "database_urls_included": False,
+            "tokens_included": False,
+            "idempotency_keys_included": False,
+            "metadata_payload_included": False,
+            "outcome_payload_shape": "timeline_action_outcome_facts_only",
+        },
+    }
+
+
 def build_operator_review_case_action_mutation_response(
     record: dict[str, Any],
     action: dict[str, Any],
@@ -2639,6 +2749,50 @@ def _case_timeline_item_redaction() -> dict[str, Any]:
         "idempotency_keys_included": False,
         "metadata_payload_included": False,
         "timeline_item_payload_shape": "whitelisted_operational_event_fields",
+    }
+
+
+def _case_action_outcome_item(item: dict[str, Any]) -> dict[str, Any]:
+    details = item.get("details") if isinstance(item.get("details"), dict) else {}
+    outcome = (
+        item.get("action_outcome")
+        if isinstance(item.get("action_outcome"), dict)
+        else {}
+    )
+    return {
+        "case_action_outcome_item_schema_version": (
+            "ag_operator_review_case_action_outcome_item.v1"
+        ),
+        "sequence": int(item.get("sequence") or 0),
+        "event_id": optional_text(item.get("event_id")),
+        "action_id": optional_text(outcome.get("action_id")),
+        "action_type": optional_text(outcome.get("action_type")),
+        "from_status": optional_text(outcome.get("from_status")),
+        "to_status": optional_text(outcome.get("to_status")),
+        "case_status": optional_text(details.get("case_status")),
+        "status_changed": outcome.get("status_changed") is True,
+        "assignment_changed": outcome.get("assignment_changed") is True,
+        "resolution_recorded": outcome.get("resolution_recorded") is True,
+        "terminal_action": outcome.get("terminal_action") is True,
+        "acted_at": item.get("created_at"),
+        "operator_ref": {
+            "operator_type": optional_text(details.get("operator_type")),
+            "operator_id": optional_text(details.get("operator_id")),
+        },
+        "assignment_ref": {
+            "assignee_id": optional_text(details.get("assignee_id")),
+        },
+        "reason_count": details.get("reason_count"),
+        "action_comment_hash": optional_text(details.get("action_comment_hash")),
+        "resolution_hash": optional_text(details.get("resolution_hash")),
+        "redaction": {
+            "raw_event_details_included": False,
+            "raw_action_comment_included": False,
+            "raw_resolution_comment_included": False,
+            "idempotency_keys_included": False,
+            "metadata_payload_included": False,
+            "outcome_item_payload_shape": "safe_action_transition_facts_only",
+        },
     }
 
 

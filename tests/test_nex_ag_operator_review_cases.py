@@ -16,6 +16,7 @@ from nex_ag.operator_review_cases import (
     ALLOWED_CASE_PRIORITIES,
     ALLOWED_CASE_STATUSES,
     OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION,
+    OPERATOR_REVIEW_CASE_ACTION_OUTCOMES_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_CASE_ACTION_ADMISSION_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION,
@@ -37,6 +38,7 @@ from nex_ag.operator_review_cases import (
     _target_status_for_case_action,
     apply_operator_review_case_action,
     build_operator_review_case_action_mutation_response,
+    build_operator_review_case_action_outcome_projection,
     build_operator_review_case_action_record,
     build_operator_review_case_action_admission_projection,
     build_operator_review_case_evidence_links_projection,
@@ -1522,6 +1524,112 @@ def test_case_timeline_projection_filters_and_redacts_operational_events() -> No
     assert '"action_comment":' not in serialized
 
 
+def test_case_action_outcome_projection_summarizes_safe_lifecycle_facts() -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+    event_store = InMemoryOperationalEventStore()
+    emitter = OperationalEventEmitter(service_id="nex-ag", store=event_store)
+    created = service.create_case(
+        sample_case_payload(case_id="case-0673-outcomes", assignment_ref=None),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0673-case",
+    )["case"]
+    emit_operator_review_case_event(emitter, created)
+    assigned = service.apply_action(
+        created["case_id"],
+        sample_action_payload(
+            action_type="ASSIGN",
+            action_comment="Raw assignment text must stay out.",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0673",
+            },
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0673-assign",
+    )["case"]
+    emit_operator_review_case_action_event(
+        emitter,
+        assigned["metadata"]["last_action"]["record"],
+        assigned,
+    )
+    resolved = service.apply_action(
+        assigned["case_id"],
+        sample_action_payload(
+            action_type="RESOLVE",
+            action_comment="Raw resolve action text must stay out.",
+            resolution_comment="Raw resolution text must stay out.",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0673-resolve",
+    )["case"]
+    emit_operator_review_case_action_event(
+        emitter,
+        resolved["metadata"]["last_action"]["record"],
+        resolved,
+    )
+
+    outcomes = build_operator_review_case_action_outcome_projection(
+        resolved,
+        event_store=event_store,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    limited = build_operator_review_case_action_outcome_projection(
+        resolved,
+        event_store=event_store,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        limit=1,
+    )
+    service_outcomes = service.get_case_action_outcomes(
+        resolved["case_id"],
+        event_store=event_store,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert outcomes["case_action_outcomes_schema_version"] == (
+        OPERATOR_REVIEW_CASE_ACTION_OUTCOMES_SCHEMA_VERSION
+    )
+    assert outcomes["case"]["case_id"] == resolved["case_id"]
+    assert outcomes["case"]["case_status"] == "RESOLVED"
+    assert outcomes["case"]["assignment_ref"]["assignee_id"] == "employee-0673"
+    assert outcomes["summary"]["outcome_status"] == "READY"
+    assert outcomes["summary"]["action_count"] == 2
+    assert outcomes["summary"]["status_transition_count"] == 2
+    assert outcomes["summary"]["assignment_action_count"] == 1
+    assert outcomes["summary"]["terminal_action_count"] == 1
+    assert outcomes["summary"]["resolution_recorded_count"] == 1
+    assert outcomes["summary"]["latest_action_type"] == "RESOLVE"
+    assert outcomes["summary"]["latest_to_status"] == "RESOLVED"
+    assert outcomes["summary"]["source_projection"] == (
+        "case_timeline_operational_events"
+    )
+    assert [item["sequence"] for item in outcomes["items"]] == [2, 3]
+    assert outcomes["items"][0]["action_type"] == "ASSIGN"
+    assert outcomes["items"][0]["assignment_changed"] is True
+    assert outcomes["items"][0]["operator_ref"] == {
+        "operator_type": "user",
+        "operator_id": "employee-0001",
+    }
+    assert outcomes["items"][0]["assignment_ref"]["assignee_id"] == "employee-0673"
+    assert outcomes["items"][1]["terminal_action"] is True
+    assert outcomes["items"][1]["resolution_recorded"] is True
+    assert outcomes["items"][1]["redaction"]["raw_event_details_included"] is False
+    assert limited["summary"]["action_count"] == 1
+    assert service_outcomes["summary"] == outcomes["summary"]
+
+    serialized = json.dumps(outcomes)
+    assert "Raw assignment text" not in serialized
+    assert "Raw resolve action text" not in serialized
+    assert "Raw resolution text" not in serialized
+    assert "idem-0673" not in serialized
+    assert '"metadata":' not in serialized
+
+
 def test_case_timeline_projection_reports_unavailable_source_and_subject_match() -> None:
     record = build_case(sample_case_payload(case_id="case-0655-subject"))
     event_store = InMemoryOperationalEventStore()
@@ -1610,6 +1718,12 @@ def test_case_timeline_projection_reports_unavailable_source_and_subject_match()
         request_id=REQUEST_ID,
         trace_id=None,
     )
+    unavailable_outcomes = build_operator_review_case_action_outcome_projection(
+        record,
+        event_store=BrokenEventStore(),
+        request_id=REQUEST_ID,
+        trace_id=None,
+    )
 
     assert subject_timeline["items"][0]["event_id"] == "event-0655-subject"
     assert subject_timeline["items"][0]["details"]["case_id"] is None
@@ -1638,6 +1752,14 @@ def test_case_timeline_projection_reports_unavailable_source_and_subject_match()
     )
     assert malformed["summary"]["timeline_status"] == "READY"
     assert malformed["summary"]["event_count"] == 0
+    assert unavailable_outcomes["trace_id"] is None
+    assert unavailable_outcomes["summary"]["outcome_status"] == "UNAVAILABLE"
+    assert unavailable_outcomes["summary"]["action_count"] == 0
+    assert unavailable_outcomes["summary"]["source_error"] == {
+        "error_code": "operational_event.store_unavailable",
+        "detail": "store unavailable",
+        "status_code": 503,
+    }
 
 
 def test_case_idempotency_signature_is_safe_and_stable() -> None:

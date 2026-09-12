@@ -1084,6 +1084,11 @@ Unified operations:
   item-level redaction flags while continuing to read `service_operational_events`
   and exclude raw comments, resolution text, event details, idempotency keys,
   metadata payloads, provider payloads, storage paths, database URLs, and tokens.
+- Slice 0673 adds `ag_operator_review_case_action_outcomes.v1` as an internal
+  lifecycle read model derived from the hardened timeline. It summarizes safe
+  status transition, assignment, terminal, and resolution-recorded action facts
+  while preserving timeline sequence correlation and keeping action history
+  `operational_events_first`.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
