@@ -1109,6 +1109,12 @@ Unified operations:
   `operator_review_case_workbench.v1.schema.json`, adding action outcome,
   assignment workload, and closure packet examples, and documenting
   `/admin/v1/operator-review/cases/{case_id}/closure-packet` in OpenAPI.
+- Slice 0679 adds protected PostgreSQL smoke evidence for the lifecycle path via
+  `scripts/smoke/run_ag_operator_review_case_lifecycle_postgres_smoke.py`. The
+  smoke runs only with
+  `NEX_AG_OPERATOR_REVIEW_CASE_LIFECYCLE_POSTGRES_SMOKE=1`, migrates
+  `nex_ag_test`, checks closure packet/timeline/action outcome/workload
+  projections, observes existing AG tables, and cleans up smoke rows.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
