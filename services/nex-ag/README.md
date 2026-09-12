@@ -1131,6 +1131,10 @@ Unified operations:
 - Slice 0683 adds `ag_operator_review_case_aging.v1` over existing case rows.
   The projection computes case age, inactivity, SLA state, and stale-assignment
   flags without adding persistence or exposing raw case/action material.
+- Slice 0684 adds `ag_operator_review_case_escalations.v1` as a deterministic
+  candidate projection over the aging read model. It emits safe case refs,
+  escalation reasons, runbook ids, recommended operator actions, and summary
+  counts while keeping notification delivery and external incident sync deferred.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

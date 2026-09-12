@@ -24,6 +24,7 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_CASE_ASSIGNMENT_WORKLOAD_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_CLOSURE_PACKET_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_EVIDENCE_LINKS_SCHEMA_VERSION,
+    OPERATOR_REVIEW_CASE_ESCALATION_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_QUEUE_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_CASE_ROLLUP_SCHEMA_VERSION,
@@ -37,6 +38,9 @@ from nex_ag.operator_review_cases import (
     _operator_review_case_filter_clause,
     _case_queue_item_matches_query,
     _case_elapsed_seconds,
+    _case_escalation_operator_actions,
+    _case_escalation_reasons,
+    _case_escalation_level_sort_rank,
     _latest_case_action_summary,
     _operator_review_case_record_params,
     _operator_review_case_select_sql,
@@ -51,6 +55,7 @@ from nex_ag.operator_review_cases import (
     build_operator_review_case_assignment_workload_projection,
     build_operator_review_case_closure_packet,
     build_operator_review_case_evidence_links_projection,
+    build_operator_review_case_escalation_projection,
     build_operator_review_case_list_response,
     build_operator_review_case_mutation_response,
     build_operator_review_case_queue_projection,
@@ -1196,6 +1201,192 @@ def test_case_aging_projection_handles_ok_and_timestamp_edges() -> None:
         "2026-09-12T12:00:00Z",
     ) == 0
     assert _case_sla_state_sort_rank("UNKNOWN") == 5
+
+
+def test_case_escalation_projection_selects_candidates_and_runbooks() -> None:
+    urgent = build_case(
+        sample_case_payload(
+            case_id="case-0684-urgent",
+            case_priority="URGENT",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0684",
+                "tenant_id": "local-tenant",
+            },
+        ),
+        idempotency_key="idem-0684-urgent",
+        created_at="2026-09-11T00:00:00Z",
+    )
+    assigned, _action = apply_operator_review_case_action(
+        urgent,
+        sample_action_payload(
+            action_type="ASSIGN",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0684",
+                "tenant_id": "local-tenant",
+            },
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0684-assign",
+        acted_at="2026-09-11T00:00:00Z",
+    )
+    warning = build_case(
+        sample_case_payload(
+            case_id="case-0684-warning",
+            case_status="ACKNOWLEDGED",
+            case_priority="HIGH",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0684-warning",
+                "tenant_id": "local-tenant",
+            },
+        ),
+        idempotency_key="idem-0684-warning",
+        created_at="2026-09-12T06:00:00Z",
+    )
+    reopened = build_case(
+        sample_case_payload(
+            case_id="case-0684-reopened",
+            case_status="REOPENED",
+            case_priority="LOW",
+            assignment_ref=None,
+        ),
+        idempotency_key="idem-0684-reopened",
+        created_at="2026-09-12T11:50:00Z",
+    )
+    ok_case = build_case(
+        sample_case_payload(
+            case_id="case-0684-ok",
+            case_status="ACKNOWLEDGED",
+            case_priority="LOW",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0684-ok",
+                "tenant_id": "local-tenant",
+            },
+        ),
+        idempotency_key="idem-0684-ok",
+        created_at="2026-09-12T11:59:00Z",
+    )
+    closed = build_case(
+        sample_case_payload(
+            case_id="case-0684-closed",
+            case_status="DISMISSED",
+            case_priority="URGENT",
+            resolution_text="Closed before escalation.",
+            closed_at="2026-09-11T00:05:00Z",
+        ),
+        idempotency_key="idem-0684-closed",
+        created_at="2026-09-11T00:00:00Z",
+    )
+    case_list = build_operator_review_case_list_response(
+        [assigned, warning, reopened, ok_case, closed],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    projection = build_operator_review_case_escalation_projection(
+        case_list,
+        now="2026-09-12T12:00:00Z",
+    )
+
+    assert projection["case_escalations_schema_version"] == (
+        OPERATOR_REVIEW_CASE_ESCALATION_SCHEMA_VERSION
+    )
+    assert projection["summary"] == {
+        "candidate_count": 3,
+        "overdue_candidate_count": 1,
+        "warning_candidate_count": 1,
+        "watch_candidate_count": 1,
+        "stale_assignment_count": 1,
+        "by_escalation_level": {"BLOCKED": 1, "ATTENTION": 1, "OBSERVE": 1},
+        "by_case_priority": {"URGENT": 1, "HIGH": 1, "LOW": 1},
+    }
+    by_case_id = {item["case_id"]: item for item in projection["items"]}
+    urgent_item = by_case_id["case-0684-urgent"]
+    assert urgent_item["candidate_id"] == "case-0684-urgent:overdue:blocked"
+    assert urgent_item["escalation_reasons"] == [
+        "assigned_case_in_progress",
+        "sla_overdue",
+        "stale_assignment",
+        "urgent_case_not_closed",
+    ]
+    assert urgent_item["runbook_ids"] == [
+        "ag.operator_review_case.assigned_followup.v1",
+        "ag.operator_review_case.urgent_triage.v1",
+    ]
+    assert "follow_up_assigned_case_owner" in urgent_item[
+        "recommended_operator_actions"
+    ]
+    assert by_case_id["case-0684-warning"]["runbook_ids"] == [
+        "ag.operator_review_case.sla_followup.v1"
+    ]
+    assert by_case_id["case-0684-reopened"]["runbook_ids"] == [
+        "ag.operator_review_case.assign_owner.v1",
+        "ag.operator_review_case.reopened_review.v1",
+    ]
+    assert "case-0684-ok" not in by_case_id
+    assert "case-0684-closed" not in by_case_id
+    assert projection["paths"]["case_escalations_path"] == (
+        "/admin/v1/operator-review/cases/escalations"
+    )
+    assert projection["redaction"]["notification_payload_included"] is False
+    serialized = json.dumps(projection)
+    assert "Closed before escalation" not in serialized
+    assert "idem-0684" not in serialized
+    assert _case_escalation_level_sort_rank("UNKNOWN") == 4
+
+
+def test_case_escalation_service_wrapper_and_empty_projection() -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+    service.create_case(
+        sample_case_payload(
+            case_id="case-0684-service-ok",
+            case_status="ACKNOWLEDGED",
+            case_priority="LOW",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0684-service",
+            },
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0684-service",
+    )
+
+    projection = service.escalation_cases(
+        request_id=REQUEST_ID,
+        trace_id=None,
+        now="2026-09-11T00:00:30Z",
+    )
+
+    assert projection["case_escalations_schema_version"] == (
+        OPERATOR_REVIEW_CASE_ESCALATION_SCHEMA_VERSION
+    )
+    assert projection["trace_id"] is None
+    assert projection["items"] == []
+    assert projection["summary"]["candidate_count"] == 0
+
+
+def test_case_escalation_helpers_ignore_unsafe_reasons_and_add_fallback_action() -> None:
+    reasons = _case_escalation_reasons(
+        {
+            "sla_state": "WATCH",
+            "stale_assignment": False,
+            "attention_reason_codes": ["safe_reason", 404, None],
+        }
+    )
+
+    assert reasons == ["safe_reason", "sla_watch"]
+    assert _case_escalation_reasons(
+        {"sla_state": "OK", "attention_reason_codes": [False]}
+    ) == []
+    assert _case_escalation_operator_actions(
+        {"recommended_actions": [None, 404]},
+        reasons,
+    ) == ["review_case_queue"]
 
 
 def test_case_workbench_detail_projection_exposes_safe_action_controls() -> None:

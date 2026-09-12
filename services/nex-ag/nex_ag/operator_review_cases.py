@@ -76,6 +76,9 @@ OPERATOR_REVIEW_CASE_SLA_POLICY_SCHEMA_VERSION = (
     "ag_operator_review_case_sla_policy.v1"
 )
 OPERATOR_REVIEW_CASE_AGING_SCHEMA_VERSION = "ag_operator_review_case_aging.v1"
+OPERATOR_REVIEW_CASE_ESCALATION_SCHEMA_VERSION = (
+    "ag_operator_review_case_escalations.v1"
+)
 OPERATOR_REVIEW_CASE_MUTATION_SCHEMA_VERSION = "ag_operator_review_case_mutation.v1"
 OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION = "ag_operator_review_case_action.v1"
 OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION = (
@@ -606,6 +609,43 @@ class OperatorReviewCaseService:
             limit=limit,
         )
         return build_operator_review_case_aging_projection(case_list, now=now)
+
+    def escalation_cases(
+        self,
+        *,
+        request_id: str,
+        trace_id: str | None,
+        now: str | None = None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        case_trace_id: str | None = None,
+        case_status: str | None = None,
+        case_priority: str | None = None,
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        assignee_id: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        case_list = self.list_cases(
+            request_id=request_id,
+            trace_id=trace_id,
+            target_service=target_service,
+            target_kind=target_kind,
+            target_id=target_id,
+            case_trace_id=case_trace_id,
+            case_status=case_status,
+            case_priority=case_priority,
+            operator_type=operator_type,
+            operator_id=operator_id,
+            assignee_id=assignee_id,
+            updated_from=updated_from,
+            updated_to=updated_to,
+            limit=limit,
+        )
+        return build_operator_review_case_escalation_projection(case_list, now=now)
 
     def get_case_closure_packet(
         self,
@@ -2221,6 +2261,75 @@ def build_operator_review_case_aging_projection(
     }
 
 
+def build_operator_review_case_escalation_projection(
+    case_list: dict[str, Any],
+    *,
+    now: str | None = None,
+) -> dict[str, Any]:
+    aging = build_operator_review_case_aging_projection(case_list, now=now)
+    items = [
+        _case_escalation_item(item)
+        for item in aging["items"]
+        if _case_aging_item_needs_escalation(item)
+    ]
+    items.sort(
+        key=lambda item: (
+            _case_escalation_level_sort_rank(str(item["escalation_level"])),
+            -int(item["age_seconds"]),
+            str(item["case_id"] or ""),
+        )
+    )
+    return {
+        "case_escalations_schema_version": OPERATOR_REVIEW_CASE_ESCALATION_SCHEMA_VERSION,
+        "policy_id": CASE_SLA_POLICY_ID,
+        "trace_id": case_list.get("trace_id"),
+        "request_id": case_list.get("request_id"),
+        "reference_time": aging["reference_time"],
+        "items": items,
+        "summary": {
+            "candidate_count": len(items),
+            "overdue_candidate_count": sum(
+                1 for item in items if item["sla_state"] == "OVERDUE"
+            ),
+            "warning_candidate_count": sum(
+                1 for item in items if item["sla_state"] == "WARNING"
+            ),
+            "watch_candidate_count": sum(
+                1 for item in items if item["sla_state"] == "WATCH"
+            ),
+            "stale_assignment_count": sum(
+                1 for item in items if item["stale_assignment"] is True
+            ),
+            "by_escalation_level": _count_by(items, "escalation_level"),
+            "by_case_priority": _count_by(items, "case_priority"),
+        },
+        "paths": {
+            "case_escalations_path": "/admin/v1/operator-review/cases/escalations",
+            "case_aging_path": "/admin/v1/operator-review/cases/aging",
+            "case_sla_policy_path": "/admin/v1/operator-review/cases/sla-policy",
+            "case_queue_path": "/admin/v1/operator-review/cases/queue",
+            "issue_candidates_path": "/admin/v1/operations/issue-candidates",
+        },
+        "redaction": {
+            "raw_case_comment_included": False,
+            "raw_action_comment_included": False,
+            "raw_resolution_comment_included": False,
+            "raw_prompt_included": False,
+            "raw_generation_output_included": False,
+            "raw_source_text_included": False,
+            "storage_paths_included": False,
+            "provider_payloads_included": False,
+            "database_urls_included": False,
+            "tokens_included": False,
+            "idempotency_keys_included": False,
+            "metadata_payload_included": False,
+            "notification_payload_included": False,
+            "external_incident_payload_included": False,
+            "escalation_payload_shape": "candidate_refs_thresholds_and_runbooks_only",
+        },
+    }
+
+
 def build_operator_review_case_closure_packet(
     record: dict[str, Any],
     *,
@@ -3413,6 +3522,122 @@ def _case_aging_item(
             "storage_paths_included": False,
         },
     }
+
+
+def _case_aging_item_needs_escalation(item: dict[str, Any]) -> bool:
+    return (
+        str(item.get("sla_state") or "") in {"OVERDUE", "WARNING", "WATCH"}
+        or item.get("stale_assignment") is True
+    )
+
+
+def _case_escalation_item(item: dict[str, Any]) -> dict[str, Any]:
+    reasons = _case_escalation_reasons(item)
+    runbook_ids = _case_escalation_runbook_ids(item, reasons)
+    actions = _case_escalation_operator_actions(item, reasons)
+    return {
+        "case_escalation_item_schema_version": (
+            "ag_operator_review_case_escalation_item.v1"
+        ),
+        "candidate_id": (
+            f"{item.get('case_id')}:"
+            f"{str(item.get('sla_state') or 'UNKNOWN').lower()}:"
+            f"{str(item.get('escalation_level') or 'FOLLOW_UP').lower()}"
+        ),
+        "case_id": item.get("case_id"),
+        "target_ref": dict(item.get("target_ref") or {}),
+        "case_status": item.get("case_status"),
+        "case_priority": item.get("case_priority"),
+        "assignment_ref": dict(item.get("assignment_ref") or {}),
+        "attention_status": item.get("attention_status"),
+        "sla_state": item.get("sla_state"),
+        "escalation_level": item.get("escalation_level"),
+        "escalation_reasons": reasons,
+        "runbook_ids": runbook_ids,
+        "recommended_operator_actions": actions,
+        "age_seconds": item.get("age_seconds"),
+        "inactivity_seconds": item.get("inactivity_seconds"),
+        "warning_after_seconds": item.get("warning_after_seconds"),
+        "overdue_after_seconds": item.get("overdue_after_seconds"),
+        "stale_assignment": item.get("stale_assignment") is True,
+        "reference_time": item.get("reference_time"),
+        "links": dict(item.get("links") or {}),
+        "redaction": {
+            "raw_case_comment_included": False,
+            "raw_action_comment_included": False,
+            "raw_resolution_comment_included": False,
+            "idempotency_keys_included": False,
+            "metadata_payload_included": False,
+            "notification_payload_included": False,
+            "external_incident_payload_included": False,
+        },
+    }
+
+
+def _case_escalation_reasons(item: dict[str, Any]) -> list[str]:
+    reasons: set[str] = set()
+    sla_state = str(item.get("sla_state") or "")
+    if sla_state == "OVERDUE":
+        reasons.add("sla_overdue")
+    elif sla_state == "WARNING":
+        reasons.add("sla_warning")
+    elif sla_state == "WATCH":
+        reasons.add("sla_watch")
+    if item.get("stale_assignment") is True:
+        reasons.add("stale_assignment")
+    for reason in item.get("attention_reason_codes") or []:
+        if isinstance(reason, str):
+            reasons.add(reason)
+    return sorted(reasons)
+
+
+def _case_escalation_runbook_ids(
+    item: dict[str, Any],
+    reasons: list[str],
+) -> list[str]:
+    runbooks: set[str] = set()
+    reason_set = set(reasons)
+    if "sla_overdue" in reason_set or "urgent_case_not_closed" in reason_set:
+        runbooks.add("ag.operator_review_case.urgent_triage.v1")
+    if "open_case_unassigned" in reason_set:
+        runbooks.add("ag.operator_review_case.assign_owner.v1")
+    if "reopened_case_requires_review" in reason_set:
+        runbooks.add("ag.operator_review_case.reopened_review.v1")
+    if "stale_assignment" in reason_set or "assigned_case_in_progress" in reason_set:
+        runbooks.add("ag.operator_review_case.assigned_followup.v1")
+    if not runbooks:
+        runbooks.add("ag.operator_review_case.sla_followup.v1")
+    return sorted(runbooks)
+
+
+def _case_escalation_operator_actions(
+    item: dict[str, Any],
+    reasons: list[str],
+) -> list[str]:
+    actions = {
+        action
+        for action in item.get("recommended_actions") or []
+        if isinstance(action, str)
+    }
+    reason_set = set(reasons)
+    if "sla_overdue" in reason_set:
+        actions.add("review_overdue_operator_review_case")
+    if "sla_warning" in reason_set:
+        actions.add("review_case_before_sla_breach")
+    if "stale_assignment" in reason_set:
+        actions.add("follow_up_assigned_case_owner")
+    if not actions:
+        actions.add("review_case_queue")
+    return sorted(actions)
+
+
+def _case_escalation_level_sort_rank(level: str) -> int:
+    return {
+        "BLOCKED": 0,
+        "ATTENTION": 1,
+        "FOLLOW_UP": 2,
+        "OBSERVE": 3,
+    }.get(level, 4)
 
 
 def _case_priority_for_sla(record: dict[str, Any]) -> str:
