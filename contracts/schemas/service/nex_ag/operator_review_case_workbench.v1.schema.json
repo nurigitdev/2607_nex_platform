@@ -7,6 +7,15 @@
       "$ref": "#/$defs/case_queue_response"
     },
     {
+      "$ref": "#/$defs/case_sla_policy_response"
+    },
+    {
+      "$ref": "#/$defs/case_aging_response"
+    },
+    {
+      "$ref": "#/$defs/case_escalations_response"
+    },
+    {
       "$ref": "#/$defs/case_workbench_detail_response"
     },
     {
@@ -709,6 +718,597 @@
         },
         "latest_updated_at": {
           "$ref": "#/$defs/nullable_timestamp"
+        }
+      }
+    },
+    "sla_state": {
+      "type": "string",
+      "enum": [
+        "OK",
+        "WATCH",
+        "WARNING",
+        "OVERDUE",
+        "CLOSED"
+      ]
+    },
+    "escalation_level": {
+      "type": "string",
+      "enum": [
+        "OBSERVE",
+        "FOLLOW_UP",
+        "ATTENTION",
+        "BLOCKED"
+      ]
+    },
+    "case_sla_redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_case_comment_included",
+        "raw_action_comment_included",
+        "raw_resolution_comment_included",
+        "raw_prompt_included",
+        "raw_generation_output_included",
+        "raw_source_text_included",
+        "storage_paths_included",
+        "provider_payloads_included",
+        "database_urls_included",
+        "tokens_included",
+        "idempotency_keys_included",
+        "metadata_payload_included"
+      ],
+      "properties": {
+        "raw_case_comment_included": {
+          "const": false
+        },
+        "raw_action_comment_included": {
+          "const": false
+        },
+        "raw_resolution_comment_included": {
+          "const": false
+        },
+        "raw_prompt_included": {
+          "const": false
+        },
+        "raw_generation_output_included": {
+          "const": false
+        },
+        "raw_source_text_included": {
+          "const": false
+        },
+        "storage_paths_included": {
+          "const": false
+        },
+        "provider_payloads_included": {
+          "const": false
+        },
+        "database_urls_included": {
+          "const": false
+        },
+        "tokens_included": {
+          "const": false
+        },
+        "idempotency_keys_included": {
+          "const": false
+        },
+        "metadata_payload_included": {
+          "const": false
+        },
+        "notification_payload_included": {
+          "const": false
+        },
+        "external_incident_payload_included": {
+          "const": false
+        },
+        "policy_payload_shape": {
+          "const": "priority_thresholds_reason_mappings_only"
+        },
+        "aging_payload_shape": {
+          "const": "timestamps_thresholds_and_safe_refs_only"
+        },
+        "escalation_payload_shape": {
+          "const": "candidate_refs_thresholds_and_runbooks_only"
+        }
+      }
+    },
+    "case_sla_policy_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_sla_policy_rule_schema_version",
+        "priority",
+        "sla_class",
+        "warning_after_seconds",
+        "overdue_after_seconds",
+        "escalation_level",
+        "applies_to_statuses",
+        "terminal_statuses"
+      ],
+      "properties": {
+        "case_sla_policy_rule_schema_version": {
+          "const": "ag_operator_review_case_sla_policy_rule.v1"
+        },
+        "priority": {
+          "$ref": "#/$defs/case_priority"
+        },
+        "sla_class": {
+          "type": "string",
+          "minLength": 1
+        },
+        "warning_after_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "overdue_after_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "escalation_level": {
+          "$ref": "#/$defs/escalation_level"
+        },
+        "applies_to_statuses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/case_status"
+          }
+        },
+        "terminal_statuses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/case_status"
+          }
+        }
+      }
+    },
+    "case_sla_reason_mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason_code",
+        "sla_state",
+        "escalation_level",
+        "recommended_action"
+      ],
+      "properties": {
+        "reason_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sla_state": {
+          "$ref": "#/$defs/sla_state"
+        },
+        "escalation_level": {
+          "$ref": "#/$defs/escalation_level"
+        },
+        "recommended_action": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "case_sla_policy_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_sla_policy_schema_version",
+        "policy_id",
+        "trace_id",
+        "request_id",
+        "evaluation",
+        "rules",
+        "reason_mappings",
+        "summary",
+        "paths",
+        "redaction"
+      ],
+      "properties": {
+        "case_sla_policy_schema_version": {
+          "const": "ag_operator_review_case_sla_policy.v1"
+        },
+        "policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evaluation": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/case_sla_policy_rule"
+          }
+        },
+        "reason_mappings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/case_sla_reason_mapping"
+          }
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "paths": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "case_sla_policy_path",
+            "case_queue_path",
+            "case_escalations_path",
+            "issue_candidates_path"
+          ],
+          "properties": {
+            "case_sla_policy_path": {
+              "const": "/admin/v1/operator-review/cases/sla-policy"
+            },
+            "case_queue_path": {
+              "const": "/admin/v1/operator-review/cases/queue"
+            },
+            "case_escalations_path": {
+              "const": "/admin/v1/operator-review/cases/escalations"
+            },
+            "issue_candidates_path": {
+              "const": "/admin/v1/operations/issue-candidates"
+            }
+          }
+        },
+        "redaction": {
+          "$ref": "#/$defs/case_sla_redaction"
+        }
+      }
+    },
+    "case_aging_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_aging_item_schema_version",
+        "case_id",
+        "target_ref",
+        "case_status",
+        "case_priority",
+        "assignment_ref",
+        "attention_status",
+        "attention_reason_codes",
+        "recommended_actions",
+        "created_at",
+        "updated_at",
+        "closed_at",
+        "latest_action_at",
+        "reference_time",
+        "age_seconds",
+        "inactivity_seconds",
+        "warning_after_seconds",
+        "overdue_after_seconds",
+        "sla_state",
+        "escalation_level",
+        "stale_assignment",
+        "closed",
+        "links",
+        "redaction"
+      ],
+      "properties": {
+        "case_aging_item_schema_version": {
+          "const": "ag_operator_review_case_aging_item.v1"
+        },
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_ref": {
+          "$ref": "#/$defs/target_ref"
+        },
+        "case_status": {
+          "$ref": "#/$defs/case_status"
+        },
+        "case_priority": {
+          "$ref": "#/$defs/case_priority"
+        },
+        "assignment_ref": {
+          "$ref": "#/$defs/assignment_ref"
+        },
+        "attention_status": {
+          "$ref": "#/$defs/attention_status"
+        },
+        "attention_reason_codes": {
+          "$ref": "#/$defs/string_array"
+        },
+        "recommended_actions": {
+          "$ref": "#/$defs/string_array"
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "closed_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        },
+        "latest_action_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        },
+        "reference_time": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "age_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inactivity_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning_after_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "overdue_after_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sla_state": {
+          "$ref": "#/$defs/sla_state"
+        },
+        "escalation_level": {
+          "$ref": "#/$defs/escalation_level"
+        },
+        "stale_assignment": {
+          "type": "boolean"
+        },
+        "closed": {
+          "type": "boolean"
+        },
+        "links": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "redaction": {
+          "$ref": "#/$defs/safe_redaction"
+        }
+      }
+    },
+    "case_aging_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_aging_schema_version",
+        "policy_id",
+        "trace_id",
+        "request_id",
+        "reference_time",
+        "items",
+        "summary",
+        "paths",
+        "redaction"
+      ],
+      "properties": {
+        "case_aging_schema_version": {
+          "const": "ag_operator_review_case_aging.v1"
+        },
+        "policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reference_time": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/case_aging_item"
+          }
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "paths": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "redaction": {
+          "$ref": "#/$defs/case_sla_redaction"
+        }
+      }
+    },
+    "case_escalation_item_redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_case_comment_included",
+        "raw_action_comment_included",
+        "raw_resolution_comment_included",
+        "idempotency_keys_included",
+        "metadata_payload_included",
+        "notification_payload_included",
+        "external_incident_payload_included"
+      ],
+      "properties": {
+        "raw_case_comment_included": {
+          "const": false
+        },
+        "raw_action_comment_included": {
+          "const": false
+        },
+        "raw_resolution_comment_included": {
+          "const": false
+        },
+        "idempotency_keys_included": {
+          "const": false
+        },
+        "metadata_payload_included": {
+          "const": false
+        },
+        "notification_payload_included": {
+          "const": false
+        },
+        "external_incident_payload_included": {
+          "const": false
+        }
+      }
+    },
+    "case_escalation_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_escalation_item_schema_version",
+        "candidate_id",
+        "case_id",
+        "target_ref",
+        "case_status",
+        "case_priority",
+        "assignment_ref",
+        "attention_status",
+        "sla_state",
+        "escalation_level",
+        "escalation_reasons",
+        "runbook_ids",
+        "recommended_operator_actions",
+        "age_seconds",
+        "inactivity_seconds",
+        "warning_after_seconds",
+        "overdue_after_seconds",
+        "stale_assignment",
+        "reference_time",
+        "links",
+        "redaction"
+      ],
+      "properties": {
+        "case_escalation_item_schema_version": {
+          "const": "ag_operator_review_case_escalation_item.v1"
+        },
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_ref": {
+          "$ref": "#/$defs/target_ref"
+        },
+        "case_status": {
+          "$ref": "#/$defs/case_status"
+        },
+        "case_priority": {
+          "$ref": "#/$defs/case_priority"
+        },
+        "assignment_ref": {
+          "$ref": "#/$defs/assignment_ref"
+        },
+        "attention_status": {
+          "$ref": "#/$defs/attention_status"
+        },
+        "sla_state": {
+          "$ref": "#/$defs/sla_state"
+        },
+        "escalation_level": {
+          "$ref": "#/$defs/escalation_level"
+        },
+        "escalation_reasons": {
+          "$ref": "#/$defs/string_array"
+        },
+        "runbook_ids": {
+          "$ref": "#/$defs/string_array"
+        },
+        "recommended_operator_actions": {
+          "$ref": "#/$defs/string_array"
+        },
+        "age_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inactivity_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning_after_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "overdue_after_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stale_assignment": {
+          "type": "boolean"
+        },
+        "reference_time": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "links": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "redaction": {
+          "$ref": "#/$defs/case_escalation_item_redaction"
+        }
+      }
+    },
+    "case_escalations_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_escalations_schema_version",
+        "policy_id",
+        "trace_id",
+        "request_id",
+        "reference_time",
+        "items",
+        "summary",
+        "paths",
+        "redaction"
+      ],
+      "properties": {
+        "case_escalations_schema_version": {
+          "const": "ag_operator_review_case_escalations.v1"
+        },
+        "policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reference_time": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/case_escalation_item"
+          }
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "paths": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "redaction": {
+          "$ref": "#/$defs/case_sla_redaction"
         }
       }
     },

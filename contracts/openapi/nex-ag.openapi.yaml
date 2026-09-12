@@ -986,6 +986,194 @@ paths:
           description: Case queue filter, search, or sort control is invalid.
         "503":
           description: Operator review case store is unavailable.
+  /admin/v1/operator-review/cases/sla-policy:
+    get:
+      operationId: getAgOperatorReviewCaseSlaPolicy
+      tags:
+        - Operations
+      responses:
+        "200":
+          description: Read-only AG operator review case SLA policy projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewCaseWorkbenchSurface"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "503":
+          description: SLA policy projection is unavailable.
+  /admin/v1/operator-review/cases/aging:
+    get:
+      operationId: getAgOperatorReviewCaseAging
+      tags:
+        - Operations
+      parameters:
+        - name: now
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: target_service
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ServiceId"
+        - name: target_kind
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: target_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: trace_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/TraceId"
+        - name: case_status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewCaseStatus"
+        - name: case_priority
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewCasePriority"
+        - name: operator_type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorType"
+        - name: operator_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: assignee_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: updated_from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: updated_to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only AG operator review case SLA aging projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewCaseWorkbenchSurface"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "422":
+          description: Case aging filter is invalid.
+        "503":
+          description: Operator review case store is unavailable.
+  /admin/v1/operator-review/cases/escalations:
+    get:
+      operationId: getAgOperatorReviewCaseEscalations
+      tags:
+        - Operations
+      parameters:
+        - name: now
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: target_service
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ServiceId"
+        - name: target_kind
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: target_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: trace_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/TraceId"
+        - name: case_status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewCaseStatus"
+        - name: case_priority
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewCasePriority"
+        - name: operator_type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorType"
+        - name: operator_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: assignee_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: updated_from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: updated_to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only AG operator review case escalation candidate projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewCaseWorkbenchSurface"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "422":
+          description: Case escalation filter is invalid.
+        "503":
+          description: Operator review case store is unavailable.
   /admin/v1/operator-review/cases/{case_id}:
     get:
       operationId: getAgOperatorReviewCase
@@ -3252,14 +3440,24 @@ components:
       type: object
       additionalProperties: true
       description: >
-        AG operator review case workbench queue, detail, timeline, lifecycle
-        outcome, workload, or closure packet projection.
+        AG operator review case workbench queue, SLA policy, aging, escalation,
+        detail, timeline, lifecycle outcome, workload, or closure packet
+        projection.
         The canonical JSON Schema is
         schemas/service/nex_ag/operator_review_case_workbench.v1.schema.json.
       properties:
         case_queue_schema_version:
           type: string
           const: ag_operator_review_case_queue.v1
+        case_sla_policy_schema_version:
+          type: string
+          const: ag_operator_review_case_sla_policy.v1
+        case_aging_schema_version:
+          type: string
+          const: ag_operator_review_case_aging.v1
+        case_escalations_schema_version:
+          type: string
+          const: ag_operator_review_case_escalations.v1
         case_workbench_detail_schema_version:
           type: string
           const: ag_operator_review_case_workbench_detail.v1

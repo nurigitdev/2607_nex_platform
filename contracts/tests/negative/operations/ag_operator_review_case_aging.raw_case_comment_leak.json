@@ -1,0 +1,25 @@
+{
+  "case_aging_schema_version": "ag_operator_review_case_aging.v1",
+  "policy_id": "operator_review_case_sla_default_v1",
+  "trace_id": null,
+  "request_id": "negative-aging",
+  "reference_time": "2026-09-12T12:00:00Z",
+  "items": [],
+  "summary": {},
+  "paths": {},
+  "redaction": {
+    "raw_case_comment_included": true,
+    "raw_action_comment_included": false,
+    "raw_resolution_comment_included": false,
+    "raw_prompt_included": false,
+    "raw_generation_output_included": false,
+    "raw_source_text_included": false,
+    "storage_paths_included": false,
+    "provider_payloads_included": false,
+    "database_urls_included": false,
+    "tokens_included": false,
+    "idempotency_keys_included": false,
+    "metadata_payload_included": false,
+    "aging_payload_shape": "timestamps_thresholds_and_safe_refs_only"
+  }
+}

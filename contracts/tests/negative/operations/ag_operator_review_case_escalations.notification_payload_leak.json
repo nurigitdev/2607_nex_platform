@@ -1,0 +1,27 @@
+{
+  "case_escalations_schema_version": "ag_operator_review_case_escalations.v1",
+  "policy_id": "operator_review_case_sla_default_v1",
+  "trace_id": null,
+  "request_id": "negative-escalations",
+  "reference_time": "2026-09-12T12:00:00Z",
+  "items": [],
+  "summary": {},
+  "paths": {},
+  "redaction": {
+    "raw_case_comment_included": false,
+    "raw_action_comment_included": false,
+    "raw_resolution_comment_included": false,
+    "raw_prompt_included": false,
+    "raw_generation_output_included": false,
+    "raw_source_text_included": false,
+    "storage_paths_included": false,
+    "provider_payloads_included": false,
+    "database_urls_included": false,
+    "tokens_included": false,
+    "idempotency_keys_included": false,
+    "metadata_payload_included": false,
+    "notification_payload_included": true,
+    "external_incident_payload_included": false,
+    "escalation_payload_shape": "candidate_refs_thresholds_and_runbooks_only"
+  }
+}

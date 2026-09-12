@@ -1,0 +1,31 @@
+{
+  "case_sla_policy_schema_version": "ag_operator_review_case_sla_policy.v1",
+  "policy_id": "operator_review_case_sla_default_v1",
+  "trace_id": null,
+  "request_id": "negative-sla-policy",
+  "evaluation": {},
+  "rules": [],
+  "reason_mappings": [],
+  "summary": {},
+  "paths": {
+    "case_sla_policy_path": "/admin/v1/operator-review/cases/sla-policy",
+    "case_queue_path": "/admin/v1/operator-review/cases/queue",
+    "case_escalations_path": "/admin/v1/operator-review/cases/escalations",
+    "issue_candidates_path": "/admin/v1/operations/issue-candidates"
+  },
+  "redaction": {
+    "raw_case_comment_included": false,
+    "raw_action_comment_included": false,
+    "raw_resolution_comment_included": false,
+    "raw_prompt_included": true,
+    "raw_generation_output_included": false,
+    "raw_source_text_included": false,
+    "storage_paths_included": false,
+    "provider_payloads_included": false,
+    "database_urls_included": false,
+    "tokens_included": false,
+    "idempotency_keys_included": false,
+    "metadata_payload_included": false,
+    "policy_payload_shape": "priority_thresholds_reason_mappings_only"
+  }
+}

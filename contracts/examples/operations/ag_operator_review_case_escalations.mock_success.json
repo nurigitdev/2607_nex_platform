@@ -1,0 +1,100 @@
+{
+  "case_escalations_schema_version": "ag_operator_review_case_escalations.v1",
+  "policy_id": "operator_review_case_sla_default_v1",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "reference_time": "2026-09-12T12:00:00Z",
+  "items": [
+    {
+      "case_escalation_item_schema_version": "ag_operator_review_case_escalation_item.v1",
+      "candidate_id": "case-0687-urgent:overdue:blocked",
+      "case_id": "case-0687-urgent",
+      "target_ref": {
+        "target_service": "nex-ag",
+        "target_kind": "operator_review_workbench",
+        "target_id": "target-0687"
+      },
+      "case_status": "OPEN",
+      "case_priority": "URGENT",
+      "assignment_ref": {
+        "assignee_type": null,
+        "assignee_id": null,
+        "tenant_id": null
+      },
+      "attention_status": "BLOCKED",
+      "sla_state": "OVERDUE",
+      "escalation_level": "BLOCKED",
+      "escalation_reasons": [
+        "open_case_unassigned",
+        "sla_overdue",
+        "urgent_case_not_closed"
+      ],
+      "runbook_ids": [
+        "ag.operator_review_case.assign_owner.v1",
+        "ag.operator_review_case.urgent_triage.v1"
+      ],
+      "recommended_operator_actions": [
+        "assign_case_owner",
+        "prioritize_urgent_operator_review_case",
+        "review_overdue_operator_review_case"
+      ],
+      "age_seconds": 7200,
+      "inactivity_seconds": 7200,
+      "warning_after_seconds": 900,
+      "overdue_after_seconds": 3600,
+      "stale_assignment": false,
+      "reference_time": "2026-09-12T12:00:00Z",
+      "links": {
+        "case_detail_path": "/admin/v1/operator-review/cases/case-0687-urgent",
+        "case_workbench_detail_path": "/admin/v1/operator-review/cases/case-0687-urgent/workbench-detail",
+        "case_timeline_path": "/admin/v1/operator-review/cases/case-0687-urgent/timeline"
+      },
+      "redaction": {
+        "raw_case_comment_included": false,
+        "raw_action_comment_included": false,
+        "raw_resolution_comment_included": false,
+        "idempotency_keys_included": false,
+        "metadata_payload_included": false,
+        "notification_payload_included": false,
+        "external_incident_payload_included": false
+      }
+    }
+  ],
+  "summary": {
+    "candidate_count": 1,
+    "overdue_candidate_count": 1,
+    "warning_candidate_count": 0,
+    "watch_candidate_count": 0,
+    "stale_assignment_count": 0,
+    "by_escalation_level": {
+      "BLOCKED": 1
+    },
+    "by_case_priority": {
+      "URGENT": 1
+    }
+  },
+  "paths": {
+    "case_escalations_path": "/admin/v1/operator-review/cases/escalations",
+    "case_aging_path": "/admin/v1/operator-review/cases/aging",
+    "case_sla_policy_path": "/admin/v1/operator-review/cases/sla-policy",
+    "case_queue_path": "/admin/v1/operator-review/cases/queue",
+    "issue_candidates_path": "/admin/v1/operations/issue-candidates"
+  },
+  "redaction": {
+    "raw_case_comment_included": false,
+    "raw_action_comment_included": false,
+    "raw_resolution_comment_included": false,
+    "raw_prompt_included": false,
+    "raw_generation_output_included": false,
+    "raw_source_text_included": false,
+    "storage_paths_included": false,
+    "provider_payloads_included": false,
+    "database_urls_included": false,
+    "tokens_included": false,
+    "idempotency_keys_included": false,
+    "metadata_payload_included": false,
+    "notification_payload_included": false,
+    "external_incident_payload_included": false,
+    "escalation_payload_shape": "candidate_refs_thresholds_and_runbooks_only"
+  }
+}

@@ -331,6 +331,21 @@
       "schema": "schemas/service/nex_ag/operator_review_case_workbench.v1.schema.json"
     },
     {
+      "name": "ag_operator_review_case_sla_policy_raw_prompt_leak",
+      "path": "tests/negative/operations/ag_operator_review_case_sla_policy.raw_prompt_leak.json",
+      "schema": "schemas/service/nex_ag/operator_review_case_workbench.v1.schema.json"
+    },
+    {
+      "name": "ag_operator_review_case_aging_raw_case_comment_leak",
+      "path": "tests/negative/operations/ag_operator_review_case_aging.raw_case_comment_leak.json",
+      "schema": "schemas/service/nex_ag/operator_review_case_workbench.v1.schema.json"
+    },
+    {
+      "name": "ag_operator_review_case_escalations_notification_payload_leak",
+      "path": "tests/negative/operations/ag_operator_review_case_escalations.notification_payload_leak.json",
+      "schema": "schemas/service/nex_ag/operator_review_case_workbench.v1.schema.json"
+    },
+    {
       "name": "ag_operator_review_case_workbench_detail_raw_resolution_comment_leak",
       "path": "tests/negative/operations/ag_operator_review_case_workbench_detail.raw_resolution_comment_leak.json",
       "schema": "schemas/service/nex_ag/operator_review_case_workbench.v1.schema.json"

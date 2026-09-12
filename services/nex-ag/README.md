@@ -1143,6 +1143,10 @@ Unified operations:
   operations dashboard `operator_review_cases` section, using the same case-list
   read model and keeping outbound notification/external incident execution
   deferred.
+- Slice 0687 hardens the S69 contract and OpenAPI surface by adding SLA policy,
+  aging, and escalation response variants, positive examples, and negative
+  leak examples for raw prompt, raw case comment, and notification payload
+  exposure.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

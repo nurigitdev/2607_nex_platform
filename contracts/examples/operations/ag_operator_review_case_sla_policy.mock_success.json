@@ -1,0 +1,83 @@
+{
+  "case_sla_policy_schema_version": "ag_operator_review_case_sla_policy.v1",
+  "policy_id": "operator_review_case_sla_default_v1",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "evaluation": {
+    "mode": "read_model_only",
+    "clock": "utc",
+    "terminal_statuses": [
+      "RESOLVED",
+      "DISMISSED"
+    ],
+    "open_statuses": [
+      "OPEN",
+      "ACKNOWLEDGED",
+      "ASSIGNED",
+      "REOPENED"
+    ],
+    "notification_delivery": "deferred",
+    "external_incident_sync": "deferred",
+    "escalation_persistence": "read_model_first"
+  },
+  "rules": [
+    {
+      "case_sla_policy_rule_schema_version": "ag_operator_review_case_sla_policy_rule.v1",
+      "priority": "URGENT",
+      "sla_class": "immediate_operator_attention",
+      "warning_after_seconds": 900,
+      "overdue_after_seconds": 3600,
+      "escalation_level": "BLOCKED",
+      "applies_to_statuses": [
+        "OPEN",
+        "ACKNOWLEDGED",
+        "ASSIGNED",
+        "REOPENED"
+      ],
+      "terminal_statuses": [
+        "RESOLVED",
+        "DISMISSED"
+      ]
+    }
+  ],
+  "reason_mappings": [
+    {
+      "reason_code": "urgent_case_not_closed",
+      "sla_state": "OVERDUE",
+      "escalation_level": "BLOCKED",
+      "recommended_action": "prioritize_urgent_operator_review_case"
+    }
+  ],
+  "summary": {
+    "rule_count": 4,
+    "priority_order": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "URGENT"
+    ],
+    "minimum_warning_after_seconds": 900,
+    "minimum_overdue_after_seconds": 3600
+  },
+  "paths": {
+    "case_sla_policy_path": "/admin/v1/operator-review/cases/sla-policy",
+    "case_queue_path": "/admin/v1/operator-review/cases/queue",
+    "case_escalations_path": "/admin/v1/operator-review/cases/escalations",
+    "issue_candidates_path": "/admin/v1/operations/issue-candidates"
+  },
+  "redaction": {
+    "raw_case_comment_included": false,
+    "raw_action_comment_included": false,
+    "raw_resolution_comment_included": false,
+    "raw_prompt_included": false,
+    "raw_generation_output_included": false,
+    "raw_source_text_included": false,
+    "storage_paths_included": false,
+    "provider_payloads_included": false,
+    "database_urls_included": false,
+    "tokens_included": false,
+    "idempotency_keys_included": false,
+    "metadata_payload_included": false,
+    "policy_payload_shape": "priority_thresholds_reason_mappings_only"
+  }
+}
