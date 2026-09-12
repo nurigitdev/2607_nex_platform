@@ -20,6 +20,7 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_CASE_ACTION_ADMISSION_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION,
+    OPERATOR_REVIEW_CASE_ASSIGNMENT_WORKLOAD_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_EVIDENCE_LINKS_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_QUEUE_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
@@ -41,6 +42,7 @@ from nex_ag.operator_review_cases import (
     build_operator_review_case_action_outcome_projection,
     build_operator_review_case_action_record,
     build_operator_review_case_action_admission_projection,
+    build_operator_review_case_assignment_workload_projection,
     build_operator_review_case_evidence_links_projection,
     build_operator_review_case_list_response,
     build_operator_review_case_mutation_response,
@@ -1627,6 +1629,90 @@ def test_case_action_outcome_projection_summarizes_safe_lifecycle_facts() -> Non
     assert "Raw resolve action text" not in serialized
     assert "Raw resolution text" not in serialized
     assert "idem-0673" not in serialized
+    assert '"metadata":' not in serialized
+
+
+def test_case_assignment_workload_projection_groups_safe_assignee_signals() -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+    unassigned = service.create_case(
+        sample_case_payload(
+            case_id="case-0674-unassigned",
+            case_priority="URGENT",
+            assignment_ref=None,
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0674-unassigned",
+    )["case"]
+    assigned = service.create_case(
+        sample_case_payload(
+            case_id="case-0674-assigned",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0674",
+                "tenant_id": "local-tenant",
+            },
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0674-assigned",
+    )["case"]
+    resolved = service.apply_action(
+        assigned["case_id"],
+        sample_action_payload(
+            action_type="RESOLVE",
+            action_comment="Raw workload action text should stay out.",
+            resolution_comment="Raw workload resolution should stay out.",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0674-resolve",
+    )["case"]
+    case_list = build_operator_review_case_list_response(
+        [unassigned, resolved],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    workload = build_operator_review_case_assignment_workload_projection(case_list)
+    service_workload = service.assignment_workload_cases(
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        limit=10,
+    )
+
+    assert workload["case_assignment_workload_schema_version"] == (
+        OPERATOR_REVIEW_CASE_ASSIGNMENT_WORKLOAD_SCHEMA_VERSION
+    )
+    assert workload["summary"]["case_count"] == 2
+    assert workload["summary"]["workload_group_count"] == 2
+    assert workload["summary"]["assigned_workload_group_count"] == 1
+    assert workload["summary"]["unassigned_case_count"] == 1
+    assert workload["summary"]["open_case_count"] == 1
+    assert workload["summary"]["closed_case_count"] == 1
+    assert workload["summary"]["urgent_case_count"] == 1
+    assert workload["summary"]["attention_case_count"] == 1
+    assert workload["items"][0]["assignee_ref"] == {
+        "assignee_type": None,
+        "assignee_id": None,
+        "tenant_id": None,
+    }
+    assert workload["items"][0]["blocked_case_count"] == 1
+    assert workload["items"][0]["recommended_actions"] == [
+        "acknowledge_or_assign_case",
+        "assign_case_owner",
+        "prioritize_urgent_operator_review_case",
+    ]
+    assert workload["items"][1]["assignee_ref"]["assignee_id"] == "employee-0674"
+    assert workload["items"][1]["closed_case_count"] == 1
+    assert workload["items"][1]["actioned_case_count"] == 1
+    assert workload["items"][1]["by_last_action_type"] == {"RESOLVE": 1}
+    assert service_workload["summary"] == workload["summary"]
+
+    serialized = json.dumps(workload)
+    assert "Raw workload action text" not in serialized
+    assert "Raw workload resolution" not in serialized
+    assert "idem-0674" not in serialized
     assert '"metadata":' not in serialized
 
 

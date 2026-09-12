@@ -65,6 +65,9 @@ OPERATOR_REVIEW_CASE_ACTION_ADMISSION_SCHEMA_VERSION = (
 OPERATOR_REVIEW_CASE_ACTION_OUTCOMES_SCHEMA_VERSION = (
     "ag_operator_review_case_action_outcomes.v1"
 )
+OPERATOR_REVIEW_CASE_ASSIGNMENT_WORKLOAD_SCHEMA_VERSION = (
+    "ag_operator_review_case_assignment_workload.v1"
+)
 OPERATOR_REVIEW_CASE_MUTATION_SCHEMA_VERSION = "ag_operator_review_case_mutation.v1"
 OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION = "ag_operator_review_case_action.v1"
 OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION = (
@@ -484,6 +487,42 @@ class OperatorReviewCaseService:
             trace_id=trace_id,
             limit=limit,
         )
+
+    def assignment_workload_cases(
+        self,
+        *,
+        request_id: str,
+        trace_id: str | None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        case_trace_id: str | None = None,
+        case_status: str | None = None,
+        case_priority: str | None = None,
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        assignee_id: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        case_list = self.list_cases(
+            request_id=request_id,
+            trace_id=trace_id,
+            target_service=target_service,
+            target_kind=target_kind,
+            target_id=target_id,
+            case_trace_id=case_trace_id,
+            case_status=case_status,
+            case_priority=case_priority,
+            operator_type=operator_type,
+            operator_id=operator_id,
+            assignee_id=assignee_id,
+            updated_from=updated_from,
+            updated_to=updated_to,
+            limit=limit,
+        )
+        return build_operator_review_case_assignment_workload_projection(case_list)
 
     def rollup_cases(
         self,
@@ -1818,6 +1857,78 @@ def build_operator_review_case_action_outcome_projection(
     }
 
 
+def build_operator_review_case_assignment_workload_projection(
+    case_list: dict[str, Any],
+) -> dict[str, Any]:
+    cases = list(case_list.get("items") or [])
+    grouped: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for record in cases:
+        grouped.setdefault(_case_assignment_workload_key(record), []).append(record)
+    items = [
+        _case_assignment_workload_item(group_key, group_records)
+        for group_key, group_records in grouped.items()
+    ]
+    items.sort(
+        key=lambda item: (
+            item["assignee_ref"]["assignee_id"] is not None,
+            -int(item["open_case_count"]),
+            -int(item["attention_case_count"]),
+            str(item.get("latest_updated_at") or ""),
+            str(item["assignee_ref"]["assignee_id"] or ""),
+        )
+    )
+    return {
+        "case_assignment_workload_schema_version": (
+            OPERATOR_REVIEW_CASE_ASSIGNMENT_WORKLOAD_SCHEMA_VERSION
+        ),
+        "trace_id": case_list.get("trace_id"),
+        "request_id": case_list.get("request_id"),
+        "items": items,
+        "summary": {
+            "case_count": len(cases),
+            "workload_group_count": len(items),
+            "assigned_workload_group_count": sum(
+                1
+                for item in items
+                if item["assignee_ref"]["assignee_id"] is not None
+            ),
+            "unassigned_case_count": sum(
+                item["case_count"]
+                for item in items
+                if item["assignee_ref"]["assignee_id"] is None
+            ),
+            "open_case_count": sum(item["open_case_count"] for item in items),
+            "closed_case_count": sum(item["closed_case_count"] for item in items),
+            "attention_case_count": sum(
+                item["attention_case_count"] for item in items
+            ),
+            "urgent_case_count": sum(item["urgent_case_count"] for item in items),
+            "latest_updated_at": max(
+                (str(item.get("latest_updated_at") or "") for item in items),
+                default=None,
+            ),
+        },
+        "paths": {
+            "case_list_path": "/admin/v1/operator-review/cases",
+            "case_queue_path": "/admin/v1/operator-review/cases/queue",
+            "case_rollup_path": "/admin/v1/operator-review/cases/rollups",
+        },
+        "redaction": {
+            "raw_case_comment_included": False,
+            "raw_action_comment_included": False,
+            "raw_resolution_comment_included": False,
+            "raw_event_details_included": False,
+            "storage_paths_included": False,
+            "provider_payloads_included": False,
+            "database_urls_included": False,
+            "tokens_included": False,
+            "idempotency_keys_included": False,
+            "metadata_payload_included": False,
+            "workload_payload_shape": "assignee_status_counts_only",
+        },
+    }
+
+
 def build_operator_review_case_action_mutation_response(
     record: dict[str, Any],
     action: dict[str, Any],
@@ -2792,6 +2903,89 @@ def _case_action_outcome_item(item: dict[str, Any]) -> dict[str, Any]:
             "idempotency_keys_included": False,
             "metadata_payload_included": False,
             "outcome_item_payload_shape": "safe_action_transition_facts_only",
+        },
+    }
+
+
+def _case_assignment_workload_key(record: dict[str, Any]) -> tuple[str, str, str]:
+    assignment = _case_assignment_ref(record)
+    return (
+        assignment.get("assignee_type") or "",
+        assignment.get("assignee_id") or "",
+        assignment.get("tenant_id") or "",
+    )
+
+
+def _case_assignment_workload_item(
+    group_key: tuple[str, str, str],
+    records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    assignee_type, assignee_id, tenant_id = group_key
+    attention_items = [_case_attention_item(record) for record in records]
+    open_records = [
+        record
+        for record in records
+        if record.get("case_status")
+        in {"OPEN", "ACKNOWLEDGED", "ASSIGNED", "REOPENED"}
+    ]
+    closed_records = [
+        record
+        for record in records
+        if record.get("case_status") in {"RESOLVED", "DISMISSED"}
+    ]
+    latest_actions = [
+        _safe_case_last_action_ref(record)
+        for record in records
+        if _safe_case_last_action_ref(record) is not None
+    ]
+    recommended_actions = sorted(
+        {
+            action
+            for item in attention_items
+            for action in item.get("recommended_actions", [])
+        }
+    )
+    return {
+        "case_assignment_workload_item_schema_version": (
+            "ag_operator_review_case_assignment_workload_item.v1"
+        ),
+        "assignee_ref": {
+            "assignee_type": assignee_type or None,
+            "assignee_id": assignee_id or None,
+            "tenant_id": tenant_id or None,
+        },
+        "case_count": len(records),
+        "open_case_count": len(open_records),
+        "closed_case_count": len(closed_records),
+        "urgent_case_count": sum(
+            1
+            for record in records
+            if record.get("case_priority") == "URGENT"
+            and record.get("case_status") not in {"RESOLVED", "DISMISSED"}
+        ),
+        "attention_case_count": sum(
+            1 for item in attention_items if item["attention_status"] != "OK"
+        ),
+        "blocked_case_count": sum(
+            1 for item in attention_items if item["attention_status"] == "BLOCKED"
+        ),
+        "actioned_case_count": len(latest_actions),
+        "by_case_status": _count_by(records, "case_status"),
+        "by_case_priority": _count_by(records, "case_priority"),
+        "by_attention_status": _count_by(attention_items, "attention_status"),
+        "by_last_action_type": _count_by(latest_actions, "action_type"),
+        "recommended_actions": recommended_actions,
+        "latest_updated_at": max(
+            (str(record.get("updated_at") or "") for record in records),
+            default=None,
+        ),
+        "case_detail_path_template": "/admin/v1/operator-review/cases/{case_id}",
+        "redaction": {
+            "raw_case_comment_included": False,
+            "raw_action_comment_included": False,
+            "raw_resolution_comment_included": False,
+            "idempotency_keys_included": False,
+            "metadata_payload_included": False,
         },
     }
 
