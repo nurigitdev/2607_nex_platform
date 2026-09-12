@@ -1147,6 +1147,10 @@ Unified operations:
   aging, and escalation response variants, positive examples, and negative
   leak examples for raw prompt, raw case comment, and notification payload
   exposure.
+- Slice 0688 adds a mock-first S69 privacy regression smoke for SLA policy,
+  aging, escalation, and dashboard surfaces, and hooks it into the quality gate.
+  The smoke seeds unsafe raw/provider/token/storage/notification data and proves
+  returned payloads plus evidence stay redacted.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

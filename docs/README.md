@@ -791,6 +791,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0685`](slices/0685_ag_operator_review_case_sla_escalation_routes.md) | `S69-005` AG operator review case SLA/escalation protected route wiring. |
 | [`Slice 0686`](slices/0686_ag_operator_review_case_sla_escalation_dashboard.md) | `S69-006` AG operator review case SLA/escalation operations dashboard integration. |
 | [`Slice 0687`](slices/0687_ag_operator_review_case_sla_escalation_contract_openapi.md) | `S69-007` AG operator review case SLA/escalation contract and OpenAPI hardening. |
+| [`Slice 0688`](slices/0688_ag_operator_review_case_sla_escalation_privacy_regression.md) | `S69-008` AG operator review case SLA/escalation privacy regression pack. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
