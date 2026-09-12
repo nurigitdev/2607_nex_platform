@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+import nex_ag.operator_review_cases as operator_review_cases_module
 from nex_ag.operator_review_cases import (
     AG_OPERATOR_REVIEW_CASE_TABLE,
     ALLOWED_CASE_ACTIONS,
@@ -3160,6 +3161,111 @@ def test_operator_review_case_queue_route_precedes_detail_route_and_filters() ->
         "ag.operator_review_note_operator_type_unsupported"
     )
     assert unauthorized.status_code == 401
+
+
+def test_operator_review_case_sla_routes_precede_detail_route_and_filter() -> None:
+    client, store, _ = build_route_client()
+    case = build_case(
+        sample_case_payload(
+            case_id="case-route-0685",
+            case_priority="URGENT",
+            assignment_ref=None,
+        ),
+        idempotency_key="idem-route-0685",
+        created_at="2026-09-11T00:00:00Z",
+    )
+    store.save(case)
+
+    policy = client.get(
+        "/admin/v1/operator-review/cases/sla-policy",
+        headers=service_auth_headers(),
+    )
+    aging = client.get(
+        "/admin/v1/operator-review/cases/aging"
+        "?target_service=nex-ag&now=2026-09-12T12:00:00Z",
+        headers=service_auth_headers(),
+    )
+    escalations = client.get(
+        "/admin/v1/operator-review/cases/escalations"
+        "?case_priority=URGENT&now=2026-09-12T12:00:00Z",
+        headers=service_auth_headers(),
+    )
+    filtered_empty = client.get(
+        "/admin/v1/operator-review/cases/escalations"
+        "?case_status=RESOLVED&now=2026-09-12T12:00:00Z",
+        headers=service_auth_headers(),
+    )
+    invalid = client.get(
+        "/admin/v1/operator-review/cases/aging?case_priority=CRITICAL",
+        headers=service_auth_headers(),
+    )
+    invalid_escalations = client.get(
+        "/admin/v1/operator-review/cases/escalations?operator_type=robot",
+        headers=service_auth_headers(),
+    )
+    unauthorized_policy = client.get("/admin/v1/operator-review/cases/sla-policy")
+    unauthorized_aging = client.get("/admin/v1/operator-review/cases/aging")
+    unauthorized = client.get("/admin/v1/operator-review/cases/escalations")
+
+    assert policy.status_code == 200
+    assert policy.json()["case_sla_policy_schema_version"] == (
+        OPERATOR_REVIEW_CASE_SLA_POLICY_SCHEMA_VERSION
+    )
+    assert aging.status_code == 200
+    assert aging.json()["case_aging_schema_version"] == (
+        OPERATOR_REVIEW_CASE_AGING_SCHEMA_VERSION
+    )
+    assert aging.json()["reference_time"] == "2026-09-12T12:00:00Z"
+    assert aging.json()["items"][0]["case_id"] == "case-route-0685"
+    assert escalations.status_code == 200
+    assert escalations.json()["case_escalations_schema_version"] == (
+        OPERATOR_REVIEW_CASE_ESCALATION_SCHEMA_VERSION
+    )
+    assert escalations.json()["items"][0]["candidate_id"] == (
+        "case-route-0685:overdue:blocked"
+    )
+    assert filtered_empty.status_code == 200
+    assert filtered_empty.json()["summary"]["candidate_count"] == 0
+    assert invalid.status_code == 422
+    assert invalid.json()["error_code"] == (
+        "ag.operator_review_note_case_priority_unsupported"
+    )
+    assert invalid_escalations.status_code == 422
+    assert invalid_escalations.json()["error_code"] == (
+        "ag.operator_review_note_operator_type_unsupported"
+    )
+    assert unauthorized_policy.status_code == 401
+    assert unauthorized_aging.status_code == 401
+    assert unauthorized.status_code == 401
+
+
+def test_operator_review_case_sla_policy_route_problem_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _, _ = build_route_client()
+
+    def raise_policy_problem(*, request_id: str, trace_id: str | None) -> dict[str, Any]:
+        raise OperatorReviewNoteError(
+            status_code=503,
+            error_code="ag.operator_review_case_sla_policy_unavailable",
+            detail="SLA policy projection unavailable.",
+        )
+
+    monkeypatch.setattr(
+        operator_review_cases_module,
+        "build_operator_review_case_sla_policy_projection",
+        raise_policy_problem,
+    )
+
+    response = client.get(
+        "/admin/v1/operator-review/cases/sla-policy",
+        headers=service_auth_headers(),
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == (
+        "ag.operator_review_case_sla_policy_unavailable"
+    )
 
 
 def test_operator_review_case_workbench_detail_route_is_protected_and_safe() -> None:

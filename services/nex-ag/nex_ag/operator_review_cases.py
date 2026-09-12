@@ -1013,6 +1013,109 @@ def register_operator_review_case_routes(
         except OperatorReviewNoteError as exc:
             return _operator_review_case_problem_response(request, exc)
 
+    @app.get("/admin/v1/operator-review/cases/sla-policy", response_model=None)
+    def get_operator_review_case_sla_policy(
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return service.get_case_sla_policy(
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+    @app.get("/admin/v1/operator-review/cases/aging", response_model=None)
+    def get_operator_review_case_aging(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        now: str | None = None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        case_trace_id: str | None = Query(default=None, alias="trace_id"),
+        case_status: str | None = None,
+        case_priority: str | None = None,
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        assignee_id: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
+        limit: int | None = None,
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return service.aging_cases(
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                now=now,
+                target_service=target_service,
+                target_kind=target_kind,
+                target_id=target_id,
+                case_trace_id=case_trace_id,
+                case_status=case_status,
+                case_priority=case_priority,
+                operator_type=operator_type,
+                operator_id=operator_id,
+                assignee_id=assignee_id,
+                updated_from=updated_from,
+                updated_to=updated_to,
+                limit=limit,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+    @app.get("/admin/v1/operator-review/cases/escalations", response_model=None)
+    def get_operator_review_case_escalations(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        now: str | None = None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        case_trace_id: str | None = Query(default=None, alias="trace_id"),
+        case_status: str | None = None,
+        case_priority: str | None = None,
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        assignee_id: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
+        limit: int | None = None,
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return service.escalation_cases(
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                now=now,
+                target_service=target_service,
+                target_kind=target_kind,
+                target_id=target_id,
+                case_trace_id=case_trace_id,
+                case_status=case_status,
+                case_priority=case_priority,
+                operator_type=operator_type,
+                operator_id=operator_id,
+                assignee_id=assignee_id,
+                updated_from=updated_from,
+                updated_to=updated_to,
+                limit=limit,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
     @app.get(
         "/admin/v1/operator-review/cases/{case_id}/workbench-detail",
         response_model=None,

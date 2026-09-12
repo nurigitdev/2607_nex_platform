@@ -1135,6 +1135,10 @@ Unified operations:
   candidate projection over the aging read model. It emits safe case refs,
   escalation reasons, runbook ids, recommended operator actions, and summary
   counts while keeping notification delivery and external incident sync deferred.
+- Slice 0685 exposes the S69 SLA policy, aging, and escalation candidate read
+  models through protected static routes under
+  `/admin/v1/operator-review/cases/`, registered before dynamic `{case_id}`
+  routes to avoid route shadowing.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
