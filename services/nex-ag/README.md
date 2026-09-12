@@ -1151,6 +1151,11 @@ Unified operations:
   aging, escalation, and dashboard surfaces, and hooks it into the quality gate.
   The smoke seeds unsafe raw/provider/token/storage/notification data and proves
   returned payloads plus evidence stay redacted.
+- Slice 0689 adds protected PostgreSQL smoke evidence for S69. With
+  `NEX_AG_OPERATOR_REVIEW_CASE_SLA_ESCALATION_POSTGRES_SMOKE=1`, it migrates
+  `nex_ag_test`, creates one case, reads SLA policy/aging/escalation/dashboard
+  projections, verifies `ag_op_cases` plus `service_operational_events`, and
+  cleans up the smoke rows.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
