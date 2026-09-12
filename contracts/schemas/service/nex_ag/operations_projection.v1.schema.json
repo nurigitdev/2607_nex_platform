@@ -2417,11 +2417,19 @@
           "type": "string",
           "minLength": 1
         },
+        "case_closure_packet_path_template": {
+          "type": "string",
+          "minLength": 1
+        },
         "rollup_path": {
           "type": "string",
           "minLength": 1
         },
         "queue_summary": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "assignment_workload": {
           "type": "object",
           "additionalProperties": true
         },

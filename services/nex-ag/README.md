@@ -1102,6 +1102,9 @@ Unified operations:
   `GET /admin/v1/operator-review/cases/{case_id}/closure-packet` with bounded
   evidence/timeline query controls. The route is read-only, AG-owned, and keeps
   the packet non-persistent.
+- Slice 0677 folds lifecycle state into `/admin/v1/operations/dashboard` by
+  adding assignment workload summary/items plus closure packet path templates to
+  the `operator_review_cases` section and attention-item links.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

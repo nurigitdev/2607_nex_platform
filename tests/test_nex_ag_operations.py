@@ -3117,6 +3117,10 @@ def test_operations_dashboard_snapshot_includes_operator_review_workbench() -> N
             f"/admin/v1/operator-review/cases/{cases['attention'][0]['case_id']}"
             "/timeline"
         ),
+        "case_closure_packet_path": (
+            f"/admin/v1/operator-review/cases/{cases['attention'][0]['case_id']}"
+            "/closure-packet"
+        ),
     }
     assert cases["case_queue_path"] == "/admin/v1/operator-review/cases/queue"
     assert cases["case_workbench_detail_path_template"] == (
@@ -3125,8 +3129,20 @@ def test_operations_dashboard_snapshot_includes_operator_review_workbench() -> N
     assert cases["case_timeline_path_template"] == (
         "/admin/v1/operator-review/cases/{case_id}/timeline"
     )
+    assert cases["case_closure_packet_path_template"] == (
+        "/admin/v1/operator-review/cases/{case_id}/closure-packet"
+    )
     assert cases["queue_summary"]["case_count"] == 1
     assert cases["queue_summary"]["by_attention_status"] == {"BLOCKED": 1}
+    assert cases["assignment_workload"]["schema_version"] == (
+        "ag_operator_review_case_assignment_workload.v1"
+    )
+    assert cases["assignment_workload"]["summary"]["case_count"] == 1
+    assert cases["assignment_workload"]["summary"]["unassigned_case_count"] == 1
+    assert cases["assignment_workload"]["items"][0]["assignee_ref"][
+        "assignee_id"
+    ] is None
+    assert cases["assignment_workload"]["items"][0]["blocked_case_count"] == 1
     assert cases["source_statuses"]["nex-ag"] == {
         "status": "READY",
         "service_id": "nex-ag",
@@ -3209,6 +3225,9 @@ def test_operations_dashboard_operator_review_cases_handles_filters_and_errors()
     )
 
     assert filtered["operator_review_cases"]["summary"]["case_count"] == 0
+    assert filtered["operator_review_cases"]["assignment_workload"]["summary"][
+        "case_count"
+    ] == 0
     assert filtered["operator_review_cases"]["source_statuses"]["nex-ag"][
         "status"
     ] == "READY"

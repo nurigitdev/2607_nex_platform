@@ -97,6 +97,7 @@ from nex_ag.operator_review_workbench import (
     build_operator_review_workbench_rollup_metrics,
 )
 from nex_ag.operator_review_cases import (
+    build_operator_review_case_assignment_workload_projection,
     build_operator_review_case_list_response,
     build_operator_review_case_queue_projection,
     build_operator_review_case_rollup_metrics,
@@ -6406,6 +6407,9 @@ def _dashboard_operator_review_case_section(
         )
         rollup = build_operator_review_case_rollup_metrics(case_list)
         queue = build_operator_review_case_queue_projection(case_list)
+        assignment_workload = (
+            build_operator_review_case_assignment_workload_projection(case_list)
+        )
     except Exception as exc:
         source_statuses["nex-ag"] = _dashboard_operator_review_case_source_status(
             case_store=case_store,
@@ -6454,8 +6458,19 @@ def _dashboard_operator_review_case_section(
         "case_timeline_path_template": (
             "/admin/v1/operator-review/cases/{case_id}/timeline"
         ),
+        "case_closure_packet_path_template": (
+            "/admin/v1/operator-review/cases/{case_id}/closure-packet"
+        ),
         "rollup_path": "/admin/v1/operator-review/cases/rollups",
         "queue_summary": dict(queue["summary"]),
+        "assignment_workload": {
+            "schema_version": assignment_workload[
+                "case_assignment_workload_schema_version"
+            ],
+            "summary": dict(assignment_workload["summary"]),
+            "items": list(assignment_workload["items"])[:limit],
+            "path_source": "/admin/v1/operator-review/cases",
+        },
         "redaction": dict(rollup["redaction"]),
     }
 
@@ -6482,6 +6497,9 @@ def _empty_dashboard_operator_review_case_section(
         "case_timeline_path_template": (
             "/admin/v1/operator-review/cases/{case_id}/timeline"
         ),
+        "case_closure_packet_path_template": (
+            "/admin/v1/operator-review/cases/{case_id}/closure-packet"
+        ),
         "rollup_path": "/admin/v1/operator-review/cases/rollups",
         "queue_summary": {
             "case_count": 0,
@@ -6495,6 +6513,22 @@ def _empty_dashboard_operator_review_case_section(
             "by_case_status": {},
             "by_case_priority": {},
             "latest_updated_at": None,
+        },
+        "assignment_workload": {
+            "schema_version": "ag_operator_review_case_assignment_workload.v1",
+            "summary": {
+                "case_count": 0,
+                "workload_group_count": 0,
+                "assigned_workload_group_count": 0,
+                "unassigned_case_count": 0,
+                "open_case_count": 0,
+                "closed_case_count": 0,
+                "attention_case_count": 0,
+                "urgent_case_count": 0,
+                "latest_updated_at": None,
+            },
+            "items": [],
+            "path_source": "/admin/v1/operator-review/cases",
         },
         "redaction": {
             "raw_case_comment_included": False,
@@ -6533,6 +6567,9 @@ def _dashboard_operator_review_case_attention_item(
             f"/admin/v1/operator-review/cases/{case_id}/workbench-detail"
         ),
         "case_timeline_path": f"/admin/v1/operator-review/cases/{case_id}/timeline",
+        "case_closure_packet_path": (
+            f"/admin/v1/operator-review/cases/{case_id}/closure-packet"
+        ),
     }
     return selected
 
