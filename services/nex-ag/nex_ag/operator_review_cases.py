@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
@@ -74,6 +75,7 @@ OPERATOR_REVIEW_CASE_CLOSURE_PACKET_SCHEMA_VERSION = (
 OPERATOR_REVIEW_CASE_SLA_POLICY_SCHEMA_VERSION = (
     "ag_operator_review_case_sla_policy.v1"
 )
+OPERATOR_REVIEW_CASE_AGING_SCHEMA_VERSION = "ag_operator_review_case_aging.v1"
 OPERATOR_REVIEW_CASE_MUTATION_SCHEMA_VERSION = "ag_operator_review_case_mutation.v1"
 OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION = "ag_operator_review_case_action.v1"
 OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION = (
@@ -567,6 +569,43 @@ class OperatorReviewCaseService:
             request_id=request_id,
             trace_id=trace_id,
         )
+
+    def aging_cases(
+        self,
+        *,
+        request_id: str,
+        trace_id: str | None,
+        now: str | None = None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        case_trace_id: str | None = None,
+        case_status: str | None = None,
+        case_priority: str | None = None,
+        operator_type: str | None = None,
+        operator_id: str | None = None,
+        assignee_id: str | None = None,
+        updated_from: str | None = None,
+        updated_to: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        case_list = self.list_cases(
+            request_id=request_id,
+            trace_id=trace_id,
+            target_service=target_service,
+            target_kind=target_kind,
+            target_id=target_id,
+            case_trace_id=case_trace_id,
+            case_status=case_status,
+            case_priority=case_priority,
+            operator_type=operator_type,
+            operator_id=operator_id,
+            assignee_id=assignee_id,
+            updated_from=updated_from,
+            updated_to=updated_to,
+            limit=limit,
+        )
+        return build_operator_review_case_aging_projection(case_list, now=now)
 
     def get_case_closure_packet(
         self,
@@ -2117,6 +2156,71 @@ def build_operator_review_case_sla_policy_projection(
     }
 
 
+def build_operator_review_case_aging_projection(
+    case_list: dict[str, Any],
+    *,
+    now: str | None = None,
+) -> dict[str, Any]:
+    reference_time = now or _utc_now()
+    cases = list(case_list.get("items") or [])
+    items = [_case_aging_item(record, reference_time=reference_time) for record in cases]
+    items.sort(
+        key=lambda item: (
+            _case_sla_state_sort_rank(str(item["sla_state"])),
+            -int(item["age_seconds"]),
+            str(item["case_id"] or ""),
+        )
+    )
+    return {
+        "case_aging_schema_version": OPERATOR_REVIEW_CASE_AGING_SCHEMA_VERSION,
+        "policy_id": CASE_SLA_POLICY_ID,
+        "trace_id": case_list.get("trace_id"),
+        "request_id": case_list.get("request_id"),
+        "reference_time": reference_time,
+        "items": items,
+        "summary": {
+            "case_count": len(items),
+            "open_case_count": sum(1 for item in items if item["closed"] is False),
+            "closed_case_count": sum(1 for item in items if item["closed"] is True),
+            "watch_case_count": sum(1 for item in items if item["sla_state"] == "WATCH"),
+            "warning_case_count": sum(
+                1 for item in items if item["sla_state"] == "WARNING"
+            ),
+            "overdue_case_count": sum(
+                1 for item in items if item["sla_state"] == "OVERDUE"
+            ),
+            "stale_assignment_count": sum(
+                1 for item in items if item["stale_assignment"] is True
+            ),
+            "max_age_seconds": max(
+                (int(item["age_seconds"]) for item in items),
+                default=0,
+            ),
+        },
+        "paths": {
+            "case_aging_path": "/admin/v1/operator-review/cases/aging",
+            "case_sla_policy_path": "/admin/v1/operator-review/cases/sla-policy",
+            "case_queue_path": "/admin/v1/operator-review/cases/queue",
+            "case_escalations_path": "/admin/v1/operator-review/cases/escalations",
+        },
+        "redaction": {
+            "raw_case_comment_included": False,
+            "raw_action_comment_included": False,
+            "raw_resolution_comment_included": False,
+            "raw_prompt_included": False,
+            "raw_generation_output_included": False,
+            "raw_source_text_included": False,
+            "storage_paths_included": False,
+            "provider_payloads_included": False,
+            "database_urls_included": False,
+            "tokens_included": False,
+            "idempotency_keys_included": False,
+            "metadata_payload_included": False,
+            "aging_payload_shape": "timestamps_thresholds_and_safe_refs_only",
+        },
+    }
+
+
 def build_operator_review_case_closure_packet(
     record: dict[str, Any],
     *,
@@ -3231,6 +3335,137 @@ def _case_sla_policy_rule(priority: str, rule: dict[str, Any]) -> dict[str, Any]
         "applies_to_statuses": ["OPEN", "ACKNOWLEDGED", "ASSIGNED", "REOPENED"],
         "terminal_statuses": ["RESOLVED", "DISMISSED"],
     }
+
+
+def _case_aging_item(
+    record: dict[str, Any],
+    *,
+    reference_time: str,
+) -> dict[str, Any]:
+    status = str(record.get("case_status") or "")
+    priority = _case_priority_for_sla(record)
+    rule = CASE_SLA_PRIORITY_RULES[priority]
+    closed = status in {"RESOLVED", "DISMISSED"}
+    created_at = optional_text(record.get("created_at"))
+    updated_at = optional_text(record.get("updated_at"))
+    closed_at = optional_text(record.get("closed_at"))
+    latest_action = _safe_case_last_action_ref(record)
+    latest_action_at = (
+        optional_text(latest_action.get("acted_at")) if latest_action else None
+    )
+    age_end = closed_at if closed and closed_at is not None else reference_time
+    last_activity_at = latest_action_at or updated_at or created_at
+    age_seconds = _case_elapsed_seconds(created_at, age_end)
+    inactivity_seconds = _case_elapsed_seconds(last_activity_at, reference_time)
+    attention = _case_attention_item(record)
+    sla_state = _case_sla_state(
+        closed=closed,
+        age_seconds=age_seconds,
+        rule=rule,
+        attention_status=str(attention["attention_status"]),
+    )
+    stale_assignment = (
+        status == "ASSIGNED"
+        and not closed
+        and inactivity_seconds >= int(rule["warning_after_seconds"])
+    )
+    return {
+        "case_aging_item_schema_version": "ag_operator_review_case_aging_item.v1",
+        "case_id": record.get("case_id"),
+        "target_ref": _case_target_ref(record),
+        "case_status": status,
+        "case_priority": priority,
+        "assignment_ref": _case_assignment_ref(record),
+        "attention_status": attention["attention_status"],
+        "attention_reason_codes": list(attention["reason_codes"]),
+        "recommended_actions": list(attention["recommended_actions"]),
+        "created_at": created_at,
+        "updated_at": updated_at,
+        "closed_at": closed_at,
+        "latest_action_at": latest_action_at,
+        "reference_time": reference_time,
+        "age_seconds": age_seconds,
+        "inactivity_seconds": inactivity_seconds,
+        "warning_after_seconds": int(rule["warning_after_seconds"]),
+        "overdue_after_seconds": int(rule["overdue_after_seconds"]),
+        "sla_state": sla_state,
+        "escalation_level": str(rule["escalation_level"]),
+        "stale_assignment": stale_assignment,
+        "closed": closed,
+        "links": {
+            "case_detail_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+            ),
+            "case_workbench_detail_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+                "/workbench-detail"
+            ),
+            "case_timeline_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}/timeline"
+            ),
+        },
+        "redaction": {
+            "raw_case_comment_included": False,
+            "raw_action_comment_included": False,
+            "raw_resolution_comment_included": False,
+            "idempotency_keys_included": False,
+            "metadata_payload_included": False,
+            "storage_paths_included": False,
+        },
+    }
+
+
+def _case_priority_for_sla(record: dict[str, Any]) -> str:
+    priority = str(record.get("case_priority") or "MEDIUM")
+    return priority if priority in CASE_SLA_PRIORITY_RULES else "MEDIUM"
+
+
+def _case_sla_state(
+    *,
+    closed: bool,
+    age_seconds: int,
+    rule: dict[str, Any],
+    attention_status: str,
+) -> str:
+    if closed:
+        return "CLOSED"
+    if attention_status == "BLOCKED" or age_seconds >= int(rule["overdue_after_seconds"]):
+        return "OVERDUE"
+    if age_seconds >= int(rule["warning_after_seconds"]):
+        return "WARNING"
+    if attention_status in {"ATTENTION", "OPEN"}:
+        return "WATCH"
+    return "OK"
+
+
+def _case_sla_state_sort_rank(state: str) -> int:
+    return {
+        "OVERDUE": 0,
+        "WARNING": 1,
+        "WATCH": 2,
+        "OK": 3,
+        "CLOSED": 4,
+    }.get(state, 5)
+
+
+def _case_elapsed_seconds(start: str | None, end: str | None) -> int:
+    start_dt = _case_parse_utc_datetime(start)
+    end_dt = _case_parse_utc_datetime(end)
+    if start_dt is None or end_dt is None or end_dt < start_dt:
+        return 0
+    return int((end_dt - start_dt).total_seconds())
+
+
+def _case_parse_utc_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _case_assignment_workload_key(record: dict[str, Any]) -> tuple[str, str, str]:

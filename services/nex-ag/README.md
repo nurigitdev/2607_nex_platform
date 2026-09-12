@@ -1128,6 +1128,9 @@ Unified operations:
   read model. It defines priority-based SLA thresholds and reason mappings while
   keeping notifications, external incident sync, and escalation persistence
   deferred.
+- Slice 0683 adds `ag_operator_review_case_aging.v1` over existing case rows.
+  The projection computes case age, inactivity, SLA state, and stale-assignment
+  flags without adding persistence or exposing raw case/action material.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

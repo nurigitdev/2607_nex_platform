@@ -20,6 +20,7 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_CASE_ACTION_ADMISSION_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION,
+    OPERATOR_REVIEW_CASE_AGING_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_ASSIGNMENT_WORKLOAD_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_CLOSURE_PACKET_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_EVIDENCE_LINKS_SCHEMA_VERSION,
@@ -35,15 +36,18 @@ from nex_ag.operator_review_cases import (
     SqlAlchemyOperatorReviewCaseStore,
     _operator_review_case_filter_clause,
     _case_queue_item_matches_query,
+    _case_elapsed_seconds,
     _latest_case_action_summary,
     _operator_review_case_record_params,
     _operator_review_case_select_sql,
+    _case_sla_state_sort_rank,
     _target_status_for_case_action,
     apply_operator_review_case_action,
     build_operator_review_case_action_mutation_response,
     build_operator_review_case_action_outcome_projection,
     build_operator_review_case_action_record,
     build_operator_review_case_action_admission_projection,
+    build_operator_review_case_aging_projection,
     build_operator_review_case_assignment_workload_projection,
     build_operator_review_case_closure_packet,
     build_operator_review_case_evidence_links_projection,
@@ -1023,6 +1027,175 @@ def test_case_sla_policy_service_wrapper() -> None:
     )
     assert policy["trace_id"] is None
     assert policy["summary"]["rule_count"] == 4
+
+
+def test_case_aging_projection_computes_sla_state_and_stale_assignment() -> None:
+    urgent = build_case(
+        sample_case_payload(
+            case_id="case-0683-urgent",
+            case_priority="URGENT",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0683",
+                "tenant_id": "local-tenant",
+            },
+        ),
+        idempotency_key="idem-0683-urgent",
+        created_at="2026-09-11T00:00:00Z",
+    )
+    assigned, _action = apply_operator_review_case_action(
+        urgent,
+        sample_action_payload(
+            action_type="ASSIGN",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0683",
+                "tenant_id": "local-tenant",
+            },
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0683-assign",
+        acted_at="2026-09-11T00:00:00Z",
+    )
+    warning_case = build_case(
+        sample_case_payload(
+            case_id="case-0683-warning",
+            case_status="ACKNOWLEDGED",
+            case_priority="HIGH",
+            assignment_ref=None,
+        ),
+        idempotency_key="idem-0683-warning",
+        created_at="2026-09-12T06:00:00Z",
+    )
+    malformed = {
+        **build_case(
+            sample_case_payload(
+                case_id="case-0683-malformed",
+                case_status="OPEN",
+                case_priority="LOW",
+                assignment_ref=None,
+            ),
+            idempotency_key="idem-0683-malformed",
+            created_at="not-a-date",
+        ),
+        "updated_at": "also-not-a-date",
+    }
+    closed = build_case(
+        sample_case_payload(
+            case_id="case-0683-closed",
+            case_status="RESOLVED",
+            case_priority="MEDIUM",
+            assignment_ref=None,
+            resolution_text="Closed for aging projection.",
+            closed_at="2026-09-11T02:00:00Z",
+        ),
+        idempotency_key="idem-0683-closed",
+        created_at="2026-09-11T00:00:00Z",
+    )
+    case_list = build_operator_review_case_list_response(
+        [assigned, warning_case, malformed, closed],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    aging = build_operator_review_case_aging_projection(
+        case_list,
+        now="2026-09-12T12:00:00Z",
+    )
+
+    assert aging["case_aging_schema_version"] == OPERATOR_REVIEW_CASE_AGING_SCHEMA_VERSION
+    assert aging["policy_id"] == "operator_review_case_sla_default_v1"
+    assert aging["reference_time"] == "2026-09-12T12:00:00Z"
+    assert aging["summary"] == {
+        "case_count": 4,
+        "open_case_count": 3,
+        "closed_case_count": 1,
+        "watch_case_count": 1,
+        "warning_case_count": 1,
+        "overdue_case_count": 1,
+        "stale_assignment_count": 1,
+        "max_age_seconds": 129600,
+    }
+    by_case_id = {item["case_id"]: item for item in aging["items"]}
+    assert by_case_id["case-0683-urgent"]["sla_state"] == "OVERDUE"
+    assert by_case_id["case-0683-urgent"]["stale_assignment"] is True
+    assert by_case_id["case-0683-urgent"]["inactivity_seconds"] == 129600
+    assert by_case_id["case-0683-warning"]["sla_state"] == "WARNING"
+    assert by_case_id["case-0683-malformed"]["age_seconds"] == 0
+    assert by_case_id["case-0683-malformed"]["sla_state"] == "WATCH"
+    assert by_case_id["case-0683-closed"]["closed"] is True
+    assert by_case_id["case-0683-closed"]["sla_state"] == "CLOSED"
+    assert by_case_id["case-0683-closed"]["age_seconds"] == 7200
+    assert aging["items"][0]["case_id"] == "case-0683-urgent"
+    assert aging["paths"]["case_aging_path"] == "/admin/v1/operator-review/cases/aging"
+    assert aging["redaction"]["aging_payload_shape"] == (
+        "timestamps_thresholds_and_safe_refs_only"
+    )
+    serialized = json.dumps(aging)
+    assert "Closed for aging projection" not in serialized
+    assert "idem-0683" not in serialized
+
+
+def test_case_aging_service_wrapper_defaults_reference_time() -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+    service.create_case(
+        sample_case_payload(case_id="case-0683-service", case_priority="MEDIUM"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0683-service",
+    )
+
+    aging = service.aging_cases(
+        request_id=REQUEST_ID,
+        trace_id=None,
+        now="2026-09-11T01:00:00Z",
+    )
+
+    assert aging["case_aging_schema_version"] == OPERATOR_REVIEW_CASE_AGING_SCHEMA_VERSION
+    assert aging["trace_id"] is None
+    assert aging["summary"]["case_count"] == 1
+    assert aging["items"][0]["reference_time"] == "2026-09-11T01:00:00Z"
+
+
+def test_case_aging_projection_handles_ok_and_timestamp_edges() -> None:
+    ok_case = build_case(
+        sample_case_payload(
+            case_id="case-0683-ok",
+            case_status="ACKNOWLEDGED",
+            case_priority="LOW",
+            assignment_ref={
+                "assignee_type": "user",
+                "assignee_id": "employee-0683-ok",
+                "tenant_id": "local-tenant",
+            },
+        ),
+        idempotency_key="idem-0683-ok",
+        created_at="2026-09-12T11:59:00",
+    )
+    case_list = build_operator_review_case_list_response(
+        [ok_case],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    aging = build_operator_review_case_aging_projection(
+        case_list,
+        now="2026-09-12T12:00:00Z",
+    )
+
+    assert aging["items"][0]["sla_state"] == "OK"
+    assert aging["items"][0]["age_seconds"] == 60
+    assert _case_elapsed_seconds(None, "2026-09-12T12:00:00Z") == 0
+    assert _case_elapsed_seconds(
+        "2026-09-12T11:00:00",
+        "2026-09-12T12:00:00Z",
+    ) == 3600
+    assert _case_elapsed_seconds(
+        "2026-09-12T13:00:00Z",
+        "2026-09-12T12:00:00Z",
+    ) == 0
+    assert _case_sla_state_sort_rank("UNKNOWN") == 5
 
 
 def test_case_workbench_detail_projection_exposes_safe_action_controls() -> None:
