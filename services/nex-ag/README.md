@@ -1156,6 +1156,11 @@ Unified operations:
   `nex_ag_test`, creates one case, reads SLA policy/aging/escalation/dashboard
   projections, verifies `ag_op_cases` plus `service_operational_events`, and
   cleans up the smoke rows.
+- Slice 0690 closes S69 with
+  `scripts/smoke/run_s69_operator_review_case_sla_escalation_closure.py`,
+  confirming read-model-only storage, deferred notification/incident execution,
+  contract/OpenAPI coverage, privacy regression, PostgreSQL smoke evidence, and
+  quality-gate hooks.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
