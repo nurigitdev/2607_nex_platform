@@ -1098,6 +1098,10 @@ Unified operations:
   hash, timeline summary, action outcome facts, and evidence-link refs from
   existing sources, marks closure readiness, excludes resolution previews, and
   remains non-persistent.
+- Slice 0676 exposes the closure packet through protected
+  `GET /admin/v1/operator-review/cases/{case_id}/closure-packet` with bounded
+  evidence/timeline query controls. The route is read-only, AG-owned, and keeps
+  the packet non-persistent.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

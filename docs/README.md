@@ -779,6 +779,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0673`](slices/0673_ag_operator_review_case_action_outcome_read_model.md) | `S68-003` AG operator review case action outcome read-model foundation. |
 | [`Slice 0674`](slices/0674_ag_operator_review_case_assignment_workload_projection.md) | `S68-004` AG operator review case assignment workload projection. |
 | [`Slice 0675`](slices/0675_ag_operator_review_case_closure_packet_foundation.md) | `S68-005` AG operator review case closure packet foundation. |
+| [`Slice 0676`](slices/0676_ag_operator_review_case_closure_packet_route_wiring.md) | `S68-006` AG operator review case closure packet protected route wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

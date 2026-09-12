@@ -2951,6 +2951,76 @@ def test_operator_review_case_timeline_route_reads_audit_events() -> None:
     assert "Route timeline raw text" not in json.dumps(timeline.json())
 
 
+def test_operator_review_case_closure_packet_route_is_protected_and_safe() -> None:
+    note_store = OperatorReviewNoteStore()
+    export_store = OperatorEvidenceExportStore()
+    client, _, event_store = build_route_client(
+        note_store=note_store,
+        export_store=export_store,
+    )
+    created = client.post(
+        "/admin/v1/operator-review/cases",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-route-case-0676"},
+        json=sample_case_payload(),
+    )
+    case_id = created.json()["case"]["case_id"]
+    note_store.save(sample_note_record(operator_note_id="note-route-0676"))
+    export_store.save(sample_evidence_export_record(export_id="export-route-0676"))
+    applied = client.post(
+        f"/admin/v1/operator-review/cases/{case_id}/actions",
+        headers={**admin_auth_headers(), "Idempotency-Key": "idem-route-action-0676"},
+        json=sample_action_payload(
+            action_type="RESOLVE",
+            action_comment="Route closure action text must stay out.",
+            resolution_comment="Route closure resolution text must stay out.",
+        ),
+    )
+
+    packet = client.get(
+        f"/admin/v1/operator-review/cases/{case_id}/closure-packet",
+        headers=service_auth_headers(),
+    )
+    limited = client.get(
+        f"/admin/v1/operator-review/cases/{case_id}/closure-packet"
+        "?evidence_limit=1&timeline_limit=1",
+        headers=service_auth_headers(),
+    )
+    missing = client.get(
+        "/admin/v1/operator-review/cases/missing/closure-packet",
+        headers=service_auth_headers(),
+    )
+    unauthorized = client.get(
+        f"/admin/v1/operator-review/cases/{case_id}/closure-packet"
+    )
+
+    assert applied.status_code == 201
+    assert packet.status_code == 200
+    assert packet.json()["case_closure_packet_schema_version"] == (
+        OPERATOR_REVIEW_CASE_CLOSURE_PACKET_SCHEMA_VERSION
+    )
+    assert packet.json()["summary"]["closure_ready"] is True
+    assert packet.json()["summary"]["evidence_link_count"] == 2
+    assert packet.json()["summary"]["timeline_event_count"] == 2
+    assert packet.json()["paths"]["case_closure_packet_path"] == (
+        f"/admin/v1/operator-review/cases/{case_id}/closure-packet"
+    )
+    assert packet.json()["resolution"]["resolution_preview"] is None
+    assert packet.json()["redaction"]["closure_packet_storage"] == (
+        "read_model_only_not_persisted"
+    )
+    assert limited.json()["summary"]["evidence_link_count"] == 2
+    assert limited.json()["evidence"]["summary"]["returned_link_count"] == 1
+    assert limited.json()["summary"]["timeline_event_count"] == 1
+    assert missing.status_code == 404
+    assert unauthorized.status_code == 401
+    assert event_store.summary()["total"] == 2
+    serialized = json.dumps(packet.json())
+    assert "Route closure action text" not in serialized
+    assert "Route closure resolution text" not in serialized
+    assert "idem-route" not in serialized
+    assert '"metadata":' not in serialized
+
+
 def test_operator_review_case_action_route_rejects_auth_invalid_and_missing() -> None:
     client, _, _ = build_route_client()
     created = client.post(

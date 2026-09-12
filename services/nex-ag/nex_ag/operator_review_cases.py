@@ -993,6 +993,35 @@ def register_operator_review_case_routes(
         except OperatorReviewNoteError as exc:
             return _operator_review_case_problem_response(request, exc)
 
+    @app.get(
+        "/admin/v1/operator-review/cases/{case_id}/closure-packet",
+        response_model=None,
+    )
+    def get_operator_review_case_closure_packet(
+        case_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        evidence_limit: int | None = None,
+        timeline_limit: int | None = None,
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return service.get_case_closure_packet(
+                case_id,
+                event_store=selected_audit_event_store,
+                note_store=selected_note_store,
+                export_store=selected_export_store,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                evidence_limit=evidence_limit,
+                timeline_limit=timeline_limit,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
     @app.get("/admin/v1/operator-review/cases/{case_id}", response_model=None)
     def get_operator_review_case(
         case_id: str,
@@ -2059,6 +2088,10 @@ def build_operator_review_case_closure_packet(
             ),
             "case_action_path": (
                 f"/admin/v1/operator-review/cases/{record.get('case_id')}/actions"
+            ),
+            "case_closure_packet_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+                "/closure-packet"
             ),
         },
         "redaction": {
