@@ -71,6 +71,9 @@ OPERATOR_REVIEW_CASE_ASSIGNMENT_WORKLOAD_SCHEMA_VERSION = (
 OPERATOR_REVIEW_CASE_CLOSURE_PACKET_SCHEMA_VERSION = (
     "ag_operator_review_case_closure_packet.v1"
 )
+OPERATOR_REVIEW_CASE_SLA_POLICY_SCHEMA_VERSION = (
+    "ag_operator_review_case_sla_policy.v1"
+)
 OPERATOR_REVIEW_CASE_MUTATION_SCHEMA_VERSION = "ag_operator_review_case_mutation.v1"
 OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION = "ag_operator_review_case_action.v1"
 OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION = (
@@ -123,6 +126,33 @@ CASE_ACTION_ALLOWED_FROM = {
     "RESOLVE": ("OPEN", "ACKNOWLEDGED", "ASSIGNED", "REOPENED"),
     "DISMISS": ("OPEN", "ACKNOWLEDGED", "ASSIGNED", "REOPENED"),
     "REOPEN": ("RESOLVED", "DISMISSED"),
+}
+CASE_SLA_POLICY_ID = "operator_review_case_sla_default_v1"
+CASE_SLA_PRIORITY_RULES = {
+    "LOW": {
+        "sla_class": "observe_only",
+        "warning_after_seconds": 172800,
+        "overdue_after_seconds": 259200,
+        "escalation_level": "OBSERVE",
+    },
+    "MEDIUM": {
+        "sla_class": "triage_within_business_day",
+        "warning_after_seconds": 28800,
+        "overdue_after_seconds": 86400,
+        "escalation_level": "FOLLOW_UP",
+    },
+    "HIGH": {
+        "sla_class": "same_day_follow_up",
+        "warning_after_seconds": 14400,
+        "overdue_after_seconds": 28800,
+        "escalation_level": "ATTENTION",
+    },
+    "URGENT": {
+        "sla_class": "immediate_operator_attention",
+        "warning_after_seconds": 900,
+        "overdue_after_seconds": 3600,
+        "escalation_level": "BLOCKED",
+    },
 }
 
 
@@ -526,6 +556,17 @@ class OperatorReviewCaseService:
             limit=limit,
         )
         return build_operator_review_case_assignment_workload_projection(case_list)
+
+    def get_case_sla_policy(
+        self,
+        *,
+        request_id: str,
+        trace_id: str | None,
+    ) -> dict[str, Any]:
+        return build_operator_review_case_sla_policy_projection(
+            request_id=request_id,
+            trace_id=trace_id,
+        )
 
     def get_case_closure_packet(
         self,
@@ -1992,6 +2033,90 @@ def build_operator_review_case_assignment_workload_projection(
     }
 
 
+def build_operator_review_case_sla_policy_projection(
+    *,
+    request_id: str,
+    trace_id: str | None,
+) -> dict[str, Any]:
+    rules = [
+        _case_sla_policy_rule(priority, rule)
+        for priority, rule in CASE_SLA_PRIORITY_RULES.items()
+    ]
+    return {
+        "case_sla_policy_schema_version": OPERATOR_REVIEW_CASE_SLA_POLICY_SCHEMA_VERSION,
+        "policy_id": CASE_SLA_POLICY_ID,
+        "trace_id": optional_text(trace_id),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "evaluation": {
+            "mode": "read_model_only",
+            "clock": "utc",
+            "terminal_statuses": ["RESOLVED", "DISMISSED"],
+            "open_statuses": ["OPEN", "ACKNOWLEDGED", "ASSIGNED", "REOPENED"],
+            "notification_delivery": "deferred",
+            "external_incident_sync": "deferred",
+            "escalation_persistence": "read_model_first",
+        },
+        "rules": rules,
+        "reason_mappings": [
+            {
+                "reason_code": "urgent_case_not_closed",
+                "sla_state": "OVERDUE",
+                "escalation_level": "BLOCKED",
+                "recommended_action": "prioritize_urgent_operator_review_case",
+            },
+            {
+                "reason_code": "open_case_unassigned",
+                "sla_state": "ATTENTION",
+                "escalation_level": "FOLLOW_UP",
+                "recommended_action": "assign_case_owner",
+            },
+            {
+                "reason_code": "reopened_case_requires_review",
+                "sla_state": "ATTENTION",
+                "escalation_level": "ATTENTION",
+                "recommended_action": "review_reopened_case",
+            },
+            {
+                "reason_code": "assigned_case_in_progress",
+                "sla_state": "WATCH",
+                "escalation_level": "FOLLOW_UP",
+                "recommended_action": "resolve_or_dismiss_after_review",
+            },
+        ],
+        "summary": {
+            "rule_count": len(rules),
+            "priority_order": list(ALLOWED_CASE_PRIORITIES),
+            "minimum_warning_after_seconds": min(
+                int(rule["warning_after_seconds"]) for rule in rules
+            ),
+            "minimum_overdue_after_seconds": min(
+                int(rule["overdue_after_seconds"]) for rule in rules
+            ),
+        },
+        "paths": {
+            "case_sla_policy_path": "/admin/v1/operator-review/cases/sla-policy",
+            "case_queue_path": "/admin/v1/operator-review/cases/queue",
+            "case_escalations_path": "/admin/v1/operator-review/cases/escalations",
+            "issue_candidates_path": "/admin/v1/operations/issue-candidates",
+        },
+        "redaction": {
+            "raw_case_comment_included": False,
+            "raw_action_comment_included": False,
+            "raw_resolution_comment_included": False,
+            "raw_prompt_included": False,
+            "raw_generation_output_included": False,
+            "raw_source_text_included": False,
+            "storage_paths_included": False,
+            "provider_payloads_included": False,
+            "database_urls_included": False,
+            "tokens_included": False,
+            "idempotency_keys_included": False,
+            "metadata_payload_included": False,
+            "policy_payload_shape": "priority_thresholds_reason_mappings_only",
+        },
+    }
+
+
 def build_operator_review_case_closure_packet(
     record: dict[str, Any],
     *,
@@ -3090,6 +3215,21 @@ def _case_action_outcome_item(item: dict[str, Any]) -> dict[str, Any]:
             "metadata_payload_included": False,
             "outcome_item_payload_shape": "safe_action_transition_facts_only",
         },
+    }
+
+
+def _case_sla_policy_rule(priority: str, rule: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "case_sla_policy_rule_schema_version": (
+            "ag_operator_review_case_sla_policy_rule.v1"
+        ),
+        "priority": priority,
+        "sla_class": str(rule["sla_class"]),
+        "warning_after_seconds": int(rule["warning_after_seconds"]),
+        "overdue_after_seconds": int(rule["overdue_after_seconds"]),
+        "escalation_level": str(rule["escalation_level"]),
+        "applies_to_statuses": ["OPEN", "ACKNOWLEDGED", "ASSIGNED", "REOPENED"],
+        "terminal_statuses": ["RESOLVED", "DISMISSED"],
     }
 
 

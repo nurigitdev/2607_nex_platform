@@ -27,6 +27,7 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_CASE_ROLLUP_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_SCHEMA_VERSION,
+    OPERATOR_REVIEW_CASE_SLA_POLICY_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_TIMELINE_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_WORKBENCH_DETAIL_SCHEMA_VERSION,
     OperatorReviewCaseService,
@@ -51,6 +52,7 @@ from nex_ag.operator_review_cases import (
     build_operator_review_case_queue_projection,
     build_operator_review_case_record,
     build_operator_review_case_rollup_metrics,
+    build_operator_review_case_sla_policy_projection,
     build_operator_review_case_timeline_projection,
     build_operator_review_case_workbench_detail_projection,
     default_operator_review_case_store,
@@ -946,6 +948,81 @@ def test_case_queue_projection_rejects_invalid_controls(
 
     assert exc.value.status_code == 422
     assert exc.value.error_code == error_code
+
+
+def test_case_sla_policy_projection_exposes_read_model_policy_only() -> None:
+    policy = build_operator_review_case_sla_policy_projection(
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert policy["case_sla_policy_schema_version"] == (
+        OPERATOR_REVIEW_CASE_SLA_POLICY_SCHEMA_VERSION
+    )
+    assert policy["policy_id"] == "operator_review_case_sla_default_v1"
+    assert policy["trace_id"] == TRACE_ID
+    assert policy["evaluation"] == {
+        "mode": "read_model_only",
+        "clock": "utc",
+        "terminal_statuses": ["RESOLVED", "DISMISSED"],
+        "open_statuses": ["OPEN", "ACKNOWLEDGED", "ASSIGNED", "REOPENED"],
+        "notification_delivery": "deferred",
+        "external_incident_sync": "deferred",
+        "escalation_persistence": "read_model_first",
+    }
+    assert [item["priority"] for item in policy["rules"]] == [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "URGENT",
+    ]
+    urgent = policy["rules"][-1]
+    assert urgent["sla_class"] == "immediate_operator_attention"
+    assert urgent["warning_after_seconds"] == 900
+    assert urgent["overdue_after_seconds"] == 3600
+    assert urgent["escalation_level"] == "BLOCKED"
+    assert policy["summary"] == {
+        "rule_count": 4,
+        "priority_order": ["LOW", "MEDIUM", "HIGH", "URGENT"],
+        "minimum_warning_after_seconds": 900,
+        "minimum_overdue_after_seconds": 3600,
+    }
+    assert {
+        item["reason_code"]: item["recommended_action"]
+        for item in policy["reason_mappings"]
+    } == {
+        "urgent_case_not_closed": "prioritize_urgent_operator_review_case",
+        "open_case_unassigned": "assign_case_owner",
+        "reopened_case_requires_review": "review_reopened_case",
+        "assigned_case_in_progress": "resolve_or_dismiss_after_review",
+    }
+    assert policy["paths"]["case_sla_policy_path"] == (
+        "/admin/v1/operator-review/cases/sla-policy"
+    )
+    assert policy["paths"]["case_escalations_path"] == (
+        "/admin/v1/operator-review/cases/escalations"
+    )
+    assert policy["redaction"]["policy_payload_shape"] == (
+        "priority_thresholds_reason_mappings_only"
+    )
+    serialized = json.dumps(policy)
+    assert "nuri1004" not in serialized
+    assert "/data/nex-platform" not in serialized
+
+
+def test_case_sla_policy_service_wrapper() -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+
+    policy = service.get_case_sla_policy(
+        request_id=REQUEST_ID,
+        trace_id=None,
+    )
+
+    assert policy["case_sla_policy_schema_version"] == (
+        OPERATOR_REVIEW_CASE_SLA_POLICY_SCHEMA_VERSION
+    )
+    assert policy["trace_id"] is None
+    assert policy["summary"]["rule_count"] == 4
 
 
 def test_case_workbench_detail_projection_exposes_safe_action_controls() -> None:

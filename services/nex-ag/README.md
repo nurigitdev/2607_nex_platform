@@ -1124,6 +1124,10 @@ Unified operations:
   The boundary keeps SLA/escalation AG-owned, read-model-first, backed by
   existing `ag_op_cases` and `service_operational_events`, and explicitly defers
   outbound notification delivery and external incident-system sync.
+- Slice 0682 adds `ag_operator_review_case_sla_policy.v1` as the first S69
+  read model. It defines priority-based SLA thresholds and reason mappings while
+  keeping notifications, external incident sync, and escalation persistence
+  deferred.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
