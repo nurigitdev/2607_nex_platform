@@ -1,0 +1,75 @@
+{
+  "case_assignment_workload_schema_version": "ag_operator_review_case_assignment_workload.v1",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "items": [
+    {
+      "case_assignment_workload_item_schema_version": "ag_operator_review_case_assignment_workload_item.v1",
+      "assignee_ref": {
+        "assignee_type": null,
+        "assignee_id": null,
+        "tenant_id": null
+      },
+      "case_count": 1,
+      "open_case_count": 1,
+      "closed_case_count": 0,
+      "urgent_case_count": 1,
+      "attention_case_count": 1,
+      "blocked_case_count": 1,
+      "actioned_case_count": 0,
+      "by_case_status": {
+        "OPEN": 1
+      },
+      "by_case_priority": {
+        "URGENT": 1
+      },
+      "by_attention_status": {
+        "BLOCKED": 1
+      },
+      "by_last_action_type": {},
+      "recommended_actions": [
+        "acknowledge_or_assign_case",
+        "assign_case_owner",
+        "prioritize_urgent_operator_review_case"
+      ],
+      "latest_updated_at": "2026-09-11T00:00:00Z",
+      "case_detail_path_template": "/admin/v1/operator-review/cases/{case_id}",
+      "redaction": {
+        "raw_case_comment_included": false,
+        "raw_action_comment_included": false,
+        "raw_resolution_comment_included": false,
+        "idempotency_keys_included": false,
+        "metadata_payload_included": false
+      }
+    }
+  ],
+  "summary": {
+    "case_count": 1,
+    "workload_group_count": 1,
+    "assigned_workload_group_count": 0,
+    "unassigned_case_count": 1,
+    "open_case_count": 1,
+    "closed_case_count": 0,
+    "attention_case_count": 1,
+    "urgent_case_count": 1,
+    "latest_updated_at": "2026-09-11T00:00:00Z"
+  },
+  "paths": {
+    "case_list_path": "/admin/v1/operator-review/cases",
+    "case_queue_path": "/admin/v1/operator-review/cases/queue",
+    "case_rollup_path": "/admin/v1/operator-review/cases/rollups"
+  },
+  "redaction": {
+    "raw_case_comment_included": false,
+    "raw_action_comment_included": false,
+    "raw_resolution_comment_included": false,
+    "raw_event_details_included": false,
+    "storage_paths_included": false,
+    "provider_payloads_included": false,
+    "database_urls_included": false,
+    "tokens_included": false,
+    "idempotency_keys_included": false,
+    "metadata_payload_included": false,
+    "workload_payload_shape": "assignee_status_counts_only"
+  }
+}

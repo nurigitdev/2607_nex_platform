@@ -1,0 +1,93 @@
+{
+  "case_action_outcomes_schema_version": "ag_operator_review_case_action_outcomes.v1",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "case": {
+    "case_id": "5c7ff448-0648-4a93-9df4-0b9d4921648a",
+    "target_ref": {
+      "target_service": "nex-ag",
+      "target_kind": "operator_review_workbench",
+      "target_id": "workbench-target-0678"
+    },
+    "case_status": "RESOLVED",
+    "case_priority": "HIGH",
+    "assignment_ref": {
+      "assignee_type": "user",
+      "assignee_id": "employee-0678",
+      "tenant_id": "local-tenant"
+    },
+    "latest_action": null,
+    "updated_at": "2026-09-11T00:02:00Z",
+    "closed_at": "2026-09-11T00:02:00Z"
+  },
+  "items": [
+    {
+      "case_action_outcome_item_schema_version": "ag_operator_review_case_action_outcome_item.v1",
+      "sequence": 2,
+      "event_id": "event-0678-resolve",
+      "action_id": "action-0678-resolve",
+      "action_type": "RESOLVE",
+      "from_status": "ASSIGNED",
+      "to_status": "RESOLVED",
+      "case_status": "RESOLVED",
+      "status_changed": true,
+      "assignment_changed": false,
+      "resolution_recorded": true,
+      "terminal_action": true,
+      "acted_at": "2026-09-11T00:02:00Z",
+      "operator_ref": {
+        "operator_type": "user",
+        "operator_id": "employee-0001"
+      },
+      "assignment_ref": {
+        "assignee_id": "employee-0678"
+      },
+      "reason_count": 1,
+      "action_comment_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "resolution_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "redaction": {
+        "raw_event_details_included": false,
+        "raw_action_comment_included": false,
+        "raw_resolution_comment_included": false,
+        "idempotency_keys_included": false,
+        "metadata_payload_included": false,
+        "outcome_item_payload_shape": "safe_action_transition_facts_only"
+      }
+    }
+  ],
+  "summary": {
+    "outcome_status": "READY",
+    "action_count": 1,
+    "status_transition_count": 1,
+    "assignment_action_count": 0,
+    "terminal_action_count": 1,
+    "resolution_recorded_count": 1,
+    "first_action_at": "2026-09-11T00:02:00Z",
+    "latest_action_at": "2026-09-11T00:02:00Z",
+    "latest_action_type": "RESOLVE",
+    "latest_to_status": "RESOLVED",
+    "source_error": null,
+    "source_projection": "case_timeline_operational_events"
+  },
+  "paths": {
+    "case_detail_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a",
+    "case_timeline_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/timeline",
+    "case_action_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/actions"
+  },
+  "redaction": {
+    "raw_case_comment_included": false,
+    "raw_action_comment_included": false,
+    "raw_resolution_comment_included": false,
+    "raw_event_details_included": false,
+    "raw_prompt_included": false,
+    "raw_generation_output_included": false,
+    "raw_source_text_included": false,
+    "storage_paths_included": false,
+    "provider_payloads_included": false,
+    "database_urls_included": false,
+    "tokens_included": false,
+    "idempotency_keys_included": false,
+    "metadata_payload_included": false,
+    "outcome_payload_shape": "timeline_action_outcome_facts_only"
+  }
+}

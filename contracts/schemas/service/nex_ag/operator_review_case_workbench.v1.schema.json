@@ -17,6 +17,15 @@
     },
     {
       "$ref": "#/$defs/case_action_admission_response"
+    },
+    {
+      "$ref": "#/$defs/case_action_outcomes_response"
+    },
+    {
+      "$ref": "#/$defs/case_assignment_workload_response"
+    },
+    {
+      "$ref": "#/$defs/case_closure_packet_response"
     }
   ],
   "$defs": {
@@ -1643,6 +1652,393 @@
         },
         "redaction": {
           "$ref": "#/$defs/safe_redaction"
+        }
+      }
+    },
+    "case_action_outcomes_response": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "case_action_outcomes_schema_version",
+        "trace_id",
+        "request_id",
+        "case",
+        "items",
+        "summary",
+        "paths",
+        "redaction"
+      ],
+      "properties": {
+        "case_action_outcomes_schema_version": {
+          "const": "ag_operator_review_case_action_outcomes.v1"
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+              "case_action_outcome_item_schema_version",
+              "sequence",
+              "action_id",
+              "action_type",
+              "status_changed",
+              "assignment_changed",
+              "resolution_recorded",
+              "terminal_action",
+              "redaction"
+            ],
+            "properties": {
+              "case_action_outcome_item_schema_version": {
+                "const": "ag_operator_review_case_action_outcome_item.v1"
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "action_id": {
+                "$ref": "#/$defs/nullable_text"
+              },
+              "action_type": {
+                "$ref": "#/$defs/nullable_case_action_type"
+              },
+              "status_changed": {
+                "type": "boolean"
+              },
+              "assignment_changed": {
+                "type": "boolean"
+              },
+              "resolution_recorded": {
+                "type": "boolean"
+              },
+              "terminal_action": {
+                "type": "boolean"
+              },
+              "redaction": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "outcome_status",
+            "action_count",
+            "status_transition_count",
+            "assignment_action_count",
+            "terminal_action_count",
+            "resolution_recorded_count",
+            "source_projection"
+          ],
+          "properties": {
+            "outcome_status": {
+              "type": "string",
+              "enum": [
+                "READY",
+                "UNAVAILABLE"
+              ]
+            },
+            "action_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "status_transition_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "assignment_action_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "terminal_action_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "resolution_recorded_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "source_projection": {
+              "const": "case_timeline_operational_events"
+            }
+          }
+        },
+        "paths": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "case_assignment_workload_response": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "case_assignment_workload_schema_version",
+        "trace_id",
+        "request_id",
+        "items",
+        "summary",
+        "paths",
+        "redaction"
+      ],
+      "properties": {
+        "case_assignment_workload_schema_version": {
+          "const": "ag_operator_review_case_assignment_workload.v1"
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+              "case_assignment_workload_item_schema_version",
+              "assignee_ref",
+              "case_count",
+              "open_case_count",
+              "closed_case_count",
+              "attention_case_count",
+              "redaction"
+            ],
+            "properties": {
+              "case_assignment_workload_item_schema_version": {
+                "const": "ag_operator_review_case_assignment_workload_item.v1"
+              },
+              "assignee_ref": {
+                "$ref": "#/$defs/assignment_ref"
+              },
+              "case_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "open_case_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "closed_case_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "attention_case_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "redaction": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "case_count",
+            "workload_group_count",
+            "assigned_workload_group_count",
+            "unassigned_case_count",
+            "open_case_count",
+            "closed_case_count",
+            "attention_case_count",
+            "urgent_case_count"
+          ],
+          "properties": {
+            "case_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "workload_group_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "assigned_workload_group_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unassigned_case_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "open_case_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "closed_case_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "attention_case_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "urgent_case_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "paths": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "case_closure_packet_response": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "case_closure_packet_schema_version",
+        "trace_id",
+        "request_id",
+        "case",
+        "resolution",
+        "lifecycle",
+        "evidence",
+        "summary",
+        "paths",
+        "redaction"
+      ],
+      "properties": {
+        "case_closure_packet_schema_version": {
+          "const": "ag_operator_review_case_closure_packet.v1"
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "resolution": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "resolution_hash",
+            "resolution_preview",
+            "resolution_preview_included",
+            "raw_resolution_comment_included"
+          ],
+          "properties": {
+            "resolution_hash": {
+              "$ref": "#/$defs/nullable_sha256"
+            },
+            "resolution_preview": {
+              "type": "null"
+            },
+            "resolution_preview_included": {
+              "const": false
+            },
+            "raw_resolution_comment_included": {
+              "const": false
+            }
+          }
+        },
+        "lifecycle": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "closure_status",
+            "closure_ready",
+            "blocking_reason_count",
+            "action_count",
+            "terminal_action_count",
+            "evidence_link_count",
+            "timeline_event_count",
+            "source_projection"
+          ],
+          "properties": {
+            "closure_status": {
+              "type": "string",
+              "enum": [
+                "OPEN",
+                "CLOSED"
+              ]
+            },
+            "closure_ready": {
+              "type": "boolean"
+            },
+            "blocking_reason_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "action_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "terminal_action_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "evidence_link_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "timeline_event_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "source_projection": {
+              "const": "read_model_only_no_closure_table"
+            }
+          }
+        },
+        "paths": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "case_closure_packet_path"
+          ],
+          "properties": {
+            "case_closure_packet_path": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": true
         }
       }
     },

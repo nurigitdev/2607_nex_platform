@@ -1,0 +1,110 @@
+{
+  "case_closure_packet_schema_version": "ag_operator_review_case_closure_packet.v1",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "case": {
+    "case_id": "5c7ff448-0648-4a93-9df4-0b9d4921648a",
+    "target_ref": {
+      "target_service": "nex-ag",
+      "target_kind": "operator_review_workbench",
+      "target_id": "workbench-target-0678"
+    },
+    "case_status": "RESOLVED",
+    "case_priority": "HIGH",
+    "operator_ref": {
+      "operator_type": "user",
+      "operator_id": "employee-0001",
+      "tenant_id": "local-tenant"
+    },
+    "assignment_ref": {
+      "assignee_type": "user",
+      "assignee_id": "employee-0678",
+      "tenant_id": "local-tenant"
+    },
+    "source_ref": {
+      "source_type": "operator_review_workbench",
+      "source_id": "workbench-target-0678",
+      "source_service": "nex-ag",
+      "workbench_path": "/admin/v1/operator-review/workbench"
+    },
+    "created_at": "2026-09-11T00:00:00Z",
+    "updated_at": "2026-09-11T00:02:00Z",
+    "closed_at": "2026-09-11T00:02:00Z"
+  },
+  "resolution": {
+    "resolution_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "resolution_preview": null,
+    "resolution_preview_included": false,
+    "raw_resolution_comment_included": false
+  },
+  "lifecycle": {
+    "closure_state": {
+      "closure_status": "CLOSED",
+      "closure_ready": true,
+      "blocking_reasons": [],
+      "requires_persistence": false,
+      "action_history_source": "service_operational_events",
+      "evidence_source": "ag_op_notes_and_ag_ev_exports"
+    },
+    "latest_action": null,
+    "timeline_summary": {
+      "timeline_status": "READY",
+      "event_count": 2,
+      "terminal_action_count": 1,
+      "source_error": null
+    },
+    "action_outcome_summary": {
+      "outcome_status": "READY",
+      "action_count": 1,
+      "terminal_action_count": 1,
+      "source_projection": "case_timeline_operational_events"
+    },
+    "action_outcomes": []
+  },
+  "evidence": {
+    "summary": {
+      "evidence_source_status": "READY",
+      "operator_note_count": 1,
+      "redacted_evidence_export_count": 1,
+      "total_link_count": 2,
+      "returned_link_count": 2,
+      "latest_updated_at": "2026-09-11T00:03:00Z"
+    },
+    "links": []
+  },
+  "summary": {
+    "closure_status": "CLOSED",
+    "closure_ready": true,
+    "blocking_reason_count": 0,
+    "action_count": 1,
+    "terminal_action_count": 1,
+    "evidence_link_count": 2,
+    "timeline_event_count": 2,
+    "source_projection": "read_model_only_no_closure_table"
+  },
+  "paths": {
+    "case_detail_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a",
+    "case_workbench_detail_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/workbench-detail",
+    "case_timeline_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/timeline",
+    "case_action_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/actions",
+    "case_closure_packet_path": "/admin/v1/operator-review/cases/5c7ff448-0648-4a93-9df4-0b9d4921648a/closure-packet"
+  },
+  "redaction": {
+    "raw_case_comment_included": false,
+    "raw_action_comment_included": false,
+    "raw_resolution_comment_included": false,
+    "raw_event_details_included": false,
+    "raw_operator_note_included": false,
+    "raw_evidence_body_included": false,
+    "raw_prompt_included": false,
+    "raw_generation_output_included": false,
+    "raw_source_text_included": false,
+    "storage_paths_included": false,
+    "provider_payloads_included": false,
+    "database_urls_included": false,
+    "tokens_included": false,
+    "idempotency_keys_included": false,
+    "metadata_payload_included": false,
+    "closure_packet_storage": "read_model_only_not_persisted"
+  }
+}

@@ -1105,6 +1105,10 @@ Unified operations:
 - Slice 0677 folds lifecycle state into `/admin/v1/operations/dashboard` by
   adding assignment workload summary/items plus closure packet path templates to
   the `operator_review_cases` section and attention-item links.
+- Slice 0678 freezes the S68 lifecycle contract surface by extending
+  `operator_review_case_workbench.v1.schema.json`, adding action outcome,
+  assignment workload, and closure packet examples, and documenting
+  `/admin/v1/operator-review/cases/{case_id}/closure-packet` in OpenAPI.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
