@@ -1093,6 +1093,11 @@ Unified operations:
   internal read model over the case list. It groups assigned and unassigned case
   workload, status, priority, attention, latest-action, and recommended-action
   counts without creating a new table or exposing raw operator text.
+- Slice 0675 adds `ag_operator_review_case_closure_packet.v1` as a read-model
+  closure packet foundation. The packet combines safe case refs, resolution
+  hash, timeline summary, action outcome facts, and evidence-link refs from
+  existing sources, marks closure readiness, excludes resolution previews, and
+  remains non-persistent.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -68,6 +68,9 @@ OPERATOR_REVIEW_CASE_ACTION_OUTCOMES_SCHEMA_VERSION = (
 OPERATOR_REVIEW_CASE_ASSIGNMENT_WORKLOAD_SCHEMA_VERSION = (
     "ag_operator_review_case_assignment_workload.v1"
 )
+OPERATOR_REVIEW_CASE_CLOSURE_PACKET_SCHEMA_VERSION = (
+    "ag_operator_review_case_closure_packet.v1"
+)
 OPERATOR_REVIEW_CASE_MUTATION_SCHEMA_VERSION = "ag_operator_review_case_mutation.v1"
 OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION = "ag_operator_review_case_action.v1"
 OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION = (
@@ -523,6 +526,37 @@ class OperatorReviewCaseService:
             limit=limit,
         )
         return build_operator_review_case_assignment_workload_projection(case_list)
+
+    def get_case_closure_packet(
+        self,
+        case_id: str,
+        *,
+        event_store: OperationalEventStore,
+        note_store: Any | None = None,
+        export_store: Any | None = None,
+        request_id: str,
+        trace_id: str | None,
+        evidence_limit: int | None = 5,
+        timeline_limit: int | None = None,
+    ) -> dict[str, Any]:
+        record = self.get_case(case_id)
+        evidence_sources = _case_evidence_source_records(
+            record,
+            note_store=note_store,
+            export_store=export_store,
+            limit=evidence_limit,
+        )
+        return build_operator_review_case_closure_packet(
+            record,
+            event_store=event_store,
+            operator_note_records=evidence_sources["operator_note_records"],
+            evidence_export_records=evidence_sources["evidence_export_records"],
+            request_id=request_id,
+            trace_id=trace_id,
+            evidence_limit=evidence_sources["limit"],
+            evidence_source_status=evidence_sources["source_status"],
+            timeline_limit=timeline_limit,
+        )
 
     def rollup_cases(
         self,
@@ -1929,6 +1963,125 @@ def build_operator_review_case_assignment_workload_projection(
     }
 
 
+def build_operator_review_case_closure_packet(
+    record: dict[str, Any],
+    *,
+    event_store: OperationalEventStore,
+    operator_note_records: list[dict[str, Any]] | None = None,
+    evidence_export_records: list[dict[str, Any]] | None = None,
+    request_id: str,
+    trace_id: str | None,
+    evidence_limit: int | None = 5,
+    evidence_source_status: str = "NOT_CONFIGURED",
+    timeline_limit: int | None = None,
+) -> dict[str, Any]:
+    timeline = build_operator_review_case_timeline_projection(
+        record,
+        event_store=event_store,
+        request_id=request_id,
+        trace_id=trace_id,
+        limit=timeline_limit,
+    )
+    action_outcomes = build_operator_review_case_action_outcome_projection(
+        record,
+        event_store=event_store,
+        request_id=request_id,
+        trace_id=trace_id,
+        limit=timeline_limit,
+    )
+    evidence_links = build_operator_review_case_evidence_links_projection(
+        record,
+        operator_note_records=operator_note_records or [],
+        evidence_export_records=evidence_export_records or [],
+        request_id=request_id,
+        trace_id=trace_id,
+        limit=evidence_limit,
+        source_status=evidence_source_status,
+    )
+    closure_state = _case_closure_packet_state(record, action_outcomes, evidence_links)
+    return {
+        "case_closure_packet_schema_version": (
+            OPERATOR_REVIEW_CASE_CLOSURE_PACKET_SCHEMA_VERSION
+        ),
+        "trace_id": optional_text(trace_id),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "case": {
+            "case_id": record.get("case_id"),
+            "target_ref": _case_target_ref(record),
+            "case_status": record.get("case_status"),
+            "case_priority": record.get("case_priority"),
+            "operator_ref": _case_operator_ref(record),
+            "assignment_ref": _case_assignment_ref(record),
+            "source_ref": _case_workbench_source_ref(record),
+            "created_at": record.get("created_at"),
+            "updated_at": record.get("updated_at"),
+            "closed_at": record.get("closed_at"),
+        },
+        "resolution": {
+            "resolution_hash": record.get("resolution_hash"),
+            "resolution_preview": None,
+            "resolution_preview_included": False,
+            "raw_resolution_comment_included": False,
+        },
+        "lifecycle": {
+            "closure_state": closure_state,
+            "latest_action": _safe_case_last_action_ref(record),
+            "timeline_summary": dict(timeline["summary"]),
+            "action_outcome_summary": dict(action_outcomes["summary"]),
+            "action_outcomes": list(action_outcomes["items"]),
+        },
+        "evidence": {
+            "summary": dict(evidence_links["summary"]),
+            "links": list(evidence_links["items"]),
+        },
+        "summary": {
+            "closure_status": closure_state["closure_status"],
+            "closure_ready": closure_state["closure_ready"],
+            "blocking_reason_count": len(closure_state["blocking_reasons"]),
+            "action_count": action_outcomes["summary"]["action_count"],
+            "terminal_action_count": action_outcomes["summary"][
+                "terminal_action_count"
+            ],
+            "evidence_link_count": evidence_links["summary"]["total_link_count"],
+            "timeline_event_count": timeline["summary"]["event_count"],
+            "source_projection": "read_model_only_no_closure_table",
+        },
+        "paths": {
+            "case_detail_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+            ),
+            "case_workbench_detail_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}"
+                "/workbench-detail"
+            ),
+            "case_timeline_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}/timeline"
+            ),
+            "case_action_path": (
+                f"/admin/v1/operator-review/cases/{record.get('case_id')}/actions"
+            ),
+        },
+        "redaction": {
+            "raw_case_comment_included": False,
+            "raw_action_comment_included": False,
+            "raw_resolution_comment_included": False,
+            "raw_event_details_included": False,
+            "raw_operator_note_included": False,
+            "raw_evidence_body_included": False,
+            "raw_prompt_included": False,
+            "raw_generation_output_included": False,
+            "raw_source_text_included": False,
+            "storage_paths_included": False,
+            "provider_payloads_included": False,
+            "database_urls_included": False,
+            "tokens_included": False,
+            "idempotency_keys_included": False,
+            "metadata_payload_included": False,
+            "closure_packet_storage": "read_model_only_not_persisted",
+        },
+    }
+
+
 def build_operator_review_case_action_mutation_response(
     record: dict[str, Any],
     action: dict[str, Any],
@@ -2987,6 +3140,37 @@ def _case_assignment_workload_item(
             "idempotency_keys_included": False,
             "metadata_payload_included": False,
         },
+    }
+
+
+def _case_closure_packet_state(
+    record: dict[str, Any],
+    action_outcomes: dict[str, Any],
+    evidence_links: dict[str, Any],
+) -> dict[str, Any]:
+    status = str(record.get("case_status") or "")
+    closed_status = status in {"RESOLVED", "DISMISSED"}
+    has_terminal_action = (
+        action_outcomes["summary"].get("terminal_action_count") or 0
+    ) > 0
+    has_resolution = optional_text(record.get("resolution_hash")) is not None
+    has_evidence = (evidence_links["summary"].get("total_link_count") or 0) > 0
+    blocking_reasons: list[str] = []
+    if not closed_status:
+        blocking_reasons.append("case_not_closed")
+    if not has_terminal_action:
+        blocking_reasons.append("terminal_action_missing")
+    if not has_resolution:
+        blocking_reasons.append("resolution_hash_missing")
+    if not has_evidence:
+        blocking_reasons.append("evidence_link_missing")
+    return {
+        "closure_status": "CLOSED" if closed_status else "OPEN",
+        "closure_ready": not blocking_reasons,
+        "blocking_reasons": blocking_reasons,
+        "requires_persistence": False,
+        "action_history_source": "service_operational_events",
+        "evidence_source": "ag_op_notes_and_ag_ev_exports",
     }
 
 

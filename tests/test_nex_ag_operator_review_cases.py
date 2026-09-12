@@ -21,6 +21,7 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_CASE_ACTION_ADMISSION_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_ACTION_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_ASSIGNMENT_WORKLOAD_SCHEMA_VERSION,
+    OPERATOR_REVIEW_CASE_CLOSURE_PACKET_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_EVIDENCE_LINKS_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_QUEUE_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE,
@@ -43,6 +44,7 @@ from nex_ag.operator_review_cases import (
     build_operator_review_case_action_record,
     build_operator_review_case_action_admission_projection,
     build_operator_review_case_assignment_workload_projection,
+    build_operator_review_case_closure_packet,
     build_operator_review_case_evidence_links_projection,
     build_operator_review_case_list_response,
     build_operator_review_case_mutation_response,
@@ -1713,6 +1715,113 @@ def test_case_assignment_workload_projection_groups_safe_assignee_signals() -> N
     assert "Raw workload action text" not in serialized
     assert "Raw workload resolution" not in serialized
     assert "idem-0674" not in serialized
+    assert '"metadata":' not in serialized
+
+
+def test_case_closure_packet_assembles_redaction_safe_lifecycle_evidence() -> None:
+    service = OperatorReviewCaseService(OperatorReviewCaseStore())
+    event_store = InMemoryOperationalEventStore()
+    emitter = OperationalEventEmitter(service_id="nex-ag", store=event_store)
+    created = service.create_case(
+        sample_case_payload(case_id="case-0675-closure"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0675-case",
+    )["case"]
+    emit_operator_review_case_event(emitter, created)
+    resolved = service.apply_action(
+        created["case_id"],
+        sample_action_payload(
+            action_type="RESOLVE",
+            action_comment="Raw closure action text should stay out.",
+            resolution_comment="Raw closure resolution should stay out.",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0675-resolve",
+    )["case"]
+    emit_operator_review_case_action_event(
+        emitter,
+        resolved["metadata"]["last_action"]["record"],
+        resolved,
+    )
+
+    packet = build_operator_review_case_closure_packet(
+        resolved,
+        event_store=event_store,
+        operator_note_records=[sample_note_record()],
+        evidence_export_records=[sample_evidence_export_record()],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        evidence_source_status="READY",
+    )
+    service_packet = service.get_case_closure_packet(
+        resolved["case_id"],
+        event_store=event_store,
+        note_store=SimpleNamespace(
+            list_notes=lambda **_: [sample_note_record()]
+        ),
+        export_store=SimpleNamespace(
+            list_exports=lambda **_: [sample_evidence_export_record()]
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    open_case = service.create_case(
+        sample_case_payload(case_id="case-0675-open", assignment_ref=None),
+        request_id=REQUEST_ID,
+        trace_id=None,
+        idempotency_key="idem-0675-open",
+    )["case"]
+    open_packet = build_operator_review_case_closure_packet(
+        open_case,
+        event_store=InMemoryOperationalEventStore(),
+        operator_note_records=[],
+        evidence_export_records=[],
+        request_id=REQUEST_ID,
+        trace_id=None,
+    )
+
+    assert packet["case_closure_packet_schema_version"] == (
+        OPERATOR_REVIEW_CASE_CLOSURE_PACKET_SCHEMA_VERSION
+    )
+    assert packet["case"]["case_id"] == resolved["case_id"]
+    assert packet["summary"]["closure_status"] == "CLOSED"
+    assert packet["summary"]["closure_ready"] is True
+    assert packet["summary"]["blocking_reason_count"] == 0
+    assert packet["summary"]["terminal_action_count"] == 1
+    assert packet["summary"]["evidence_link_count"] == 2
+    assert packet["summary"]["timeline_event_count"] == 2
+    assert packet["resolution"]["resolution_hash"] == resolved["resolution_hash"]
+    assert packet["resolution"]["resolution_preview"] is None
+    assert packet["resolution"]["resolution_preview_included"] is False
+    assert packet["lifecycle"]["closure_state"] == {
+        "closure_status": "CLOSED",
+        "closure_ready": True,
+        "blocking_reasons": [],
+        "requires_persistence": False,
+        "action_history_source": "service_operational_events",
+        "evidence_source": "ag_op_notes_and_ag_ev_exports",
+    }
+    assert packet["lifecycle"]["action_outcomes"][0]["terminal_action"] is True
+    assert packet["evidence"]["summary"]["total_link_count"] == 2
+    assert service_packet["summary"] == packet["summary"]
+    assert open_packet["trace_id"] is None
+    assert open_packet["summary"]["closure_status"] == "OPEN"
+    assert open_packet["summary"]["closure_ready"] is False
+    assert open_packet["lifecycle"]["closure_state"]["blocking_reasons"] == [
+        "case_not_closed",
+        "terminal_action_missing",
+        "resolution_hash_missing",
+        "evidence_link_missing",
+    ]
+
+    serialized = json.dumps(packet)
+    assert "Raw closure action text" not in serialized
+    assert "Raw closure resolution" not in serialized
+    assert "raw-secret-note-0662" not in serialized
+    assert "raw-export-body-should-not-leak" not in serialized
+    assert "idem-0675" not in serialized
     assert '"metadata":' not in serialized
 
 
