@@ -36,6 +36,7 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_CASE_TIMELINE_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_WORKBENCH_DETAIL_SCHEMA_VERSION,
     OPERATOR_REVIEW_ESCALATION_SCHEMA_VERSION,
+    OPERATOR_REVIEW_ESCALATION_LIST_SCHEMA_VERSION,
     OPERATOR_REVIEW_ESCALATION_ACTION_MUTATION_SCHEMA_VERSION,
     OPERATOR_REVIEW_ESCALATION_ACTION_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_ESCALATION_ACTION_SCHEMA_VERSION,
@@ -64,6 +65,7 @@ from nex_ag.operator_review_cases import (
     apply_operator_review_case_action,
     build_operator_review_escalation_action_mutation_response,
     build_operator_review_escalation_action_record,
+    build_operator_review_escalation_list_response,
     build_operator_review_escalation_record,
     build_operator_review_case_action_mutation_response,
     build_operator_review_case_action_outcome_projection,
@@ -1101,6 +1103,75 @@ def test_operator_review_escalation_action_service_replays_and_conflicts() -> No
             idempotency_key="idem-0694-missing",
         )
     assert missing.value.error_code == "ag.operator_review_escalation_not_found"
+
+
+def test_operator_review_escalation_list_response_and_service_filters() -> None:
+    escalation_store = OperatorReviewEscalationStore()
+    service = OperatorReviewCaseService(
+        OperatorReviewCaseStore(),
+        escalation_store=escalation_store,
+    )
+    active = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id="case-0695:active"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0695-active",
+        created_at="2026-09-11T04:00:00Z",
+    )
+    dismissed = build_operator_review_escalation_record(
+        sample_escalation_candidate(
+            candidate_id="case-0695:dismissed",
+            case_id="case-0695-dismissed",
+            escalation_level="BLOCKED",
+            sla_state="OVERDUE",
+        ),
+        {
+            "escalation_status": "DISMISSED",
+            "action_comment": "Dismissed after operator review.",
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0695-dismissed",
+        created_at="2026-09-11T05:00:00Z",
+    )
+    escalation_store.save(active)
+    escalation_store.save(dismissed)
+
+    response = build_operator_review_escalation_list_response(
+        [dismissed, active],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    filtered = service.list_escalations(
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        escalation_status="DISMISSED",
+    )
+
+    assert response["escalation_list_schema_version"] == (
+        OPERATOR_REVIEW_ESCALATION_LIST_SCHEMA_VERSION
+    )
+    assert response["summary"]["count"] == 2
+    assert response["summary"]["active_count"] == 1
+    assert response["summary"]["closed_count"] == 1
+    assert response["summary"]["by_status"] == {"DISMISSED": 1, "ACTIVE": 1}
+    assert response["summary"]["latest_updated_at"] == dismissed["updated_at"]
+    assert response["paths"]["escalation_action_path_template"] == (
+        "/admin/v1/operator-review/escalations/{escalation_id}/actions"
+    )
+    assert response["redaction"]["idempotency_keys_included"] is False
+    assert filtered["summary"]["count"] == 1
+    assert filtered["items"][0]["candidate_id"] == "case-0695:dismissed"
+
+    with pytest.raises(OperatorReviewNoteError) as invalid_status:
+        service.list_escalations(
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            escalation_status="WAITING",
+        )
+    assert invalid_status.value.error_code == (
+        "ag.operator_review_note_escalation_status_unsupported"
+    )
 
 
 @pytest.mark.parametrize("action_type", ALLOWED_ESCALATION_ACTIONS)
@@ -3801,6 +3872,66 @@ def test_operator_review_escalation_action_route_applies_replays_and_emits_event
             event_type=OPERATOR_REVIEW_ESCALATION_ACTION_RECORDED_EVENT_TYPE
         )
     ) == 1
+
+
+def test_operator_review_escalation_list_and_detail_routes_are_protected() -> None:
+    escalation_store = OperatorReviewEscalationStore()
+    client, _, _ = build_route_client(escalation_store=escalation_store)
+    active = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id="case-route-0695:active"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-route-0695-active",
+        created_at="2026-09-11T04:00:00Z",
+    )
+    snoozed = build_operator_review_escalation_record(
+        sample_escalation_candidate(
+            candidate_id="case-route-0695:snoozed",
+            case_id="case-route-0695-snoozed",
+        ),
+        {"escalation_status": "SNOOZED", "snoozed_until": "2026-09-11T07:00:00Z"},
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-route-0695-snoozed",
+        created_at="2026-09-11T05:00:00Z",
+    )
+    escalation_store.save(active)
+    escalation_store.save(snoozed)
+
+    listed = client.get(
+        "/admin/v1/operator-review/escalations?escalation_status=SNOOZED",
+        headers=service_auth_headers(),
+    )
+    detail = client.get(
+        f"/admin/v1/operator-review/escalations/{active['escalation_id']}",
+        headers=service_auth_headers(),
+    )
+    invalid = client.get(
+        "/admin/v1/operator-review/escalations?target_service=unknown",
+        headers=service_auth_headers(),
+    )
+    missing = client.get(
+        "/admin/v1/operator-review/escalations/missing",
+        headers=service_auth_headers(),
+    )
+    unauthorized = client.get("/admin/v1/operator-review/escalations")
+
+    assert listed.status_code == 200
+    assert listed.json()["escalation_list_schema_version"] == (
+        OPERATOR_REVIEW_ESCALATION_LIST_SCHEMA_VERSION
+    )
+    assert listed.json()["summary"]["count"] == 1
+    assert listed.json()["items"][0]["candidate_id"] == "case-route-0695:snoozed"
+    assert "idem-route-0695-snoozed" not in json.dumps(listed.json())
+    assert detail.status_code == 200
+    assert detail.json()["escalation_id"] == active["escalation_id"]
+    assert invalid.status_code == 422
+    assert invalid.json()["error_code"] == (
+        "ag.operator_review_note_target_service_unsupported"
+    )
+    assert missing.status_code == 404
+    assert missing.json()["error_code"] == "ag.operator_review_escalation_not_found"
+    assert unauthorized.status_code == 401
 
 
 def test_operator_review_case_rollup_route_precedes_detail_route_and_filters() -> None:

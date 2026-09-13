@@ -86,6 +86,9 @@ OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION = (
 )
 OPERATOR_REVIEW_CASE_ROLLUP_SCHEMA_VERSION = "ag_operator_review_case_rollup.v1"
 OPERATOR_REVIEW_ESCALATION_SCHEMA_VERSION = "ag_operator_review_escalation.v1"
+OPERATOR_REVIEW_ESCALATION_LIST_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_list.v1"
+)
 OPERATOR_REVIEW_ESCALATION_ACTION_SCHEMA_VERSION = (
     "ag_operator_review_escalation_action.v1"
 )
@@ -981,6 +984,46 @@ class OperatorReviewCaseService:
             )
         return record
 
+    def list_escalations(
+        self,
+        *,
+        request_id: str,
+        trace_id: str | None,
+        case_id: str | None = None,
+        candidate_id: str | None = None,
+        escalation_status: str | None = None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        normalized_status = optional_choice(
+            escalation_status,
+            key="escalation_status",
+            choices=ALLOWED_ESCALATION_STATUSES,
+            default="",
+        )
+        normalized_target_service = optional_choice(
+            target_service,
+            key="target_service",
+            choices=ALLOWED_TARGET_SERVICES,
+            default="",
+        )
+        records = self._escalation_store.list_escalations(
+            case_id=optional_text(case_id),
+            candidate_id=optional_text(candidate_id),
+            escalation_status=normalized_status or None,
+            target_service=normalized_target_service or None,
+            target_kind=optional_text(target_kind),
+            target_id=optional_text(target_id),
+            limit=limit,
+        )
+        return build_operator_review_escalation_list_response(
+            records,
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+
     def apply_action(
         self,
         case_id: str,
@@ -1409,6 +1452,55 @@ def register_operator_review_case_routes(
                 updated_to=updated_to,
                 limit=limit,
             )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+    @app.get("/admin/v1/operator-review/escalations", response_model=None)
+    def list_operator_review_escalations(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        case_id: str | None = None,
+        candidate_id: str | None = None,
+        escalation_status: str | None = None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        limit: int | None = None,
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return service.list_escalations(
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                case_id=case_id,
+                candidate_id=candidate_id,
+                escalation_status=escalation_status,
+                target_service=target_service,
+                target_kind=target_kind,
+                target_id=target_id,
+                limit=limit,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+    @app.get(
+        "/admin/v1/operator-review/escalations/{escalation_id}",
+        response_model=None,
+    )
+    def get_operator_review_escalation(
+        escalation_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return service.get_escalation(escalation_id)
         except OperatorReviewNoteError as exc:
             return _operator_review_case_problem_response(request, exc)
 
@@ -1883,6 +1975,58 @@ def build_operator_review_case_mutation_response(
             "target_id": record["target_id"],
             "case_status": record["case_status"],
             "case_priority": record["case_priority"],
+        },
+    }
+
+
+def build_operator_review_escalation_list_response(
+    records: list[dict[str, Any]],
+    *,
+    request_id: str,
+    trace_id: str | None,
+) -> dict[str, Any]:
+    items = list(records)
+    return {
+        "escalation_list_schema_version": OPERATOR_REVIEW_ESCALATION_LIST_SCHEMA_VERSION,
+        "trace_id": optional_text(trace_id),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "items": items,
+        "summary": {
+            "count": len(items),
+            "active_count": sum(
+                1
+                for item in items
+                if item.get("escalation_status")
+                in {"ACTIVE", "ACKNOWLEDGED", "SNOOZED", "REOPENED"}
+            ),
+            "closed_count": sum(
+                1
+                for item in items
+                if item.get("escalation_status") in {"DISMISSED", "RESOLVED"}
+            ),
+            "by_status": _count_by(items, "escalation_status"),
+            "by_level": _count_by(items, "escalation_level"),
+            "by_sla_state": _count_by(items, "sla_state"),
+            "latest_updated_at": items[0]["updated_at"] if items else None,
+        },
+        "paths": {
+            "escalation_list_path": "/admin/v1/operator-review/escalations",
+            "escalation_detail_path_template": (
+                "/admin/v1/operator-review/escalations/{escalation_id}"
+            ),
+            "escalation_action_path_template": (
+                "/admin/v1/operator-review/escalations/{escalation_id}/actions"
+            ),
+        },
+        "redaction": {
+            "raw_action_comment_included": False,
+            "raw_notification_payload_included": False,
+            "raw_external_incident_payload_included": False,
+            "provider_payloads_included": False,
+            "database_urls_included": False,
+            "tokens_included": False,
+            "idempotency_keys_included": False,
+            "comment_storage": "hash_and_short_preview_only",
         },
     }
 
