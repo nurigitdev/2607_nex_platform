@@ -1237,6 +1237,13 @@ Unified operations:
   `/admin/v1/operator-review/dispatches`. Operators can filter safe outbox
   records by escalation, case, status, intent, channel, and target refs, while
   responses keep only safe hashes, previews, refs, and summary counts.
+- Slice 0707 exposes S71 dispatch outbox state in
+  `/admin/v1/operations/dashboard` as
+  `operator_review_escalation_dispatches` and in
+  `/admin/v1/operations/issue-candidates` through
+  `operator_review_escalation_dispatch_attention_required.v1`. The dashboard
+  shows recent/attention dispatch rows, status/intent/channel counters, source
+  status, and safe route templates without executing live delivery providers.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -104,6 +104,7 @@ from nex_ag.operator_review_cases import (
     build_operator_review_case_queue_projection,
     build_operator_review_case_rollup_metrics,
     build_operator_review_case_sla_policy_projection,
+    build_operator_review_escalation_dispatch_list_response,
     build_operator_review_escalation_list_response,
 )
 from nex_ag.operator_reviews import ALLOWED_TARGET_SERVICES
@@ -377,6 +378,14 @@ OPERATIONS_ISSUE_CANDIDATE_RULES = (
         "description": "One or more persisted operator review escalations need action.",
         "enabled": True,
         "signal_type": "operator_review_escalation",
+    },
+    {
+        "rule_id": "operator_review_escalation_dispatch_attention_required.v1",
+        "severity": "WARNING",
+        "title": "Operator review escalation dispatch attention required",
+        "description": "One or more escalation dispatch outbox records need action.",
+        "enabled": True,
+        "signal_type": "operator_review_escalation_dispatch",
     },
     {
         "rule_id": "operator_review_attention_required.v1",
@@ -1993,6 +2002,7 @@ def register_unified_operation_routes(
     operator_review_export_store: Any | None = None,
     operator_review_case_store: Any | None = None,
     operator_review_escalation_store: Any | None = None,
+    operator_review_escalation_dispatch_store: Any | None = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -2148,6 +2158,9 @@ def register_unified_operation_routes(
             operator_review_export_store=operator_review_export_store,
             operator_review_case_store=operator_review_case_store,
             operator_review_escalation_store=operator_review_escalation_store,
+            operator_review_escalation_dispatch_store=(
+                operator_review_escalation_dispatch_store
+            ),
             service_id=service_id,
             recent_limit=recent_limit,
             query_options=query_options,
@@ -2212,6 +2225,9 @@ def register_unified_operation_routes(
             operator_review_export_store=operator_review_export_store,
             operator_review_case_store=operator_review_case_store,
             operator_review_escalation_store=operator_review_escalation_store,
+            operator_review_escalation_dispatch_store=(
+                operator_review_escalation_dispatch_store
+            ),
             worker_heartbeat_stores=worker_heartbeat_stores,
             registry=registry,
             runtime=selected_runtime,
@@ -3079,6 +3095,7 @@ def build_operations_issue_candidate_projection(
     operator_review_export_store: Any | None = None,
     operator_review_case_store: Any | None = None,
     operator_review_escalation_store: Any | None = None,
+    operator_review_escalation_dispatch_store: Any | None = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -3111,6 +3128,9 @@ def build_operations_issue_candidate_projection(
         operator_review_export_store=operator_review_export_store,
         operator_review_case_store=operator_review_case_store,
         operator_review_escalation_store=operator_review_escalation_store,
+        operator_review_escalation_dispatch_store=(
+            operator_review_escalation_dispatch_store
+        ),
         registry=registry,
         runtime=runtime,
         service_id=service_id,
@@ -3474,6 +3494,7 @@ def build_operations_dashboard_snapshot_projection(
     operator_review_export_store: Any | None = None,
     operator_review_case_store: Any | None = None,
     operator_review_escalation_store: Any | None = None,
+    operator_review_escalation_dispatch_store: Any | None = None,
     service_id: str | None = None,
     recent_limit: int = 5,
     limit: int = 500,
@@ -3600,6 +3621,15 @@ def build_operations_dashboard_snapshot_projection(
         limit=normalized_recent_limit,
         request_trace_id=request_trace_id,
     )
+    operator_review_escalation_dispatches = (
+        _dashboard_operator_review_escalation_dispatch_section(
+            dispatch_store=operator_review_escalation_dispatch_store,
+            service_id=service_id,
+            options=options,
+            limit=normalized_recent_limit,
+            request_trace_id=request_trace_id,
+        )
+    )
     degraded_sources = _dashboard_degraded_sources(
         operation_sources=readiness_projection["sources"],
         job_source_statuses=rollup_projection["job_source_statuses"],
@@ -3624,6 +3654,9 @@ def build_operations_dashboard_snapshot_projection(
         operator_review_escalation_source_statuses=operator_review_escalations[
             "source_statuses"
         ],
+        operator_review_escalation_dispatch_source_statuses=(
+            operator_review_escalation_dispatches["source_statuses"]
+        ),
     )
     projection = {
         "projection_schema_version": "ag_operations_dashboard_snapshot_projection.v1",
@@ -3650,6 +3683,9 @@ def build_operations_dashboard_snapshot_projection(
         "operator_review_workbench": operator_review_workbench,
         "operator_review_cases": operator_review_cases,
         "operator_review_escalations": operator_review_escalations,
+        "operator_review_escalation_dispatches": (
+            operator_review_escalation_dispatches
+        ),
         "degraded_sources": degraded_sources,
         "job_source_statuses": rollup_projection["job_source_statuses"],
         "event_source_statuses": rollup_projection["event_source_statuses"],
@@ -4264,6 +4300,11 @@ def build_operations_issue_candidates(
     candidates.extend(
         _issue_candidates_from_operator_review_escalations(
             dashboard_snapshot.get("operator_review_escalations")
+        )
+    )
+    candidates.extend(
+        _issue_candidates_from_operator_review_escalation_dispatches(
+            dashboard_snapshot.get("operator_review_escalation_dispatches")
         )
     )
     if worker_runtime_projection is not None:
@@ -6770,6 +6811,220 @@ def _empty_dashboard_operator_review_escalation_section(
     }
 
 
+def _dashboard_operator_review_escalation_dispatch_section(
+    *,
+    dispatch_store: Any | None,
+    service_id: str | None,
+    options: OperationQueryOptions,
+    limit: int,
+    request_trace_id: str | None,
+) -> dict[str, Any]:
+    source_statuses: dict[str, dict[str, Any]] = {}
+    if dispatch_store is None:
+        return _empty_dashboard_operator_review_escalation_dispatch_section(
+            source_statuses
+        )
+
+    target_service = service_id if service_id in ALLOWED_TARGET_SERVICES else None
+    try:
+        records = dispatch_store.list_dispatches(
+            target_service=target_service,
+            limit=500,
+        )
+        visible_records = _filter_records_by_operation_time(
+            [dict(record) for record in records],
+            options,
+            timestamp_field="updated_at",
+        )
+        dispatch_list = build_operator_review_escalation_dispatch_list_response(
+            visible_records,
+            request_id=request_trace_id or "ag-operations-dashboard",
+            trace_id=request_trace_id,
+        )
+    except Exception as exc:
+        source_statuses[
+            "nex-ag"
+        ] = _dashboard_operator_review_escalation_dispatch_source_status(
+            dispatch_store=dispatch_store,
+            summary=_empty_operator_review_escalation_dispatch_summary(),
+            error_code=getattr(
+                exc,
+                "error_code",
+                "ag.operator_review_escalation_dispatch_source_unavailable",
+            ),
+            detail=getattr(
+                exc,
+                "detail",
+                "Operator review escalation dispatch source could not be read.",
+            ),
+            status="UNAVAILABLE",
+        )
+        return {
+            **_empty_dashboard_operator_review_escalation_dispatch_section(
+                source_statuses
+            ),
+            "projection_status": "DEGRADED",
+        }
+
+    summary = _operator_review_escalation_dispatch_dashboard_summary(dispatch_list)
+    source_statuses[
+        "nex-ag"
+    ] = _dashboard_operator_review_escalation_dispatch_source_status(
+        dispatch_store=dispatch_store,
+        summary=summary,
+    )
+    items = [
+        _dashboard_operator_review_escalation_dispatch_attention_item(item)
+        for item in list(dispatch_list["items"])[:limit]
+    ]
+    return {
+        "projection_schema_version": (
+            "ag_operator_review_escalation_dispatch_dashboard_section.v1"
+        ),
+        "projection_status": "READY",
+        "summary": summary,
+        "by_status": dict(dispatch_list["summary"]["by_status"]),
+        "by_intent": dict(dispatch_list["summary"]["by_intent"]),
+        "by_channel": dict(dispatch_list["summary"]["by_channel"]),
+        "attention": [
+            item
+            for item in items
+            if _operator_review_escalation_dispatch_attention_item_needs_action(item)
+        ][:limit],
+        "recent": items,
+        "source_statuses": source_statuses,
+        "dispatch_list_path": "/admin/v1/operator-review/dispatches",
+        "dispatch_detail_path_template": (
+            "/admin/v1/operator-review/dispatches/{dispatch_id}"
+        ),
+        "dispatch_action_path_template": (
+            "/admin/v1/operator-review/dispatches/{dispatch_id}/actions"
+        ),
+        "escalation_detail_path_template": (
+            "/admin/v1/operator-review/escalations/{escalation_id}"
+        ),
+        "redaction": dict(dispatch_list["redaction"]),
+    }
+
+
+def _empty_dashboard_operator_review_escalation_dispatch_section(
+    source_statuses: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "projection_schema_version": (
+            "ag_operator_review_escalation_dispatch_dashboard_section.v1"
+        ),
+        "projection_status": "READY",
+        "summary": _empty_operator_review_escalation_dispatch_summary(),
+        "by_status": {},
+        "by_intent": {},
+        "by_channel": {},
+        "attention": [],
+        "recent": [],
+        "source_statuses": source_statuses,
+        "dispatch_list_path": "/admin/v1/operator-review/dispatches",
+        "dispatch_detail_path_template": (
+            "/admin/v1/operator-review/dispatches/{dispatch_id}"
+        ),
+        "dispatch_action_path_template": (
+            "/admin/v1/operator-review/dispatches/{dispatch_id}/actions"
+        ),
+        "escalation_detail_path_template": (
+            "/admin/v1/operator-review/escalations/{escalation_id}"
+        ),
+        "redaction": {
+            "raw_notification_payload_included": False,
+            "raw_external_incident_payload_included": False,
+            "provider_secrets_included": False,
+            "raw_operator_comments_included": False,
+            "raw_source_text_included": False,
+            "database_urls_included": False,
+            "tokens_included": False,
+            "idempotency_keys_included": False,
+            "dispatch_record_payload": "safe_hashes_previews_refs_only",
+        },
+    }
+
+
+def _operator_review_escalation_dispatch_dashboard_summary(
+    dispatch_list: Mapping[str, Any],
+) -> dict[str, Any]:
+    summary = dict(dispatch_list["summary"])
+    items = [
+        item for item in dispatch_list.get("items", []) if isinstance(item, Mapping)
+    ]
+    summary["dispatch_count"] = _safe_int(summary.get("count"))
+    summary["attention_count"] = sum(
+        1
+        for item in items
+        if _operator_review_escalation_dispatch_attention_item_needs_action(item)
+    )
+    summary["failed_count"] = sum(
+        1 for item in items if item.get("dispatch_status") == "FAILED"
+    )
+    summary["retry_wait_count"] = sum(
+        1 for item in items if item.get("dispatch_status") == "RETRY_WAIT"
+    )
+    return summary
+
+
+def _dashboard_operator_review_escalation_dispatch_attention_item(
+    item: Mapping[str, Any],
+) -> dict[str, Any]:
+    selected = dict(item)
+    dispatch_id = _nullable_string(selected.get("dispatch_id"))
+    if dispatch_id is None:
+        return selected
+    escalation_id = _nullable_string(selected.get("escalation_id"))
+    case_id = _nullable_string(selected.get("case_id"))
+    selected["links"] = {
+        "dispatch_detail_path": (
+            f"/admin/v1/operator-review/dispatches/{dispatch_id}"
+        ),
+        "dispatch_action_path": (
+            f"/admin/v1/operator-review/dispatches/{dispatch_id}/actions"
+        ),
+        "escalation_detail_path": (
+            f"/admin/v1/operator-review/escalations/{escalation_id}"
+            if escalation_id
+            else None
+        ),
+        "case_detail_path": (
+            f"/admin/v1/operator-review/cases/{case_id}" if case_id else None
+        ),
+    }
+    return selected
+
+
+def _operator_review_escalation_dispatch_attention_item_needs_action(
+    item: Mapping[str, Any],
+) -> bool:
+    return str(item.get("dispatch_status") or "") in {
+        "PENDING",
+        "DISPATCHING",
+        "FAILED",
+        "RETRY_WAIT",
+    }
+
+
+def _empty_operator_review_escalation_dispatch_summary() -> dict[str, Any]:
+    return {
+        "count": 0,
+        "dispatch_count": 0,
+        "pending_count": 0,
+        "active_count": 0,
+        "terminal_count": 0,
+        "retryable_count": 0,
+        "attention_count": 0,
+        "failed_count": 0,
+        "retry_wait_count": 0,
+        "by_status": {},
+        "by_intent": {},
+        "by_channel": {},
+        "latest_updated_at": None,
+    }
+
+
 def _operator_review_escalation_dashboard_summary(
     escalation_list: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -6968,6 +7223,40 @@ def _dashboard_operator_review_escalation_source_status(
         "database_env": getattr(escalation_store, "database_env", None),
         "redacted_database_url": getattr(
             escalation_store,
+            "redacted_database_url",
+            None,
+        ),
+    }
+    if error_code is not None:
+        source["error_code"] = error_code
+    if detail is not None:
+        source["detail"] = detail
+    return source
+
+
+def _dashboard_operator_review_escalation_dispatch_source_status(
+    *,
+    dispatch_store: Any | None,
+    summary: Mapping[str, Any],
+    status: str = "READY",
+    error_code: str | None = None,
+    detail: str | None = None,
+) -> dict[str, Any]:
+    source = {
+        "status": status,
+        "service_id": "nex-ag",
+        "source_kind": (
+            _operator_review_single_store_kind(dispatch_store)
+            if dispatch_store is not None
+            else "none"
+        ),
+        "dispatch_count": _safe_int(summary.get("dispatch_count")),
+        "active_count": _safe_int(summary.get("active_count")),
+        "retryable_count": _safe_int(summary.get("retryable_count")),
+        "attention_count": _safe_int(summary.get("attention_count")),
+        "database_env": getattr(dispatch_store, "database_env", None),
+        "redacted_database_url": getattr(
+            dispatch_store,
             "redacted_database_url",
             None,
         ),
@@ -7424,6 +7713,9 @@ def _dashboard_degraded_sources(
     operator_review_escalation_source_statuses: (
         Mapping[str, dict[str, Any]] | None
     ) = None,
+    operator_review_escalation_dispatch_source_statuses: (
+        Mapping[str, dict[str, Any]] | None
+    ) = None,
 ) -> list[dict[str, Any]]:
     degraded: list[dict[str, Any]] = []
     for source in operation_sources:
@@ -7456,6 +7748,10 @@ def _dashboard_degraded_sources(
         (
             "operator_review_escalations",
             operator_review_escalation_source_statuses or {},
+        ),
+        (
+            "operator_review_escalation_dispatches",
+            operator_review_escalation_dispatch_source_statuses or {},
         ),
     ):
         for service_id, source_status in statuses.items():
@@ -8414,6 +8710,140 @@ def _operator_review_escalation_issue_operator_actions(
             actions.add("review_reopened_operator_review_escalation")
         if status == "ACTIVE":
             actions.add("acknowledge_or_resolve_operator_review_escalation")
+    return sorted(actions)
+
+
+def _issue_candidates_from_operator_review_escalation_dispatches(
+    section: object,
+) -> list[dict[str, Any]]:
+    if not isinstance(section, Mapping):
+        return []
+    attention = section.get("attention")
+    if not isinstance(attention, list):
+        return []
+    items = [
+        dict(item)
+        for item in attention
+        if isinstance(item, Mapping)
+        and _operator_review_escalation_dispatch_attention_item_needs_action(item)
+    ]
+    if not items:
+        return []
+    return [_operator_review_escalation_dispatch_issue_candidate(items)]
+
+
+def _operator_review_escalation_dispatch_issue_candidate(
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    status_counts = _dashboard_count_by(items, "dispatch_status")
+    intent_counts = _dashboard_count_by(items, "dispatch_intent")
+    channel_counts = _dashboard_count_by(items, "channel_type")
+    failed_count = status_counts.get("FAILED", 0)
+    target_services = sorted(
+        {
+            str(item.get("target_service"))
+            for item in items
+            if str(item.get("target_service") or "") in SERVICE_SPECS
+        }
+    )
+    target_kinds = sorted(
+        {str(item.get("target_kind")) for item in items if item.get("target_kind")}
+    )
+    target_ids = sorted(
+        {str(item.get("target_id")) for item in items if item.get("target_id")}
+    )
+    dispatch_ids = sorted(
+        {str(dispatch_id) for item in items if (dispatch_id := item.get("dispatch_id"))}
+    )
+    escalation_ids = sorted(
+        {
+            str(escalation_id)
+            for item in items
+            if (escalation_id := item.get("escalation_id"))
+        }
+    )
+    case_ids = sorted(
+        {str(case_id) for item in items if (case_id := item.get("case_id"))}
+    )
+    severity = "ERROR" if failed_count else "WARNING"
+    return _operations_issue_candidate(
+        rule_id="operator_review_escalation_dispatch_attention_required.v1",
+        service_id="nex-ag",
+        severity=severity,
+        title="Operator review escalation dispatch attention required",
+        detail=f"{len(items)} operator review escalation dispatch(es) need action.",
+        signal={
+            "source_type": "operator_review_escalation_dispatch",
+            "status": "FAILED" if failed_count else "ATTENTION",
+            "count": len(items),
+            "threshold": 1,
+            "failed_count": failed_count,
+            "active_count": sum(
+                count
+                for status, count in status_counts.items()
+                if status in {"PENDING", "DISPATCHING", "RETRY_WAIT"}
+            ),
+            "retry_wait_count": status_counts.get("RETRY_WAIT", 0),
+            "dispatch_ids": dispatch_ids,
+            "escalation_ids": escalation_ids,
+            "case_ids": case_ids,
+            "target_services": target_services,
+            "target_kinds": target_kinds,
+            "target_ids": target_ids,
+            "dispatch_statuses": sorted(status_counts),
+            "dispatch_intents": sorted(intent_counts),
+            "channel_types": sorted(channel_counts),
+            "dispatch_list_path": "/admin/v1/operator-review/dispatches",
+            "dispatch_detail_path_template": (
+                "/admin/v1/operator-review/dispatches/{dispatch_id}"
+            ),
+            "dispatch_action_path_template": (
+                "/admin/v1/operator-review/dispatches/{dispatch_id}/actions"
+            ),
+            "escalation_detail_path_template": (
+                "/admin/v1/operator-review/escalations/{escalation_id}"
+            ),
+            "runbook_ids": (
+                _operator_review_escalation_dispatch_issue_runbook_ids(items)
+            ),
+            "recommended_operator_actions": (
+                _operator_review_escalation_dispatch_issue_operator_actions(items)
+            ),
+        },
+    )
+
+
+def _operator_review_escalation_dispatch_issue_runbook_ids(
+    items: list[dict[str, Any]],
+) -> list[str]:
+    runbook_ids: set[str] = set()
+    for item in items:
+        status = str(item.get("dispatch_status") or "")
+        if status == "FAILED":
+            runbook_ids.add("ag.operator_review_escalation_dispatch.failed_triage.v1")
+        if status == "RETRY_WAIT":
+            runbook_ids.add("ag.operator_review_escalation_dispatch.retry_ready.v1")
+        if status == "DISPATCHING":
+            runbook_ids.add("ag.operator_review_escalation_dispatch.in_flight.v1")
+        if status == "PENDING":
+            runbook_ids.add("ag.operator_review_escalation_dispatch.pending_start.v1")
+    return sorted(runbook_ids)
+
+
+def _operator_review_escalation_dispatch_issue_operator_actions(
+    items: list[dict[str, Any]],
+) -> list[str]:
+    actions: set[str] = set()
+    for item in items:
+        status = str(item.get("dispatch_status") or "")
+        if status == "FAILED":
+            actions.add("retry_or_cancel_failed_escalation_dispatch")
+        if status == "RETRY_WAIT":
+            actions.add("start_or_cancel_retry_wait_escalation_dispatch")
+        if status == "DISPATCHING":
+            actions.add("confirm_escalation_dispatch_outcome")
+        if status == "PENDING":
+            actions.add("start_or_cancel_pending_escalation_dispatch")
     return sorted(actions)
 
 

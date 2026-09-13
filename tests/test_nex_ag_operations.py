@@ -88,6 +88,7 @@ from nex_ag.operations import (
     _issue_candidates_from_generation_quality,
     _issue_candidates_from_operator_review_escalations,
     _issue_candidates_from_operator_review_cases,
+    _issue_candidates_from_operator_review_escalation_dispatches,
     _issue_candidates_from_operator_review_workbench,
     _issue_candidates_from_remediation_executions,
     _job_error_code,
@@ -116,8 +117,10 @@ from nex_ag.operator_reviews import (
 )
 from nex_ag.operator_review_cases import (
     OperatorReviewCaseService,
+    OperatorReviewEscalationDispatchStore,
     OperatorReviewEscalationStore,
     OperatorReviewCaseStore,
+    build_operator_review_escalation_dispatch_record,
     build_operator_review_case_escalation_projection,
     build_operator_review_escalation_record,
 )
@@ -333,6 +336,39 @@ def operator_review_escalation_record(
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
         idempotency_key=f"operations-escalation-{created_at}",
+        created_at=created_at,
+    )
+
+
+def operator_review_escalation_dispatch_record(
+    *,
+    escalation: dict[str, Any] | None = None,
+    dispatch_status: str = "PENDING",
+    dispatch_intent: str = "NOTIFY_OPERATOR",
+    channel_type: str = "MOCK",
+    created_at: str = "2026-08-05T00:00:13Z",
+) -> dict[str, Any]:
+    selected_escalation = escalation or operator_review_escalation_record()
+    return build_operator_review_escalation_dispatch_record(
+        selected_escalation,
+        {
+            "dispatch_status": dispatch_status,
+            "dispatch_intent": dispatch_intent,
+            "channel_type": channel_type,
+            "safe_subject": "Safe escalation dispatch subject",
+            "safe_body": "Safe escalation dispatch body.",
+            "last_error_code": (
+                "mock_dispatch_failure" if dispatch_status == "FAILED" else None
+            ),
+            "last_error": (
+                "Raw provider failure should remain hashed."
+                if dispatch_status == "FAILED"
+                else None
+            ),
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key=f"operations-dispatch-{created_at}-{dispatch_status}",
         created_at=created_at,
     )
 
@@ -3408,6 +3444,117 @@ def test_operations_dashboard_operator_review_escalations_handles_filters_and_er
     assert_ag_operations_projection_contract(unavailable)
 
 
+def test_operations_dashboard_snapshot_includes_escalation_dispatches() -> None:
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    escalation = operator_review_escalation_record(created_at="2026-08-05T00:00:12Z")
+    failed = operator_review_escalation_dispatch_record(
+        escalation=escalation,
+        dispatch_status="FAILED",
+        dispatch_intent="OPEN_INCIDENT",
+        channel_type="INCIDENT",
+        created_at="2026-08-05T00:00:15Z",
+    )
+    succeeded = operator_review_escalation_dispatch_record(
+        escalation=escalation,
+        dispatch_status="SUCCEEDED",
+        dispatch_intent="NOTIFY_OWNER",
+        channel_type="EMAIL",
+        created_at="2026-08-05T00:00:14Z",
+    )
+    dispatch_store.save(succeeded)
+    dispatch_store.save(failed)
+
+    projection = build_operations_dashboard_snapshot_projection(
+        operator_review_escalation_dispatch_store=dispatch_store,
+        service_id="nex-cx",
+        recent_limit=2,
+        request_trace_id=TRACE_ID,
+    )
+
+    dispatches = projection["operator_review_escalation_dispatches"]
+    assert dispatches["projection_status"] == "READY"
+    assert dispatches["summary"]["dispatch_count"] == 2
+    assert dispatches["summary"]["attention_count"] == 1
+    assert dispatches["summary"]["failed_count"] == 1
+    assert dispatches["summary"]["retryable_count"] == 1
+    assert dispatches["by_status"] == {"FAILED": 1, "SUCCEEDED": 1}
+    assert dispatches["by_intent"] == {"NOTIFY_OWNER": 1, "OPEN_INCIDENT": 1}
+    assert dispatches["by_channel"] == {"EMAIL": 1, "INCIDENT": 1}
+    assert dispatches["attention"][0]["dispatch_id"] == failed["dispatch_id"]
+    assert dispatches["attention"][0]["links"] == {
+        "dispatch_detail_path": (
+            f"/admin/v1/operator-review/dispatches/{failed['dispatch_id']}"
+        ),
+        "dispatch_action_path": (
+            f"/admin/v1/operator-review/dispatches/{failed['dispatch_id']}/actions"
+        ),
+        "escalation_detail_path": (
+            f"/admin/v1/operator-review/escalations/{failed['escalation_id']}"
+        ),
+        "case_detail_path": f"/admin/v1/operator-review/cases/{failed['case_id']}",
+    }
+    assert dispatches["source_statuses"]["nex-ag"] == {
+        "status": "READY",
+        "service_id": "nex-ag",
+        "source_kind": "memory",
+        "dispatch_count": 2,
+        "active_count": 0,
+        "retryable_count": 1,
+        "attention_count": 1,
+        "database_env": None,
+        "redacted_database_url": None,
+    }
+    assert projection["degraded_sources"] == []
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_dashboard_escalation_dispatches_handles_filters_and_errors() -> (
+    None
+):
+    class FailingDispatchStore(OperatorReviewEscalationDispatchStore):
+        def list_dispatches(self, **_: object) -> list[dict[str, Any]]:
+            raise RuntimeError("dispatch source down")
+
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    dispatch_store.save(
+        operator_review_escalation_dispatch_record(
+            dispatch_status="PENDING",
+            created_at="2026-08-05T00:00:13Z",
+        )
+    )
+
+    filtered = build_operations_dashboard_snapshot_projection(
+        operator_review_escalation_dispatch_store=dispatch_store,
+        service_id="nex-mo",
+        recent_limit=2,
+    )
+    unavailable = build_operations_dashboard_snapshot_projection(
+        operator_review_escalation_dispatch_store=FailingDispatchStore(),
+        service_id="nex-cx",
+        recent_limit=2,
+    )
+
+    assert filtered["operator_review_escalation_dispatches"]["summary"][
+        "dispatch_count"
+    ] == 0
+    assert filtered["operator_review_escalation_dispatches"]["source_statuses"][
+        "nex-ag"
+    ]["status"] == "READY"
+    assert unavailable["operator_review_escalation_dispatches"][
+        "projection_status"
+    ] == "DEGRADED"
+    assert unavailable["projection_status"] == "DEGRADED"
+    assert unavailable["operator_review_escalation_dispatches"]["source_statuses"][
+        "nex-ag"
+    ]["error_code"] == "ag.operator_review_escalation_dispatch_source_unavailable"
+    assert {
+        (source["source_type"], source["service_id"], source["status"])
+        for source in unavailable["degraded_sources"]
+    } == {("operator_review_escalation_dispatches", "nex-ag", "UNAVAILABLE")}
+    assert_ag_operations_projection_contract(filtered)
+    assert_ag_operations_projection_contract(unavailable)
+
+
 def test_operations_dashboard_route_wires_operator_review_workbench() -> None:
     app = build_service_app(SERVICE_SPECS["nex-ag"])
     note_store = OperatorReviewNoteStore()
@@ -3423,12 +3570,15 @@ def test_operations_dashboard_route_wires_operator_review_workbench() -> None:
     )
     escalation_store = OperatorReviewEscalationStore()
     escalation_store.save(operator_review_escalation_record())
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    dispatch_store.save(operator_review_escalation_dispatch_record())
     register_unified_operation_routes(
         app,
         operator_review_note_store=note_store,
         operator_review_export_store=export_store,
         operator_review_case_store=case_store,
         operator_review_escalation_store=escalation_store,
+        operator_review_escalation_dispatch_store=dispatch_store,
     )
 
     response = TestClient(app).get(
@@ -3449,6 +3599,9 @@ def test_operations_dashboard_route_wires_operator_review_workbench() -> None:
     )
     assert payload["operator_review_escalations"]["summary"][
         "action_required_count"
+    ] == 1
+    assert payload["operator_review_escalation_dispatches"]["summary"][
+        "dispatch_count"
     ] == 1
     assert_ag_operations_projection_contract(payload)
 
@@ -3673,6 +3826,157 @@ def test_operations_issue_candidate_projection_includes_operator_review_escalati
     assert helper_candidates[0]["signal"]["status"] == "ATTENTION"
     assert helper_candidates[0]["signal"]["runbook_ids"] == [
         "ag.operator_review_escalation.reopened_review.v1"
+    ]
+
+
+def test_operations_issue_candidate_projection_includes_escalation_dispatches() -> None:
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    escalation = operator_review_escalation_record(created_at="2026-08-05T00:00:12Z")
+    failed = operator_review_escalation_dispatch_record(
+        escalation=escalation,
+        dispatch_status="FAILED",
+        dispatch_intent="OPEN_INCIDENT",
+        channel_type="INCIDENT",
+        created_at="2026-08-05T00:00:15Z",
+    )
+    dispatch_store.save(failed)
+    dispatch_store.save(
+        operator_review_escalation_dispatch_record(
+            escalation=escalation,
+            dispatch_status="SUCCEEDED",
+            dispatch_intent="NOTIFY_OWNER",
+            channel_type="EMAIL",
+            created_at="2026-08-05T00:00:14Z",
+        )
+    )
+
+    projection = build_operations_issue_candidate_projection(
+        operator_review_escalation_dispatch_store=dispatch_store,
+        service_id="nex-cx",
+        recent_limit=2,
+        request_trace_id=TRACE_ID,
+    )
+
+    candidates = [
+        candidate
+        for candidate in projection["issue_candidates"]
+        if candidate["rule_id"]
+        == "operator_review_escalation_dispatch_attention_required.v1"
+    ]
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["service_id"] == "nex-ag"
+    assert candidate["severity"] == "ERROR"
+    assert candidate["signal"]["status"] == "FAILED"
+    assert candidate["signal"]["failed_count"] == 1
+    assert candidate["signal"]["active_count"] == 0
+    assert candidate["signal"]["dispatch_ids"] == [failed["dispatch_id"]]
+    assert candidate["signal"]["escalation_ids"] == [failed["escalation_id"]]
+    assert candidate["signal"]["case_ids"] == [failed["case_id"]]
+    assert candidate["signal"]["target_services"] == ["nex-cx"]
+    assert candidate["signal"]["dispatch_statuses"] == ["FAILED"]
+    assert candidate["signal"]["dispatch_intents"] == ["OPEN_INCIDENT"]
+    assert candidate["signal"]["channel_types"] == ["INCIDENT"]
+    assert candidate["signal"]["runbook_ids"] == [
+        "ag.operator_review_escalation_dispatch.failed_triage.v1"
+    ]
+    assert candidate["signal"]["recommended_operator_actions"] == [
+        "retry_or_cancel_failed_escalation_dispatch"
+    ]
+    assert projection["summary"]["by_rule"][
+        "operator_review_escalation_dispatch_attention_required.v1"
+    ] == 1
+    assert_ag_operations_projection_contract(projection)
+
+    helper_candidates = _issue_candidates_from_operator_review_escalation_dispatches(
+        {
+            "attention": [
+                {
+                    "dispatch_id": "dispatch-0707-retry",
+                    "escalation_id": "esc-0707-retry",
+                    "case_id": "case-0707-retry",
+                    "target_service": "nex-cx",
+                    "target_kind": "document",
+                    "target_id": "doc-0707",
+                    "dispatch_status": "RETRY_WAIT",
+                    "dispatch_intent": "RETRY_FAILED_DISPATCH",
+                    "channel_type": "MOCK",
+                },
+                {"dispatch_status": "SUCCEEDED"},
+                "malformed",
+            ]
+        }
+    )
+    assert helper_candidates[0]["severity"] == "WARNING"
+    assert helper_candidates[0]["signal"]["status"] == "ATTENTION"
+    assert helper_candidates[0]["signal"]["runbook_ids"] == [
+        "ag.operator_review_escalation_dispatch.retry_ready.v1"
+    ]
+
+
+def test_escalation_dispatch_dashboard_helpers_cover_defensive_edges() -> None:
+    assert (
+        ag_operations._dashboard_operator_review_escalation_dispatch_attention_item(
+            {"dispatch_status": "PENDING"}
+        )
+        == {"dispatch_status": "PENDING"}
+    )
+    linked = ag_operations._dashboard_operator_review_escalation_dispatch_attention_item(
+        {"dispatch_id": "dispatch-0707-edge", "dispatch_status": "PENDING"}
+    )
+    assert linked["links"] == {
+        "dispatch_detail_path": (
+            "/admin/v1/operator-review/dispatches/dispatch-0707-edge"
+        ),
+        "dispatch_action_path": (
+            "/admin/v1/operator-review/dispatches/dispatch-0707-edge/actions"
+        ),
+        "escalation_detail_path": None,
+        "case_detail_path": None,
+    }
+
+    assert _issue_candidates_from_operator_review_escalation_dispatches(None) == []
+    assert (
+        _issue_candidates_from_operator_review_escalation_dispatches(
+            {"attention": "not-a-list"}
+        )
+        == []
+    )
+    assert (
+        _issue_candidates_from_operator_review_escalation_dispatches(
+            {"attention": [{"dispatch_status": "SUCCEEDED"}, "malformed"]}
+        )
+        == []
+    )
+    candidates = _issue_candidates_from_operator_review_escalation_dispatches(
+        {
+            "attention": [
+                {
+                    "dispatch_id": "dispatch-0707-pending",
+                    "dispatch_status": "PENDING",
+                    "dispatch_intent": "NOTIFY_OPERATOR",
+                    "channel_type": "MOCK",
+                },
+                {
+                    "dispatch_id": "dispatch-0707-in-flight",
+                    "dispatch_status": "DISPATCHING",
+                    "dispatch_intent": "OPEN_INCIDENT",
+                    "channel_type": "INCIDENT",
+                },
+            ]
+        }
+    )
+
+    assert candidates[0]["severity"] == "WARNING"
+    assert candidates[0]["signal"]["status"] == "ATTENTION"
+    assert candidates[0]["signal"]["active_count"] == 2
+    assert candidates[0]["signal"]["runbook_ids"] == [
+        "ag.operator_review_escalation_dispatch.in_flight.v1",
+        "ag.operator_review_escalation_dispatch.pending_start.v1",
+    ]
+    assert candidates[0]["signal"]["recommended_operator_actions"] == [
+        "confirm_escalation_dispatch_outcome",
+        "start_or_cancel_pending_escalation_dispatch",
     ]
 
 
@@ -4134,6 +4438,7 @@ def test_build_operations_issue_candidate_projection_flags_service_scope() -> No
         "generation_remediation_attention_required.v1",
         "remediation_execution_attention_required.v1",
         "operator_review_escalation_action_required.v1",
+        "operator_review_escalation_dispatch_attention_required.v1",
         "operator_review_attention_required.v1",
         "operator_review_case_attention_required.v1",
     ]

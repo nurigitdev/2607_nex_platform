@@ -269,6 +269,9 @@
     "operator_review_escalations": {
       "$ref": "#/$defs/dashboard_operator_review_escalations"
     },
+    "operator_review_escalation_dispatches": {
+      "$ref": "#/$defs/dashboard_operator_review_escalation_dispatches"
+    },
     "replay_candidates": {
       "type": "array",
       "items": {
@@ -745,6 +748,7 @@
           "operator_review_workbench",
           "operator_review_cases",
           "operator_review_escalations",
+          "operator_review_escalation_dispatches",
           "degraded_sources",
           "job_source_statuses",
           "event_source_statuses",
@@ -2535,6 +2539,91 @@
         }
       }
     },
+    "dashboard_operator_review_escalation_dispatches": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "projection_status",
+        "summary",
+        "by_status",
+        "by_intent",
+        "by_channel",
+        "attention",
+        "recent",
+        "source_statuses",
+        "dispatch_list_path",
+        "dispatch_detail_path_template",
+        "dispatch_action_path_template",
+        "escalation_detail_path_template",
+        "redaction"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "const": "ag_operator_review_escalation_dispatch_dashboard_section.v1"
+        },
+        "projection_status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "DEGRADED"
+          ]
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "by_status": {
+          "$ref": "#/$defs/string_integer_counts"
+        },
+        "by_intent": {
+          "$ref": "#/$defs/string_integer_counts"
+        },
+        "by_channel": {
+          "$ref": "#/$defs/string_integer_counts"
+        },
+        "attention": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "recent": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "source_statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/source_status"
+          }
+        },
+        "dispatch_list_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dispatch_detail_path_template": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dispatch_action_path_template": {
+          "type": "string",
+          "minLength": 1
+        },
+        "escalation_detail_path_template": {
+          "type": "string",
+          "minLength": 1
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
     "dashboard_operator_review_case_summary": {
       "type": "object",
       "additionalProperties": false,
@@ -3200,7 +3289,8 @@
             "remediation_executions",
             "operator_review_workbench",
             "operator_review_cases",
-            "operator_review_escalations"
+            "operator_review_escalations",
+            "operator_review_escalation_dispatches"
           ]
         },
         "service_id": {

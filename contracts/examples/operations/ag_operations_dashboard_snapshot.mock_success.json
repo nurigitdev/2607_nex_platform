@@ -647,6 +647,46 @@
       "comment_storage": "hash_and_short_preview_only"
     }
   },
+  "operator_review_escalation_dispatches": {
+    "projection_schema_version": "ag_operator_review_escalation_dispatch_dashboard_section.v1",
+    "projection_status": "READY",
+    "summary": {
+      "count": 0,
+      "dispatch_count": 0,
+      "pending_count": 0,
+      "active_count": 0,
+      "terminal_count": 0,
+      "retryable_count": 0,
+      "attention_count": 0,
+      "failed_count": 0,
+      "retry_wait_count": 0,
+      "by_status": {},
+      "by_intent": {},
+      "by_channel": {},
+      "latest_updated_at": null
+    },
+    "by_status": {},
+    "by_intent": {},
+    "by_channel": {},
+    "attention": [],
+    "recent": [],
+    "source_statuses": {},
+    "dispatch_list_path": "/admin/v1/operator-review/dispatches",
+    "dispatch_detail_path_template": "/admin/v1/operator-review/dispatches/{dispatch_id}",
+    "dispatch_action_path_template": "/admin/v1/operator-review/dispatches/{dispatch_id}/actions",
+    "escalation_detail_path_template": "/admin/v1/operator-review/escalations/{escalation_id}",
+    "redaction": {
+      "raw_notification_payload_included": false,
+      "raw_external_incident_payload_included": false,
+      "provider_secrets_included": false,
+      "raw_operator_comments_included": false,
+      "raw_source_text_included": false,
+      "database_urls_included": false,
+      "tokens_included": false,
+      "idempotency_keys_included": false,
+      "dispatch_record_payload": "safe_hashes_previews_refs_only"
+    }
+  },
   "degraded_sources": [],
   "job_source_statuses": {
     "nex-cx": {
