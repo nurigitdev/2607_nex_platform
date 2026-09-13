@@ -1309,6 +1309,13 @@ Unified operations:
   `summary.execution_*_count` rollups, and item-level safe `execution_result`
   projections while continuing to omit raw provider payloads, secrets, and
   idempotency keys.
+- Slice 0719 adds protected PostgreSQL smoke evidence for S72 dispatch
+  execution. With
+  `NEX_AG_OPERATOR_REVIEW_ESCALATION_DISPATCH_EXECUTION_POSTGRES_SMOKE=1`, it
+  migrates `nex_ag_test`, creates one case/escalation/dispatch row, runs the
+  mock-first dispatch execution worker, verifies `SUCCEEDED` state plus
+  `metadata.last_execution_result`, checks the operations dashboard execution
+  summary, directly observes PostgreSQL rows, and cleans up smoke data.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
