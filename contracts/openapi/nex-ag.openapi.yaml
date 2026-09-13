@@ -1560,6 +1560,195 @@ paths:
           description: Escalation action payload or state transition is invalid.
         "503":
           description: Operator review escalation store or audit emitter is unavailable.
+  /admin/v1/operator-review/escalations/{escalation_id}/dispatches:
+    post:
+      operationId: createAgOperatorReviewEscalationDispatch
+      tags:
+        - Operations
+      parameters:
+        - name: escalation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchRequest"
+      responses:
+        "201":
+          description: Operator review escalation dispatch outbox plan created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchSurface"
+        "200":
+          description: Idempotent replay or skipped dispatch plan response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchSurface"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "404":
+          description: Operator review escalation was not found.
+        "409":
+          description: Idempotency key maps to a different dispatch request.
+        "422":
+          description: Dispatch request payload or idempotency key is invalid.
+        "503":
+          description: Operator review escalation dispatch store or audit emitter is unavailable.
+  /admin/v1/operator-review/dispatches:
+    get:
+      operationId: listAgOperatorReviewEscalationDispatches
+      tags:
+        - Operations
+      parameters:
+        - name: escalation_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: case_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: dispatch_status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchStatus"
+        - name: dispatch_intent
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchIntent"
+        - name: channel_type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchChannelType"
+        - name: target_service
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ServiceId"
+        - name: target_kind
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: target_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only AG escalation dispatch outbox list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchSurface"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "422":
+          description: Dispatch filter is invalid.
+        "503":
+          description: Operator review escalation dispatch store is unavailable.
+  /admin/v1/operator-review/dispatches/{dispatch_id}:
+    get:
+      operationId: getAgOperatorReviewEscalationDispatch
+      tags:
+        - Operations
+      parameters:
+        - name: dispatch_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Read-only AG escalation dispatch outbox detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchSurface"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "404":
+          description: Operator review escalation dispatch was not found.
+        "422":
+          description: Dispatch id is invalid.
+        "503":
+          description: Operator review escalation dispatch store is unavailable.
+  /admin/v1/operator-review/dispatches/{dispatch_id}/actions:
+    post:
+      operationId: applyAgOperatorReviewEscalationDispatchAction
+      tags:
+        - Operations
+      parameters:
+        - name: dispatch_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchActionRequest"
+      responses:
+        "201":
+          description: Operator review escalation dispatch action applied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchSurface"
+        "200":
+          description: Idempotent replay of a previously applied dispatch action.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchSurface"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "404":
+          description: Operator review escalation dispatch was not found.
+        "409":
+          description: Idempotency key maps to a different dispatch action request.
+        "422":
+          description: Dispatch action payload or state transition is invalid.
+        "503":
+          description: Operator review escalation dispatch store or audit emitter is unavailable.
   /admin/v1/operations/workers:
     get:
       operationId: getAgWorkerRuntimeProjection
@@ -3738,6 +3927,127 @@ components:
         action_comment:
           type: string
         snoozed_until:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewEscalationDispatchStatus:
+      type: string
+      enum:
+        - PENDING
+        - DISPATCHING
+        - SUCCEEDED
+        - FAILED
+        - RETRY_WAIT
+        - CANCELLED
+    AgOperatorReviewEscalationDispatchIntent:
+      type: string
+      enum:
+        - NOTIFY_OPERATOR
+        - NOTIFY_OWNER
+        - OPEN_INCIDENT
+        - UPDATE_INCIDENT
+        - CANCEL_PENDING_DISPATCH
+        - RETRY_FAILED_DISPATCH
+    AgOperatorReviewEscalationDispatchChannelType:
+      type: string
+      enum:
+        - MOCK
+        - NOTIFICATION
+        - EMAIL
+        - WEBHOOK
+        - INCIDENT
+    AgOperatorReviewEscalationDispatchActionType:
+      type: string
+      enum:
+        - START
+        - SUCCEED
+        - FAIL
+        - RETRY
+        - CANCEL
+    AgOperatorReviewEscalationDispatchSurface:
+      type: object
+      additionalProperties: true
+      description: >
+        AG operator review escalation dispatch plan, record, list, or action
+        mutation response. The canonical JSON Schema is
+        schemas/service/nex_ag/operator_review_case.v1.schema.json.
+      properties:
+        dispatch_plan_schema_version:
+          type: string
+          const: ag_operator_review_escalation_dispatch_plan.v1
+        dispatch_schema_version:
+          type: string
+          const: ag_operator_review_escalation_dispatch.v1
+        dispatch_list_schema_version:
+          type: string
+          const: ag_operator_review_escalation_dispatch_list.v1
+        dispatch_action_mutation_schema_version:
+          type: string
+          const: ag_operator_review_escalation_dispatch_action_mutation.v1
+        trace_id:
+          oneOf:
+            - $ref: "#/components/schemas/TraceId"
+            - type: "null"
+        request_id:
+          type: string
+          minLength: 1
+        redaction:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewEscalationDispatchRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        operator_ref:
+          type: object
+          additionalProperties: true
+        channel_type:
+          $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchChannelType"
+        dispatch_intent:
+          $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchIntent"
+        provider_ref:
+          type: object
+          additionalProperties: true
+        provider_profile:
+          type: string
+          minLength: 1
+        reason_codes:
+          type: array
+          items:
+            type: string
+        safe_subject:
+          type: string
+          maxLength: 200
+        safe_body:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewEscalationDispatchActionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - action_type
+        - operator_ref
+      properties:
+        action_type:
+          $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchActionType"
+        operator_ref:
+          type: object
+          additionalProperties: true
+        reason_codes:
+          type: array
+          items:
+            type: string
+        action_comment:
+          type: string
+        last_error:
+          type: string
+        last_error_code:
+          type: string
+        next_attempt_at:
           type: string
           format: date-time
         metadata:

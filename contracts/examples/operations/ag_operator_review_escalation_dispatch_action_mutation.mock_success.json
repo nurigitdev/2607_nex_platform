@@ -1,0 +1,130 @@
+{
+  "dispatch_action_mutation_schema_version": "ag_operator_review_escalation_dispatch_action_mutation.v1",
+  "idempotency_status": "NEW",
+  "trace_id": "0123456789abcdef0123456789abcdef",
+  "request_id": "req-s71-dispatch-action",
+  "dispatch": {
+    "dispatch_schema_version": "ag_operator_review_escalation_dispatch.v1",
+    "dispatch_id": "dispatch-s71-example",
+    "escalation_id": "escalation-s71-dispatch-example",
+    "case_id": "case-s71-dispatch-example",
+    "target_service": "nex-cx",
+    "target_kind": "retrieval_package",
+    "target_id": "cx-generation-s71-example",
+    "trace_id": "0123456789abcdef0123456789abcdef",
+    "request_id": "req-s71-dispatch-plan",
+    "operator_ref": {
+      "operator_type": "service",
+      "operator_id": "nex-ag",
+      "tenant_id": null
+    },
+    "channel_type": "MOCK",
+    "provider_ref": {
+      "provider_type": "mock",
+      "provider_id": "mock-escalation-dispatch",
+      "channel_type": "MOCK",
+      "external_ref": null
+    },
+    "provider_profile": "mock-default",
+    "dispatch_status": "DISPATCHING",
+    "dispatch_intent": "NOTIFY_OWNER",
+    "reason_codes": [
+      "owner_follow_up_required"
+    ],
+    "safe_subject": "S71 dispatch requires owner review.",
+    "safe_body_hash": "4b10ea8d2b20037ad0bc98777066d74218cccdfaf42c6a96a33a62df107e3ab8",
+    "safe_body_preview": "Safe owner notification body for S71 dispatch.",
+    "provider_payload_hash": "890573d636c32ec42680247777e8f205223aa6697e69f9888775b73592e8a163",
+    "idempotency_key_hash": "bd02b3929b491d1f4b00913c2766ce24d7c469cb87cc7e2dd4f5937d7650132b",
+    "attempt_count": 1,
+    "last_attempt_at": "2026-09-11T07:10:00Z",
+    "next_attempt_at": null,
+    "last_error_code": null,
+    "last_error_hash": null,
+    "metadata": {
+      "raw_notification_payload_stored": false,
+      "raw_external_incident_payload_stored": false,
+      "raw_provider_payload_stored": false,
+      "raw_action_comment_stored": false,
+      "raw_prompt_stored": false,
+      "raw_generation_output_stored": false,
+      "raw_source_text_stored": false,
+      "storage_paths_included": false,
+      "safe_body_storage": "hash_and_short_preview_only",
+      "provider_execution": "mock_first_only",
+      "live_notification_delivery": false,
+      "live_external_incident_sync": false,
+      "dispatch_state_storage": "ag_owned_outbox_state_only",
+      "idempotency_key_hash": "bd02b3929b491d1f4b00913c2766ce24d7c469cb87cc7e2dd4f5937d7650132b",
+      "idempotency_key_stored": false,
+      "last_action_type": "START"
+    },
+    "created_at": "2026-09-11T07:08:00Z",
+    "updated_at": "2026-09-11T07:10:00Z",
+    "completed_at": null
+  },
+  "action": {
+    "dispatch_action_schema_version": "ag_operator_review_escalation_dispatch_action.v1",
+    "action_id": "dispatch-action-s71-example",
+    "dispatch_id": "dispatch-s71-example",
+    "escalation_id": "escalation-s71-dispatch-example",
+    "case_id": "case-s71-dispatch-example",
+    "action_type": "START",
+    "from_status": "PENDING",
+    "to_status": "DISPATCHING",
+    "target_service": "nex-cx",
+    "target_kind": "retrieval_package",
+    "target_id": "cx-generation-s71-example",
+    "trace_id": "0123456789abcdef0123456789abcdef",
+    "request_id": "req-s71-dispatch-action",
+    "operator_ref": {
+      "operator_type": "service",
+      "operator_id": "nex-ag",
+      "tenant_id": null
+    },
+    "reason_codes": [
+      "mock_provider_attempt_started"
+    ],
+    "action_comment_hash": "c77fd92f03f410e9ee7cb3ea5de040376275c52dfd230cec392dd1d5aee0b9e5",
+    "action_comment_preview": "Action comment preview.",
+    "attempt_count": 1,
+    "last_error_code": null,
+    "last_error_hash": null,
+    "next_attempt_at": null,
+    "metadata": {
+      "raw_notification_payload_stored": false,
+      "raw_external_incident_payload_stored": false,
+      "raw_provider_payload_stored": false,
+      "raw_action_comment_stored": false,
+      "raw_provider_error_stored": false,
+      "storage_paths_included": false,
+      "provider_execution": "state_machine_only",
+      "live_notification_delivery": false,
+      "live_external_incident_sync": false,
+      "idempotency_key_hash": "a0015eed17b9bef7b66d74b4c763a874cbe85fcb61e3cb9b36bc45d77f3396df",
+      "idempotency_key_stored": false
+    },
+    "acted_at": "2026-09-11T07:10:00Z"
+  },
+  "summary": {
+    "dispatch_id": "dispatch-s71-example",
+    "escalation_id": "escalation-s71-dispatch-example",
+    "case_id": "case-s71-dispatch-example",
+    "action_id": "dispatch-action-s71-example",
+    "action_type": "START",
+    "from_status": "PENDING",
+    "to_status": "DISPATCHING",
+    "dispatch_status": "DISPATCHING",
+    "dispatch_intent": "NOTIFY_OWNER",
+    "attempt_count": 1
+  },
+  "redaction": {
+    "raw_notification_payload_included": false,
+    "raw_external_incident_payload_included": false,
+    "raw_provider_payload_included": false,
+    "raw_action_comment_included": false,
+    "raw_provider_error_included": false,
+    "idempotency_keys_included": false,
+    "dispatch_action_storage": "safe_hashes_previews_refs_only"
+  }
+}

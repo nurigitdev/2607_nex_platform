@@ -1244,6 +1244,12 @@ Unified operations:
   `operator_review_escalation_dispatch_attention_required.v1`. The dashboard
   shows recent/attention dispatch rows, status/intent/channel counters, source
   status, and safe route templates without executing live delivery providers.
+- Slice 0708 hardens the S71 dispatch contract and OpenAPI surface. The
+  canonical `operator_review_case.v1` schema now covers dispatch plan creation,
+  dispatch record/detail, dispatch list, and dispatch action mutation responses,
+  with indexed examples and a negative raw-provider-payload fixture. The AG
+  OpenAPI document now exposes protected dispatch create, list, detail, and
+  action routes using shared dispatch status, intent, channel, and action enums.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

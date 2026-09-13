@@ -1,0 +1,60 @@
+{
+  "dispatch_schema_version": "ag_operator_review_escalation_dispatch.v1",
+  "dispatch_id": "dispatch-s71-negative",
+  "escalation_id": "escalation-s71-negative",
+  "case_id": "case-s71-negative",
+  "target_service": "nex-cx",
+  "target_kind": "retrieval_package",
+  "target_id": "cx-generation-s71-negative",
+  "trace_id": "0123456789abcdef0123456789abcdef",
+  "request_id": "req-s71-negative",
+  "operator_ref": {
+    "operator_type": "service",
+    "operator_id": "nex-ag",
+    "tenant_id": null
+  },
+  "channel_type": "MOCK",
+  "provider_ref": {
+    "provider_type": "mock",
+    "provider_id": "mock-escalation-dispatch",
+    "channel_type": "MOCK",
+    "external_ref": null
+  },
+  "provider_profile": "mock-default",
+  "dispatch_status": "PENDING",
+  "dispatch_intent": "NOTIFY_OWNER",
+  "reason_codes": [
+    "owner_follow_up_required"
+  ],
+  "safe_subject": "S71 dispatch requires owner review.",
+  "safe_body_hash": "4b10ea8d2b20037ad0bc98777066d74218cccdfaf42c6a96a33a62df107e3ab8",
+  "safe_body_preview": "Safe owner notification body for S71 dispatch.",
+  "provider_payload_hash": "890573d636c32ec42680247777e8f205223aa6697e69f9888775b73592e8a163",
+  "raw_provider_payload": {
+    "secret": "must-not-cross-contract"
+  },
+  "idempotency_key_hash": "bd02b3929b491d1f4b00913c2766ce24d7c469cb87cc7e2dd4f5937d7650132b",
+  "attempt_count": 0,
+  "last_attempt_at": null,
+  "next_attempt_at": null,
+  "last_error_code": null,
+  "last_error_hash": null,
+  "metadata": {
+    "raw_notification_payload_stored": false,
+    "raw_external_incident_payload_stored": false,
+    "raw_provider_payload_stored": false,
+    "raw_action_comment_stored": false,
+    "raw_prompt_stored": false,
+    "raw_generation_output_stored": false,
+    "raw_source_text_stored": false,
+    "storage_paths_included": false,
+    "safe_body_storage": "hash_and_short_preview_only",
+    "provider_execution": "mock_first_only",
+    "live_notification_delivery": false,
+    "live_external_incident_sync": false,
+    "dispatch_state_storage": "ag_owned_outbox_state_only"
+  },
+  "created_at": "2026-09-11T07:08:00Z",
+  "updated_at": "2026-09-11T07:08:00Z",
+  "completed_at": null
+}

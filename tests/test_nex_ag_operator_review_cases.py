@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from jsonschema import Draft202012Validator
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -164,6 +165,28 @@ from nex_runtime import (
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def operator_review_case_contract_validator() -> Draft202012Validator:
+    schema = json.loads(
+        (
+            ROOT
+            / "contracts"
+            / "schemas"
+            / "service"
+            / "nex_ag"
+            / "operator_review_case.v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    return Draft202012Validator(schema)
+
+
+def assert_operator_review_case_contract_accepts(payload: dict[str, Any]) -> None:
+    errors = sorted(
+        operator_review_case_contract_validator().iter_errors(payload),
+        key=lambda error: list(error.path),
+    )
+    assert errors == []
 
 
 def sample_case_payload(**overrides: Any) -> dict[str, Any]:
@@ -1607,6 +1630,77 @@ def test_escalation_dispatch_action_state_machine_success_path() -> None:
     )
     assert response["summary"]["dispatch_status"] == "SUCCEEDED"
     assert response["redaction"]["raw_provider_payload_included"] is False
+
+
+def test_operator_review_escalation_dispatch_contract_accepts_runtime_surfaces() -> None:
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(
+            candidate_id="case-0708:dispatch-contract",
+            escalation_level="FOLLOW_UP",
+            case_id="case-0708-dispatch-contract",
+            target_ref={
+                "target_service": "nex-cx",
+                "target_kind": "retrieval_package",
+                "target_id": "cx-generation-0708",
+            },
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0708-escalation",
+        created_at="2026-09-11T07:00:00Z",
+    )
+    plan = build_operator_review_escalation_dispatch_plan(
+        escalation,
+        {
+            "dispatch_intent": "NOTIFY_OWNER",
+            "safe_subject": "S71 dispatch requires owner review.",
+            "safe_body": "Safe owner notification body for S71 dispatch.",
+            "provider_payload_fingerprint": "mock-provider-payload-v1",
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0708-dispatch",
+        created_at="2026-09-11T07:08:00Z",
+    )
+    plan["idempotency_status"] = "NEW"
+    dispatch = plan["dispatch_record"]
+    assert isinstance(dispatch, dict)
+    listed = build_operator_review_escalation_dispatch_list_response(
+        [dispatch],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    started, action = apply_operator_review_escalation_dispatch_action(
+        dispatch,
+        {
+            "action_type": "START",
+            "operator_ref": {
+                "operator_type": "service",
+                "operator_id": "nex-ag",
+            },
+            "reason_codes": ["mock_provider_attempt_started"],
+            "action_comment": "Action comment preview.",
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0708-action",
+        acted_at="2026-09-11T07:10:00Z",
+    )
+    mutation = build_operator_review_escalation_dispatch_action_mutation_response(
+        started,
+        action,
+        idempotency_status="NEW",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    for payload in (plan, dispatch, listed, mutation):
+        assert_operator_review_case_contract_accepts(payload)
+
+    leaked_record = {**dispatch, "raw_provider_payload": {"secret": "nope"}}
+    assert list(
+        operator_review_case_contract_validator().iter_errors(leaked_record)
+    )
 
 
 def test_escalation_dispatch_action_failure_retry_cancel_paths() -> None:

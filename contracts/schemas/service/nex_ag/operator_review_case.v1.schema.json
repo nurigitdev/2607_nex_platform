@@ -23,6 +23,18 @@
     },
     {
       "$ref": "#/$defs/escalation_action_mutation_response"
+    },
+    {
+      "$ref": "#/$defs/dispatch_plan_response"
+    },
+    {
+      "$ref": "#/$defs/dispatch_record"
+    },
+    {
+      "$ref": "#/$defs/dispatch_list_response"
+    },
+    {
+      "$ref": "#/$defs/dispatch_action_mutation_response"
     }
   ],
   "$defs": {
@@ -142,6 +154,48 @@
         "DISMISS",
         "RESOLVE",
         "REOPEN"
+      ]
+    },
+    "dispatch_status": {
+      "type": "string",
+      "enum": [
+        "PENDING",
+        "DISPATCHING",
+        "SUCCEEDED",
+        "FAILED",
+        "RETRY_WAIT",
+        "CANCELLED"
+      ]
+    },
+    "dispatch_intent": {
+      "type": "string",
+      "enum": [
+        "NOTIFY_OPERATOR",
+        "NOTIFY_OWNER",
+        "OPEN_INCIDENT",
+        "UPDATE_INCIDENT",
+        "CANCEL_PENDING_DISPATCH",
+        "RETRY_FAILED_DISPATCH"
+      ]
+    },
+    "dispatch_channel_type": {
+      "type": "string",
+      "enum": [
+        "MOCK",
+        "NOTIFICATION",
+        "EMAIL",
+        "WEBHOOK",
+        "INCIDENT"
+      ]
+    },
+    "dispatch_action_type": {
+      "type": "string",
+      "enum": [
+        "START",
+        "SUCCEED",
+        "FAIL",
+        "RETRY",
+        "CANCEL"
       ]
     },
     "escalation_level": {
@@ -679,6 +733,276 @@
         }
       }
     },
+    "dispatch_provider_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_type",
+        "provider_id",
+        "channel_type",
+        "external_ref"
+      ],
+      "properties": {
+        "provider_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "channel_type": {
+          "$ref": "#/$defs/dispatch_channel_type"
+        },
+        "external_ref": {
+          "$ref": "#/$defs/nullable_text"
+        }
+      }
+    },
+    "dispatch_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispatch_schema_version",
+        "dispatch_id",
+        "escalation_id",
+        "case_id",
+        "target_service",
+        "target_kind",
+        "target_id",
+        "trace_id",
+        "request_id",
+        "operator_ref",
+        "channel_type",
+        "provider_ref",
+        "provider_profile",
+        "dispatch_status",
+        "dispatch_intent",
+        "reason_codes",
+        "safe_subject",
+        "safe_body_hash",
+        "safe_body_preview",
+        "provider_payload_hash",
+        "idempotency_key_hash",
+        "attempt_count",
+        "last_attempt_at",
+        "next_attempt_at",
+        "last_error_code",
+        "last_error_hash",
+        "metadata",
+        "created_at",
+        "updated_at",
+        "completed_at"
+      ],
+      "properties": {
+        "dispatch_schema_version": {
+          "const": "ag_operator_review_escalation_dispatch.v1"
+        },
+        "dispatch_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "escalation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_service": {
+          "$ref": "#/$defs/target_service"
+        },
+        "target_kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operator_ref": {
+          "$ref": "#/$defs/operator_ref"
+        },
+        "channel_type": {
+          "$ref": "#/$defs/dispatch_channel_type"
+        },
+        "provider_ref": {
+          "$ref": "#/$defs/dispatch_provider_ref"
+        },
+        "provider_profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dispatch_status": {
+          "$ref": "#/$defs/dispatch_status"
+        },
+        "dispatch_intent": {
+          "$ref": "#/$defs/dispatch_intent"
+        },
+        "reason_codes": {
+          "$ref": "#/$defs/string_array"
+        },
+        "safe_subject": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "safe_body_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "safe_body_preview": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "provider_payload_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "idempotency_key_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "attempt_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "last_attempt_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        },
+        "next_attempt_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        },
+        "last_error_code": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "last_error_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "completed_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        }
+      }
+    },
+    "dispatch_action_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispatch_action_schema_version",
+        "action_id",
+        "dispatch_id",
+        "escalation_id",
+        "case_id",
+        "action_type",
+        "from_status",
+        "to_status",
+        "target_service",
+        "target_kind",
+        "target_id",
+        "trace_id",
+        "request_id",
+        "operator_ref",
+        "reason_codes",
+        "action_comment_hash",
+        "action_comment_preview",
+        "attempt_count",
+        "last_error_code",
+        "last_error_hash",
+        "next_attempt_at",
+        "metadata",
+        "acted_at"
+      ],
+      "properties": {
+        "dispatch_action_schema_version": {
+          "const": "ag_operator_review_escalation_dispatch_action.v1"
+        },
+        "action_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dispatch_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "escalation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_type": {
+          "$ref": "#/$defs/dispatch_action_type"
+        },
+        "from_status": {
+          "$ref": "#/$defs/dispatch_status"
+        },
+        "to_status": {
+          "$ref": "#/$defs/dispatch_status"
+        },
+        "target_service": {
+          "$ref": "#/$defs/target_service"
+        },
+        "target_kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operator_ref": {
+          "$ref": "#/$defs/operator_ref"
+        },
+        "reason_codes": {
+          "$ref": "#/$defs/string_array"
+        },
+        "action_comment_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "action_comment_preview": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "attempt_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "last_error_code": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "last_error_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "next_attempt_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "acted_at": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
     "case_summary": {
       "type": "object",
       "additionalProperties": false,
@@ -900,6 +1224,509 @@
         }
       }
     },
+    "dispatch_list_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "count",
+        "pending_count",
+        "active_count",
+        "terminal_count",
+        "retryable_count",
+        "by_status",
+        "by_intent",
+        "by_channel",
+        "latest_updated_at"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pending_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "active_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "terminal_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "retryable_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_status": {
+          "$ref": "#/$defs/count_map"
+        },
+        "by_intent": {
+          "$ref": "#/$defs/count_map"
+        },
+        "by_channel": {
+          "$ref": "#/$defs/count_map"
+        },
+        "latest_updated_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        }
+      }
+    },
+    "dispatch_paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispatch_list_path",
+        "dispatch_detail_path_template",
+        "dispatch_action_path_template"
+      ],
+      "properties": {
+        "dispatch_list_path": {
+          "const": "/admin/v1/operator-review/dispatches"
+        },
+        "dispatch_detail_path_template": {
+          "const": "/admin/v1/operator-review/dispatches/{dispatch_id}"
+        },
+        "dispatch_action_path_template": {
+          "const": "/admin/v1/operator-review/dispatches/{dispatch_id}/actions"
+        }
+      }
+    },
+    "dispatch_list_redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_notification_payload_included",
+        "raw_external_incident_payload_included",
+        "provider_secrets_included",
+        "raw_operator_comments_included",
+        "raw_source_text_included",
+        "database_urls_included",
+        "tokens_included",
+        "idempotency_keys_included",
+        "dispatch_record_payload"
+      ],
+      "properties": {
+        "raw_notification_payload_included": {
+          "const": false
+        },
+        "raw_external_incident_payload_included": {
+          "const": false
+        },
+        "provider_secrets_included": {
+          "const": false
+        },
+        "raw_operator_comments_included": {
+          "const": false
+        },
+        "raw_source_text_included": {
+          "const": false
+        },
+        "database_urls_included": {
+          "const": false
+        },
+        "tokens_included": {
+          "const": false
+        },
+        "idempotency_keys_included": {
+          "const": false
+        },
+        "dispatch_record_payload": {
+          "const": "safe_hashes_previews_refs_only"
+        }
+      }
+    },
+    "dispatch_plan_redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_notification_payload_included",
+        "raw_external_incident_payload_included",
+        "provider_secrets_included",
+        "raw_operator_comments_included",
+        "raw_source_text_included",
+        "idempotency_keys_included",
+        "dispatch_record_payload"
+      ],
+      "properties": {
+        "raw_notification_payload_included": {
+          "const": false
+        },
+        "raw_external_incident_payload_included": {
+          "const": false
+        },
+        "provider_secrets_included": {
+          "const": false
+        },
+        "raw_operator_comments_included": {
+          "const": false
+        },
+        "raw_source_text_included": {
+          "const": false
+        },
+        "idempotency_keys_included": {
+          "const": false
+        },
+        "dispatch_record_payload": {
+          "const": "safe_hashes_previews_refs_only"
+        }
+      }
+    },
+    "dispatch_action_redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_notification_payload_included",
+        "raw_external_incident_payload_included",
+        "raw_provider_payload_included",
+        "raw_action_comment_included",
+        "raw_provider_error_included",
+        "idempotency_keys_included",
+        "dispatch_action_storage"
+      ],
+      "properties": {
+        "raw_notification_payload_included": {
+          "const": false
+        },
+        "raw_external_incident_payload_included": {
+          "const": false
+        },
+        "raw_provider_payload_included": {
+          "const": false
+        },
+        "raw_action_comment_included": {
+          "const": false
+        },
+        "raw_provider_error_included": {
+          "const": false
+        },
+        "idempotency_keys_included": {
+          "const": false
+        },
+        "dispatch_action_storage": {
+          "const": "safe_hashes_previews_refs_only"
+        }
+      }
+    },
+    "dispatch_action_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispatch_id",
+        "escalation_id",
+        "case_id",
+        "action_id",
+        "action_type",
+        "from_status",
+        "to_status",
+        "dispatch_status",
+        "dispatch_intent",
+        "attempt_count"
+      ],
+      "properties": {
+        "dispatch_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "escalation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_type": {
+          "$ref": "#/$defs/dispatch_action_type"
+        },
+        "from_status": {
+          "$ref": "#/$defs/dispatch_status"
+        },
+        "to_status": {
+          "$ref": "#/$defs/dispatch_status"
+        },
+        "dispatch_status": {
+          "$ref": "#/$defs/dispatch_status"
+        },
+        "dispatch_intent": {
+          "$ref": "#/$defs/dispatch_intent"
+        },
+        "attempt_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "dispatch_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispatch_policy_schema_version",
+        "policy_id",
+        "policy_version",
+        "default_channel_type",
+        "default_provider_profile",
+        "dispatchable_statuses",
+        "non_dispatching_levels",
+        "initial_dispatch_intents",
+        "level_intents",
+        "deferred_channels",
+        "redaction"
+      ],
+      "properties": {
+        "dispatch_policy_schema_version": {
+          "const": "ag_operator_review_escalation_dispatch_policy.v1"
+        },
+        "policy_id": {
+          "const": "ag_operator_review_escalation_dispatch_policy_v1"
+        },
+        "policy_version": {
+          "const": "v1"
+        },
+        "default_channel_type": {
+          "$ref": "#/$defs/dispatch_channel_type"
+        },
+        "default_provider_profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dispatchable_statuses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/escalation_status"
+          }
+        },
+        "non_dispatching_levels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/escalation_level"
+          }
+        },
+        "initial_dispatch_intents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dispatch_intent"
+          }
+        },
+        "level_intents": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "FOLLOW_UP",
+            "ATTENTION",
+            "BLOCKED"
+          ],
+          "properties": {
+            "FOLLOW_UP": {
+              "$ref": "#/$defs/dispatch_intent"
+            },
+            "ATTENTION": {
+              "$ref": "#/$defs/dispatch_intent"
+            },
+            "BLOCKED": {
+              "$ref": "#/$defs/dispatch_intent"
+            }
+          }
+        },
+        "deferred_channels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dispatch_channel_type"
+          }
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "raw_notification_payload_included",
+            "raw_external_incident_payload_included",
+            "provider_secrets_included",
+            "raw_operator_comments_included",
+            "raw_source_text_included",
+            "idempotency_keys_included",
+            "planner_payload_shape"
+          ],
+          "properties": {
+            "raw_notification_payload_included": {
+              "const": false
+            },
+            "raw_external_incident_payload_included": {
+              "const": false
+            },
+            "provider_secrets_included": {
+              "const": false
+            },
+            "raw_operator_comments_included": {
+              "const": false
+            },
+            "raw_source_text_included": {
+              "const": false
+            },
+            "idempotency_keys_included": {
+              "const": false
+            },
+            "planner_payload_shape": {
+              "const": "safe_refs_hashes_previews_only"
+            }
+          }
+        }
+      }
+    },
+    "dispatch_plan_escalation_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "escalation_id",
+        "candidate_id",
+        "case_id",
+        "target_ref",
+        "escalation_status",
+        "escalation_level",
+        "sla_state",
+        "reason_count",
+        "runbook_count",
+        "recommended_action_count",
+        "updated_at",
+        "closed_at"
+      ],
+      "properties": {
+        "escalation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate_id": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_ref": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "target_service",
+            "target_kind",
+            "target_id"
+          ],
+          "properties": {
+            "target_service": {
+              "$ref": "#/$defs/target_service"
+            },
+            "target_kind": {
+              "type": "string",
+              "minLength": 1
+            },
+            "target_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "escalation_status": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "escalation_level": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "sla_state": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "reason_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "runbook_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "recommended_action_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "updated_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        },
+        "closed_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        }
+      }
+    },
+    "dispatch_plan_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispatch_required",
+        "dispatch_blocked",
+        "dispatch_status",
+        "dispatch_intent",
+        "channel_type",
+        "provider_profile",
+        "blocking_reasons",
+        "reason_codes"
+      ],
+      "properties": {
+        "dispatch_required": {
+          "type": "boolean"
+        },
+        "dispatch_blocked": {
+          "type": "boolean"
+        },
+        "dispatch_status": {
+          "type": "string",
+          "enum": [
+            "PENDING",
+            "SKIPPED"
+          ]
+        },
+        "dispatch_intent": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/dispatch_intent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "channel_type": {
+          "$ref": "#/$defs/dispatch_channel_type"
+        },
+        "provider_profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "blocking_reasons": {
+          "$ref": "#/$defs/string_array"
+        },
+        "reason_codes": {
+          "$ref": "#/$defs/string_array"
+        }
+      }
+    },
+    "dispatch_plan_links": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "escalation_detail_path",
+        "future_dispatch_path_template"
+      ],
+      "properties": {
+        "escalation_detail_path": {
+          "type": "string",
+          "pattern": "^/admin/v1/operator-review/escalations/.+$"
+        },
+        "future_dispatch_path_template": {
+          "type": "string",
+          "pattern": "^/admin/v1/operator-review/escalations/.+/dispatches$"
+        }
+      }
+    },
     "case_list_summary": {
       "type": "object",
       "additionalProperties": false,
@@ -1115,6 +1942,147 @@
         },
         "redaction": {
           "$ref": "#/$defs/escalation_redaction"
+        }
+      }
+    },
+    "dispatch_plan_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispatch_plan_schema_version",
+        "plan_id",
+        "trace_id",
+        "request_id",
+        "policy",
+        "escalation",
+        "decision",
+        "dispatch_record",
+        "links",
+        "redaction"
+      ],
+      "properties": {
+        "dispatch_plan_schema_version": {
+          "const": "ag_operator_review_escalation_dispatch_plan.v1"
+        },
+        "idempotency_status": {
+          "$ref": "#/$defs/idempotency_status"
+        },
+        "plan_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy": {
+          "$ref": "#/$defs/dispatch_policy"
+        },
+        "escalation": {
+          "$ref": "#/$defs/dispatch_plan_escalation_summary"
+        },
+        "decision": {
+          "$ref": "#/$defs/dispatch_plan_decision"
+        },
+        "dispatch_record": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/dispatch_record"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "links": {
+          "$ref": "#/$defs/dispatch_plan_links"
+        },
+        "redaction": {
+          "$ref": "#/$defs/dispatch_plan_redaction"
+        }
+      }
+    },
+    "dispatch_list_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispatch_list_schema_version",
+        "trace_id",
+        "request_id",
+        "items",
+        "summary",
+        "paths",
+        "redaction"
+      ],
+      "properties": {
+        "dispatch_list_schema_version": {
+          "const": "ag_operator_review_escalation_dispatch_list.v1"
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dispatch_record"
+          }
+        },
+        "summary": {
+          "$ref": "#/$defs/dispatch_list_summary"
+        },
+        "paths": {
+          "$ref": "#/$defs/dispatch_paths"
+        },
+        "redaction": {
+          "$ref": "#/$defs/dispatch_list_redaction"
+        }
+      }
+    },
+    "dispatch_action_mutation_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispatch_action_mutation_schema_version",
+        "idempotency_status",
+        "trace_id",
+        "request_id",
+        "dispatch",
+        "action",
+        "summary",
+        "redaction"
+      ],
+      "properties": {
+        "dispatch_action_mutation_schema_version": {
+          "const": "ag_operator_review_escalation_dispatch_action_mutation.v1"
+        },
+        "idempotency_status": {
+          "$ref": "#/$defs/idempotency_status"
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dispatch": {
+          "$ref": "#/$defs/dispatch_record"
+        },
+        "action": {
+          "$ref": "#/$defs/dispatch_action_record"
+        },
+        "summary": {
+          "$ref": "#/$defs/dispatch_action_summary"
+        },
+        "redaction": {
+          "$ref": "#/$defs/dispatch_action_redaction"
         }
       }
     }

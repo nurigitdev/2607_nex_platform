@@ -380,6 +380,53 @@ def test_nex_ag_operations_contract_hardens_retrieval_threshold_decisions() -> N
     ]["$ref"] == "#/$defs/retrieval_threshold_calibration_closure"
 
 
+def test_nex_ag_openapi_includes_operator_review_escalation_dispatch_contract() -> None:
+    openapi_path = (
+        Path(__file__).parents[1] / "contracts" / "openapi" / "nex-ag.openapi.yaml"
+    )
+    spec = yaml.safe_load(openapi_path.read_text(encoding="utf-8"))
+
+    paths = spec["paths"]
+    components = spec["components"]["schemas"]
+    create_route = paths[
+        "/admin/v1/operator-review/escalations/{escalation_id}/dispatches"
+    ]["post"]
+    list_route = paths["/admin/v1/operator-review/dispatches"]["get"]
+    detail_route = paths["/admin/v1/operator-review/dispatches/{dispatch_id}"]["get"]
+    action_route = paths[
+        "/admin/v1/operator-review/dispatches/{dispatch_id}/actions"
+    ]["post"]
+
+    assert create_route["operationId"] == "createAgOperatorReviewEscalationDispatch"
+    assert list_route["operationId"] == "listAgOperatorReviewEscalationDispatches"
+    assert detail_route["operationId"] == "getAgOperatorReviewEscalationDispatch"
+    assert action_route["operationId"] == "applyAgOperatorReviewEscalationDispatchAction"
+    assert create_route["requestBody"]["content"]["application/json"]["schema"][
+        "$ref"
+    ] == "#/components/schemas/AgOperatorReviewEscalationDispatchRequest"
+    assert action_route["requestBody"]["content"]["application/json"]["schema"][
+        "$ref"
+    ] == "#/components/schemas/AgOperatorReviewEscalationDispatchActionRequest"
+    assert components["AgOperatorReviewEscalationDispatchRequest"][
+        "additionalProperties"
+    ] is False
+    assert components["AgOperatorReviewEscalationDispatchActionRequest"][
+        "additionalProperties"
+    ] is False
+    assert components["AgOperatorReviewEscalationDispatchStatus"]["enum"] == [
+        "PENDING",
+        "DISPATCHING",
+        "SUCCEEDED",
+        "FAILED",
+        "RETRY_WAIT",
+        "CANCELLED",
+    ]
+    assert "raw_provider_payload" not in components[
+        "AgOperatorReviewEscalationDispatchRequest"
+    ]["properties"]
+    assert "AgOperatorReviewEscalationDispatchSurface" in components
+
+
 def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:
     openapi_path = (
         Path(__file__).parents[1] / "contracts" / "openapi" / "nex-ag.openapi.yaml"
