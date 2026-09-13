@@ -795,6 +795,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0689`](slices/0689_ag_operator_review_case_sla_escalation_postgresql_smoke.md) | `S69-009` AG operator review case SLA/escalation PostgreSQL smoke evidence. |
 | [`Slice 0690`](slices/0690_s69_operator_review_case_sla_escalation_closure.md) | `S69-010` S69 operator review case SLA/escalation closure checkpoint. |
 | [`Slice 0691`](slices/0691_ag_operator_review_escalation_action_boundary_audit.md) | `S70-001` AG operator review escalation action boundary audit. |
+| [`Slice 0692`](slices/0692_ag_operator_review_escalation_persistence.md) | `S70-002` AG operator review escalation persistence foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

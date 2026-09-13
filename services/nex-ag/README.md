@@ -1167,6 +1167,12 @@ Unified operations:
   `ag_op_escalations` table name for Slice 0692, requires safe
   acknowledgement/snooze/action state only, and keeps outbound notification
   delivery plus external incident sync deferred.
+- Slice 0692 adds the `ag_op_escalations` persistence foundation through
+  `database/nex-ag/migrations/0692_ag_operator_review_escalation_persistence.sql`,
+  `OperatorReviewEscalationStore`, and
+  `SqlAlchemyOperatorReviewEscalationStore`. The table stores safe
+  acknowledgement/action state, comment hashes/previews, and idempotency hashes
+  while keeping notification delivery and external incident sync deferred.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

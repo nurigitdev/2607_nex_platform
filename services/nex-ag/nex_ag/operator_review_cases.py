@@ -85,11 +85,13 @@ OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION = (
     "ag_operator_review_case_action_mutation.v1"
 )
 OPERATOR_REVIEW_CASE_ROLLUP_SCHEMA_VERSION = "ag_operator_review_case_rollup.v1"
+OPERATOR_REVIEW_ESCALATION_SCHEMA_VERSION = "ag_operator_review_escalation.v1"
 OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE = "ag.operator_review_case.recorded"
 OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE = (
     "ag.operator_review_case_action.recorded"
 )
 AG_OPERATOR_REVIEW_CASE_TABLE = "ag_op_cases"
+AG_OPERATOR_REVIEW_ESCALATION_TABLE = "ag_op_escalations"
 MAX_CASE_COMMENT_PREVIEW_LENGTH = 240
 
 ALLOWED_CASE_ACTIONS = (
@@ -118,6 +120,14 @@ ALLOWED_CASE_QUEUE_SORT_FIELDS = (
     "case_id",
 )
 ALLOWED_CASE_QUEUE_SORT_DIRECTIONS = ("asc", "desc")
+ALLOWED_ESCALATION_STATUSES = (
+    "ACTIVE",
+    "ACKNOWLEDGED",
+    "SNOOZED",
+    "DISMISSED",
+    "RESOLVED",
+    "REOPENED",
+)
 CASE_ACTION_TARGET_STATUSES = {
     "ACKNOWLEDGE": "ACKNOWLEDGED",
     "ASSIGN": "ASSIGNED",
@@ -313,7 +323,172 @@ class SqlAlchemyOperatorReviewCaseStore:
             raise _case_store_unavailable_error() from exc
 
 
+@dataclass
+class OperatorReviewEscalationStore:
+    records: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        self.records[record["escalation_id"]] = record
+        return record
+
+    def get(self, escalation_id: str) -> dict[str, Any] | None:
+        return self.records.get(escalation_id)
+
+    def get_by_candidate_id(self, candidate_id: str) -> dict[str, Any] | None:
+        for record in self.records.values():
+            if record.get("candidate_id") == candidate_id:
+                return record
+        return None
+
+    def list_escalations(
+        self,
+        *,
+        case_id: str | None = None,
+        candidate_id: str | None = None,
+        escalation_status: str | None = None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        selected = [
+            record
+            for record in self.records.values()
+            if _escalation_matches_filter(
+                record,
+                case_id=case_id,
+                candidate_id=candidate_id,
+                escalation_status=escalation_status,
+                target_service=target_service,
+                target_kind=target_kind,
+                target_id=target_id,
+            )
+        ]
+        selected.sort(
+            key=lambda record: (
+                str(record.get("updated_at") or ""),
+                str(record.get("escalation_id") or ""),
+            ),
+            reverse=True,
+        )
+        return selected[:normalize_limit(limit)]
+
+    def delete(self, escalation_id: str) -> int:
+        return 1 if self.records.pop(escalation_id, None) is not None else 0
+
+
+class SqlAlchemyOperatorReviewEscalationStore:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        try:
+            with self._session_factory() as session:
+                session.execute(
+                    text(_operator_review_escalation_upsert_sql(_dialect_name(session))),
+                    _operator_review_escalation_record_params(record),
+                )
+                session.commit()
+            return record
+        except SQLAlchemyError as exc:
+            raise _escalation_store_unavailable_error() from exc
+
+    def get(self, escalation_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            _operator_review_escalation_select_sql(
+                                "escalation_id = :escalation_id"
+                            )
+                        ),
+                        {"escalation_id": escalation_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+            return _operator_review_escalation_record_from_row(row) if row else None
+        except SQLAlchemyError as exc:
+            raise _escalation_store_unavailable_error() from exc
+
+    def get_by_candidate_id(self, candidate_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            _operator_review_escalation_select_sql(
+                                "candidate_id = :candidate_id"
+                            )
+                        ),
+                        {"candidate_id": candidate_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+            return _operator_review_escalation_record_from_row(row) if row else None
+        except SQLAlchemyError as exc:
+            raise _escalation_store_unavailable_error() from exc
+
+    def list_escalations(
+        self,
+        *,
+        case_id: str | None = None,
+        candidate_id: str | None = None,
+        escalation_status: str | None = None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        where_clause, params = _operator_review_escalation_filter_clause(
+            case_id=case_id,
+            candidate_id=candidate_id,
+            escalation_status=escalation_status,
+            target_service=target_service,
+            target_kind=target_kind,
+            target_id=target_id,
+        )
+        params["limit"] = normalize_limit(limit)
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            _operator_review_escalation_select_sql(
+                                where_clause
+                                + " ORDER BY updated_at DESC, escalation_id ASC"
+                                + " LIMIT :limit"
+                            )
+                        ),
+                        params,
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [_operator_review_escalation_record_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _escalation_store_unavailable_error() from exc
+
+    def delete(self, escalation_id: str) -> int:
+        try:
+            with self._session_factory() as session:
+                result = session.execute(
+                    text(
+                        "DELETE FROM ag_op_escalations "
+                        "WHERE escalation_id = :escalation_id"
+                    ),
+                    {"escalation_id": escalation_id},
+                )
+                session.commit()
+                return int(result.rowcount or 0)
+        except SQLAlchemyError as exc:
+            raise _escalation_store_unavailable_error() from exc
+
+
 DEFAULT_OPERATOR_REVIEW_CASE_STORE = OperatorReviewCaseStore()
+DEFAULT_OPERATOR_REVIEW_ESCALATION_STORE = OperatorReviewEscalationStore()
 DEFAULT_OPERATOR_REVIEW_CASE_AUDIT_EVENT_STORE = InMemoryOperationalEventStore()
 
 
@@ -831,6 +1006,14 @@ def default_operator_review_case_store(app: FastAPI) -> Any:
     if session_factory is not None:
         return SqlAlchemyOperatorReviewCaseStore(session_factory)
     return DEFAULT_OPERATOR_REVIEW_CASE_STORE
+
+
+def default_operator_review_escalation_store(app: FastAPI) -> Any:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is not None:
+        return SqlAlchemyOperatorReviewEscalationStore(session_factory)
+    return DEFAULT_OPERATOR_REVIEW_ESCALATION_STORE
 
 
 def register_operator_review_case_routes(
@@ -3017,6 +3200,135 @@ def operator_review_case_action_id(case_id: str, idempotency_key: str) -> str:
     )
 
 
+def build_operator_review_escalation_record(
+    candidate: dict[str, Any],
+    payload: dict[str, Any] | None = None,
+    *,
+    request_id: str,
+    trace_id: str | None,
+    idempotency_key: str | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    payload_value = dict(payload or {})
+    assert_operator_review_note_payload_redaction_safe(payload_value)
+    candidate_id = required_text(candidate, "candidate_id")
+    case_id = required_case_id(candidate.get("case_id"))
+    target = target_ref(candidate.get("target_ref"))
+    operator = operator_ref(
+        payload_value.get(
+            "operator_ref",
+            {
+                "operator_type": "service",
+                "operator_id": "nex-ag",
+            },
+        )
+    )
+    assignment = operator_review_case_assignment_ref(candidate.get("assignment_ref"))
+    status = optional_choice(
+        payload_value.get("escalation_status"),
+        key="escalation_status",
+        choices=ALLOWED_ESCALATION_STATUSES,
+        default="ACTIVE",
+    )
+    action_comment = optional_text(payload_value.get("action_comment"))
+    now = created_at or _utc_now()
+    escalation_id = optional_text(payload_value.get("escalation_id")) or str(
+        uuid5(
+            NAMESPACE_URL,
+            "ag-operator-review-escalation:"
+            f"{candidate_id}:{case_id}:"
+            f"{sha256_text(idempotency_key) if idempotency_key else 'candidate'}",
+        )
+    )
+    closed_at = now if status in {"DISMISSED", "RESOLVED"} else None
+    return {
+        "escalation_schema_version": OPERATOR_REVIEW_ESCALATION_SCHEMA_VERSION,
+        "escalation_id": escalation_id,
+        "candidate_id": candidate_id,
+        "case_id": case_id,
+        "target_service": target["target_service"],
+        "target_kind": target["target_kind"],
+        "target_id": target["target_id"],
+        "trace_id": optional_text(trace_id),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "operator_ref": operator,
+        "assignment_ref": assignment,
+        "escalation_status": status,
+        "escalation_level": required_text(candidate, "escalation_level"),
+        "sla_state": required_text(candidate, "sla_state"),
+        "reason_codes": reason_code_list(candidate.get("escalation_reasons")),
+        "runbook_ids": _safe_string_list(candidate.get("runbook_ids")),
+        "recommended_actions": _safe_string_list(
+            candidate.get("recommended_operator_actions")
+        ),
+        "last_action_type": optional_text(payload_value.get("last_action_type")),
+        "last_action_at": optional_text(payload_value.get("last_action_at")),
+        "snoozed_until": optional_text(payload_value.get("snoozed_until")),
+        "comment_hash": sha256_text(action_comment) if action_comment else None,
+        "comment_preview": operator_note_preview(action_comment),
+        "idempotency_key_hash": sha256_text(idempotency_key) if idempotency_key else None,
+        "metadata": operator_review_escalation_metadata(
+            payload_value.get("metadata"),
+            idempotency_key_hash=(
+                sha256_text(idempotency_key) if idempotency_key else None
+            ),
+        ),
+        "created_at": now,
+        "updated_at": now,
+        "closed_at": closed_at,
+    }
+
+
+def operator_review_escalation_metadata(
+    value: Any,
+    *,
+    idempotency_key_hash: str | None = None,
+) -> dict[str, Any]:
+    if value is None:
+        metadata: dict[str, Any] = {}
+    elif isinstance(value, dict):
+        metadata = dict(value)
+    else:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.operator_review_escalation_metadata_invalid",
+            detail="metadata must be an object when supplied.",
+        )
+    metadata.update(
+        {
+            "raw_case_comment_stored": False,
+            "raw_action_comment_stored": False,
+            "raw_operator_note_stored": False,
+            "raw_evidence_body_stored": False,
+            "raw_prompt_stored": False,
+            "raw_generation_output_stored": False,
+            "raw_source_text_stored": False,
+            "raw_notification_payload_stored": False,
+            "raw_external_incident_payload_stored": False,
+            "storage_paths_included": False,
+            "comment_storage": "hash_and_short_preview_only",
+            "action_state_storage": "ag_owned_escalation_state_only",
+            "notification_delivery_deferred": True,
+            "external_incident_sync_deferred": True,
+        }
+    )
+    if idempotency_key_hash is not None:
+        metadata["idempotency_key_hash"] = idempotency_key_hash
+        metadata["idempotency_key_stored"] = False
+    return json.loads(json.dumps(metadata))
+
+
+def operator_review_escalation_id(candidate_id: str, idempotency_key: str) -> str:
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            "ag-operator-review-escalation:"
+            f"{required_text({'candidate_id': candidate_id}, 'candidate_id')}:"
+            f"{sha256_text(idempotency_key)}",
+        )
+    )
+
+
 def _target_status_for_case_action(action_type: str, from_status: str) -> str:
     allowed_from = CASE_ACTION_ALLOWED_FROM.get(action_type)
     if allowed_from is None or action_type not in CASE_ACTION_TARGET_STATUSES:
@@ -4390,6 +4702,252 @@ def _operator_review_case_record_from_row(row: Any) -> dict[str, Any]:
     }
 
 
+def _operator_review_escalation_filter_clause(
+    *,
+    case_id: str | None,
+    candidate_id: str | None,
+    escalation_status: str | None,
+    target_service: str | None,
+    target_kind: str | None,
+    target_id: str | None,
+) -> tuple[str, dict[str, Any]]:
+    clauses = ["1 = 1"]
+    params: dict[str, Any] = {}
+    for name, value in (
+        ("case_id", case_id),
+        ("candidate_id", candidate_id),
+        ("escalation_status", escalation_status),
+        ("target_service", target_service),
+        ("target_kind", target_kind),
+        ("target_id", target_id),
+    ):
+        if value is not None:
+            clauses.append(f"{name} = :{name}")
+            params[name] = value
+    return " AND ".join(clauses), params
+
+
+def _operator_review_escalation_upsert_sql(dialect_name: str) -> str:
+    operator_ref_expr = _json_param_expr("operator_ref", dialect_name)
+    assignment_ref_expr = _json_param_expr("assignment_ref", dialect_name)
+    reason_codes_expr = _json_param_expr("reason_codes", dialect_name)
+    runbook_ids_expr = _json_param_expr("runbook_ids", dialect_name)
+    recommended_actions_expr = _json_param_expr("recommended_actions", dialect_name)
+    metadata_expr = _json_param_expr("metadata", dialect_name)
+    return f"""
+        INSERT INTO ag_op_escalations (
+            escalation_id,
+            escalation_schema_version,
+            candidate_id,
+            case_id,
+            target_service,
+            target_kind,
+            target_id,
+            trace_id,
+            request_id,
+            operator_type,
+            operator_id,
+            tenant_id,
+            operator_ref,
+            assignment_ref,
+            escalation_status,
+            escalation_level,
+            sla_state,
+            reason_codes,
+            runbook_ids,
+            recommended_actions,
+            last_action_type,
+            last_action_at,
+            snoozed_until,
+            comment_hash,
+            comment_preview,
+            idempotency_key_hash,
+            metadata,
+            created_at,
+            updated_at,
+            closed_at
+        )
+        VALUES (
+            :escalation_id,
+            :escalation_schema_version,
+            :candidate_id,
+            :case_id,
+            :target_service,
+            :target_kind,
+            :target_id,
+            :trace_id,
+            :request_id,
+            :operator_type,
+            :operator_id,
+            :tenant_id,
+            {operator_ref_expr},
+            {assignment_ref_expr},
+            :escalation_status,
+            :escalation_level,
+            :sla_state,
+            {reason_codes_expr},
+            {runbook_ids_expr},
+            {recommended_actions_expr},
+            :last_action_type,
+            :last_action_at,
+            :snoozed_until,
+            :comment_hash,
+            :comment_preview,
+            :idempotency_key_hash,
+            {metadata_expr},
+            :created_at,
+            :updated_at,
+            :closed_at
+        )
+        ON CONFLICT (escalation_id) DO UPDATE SET
+            escalation_schema_version = excluded.escalation_schema_version,
+            candidate_id = excluded.candidate_id,
+            case_id = excluded.case_id,
+            target_service = excluded.target_service,
+            target_kind = excluded.target_kind,
+            target_id = excluded.target_id,
+            trace_id = excluded.trace_id,
+            request_id = excluded.request_id,
+            operator_type = excluded.operator_type,
+            operator_id = excluded.operator_id,
+            tenant_id = excluded.tenant_id,
+            operator_ref = excluded.operator_ref,
+            assignment_ref = excluded.assignment_ref,
+            escalation_status = excluded.escalation_status,
+            escalation_level = excluded.escalation_level,
+            sla_state = excluded.sla_state,
+            reason_codes = excluded.reason_codes,
+            runbook_ids = excluded.runbook_ids,
+            recommended_actions = excluded.recommended_actions,
+            last_action_type = excluded.last_action_type,
+            last_action_at = excluded.last_action_at,
+            snoozed_until = excluded.snoozed_until,
+            comment_hash = excluded.comment_hash,
+            comment_preview = excluded.comment_preview,
+            idempotency_key_hash = excluded.idempotency_key_hash,
+            metadata = excluded.metadata,
+            updated_at = excluded.updated_at,
+            closed_at = excluded.closed_at
+    """
+
+
+def _operator_review_escalation_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            escalation_schema_version,
+            escalation_id,
+            candidate_id,
+            case_id,
+            target_service,
+            target_kind,
+            target_id,
+            trace_id,
+            request_id,
+            operator_ref,
+            assignment_ref,
+            escalation_status,
+            escalation_level,
+            sla_state,
+            reason_codes,
+            runbook_ids,
+            recommended_actions,
+            last_action_type,
+            last_action_at,
+            snoozed_until,
+            comment_hash,
+            comment_preview,
+            idempotency_key_hash,
+            metadata,
+            created_at,
+            updated_at,
+            closed_at
+        FROM ag_op_escalations
+        WHERE {where_clause}
+    """
+
+
+def _operator_review_escalation_record_params(record: dict[str, Any]) -> dict[str, Any]:
+    operator = record["operator_ref"]
+    return {
+        **record,
+        "operator_type": operator["operator_type"],
+        "operator_id": operator["operator_id"],
+        "tenant_id": operator.get("tenant_id"),
+        "operator_ref": json.dumps(record["operator_ref"]),
+        "assignment_ref": json.dumps(record["assignment_ref"]),
+        "reason_codes": json.dumps(record["reason_codes"]),
+        "runbook_ids": json.dumps(record["runbook_ids"]),
+        "recommended_actions": json.dumps(record["recommended_actions"]),
+        "metadata": json.dumps(record["metadata"]),
+    }
+
+
+def _operator_review_escalation_record_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return {
+        "escalation_schema_version": data["escalation_schema_version"],
+        "escalation_id": data["escalation_id"],
+        "candidate_id": data["candidate_id"],
+        "case_id": data["case_id"],
+        "target_service": data["target_service"],
+        "target_kind": data["target_kind"],
+        "target_id": data["target_id"],
+        "trace_id": data["trace_id"],
+        "request_id": data["request_id"],
+        "operator_ref": _json_value(data["operator_ref"], {}),
+        "assignment_ref": _json_value(data["assignment_ref"], {}),
+        "escalation_status": data["escalation_status"],
+        "escalation_level": data["escalation_level"],
+        "sla_state": data["sla_state"],
+        "reason_codes": _json_value(data["reason_codes"], []),
+        "runbook_ids": _json_value(data["runbook_ids"], []),
+        "recommended_actions": _json_value(data["recommended_actions"], []),
+        "last_action_type": data["last_action_type"],
+        "last_action_at": (
+            _datetime_value(data["last_action_at"]) if data["last_action_at"] else None
+        ),
+        "snoozed_until": (
+            _datetime_value(data["snoozed_until"]) if data["snoozed_until"] else None
+        ),
+        "comment_hash": data["comment_hash"],
+        "comment_preview": data["comment_preview"],
+        "idempotency_key_hash": data["idempotency_key_hash"],
+        "metadata": _json_value(data["metadata"], {}),
+        "created_at": _datetime_value(data["created_at"]),
+        "updated_at": _datetime_value(data["updated_at"]),
+        "closed_at": _datetime_value(data["closed_at"]) if data["closed_at"] else None,
+    }
+
+
+def _escalation_matches_filter(
+    record: dict[str, Any],
+    *,
+    case_id: str | None,
+    candidate_id: str | None,
+    escalation_status: str | None,
+    target_service: str | None,
+    target_kind: str | None,
+    target_id: str | None,
+) -> bool:
+    return all(
+        (
+            case_id is None or record.get("case_id") == case_id,
+            candidate_id is None or record.get("candidate_id") == candidate_id,
+            escalation_status is None
+            or record.get("escalation_status") == escalation_status,
+            target_service is None or record.get("target_service") == target_service,
+            target_kind is None or record.get("target_kind") == target_kind,
+            target_id is None or record.get("target_id") == target_id,
+        )
+    )
+
+
+def _safe_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return sorted({item.strip() for item in value if isinstance(item, str) and item.strip()})
+
+
 def _count_by(records: list[dict[str, Any]], key: str) -> dict[str, int]:
     counts: dict[str, int] = {}
     for record in records:
@@ -4403,6 +4961,14 @@ def _case_store_unavailable_error() -> OperatorReviewNoteError:
         status_code=503,
         error_code="ag.operator_review_case_store_unavailable",
         detail="Operator review case store is unavailable.",
+    )
+
+
+def _escalation_store_unavailable_error() -> OperatorReviewNoteError:
+    return OperatorReviewNoteError(
+        status_code=503,
+        error_code="ag.operator_review_escalation_store_unavailable",
+        detail="Operator review escalation store is unavailable.",
     )
 
 

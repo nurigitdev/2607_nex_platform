@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -33,9 +34,16 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_CASE_SLA_POLICY_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_TIMELINE_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_WORKBENCH_DETAIL_SCHEMA_VERSION,
+    OPERATOR_REVIEW_ESCALATION_SCHEMA_VERSION,
+    AG_OPERATOR_REVIEW_ESCALATION_TABLE,
     OperatorReviewCaseService,
     OperatorReviewCaseStore,
+    OperatorReviewEscalationStore,
     SqlAlchemyOperatorReviewCaseStore,
+    SqlAlchemyOperatorReviewEscalationStore,
+    _operator_review_escalation_filter_clause,
+    _operator_review_escalation_record_params,
+    _operator_review_escalation_select_sql,
     _operator_review_case_filter_clause,
     _case_queue_item_matches_query,
     _case_elapsed_seconds,
@@ -48,6 +56,7 @@ from nex_ag.operator_review_cases import (
     _case_sla_state_sort_rank,
     _target_status_for_case_action,
     apply_operator_review_case_action,
+    build_operator_review_escalation_record,
     build_operator_review_case_action_mutation_response,
     build_operator_review_case_action_outcome_projection,
     build_operator_review_case_action_record,
@@ -68,6 +77,7 @@ from nex_ag.operator_review_cases import (
     default_operator_review_case_store,
     emit_operator_review_case_action_event,
     emit_operator_review_case_event,
+    operator_review_escalation_metadata,
     operator_review_case_action_id,
     operator_review_case_action_metadata,
     operator_review_case_action_request_signature,
@@ -103,6 +113,7 @@ from nex_runtime import (
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def sample_case_payload(**overrides: Any) -> dict[str, Any]:
@@ -150,6 +161,44 @@ def sample_action_payload(**overrides: Any) -> dict[str, Any]:
     }
     payload.update(overrides)
     return payload
+
+
+def sample_escalation_candidate(**overrides: Any) -> dict[str, Any]:
+    candidate: dict[str, Any] = {
+        "case_escalation_item_schema_version": (
+            "ag_operator_review_case_escalation_item.v1"
+        ),
+        "candidate_id": "case-0692:warning:attention",
+        "case_id": "case-0692",
+        "target_ref": {
+            "target_service": "nex-ag",
+            "target_kind": "operator_review_workbench",
+            "target_id": "target-0692",
+        },
+        "case_status": "OPEN",
+        "case_priority": "HIGH",
+        "assignment_ref": {
+            "assignee_type": "user",
+            "assignee_id": "employee-0692",
+            "tenant_id": "local-tenant",
+        },
+        "attention_status": "ATTENTION",
+        "sla_state": "WARNING",
+        "escalation_level": "ATTENTION",
+        "escalation_reasons": ["sla_warning", "open_case_unassigned"],
+        "runbook_ids": [
+            "ag.operator_review_case.assign_owner.v1",
+            "ag.operator_review_case.sla_followup.v1",
+        ],
+        "recommended_operator_actions": ["assign_case_owner"],
+        "age_seconds": 28801,
+        "reference_time": "2026-09-11T04:00:00Z",
+        "links": {
+            "case_detail_path": "/admin/v1/operator-review/cases/case-0692",
+        },
+    }
+    candidate.update(overrides)
+    return candidate
 
 
 def build_case(
@@ -273,6 +322,50 @@ def sqlite_case_store() -> tuple[SqlAlchemyOperatorReviewCaseStore, Any]:
             )
         )
     return SqlAlchemyOperatorReviewCaseStore(build_session_factory(engine)), engine
+
+
+def sqlite_escalation_store() -> tuple[SqlAlchemyOperatorReviewEscalationStore, Any]:
+    engine = build_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                f"""
+                CREATE TABLE {AG_OPERATOR_REVIEW_ESCALATION_TABLE} (
+                    escalation_id TEXT PRIMARY KEY,
+                    escalation_schema_version TEXT NOT NULL,
+                    candidate_id TEXT NOT NULL,
+                    case_id TEXT NOT NULL,
+                    target_service TEXT NOT NULL,
+                    target_kind TEXT NOT NULL,
+                    target_id TEXT NOT NULL,
+                    trace_id TEXT,
+                    request_id TEXT NOT NULL,
+                    operator_type TEXT NOT NULL,
+                    operator_id TEXT NOT NULL,
+                    tenant_id TEXT,
+                    operator_ref TEXT NOT NULL,
+                    assignment_ref TEXT NOT NULL,
+                    escalation_status TEXT NOT NULL,
+                    escalation_level TEXT NOT NULL,
+                    sla_state TEXT NOT NULL,
+                    reason_codes TEXT NOT NULL,
+                    runbook_ids TEXT NOT NULL,
+                    recommended_actions TEXT NOT NULL,
+                    last_action_type TEXT,
+                    last_action_at TEXT,
+                    snoozed_until TEXT,
+                    comment_hash TEXT,
+                    comment_preview TEXT,
+                    idempotency_key_hash TEXT,
+                    metadata TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    closed_at TEXT
+                )
+                """
+            )
+        )
+    return SqlAlchemyOperatorReviewEscalationStore(build_session_factory(engine)), engine
 
 
 def service_auth_headers() -> dict[str, str]:
@@ -486,6 +579,202 @@ def test_case_store_filters_and_delete_in_memory() -> None:
     assert store.list_cases(updated_from="2026-09-11T00:30:00Z") == [assigned_case]
     assert store.delete("case-open") == 1
     assert store.delete("case-open") == 0
+
+
+def test_operator_review_escalation_record_redacts_and_hashes_comment() -> None:
+    record = build_operator_review_escalation_record(
+        sample_escalation_candidate(),
+        {
+            "operator_ref": {
+                "operator_type": "user",
+                "operator_id": "employee-0692",
+                "tenant_id": "local-tenant",
+            },
+            "action_comment": "Acknowledge the escalation without leaking raw text.",
+            "metadata": {"source_view": "escalation_candidate"},
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0692-escalation",
+        created_at="2026-09-11T04:00:00Z",
+    )
+
+    assert record["escalation_schema_version"] == OPERATOR_REVIEW_ESCALATION_SCHEMA_VERSION
+    assert record["escalation_status"] == "ACTIVE"
+    assert record["escalation_level"] == "ATTENTION"
+    assert record["sla_state"] == "WARNING"
+    assert record["case_id"] == "case-0692"
+    assert record["target_service"] == "nex-ag"
+    assert record["reason_codes"] == ["sla_warning", "open_case_unassigned"]
+    assert record["runbook_ids"] == [
+        "ag.operator_review_case.assign_owner.v1",
+        "ag.operator_review_case.sla_followup.v1",
+    ]
+    assert record["comment_hash"] == sha256_text(
+        "Acknowledge the escalation without leaking raw text."
+    )
+    assert record["comment_preview"] == (
+        "Acknowledge the escalation without leaking raw text."
+    )
+    assert record["metadata"]["comment_storage"] == "hash_and_short_preview_only"
+    assert record["metadata"]["raw_notification_payload_stored"] is False
+    assert record["metadata"]["external_incident_sync_deferred"] is True
+    assert record["metadata"]["idempotency_key_stored"] is False
+    serialized = json.dumps(record, ensure_ascii=False)
+    assert "idem-0692-escalation" not in serialized
+    assert "raw_notification_payload" not in record
+
+
+def test_operator_review_escalation_record_validation() -> None:
+    with pytest.raises(OperatorReviewNoteError) as exc_info:
+        build_operator_review_escalation_record(
+            sample_escalation_candidate(),
+            {"metadata": []},
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert exc_info.value.error_code == "ag.operator_review_escalation_metadata_invalid"
+
+    with pytest.raises(OperatorReviewNoteError) as sensitive_exc:
+        build_operator_review_escalation_record(
+            sample_escalation_candidate(),
+            {"raw_notification_payload": {"secret": "nope"}},
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert sensitive_exc.value.error_code == "ag.operator_review_note_sensitive_payload"
+
+
+def test_escalation_store_filters_and_delete_in_memory() -> None:
+    store = OperatorReviewEscalationStore()
+    active = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id="case-a:warning:attention"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        created_at="2026-09-11T04:00:00Z",
+    )
+    dismissed = build_operator_review_escalation_record(
+        sample_escalation_candidate(
+            candidate_id="case-b:overdue:blocked",
+            case_id="case-b",
+            target_ref={
+                "target_service": "nex-cx",
+                "target_kind": "retrieval_package",
+                "target_id": "retrieval-0692",
+            },
+            escalation_level="BLOCKED",
+            sla_state="OVERDUE",
+        ),
+        {"escalation_status": "DISMISSED"},
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        created_at="2026-09-11T05:00:00Z",
+    )
+    store.save(active)
+    store.save(dismissed)
+
+    assert store.get(active["escalation_id"]) == active
+    assert store.get_by_candidate_id("case-b:overdue:blocked") == dismissed
+    assert store.list_escalations(target_service="nex-cx") == [dismissed]
+    assert store.list_escalations(escalation_status="ACTIVE") == [active]
+    assert store.list_escalations(case_id="case-b") == [dismissed]
+    assert store.delete(active["escalation_id"]) == 1
+    assert store.delete(active["escalation_id"]) == 0
+
+
+def test_sqlalchemy_escalation_store_roundtrip_and_filters() -> None:
+    store, _engine = sqlite_escalation_store()
+    record = build_operator_review_escalation_record(
+        sample_escalation_candidate(),
+        {
+            "operator_ref": {
+                "operator_type": "user",
+                "operator_id": "employee-0692",
+            },
+            "last_action_type": "ACKNOWLEDGE",
+            "last_action_at": "2026-09-11T04:01:00Z",
+            "snoozed_until": "2026-09-11T05:00:00Z",
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0692-sql",
+        created_at="2026-09-11T04:00:00Z",
+    )
+
+    assert store.save(record) == record
+    stored = store.get(record["escalation_id"])
+    assert stored is not None
+    assert stored["candidate_id"] == record["candidate_id"]
+    assert stored["operator_ref"]["operator_id"] == "employee-0692"
+    assert stored["runbook_ids"] == record["runbook_ids"]
+    assert stored["metadata"]["idempotency_key_stored"] is False
+    assert stored["last_action_at"] == "2026-09-11T04:01:00Z"
+    assert stored["snoozed_until"] == "2026-09-11T05:00:00Z"
+    assert store.get_by_candidate_id(record["candidate_id"]) == stored
+    assert store.list_escalations(escalation_status="ACTIVE") == [stored]
+    assert store.list_escalations(target_service="nex-cx") == []
+    assert store.delete(record["escalation_id"]) == 1
+    assert store.get(record["escalation_id"]) is None
+
+
+def test_escalation_sql_helpers_and_unavailable_paths() -> None:
+    where_clause, params = _operator_review_escalation_filter_clause(
+        case_id="case-1",
+        candidate_id="candidate-1",
+        escalation_status="ACTIVE",
+        target_service="nex-ag",
+        target_kind=None,
+        target_id=None,
+    )
+    record = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id="candidate-1", case_id="case-1"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0692-helpers",
+    )
+    sql = _operator_review_escalation_select_sql(where_clause)
+    params_for_sql = _operator_review_escalation_record_params(record)
+
+    assert "case_id = :case_id" in where_clause
+    assert params == {
+        "case_id": "case-1",
+        "candidate_id": "candidate-1",
+        "escalation_status": "ACTIVE",
+        "target_service": "nex-ag",
+    }
+    assert "FROM ag_op_escalations" in sql
+    assert json.loads(params_for_sql["operator_ref"])["operator_id"] == "nex-ag"
+    assert json.loads(params_for_sql["metadata"])["idempotency_key_stored"] is False
+
+    class FailingSession:
+        def __enter__(self):
+            raise SQLAlchemyError("boom")
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    failing_store = SqlAlchemyOperatorReviewEscalationStore(lambda: FailingSession())
+    with pytest.raises(OperatorReviewNoteError) as exc_info:
+        failing_store.get("missing")
+    assert exc_info.value.error_code == "ag.operator_review_escalation_store_unavailable"
+
+
+def test_escalation_migration_uses_short_table_and_safe_indexes() -> None:
+    migration = (
+        ROOT
+        / "database"
+        / "nex-ag"
+        / "migrations"
+        / "0692_ag_operator_review_escalation_persistence.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "CREATE TABLE IF NOT EXISTS ag_op_escalations" in migration
+    assert "uq_ag_op_escalations_candidate" in migration
+    assert "idx_ag_op_escalations_status_time" in migration
+    assert "raw_notification" not in migration
+    assert len("ag_op_escalations") <= 30
 
 
 def test_case_list_and_mutation_response_summaries() -> None:
