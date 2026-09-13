@@ -1258,6 +1258,14 @@ Unified operations:
   payloads, raw action comments, prompts, source text, storage paths, provider
   keys, service tokens, database URLs, and raw idempotency keys stay out of
   public responses and evidence.
+- Slice 0710 adds
+  `scripts/smoke/run_ag_operator_review_escalation_dispatch_postgres_smoke.py`,
+  an opt-in PostgreSQL test-DB smoke for S71 dispatch outbox behavior. It runs
+  AG migrations, creates case/escalation/dispatch rows through protected routes,
+  starts the dispatch state machine, verifies persisted dispatch and
+  operational event rows, checks dashboard and issue-candidate read models, and
+  cleans up all smoke rows while keeping raw DB URLs and idempotency keys out of
+  evidence.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
