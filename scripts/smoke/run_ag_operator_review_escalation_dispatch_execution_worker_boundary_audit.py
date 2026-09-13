@@ -373,14 +373,14 @@ PLANNED_SLICES = (
         "Expose execution lag/failure counters through existing AG operations surfaces.",
     ),
     (
-        "execution_contract_openapi_privacy_regression",
+        "execution_postgres_smoke",
         "Slice_0719",
-        "Freeze contracts/OpenAPI and prove worker-result redaction.",
+        "Prove run-once worker behavior against real nex_ag_test PostgreSQL.",
     ),
     (
-        "execution_postgres_smoke",
+        "s72_execution_closure",
         "Slice_0720",
-        "Prove run-once worker behavior against real nex_ag_test PostgreSQL.",
+        "Close S72 dispatch execution after protected PostgreSQL evidence.",
     ),
 )
 

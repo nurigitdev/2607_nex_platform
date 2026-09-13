@@ -1316,6 +1316,12 @@ Unified operations:
   mock-first dispatch execution worker, verifies `SUCCEEDED` state plus
   `metadata.last_execution_result`, checks the operations dashboard execution
   summary, directly observes PostgreSQL rows, and cleans up smoke data.
+- Slice 0720 closes S72 with
+  `scripts/smoke/run_s72_operator_review_escalation_dispatch_execution_closure.py`.
+  The closure verifies the provider/result contract, mock adapter, transition
+  planner, bounded run-once worker, safe metadata persistence, dashboard
+  execution summary, quality-gate hooks, and protected PostgreSQL smoke evidence
+  while keeping live outbound notification and incident sync deferred.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
