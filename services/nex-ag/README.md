@@ -1250,6 +1250,14 @@ Unified operations:
   with indexed examples and a negative raw-provider-payload fixture. The AG
   OpenAPI document now exposes protected dispatch create, list, detail, and
   action routes using shared dispatch status, intent, channel, and action enums.
+- Slice 0709 adds
+  `scripts/smoke/run_ag_operator_review_escalation_dispatch_privacy_regression.py`,
+  a mock-first privacy regression pack for S71 dispatch plan/list/detail/action
+  route payloads plus operations dashboard and issue-candidate surfaces. It
+  verifies that raw provider payloads, notification payloads, external incident
+  payloads, raw action comments, prompts, source text, storage paths, provider
+  keys, service tokens, database URLs, and raw idempotency keys stay out of
+  public responses and evidence.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
