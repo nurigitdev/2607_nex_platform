@@ -100,6 +100,7 @@ def test_ag_operator_review_escalation_outbound_dispatch_boundary_passes_repo() 
         "Slice_0708",
         "Slice_0709",
         "Slice_0710",
+        "Slice_0711",
     ]
 
     summary = audit.summary_line(evidence)

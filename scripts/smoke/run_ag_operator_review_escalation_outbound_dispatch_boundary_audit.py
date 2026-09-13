@@ -297,12 +297,13 @@ PLANNED_SLICES = (
     ("dispatch_schema_store_foundation", "Slice_0702", "Add AG-owned dispatch/outbox persistence foundation."),
     ("dispatch_policy_planner", "Slice_0703", "Plan safe notification and incident dispatch intents."),
     ("dispatch_state_machine", "Slice_0704", "Define PENDING/DISPATCHING/SUCCEEDED/FAILED/RETRY_WAIT/CANCELLED transitions."),
-    ("dispatch_service_api_routes", "Slice_0705", "Expose protected dispatch list/detail/retry/cancel controls."),
-    ("dispatch_mock_provider_adapter", "Slice_0706", "Exercise provider request shapes without live external delivery."),
+    ("dispatch_service_api_routes", "Slice_0705", "Expose protected dispatch create/detail/action controls."),
+    ("dispatch_read_model_routes", "Slice_0706", "Expose protected dispatch list/read-model filters."),
     ("dispatch_operations_dashboard", "Slice_0707", "Surface delayed/failed dispatches in operations and issue candidates."),
     ("dispatch_contract_openapi", "Slice_0708", "Freeze schemas, examples, negative leak fixtures, and OpenAPI."),
-    ("dispatch_privacy_postgres_smoke", "Slice_0709", "Prove redaction and nex_ag_test persistence behavior."),
-    ("s71_closure", "Slice_0710", "Close the outbound dispatch foundation."),
+    ("dispatch_privacy_regression", "Slice_0709", "Prove route, dashboard, and evidence redaction."),
+    ("dispatch_postgres_smoke", "Slice_0710", "Prove nex_ag_test persistence behavior."),
+    ("s71_closure", "Slice_0711", "Close the outbound dispatch foundation."),
 )
 
 TABLE_NAMES_UNDER_REVIEW = (

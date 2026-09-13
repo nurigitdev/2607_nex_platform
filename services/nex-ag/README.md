@@ -1266,6 +1266,12 @@ Unified operations:
   operational event rows, checks dashboard and issue-candidate read models, and
   cleans up all smoke rows while keeping raw DB URLs and idempotency keys out of
   evidence.
+- Slice 0711 closes S71 with
+  `scripts/smoke/run_s71_operator_review_escalation_dispatch_closure.py`,
+  confirming the dispatch outbox table, mock-first planner, state machine,
+  protected routes, operations dashboard, contract/OpenAPI coverage, privacy
+  regression, and protected PostgreSQL smoke evidence before any future
+  execution-worker or live outbound delivery work begins.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
