@@ -40,12 +40,19 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_ESCALATION_ACTION_MUTATION_SCHEMA_VERSION,
     OPERATOR_REVIEW_ESCALATION_ACTION_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_ESCALATION_ACTION_SCHEMA_VERSION,
+    OPERATOR_REVIEW_ESCALATION_DISPATCH_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_ESCALATION_TABLE,
+    AG_OPERATOR_REVIEW_ESCALATION_DISPATCH_TABLE,
     OperatorReviewCaseService,
     OperatorReviewCaseStore,
+    OperatorReviewEscalationDispatchStore,
     OperatorReviewEscalationStore,
     SqlAlchemyOperatorReviewCaseStore,
+    SqlAlchemyOperatorReviewEscalationDispatchStore,
     SqlAlchemyOperatorReviewEscalationStore,
+    _operator_review_escalation_dispatch_filter_clause,
+    _operator_review_escalation_dispatch_record_params,
+    _operator_review_escalation_dispatch_select_sql,
     _operator_review_escalation_filter_clause,
     _operator_review_escalation_record_params,
     _operator_review_escalation_select_sql,
@@ -63,6 +70,7 @@ from nex_ag.operator_review_cases import (
     _target_status_for_case_action,
     apply_operator_review_escalation_action,
     apply_operator_review_case_action,
+    build_operator_review_escalation_dispatch_record,
     build_operator_review_escalation_action_mutation_response,
     build_operator_review_escalation_action_record,
     build_operator_review_escalation_list_response,
@@ -85,9 +93,12 @@ from nex_ag.operator_review_cases import (
     build_operator_review_case_timeline_projection,
     build_operator_review_case_workbench_detail_projection,
     default_operator_review_case_store,
+    default_operator_review_escalation_dispatch_store,
     emit_operator_review_escalation_action_event,
     emit_operator_review_case_action_event,
     emit_operator_review_case_event,
+    operator_review_escalation_dispatch_metadata,
+    operator_review_escalation_dispatch_provider_ref,
     operator_review_escalation_action_id,
     operator_review_escalation_action_metadata,
     operator_review_escalation_action_request_signature,
@@ -380,6 +391,59 @@ def sqlite_escalation_store() -> tuple[SqlAlchemyOperatorReviewEscalationStore, 
             )
         )
     return SqlAlchemyOperatorReviewEscalationStore(build_session_factory(engine)), engine
+
+
+def sqlite_escalation_dispatch_store() -> tuple[
+    SqlAlchemyOperatorReviewEscalationDispatchStore,
+    Any,
+]:
+    engine = build_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                f"""
+                CREATE TABLE {AG_OPERATOR_REVIEW_ESCALATION_DISPATCH_TABLE} (
+                    dispatch_id TEXT PRIMARY KEY,
+                    dispatch_schema_version TEXT NOT NULL,
+                    escalation_id TEXT NOT NULL,
+                    case_id TEXT NOT NULL,
+                    target_service TEXT NOT NULL,
+                    target_kind TEXT NOT NULL,
+                    target_id TEXT NOT NULL,
+                    trace_id TEXT,
+                    request_id TEXT NOT NULL,
+                    operator_type TEXT NOT NULL,
+                    operator_id TEXT NOT NULL,
+                    tenant_id TEXT,
+                    operator_ref TEXT NOT NULL,
+                    channel_type TEXT NOT NULL,
+                    provider_ref TEXT NOT NULL,
+                    provider_profile TEXT NOT NULL,
+                    dispatch_status TEXT NOT NULL,
+                    dispatch_intent TEXT NOT NULL,
+                    reason_codes TEXT NOT NULL,
+                    safe_subject TEXT,
+                    safe_body_hash TEXT,
+                    safe_body_preview TEXT,
+                    provider_payload_hash TEXT,
+                    idempotency_key_hash TEXT,
+                    attempt_count INTEGER NOT NULL,
+                    last_attempt_at TEXT,
+                    next_attempt_at TEXT,
+                    last_error_code TEXT,
+                    last_error_hash TEXT,
+                    metadata TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    completed_at TEXT
+                )
+                """
+            )
+        )
+    return (
+        SqlAlchemyOperatorReviewEscalationDispatchStore(build_session_factory(engine)),
+        engine,
+    )
 
 
 def service_auth_headers() -> dict[str, str]:
@@ -791,6 +855,271 @@ def test_escalation_migration_uses_short_table_and_safe_indexes() -> None:
     assert "idx_ag_op_escalations_status_time" in migration
     assert "raw_notification" not in migration
     assert len("ag_op_escalations") <= 30
+
+
+def test_operator_review_escalation_dispatch_record_redacts_payloads() -> None:
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0702-escalation",
+        created_at="2026-09-11T04:00:00Z",
+    )
+
+    record = build_operator_review_escalation_dispatch_record(
+        escalation,
+        {
+            "operator_ref": {
+                "operator_type": "user",
+                "operator_id": "employee-0702",
+                "tenant_id": "local-tenant",
+            },
+            "channel_type": "NOTIFICATION",
+            "dispatch_intent": "NOTIFY_OWNER",
+            "safe_subject": "Escalation needs owner attention",
+            "safe_body": "Safe bounded notification body.",
+            "provider_payload_fingerprint": "provider request shape v1",
+            "provider_ref": {
+                "provider_type": "mock",
+                "provider_id": "mock-notification",
+                "external_ref": "ticket-shadow-0702",
+            },
+            "metadata": {"source_view": "operator_review_escalation_detail"},
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0702-dispatch",
+        created_at="2026-09-11T04:10:00Z",
+    )
+
+    assert record["dispatch_schema_version"] == (
+        OPERATOR_REVIEW_ESCALATION_DISPATCH_SCHEMA_VERSION
+    )
+    assert record["dispatch_status"] == "PENDING"
+    assert record["dispatch_intent"] == "NOTIFY_OWNER"
+    assert record["channel_type"] == "NOTIFICATION"
+    assert record["provider_profile"] == "mock-default"
+    assert record["case_id"] == escalation["case_id"]
+    assert record["safe_body_hash"] == sha256_text("Safe bounded notification body.")
+    assert record["safe_body_preview"] == "Safe bounded notification body."
+    assert record["provider_payload_hash"] == sha256_text("provider request shape v1")
+    assert record["metadata"]["safe_body_storage"] == (
+        "hash_and_short_preview_only"
+    )
+    assert record["metadata"]["raw_notification_payload_stored"] is False
+    assert record["metadata"]["raw_external_incident_payload_stored"] is False
+    assert record["metadata"]["live_notification_delivery"] is False
+    assert record["metadata"]["idempotency_key_stored"] is False
+    serialized = json.dumps(record, ensure_ascii=False)
+    assert "idem-0702-dispatch" not in serialized
+    assert "raw_notification_payload" not in record
+
+
+def test_operator_review_escalation_dispatch_record_validation() -> None:
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as metadata_exc:
+        build_operator_review_escalation_dispatch_record(
+            escalation,
+            {"metadata": []},
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert metadata_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_metadata_invalid"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as provider_exc:
+        operator_review_escalation_dispatch_provider_ref(
+            "bad-provider-ref",
+            channel_type="MOCK",
+        )
+
+    assert provider_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_provider_ref_invalid"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as sensitive_exc:
+        build_operator_review_escalation_dispatch_record(
+            escalation,
+            {"raw_external_incident_payload": {"secret": "nope"}},
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+
+    assert sensitive_exc.value.error_code == "ag.operator_review_note_sensitive_payload"
+    assert operator_review_escalation_dispatch_metadata(None)[
+        "provider_execution"
+    ] == "mock_first_only"
+
+
+def test_escalation_dispatch_store_filters_and_delete_in_memory() -> None:
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    store = OperatorReviewEscalationDispatchStore()
+    pending = build_operator_review_escalation_dispatch_record(
+        escalation,
+        {"dispatch_intent": "NOTIFY_OWNER", "channel_type": "NOTIFICATION"},
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0702-pending",
+        created_at="2026-09-11T04:10:00Z",
+    )
+    failed = build_operator_review_escalation_dispatch_record(
+        {
+            **escalation,
+            "escalation_id": "escalation-0702-failed",
+            "case_id": "case-0702-failed",
+            "target_service": "nex-cx",
+        },
+        {
+            "dispatch_status": "FAILED",
+            "dispatch_intent": "OPEN_INCIDENT",
+            "channel_type": "INCIDENT",
+            "attempt_count": 2,
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0702-failed",
+        created_at="2026-09-11T04:20:00Z",
+    )
+    store.save(pending)
+    store.save(failed)
+
+    assert store.get(pending["dispatch_id"]) == pending
+    assert store.list_dispatches(dispatch_status="FAILED") == [failed]
+    assert store.list_dispatches(dispatch_intent="NOTIFY_OWNER") == [pending]
+    assert store.list_dispatches(channel_type="INCIDENT") == [failed]
+    assert store.list_dispatches(target_service="nex-cx") == [failed]
+    assert store.list_dispatches(case_id=escalation["case_id"]) == [pending]
+    assert store.delete(pending["dispatch_id"]) == 1
+    assert store.delete(pending["dispatch_id"]) == 0
+
+
+def test_sqlalchemy_escalation_dispatch_store_roundtrip_and_filters() -> None:
+    store, engine = sqlite_escalation_dispatch_store()
+    try:
+        escalation = build_operator_review_escalation_record(
+            sample_escalation_candidate(),
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+        record = build_operator_review_escalation_dispatch_record(
+            escalation,
+            {
+                "dispatch_status": "RETRY_WAIT",
+                "dispatch_intent": "OPEN_INCIDENT",
+                "channel_type": "INCIDENT",
+                "safe_body": "Retry later with safe payload preview.",
+                "provider_payload_fingerprint": "incident request shape",
+                "attempt_count": 1,
+                "last_attempt_at": "2026-09-11T04:10:00Z",
+                "next_attempt_at": "2026-09-11T04:20:00Z",
+                "last_error_code": "mock_timeout",
+                "last_error": "Provider timeout details should be hashed.",
+            },
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key="idem-0702-sql",
+            created_at="2026-09-11T04:00:00Z",
+        )
+
+        assert store.save(record) == record
+        stored = store.get(record["dispatch_id"])
+        assert stored is not None
+        assert stored["dispatch_id"] == record["dispatch_id"]
+        assert stored["provider_ref"]["provider_id"] == "mock-escalation-dispatch"
+        assert stored["reason_codes"] == record["reason_codes"]
+        assert stored["attempt_count"] == 1
+        assert stored["last_attempt_at"] == "2026-09-11T04:10:00Z"
+        assert stored["next_attempt_at"] == "2026-09-11T04:20:00Z"
+        assert stored["metadata"]["idempotency_key_stored"] is False
+        assert store.list_dispatches(dispatch_status="RETRY_WAIT") == [stored]
+        assert store.list_dispatches(dispatch_intent="OPEN_INCIDENT") == [stored]
+        assert store.list_dispatches(channel_type="EMAIL") == []
+        assert store.delete(record["dispatch_id"]) == 1
+        assert store.get(record["dispatch_id"]) is None
+    finally:
+        engine.dispose()
+
+
+def test_escalation_dispatch_sql_helpers_and_unavailable_paths() -> None:
+    where_clause, params = _operator_review_escalation_dispatch_filter_clause(
+        escalation_id="escalation-1",
+        case_id="case-1",
+        dispatch_status="PENDING",
+        dispatch_intent="NOTIFY_OPERATOR",
+        channel_type="MOCK",
+        target_service="nex-ag",
+        target_kind=None,
+        target_id=None,
+    )
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id="candidate-0702", case_id="case-1"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    record = build_operator_review_escalation_dispatch_record(
+        {**escalation, "escalation_id": "escalation-1"},
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0702-helpers",
+    )
+    sql = _operator_review_escalation_dispatch_select_sql(where_clause)
+    params_for_sql = _operator_review_escalation_dispatch_record_params(record)
+
+    assert "escalation_id = :escalation_id" in where_clause
+    assert params == {
+        "escalation_id": "escalation-1",
+        "case_id": "case-1",
+        "dispatch_status": "PENDING",
+        "dispatch_intent": "NOTIFY_OPERATOR",
+        "channel_type": "MOCK",
+        "target_service": "nex-ag",
+    }
+    assert "FROM ag_op_esc_dispatches" in sql
+    assert json.loads(params_for_sql["provider_ref"])["provider_type"] == "mock"
+    assert json.loads(params_for_sql["metadata"])["idempotency_key_stored"] is False
+
+    class FailingSession:
+        def __enter__(self):
+            raise SQLAlchemyError("boom")
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    failing_store = SqlAlchemyOperatorReviewEscalationDispatchStore(
+        lambda: FailingSession()
+    )
+    with pytest.raises(OperatorReviewNoteError) as exc_info:
+        failing_store.get("missing")
+    assert exc_info.value.error_code == (
+        "ag.operator_review_escalation_dispatch_store_unavailable"
+    )
+
+
+def test_escalation_dispatch_migration_uses_short_table_and_safe_indexes() -> None:
+    migration = (
+        ROOT
+        / "database"
+        / "nex-ag"
+        / "migrations"
+        / "0702_ag_operator_review_escalation_dispatch.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "CREATE TABLE IF NOT EXISTS ag_op_esc_dispatches" in migration
+    assert "idx_ag_op_esc_dispatches_escalation_time" in migration
+    assert "idx_ag_op_esc_dispatches_status_time" in migration
+    assert "raw_notification_payload" not in migration
+    assert len("ag_op_esc_dispatches") <= 30
 
 
 @pytest.mark.parametrize(
@@ -4623,13 +4952,20 @@ def test_default_operator_review_case_store_uses_persistence_session_factory() -
     app.state.nex_persistence = SimpleNamespace(api_session_factory=session_factory)
 
     store = default_operator_review_case_store(app)
+    dispatch_store = default_operator_review_escalation_dispatch_store(app)
 
     assert isinstance(store, SqlAlchemyOperatorReviewCaseStore)
     assert store._session_factory is session_factory
+    assert isinstance(dispatch_store, SqlAlchemyOperatorReviewEscalationDispatchStore)
+    assert dispatch_store._session_factory is session_factory
     app_without_persistence = build_service_app(SERVICE_SPECS["nex-ag"])
     assert isinstance(
         default_operator_review_case_store(app_without_persistence),
         OperatorReviewCaseStore,
+    )
+    assert isinstance(
+        default_operator_review_escalation_dispatch_store(app_without_persistence),
+        OperatorReviewEscalationDispatchStore,
     )
 
 

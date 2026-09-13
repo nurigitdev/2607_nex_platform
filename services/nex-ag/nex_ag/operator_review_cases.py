@@ -95,6 +95,9 @@ OPERATOR_REVIEW_ESCALATION_ACTION_SCHEMA_VERSION = (
 OPERATOR_REVIEW_ESCALATION_ACTION_MUTATION_SCHEMA_VERSION = (
     "ag_operator_review_escalation_action_mutation.v1"
 )
+OPERATOR_REVIEW_ESCALATION_DISPATCH_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch.v1"
+)
 OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE = "ag.operator_review_case.recorded"
 OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE = (
     "ag.operator_review_case_action.recorded"
@@ -104,6 +107,7 @@ OPERATOR_REVIEW_ESCALATION_ACTION_RECORDED_EVENT_TYPE = (
 )
 AG_OPERATOR_REVIEW_CASE_TABLE = "ag_op_cases"
 AG_OPERATOR_REVIEW_ESCALATION_TABLE = "ag_op_escalations"
+AG_OPERATOR_REVIEW_ESCALATION_DISPATCH_TABLE = "ag_op_esc_dispatches"
 MAX_CASE_COMMENT_PREVIEW_LENGTH = 240
 
 ALLOWED_CASE_ACTIONS = (
@@ -146,6 +150,29 @@ ALLOWED_ESCALATION_ACTIONS = (
     "DISMISS",
     "RESOLVE",
     "REOPEN",
+)
+ALLOWED_ESCALATION_DISPATCH_STATUSES = (
+    "PENDING",
+    "DISPATCHING",
+    "SUCCEEDED",
+    "FAILED",
+    "RETRY_WAIT",
+    "CANCELLED",
+)
+ALLOWED_ESCALATION_DISPATCH_INTENTS = (
+    "NOTIFY_OPERATOR",
+    "NOTIFY_OWNER",
+    "OPEN_INCIDENT",
+    "UPDATE_INCIDENT",
+    "CANCEL_PENDING_DISPATCH",
+    "RETRY_FAILED_DISPATCH",
+)
+ALLOWED_ESCALATION_DISPATCH_CHANNELS = (
+    "MOCK",
+    "NOTIFICATION",
+    "EMAIL",
+    "WEBHOOK",
+    "INCIDENT",
 )
 CASE_ACTION_TARGET_STATUSES = {
     "ACKNOWLEDGE": "ACKNOWLEDGED",
@@ -520,8 +547,165 @@ class SqlAlchemyOperatorReviewEscalationStore:
             raise _escalation_store_unavailable_error() from exc
 
 
+@dataclass
+class OperatorReviewEscalationDispatchStore:
+    records: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        self.records[record["dispatch_id"]] = record
+        return record
+
+    def get(self, dispatch_id: str) -> dict[str, Any] | None:
+        return self.records.get(dispatch_id)
+
+    def list_dispatches(
+        self,
+        *,
+        escalation_id: str | None = None,
+        case_id: str | None = None,
+        dispatch_status: str | None = None,
+        dispatch_intent: str | None = None,
+        channel_type: str | None = None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        selected = [
+            record
+            for record in self.records.values()
+            if _dispatch_matches_filter(
+                record,
+                escalation_id=escalation_id,
+                case_id=case_id,
+                dispatch_status=dispatch_status,
+                dispatch_intent=dispatch_intent,
+                channel_type=channel_type,
+                target_service=target_service,
+                target_kind=target_kind,
+                target_id=target_id,
+            )
+        ]
+        selected.sort(
+            key=lambda record: (
+                str(record.get("updated_at") or ""),
+                str(record.get("dispatch_id") or ""),
+            ),
+            reverse=True,
+        )
+        return selected[:normalize_limit(limit)]
+
+    def delete(self, dispatch_id: str) -> int:
+        return 1 if self.records.pop(dispatch_id, None) is not None else 0
+
+
+class SqlAlchemyOperatorReviewEscalationDispatchStore:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        try:
+            with self._session_factory() as session:
+                session.execute(
+                    text(
+                        _operator_review_escalation_dispatch_upsert_sql(
+                            _dialect_name(session)
+                        )
+                    ),
+                    _operator_review_escalation_dispatch_record_params(record),
+                )
+                session.commit()
+            return record
+        except SQLAlchemyError as exc:
+            raise _dispatch_store_unavailable_error() from exc
+
+    def get(self, dispatch_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            _operator_review_escalation_dispatch_select_sql(
+                                "dispatch_id = :dispatch_id"
+                            )
+                        ),
+                        {"dispatch_id": dispatch_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+            return _operator_review_escalation_dispatch_record_from_row(row) if row else None
+        except SQLAlchemyError as exc:
+            raise _dispatch_store_unavailable_error() from exc
+
+    def list_dispatches(
+        self,
+        *,
+        escalation_id: str | None = None,
+        case_id: str | None = None,
+        dispatch_status: str | None = None,
+        dispatch_intent: str | None = None,
+        channel_type: str | None = None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        where_clause, params = _operator_review_escalation_dispatch_filter_clause(
+            escalation_id=escalation_id,
+            case_id=case_id,
+            dispatch_status=dispatch_status,
+            dispatch_intent=dispatch_intent,
+            channel_type=channel_type,
+            target_service=target_service,
+            target_kind=target_kind,
+            target_id=target_id,
+        )
+        params["limit"] = normalize_limit(limit)
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            _operator_review_escalation_dispatch_select_sql(
+                                where_clause
+                                + " ORDER BY updated_at DESC, dispatch_id ASC"
+                                + " LIMIT :limit"
+                            )
+                        ),
+                        params,
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [
+                _operator_review_escalation_dispatch_record_from_row(row)
+                for row in rows
+            ]
+        except SQLAlchemyError as exc:
+            raise _dispatch_store_unavailable_error() from exc
+
+    def delete(self, dispatch_id: str) -> int:
+        try:
+            with self._session_factory() as session:
+                result = session.execute(
+                    text(
+                        "DELETE FROM ag_op_esc_dispatches "
+                        "WHERE dispatch_id = :dispatch_id"
+                    ),
+                    {"dispatch_id": dispatch_id},
+                )
+                session.commit()
+                return int(result.rowcount or 0)
+        except SQLAlchemyError as exc:
+            raise _dispatch_store_unavailable_error() from exc
+
+
 DEFAULT_OPERATOR_REVIEW_CASE_STORE = OperatorReviewCaseStore()
 DEFAULT_OPERATOR_REVIEW_ESCALATION_STORE = OperatorReviewEscalationStore()
+DEFAULT_OPERATOR_REVIEW_ESCALATION_DISPATCH_STORE = (
+    OperatorReviewEscalationDispatchStore()
+)
 DEFAULT_OPERATOR_REVIEW_CASE_AUDIT_EVENT_STORE = InMemoryOperationalEventStore()
 
 
@@ -1163,6 +1347,14 @@ def default_operator_review_escalation_store(app: FastAPI) -> Any:
     if session_factory is not None:
         return SqlAlchemyOperatorReviewEscalationStore(session_factory)
     return DEFAULT_OPERATOR_REVIEW_ESCALATION_STORE
+
+
+def default_operator_review_escalation_dispatch_store(app: FastAPI) -> Any:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is not None:
+        return SqlAlchemyOperatorReviewEscalationDispatchStore(session_factory)
+    return DEFAULT_OPERATOR_REVIEW_ESCALATION_DISPATCH_STORE
 
 
 def register_operator_review_case_routes(
@@ -3932,6 +4124,189 @@ def operator_review_escalation_id(candidate_id: str, idempotency_key: str) -> st
     )
 
 
+def build_operator_review_escalation_dispatch_record(
+    escalation: dict[str, Any],
+    payload: dict[str, Any] | None = None,
+    *,
+    request_id: str,
+    trace_id: str | None,
+    idempotency_key: str | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    payload_value = dict(payload or {})
+    assert_operator_review_note_payload_redaction_safe(payload_value)
+    escalation_id = required_escalation_id(escalation.get("escalation_id"))
+    operator = operator_ref(
+        payload_value.get(
+            "operator_ref",
+            {
+                "operator_type": "service",
+                "operator_id": "nex-ag",
+            },
+        )
+    )
+    channel_type = optional_choice(
+        payload_value.get("channel_type"),
+        key="channel_type",
+        choices=ALLOWED_ESCALATION_DISPATCH_CHANNELS,
+        default="MOCK",
+    )
+    dispatch_intent = optional_choice(
+        payload_value.get("dispatch_intent"),
+        key="dispatch_intent",
+        choices=ALLOWED_ESCALATION_DISPATCH_INTENTS,
+        default="NOTIFY_OPERATOR",
+    )
+    dispatch_status = optional_choice(
+        payload_value.get("dispatch_status"),
+        key="dispatch_status",
+        choices=ALLOWED_ESCALATION_DISPATCH_STATUSES,
+        default="PENDING",
+    )
+    safe_body = optional_text(payload_value.get("safe_body"))
+    provider_payload_fingerprint = optional_text(
+        payload_value.get("provider_payload_fingerprint")
+    )
+    last_error = optional_text(payload_value.get("last_error"))
+    now = created_at or _utc_now()
+    idempotency_key_hash = sha256_text(idempotency_key) if idempotency_key else None
+    dispatch_id = optional_text(payload_value.get("dispatch_id")) or str(
+        uuid5(
+            NAMESPACE_URL,
+            "ag-operator-review-escalation-dispatch:"
+            f"{escalation_id}:{dispatch_intent}:{channel_type}:"
+            f"{idempotency_key_hash or 'dispatch'}",
+        )
+    )
+    completed_at = now if dispatch_status in {"SUCCEEDED", "CANCELLED"} else None
+    return {
+        "dispatch_schema_version": OPERATOR_REVIEW_ESCALATION_DISPATCH_SCHEMA_VERSION,
+        "dispatch_id": dispatch_id,
+        "escalation_id": escalation_id,
+        "case_id": required_case_id(escalation.get("case_id")),
+        "target_service": required_text(escalation, "target_service"),
+        "target_kind": required_text(escalation, "target_kind"),
+        "target_id": required_text(escalation, "target_id"),
+        "trace_id": optional_text(trace_id),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "operator_ref": operator,
+        "channel_type": channel_type,
+        "provider_ref": operator_review_escalation_dispatch_provider_ref(
+            payload_value.get("provider_ref"),
+            channel_type=channel_type,
+        ),
+        "provider_profile": optional_text(payload_value.get("provider_profile"))
+        or "mock-default",
+        "dispatch_status": dispatch_status,
+        "dispatch_intent": dispatch_intent,
+        "reason_codes": reason_code_list(
+            payload_value.get("reason_codes") or escalation.get("reason_codes")
+        ),
+        "safe_subject": _bounded_safe_preview(
+            optional_text(payload_value.get("safe_subject")),
+            limit=200,
+        ),
+        "safe_body_hash": sha256_text(safe_body) if safe_body else None,
+        "safe_body_preview": operator_note_preview(safe_body),
+        "provider_payload_hash": (
+            sha256_text(provider_payload_fingerprint)
+            if provider_payload_fingerprint
+            else None
+        ),
+        "idempotency_key_hash": idempotency_key_hash,
+        "attempt_count": _non_negative_int(payload_value.get("attempt_count")),
+        "last_attempt_at": optional_text(payload_value.get("last_attempt_at")),
+        "next_attempt_at": optional_text(payload_value.get("next_attempt_at")),
+        "last_error_code": optional_text(payload_value.get("last_error_code")),
+        "last_error_hash": sha256_text(last_error) if last_error else None,
+        "metadata": operator_review_escalation_dispatch_metadata(
+            payload_value.get("metadata"),
+            idempotency_key_hash=idempotency_key_hash,
+        ),
+        "created_at": now,
+        "updated_at": now,
+        "completed_at": optional_text(payload_value.get("completed_at")) or completed_at,
+    }
+
+
+def operator_review_escalation_dispatch_provider_ref(
+    value: Any,
+    *,
+    channel_type: str,
+) -> dict[str, str | None]:
+    if value is None:
+        return {
+            "provider_type": "mock",
+            "provider_id": "mock-escalation-dispatch",
+            "channel_type": channel_type,
+            "external_ref": None,
+        }
+    if not isinstance(value, dict):
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.operator_review_escalation_dispatch_provider_ref_invalid",
+            detail="provider_ref must be an object when supplied.",
+        )
+    return {
+        "provider_type": optional_text(value.get("provider_type")) or "mock",
+        "provider_id": optional_text(value.get("provider_id"))
+        or "mock-escalation-dispatch",
+        "channel_type": channel_type,
+        "external_ref": optional_text(value.get("external_ref")),
+    }
+
+
+def operator_review_escalation_dispatch_metadata(
+    value: Any,
+    *,
+    idempotency_key_hash: str | None = None,
+) -> dict[str, Any]:
+    if value is None:
+        metadata: dict[str, Any] = {}
+    elif isinstance(value, dict):
+        metadata = dict(value)
+    else:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.operator_review_escalation_dispatch_metadata_invalid",
+            detail="metadata must be an object when supplied.",
+        )
+    metadata.update(
+        {
+            "raw_notification_payload_stored": False,
+            "raw_external_incident_payload_stored": False,
+            "raw_provider_payload_stored": False,
+            "raw_action_comment_stored": False,
+            "raw_prompt_stored": False,
+            "raw_generation_output_stored": False,
+            "raw_source_text_stored": False,
+            "storage_paths_included": False,
+            "safe_body_storage": "hash_and_short_preview_only",
+            "provider_execution": "mock_first_only",
+            "live_notification_delivery": False,
+            "live_external_incident_sync": False,
+            "dispatch_state_storage": "ag_owned_outbox_state_only",
+        }
+    )
+    if idempotency_key_hash is not None:
+        metadata["idempotency_key_hash"] = idempotency_key_hash
+        metadata["idempotency_key_stored"] = False
+    return json.loads(json.dumps(metadata))
+
+
+def operator_review_escalation_dispatch_id(
+    escalation_id: str,
+    idempotency_key: str,
+) -> str:
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            "ag-operator-review-escalation-dispatch:"
+            f"{required_escalation_id(escalation_id)}:{sha256_text(idempotency_key)}",
+        )
+    )
+
+
 def _target_status_for_case_action(action_type: str, from_status: str) -> str:
     allowed_from = CASE_ACTION_ALLOWED_FROM.get(action_type)
     if allowed_from is None or action_type not in CASE_ACTION_TARGET_STATUSES:
@@ -5553,6 +5928,246 @@ def _operator_review_escalation_record_from_row(row: Any) -> dict[str, Any]:
     }
 
 
+def _operator_review_escalation_dispatch_filter_clause(
+    *,
+    escalation_id: str | None,
+    case_id: str | None,
+    dispatch_status: str | None,
+    dispatch_intent: str | None,
+    channel_type: str | None,
+    target_service: str | None,
+    target_kind: str | None,
+    target_id: str | None,
+) -> tuple[str, dict[str, Any]]:
+    clauses = ["1 = 1"]
+    params: dict[str, Any] = {}
+    for name, value in (
+        ("escalation_id", escalation_id),
+        ("case_id", case_id),
+        ("dispatch_status", dispatch_status),
+        ("dispatch_intent", dispatch_intent),
+        ("channel_type", channel_type),
+        ("target_service", target_service),
+        ("target_kind", target_kind),
+        ("target_id", target_id),
+    ):
+        if value is not None:
+            clauses.append(f"{name} = :{name}")
+            params[name] = value
+    return " AND ".join(clauses), params
+
+
+def _operator_review_escalation_dispatch_upsert_sql(dialect_name: str) -> str:
+    operator_ref_expr = _json_param_expr("operator_ref", dialect_name)
+    provider_ref_expr = _json_param_expr("provider_ref", dialect_name)
+    reason_codes_expr = _json_param_expr("reason_codes", dialect_name)
+    metadata_expr = _json_param_expr("metadata", dialect_name)
+    return f"""
+        INSERT INTO ag_op_esc_dispatches (
+            dispatch_id,
+            dispatch_schema_version,
+            escalation_id,
+            case_id,
+            target_service,
+            target_kind,
+            target_id,
+            trace_id,
+            request_id,
+            operator_type,
+            operator_id,
+            tenant_id,
+            operator_ref,
+            channel_type,
+            provider_ref,
+            provider_profile,
+            dispatch_status,
+            dispatch_intent,
+            reason_codes,
+            safe_subject,
+            safe_body_hash,
+            safe_body_preview,
+            provider_payload_hash,
+            idempotency_key_hash,
+            attempt_count,
+            last_attempt_at,
+            next_attempt_at,
+            last_error_code,
+            last_error_hash,
+            metadata,
+            created_at,
+            updated_at,
+            completed_at
+        )
+        VALUES (
+            :dispatch_id,
+            :dispatch_schema_version,
+            :escalation_id,
+            :case_id,
+            :target_service,
+            :target_kind,
+            :target_id,
+            :trace_id,
+            :request_id,
+            :operator_type,
+            :operator_id,
+            :tenant_id,
+            {operator_ref_expr},
+            :channel_type,
+            {provider_ref_expr},
+            :provider_profile,
+            :dispatch_status,
+            :dispatch_intent,
+            {reason_codes_expr},
+            :safe_subject,
+            :safe_body_hash,
+            :safe_body_preview,
+            :provider_payload_hash,
+            :idempotency_key_hash,
+            :attempt_count,
+            :last_attempt_at,
+            :next_attempt_at,
+            :last_error_code,
+            :last_error_hash,
+            {metadata_expr},
+            :created_at,
+            :updated_at,
+            :completed_at
+        )
+        ON CONFLICT (dispatch_id) DO UPDATE SET
+            dispatch_schema_version = excluded.dispatch_schema_version,
+            escalation_id = excluded.escalation_id,
+            case_id = excluded.case_id,
+            target_service = excluded.target_service,
+            target_kind = excluded.target_kind,
+            target_id = excluded.target_id,
+            trace_id = excluded.trace_id,
+            request_id = excluded.request_id,
+            operator_type = excluded.operator_type,
+            operator_id = excluded.operator_id,
+            tenant_id = excluded.tenant_id,
+            operator_ref = excluded.operator_ref,
+            channel_type = excluded.channel_type,
+            provider_ref = excluded.provider_ref,
+            provider_profile = excluded.provider_profile,
+            dispatch_status = excluded.dispatch_status,
+            dispatch_intent = excluded.dispatch_intent,
+            reason_codes = excluded.reason_codes,
+            safe_subject = excluded.safe_subject,
+            safe_body_hash = excluded.safe_body_hash,
+            safe_body_preview = excluded.safe_body_preview,
+            provider_payload_hash = excluded.provider_payload_hash,
+            idempotency_key_hash = excluded.idempotency_key_hash,
+            attempt_count = excluded.attempt_count,
+            last_attempt_at = excluded.last_attempt_at,
+            next_attempt_at = excluded.next_attempt_at,
+            last_error_code = excluded.last_error_code,
+            last_error_hash = excluded.last_error_hash,
+            metadata = excluded.metadata,
+            updated_at = excluded.updated_at,
+            completed_at = excluded.completed_at
+    """
+
+
+def _operator_review_escalation_dispatch_select_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+            dispatch_schema_version,
+            dispatch_id,
+            escalation_id,
+            case_id,
+            target_service,
+            target_kind,
+            target_id,
+            trace_id,
+            request_id,
+            operator_ref,
+            channel_type,
+            provider_ref,
+            provider_profile,
+            dispatch_status,
+            dispatch_intent,
+            reason_codes,
+            safe_subject,
+            safe_body_hash,
+            safe_body_preview,
+            provider_payload_hash,
+            idempotency_key_hash,
+            attempt_count,
+            last_attempt_at,
+            next_attempt_at,
+            last_error_code,
+            last_error_hash,
+            metadata,
+            created_at,
+            updated_at,
+            completed_at
+        FROM ag_op_esc_dispatches
+        WHERE {where_clause}
+    """
+
+
+def _operator_review_escalation_dispatch_record_params(
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    operator = record["operator_ref"]
+    return {
+        **record,
+        "operator_type": operator["operator_type"],
+        "operator_id": operator["operator_id"],
+        "tenant_id": operator.get("tenant_id"),
+        "operator_ref": json.dumps(record["operator_ref"]),
+        "provider_ref": json.dumps(record["provider_ref"]),
+        "reason_codes": json.dumps(record["reason_codes"]),
+        "metadata": json.dumps(record["metadata"]),
+    }
+
+
+def _operator_review_escalation_dispatch_record_from_row(row: Any) -> dict[str, Any]:
+    data = dict(row)
+    return {
+        "dispatch_schema_version": data["dispatch_schema_version"],
+        "dispatch_id": data["dispatch_id"],
+        "escalation_id": data["escalation_id"],
+        "case_id": data["case_id"],
+        "target_service": data["target_service"],
+        "target_kind": data["target_kind"],
+        "target_id": data["target_id"],
+        "trace_id": data["trace_id"],
+        "request_id": data["request_id"],
+        "operator_ref": _json_value(data["operator_ref"], {}),
+        "channel_type": data["channel_type"],
+        "provider_ref": _json_value(data["provider_ref"], {}),
+        "provider_profile": data["provider_profile"],
+        "dispatch_status": data["dispatch_status"],
+        "dispatch_intent": data["dispatch_intent"],
+        "reason_codes": _json_value(data["reason_codes"], []),
+        "safe_subject": data["safe_subject"],
+        "safe_body_hash": data["safe_body_hash"],
+        "safe_body_preview": data["safe_body_preview"],
+        "provider_payload_hash": data["provider_payload_hash"],
+        "idempotency_key_hash": data["idempotency_key_hash"],
+        "attempt_count": int(data["attempt_count"] or 0),
+        "last_attempt_at": (
+            _datetime_value(data["last_attempt_at"])
+            if data["last_attempt_at"]
+            else None
+        ),
+        "next_attempt_at": (
+            _datetime_value(data["next_attempt_at"])
+            if data["next_attempt_at"]
+            else None
+        ),
+        "last_error_code": data["last_error_code"],
+        "last_error_hash": data["last_error_hash"],
+        "metadata": _json_value(data["metadata"], {}),
+        "created_at": _datetime_value(data["created_at"]),
+        "updated_at": _datetime_value(data["updated_at"]),
+        "completed_at": (
+            _datetime_value(data["completed_at"]) if data["completed_at"] else None
+        ),
+    }
+
+
 def _escalation_matches_filter(
     record: dict[str, Any],
     *,
@@ -5576,10 +6191,54 @@ def _escalation_matches_filter(
     )
 
 
+def _dispatch_matches_filter(
+    record: dict[str, Any],
+    *,
+    escalation_id: str | None,
+    case_id: str | None,
+    dispatch_status: str | None,
+    dispatch_intent: str | None,
+    channel_type: str | None,
+    target_service: str | None,
+    target_kind: str | None,
+    target_id: str | None,
+) -> bool:
+    return all(
+        (
+            escalation_id is None or record.get("escalation_id") == escalation_id,
+            case_id is None or record.get("case_id") == case_id,
+            dispatch_status is None
+            or record.get("dispatch_status") == dispatch_status,
+            dispatch_intent is None or record.get("dispatch_intent") == dispatch_intent,
+            channel_type is None or record.get("channel_type") == channel_type,
+            target_service is None or record.get("target_service") == target_service,
+            target_kind is None or record.get("target_kind") == target_kind,
+            target_id is None or record.get("target_id") == target_id,
+        )
+    )
+
+
 def _safe_string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return sorted({item.strip() for item in value if isinstance(item, str) and item.strip()})
+
+
+def _bounded_safe_preview(value: str | None, *, limit: int) -> str | None:
+    preview = operator_note_preview(value)
+    if preview is None:
+        return None
+    return preview[:limit]
+
+
+def _non_negative_int(value: Any) -> int:
+    if value is None:
+        return 0
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, parsed)
 
 
 def _count_by(records: list[dict[str, Any]], key: str) -> dict[str, int]:
@@ -5603,6 +6262,14 @@ def _escalation_store_unavailable_error() -> OperatorReviewNoteError:
         status_code=503,
         error_code="ag.operator_review_escalation_store_unavailable",
         detail="Operator review escalation store is unavailable.",
+    )
+
+
+def _dispatch_store_unavailable_error() -> OperatorReviewNoteError:
+    return OperatorReviewNoteError(
+        status_code=503,
+        error_code="ag.operator_review_escalation_dispatch_store_unavailable",
+        detail="Operator review escalation dispatch store is unavailable.",
     )
 
 

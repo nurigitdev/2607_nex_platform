@@ -1213,6 +1213,12 @@ Unified operations:
   escalation action state as input, and keeps live notification delivery plus
   live external incident sync deferred in favor of mock-first provider
   execution.
+- Slice 0702 adds the `ag_op_esc_dispatches` persistence foundation for S71.
+  Dispatch rows reference S70 `ag_op_escalations` and S65 `ag_op_cases`, store
+  safe refs, statuses, bounded previews, hashes, attempt counters, and retry
+  timestamps, and keep raw notification bodies, external incident payloads,
+  provider secrets, database URLs, service tokens, raw comments, raw source
+  text, and raw idempotency keys out of AG persistence.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
