@@ -1272,6 +1272,13 @@ Unified operations:
   protected routes, operations dashboard, contract/OpenAPI coverage, privacy
   regression, and protected PostgreSQL smoke evidence before any future
   execution-worker or live outbound delivery work begins.
+- Slice 0712 starts S72 with
+  `scripts/smoke/run_ag_operator_review_escalation_dispatch_execution_worker_boundary_audit.py`.
+  The boundary keeps dispatch execution AG-owned, reads the existing
+  `ag_op_esc_dispatches` outbox as source of record, starts with bounded
+  run-once mock worker batches, records safe attempt history through
+  `service_operational_events`, adds no new table in Slice 0712, and keeps live
+  notification delivery plus live external incident sync deferred.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
