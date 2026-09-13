@@ -816,6 +816,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0710`](slices/0710_ag_operator_review_escalation_dispatch_postgresql_smoke.md) | `S71-010` AG operator review escalation dispatch PostgreSQL smoke evidence. |
 | [`Slice 0711`](slices/0711_s71_operator_review_escalation_dispatch_closure.md) | `S71-011` S71 operator review escalation dispatch closure checkpoint. |
 | [`Slice 0712`](slices/0712_ag_operator_review_escalation_dispatch_execution_worker_boundary_audit.md) | `S72-001` AG escalation dispatch execution worker boundary audit. |
+| [`Slice 0713`](slices/0713_ag_escalation_dispatch_execution_provider_result_contract.md) | `S72-002` AG escalation dispatch execution provider/result contract. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

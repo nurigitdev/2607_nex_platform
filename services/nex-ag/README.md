@@ -1279,6 +1279,12 @@ Unified operations:
   run-once mock worker batches, records safe attempt history through
   `service_operational_events`, adds no new table in Slice 0712, and keeps live
   notification delivery plus live external incident sync deferred.
+- Slice 0713 adds the S72 runtime contract module
+  `nex_ag.operator_review_dispatch_execution`. It defines the mock-first
+  provider catalog, the safe execution-result schema
+  `ag_operator_review_escalation_dispatch_execution_result.v1`, and redaction
+  guards before any worker adapter, batch runner, live delivery, or table change
+  is introduced.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
