@@ -15,6 +15,7 @@ import nex_ag.operator_review_cases as operator_review_cases_module
 from nex_ag.operator_review_cases import (
     AG_OPERATOR_REVIEW_CASE_TABLE,
     ALLOWED_CASE_ACTIONS,
+    ALLOWED_ESCALATION_ACTIONS,
     ALLOWED_CASE_PRIORITIES,
     ALLOWED_CASE_STATUSES,
     OPERATOR_REVIEW_CASE_ACTION_MUTATION_SCHEMA_VERSION,
@@ -35,6 +36,9 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_CASE_TIMELINE_SCHEMA_VERSION,
     OPERATOR_REVIEW_CASE_WORKBENCH_DETAIL_SCHEMA_VERSION,
     OPERATOR_REVIEW_ESCALATION_SCHEMA_VERSION,
+    OPERATOR_REVIEW_ESCALATION_ACTION_MUTATION_SCHEMA_VERSION,
+    OPERATOR_REVIEW_ESCALATION_ACTION_RECORDED_EVENT_TYPE,
+    OPERATOR_REVIEW_ESCALATION_ACTION_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_ESCALATION_TABLE,
     OperatorReviewCaseService,
     OperatorReviewCaseStore,
@@ -54,8 +58,12 @@ from nex_ag.operator_review_cases import (
     _operator_review_case_record_params,
     _operator_review_case_select_sql,
     _case_sla_state_sort_rank,
+    _target_status_for_escalation_action,
     _target_status_for_case_action,
+    apply_operator_review_escalation_action,
     apply_operator_review_case_action,
+    build_operator_review_escalation_action_mutation_response,
+    build_operator_review_escalation_action_record,
     build_operator_review_escalation_record,
     build_operator_review_case_action_mutation_response,
     build_operator_review_case_action_outcome_projection,
@@ -75,8 +83,12 @@ from nex_ag.operator_review_cases import (
     build_operator_review_case_timeline_projection,
     build_operator_review_case_workbench_detail_projection,
     default_operator_review_case_store,
+    emit_operator_review_escalation_action_event,
     emit_operator_review_case_action_event,
     emit_operator_review_case_event,
+    operator_review_escalation_action_id,
+    operator_review_escalation_action_metadata,
+    operator_review_escalation_action_request_signature,
     operator_review_escalation_metadata,
     operator_review_case_action_id,
     operator_review_case_action_metadata,
@@ -775,6 +787,259 @@ def test_escalation_migration_uses_short_table_and_safe_indexes() -> None:
     assert "idx_ag_op_escalations_status_time" in migration
     assert "raw_notification" not in migration
     assert len("ag_op_escalations") <= 30
+
+
+@pytest.mark.parametrize(
+    ("action_type", "expected_status"),
+    [
+        ("ACKNOWLEDGE", "ACKNOWLEDGED"),
+        ("SNOOZE", "SNOOZED"),
+        ("DISMISS", "DISMISSED"),
+        ("RESOLVE", "RESOLVED"),
+    ],
+)
+def test_operator_review_escalation_action_transitions(
+    action_type: str,
+    expected_status: str,
+) -> None:
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id=f"case-0693:{action_type.lower()}"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key=f"idem-0693-{action_type.lower()}",
+        created_at="2026-09-11T04:00:00Z",
+    )
+    payload: dict[str, Any] = {
+        "action_type": action_type,
+        "operator_ref": {
+            "operator_type": "user",
+            "operator_id": "employee-0693",
+        },
+        "reason_codes": ["operator_followup"],
+        "metadata": {"source_view": "escalation_action"},
+    }
+    if action_type == "SNOOZE":
+        payload["snoozed_until"] = "2026-09-11T06:00:00Z"
+    if action_type in {"DISMISS", "RESOLVE"}:
+        payload["action_comment"] = f"{action_type} with a safe short comment."
+
+    updated, action = apply_operator_review_escalation_action(
+        escalation,
+        payload,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key=f"idem-0693-action-{action_type.lower()}",
+        acted_at="2026-09-11T04:10:00Z",
+    )
+
+    assert action["escalation_action_schema_version"] == (
+        OPERATOR_REVIEW_ESCALATION_ACTION_SCHEMA_VERSION
+    )
+    assert action["action_type"] == action_type
+    assert action["from_status"] == "ACTIVE"
+    assert action["to_status"] == expected_status
+    assert action["operator_ref"]["operator_id"] == "employee-0693"
+    assert action["metadata"]["idempotency_key_stored"] is False
+    assert action["metadata"]["raw_notification_payload_stored"] is False
+    assert updated["escalation_status"] == expected_status
+    assert updated["last_action_type"] == action_type
+    assert updated["metadata"]["last_action_id"] == action["action_id"]
+    assert updated["closed_at"] == (
+        "2026-09-11T04:10:00Z"
+        if action_type in {"DISMISS", "RESOLVE"}
+        else None
+    )
+    assert updated["snoozed_until"] == (
+        "2026-09-11T06:00:00Z" if action_type == "SNOOZE" else None
+    )
+
+
+def test_operator_review_escalation_reopen_transition() -> None:
+    resolved = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id="case-0693:resolved"),
+        {"escalation_status": "RESOLVED", "action_comment": "Resolved safely."},
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0693-resolved",
+        created_at="2026-09-11T04:00:00Z",
+    )
+
+    reopened, action = apply_operator_review_escalation_action(
+        resolved,
+        {
+            "action_type": "REOPEN",
+            "operator_ref": {
+                "operator_type": "user",
+                "operator_id": "employee-0693",
+            },
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0693-reopen",
+        acted_at="2026-09-11T04:15:00Z",
+    )
+
+    assert action["from_status"] == "RESOLVED"
+    assert action["to_status"] == "REOPENED"
+    assert reopened["escalation_status"] == "REOPENED"
+    assert reopened["closed_at"] is None
+
+
+def test_operator_review_escalation_action_validation_and_signature() -> None:
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0693-validation",
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as unsupported:
+        build_operator_review_escalation_action_record(
+            escalation,
+            {"action_type": "PAGE_OUT"},
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key="idem-0693-page-out",
+        )
+    assert unsupported.value.error_code == (
+        "ag.operator_review_escalation_action_type_unsupported"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as missing_snooze:
+        build_operator_review_escalation_action_record(
+            escalation,
+            {
+                "action_type": "SNOOZE",
+                "operator_ref": {
+                    "operator_type": "user",
+                    "operator_id": "employee-0693",
+                },
+            },
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key="idem-0693-snooze",
+        )
+    assert missing_snooze.value.error_code == (
+        "ag.operator_review_escalation_snoozed_until_required"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as missing_comment:
+        build_operator_review_escalation_action_record(
+            escalation,
+            {
+                "action_type": "RESOLVE",
+                "operator_ref": {
+                    "operator_type": "user",
+                    "operator_id": "employee-0693",
+                },
+            },
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key="idem-0693-resolve",
+        )
+    assert missing_comment.value.error_code == (
+        "ag.operator_review_escalation_action_comment_required"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as invalid_transition:
+        _target_status_for_escalation_action("REOPEN", "ACTIVE")
+    assert invalid_transition.value.error_code == (
+        "ag.operator_review_escalation_action_transition_invalid"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as invalid_metadata:
+        operator_review_escalation_action_metadata(["not-object"])
+    assert invalid_metadata.value.error_code == (
+        "ag.operator_review_escalation_action_metadata_invalid"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as sensitive:
+        operator_review_escalation_action_request_signature(
+            escalation["escalation_id"],
+            {
+                "action_type": "ACKNOWLEDGE",
+                "raw_notification_payload": {"secret": "nope"},
+            },
+        )
+    assert sensitive.value.error_code == "ag.operator_review_note_sensitive_payload"
+
+    signature = operator_review_escalation_action_request_signature(
+        escalation["escalation_id"],
+        {
+            "action_type": "ACKNOWLEDGE",
+            "operator_ref": {
+                "operator_type": "user",
+                "operator_id": "employee-0693",
+            },
+            "action_comment": "Keep this hashed.",
+            "metadata": {"source": "unit"},
+        },
+    )
+
+    assert signature["action_comment_hash"] == sha256_text("Keep this hashed.")
+    assert signature["metadata"]["action_comment_storage"] == (
+        "hash_and_short_preview_only"
+    )
+
+
+def test_operator_review_escalation_action_response_id_and_event() -> None:
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0693-event",
+    )
+    updated, action = apply_operator_review_escalation_action(
+        escalation,
+        {
+            "action_type": "ACKNOWLEDGE",
+            "operator_ref": {
+                "operator_type": "user",
+                "operator_id": "employee-0693",
+            },
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0693-action-event",
+        acted_at="2026-09-11T04:20:00Z",
+    )
+    response = build_operator_review_escalation_action_mutation_response(
+        updated,
+        action,
+        idempotency_status="NEW",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    event_store = InMemoryOperationalEventStore()
+    emitter = OperationalEventEmitter(service_id="nex-ag", store=event_store)
+    emitted = emit_operator_review_escalation_action_event(emitter, action, updated)
+
+    assert action["action_id"] == operator_review_escalation_action_id(
+        escalation["escalation_id"],
+        "idem-0693-action-event",
+    )
+    assert response["escalation_action_mutation_schema_version"] == (
+        OPERATOR_REVIEW_ESCALATION_ACTION_MUTATION_SCHEMA_VERSION
+    )
+    assert response["summary"]["to_status"] == "ACKNOWLEDGED"
+    assert response["redaction"]["idempotency_keys_included"] is False
+    assert emitted.ok is True
+    assert emitted.event is not None
+    assert emitted.event["event_type"] == (
+        OPERATOR_REVIEW_ESCALATION_ACTION_RECORDED_EVENT_TYPE
+    )
+    assert emitted.event["details"]["notification_delivery_deferred"] is True
+
+
+@pytest.mark.parametrize("action_type", ALLOWED_ESCALATION_ACTIONS)
+def test_allowed_escalation_actions_are_declared(action_type: str) -> None:
+    assert action_type in {
+        "ACKNOWLEDGE",
+        "SNOOZE",
+        "DISMISS",
+        "RESOLVE",
+        "REOPEN",
+    }
 
 
 def test_case_list_and_mutation_response_summaries() -> None:
