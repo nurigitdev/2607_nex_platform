@@ -1161,6 +1161,12 @@ Unified operations:
   confirming read-model-only storage, deferred notification/incident execution,
   contract/OpenAPI coverage, privacy regression, PostgreSQL smoke evidence, and
   quality-gate hooks.
+- Slice 0691 starts S70 with
+  `scripts/smoke/run_ag_operator_review_escalation_action_boundary_audit.py`.
+  The boundary keeps escalation actions AG-owned, reserves the short
+  `ag_op_escalations` table name for Slice 0692, requires safe
+  acknowledgement/snooze/action state only, and keeps outbound notification
+  delivery plus external incident sync deferred.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
