@@ -1294,6 +1294,11 @@ Unified operations:
   execution results into existing S71 dispatch state-machine action payloads,
   handles terminal/in-progress/live-deferred/max-attempt cases as skipped or
   blocked plans, and still leaves row mutation to a later worker slice.
+- Slice 0716 adds `run_dispatch_execution_worker_once(...)`, the first bounded
+  S72 worker. It requires explicit confirmation, reads eligible dispatch rows
+  through the existing AG service boundary, uses the mock adapter and transition
+  planner, mutates rows only through the existing dispatch action state machine,
+  and supports dry-run planning without row changes.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

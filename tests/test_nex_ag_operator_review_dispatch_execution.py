@@ -9,6 +9,10 @@ from nex_ag.operator_review_cases import (
     apply_operator_review_escalation_dispatch_action,
     build_operator_review_escalation_dispatch_plan,
     build_operator_review_escalation_record,
+    OperatorReviewCaseService,
+    OperatorReviewCaseStore,
+    OperatorReviewEscalationDispatchStore,
+    OperatorReviewEscalationStore,
 )
 from nex_ag.operator_review_dispatch_execution import (
     ALLOWED_DISPATCH_EXECUTION_RESULT_STATUSES,
@@ -23,6 +27,8 @@ from nex_ag.operator_review_dispatch_execution import (
     build_mock_dispatch_execution_provider,
     execute_dispatch_with_mock_provider,
     normalize_dispatch_execution_provider_profile,
+    run_dispatch_execution_worker_once,
+    _worker_candidate_dispatches,
 )
 from nex_ag.operator_reviews import OperatorReviewNoteError, sha256_text
 
@@ -83,6 +89,20 @@ def sample_dispatch(**plan_overrides: Any) -> dict[str, Any]:
     )
     assert isinstance(plan["dispatch_record"], dict)
     return plan["dispatch_record"]
+
+
+def build_dispatch_service(
+    *dispatches: dict[str, Any],
+) -> tuple[OperatorReviewCaseService, OperatorReviewEscalationDispatchStore]:
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    for dispatch in dispatches:
+        dispatch_store.save(dispatch)
+    service = OperatorReviewCaseService(
+        OperatorReviewCaseStore(),
+        escalation_store=OperatorReviewEscalationStore(),
+        dispatch_store=dispatch_store,
+    )
+    return service, dispatch_store
 
 
 def test_dispatch_execution_provider_catalog_is_mock_first_and_redacted() -> None:
@@ -487,3 +507,117 @@ def test_dispatch_execution_transition_plan_skip_and_retry_wait_paths() -> None:
     assert unsupported_result_exc.value.error_code == (
         "ag.operator_review_escalation_dispatch_execution_result_status_unsupported"
     )
+
+
+def test_dispatch_execution_worker_once_requires_confirmation() -> None:
+    service, dispatch_store = build_dispatch_service(sample_dispatch())
+
+    run = run_dispatch_execution_worker_once(
+        service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        executed_at="2026-09-12T16:00:00Z",
+    )
+
+    assert run["worker_run_schema_version"].endswith(".v1")
+    assert run["run_status"] == "BLOCKED"
+    assert run["blocked_reason"] == "confirm_run_required"
+    assert run["candidate_count"] == 0
+    assert dispatch_store.list_dispatches()[0]["dispatch_status"] == "PENDING"
+
+
+def test_dispatch_execution_worker_once_processes_success_and_failure_batches() -> None:
+    success = sample_dispatch(
+        candidate_overrides={"candidate_id": "case-0716:success", "case_id": "case-0716-success"},
+    )
+    success_service, success_store = build_dispatch_service(success)
+
+    success_run = run_dispatch_execution_worker_once(
+        success_service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        batch_limit=1,
+        confirm_run=True,
+        executed_at="2026-09-12T16:05:00Z",
+    )
+
+    assert success_run["run_status"] == "COMPLETED"
+    assert success_run["batch_limit"] == 1
+    assert success_run["candidate_count"] == 1
+    assert success_run["processed_count"] == 1
+    assert success_run["succeeded_count"] == 1
+    assert success_run["items"][0]["action_count"] == 2
+    assert success_store.get(success["dispatch_id"])["dispatch_status"] == "SUCCEEDED"
+
+    failure = sample_dispatch(
+        provider_profile="mock-failure",
+        candidate_overrides={"candidate_id": "case-0716:failure", "case_id": "case-0716-failure"},
+    )
+    failure_service, failure_store = build_dispatch_service(failure)
+
+    failure_run = run_dispatch_execution_worker_once(
+        failure_service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        provider_profile="mock-failure",
+        confirm_run=True,
+        executed_at="2026-09-12T16:10:00Z",
+    )
+
+    assert failure_run["processed_count"] == 1
+    assert failure_run["retry_wait_count"] == 1
+    assert failure_run["items"][0]["final_status"] == "RETRY_WAIT"
+    assert failure_store.get(failure["dispatch_id"])["dispatch_status"] == "RETRY_WAIT"
+    assert "idem-0716" not in json.dumps(failure_run)
+
+
+def test_dispatch_execution_worker_once_dry_run_and_limit_bounds() -> None:
+    dispatch = sample_dispatch()
+    service, dispatch_store = build_dispatch_service(dispatch)
+
+    dry_run = run_dispatch_execution_worker_once(
+        service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        batch_limit=999,
+        confirm_run=True,
+        dry_run=True,
+        executed_at="2026-09-12T16:20:00Z",
+    )
+
+    assert dry_run["dry_run"] is True
+    assert dry_run["batch_limit"] == 50
+    assert dry_run["processed_count"] == 1
+    assert dry_run["items"][0]["actions"] == []
+    assert dispatch_store.get(dispatch["dispatch_id"])["dispatch_status"] == "PENDING"
+
+    default_limit = run_dispatch_execution_worker_once(
+        service,
+        request_id=REQUEST_ID,
+        batch_limit="invalid",  # type: ignore[arg-type]
+        confirm_run=True,
+        dry_run=True,
+        executed_at="2026-09-12T16:21:00Z",
+    )
+    assert default_limit["batch_limit"] == 10
+
+
+def test_dispatch_execution_worker_candidate_deduplicates_invalid_ids() -> None:
+    class FakeService:
+        def list_escalation_dispatches(self, **_: Any) -> dict[str, Any]:
+            return {
+                "items": [
+                    {"dispatch_id": "dispatch-0716-dup"},
+                    {"dispatch_id": ""},
+                    {"dispatch_id": "dispatch-0716-dup"},
+                ]
+            }
+
+    candidates = _worker_candidate_dispatches(
+        FakeService(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        limit=2,
+    )
+
+    assert candidates == [{"dispatch_id": "dispatch-0716-dup"}]

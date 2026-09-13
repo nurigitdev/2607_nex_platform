@@ -24,11 +24,16 @@ DISPATCH_EXECUTION_RESULT_SCHEMA_VERSION = (
 DISPATCH_EXECUTION_TRANSITION_PLAN_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_transition_plan.v1"
 )
+DISPATCH_EXECUTION_WORKER_RUN_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_worker_run.v1"
+)
 DISPATCH_EXECUTION_DEFAULT_PROVIDER_PROFILE = "mock-default"
 DISPATCH_EXECUTION_PROVIDER_MODE = "mock_first_only"
 DISPATCH_EXECUTION_RESULT_STORAGE = "safe_hashes_statuses_counters_only"
 DEFAULT_DISPATCH_EXECUTION_RETRY_DELAY_SECONDS = 300
 DEFAULT_DISPATCH_EXECUTION_MAX_ATTEMPTS = 3
+DEFAULT_DISPATCH_EXECUTION_BATCH_LIMIT = 10
+MAX_DISPATCH_EXECUTION_BATCH_LIMIT = 50
 
 ALLOWED_DISPATCH_EXECUTION_RESULT_STATUSES = (
     "SUCCEEDED",
@@ -450,6 +455,74 @@ def build_dispatch_execution_transition_plan(
     )
 
 
+def run_dispatch_execution_worker_once(
+    service: Any,
+    *,
+    request_id: str,
+    trace_id: str | None = None,
+    worker_id: str = "ag-dispatch-execution-worker",
+    batch_limit: int | None = None,
+    provider_profile: str | None = None,
+    confirm_run: bool = False,
+    dry_run: bool = False,
+    executed_at: str | None = None,
+) -> dict[str, Any]:
+    now = executed_at or _utc_now()
+    limit = _bounded_batch_limit(batch_limit)
+    run_id = str(
+        uuid5(
+            NAMESPACE_URL,
+            "ag-operator-review-escalation-dispatch-execution-worker-run:"
+            f"{worker_id}:{request_id}:{now}:{limit}:{dry_run}",
+        )
+    )
+    if not confirm_run:
+        return _worker_run_summary(
+            run_id=run_id,
+            worker_id=worker_id,
+            run_status="BLOCKED",
+            request_id=request_id,
+            trace_id=trace_id,
+            executed_at=now,
+            batch_limit=limit,
+            items=[],
+            blocked_reason="confirm_run_required",
+            dry_run=dry_run,
+        )
+    candidates = _worker_candidate_dispatches(
+        service,
+        request_id=request_id,
+        trace_id=trace_id,
+        limit=limit,
+    )
+    items: list[dict[str, Any]] = []
+    for dispatch in candidates[:limit]:
+        items.append(
+            _execute_worker_item(
+                service,
+                dispatch,
+                request_id=request_id,
+                trace_id=trace_id,
+                worker_id=worker_id,
+                provider_profile=provider_profile,
+                dry_run=dry_run,
+                executed_at=now,
+            )
+        )
+    return _worker_run_summary(
+        run_id=run_id,
+        worker_id=worker_id,
+        run_status="COMPLETED",
+        request_id=request_id,
+        trace_id=trace_id,
+        executed_at=now,
+        batch_limit=limit,
+        items=items,
+        blocked_reason=None,
+        dry_run=dry_run,
+    )
+
+
 def assert_dispatch_execution_result_redacted(payload: Any) -> None:
     leaks = _forbidden_result_key_paths(payload)
     if leaks:
@@ -593,6 +666,146 @@ def _transition_plan(
     }
 
 
+def _worker_candidate_dispatches(
+    service: Any,
+    *,
+    request_id: str,
+    trace_id: str | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    selected: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for status in ("PENDING", "RETRY_WAIT", "FAILED"):
+        response = service.list_escalation_dispatches(
+            request_id=request_id,
+            trace_id=trace_id,
+            dispatch_status=status,
+            limit=limit,
+        )
+        for item in response.get("items") or []:
+            dispatch_id = str(item.get("dispatch_id") or "")
+            if dispatch_id and dispatch_id not in seen:
+                seen.add(dispatch_id)
+                selected.append(item)
+            if len(selected) >= limit:
+                return selected
+    return selected
+
+
+def _execute_worker_item(
+    service: Any,
+    dispatch: Mapping[str, Any],
+    *,
+    request_id: str,
+    trace_id: str | None,
+    worker_id: str,
+    provider_profile: str | None,
+    dry_run: bool,
+    executed_at: str,
+) -> dict[str, Any]:
+    result = execute_dispatch_with_mock_provider(
+        dispatch,
+        profile_id=provider_profile,
+        executed_at=executed_at,
+    )
+    plan = build_dispatch_execution_transition_plan(
+        dispatch,
+        result,
+        planned_at=executed_at,
+    )
+    final_status = str(dispatch.get("dispatch_status") or "")
+    mutations: list[dict[str, Any]] = []
+    if not dry_run:
+        for index, action in enumerate(plan["actions"]):
+            mutation = service.apply_escalation_dispatch_action(
+                str(dispatch.get("dispatch_id") or ""),
+                action,
+                request_id=request_id,
+                trace_id=trace_id,
+                idempotency_key=_worker_action_idempotency_key(
+                    worker_id,
+                    dispatch,
+                    action,
+                    index,
+                    result,
+                ),
+            )
+            mutations.append(
+                {
+                    "action_type": mutation.get("action", {}).get("action_type"),
+                    "to_status": mutation.get("action", {}).get("to_status"),
+                    "idempotency_status": mutation.get("idempotency_status"),
+                }
+            )
+            final_status = str(mutation.get("dispatch", {}).get("dispatch_status") or "")
+    item = {
+        "dispatch_id": str(dispatch.get("dispatch_id") or ""),
+        "initial_status": str(dispatch.get("dispatch_status") or ""),
+        "final_status": final_status,
+        "execution_status": result.get("execution_status"),
+        "provider_profile": result.get("provider_profile"),
+        "provider_result_hash": result.get("provider_result_hash"),
+        "plan_status": plan.get("plan_status"),
+        "skip_reason": plan.get("skip_reason"),
+        "action_count": len(plan["actions"]),
+        "actions": mutations if not dry_run else [],
+        "dry_run": dry_run,
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(item)
+    return item
+
+
+def _worker_run_summary(
+    *,
+    run_id: str,
+    worker_id: str,
+    run_status: str,
+    request_id: str,
+    trace_id: str | None,
+    executed_at: str,
+    batch_limit: int,
+    items: list[dict[str, Any]],
+    blocked_reason: str | None,
+    dry_run: bool,
+) -> dict[str, Any]:
+    summary = {
+        "worker_run_schema_version": DISPATCH_EXECUTION_WORKER_RUN_SCHEMA_VERSION,
+        "run_id": run_id,
+        "worker_id": worker_id,
+        "run_status": run_status,
+        "blocked_reason": blocked_reason,
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "executed_at": executed_at,
+        "batch_limit": batch_limit,
+        "candidate_count": len(items),
+        "processed_count": sum(
+            1 for item in items if item.get("plan_status") == "READY"
+        ),
+        "succeeded_count": sum(
+            1 for item in items if item.get("final_status") == "SUCCEEDED"
+        ),
+        "failed_count": sum(
+            1 for item in items if item.get("final_status") == "FAILED"
+        ),
+        "retry_wait_count": sum(
+            1 for item in items if item.get("final_status") == "RETRY_WAIT"
+        ),
+        "skipped_count": sum(
+            1 for item in items if item.get("plan_status") == "SKIPPED"
+        ),
+        "blocked_count": sum(
+            1 for item in items if item.get("plan_status") == "BLOCKED"
+        ),
+        "dry_run": dry_run,
+        "items": items,
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(summary)
+    return summary
+
+
 def _worker_action_payload(
     action_type: str,
     execution_result: Mapping[str, Any],
@@ -627,6 +840,33 @@ def _worker_action_payload(
         payload["next_attempt_at"] = next_attempt_at
     assert_dispatch_execution_result_redacted(payload)
     return payload
+
+
+def _worker_action_idempotency_key(
+    worker_id: str,
+    dispatch: Mapping[str, Any],
+    action: Mapping[str, Any],
+    index: int,
+    execution_result: Mapping[str, Any],
+) -> str:
+    return (
+        "ag-dispatch-execution-worker:"
+        f"{worker_id}:"
+        f"{dispatch.get('dispatch_id') or 'unknown'}:"
+        f"{action.get('action_type') or 'action'}:"
+        f"{index}:"
+        f"{execution_result.get('provider_result_hash') or 'result'}"
+    )
+
+
+def _bounded_batch_limit(value: int | None) -> int:
+    if value is None:
+        return DEFAULT_DISPATCH_EXECUTION_BATCH_LIMIT
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_DISPATCH_EXECUTION_BATCH_LIMIT
+    return max(1, min(parsed, MAX_DISPATCH_EXECUTION_BATCH_LIMIT))
 
 
 def _transition_skip_reason(dispatch_status: str) -> str | None:
