@@ -1193,6 +1193,9 @@ Unified operations:
   `operator_review_case.v1`, positive list/action fixtures, a negative raw
   notification payload fixture, and OpenAPI coverage for escalation list,
   detail, and action routes.
+- Slice 0698 adds a mock-first S70 privacy regression smoke for escalation
+  list/detail/action, dashboard, and issue-candidate surfaces. It also proves
+  sensitive action payload ingress is rejected before persistence.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
