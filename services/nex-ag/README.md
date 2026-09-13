@@ -1206,6 +1206,13 @@ Unified operations:
   confirming `ag_op_escalations` persistence, safe operational-event action
   history, dashboard/issue-candidate wiring, contract/OpenAPI coverage, privacy
   regression, and protected PostgreSQL smoke evidence.
+- Slice 0701 starts S71 with
+  `scripts/smoke/run_ag_operator_review_escalation_outbound_dispatch_boundary_audit.py`.
+  The boundary keeps outbound dispatch AG-owned, reserves the short
+  `ag_op_esc_dispatches` table name for Slice 0702, uses S70 persisted
+  escalation action state as input, and keeps live notification delivery plus
+  live external incident sync deferred in favor of mock-first provider
+  execution.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
