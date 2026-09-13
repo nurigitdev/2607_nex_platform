@@ -1285,6 +1285,11 @@ Unified operations:
   `ag_operator_review_escalation_dispatch_execution_result.v1`, and redaction
   guards before any worker adapter, batch runner, live delivery, or table change
   is introduced.
+- Slice 0714 adds the mock provider adapter for S72 dispatch execution. The
+  adapter returns safe success/failure results for `MOCK` channel dispatches and
+  returns a safe `SKIPPED` result for live channels because outbound delivery
+  remains deferred. It still does not mutate dispatch rows or call external
+  providers.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

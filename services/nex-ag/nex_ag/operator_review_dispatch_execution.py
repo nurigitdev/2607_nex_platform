@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Mapping
 
@@ -177,10 +178,22 @@ def build_dispatch_execution_result(
     executed_at: str | None = None,
 ) -> dict[str, Any]:
     normalized_status = _required_execution_status(execution_status)
-    profile = normalize_dispatch_execution_provider_profile(
-        provider_profile or optional_text(dispatch.get("provider_profile")),
-        channel_type=optional_text(dispatch.get("channel_type")),
-    )
+    channel_type = optional_text(dispatch.get("channel_type"))
+    if normalized_status == "SKIPPED" and channel_type != "MOCK":
+        profile = dict(
+            DISPATCH_EXECUTION_PROVIDER_PROFILES[
+                DISPATCH_EXECUTION_DEFAULT_PROVIDER_PROFILE
+            ]
+        )
+        profile["profile_id"] = (
+            optional_text(provider_profile)
+            or DISPATCH_EXECUTION_DEFAULT_PROVIDER_PROFILE
+        )
+    else:
+        profile = normalize_dispatch_execution_provider_profile(
+            provider_profile or optional_text(dispatch.get("provider_profile")),
+            channel_type=channel_type,
+        )
     if normalized_status == "FAILED" and optional_text(last_error_code) is None:
         raise OperatorReviewNoteError(
             status_code=422,
@@ -243,6 +256,65 @@ def build_dispatch_execution_result(
     }
     assert_dispatch_execution_result_redacted(result)
     return result
+
+
+@dataclass(frozen=True)
+class MockDispatchExecutionProvider:
+    profile_id: str = DISPATCH_EXECUTION_DEFAULT_PROVIDER_PROFILE
+
+    def execute(
+        self,
+        dispatch: Mapping[str, Any],
+        *,
+        executed_at: str | None = None,
+    ) -> dict[str, Any]:
+        channel_type = optional_text(dispatch.get("channel_type"))
+        if channel_type != "MOCK":
+            return build_dispatch_execution_result(
+                dispatch,
+                execution_status="SKIPPED",
+                provider_profile=self.profile_id,
+                provider_result_ref=_mock_provider_result_ref(dispatch, self.profile_id),
+                safe_result_message=(
+                    "Dispatch execution skipped because live outbound delivery "
+                    "is deferred in S72."
+                ),
+                executed_at=executed_at,
+            )
+        profile = normalize_dispatch_execution_provider_profile(
+            self.profile_id,
+            channel_type=channel_type,
+        )
+        status = str(profile["result_status"])
+        return build_dispatch_execution_result(
+            dispatch,
+            execution_status=status,
+            provider_profile=profile["profile_id"],
+            provider_result_ref=_mock_provider_result_ref(dispatch, profile["profile_id"]),
+            safe_result_message=str(profile["safe_result_template"]),
+            last_error_code=profile.get("default_error_code") if status == "FAILED" else None,
+            executed_at=executed_at,
+        )
+
+
+def build_mock_dispatch_execution_provider(
+    profile_id: str | None = None,
+) -> MockDispatchExecutionProvider:
+    normalized = normalize_dispatch_execution_provider_profile(
+        profile_id,
+        channel_type="MOCK",
+    )
+    return MockDispatchExecutionProvider(profile_id=str(normalized["profile_id"]))
+
+
+def execute_dispatch_with_mock_provider(
+    dispatch: Mapping[str, Any],
+    *,
+    profile_id: str | None = None,
+    executed_at: str | None = None,
+) -> dict[str, Any]:
+    provider = build_mock_dispatch_execution_provider(profile_id)
+    return provider.execute(dispatch, executed_at=executed_at)
 
 
 def assert_dispatch_execution_result_redacted(payload: Any) -> None:
@@ -350,6 +422,15 @@ def _default_provider_result_ref(
         "ag-dispatch-execution:"
         f"{dispatch.get('dispatch_id') or 'unknown'}:"
         f"{execution_status}:"
+        f"{dispatch.get('attempt_count') or 0}"
+    )
+
+
+def _mock_provider_result_ref(dispatch: Mapping[str, Any], profile_id: str) -> str:
+    return (
+        "mock-dispatch-execution:"
+        f"{dispatch.get('dispatch_id') or 'unknown'}:"
+        f"{profile_id}:"
         f"{dispatch.get('attempt_count') or 0}"
     )
 

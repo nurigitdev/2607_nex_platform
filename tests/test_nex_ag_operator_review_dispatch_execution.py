@@ -18,6 +18,8 @@ from nex_ag.operator_review_dispatch_execution import (
     assert_dispatch_execution_result_redacted,
     build_dispatch_execution_provider_catalog,
     build_dispatch_execution_result,
+    build_mock_dispatch_execution_provider,
+    execute_dispatch_with_mock_provider,
     normalize_dispatch_execution_provider_profile,
 )
 from nex_ag.operator_reviews import OperatorReviewNoteError, sha256_text
@@ -260,4 +262,61 @@ def test_dispatch_execution_result_rejects_unsupported_status_and_sensitive_payl
         )
     assert list_flag_exc.value.error_code == (
         "ag.operator_review_escalation_dispatch_execution_redaction_flag_leak"
+    )
+
+
+def test_mock_dispatch_execution_provider_returns_safe_success_and_failure() -> None:
+    dispatch = sample_dispatch()
+    provider = build_mock_dispatch_execution_provider()
+
+    result = provider.execute(dispatch, executed_at="2026-09-12T14:00:00Z")
+
+    assert result["execution_status"] == "SUCCEEDED"
+    assert result["recommended_action"] == "SUCCEED"
+    assert result["provider_profile"] == "mock-default"
+    assert result["safe_result_preview"] == "Mock dispatch delivered."
+    assert result["executed_at"] == "2026-09-12T14:00:00Z"
+    assert "mock-dispatch-execution" not in result["safe_result_preview"]
+    assert result["redaction"]["raw_provider_payload_included"] is False
+
+    failed = execute_dispatch_with_mock_provider(
+        sample_dispatch(provider_profile="mock-failure"),
+        profile_id="mock-failure",
+        executed_at="2026-09-12T14:01:00Z",
+    )
+
+    assert failed["execution_status"] == "FAILED"
+    assert failed["recommended_action"] == "FAIL"
+    assert failed["last_error_code"] == "mock_dispatch_failed"
+    assert failed["provider_result_ref"]["provider_result_hash"]
+
+
+def test_mock_dispatch_execution_provider_skips_deferred_live_channel() -> None:
+    dispatch = {
+        **sample_dispatch(),
+        "channel_type": "EMAIL",
+        "provider_profile": "email-profile-deferred",
+    }
+
+    result = execute_dispatch_with_mock_provider(
+        dispatch,
+        executed_at="2026-09-12T14:02:00Z",
+    )
+
+    assert result["execution_status"] == "SKIPPED"
+    assert result["recommended_action"] is None
+    assert result["channel_type"] == "EMAIL"
+    assert result["provider_profile"] == "mock-default"
+    assert result["safe_result_preview"] == (
+        "Dispatch execution skipped because live outbound delivery is deferred in S72."
+    )
+    assert result["redaction"]["raw_notification_payload_included"] is False
+
+
+def test_mock_dispatch_execution_provider_rejects_unknown_profile() -> None:
+    with pytest.raises(OperatorReviewNoteError) as exc_info:
+        build_mock_dispatch_execution_provider("unknown-profile")
+
+    assert exc_info.value.error_code == (
+        "ag.operator_review_escalation_dispatch_execution_provider_profile_unsupported"
     )
