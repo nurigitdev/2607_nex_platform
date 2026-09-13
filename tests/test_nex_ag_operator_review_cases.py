@@ -43,6 +43,8 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_ESCALATION_DISPATCH_SCHEMA_VERSION,
     OPERATOR_REVIEW_ESCALATION_DISPATCH_PLAN_SCHEMA_VERSION,
     OPERATOR_REVIEW_ESCALATION_DISPATCH_POLICY_VERSION,
+    OPERATOR_REVIEW_ESCALATION_DISPATCH_ACTION_MUTATION_SCHEMA_VERSION,
+    OPERATOR_REVIEW_ESCALATION_DISPATCH_ACTION_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_ESCALATION_TABLE,
     AG_OPERATOR_REVIEW_ESCALATION_DISPATCH_TABLE,
     OperatorReviewCaseService,
@@ -69,9 +71,14 @@ from nex_ag.operator_review_cases import (
     _operator_review_case_select_sql,
     _case_sla_state_sort_rank,
     _target_status_for_escalation_action,
+    _target_status_for_escalation_dispatch_action,
     _target_status_for_case_action,
+    _latest_escalation_dispatch_action_summary,
     apply_operator_review_escalation_action,
+    apply_operator_review_escalation_dispatch_action,
     apply_operator_review_case_action,
+    build_operator_review_escalation_dispatch_action_mutation_response,
+    build_operator_review_escalation_dispatch_action_record,
     build_operator_review_escalation_dispatch_plan,
     build_operator_review_escalation_dispatch_policy,
     build_operator_review_escalation_dispatch_record,
@@ -103,6 +110,10 @@ from nex_ag.operator_review_cases import (
     emit_operator_review_case_event,
     operator_review_escalation_dispatch_metadata,
     operator_review_escalation_dispatch_provider_ref,
+    operator_review_escalation_dispatch_id,
+    operator_review_escalation_dispatch_action_id,
+    operator_review_escalation_dispatch_action_metadata,
+    operator_review_escalation_dispatch_action_request_signature,
     operator_review_escalation_action_id,
     operator_review_escalation_action_metadata,
     operator_review_escalation_action_request_signature,
@@ -117,6 +128,9 @@ from nex_ag.operator_review_cases import (
     register_operator_review_case_routes,
     required_case_action_idempotency_key,
     required_case_idempotency_key,
+    required_escalation_dispatch_action_idempotency_key,
+    required_escalation_dispatch_action_type,
+    required_escalation_dispatch_id,
 )
 from nex_ag.operator_reviews import (
     OperatorEvidenceExportStore,
@@ -1333,6 +1347,423 @@ def test_operator_review_case_service_plans_escalation_dispatch() -> None:
             request_id=REQUEST_ID,
             trace_id=TRACE_ID,
         )
+    assert missing_exc.value.status_code == 404
+
+
+def test_escalation_dispatch_action_state_machine_success_path() -> None:
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id="case-0704:success"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    dispatch = build_operator_review_escalation_dispatch_plan(
+        escalation,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0704-dispatch",
+    )["dispatch_record"]
+
+    started, start_action = apply_operator_review_escalation_dispatch_action(
+        dispatch,
+        {
+            "action_type": "START",
+            "operator_ref": {
+                "operator_type": "service",
+                "operator_id": "nex-ag",
+            },
+            "reason_codes": ["mock_provider_attempt_started"],
+            "metadata": {"worker": "mock-dispatch-worker"},
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0704-start",
+        acted_at="2026-09-11T04:20:00Z",
+    )
+
+    assert start_action["dispatch_action_schema_version"] == (
+        OPERATOR_REVIEW_ESCALATION_DISPATCH_ACTION_SCHEMA_VERSION
+    )
+    assert start_action["action_type"] == "START"
+    assert start_action["from_status"] == "PENDING"
+    assert start_action["to_status"] == "DISPATCHING"
+    assert start_action["attempt_count"] == 1
+    assert start_action["metadata"]["provider_execution"] == "state_machine_only"
+    assert started["dispatch_status"] == "DISPATCHING"
+    assert started["attempt_count"] == 1
+    assert started["last_attempt_at"] == "2026-09-11T04:20:00Z"
+    assert started["next_attempt_at"] is None
+    assert started["metadata"]["last_action_type"] == "START"
+
+    succeeded, success_action = apply_operator_review_escalation_dispatch_action(
+        started,
+        {
+            "action_type": "SUCCEED",
+            "operator_ref": {
+                "operator_type": "service",
+                "operator_id": "nex-ag",
+            },
+            "reason_codes": ["mock_provider_succeeded"],
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0704-succeed",
+        acted_at="2026-09-11T04:21:00Z",
+    )
+
+    assert success_action["from_status"] == "DISPATCHING"
+    assert success_action["to_status"] == "SUCCEEDED"
+    assert success_action["attempt_count"] == 1
+    assert succeeded["dispatch_status"] == "SUCCEEDED"
+    assert succeeded["completed_at"] == "2026-09-11T04:21:00Z"
+    assert succeeded["last_error_code"] is None
+    assert succeeded["last_error_hash"] is None
+    response = build_operator_review_escalation_dispatch_action_mutation_response(
+        succeeded,
+        success_action,
+        idempotency_status="NEW",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    assert response["dispatch_action_mutation_schema_version"] == (
+        OPERATOR_REVIEW_ESCALATION_DISPATCH_ACTION_MUTATION_SCHEMA_VERSION
+    )
+    assert response["summary"]["dispatch_status"] == "SUCCEEDED"
+    assert response["redaction"]["raw_provider_payload_included"] is False
+
+
+def test_escalation_dispatch_action_failure_retry_cancel_paths() -> None:
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id="case-0704:retry"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    dispatch = build_operator_review_escalation_dispatch_plan(
+        escalation,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )["dispatch_record"]
+    started, _start_action = apply_operator_review_escalation_dispatch_action(
+        dispatch,
+        {
+            "action_type": "START",
+            "operator_ref": {
+                "operator_type": "service",
+                "operator_id": "nex-ag",
+            },
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0704-retry-start",
+        acted_at="2026-09-11T04:20:00Z",
+    )
+
+    failed, fail_action = apply_operator_review_escalation_dispatch_action(
+        started,
+        {
+            "action_type": "FAIL",
+            "operator_ref": {
+                "operator_type": "service",
+                "operator_id": "nex-ag",
+            },
+            "last_error_code": "mock_timeout",
+            "last_error": "Mock provider timeout raw details.",
+            "action_comment": "safe operator comment for retry",
+            "metadata": {"retryable": True},
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0704-fail",
+        acted_at="2026-09-11T04:21:00Z",
+    )
+
+    assert fail_action["from_status"] == "DISPATCHING"
+    assert fail_action["to_status"] == "FAILED"
+    assert fail_action["last_error_code"] == "mock_timeout"
+    assert fail_action["last_error_hash"] == sha256_text(
+        "Mock provider timeout raw details."
+    )
+    assert fail_action["action_comment_hash"] == sha256_text(
+        "safe operator comment for retry"
+    )
+    assert failed["dispatch_status"] == "FAILED"
+    assert failed["last_error_code"] == "mock_timeout"
+    assert failed["last_error_hash"] == fail_action["last_error_hash"]
+    assert failed["completed_at"] is None
+
+    retry_wait, retry_action = apply_operator_review_escalation_dispatch_action(
+        failed,
+        {
+            "action_type": "RETRY",
+            "operator_ref": {
+                "operator_type": "service",
+                "operator_id": "nex-ag",
+            },
+            "next_attempt_at": "2026-09-11T04:30:00Z",
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0704-retry",
+        acted_at="2026-09-11T04:22:00Z",
+    )
+
+    assert retry_action["to_status"] == "RETRY_WAIT"
+    assert retry_wait["dispatch_status"] == "RETRY_WAIT"
+    assert retry_wait["next_attempt_at"] == "2026-09-11T04:30:00Z"
+    assert retry_wait["attempt_count"] == 1
+
+    cancelled, cancel_action = apply_operator_review_escalation_dispatch_action(
+        retry_wait,
+        {
+            "action_type": "CANCEL",
+            "operator_ref": {
+                "operator_type": "user",
+                "operator_id": "employee-0704",
+            },
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0704-cancel",
+        acted_at="2026-09-11T04:23:00Z",
+    )
+
+    assert cancel_action["to_status"] == "CANCELLED"
+    assert cancelled["dispatch_status"] == "CANCELLED"
+    assert cancelled["completed_at"] == "2026-09-11T04:23:00Z"
+    assert cancelled["next_attempt_at"] is None
+
+
+def test_escalation_dispatch_action_validation_and_signature() -> None:
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id="case-0704:validation"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    dispatch = build_operator_review_escalation_dispatch_plan(
+        escalation,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )["dispatch_record"]
+
+    assert _target_status_for_escalation_dispatch_action(
+        "START",
+        "PENDING",
+    ) == "DISPATCHING"
+    with pytest.raises(OperatorReviewNoteError) as transition_exc:
+        _target_status_for_escalation_dispatch_action("SUCCEED", "PENDING")
+    assert transition_exc.value.status_code == 409
+
+    with pytest.raises(OperatorReviewNoteError) as fail_exc:
+        build_operator_review_escalation_dispatch_action_record(
+            {**dispatch, "dispatch_status": "DISPATCHING"},
+            {
+                "action_type": "FAIL",
+                "operator_ref": {
+                    "operator_type": "service",
+                    "operator_id": "nex-ag",
+                },
+            },
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key="idem-0704-invalid-fail",
+        )
+    assert fail_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_error_code_required"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as retry_exc:
+        build_operator_review_escalation_dispatch_action_record(
+            {**dispatch, "dispatch_status": "FAILED"},
+            {
+                "action_type": "RETRY",
+                "operator_ref": {
+                    "operator_type": "service",
+                    "operator_id": "nex-ag",
+                },
+            },
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key="idem-0704-invalid-retry",
+        )
+    assert retry_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_next_attempt_required"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as metadata_exc:
+        operator_review_escalation_dispatch_action_metadata([])
+    assert metadata_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_action_metadata_invalid"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as sensitive_exc:
+        operator_review_escalation_dispatch_action_request_signature(
+            dispatch["dispatch_id"],
+            {
+                "action_type": "START",
+                "operator_ref": {
+                    "operator_type": "service",
+                    "operator_id": "nex-ag",
+                },
+                "provider_payload": {"secret": "nope"},
+            },
+        )
+    assert sensitive_exc.value.error_code == "ag.operator_review_note_sensitive_payload"
+
+    signature = operator_review_escalation_dispatch_action_request_signature(
+        dispatch["dispatch_id"],
+        {
+            "action_type": "FAIL",
+            "operator_ref": {
+                "operator_type": "service",
+                "operator_id": "nex-ag",
+            },
+            "last_error_code": "mock_error",
+            "last_error": "raw error text gets hashed",
+            "metadata": {"retryable": True},
+        },
+    )
+    assert signature["dispatch_id"] == dispatch["dispatch_id"]
+    assert signature["last_error_hash"] == sha256_text("raw error text gets hashed")
+    assert "raw error text gets hashed" not in json.dumps(signature)
+    assert operator_review_escalation_dispatch_action_id(
+        dispatch["dispatch_id"],
+        "idem-0704-action-id",
+    ) == operator_review_escalation_dispatch_action_id(
+        dispatch["dispatch_id"],
+        "idem-0704-action-id",
+    )
+    assert operator_review_escalation_dispatch_id(
+        dispatch["escalation_id"],
+        "idem-0704-dispatch-id",
+    ) == operator_review_escalation_dispatch_id(
+        dispatch["escalation_id"],
+        "idem-0704-dispatch-id",
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as missing_idem_exc:
+        required_escalation_dispatch_action_idempotency_key(None)
+    assert missing_idem_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_action_idempotency_key_required"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as missing_dispatch_exc:
+        required_escalation_dispatch_id(None)
+    assert missing_dispatch_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_id_required"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as missing_action_type_exc:
+        required_escalation_dispatch_action_type(None)
+    assert missing_action_type_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_action_type_required"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as unsupported_action_type_exc:
+        required_escalation_dispatch_action_type("BOUNCE")
+    assert unsupported_action_type_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_action_type_unsupported"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as unsupported_target_exc:
+        _target_status_for_escalation_dispatch_action("BOUNCE", "PENDING")
+    assert unsupported_target_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_action_type_unsupported"
+    )
+
+    assert _latest_escalation_dispatch_action_summary({"metadata": []}) is None
+    assert _latest_escalation_dispatch_action_summary({"metadata": {}}) is None
+    assert (
+        _latest_escalation_dispatch_action_summary(
+            {"metadata": {"last_action": {"request_signature": {}}}}
+        )
+        is None
+    )
+    assert (
+        _latest_escalation_dispatch_action_summary(
+            {"metadata": {"last_action": {"record": {}}}}
+        )
+        is None
+    )
+    action_summary = {"record": {"action_id": "action-0704"}, "request_signature": {}}
+    assert _latest_escalation_dispatch_action_summary(
+        {"metadata": {"last_action": action_summary}}
+    ) == action_summary
+
+
+def test_operator_review_case_service_dispatch_action_replay_and_conflict() -> None:
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id="case-0704:service"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    dispatch = build_operator_review_escalation_dispatch_plan(
+        escalation,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )["dispatch_record"]
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    dispatch_store.save(dispatch)
+    service = OperatorReviewCaseService(
+        OperatorReviewCaseStore(),
+        escalation_store=OperatorReviewEscalationStore(),
+        dispatch_store=dispatch_store,
+    )
+    payload = {
+        "action_type": "START",
+        "operator_ref": {
+            "operator_type": "service",
+            "operator_id": "nex-ag",
+        },
+        "reason_codes": ["worker_started"],
+    }
+
+    with pytest.raises(OperatorReviewNoteError) as missing_idem_exc:
+        service.apply_escalation_dispatch_action(
+            dispatch["dispatch_id"],
+            payload,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key=None,
+        )
+    assert missing_idem_exc.value.status_code == 422
+
+    response = service.apply_escalation_dispatch_action(
+        dispatch["dispatch_id"],
+        payload,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0704-service-start",
+    )
+
+    assert response["idempotency_status"] == "NEW"
+    assert response["summary"]["dispatch_status"] == "DISPATCHING"
+    assert dispatch_store.get(dispatch["dispatch_id"])["dispatch_status"] == (
+        "DISPATCHING"
+    )
+
+    replay = service.apply_escalation_dispatch_action(
+        dispatch["dispatch_id"],
+        payload,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0704-service-start",
+    )
+    assert replay["idempotency_status"] == "REPLAYED"
+
+    with pytest.raises(OperatorReviewNoteError) as conflict_exc:
+        service.apply_escalation_dispatch_action(
+            dispatch["dispatch_id"],
+            {
+                **payload,
+                "reason_codes": ["different_reason"],
+            },
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key="idem-0704-service-start",
+        )
+    assert conflict_exc.value.status_code == 409
+
+    with pytest.raises(OperatorReviewNoteError) as missing_exc:
+        service.get_escalation_dispatch("missing-dispatch")
     assert missing_exc.value.status_code == 404
 
 
