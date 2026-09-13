@@ -797,6 +797,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0691`](slices/0691_ag_operator_review_escalation_action_boundary_audit.md) | `S70-001` AG operator review escalation action boundary audit. |
 | [`Slice 0692`](slices/0692_ag_operator_review_escalation_persistence.md) | `S70-002` AG operator review escalation persistence foundation. |
 | [`Slice 0693`](slices/0693_ag_operator_review_escalation_action_state_machine.md) | `S70-003` AG operator review escalation action state machine. |
+| [`Slice 0694`](slices/0694_ag_operator_review_escalation_action_route_wiring.md) | `S70-004` AG operator review escalation action route wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

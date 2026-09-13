@@ -523,8 +523,11 @@ DEFAULT_OPERATOR_REVIEW_CASE_AUDIT_EVENT_STORE = InMemoryOperationalEventStore()
 
 
 class OperatorReviewCaseService:
-    def __init__(self, store: Any) -> None:
+    def __init__(self, store: Any, escalation_store: Any | None = None) -> None:
         self._store = store
+        self._escalation_store = (
+            escalation_store or DEFAULT_OPERATOR_REVIEW_ESCALATION_STORE
+        )
 
     def create_case(
         self,
@@ -967,6 +970,17 @@ class OperatorReviewCaseService:
             sort_direction=sort_direction,
         )
 
+    def get_escalation(self, escalation_id: str) -> dict[str, Any]:
+        normalized_escalation_id = required_escalation_id(escalation_id)
+        record = self._escalation_store.get(normalized_escalation_id)
+        if record is None:
+            raise OperatorReviewNoteError(
+                status_code=404,
+                error_code="ag.operator_review_escalation_not_found",
+                detail=f"Operator review escalation was not found: {escalation_id}",
+            )
+        return record
+
     def apply_action(
         self,
         case_id: str,
@@ -1029,6 +1043,68 @@ class OperatorReviewCaseService:
             trace_id=trace_id,
         )
 
+    def apply_escalation_action(
+        self,
+        escalation_id: str,
+        payload: dict[str, Any],
+        *,
+        request_id: str,
+        trace_id: str | None,
+        idempotency_key: str | None,
+    ) -> dict[str, Any]:
+        normalized_escalation_id = required_escalation_id(escalation_id)
+        normalized_idempotency_key = required_escalation_action_idempotency_key(
+            idempotency_key
+        )
+        record = self.get_escalation(normalized_escalation_id)
+        action_id = operator_review_escalation_action_id(
+            normalized_escalation_id,
+            normalized_idempotency_key,
+        )
+        request_signature = operator_review_escalation_action_request_signature(
+            normalized_escalation_id,
+            payload,
+        )
+        previous_action = _latest_escalation_action_summary(record)
+        if previous_action is not None and previous_action.get("action_id") == action_id:
+            if previous_action.get("request_signature") != request_signature:
+                raise OperatorReviewNoteError(
+                    status_code=409,
+                    error_code="ag.operator_review_escalation_action_idempotency_conflict",
+                    detail=(
+                        "Idempotency key already maps to a different "
+                        "operator review escalation action."
+                    ),
+                )
+            return build_operator_review_escalation_action_mutation_response(
+                record,
+                previous_action["record"],
+                idempotency_status="REPLAYED",
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        updated, action = apply_operator_review_escalation_action(
+            record,
+            payload,
+            request_id=request_id,
+            trace_id=trace_id,
+            idempotency_key=normalized_idempotency_key,
+        )
+        updated["metadata"]["last_action"] = {
+            "action_id": action["action_id"],
+            "action_type": action["action_type"],
+            "request_signature": request_signature,
+            "record": action,
+        }
+        saved = self._escalation_store.save(updated)
+        return build_operator_review_escalation_action_mutation_response(
+            saved,
+            action,
+            idempotency_status="NEW",
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+
 
 def default_operator_review_case_store(app: FastAPI) -> Any:
     persistence = getattr(app.state, "nex_persistence", None)
@@ -1050,11 +1126,18 @@ def register_operator_review_case_routes(
     app: FastAPI,
     *,
     store: Any | None = None,
+    escalation_store: Any | None = None,
     note_store: Any | None = None,
     export_store: Any | None = None,
     audit_event_store: OperationalEventStore | None = None,
 ) -> None:
-    service = OperatorReviewCaseService(store or default_operator_review_case_store(app))
+    selected_escalation_store = (
+        escalation_store or default_operator_review_escalation_store(app)
+    )
+    service = OperatorReviewCaseService(
+        store or default_operator_review_case_store(app),
+        escalation_store=selected_escalation_store,
+    )
     selected_note_store = note_store or default_operator_review_note_store(app)
     selected_export_store = export_store or default_operator_evidence_export_store(app)
     selected_audit_event_store = (
@@ -1504,6 +1587,43 @@ def register_operator_review_case_routes(
                 audit_emitter,
                 response["action"],
                 response["case"],
+            )
+        return JSONResponse(
+            status_code=201 if response["idempotency_status"] == "NEW" else 200,
+            content=response,
+        )
+
+    @app.post(
+        "/admin/v1/operator-review/escalations/{escalation_id}/actions",
+        response_model=None,
+    )
+    def apply_operator_review_escalation_action_route(
+        escalation_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+        payload: dict[str, Any] = Body(...),
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            response = service.apply_escalation_action(
+                escalation_id,
+                payload,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                idempotency_key=idempotency_key,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+        if response["idempotency_status"] == "NEW":
+            emit_operator_review_escalation_action_event(
+                audit_emitter,
+                response["action"],
+                response["escalation"],
             )
         return JSONResponse(
             status_code=201 if response["idempotency_status"] == "NEW" else 200,
@@ -3470,6 +3590,17 @@ def required_case_id(value: Any) -> str:
     return normalized
 
 
+def required_escalation_id(value: Any) -> str:
+    normalized = optional_text(value)
+    if normalized is None:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.operator_review_escalation_id_required",
+            detail="escalation_id is required.",
+        )
+    return normalized
+
+
 def required_escalation_action_type(value: Any) -> str:
     normalized = optional_text(value)
     if normalized is None:
@@ -3710,6 +3841,20 @@ def _assignment_ref_for_case_action(
 
 
 def _latest_case_action_summary(record: dict[str, Any]) -> dict[str, Any] | None:
+    metadata = record.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    action = metadata.get("last_action")
+    if not isinstance(action, dict):
+        return None
+    if not isinstance(action.get("record"), dict):
+        return None
+    if not isinstance(action.get("request_signature"), dict):
+        return None
+    return action
+
+
+def _latest_escalation_action_summary(record: dict[str, Any]) -> dict[str, Any] | None:
     metadata = record.get("metadata")
     if not isinstance(metadata, dict):
         return None

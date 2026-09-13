@@ -420,6 +420,7 @@ def non_admin_auth_headers() -> dict[str, str]:
 def build_route_client(
     *,
     store: Any | None = None,
+    escalation_store: Any | None = None,
     note_store: Any | None = None,
     export_store: Any | None = None,
     audit_event_store: InMemoryOperationalEventStore | None = None,
@@ -430,6 +431,7 @@ def build_route_client(
     register_operator_review_case_routes(
         app,
         store=selected_store,
+        escalation_store=escalation_store,
         note_store=note_store,
         export_store=export_store,
         audit_event_store=selected_event_store,
@@ -1029,6 +1031,76 @@ def test_operator_review_escalation_action_response_id_and_event() -> None:
         OPERATOR_REVIEW_ESCALATION_ACTION_RECORDED_EVENT_TYPE
     )
     assert emitted.event["details"]["notification_delivery_deferred"] is True
+
+
+def test_operator_review_escalation_action_service_replays_and_conflicts() -> None:
+    escalation_store = OperatorReviewEscalationStore()
+    service = OperatorReviewCaseService(
+        OperatorReviewCaseStore(),
+        escalation_store=escalation_store,
+    )
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id="case-0694:service"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0694-service-record",
+    )
+    escalation_store.save(escalation)
+    payload = {
+        "action_type": "ACKNOWLEDGE",
+        "operator_ref": {
+            "operator_type": "user",
+            "operator_id": "employee-0694",
+        },
+        "action_comment": "Acknowledge safely.",
+    }
+
+    applied = service.apply_escalation_action(
+        escalation["escalation_id"],
+        payload,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0694-service-action",
+    )
+    replayed = service.apply_escalation_action(
+        escalation["escalation_id"],
+        payload,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0694-service-action",
+    )
+
+    assert applied["idempotency_status"] == "NEW"
+    assert applied["escalation"]["escalation_status"] == "ACKNOWLEDGED"
+    assert replayed["idempotency_status"] == "REPLAYED"
+    assert replayed["action"] == applied["action"]
+    assert escalation_store.get(escalation["escalation_id"])["metadata"][
+        "last_action"
+    ]["request_signature"]["action_comment_hash"] == sha256_text(
+        "Acknowledge safely."
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as conflict:
+        service.apply_escalation_action(
+            escalation["escalation_id"],
+            {**payload, "action_comment": "Different comment."},
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key="idem-0694-service-action",
+        )
+    assert conflict.value.error_code == (
+        "ag.operator_review_escalation_action_idempotency_conflict"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as missing:
+        service.apply_escalation_action(
+            "missing-escalation",
+            payload,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key="idem-0694-missing",
+        )
+    assert missing.value.error_code == "ag.operator_review_escalation_not_found"
 
 
 @pytest.mark.parametrize("action_type", ALLOWED_ESCALATION_ACTIONS)
@@ -3637,6 +3709,96 @@ def test_operator_review_case_action_route_applies_replays_and_emits_event() -> 
     assert len(
         event_store.list_events(
             event_type=OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE
+        )
+    ) == 1
+
+
+def test_operator_review_escalation_action_route_applies_replays_and_emits_event() -> None:
+    escalation_store = OperatorReviewEscalationStore()
+    client, _, event_store = build_route_client(escalation_store=escalation_store)
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id="case-route-0694:ack"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-route-escalation-0694",
+    )
+    escalation_store.save(escalation)
+    payload = {
+        "action_type": "ACKNOWLEDGE",
+        "operator_ref": {
+            "operator_type": "user",
+            "operator_id": "employee-0694",
+        },
+        "action_comment": "Route acknowledgement stores only a hash.",
+    }
+
+    applied = client.post(
+        f"/admin/v1/operator-review/escalations/{escalation['escalation_id']}/actions",
+        headers={
+            **admin_auth_headers(),
+            "Idempotency-Key": "idem-route-escalation-action-0694",
+        },
+        json=payload,
+    )
+    replayed = client.post(
+        f"/admin/v1/operator-review/escalations/{escalation['escalation_id']}/actions",
+        headers={
+            **admin_auth_headers(),
+            "Idempotency-Key": "idem-route-escalation-action-0694",
+        },
+        json=payload,
+    )
+    conflict = client.post(
+        f"/admin/v1/operator-review/escalations/{escalation['escalation_id']}/actions",
+        headers={
+            **admin_auth_headers(),
+            "Idempotency-Key": "idem-route-escalation-action-0694",
+        },
+        json={**payload, "action_comment": "Different route comment."},
+    )
+    missing = client.post(
+        "/admin/v1/operator-review/escalations/missing/actions",
+        headers={
+            **admin_auth_headers(),
+            "Idempotency-Key": "idem-route-missing-0694",
+        },
+        json=payload,
+    )
+    missing_idempotency = client.post(
+        f"/admin/v1/operator-review/escalations/{escalation['escalation_id']}/actions",
+        headers=admin_auth_headers(),
+        json=payload,
+    )
+    unauthorized = client.post(
+        f"/admin/v1/operator-review/escalations/{escalation['escalation_id']}/actions",
+        json=payload,
+    )
+
+    assert applied.status_code == 201
+    assert applied.json()["idempotency_status"] == "NEW"
+    assert applied.json()["escalation"]["escalation_status"] == "ACKNOWLEDGED"
+    assert applied.json()["action"]["action_type"] == "ACKNOWLEDGE"
+    assert "idem-route-escalation-action-0694" not in json.dumps(applied.json())
+    assert replayed.status_code == 200
+    assert replayed.json()["idempotency_status"] == "REPLAYED"
+    assert replayed.json()["action"] == applied.json()["action"]
+    assert conflict.status_code == 409
+    assert conflict.json()["error_code"] == (
+        "ag.operator_review_escalation_action_idempotency_conflict"
+    )
+    assert missing.status_code == 404
+    assert missing.json()["error_code"] == "ag.operator_review_escalation_not_found"
+    assert missing_idempotency.status_code == 422
+    assert missing_idempotency.json()["error_code"] == (
+        "ag.operator_review_escalation_action_idempotency_key_required"
+    )
+    assert unauthorized.status_code == 401
+    assert escalation_store.get(escalation["escalation_id"])["escalation_status"] == (
+        "ACKNOWLEDGED"
+    )
+    assert len(
+        event_store.list_events(
+            event_type=OPERATOR_REVIEW_ESCALATION_ACTION_RECORDED_EVENT_TYPE
         )
     ) == 1
 

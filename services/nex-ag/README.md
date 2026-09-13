@@ -1177,6 +1177,9 @@ Unified operations:
   ACKNOWLEDGE, SNOOZE, DISMISS, RESOLVE, and REOPEN. The mutation helpers store
   only safe action state, comment hashes/previews, and idempotency-key hashes;
   route wiring remains separated for the next slice.
+- Slice 0694 wires the state machine into protected AG API surface
+  `POST /admin/v1/operator-review/escalations/{escalation_id}/actions`, with
+  replay/conflict idempotency checks and safe operational event emission.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
