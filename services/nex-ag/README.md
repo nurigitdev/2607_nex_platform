@@ -1196,6 +1196,11 @@ Unified operations:
 - Slice 0698 adds a mock-first S70 privacy regression smoke for escalation
   list/detail/action, dashboard, and issue-candidate surfaces. It also proves
   sensitive action payload ingress is rejected before persistence.
+- Slice 0699 adds protected PostgreSQL smoke evidence for S70. With
+  `NEX_AG_OPERATOR_REVIEW_ESCALATION_POSTGRES_SMOKE=1`, it migrates
+  `nex_ag_test`, seeds `ag_op_escalations`, applies and replays an escalation
+  action through the protected route, observes `service_operational_events`, and
+  cleans up smoke rows.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
