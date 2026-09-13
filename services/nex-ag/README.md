@@ -1184,6 +1184,11 @@ Unified operations:
   `GET /admin/v1/operator-review/escalations` and
   `GET /admin/v1/operator-review/escalations/{escalation_id}` routes, with
   status/target filters and safe summary redaction.
+- Slice 0696 wires persisted escalation action state into
+  `/admin/v1/operations/dashboard` as `operator_review_escalations` and into
+  `/admin/v1/operations/issue-candidates` through
+  `operator_review_escalation_action_required.v1`. The dashboard keeps S69
+  candidate escalations and S70 persisted action state separate.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

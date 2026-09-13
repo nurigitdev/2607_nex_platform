@@ -104,6 +104,7 @@ from nex_ag.operator_review_cases import (
     build_operator_review_case_queue_projection,
     build_operator_review_case_rollup_metrics,
     build_operator_review_case_sla_policy_projection,
+    build_operator_review_escalation_list_response,
 )
 from nex_ag.operator_reviews import ALLOWED_TARGET_SERVICES
 from nex_runtime.retrieval_policies import list_retrieval_policy_records
@@ -368,6 +369,14 @@ OPERATIONS_ISSUE_CANDIDATE_RULES = (
         ),
         "enabled": True,
         "signal_type": "remediation_execution",
+    },
+    {
+        "rule_id": "operator_review_escalation_action_required.v1",
+        "severity": "WARNING",
+        "title": "Operator review escalation action required",
+        "description": "One or more persisted operator review escalations need action.",
+        "enabled": True,
+        "signal_type": "operator_review_escalation",
     },
     {
         "rule_id": "operator_review_attention_required.v1",
@@ -1983,6 +1992,7 @@ def register_unified_operation_routes(
     operator_review_note_store: Any | None = None,
     operator_review_export_store: Any | None = None,
     operator_review_case_store: Any | None = None,
+    operator_review_escalation_store: Any | None = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -2137,6 +2147,7 @@ def register_unified_operation_routes(
             operator_review_note_store=operator_review_note_store,
             operator_review_export_store=operator_review_export_store,
             operator_review_case_store=operator_review_case_store,
+            operator_review_escalation_store=operator_review_escalation_store,
             service_id=service_id,
             recent_limit=recent_limit,
             query_options=query_options,
@@ -2200,6 +2211,7 @@ def register_unified_operation_routes(
             operator_review_note_store=operator_review_note_store,
             operator_review_export_store=operator_review_export_store,
             operator_review_case_store=operator_review_case_store,
+            operator_review_escalation_store=operator_review_escalation_store,
             worker_heartbeat_stores=worker_heartbeat_stores,
             registry=registry,
             runtime=selected_runtime,
@@ -3066,6 +3078,7 @@ def build_operations_issue_candidate_projection(
     operator_review_note_store: Any | None = None,
     operator_review_export_store: Any | None = None,
     operator_review_case_store: Any | None = None,
+    operator_review_escalation_store: Any | None = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -3097,6 +3110,7 @@ def build_operations_issue_candidate_projection(
         operator_review_note_store=operator_review_note_store,
         operator_review_export_store=operator_review_export_store,
         operator_review_case_store=operator_review_case_store,
+        operator_review_escalation_store=operator_review_escalation_store,
         registry=registry,
         runtime=runtime,
         service_id=service_id,
@@ -3459,6 +3473,7 @@ def build_operations_dashboard_snapshot_projection(
     operator_review_note_store: Any | None = None,
     operator_review_export_store: Any | None = None,
     operator_review_case_store: Any | None = None,
+    operator_review_escalation_store: Any | None = None,
     service_id: str | None = None,
     recent_limit: int = 5,
     limit: int = 500,
@@ -3578,6 +3593,13 @@ def build_operations_dashboard_snapshot_projection(
         limit=normalized_recent_limit,
         request_trace_id=request_trace_id,
     )
+    operator_review_escalations = _dashboard_operator_review_escalation_section(
+        escalation_store=operator_review_escalation_store,
+        service_id=service_id,
+        options=options,
+        limit=normalized_recent_limit,
+        request_trace_id=request_trace_id,
+    )
     degraded_sources = _dashboard_degraded_sources(
         operation_sources=readiness_projection["sources"],
         job_source_statuses=rollup_projection["job_source_statuses"],
@@ -3597,6 +3619,9 @@ def build_operations_dashboard_snapshot_projection(
             operator_review_workbench["source_statuses"]
         ),
         operator_review_case_source_statuses=operator_review_cases[
+            "source_statuses"
+        ],
+        operator_review_escalation_source_statuses=operator_review_escalations[
             "source_statuses"
         ],
     )
@@ -3624,6 +3649,7 @@ def build_operations_dashboard_snapshot_projection(
         "remediation_executions": remediation_executions,
         "operator_review_workbench": operator_review_workbench,
         "operator_review_cases": operator_review_cases,
+        "operator_review_escalations": operator_review_escalations,
         "degraded_sources": degraded_sources,
         "job_source_statuses": rollup_projection["job_source_statuses"],
         "event_source_statuses": rollup_projection["event_source_statuses"],
@@ -4233,6 +4259,11 @@ def build_operations_issue_candidates(
     candidates.extend(
         _issue_candidates_from_operator_review_cases(
             dashboard_snapshot.get("operator_review_cases")
+        )
+    )
+    candidates.extend(
+        _issue_candidates_from_operator_review_escalations(
+            dashboard_snapshot.get("operator_review_escalations")
         )
     )
     if worker_runtime_projection is not None:
@@ -6619,6 +6650,191 @@ def _empty_dashboard_operator_review_case_section(
     }
 
 
+def _dashboard_operator_review_escalation_section(
+    *,
+    escalation_store: Any | None,
+    service_id: str | None,
+    options: OperationQueryOptions,
+    limit: int,
+    request_trace_id: str | None,
+) -> dict[str, Any]:
+    source_statuses: dict[str, dict[str, Any]] = {}
+    if escalation_store is None:
+        return _empty_dashboard_operator_review_escalation_section(source_statuses)
+
+    target_service = service_id if service_id in ALLOWED_TARGET_SERVICES else None
+    try:
+        records = escalation_store.list_escalations(
+            target_service=target_service,
+            limit=500,
+        )
+        visible_records = _filter_records_by_operation_time(
+            [dict(record) for record in records],
+            options,
+            timestamp_field="updated_at",
+        )
+        escalation_list = build_operator_review_escalation_list_response(
+            visible_records,
+            request_id=request_trace_id or "ag-operations-dashboard",
+            trace_id=request_trace_id,
+        )
+    except Exception as exc:
+        source_statuses["nex-ag"] = _dashboard_operator_review_escalation_source_status(
+            escalation_store=escalation_store,
+            summary=_empty_operator_review_escalation_summary(),
+            error_code=getattr(
+                exc,
+                "error_code",
+                "ag.operator_review_escalation_source_unavailable",
+            ),
+            detail=getattr(
+                exc,
+                "detail",
+                "Operator review escalation source could not be read.",
+            ),
+            status="UNAVAILABLE",
+        )
+        return {
+            **_empty_dashboard_operator_review_escalation_section(source_statuses),
+            "projection_status": "DEGRADED",
+        }
+
+    summary = _operator_review_escalation_dashboard_summary(escalation_list)
+    source_statuses["nex-ag"] = _dashboard_operator_review_escalation_source_status(
+        escalation_store=escalation_store,
+        summary=summary,
+    )
+    items = [
+        _dashboard_operator_review_escalation_attention_item(item)
+        for item in list(escalation_list["items"])[:limit]
+    ]
+    return {
+        "projection_schema_version": (
+            "ag_operator_review_escalation_dashboard_section.v1"
+        ),
+        "projection_status": "READY",
+        "summary": summary,
+        "by_status": dict(escalation_list["summary"]["by_status"]),
+        "by_level": dict(escalation_list["summary"]["by_level"]),
+        "by_sla_state": dict(escalation_list["summary"]["by_sla_state"]),
+        "attention": [
+            item
+            for item in items
+            if _operator_review_escalation_attention_item_needs_action(item)
+        ][:limit],
+        "recent": items,
+        "source_statuses": source_statuses,
+        "escalation_list_path": "/admin/v1/operator-review/escalations",
+        "escalation_detail_path_template": (
+            "/admin/v1/operator-review/escalations/{escalation_id}"
+        ),
+        "escalation_action_path_template": (
+            "/admin/v1/operator-review/escalations/{escalation_id}/actions"
+        ),
+        "redaction": dict(escalation_list["redaction"]),
+    }
+
+
+def _empty_dashboard_operator_review_escalation_section(
+    source_statuses: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "projection_schema_version": (
+            "ag_operator_review_escalation_dashboard_section.v1"
+        ),
+        "projection_status": "READY",
+        "summary": _empty_operator_review_escalation_summary(),
+        "by_status": {},
+        "by_level": {},
+        "by_sla_state": {},
+        "attention": [],
+        "recent": [],
+        "source_statuses": source_statuses,
+        "escalation_list_path": "/admin/v1/operator-review/escalations",
+        "escalation_detail_path_template": (
+            "/admin/v1/operator-review/escalations/{escalation_id}"
+        ),
+        "escalation_action_path_template": (
+            "/admin/v1/operator-review/escalations/{escalation_id}/actions"
+        ),
+        "redaction": {
+            "raw_action_comment_included": False,
+            "raw_notification_payload_included": False,
+            "raw_external_incident_payload_included": False,
+            "provider_payloads_included": False,
+            "database_urls_included": False,
+            "tokens_included": False,
+            "idempotency_keys_included": False,
+            "comment_storage": "hash_and_short_preview_only",
+        },
+    }
+
+
+def _operator_review_escalation_dashboard_summary(
+    escalation_list: Mapping[str, Any],
+) -> dict[str, Any]:
+    summary = dict(escalation_list["summary"])
+    items = [
+        item for item in escalation_list.get("items", []) if isinstance(item, Mapping)
+    ]
+    summary["escalation_count"] = _safe_int(summary.get("count"))
+    summary["action_required_count"] = sum(
+        1 for item in items if _operator_review_escalation_attention_item_needs_action(item)
+    )
+    summary["snoozed_count"] = sum(
+        1 for item in items if item.get("escalation_status") == "SNOOZED"
+    )
+    summary["acknowledged_count"] = sum(
+        1 for item in items if item.get("escalation_status") == "ACKNOWLEDGED"
+    )
+    return summary
+
+
+def _dashboard_operator_review_escalation_attention_item(
+    item: Mapping[str, Any],
+) -> dict[str, Any]:
+    selected = dict(item)
+    escalation_id = _nullable_string(selected.get("escalation_id"))
+    if escalation_id is None:
+        return selected
+    selected["links"] = {
+        "escalation_detail_path": (
+            f"/admin/v1/operator-review/escalations/{escalation_id}"
+        ),
+        "escalation_action_path": (
+            f"/admin/v1/operator-review/escalations/{escalation_id}/actions"
+        ),
+        "case_detail_path": (
+            f"/admin/v1/operator-review/cases/{selected.get('case_id')}"
+            if selected.get("case_id")
+            else None
+        ),
+    }
+    return selected
+
+
+def _operator_review_escalation_attention_item_needs_action(
+    item: Mapping[str, Any],
+) -> bool:
+    return str(item.get("escalation_status") or "") in {"ACTIVE", "REOPENED"}
+
+
+def _empty_operator_review_escalation_summary() -> dict[str, Any]:
+    return {
+        "count": 0,
+        "escalation_count": 0,
+        "active_count": 0,
+        "closed_count": 0,
+        "action_required_count": 0,
+        "snoozed_count": 0,
+        "acknowledged_count": 0,
+        "by_status": {},
+        "by_level": {},
+        "by_sla_state": {},
+        "latest_updated_at": None,
+    }
+
+
 def _empty_operator_review_case_summary() -> dict[str, int | None]:
     return {
         "case_count": 0,
@@ -6722,6 +6938,39 @@ def _dashboard_operator_review_case_source_status(
         "attention_case_count": _safe_int(summary.get("attention_case_count")),
         "database_env": getattr(case_store, "database_env", None),
         "redacted_database_url": getattr(case_store, "redacted_database_url", None),
+    }
+    if error_code is not None:
+        source["error_code"] = error_code
+    if detail is not None:
+        source["detail"] = detail
+    return source
+
+
+def _dashboard_operator_review_escalation_source_status(
+    *,
+    escalation_store: Any | None,
+    summary: Mapping[str, Any],
+    status: str = "READY",
+    error_code: str | None = None,
+    detail: str | None = None,
+) -> dict[str, Any]:
+    source = {
+        "status": status,
+        "service_id": "nex-ag",
+        "source_kind": (
+            _operator_review_single_store_kind(escalation_store)
+            if escalation_store is not None
+            else "none"
+        ),
+        "escalation_count": _safe_int(summary.get("escalation_count")),
+        "active_count": _safe_int(summary.get("active_count")),
+        "action_required_count": _safe_int(summary.get("action_required_count")),
+        "database_env": getattr(escalation_store, "database_env", None),
+        "redacted_database_url": getattr(
+            escalation_store,
+            "redacted_database_url",
+            None,
+        ),
     }
     if error_code is not None:
         source["error_code"] = error_code
@@ -7172,6 +7421,9 @@ def _dashboard_degraded_sources(
     operator_review_case_source_statuses: (
         Mapping[str, dict[str, Any]] | None
     ) = None,
+    operator_review_escalation_source_statuses: (
+        Mapping[str, dict[str, Any]] | None
+    ) = None,
 ) -> list[dict[str, Any]]:
     degraded: list[dict[str, Any]] = []
     for source in operation_sources:
@@ -7201,6 +7453,10 @@ def _dashboard_degraded_sources(
             operator_review_workbench_source_statuses or {},
         ),
         ("operator_review_cases", operator_review_case_source_statuses or {}),
+        (
+            "operator_review_escalations",
+            operator_review_escalation_source_statuses or {},
+        ),
     ):
         for service_id, source_status in statuses.items():
             status = str(source_status["status"])
@@ -8032,6 +8288,132 @@ def _operator_review_case_issue_operator_actions(
             actions.add("open_case_workbench_detail")
         if status in {"ATTENTION", "OPEN"}:
             actions.add("review_case_queue")
+    return sorted(actions)
+
+
+def _issue_candidates_from_operator_review_escalations(
+    section: object,
+) -> list[dict[str, Any]]:
+    if not isinstance(section, Mapping):
+        return []
+    attention = section.get("attention")
+    if not isinstance(attention, list):
+        return []
+    items = [
+        dict(item)
+        for item in attention
+        if isinstance(item, Mapping)
+        and _operator_review_escalation_attention_item_needs_action(item)
+    ]
+    if not items:
+        return []
+    return [_operator_review_escalation_issue_candidate(items)]
+
+
+def _operator_review_escalation_issue_candidate(
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    status_counts = _dashboard_count_by(items, "escalation_status")
+    level_counts = _dashboard_count_by(items, "escalation_level")
+    blocked_count = level_counts.get("BLOCKED", 0)
+    target_services = sorted(
+        {
+            str(item.get("target_service"))
+            for item in items
+            if str(item.get("target_service") or "") in SERVICE_SPECS
+        }
+    )
+    target_kinds = sorted(
+        {str(item.get("target_kind")) for item in items if item.get("target_kind")}
+    )
+    target_ids = sorted(
+        {str(item.get("target_id")) for item in items if item.get("target_id")}
+    )
+    escalation_ids = sorted(
+        {
+            str(escalation_id)
+            for item in items
+            if (escalation_id := item.get("escalation_id"))
+        }
+    )
+    case_ids = sorted(
+        {str(case_id) for item in items if (case_id := item.get("case_id"))}
+    )
+    reason_codes = sorted(
+        {
+            str(reason)
+            for item in items
+            for reason in item.get("reason_codes", [])
+            if isinstance(reason, str)
+        }
+    )
+    severity = "ERROR" if blocked_count else "WARNING"
+    return _operations_issue_candidate(
+        rule_id="operator_review_escalation_action_required.v1",
+        service_id="nex-ag",
+        severity=severity,
+        title="Operator review escalation action required",
+        detail=f"{len(items)} operator review escalation(s) need action.",
+        signal={
+            "source_type": "operator_review_escalation",
+            "status": "BLOCKED" if blocked_count else "ATTENTION",
+            "count": len(items),
+            "threshold": 1,
+            "blocked_count": blocked_count,
+            "active_count": status_counts.get("ACTIVE", 0),
+            "reopened_count": status_counts.get("REOPENED", 0),
+            "escalation_ids": escalation_ids,
+            "case_ids": case_ids,
+            "target_services": target_services,
+            "target_kinds": target_kinds,
+            "target_ids": target_ids,
+            "escalation_statuses": sorted(status_counts),
+            "escalation_levels": sorted(level_counts),
+            "reason_codes": reason_codes,
+            "escalation_list_path": "/admin/v1/operator-review/escalations",
+            "escalation_detail_path_template": (
+                "/admin/v1/operator-review/escalations/{escalation_id}"
+            ),
+            "escalation_action_path_template": (
+                "/admin/v1/operator-review/escalations/{escalation_id}/actions"
+            ),
+            "runbook_ids": _operator_review_escalation_issue_runbook_ids(items),
+            "recommended_operator_actions": (
+                _operator_review_escalation_issue_operator_actions(items)
+            ),
+        },
+    )
+
+
+def _operator_review_escalation_issue_runbook_ids(
+    items: list[dict[str, Any]],
+) -> list[str]:
+    runbook_ids: set[str] = set()
+    for item in items:
+        status = str(item.get("escalation_status") or "")
+        level = str(item.get("escalation_level") or "")
+        if level == "BLOCKED":
+            runbook_ids.add("ag.operator_review_escalation.blocked_triage.v1")
+        if status == "REOPENED":
+            runbook_ids.add("ag.operator_review_escalation.reopened_review.v1")
+        if status == "ACTIVE":
+            runbook_ids.add("ag.operator_review_escalation.active_followup.v1")
+    return sorted(runbook_ids)
+
+
+def _operator_review_escalation_issue_operator_actions(
+    items: list[dict[str, Any]],
+) -> list[str]:
+    actions: set[str] = set()
+    for item in items:
+        status = str(item.get("escalation_status") or "")
+        level = str(item.get("escalation_level") or "")
+        if level == "BLOCKED":
+            actions.add("triage_blocked_operator_review_escalation")
+        if status == "REOPENED":
+            actions.add("review_reopened_operator_review_escalation")
+        if status == "ACTIVE":
+            actions.add("acknowledge_or_resolve_operator_review_escalation")
     return sorted(actions)
 
 

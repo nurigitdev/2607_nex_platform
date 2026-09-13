@@ -86,6 +86,7 @@ from nex_ag.operations import (
     _dashboard_replay_candidates,
     _dashboard_timestamp,
     _issue_candidates_from_generation_quality,
+    _issue_candidates_from_operator_review_escalations,
     _issue_candidates_from_operator_review_cases,
     _issue_candidates_from_operator_review_workbench,
     _issue_candidates_from_remediation_executions,
@@ -115,7 +116,10 @@ from nex_ag.operator_reviews import (
 )
 from nex_ag.operator_review_cases import (
     OperatorReviewCaseService,
+    OperatorReviewEscalationStore,
     OperatorReviewCaseStore,
+    build_operator_review_case_escalation_projection,
+    build_operator_review_escalation_record,
 )
 from nex_ag.remediation_execution_operations import (
     InMemoryRemediationExecutionOperationsStore,
@@ -296,6 +300,39 @@ def operator_review_export_record(
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
         idempotency_key=f"operations-export-{created_at}",
+        created_at=created_at,
+    )
+
+
+def operator_review_escalation_record(
+    *,
+    case_store: OperatorReviewCaseStore | None = None,
+    escalation_status: str = "ACTIVE",
+    created_at: str = "2026-08-05T00:00:12Z",
+) -> dict[str, Any]:
+    selected_case_store = case_store or OperatorReviewCaseStore()
+    case_service = OperatorReviewCaseService(selected_case_store)
+    case_service.create_case(
+        operator_review_case_payload(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key=f"operations-escalation-case-{created_at}",
+    )
+    case_list = case_service.list_cases(
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        limit=5,
+    )
+    escalation_projection = build_operator_review_case_escalation_projection(
+        case_list,
+        now="2026-08-05T01:30:00Z",
+    )
+    return build_operator_review_escalation_record(
+        escalation_projection["items"][0],
+        {"escalation_status": escalation_status},
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key=f"operations-escalation-{created_at}",
         created_at=created_at,
     )
 
@@ -3175,6 +3212,67 @@ def test_operations_dashboard_snapshot_includes_operator_review_workbench() -> N
     assert_ag_operations_projection_contract(projection)
 
 
+def test_operations_dashboard_snapshot_includes_operator_review_escalations() -> None:
+    case_store = OperatorReviewCaseStore()
+    escalation_store = OperatorReviewEscalationStore()
+    escalation_store.save(
+        operator_review_escalation_record(
+            case_store=case_store,
+            escalation_status="SNOOZED",
+            created_at="2026-08-05T00:00:11Z",
+        )
+    )
+    active_escalation = operator_review_escalation_record(
+        case_store=case_store,
+        escalation_status="ACTIVE",
+        created_at="2026-08-05T00:00:12Z",
+    )
+    escalation_store.save(active_escalation)
+
+    projection = build_operations_dashboard_snapshot_projection(
+        operator_review_escalation_store=escalation_store,
+        service_id="nex-cx",
+        recent_limit=2,
+        request_trace_id=TRACE_ID,
+    )
+
+    escalations = projection["operator_review_escalations"]
+    assert escalations["projection_status"] == "READY"
+    assert escalations["summary"]["escalation_count"] == 2
+    assert escalations["summary"]["action_required_count"] == 1
+    assert escalations["summary"]["snoozed_count"] == 1
+    assert escalations["by_status"] == {"ACTIVE": 1, "SNOOZED": 1}
+    assert escalations["by_level"] == {"BLOCKED": 2}
+    assert escalations["attention"][0]["escalation_id"] == (
+        active_escalation["escalation_id"]
+    )
+    assert escalations["attention"][0]["links"] == {
+        "escalation_detail_path": (
+            "/admin/v1/operator-review/escalations/"
+            f"{active_escalation['escalation_id']}"
+        ),
+        "escalation_action_path": (
+            "/admin/v1/operator-review/escalations/"
+            f"{active_escalation['escalation_id']}/actions"
+        ),
+        "case_detail_path": (
+            f"/admin/v1/operator-review/cases/{active_escalation['case_id']}"
+        ),
+    }
+    assert escalations["source_statuses"]["nex-ag"] == {
+        "status": "READY",
+        "service_id": "nex-ag",
+        "source_kind": "memory",
+        "escalation_count": 2,
+        "active_count": 2,
+        "action_required_count": 1,
+        "database_env": None,
+        "redacted_database_url": None,
+    }
+    assert projection["degraded_sources"] == []
+    assert_ag_operations_projection_contract(projection)
+
+
 def test_operations_dashboard_operator_review_workbench_handles_filters_and_errors() -> (
     None
 ):
@@ -3268,6 +3366,48 @@ def test_operations_dashboard_operator_review_cases_handles_filters_and_errors()
     assert_ag_operations_projection_contract(unavailable)
 
 
+def test_operations_dashboard_operator_review_escalations_handles_filters_and_errors() -> (
+    None
+):
+    class FailingEscalationStore(OperatorReviewEscalationStore):
+        def list_escalations(self, **_: object) -> list[dict[str, Any]]:
+            raise RuntimeError("escalation source down")
+
+    escalation_store = OperatorReviewEscalationStore()
+    escalation_store.save(operator_review_escalation_record())
+
+    filtered = build_operations_dashboard_snapshot_projection(
+        operator_review_escalation_store=escalation_store,
+        service_id="nex-mo",
+        recent_limit=2,
+    )
+    unavailable = build_operations_dashboard_snapshot_projection(
+        operator_review_escalation_store=FailingEscalationStore(),
+        service_id="nex-cx",
+        recent_limit=2,
+    )
+
+    assert filtered["operator_review_escalations"]["summary"][
+        "escalation_count"
+    ] == 0
+    assert filtered["operator_review_escalations"]["source_statuses"]["nex-ag"][
+        "status"
+    ] == "READY"
+    assert unavailable["operator_review_escalations"]["projection_status"] == (
+        "DEGRADED"
+    )
+    assert unavailable["projection_status"] == "DEGRADED"
+    assert unavailable["operator_review_escalations"]["source_statuses"]["nex-ag"][
+        "error_code"
+    ] == "ag.operator_review_escalation_source_unavailable"
+    assert {
+        (source["source_type"], source["service_id"], source["status"])
+        for source in unavailable["degraded_sources"]
+    } == {("operator_review_escalations", "nex-ag", "UNAVAILABLE")}
+    assert_ag_operations_projection_contract(filtered)
+    assert_ag_operations_projection_contract(unavailable)
+
+
 def test_operations_dashboard_route_wires_operator_review_workbench() -> None:
     app = build_service_app(SERVICE_SPECS["nex-ag"])
     note_store = OperatorReviewNoteStore()
@@ -3281,11 +3421,14 @@ def test_operations_dashboard_route_wires_operator_review_workbench() -> None:
         trace_id=TRACE_ID,
         idempotency_key="operations-route-case",
     )
+    escalation_store = OperatorReviewEscalationStore()
+    escalation_store.save(operator_review_escalation_record())
     register_unified_operation_routes(
         app,
         operator_review_note_store=note_store,
         operator_review_export_store=export_store,
         operator_review_case_store=case_store,
+        operator_review_escalation_store=escalation_store,
     )
 
     response = TestClient(app).get(
@@ -3304,6 +3447,9 @@ def test_operations_dashboard_route_wires_operator_review_workbench() -> None:
     assert payload["operator_review_cases"]["attention"][0]["attention_status"] == (
         "BLOCKED"
     )
+    assert payload["operator_review_escalations"]["summary"][
+        "action_required_count"
+    ] == 1
     assert_ag_operations_projection_contract(payload)
 
 
@@ -3446,6 +3592,87 @@ def test_operations_issue_candidate_projection_includes_operator_review_cases() 
     assert helper_candidates[0]["signal"]["status"] == "ATTENTION"
     assert helper_candidates[0]["signal"]["runbook_ids"] == [
         "ag.operator_review_case.reopened_review.v1"
+    ]
+
+
+def test_operations_issue_candidate_projection_includes_operator_review_escalations() -> (
+    None
+):
+    escalation_store = OperatorReviewEscalationStore()
+    active_escalation = operator_review_escalation_record(
+        escalation_status="ACTIVE",
+        created_at="2026-08-05T00:00:12Z",
+    )
+    escalation_store.save(active_escalation)
+    escalation_store.save(
+        operator_review_escalation_record(
+            escalation_status="SNOOZED",
+            created_at="2026-08-05T00:00:11Z",
+        )
+    )
+
+    projection = build_operations_issue_candidate_projection(
+        operator_review_escalation_store=escalation_store,
+        service_id="nex-cx",
+        recent_limit=2,
+        request_trace_id=TRACE_ID,
+    )
+
+    candidates = [
+        candidate
+        for candidate in projection["issue_candidates"]
+        if candidate["rule_id"] == "operator_review_escalation_action_required.v1"
+    ]
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["service_id"] == "nex-ag"
+    assert candidate["severity"] == "ERROR"
+    assert candidate["signal"]["status"] == "BLOCKED"
+    assert candidate["signal"]["active_count"] == 1
+    assert candidate["signal"]["escalation_ids"] == [
+        active_escalation["escalation_id"]
+    ]
+    assert candidate["signal"]["case_ids"] == [active_escalation["case_id"]]
+    assert candidate["signal"]["target_services"] == ["nex-cx"]
+    assert candidate["signal"]["target_kinds"] == ["retrieval_threshold_decision"]
+    assert candidate["signal"]["target_ids"] == ["weighted_rrf_vector_bm25_v1"]
+    assert candidate["signal"]["escalation_statuses"] == ["ACTIVE"]
+    assert candidate["signal"]["escalation_levels"] == ["BLOCKED"]
+    assert candidate["signal"]["runbook_ids"] == [
+        "ag.operator_review_escalation.active_followup.v1",
+        "ag.operator_review_escalation.blocked_triage.v1",
+    ]
+    assert candidate["signal"]["recommended_operator_actions"] == [
+        "acknowledge_or_resolve_operator_review_escalation",
+        "triage_blocked_operator_review_escalation",
+    ]
+    assert projection["summary"]["by_rule"][
+        "operator_review_escalation_action_required.v1"
+    ] == 1
+    assert_ag_operations_projection_contract(projection)
+
+    helper_candidates = _issue_candidates_from_operator_review_escalations(
+        {
+            "attention": [
+                {
+                    "escalation_id": "esc-0696-reopened",
+                    "case_id": "case-0696-reopened",
+                    "target_service": "nex-cx",
+                    "target_kind": "document",
+                    "target_id": "doc-0696",
+                    "escalation_status": "REOPENED",
+                    "escalation_level": "ATTENTION",
+                    "reason_codes": ["manual_reopen"],
+                },
+                {"escalation_status": "SNOOZED"},
+                "malformed",
+            ]
+        }
+    )
+    assert helper_candidates[0]["severity"] == "WARNING"
+    assert helper_candidates[0]["signal"]["status"] == "ATTENTION"
+    assert helper_candidates[0]["signal"]["runbook_ids"] == [
+        "ag.operator_review_escalation.reopened_review.v1"
     ]
 
 
@@ -3906,6 +4133,7 @@ def test_build_operations_issue_candidate_projection_flags_service_scope() -> No
         "generation_quality_attention_required.v1",
         "generation_remediation_attention_required.v1",
         "remediation_execution_attention_required.v1",
+        "operator_review_escalation_action_required.v1",
         "operator_review_attention_required.v1",
         "operator_review_case_attention_required.v1",
     ]

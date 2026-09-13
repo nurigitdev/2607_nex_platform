@@ -611,6 +611,42 @@
       "idempotency_keys_included": false
     }
   },
+  "operator_review_escalations": {
+    "projection_schema_version": "ag_operator_review_escalation_dashboard_section.v1",
+    "projection_status": "READY",
+    "summary": {
+      "count": 0,
+      "escalation_count": 0,
+      "active_count": 0,
+      "closed_count": 0,
+      "action_required_count": 0,
+      "snoozed_count": 0,
+      "acknowledged_count": 0,
+      "by_status": {},
+      "by_level": {},
+      "by_sla_state": {},
+      "latest_updated_at": null
+    },
+    "by_status": {},
+    "by_level": {},
+    "by_sla_state": {},
+    "attention": [],
+    "recent": [],
+    "source_statuses": {},
+    "escalation_list_path": "/admin/v1/operator-review/escalations",
+    "escalation_detail_path_template": "/admin/v1/operator-review/escalations/{escalation_id}",
+    "escalation_action_path_template": "/admin/v1/operator-review/escalations/{escalation_id}/actions",
+    "redaction": {
+      "raw_action_comment_included": false,
+      "raw_notification_payload_included": false,
+      "raw_external_incident_payload_included": false,
+      "provider_payloads_included": false,
+      "database_urls_included": false,
+      "tokens_included": false,
+      "idempotency_keys_included": false,
+      "comment_storage": "hash_and_short_preview_only"
+    }
+  },
   "degraded_sources": [],
   "job_source_statuses": {
     "nex-cx": {
