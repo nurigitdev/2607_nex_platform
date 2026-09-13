@@ -1,0 +1,48 @@
+{
+  "escalation_schema_version": "ag_operator_review_escalation.v1",
+  "escalation_id": "0c18fc3f-0697-4e8a-a6cb-d56a31b00697",
+  "candidate_id": "case-0697-urgent:overdue:blocked",
+  "case_id": "case-0697-urgent",
+  "target_service": "nex-ag",
+  "target_kind": "operator_review_workbench",
+  "target_id": "target-0697",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "operator_ref": {
+    "operator_type": "service",
+    "operator_id": "nex-ag",
+    "tenant_id": null
+  },
+  "assignment_ref": {
+    "assignee_type": null,
+    "assignee_id": null,
+    "tenant_id": null
+  },
+  "escalation_status": "ACTIVE",
+  "escalation_level": "BLOCKED",
+  "sla_state": "OVERDUE",
+  "reason_codes": [
+    "sla_overdue"
+  ],
+  "runbook_ids": [
+    "ag.operator_review_case.urgent_triage.v1"
+  ],
+  "recommended_actions": [
+    "review_overdue_operator_review_case"
+  ],
+  "last_action_type": null,
+  "last_action_at": null,
+  "snoozed_until": null,
+  "comment_hash": null,
+  "comment_preview": null,
+  "idempotency_key_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "metadata": {
+    "raw_notification_payload_stored": false
+  },
+  "notification_payload": {
+    "raw_message": "This provider payload must not be persisted."
+  },
+  "created_at": "2026-09-12T12:00:00Z",
+  "updated_at": "2026-09-12T12:00:00Z",
+  "closed_at": null
+}

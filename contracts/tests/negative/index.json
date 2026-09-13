@@ -356,6 +356,11 @@
       "schema": "schemas/service/nex_ag/operator_review_case_workbench.v1.schema.json"
     },
     {
+      "name": "ag_operator_review_escalation_notification_payload_leak",
+      "path": "tests/negative/operations/ag_operator_review_escalation.notification_payload_leak.json",
+      "schema": "schemas/service/nex_ag/operator_review_case.v1.schema.json"
+    },
+    {
       "name": "ae_web_fetch_mode_smoke_evidence_raw_database_url",
       "path": "tests/negative/operations/ae_web_fetch_mode_smoke_evidence.raw_database_url.json",
       "schema": "schemas/service/nex_ae_web/fetch_mode_smoke_evidence.v1.schema.json"

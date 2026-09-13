@@ -14,6 +14,15 @@
     },
     {
       "$ref": "#/$defs/case_action_mutation_response"
+    },
+    {
+      "$ref": "#/$defs/escalation_record"
+    },
+    {
+      "$ref": "#/$defs/escalation_list_response"
+    },
+    {
+      "$ref": "#/$defs/escalation_action_mutation_response"
     }
   ],
   "$defs": {
@@ -112,6 +121,45 @@
         "RESOLVE",
         "DISMISS",
         "REOPEN"
+      ]
+    },
+    "escalation_status": {
+      "type": "string",
+      "enum": [
+        "ACTIVE",
+        "ACKNOWLEDGED",
+        "SNOOZED",
+        "DISMISSED",
+        "RESOLVED",
+        "REOPENED"
+      ]
+    },
+    "escalation_action_type": {
+      "type": "string",
+      "enum": [
+        "ACKNOWLEDGE",
+        "SNOOZE",
+        "DISMISS",
+        "RESOLVE",
+        "REOPEN"
+      ]
+    },
+    "escalation_level": {
+      "type": "string",
+      "enum": [
+        "OBSERVE",
+        "FOLLOW_UP",
+        "ATTENTION",
+        "BLOCKED"
+      ]
+    },
+    "sla_state": {
+      "type": "string",
+      "enum": [
+        "WATCH",
+        "WARNING",
+        "ATTENTION",
+        "OVERDUE"
       ]
     },
     "idempotency_status": {
@@ -407,6 +455,230 @@
         }
       }
     },
+    "escalation_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "escalation_schema_version",
+        "escalation_id",
+        "candidate_id",
+        "case_id",
+        "target_service",
+        "target_kind",
+        "target_id",
+        "trace_id",
+        "request_id",
+        "operator_ref",
+        "assignment_ref",
+        "escalation_status",
+        "escalation_level",
+        "sla_state",
+        "reason_codes",
+        "runbook_ids",
+        "recommended_actions",
+        "last_action_type",
+        "last_action_at",
+        "snoozed_until",
+        "comment_hash",
+        "comment_preview",
+        "idempotency_key_hash",
+        "metadata",
+        "created_at",
+        "updated_at",
+        "closed_at"
+      ],
+      "properties": {
+        "escalation_schema_version": {
+          "const": "ag_operator_review_escalation.v1"
+        },
+        "escalation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_service": {
+          "$ref": "#/$defs/target_service"
+        },
+        "target_kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operator_ref": {
+          "$ref": "#/$defs/operator_ref"
+        },
+        "assignment_ref": {
+          "$ref": "#/$defs/assignment_ref"
+        },
+        "escalation_status": {
+          "$ref": "#/$defs/escalation_status"
+        },
+        "escalation_level": {
+          "$ref": "#/$defs/escalation_level"
+        },
+        "sla_state": {
+          "$ref": "#/$defs/sla_state"
+        },
+        "reason_codes": {
+          "$ref": "#/$defs/string_array"
+        },
+        "runbook_ids": {
+          "$ref": "#/$defs/string_array"
+        },
+        "recommended_actions": {
+          "$ref": "#/$defs/string_array"
+        },
+        "last_action_type": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/escalation_action_type"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_action_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        },
+        "snoozed_until": {
+          "$ref": "#/$defs/nullable_timestamp"
+        },
+        "comment_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "comment_preview": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "idempotency_key_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "closed_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        }
+      }
+    },
+    "escalation_action_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "escalation_action_schema_version",
+        "action_id",
+        "escalation_id",
+        "candidate_id",
+        "case_id",
+        "action_type",
+        "from_status",
+        "to_status",
+        "target_service",
+        "target_kind",
+        "target_id",
+        "trace_id",
+        "request_id",
+        "operator_ref",
+        "reason_codes",
+        "action_comment_hash",
+        "action_comment_preview",
+        "snoozed_until",
+        "metadata",
+        "acted_at"
+      ],
+      "properties": {
+        "escalation_action_schema_version": {
+          "const": "ag_operator_review_escalation_action.v1"
+        },
+        "action_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "escalation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_type": {
+          "$ref": "#/$defs/escalation_action_type"
+        },
+        "from_status": {
+          "$ref": "#/$defs/escalation_status"
+        },
+        "to_status": {
+          "$ref": "#/$defs/escalation_status"
+        },
+        "target_service": {
+          "$ref": "#/$defs/target_service"
+        },
+        "target_kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operator_ref": {
+          "$ref": "#/$defs/operator_ref"
+        },
+        "reason_codes": {
+          "$ref": "#/$defs/string_array"
+        },
+        "action_comment_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "action_comment_preview": {
+          "$ref": "#/$defs/nullable_text"
+        },
+        "snoozed_until": {
+          "$ref": "#/$defs/nullable_timestamp"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "acted_at": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
     "case_summary": {
       "type": "object",
       "additionalProperties": false,
@@ -477,6 +749,154 @@
         },
         "case_priority": {
           "$ref": "#/$defs/case_priority"
+        }
+      }
+    },
+    "escalation_list_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "count",
+        "active_count",
+        "closed_count",
+        "by_status",
+        "by_level",
+        "by_sla_state",
+        "latest_updated_at"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "active_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "closed_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_status": {
+          "$ref": "#/$defs/count_map"
+        },
+        "by_level": {
+          "$ref": "#/$defs/count_map"
+        },
+        "by_sla_state": {
+          "$ref": "#/$defs/count_map"
+        },
+        "latest_updated_at": {
+          "$ref": "#/$defs/nullable_timestamp"
+        }
+      }
+    },
+    "escalation_action_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "escalation_id",
+        "candidate_id",
+        "case_id",
+        "action_id",
+        "action_type",
+        "from_status",
+        "to_status",
+        "escalation_status",
+        "escalation_level",
+        "sla_state"
+      ],
+      "properties": {
+        "escalation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_type": {
+          "$ref": "#/$defs/escalation_action_type"
+        },
+        "from_status": {
+          "$ref": "#/$defs/escalation_status"
+        },
+        "to_status": {
+          "$ref": "#/$defs/escalation_status"
+        },
+        "escalation_status": {
+          "$ref": "#/$defs/escalation_status"
+        },
+        "escalation_level": {
+          "$ref": "#/$defs/escalation_level"
+        },
+        "sla_state": {
+          "$ref": "#/$defs/sla_state"
+        }
+      }
+    },
+    "escalation_paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "escalation_list_path",
+        "escalation_detail_path_template",
+        "escalation_action_path_template"
+      ],
+      "properties": {
+        "escalation_list_path": {
+          "const": "/admin/v1/operator-review/escalations"
+        },
+        "escalation_detail_path_template": {
+          "const": "/admin/v1/operator-review/escalations/{escalation_id}"
+        },
+        "escalation_action_path_template": {
+          "const": "/admin/v1/operator-review/escalations/{escalation_id}/actions"
+        }
+      }
+    },
+    "escalation_redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_action_comment_included",
+        "raw_notification_payload_included",
+        "raw_external_incident_payload_included",
+        "idempotency_keys_included",
+        "comment_storage"
+      ],
+      "properties": {
+        "raw_action_comment_included": {
+          "const": false
+        },
+        "raw_notification_payload_included": {
+          "const": false
+        },
+        "raw_external_incident_payload_included": {
+          "const": false
+        },
+        "provider_payloads_included": {
+          "const": false
+        },
+        "database_urls_included": {
+          "const": false
+        },
+        "tokens_included": {
+          "const": false
+        },
+        "idempotency_keys_included": {
+          "const": false
+        },
+        "comment_storage": {
+          "const": "hash_and_short_preview_only"
         }
       }
     },
@@ -614,6 +1034,87 @@
         },
         "summary": {
           "$ref": "#/$defs/case_action_summary"
+        }
+      }
+    },
+    "escalation_list_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "escalation_list_schema_version",
+        "trace_id",
+        "request_id",
+        "items",
+        "summary",
+        "paths",
+        "redaction"
+      ],
+      "properties": {
+        "escalation_list_schema_version": {
+          "const": "ag_operator_review_escalation_list.v1"
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/escalation_record"
+          }
+        },
+        "summary": {
+          "$ref": "#/$defs/escalation_list_summary"
+        },
+        "paths": {
+          "$ref": "#/$defs/escalation_paths"
+        },
+        "redaction": {
+          "$ref": "#/$defs/escalation_redaction"
+        }
+      }
+    },
+    "escalation_action_mutation_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "escalation_action_mutation_schema_version",
+        "idempotency_status",
+        "trace_id",
+        "request_id",
+        "escalation",
+        "action",
+        "summary",
+        "redaction"
+      ],
+      "properties": {
+        "escalation_action_mutation_schema_version": {
+          "const": "ag_operator_review_escalation_action_mutation.v1"
+        },
+        "idempotency_status": {
+          "$ref": "#/$defs/idempotency_status"
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "escalation": {
+          "$ref": "#/$defs/escalation_record"
+        },
+        "action": {
+          "$ref": "#/$defs/escalation_action_record"
+        },
+        "summary": {
+          "$ref": "#/$defs/escalation_action_summary"
+        },
+        "redaction": {
+          "$ref": "#/$defs/escalation_redaction"
         }
       }
     }

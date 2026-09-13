@@ -1430,6 +1430,136 @@ paths:
           description: Action payload or state transition is invalid.
         "503":
           description: Operator review case store or audit emitter is unavailable.
+  /admin/v1/operator-review/escalations:
+    get:
+      operationId: listAgOperatorReviewEscalations
+      tags:
+        - Operations
+      parameters:
+        - name: case_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: candidate_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: escalation_status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewEscalationStatus"
+        - name: target_service
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ServiceId"
+        - name: target_kind
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: target_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Read-only AG operator review escalation action-state list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewEscalationSurface"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "422":
+          description: Escalation filter is invalid.
+        "503":
+          description: Operator review escalation store is unavailable.
+  /admin/v1/operator-review/escalations/{escalation_id}:
+    get:
+      operationId: getAgOperatorReviewEscalation
+      tags:
+        - Operations
+      parameters:
+        - name: escalation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Read-only AG operator review escalation action-state detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewEscalationSurface"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "404":
+          description: Operator review escalation was not found.
+        "422":
+          description: Escalation id is invalid.
+        "503":
+          description: Operator review escalation store is unavailable.
+  /admin/v1/operator-review/escalations/{escalation_id}/actions:
+    post:
+      operationId: applyAgOperatorReviewEscalationAction
+      tags:
+        - Operations
+      parameters:
+        - name: escalation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgOperatorReviewEscalationActionRequest"
+      responses:
+        "201":
+          description: Operator review escalation action applied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewEscalationSurface"
+        "200":
+          description: Idempotent replay of a previously applied escalation action.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewEscalationSurface"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: User claim is not authorized for AG operator review.
+        "404":
+          description: Operator review escalation was not found.
+        "409":
+          description: Idempotency key maps to a different escalation action request.
+        "422":
+          description: Escalation action payload or state transition is invalid.
+        "503":
+          description: Operator review escalation store or audit emitter is unavailable.
   /admin/v1/operations/workers:
     get:
       operationId: getAgWorkerRuntimeProjection
@@ -3542,6 +3672,74 @@ components:
           type: string
         resolution_comment:
           type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewEscalationStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - ACKNOWLEDGED
+        - SNOOZED
+        - DISMISSED
+        - RESOLVED
+        - REOPENED
+    AgOperatorReviewEscalationActionType:
+      type: string
+      enum:
+        - ACKNOWLEDGE
+        - SNOOZE
+        - DISMISS
+        - RESOLVE
+        - REOPEN
+    AgOperatorReviewEscalationSurface:
+      type: object
+      additionalProperties: true
+      description: >
+        AG operator review persisted escalation detail, list, or action mutation
+        response. The canonical JSON Schema is
+        schemas/service/nex_ag/operator_review_case.v1.schema.json.
+      properties:
+        escalation_schema_version:
+          type: string
+          const: ag_operator_review_escalation.v1
+        escalation_list_schema_version:
+          type: string
+          const: ag_operator_review_escalation_list.v1
+        escalation_action_mutation_schema_version:
+          type: string
+          const: ag_operator_review_escalation_action_mutation.v1
+        trace_id:
+          oneOf:
+            - $ref: "#/components/schemas/TraceId"
+            - type: "null"
+        request_id:
+          type: string
+          minLength: 1
+        redaction:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewEscalationActionRequest:
+      type: object
+      additionalProperties: true
+      required:
+        - action_type
+        - operator_ref
+      properties:
+        action_type:
+          $ref: "#/components/schemas/AgOperatorReviewEscalationActionType"
+        operator_ref:
+          type: object
+          additionalProperties: true
+        reason_codes:
+          type: array
+          items:
+            type: string
+        action_comment:
+          type: string
+        snoozed_until:
+          type: string
+          format: date-time
         metadata:
           type: object
           additionalProperties: true

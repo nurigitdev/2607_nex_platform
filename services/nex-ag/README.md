@@ -1189,6 +1189,10 @@ Unified operations:
   `/admin/v1/operations/issue-candidates` through
   `operator_review_escalation_action_required.v1`. The dashboard keeps S69
   candidate escalations and S70 persisted action state separate.
+- Slice 0697 hardens the S70 persisted escalation action contract through
+  `operator_review_case.v1`, positive list/action fixtures, a negative raw
+  notification payload fixture, and OpenAPI coverage for escalation list,
+  detail, and action routes.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

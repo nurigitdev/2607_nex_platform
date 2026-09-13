@@ -1,0 +1,102 @@
+{
+  "escalation_list_schema_version": "ag_operator_review_escalation_list.v1",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "items": [
+    {
+      "escalation_schema_version": "ag_operator_review_escalation.v1",
+      "escalation_id": "0c18fc3f-0697-4e8a-a6cb-d56a31b00697",
+      "candidate_id": "case-0697-urgent:overdue:blocked",
+      "case_id": "case-0697-urgent",
+      "target_service": "nex-ag",
+      "target_kind": "operator_review_workbench",
+      "target_id": "target-0697",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+      "operator_ref": {
+        "operator_type": "service",
+        "operator_id": "nex-ag",
+        "tenant_id": null
+      },
+      "assignment_ref": {
+        "assignee_type": null,
+        "assignee_id": null,
+        "tenant_id": null
+      },
+      "escalation_status": "ACTIVE",
+      "escalation_level": "BLOCKED",
+      "sla_state": "OVERDUE",
+      "reason_codes": [
+        "open_case_unassigned",
+        "sla_overdue",
+        "urgent_case_not_closed"
+      ],
+      "runbook_ids": [
+        "ag.operator_review_case.assign_owner.v1",
+        "ag.operator_review_case.urgent_triage.v1"
+      ],
+      "recommended_actions": [
+        "assign_case_owner",
+        "prioritize_urgent_operator_review_case",
+        "review_overdue_operator_review_case"
+      ],
+      "last_action_type": null,
+      "last_action_at": null,
+      "snoozed_until": null,
+      "comment_hash": null,
+      "comment_preview": null,
+      "idempotency_key_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "metadata": {
+        "raw_case_comment_stored": false,
+        "raw_action_comment_stored": false,
+        "raw_operator_note_stored": false,
+        "raw_evidence_body_stored": false,
+        "raw_prompt_stored": false,
+        "raw_generation_output_stored": false,
+        "raw_source_text_stored": false,
+        "raw_notification_payload_stored": false,
+        "raw_external_incident_payload_stored": false,
+        "storage_paths_included": false,
+        "comment_storage": "hash_and_short_preview_only",
+        "action_state_storage": "ag_owned_escalation_state_only",
+        "notification_delivery_deferred": true,
+        "external_incident_sync_deferred": true,
+        "idempotency_key_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "idempotency_key_stored": false
+      },
+      "created_at": "2026-09-12T12:00:00Z",
+      "updated_at": "2026-09-12T12:00:00Z",
+      "closed_at": null
+    }
+  ],
+  "summary": {
+    "count": 1,
+    "active_count": 1,
+    "closed_count": 0,
+    "by_status": {
+      "ACTIVE": 1
+    },
+    "by_level": {
+      "BLOCKED": 1
+    },
+    "by_sla_state": {
+      "OVERDUE": 1
+    },
+    "latest_updated_at": "2026-09-12T12:00:00Z"
+  },
+  "paths": {
+    "escalation_list_path": "/admin/v1/operator-review/escalations",
+    "escalation_detail_path_template": "/admin/v1/operator-review/escalations/{escalation_id}",
+    "escalation_action_path_template": "/admin/v1/operator-review/escalations/{escalation_id}/actions"
+  },
+  "redaction": {
+    "raw_action_comment_included": false,
+    "raw_notification_payload_included": false,
+    "raw_external_incident_payload_included": false,
+    "provider_payloads_included": false,
+    "database_urls_included": false,
+    "tokens_included": false,
+    "idempotency_keys_included": false,
+    "comment_storage": "hash_and_short_preview_only"
+  }
+}
