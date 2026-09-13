@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Mapping
+from uuid import NAMESPACE_URL, uuid5
 
 from nex_ag.operator_reviews import (
     OperatorReviewNoteError,
@@ -20,9 +21,14 @@ DISPATCH_EXECUTION_PROVIDER_CATALOG_SCHEMA_VERSION = (
 DISPATCH_EXECUTION_RESULT_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_result.v1"
 )
+DISPATCH_EXECUTION_TRANSITION_PLAN_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_transition_plan.v1"
+)
 DISPATCH_EXECUTION_DEFAULT_PROVIDER_PROFILE = "mock-default"
 DISPATCH_EXECUTION_PROVIDER_MODE = "mock_first_only"
 DISPATCH_EXECUTION_RESULT_STORAGE = "safe_hashes_statuses_counters_only"
+DEFAULT_DISPATCH_EXECUTION_RETRY_DELAY_SECONDS = 300
+DEFAULT_DISPATCH_EXECUTION_MAX_ATTEMPTS = 3
 
 ALLOWED_DISPATCH_EXECUTION_RESULT_STATUSES = (
     "SUCCEEDED",
@@ -249,6 +255,9 @@ def build_dispatch_execution_result(
             )
         ),
         "safe_result_preview": operator_note_preview(safe_message),
+        "retryable": bool(profile.get("retryable"))
+        if normalized_status in {"FAILED", "RETRY_WAIT"}
+        else False,
         "last_error_code": optional_text(last_error_code),
         "next_attempt_at": optional_text(next_attempt_at),
         "executed_at": executed_at or _utc_now(),
@@ -315,6 +324,130 @@ def execute_dispatch_with_mock_provider(
 ) -> dict[str, Any]:
     provider = build_mock_dispatch_execution_provider(profile_id)
     return provider.execute(dispatch, executed_at=executed_at)
+
+
+def build_dispatch_execution_transition_plan(
+    dispatch: Mapping[str, Any],
+    execution_result: Mapping[str, Any] | None = None,
+    *,
+    planned_at: str | None = None,
+    max_attempts: int = DEFAULT_DISPATCH_EXECUTION_MAX_ATTEMPTS,
+    retry_delay_seconds: int = DEFAULT_DISPATCH_EXECUTION_RETRY_DELAY_SECONDS,
+) -> dict[str, Any]:
+    status = str(dispatch.get("dispatch_status") or "")
+    attempt_count = _non_negative_int(dispatch.get("attempt_count"))
+    now = planned_at or _utc_now()
+    result = execution_result or execute_dispatch_with_mock_provider(
+        dispatch,
+        executed_at=now,
+    )
+    assert_dispatch_execution_result_redacted(result)
+    plan_id = str(
+        uuid5(
+            NAMESPACE_URL,
+            "ag-operator-review-escalation-dispatch-execution-plan:"
+            f"{dispatch.get('dispatch_id') or 'unknown'}:"
+            f"{attempt_count}:{result.get('provider_result_hash') or ''}",
+        )
+    )
+    skip_reason = _transition_skip_reason(status)
+    if skip_reason is not None:
+        return _transition_plan(
+            dispatch,
+            result,
+            plan_id=plan_id,
+            plan_status="SKIPPED",
+            planned_at=now,
+            actions=[],
+            skip_reason=skip_reason,
+            max_attempts=max_attempts,
+            retry_delay_seconds=retry_delay_seconds,
+        )
+    if status == "FAILED":
+        if attempt_count >= max_attempts:
+            return _transition_plan(
+                dispatch,
+                result,
+                plan_id=plan_id,
+                plan_status="BLOCKED",
+                planned_at=now,
+                actions=[],
+                skip_reason="max_attempts_exhausted",
+                max_attempts=max_attempts,
+                retry_delay_seconds=retry_delay_seconds,
+            )
+        actions = [
+            _worker_action_payload(
+                "RETRY",
+                result,
+                next_attempt_at=_iso_after_seconds(now, retry_delay_seconds),
+            )
+        ]
+        return _transition_plan(
+            dispatch,
+            result,
+            plan_id=plan_id,
+            plan_status="READY",
+            planned_at=now,
+            actions=actions,
+            skip_reason=None,
+            max_attempts=max_attempts,
+            retry_delay_seconds=retry_delay_seconds,
+        )
+    actions = [_worker_action_payload("START", result)]
+    result_status = str(result.get("execution_status") or "")
+    if result_status == "SUCCEEDED":
+        actions.append(_worker_action_payload("SUCCEED", result))
+    elif result_status == "FAILED":
+        actions.append(_worker_action_payload("FAIL", result))
+        if bool(result.get("retryable")) and attempt_count + 1 < max_attempts:
+            actions.append(
+                _worker_action_payload(
+                    "RETRY",
+                    result,
+                    next_attempt_at=_iso_after_seconds(now, retry_delay_seconds),
+                )
+            )
+    elif result_status == "RETRY_WAIT":
+        actions.append(
+            _worker_action_payload(
+                "FAIL",
+                {
+                    **result,
+                    "last_error_code": result.get("last_error_code")
+                    or "mock_dispatch_retry_wait",
+                },
+            )
+        )
+        actions.append(
+            _worker_action_payload(
+                "RETRY",
+                result,
+                next_attempt_at=str(result.get("next_attempt_at")),
+            )
+        )
+    elif result_status == "SKIPPED":
+        actions = []
+    else:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=(
+                "ag.operator_review_escalation_dispatch_execution_result_status_"
+                "unsupported"
+            ),
+            detail=f"unsupported execution result status: {result_status}",
+        )
+    return _transition_plan(
+        dispatch,
+        result,
+        plan_id=plan_id,
+        plan_status="READY" if actions else "SKIPPED",
+        planned_at=now,
+        actions=actions,
+        skip_reason=None if actions else "provider_execution_skipped",
+        max_attempts=max_attempts,
+        retry_delay_seconds=retry_delay_seconds,
+    )
 
 
 def assert_dispatch_execution_result_redacted(payload: Any) -> None:
@@ -423,6 +556,102 @@ def _default_provider_result_ref(
         f"{dispatch.get('dispatch_id') or 'unknown'}:"
         f"{execution_status}:"
         f"{dispatch.get('attempt_count') or 0}"
+    )
+
+
+def _transition_plan(
+    dispatch: Mapping[str, Any],
+    execution_result: Mapping[str, Any],
+    *,
+    plan_id: str,
+    plan_status: str,
+    planned_at: str,
+    actions: list[dict[str, Any]],
+    skip_reason: str | None,
+    max_attempts: int,
+    retry_delay_seconds: int,
+) -> dict[str, Any]:
+    return {
+        "transition_plan_schema_version": (
+            DISPATCH_EXECUTION_TRANSITION_PLAN_SCHEMA_VERSION
+        ),
+        "transition_plan_id": plan_id,
+        "dispatch_id": str(dispatch.get("dispatch_id") or ""),
+        "dispatch_status": str(dispatch.get("dispatch_status") or ""),
+        "attempt_count": _non_negative_int(dispatch.get("attempt_count")),
+        "execution_result_schema_version": execution_result.get(
+            "execution_result_schema_version"
+        ),
+        "execution_status": execution_result.get("execution_status"),
+        "plan_status": plan_status,
+        "skip_reason": skip_reason,
+        "actions": actions,
+        "max_attempts": max_attempts,
+        "retry_delay_seconds": retry_delay_seconds,
+        "planned_at": planned_at,
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+
+
+def _worker_action_payload(
+    action_type: str,
+    execution_result: Mapping[str, Any],
+    *,
+    next_attempt_at: str | None = None,
+) -> dict[str, Any]:
+    payload = {
+        "action_type": action_type,
+        "operator_ref": {"operator_type": "service", "operator_id": "nex-ag"},
+        "reason_codes": [f"dispatch_execution_{action_type.lower()}"],
+        "metadata": {
+            "execution_result_schema_version": execution_result.get(
+                "execution_result_schema_version"
+            ),
+            "execution_status": execution_result.get("execution_status"),
+            "provider_profile": execution_result.get("provider_profile"),
+            "provider_result_hash": execution_result.get("provider_result_hash"),
+            "safe_result_preview": execution_result.get("safe_result_preview"),
+            "worker_result_storage": DISPATCH_EXECUTION_RESULT_STORAGE,
+            "sensitive_material_storage": "omitted",
+        },
+    }
+    if action_type == "FAIL":
+        payload["last_error_code"] = (
+            optional_text(execution_result.get("last_error_code"))
+            or "mock_dispatch_execution_failed"
+        )
+        payload["last_error"] = (
+            "Dispatch execution failed. See safe provider result hash."
+        )
+    if action_type == "RETRY":
+        payload["next_attempt_at"] = next_attempt_at
+    assert_dispatch_execution_result_redacted(payload)
+    return payload
+
+
+def _transition_skip_reason(dispatch_status: str) -> str | None:
+    if dispatch_status in {"SUCCEEDED", "CANCELLED"}:
+        return "terminal_dispatch_status"
+    if dispatch_status == "DISPATCHING":
+        return "dispatch_already_in_progress"
+    if dispatch_status in {"PENDING", "RETRY_WAIT", "FAILED"}:
+        return None
+    return "unsupported_dispatch_status"
+
+
+def _non_negative_int(value: Any) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(parsed, 0)
+
+
+def _iso_after_seconds(value: str, seconds: int) -> str:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return (parsed + timedelta(seconds=max(int(seconds), 0))).isoformat().replace(
+        "+00:00",
+        "Z",
     )
 
 

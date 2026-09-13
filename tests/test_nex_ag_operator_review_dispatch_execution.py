@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from nex_ag.operator_review_cases import (
+    apply_operator_review_escalation_dispatch_action,
     build_operator_review_escalation_dispatch_plan,
     build_operator_review_escalation_record,
 )
@@ -18,6 +19,7 @@ from nex_ag.operator_review_dispatch_execution import (
     assert_dispatch_execution_result_redacted,
     build_dispatch_execution_provider_catalog,
     build_dispatch_execution_result,
+    build_dispatch_execution_transition_plan,
     build_mock_dispatch_execution_provider,
     execute_dispatch_with_mock_provider,
     normalize_dispatch_execution_provider_profile,
@@ -319,4 +321,169 @@ def test_mock_dispatch_execution_provider_rejects_unknown_profile() -> None:
 
     assert exc_info.value.error_code == (
         "ag.operator_review_escalation_dispatch_execution_provider_profile_unsupported"
+    )
+
+
+def test_dispatch_execution_transition_plan_success_actions_apply_to_state_machine() -> None:
+    dispatch = sample_dispatch()
+    result = execute_dispatch_with_mock_provider(
+        dispatch,
+        executed_at="2026-09-12T15:00:00Z",
+    )
+
+    plan = build_dispatch_execution_transition_plan(
+        dispatch,
+        result,
+        planned_at="2026-09-12T15:00:00Z",
+    )
+
+    assert plan["transition_plan_schema_version"].endswith(".v1")
+    assert plan["plan_status"] == "READY"
+    assert [action["action_type"] for action in plan["actions"]] == [
+        "START",
+        "SUCCEED",
+    ]
+    started, _ = apply_operator_review_escalation_dispatch_action(
+        dispatch,
+        plan["actions"][0],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0715-start",
+        acted_at="2026-09-12T15:00:00Z",
+    )
+    succeeded, action = apply_operator_review_escalation_dispatch_action(
+        started,
+        plan["actions"][1],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0715-succeed",
+        acted_at="2026-09-12T15:01:00Z",
+    )
+
+    assert action["action_type"] == "SUCCEED"
+    assert succeeded["dispatch_status"] == "SUCCEEDED"
+    assert succeeded["metadata"]["last_action_type"] == "SUCCEED"
+
+
+def test_dispatch_execution_transition_plan_failure_retry_and_failed_row_paths() -> None:
+    dispatch = sample_dispatch(provider_profile="mock-failure")
+    result = execute_dispatch_with_mock_provider(
+        dispatch,
+        profile_id="mock-failure",
+        executed_at="2026-09-12T15:10:00Z",
+    )
+
+    plan = build_dispatch_execution_transition_plan(
+        dispatch,
+        result,
+        planned_at="2026-09-12T15:10:00Z",
+    )
+
+    assert [action["action_type"] for action in plan["actions"]] == [
+        "START",
+        "FAIL",
+        "RETRY",
+    ]
+    assert plan["actions"][1]["last_error_code"] == "mock_dispatch_failed"
+    assert plan["actions"][2]["next_attempt_at"] == "2026-09-12T15:15:00Z"
+
+    failed_row = {
+        **dispatch,
+        "dispatch_status": "FAILED",
+        "attempt_count": 1,
+    }
+    retry_plan = build_dispatch_execution_transition_plan(
+        failed_row,
+        result,
+        planned_at="2026-09-12T15:20:00Z",
+    )
+    assert retry_plan["plan_status"] == "READY"
+    assert [action["action_type"] for action in retry_plan["actions"]] == ["RETRY"]
+    assert retry_plan["actions"][0]["next_attempt_at"] == "2026-09-12T15:25:00Z"
+
+    exhausted = build_dispatch_execution_transition_plan(
+        {**failed_row, "attempt_count": 3},
+        result,
+        planned_at="2026-09-12T15:30:00Z",
+    )
+    assert exhausted["plan_status"] == "BLOCKED"
+    assert exhausted["skip_reason"] == "max_attempts_exhausted"
+
+    non_retryable_dispatch = sample_dispatch()
+    non_retryable_result = build_dispatch_execution_result(
+        non_retryable_dispatch,
+        execution_status="FAILED",
+        last_error_code="mock_non_retryable_failure",
+    )
+    non_retryable_plan = build_dispatch_execution_transition_plan(
+        {**non_retryable_dispatch, "attempt_count": "not-a-number"},
+        non_retryable_result,
+        planned_at="2026-09-12T15:35:00Z",
+    )
+    assert non_retryable_plan["attempt_count"] == 0
+    assert [action["action_type"] for action in non_retryable_plan["actions"]] == [
+        "START",
+        "FAIL",
+    ]
+
+
+def test_dispatch_execution_transition_plan_skip_and_retry_wait_paths() -> None:
+    terminal = build_dispatch_execution_transition_plan(
+        {**sample_dispatch(), "dispatch_status": "SUCCEEDED"},
+        planned_at="2026-09-12T15:40:00Z",
+    )
+    assert terminal["plan_status"] == "SKIPPED"
+    assert terminal["skip_reason"] == "terminal_dispatch_status"
+
+    in_progress = build_dispatch_execution_transition_plan(
+        {**sample_dispatch(), "dispatch_status": "DISPATCHING"},
+        planned_at="2026-09-12T15:41:00Z",
+    )
+    assert in_progress["skip_reason"] == "dispatch_already_in_progress"
+
+    unsupported = build_dispatch_execution_transition_plan(
+        {**sample_dispatch(), "dispatch_status": "UNKNOWN"},
+        planned_at="2026-09-12T15:42:00Z",
+    )
+    assert unsupported["skip_reason"] == "unsupported_dispatch_status"
+
+    retry_result = build_dispatch_execution_result(
+        sample_dispatch(provider_profile="mock-failure"),
+        execution_status="RETRY_WAIT",
+        provider_profile="mock-failure",
+        next_attempt_at="2026-09-12T16:00:00Z",
+    )
+    retry_wait_plan = build_dispatch_execution_transition_plan(
+        sample_dispatch(provider_profile="mock-failure"),
+        retry_result,
+        planned_at="2026-09-12T15:45:00Z",
+    )
+    assert [action["action_type"] for action in retry_wait_plan["actions"]] == [
+        "START",
+        "FAIL",
+        "RETRY",
+    ]
+    assert retry_wait_plan["actions"][2]["next_attempt_at"] == "2026-09-12T16:00:00Z"
+
+    skipped_result = execute_dispatch_with_mock_provider(
+        {**sample_dispatch(), "channel_type": "EMAIL"},
+        executed_at="2026-09-12T15:50:00Z",
+    )
+    skipped_plan = build_dispatch_execution_transition_plan(
+        {**sample_dispatch(), "channel_type": "EMAIL"},
+        skipped_result,
+        planned_at="2026-09-12T15:50:00Z",
+    )
+    assert skipped_plan["plan_status"] == "SKIPPED"
+    assert skipped_plan["actions"] == []
+    assert skipped_plan["skip_reason"] == "provider_execution_skipped"
+
+    with pytest.raises(OperatorReviewNoteError) as unsupported_result_exc:
+        build_dispatch_execution_transition_plan(
+            sample_dispatch(),
+            {"execution_status": "BOUNCED", "provider_result_hash": "x"},
+            planned_at="2026-09-12T15:55:00Z",
+        )
+    assert unsupported_result_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_execution_result_status_unsupported"
     )

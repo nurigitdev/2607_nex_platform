@@ -1290,6 +1290,10 @@ Unified operations:
   returns a safe `SKIPPED` result for live channels because outbound delivery
   remains deferred. It still does not mutate dispatch rows or call external
   providers.
+- Slice 0715 adds the dispatch execution transition planner. It converts safe
+  execution results into existing S71 dispatch state-machine action payloads,
+  handles terminal/in-progress/live-deferred/max-attempt cases as skipped or
+  blocked plans, and still leaves row mutation to a later worker slice.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
