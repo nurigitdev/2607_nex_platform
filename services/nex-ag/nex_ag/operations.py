@@ -6883,6 +6883,15 @@ def _dashboard_operator_review_escalation_dispatch_section(
         ),
         "projection_status": "READY",
         "summary": summary,
+        "execution_summary": (
+            _operator_review_escalation_dispatch_execution_dashboard_summary(
+                [
+                    item
+                    for item in dispatch_list.get("items", [])
+                    if isinstance(item, Mapping)
+                ]
+            )
+        ),
         "by_status": dict(dispatch_list["summary"]["by_status"]),
         "by_intent": dict(dispatch_list["summary"]["by_intent"]),
         "by_channel": dict(dispatch_list["summary"]["by_channel"]),
@@ -6916,6 +6925,9 @@ def _empty_dashboard_operator_review_escalation_dispatch_section(
         ),
         "projection_status": "READY",
         "summary": _empty_operator_review_escalation_dispatch_summary(),
+        "execution_summary": (
+            _empty_operator_review_escalation_dispatch_execution_summary()
+        ),
         "by_status": {},
         "by_intent": {},
         "by_channel": {},
@@ -6953,6 +6965,9 @@ def _operator_review_escalation_dispatch_dashboard_summary(
     items = [
         item for item in dispatch_list.get("items", []) if isinstance(item, Mapping)
     ]
+    execution_summary = (
+        _operator_review_escalation_dispatch_execution_dashboard_summary(items)
+    )
     summary["dispatch_count"] = _safe_int(summary.get("count"))
     summary["attention_count"] = sum(
         1
@@ -6965,6 +6980,10 @@ def _operator_review_escalation_dispatch_dashboard_summary(
     summary["retry_wait_count"] = sum(
         1 for item in items if item.get("dispatch_status") == "RETRY_WAIT"
     )
+    summary["execution_result_count"] = execution_summary["recorded_count"]
+    summary["execution_succeeded_count"] = execution_summary["succeeded_count"]
+    summary["execution_failed_count"] = execution_summary["failed_count"]
+    summary["execution_retry_wait_count"] = execution_summary["retry_wait_count"]
     return summary
 
 
@@ -6972,6 +6991,9 @@ def _dashboard_operator_review_escalation_dispatch_attention_item(
     item: Mapping[str, Any],
 ) -> dict[str, Any]:
     selected = dict(item)
+    execution_result = _operator_review_escalation_dispatch_execution_result(item)
+    if execution_result is not None:
+        selected["execution_result"] = execution_result
     dispatch_id = _nullable_string(selected.get("dispatch_id"))
     if dispatch_id is None:
         return selected
@@ -7007,6 +7029,118 @@ def _operator_review_escalation_dispatch_attention_item_needs_action(
     }
 
 
+def _operator_review_escalation_dispatch_execution_dashboard_summary(
+    items: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    execution_results = [
+        result
+        for item in items
+        if (result := _operator_review_escalation_dispatch_execution_result(item))
+        is not None
+    ]
+    by_execution_status: dict[str, int] = {}
+    for result in execution_results:
+        status = _nullable_string(result.get("execution_status")) or "UNKNOWN"
+        by_execution_status[status] = by_execution_status.get(status, 0) + 1
+    latest_executed_at = max(
+        (
+            executed_at
+            for result in execution_results
+            if (executed_at := _nullable_string(result.get("executed_at")))
+            is not None
+        ),
+        default=None,
+    )
+    return {
+        "recorded_count": len(execution_results),
+        "succeeded_count": by_execution_status.get("SUCCEEDED", 0),
+        "failed_count": by_execution_status.get("FAILED", 0),
+        "retry_wait_count": by_execution_status.get("RETRY_WAIT", 0),
+        "skipped_count": by_execution_status.get("SKIPPED", 0),
+        "retryable_count": sum(
+            1 for result in execution_results if result.get("retryable") is True
+        ),
+        "latest_executed_at": latest_executed_at,
+        "by_execution_status": by_execution_status,
+        "redaction": (
+            _operator_review_escalation_dispatch_execution_result_redaction()
+        ),
+    }
+
+
+def _operator_review_escalation_dispatch_execution_result(
+    item: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    metadata = item.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return None
+    result = metadata.get("last_execution_result")
+    if not isinstance(result, Mapping):
+        return None
+    return {
+        "execution_result_metadata_schema_version": _nullable_string(
+            result.get("execution_result_metadata_schema_version")
+        ),
+        "execution_result_schema_version": _nullable_string(
+            result.get("execution_result_schema_version")
+        ),
+        "execution_status": _nullable_string(result.get("execution_status")),
+        "recommended_action": _nullable_string(result.get("recommended_action")),
+        "provider_mode": _nullable_string(result.get("provider_mode")),
+        "provider_profile": _nullable_string(result.get("provider_profile")),
+        "provider_result_hash": _nullable_string(result.get("provider_result_hash")),
+        "safe_result_preview": _nullable_string(result.get("safe_result_preview")),
+        "retryable": bool(result.get("retryable")),
+        "last_error_code": _nullable_string(result.get("last_error_code")),
+        "next_attempt_at": _nullable_string(result.get("next_attempt_at")),
+        "executed_at": _nullable_string(result.get("executed_at")),
+        "run_id": _nullable_string(result.get("run_id")),
+        "worker_id": _nullable_string(result.get("worker_id")),
+        "result_storage": (
+            _nullable_string(result.get("result_storage"))
+            or "safe_hashes_statuses_counters_only"
+        ),
+        "redaction": (
+            _operator_review_escalation_dispatch_execution_result_redaction()
+        ),
+    }
+
+
+def _operator_review_escalation_dispatch_execution_result_redaction() -> dict[
+    str,
+    Any,
+]:
+    return {
+        "raw_notification_payload_included": False,
+        "raw_external_incident_payload_included": False,
+        "raw_provider_payload_included": False,
+        "raw_provider_error_included": False,
+        "raw_action_comment_included": False,
+        "raw_source_text_included": False,
+        "provider_secrets_included": False,
+        "database_urls_included": False,
+        "tokens_included": False,
+        "idempotency_keys_included": False,
+        "result_storage": "safe_hashes_statuses_counters_only",
+    }
+
+
+def _empty_operator_review_escalation_dispatch_execution_summary() -> dict[str, Any]:
+    return {
+        "recorded_count": 0,
+        "succeeded_count": 0,
+        "failed_count": 0,
+        "retry_wait_count": 0,
+        "skipped_count": 0,
+        "retryable_count": 0,
+        "latest_executed_at": None,
+        "by_execution_status": {},
+        "redaction": (
+            _operator_review_escalation_dispatch_execution_result_redaction()
+        ),
+    }
+
+
 def _empty_operator_review_escalation_dispatch_summary() -> dict[str, Any]:
     return {
         "count": 0,
@@ -7018,6 +7152,10 @@ def _empty_operator_review_escalation_dispatch_summary() -> dict[str, Any]:
         "attention_count": 0,
         "failed_count": 0,
         "retry_wait_count": 0,
+        "execution_result_count": 0,
+        "execution_succeeded_count": 0,
+        "execution_failed_count": 0,
+        "execution_retry_wait_count": 0,
         "by_status": {},
         "by_intent": {},
         "by_channel": {},

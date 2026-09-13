@@ -2546,6 +2546,7 @@
         "projection_schema_version",
         "projection_status",
         "summary",
+        "execution_summary",
         "by_status",
         "by_intent",
         "by_channel",
@@ -2572,6 +2573,60 @@
         "summary": {
           "type": "object",
           "additionalProperties": true
+        },
+        "execution_summary": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "recorded_count",
+            "succeeded_count",
+            "failed_count",
+            "retry_wait_count",
+            "skipped_count",
+            "retryable_count",
+            "latest_executed_at",
+            "by_execution_status",
+            "redaction"
+          ],
+          "properties": {
+            "recorded_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "succeeded_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "failed_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "retry_wait_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "skipped_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "retryable_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "latest_executed_at": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "by_execution_status": {
+              "$ref": "#/$defs/string_integer_counts"
+            },
+            "redaction": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
         },
         "by_status": {
           "$ref": "#/$defs/string_integer_counts"

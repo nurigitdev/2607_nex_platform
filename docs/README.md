@@ -821,6 +821,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0715`](slices/0715_ag_escalation_dispatch_execution_transition_planner.md) | `S72-004` AG escalation dispatch execution transition planner. |
 | [`Slice 0716`](slices/0716_ag_escalation_dispatch_execution_worker_run_once.md) | `S72-005` AG escalation dispatch execution worker run-once batch. |
 | [`Slice 0717`](slices/0717_ag_escalation_dispatch_execution_result_persistence.md) | `S72-006` AG escalation dispatch execution result persistence hardening. |
+| [`Slice 0718`](slices/0718_ag_escalation_dispatch_execution_operations_dashboard.md) | `S72-007` AG escalation dispatch execution operations dashboard integration. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -1304,6 +1304,11 @@ Unified operations:
   `ag_op_esc_dispatches`, storing only safe status, provider profile, result
   hash, safe preview, retry/error summary, run id, worker id, and redaction
   flags.
+- Slice 0718 surfaces persisted dispatch execution evidence in the AG operations
+  dashboard. The dashboard now includes `execution_summary`,
+  `summary.execution_*_count` rollups, and item-level safe `execution_result`
+  projections while continuing to omit raw provider payloads, secrets, and
+  idempotency keys.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

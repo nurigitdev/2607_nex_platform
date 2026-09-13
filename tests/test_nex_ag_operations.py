@@ -3461,6 +3461,50 @@ def test_operations_dashboard_snapshot_includes_escalation_dispatches() -> None:
         channel_type="EMAIL",
         created_at="2026-08-05T00:00:14Z",
     )
+    failed["metadata"]["last_execution_result"] = {
+        "execution_result_metadata_schema_version": (
+            "ag_operator_review_escalation_dispatch_execution_result_metadata.v1"
+        ),
+        "run_id": "dispatch-worker-run-0718",
+        "worker_id": "ag-dispatch-worker-01",
+        "execution_result_schema_version": (
+            "ag_operator_review_escalation_dispatch_execution_result.v1"
+        ),
+        "execution_status": "FAILED",
+        "recommended_action": "RETRY",
+        "provider_mode": "mock",
+        "provider_profile": "mock_escalation_dispatch",
+        "provider_result_hash": "f" * 64,
+        "safe_result_preview": "Mock dispatch failed.",
+        "retryable": True,
+        "last_error_code": "mock_dispatch_failure",
+        "next_attempt_at": "2026-08-05T00:05:15Z",
+        "executed_at": "2026-08-05T00:00:15Z",
+        "result_storage": "safe_hashes_statuses_counters_only",
+    }
+    failed["metadata"]["last_execution_result_recorded"] = True
+    succeeded["metadata"]["last_execution_result"] = {
+        "execution_result_metadata_schema_version": (
+            "ag_operator_review_escalation_dispatch_execution_result_metadata.v1"
+        ),
+        "run_id": "dispatch-worker-run-0718",
+        "worker_id": "ag-dispatch-worker-01",
+        "execution_result_schema_version": (
+            "ag_operator_review_escalation_dispatch_execution_result.v1"
+        ),
+        "execution_status": "SUCCEEDED",
+        "recommended_action": "SUCCEED",
+        "provider_mode": "mock",
+        "provider_profile": "mock_escalation_dispatch",
+        "provider_result_hash": "1" * 64,
+        "safe_result_preview": "Mock dispatch accepted.",
+        "retryable": False,
+        "last_error_code": None,
+        "next_attempt_at": None,
+        "executed_at": "2026-08-05T00:00:14Z",
+        "result_storage": "safe_hashes_statuses_counters_only",
+    }
+    succeeded["metadata"]["last_execution_result_recorded"] = True
     dispatch_store.save(succeeded)
     dispatch_store.save(failed)
 
@@ -3477,10 +3521,64 @@ def test_operations_dashboard_snapshot_includes_escalation_dispatches() -> None:
     assert dispatches["summary"]["attention_count"] == 1
     assert dispatches["summary"]["failed_count"] == 1
     assert dispatches["summary"]["retryable_count"] == 1
+    assert dispatches["summary"]["execution_result_count"] == 2
+    assert dispatches["summary"]["execution_failed_count"] == 1
+    assert dispatches["summary"]["execution_retry_wait_count"] == 0
+    assert dispatches["summary"]["execution_succeeded_count"] == 1
+    assert dispatches["execution_summary"] == {
+        "recorded_count": 2,
+        "succeeded_count": 1,
+        "failed_count": 1,
+        "retry_wait_count": 0,
+        "skipped_count": 0,
+        "retryable_count": 1,
+        "latest_executed_at": "2026-08-05T00:00:15Z",
+        "by_execution_status": {"FAILED": 1, "SUCCEEDED": 1},
+        "redaction": {
+            "raw_notification_payload_included": False,
+            "raw_external_incident_payload_included": False,
+            "raw_provider_payload_included": False,
+            "raw_provider_error_included": False,
+            "raw_action_comment_included": False,
+            "raw_source_text_included": False,
+            "provider_secrets_included": False,
+            "database_urls_included": False,
+            "tokens_included": False,
+            "idempotency_keys_included": False,
+            "result_storage": "safe_hashes_statuses_counters_only",
+        },
+    }
     assert dispatches["by_status"] == {"FAILED": 1, "SUCCEEDED": 1}
     assert dispatches["by_intent"] == {"NOTIFY_OWNER": 1, "OPEN_INCIDENT": 1}
     assert dispatches["by_channel"] == {"EMAIL": 1, "INCIDENT": 1}
     assert dispatches["attention"][0]["dispatch_id"] == failed["dispatch_id"]
+    assert dispatches["attention"][0]["execution_result"] == {
+        "execution_result_metadata_schema_version": (
+            "ag_operator_review_escalation_dispatch_execution_result_metadata.v1"
+        ),
+        "execution_result_schema_version": (
+            "ag_operator_review_escalation_dispatch_execution_result.v1"
+        ),
+        "execution_status": "FAILED",
+        "recommended_action": "RETRY",
+        "provider_mode": "mock",
+        "provider_profile": "mock_escalation_dispatch",
+        "provider_result_hash": "f" * 64,
+        "safe_result_preview": "Mock dispatch failed.",
+        "retryable": True,
+        "last_error_code": "mock_dispatch_failure",
+        "next_attempt_at": "2026-08-05T00:05:15Z",
+        "executed_at": "2026-08-05T00:00:15Z",
+        "run_id": "dispatch-worker-run-0718",
+        "worker_id": "ag-dispatch-worker-01",
+        "result_storage": "safe_hashes_statuses_counters_only",
+        "redaction": dispatches["execution_summary"]["redaction"],
+    }
+    serialized_execution_result = json.dumps(
+        dispatches["attention"][0]["execution_result"]
+    )
+    assert '"idempotency_key":' not in serialized_execution_result
+    assert '"raw_provider_payload":' not in serialized_execution_result
     assert dispatches["attention"][0]["links"] == {
         "dispatch_detail_path": (
             f"/admin/v1/operator-review/dispatches/{failed['dispatch_id']}"
@@ -3934,6 +4032,54 @@ def test_escalation_dispatch_dashboard_helpers_cover_defensive_edges() -> None:
         "escalation_detail_path": None,
         "case_detail_path": None,
     }
+    assert "execution_result" not in linked
+
+    execution_linked = (
+        ag_operations._dashboard_operator_review_escalation_dispatch_attention_item(
+            {
+                "dispatch_id": "dispatch-0718-edge",
+                "dispatch_status": "FAILED",
+                "metadata": {
+                    "last_execution_result": {
+                        "execution_status": "RETRY_WAIT",
+                        "recommended_action": "RETRY",
+                        "provider_profile": "mock_escalation_dispatch",
+                        "provider_result_hash": "2" * 64,
+                        "safe_result_preview": "Retry scheduled.",
+                        "retryable": True,
+                        "next_attempt_at": "2026-08-05T00:09:00Z",
+                        "executed_at": "2026-08-05T00:00:00Z",
+                    }
+                },
+            }
+        )
+    )
+    assert execution_linked["execution_result"]["execution_status"] == "RETRY_WAIT"
+    assert execution_linked["execution_result"]["result_storage"] == (
+        "safe_hashes_statuses_counters_only"
+    )
+    assert (
+        ag_operations._operator_review_escalation_dispatch_execution_result(
+            {"metadata": {"last_execution_result": "malformed"}}
+        )
+        is None
+    )
+    assert (
+        ag_operations._operator_review_escalation_dispatch_execution_dashboard_summary(
+            [
+                {"metadata": "malformed"},
+                {
+                    "metadata": {
+                        "last_execution_result": {
+                            "execution_status": "SKIPPED",
+                            "retryable": False,
+                        }
+                    }
+                },
+            ]
+        )["by_execution_status"]
+        == {"SKIPPED": 1}
+    )
 
     assert _issue_candidates_from_operator_review_escalation_dispatches(None) == []
     assert (
