@@ -808,6 +808,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0702`](slices/0702_ag_operator_review_escalation_dispatch_persistence.md) | `S71-002` AG operator review escalation dispatch persistence foundation. |
 | [`Slice 0703`](slices/0703_ag_operator_review_escalation_dispatch_policy_planner.md) | `S71-003` AG operator review escalation dispatch policy planner. |
 | [`Slice 0704`](slices/0704_ag_operator_review_escalation_dispatch_state_machine.md) | `S71-004` AG operator review escalation dispatch state machine. |
+| [`Slice 0705`](slices/0705_ag_operator_review_escalation_dispatch_route_wiring.md) | `S71-005` AG operator review escalation dispatch protected route wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

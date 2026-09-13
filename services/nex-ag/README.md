@@ -1228,6 +1228,11 @@ Unified operations:
   actions move outbox records through `START`, `SUCCEED`, `FAIL`, `RETRY`, and
   `CANCEL` without executing providers, and persist only safe state fields,
   attempt counters, timestamps, bounded previews, hashes, and metadata flags.
+- Slice 0705 wires protected S71 dispatch routes. AG can create a safe dispatch
+  outbox record from a persisted escalation, replay or reject idempotent create
+  requests, read dispatch detail by id, and apply dispatch state-machine actions
+  while emitting safe operational events and keeping live provider delivery
+  deferred.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

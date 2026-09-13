@@ -45,6 +45,8 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_ESCALATION_DISPATCH_POLICY_VERSION,
     OPERATOR_REVIEW_ESCALATION_DISPATCH_ACTION_MUTATION_SCHEMA_VERSION,
     OPERATOR_REVIEW_ESCALATION_DISPATCH_ACTION_SCHEMA_VERSION,
+    OPERATOR_REVIEW_ESCALATION_DISPATCH_RECORDED_EVENT_TYPE,
+    OPERATOR_REVIEW_ESCALATION_DISPATCH_ACTION_RECORDED_EVENT_TYPE,
     AG_OPERATOR_REVIEW_ESCALATION_TABLE,
     AG_OPERATOR_REVIEW_ESCALATION_DISPATCH_TABLE,
     OperatorReviewCaseService,
@@ -73,6 +75,7 @@ from nex_ag.operator_review_cases import (
     _target_status_for_escalation_action,
     _target_status_for_escalation_dispatch_action,
     _target_status_for_case_action,
+    _latest_escalation_dispatch_plan_summary,
     _latest_escalation_dispatch_action_summary,
     apply_operator_review_escalation_action,
     apply_operator_review_escalation_dispatch_action,
@@ -114,6 +117,7 @@ from nex_ag.operator_review_cases import (
     operator_review_escalation_dispatch_action_id,
     operator_review_escalation_dispatch_action_metadata,
     operator_review_escalation_dispatch_action_request_signature,
+    operator_review_escalation_dispatch_request_signature,
     operator_review_escalation_action_id,
     operator_review_escalation_action_metadata,
     operator_review_escalation_action_request_signature,
@@ -131,6 +135,7 @@ from nex_ag.operator_review_cases import (
     required_escalation_dispatch_action_idempotency_key,
     required_escalation_dispatch_action_type,
     required_escalation_dispatch_id,
+    required_escalation_dispatch_idempotency_key,
 )
 from nex_ag.operator_reviews import (
     OperatorEvidenceExportStore,
@@ -505,6 +510,7 @@ def build_route_client(
     *,
     store: Any | None = None,
     escalation_store: Any | None = None,
+    dispatch_store: Any | None = None,
     note_store: Any | None = None,
     export_store: Any | None = None,
     audit_event_store: InMemoryOperationalEventStore | None = None,
@@ -516,6 +522,7 @@ def build_route_client(
         app,
         store=selected_store,
         escalation_store=escalation_store,
+        dispatch_store=dispatch_store,
         note_store=note_store,
         export_store=export_store,
         audit_event_store=selected_event_store,
@@ -1350,6 +1357,77 @@ def test_operator_review_case_service_plans_escalation_dispatch() -> None:
     assert missing_exc.value.status_code == 404
 
 
+def test_operator_review_case_service_creates_dispatch_replays_conflicts_and_skips() -> None:
+    escalation_store = OperatorReviewEscalationStore()
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    active = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id="case-0705:service-create"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    observe = build_operator_review_escalation_record(
+        sample_escalation_candidate(
+            candidate_id="case-0705:service-observe",
+            case_id="case-0705-service-observe",
+            escalation_level="OBSERVE",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    escalation_store.save(active)
+    escalation_store.save(observe)
+    service = OperatorReviewCaseService(
+        OperatorReviewCaseStore(),
+        escalation_store=escalation_store,
+        dispatch_store=dispatch_store,
+    )
+    payload = {
+        "safe_subject": "Service safe dispatch subject",
+        "safe_body": "Service safe dispatch body.",
+    }
+
+    created = service.create_escalation_dispatch(
+        active["escalation_id"],
+        payload,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0705-service-dispatch",
+    )
+    replayed = service.create_escalation_dispatch(
+        active["escalation_id"],
+        payload,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0705-service-dispatch",
+    )
+    skipped = service.create_escalation_dispatch(
+        observe["escalation_id"],
+        payload,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0705-service-skip",
+    )
+
+    assert created["idempotency_status"] == "NEW"
+    assert replayed["idempotency_status"] == "REPLAYED"
+    assert replayed["dispatch_record"] == created["dispatch_record"]
+    assert skipped["idempotency_status"] == "SKIPPED"
+    assert skipped["dispatch_record"] is None
+    assert "escalation_level_observe" in skipped["decision"]["blocking_reasons"]
+
+    with pytest.raises(OperatorReviewNoteError) as conflict_exc:
+        service.create_escalation_dispatch(
+            active["escalation_id"],
+            {**payload, "safe_subject": "Different subject"},
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            idempotency_key="idem-0705-service-dispatch",
+        )
+    assert conflict_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_idempotency_conflict"
+    )
+
+
 def test_escalation_dispatch_action_state_machine_success_path() -> None:
     escalation = build_operator_review_escalation_record(
         sample_escalation_candidate(candidate_id="case-0704:success"),
@@ -1638,11 +1716,27 @@ def test_escalation_dispatch_action_validation_and_signature() -> None:
         dispatch["escalation_id"],
         "idem-0704-dispatch-id",
     )
+    dispatch_signature = operator_review_escalation_dispatch_request_signature(
+        dispatch["escalation_id"],
+        {
+            "dispatch_intent": "NOTIFY_OPERATOR",
+            "safe_subject": "Safe subject",
+            "safe_body": "Safe body",
+        },
+    )
+    assert dispatch_signature["safe_subject_hash"] == sha256_text("Safe subject")
+    assert dispatch_signature["safe_body_hash"] == sha256_text("Safe body")
 
     with pytest.raises(OperatorReviewNoteError) as missing_idem_exc:
         required_escalation_dispatch_action_idempotency_key(None)
     assert missing_idem_exc.value.error_code == (
         "ag.operator_review_escalation_dispatch_action_idempotency_key_required"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as missing_dispatch_idem_exc:
+        required_escalation_dispatch_idempotency_key(None)
+    assert missing_dispatch_idem_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_idempotency_key_required"
     )
 
     with pytest.raises(OperatorReviewNoteError) as missing_dispatch_exc:
@@ -1687,6 +1781,18 @@ def test_escalation_dispatch_action_validation_and_signature() -> None:
     assert _latest_escalation_dispatch_action_summary(
         {"metadata": {"last_action": action_summary}}
     ) == action_summary
+    assert _latest_escalation_dispatch_plan_summary({"metadata": []}) is None
+    assert _latest_escalation_dispatch_plan_summary({"metadata": {}}) is None
+    assert (
+        _latest_escalation_dispatch_plan_summary(
+            {"metadata": {"last_plan": {"plan_id": "plan-without-signature"}}}
+        )
+        is None
+    )
+    plan_summary = {"plan_id": "plan-0705", "request_signature": {}}
+    assert _latest_escalation_dispatch_plan_summary(
+        {"metadata": {"last_plan": plan_summary}}
+    ) == plan_summary
 
 
 def test_operator_review_case_service_dispatch_action_replay_and_conflict() -> None:
@@ -4844,6 +4950,157 @@ def test_operator_review_escalation_action_route_applies_replays_and_emits_event
     assert len(
         event_store.list_events(
             event_type=OPERATOR_REVIEW_ESCALATION_ACTION_RECORDED_EVENT_TYPE
+        )
+    ) == 1
+
+
+def test_operator_review_escalation_dispatch_routes_create_act_and_emit_events() -> None:
+    escalation_store = OperatorReviewEscalationStore()
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    client, _, event_store = build_route_client(
+        escalation_store=escalation_store,
+        dispatch_store=dispatch_store,
+    )
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id="case-route-0705:dispatch"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-route-escalation-0705",
+    )
+    escalation_store.save(escalation)
+    create_payload = {
+        "safe_subject": "Route safe dispatch subject",
+        "safe_body": "Route safe dispatch body.",
+        "metadata": {"source_view": "dispatch_route"},
+    }
+
+    created = client.post(
+        f"/admin/v1/operator-review/escalations/{escalation['escalation_id']}/dispatches",
+        headers={
+            **admin_auth_headers(),
+            "Idempotency-Key": "idem-route-dispatch-0705",
+        },
+        json=create_payload,
+    )
+    replayed = client.post(
+        f"/admin/v1/operator-review/escalations/{escalation['escalation_id']}/dispatches",
+        headers={
+            **admin_auth_headers(),
+            "Idempotency-Key": "idem-route-dispatch-0705",
+        },
+        json=create_payload,
+    )
+    conflict = client.post(
+        f"/admin/v1/operator-review/escalations/{escalation['escalation_id']}/dispatches",
+        headers={
+            **admin_auth_headers(),
+            "Idempotency-Key": "idem-route-dispatch-0705",
+        },
+        json={**create_payload, "safe_subject": "Different safe subject"},
+    )
+    missing_idempotency = client.post(
+        f"/admin/v1/operator-review/escalations/{escalation['escalation_id']}/dispatches",
+        headers=admin_auth_headers(),
+        json=create_payload,
+    )
+    unauthorized_create = client.post(
+        f"/admin/v1/operator-review/escalations/{escalation['escalation_id']}/dispatches",
+        json=create_payload,
+    )
+    dispatch_id = created.json()["dispatch_record"]["dispatch_id"]
+    detail = client.get(
+        f"/admin/v1/operator-review/dispatches/{dispatch_id}",
+        headers=service_auth_headers(),
+    )
+    missing_detail = client.get(
+        "/admin/v1/operator-review/dispatches/missing-dispatch",
+        headers=service_auth_headers(),
+    )
+    unauthorized_detail = client.get(
+        f"/admin/v1/operator-review/dispatches/{dispatch_id}",
+    )
+    start_payload = {
+        "action_type": "START",
+        "operator_ref": {
+            "operator_type": "service",
+            "operator_id": "nex-ag",
+        },
+        "reason_codes": ["route_worker_started"],
+    }
+    action = client.post(
+        f"/admin/v1/operator-review/dispatches/{dispatch_id}/actions",
+        headers={
+            **admin_auth_headers(),
+            "Idempotency-Key": "idem-route-dispatch-action-0705",
+        },
+        json=start_payload,
+    )
+    replayed_action = client.post(
+        f"/admin/v1/operator-review/dispatches/{dispatch_id}/actions",
+        headers={
+            **admin_auth_headers(),
+            "Idempotency-Key": "idem-route-dispatch-action-0705",
+        },
+        json=start_payload,
+    )
+    missing_action_idempotency = client.post(
+        f"/admin/v1/operator-review/dispatches/{dispatch_id}/actions",
+        headers=admin_auth_headers(),
+        json=start_payload,
+    )
+    unauthorized_action = client.post(
+        f"/admin/v1/operator-review/dispatches/{dispatch_id}/actions",
+        json=start_payload,
+    )
+
+    assert created.status_code == 201
+    assert created.json()["idempotency_status"] == "NEW"
+    assert created.json()["dispatch_plan_schema_version"] == (
+        OPERATOR_REVIEW_ESCALATION_DISPATCH_PLAN_SCHEMA_VERSION
+    )
+    assert created.json()["dispatch_record"]["dispatch_status"] == "PENDING"
+    assert created.json()["dispatch_record"]["metadata"]["last_plan"]["plan_id"] == (
+        created.json()["plan_id"]
+    )
+    assert "idem-route-dispatch-0705" not in json.dumps(created.json())
+    assert replayed.status_code == 200
+    assert replayed.json()["idempotency_status"] == "REPLAYED"
+    assert replayed.json()["dispatch_record"] == created.json()["dispatch_record"]
+    assert conflict.status_code == 409
+    assert conflict.json()["error_code"] == (
+        "ag.operator_review_escalation_dispatch_idempotency_conflict"
+    )
+    assert missing_idempotency.status_code == 422
+    assert missing_idempotency.json()["error_code"] == (
+        "ag.operator_review_escalation_dispatch_idempotency_key_required"
+    )
+    assert unauthorized_create.status_code == 401
+    assert detail.status_code == 200
+    assert detail.json()["dispatch_id"] == dispatch_id
+    assert missing_detail.status_code == 404
+    assert missing_detail.json()["error_code"] == (
+        "ag.operator_review_escalation_dispatch_not_found"
+    )
+    assert unauthorized_detail.status_code == 401
+    assert action.status_code == 201
+    assert action.json()["dispatch"]["dispatch_status"] == "DISPATCHING"
+    assert action.json()["action"]["action_type"] == "START"
+    assert replayed_action.status_code == 200
+    assert replayed_action.json()["idempotency_status"] == "REPLAYED"
+    assert missing_action_idempotency.status_code == 422
+    assert missing_action_idempotency.json()["error_code"] == (
+        "ag.operator_review_escalation_dispatch_action_idempotency_key_required"
+    )
+    assert unauthorized_action.status_code == 401
+    assert dispatch_store.get(dispatch_id)["dispatch_status"] == "DISPATCHING"
+    assert len(
+        event_store.list_events(
+            event_type=OPERATOR_REVIEW_ESCALATION_DISPATCH_RECORDED_EVENT_TYPE
+        )
+    ) == 1
+    assert len(
+        event_store.list_events(
+            event_type=OPERATOR_REVIEW_ESCALATION_DISPATCH_ACTION_RECORDED_EVENT_TYPE
         )
     ) == 1
 

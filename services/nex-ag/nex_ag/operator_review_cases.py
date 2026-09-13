@@ -117,6 +117,12 @@ OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE = (
 OPERATOR_REVIEW_ESCALATION_ACTION_RECORDED_EVENT_TYPE = (
     "ag.operator_review_escalation_action.recorded"
 )
+OPERATOR_REVIEW_ESCALATION_DISPATCH_RECORDED_EVENT_TYPE = (
+    "ag.operator_review_escalation_dispatch.recorded"
+)
+OPERATOR_REVIEW_ESCALATION_DISPATCH_ACTION_RECORDED_EVENT_TYPE = (
+    "ag.operator_review_escalation_dispatch_action.recorded"
+)
 AG_OPERATOR_REVIEW_CASE_TABLE = "ag_op_cases"
 AG_OPERATOR_REVIEW_ESCALATION_TABLE = "ag_op_escalations"
 AG_OPERATOR_REVIEW_ESCALATION_DISPATCH_TABLE = "ag_op_esc_dispatches"
@@ -1398,6 +1404,66 @@ class OperatorReviewCaseService:
             idempotency_key=idempotency_key,
         )
 
+    def create_escalation_dispatch(
+        self,
+        escalation_id: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        request_id: str,
+        trace_id: str | None,
+        idempotency_key: str | None,
+    ) -> dict[str, Any]:
+        normalized_escalation_id = required_escalation_id(escalation_id)
+        normalized_idempotency_key = required_escalation_dispatch_idempotency_key(
+            idempotency_key
+        )
+        request_signature = operator_review_escalation_dispatch_request_signature(
+            normalized_escalation_id,
+            payload,
+        )
+        plan = self.plan_escalation_dispatch(
+            normalized_escalation_id,
+            payload,
+            request_id=request_id,
+            trace_id=trace_id,
+            idempotency_key=normalized_idempotency_key,
+        )
+        dispatch_record = plan.get("dispatch_record")
+        if not isinstance(dispatch_record, dict):
+            plan["idempotency_status"] = "SKIPPED"
+            return plan
+
+        existing = self._dispatch_store.get(dispatch_record["dispatch_id"])
+        if existing is not None:
+            previous_plan = _latest_escalation_dispatch_plan_summary(existing)
+            if (
+                previous_plan is not None
+                and previous_plan.get("request_signature") != request_signature
+            ):
+                raise OperatorReviewNoteError(
+                    status_code=409,
+                    error_code=(
+                        "ag.operator_review_escalation_dispatch_"
+                        "idempotency_conflict"
+                    ),
+                    detail=(
+                        "Idempotency key already maps to a different operator "
+                        "review escalation dispatch."
+                    ),
+                )
+            plan["dispatch_record"] = existing
+            plan["idempotency_status"] = "REPLAYED"
+            return plan
+
+        dispatch_record["metadata"]["last_plan"] = {
+            "plan_id": plan["plan_id"],
+            "request_signature": request_signature,
+        }
+        saved = self._dispatch_store.save(dispatch_record)
+        plan["dispatch_record"] = saved
+        plan["idempotency_status"] = "NEW"
+        return plan
+
     def get_escalation_dispatch(self, dispatch_id: str) -> dict[str, Any]:
         normalized_dispatch_id = required_escalation_dispatch_id(dispatch_id)
         record = self._dispatch_store.get(normalized_dispatch_id)
@@ -2064,6 +2130,97 @@ def register_operator_review_case_routes(
             content=response,
         )
 
+    @app.post(
+        "/admin/v1/operator-review/escalations/{escalation_id}/dispatches",
+        response_model=None,
+    )
+    def create_operator_review_escalation_dispatch_route(
+        escalation_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+        payload: dict[str, Any] | None = Body(default=None),
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            response = service.create_escalation_dispatch(
+                escalation_id,
+                payload,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                idempotency_key=idempotency_key,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+        if response["idempotency_status"] == "NEW":
+            emit_operator_review_escalation_dispatch_event(
+                audit_emitter,
+                response["dispatch_record"],
+            )
+        return JSONResponse(
+            status_code=201 if response["idempotency_status"] == "NEW" else 200,
+            content=response,
+        )
+
+    @app.get(
+        "/admin/v1/operator-review/dispatches/{dispatch_id}",
+        response_model=None,
+    )
+    def get_operator_review_escalation_dispatch_route(
+        dispatch_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return service.get_escalation_dispatch(dispatch_id)
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+    @app.post(
+        "/admin/v1/operator-review/dispatches/{dispatch_id}/actions",
+        response_model=None,
+    )
+    def apply_operator_review_escalation_dispatch_action_route(
+        dispatch_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+        payload: dict[str, Any] = Body(...),
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            response = service.apply_escalation_dispatch_action(
+                dispatch_id,
+                payload,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                idempotency_key=idempotency_key,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+        if response["idempotency_status"] == "NEW":
+            emit_operator_review_escalation_dispatch_action_event(
+                audit_emitter,
+                response["action"],
+                response["dispatch"],
+            )
+        return JSONResponse(
+            status_code=201 if response["idempotency_status"] == "NEW" else 200,
+            content=response,
+        )
+
 
 def emit_operator_review_case_event(
     audit_emitter: OperationalEventEmitter,
@@ -2174,6 +2331,83 @@ def emit_operator_review_escalation_action_event(
             "snoozed_until": action.get("snoozed_until"),
             "notification_delivery_deferred": True,
             "external_incident_sync_deferred": True,
+        },
+    )
+
+
+def emit_operator_review_escalation_dispatch_event(
+    audit_emitter: OperationalEventEmitter,
+    record: dict[str, Any],
+) -> OperationalEventEmitResult:
+    return audit_emitter.safe_emit(
+        event_type=OPERATOR_REVIEW_ESCALATION_DISPATCH_RECORDED_EVENT_TYPE,
+        severity="INFO",
+        message="AG operator review escalation dispatch recorded.",
+        trace_id=record.get("trace_id"),
+        request_id=record.get("request_id"),
+        subject_ref={
+            "type": "operator_review_escalation_dispatch",
+            "id": str(record["dispatch_id"]),
+        },
+        details={
+            "dispatch_id": record.get("dispatch_id"),
+            "escalation_id": record.get("escalation_id"),
+            "candidate_id": record.get("candidate_id"),
+            "case_id": record.get("case_id"),
+            "dispatch_status": record.get("dispatch_status"),
+            "dispatch_intent": record.get("dispatch_intent"),
+            "channel_type": record.get("channel_type"),
+            "provider_profile": record.get("provider_profile"),
+            "target_service": record.get("target_service"),
+            "target_kind": record.get("target_kind"),
+            "target_id": record.get("target_id"),
+            "reason_count": len(record.get("reason_codes") or []),
+            "safe_subject_hash": record.get("safe_subject_hash"),
+            "provider_payload_hash": record.get("provider_payload_hash"),
+            "attempt_count": record.get("attempt_count"),
+            "provider_execution_deferred": True,
+        },
+    )
+
+
+def emit_operator_review_escalation_dispatch_action_event(
+    audit_emitter: OperationalEventEmitter,
+    action: dict[str, Any],
+    record: dict[str, Any],
+) -> OperationalEventEmitResult:
+    operator = action.get("operator_ref")
+    operator_ref_value = operator if isinstance(operator, dict) else {}
+    return audit_emitter.safe_emit(
+        event_type=OPERATOR_REVIEW_ESCALATION_DISPATCH_ACTION_RECORDED_EVENT_TYPE,
+        severity="INFO",
+        message="AG operator review escalation dispatch action recorded.",
+        trace_id=action.get("trace_id"),
+        request_id=action.get("request_id"),
+        subject_ref={
+            "type": "operator_review_escalation_dispatch_action",
+            "id": str(action["action_id"]),
+        },
+        details={
+            "dispatch_id": action.get("dispatch_id"),
+            "escalation_id": action.get("escalation_id"),
+            "case_id": action.get("case_id"),
+            "action_id": action.get("action_id"),
+            "action_type": action.get("action_type"),
+            "from_status": action.get("from_status"),
+            "to_status": action.get("to_status"),
+            "dispatch_status": record.get("dispatch_status"),
+            "dispatch_intent": record.get("dispatch_intent"),
+            "target_service": action.get("target_service"),
+            "target_kind": action.get("target_kind"),
+            "target_id": action.get("target_id"),
+            "operator_type": operator_ref_value.get("operator_type"),
+            "operator_id": operator_ref_value.get("operator_id"),
+            "reason_count": len(action.get("reason_codes") or []),
+            "action_comment_hash": action.get("action_comment_hash"),
+            "last_error_code": action.get("last_error_code"),
+            "last_error_hash": action.get("last_error_hash"),
+            "next_attempt_at": action.get("next_attempt_at"),
+            "provider_execution": "state_machine_only",
         },
     )
 
@@ -4047,6 +4281,44 @@ def operator_review_escalation_dispatch_action_request_signature(
     }
 
 
+def operator_review_escalation_dispatch_request_signature(
+    escalation_id: str,
+    payload: dict[str, Any] | None,
+) -> dict[str, Any]:
+    payload_value = dict(payload or {})
+    assert_operator_review_note_payload_redaction_safe(payload_value)
+    channel_type = optional_choice(
+        payload_value.get("channel_type"),
+        key="channel_type",
+        choices=ALLOWED_ESCALATION_DISPATCH_CHANNELS,
+        default="MOCK",
+    )
+    return {
+        "escalation_id": required_escalation_id(escalation_id),
+        "dispatch_intent": optional_text(payload_value.get("dispatch_intent")),
+        "channel_type": channel_type,
+        "provider_profile": optional_text(payload_value.get("provider_profile")),
+        "provider_ref": operator_review_escalation_dispatch_provider_ref(
+            payload_value.get("provider_ref"),
+            channel_type=channel_type,
+        ),
+        "reason_codes": reason_code_list(payload_value.get("reason_codes")),
+        "safe_subject_hash": (
+            sha256_text(str(payload_value["safe_subject"]))
+            if optional_text(payload_value.get("safe_subject")) is not None
+            else None
+        ),
+        "safe_body_hash": (
+            sha256_text(str(payload_value["safe_body"]))
+            if optional_text(payload_value.get("safe_body")) is not None
+            else None
+        ),
+        "metadata": operator_review_escalation_dispatch_metadata(
+            payload_value.get("metadata")
+        ),
+    }
+
+
 def operator_review_case_idempotency_signature(record: dict[str, Any]) -> dict[str, Any]:
     operator = record.get("operator_ref")
     operator_ref_value = operator if isinstance(operator, dict) else {}
@@ -4286,6 +4558,20 @@ def required_escalation_dispatch_action_idempotency_key(value: Any) -> str:
             detail=(
                 "Idempotency-Key is required for operator review escalation "
                 "dispatch actions."
+            ),
+        )
+    return normalized
+
+
+def required_escalation_dispatch_idempotency_key(value: Any) -> str:
+    normalized = optional_text(value)
+    if normalized is None:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.operator_review_escalation_dispatch_idempotency_key_required",
+            detail=(
+                "Idempotency-Key is required for operator review escalation "
+                "dispatch creation."
             ),
         )
     return normalized
@@ -5059,6 +5345,20 @@ def _latest_escalation_dispatch_action_summary(
     if not isinstance(action.get("request_signature"), dict):
         return None
     return action
+
+
+def _latest_escalation_dispatch_plan_summary(
+    record: dict[str, Any],
+) -> dict[str, Any] | None:
+    metadata = record.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    plan = metadata.get("last_plan")
+    if not isinstance(plan, dict):
+        return None
+    if not isinstance(plan.get("request_signature"), dict):
+        return None
+    return plan
 
 
 def _safe_case_last_action_ref(record: dict[str, Any]) -> dict[str, Any] | None:
