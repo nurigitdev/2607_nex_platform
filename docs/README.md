@@ -803,6 +803,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0697`](slices/0697_ag_operator_review_escalation_contract_openapi.md) | `S70-007` AG operator review escalation contract/OpenAPI hardening. |
 | [`Slice 0698`](slices/0698_ag_operator_review_escalation_privacy_regression.md) | `S70-008` AG operator review escalation privacy regression pack. |
 | [`Slice 0699`](slices/0699_ag_operator_review_escalation_postgresql_smoke.md) | `S70-009` AG operator review escalation PostgreSQL smoke evidence. |
+| [`Slice 0700`](slices/0700_s70_operator_review_escalation_action_closure.md) | `S70-010` S70 operator review escalation action closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -1201,6 +1201,11 @@ Unified operations:
   `nex_ag_test`, seeds `ag_op_escalations`, applies and replays an escalation
   action through the protected route, observes `service_operational_events`, and
   cleans up smoke rows.
+- Slice 0700 closes S70 with
+  `scripts/smoke/run_s70_operator_review_escalation_action_closure.py`,
+  confirming `ag_op_escalations` persistence, safe operational-event action
+  history, dashboard/issue-candidate wiring, contract/OpenAPI coverage, privacy
+  regression, and protected PostgreSQL smoke evidence.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
