@@ -23,11 +23,14 @@ from nex_ag.operator_review_dispatch_execution import (
     assert_dispatch_execution_result_redacted,
     build_dispatch_execution_provider_catalog,
     build_dispatch_execution_result,
+    build_dispatch_execution_result_metadata,
     build_dispatch_execution_transition_plan,
     build_mock_dispatch_execution_provider,
     execute_dispatch_with_mock_provider,
     normalize_dispatch_execution_provider_profile,
+    record_dispatch_execution_result_metadata,
     run_dispatch_execution_worker_once,
+    _persist_worker_result_metadata,
     _worker_candidate_dispatches,
 )
 from nex_ag.operator_reviews import OperatorReviewNoteError, sha256_text
@@ -547,7 +550,14 @@ def test_dispatch_execution_worker_once_processes_success_and_failure_batches() 
     assert success_run["processed_count"] == 1
     assert success_run["succeeded_count"] == 1
     assert success_run["items"][0]["action_count"] == 2
-    assert success_store.get(success["dispatch_id"])["dispatch_status"] == "SUCCEEDED"
+    persisted_success = success_store.get(success["dispatch_id"])
+    assert persisted_success["dispatch_status"] == "SUCCEEDED"
+    success_metadata = persisted_success["metadata"]["last_execution_result"]
+    assert success_metadata["execution_result_metadata_schema_version"].endswith(".v1")
+    assert success_metadata["execution_status"] == "SUCCEEDED"
+    assert success_metadata["provider_result_hash"]
+    assert success_metadata["safe_result_preview"] == "Mock dispatch delivered."
+    assert success_run["items"][0]["result_metadata_persisted"] is True
 
     failure = sample_dispatch(
         provider_profile="mock-failure",
@@ -567,7 +577,12 @@ def test_dispatch_execution_worker_once_processes_success_and_failure_batches() 
     assert failure_run["processed_count"] == 1
     assert failure_run["retry_wait_count"] == 1
     assert failure_run["items"][0]["final_status"] == "RETRY_WAIT"
-    assert failure_store.get(failure["dispatch_id"])["dispatch_status"] == "RETRY_WAIT"
+    persisted_failure = failure_store.get(failure["dispatch_id"])
+    assert persisted_failure["dispatch_status"] == "RETRY_WAIT"
+    failure_metadata = persisted_failure["metadata"]["last_execution_result"]
+    assert failure_metadata["execution_status"] == "FAILED"
+    assert failure_metadata["last_error_code"] == "mock_dispatch_failed"
+    assert failure_metadata["retryable"] is True
     assert "idem-0716" not in json.dumps(failure_run)
 
 
@@ -600,6 +615,58 @@ def test_dispatch_execution_worker_once_dry_run_and_limit_bounds() -> None:
         executed_at="2026-09-12T16:21:00Z",
     )
     assert default_limit["batch_limit"] == 10
+
+
+def test_dispatch_execution_result_metadata_helpers_are_safe() -> None:
+    dispatch = sample_dispatch()
+    result = execute_dispatch_with_mock_provider(
+        dispatch,
+        executed_at="2026-09-12T16:30:00Z",
+    )
+
+    metadata = build_dispatch_execution_result_metadata(
+        result,
+        run_id="run-0717",
+        worker_id="worker-0717",
+    )
+    updated = record_dispatch_execution_result_metadata(
+        dispatch,
+        result,
+        run_id="run-0717",
+        worker_id="worker-0717",
+    )
+
+    assert metadata["execution_status"] == "SUCCEEDED"
+    assert updated["metadata"]["last_execution_result"] == metadata
+    assert updated["metadata"]["last_execution_result_recorded"] is True
+    serialized = json.dumps(updated)
+    assert "raw_provider_payload" in serialized
+    assert "RAW_PROVIDER_PAYLOAD" not in serialized
+
+
+def test_dispatch_execution_result_metadata_persist_guard_paths() -> None:
+    result = execute_dispatch_with_mock_provider(sample_dispatch())
+
+    assert (
+        _persist_worker_result_metadata(
+            object(),
+            "",
+            result,
+            run_id="run-guard",
+            worker_id="worker-guard",
+        )
+        is False
+    )
+    assert (
+        _persist_worker_result_metadata(
+            object(),
+            "dispatch-guard",
+            result,
+            run_id="run-guard",
+            worker_id="worker-guard",
+        )
+        is False
+    )
 
 
 def test_dispatch_execution_worker_candidate_deduplicates_invalid_ids() -> None:

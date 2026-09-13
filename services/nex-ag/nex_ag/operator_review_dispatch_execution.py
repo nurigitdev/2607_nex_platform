@@ -27,6 +27,9 @@ DISPATCH_EXECUTION_TRANSITION_PLAN_SCHEMA_VERSION = (
 DISPATCH_EXECUTION_WORKER_RUN_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_worker_run.v1"
 )
+DISPATCH_EXECUTION_RESULT_METADATA_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_result_metadata.v1"
+)
 DISPATCH_EXECUTION_DEFAULT_PROVIDER_PROFILE = "mock-default"
 DISPATCH_EXECUTION_PROVIDER_MODE = "mock_first_only"
 DISPATCH_EXECUTION_RESULT_STORAGE = "safe_hashes_statuses_counters_only"
@@ -498,9 +501,10 @@ def run_dispatch_execution_worker_once(
     items: list[dict[str, Any]] = []
     for dispatch in candidates[:limit]:
         items.append(
-            _execute_worker_item(
+        _execute_worker_item(
                 service,
                 dispatch,
+                run_id=run_id,
                 request_id=request_id,
                 trace_id=trace_id,
                 worker_id=worker_id,
@@ -551,6 +555,58 @@ def assert_dispatch_execution_result_redacted(payload: Any) -> None:
                 ),
                 detail="Dispatch execution result contains a sensitive value.",
             )
+
+
+def build_dispatch_execution_result_metadata(
+    execution_result: Mapping[str, Any],
+    *,
+    run_id: str,
+    worker_id: str,
+) -> dict[str, Any]:
+    metadata = {
+        "execution_result_metadata_schema_version": (
+            DISPATCH_EXECUTION_RESULT_METADATA_SCHEMA_VERSION
+        ),
+        "run_id": run_id,
+        "worker_id": worker_id,
+        "execution_result_schema_version": execution_result.get(
+            "execution_result_schema_version"
+        ),
+        "execution_status": execution_result.get("execution_status"),
+        "recommended_action": execution_result.get("recommended_action"),
+        "provider_mode": execution_result.get("provider_mode"),
+        "provider_profile": execution_result.get("provider_profile"),
+        "provider_result_hash": execution_result.get("provider_result_hash"),
+        "safe_result_preview": execution_result.get("safe_result_preview"),
+        "retryable": bool(execution_result.get("retryable")),
+        "last_error_code": execution_result.get("last_error_code"),
+        "next_attempt_at": execution_result.get("next_attempt_at"),
+        "executed_at": execution_result.get("executed_at"),
+        "result_storage": DISPATCH_EXECUTION_RESULT_STORAGE,
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(metadata)
+    return metadata
+
+
+def record_dispatch_execution_result_metadata(
+    dispatch: Mapping[str, Any],
+    execution_result: Mapping[str, Any],
+    *,
+    run_id: str,
+    worker_id: str,
+) -> dict[str, Any]:
+    metadata = dict(dispatch.get("metadata") or {})
+    metadata["last_execution_result"] = build_dispatch_execution_result_metadata(
+        execution_result,
+        run_id=run_id,
+        worker_id=worker_id,
+    )
+    metadata["last_execution_result_recorded"] = True
+    updated = dict(dispatch)
+    updated["metadata"] = json.loads(json.dumps(metadata, default=str))
+    assert_dispatch_execution_result_redacted(updated["metadata"])
+    return updated
 
 
 def _required_execution_status(value: str | None) -> str:
@@ -696,6 +752,7 @@ def _execute_worker_item(
     service: Any,
     dispatch: Mapping[str, Any],
     *,
+    run_id: str,
     request_id: str,
     trace_id: str | None,
     worker_id: str,
@@ -715,6 +772,7 @@ def _execute_worker_item(
     )
     final_status = str(dispatch.get("dispatch_status") or "")
     mutations: list[dict[str, Any]] = []
+    result_metadata_persisted = False
     if not dry_run:
         for index, action in enumerate(plan["actions"]):
             mutation = service.apply_escalation_dispatch_action(
@@ -738,6 +796,13 @@ def _execute_worker_item(
                 }
             )
             final_status = str(mutation.get("dispatch", {}).get("dispatch_status") or "")
+        result_metadata_persisted = _persist_worker_result_metadata(
+            service,
+            str(dispatch.get("dispatch_id") or ""),
+            result,
+            run_id=run_id,
+            worker_id=worker_id,
+        )
     item = {
         "dispatch_id": str(dispatch.get("dispatch_id") or ""),
         "initial_status": str(dispatch.get("dispatch_status") or ""),
@@ -750,10 +815,35 @@ def _execute_worker_item(
         "action_count": len(plan["actions"]),
         "actions": mutations if not dry_run else [],
         "dry_run": dry_run,
+        "result_metadata_persisted": result_metadata_persisted,
         "redaction": _dispatch_execution_redaction_flags(),
     }
     assert_dispatch_execution_result_redacted(item)
     return item
+
+
+def _persist_worker_result_metadata(
+    service: Any,
+    dispatch_id: str,
+    execution_result: Mapping[str, Any],
+    *,
+    run_id: str,
+    worker_id: str,
+) -> bool:
+    if not dispatch_id:
+        return False
+    store = getattr(service, "_dispatch_store", None)
+    if store is None or not hasattr(store, "save"):
+        return False
+    current = service.get_escalation_dispatch(dispatch_id)
+    updated = record_dispatch_execution_result_metadata(
+        current,
+        execution_result,
+        run_id=run_id,
+        worker_id=worker_id,
+    )
+    store.save(updated)
+    return True
 
 
 def _worker_run_summary(

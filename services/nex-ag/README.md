@@ -1299,6 +1299,11 @@ Unified operations:
   through the existing AG service boundary, uses the mock adapter and transition
   planner, mutates rows only through the existing dispatch action state machine,
   and supports dry-run planning without row changes.
+- Slice 0717 hardens result persistence without adding a new table. Completed
+  run-once worker items now persist `metadata.last_execution_result` on
+  `ag_op_esc_dispatches`, storing only safe status, provider profile, result
+  hash, safe preview, retry/error summary, run id, worker id, and redaction
+  flags.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
