@@ -1233,6 +1233,10 @@ Unified operations:
   requests, read dispatch detail by id, and apply dispatch state-machine actions
   while emitting safe operational events and keeping live provider delivery
   deferred.
+- Slice 0706 adds the protected S71 dispatch read-model list route at
+  `/admin/v1/operator-review/dispatches`. Operators can filter safe outbox
+  records by escalation, case, status, intent, channel, and target refs, while
+  responses keep only safe hashes, previews, refs, and summary counts.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

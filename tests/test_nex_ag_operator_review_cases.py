@@ -40,6 +40,7 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_ESCALATION_ACTION_MUTATION_SCHEMA_VERSION,
     OPERATOR_REVIEW_ESCALATION_ACTION_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_ESCALATION_ACTION_SCHEMA_VERSION,
+    OPERATOR_REVIEW_ESCALATION_DISPATCH_LIST_SCHEMA_VERSION,
     OPERATOR_REVIEW_ESCALATION_DISPATCH_SCHEMA_VERSION,
     OPERATOR_REVIEW_ESCALATION_DISPATCH_PLAN_SCHEMA_VERSION,
     OPERATOR_REVIEW_ESCALATION_DISPATCH_POLICY_VERSION,
@@ -82,6 +83,7 @@ from nex_ag.operator_review_cases import (
     apply_operator_review_case_action,
     build_operator_review_escalation_dispatch_action_mutation_response,
     build_operator_review_escalation_dispatch_action_record,
+    build_operator_review_escalation_dispatch_list_response,
     build_operator_review_escalation_dispatch_plan,
     build_operator_review_escalation_dispatch_policy,
     build_operator_review_escalation_dispatch_record,
@@ -1425,6 +1427,104 @@ def test_operator_review_case_service_creates_dispatch_replays_conflicts_and_ski
         )
     assert conflict_exc.value.error_code == (
         "ag.operator_review_escalation_dispatch_idempotency_conflict"
+    )
+
+
+def test_escalation_dispatch_list_response_and_service_filters() -> None:
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    follow_up = build_operator_review_escalation_record(
+        sample_escalation_candidate(
+            candidate_id="case-0706:list-follow-up",
+            escalation_level="FOLLOW_UP",
+            case_id="case-0706-list-follow-up",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    blocked = build_operator_review_escalation_record(
+        sample_escalation_candidate(
+            candidate_id="case-0706:list-blocked",
+            escalation_level="BLOCKED",
+            case_id="case-0706-list-blocked",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    pending = build_operator_review_escalation_dispatch_record(
+        follow_up,
+        {
+            "dispatch_intent": "NOTIFY_OWNER",
+            "safe_subject": "Follow-up owner notification",
+            "safe_body": "Safe owner notification.",
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0706-pending",
+        created_at="2026-09-11T05:00:00Z",
+    )
+    failed = build_operator_review_escalation_dispatch_record(
+        blocked,
+        {
+            "dispatch_status": "FAILED",
+            "dispatch_intent": "OPEN_INCIDENT",
+            "channel_type": "INCIDENT",
+            "safe_subject": "Incident dispatch",
+            "safe_body": "Safe incident dispatch.",
+            "last_error_code": "mock_failure",
+            "last_error": "Raw provider failure should be hashed.",
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0706-failed",
+        created_at="2026-09-11T06:00:00Z",
+    )
+    dispatch_store.save(pending)
+    dispatch_store.save(failed)
+    service = OperatorReviewCaseService(
+        OperatorReviewCaseStore(),
+        dispatch_store=dispatch_store,
+    )
+
+    listed = service.list_escalation_dispatches(
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    failed_list = service.list_escalation_dispatches(
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        dispatch_status="FAILED",
+        channel_type="INCIDENT",
+    )
+    owner_list = build_operator_review_escalation_dispatch_list_response(
+        [pending],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert listed["dispatch_list_schema_version"] == (
+        OPERATOR_REVIEW_ESCALATION_DISPATCH_LIST_SCHEMA_VERSION
+    )
+    assert listed["summary"]["count"] == 2
+    assert listed["summary"]["pending_count"] == 1
+    assert listed["summary"]["retryable_count"] == 1
+    assert listed["summary"]["by_status"] == {"FAILED": 1, "PENDING": 1}
+    assert failed_list["summary"]["count"] == 1
+    assert failed_list["items"][0]["dispatch_id"] == failed["dispatch_id"]
+    assert owner_list["summary"]["by_intent"] == {"NOTIFY_OWNER": 1}
+    assert owner_list["paths"]["dispatch_list_path"] == (
+        "/admin/v1/operator-review/dispatches"
+    )
+    assert "idem-0706" not in json.dumps(listed)
+    assert "Raw provider failure" not in json.dumps(listed)
+
+    with pytest.raises(OperatorReviewNoteError) as invalid_status_exc:
+        service.list_escalation_dispatches(
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            dispatch_status="UNKNOWN",
+        )
+    assert invalid_status_exc.value.error_code == (
+        "ag.operator_review_note_dispatch_status_unsupported"
     )
 
 
@@ -5103,6 +5203,88 @@ def test_operator_review_escalation_dispatch_routes_create_act_and_emit_events()
             event_type=OPERATOR_REVIEW_ESCALATION_DISPATCH_ACTION_RECORDED_EVENT_TYPE
         )
     ) == 1
+
+
+def test_operator_review_escalation_dispatch_list_route_filters_and_protects() -> None:
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    client, _, _ = build_route_client(dispatch_store=dispatch_store)
+    follow_up = build_operator_review_escalation_record(
+        sample_escalation_candidate(
+            candidate_id="case-route-0706:follow-up",
+            escalation_level="FOLLOW_UP",
+            case_id="case-route-0706-follow-up",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    blocked = build_operator_review_escalation_record(
+        sample_escalation_candidate(
+            candidate_id="case-route-0706:blocked",
+            escalation_level="BLOCKED",
+            case_id="case-route-0706-blocked",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    pending = build_operator_review_escalation_dispatch_record(
+        follow_up,
+        {
+            "dispatch_intent": "NOTIFY_OWNER",
+            "safe_subject": "Route follow-up",
+            "safe_body": "Route follow-up body.",
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-route-0706-pending",
+        created_at="2026-09-11T05:00:00Z",
+    )
+    retry_wait = build_operator_review_escalation_dispatch_record(
+        blocked,
+        {
+            "dispatch_status": "RETRY_WAIT",
+            "dispatch_intent": "OPEN_INCIDENT",
+            "channel_type": "INCIDENT",
+            "next_attempt_at": "2026-09-11T05:30:00Z",
+            "safe_subject": "Route incident",
+            "safe_body": "Route incident body.",
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-route-0706-retry",
+        created_at="2026-09-11T06:00:00Z",
+    )
+    dispatch_store.save(pending)
+    dispatch_store.save(retry_wait)
+
+    listed = client.get(
+        "/admin/v1/operator-review/dispatches?dispatch_status=RETRY_WAIT&channel_type=INCIDENT",
+        headers=service_auth_headers(),
+    )
+    by_case = client.get(
+        f"/admin/v1/operator-review/dispatches?case_id={pending['case_id']}",
+        headers=service_auth_headers(),
+    )
+    invalid = client.get(
+        "/admin/v1/operator-review/dispatches?dispatch_intent=PAGE_OUT",
+        headers=service_auth_headers(),
+    )
+    unauthorized = client.get("/admin/v1/operator-review/dispatches")
+
+    assert listed.status_code == 200
+    assert listed.json()["dispatch_list_schema_version"] == (
+        OPERATOR_REVIEW_ESCALATION_DISPATCH_LIST_SCHEMA_VERSION
+    )
+    assert listed.json()["summary"]["count"] == 1
+    assert listed.json()["items"][0]["dispatch_id"] == retry_wait["dispatch_id"]
+    assert listed.json()["summary"]["by_channel"] == {"INCIDENT": 1}
+    assert by_case.status_code == 200
+    assert by_case.json()["items"][0]["dispatch_id"] == pending["dispatch_id"]
+    assert "idem-route-0706" not in json.dumps(listed.json())
+    assert invalid.status_code == 422
+    assert invalid.json()["error_code"] == (
+        "ag.operator_review_note_dispatch_intent_unsupported"
+    )
+    assert unauthorized.status_code == 401
 
 
 def test_operator_review_escalation_list_and_detail_routes_are_protected() -> None:

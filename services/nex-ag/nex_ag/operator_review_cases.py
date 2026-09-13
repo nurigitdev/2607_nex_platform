@@ -98,6 +98,9 @@ OPERATOR_REVIEW_ESCALATION_ACTION_MUTATION_SCHEMA_VERSION = (
 OPERATOR_REVIEW_ESCALATION_DISPATCH_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch.v1"
 )
+OPERATOR_REVIEW_ESCALATION_DISPATCH_LIST_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_list.v1"
+)
 OPERATOR_REVIEW_ESCALATION_DISPATCH_PLAN_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_plan.v1"
 )
@@ -1464,6 +1467,62 @@ class OperatorReviewCaseService:
         plan["idempotency_status"] = "NEW"
         return plan
 
+    def list_escalation_dispatches(
+        self,
+        *,
+        request_id: str,
+        trace_id: str | None,
+        escalation_id: str | None = None,
+        case_id: str | None = None,
+        dispatch_status: str | None = None,
+        dispatch_intent: str | None = None,
+        channel_type: str | None = None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        normalized_status = optional_choice(
+            dispatch_status,
+            key="dispatch_status",
+            choices=ALLOWED_ESCALATION_DISPATCH_STATUSES,
+            default="",
+        )
+        normalized_intent = optional_choice(
+            dispatch_intent,
+            key="dispatch_intent",
+            choices=ALLOWED_ESCALATION_DISPATCH_INTENTS,
+            default="",
+        )
+        normalized_channel = optional_choice(
+            channel_type,
+            key="channel_type",
+            choices=ALLOWED_ESCALATION_DISPATCH_CHANNELS,
+            default="",
+        )
+        normalized_target_service = optional_choice(
+            target_service,
+            key="target_service",
+            choices=ALLOWED_TARGET_SERVICES,
+            default="",
+        )
+        records = self._dispatch_store.list_dispatches(
+            escalation_id=optional_text(escalation_id),
+            case_id=optional_text(case_id),
+            dispatch_status=normalized_status or None,
+            dispatch_intent=normalized_intent or None,
+            channel_type=normalized_channel or None,
+            target_service=normalized_target_service or None,
+            target_kind=optional_text(target_kind),
+            target_id=optional_text(target_id),
+            limit=limit,
+        )
+        return build_operator_review_escalation_dispatch_list_response(
+            records,
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+
     def get_escalation_dispatch(self, dispatch_id: str) -> dict[str, Any]:
         normalized_dispatch_id = required_escalation_dispatch_id(dispatch_id)
         record = self._dispatch_store.get(normalized_dispatch_id)
@@ -2167,6 +2226,44 @@ def register_operator_review_case_routes(
         )
 
     @app.get(
+        "/admin/v1/operator-review/dispatches",
+        response_model=None,
+    )
+    def list_operator_review_escalation_dispatches_route(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        escalation_id: str | None = None,
+        case_id: str | None = None,
+        dispatch_status: str | None = None,
+        dispatch_intent: str | None = None,
+        channel_type: str | None = None,
+        target_service: str | None = None,
+        target_kind: str | None = None,
+        target_id: str | None = None,
+        limit: int | None = None,
+    ):
+        auth_problem = _authorize_ag_operator_review_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        try:
+            return service.list_escalation_dispatches(
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+                escalation_id=escalation_id,
+                case_id=case_id,
+                dispatch_status=dispatch_status,
+                dispatch_intent=dispatch_intent,
+                channel_type=channel_type,
+                target_service=target_service,
+                target_kind=target_kind,
+                target_id=target_id,
+                limit=limit,
+            )
+        except OperatorReviewNoteError as exc:
+            return _operator_review_case_problem_response(request, exc)
+
+    @app.get(
         "/admin/v1/operator-review/dispatches/{dispatch_id}",
         response_model=None,
     )
@@ -2603,6 +2700,65 @@ def build_operator_review_escalation_list_response(
             "tokens_included": False,
             "idempotency_keys_included": False,
             "comment_storage": "hash_and_short_preview_only",
+        },
+    }
+
+
+def build_operator_review_escalation_dispatch_list_response(
+    records: list[dict[str, Any]],
+    *,
+    request_id: str,
+    trace_id: str | None,
+) -> dict[str, Any]:
+    items = list(records)
+    terminal_statuses = {"SUCCEEDED", "CANCELLED"}
+    return {
+        "dispatch_list_schema_version": (
+            OPERATOR_REVIEW_ESCALATION_DISPATCH_LIST_SCHEMA_VERSION
+        ),
+        "trace_id": optional_text(trace_id),
+        "request_id": required_text({"request_id": request_id}, "request_id"),
+        "items": items,
+        "summary": {
+            "count": len(items),
+            "pending_count": sum(
+                1 for item in items if item.get("dispatch_status") == "PENDING"
+            ),
+            "active_count": sum(
+                1
+                for item in items
+                if item.get("dispatch_status") in {"PENDING", "DISPATCHING", "RETRY_WAIT"}
+            ),
+            "terminal_count": sum(
+                1 for item in items if item.get("dispatch_status") in terminal_statuses
+            ),
+            "retryable_count": sum(
+                1 for item in items if item.get("dispatch_status") == "FAILED"
+            ),
+            "by_status": _count_by(items, "dispatch_status"),
+            "by_intent": _count_by(items, "dispatch_intent"),
+            "by_channel": _count_by(items, "channel_type"),
+            "latest_updated_at": items[0]["updated_at"] if items else None,
+        },
+        "paths": {
+            "dispatch_list_path": "/admin/v1/operator-review/dispatches",
+            "dispatch_detail_path_template": (
+                "/admin/v1/operator-review/dispatches/{dispatch_id}"
+            ),
+            "dispatch_action_path_template": (
+                "/admin/v1/operator-review/dispatches/{dispatch_id}/actions"
+            ),
+        },
+        "redaction": {
+            "raw_notification_payload_included": False,
+            "raw_external_incident_payload_included": False,
+            "provider_secrets_included": False,
+            "raw_operator_comments_included": False,
+            "raw_source_text_included": False,
+            "database_urls_included": False,
+            "tokens_included": False,
+            "idempotency_keys_included": False,
+            "dispatch_record_payload": "safe_hashes_previews_refs_only",
         },
     }
 
