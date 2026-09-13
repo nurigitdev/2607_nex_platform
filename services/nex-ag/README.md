@@ -1219,6 +1219,11 @@ Unified operations:
   timestamps, and keep raw notification bodies, external incident payloads,
   provider secrets, database URLs, service tokens, raw comments, raw source
   text, and raw idempotency keys out of AG persistence.
+- Slice 0703 adds the mock-first escalation dispatch policy planner. It maps
+  `FOLLOW_UP` to `NOTIFY_OWNER`, `ATTENTION` to `NOTIFY_OPERATOR`, and
+  `BLOCKED` to `OPEN_INCIDENT`, while blocking `OBSERVE`, terminal or
+  non-dispatchable escalation statuses, non-initial intents, and non-`MOCK`
+  channels before any provider execution can occur.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

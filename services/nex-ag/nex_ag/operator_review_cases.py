@@ -98,6 +98,12 @@ OPERATOR_REVIEW_ESCALATION_ACTION_MUTATION_SCHEMA_VERSION = (
 OPERATOR_REVIEW_ESCALATION_DISPATCH_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch.v1"
 )
+OPERATOR_REVIEW_ESCALATION_DISPATCH_PLAN_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_plan.v1"
+)
+OPERATOR_REVIEW_ESCALATION_DISPATCH_POLICY_VERSION = (
+    "ag_operator_review_escalation_dispatch_policy.v1"
+)
 OPERATOR_REVIEW_CASE_RECORDED_EVENT_TYPE = "ag.operator_review_case.recorded"
 OPERATOR_REVIEW_CASE_ACTION_RECORDED_EVENT_TYPE = (
     "ag.operator_review_case_action.recorded"
@@ -174,6 +180,13 @@ ALLOWED_ESCALATION_DISPATCH_CHANNELS = (
     "WEBHOOK",
     "INCIDENT",
 )
+INITIAL_ESCALATION_DISPATCH_INTENTS = (
+    "NOTIFY_OPERATOR",
+    "NOTIFY_OWNER",
+    "OPEN_INCIDENT",
+    "UPDATE_INCIDENT",
+)
+ESCALATION_DISPATCHABLE_STATUSES = ("ACTIVE", "REOPENED")
 CASE_ACTION_TARGET_STATUSES = {
     "ACKNOWLEDGE": "ACKNOWLEDGED",
     "ASSIGN": "ASSIGNED",
@@ -1330,6 +1343,24 @@ class OperatorReviewCaseService:
             idempotency_status="NEW",
             request_id=request_id,
             trace_id=trace_id,
+        )
+
+    def plan_escalation_dispatch(
+        self,
+        escalation_id: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        request_id: str,
+        trace_id: str | None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        record = self.get_escalation(escalation_id)
+        return build_operator_review_escalation_dispatch_plan(
+            record,
+            payload,
+            request_id=request_id,
+            trace_id=trace_id,
+            idempotency_key=idempotency_key,
         )
 
 
@@ -4307,6 +4338,184 @@ def operator_review_escalation_dispatch_id(
     )
 
 
+def build_operator_review_escalation_dispatch_policy() -> dict[str, Any]:
+    return {
+        "dispatch_policy_schema_version": (
+            OPERATOR_REVIEW_ESCALATION_DISPATCH_POLICY_VERSION
+        ),
+        "policy_id": "ag_operator_review_escalation_dispatch_policy_v1",
+        "policy_version": "v1",
+        "default_channel_type": "MOCK",
+        "default_provider_profile": "mock-default",
+        "dispatchable_statuses": list(ESCALATION_DISPATCHABLE_STATUSES),
+        "non_dispatching_levels": ["OBSERVE"],
+        "initial_dispatch_intents": list(INITIAL_ESCALATION_DISPATCH_INTENTS),
+        "level_intents": {
+            "FOLLOW_UP": "NOTIFY_OWNER",
+            "ATTENTION": "NOTIFY_OPERATOR",
+            "BLOCKED": "OPEN_INCIDENT",
+        },
+        "deferred_channels": ["NOTIFICATION", "EMAIL", "WEBHOOK", "INCIDENT"],
+        "redaction": {
+            "raw_notification_payload_included": False,
+            "raw_external_incident_payload_included": False,
+            "provider_secrets_included": False,
+            "raw_operator_comments_included": False,
+            "raw_source_text_included": False,
+            "idempotency_keys_included": False,
+            "planner_payload_shape": "safe_refs_hashes_previews_only",
+        },
+    }
+
+
+def build_operator_review_escalation_dispatch_plan(
+    escalation: dict[str, Any],
+    payload: dict[str, Any] | None = None,
+    *,
+    request_id: str,
+    trace_id: str | None,
+    idempotency_key: str | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    payload_value = dict(payload or {})
+    assert_operator_review_note_payload_redaction_safe(payload_value)
+    if (
+        payload_value.get("metadata") is not None
+        and not isinstance(payload_value.get("metadata"), dict)
+    ):
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code="ag.operator_review_escalation_dispatch_metadata_invalid",
+            detail="metadata must be an object when supplied.",
+        )
+    policy = build_operator_review_escalation_dispatch_policy()
+    escalation_id = required_escalation_id(escalation.get("escalation_id"))
+    request_id_value = required_text({"request_id": request_id}, "request_id")
+    channel_type = optional_choice(
+        payload_value.get("channel_type"),
+        key="channel_type",
+        choices=ALLOWED_ESCALATION_DISPATCH_CHANNELS,
+        default=policy["default_channel_type"],
+    )
+    requested_intent = optional_choice(
+        payload_value.get("dispatch_intent"),
+        key="dispatch_intent",
+        choices=ALLOWED_ESCALATION_DISPATCH_INTENTS,
+        default="",
+    )
+    default_intent = _default_escalation_dispatch_intent(escalation)
+    dispatch_intent = requested_intent or default_intent
+    blocking_reasons = _escalation_dispatch_blocking_reasons(
+        escalation,
+        channel_type=channel_type,
+        dispatch_intent=dispatch_intent,
+    )
+    dispatch_required = not blocking_reasons
+    now = created_at or _utc_now()
+    plan_id = str(
+        uuid5(
+            NAMESPACE_URL,
+            "ag-operator-review-escalation-dispatch-plan:"
+            f"{escalation_id}:{policy['policy_version']}:"
+            f"{sha256_text(idempotency_key) if idempotency_key else 'plan'}",
+        )
+    )
+    provider_profile = (
+        optional_text(payload_value.get("provider_profile"))
+        or policy["default_provider_profile"]
+    )
+    dispatch_record = None
+    if dispatch_required and dispatch_intent is not None:
+        subject = optional_text(payload_value.get("safe_subject")) or (
+            _default_escalation_dispatch_subject(escalation, dispatch_intent)
+        )
+        safe_body = optional_text(payload_value.get("safe_body")) or (
+            _default_escalation_dispatch_body(escalation, dispatch_intent)
+        )
+        dispatch_payload = {
+            "dispatch_intent": dispatch_intent,
+            "channel_type": channel_type,
+            "provider_profile": provider_profile,
+            "provider_ref": payload_value.get("provider_ref"),
+            "reason_codes": (
+                payload_value.get("reason_codes") or escalation.get("reason_codes")
+            ),
+            "safe_subject": subject,
+            "safe_body": safe_body,
+            "provider_payload_fingerprint": (
+                _escalation_dispatch_provider_payload_fingerprint(
+                    escalation,
+                    dispatch_intent=dispatch_intent,
+                    channel_type=channel_type,
+                    provider_profile=provider_profile,
+                    safe_subject=subject,
+                    safe_body=safe_body,
+                )
+            ),
+            "metadata": {
+                **(
+                    payload_value.get("metadata")
+                    if isinstance(payload_value.get("metadata"), dict)
+                    else {}
+                ),
+                "dispatch_policy_id": policy["policy_id"],
+                "dispatch_policy_version": policy["policy_version"],
+                "dispatch_plan_id": plan_id,
+                "dispatch_plan_schema_version": (
+                    OPERATOR_REVIEW_ESCALATION_DISPATCH_PLAN_SCHEMA_VERSION
+                ),
+                "dispatch_planner": "ag_operator_review_escalation_dispatch_policy_v1",
+                "dispatch_required": True,
+            },
+        }
+        dispatch_record = build_operator_review_escalation_dispatch_record(
+            escalation,
+            dispatch_payload,
+            request_id=request_id_value,
+            trace_id=trace_id,
+            idempotency_key=idempotency_key,
+            created_at=now,
+        )
+    return {
+        "dispatch_plan_schema_version": (
+            OPERATOR_REVIEW_ESCALATION_DISPATCH_PLAN_SCHEMA_VERSION
+        ),
+        "plan_id": plan_id,
+        "trace_id": optional_text(trace_id),
+        "request_id": request_id_value,
+        "policy": policy,
+        "escalation": _escalation_dispatch_plan_escalation_summary(escalation),
+        "decision": {
+            "dispatch_required": dispatch_required,
+            "dispatch_blocked": not dispatch_required,
+            "dispatch_status": "PENDING" if dispatch_required else "SKIPPED",
+            "dispatch_intent": dispatch_intent if dispatch_required else None,
+            "channel_type": channel_type,
+            "provider_profile": provider_profile,
+            "blocking_reasons": blocking_reasons,
+            "reason_codes": reason_code_list(escalation.get("reason_codes")),
+        },
+        "dispatch_record": dispatch_record,
+        "links": {
+            "escalation_detail_path": (
+                f"/admin/v1/operator-review/escalations/{escalation_id}"
+            ),
+            "future_dispatch_path_template": (
+                f"/admin/v1/operator-review/escalations/{escalation_id}/dispatches"
+            ),
+        },
+        "redaction": {
+            "raw_notification_payload_included": False,
+            "raw_external_incident_payload_included": False,
+            "provider_secrets_included": False,
+            "raw_operator_comments_included": False,
+            "raw_source_text_included": False,
+            "idempotency_keys_included": False,
+            "dispatch_record_payload": "safe_hashes_previews_refs_only",
+        },
+    }
+
+
 def _target_status_for_case_action(action_type: str, from_status: str) -> str:
     allowed_from = CASE_ACTION_ALLOWED_FROM.get(action_type)
     if allowed_from is None or action_type not in CASE_ACTION_TARGET_STATUSES:
@@ -6216,6 +6425,122 @@ def _dispatch_matches_filter(
             target_id is None or record.get("target_id") == target_id,
         )
     )
+
+
+def _default_escalation_dispatch_intent(escalation: dict[str, Any]) -> str | None:
+    level = optional_text(escalation.get("escalation_level"))
+    if level == "FOLLOW_UP":
+        return "NOTIFY_OWNER"
+    if level == "ATTENTION":
+        return "NOTIFY_OPERATOR"
+    if level == "BLOCKED":
+        return "OPEN_INCIDENT"
+    return None
+
+
+def _escalation_dispatch_blocking_reasons(
+    escalation: dict[str, Any],
+    *,
+    channel_type: str,
+    dispatch_intent: str | None,
+) -> list[str]:
+    reasons: list[str] = []
+    status = optional_text(escalation.get("escalation_status"))
+    level = optional_text(escalation.get("escalation_level"))
+    if status not in ESCALATION_DISPATCHABLE_STATUSES:
+        reasons.append("escalation_status_not_dispatchable")
+    if level == "OBSERVE":
+        reasons.append("escalation_level_observe")
+    if dispatch_intent is None:
+        reasons.append("dispatch_intent_not_available")
+    elif dispatch_intent not in INITIAL_ESCALATION_DISPATCH_INTENTS:
+        reasons.append("dispatch_intent_not_initial")
+    if channel_type != "MOCK":
+        reasons.append("live_channel_deferred")
+    return reasons
+
+
+def _default_escalation_dispatch_subject(
+    escalation: dict[str, Any],
+    dispatch_intent: str,
+) -> str:
+    return _bounded_safe_preview(
+        (
+            f"{dispatch_intent} {required_text(escalation, 'escalation_level')} "
+            f"for {required_text(escalation, 'target_service')}/"
+            f"{required_text(escalation, 'target_kind')}"
+        ),
+        limit=200,
+    ) or dispatch_intent
+
+
+def _default_escalation_dispatch_body(
+    escalation: dict[str, Any],
+    dispatch_intent: str,
+) -> str:
+    reasons = ",".join(reason_code_list(escalation.get("reason_codes"))) or "none"
+    actions = ",".join(_safe_string_list(escalation.get("recommended_actions")))
+    runbooks = ",".join(_safe_string_list(escalation.get("runbook_ids")))
+    return (
+        f"intent={dispatch_intent}; escalation_id={required_escalation_id(escalation.get('escalation_id'))}; "
+        f"case_id={required_case_id(escalation.get('case_id'))}; "
+        f"level={required_text(escalation, 'escalation_level')}; "
+        f"sla_state={required_text(escalation, 'sla_state')}; "
+        f"target={required_text(escalation, 'target_service')}/"
+        f"{required_text(escalation, 'target_kind')}/"
+        f"{required_text(escalation, 'target_id')}; reasons={reasons}; "
+        f"recommended_actions={actions or 'none'}; runbooks={runbooks or 'none'}"
+    )
+
+
+def _escalation_dispatch_provider_payload_fingerprint(
+    escalation: dict[str, Any],
+    *,
+    dispatch_intent: str,
+    channel_type: str,
+    provider_profile: str,
+    safe_subject: str,
+    safe_body: str,
+) -> str:
+    payload = {
+        "dispatch_intent": dispatch_intent,
+        "channel_type": channel_type,
+        "provider_profile": provider_profile,
+        "safe_subject_hash": sha256_text(safe_subject),
+        "safe_body_hash": sha256_text(safe_body),
+        "escalation_id": required_escalation_id(escalation.get("escalation_id")),
+        "case_id": required_case_id(escalation.get("case_id")),
+        "target_service": required_text(escalation, "target_service"),
+        "target_kind": required_text(escalation, "target_kind"),
+        "target_id": required_text(escalation, "target_id"),
+        "reason_codes": reason_code_list(escalation.get("reason_codes")),
+    }
+    return json.dumps(payload, sort_keys=True)
+
+
+def _escalation_dispatch_plan_escalation_summary(
+    escalation: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "escalation_id": required_escalation_id(escalation.get("escalation_id")),
+        "candidate_id": optional_text(escalation.get("candidate_id")),
+        "case_id": required_case_id(escalation.get("case_id")),
+        "target_ref": {
+            "target_service": required_text(escalation, "target_service"),
+            "target_kind": required_text(escalation, "target_kind"),
+            "target_id": required_text(escalation, "target_id"),
+        },
+        "escalation_status": optional_text(escalation.get("escalation_status")),
+        "escalation_level": optional_text(escalation.get("escalation_level")),
+        "sla_state": optional_text(escalation.get("sla_state")),
+        "reason_count": len(reason_code_list(escalation.get("reason_codes"))),
+        "runbook_count": len(_safe_string_list(escalation.get("runbook_ids"))),
+        "recommended_action_count": len(
+            _safe_string_list(escalation.get("recommended_actions"))
+        ),
+        "updated_at": optional_text(escalation.get("updated_at")),
+        "closed_at": optional_text(escalation.get("closed_at")),
+    }
 
 
 def _safe_string_list(value: Any) -> list[str]:

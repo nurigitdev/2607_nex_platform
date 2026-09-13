@@ -41,6 +41,8 @@ from nex_ag.operator_review_cases import (
     OPERATOR_REVIEW_ESCALATION_ACTION_RECORDED_EVENT_TYPE,
     OPERATOR_REVIEW_ESCALATION_ACTION_SCHEMA_VERSION,
     OPERATOR_REVIEW_ESCALATION_DISPATCH_SCHEMA_VERSION,
+    OPERATOR_REVIEW_ESCALATION_DISPATCH_PLAN_SCHEMA_VERSION,
+    OPERATOR_REVIEW_ESCALATION_DISPATCH_POLICY_VERSION,
     AG_OPERATOR_REVIEW_ESCALATION_TABLE,
     AG_OPERATOR_REVIEW_ESCALATION_DISPATCH_TABLE,
     OperatorReviewCaseService,
@@ -70,6 +72,8 @@ from nex_ag.operator_review_cases import (
     _target_status_for_case_action,
     apply_operator_review_escalation_action,
     apply_operator_review_case_action,
+    build_operator_review_escalation_dispatch_plan,
+    build_operator_review_escalation_dispatch_policy,
     build_operator_review_escalation_dispatch_record,
     build_operator_review_escalation_action_mutation_response,
     build_operator_review_escalation_action_record,
@@ -1120,6 +1124,216 @@ def test_escalation_dispatch_migration_uses_short_table_and_safe_indexes() -> No
     assert "idx_ag_op_esc_dispatches_status_time" in migration
     assert "raw_notification_payload" not in migration
     assert len("ag_op_esc_dispatches") <= 30
+
+
+def test_escalation_dispatch_policy_and_attention_plan() -> None:
+    policy = build_operator_review_escalation_dispatch_policy()
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id="case-0703:attention"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0703-escalation",
+        created_at="2026-09-11T04:00:00Z",
+    )
+
+    plan = build_operator_review_escalation_dispatch_plan(
+        escalation,
+        {
+            "safe_subject": "Attention escalation needs review",
+            "metadata": {"source_view": "escalation_dispatch_planner"},
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0703-dispatch",
+        created_at="2026-09-11T04:15:00Z",
+    )
+
+    assert policy["dispatch_policy_schema_version"] == (
+        OPERATOR_REVIEW_ESCALATION_DISPATCH_POLICY_VERSION
+    )
+    assert policy["default_channel_type"] == "MOCK"
+    assert policy["level_intents"]["ATTENTION"] == "NOTIFY_OPERATOR"
+    assert plan["dispatch_plan_schema_version"] == (
+        OPERATOR_REVIEW_ESCALATION_DISPATCH_PLAN_SCHEMA_VERSION
+    )
+    assert plan["decision"]["dispatch_required"] is True
+    assert plan["decision"]["dispatch_blocked"] is False
+    assert plan["decision"]["dispatch_intent"] == "NOTIFY_OPERATOR"
+    assert plan["decision"]["channel_type"] == "MOCK"
+    assert plan["decision"]["blocking_reasons"] == []
+    dispatch = plan["dispatch_record"]
+    assert dispatch is not None
+    assert dispatch["dispatch_status"] == "PENDING"
+    assert dispatch["dispatch_intent"] == "NOTIFY_OPERATOR"
+    assert dispatch["channel_type"] == "MOCK"
+    assert dispatch["safe_subject"] == "Attention escalation needs review"
+    assert dispatch["safe_body_hash"] is not None
+    assert dispatch["provider_payload_hash"] is not None
+    assert dispatch["metadata"]["dispatch_policy_id"] == policy["policy_id"]
+    assert dispatch["metadata"]["dispatch_required"] is True
+    assert dispatch["metadata"]["raw_provider_payload_stored"] is False
+    serialized = json.dumps(plan, ensure_ascii=False)
+    assert "idem-0703-dispatch" not in serialized
+    assert plan["redaction"]["raw_notification_payload_included"] is False
+    assert "must-not-enter-planner" not in serialized
+
+
+def test_escalation_dispatch_plan_blocks_observe_terminal_and_live_channel() -> None:
+    observe_escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(
+            candidate_id="case-0703:observe",
+            escalation_level="OBSERVE",
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    observe_plan = build_operator_review_escalation_dispatch_plan(
+        observe_escalation,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert observe_plan["decision"]["dispatch_required"] is False
+    assert observe_plan["dispatch_record"] is None
+    assert "escalation_level_observe" in observe_plan["decision"]["blocking_reasons"]
+    assert "dispatch_intent_not_available" in (
+        observe_plan["decision"]["blocking_reasons"]
+    )
+
+    resolved_escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id="case-0703:resolved"),
+        {"escalation_status": "RESOLVED"},
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    resolved_plan = build_operator_review_escalation_dispatch_plan(
+        resolved_escalation,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert resolved_plan["decision"]["dispatch_required"] is False
+    assert resolved_plan["dispatch_record"] is None
+    assert "escalation_status_not_dispatchable" in (
+        resolved_plan["decision"]["blocking_reasons"]
+    )
+
+    live_channel_plan = build_operator_review_escalation_dispatch_plan(
+        build_operator_review_escalation_record(
+            sample_escalation_candidate(candidate_id="case-0703:live-channel"),
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        ),
+        {"channel_type": "EMAIL"},
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    assert live_channel_plan["decision"]["dispatch_required"] is False
+    assert live_channel_plan["dispatch_record"] is None
+    assert "live_channel_deferred" in live_channel_plan["decision"]["blocking_reasons"]
+
+
+def test_escalation_dispatch_plan_for_blocked_incident_and_validation() -> None:
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(
+            candidate_id="case-0703:blocked",
+            escalation_level="BLOCKED",
+            sla_state="OVERDUE",
+            escalation_reasons=["sla_overdue", "owner_unavailable"],
+            recommended_operator_actions=["open_incident", "notify_backup_owner"],
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    plan = build_operator_review_escalation_dispatch_plan(
+        escalation,
+        {
+            "provider_profile": "mock-incident-profile",
+            "dispatch_intent": "UPDATE_INCIDENT",
+            "safe_body": "Safe incident update payload only.",
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0703-blocked",
+    )
+
+    assert plan["decision"]["dispatch_required"] is True
+    assert plan["decision"]["dispatch_intent"] == "UPDATE_INCIDENT"
+    assert plan["decision"]["provider_profile"] == "mock-incident-profile"
+    assert plan["dispatch_record"]["safe_body_preview"] == (
+        "Safe incident update payload only."
+    )
+
+    blocked_default = build_operator_review_escalation_dispatch_plan(
+        escalation,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    assert blocked_default["decision"]["dispatch_intent"] == "OPEN_INCIDENT"
+
+    retry_plan = build_operator_review_escalation_dispatch_plan(
+        escalation,
+        {"dispatch_intent": "RETRY_FAILED_DISPATCH"},
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    assert retry_plan["decision"]["dispatch_required"] is False
+    assert "dispatch_intent_not_initial" in retry_plan["decision"]["blocking_reasons"]
+
+    with pytest.raises(OperatorReviewNoteError) as metadata_exc:
+        build_operator_review_escalation_dispatch_plan(
+            escalation,
+            {"metadata": []},
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+    assert metadata_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_metadata_invalid"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as sensitive_exc:
+        build_operator_review_escalation_dispatch_plan(
+            escalation,
+            {"api_key": "must-not-enter-planner"},
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+    assert sensitive_exc.value.error_code == "ag.operator_review_note_sensitive_payload"
+
+
+def test_operator_review_case_service_plans_escalation_dispatch() -> None:
+    escalation_store = OperatorReviewEscalationStore()
+    escalation = build_operator_review_escalation_record(
+        sample_escalation_candidate(candidate_id="case-0703:service"),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    escalation_store.save(escalation)
+    service = OperatorReviewCaseService(
+        OperatorReviewCaseStore(),
+        escalation_store=escalation_store,
+    )
+
+    plan = service.plan_escalation_dispatch(
+        escalation["escalation_id"],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        idempotency_key="idem-0703-service",
+    )
+
+    assert plan["decision"]["dispatch_required"] is True
+    assert plan["escalation"]["escalation_id"] == escalation["escalation_id"]
+    assert plan["dispatch_record"]["escalation_id"] == escalation["escalation_id"]
+
+    with pytest.raises(OperatorReviewNoteError) as missing_exc:
+        service.plan_escalation_dispatch(
+            "missing-escalation",
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+    assert missing_exc.value.status_code == 404
 
 
 @pytest.mark.parametrize(
