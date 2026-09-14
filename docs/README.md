@@ -862,6 +862,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0756`](slices/0756_ag_escalation_dispatch_daemon_api_contract_hardening.md) | `S76-006` AG escalation dispatch daemon API contract hardening. |
 | [`Slice 0757`](slices/0757_ag_escalation_dispatch_daemon_api_runtime_openapi_parity.md) | `S76-007` AG escalation dispatch daemon API runtime OpenAPI parity. |
 | [`Slice 0758`](slices/0758_ag_escalation_dispatch_daemon_api_runbook_evidence.md) | `S76-008` AG escalation dispatch daemon API runbook evidence. |
+| [`Slice 0759`](slices/0759_ag_escalation_dispatch_daemon_api_admission_guard_evidence.md) | `S76-009` AG escalation dispatch daemon API admission guard evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
