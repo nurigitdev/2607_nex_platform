@@ -843,6 +843,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0737`](slices/0737_ag_escalation_dispatch_worker_live_http_opt_in.md) | `S74-007` AG escalation dispatch worker live HTTP opt-in. |
 | [`Slice 0738`](slices/0738_ag_escalation_dispatch_live_http_postgresql_smoke.md) | `S74-008` AG escalation dispatch live HTTP PostgreSQL smoke. |
 | [`Slice 0739`](slices/0739_ag_escalation_dispatch_live_http_operations_diagnostics.md) | `S74-009` AG escalation dispatch live HTTP operations diagnostics. |
+| [`Slice 0740`](slices/0740_s74_operator_review_escalation_dispatch_live_http_closure.md) | `S74-010` S74 AG escalation dispatch live HTTP closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

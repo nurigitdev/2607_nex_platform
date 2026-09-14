@@ -1409,6 +1409,9 @@ Unified operations:
   summarizing provider mode, response hash presence, total attempts, and max
   attempts while keeping raw endpoint URLs and authorization material out of the
   projection.
+- Slice 0740 closes S74 with a closure audit that verifies the live HTTP
+  transport boundary, request guardrails, loopback smokes, PostgreSQL smoke,
+  operations diagnostics, docs, tests, and quality gate hooks.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
