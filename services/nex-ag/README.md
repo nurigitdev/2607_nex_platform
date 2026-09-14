@@ -1412,6 +1412,11 @@ Unified operations:
 - Slice 0740 closes S74 with a closure audit that verifies the live HTTP
   transport boundary, request guardrails, loopback smokes, PostgreSQL smoke,
   operations diagnostics, docs, tests, and quality gate hooks.
+- Slice 0741 starts S75 with a dispatch execution daemon boundary audit. The
+  boundary keeps daemon work AG-owned, reuses the bounded run-once worker, keeps
+  `ag_op_esc_dispatches` as the source of record, requires explicit confirmation
+  and dry-run support, and defers background daemon loops plus real external
+  endpoint delivery.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
