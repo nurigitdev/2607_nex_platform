@@ -40,6 +40,9 @@ DISPATCH_NOTIFICATION_PROVIDER_REQUEST_SCHEMA_VERSION = (
 DISPATCH_EXTERNAL_INCIDENT_PROVIDER_REQUEST_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_external_incident_request.v1"
 )
+DISPATCH_PROVIDER_HTTP_CLIENT_RESULT_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_provider_http_client_result.v1"
+)
 DISPATCH_EXECUTION_DEFAULT_PROVIDER_PROFILE = "mock-default"
 DISPATCH_EXECUTION_PROVIDER_MODE = "mock_first_only"
 DISPATCH_EXECUTION_RESULT_STORAGE = "safe_hashes_statuses_counters_only"
@@ -895,6 +898,134 @@ def execute_dispatch_with_mock_external_incident_provider(
     )
 
 
+@dataclass
+class MockDispatchProviderHttpTransport:
+    status_codes: tuple[int, ...] = (202,)
+    timeout_attempts: tuple[int, ...] = ()
+
+    def send(
+        self,
+        provider_request: Mapping[str, Any],
+        *,
+        attempt_number: int,
+        timeout_seconds: float,
+    ) -> dict[str, Any]:
+        if attempt_number in self.timeout_attempts:
+            raise TimeoutError("mock dispatch provider HTTP timeout")
+        index = min(max(attempt_number - 1, 0), len(self.status_codes) - 1)
+        status_code = int(self.status_codes[index])
+        body_hash = sha256_text(
+            json.dumps(
+                {
+                    "provider_request_hash": provider_request.get(
+                        "provider_request_hash"
+                    ),
+                    "attempt_number": attempt_number,
+                    "status_code": status_code,
+                    "timeout_seconds": timeout_seconds,
+                },
+                sort_keys=True,
+            )
+        )
+        return {
+            "status_code": status_code,
+            "response_body_hash": body_hash,
+        }
+
+
+def execute_dispatch_provider_http_request(
+    provider_request: Mapping[str, Any],
+    *,
+    transport: Any,
+    provider_config: Mapping[str, Any] | None = None,
+    executed_at: str | None = None,
+) -> dict[str, Any]:
+    if transport is None or not hasattr(transport, "send"):
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=(
+                "ag.operator_review_escalation_dispatch_provider_http_transport_"
+                "required"
+            ),
+            detail="Dispatch provider HTTP execution requires an injected transport.",
+    )
+    now = executed_at or _utc_now()
+    http_settings = _provider_config_http_settings(provider_config or provider_request)
+    max_attempts = max(1, int(http_settings["max_retries"]) + 1)
+    attempt_number = 0
+    last_status_code: int | None = None
+    last_error_code: str | None = None
+    response_body_hash: str | None = None
+    for attempt_number in range(1, max_attempts + 1):  # pragma: no branch
+        try:
+            response = transport.send(
+                provider_request,
+                attempt_number=attempt_number,
+                timeout_seconds=float(http_settings["timeout_seconds"]),
+            )
+        except TimeoutError:
+            last_error_code = "dispatch_provider_http_timeout"
+            if attempt_number < max_attempts:
+                continue
+            return _build_dispatch_provider_http_client_result(
+                provider_request,
+                http_settings=http_settings,
+                execution_status="RETRY_WAIT",
+                attempt_count=attempt_number,
+                http_status_code=last_status_code,
+                response_body_hash=response_body_hash,
+                last_error_code=last_error_code,
+                next_attempt_at=_iso_after_seconds(
+                    now,
+                    DEFAULT_DISPATCH_EXECUTION_RETRY_DELAY_SECONDS,
+                ),
+                retryable=True,
+                executed_at=now,
+            )
+        last_status_code = _http_response_status_code(response)
+        response_body_hash = optional_text(response.get("response_body_hash"))
+        if _http_status_success(last_status_code):
+            return _build_dispatch_provider_http_client_result(
+                provider_request,
+                http_settings=http_settings,
+                execution_status="SUCCEEDED",
+                attempt_count=attempt_number,
+                http_status_code=last_status_code,
+                response_body_hash=response_body_hash,
+                executed_at=now,
+            )
+        if _http_status_retryable(last_status_code):
+            last_error_code = "dispatch_provider_http_retryable_status"
+            if attempt_number < max_attempts:
+                continue
+            return _build_dispatch_provider_http_client_result(
+                provider_request,
+                http_settings=http_settings,
+                execution_status="RETRY_WAIT",
+                attempt_count=attempt_number,
+                http_status_code=last_status_code,
+                response_body_hash=response_body_hash,
+                last_error_code=last_error_code,
+                next_attempt_at=_iso_after_seconds(
+                    now,
+                    DEFAULT_DISPATCH_EXECUTION_RETRY_DELAY_SECONDS,
+                ),
+                retryable=True,
+                executed_at=now,
+            )
+        return _build_dispatch_provider_http_client_result(
+            provider_request,
+            http_settings=http_settings,
+            execution_status="FAILED",
+            attempt_count=attempt_number,
+            http_status_code=last_status_code,
+            response_body_hash=response_body_hash,
+            last_error_code="dispatch_provider_http_rejected",
+            retryable=False,
+            executed_at=now,
+        )
+
+
 def build_dispatch_execution_transition_plan(
     dispatch: Mapping[str, Any],
     execution_result: Mapping[str, Any] | None = None,
@@ -1665,6 +1796,99 @@ def _build_provider_adapter_execution_result(
     }
     assert_dispatch_execution_result_redacted(result)
     return result
+
+
+def _build_dispatch_provider_http_client_result(
+    provider_request: Mapping[str, Any],
+    *,
+    http_settings: Mapping[str, Any],
+    execution_status: str,
+    attempt_count: int,
+    http_status_code: int | None,
+    response_body_hash: str | None,
+    last_error_code: str | None = None,
+    next_attempt_at: str | None = None,
+    retryable: bool = False,
+    executed_at: str | None = None,
+) -> dict[str, Any]:
+    normalized_status = _required_execution_status(execution_status)
+    if normalized_status == "FAILED" and optional_text(last_error_code) is None:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=(
+                "ag.operator_review_escalation_dispatch_execution_error_code_required"
+            ),
+            detail="FAILED HTTP client results require last_error_code.",
+        )
+    if normalized_status == "RETRY_WAIT" and optional_text(next_attempt_at) is None:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=(
+                "ag.operator_review_escalation_dispatch_execution_retry_at_required"
+            ),
+            detail="RETRY_WAIT HTTP client results require next_attempt_at.",
+        )
+    result_hash = sha256_text(
+        json.dumps(
+            {
+                "provider_request_hash": provider_request.get(
+                    "provider_request_hash"
+                ),
+                "execution_status": normalized_status,
+                "attempt_count": attempt_count,
+                "http_status_code": http_status_code,
+                "response_body_hash": response_body_hash,
+                "last_error_code": last_error_code,
+            },
+            sort_keys=True,
+        )
+    )
+    result = {
+        "http_client_result_schema_version": (
+            DISPATCH_PROVIDER_HTTP_CLIENT_RESULT_SCHEMA_VERSION
+        ),
+        "provider_request_schema_version": provider_request.get(
+            "provider_request_schema_version"
+        ),
+        "provider_category": provider_request.get("provider_category"),
+        "provider_type": provider_request.get("provider_type"),
+        "provider_profile": provider_request.get("provider_profile"),
+        "provider_mode": provider_request.get("provider_mode"),
+        "provider_request_hash": provider_request.get("provider_request_hash"),
+        "execution_status": normalized_status,
+        "recommended_action": DISPATCH_EXECUTION_RESULT_ACTIONS[normalized_status],
+        "attempt_count": attempt_count,
+        "max_attempts": int(http_settings["max_retries"]) + 1,
+        "http_status_code": http_status_code,
+        "response_body_hash": optional_text(response_body_hash),
+        "provider_result_hash": result_hash,
+        "retryable": bool(retryable),
+        "last_error_code": optional_text(last_error_code),
+        "next_attempt_at": optional_text(next_attempt_at),
+        "timeout_seconds": float(http_settings["timeout_seconds"]),
+        "connect_timeout_seconds": float(http_settings["connect_timeout_seconds"]),
+        "read_timeout_seconds": float(http_settings["read_timeout_seconds"]),
+        "backoff_seconds": float(http_settings["backoff_seconds"]),
+        "executed_at": executed_at or _utc_now(),
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(result)
+    return result
+
+
+def _http_response_status_code(response: Mapping[str, Any]) -> int:
+    try:
+        return int(response.get("status_code"))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _http_status_success(status_code: int) -> bool:
+    return 200 <= status_code < 300
+
+
+def _http_status_retryable(status_code: int) -> bool:
+    return status_code in {408, 425, 429} or status_code >= 500
 
 
 def _safe_text_list(value: Any) -> list[str]:

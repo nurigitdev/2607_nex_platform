@@ -34,7 +34,9 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV,
     DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV,
     DISPATCH_NOTIFICATION_PROVIDER_REQUEST_SCHEMA_VERSION,
+    DISPATCH_PROVIDER_HTTP_CLIENT_RESULT_SCHEMA_VERSION,
     DISPATCH_EXECUTION_RESULT_SCHEMA_VERSION,
+    MockDispatchProviderHttpTransport,
     MockExternalIncidentDispatchProvider,
     MockNotificationDispatchProvider,
     assert_dispatch_execution_result_redacted,
@@ -46,6 +48,7 @@ from nex_ag.operator_review_dispatch_execution import (
     build_dispatch_execution_result_metadata,
     build_dispatch_execution_transition_plan,
     build_mock_dispatch_execution_provider,
+    execute_dispatch_provider_http_request,
     execute_dispatch_with_mock_provider,
     execute_dispatch_with_mock_external_incident_provider,
     execute_dispatch_with_mock_notification_provider,
@@ -53,6 +56,7 @@ from nex_ag.operator_review_dispatch_execution import (
     normalize_dispatch_execution_provider_profile,
     record_dispatch_execution_result_metadata,
     run_dispatch_execution_worker_once,
+    _build_dispatch_provider_http_client_result,
     _build_provider_adapter_execution_result,
     _persist_worker_result_metadata,
     _worker_candidate_dispatches,
@@ -804,6 +808,144 @@ def test_mock_external_incident_provider_success_retry_and_failure_are_safe() ->
     assert failed["last_error_code"] == "external_incident_provider_rejected"
     assert "raw_external_incident_payload" in json.dumps(failed)
     assert "RAW_EXTERNAL_INCIDENT_PAYLOAD" not in json.dumps(failed)
+
+
+def test_dispatch_provider_http_client_retries_then_succeeds_safely() -> None:
+    dispatch = sample_live_channel_dispatch(channel_type="WEBHOOK")
+    request = build_notification_dispatch_provider_request(
+        dispatch,
+        provider_config=build_dispatch_execution_provider_config(
+            {
+                DISPATCH_EXECUTION_PROVIDER_MODE_ENV: "mock_http",
+                DISPATCH_HTTP_MAX_RETRIES_ENV: "2",
+            }
+        ),
+    )
+    transport = MockDispatchProviderHttpTransport(status_codes=(429, 202))
+
+    result = execute_dispatch_provider_http_request(
+        request,
+        transport=transport,
+        executed_at="2026-09-13T11:00:00Z",
+    )
+
+    assert result["http_client_result_schema_version"] == (
+        DISPATCH_PROVIDER_HTTP_CLIENT_RESULT_SCHEMA_VERSION
+    )
+    assert result["provider_request_schema_version"] == (
+        DISPATCH_NOTIFICATION_PROVIDER_REQUEST_SCHEMA_VERSION
+    )
+    assert result["execution_status"] == "SUCCEEDED"
+    assert result["recommended_action"] == "SUCCEED"
+    assert result["attempt_count"] == 2
+    assert result["max_attempts"] == 3
+    assert result["http_status_code"] == 202
+    assert result["retryable"] is False
+    assert result["last_error_code"] is None
+    assert result["response_body_hash"]
+    assert_dispatch_execution_result_redacted(result)
+
+
+def test_dispatch_provider_http_client_timeout_and_rejection_paths() -> None:
+    dispatch = sample_live_channel_dispatch(channel_type="INCIDENT")
+    request = build_external_incident_dispatch_provider_request(dispatch)
+
+    timeout = execute_dispatch_provider_http_request(
+        request,
+        transport=MockDispatchProviderHttpTransport(
+            status_codes=(202,),
+            timeout_attempts=(1, 2, 3),
+        ),
+        provider_config=build_dispatch_execution_provider_config(
+            {DISPATCH_HTTP_MAX_RETRIES_ENV: "2"}
+        ),
+        executed_at="2026-09-13T11:05:00Z",
+    )
+    assert timeout["execution_status"] == "RETRY_WAIT"
+    assert timeout["recommended_action"] == "RETRY"
+    assert timeout["attempt_count"] == 3
+    assert timeout["http_status_code"] is None
+    assert timeout["retryable"] is True
+    assert timeout["last_error_code"] == "dispatch_provider_http_timeout"
+    assert timeout["next_attempt_at"] == "2026-09-13T11:10:00Z"
+
+    retryable_status = execute_dispatch_provider_http_request(
+        request,
+        transport=MockDispatchProviderHttpTransport(status_codes=(503, 503)),
+        provider_config=build_dispatch_execution_provider_config(
+            {DISPATCH_HTTP_MAX_RETRIES_ENV: "1"}
+        ),
+        executed_at="2026-09-13T11:05:30Z",
+    )
+    assert retryable_status["execution_status"] == "RETRY_WAIT"
+    assert retryable_status["attempt_count"] == 2
+    assert retryable_status["http_status_code"] == 503
+    assert retryable_status["last_error_code"] == (
+        "dispatch_provider_http_retryable_status"
+    )
+
+    rejected = execute_dispatch_provider_http_request(
+        request,
+        transport=MockDispatchProviderHttpTransport(status_codes=(400,)),
+        executed_at="2026-09-13T11:06:00Z",
+    )
+    assert rejected["execution_status"] == "FAILED"
+    assert rejected["recommended_action"] == "FAIL"
+    assert rejected["attempt_count"] == 1
+    assert rejected["http_status_code"] == 400
+    assert rejected["retryable"] is False
+    assert rejected["last_error_code"] == "dispatch_provider_http_rejected"
+
+
+def test_dispatch_provider_http_client_guard_and_malformed_response_paths() -> None:
+    request = build_notification_dispatch_provider_request(
+        sample_live_channel_dispatch(channel_type="EMAIL")
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as transport_exc:
+        execute_dispatch_provider_http_request(request, transport=None)
+    assert transport_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_provider_http_transport_required"
+    )
+
+    class MalformedTransport:
+        def send(self, *_: Any, **__: Any) -> dict[str, Any]:
+            return {"status_code": "not-an-int"}
+
+    malformed = execute_dispatch_provider_http_request(
+        request,
+        transport=MalformedTransport(),
+        executed_at="2026-09-13T11:07:00Z",
+    )
+    assert malformed["execution_status"] == "FAILED"
+    assert malformed["http_status_code"] == 0
+
+    with pytest.raises(OperatorReviewNoteError) as failed_exc:
+        _build_dispatch_provider_http_client_result(
+            request,
+            http_settings=request["http"],
+            execution_status="FAILED",
+            attempt_count=1,
+            http_status_code=400,
+            response_body_hash=None,
+        )
+    assert failed_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_execution_error_code_required"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as retry_exc:
+        _build_dispatch_provider_http_client_result(
+            request,
+            http_settings=request["http"],
+            execution_status="RETRY_WAIT",
+            attempt_count=1,
+            http_status_code=429,
+            response_body_hash=None,
+            last_error_code="dispatch_provider_http_retryable_status",
+        )
+    assert retry_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_execution_retry_at_required"
+    )
 
 
 def test_dispatch_execution_transition_plan_success_actions_apply_to_state_machine() -> None:

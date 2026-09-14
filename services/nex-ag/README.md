@@ -1344,6 +1344,10 @@ Unified operations:
   and payload fingerprints, treat HTTP 409 as idempotent success, and keep
   retry/failure outcomes compatible with the dispatch execution transition
   planner.
+- Slice 0725 adds the injectable dispatch provider HTTP client foundation.
+  `execute_dispatch_provider_http_request(...)` classifies success, retryable,
+  timeout, and rejected HTTP-shaped outcomes while returning only safe hashes,
+  status codes, attempt counters, timeout settings, and redaction flags.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
