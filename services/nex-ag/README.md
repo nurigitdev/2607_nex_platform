@@ -1322,6 +1322,13 @@ Unified operations:
   planner, bounded run-once worker, safe metadata persistence, dashboard
   execution summary, quality-gate hooks, and protected PostgreSQL smoke evidence
   while keeping live outbound notification and incident sync deferred.
+- Slice 0721 starts S73 with
+  `scripts/smoke/run_ag_operator_review_escalation_dispatch_live_provider_boundary_audit.py`.
+  The audit keeps live outbound network calls deferred, reuses the S72 worker
+  and safe result contracts, confirms existing dispatch channel coverage for
+  notification/webhook/incident providers, requires timeout/retry/idempotency
+  and redaction controls, and plans provider readiness slices before any real
+  live endpoint activation.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
