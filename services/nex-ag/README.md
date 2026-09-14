@@ -1363,6 +1363,12 @@ Unified operations:
   result, persisted metadata, and operations dashboard surfaces for forbidden
   values, forbidden keys, and unsafe redaction flags before any live provider
   endpoint is allowed into the default workflow.
+- Slice 0729 adds protected PostgreSQL smoke evidence for S73 provider routing.
+  With `NEX_AG_OPERATOR_REVIEW_ESCALATION_DISPATCH_PROVIDER_POSTGRES_SMOKE=1`,
+  it migrates `nex_ag_test`, seeds `EMAIL` and `INCIDENT` dispatch rows, runs
+  the mock HTTP provider router through the worker, verifies persisted provider
+  diagnostics plus dashboard rollups, directly observes PostgreSQL rows, and
+  cleans up smoke data.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
