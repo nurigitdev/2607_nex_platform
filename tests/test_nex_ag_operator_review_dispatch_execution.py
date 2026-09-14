@@ -20,6 +20,8 @@ from nex_ag.operator_review_cases import (
 from nex_ag.operator_review_dispatch_execution import (
     ALLOWED_DISPATCH_EXECUTION_RESULT_STATUSES,
     DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV,
+    DISPATCH_EXECUTION_DAEMON_CONTROL_ADMISSION_SCHEMA_VERSION,
+    DISPATCH_EXECUTION_DAEMON_CONTROL_REQUEST_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT_ENV,
     DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV,
     DISPATCH_EXECUTION_DAEMON_ENABLED_ENV,
@@ -57,6 +59,8 @@ from nex_ag.operator_review_dispatch_execution import (
     MockNotificationDispatchProvider,
     assert_dispatch_execution_result_redacted,
     build_dispatch_execution_daemon_policy,
+    build_dispatch_execution_daemon_control_admission,
+    build_dispatch_execution_daemon_control_request,
     build_dispatch_execution_daemon_tick_event,
     build_dispatch_execution_daemon_tick_log_entry,
     build_dispatch_execution_daemon_tick_plan,
@@ -694,6 +698,133 @@ def test_dispatch_execution_daemon_tick_event_and_log_project_warnings_and_error
     retry_event = build_dispatch_execution_daemon_tick_event(retry_tick)
     assert retry_event["severity"] == "WARNING"
     assert retry_event["summary"]["retry_wait_count"] == 1
+
+
+def test_dispatch_execution_daemon_control_request_and_plan_admission_are_safe() -> None:
+    control_request = build_dispatch_execution_daemon_control_request(
+        {
+            "action": "tick_plan",
+            "dry_run": "0",
+            "batch_limit": 999,
+            "provider_mode": "mock_http",
+            "operator_ref": {
+                "operator_type": "user",
+                "operator_id": "employee-0747",
+                "authorization": "Bearer secret",
+            },
+            "reason_codes": ["operator_check", "", None],
+            "provider_payload": {"secret": "nuri1004"},
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        requested_at="2026-09-14T13:47:00Z",
+    )
+    admission = build_dispatch_execution_daemon_control_admission(control_request)
+
+    assert control_request["daemon_control_request_schema_version"] == (
+        DISPATCH_EXECUTION_DAEMON_CONTROL_REQUEST_SCHEMA_VERSION
+    )
+    assert control_request["action"] == "tick_plan"
+    assert control_request["dry_run"] is False
+    assert control_request["batch_limit"] == 50
+    assert control_request["operator_ref"] == {
+        "operator_type": "user",
+        "operator_id": "employee-0747",
+    }
+    assert control_request["reason_codes"] == ["operator_check"]
+    assert control_request["control_request_hash"]
+    assert admission["daemon_control_admission_schema_version"] == (
+        DISPATCH_EXECUTION_DAEMON_CONTROL_ADMISSION_SCHEMA_VERSION
+    )
+    assert admission["admission_status"] == "ACCEPTED"
+    assert admission["rejection_reason"] is None
+    serialized = json.dumps({"request": control_request, "admission": admission})
+    assert "Bearer secret" not in serialized
+    assert "nuri1004" not in serialized
+    assert '"provider_payload":' not in serialized
+    assert_dispatch_execution_result_redacted(control_request)
+    assert_dispatch_execution_result_redacted(admission)
+
+    incomplete_operator = build_dispatch_execution_daemon_control_request(
+        {"operator_ref": {"operator_type": "user"}},
+        request_id=REQUEST_ID,
+    )
+    assert incomplete_operator["operator_ref"] is None
+
+
+def test_dispatch_execution_daemon_control_tick_once_requires_enable_and_confirm() -> None:
+    tick_once = build_dispatch_execution_daemon_control_request(
+        {"action": "tick_once", "confirm_tick": False},
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        requested_at="2026-09-14T13:48:00Z",
+    )
+
+    disabled = build_dispatch_execution_daemon_control_admission(tick_once)
+
+    assert disabled["admission_status"] == "REJECTED"
+    assert disabled["rejection_reason"] == "daemon_disabled"
+
+    enabled_policy = build_dispatch_execution_daemon_policy(
+        {
+            DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1",
+            DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV: "0",
+        }
+    )
+    unconfirmed = build_dispatch_execution_daemon_control_admission(
+        tick_once,
+        policy=enabled_policy,
+    )
+    assert unconfirmed["admission_status"] == "REJECTED"
+    assert unconfirmed["rejection_reason"] == "confirm_tick_required"
+
+    confirmed_request = build_dispatch_execution_daemon_control_request(
+        {
+            "action": "tick_once",
+            "confirm_tick": "yes",
+            "dry_run": False,
+            "provider_mode": "mock_first_only",
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        requested_at="2026-09-14T13:49:00Z",
+    )
+    accepted = build_dispatch_execution_daemon_control_admission(
+        confirmed_request,
+        policy=enabled_policy,
+    )
+
+    assert accepted["admission_status"] == "ACCEPTED"
+    assert accepted["rejection_reason"] is None
+    assert accepted["confirm_tick"] is True
+    assert accepted["dry_run"] is False
+    assert accepted["effective_provider_mode"] == "mock_first_only"
+
+
+def test_dispatch_execution_daemon_control_rejects_unsupported_action_or_mode() -> None:
+    with pytest.raises(OperatorReviewNoteError) as action_exc:
+        build_dispatch_execution_daemon_control_request(
+            {"action": "start_loop"},
+            request_id=REQUEST_ID,
+        )
+    assert action_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_daemon_control_action_unsupported"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as mode_exc:
+        build_dispatch_execution_daemon_control_request(
+            {"action": "tick_plan", "provider_mode": "socket"},
+            request_id=REQUEST_ID,
+        )
+    assert mode_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_execution_provider_mode_unsupported"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as admission_exc:
+        build_dispatch_execution_daemon_control_admission({"action": "stop_loop"})
+    assert admission_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_daemon_control_action_unsupported"
+    )
 
 
 def test_dispatch_execution_provider_profile_rejects_unknown_or_live_channel() -> None:

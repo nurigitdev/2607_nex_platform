@@ -46,6 +46,12 @@ DISPATCH_EXECUTION_DAEMON_TICK_EVENT_SCHEMA_VERSION = (
 DISPATCH_EXECUTION_DAEMON_TICK_LOG_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_daemon_tick_log.v1"
 )
+DISPATCH_EXECUTION_DAEMON_CONTROL_REQUEST_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_daemon_control_request.v1"
+)
+DISPATCH_EXECUTION_DAEMON_CONTROL_ADMISSION_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_daemon_control_admission.v1"
+)
 DISPATCH_EXECUTION_RESULT_METADATA_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_result_metadata.v1"
 )
@@ -129,6 +135,10 @@ ALLOWED_DISPATCH_EXECUTION_PROVIDER_MODES = (
     "mock_first_only",
     "mock_http",
     "live_http",
+)
+ALLOWED_DISPATCH_EXECUTION_DAEMON_CONTROL_ACTIONS = (
+    "tick_plan",
+    "tick_once",
 )
 NOTIFICATION_DISPATCH_CHANNEL_TYPES = ("NOTIFICATION", "EMAIL", "WEBHOOK")
 EXTERNAL_INCIDENT_DISPATCH_CHANNEL_TYPES = ("INCIDENT",)
@@ -695,6 +705,109 @@ def build_dispatch_execution_daemon_tick_log_entry(
     }
     assert_dispatch_execution_result_redacted(log_entry)
     return log_entry
+
+
+def build_dispatch_execution_daemon_control_request(
+    payload: Mapping[str, Any] | None,
+    *,
+    request_id: str,
+    trace_id: str | None = None,
+    requested_at: str | None = None,
+) -> dict[str, Any]:
+    body = dict(payload or {})
+    action = optional_text(body.get("action")) or "tick_plan"
+    if action not in ALLOWED_DISPATCH_EXECUTION_DAEMON_CONTROL_ACTIONS:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=(
+                "ag.operator_review_escalation_dispatch_daemon_control_action_"
+                "unsupported"
+            ),
+            detail=f"Unsupported dispatch daemon control action: {action}",
+        )
+    safe_request = {
+        "daemon_control_request_schema_version": (
+            DISPATCH_EXECUTION_DAEMON_CONTROL_REQUEST_SCHEMA_VERSION
+        ),
+        "action": action,
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "confirm_tick": _payload_bool(body, "confirm_tick"),
+        "dry_run": _payload_bool(body, "dry_run", default=True),
+        "batch_limit": _bounded_batch_limit(body.get("batch_limit")),
+        "provider_mode": (
+            normalize_dispatch_execution_provider_mode(
+                optional_text(body.get("provider_mode"))
+            )
+            if optional_text(body.get("provider_mode")) is not None
+            else None
+        ),
+        "operator_ref": _dispatch_daemon_control_operator_ref(body.get("operator_ref")),
+        "reason_codes": _safe_text_list(body.get("reason_codes")),
+        "requested_at": requested_at or _utc_now(),
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    safe_request["control_request_hash"] = sha256_text(
+        json.dumps(safe_request, sort_keys=True, default=str)
+    )
+    assert_dispatch_execution_result_redacted(safe_request)
+    return safe_request
+
+
+def build_dispatch_execution_daemon_control_admission(
+    control_request: Mapping[str, Any],
+    *,
+    policy: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    action = str(control_request.get("action") or "")
+    if action not in ALLOWED_DISPATCH_EXECUTION_DAEMON_CONTROL_ACTIONS:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=(
+                "ag.operator_review_escalation_dispatch_daemon_control_action_"
+                "unsupported"
+            ),
+            detail=f"Unsupported dispatch daemon control action: {action}",
+        )
+    resolved_policy = dict(policy or build_dispatch_execution_daemon_policy({}))
+    rejection_reason = None
+    if action == "tick_once" and not bool(resolved_policy.get("enabled")):
+        rejection_reason = "daemon_disabled"
+    elif action == "tick_once" and not bool(control_request.get("confirm_tick")):
+        rejection_reason = "confirm_tick_required"
+    admission = {
+        "daemon_control_admission_schema_version": (
+            DISPATCH_EXECUTION_DAEMON_CONTROL_ADMISSION_SCHEMA_VERSION
+        ),
+        "admission_status": "REJECTED" if rejection_reason else "ACCEPTED",
+        "rejection_reason": rejection_reason,
+        "action": action,
+        "control_request_hash": control_request.get("control_request_hash"),
+        "request_id": control_request.get("request_id"),
+        "trace_id": control_request.get("trace_id"),
+        "confirm_tick": bool(control_request.get("confirm_tick")),
+        "dry_run": bool(control_request.get("dry_run")),
+        "batch_limit": _bounded_batch_limit(control_request.get("batch_limit")),
+        "effective_provider_mode": (
+            control_request.get("provider_mode")
+            or resolved_policy.get("effective_provider_mode")
+        ),
+        "policy": {
+            "enabled": bool(resolved_policy.get("enabled")),
+            "dry_run": bool(resolved_policy.get("dry_run")),
+            "requires_confirm_tick": bool(
+                resolved_policy.get("requires_confirm_tick", True)
+            ),
+            "requires_protected_control": bool(
+                resolved_policy.get("requires_protected_control", True)
+            ),
+            "source_table": resolved_policy.get("source_table", "ag_op_esc_dispatches"),
+            "new_tables_required": bool(resolved_policy.get("new_tables_required")),
+        },
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(admission)
+    return admission
 
 
 def normalize_dispatch_execution_provider_mode(value: str | None) -> str:
@@ -2878,6 +2991,33 @@ def _env_bool(
     if value is None:
         return default
     return value.lower() in {"1", "true", "yes", "on"}
+
+
+def _payload_bool(
+    payload: Mapping[str, Any],
+    key: str,
+    *,
+    default: bool = False,
+) -> bool:
+    value = payload.get(key)
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).lower() in {"1", "true", "yes", "on"}
+
+
+def _dispatch_daemon_control_operator_ref(value: Any) -> dict[str, str] | None:
+    if not isinstance(value, Mapping):
+        return None
+    operator_type = optional_text(value.get("operator_type"))
+    operator_id = optional_text(value.get("operator_id"))
+    if operator_type is None or operator_id is None:
+        return None
+    return {
+        "operator_type": operator_type,
+        "operator_id": operator_id,
+    }
 
 
 def _env_text(env: Mapping[str, str], key: str) -> str | None:
