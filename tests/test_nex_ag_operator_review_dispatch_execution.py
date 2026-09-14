@@ -1276,6 +1276,38 @@ def test_dispatch_provider_router_preserves_mock_first_and_routes_live_channels(
     assert notification["provider_category"] == "notification"
     assert notification["provider_mode"] == "mock_http"
 
+    live_config = build_dispatch_execution_provider_config(
+        {
+            DISPATCH_EXECUTION_PROVIDER_MODE_ENV: "live_http",
+            DISPATCH_LIVE_PROVIDER_ENABLE_ENV: "1",
+            DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV: "http://127.0.0.1:43199/notify",
+            DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV: "notify-token-0737",
+        }
+    )
+    live = execute_dispatch_with_provider_router(
+        email_dispatch,
+        provider_mode="live_http",
+        provider_config=live_config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        live_http_transport=MockDispatchProviderHttpTransport(status_codes=(202,)),
+        executed_at="2026-09-14T10:37:00Z",
+    )
+    assert live["execution_status"] == "SUCCEEDED"
+    assert live["provider_mode"] == "live_http"
+    assert live["provider_category"] == "notification"
+    assert live["http_status_code"] == 202
+
+    with pytest.raises(OperatorReviewNoteError) as transport_exc:
+        execute_dispatch_with_provider_router(
+            email_dispatch,
+            provider_mode="live_http",
+            provider_config=live_config,
+        )
+    assert transport_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_provider_http_transport_required"
+    )
+
     incident = execute_dispatch_with_provider_router(
         incident_dispatch,
         provider_mode="mock_http",
@@ -1602,6 +1634,50 @@ def test_dispatch_execution_worker_once_routes_live_channel_batches() -> None:
         "http_status_code"
     ] == 201
     assert "notify-token" not in json.dumps(run)
+
+
+def test_dispatch_execution_worker_once_routes_injected_live_http_transport() -> None:
+    email = sample_live_channel_dispatch(
+        dispatch_id="dispatch-0737-live-email",
+        channel_type="EMAIL",
+        dispatch_intent="NOTIFY_OWNER",
+        provider_profile="email-notification-default",
+    )
+    service, dispatch_store = build_dispatch_service(email)
+    config = build_dispatch_execution_provider_config(
+        {
+            DISPATCH_EXECUTION_PROVIDER_MODE_ENV: "live_http",
+            DISPATCH_LIVE_PROVIDER_ENABLE_ENV: "1",
+            DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV: "http://127.0.0.1:43199/notify",
+            DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV: "notify-token-0737-worker",
+            DISPATCH_HTTP_MAX_RETRIES_ENV: "0",
+        }
+    )
+
+    run = run_dispatch_execution_worker_once(
+        service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        batch_limit=5,
+        provider_mode="live_http",
+        provider_config=config,
+        live_http_transport=MockDispatchProviderHttpTransport(status_codes=(202,)),
+        confirm_run=True,
+        executed_at="2026-09-14T10:37:30Z",
+    )
+
+    assert run["run_status"] == "COMPLETED"
+    assert run["processed_count"] == 1
+    assert run["succeeded_count"] == 1
+    assert run["items"][0]["provider_profile"] == "email-notification-default"
+    persisted = dispatch_store.get("dispatch-0737-live-email")
+    assert persisted["dispatch_status"] == "SUCCEEDED"
+    metadata = persisted["metadata"]["last_execution_result"]
+    assert metadata["provider_mode"] == "live_http"
+    assert metadata["provider_category"] == "notification"
+    assert metadata["http_status_code"] == 202
+    assert metadata["response_body_hash"]
+    assert "notify-token-0737-worker" not in json.dumps(run)
 
 
 def test_dispatch_execution_worker_once_dry_run_and_limit_bounds() -> None:

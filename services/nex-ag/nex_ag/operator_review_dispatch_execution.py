@@ -1322,6 +1322,7 @@ def execute_dispatch_with_provider_router(
     trace_id: str | None = None,
     notification_status_code: int | None = None,
     external_incident_status_code: int | None = None,
+    live_http_transport: Any | None = None,
     executed_at: str | None = None,
 ) -> dict[str, Any]:
     config = (
@@ -1340,6 +1341,15 @@ def execute_dispatch_with_provider_router(
         return execute_dispatch_with_mock_provider(
             dispatch,
             profile_id=provider_profile,
+            executed_at=executed_at,
+        )
+    if mode == "live_http":
+        return execute_dispatch_with_live_http_transport(
+            dispatch,
+            transport=live_http_transport,
+            provider_config=routed_config,
+            request_id=request_id,
+            trace_id=trace_id,
             executed_at=executed_at,
         )
     if channel_type in NOTIFICATION_DISPATCH_CHANNEL_TYPES:
@@ -1506,6 +1516,7 @@ def run_dispatch_execution_worker_once(
     provider_config: Mapping[str, Any] | None = None,
     notification_status_code: int | None = None,
     external_incident_status_code: int | None = None,
+    live_http_transport: Any | None = None,
     confirm_run: bool = False,
     dry_run: bool = False,
     executed_at: str | None = None,
@@ -1553,6 +1564,7 @@ def run_dispatch_execution_worker_once(
                 provider_config=provider_config,
                 notification_status_code=notification_status_code,
                 external_incident_status_code=external_incident_status_code,
+                live_http_transport=live_http_transport,
                 dry_run=dry_run,
                 executed_at=now,
             )
@@ -1809,6 +1821,7 @@ def _execute_worker_item(
     provider_config: Mapping[str, Any] | None,
     notification_status_code: int | None,
     external_incident_status_code: int | None,
+    live_http_transport: Any | None,
     dry_run: bool,
     executed_at: str,
 ) -> dict[str, Any]:
@@ -1821,6 +1834,7 @@ def _execute_worker_item(
         trace_id=trace_id,
         notification_status_code=notification_status_code,
         external_incident_status_code=external_incident_status_code,
+        live_http_transport=live_http_transport,
         executed_at=executed_at,
     )
     plan = build_dispatch_execution_transition_plan(

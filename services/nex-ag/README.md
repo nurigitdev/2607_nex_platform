@@ -1399,6 +1399,9 @@ Unified operations:
 - Slice 0736 adds the protected external incident loopback smoke. It verifies
   the incident live HTTP path, target id hashing, response status, and response
   hash while withholding bearer tokens, raw target ids, and raw endpoint paths.
+- Slice 0737 wires live HTTP transport into the dispatch router and worker as an
+  explicit opt-in path. `provider_mode=live_http` requires an injected transport;
+  mock-first and mock HTTP behavior remain the default safe paths.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
