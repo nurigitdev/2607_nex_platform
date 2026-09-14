@@ -7039,13 +7039,19 @@ def _operator_review_escalation_dispatch_execution_dashboard_summary(
         is not None
     ]
     by_execution_status: dict[str, int] = {}
+    by_provider_mode: dict[str, int] = {}
     by_provider_category: dict[str, int] = {}
     by_provider_profile: dict[str, int] = {}
     by_http_status_code: dict[str, int] = {}
     by_last_error_code: dict[str, int] = {}
+    response_body_hash_count = 0
+    attempt_count_total = 0
+    max_attempt_count = 0
     for result in execution_results:
         status = _nullable_string(result.get("execution_status")) or "UNKNOWN"
         by_execution_status[status] = by_execution_status.get(status, 0) + 1
+        provider_mode = _nullable_string(result.get("provider_mode")) or "UNKNOWN"
+        by_provider_mode[provider_mode] = by_provider_mode.get(provider_mode, 0) + 1
         provider_category = (
             _nullable_string(result.get("provider_category")) or "UNKNOWN"
         )
@@ -7061,6 +7067,12 @@ def _operator_review_escalation_dispatch_execution_dashboard_summary(
             by_http_status_code[status_code] = (
                 by_http_status_code.get(status_code, 0) + 1
             )
+        if _nullable_string(result.get("response_body_hash")) is not None:
+            response_body_hash_count += 1
+        if result.get("attempt_count") is not None:
+            attempt_count = max(0, _safe_int(result.get("attempt_count")))
+            attempt_count_total += attempt_count
+            max_attempt_count = max(max_attempt_count, attempt_count)
         if (last_error_code := _nullable_string(result.get("last_error_code"))) is not None:
             by_last_error_code[last_error_code] = (
                 by_last_error_code.get(last_error_code, 0) + 1
@@ -7086,8 +7098,12 @@ def _operator_review_escalation_dispatch_execution_dashboard_summary(
         "http_status_count": sum(
             1 for result in execution_results if result.get("http_status_code") is not None
         ),
+        "response_body_hash_count": response_body_hash_count,
+        "attempt_count_total": attempt_count_total,
+        "max_attempt_count": max_attempt_count,
         "latest_executed_at": latest_executed_at,
         "by_execution_status": by_execution_status,
+        "by_provider_mode": by_provider_mode,
         "by_provider_category": by_provider_category,
         "by_provider_profile": by_provider_profile,
         "by_http_status_code": by_http_status_code,
@@ -7127,6 +7143,11 @@ def _operator_review_escalation_dispatch_execution_result(
             else None
         ),
         "response_body_hash": _nullable_string(result.get("response_body_hash")),
+        "attempt_count": (
+            _safe_int(result.get("attempt_count"))
+            if result.get("attempt_count") is not None
+            else None
+        ),
         "safe_result_preview": _nullable_string(result.get("safe_result_preview")),
         "retryable": bool(result.get("retryable")),
         "last_error_code": _nullable_string(result.get("last_error_code")),
@@ -7172,8 +7193,12 @@ def _empty_operator_review_escalation_dispatch_execution_summary() -> dict[str, 
         "skipped_count": 0,
         "retryable_count": 0,
         "http_status_count": 0,
+        "response_body_hash_count": 0,
+        "attempt_count_total": 0,
+        "max_attempt_count": 0,
         "latest_executed_at": None,
         "by_execution_status": {},
+        "by_provider_mode": {},
         "by_provider_category": {},
         "by_provider_profile": {},
         "by_http_status_code": {},

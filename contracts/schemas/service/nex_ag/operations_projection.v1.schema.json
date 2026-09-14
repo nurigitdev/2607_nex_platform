@@ -2585,8 +2585,12 @@
             "skipped_count",
             "retryable_count",
             "http_status_count",
+            "response_body_hash_count",
+            "attempt_count_total",
+            "max_attempt_count",
             "latest_executed_at",
             "by_execution_status",
+            "by_provider_mode",
             "by_provider_category",
             "by_provider_profile",
             "by_http_status_code",
@@ -2622,6 +2626,18 @@
               "type": "integer",
               "minimum": 0
             },
+            "response_body_hash_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "attempt_count_total": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_attempt_count": {
+              "type": "integer",
+              "minimum": 0
+            },
             "latest_executed_at": {
               "type": [
                 "string",
@@ -2629,6 +2645,9 @@
               ]
             },
             "by_execution_status": {
+              "$ref": "#/$defs/string_integer_counts"
+            },
+            "by_provider_mode": {
               "$ref": "#/$defs/string_integer_counts"
             },
             "by_provider_category": {

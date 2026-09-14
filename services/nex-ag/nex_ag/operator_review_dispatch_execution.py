@@ -1637,6 +1637,7 @@ def build_dispatch_execution_result_metadata(
         "provider_result_hash": execution_result.get("provider_result_hash"),
         "http_status_code": execution_result.get("http_status_code"),
         "response_body_hash": execution_result.get("response_body_hash"),
+        "attempt_count": execution_result.get("attempt_count"),
         "safe_result_preview": execution_result.get("safe_result_preview"),
         "retryable": bool(execution_result.get("retryable")),
         "last_error_code": execution_result.get("last_error_code"),

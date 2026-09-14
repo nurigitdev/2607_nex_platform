@@ -1677,6 +1677,7 @@ def test_dispatch_execution_worker_once_routes_injected_live_http_transport() ->
     assert metadata["provider_category"] == "notification"
     assert metadata["http_status_code"] == 202
     assert metadata["response_body_hash"]
+    assert metadata["attempt_count"] == 1
     assert "notify-token-0737-worker" not in json.dumps(run)
 
 

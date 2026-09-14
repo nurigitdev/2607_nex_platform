@@ -1405,6 +1405,10 @@ Unified operations:
 - Slice 0738 proves that live HTTP opt-in path against `nex_ag_test` with a
   local loopback HTTP server, persisted worker metadata, operations dashboard
   status counts, and cleanup of all seeded smoke rows.
+- Slice 0739 hardens operations diagnostics for live HTTP dispatches by
+  summarizing provider mode, response hash presence, total attempts, and max
+  attempts while keeping raw endpoint URLs and authorization material out of the
+  projection.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
