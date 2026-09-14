@@ -19,6 +19,13 @@ from nex_ag.operator_review_cases import (
 )
 from nex_ag.operator_review_dispatch_execution import (
     ALLOWED_DISPATCH_EXECUTION_RESULT_STATUSES,
+    DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV,
+    DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT_ENV,
+    DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV,
+    DISPATCH_EXECUTION_DAEMON_ENABLED_ENV,
+    DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS_ENV,
+    DISPATCH_EXECUTION_DAEMON_POLICY_SCHEMA_VERSION,
+    DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV,
     DISPATCH_EXECUTION_PROVIDER_CONFIG_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DEFAULT_PROVIDER_PROFILE,
     DISPATCH_EXECUTION_PROVIDER_MODE_ENV,
@@ -45,6 +52,7 @@ from nex_ag.operator_review_dispatch_execution import (
     MockExternalIncidentDispatchProvider,
     MockNotificationDispatchProvider,
     assert_dispatch_execution_result_redacted,
+    build_dispatch_execution_daemon_policy,
     build_dispatch_execution_provider_catalog,
     build_dispatch_execution_provider_config,
     build_dispatch_live_http_transport_headers,
@@ -282,6 +290,72 @@ def test_dispatch_execution_provider_config_redacts_env_and_clamps() -> None:
 def test_dispatch_execution_provider_config_rejects_unknown_mode() -> None:
     with pytest.raises(OperatorReviewNoteError) as exc_info:
         normalize_dispatch_execution_provider_mode("sidecar")
+
+    assert exc_info.value.error_code == (
+        "ag.operator_review_escalation_dispatch_execution_provider_mode_unsupported"
+    )
+
+
+def test_dispatch_execution_daemon_policy_defaults_are_safe() -> None:
+    policy = build_dispatch_execution_daemon_policy({})
+
+    assert policy["daemon_policy_schema_version"] == (
+        DISPATCH_EXECUTION_DAEMON_POLICY_SCHEMA_VERSION
+    )
+    assert policy["enabled"] is False
+    assert policy["dry_run"] is True
+    assert policy["batch_limit"] == 10
+    assert policy["cycle_limit"] == 1
+    assert policy["interval_seconds"] == 60
+    assert policy["source_table"] == "ag_op_esc_dispatches"
+    assert policy["configured_provider_mode"] == "mock_first_only"
+    assert policy["effective_provider_mode"] == "mock_first_only"
+    assert policy["live_network_calls_enabled"] is False
+    assert policy["requires_confirm_tick"] is True
+    assert policy["requires_protected_control"] is True
+    assert policy["new_tables_required"] is False
+    assert policy["env"]["live_provider_enable"] == DISPATCH_LIVE_PROVIDER_ENABLE_ENV
+    assert_dispatch_execution_result_redacted(policy)
+
+
+def test_dispatch_execution_daemon_policy_clamps_and_guards_live_http() -> None:
+    env = {
+        DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "yes",
+        DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV: "0",
+        DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV: "999",
+        DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT_ENV: "0",
+        DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS_ENV: "99999",
+        DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV: "live_http",
+        DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV: "https://notify.invalid/hook/secret",
+        DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV: "notify-token-0742",
+    }
+
+    guarded = build_dispatch_execution_daemon_policy(env)
+
+    assert guarded["enabled"] is True
+    assert guarded["dry_run"] is False
+    assert guarded["batch_limit"] == 50
+    assert guarded["cycle_limit"] == 1
+    assert guarded["interval_seconds"] == 3600
+    assert guarded["configured_provider_mode"] == "live_http"
+    assert guarded["effective_provider_mode"] == "mock_http"
+    assert guarded["live_network_calls_enabled"] is False
+    serialized = json.dumps(guarded)
+    assert "notify-token-0742" not in serialized
+    assert "https://notify.invalid/hook/secret" not in serialized
+
+    enabled = build_dispatch_execution_daemon_policy(
+        {**env, DISPATCH_LIVE_PROVIDER_ENABLE_ENV: "1"}
+    )
+    assert enabled["effective_provider_mode"] == "live_http"
+    assert enabled["live_network_calls_enabled"] is True
+
+
+def test_dispatch_execution_daemon_policy_rejects_unknown_provider_mode() -> None:
+    with pytest.raises(OperatorReviewNoteError) as exc_info:
+        build_dispatch_execution_daemon_policy(
+            {DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV: "socket"}
+        )
 
     assert exc_info.value.error_code == (
         "ag.operator_review_escalation_dispatch_execution_provider_mode_unsupported"

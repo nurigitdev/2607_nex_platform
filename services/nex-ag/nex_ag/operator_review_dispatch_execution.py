@@ -31,6 +31,9 @@ DISPATCH_EXECUTION_TRANSITION_PLAN_SCHEMA_VERSION = (
 DISPATCH_EXECUTION_WORKER_RUN_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_worker_run.v1"
 )
+DISPATCH_EXECUTION_DAEMON_POLICY_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_daemon_policy.v1"
+)
 DISPATCH_EXECUTION_RESULT_METADATA_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_result_metadata.v1"
 )
@@ -59,6 +62,11 @@ DEFAULT_DISPATCH_EXECUTION_RETRY_DELAY_SECONDS = 300
 DEFAULT_DISPATCH_EXECUTION_MAX_ATTEMPTS = 3
 DEFAULT_DISPATCH_EXECUTION_BATCH_LIMIT = 10
 MAX_DISPATCH_EXECUTION_BATCH_LIMIT = 50
+DEFAULT_DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT = 1
+MAX_DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT = 10
+DEFAULT_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS = 60
+MIN_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS = 1
+MAX_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS = 3600
 DEFAULT_DISPATCH_HTTP_TIMEOUT_SECONDS = 15.0
 DEFAULT_DISPATCH_HTTP_CONNECT_TIMEOUT_SECONDS = 5.0
 DEFAULT_DISPATCH_HTTP_READ_TIMEOUT_SECONDS = 15.0
@@ -88,6 +96,16 @@ DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV = "NEX_AG_NOTIFICATION_WEBHOOK_URL"
 DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV = "NEX_AG_NOTIFICATION_SERVICE_TOKEN"
 DISPATCH_EXTERNAL_INCIDENT_BASE_URL_ENV = "NEX_AG_EXTERNAL_INCIDENT_BASE_URL"
 DISPATCH_EXTERNAL_INCIDENT_TOKEN_ENV = "NEX_AG_EXTERNAL_INCIDENT_TOKEN"
+DISPATCH_EXECUTION_DAEMON_ENABLED_ENV = "NEX_AG_DISPATCH_DAEMON_ENABLED"
+DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV = "NEX_AG_DISPATCH_DAEMON_DRY_RUN"
+DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV = "NEX_AG_DISPATCH_DAEMON_BATCH_LIMIT"
+DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT_ENV = "NEX_AG_DISPATCH_DAEMON_CYCLE_LIMIT"
+DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS_ENV = (
+    "NEX_AG_DISPATCH_DAEMON_INTERVAL_SECONDS"
+)
+DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV = (
+    "NEX_AG_DISPATCH_DAEMON_PROVIDER_MODE"
+)
 
 ALLOWED_DISPATCH_EXECUTION_RESULT_STATUSES = (
     "SUCCEEDED",
@@ -317,6 +335,105 @@ def build_dispatch_execution_provider_config(
     }
     assert_dispatch_execution_result_redacted(config)
     return config
+
+
+def build_dispatch_execution_daemon_policy(
+    environ: Mapping[str, str] | None = None,
+    *,
+    provider_config: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    env = environ or {}
+    config = (
+        dict(provider_config)
+        if provider_config is not None
+        else build_dispatch_execution_provider_config(env)
+    )
+    configured_provider_mode = normalize_dispatch_execution_provider_mode(
+        _env_text(env, DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV)
+        or str(config.get("configured_provider_mode") or DISPATCH_EXECUTION_PROVIDER_MODE)
+    )
+    live_http_enabled = bool(config.get("live_network_calls_enabled")) or (
+        env.get(DISPATCH_LIVE_PROVIDER_ENABLE_ENV) == "1"
+    )
+    effective_provider_mode = (
+        configured_provider_mode
+        if configured_provider_mode != "live_http" or live_http_enabled
+        else "mock_http"
+    )
+    batch_limit = _bounded_int_env(
+        env,
+        DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV,
+        default=DEFAULT_DISPATCH_EXECUTION_BATCH_LIMIT,
+        minimum=1,
+        maximum=MAX_DISPATCH_EXECUTION_BATCH_LIMIT,
+    )
+    cycle_limit = _bounded_int_env(
+        env,
+        DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT_ENV,
+        default=DEFAULT_DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT,
+        minimum=1,
+        maximum=MAX_DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT,
+    )
+    interval_seconds = _bounded_int_env(
+        env,
+        DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS_ENV,
+        default=DEFAULT_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS,
+        minimum=MIN_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS,
+        maximum=MAX_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS,
+    )
+    policy = {
+        "daemon_policy_schema_version": (
+            DISPATCH_EXECUTION_DAEMON_POLICY_SCHEMA_VERSION
+        ),
+        "enabled": _env_bool(env, DISPATCH_EXECUTION_DAEMON_ENABLED_ENV),
+        "dry_run": _env_bool(
+            env,
+            DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV,
+            default=True,
+        ),
+        "batch_limit": batch_limit,
+        "cycle_limit": cycle_limit,
+        "interval_seconds": interval_seconds,
+        "source_table": "ag_op_esc_dispatches",
+        "result_storage": DISPATCH_EXECUTION_RESULT_STORAGE,
+        "configured_provider_mode": configured_provider_mode,
+        "effective_provider_mode": effective_provider_mode,
+        "provider_config_schema_version": config.get(
+            "provider_config_schema_version"
+        ),
+        "live_network_calls_enabled": configured_provider_mode == "live_http"
+        and live_http_enabled
+        and effective_provider_mode == "live_http",
+        "requires_confirm_tick": True,
+        "requires_protected_control": True,
+        "job_queue_control": "deferred_until_control_api_slice",
+        "new_tables_required": False,
+        "allowed_runtime_modes": [
+            "dry_run_plan",
+            "confirmed_run_once",
+            "injected_loopback_live_http",
+        ],
+        "bounds": {
+            "batch_limit_min": 1,
+            "batch_limit_max": MAX_DISPATCH_EXECUTION_BATCH_LIMIT,
+            "cycle_limit_min": 1,
+            "cycle_limit_max": MAX_DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT,
+            "interval_seconds_min": MIN_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS,
+            "interval_seconds_max": MAX_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS,
+        },
+        "env": {
+            "enabled": DISPATCH_EXECUTION_DAEMON_ENABLED_ENV,
+            "dry_run": DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV,
+            "batch_limit": DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV,
+            "cycle_limit": DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT_ENV,
+            "interval_seconds": DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS_ENV,
+            "provider_mode": DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV,
+            "live_provider_enable": DISPATCH_LIVE_PROVIDER_ENABLE_ENV,
+        },
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(policy)
+    return policy
 
 
 def normalize_dispatch_execution_provider_mode(value: str | None) -> str:
@@ -2416,6 +2533,18 @@ def _bounded_int_env(
     except ValueError:
         return default
     return max(minimum, min(parsed, maximum))
+
+
+def _env_bool(
+    env: Mapping[str, str],
+    key: str,
+    *,
+    default: bool = False,
+) -> bool:
+    value = _env_text(env, key)
+    if value is None:
+        return default
+    return value.lower() in {"1", "true", "yes", "on"}
 
 
 def _env_text(env: Mapping[str, str], key: str) -> str | None:
