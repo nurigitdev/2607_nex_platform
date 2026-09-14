@@ -841,6 +841,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0735`](slices/0735_ag_escalation_dispatch_notification_loopback_smoke.md) | `S74-005` AG escalation dispatch notification loopback smoke. |
 | [`Slice 0736`](slices/0736_ag_escalation_dispatch_incident_loopback_smoke.md) | `S74-006` AG escalation dispatch incident loopback smoke. |
 | [`Slice 0737`](slices/0737_ag_escalation_dispatch_worker_live_http_opt_in.md) | `S74-007` AG escalation dispatch worker live HTTP opt-in. |
+| [`Slice 0738`](slices/0738_ag_escalation_dispatch_live_http_postgresql_smoke.md) | `S74-008` AG escalation dispatch live HTTP PostgreSQL smoke. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

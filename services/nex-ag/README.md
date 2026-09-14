@@ -1402,6 +1402,9 @@ Unified operations:
 - Slice 0737 wires live HTTP transport into the dispatch router and worker as an
   explicit opt-in path. `provider_mode=live_http` requires an injected transport;
   mock-first and mock HTTP behavior remain the default safe paths.
+- Slice 0738 proves that live HTTP opt-in path against `nex_ag_test` with a
+  local loopback HTTP server, persisted worker metadata, operations dashboard
+  status counts, and cleanup of all seeded smoke rows.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
