@@ -1369,6 +1369,12 @@ Unified operations:
   the mock HTTP provider router through the worker, verifies persisted provider
   diagnostics plus dashboard rollups, directly observes PostgreSQL rows, and
   cleans up smoke data.
+- Slice 0730 closes S73 with
+  `scripts/smoke/run_s73_operator_review_escalation_dispatch_provider_closure.py`.
+  The closure verifies the S73 provider config/request/result contracts, mock
+  adapters, HTTP client foundation, worker router, diagnostics dashboard,
+  privacy regression, protected PostgreSQL smoke, documentation, and quality
+  gate hooks while keeping live provider network delivery deferred.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
