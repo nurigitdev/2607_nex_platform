@@ -1358,6 +1358,11 @@ Unified operations:
   provider request hash, HTTP status code, response body hash, and rollups by
   provider category/profile/status/error code without exposing raw provider
   payloads, endpoints, tokens, headers, or idempotency keys.
+- Slice 0728 adds the live-provider privacy regression pack. The smoke checks
+  provider config, notification/incident requests, provider results, HTTP client
+  result, persisted metadata, and operations dashboard surfaces for forbidden
+  values, forbidden keys, and unsafe redaction flags before any live provider
+  endpoint is allowed into the default workflow.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

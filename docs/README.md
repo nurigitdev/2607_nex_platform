@@ -831,6 +831,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0725`](slices/0725_ag_escalation_dispatch_provider_http_client_foundation.md) | `S73-005` AG escalation dispatch provider HTTP client foundation. |
 | [`Slice 0726`](slices/0726_ag_escalation_dispatch_worker_provider_routing.md) | `S73-006` AG escalation dispatch execution worker provider routing integration. |
 | [`Slice 0727`](slices/0727_ag_escalation_dispatch_provider_diagnostics_dashboard.md) | `S73-007` AG escalation dispatch provider result diagnostics dashboard. |
+| [`Slice 0728`](slices/0728_ag_escalation_dispatch_live_provider_privacy_regression.md) | `S73-008` AG escalation dispatch live-provider privacy regression pack. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
