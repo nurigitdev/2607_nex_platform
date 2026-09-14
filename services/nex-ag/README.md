@@ -1329,6 +1329,11 @@ Unified operations:
   notification/webhook/incident providers, requires timeout/retry/idempotency
   and redaction controls, and plans provider readiness slices before any real
   live endpoint activation.
+- Slice 0722 adds the AG dispatch provider configuration registry. Provider mode
+  now normalizes to `mock_first_only`, `mock_http`, or guarded `live_http`,
+  HTTP timeout/retry values are bounded from environment settings, notification
+  and incident endpoints are exposed only as redacted readiness hints, and live
+  network calls still require `NEX_AG_DISPATCH_LIVE_PROVIDER_ENABLE=1`.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

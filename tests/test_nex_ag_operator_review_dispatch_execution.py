@@ -16,17 +16,32 @@ from nex_ag.operator_review_cases import (
 )
 from nex_ag.operator_review_dispatch_execution import (
     ALLOWED_DISPATCH_EXECUTION_RESULT_STATUSES,
+    DISPATCH_EXECUTION_PROVIDER_CONFIG_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DEFAULT_PROVIDER_PROFILE,
+    DISPATCH_EXECUTION_PROVIDER_MODE_ENV,
+    DISPATCH_EXTERNAL_INCIDENT_BASE_URL_ENV,
+    DISPATCH_EXTERNAL_INCIDENT_TOKEN_ENV,
+    DISPATCH_HTTP_BACKOFF_SECONDS_ENV,
+    DISPATCH_HTTP_CONNECT_TIMEOUT_SECONDS_ENV,
+    DISPATCH_HTTP_MAX_RETRIES_ENV,
+    DISPATCH_HTTP_READ_TIMEOUT_SECONDS_ENV,
+    DISPATCH_HTTP_TIMEOUT_SECONDS_ENV,
     DISPATCH_EXECUTION_PROVIDER_CATALOG_SCHEMA_VERSION,
     DISPATCH_EXECUTION_PROVIDER_MODE,
+    DISPATCH_LIVE_PROVIDER_ENABLE_ENV,
+    DISPATCH_LIVE_PROVIDER_PROFILE_ENV,
+    DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV,
+    DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV,
     DISPATCH_EXECUTION_RESULT_SCHEMA_VERSION,
     assert_dispatch_execution_result_redacted,
     build_dispatch_execution_provider_catalog,
+    build_dispatch_execution_provider_config,
     build_dispatch_execution_result,
     build_dispatch_execution_result_metadata,
     build_dispatch_execution_transition_plan,
     build_mock_dispatch_execution_provider,
     execute_dispatch_with_mock_provider,
+    normalize_dispatch_execution_provider_mode,
     normalize_dispatch_execution_provider_profile,
     record_dispatch_execution_result_metadata,
     run_dispatch_execution_worker_once,
@@ -135,6 +150,96 @@ def test_dispatch_execution_provider_catalog_is_mock_first_and_redacted() -> Non
         channel_type="MOCK",
     )
     assert normalized["profile_id"] == "mock-default"
+
+
+def test_dispatch_execution_provider_config_defaults_are_safe() -> None:
+    config = build_dispatch_execution_provider_config({})
+
+    assert config["provider_config_schema_version"] == (
+        DISPATCH_EXECUTION_PROVIDER_CONFIG_SCHEMA_VERSION
+    )
+    assert config["configured_provider_mode"] == "mock_first_only"
+    assert config["effective_provider_mode"] == "mock_first_only"
+    assert config["live_network_calls_enabled"] is False
+    assert config["execution_provider_profile"] == "mock-default"
+    assert config["live_provider_profile"] == "notification-webhook-default"
+    assert config["http"] == {
+        "timeout_seconds": 15.0,
+        "connect_timeout_seconds": 5.0,
+        "read_timeout_seconds": 15.0,
+        "max_retries": 2,
+        "backoff_seconds": 1.0,
+    }
+    assert config["endpoints"]["notification"]["configured"] is False
+    assert config["endpoints"]["notification"]["endpoint_hint"] is None
+    assert config["endpoints"]["external_incident"]["token_configured"] is False
+    assert "external-incident-default" in config["profiles"]["live_readiness"]
+    assert "provider_api_key" not in json.dumps(config)
+    assert_dispatch_execution_result_redacted(config)
+
+
+def test_dispatch_execution_provider_config_redacts_env_and_clamps() -> None:
+    env = {
+        DISPATCH_EXECUTION_PROVIDER_MODE_ENV: "live_http",
+        DISPATCH_LIVE_PROVIDER_ENABLE_ENV: "0",
+        DISPATCH_LIVE_PROVIDER_PROFILE_ENV: "external-incident-default",
+        DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV: "https://notify.invalid/hook/secret",
+        DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV: "notify-token-0722",
+        DISPATCH_EXTERNAL_INCIDENT_BASE_URL_ENV: "incident-secret-url",
+        DISPATCH_EXTERNAL_INCIDENT_TOKEN_ENV: "incident-token-0722",
+        DISPATCH_HTTP_TIMEOUT_SECONDS_ENV: "250",
+        DISPATCH_HTTP_CONNECT_TIMEOUT_SECONDS_ENV: "0",
+        DISPATCH_HTTP_READ_TIMEOUT_SECONDS_ENV: "not-a-number",
+        DISPATCH_HTTP_MAX_RETRIES_ENV: "99",
+        DISPATCH_HTTP_BACKOFF_SECONDS_ENV: "-1",
+    }
+
+    guarded = build_dispatch_execution_provider_config(env)
+
+    assert guarded["configured_provider_mode"] == "live_http"
+    assert guarded["effective_provider_mode"] == "mock_http"
+    assert guarded["live_network_calls_enabled"] is False
+    assert guarded["live_provider_profile"] == "external-incident-default"
+    assert guarded["http"] == {
+        "timeout_seconds": 120.0,
+        "connect_timeout_seconds": 0.1,
+        "read_timeout_seconds": 15.0,
+        "max_retries": 5,
+        "backoff_seconds": 0.0,
+    }
+    assert guarded["endpoints"]["notification"]["configured"] is True
+    assert guarded["endpoints"]["notification"]["endpoint_hint"] == (
+        "https://notify.invalid/<redacted>"
+    )
+    assert guarded["endpoints"]["notification"]["token_configured"] is True
+    assert guarded["endpoints"]["external_incident"]["endpoint_hint"] == (
+        "<configured-endpoint>"
+    )
+    serialized = json.dumps(guarded)
+    assert "https://notify.invalid/hook/secret" not in serialized
+    assert "notify-token-0722" not in serialized
+    assert "incident-token-0722" not in serialized
+    assert_dispatch_execution_result_redacted(guarded)
+
+    enabled = build_dispatch_execution_provider_config(
+        {**env, DISPATCH_LIVE_PROVIDER_ENABLE_ENV: "1"}
+    )
+    assert enabled["effective_provider_mode"] == "live_http"
+    assert enabled["live_network_calls_enabled"] is True
+
+    fallback_retries = build_dispatch_execution_provider_config(
+        {DISPATCH_HTTP_MAX_RETRIES_ENV: "not-a-number"}
+    )
+    assert fallback_retries["http"]["max_retries"] == 2
+
+
+def test_dispatch_execution_provider_config_rejects_unknown_mode() -> None:
+    with pytest.raises(OperatorReviewNoteError) as exc_info:
+        normalize_dispatch_execution_provider_mode("sidecar")
+
+    assert exc_info.value.error_code == (
+        "ag.operator_review_escalation_dispatch_execution_provider_mode_unsupported"
+    )
 
 
 def test_dispatch_execution_provider_profile_rejects_unknown_or_live_channel() -> None:

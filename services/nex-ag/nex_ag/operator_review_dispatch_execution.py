@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Mapping
+from urllib.parse import urlsplit
 from uuid import NAMESPACE_URL, uuid5
 
 from nex_ag.operator_reviews import (
@@ -30,6 +31,9 @@ DISPATCH_EXECUTION_WORKER_RUN_SCHEMA_VERSION = (
 DISPATCH_EXECUTION_RESULT_METADATA_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_result_metadata.v1"
 )
+DISPATCH_EXECUTION_PROVIDER_CONFIG_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_provider_config.v1"
+)
 DISPATCH_EXECUTION_DEFAULT_PROVIDER_PROFILE = "mock-default"
 DISPATCH_EXECUTION_PROVIDER_MODE = "mock_first_only"
 DISPATCH_EXECUTION_RESULT_STORAGE = "safe_hashes_statuses_counters_only"
@@ -37,12 +41,43 @@ DEFAULT_DISPATCH_EXECUTION_RETRY_DELAY_SECONDS = 300
 DEFAULT_DISPATCH_EXECUTION_MAX_ATTEMPTS = 3
 DEFAULT_DISPATCH_EXECUTION_BATCH_LIMIT = 10
 MAX_DISPATCH_EXECUTION_BATCH_LIMIT = 50
+DEFAULT_DISPATCH_HTTP_TIMEOUT_SECONDS = 15.0
+DEFAULT_DISPATCH_HTTP_CONNECT_TIMEOUT_SECONDS = 5.0
+DEFAULT_DISPATCH_HTTP_READ_TIMEOUT_SECONDS = 15.0
+DEFAULT_DISPATCH_HTTP_MAX_RETRIES = 2
+DEFAULT_DISPATCH_HTTP_BACKOFF_SECONDS = 1.0
+MAX_DISPATCH_HTTP_TIMEOUT_SECONDS = 120.0
+MAX_DISPATCH_HTTP_MAX_RETRIES = 5
+
+DISPATCH_EXECUTION_PROVIDER_MODE_ENV = "NEX_AG_DISPATCH_EXECUTION_PROVIDER_MODE"
+DISPATCH_EXECUTION_PROVIDER_PROFILE_ENV = (
+    "NEX_AG_DISPATCH_EXECUTION_PROVIDER_PROFILE"
+)
+DISPATCH_LIVE_PROVIDER_MODE_ENV = "NEX_AG_DISPATCH_LIVE_PROVIDER_MODE"
+DISPATCH_LIVE_PROVIDER_PROFILE_ENV = "NEX_AG_DISPATCH_LIVE_PROVIDER_PROFILE"
+DISPATCH_LIVE_PROVIDER_ENABLE_ENV = "NEX_AG_DISPATCH_LIVE_PROVIDER_ENABLE"
+DISPATCH_HTTP_TIMEOUT_SECONDS_ENV = "NEX_AG_DISPATCH_HTTP_TIMEOUT_SECONDS"
+DISPATCH_HTTP_CONNECT_TIMEOUT_SECONDS_ENV = (
+    "NEX_AG_DISPATCH_HTTP_CONNECT_TIMEOUT_SECONDS"
+)
+DISPATCH_HTTP_READ_TIMEOUT_SECONDS_ENV = "NEX_AG_DISPATCH_HTTP_READ_TIMEOUT_SECONDS"
+DISPATCH_HTTP_MAX_RETRIES_ENV = "NEX_AG_DISPATCH_HTTP_MAX_RETRIES"
+DISPATCH_HTTP_BACKOFF_SECONDS_ENV = "NEX_AG_DISPATCH_HTTP_BACKOFF_SECONDS"
+DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV = "NEX_AG_NOTIFICATION_WEBHOOK_URL"
+DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV = "NEX_AG_NOTIFICATION_SERVICE_TOKEN"
+DISPATCH_EXTERNAL_INCIDENT_BASE_URL_ENV = "NEX_AG_EXTERNAL_INCIDENT_BASE_URL"
+DISPATCH_EXTERNAL_INCIDENT_TOKEN_ENV = "NEX_AG_EXTERNAL_INCIDENT_TOKEN"
 
 ALLOWED_DISPATCH_EXECUTION_RESULT_STATUSES = (
     "SUCCEEDED",
     "FAILED",
     "RETRY_WAIT",
     "SKIPPED",
+)
+ALLOWED_DISPATCH_EXECUTION_PROVIDER_MODES = (
+    "mock_first_only",
+    "mock_http",
+    "live_http",
 )
 DISPATCH_EXECUTION_RESULT_ACTIONS = {
     "SUCCEEDED": "SUCCEED",
@@ -73,9 +108,41 @@ DISPATCH_EXECUTION_PROVIDER_PROFILES = {
         "default_error_code": "mock_dispatch_failed",
     },
 }
+DISPATCH_LIVE_PROVIDER_PROFILES = {
+    "notification-webhook-default": {
+        "profile_id": "notification-webhook-default",
+        "provider_type": "notification_webhook",
+        "channel_types": ["NOTIFICATION", "WEBHOOK"],
+        "endpoint_env": DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV,
+        "token_env": DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV,
+        "network_required": True,
+        "mock_transport_supported": True,
+    },
+    "email-notification-default": {
+        "profile_id": "email-notification-default",
+        "provider_type": "email_notification",
+        "channel_types": ["EMAIL"],
+        "endpoint_env": DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV,
+        "token_env": DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV,
+        "network_required": True,
+        "mock_transport_supported": True,
+    },
+    "external-incident-default": {
+        "profile_id": "external-incident-default",
+        "provider_type": "external_incident",
+        "channel_types": ["INCIDENT"],
+        "endpoint_env": DISPATCH_EXTERNAL_INCIDENT_BASE_URL_ENV,
+        "token_env": DISPATCH_EXTERNAL_INCIDENT_TOKEN_ENV,
+        "network_required": True,
+        "mock_transport_supported": True,
+    },
+}
 FORBIDDEN_DISPATCH_EXECUTION_RESULT_KEYS = {
     "action_comment",
+    "api_key",
     "artifact_binary_payload",
+    "authorization",
+    "bearer_token",
     "database_url",
     "external_incident_payload",
     "external_incident_token",
@@ -98,6 +165,7 @@ FORBIDDEN_DISPATCH_EXECUTION_RESULT_KEYS = {
     "service_token",
     "storage_path",
     "storage_uri",
+    "webhook_url",
 }
 SENSITIVE_DISPATCH_EXECUTION_REDACTION_FLAGS = {
     "database_urls_included",
@@ -140,6 +208,10 @@ def build_dispatch_execution_provider_catalog() -> dict[str, Any]:
             profile_id: dict(profile)
             for profile_id, profile in DISPATCH_EXECUTION_PROVIDER_PROFILES.items()
         },
+        "live_provider_profiles": {
+            profile_id: dict(profile)
+            for profile_id, profile in DISPATCH_LIVE_PROVIDER_PROFILES.items()
+        },
         "result_contract": {
             "schema_version": DISPATCH_EXECUTION_RESULT_SCHEMA_VERSION,
             "storage": DISPATCH_EXECUTION_RESULT_STORAGE,
@@ -148,6 +220,94 @@ def build_dispatch_execution_provider_catalog() -> dict[str, Any]:
         },
         "redaction": _dispatch_execution_redaction_flags(),
     }
+
+
+def build_dispatch_execution_provider_config(
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    env = environ or {}
+    configured_mode = normalize_dispatch_execution_provider_mode(
+        _env_text(env, DISPATCH_EXECUTION_PROVIDER_MODE_ENV)
+        or _env_text(env, DISPATCH_LIVE_PROVIDER_MODE_ENV)
+        or DISPATCH_EXECUTION_PROVIDER_MODE
+    )
+    live_enabled = env.get(DISPATCH_LIVE_PROVIDER_ENABLE_ENV) == "1"
+    effective_mode = (
+        configured_mode
+        if configured_mode != "live_http" or live_enabled
+        else "mock_http"
+    )
+    execution_profile = (
+        _env_text(env, DISPATCH_EXECUTION_PROVIDER_PROFILE_ENV)
+        or DISPATCH_EXECUTION_DEFAULT_PROVIDER_PROFILE
+    )
+    live_profile = (
+        _env_text(env, DISPATCH_LIVE_PROVIDER_PROFILE_ENV)
+        or "notification-webhook-default"
+    )
+    config = {
+        "provider_config_schema_version": (
+            DISPATCH_EXECUTION_PROVIDER_CONFIG_SCHEMA_VERSION
+        ),
+        "configured_provider_mode": configured_mode,
+        "effective_provider_mode": effective_mode,
+        "live_provider_enable_env": DISPATCH_LIVE_PROVIDER_ENABLE_ENV,
+        "live_network_calls_enabled": configured_mode == "live_http" and live_enabled,
+        "default_provider_profile": DISPATCH_EXECUTION_DEFAULT_PROVIDER_PROFILE,
+        "execution_provider_profile": execution_profile,
+        "live_provider_profile": live_profile,
+        "known_provider_modes": list(ALLOWED_DISPATCH_EXECUTION_PROVIDER_MODES),
+        "known_channel_types": [
+            "MOCK",
+            "NOTIFICATION",
+            "EMAIL",
+            "WEBHOOK",
+            "INCIDENT",
+        ],
+        "http": _dispatch_provider_http_settings(env),
+        "endpoints": {
+            "notification": _provider_endpoint_status(
+                _env_text(env, DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV),
+                token=_env_text(env, DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV),
+            ),
+            "external_incident": _provider_endpoint_status(
+                _env_text(env, DISPATCH_EXTERNAL_INCIDENT_BASE_URL_ENV),
+                token=_env_text(env, DISPATCH_EXTERNAL_INCIDENT_TOKEN_ENV),
+            ),
+        },
+        "profiles": {
+            "mock": {
+                profile_id: dict(profile)
+                for profile_id, profile in DISPATCH_EXECUTION_PROVIDER_PROFILES.items()
+            },
+            "live_readiness": {
+                profile_id: dict(profile)
+                for profile_id, profile in DISPATCH_LIVE_PROVIDER_PROFILES.items()
+            },
+        },
+        "activation_guard": {
+            "live_http_requires_enable_env": DISPATCH_LIVE_PROVIDER_ENABLE_ENV,
+            "live_http_requires_protected_smoke": True,
+            "live_http_default_effective_mode_without_enable": "mock_http",
+        },
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(config)
+    return config
+
+
+def normalize_dispatch_execution_provider_mode(value: str | None) -> str:
+    normalized = optional_text(value) or DISPATCH_EXECUTION_PROVIDER_MODE
+    if normalized not in ALLOWED_DISPATCH_EXECUTION_PROVIDER_MODES:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=(
+                "ag.operator_review_escalation_dispatch_execution_provider_mode_"
+                "unsupported"
+            ),
+            detail=f"Unsupported dispatch execution provider mode: {normalized}",
+        )
+    return normalized
 
 
 def normalize_dispatch_execution_provider_profile(
@@ -957,6 +1117,105 @@ def _bounded_batch_limit(value: int | None) -> int:
     except (TypeError, ValueError):
         return DEFAULT_DISPATCH_EXECUTION_BATCH_LIMIT
     return max(1, min(parsed, MAX_DISPATCH_EXECUTION_BATCH_LIMIT))
+
+
+def _dispatch_provider_http_settings(env: Mapping[str, str]) -> dict[str, Any]:
+    return {
+        "timeout_seconds": _bounded_float_env(
+            env,
+            DISPATCH_HTTP_TIMEOUT_SECONDS_ENV,
+            default=DEFAULT_DISPATCH_HTTP_TIMEOUT_SECONDS,
+            minimum=0.1,
+            maximum=MAX_DISPATCH_HTTP_TIMEOUT_SECONDS,
+        ),
+        "connect_timeout_seconds": _bounded_float_env(
+            env,
+            DISPATCH_HTTP_CONNECT_TIMEOUT_SECONDS_ENV,
+            default=DEFAULT_DISPATCH_HTTP_CONNECT_TIMEOUT_SECONDS,
+            minimum=0.1,
+            maximum=MAX_DISPATCH_HTTP_TIMEOUT_SECONDS,
+        ),
+        "read_timeout_seconds": _bounded_float_env(
+            env,
+            DISPATCH_HTTP_READ_TIMEOUT_SECONDS_ENV,
+            default=DEFAULT_DISPATCH_HTTP_READ_TIMEOUT_SECONDS,
+            minimum=0.1,
+            maximum=MAX_DISPATCH_HTTP_TIMEOUT_SECONDS,
+        ),
+        "max_retries": _bounded_int_env(
+            env,
+            DISPATCH_HTTP_MAX_RETRIES_ENV,
+            default=DEFAULT_DISPATCH_HTTP_MAX_RETRIES,
+            minimum=0,
+            maximum=MAX_DISPATCH_HTTP_MAX_RETRIES,
+        ),
+        "backoff_seconds": _bounded_float_env(
+            env,
+            DISPATCH_HTTP_BACKOFF_SECONDS_ENV,
+            default=DEFAULT_DISPATCH_HTTP_BACKOFF_SECONDS,
+            minimum=0.0,
+            maximum=30.0,
+        ),
+    }
+
+
+def _provider_endpoint_status(endpoint: str | None, *, token: str | None) -> dict[str, Any]:
+    return {
+        "configured": endpoint is not None,
+        "endpoint_hint": _redacted_endpoint_hint(endpoint),
+        "token_configured": token is not None,
+        "secret_storage": "env_only",
+    }
+
+
+def _redacted_endpoint_hint(endpoint: str | None) -> str | None:
+    value = optional_text(endpoint)
+    if value is None:
+        return None
+    parsed = urlsplit(value)
+    if parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}/<redacted>"
+    return "<configured-endpoint>"
+
+
+def _bounded_float_env(
+    env: Mapping[str, str],
+    key: str,
+    *,
+    default: float,
+    minimum: float,
+    maximum: float,
+) -> float:
+    value = _env_text(env, key)
+    if value is None:
+        return default
+    try:
+        parsed = float(value)
+    except ValueError:
+        return default
+    return max(minimum, min(parsed, maximum))
+
+
+def _bounded_int_env(
+    env: Mapping[str, str],
+    key: str,
+    *,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> int:
+    value = _env_text(env, key)
+    if value is None:
+        return default
+    try:
+        parsed = int(value)
+    except ValueError:
+        return default
+    return max(minimum, min(parsed, maximum))
+
+
+def _env_text(env: Mapping[str, str], key: str) -> str | None:
+    return optional_text(env.get(key))
 
 
 def _transition_skip_reason(dispatch_status: str) -> str | None:
