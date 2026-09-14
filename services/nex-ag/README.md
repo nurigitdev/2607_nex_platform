@@ -1390,6 +1390,9 @@ Unified operations:
   raw outbound headers can include Authorization only inside the injected
   transport, while evidence records header names, request/envelope hashes, and
   redacted endpoint hints.
+- Slice 0734 adds `execute_dispatch_with_live_http_transport`, mapping injected
+  live HTTP client results back into the AG dispatch execution result contract
+  with safe status, response hash, and attempt diagnostics.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

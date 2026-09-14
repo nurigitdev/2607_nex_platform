@@ -1241,9 +1241,75 @@ def execute_dispatch_provider_http_request(
             http_status_code=last_status_code,
             response_body_hash=response_body_hash,
             last_error_code="dispatch_provider_http_rejected",
-            retryable=False,
-            executed_at=now,
+        retryable=False,
+        executed_at=now,
+    )
+
+
+def execute_dispatch_with_live_http_transport(
+    dispatch: Mapping[str, Any],
+    *,
+    transport: Any,
+    provider_config: Mapping[str, Any] | None = None,
+    request_id: str | None = None,
+    trace_id: str | None = None,
+    executed_at: str | None = None,
+) -> dict[str, Any]:
+    now = executed_at or _utc_now()
+    config = (
+        dict(provider_config)
+        if provider_config is not None
+        else build_dispatch_execution_provider_config({})
+    )
+    channel_type = str(dispatch.get("channel_type") or "")
+    if channel_type in NOTIFICATION_DISPATCH_CHANNEL_TYPES:
+        provider_request = build_notification_dispatch_provider_request(
+            dispatch,
+            provider_config={**config, "effective_provider_mode": "live_http"},
+            request_id=request_id,
+            trace_id=trace_id,
+            requested_at=now,
         )
+    elif channel_type in EXTERNAL_INCIDENT_DISPATCH_CHANNEL_TYPES:
+        provider_request = build_external_incident_dispatch_provider_request(
+            dispatch,
+            provider_config={**config, "effective_provider_mode": "live_http"},
+            request_id=request_id,
+            trace_id=trace_id,
+            requested_at=now,
+        )
+    else:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=(
+                "ag.operator_review_escalation_dispatch_live_http_channel_"
+                "unsupported"
+            ),
+            detail=f"Unsupported live HTTP dispatch channel_type: {channel_type}",
+        )
+    http_result = execute_dispatch_provider_http_request(
+        provider_request,
+        transport=transport,
+        provider_config=config,
+        executed_at=now,
+    )
+    execution_status = str(http_result.get("execution_status") or "")
+    return _build_provider_adapter_execution_result(
+        dispatch,
+        provider_request,
+        execution_status=execution_status,
+        safe_result_message=_live_http_safe_result_message(
+            provider_request,
+            execution_status,
+        ),
+        last_error_code=optional_text(http_result.get("last_error_code")),
+        next_attempt_at=optional_text(http_result.get("next_attempt_at")),
+        retryable=bool(http_result.get("retryable")),
+        http_status_code=http_result.get("http_status_code"),
+        response_body_hash=optional_text(http_result.get("response_body_hash")),
+        attempt_count=int(http_result.get("attempt_count") or 0),
+        executed_at=now,
+    )
 
 
 def execute_dispatch_with_provider_router(
@@ -2051,6 +2117,8 @@ def _build_provider_adapter_execution_result(
     next_attempt_at: str | None = None,
     retryable: bool = False,
     http_status_code: int | None = None,
+    response_body_hash: str | None = None,
+    attempt_count: int | None = None,
     executed_at: str | None = None,
 ) -> dict[str, Any]:
     normalized_status = _required_execution_status(execution_status)
@@ -2095,6 +2163,8 @@ def _build_provider_adapter_execution_result(
         "provider_profile": provider_request.get("provider_profile"),
         "provider_request_hash": provider_request.get("provider_request_hash"),
         "http_status_code": http_status_code,
+        "response_body_hash": optional_text(response_body_hash),
+        "attempt_count": attempt_count,
         "provider_result_ref": {
             "provider_type": provider_request.get("provider_type"),
             "provider_id": provider_request.get("provider_id"),
@@ -2121,6 +2191,18 @@ def _build_provider_adapter_execution_result(
     }
     assert_dispatch_execution_result_redacted(result)
     return result
+
+
+def _live_http_safe_result_message(
+    provider_request: Mapping[str, Any],
+    execution_status: str,
+) -> str:
+    category = str(provider_request.get("provider_category") or "provider")
+    if execution_status == "SUCCEEDED":
+        return f"Live HTTP {category} provider accepted dispatch."
+    if execution_status == "RETRY_WAIT":
+        return f"Live HTTP {category} provider returned a retryable result."
+    return f"Live HTTP {category} provider rejected dispatch."
 
 
 def _build_dispatch_provider_http_client_result(

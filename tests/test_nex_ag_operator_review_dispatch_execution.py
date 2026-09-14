@@ -58,6 +58,7 @@ from nex_ag.operator_review_dispatch_execution import (
     build_dispatch_execution_transition_plan,
     build_mock_dispatch_execution_provider,
     execute_dispatch_provider_http_request,
+    execute_dispatch_with_live_http_transport,
     execute_dispatch_with_mock_provider,
     execute_dispatch_with_mock_external_incident_provider,
     execute_dispatch_with_mock_notification_provider,
@@ -1150,6 +1151,94 @@ def test_dispatch_live_http_transport_error_paths(
     monkeypatch.setattr(dispatch_execution, "urlopen", fake_url_timeout)
     with pytest.raises(TimeoutError):
         transport.send(request, attempt_number=1, timeout_seconds=1)
+
+
+def test_dispatch_live_http_transport_adapter_maps_http_results() -> None:
+    config = build_dispatch_execution_provider_config(
+        {
+            DISPATCH_EXECUTION_PROVIDER_MODE_ENV: "live_http",
+            DISPATCH_LIVE_PROVIDER_ENABLE_ENV: "1",
+            DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV: "http://127.0.0.1:43199/notify",
+            DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV: "notify-token-0734",
+            DISPATCH_EXTERNAL_INCIDENT_BASE_URL_ENV: (
+                "http://127.0.0.1:43199/incident"
+            ),
+            DISPATCH_EXTERNAL_INCIDENT_TOKEN_ENV: "incident-token-0734",
+            DISPATCH_HTTP_MAX_RETRIES_ENV: "0",
+        }
+    )
+    notification = sample_live_channel_dispatch(
+        dispatch_id="dispatch-0734-notification",
+        channel_type="EMAIL",
+        provider_profile="email-notification-default",
+    )
+    incident = sample_live_channel_dispatch(
+        dispatch_id="dispatch-0734-incident",
+        channel_type="INCIDENT",
+        provider_profile="external-incident-default",
+    )
+
+    success = execute_dispatch_with_live_http_transport(
+        notification,
+        transport=MockDispatchProviderHttpTransport(status_codes=(202,)),
+        provider_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        executed_at="2026-09-14T09:20:00Z",
+    )
+    assert success["execution_status"] == "SUCCEEDED"
+    assert success["provider_mode"] == "live_http"
+    assert success["provider_category"] == "notification"
+    assert success["http_status_code"] == 202
+    assert success["attempt_count"] == 1
+    assert success["response_body_hash"]
+    assert success["safe_result_preview"] == (
+        "Live HTTP notification provider accepted dispatch."
+    )
+    assert_dispatch_execution_result_redacted(success)
+
+    retry = execute_dispatch_with_live_http_transport(
+        incident,
+        transport=MockDispatchProviderHttpTransport(status_codes=(503,)),
+        provider_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        executed_at="2026-09-14T09:21:00Z",
+    )
+    assert retry["execution_status"] == "RETRY_WAIT"
+    assert retry["recommended_action"] == "RETRY"
+    assert retry["provider_category"] == "external_incident"
+    assert retry["http_status_code"] == 503
+    assert retry["last_error_code"] == "dispatch_provider_http_retryable_status"
+    assert retry["next_attempt_at"] == "2026-09-14T09:26:00Z"
+    assert retry["safe_result_preview"] == (
+        "Live HTTP external_incident provider returned a retryable result."
+    )
+
+    failed = execute_dispatch_with_live_http_transport(
+        notification,
+        transport=MockDispatchProviderHttpTransport(status_codes=(400,)),
+        provider_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        executed_at="2026-09-14T09:22:00Z",
+    )
+    assert failed["execution_status"] == "FAILED"
+    assert failed["recommended_action"] == "FAIL"
+    assert failed["last_error_code"] == "dispatch_provider_http_rejected"
+    assert failed["safe_result_preview"] == (
+        "Live HTTP notification provider rejected dispatch."
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as channel_exc:
+        execute_dispatch_with_live_http_transport(
+            {**notification, "channel_type": "SMS"},
+            transport=MockDispatchProviderHttpTransport(),
+            provider_config=config,
+        )
+    assert channel_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_live_http_channel_unsupported"
+    )
 
 
 def test_dispatch_provider_router_preserves_mock_first_and_routes_live_channels() -> None:
