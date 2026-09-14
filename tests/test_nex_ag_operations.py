@@ -16,6 +16,7 @@ from nex_ag.operations import (
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_AUDIT_EVENT_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_FAILED,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_HISTORY_PROJECTION_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_REJECTED,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_SUCCEEDED,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_TICK_ONCE_API_SCHEMA_VERSION,
@@ -50,6 +51,7 @@ from nex_ag.operations import (
     build_operation_source_readiness_projection,
     build_operator_review_escalation_dispatch_daemon_runtime_projection,
     build_operator_review_escalation_dispatch_daemon_control_audit_event_details,
+    build_operator_review_escalation_dispatch_daemon_control_history_projection,
     build_operator_review_escalation_dispatch_daemon_tick_once_api_projection,
     build_operator_review_escalation_dispatch_daemon_tick_plan_api_projection,
     build_operations_dashboard_snapshot_projection,
@@ -4201,6 +4203,245 @@ def test_operator_review_dispatch_daemon_routes_emit_rejected_and_failed_audit_e
     assert failed_events[0]["details"]["control_status"] == "FAILED"
     assert failed_events[0]["details"]["status_code"] == 503
     assert failed_events[0]["details"]["rejection_reason"] == "unavailable"
+
+
+def test_operator_review_dispatch_daemon_control_history_projection_summarizes_events() -> (
+    None
+):
+    store = InMemoryOperationalEventStore()
+    store.append(
+        build_operational_event(
+            service_id="nex-ag",
+            event_type=AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_SUCCEEDED,
+            severity="INFO",
+            message="AG dispatch daemon tick_plan control completed.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            subject_ref={
+                "type": "operator_review_dispatch_daemon_control",
+                "id": "tick_plan",
+            },
+            details={
+                "control_audit_schema_version": (
+                    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_AUDIT_EVENT_SCHEMA_VERSION
+                ),
+                "action": "tick_plan",
+                "http_method": "POST",
+                "route_path": "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+                "control_status": "SUCCEEDED",
+                "admission_status": "ACCEPTED",
+                "source_table": "ag_op_esc_dispatches",
+                "new_tables_required": False,
+                "candidate_count": 2,
+                "raw_request_payload_included": False,
+                "raw_provider_payload_included": False,
+                "sensitive_values_included": False,
+                "provider_payload": {"secret": "ed6@c496em"},
+            },
+            created_at="2026-09-15T01:00:00Z",
+            event_id="dispatch-daemon-control-001",
+        )
+    )
+    store.append(
+        build_operational_event(
+            service_id="nex-ag",
+            event_type=AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_FAILED,
+            severity="ERROR",
+            message="AG dispatch daemon tick_once control failed.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            subject_ref={
+                "type": "operator_review_dispatch_daemon_control",
+                "id": "tick_once",
+            },
+            details={
+                "control_audit_schema_version": (
+                    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_AUDIT_EVENT_SCHEMA_VERSION
+                ),
+                "action": "tick_once",
+                "http_method": "POST",
+                "route_path": "/admin/v1/operator-review/dispatch-daemon/tick-once",
+                "control_status": "FAILED",
+                "error_code": "ag.operator_review_escalation_dispatch_daemon_tick_once_unavailable",
+                "status_code": 503,
+                "rejection_reason": "unavailable",
+                "source_table": "ag_op_esc_dispatches",
+                "new_tables_required": False,
+                "raw_request_payload_included": False,
+                "raw_provider_payload_included": False,
+                "sensitive_values_included": False,
+            },
+            created_at="2026-09-15T01:02:00Z",
+            event_id="dispatch-daemon-control-002",
+        )
+    )
+    store.append(
+        build_operational_event(
+            service_id="nex-ag",
+            event_type="ag.unrelated",
+            severity="INFO",
+            message="Unrelated event.",
+            created_at="2026-09-15T01:03:00Z",
+            event_id="unrelated-001",
+        )
+    )
+
+    projection = (
+        build_operator_review_escalation_dispatch_daemon_control_history_projection(
+            store,
+            limit=10,
+            request_trace_id=TRACE_ID,
+        )
+    )
+
+    assert projection["projection_schema_version"] == (
+        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_HISTORY_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["projection_status"] == "READY"
+    assert projection["request_trace_id"] == TRACE_ID
+    assert [item["control_event_id"] for item in projection["controls"]] == [
+        "dispatch-daemon-control-002",
+        "dispatch-daemon-control-001",
+    ]
+    assert projection["summary"]["control_count"] == 2
+    assert projection["summary"]["succeeded_count"] == 1
+    assert projection["summary"]["failed_count"] == 1
+    assert projection["summary"]["tick_plan_count"] == 1
+    assert projection["summary"]["tick_once_count"] == 1
+    assert projection["source"] == {
+        "status": "READY",
+        "source_table": "service_operational_events",
+        "new_tables_required": False,
+        "event_count": 2,
+    }
+    assert projection["redaction"]["event_details_shape"] == (
+        "safe_control_summary_only"
+    )
+    serialized = json.dumps(projection)
+    assert "ed6@c496em" not in serialized
+    assert '"provider_payload":' not in serialized
+
+
+def test_operator_review_dispatch_daemon_control_history_filters_and_degrades() -> (
+    None
+):
+    class FailingEventStore(InMemoryOperationalEventStore):
+        def list_events(self, **_: Any) -> list[dict[str, Any]]:
+            raise OperationalEventError(
+                error_code="operational_event.store_unavailable",
+                detail="event store down",
+                status_code=503,
+            )
+
+    store = InMemoryOperationalEventStore()
+    store.append(
+        build_operational_event(
+            service_id="nex-ag",
+            event_type=AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_REJECTED,
+            severity="WARNING",
+            message="AG dispatch daemon tick_once control failed.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            subject_ref={
+                "type": "operator_review_dispatch_daemon_control",
+                "id": "tick_once",
+            },
+            details={},
+            created_at="2026-09-15T01:05:00Z",
+            event_id="dispatch-daemon-control-003",
+        )
+    )
+    store.append(
+        build_operational_event(
+            service_id="nex-ag",
+            event_type=AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_SUCCEEDED,
+            severity="INFO",
+            message="AG dispatch daemon tick_plan control completed.",
+            trace_id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            request_id=REQUEST_ID,
+            subject_ref={
+                "type": "operator_review_dispatch_daemon_control",
+                "id": "tick_plan",
+            },
+            details={"action": "tick_plan", "control_status": "SUCCEEDED"},
+            created_at="2026-09-15T01:04:00Z",
+            event_id="dispatch-daemon-control-004",
+        )
+    )
+    store.append(
+        build_operational_event(
+            service_id="nex-ag",
+            event_type=AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_FAILED,
+            severity="ERROR",
+            message="AG dispatch daemon tick_plan control failed.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            subject_ref={
+                "type": "operator_review_dispatch_daemon_control",
+                "id": "tick_plan",
+            },
+            details={},
+            created_at="2026-09-15T01:06:00Z",
+            event_id="dispatch-daemon-control-005",
+        )
+    )
+
+    projection = (
+        build_operator_review_escalation_dispatch_daemon_control_history_projection(
+            store,
+            action="tick_once",
+            control_status="rejected",
+            trace_id=TRACE_ID,
+            query_options=build_operation_query_options(limit=1, sort="asc"),
+        )
+    )
+    degraded = (
+        build_operator_review_escalation_dispatch_daemon_control_history_projection(
+            FailingEventStore(),
+            request_trace_id=TRACE_ID,
+        )
+    )
+    degraded_without_trace = (
+        build_operator_review_escalation_dispatch_daemon_control_history_projection(
+            FailingEventStore()
+        )
+    )
+    failed_projection = (
+        build_operator_review_escalation_dispatch_daemon_control_history_projection(
+            store,
+            action="tick_plan",
+            control_status="failed",
+            trace_id=TRACE_ID,
+        )
+    )
+
+    assert projection["filters"]["action"] == "tick_once"
+    assert projection["filters"]["control_status"] == "REJECTED"
+    assert projection["pagination"]["returned"] == 1
+    assert projection["controls"][0]["action"] == "tick_once"
+    assert projection["controls"][0]["control_status"] == "REJECTED"
+    assert projection["controls"][0]["rejection_reason"] is None
+    assert projection["summary"]["rejected_count"] == 1
+    assert degraded["projection_status"] == "DEGRADED"
+    assert degraded["request_trace_id"] == TRACE_ID
+    assert degraded["source"]["status"] == "UNAVAILABLE"
+    assert degraded["source"]["source_table"] == "service_operational_events"
+    assert degraded["summary"]["control_count"] == 0
+    assert "request_trace_id" not in degraded_without_trace
+    assert failed_projection["controls"][0]["action"] == "tick_plan"
+    assert failed_projection["controls"][0]["control_status"] == "FAILED"
+    assert ag_operations._dispatch_daemon_action_from_event({"subject_ref": {}}) == (
+        "unknown"
+    )
+    assert (
+        ag_operations._dispatch_daemon_control_status_from_event_type(
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_SUCCEEDED
+        )
+        == "SUCCEEDED"
+    )
+    assert ag_operations._dispatch_daemon_control_status_from_event_type("other") == (
+        "UNKNOWN"
+    )
 
 
 def test_operator_review_dispatch_daemon_tick_once_api_projection_executes_confirmed_mutation() -> (

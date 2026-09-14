@@ -866,6 +866,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0760`](slices/0760_s76_operator_review_escalation_dispatch_daemon_api_closure.md) | `S76-010` AG escalation dispatch daemon API closure checkpoint. |
 | [`Slice 0761`](slices/0761_ag_escalation_dispatch_daemon_operations_boundary_audit.md) | `S77-001` AG dispatch daemon operations boundary audit and refactoring checkpoint. |
 | [`Slice 0762`](slices/0762_ag_escalation_dispatch_daemon_control_audit_events.md) | `S77-002` AG dispatch daemon control audit event emission. |
+| [`Slice 0763`](slices/0763_ag_escalation_dispatch_daemon_control_history_read_model.md) | `S77-003` AG dispatch daemon control history read-model foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

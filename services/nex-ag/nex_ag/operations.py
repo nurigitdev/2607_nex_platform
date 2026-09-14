@@ -178,6 +178,14 @@ AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_REJECTED = (
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_FAILED = (
     "ag.operator_review_escalation_dispatch_daemon.control.failed"
 )
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_HISTORY_PROJECTION_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_daemon_control_history_projection.v1"
+)
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_TYPES = (
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_SUCCEEDED,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_REJECTED,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_FAILED,
+)
 AG_SERVICE_LOG_RETENTION_EVENT_SUCCEEDED = "ag.service_log_retention.succeeded"
 AG_SERVICE_LOG_RETENTION_EVENT_FAILED = "ag.service_log_retention.failed"
 SERVICE_LOG_QUERY_POLICY_SCHEMA_VERSION = "service_log_query_policy.v1"
@@ -2887,6 +2895,222 @@ def _dispatch_daemon_error_reason(
     if error_code.endswith("_unavailable"):
         return "unavailable"
     return error_code.rsplit(".", maxsplit=1)[-1]
+
+
+def build_operator_review_escalation_dispatch_daemon_control_history_projection(
+    event_store: OperationalEventStore,
+    *,
+    action: str | None = None,
+    control_status: str | None = None,
+    trace_id: str | None = None,
+    limit: int = 50,
+    query_options: OperationQueryOptions | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    options = query_options or build_operation_query_options(limit=limit)
+    try:
+        events = event_store.list_events(
+            service_id="nex-ag",
+            trace_id=trace_id,
+            limit=normalize_operational_event_limit(500),
+        )
+    except OperationalEventError as exc:
+        projection = {
+            "projection_schema_version": (
+                AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_HISTORY_PROJECTION_SCHEMA_VERSION
+            ),
+            "projection_status": "DEGRADED",
+            "checked_at": _utc_now(),
+            "filters": {
+                "action": action,
+                "control_status": (
+                    control_status.upper() if control_status is not None else None
+                ),
+                "trace_id": trace_id,
+                **options.to_filter_dict(),
+            },
+            "controls": [],
+            "summary": _empty_dispatch_daemon_control_history_summary(),
+            "pagination": options.pagination(total=0, returned=0),
+            "source": {
+                "status": "UNAVAILABLE",
+                "source_table": "service_operational_events",
+                "new_tables_required": False,
+                "error_code": exc.error_code,
+                "detail": exc.detail,
+            },
+            "redaction": _dispatch_daemon_control_history_redaction(),
+        }
+        if request_trace_id is not None:
+            projection["request_trace_id"] = request_trace_id
+        return projection
+    items = [
+        _operator_review_escalation_dispatch_daemon_control_history_item(event)
+        for event in events
+        if event.get("event_type")
+        in AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_TYPES
+    ]
+    if action is not None:
+        items = [item for item in items if item["action"] == action]
+    normalized_status = control_status.upper() if control_status is not None else None
+    if normalized_status is not None:
+        items = [
+            item for item in items if item["control_status"] == normalized_status
+        ]
+    page = _apply_operation_query_options(
+        items,
+        options,
+        timestamp_field="created_at",
+        tie_breaker_fields=("control_event_id",),
+    )
+    projection = {
+        "projection_schema_version": (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_HISTORY_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": "READY",
+        "checked_at": _utc_now(),
+        "filters": {
+            "action": action,
+            "control_status": normalized_status,
+            "trace_id": trace_id,
+            **options.to_filter_dict(),
+        },
+        "controls": page["items"],
+        "summary": _dispatch_daemon_control_history_summary(page["items"]),
+        "pagination": page["pagination"],
+        "source": {
+            "status": "READY",
+            "source_table": "service_operational_events",
+            "new_tables_required": False,
+            "event_count": len(items),
+        },
+        "redaction": _dispatch_daemon_control_history_redaction(),
+    }
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    return projection
+
+
+def _operator_review_escalation_dispatch_daemon_control_history_item(
+    event: Mapping[str, Any],
+) -> dict[str, Any]:
+    details = _mapping_or_empty(event.get("details"))
+    action = _nullable_string(details.get("action")) or _dispatch_daemon_action_from_event(
+        event
+    )
+    status = _nullable_string(details.get("control_status")) or (
+        _dispatch_daemon_control_status_from_event_type(event.get("event_type"))
+    )
+    return {
+        "control_event_id": str(event.get("event_id")),
+        "event_type": str(event.get("event_type")),
+        "severity": str(event.get("severity")),
+        "action": action,
+        "control_status": status,
+        "http_method": _nullable_string(details.get("http_method")),
+        "route_path": _nullable_string(details.get("route_path")),
+        "created_at": str(event.get("created_at")),
+        "trace_id": _nullable_string(event.get("trace_id")),
+        "request_id": _nullable_string(event.get("request_id")),
+        "subject_ref": deepcopy(event.get("subject_ref")),
+        "source_table": (
+            _nullable_string(details.get("source_table")) or "ag_op_esc_dispatches"
+        ),
+        "new_tables_required": bool(details.get("new_tables_required")),
+        "admission_status": _nullable_string(details.get("admission_status")),
+        "rejection_reason": _nullable_string(details.get("rejection_reason")),
+        "error_code": _nullable_string(details.get("error_code")),
+        "status_code": _safe_optional_int(details.get("status_code")),
+        "mutation": bool(details.get("mutation")),
+        "requires_confirm_tick": bool(details.get("requires_confirm_tick")),
+        "confirm_tick": bool(details.get("confirm_tick")),
+        "dry_run": bool(details.get("dry_run")),
+        "enabled": bool(details.get("enabled")),
+        "batch_limit": _safe_optional_int(details.get("batch_limit")),
+        "effective_provider_mode": _nullable_string(
+            details.get("effective_provider_mode")
+        ),
+        "plan_status": _nullable_string(details.get("plan_status")),
+        "tick_status": _nullable_string(details.get("tick_status")),
+        "candidate_count": _safe_optional_int(details.get("candidate_count")) or 0,
+        "processed_count": _safe_optional_int(details.get("processed_count")) or 0,
+        "succeeded_count": _safe_optional_int(details.get("succeeded_count")) or 0,
+        "failed_count": _safe_optional_int(details.get("failed_count")) or 0,
+        "retry_wait_count": _safe_optional_int(details.get("retry_wait_count")) or 0,
+        "skipped_count": _safe_optional_int(details.get("skipped_count")) or 0,
+        "mutation_performed": bool(details.get("mutation_performed")),
+        "control_audit_schema_version": _nullable_string(
+            details.get("control_audit_schema_version")
+        ),
+        "redaction": {
+            "raw_request_payload_included": bool(
+                details.get("raw_request_payload_included")
+            ),
+            "raw_provider_payload_included": bool(
+                details.get("raw_provider_payload_included")
+            ),
+            "sensitive_values_included": bool(
+                details.get("sensitive_values_included")
+            ),
+        },
+    }
+
+
+def _dispatch_daemon_action_from_event(event: Mapping[str, Any]) -> str:
+    subject_ref = event.get("subject_ref")
+    if isinstance(subject_ref, Mapping) and subject_ref.get("id") in {
+        "tick_plan",
+        "tick_once",
+    }:
+        return str(subject_ref["id"])
+    return "unknown"
+
+
+def _dispatch_daemon_control_status_from_event_type(event_type: object) -> str:
+    if event_type == AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_SUCCEEDED:
+        return "SUCCEEDED"
+    if event_type == AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_REJECTED:
+        return "REJECTED"
+    if event_type == AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_FAILED:
+        return "FAILED"
+    return "UNKNOWN"
+
+
+def _dispatch_daemon_control_history_summary(
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    by_status = _dashboard_count_by(items, "control_status")
+    by_action = _dashboard_count_by(items, "action")
+    return {
+        "control_count": len(items),
+        "succeeded_count": by_status.get("SUCCEEDED", 0),
+        "rejected_count": by_status.get("REJECTED", 0),
+        "failed_count": by_status.get("FAILED", 0),
+        "tick_plan_count": by_action.get("tick_plan", 0),
+        "tick_once_count": by_action.get("tick_once", 0),
+        "mutation_performed_count": sum(
+            1 for item in items if item["mutation_performed"] is True
+        ),
+        "latest_created_at": max(
+            (item["created_at"] for item in items if item["created_at"]),
+            default=None,
+        ),
+        "by_control_status": by_status,
+        "by_action": by_action,
+    }
+
+
+def _empty_dispatch_daemon_control_history_summary() -> dict[str, Any]:
+    return _dispatch_daemon_control_history_summary([])
+
+
+def _dispatch_daemon_control_history_redaction() -> dict[str, Any]:
+    return {
+        "raw_request_payload_included": False,
+        "raw_provider_payload_included": False,
+        "sensitive_values_included": False,
+        "event_details_shape": "safe_control_summary_only",
+    }
 
 
 def _dispatch_daemon_tick_plan_route_response(
