@@ -1393,6 +1393,9 @@ Unified operations:
 - Slice 0734 adds `execute_dispatch_with_live_http_transport`, mapping injected
   live HTTP client results back into the AG dispatch execution result contract
   with safe status, response hash, and attempt diagnostics.
+- Slice 0735 adds the protected notification loopback smoke. It starts a local
+  `127.0.0.1` HTTP server and executes the live HTTP notification path while
+  withholding bearer tokens and raw endpoint paths from evidence.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
