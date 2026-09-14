@@ -854,6 +854,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0748`](slices/0748_ag_escalation_dispatch_daemon_postgres_smoke.md) | `S75-008` AG escalation dispatch daemon PostgreSQL smoke evidence. |
 | [`Slice 0749`](slices/0749_ag_escalation_dispatch_daemon_privacy_regression.md) | `S75-009` AG escalation dispatch daemon privacy regression. |
 | [`Slice 0750`](slices/0750_s75_operator_review_escalation_dispatch_daemon_closure.md) | `S75-010` S75 AG escalation dispatch daemon closure checkpoint. |
+| [`Slice 0751`](slices/0751_ag_escalation_dispatch_daemon_api_boundary_audit.md) | `S76-001` AG escalation dispatch daemon protected API boundary audit. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
