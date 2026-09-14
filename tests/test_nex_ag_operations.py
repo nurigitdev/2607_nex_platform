@@ -4444,6 +4444,138 @@ def test_operator_review_dispatch_daemon_control_history_filters_and_degrades() 
     )
 
 
+def test_operator_review_dispatch_daemon_control_history_route_is_protected_and_safe() -> (
+    None
+):
+    class FailingEventStore(InMemoryOperationalEventStore):
+        def list_events(self, **_: Any) -> list[dict[str, Any]]:
+            raise OperationalEventError(
+                error_code="operational_event.store_unavailable",
+                detail="event store down",
+                status_code=503,
+            )
+
+    event_store = InMemoryOperationalEventStore()
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    dispatch_store.save(
+        operator_review_escalation_dispatch_record(
+            dispatch_status="PENDING",
+            created_at="2026-08-05T00:00:34Z",
+        )
+    )
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_unified_operation_routes(
+        app,
+        event_store=event_store,
+        operator_review_escalation_dispatch_store=dispatch_store,
+    )
+    client = TestClient(app)
+    trace_headers = {
+        **auth_headers(),
+        "traceparent": (
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+        ),
+    }
+
+    missing_auth = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/controls"
+    )
+    succeeded = client.post(
+        "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        json={
+            "enabled": True,
+            "dry_run": True,
+            "batch_limit": 1,
+            "provider_mode": "mock_http",
+            "authorization": "Bearer private",
+            "database_url": "postgresql://nex_ag_user:nuri1004@127.0.0.1/db",
+        },
+        headers=trace_headers,
+    )
+    rejected = client.post(
+        "/admin/v1/operator-review/dispatch-daemon/tick-once",
+        json={"enabled": True, "confirm_tick": False, "dry_run": False},
+        headers=trace_headers,
+    )
+    all_history = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/controls",
+        headers=trace_headers,
+    )
+    filtered = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/controls",
+        params={
+            "action": " tick_plan ",
+            "control_status": "succeeded",
+            "trace_id": TRACE_ID,
+            "limit": 10,
+        },
+        headers=trace_headers,
+    )
+    invalid_action = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/controls",
+        params={"action": "restart"},
+        headers=auth_headers(),
+    )
+    invalid_status = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/controls",
+        params={"control_status": "blocked"},
+        headers=auth_headers(),
+    )
+    invalid_cursor = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/controls",
+        params={"cursor": "-1"},
+        headers=auth_headers(),
+    )
+    failing_app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_unified_operation_routes(failing_app, event_store=FailingEventStore())
+    degraded = TestClient(failing_app).get(
+        "/admin/v1/operator-review/dispatch-daemon/controls",
+        headers=auth_headers(),
+    )
+
+    assert missing_auth.status_code == 401
+    assert succeeded.status_code == 200
+    assert rejected.status_code == 409
+    assert all_history.status_code == 200
+    all_payload = all_history.json()
+    assert all_payload["projection_schema_version"] == (
+        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_HISTORY_PROJECTION_SCHEMA_VERSION
+    )
+    assert all_payload["request_trace_id"] == TRACE_ID
+    assert all_payload["projection_status"] == "READY"
+    assert all_payload["source"] == {
+        "status": "READY",
+        "source_table": "service_operational_events",
+        "new_tables_required": False,
+        "event_count": 2,
+    }
+    assert all_payload["summary"]["control_count"] == 2
+    assert all_payload["summary"]["succeeded_count"] == 1
+    assert all_payload["summary"]["rejected_count"] == 1
+    assert filtered.status_code == 200
+    filtered_payload = filtered.json()
+    assert filtered_payload["filters"]["action"] == "tick_plan"
+    assert filtered_payload["filters"]["control_status"] == "SUCCEEDED"
+    assert filtered_payload["pagination"]["returned"] == 1
+    assert filtered_payload["controls"][0]["action"] == "tick_plan"
+    assert filtered_payload["controls"][0]["control_status"] == "SUCCEEDED"
+    assert invalid_action.status_code == 400
+    assert invalid_action.json()["error_code"] == (
+        "ag.operator_review_escalation_dispatch_daemon_control_action_invalid"
+    )
+    assert invalid_status.status_code == 400
+    assert invalid_status.json()["error_code"] == (
+        "ag.operator_review_escalation_dispatch_daemon_control_status_invalid"
+    )
+    assert invalid_cursor.status_code == 400
+    assert invalid_cursor.json()["error_code"] == "ag.operation_cursor_invalid"
+    assert degraded.status_code == 200
+    assert degraded.json()["projection_status"] == "DEGRADED"
+    serialized = json.dumps(all_payload)
+    assert "Bearer private" not in serialized
+    assert "nuri1004" not in serialized
+
+
 def test_operator_review_dispatch_daemon_tick_once_api_projection_executes_confirmed_mutation() -> (
     None
 ):

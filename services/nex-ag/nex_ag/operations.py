@@ -186,6 +186,12 @@ AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_TYPES = (
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_REJECTED,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_FAILED,
 )
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_ACTIONS = ("tick_plan", "tick_once")
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_STATUSES = (
+    "SUCCEEDED",
+    "REJECTED",
+    "FAILED",
+)
 AG_SERVICE_LOG_RETENTION_EVENT_SUCCEEDED = "ag.service_log_retention.succeeded"
 AG_SERVICE_LOG_RETENTION_EVENT_FAILED = "ag.service_log_retention.failed"
 SERVICE_LOG_QUERY_POLICY_SCHEMA_VERSION = "service_log_query_policy.v1"
@@ -2359,6 +2365,56 @@ def register_unified_operation_routes(
             payload=payload,
             http_method="POST",
             audit_emitter=audit_emitter,
+        )
+
+    @app.get(
+        "/admin/v1/operator-review/dispatch-daemon/controls",
+        response_model=None,
+        operation_id="listAgOperatorReviewDispatchDaemonControls",
+        tags=["Operations"],
+    )
+    def list_operator_review_dispatch_daemon_control_history(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        action: str | None = None,
+        control_status: str | None = None,
+        trace_id: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        sort: str | None = None,
+        cursor: str | None = None,
+        limit: int = Query(default=50, ge=1),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+
+        filters = _dispatch_daemon_control_history_filters_or_problem(
+            request,
+            action=action,
+            control_status=control_status,
+        )
+        if isinstance(filters, JSONResponse):
+            return filters
+        query_options = _build_query_options_or_problem(
+            request,
+            limit=limit,
+            since=since,
+            until=until,
+            sort=sort,
+            cursor=cursor,
+        )
+        if isinstance(query_options, JSONResponse):
+            return query_options
+
+        normalized_action, normalized_status = filters
+        return build_operator_review_escalation_dispatch_daemon_control_history_projection(
+            event_store or DEFAULT_OPERATIONAL_EVENT_STORE,
+            action=normalized_action,
+            control_status=normalized_status,
+            trace_id=trace_id,
+            query_options=query_options,
+            request_trace_id=trace_id_from_headers(request),
         )
 
     @app.get("/admin/v1/operations/workers", response_model=None)
@@ -5687,8 +5743,70 @@ def _validate_worker_runtime_filters(
             title="Invalid worker type filter",
             detail="worker_type must be a non-empty string when provided.",
             type_uri="https://nex-platform.local/problems/worker-type-invalid",
-        )
+            )
     return None
+
+
+def _dispatch_daemon_control_history_filters_or_problem(
+    request: Request,
+    *,
+    action: str | None,
+    control_status: str | None,
+) -> tuple[str | None, str | None] | JSONResponse:
+    try:
+        return (
+            _normalize_dispatch_daemon_control_history_action(action),
+            _normalize_dispatch_daemon_control_history_status(control_status),
+        )
+    except OperationsQueryError as exc:
+        return problem_response(
+            request,
+            status_code=exc.status_code,
+            error_code=exc.error_code,
+            title="Invalid dispatch daemon control history query",
+            detail=exc.detail,
+            type_uri=(
+                "https://nex-platform.local/problems/"
+                "operator-review-dispatch-daemon-control-history-query-invalid"
+            ),
+        )
+
+
+def _normalize_dispatch_daemon_control_history_action(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip()
+    if normalized not in AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_ACTIONS:
+        raise OperationsQueryError(
+            error_code=(
+                "ag.operator_review_escalation_dispatch_daemon_control_action_invalid"
+            ),
+            detail=(
+                f"Unsupported dispatch daemon control action: {value}; expected "
+                f"one of {', '.join(AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_ACTIONS)}."
+            ),
+            status_code=400,
+        )
+    return normalized
+
+
+def _normalize_dispatch_daemon_control_history_status(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip().upper()
+    if normalized not in AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_STATUSES:
+        raise OperationsQueryError(
+            error_code=(
+                "ag.operator_review_escalation_dispatch_daemon_control_status_invalid"
+            ),
+            detail=(
+                f"Unsupported dispatch daemon control status: {value}; expected "
+                "one of "
+                f"{', '.join(AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_STATUSES)}."
+            ),
+            status_code=400,
+        )
+    return normalized
 
 
 def _validate_service_log_filters(
