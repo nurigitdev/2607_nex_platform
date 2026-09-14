@@ -27,6 +27,7 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_POLICY_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV,
     DISPATCH_EXECUTION_DAEMON_TICK_PLAN_SCHEMA_VERSION,
+    DISPATCH_EXECUTION_DAEMON_TICK_RESULT_SCHEMA_VERSION,
     DISPATCH_EXECUTION_PROVIDER_CONFIG_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DEFAULT_PROVIDER_PROFILE,
     DISPATCH_EXECUTION_PROVIDER_MODE_ENV,
@@ -76,6 +77,7 @@ from nex_ag.operator_review_dispatch_execution import (
     normalize_dispatch_execution_provider_mode,
     normalize_dispatch_execution_provider_profile,
     record_dispatch_execution_result_metadata,
+    run_dispatch_execution_daemon_tick_once,
     run_dispatch_execution_worker_once,
     _build_dispatch_provider_http_client_result,
     _build_provider_adapter_execution_result,
@@ -468,6 +470,116 @@ def test_dispatch_execution_daemon_tick_plan_summarizes_candidates_without_mutat
     assert "idem-0713" not in serialized
     assert "provider_timeout" in serialized
     assert_dispatch_execution_result_redacted(plan)
+
+
+def test_dispatch_execution_daemon_tick_once_blocks_disabled_and_unconfirmed() -> None:
+    dispatch = sample_dispatch(
+        candidate_overrides={
+            "candidate_id": "case-0744:block",
+            "case_id": "case-0744-block",
+        }
+    )
+    service, dispatch_store = build_dispatch_service(dispatch)
+
+    disabled = run_dispatch_execution_daemon_tick_once(
+        service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        executed_at="2026-09-14T11:50:00Z",
+    )
+
+    assert disabled["daemon_tick_result_schema_version"] == (
+        DISPATCH_EXECUTION_DAEMON_TICK_RESULT_SCHEMA_VERSION
+    )
+    assert disabled["tick_status"] == "BLOCKED"
+    assert disabled["blocked_reason"] == "daemon_disabled"
+    assert disabled["worker_run"] is None
+    assert disabled["candidate_count"] == 1
+    assert dispatch_store.get(dispatch["dispatch_id"])["dispatch_status"] == "PENDING"
+
+    enabled_policy = build_dispatch_execution_daemon_policy(
+        {DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1"}
+    )
+    unconfirmed = run_dispatch_execution_daemon_tick_once(
+        service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        policy=enabled_policy,
+        executed_at="2026-09-14T11:51:00Z",
+    )
+
+    assert unconfirmed["tick_status"] == "BLOCKED"
+    assert unconfirmed["blocked_reason"] == "confirm_tick_required"
+    assert unconfirmed["worker_run"] is None
+    assert dispatch_store.get(dispatch["dispatch_id"])["dispatch_status"] == "PENDING"
+    assert_dispatch_execution_result_redacted(unconfirmed)
+
+
+def test_dispatch_execution_daemon_tick_once_runs_dry_run_and_confirmed_mutation() -> None:
+    dry_dispatch = sample_dispatch(
+        candidate_overrides={
+            "candidate_id": "case-0744:dry",
+            "case_id": "case-0744-dry",
+        }
+    )
+    dry_service, dry_store = build_dispatch_service(dry_dispatch)
+    dry_policy = build_dispatch_execution_daemon_policy(
+        {
+            DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1",
+            DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV: "1",
+            DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV: "1",
+        }
+    )
+
+    dry_result = run_dispatch_execution_daemon_tick_once(
+        dry_service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        policy=dry_policy,
+        confirm_tick=True,
+        executed_at="2026-09-14T11:52:00Z",
+    )
+
+    assert dry_result["tick_status"] == "COMPLETED"
+    assert dry_result["dry_run"] is True
+    assert dry_result["worker_run"]["dry_run"] is True
+    assert dry_result["processed_count"] == 1
+    assert dry_result["succeeded_count"] == 0
+    assert dry_store.get(dry_dispatch["dispatch_id"])["dispatch_status"] == "PENDING"
+
+    live_dispatch = sample_dispatch(
+        candidate_overrides={
+            "candidate_id": "case-0744:run",
+            "case_id": "case-0744-run",
+        }
+    )
+    live_service, live_store = build_dispatch_service(live_dispatch)
+    live_policy = build_dispatch_execution_daemon_policy(
+        {
+            DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1",
+            DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV: "0",
+        }
+    )
+
+    completed = run_dispatch_execution_daemon_tick_once(
+        live_service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        policy=live_policy,
+        confirm_tick=True,
+        dry_run=False,
+        executed_at="2026-09-14T11:53:00Z",
+    )
+
+    assert completed["tick_status"] == "COMPLETED"
+    assert completed["worker_run"]["run_status"] == "COMPLETED"
+    assert completed["processed_count"] == 1
+    assert completed["succeeded_count"] == 1
+    assert live_store.get(live_dispatch["dispatch_id"])["dispatch_status"] == "SUCCEEDED"
+    assert live_store.get(live_dispatch["dispatch_id"])["metadata"][
+        "last_execution_result"
+    ]["execution_status"] == "SUCCEEDED"
+    assert_dispatch_execution_result_redacted(completed)
 
 
 def test_dispatch_execution_provider_profile_rejects_unknown_or_live_channel() -> None:

@@ -37,6 +37,9 @@ DISPATCH_EXECUTION_DAEMON_POLICY_SCHEMA_VERSION = (
 DISPATCH_EXECUTION_DAEMON_TICK_PLAN_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_daemon_tick_plan.v1"
 )
+DISPATCH_EXECUTION_DAEMON_TICK_RESULT_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_daemon_tick_result.v1"
+)
 DISPATCH_EXECUTION_RESULT_METADATA_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_result_metadata.v1"
 )
@@ -512,6 +515,98 @@ def build_dispatch_execution_daemon_tick_plan(
     }
     assert_dispatch_execution_result_redacted(plan)
     return plan
+
+
+def run_dispatch_execution_daemon_tick_once(
+    service: Any,
+    *,
+    request_id: str,
+    trace_id: str | None = None,
+    worker_id: str = "ag-dispatch-execution-daemon",
+    policy: Mapping[str, Any] | None = None,
+    provider_config: Mapping[str, Any] | None = None,
+    provider_profile: str | None = None,
+    notification_status_code: int | None = None,
+    external_incident_status_code: int | None = None,
+    live_http_transport: Any | None = None,
+    confirm_tick: bool = False,
+    dry_run: bool | None = None,
+    executed_at: str | None = None,
+) -> dict[str, Any]:
+    resolved_policy = (
+        dict(policy)
+        if policy is not None
+        else build_dispatch_execution_daemon_policy(
+            {},
+            provider_config=provider_config,
+        )
+    )
+    now = executed_at or _utc_now()
+    plan = build_dispatch_execution_daemon_tick_plan(
+        service,
+        request_id=request_id,
+        trace_id=trace_id,
+        policy=resolved_policy,
+        provider_config=provider_config,
+        planned_at=now,
+    )
+    resolved_dry_run = bool(resolved_policy.get("dry_run")) if dry_run is None else dry_run
+    tick_id = str(
+        uuid5(
+            NAMESPACE_URL,
+            "ag-operator-review-escalation-dispatch-execution-daemon-tick:"
+            f"{worker_id}:{request_id}:{now}:{plan['tick_plan_id']}:{resolved_dry_run}",
+        )
+    )
+    blocked_reason = None
+    worker_run = None
+    if not bool(resolved_policy.get("enabled")):
+        blocked_reason = "daemon_disabled"
+    elif not confirm_tick:
+        blocked_reason = "confirm_tick_required"
+    if blocked_reason is None:
+        worker_run = run_dispatch_execution_worker_once(
+            service,
+            request_id=request_id,
+            trace_id=trace_id,
+            worker_id=worker_id,
+            batch_limit=int(plan["batch_limit"]),
+            provider_profile=provider_profile,
+            provider_mode=str(resolved_policy.get("effective_provider_mode") or ""),
+            provider_config=provider_config,
+            notification_status_code=notification_status_code,
+            external_incident_status_code=external_incident_status_code,
+            live_http_transport=live_http_transport,
+            confirm_run=True,
+            dry_run=resolved_dry_run,
+            executed_at=now,
+        )
+    result = {
+        "daemon_tick_result_schema_version": (
+            DISPATCH_EXECUTION_DAEMON_TICK_RESULT_SCHEMA_VERSION
+        ),
+        "tick_id": tick_id,
+        "tick_status": "BLOCKED" if blocked_reason else "COMPLETED",
+        "blocked_reason": blocked_reason,
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "worker_id": worker_id,
+        "executed_at": now,
+        "dry_run": resolved_dry_run,
+        "plan": plan,
+        "worker_run": worker_run,
+        "candidate_count": plan["candidate_count"],
+        "processed_count": int((worker_run or {}).get("processed_count") or 0),
+        "succeeded_count": int((worker_run or {}).get("succeeded_count") or 0),
+        "failed_count": int((worker_run or {}).get("failed_count") or 0),
+        "retry_wait_count": int((worker_run or {}).get("retry_wait_count") or 0),
+        "skipped_count": int((worker_run or {}).get("skipped_count") or 0),
+        "effective_provider_mode": resolved_policy.get("effective_provider_mode"),
+        "new_tables_required": False,
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(result)
+    return result
 
 
 def normalize_dispatch_execution_provider_mode(value: str | None) -> str:
