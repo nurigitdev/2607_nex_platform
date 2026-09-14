@@ -7039,9 +7039,32 @@ def _operator_review_escalation_dispatch_execution_dashboard_summary(
         is not None
     ]
     by_execution_status: dict[str, int] = {}
+    by_provider_category: dict[str, int] = {}
+    by_provider_profile: dict[str, int] = {}
+    by_http_status_code: dict[str, int] = {}
+    by_last_error_code: dict[str, int] = {}
     for result in execution_results:
         status = _nullable_string(result.get("execution_status")) or "UNKNOWN"
         by_execution_status[status] = by_execution_status.get(status, 0) + 1
+        provider_category = (
+            _nullable_string(result.get("provider_category")) or "UNKNOWN"
+        )
+        provider_profile = _nullable_string(result.get("provider_profile")) or "UNKNOWN"
+        by_provider_category[provider_category] = (
+            by_provider_category.get(provider_category, 0) + 1
+        )
+        by_provider_profile[provider_profile] = (
+            by_provider_profile.get(provider_profile, 0) + 1
+        )
+        if result.get("http_status_code") is not None:
+            status_code = str(_safe_int(result.get("http_status_code")))
+            by_http_status_code[status_code] = (
+                by_http_status_code.get(status_code, 0) + 1
+            )
+        if (last_error_code := _nullable_string(result.get("last_error_code"))) is not None:
+            by_last_error_code[last_error_code] = (
+                by_last_error_code.get(last_error_code, 0) + 1
+            )
     latest_executed_at = max(
         (
             executed_at
@@ -7060,8 +7083,15 @@ def _operator_review_escalation_dispatch_execution_dashboard_summary(
         "retryable_count": sum(
             1 for result in execution_results if result.get("retryable") is True
         ),
+        "http_status_count": sum(
+            1 for result in execution_results if result.get("http_status_code") is not None
+        ),
         "latest_executed_at": latest_executed_at,
         "by_execution_status": by_execution_status,
+        "by_provider_category": by_provider_category,
+        "by_provider_profile": by_provider_profile,
+        "by_http_status_code": by_http_status_code,
+        "by_last_error_code": by_last_error_code,
         "redaction": (
             _operator_review_escalation_dispatch_execution_result_redaction()
         ),
@@ -7087,8 +7117,16 @@ def _operator_review_escalation_dispatch_execution_result(
         "execution_status": _nullable_string(result.get("execution_status")),
         "recommended_action": _nullable_string(result.get("recommended_action")),
         "provider_mode": _nullable_string(result.get("provider_mode")),
+        "provider_category": _nullable_string(result.get("provider_category")),
         "provider_profile": _nullable_string(result.get("provider_profile")),
+        "provider_request_hash": _nullable_string(result.get("provider_request_hash")),
         "provider_result_hash": _nullable_string(result.get("provider_result_hash")),
+        "http_status_code": (
+            _safe_int(result.get("http_status_code"))
+            if result.get("http_status_code") is not None
+            else None
+        ),
+        "response_body_hash": _nullable_string(result.get("response_body_hash")),
         "safe_result_preview": _nullable_string(result.get("safe_result_preview")),
         "retryable": bool(result.get("retryable")),
         "last_error_code": _nullable_string(result.get("last_error_code")),
@@ -7133,8 +7171,13 @@ def _empty_operator_review_escalation_dispatch_execution_summary() -> dict[str, 
         "retry_wait_count": 0,
         "skipped_count": 0,
         "retryable_count": 0,
+        "http_status_count": 0,
         "latest_executed_at": None,
         "by_execution_status": {},
+        "by_provider_category": {},
+        "by_provider_profile": {},
+        "by_http_status_code": {},
+        "by_last_error_code": {},
         "redaction": (
             _operator_review_escalation_dispatch_execution_result_redaction()
         ),

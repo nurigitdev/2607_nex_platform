@@ -1295,9 +1295,20 @@ def test_dispatch_execution_worker_once_routes_live_channel_batches() -> None:
     assert persisted_email["metadata"]["last_execution_result"]["provider_profile"] == (
         "email-notification-default"
     )
+    assert persisted_email["metadata"]["last_execution_result"]["provider_category"] == (
+        "notification"
+    )
+    assert persisted_email["metadata"]["last_execution_result"]["http_status_code"] == 202
+    assert persisted_email["metadata"]["last_execution_result"]["provider_request_hash"]
     assert persisted_incident["metadata"]["last_execution_result"][
         "provider_profile"
     ] == "external-incident-default"
+    assert persisted_incident["metadata"]["last_execution_result"][
+        "provider_category"
+    ] == "external_incident"
+    assert persisted_incident["metadata"]["last_execution_result"][
+        "http_status_code"
+    ] == 201
     assert "notify-token" not in json.dumps(run)
 
 

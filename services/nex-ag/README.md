@@ -1353,6 +1353,11 @@ Unified operations:
   safe default, while `mock_http` can process notification/email/webhook and
   incident dispatch rows through local mock adapters before applying the
   existing transition planner and safe result metadata persistence.
+- Slice 0727 surfaces safe provider diagnostics in AG operations. Dispatch
+  execution metadata and dashboard projections now include provider category,
+  provider request hash, HTTP status code, response body hash, and rollups by
+  provider category/profile/status/error code without exposing raw provider
+  payloads, endpoints, tokens, headers, or idempotency keys.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

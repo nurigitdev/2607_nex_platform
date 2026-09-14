@@ -2584,8 +2584,13 @@
             "retry_wait_count",
             "skipped_count",
             "retryable_count",
+            "http_status_count",
             "latest_executed_at",
             "by_execution_status",
+            "by_provider_category",
+            "by_provider_profile",
+            "by_http_status_code",
+            "by_last_error_code",
             "redaction"
           ],
           "properties": {
@@ -2613,6 +2618,10 @@
               "type": "integer",
               "minimum": 0
             },
+            "http_status_count": {
+              "type": "integer",
+              "minimum": 0
+            },
             "latest_executed_at": {
               "type": [
                 "string",
@@ -2620,6 +2629,18 @@
               ]
             },
             "by_execution_status": {
+              "$ref": "#/$defs/string_integer_counts"
+            },
+            "by_provider_category": {
+              "$ref": "#/$defs/string_integer_counts"
+            },
+            "by_provider_profile": {
+              "$ref": "#/$defs/string_integer_counts"
+            },
+            "by_http_status_code": {
+              "$ref": "#/$defs/string_integer_counts"
+            },
+            "by_last_error_code": {
               "$ref": "#/$defs/string_integer_counts"
             },
             "redaction": {
