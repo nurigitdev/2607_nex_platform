@@ -37,6 +37,9 @@ DISPATCH_EXECUTION_PROVIDER_CONFIG_SCHEMA_VERSION = (
 DISPATCH_NOTIFICATION_PROVIDER_REQUEST_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_notification_request.v1"
 )
+DISPATCH_EXTERNAL_INCIDENT_PROVIDER_REQUEST_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_external_incident_request.v1"
+)
 DISPATCH_EXECUTION_DEFAULT_PROVIDER_PROFILE = "mock-default"
 DISPATCH_EXECUTION_PROVIDER_MODE = "mock_first_only"
 DISPATCH_EXECUTION_RESULT_STORAGE = "safe_hashes_statuses_counters_only"
@@ -83,6 +86,7 @@ ALLOWED_DISPATCH_EXECUTION_PROVIDER_MODES = (
     "live_http",
 )
 NOTIFICATION_DISPATCH_CHANNEL_TYPES = ("NOTIFICATION", "EMAIL", "WEBHOOK")
+EXTERNAL_INCIDENT_DISPATCH_CHANNEL_TYPES = ("INCIDENT",)
 DISPATCH_EXECUTION_RESULT_ACTIONS = {
     "SUCCEEDED": "SUCCEED",
     "FAILED": "FAIL",
@@ -454,6 +458,125 @@ def build_notification_dispatch_provider_request(
     return request
 
 
+def build_external_incident_dispatch_provider_request(
+    dispatch: Mapping[str, Any],
+    *,
+    provider_config: Mapping[str, Any] | None = None,
+    request_id: str | None = None,
+    trace_id: str | None = None,
+    requested_at: str | None = None,
+) -> dict[str, Any]:
+    channel_type = str(dispatch.get("channel_type") or "")
+    if channel_type not in EXTERNAL_INCIDENT_DISPATCH_CHANNEL_TYPES:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=(
+                "ag.operator_review_escalation_dispatch_external_incident_"
+                "channel_unsupported"
+            ),
+            detail=(
+                "Unsupported external incident dispatch channel_type: "
+                f"{channel_type}"
+            ),
+        )
+    config = (
+        dict(provider_config)
+        if provider_config is not None
+        else build_dispatch_execution_provider_config({})
+    )
+    profile = dict(DISPATCH_LIVE_PROVIDER_PROFILES["external-incident-default"])
+    endpoint = _provider_config_endpoint(config, "external_incident")
+    http_settings = _provider_config_http_settings(config)
+    incident_payload = {
+        "safe_subject": optional_text(dispatch.get("safe_subject")),
+        "safe_body_preview": optional_text(dispatch.get("safe_body_preview")),
+        "safe_body_hash": optional_text(dispatch.get("safe_body_hash")),
+        "reason_codes": _safe_text_list(dispatch.get("reason_codes")),
+        "target_ref": {
+            "target_service": str(dispatch.get("target_service") or ""),
+            "target_kind": str(dispatch.get("target_kind") or ""),
+            "target_id_hash": sha256_text(str(dispatch.get("target_id") or "")),
+        },
+        "provider_payload_hash": optional_text(dispatch.get("provider_payload_hash")),
+    }
+    request_ref = {
+        "request_id_hash": sha256_text(request_id) if optional_text(request_id) else None,
+        "trace_id": optional_text(trace_id),
+    }
+    idempotency_hash = sha256_text(
+        json.dumps(
+            {
+                "dispatch_id": dispatch.get("dispatch_id"),
+                "request_id": request_id,
+                "provider_profile": profile["profile_id"],
+                "channel_type": channel_type,
+                "target_id": dispatch.get("target_id"),
+            },
+            sort_keys=True,
+        )
+    )
+    payload_hash = sha256_text(json.dumps(incident_payload, sort_keys=True))
+    request_hash = sha256_text(
+        json.dumps(
+            {
+                "dispatch_id": dispatch.get("dispatch_id"),
+                "channel_type": channel_type,
+                "provider_profile": profile["profile_id"],
+                "payload_hash": payload_hash,
+                "idempotency_hash": idempotency_hash,
+            },
+            sort_keys=True,
+        )
+    )
+    provider_ref = dispatch.get("provider_ref") or {}
+    request = {
+        "provider_request_schema_version": (
+            DISPATCH_EXTERNAL_INCIDENT_PROVIDER_REQUEST_SCHEMA_VERSION
+        ),
+        "provider_category": "external_incident",
+        "provider_type": profile["provider_type"],
+        "provider_profile": profile["profile_id"],
+        "provider_mode": str(config.get("effective_provider_mode") or "mock_http"),
+        "dispatch_id": str(dispatch.get("dispatch_id") or ""),
+        "escalation_id": str(dispatch.get("escalation_id") or ""),
+        "case_id": str(dispatch.get("case_id") or ""),
+        "dispatch_intent": str(dispatch.get("dispatch_intent") or ""),
+        "channel_type": channel_type,
+        "provider_id": str(
+            provider_ref.get("provider_id")
+            if isinstance(provider_ref, Mapping)
+            else "external-incident-provider"
+        ),
+        "incident_payload": incident_payload,
+        "incident_payload_hash": payload_hash,
+        "provider_request_hash": request_hash,
+        "idempotency_hash": idempotency_hash,
+        "request_ref": request_ref,
+        "http": {
+            "method": "POST",
+            "endpoint_hint": endpoint.get("endpoint_hint"),
+            "endpoint_configured": bool(endpoint.get("configured")),
+            "token_configured": bool(endpoint.get("token_configured")),
+            "timeout_seconds": http_settings["timeout_seconds"],
+            "connect_timeout_seconds": http_settings["connect_timeout_seconds"],
+            "read_timeout_seconds": http_settings["read_timeout_seconds"],
+            "max_retries": http_settings["max_retries"],
+            "backoff_seconds": http_settings["backoff_seconds"],
+        },
+        "activation": {
+            "configured_provider_mode": config.get("configured_provider_mode"),
+            "effective_provider_mode": config.get("effective_provider_mode"),
+            "live_network_calls_enabled": bool(
+                config.get("live_network_calls_enabled")
+            ),
+        },
+        "requested_at": requested_at or _utc_now(),
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(request)
+    return request
+
+
 def build_dispatch_execution_result(
     dispatch: Mapping[str, Any],
     *,
@@ -679,6 +802,89 @@ def execute_dispatch_with_mock_notification_provider(
     executed_at: str | None = None,
 ) -> dict[str, Any]:
     provider = MockNotificationDispatchProvider()
+    return provider.execute(
+        dispatch,
+        provider_config=provider_config,
+        request_id=request_id,
+        trace_id=trace_id,
+        status_code=status_code,
+        executed_at=executed_at,
+    )
+
+
+@dataclass(frozen=True)
+class MockExternalIncidentDispatchProvider:
+    default_status_code: int = 201
+
+    def execute(
+        self,
+        dispatch: Mapping[str, Any],
+        *,
+        provider_config: Mapping[str, Any] | None = None,
+        request_id: str | None = None,
+        trace_id: str | None = None,
+        status_code: int | None = None,
+        executed_at: str | None = None,
+    ) -> dict[str, Any]:
+        now = executed_at or _utc_now()
+        request = build_external_incident_dispatch_provider_request(
+            dispatch,
+            provider_config=provider_config,
+            request_id=request_id,
+            trace_id=trace_id,
+            requested_at=now,
+        )
+        code = int(status_code if status_code is not None else self.default_status_code)
+        if 200 <= code < 300 or code == 409:
+            return _build_provider_adapter_execution_result(
+                dispatch,
+                request,
+                execution_status="SUCCEEDED",
+                safe_result_message=(
+                    "Mock external incident provider accepted dispatch."
+                ),
+                http_status_code=code,
+                executed_at=now,
+            )
+        if code in {408, 425, 429} or code >= 500:
+            return _build_provider_adapter_execution_result(
+                dispatch,
+                request,
+                execution_status="RETRY_WAIT",
+                safe_result_message=(
+                    "Mock external incident provider returned a retryable status."
+                ),
+                last_error_code="external_incident_provider_retryable_status",
+                next_attempt_at=_iso_after_seconds(
+                    now,
+                    DEFAULT_DISPATCH_EXECUTION_RETRY_DELAY_SECONDS,
+                ),
+                retryable=True,
+                http_status_code=code,
+                executed_at=now,
+            )
+        return _build_provider_adapter_execution_result(
+            dispatch,
+            request,
+            execution_status="FAILED",
+            safe_result_message="Mock external incident provider rejected dispatch.",
+            last_error_code="external_incident_provider_rejected",
+            retryable=False,
+            http_status_code=code,
+            executed_at=now,
+        )
+
+
+def execute_dispatch_with_mock_external_incident_provider(
+    dispatch: Mapping[str, Any],
+    *,
+    provider_config: Mapping[str, Any] | None = None,
+    request_id: str | None = None,
+    trace_id: str | None = None,
+    status_code: int | None = None,
+    executed_at: str | None = None,
+) -> dict[str, Any]:
+    provider = MockExternalIncidentDispatchProvider()
     return provider.execute(
         dispatch,
         provider_config=provider_config,

@@ -827,6 +827,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0721`](slices/0721_ag_escalation_dispatch_live_provider_boundary_audit.md) | `S73-001` AG escalation dispatch live-provider boundary audit and refactoring checkpoint. |
 | [`Slice 0722`](slices/0722_ag_escalation_dispatch_provider_config_registry.md) | `S73-002` AG escalation dispatch provider config registry hardening. |
 | [`Slice 0723`](slices/0723_ag_escalation_dispatch_notification_provider_adapter.md) | `S73-003` AG escalation dispatch notification provider contract and mock adapter. |
+| [`Slice 0724`](slices/0724_ag_escalation_dispatch_external_incident_provider_adapter.md) | `S73-004` AG escalation dispatch external incident provider contract and mock adapter. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

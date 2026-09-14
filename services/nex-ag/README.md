@@ -1339,6 +1339,11 @@ Unified operations:
   for success, retryable, and rejected HTTP-shaped outcomes while request/result
   payloads keep only safe previews, hashes, refs, endpoint hints, and bounded
   timeout/retry settings.
+- Slice 0724 adds the external incident provider request contract and mock
+  adapter. Incident requests hash the target id, keep only bounded safe context
+  and payload fingerprints, treat HTTP 409 as idempotent success, and keep
+  retry/failure outcomes compatible with the dispatch execution transition
+  planner.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

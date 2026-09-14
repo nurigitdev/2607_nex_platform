@@ -19,6 +19,7 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_PROVIDER_CONFIG_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DEFAULT_PROVIDER_PROFILE,
     DISPATCH_EXECUTION_PROVIDER_MODE_ENV,
+    DISPATCH_EXTERNAL_INCIDENT_PROVIDER_REQUEST_SCHEMA_VERSION,
     DISPATCH_EXTERNAL_INCIDENT_BASE_URL_ENV,
     DISPATCH_EXTERNAL_INCIDENT_TOKEN_ENV,
     DISPATCH_HTTP_BACKOFF_SECONDS_ENV,
@@ -34,16 +35,19 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV,
     DISPATCH_NOTIFICATION_PROVIDER_REQUEST_SCHEMA_VERSION,
     DISPATCH_EXECUTION_RESULT_SCHEMA_VERSION,
+    MockExternalIncidentDispatchProvider,
     MockNotificationDispatchProvider,
     assert_dispatch_execution_result_redacted,
     build_dispatch_execution_provider_catalog,
     build_dispatch_execution_provider_config,
+    build_external_incident_dispatch_provider_request,
     build_notification_dispatch_provider_request,
     build_dispatch_execution_result,
     build_dispatch_execution_result_metadata,
     build_dispatch_execution_transition_plan,
     build_mock_dispatch_execution_provider,
     execute_dispatch_with_mock_provider,
+    execute_dispatch_with_mock_external_incident_provider,
     execute_dispatch_with_mock_notification_provider,
     normalize_dispatch_execution_provider_mode,
     normalize_dispatch_execution_provider_profile,
@@ -665,6 +669,141 @@ def test_provider_adapter_result_requires_failure_and_retry_context() -> None:
     assert retry_exc.value.error_code == (
         "ag.operator_review_escalation_dispatch_execution_retry_at_required"
     )
+
+
+def test_external_incident_provider_request_shape_is_safe_and_redacted() -> None:
+    dispatch = sample_live_channel_dispatch(
+        channel_type="INCIDENT",
+        dispatch_intent="OPEN_INCIDENT",
+        provider_profile="external-incident-default",
+        safe_subject="Open incident for case-0724",
+        safe_body="Create an external incident with bounded context only.",
+        provider_payload_fingerprint="incident-provider-fingerprint",
+    )
+    config = build_dispatch_execution_provider_config(
+        {
+            DISPATCH_EXECUTION_PROVIDER_MODE_ENV: "mock_http",
+            DISPATCH_EXTERNAL_INCIDENT_BASE_URL_ENV: (
+                "https://incident.invalid/api/cases/secret"
+            ),
+            DISPATCH_EXTERNAL_INCIDENT_TOKEN_ENV: "incident-token-0724",
+        }
+    )
+
+    request = build_external_incident_dispatch_provider_request(
+        dispatch,
+        provider_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        requested_at="2026-09-13T10:00:00Z",
+    )
+
+    assert request["provider_request_schema_version"] == (
+        DISPATCH_EXTERNAL_INCIDENT_PROVIDER_REQUEST_SCHEMA_VERSION
+    )
+    assert request["provider_category"] == "external_incident"
+    assert request["provider_type"] == "external_incident"
+    assert request["provider_profile"] == "external-incident-default"
+    assert request["provider_mode"] == "mock_http"
+    assert request["channel_type"] == "INCIDENT"
+    assert request["incident_payload"]["safe_subject"] == (
+        "Open incident for case-0724"
+    )
+    assert request["incident_payload"]["target_ref"]["target_service"] == "nex-ag"
+    assert request["incident_payload"]["target_ref"]["target_id_hash"]
+    assert request["incident_payload"]["provider_payload_hash"] == (
+        dispatch["provider_payload_hash"]
+    )
+    assert request["http"]["method"] == "POST"
+    assert request["http"]["endpoint_hint"] == (
+        "https://incident.invalid/<redacted>"
+    )
+    assert request["http"]["token_configured"] is True
+    serialized = json.dumps(request)
+    assert "https://incident.invalid/api/cases/secret" not in serialized
+    assert "incident-token-0724" not in serialized
+    assert "incident-provider-fingerprint" not in serialized
+    assert dispatch["target_id"] not in serialized
+    assert_dispatch_execution_result_redacted(request)
+
+
+def test_external_incident_provider_request_rejects_non_incident_channel() -> None:
+    with pytest.raises(OperatorReviewNoteError) as exc_info:
+        build_external_incident_dispatch_provider_request(
+            sample_live_channel_dispatch(channel_type="EMAIL")
+        )
+
+    assert exc_info.value.error_code == (
+        "ag.operator_review_escalation_dispatch_external_incident_channel_unsupported"
+    )
+
+
+def test_mock_external_incident_provider_success_retry_and_failure_are_safe() -> None:
+    dispatch = sample_live_channel_dispatch(
+        channel_type="INCIDENT",
+        dispatch_intent="OPEN_INCIDENT",
+        provider_profile="external-incident-default",
+        safe_subject="Incident dispatch",
+        safe_body="Open an incident with bounded context.",
+    )
+    config = build_dispatch_execution_provider_config(
+        {DISPATCH_EXECUTION_PROVIDER_MODE_ENV: "mock_http"}
+    )
+    provider = MockExternalIncidentDispatchProvider()
+
+    success = provider.execute(
+        dispatch,
+        provider_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        status_code=201,
+        executed_at="2026-09-13T10:10:00Z",
+    )
+
+    assert success["execution_status"] == "SUCCEEDED"
+    assert success["recommended_action"] == "SUCCEED"
+    assert success["provider_category"] == "external_incident"
+    assert success["provider_profile"] == "external-incident-default"
+    assert success["http_status_code"] == 201
+    assert success["safe_result_preview"] == (
+        "Mock external incident provider accepted dispatch."
+    )
+    assert success["retryable"] is False
+    assert_dispatch_execution_result_redacted(success)
+
+    duplicate = execute_dispatch_with_mock_external_incident_provider(
+        dispatch,
+        provider_config=config,
+        status_code=409,
+        executed_at="2026-09-13T10:11:00Z",
+    )
+    assert duplicate["execution_status"] == "SUCCEEDED"
+    assert duplicate["http_status_code"] == 409
+
+    retry = execute_dispatch_with_mock_external_incident_provider(
+        dispatch,
+        provider_config=config,
+        status_code=500,
+        executed_at="2026-09-13T10:12:00Z",
+    )
+    assert retry["execution_status"] == "RETRY_WAIT"
+    assert retry["recommended_action"] == "RETRY"
+    assert retry["retryable"] is True
+    assert retry["last_error_code"] == "external_incident_provider_retryable_status"
+    assert retry["next_attempt_at"] == "2026-09-13T10:17:00Z"
+
+    failed = execute_dispatch_with_mock_external_incident_provider(
+        dispatch,
+        provider_config=config,
+        status_code=422,
+        executed_at="2026-09-13T10:13:00Z",
+    )
+    assert failed["execution_status"] == "FAILED"
+    assert failed["recommended_action"] == "FAIL"
+    assert failed["retryable"] is False
+    assert failed["last_error_code"] == "external_incident_provider_rejected"
+    assert "raw_external_incident_payload" in json.dumps(failed)
+    assert "RAW_EXTERNAL_INCIDENT_PAYLOAD" not in json.dumps(failed)
 
 
 def test_dispatch_execution_transition_plan_success_actions_apply_to_state_machine() -> None:
