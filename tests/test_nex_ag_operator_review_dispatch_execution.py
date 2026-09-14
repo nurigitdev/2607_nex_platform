@@ -26,6 +26,8 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS_ENV,
     DISPATCH_EXECUTION_DAEMON_POLICY_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV,
+    DISPATCH_EXECUTION_DAEMON_TICK_EVENT_SCHEMA_VERSION,
+    DISPATCH_EXECUTION_DAEMON_TICK_LOG_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_TICK_PLAN_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_TICK_RESULT_SCHEMA_VERSION,
     DISPATCH_EXECUTION_PROVIDER_CONFIG_SCHEMA_VERSION,
@@ -55,6 +57,8 @@ from nex_ag.operator_review_dispatch_execution import (
     MockNotificationDispatchProvider,
     assert_dispatch_execution_result_redacted,
     build_dispatch_execution_daemon_policy,
+    build_dispatch_execution_daemon_tick_event,
+    build_dispatch_execution_daemon_tick_log_entry,
     build_dispatch_execution_daemon_tick_plan,
     build_dispatch_execution_provider_catalog,
     build_dispatch_execution_provider_config,
@@ -580,6 +584,116 @@ def test_dispatch_execution_daemon_tick_once_runs_dry_run_and_confirmed_mutation
         "last_execution_result"
     ]["execution_status"] == "SUCCEEDED"
     assert_dispatch_execution_result_redacted(completed)
+
+
+def test_dispatch_execution_daemon_tick_event_and_log_project_safe_success() -> None:
+    dispatch = sample_dispatch(
+        candidate_overrides={
+            "candidate_id": "case-0745:success",
+            "case_id": "case-0745-success",
+        }
+    )
+    service, _dispatch_store = build_dispatch_service(dispatch)
+    policy = build_dispatch_execution_daemon_policy(
+        {
+            DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1",
+            DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV: "0",
+        }
+    )
+    tick = run_dispatch_execution_daemon_tick_once(
+        service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        policy=policy,
+        confirm_tick=True,
+        executed_at="2026-09-14T12:45:00Z",
+    )
+
+    event = build_dispatch_execution_daemon_tick_event(tick)
+    log_entry = build_dispatch_execution_daemon_tick_log_entry(tick)
+
+    assert event["daemon_tick_event_schema_version"] == (
+        DISPATCH_EXECUTION_DAEMON_TICK_EVENT_SCHEMA_VERSION
+    )
+    assert event["event_type"].endswith(".completed")
+    assert event["severity"] == "INFO"
+    assert event["summary"]["processed_count"] == 1
+    assert event["summary"]["new_tables_required"] is False
+    assert log_entry["daemon_tick_log_schema_version"] == (
+        DISPATCH_EXECUTION_DAEMON_TICK_LOG_SCHEMA_VERSION
+    )
+    assert log_entry["severity"] == "INFO"
+    assert "processed=1" in log_entry["message"]
+    serialized = json.dumps({"event": event, "log": log_entry})
+    assert "provider_result_ref" not in serialized
+    assert "actions" not in serialized
+    assert_dispatch_execution_result_redacted(event)
+    assert_dispatch_execution_result_redacted(log_entry)
+
+
+def test_dispatch_execution_daemon_tick_event_and_log_project_warnings_and_errors() -> None:
+    blocked_dispatch = sample_dispatch(
+        candidate_overrides={
+            "candidate_id": "case-0745:block",
+            "case_id": "case-0745-block",
+        }
+    )
+    blocked_service, _blocked_store = build_dispatch_service(blocked_dispatch)
+    blocked_tick = run_dispatch_execution_daemon_tick_once(
+        blocked_service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        executed_at="2026-09-14T12:46:00Z",
+    )
+    blocked_event = build_dispatch_execution_daemon_tick_event(
+        blocked_tick,
+        event_id="event-0745-blocked",
+        occurred_at="2026-09-14T12:46:01Z",
+    )
+
+    assert blocked_event["severity"] == "WARNING"
+    assert blocked_event["summary"]["blocked_reason"] == "daemon_disabled"
+    assert blocked_event["event_id"] == "event-0745-blocked"
+
+    failed_dispatch = sample_dispatch(
+        provider_profile="mock-failure",
+        candidate_overrides={
+            "candidate_id": "case-0745:failed",
+            "case_id": "case-0745-failed",
+        },
+    )
+    failed_dispatch["attempt_count"] = 2
+    failed_service, _failed_store = build_dispatch_service(failed_dispatch)
+    policy = build_dispatch_execution_daemon_policy(
+        {
+            DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1",
+            DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV: "0",
+        }
+    )
+    failed_tick = run_dispatch_execution_daemon_tick_once(
+        failed_service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        policy=policy,
+        provider_profile="mock-failure",
+        confirm_tick=True,
+        executed_at="2026-09-14T12:47:00Z",
+    )
+    failed_log = build_dispatch_execution_daemon_tick_log_entry(
+        failed_tick,
+        log_id="log-0745-failed",
+        emitted_at="2026-09-14T12:47:01Z",
+    )
+
+    assert failed_tick["failed_count"] == 1
+    assert failed_log["severity"] == "ERROR"
+    assert failed_log["log_id"] == "log-0745-failed"
+    assert "failed=1" in failed_log["message"]
+
+    retry_tick = {**failed_tick, "failed_count": 0, "retry_wait_count": 1}
+    retry_event = build_dispatch_execution_daemon_tick_event(retry_tick)
+    assert retry_event["severity"] == "WARNING"
+    assert retry_event["summary"]["retry_wait_count"] == 1
 
 
 def test_dispatch_execution_provider_profile_rejects_unknown_or_live_channel() -> None:

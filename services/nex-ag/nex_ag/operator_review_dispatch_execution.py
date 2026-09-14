@@ -40,6 +40,12 @@ DISPATCH_EXECUTION_DAEMON_TICK_PLAN_SCHEMA_VERSION = (
 DISPATCH_EXECUTION_DAEMON_TICK_RESULT_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_daemon_tick_result.v1"
 )
+DISPATCH_EXECUTION_DAEMON_TICK_EVENT_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_daemon_tick_event.v1"
+)
+DISPATCH_EXECUTION_DAEMON_TICK_LOG_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_daemon_tick_log.v1"
+)
 DISPATCH_EXECUTION_RESULT_METADATA_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_result_metadata.v1"
 )
@@ -607,6 +613,88 @@ def run_dispatch_execution_daemon_tick_once(
     }
     assert_dispatch_execution_result_redacted(result)
     return result
+
+
+def build_dispatch_execution_daemon_tick_event(
+    tick_result: Mapping[str, Any],
+    *,
+    service_id: str = "nex-ag",
+    event_id: str | None = None,
+    occurred_at: str | None = None,
+) -> dict[str, Any]:
+    tick_id = str(tick_result.get("tick_id") or "")
+    status = str(tick_result.get("tick_status") or "UNKNOWN")
+    severity = _dispatch_daemon_tick_severity(tick_result)
+    event = {
+        "daemon_tick_event_schema_version": (
+            DISPATCH_EXECUTION_DAEMON_TICK_EVENT_SCHEMA_VERSION
+        ),
+        "event_id": event_id
+        or str(
+            uuid5(
+                NAMESPACE_URL,
+                "ag-dispatch-execution-daemon-tick-event:"
+                f"{service_id}:{tick_id}:{status}",
+            )
+        ),
+        "service_id": service_id,
+        "event_type": (
+            "ag.operator_review.escalation_dispatch.daemon_tick."
+            f"{status.lower()}"
+        ),
+        "severity": severity,
+        "occurred_at": occurred_at or str(tick_result.get("executed_at") or _utc_now()),
+        "tick_id": tick_id,
+        "request_id": tick_result.get("request_id"),
+        "trace_id": tick_result.get("trace_id"),
+        "summary": _dispatch_daemon_tick_safe_summary(tick_result),
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(event)
+    return event
+
+
+def build_dispatch_execution_daemon_tick_log_entry(
+    tick_result: Mapping[str, Any],
+    *,
+    service_id: str = "nex-ag",
+    logger_name: str = "nex_ag.operator_review_dispatch_execution.daemon",
+    log_id: str | None = None,
+    emitted_at: str | None = None,
+) -> dict[str, Any]:
+    tick_id = str(tick_result.get("tick_id") or "")
+    status = str(tick_result.get("tick_status") or "UNKNOWN")
+    severity = _dispatch_daemon_tick_severity(tick_result)
+    summary = _dispatch_daemon_tick_safe_summary(tick_result)
+    log_entry = {
+        "daemon_tick_log_schema_version": (
+            DISPATCH_EXECUTION_DAEMON_TICK_LOG_SCHEMA_VERSION
+        ),
+        "log_id": log_id
+        or str(
+            uuid5(
+                NAMESPACE_URL,
+                "ag-dispatch-execution-daemon-tick-log:"
+                f"{service_id}:{tick_id}:{status}",
+            )
+        ),
+        "service_id": service_id,
+        "logger_name": logger_name,
+        "severity": severity,
+        "message": (
+            "AG dispatch daemon tick "
+            f"{status.lower()} processed={summary['processed_count']} "
+            f"succeeded={summary['succeeded_count']} "
+            f"failed={summary['failed_count']} "
+            f"retry_wait={summary['retry_wait_count']}"
+        ),
+        "emitted_at": emitted_at or str(tick_result.get("executed_at") or _utc_now()),
+        "tick_id": tick_id,
+        "context": summary,
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(log_entry)
+    return log_entry
 
 
 def normalize_dispatch_execution_provider_mode(value: str | None) -> str:
@@ -2117,6 +2205,47 @@ def _dispatch_daemon_candidate_summary(
     }
     assert_dispatch_execution_result_redacted(summary)
     return summary
+
+
+def _dispatch_daemon_tick_safe_summary(
+    tick_result: Mapping[str, Any],
+) -> dict[str, Any]:
+    plan = tick_result.get("plan")
+    source_table = (
+        plan.get("source_table")
+        if isinstance(plan, Mapping)
+        else "ag_op_esc_dispatches"
+    )
+    summary = {
+        "tick_status": str(tick_result.get("tick_status") or "UNKNOWN"),
+        "blocked_reason": optional_text(tick_result.get("blocked_reason")),
+        "worker_id": str(tick_result.get("worker_id") or ""),
+        "source_table": source_table,
+        "dry_run": bool(tick_result.get("dry_run")),
+        "effective_provider_mode": optional_text(
+            tick_result.get("effective_provider_mode")
+        ),
+        "candidate_count": _non_negative_int(tick_result.get("candidate_count")),
+        "processed_count": _non_negative_int(tick_result.get("processed_count")),
+        "succeeded_count": _non_negative_int(tick_result.get("succeeded_count")),
+        "failed_count": _non_negative_int(tick_result.get("failed_count")),
+        "retry_wait_count": _non_negative_int(tick_result.get("retry_wait_count")),
+        "skipped_count": _non_negative_int(tick_result.get("skipped_count")),
+        "new_tables_required": bool(tick_result.get("new_tables_required")),
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(summary)
+    return summary
+
+
+def _dispatch_daemon_tick_severity(tick_result: Mapping[str, Any]) -> str:
+    if str(tick_result.get("tick_status") or "") == "BLOCKED":
+        return "WARNING"
+    if _non_negative_int(tick_result.get("failed_count")) > 0:
+        return "ERROR"
+    if _non_negative_int(tick_result.get("retry_wait_count")) > 0:
+        return "WARNING"
+    return "INFO"
 
 
 def _count_by_key(
