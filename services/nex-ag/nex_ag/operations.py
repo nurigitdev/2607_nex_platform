@@ -166,6 +166,18 @@ AG_OPERATOR_REVIEW_DISPATCH_DAEMON_TICK_PLAN_API_SCHEMA_VERSION = (
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_TICK_ONCE_API_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_daemon_tick_once_api.v1"
 )
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_AUDIT_EVENT_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_daemon_control_audit_event.v1"
+)
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_SUCCEEDED = (
+    "ag.operator_review_escalation_dispatch_daemon.control.succeeded"
+)
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_REJECTED = (
+    "ag.operator_review_escalation_dispatch_daemon.control.rejected"
+)
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_FAILED = (
+    "ag.operator_review_escalation_dispatch_daemon.control.failed"
+)
 AG_SERVICE_LOG_RETENTION_EVENT_SUCCEEDED = "ag.service_log_retention.succeeded"
 AG_SERVICE_LOG_RETENTION_EVENT_FAILED = "ag.service_log_retention.failed"
 SERVICE_LOG_QUERY_POLICY_SCHEMA_VERSION = "service_log_query_policy.v1"
@@ -2030,6 +2042,11 @@ def register_unified_operation_routes(
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
 ) -> None:
+    audit_emitter = OperationalEventEmitter(
+        service_id="nex-ag",
+        store=event_store or DEFAULT_OPERATIONAL_EVENT_STORE,
+    )
+
     @app.get("/admin/v1/operations", response_model=None)
     def list_unified_operations(
         request: Request,
@@ -2289,6 +2306,7 @@ def register_unified_operation_routes(
             operator_review_escalation_dispatch_store,
             payload=payload,
             http_method="GET",
+            audit_emitter=audit_emitter,
         )
 
     @app.post(
@@ -2310,6 +2328,7 @@ def register_unified_operation_routes(
             operator_review_escalation_dispatch_store,
             payload=payload,
             http_method="POST",
+            audit_emitter=audit_emitter,
         )
 
     @app.post(
@@ -2331,6 +2350,7 @@ def register_unified_operation_routes(
             operator_review_escalation_dispatch_store,
             payload=payload,
             http_method="POST",
+            audit_emitter=audit_emitter,
         )
 
     @app.get("/admin/v1/operations/workers", response_model=None)
@@ -2723,24 +2743,203 @@ def build_operator_review_escalation_dispatch_daemon_tick_once_api_projection(
     return projection
 
 
+def build_operator_review_escalation_dispatch_daemon_control_audit_event_details(
+    *,
+    action: str,
+    http_method: str,
+    route_path: str,
+    projection: Mapping[str, Any] | None = None,
+    error: OperationsQueryError | OperatorReviewNoteError | None = None,
+) -> dict[str, Any]:
+    details: dict[str, Any] = {
+        "control_audit_schema_version": (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_AUDIT_EVENT_SCHEMA_VERSION
+        ),
+        "action": action,
+        "http_method": http_method.upper(),
+        "route_path": route_path,
+        "source_table": "ag_op_esc_dispatches",
+        "new_tables_required": False,
+        "raw_request_payload_included": False,
+        "raw_provider_payload_included": False,
+        "sensitive_values_included": False,
+    }
+    if projection is None:
+        status_code = getattr(error, "status_code", 500)
+        details.update(
+            {
+                "control_status": "REJECTED" if status_code < 500 else "FAILED",
+                "error_code": getattr(error, "error_code", None),
+                "status_code": status_code,
+                "rejection_reason": _dispatch_daemon_error_reason(error),
+            }
+        )
+        return details
+
+    summary = _mapping_or_empty(projection.get("summary"))
+    route = _mapping_or_empty(projection.get("route"))
+    control_request = _mapping_or_empty(projection.get("control_request"))
+    control_admission = _mapping_or_empty(projection.get("control_admission"))
+    policy = _mapping_or_empty(projection.get("policy"))
+    details.update(
+        {
+            "control_status": "SUCCEEDED",
+            "projection_schema_version": projection.get(
+                "projection_schema_version"
+            ),
+            "admission_status": control_admission.get("admission_status"),
+            "rejection_reason": control_admission.get("rejection_reason"),
+            "mutation": bool(route.get("mutation")),
+            "requires_confirm_tick": bool(route.get("requires_confirm_tick")),
+            "confirm_tick": bool(control_request.get("confirm_tick")),
+            "dry_run": bool(control_request.get("dry_run")),
+            "enabled": bool(policy.get("enabled")),
+            "batch_limit": _safe_optional_int(policy.get("batch_limit")),
+            "effective_provider_mode": _nullable_string(
+                policy.get("effective_provider_mode")
+            ),
+            "plan_status": summary.get("plan_status"),
+            "tick_status": summary.get("tick_status"),
+            "candidate_count": _safe_optional_int(summary.get("candidate_count")),
+            "processed_count": _safe_optional_int(summary.get("processed_count")),
+            "succeeded_count": _safe_optional_int(summary.get("succeeded_count")),
+            "failed_count": _safe_optional_int(summary.get("failed_count")),
+            "retry_wait_count": _safe_optional_int(summary.get("retry_wait_count")),
+            "skipped_count": _safe_optional_int(summary.get("skipped_count")),
+            "mutation_performed": bool(summary.get("mutation_performed", False)),
+        }
+    )
+    return details
+
+
+def emit_operator_review_escalation_dispatch_daemon_control_audit_event(
+    emitter: OperationalEventEmitter | None,
+    *,
+    action: str,
+    http_method: str,
+    request_id: str,
+    trace_id: str | None,
+    projection: Mapping[str, Any] | None = None,
+    error: OperationsQueryError | OperatorReviewNoteError | None = None,
+) -> OperationalEventEmitResult:
+    if emitter is None:
+        return OperationalEventEmitResult.failed(
+            error_code=(
+                "ag.operator_review_escalation_dispatch_daemon_audit_not_configured"
+            ),
+            detail="Dispatch daemon control audit emitter is not configured.",
+            status_code=503,
+        )
+    route_path = (
+        "/admin/v1/operator-review/dispatch-daemon/tick-once"
+        if action == "tick_once"
+        else "/admin/v1/operator-review/dispatch-daemon/tick-plan"
+    )
+    if error is None:
+        event_type = AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_SUCCEEDED
+        severity = "INFO"
+        message = f"AG dispatch daemon {action} control completed."
+    else:
+        status_code = getattr(error, "status_code", 500)
+        event_type = (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_REJECTED
+            if status_code < 500
+            else AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_FAILED
+        )
+        severity = "WARNING" if status_code < 500 else "ERROR"
+        message = f"AG dispatch daemon {action} control failed."
+    return emitter.safe_emit(
+        event_type=event_type,
+        severity=severity,
+        message=message,
+        trace_id=trace_id,
+        request_id=request_id,
+        subject_ref={
+            "type": "operator_review_dispatch_daemon_control",
+            "id": action,
+        },
+        details=build_operator_review_escalation_dispatch_daemon_control_audit_event_details(
+            action=action,
+            http_method=http_method,
+            route_path=route_path,
+            projection=projection,
+            error=error,
+        ),
+    )
+
+
+def _dispatch_daemon_error_reason(
+    error: OperationsQueryError | OperatorReviewNoteError | None,
+) -> str | None:
+    if error is None:
+        return None
+    error_code = getattr(error, "error_code", None)
+    if not isinstance(error_code, str) or not error_code:
+        return "unknown"
+    for prefix in (
+        "ag.operator_review_escalation_dispatch_daemon_control_",
+        "ag.operator_review_escalation_dispatch_daemon_dispatch_store_",
+        "ag.operator_review_escalation_dispatch_daemon_dispatch_source_",
+        "ag.operator_review_escalation_dispatch_daemon_tick_once_",
+    ):
+        if error_code.startswith(prefix):
+            return error_code.removeprefix(prefix)
+    if error_code.endswith("_unavailable"):
+        return "unavailable"
+    return error_code.rsplit(".", maxsplit=1)[-1]
+
+
 def _dispatch_daemon_tick_plan_route_response(
     request: Request,
     dispatch_store: Any | None,
     *,
     payload: Mapping[str, Any] | None,
     http_method: str,
+    audit_emitter: OperationalEventEmitter | None = None,
 ) -> dict[str, Any] | JSONResponse:
+    request_id = request_id_from_headers(request)
+    trace_id = trace_id_from_headers(request)
     try:
-        return build_operator_review_escalation_dispatch_daemon_tick_plan_api_projection(
-            dispatch_store=dispatch_store,
-            payload=payload,
-            request_id=request_id_from_headers(request),
-            trace_id=trace_id_from_headers(request),
-            http_method=http_method,
+        projection = (
+            build_operator_review_escalation_dispatch_daemon_tick_plan_api_projection(
+                dispatch_store=dispatch_store,
+                payload=payload,
+                request_id=request_id,
+                trace_id=trace_id,
+                http_method=http_method,
+            )
         )
+        audit_result = (
+            emit_operator_review_escalation_dispatch_daemon_control_audit_event(
+                audit_emitter,
+                action="tick_plan",
+                http_method=http_method,
+                request_id=request_id,
+                trace_id=trace_id,
+                projection=projection,
+            )
+        )
+        projection["audit_event"] = audit_result.to_summary()
+        return projection
     except OperatorReviewNoteError as exc:
+        emit_operator_review_escalation_dispatch_daemon_control_audit_event(
+            audit_emitter,
+            action="tick_plan",
+            http_method=http_method,
+            request_id=request_id,
+            trace_id=trace_id,
+            error=exc,
+        )
         return _dispatch_daemon_control_problem_response(request, exc)
     except OperationsQueryError as exc:
+        emit_operator_review_escalation_dispatch_daemon_control_audit_event(
+            audit_emitter,
+            action="tick_plan",
+            http_method=http_method,
+            request_id=request_id,
+            trace_id=trace_id,
+            error=exc,
+        )
         return _dispatch_daemon_control_problem_response(request, exc)
 
 
@@ -2750,18 +2949,51 @@ def _dispatch_daemon_tick_once_route_response(
     *,
     payload: Mapping[str, Any] | None,
     http_method: str,
+    audit_emitter: OperationalEventEmitter | None = None,
 ) -> dict[str, Any] | JSONResponse:
+    request_id = request_id_from_headers(request)
+    trace_id = trace_id_from_headers(request)
     try:
-        return build_operator_review_escalation_dispatch_daemon_tick_once_api_projection(
-            dispatch_store=dispatch_store,
-            payload=payload,
-            request_id=request_id_from_headers(request),
-            trace_id=trace_id_from_headers(request),
-            http_method=http_method,
+        projection = (
+            build_operator_review_escalation_dispatch_daemon_tick_once_api_projection(
+                dispatch_store=dispatch_store,
+                payload=payload,
+                request_id=request_id,
+                trace_id=trace_id,
+                http_method=http_method,
+            )
         )
+        audit_result = (
+            emit_operator_review_escalation_dispatch_daemon_control_audit_event(
+                audit_emitter,
+                action="tick_once",
+                http_method=http_method,
+                request_id=request_id,
+                trace_id=trace_id,
+                projection=projection,
+            )
+        )
+        projection["audit_event"] = audit_result.to_summary()
+        return projection
     except OperatorReviewNoteError as exc:
+        emit_operator_review_escalation_dispatch_daemon_control_audit_event(
+            audit_emitter,
+            action="tick_once",
+            http_method=http_method,
+            request_id=request_id,
+            trace_id=trace_id,
+            error=exc,
+        )
         return _dispatch_daemon_control_problem_response(request, exc)
     except OperationsQueryError as exc:
+        emit_operator_review_escalation_dispatch_daemon_control_audit_event(
+            audit_emitter,
+            action="tick_once",
+            http_method=http_method,
+            request_id=request_id,
+            trace_id=trace_id,
+            error=exc,
+        )
         return _dispatch_daemon_control_problem_response(request, exc)
 
 

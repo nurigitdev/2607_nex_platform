@@ -14,6 +14,10 @@ from jsonschema import Draft202012Validator
 import nex_ag.operations as ag_operations
 from nex_ag.operations import (
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_AUDIT_EVENT_SCHEMA_VERSION,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_FAILED,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_REJECTED,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_SUCCEEDED,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_TICK_ONCE_API_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_TICK_PLAN_API_SCHEMA_VERSION,
     AG_SERVICE_LOG_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION,
@@ -45,6 +49,7 @@ from nex_ag.operations import (
     build_operation_query_options,
     build_operation_source_readiness_projection,
     build_operator_review_escalation_dispatch_daemon_runtime_projection,
+    build_operator_review_escalation_dispatch_daemon_control_audit_event_details,
     build_operator_review_escalation_dispatch_daemon_tick_once_api_projection,
     build_operator_review_escalation_dispatch_daemon_tick_plan_api_projection,
     build_operations_dashboard_snapshot_projection,
@@ -67,6 +72,7 @@ from nex_ag.operations import (
     normalize_operation_event_search_query,
     normalize_operation_log_search_query,
     normalize_service_log_retention_days,
+    emit_operator_review_escalation_dispatch_daemon_control_audit_event,
     normalize_operation_cursor,
     normalize_operation_sort,
     normalize_operation_timestamp,
@@ -118,6 +124,7 @@ from nex_ag.processing_operations import (
 )
 from nex_ag.operator_reviews import (
     OperatorEvidenceExportStore,
+    OperatorReviewNoteError,
     OperatorReviewNoteStore,
     build_operator_evidence_export_record,
     build_operator_review_note_record,
@@ -3952,6 +3959,248 @@ def test_operator_review_dispatch_daemon_tick_plan_post_forces_safe_plan_action(
     assert "Bearer private" not in serialized
     assert "ed6@c496em" not in serialized
     assert "nuri1004" not in serialized
+
+
+def test_operator_review_dispatch_daemon_control_audit_event_details_are_safe() -> (
+    None
+):
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    dispatch_store.save(operator_review_escalation_dispatch_record())
+    projection = (
+        build_operator_review_escalation_dispatch_daemon_tick_plan_api_projection(
+            dispatch_store=dispatch_store,
+            payload={
+                "enabled": True,
+                "dry_run": False,
+                "batch_limit": 1,
+                "provider_mode": "mock_http",
+                "database_url": "postgresql://nex_ag_user:nuri1004@127.0.0.1/db",
+                "provider_payload": {"secret": "ed6@c496em"},
+            },
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            http_method="POST",
+        )
+    )
+
+    details = (
+        build_operator_review_escalation_dispatch_daemon_control_audit_event_details(
+            action="tick_plan",
+            http_method="POST",
+            route_path="/admin/v1/operator-review/dispatch-daemon/tick-plan",
+            projection=projection,
+        )
+    )
+    unavailable = OperationsQueryError(
+        error_code=(
+            "ag.operator_review_escalation_dispatch_daemon_dispatch_store_unavailable"
+        ),
+        detail="store unavailable",
+        status_code=503,
+    )
+    failure_details = (
+        build_operator_review_escalation_dispatch_daemon_control_audit_event_details(
+            action="tick_plan",
+            http_method="GET",
+            route_path="/admin/v1/operator-review/dispatch-daemon/tick-plan",
+            error=unavailable,
+        )
+    )
+    no_emitter = emit_operator_review_escalation_dispatch_daemon_control_audit_event(
+        None,
+        action="tick_plan",
+        http_method="GET",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        projection=projection,
+    )
+    none_payload_projection = (
+        build_operator_review_escalation_dispatch_daemon_tick_plan_api_projection(
+            dispatch_store=dispatch_store,
+            payload=None,
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+    )
+    generic_unavailable = OperationsQueryError(
+        error_code="ag.unexpected_unavailable",
+        detail="unexpected source unavailable",
+        status_code=503,
+    )
+
+    assert details["control_audit_schema_version"] == (
+        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_AUDIT_EVENT_SCHEMA_VERSION
+    )
+    assert details["control_status"] == "SUCCEEDED"
+    assert details["admission_status"] == "ACCEPTED"
+    assert details["mutation"] is False
+    assert details["candidate_count"] == 1
+    assert details["raw_request_payload_included"] is False
+    assert details["raw_provider_payload_included"] is False
+    assert details["sensitive_values_included"] is False
+    assert failure_details["control_status"] == "FAILED"
+    assert failure_details["status_code"] == 503
+    assert failure_details["rejection_reason"] == "unavailable"
+    assert no_emitter.ok is False
+    assert no_emitter.error_code == (
+        "ag.operator_review_escalation_dispatch_daemon_audit_not_configured"
+    )
+    assert none_payload_projection["control_request"]["action"] == "tick_plan"
+    with pytest.raises(OperatorReviewNoteError):
+        build_operator_review_escalation_dispatch_daemon_tick_plan_api_projection(
+            dispatch_store=dispatch_store,
+            payload=["not", "a", "mapping"],  # type: ignore[arg-type]
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+        )
+    assert ag_operations._dispatch_daemon_error_reason(None) is None
+    assert (
+        ag_operations._dispatch_daemon_error_reason(SimpleNamespace(error_code=123))  # type: ignore[arg-type]
+        == "unknown"
+    )
+    assert (
+        ag_operations._dispatch_daemon_error_reason(generic_unavailable)
+        == "unavailable"
+    )
+    serialized = json.dumps({"details": details, "failure": failure_details})
+    assert "nuri1004" not in serialized
+    assert "ed6@c496em" not in serialized
+
+
+def test_operator_review_dispatch_daemon_routes_emit_control_audit_events() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    event_store = InMemoryOperationalEventStore()
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    dispatch_store.save(
+        operator_review_escalation_dispatch_record(
+            dispatch_status="PENDING",
+            created_at="2026-08-05T00:00:30Z",
+        )
+    )
+    register_unified_operation_routes(
+        app,
+        event_store=event_store,
+        operator_review_escalation_dispatch_store=dispatch_store,
+    )
+
+    response = TestClient(app).post(
+        "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        json={
+            "enabled": True,
+            "dry_run": True,
+            "batch_limit": 1,
+            "provider_mode": "mock_http",
+            "authorization": "Bearer private",
+        },
+        headers={
+            **auth_headers(),
+            "traceparent": (
+                "00-4bf92f3577b34da6a3ce929d0e0e4736-"
+                "00f067aa0ba902b7-01"
+            ),
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["audit_event"]["ok"] is True
+    assert payload["audit_event"]["event_type"] == (
+        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_SUCCEEDED
+    )
+    events = event_store.list_events(
+        event_type=AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_SUCCEEDED
+    )
+    assert len(events) == 1
+    event = events[0]
+    assert event["service_id"] == "nex-ag"
+    assert event["severity"] == "INFO"
+    assert event["trace_id"] == TRACE_ID
+    assert event["request_id"]
+    assert event["subject_ref"] == {
+        "type": "operator_review_dispatch_daemon_control",
+        "id": "tick_plan",
+    }
+    assert event["details"]["action"] == "tick_plan"
+    assert event["details"]["http_method"] == "POST"
+    assert event["details"]["source_table"] == "ag_op_esc_dispatches"
+    assert event["details"]["candidate_count"] == 1
+    assert event["details"]["raw_request_payload_included"] is False
+    assert event["details"]["raw_provider_payload_included"] is False
+    assert "Bearer private" not in json.dumps(event)
+
+
+def test_operator_review_dispatch_daemon_routes_emit_rejected_and_failed_audit_events() -> (
+    None
+):
+    event_store = InMemoryOperationalEventStore()
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    dispatch_store.save(operator_review_escalation_dispatch_record())
+    register_unified_operation_routes(
+        app,
+        event_store=event_store,
+        operator_review_escalation_dispatch_store=dispatch_store,
+    )
+    rejected = TestClient(app).post(
+        "/admin/v1/operator-review/dispatch-daemon/tick-once",
+        json={"enabled": True, "confirm_tick": False, "dry_run": False},
+        headers=auth_headers(),
+    )
+    invalid_payload_store = InMemoryOperationalEventStore()
+    invalid_payload_app = build_service_app(SERVICE_SPECS["nex-ag"])
+    invalid_dispatch_store = OperatorReviewEscalationDispatchStore()
+    invalid_dispatch_store.save(operator_review_escalation_dispatch_record())
+    register_unified_operation_routes(
+        invalid_payload_app,
+        event_store=invalid_payload_store,
+        operator_review_escalation_dispatch_store=invalid_dispatch_store,
+    )
+    invalid_payload = TestClient(invalid_payload_app).post(
+        "/admin/v1/operator-review/dispatch-daemon/tick-once",
+        json={
+            "enabled": True,
+            "confirm_tick": True,
+            "dry_run": False,
+            "provider_mode": "unsupported",
+        },
+        headers=auth_headers(),
+    )
+    failed_app = build_service_app(SERVICE_SPECS["nex-ag"])
+    failed_store = InMemoryOperationalEventStore()
+    register_unified_operation_routes(failed_app, event_store=failed_store)
+    failed = TestClient(failed_app).get(
+        "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        headers=auth_headers(),
+    )
+
+    assert rejected.status_code == 409
+    assert invalid_payload.status_code == 422
+    rejected_events = event_store.list_events(
+        event_type=AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_REJECTED
+    )
+    assert len(rejected_events) == 1
+    assert rejected_events[0]["severity"] == "WARNING"
+    assert rejected_events[0]["details"]["action"] == "tick_once"
+    assert rejected_events[0]["details"]["control_status"] == "REJECTED"
+    assert rejected_events[0]["details"]["status_code"] == 409
+    assert rejected_events[0]["details"]["rejection_reason"] == (
+        "confirm_tick_required"
+    )
+    invalid_payload_events = invalid_payload_store.list_events(
+        event_type=AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_REJECTED
+    )
+    assert len(invalid_payload_events) == 1
+    assert invalid_payload_events[0]["details"]["action"] == "tick_once"
+    assert invalid_payload_events[0]["details"]["status_code"] == 422
+    assert failed.status_code == 503
+    failed_events = failed_store.list_events(
+        event_type=AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_FAILED
+    )
+    assert len(failed_events) == 1
+    assert failed_events[0]["severity"] == "ERROR"
+    assert failed_events[0]["details"]["control_status"] == "FAILED"
+    assert failed_events[0]["details"]["status_code"] == 503
+    assert failed_events[0]["details"]["rejection_reason"] == "unavailable"
 
 
 def test_operator_review_dispatch_daemon_tick_once_api_projection_executes_confirmed_mutation() -> (
