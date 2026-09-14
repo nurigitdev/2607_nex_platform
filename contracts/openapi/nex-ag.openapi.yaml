@@ -1749,6 +1749,95 @@ paths:
           description: Dispatch action payload or state transition is invalid.
         "503":
           description: Operator review escalation dispatch store or audit emitter is unavailable.
+  /admin/v1/operator-review/dispatch-daemon/tick-plan:
+    get:
+      operationId: getAgOperatorReviewDispatchDaemonTickPlan
+      tags:
+        - Operations
+      parameters:
+        - name: enabled
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: dry_run
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: batch_limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: provider_mode
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonProviderMode"
+      responses:
+        "200":
+          description: Non-mutating dispatch daemon tick plan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonTickPlanProjection"
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Dispatch daemon tick-plan request is invalid.
+        "503":
+          description: Operator review escalation dispatch store is unavailable.
+    post:
+      operationId: postAgOperatorReviewDispatchDaemonTickPlan
+      tags:
+        - Operations
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonControlRequest"
+      responses:
+        "200":
+          description: Non-mutating dispatch daemon tick plan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonTickPlanProjection"
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Dispatch daemon tick-plan request is invalid.
+        "503":
+          description: Operator review escalation dispatch store is unavailable.
+  /admin/v1/operator-review/dispatch-daemon/tick-once:
+    post:
+      operationId: postAgOperatorReviewDispatchDaemonTickOnce
+      tags:
+        - Operations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonControlRequest"
+      responses:
+        "200":
+          description: Confirmed dispatch daemon tick execution result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonTickOnceProjection"
+        "401":
+          description: Service claim is missing or invalid.
+        "409":
+          description: Dispatch daemon tick-once control was rejected.
+        "422":
+          description: Dispatch daemon tick-once request is invalid.
+        "503":
+          description: Operator review escalation dispatch daemon tick-once failed.
   /admin/v1/operations/workers:
     get:
       operationId: getAgWorkerRuntimeProjection
@@ -4051,6 +4140,176 @@ components:
           type: string
           format: date-time
         metadata:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewDispatchDaemonProviderMode:
+      type: string
+      enum:
+        - mock_first_only
+        - mock_http
+        - live_http
+    AgOperatorReviewDispatchDaemonControlAction:
+      type: string
+      enum:
+        - tick_plan
+        - tick_once
+    AgOperatorReviewDispatchDaemonControlRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        action:
+          $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonControlAction"
+        enabled:
+          type: boolean
+        confirm_tick:
+          type: boolean
+        dry_run:
+          type: boolean
+        batch_limit:
+          type: integer
+          minimum: 1
+        provider_mode:
+          $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonProviderMode"
+        operator_ref:
+          type: object
+          additionalProperties: true
+        reason_codes:
+          type: array
+          items:
+            type: string
+    AgOperatorReviewDispatchDaemonRoute:
+      type: object
+      additionalProperties: false
+      required:
+        - path
+        - method
+        - protected
+        - mutation
+        - requires_confirm_tick
+      properties:
+        path:
+          type: string
+          enum:
+            - /admin/v1/operator-review/dispatch-daemon/tick-plan
+            - /admin/v1/operator-review/dispatch-daemon/tick-once
+        method:
+          type: string
+          enum:
+            - GET
+            - POST
+        protected:
+          type: boolean
+          const: true
+        mutation:
+          type: boolean
+        requires_confirm_tick:
+          type: boolean
+    AgOperatorReviewDispatchDaemonTickPlanProjection:
+      type: object
+      additionalProperties: true
+      required:
+        - projection_schema_version
+        - projection_status
+        - route
+        - control_request
+        - control_admission
+        - policy
+        - plan
+        - summary
+        - redaction
+      properties:
+        projection_schema_version:
+          type: string
+          const: ag_operator_review_escalation_dispatch_daemon_tick_plan_api.v1
+        projection_status:
+          type: string
+          const: READY
+        route:
+          $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonRoute"
+        control_request:
+          type: object
+          additionalProperties: true
+        control_admission:
+          type: object
+          additionalProperties: true
+        policy:
+          type: object
+          additionalProperties: true
+        plan:
+          type: object
+          additionalProperties: true
+        summary:
+          type: object
+          additionalProperties: true
+          required:
+            - plan_status
+            - candidate_count
+            - will_mutate_without_confirm
+          properties:
+            plan_status:
+              type: string
+            candidate_count:
+              type: integer
+              minimum: 0
+            will_mutate_without_confirm:
+              type: boolean
+              const: false
+        redaction:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewDispatchDaemonTickOnceProjection:
+      type: object
+      additionalProperties: true
+      required:
+        - projection_schema_version
+        - projection_status
+        - route
+        - control_request
+        - control_admission
+        - policy
+        - tick_result
+        - summary
+        - redaction
+      properties:
+        projection_schema_version:
+          type: string
+          const: ag_operator_review_escalation_dispatch_daemon_tick_once_api.v1
+        projection_status:
+          type: string
+          const: READY
+        route:
+          $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonRoute"
+        control_request:
+          type: object
+          additionalProperties: true
+        control_admission:
+          type: object
+          additionalProperties: true
+        policy:
+          type: object
+          additionalProperties: true
+        tick_result:
+          type: object
+          additionalProperties: true
+        summary:
+          type: object
+          additionalProperties: true
+          required:
+            - tick_status
+            - processed_count
+            - mutation_performed
+          properties:
+            tick_status:
+              type: string
+              enum:
+                - COMPLETED
+                - BLOCKED
+            processed_count:
+              type: integer
+              minimum: 0
+            mutation_performed:
+              type: boolean
+        redaction:
           type: object
           additionalProperties: true
     AgServiceLogRetentionPurgeRequest:

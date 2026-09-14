@@ -427,6 +427,86 @@ def test_nex_ag_openapi_includes_operator_review_escalation_dispatch_contract() 
     assert "AgOperatorReviewEscalationDispatchSurface" in components
 
 
+def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
+    openapi_path = (
+        Path(__file__).parents[1] / "contracts" / "openapi" / "nex-ag.openapi.yaml"
+    )
+    spec = yaml.safe_load(openapi_path.read_text(encoding="utf-8"))
+
+    paths = spec["paths"]
+    components = spec["components"]["schemas"]
+    tick_plan = paths["/admin/v1/operator-review/dispatch-daemon/tick-plan"]
+    tick_once = paths["/admin/v1/operator-review/dispatch-daemon/tick-once"]["post"]
+    control_request = components["AgOperatorReviewDispatchDaemonControlRequest"]
+    route = components["AgOperatorReviewDispatchDaemonRoute"]
+    plan_projection = components[
+        "AgOperatorReviewDispatchDaemonTickPlanProjection"
+    ]
+    once_projection = components[
+        "AgOperatorReviewDispatchDaemonTickOnceProjection"
+    ]
+
+    assert tick_plan["get"]["operationId"] == (
+        "getAgOperatorReviewDispatchDaemonTickPlan"
+    )
+    assert tick_plan["post"]["operationId"] == (
+        "postAgOperatorReviewDispatchDaemonTickPlan"
+    )
+    assert tick_once["operationId"] == "postAgOperatorReviewDispatchDaemonTickOnce"
+    assert tick_plan["post"]["requestBody"]["content"]["application/json"]["schema"][
+        "$ref"
+    ] == "#/components/schemas/AgOperatorReviewDispatchDaemonControlRequest"
+    assert tick_once["requestBody"]["content"]["application/json"]["schema"]["$ref"] == (
+        "#/components/schemas/AgOperatorReviewDispatchDaemonControlRequest"
+    )
+    assert tick_plan["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ]["$ref"] == (
+        "#/components/schemas/AgOperatorReviewDispatchDaemonTickPlanProjection"
+    )
+    assert tick_once["responses"]["200"]["content"]["application/json"]["schema"][
+        "$ref"
+    ] == "#/components/schemas/AgOperatorReviewDispatchDaemonTickOnceProjection"
+    assert control_request["additionalProperties"] is False
+    assert set(control_request["properties"]) == {
+        "action",
+        "enabled",
+        "confirm_tick",
+        "dry_run",
+        "batch_limit",
+        "provider_mode",
+        "operator_ref",
+        "reason_codes",
+    }
+    assert "provider_payload" not in control_request["properties"]
+    assert "database_url" not in control_request["properties"]
+    assert components["AgOperatorReviewDispatchDaemonProviderMode"]["enum"] == [
+        "mock_first_only",
+        "mock_http",
+        "live_http",
+    ]
+    assert route["additionalProperties"] is False
+    assert route["properties"]["protected"]["const"] is True
+    assert route["properties"]["path"]["enum"] == [
+        "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        "/admin/v1/operator-review/dispatch-daemon/tick-once",
+    ]
+    assert plan_projection["properties"]["projection_schema_version"]["const"] == (
+        "ag_operator_review_escalation_dispatch_daemon_tick_plan_api.v1"
+    )
+    assert once_projection["properties"]["projection_schema_version"]["const"] == (
+        "ag_operator_review_escalation_dispatch_daemon_tick_once_api.v1"
+    )
+    assert plan_projection["properties"]["summary"]["properties"][
+        "will_mutate_without_confirm"
+    ]["const"] is False
+    assert set(once_projection["properties"]["summary"]["required"]) == {
+        "tick_status",
+        "processed_count",
+        "mutation_performed",
+    }
+
+
 def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:
     openapi_path = (
         Path(__file__).parents[1] / "contracts" / "openapi" / "nex-ag.openapi.yaml"
