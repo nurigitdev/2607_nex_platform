@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+from io import BytesIO
 from typing import Any
+from urllib.error import HTTPError, URLError
 
 import pytest
 
+import nex_ag.operator_review_dispatch_execution as dispatch_execution
 from nex_ag.operator_review_cases import (
     apply_operator_review_escalation_dispatch_action,
     build_operator_review_escalation_dispatch_plan,
@@ -31,6 +34,7 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_PROVIDER_MODE,
     DISPATCH_LIVE_PROVIDER_ENABLE_ENV,
     DISPATCH_LIVE_PROVIDER_PROFILE_ENV,
+    DISPATCH_LIVE_HTTP_TRANSPORT_ENVELOPE_SCHEMA_VERSION,
     DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV,
     DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV,
     DISPATCH_NOTIFICATION_PROVIDER_REQUEST_SCHEMA_VERSION,
@@ -42,6 +46,8 @@ from nex_ag.operator_review_dispatch_execution import (
     assert_dispatch_execution_result_redacted,
     build_dispatch_execution_provider_catalog,
     build_dispatch_execution_provider_config,
+    build_dispatch_live_http_transport,
+    build_dispatch_live_http_transport_envelope,
     build_external_incident_dispatch_provider_request,
     build_notification_dispatch_provider_request,
     build_dispatch_execution_result,
@@ -947,6 +953,145 @@ def test_dispatch_provider_http_client_guard_and_malformed_response_paths() -> N
     assert retry_exc.value.error_code == (
         "ag.operator_review_escalation_dispatch_execution_retry_at_required"
     )
+
+
+def test_dispatch_live_http_transport_envelope_and_urllib_send(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = build_notification_dispatch_provider_request(
+        sample_live_channel_dispatch(
+            channel_type="WEBHOOK",
+            safe_body="Safe live HTTP transport message.",
+        ),
+        provider_config=build_dispatch_execution_provider_config(
+            {DISPATCH_EXECUTION_PROVIDER_MODE_ENV: "live_http"}
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        requested_at="2026-09-14T09:00:00Z",
+    )
+    envelope = build_dispatch_live_http_transport_envelope(
+        request,
+        attempt_number=2,
+    )
+
+    assert envelope["transport_envelope_schema_version"] == (
+        DISPATCH_LIVE_HTTP_TRANSPORT_ENVELOPE_SCHEMA_VERSION
+    )
+    assert envelope["provider_category"] == "notification"
+    assert envelope["attempt_number"] == 2
+    assert envelope["safe_payload"]["safe_body_hash"]
+    assert "Safe live HTTP transport message." in json.dumps(envelope)
+    assert "service-token" not in json.dumps(envelope)
+    assert_dispatch_execution_result_redacted(envelope)
+
+    captured: dict[str, Any] = {}
+
+    class FakeResponse:
+        def __enter__(self) -> "FakeResponse":
+            return self
+
+        def __exit__(self, *_: Any) -> None:
+            return None
+
+        def getcode(self) -> int:
+            return 202
+
+        def read(self, _: int) -> bytes:
+            return b'{"accepted":true}'
+
+    def fake_urlopen(req: Any, *, timeout: float) -> FakeResponse:
+        captured["url"] = req.full_url
+        captured["headers"] = dict(req.header_items())
+        captured["timeout"] = timeout
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setattr(dispatch_execution, "urlopen", fake_urlopen)
+    transport = build_dispatch_live_http_transport(
+        request,
+        endpoint_url="http://127.0.0.1:0/dispatch/notification",
+        bearer_token="transport-token-0732",
+    )
+    result = transport.send(request, attempt_number=2, timeout_seconds=7.5)
+
+    assert result["status_code"] == 202
+    assert result["response_body_hash"] == sha256_text('{"accepted":true}')
+    assert captured["url"] == "http://127.0.0.1:0/dispatch/notification"
+    assert captured["timeout"] == 7.5
+    assert captured["headers"]["Authorization"] == "Bearer transport-token-0732"
+    assert captured["headers"]["X-nex-dispatch-attempt"] == "2"
+    assert captured["body"]["provider_request_hash"] == request["provider_request_hash"]
+    assert "transport-token-0732" not in json.dumps(result)
+
+
+def test_dispatch_live_http_transport_error_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = build_external_incident_dispatch_provider_request(
+        sample_live_channel_dispatch(
+            channel_type="INCIDENT",
+            provider_profile="external-incident-default",
+        )
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as endpoint_exc:
+        build_dispatch_live_http_transport(
+            request,
+            endpoint_url="not-a-url",
+        )
+    assert endpoint_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_live_http_endpoint_invalid"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as category_exc:
+        build_dispatch_live_http_transport(
+            {**request, "provider_category": "pager"},
+            endpoint_url="http://127.0.0.1:0/dispatch",
+        )
+    assert category_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_live_http_transport_category_unsupported"
+    )
+
+    def fake_http_error(*_: Any, **__: Any) -> None:
+        raise HTTPError(
+            "http://127.0.0.1:0/dispatch",
+            429,
+            "too many requests",
+            {},
+            BytesIO(b"retry later"),
+        )
+
+    monkeypatch.setattr(dispatch_execution, "urlopen", fake_http_error)
+    transport = build_dispatch_live_http_transport(
+        request,
+        endpoint_url="http://127.0.0.1:0/dispatch",
+    )
+    retryable = transport.send(request, attempt_number=1, timeout_seconds=1)
+    assert retryable["status_code"] == 429
+    assert retryable["response_body_hash"] == sha256_text("retry later")
+
+    def fake_url_error(*_: Any, **__: Any) -> None:
+        raise URLError("connection refused")
+
+    monkeypatch.setattr(dispatch_execution, "urlopen", fake_url_error)
+    refused = transport.send(request, attempt_number=1, timeout_seconds=1)
+    assert refused["status_code"] == 0
+    assert refused["response_body_hash"] == sha256_text("str")
+
+    def fake_timeout(*_: Any, **__: Any) -> None:
+        raise TimeoutError("loopback timeout")
+
+    monkeypatch.setattr(dispatch_execution, "urlopen", fake_timeout)
+    with pytest.raises(TimeoutError):
+        transport.send(request, attempt_number=1, timeout_seconds=1)
+
+    def fake_url_timeout(*_: Any, **__: Any) -> None:
+        raise URLError(TimeoutError("loopback url timeout"))
+
+    monkeypatch.setattr(dispatch_execution, "urlopen", fake_url_timeout)
+    with pytest.raises(TimeoutError):
+        transport.send(request, attempt_number=1, timeout_seconds=1)
 
 
 def test_dispatch_provider_router_preserves_mock_first_and_routes_live_channels() -> None:

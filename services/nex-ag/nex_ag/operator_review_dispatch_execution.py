@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 import re
+import socket
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Mapping
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 from uuid import NAMESPACE_URL, uuid5
 
 from nex_ag.operator_reviews import (
@@ -40,6 +43,9 @@ DISPATCH_NOTIFICATION_PROVIDER_REQUEST_SCHEMA_VERSION = (
 DISPATCH_EXTERNAL_INCIDENT_PROVIDER_REQUEST_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_external_incident_request.v1"
 )
+DISPATCH_LIVE_HTTP_TRANSPORT_ENVELOPE_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_live_http_transport_envelope.v1"
+)
 DISPATCH_PROVIDER_HTTP_CLIENT_RESULT_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_provider_http_client_result.v1"
 )
@@ -57,6 +63,9 @@ DEFAULT_DISPATCH_HTTP_MAX_RETRIES = 2
 DEFAULT_DISPATCH_HTTP_BACKOFF_SECONDS = 1.0
 MAX_DISPATCH_HTTP_TIMEOUT_SECONDS = 120.0
 MAX_DISPATCH_HTTP_MAX_RETRIES = 5
+DISPATCH_LIVE_HTTP_TRANSPORT_USER_AGENT = (
+    "nex-ag-dispatch-live-http-transport/1.0"
+)
 
 DISPATCH_EXECUTION_PROVIDER_MODE_ENV = "NEX_AG_DISPATCH_EXECUTION_PROVIDER_MODE"
 DISPATCH_EXECUTION_PROVIDER_PROFILE_ENV = (
@@ -933,6 +942,138 @@ class MockDispatchProviderHttpTransport:
         }
 
 
+@dataclass(frozen=True)
+class UrllibDispatchProviderHttpTransport:
+    endpoint_url: str
+    bearer_token: str | None = None
+    user_agent: str = DISPATCH_LIVE_HTTP_TRANSPORT_USER_AGENT
+
+    def send(
+        self,
+        provider_request: Mapping[str, Any],
+        *,
+        attempt_number: int,
+        timeout_seconds: float,
+    ) -> dict[str, Any]:
+        endpoint_url = _required_live_http_endpoint(self.endpoint_url)
+        envelope = build_dispatch_live_http_transport_envelope(
+            provider_request,
+            attempt_number=attempt_number,
+        )
+        body = json.dumps(envelope, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        request = Request(
+            endpoint_url,
+            data=body,
+            headers=_live_http_transport_headers(
+                provider_request,
+                attempt_number=attempt_number,
+                bearer_token=self.bearer_token,
+                user_agent=self.user_agent,
+            ),
+            method=str(provider_request.get("http", {}).get("method") or "POST"),
+        )
+        try:
+            with urlopen(request, timeout=max(0.1, float(timeout_seconds))) as response:
+                return _live_http_transport_response(
+                    int(response.getcode() or 0),
+                    response.read(4096),
+                )
+        except HTTPError as exc:
+            return _live_http_transport_response(
+                int(exc.code or 0),
+                exc.read(4096),
+            )
+        except (TimeoutError, socket.timeout) as exc:
+            raise TimeoutError("dispatch provider live HTTP timeout") from exc
+        except URLError as exc:
+            if isinstance(exc.reason, (TimeoutError, socket.timeout)):
+                raise TimeoutError("dispatch provider live HTTP timeout") from exc
+            return _live_http_transport_response(
+                0,
+                str(type(exc.reason).__name__).encode("utf-8"),
+            )
+
+
+def build_dispatch_live_http_transport(
+    provider_request: Mapping[str, Any],
+    *,
+    endpoint_url: str,
+    bearer_token: str | None = None,
+) -> UrllibDispatchProviderHttpTransport:
+    endpoint = _required_live_http_endpoint(endpoint_url)
+    category = str(provider_request.get("provider_category") or "")
+    if category not in {"notification", "external_incident"}:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=(
+                "ag.operator_review_escalation_dispatch_live_http_transport_"
+                "category_unsupported"
+            ),
+            detail=f"Unsupported live HTTP provider category: {category}",
+        )
+    transport = UrllibDispatchProviderHttpTransport(
+        endpoint_url=endpoint,
+        bearer_token=optional_text(bearer_token),
+    )
+    assert_dispatch_execution_result_redacted(
+        {
+            "transport": "urllib",
+            "provider_category": category,
+            "endpoint_hint": _redacted_endpoint_hint(endpoint),
+            "token_configured": optional_text(bearer_token) is not None,
+            "redaction": _dispatch_execution_redaction_flags(),
+        }
+    )
+    return transport
+
+
+def build_dispatch_live_http_transport_envelope(
+    provider_request: Mapping[str, Any],
+    *,
+    attempt_number: int,
+) -> dict[str, Any]:
+    category = str(provider_request.get("provider_category") or "")
+    safe_payload_key = (
+        "incident_payload" if category == "external_incident" else "safe_payload"
+    )
+    safe_payload = provider_request.get(safe_payload_key)
+    envelope = {
+        "transport_envelope_schema_version": (
+            DISPATCH_LIVE_HTTP_TRANSPORT_ENVELOPE_SCHEMA_VERSION
+        ),
+        "provider_request_schema_version": provider_request.get(
+            "provider_request_schema_version"
+        ),
+        "provider_category": category,
+        "provider_type": provider_request.get("provider_type"),
+        "provider_profile": provider_request.get("provider_profile"),
+        "provider_mode": provider_request.get("provider_mode"),
+        "dispatch_id": provider_request.get("dispatch_id"),
+        "escalation_id": provider_request.get("escalation_id"),
+        "case_id": provider_request.get("case_id"),
+        "dispatch_intent": provider_request.get("dispatch_intent"),
+        "channel_type": provider_request.get("channel_type"),
+        "provider_id": provider_request.get("provider_id"),
+        "provider_request_hash": provider_request.get("provider_request_hash"),
+        "idempotency_hash": provider_request.get("idempotency_hash"),
+        "attempt_number": max(1, int(attempt_number)),
+        safe_payload_key: safe_payload if isinstance(safe_payload, Mapping) else {},
+        "request_ref": {
+            "request_id_hash": (provider_request.get("request_ref") or {}).get(
+                "request_id_hash"
+            )
+            if isinstance(provider_request.get("request_ref"), Mapping)
+            else None,
+            "trace_id": (provider_request.get("request_ref") or {}).get("trace_id")
+            if isinstance(provider_request.get("request_ref"), Mapping)
+            else None,
+        },
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(envelope)
+    return envelope
+
+
 def execute_dispatch_provider_http_request(
     provider_request: Mapping[str, Any],
     *,
@@ -1758,6 +1899,57 @@ def _provider_config_endpoint(
         "endpoint_hint": None,
         "token_configured": False,
         "secret_storage": "env_only",
+    }
+
+
+def _required_live_http_endpoint(endpoint_url: str | None) -> str:
+    endpoint = optional_text(endpoint_url)
+    parsed = urlsplit(endpoint or "")
+    if endpoint is None or parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=(
+                "ag.operator_review_escalation_dispatch_live_http_endpoint_invalid"
+            ),
+            detail="Dispatch live HTTP transport requires an http(s) endpoint.",
+        )
+    return endpoint
+
+
+def _live_http_transport_headers(
+    provider_request: Mapping[str, Any],
+    *,
+    attempt_number: int,
+    bearer_token: str | None,
+    user_agent: str,
+) -> dict[str, str]:
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": optional_text(user_agent)
+        or DISPATCH_LIVE_HTTP_TRANSPORT_USER_AGENT,
+        "X-NEX-Dispatch-Request-Hash": str(
+            provider_request.get("provider_request_hash") or ""
+        ),
+        "X-NEX-Dispatch-Attempt": str(max(1, int(attempt_number))),
+    }
+    request_ref = provider_request.get("request_ref")
+    if isinstance(request_ref, Mapping) and optional_text(request_ref.get("trace_id")):
+        headers["X-NEX-Trace-Id"] = str(request_ref["trace_id"])
+    token = optional_text(bearer_token)
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+def _live_http_transport_response(
+    status_code: int,
+    response_body: bytes,
+) -> dict[str, Any]:
+    body_sample = response_body[:4096]
+    return {
+        "status_code": status_code,
+        "response_body_hash": sha256_text(body_sample.decode("utf-8", "replace")),
     }
 
 

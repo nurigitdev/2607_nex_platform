@@ -1382,6 +1382,10 @@ Unified operations:
   and requires injected transport, explicit live-enable guardrails, redacted
   endpoint hints, no raw headers/payloads in evidence, and continued AG dispatch
   outbox/state-machine ownership.
+- Slice 0732 adds the injectable `UrllibDispatchProviderHttpTransport` and live
+  HTTP transport envelope builder. Raw endpoint URLs and bearer tokens remain
+  transport-construction inputs only; persisted/provider evidence keeps safe
+  payload hashes, request hashes, status codes, and redacted endpoint hints.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
