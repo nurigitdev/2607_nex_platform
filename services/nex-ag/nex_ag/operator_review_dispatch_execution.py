@@ -1026,6 +1026,64 @@ def execute_dispatch_provider_http_request(
         )
 
 
+def execute_dispatch_with_provider_router(
+    dispatch: Mapping[str, Any],
+    *,
+    provider_mode: str | None = None,
+    provider_config: Mapping[str, Any] | None = None,
+    provider_profile: str | None = None,
+    request_id: str | None = None,
+    trace_id: str | None = None,
+    notification_status_code: int | None = None,
+    external_incident_status_code: int | None = None,
+    executed_at: str | None = None,
+) -> dict[str, Any]:
+    config = (
+        dict(provider_config)
+        if provider_config is not None
+        else build_dispatch_execution_provider_config({})
+    )
+    mode = normalize_dispatch_execution_provider_mode(
+        provider_mode
+        or optional_text(config.get("effective_provider_mode"))
+        or DISPATCH_EXECUTION_PROVIDER_MODE
+    )
+    routed_config = {**config, "effective_provider_mode": mode}
+    channel_type = str(dispatch.get("channel_type") or "")
+    if channel_type == "MOCK" or mode == "mock_first_only":
+        return execute_dispatch_with_mock_provider(
+            dispatch,
+            profile_id=provider_profile,
+            executed_at=executed_at,
+        )
+    if channel_type in NOTIFICATION_DISPATCH_CHANNEL_TYPES:
+        return execute_dispatch_with_mock_notification_provider(
+            dispatch,
+            provider_config=routed_config,
+            request_id=request_id,
+            trace_id=trace_id,
+            status_code=notification_status_code,
+            executed_at=executed_at,
+        )
+    if channel_type in EXTERNAL_INCIDENT_DISPATCH_CHANNEL_TYPES:
+        return execute_dispatch_with_mock_external_incident_provider(
+            dispatch,
+            provider_config=routed_config,
+            request_id=request_id,
+            trace_id=trace_id,
+            status_code=external_incident_status_code,
+            executed_at=executed_at,
+        )
+    raise OperatorReviewNoteError(
+        status_code=422,
+        error_code=(
+            "ag.operator_review_escalation_dispatch_execution_router_channel_"
+            "unsupported"
+        ),
+        detail=f"Unsupported dispatch execution router channel_type: {channel_type}",
+    )
+
+
 def build_dispatch_execution_transition_plan(
     dispatch: Mapping[str, Any],
     execution_result: Mapping[str, Any] | None = None,
@@ -1158,6 +1216,10 @@ def run_dispatch_execution_worker_once(
     worker_id: str = "ag-dispatch-execution-worker",
     batch_limit: int | None = None,
     provider_profile: str | None = None,
+    provider_mode: str | None = None,
+    provider_config: Mapping[str, Any] | None = None,
+    notification_status_code: int | None = None,
+    external_incident_status_code: int | None = None,
     confirm_run: bool = False,
     dry_run: bool = False,
     executed_at: str | None = None,
@@ -1193,7 +1255,7 @@ def run_dispatch_execution_worker_once(
     items: list[dict[str, Any]] = []
     for dispatch in candidates[:limit]:
         items.append(
-        _execute_worker_item(
+            _execute_worker_item(
                 service,
                 dispatch,
                 run_id=run_id,
@@ -1201,6 +1263,10 @@ def run_dispatch_execution_worker_once(
                 trace_id=trace_id,
                 worker_id=worker_id,
                 provider_profile=provider_profile,
+                provider_mode=provider_mode,
+                provider_config=provider_config,
+                notification_status_code=notification_status_code,
+                external_incident_status_code=external_incident_status_code,
                 dry_run=dry_run,
                 executed_at=now,
             )
@@ -1449,12 +1515,22 @@ def _execute_worker_item(
     trace_id: str | None,
     worker_id: str,
     provider_profile: str | None,
+    provider_mode: str | None,
+    provider_config: Mapping[str, Any] | None,
+    notification_status_code: int | None,
+    external_incident_status_code: int | None,
     dry_run: bool,
     executed_at: str,
 ) -> dict[str, Any]:
-    result = execute_dispatch_with_mock_provider(
+    result = execute_dispatch_with_provider_router(
         dispatch,
-        profile_id=provider_profile,
+        provider_mode=provider_mode,
+        provider_config=provider_config,
+        provider_profile=provider_profile,
+        request_id=request_id,
+        trace_id=trace_id,
+        notification_status_code=notification_status_code,
+        external_incident_status_code=external_incident_status_code,
         executed_at=executed_at,
     )
     plan = build_dispatch_execution_transition_plan(

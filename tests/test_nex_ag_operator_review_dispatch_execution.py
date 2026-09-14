@@ -52,6 +52,7 @@ from nex_ag.operator_review_dispatch_execution import (
     execute_dispatch_with_mock_provider,
     execute_dispatch_with_mock_external_incident_provider,
     execute_dispatch_with_mock_notification_provider,
+    execute_dispatch_with_provider_router,
     normalize_dispatch_execution_provider_mode,
     normalize_dispatch_execution_provider_profile,
     record_dispatch_execution_result_metadata,
@@ -948,6 +949,67 @@ def test_dispatch_provider_http_client_guard_and_malformed_response_paths() -> N
     )
 
 
+def test_dispatch_provider_router_preserves_mock_first_and_routes_live_channels() -> None:
+    config = build_dispatch_execution_provider_config(
+        {DISPATCH_EXECUTION_PROVIDER_MODE_ENV: "mock_http"}
+    )
+    email_dispatch = sample_live_channel_dispatch(
+        channel_type="EMAIL",
+        provider_profile="email-notification-default",
+    )
+    incident_dispatch = sample_live_channel_dispatch(
+        channel_type="INCIDENT",
+        provider_profile="external-incident-default",
+    )
+
+    skipped = execute_dispatch_with_provider_router(
+        email_dispatch,
+        provider_mode="mock_first_only",
+        provider_config=config,
+        executed_at="2026-09-13T12:00:00Z",
+    )
+    assert skipped["execution_status"] == "SKIPPED"
+    assert skipped["provider_profile"] == "mock-default"
+
+    notification = execute_dispatch_with_provider_router(
+        email_dispatch,
+        provider_mode="mock_http",
+        provider_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        notification_status_code=202,
+        executed_at="2026-09-13T12:01:00Z",
+    )
+    assert notification["execution_status"] == "SUCCEEDED"
+    assert notification["provider_category"] == "notification"
+    assert notification["provider_mode"] == "mock_http"
+
+    incident = execute_dispatch_with_provider_router(
+        incident_dispatch,
+        provider_mode="mock_http",
+        provider_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        external_incident_status_code=500,
+        executed_at="2026-09-13T12:02:00Z",
+    )
+    assert incident["execution_status"] == "RETRY_WAIT"
+    assert incident["provider_category"] == "external_incident"
+    assert incident["last_error_code"] == (
+        "external_incident_provider_retryable_status"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as channel_exc:
+        execute_dispatch_with_provider_router(
+            {**email_dispatch, "channel_type": "SMS"},
+            provider_mode="mock_http",
+            provider_config=config,
+        )
+    assert channel_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_execution_router_channel_unsupported"
+    )
+
+
 def test_dispatch_execution_transition_plan_success_actions_apply_to_state_machine() -> None:
     dispatch = sample_dispatch()
     result = execute_dispatch_with_mock_provider(
@@ -1185,6 +1247,58 @@ def test_dispatch_execution_worker_once_processes_success_and_failure_batches() 
     assert failure_metadata["last_error_code"] == "mock_dispatch_failed"
     assert failure_metadata["retryable"] is True
     assert "idem-0716" not in json.dumps(failure_run)
+
+
+def test_dispatch_execution_worker_once_routes_live_channel_batches() -> None:
+    email = sample_live_channel_dispatch(
+        dispatch_id="dispatch-0726-email",
+        channel_type="EMAIL",
+        dispatch_intent="NOTIFY_OWNER",
+        provider_profile="email-notification-default",
+    )
+    incident = sample_live_channel_dispatch(
+        dispatch_id="dispatch-0726-incident",
+        channel_type="INCIDENT",
+        dispatch_intent="OPEN_INCIDENT",
+        provider_profile="external-incident-default",
+    )
+    service, dispatch_store = build_dispatch_service(email, incident)
+    config = build_dispatch_execution_provider_config(
+        {DISPATCH_EXECUTION_PROVIDER_MODE_ENV: "mock_http"}
+    )
+
+    run = run_dispatch_execution_worker_once(
+        service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        batch_limit=5,
+        provider_mode="mock_http",
+        provider_config=config,
+        notification_status_code=202,
+        external_incident_status_code=201,
+        confirm_run=True,
+        executed_at="2026-09-13T12:10:00Z",
+    )
+
+    assert run["run_status"] == "COMPLETED"
+    assert run["candidate_count"] == 2
+    assert run["processed_count"] == 2
+    assert run["succeeded_count"] == 2
+    assert {item["provider_profile"] for item in run["items"]} == {
+        "email-notification-default",
+        "external-incident-default",
+    }
+    persisted_email = dispatch_store.get("dispatch-0726-email")
+    persisted_incident = dispatch_store.get("dispatch-0726-incident")
+    assert persisted_email["dispatch_status"] == "SUCCEEDED"
+    assert persisted_incident["dispatch_status"] == "SUCCEEDED"
+    assert persisted_email["metadata"]["last_execution_result"]["provider_profile"] == (
+        "email-notification-default"
+    )
+    assert persisted_incident["metadata"]["last_execution_result"][
+        "provider_profile"
+    ] == "external-incident-default"
+    assert "notify-token" not in json.dumps(run)
 
 
 def test_dispatch_execution_worker_once_dry_run_and_limit_bounds() -> None:
