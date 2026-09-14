@@ -845,6 +845,15 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0739`](slices/0739_ag_escalation_dispatch_live_http_operations_diagnostics.md) | `S74-009` AG escalation dispatch live HTTP operations diagnostics. |
 | [`Slice 0740`](slices/0740_s74_operator_review_escalation_dispatch_live_http_closure.md) | `S74-010` S74 AG escalation dispatch live HTTP closure checkpoint. |
 | [`Slice 0741`](slices/0741_ag_escalation_dispatch_daemon_boundary_audit.md) | `S75-001` AG escalation dispatch execution daemon boundary audit. |
+| [`Slice 0742`](slices/0742_ag_escalation_dispatch_daemon_policy_foundation.md) | `S75-002` AG escalation dispatch daemon policy foundation. |
+| [`Slice 0743`](slices/0743_ag_escalation_dispatch_daemon_tick_planner.md) | `S75-003` AG escalation dispatch daemon tick planner. |
+| [`Slice 0744`](slices/0744_ag_escalation_dispatch_daemon_tick_execution.md) | `S75-004` AG escalation dispatch daemon tick execution service. |
+| [`Slice 0745`](slices/0745_ag_escalation_dispatch_daemon_tick_observability.md) | `S75-005` AG escalation dispatch daemon tick observability. |
+| [`Slice 0746`](slices/0746_ag_escalation_dispatch_daemon_runtime_projection.md) | `S75-006` AG escalation dispatch daemon runtime projection. |
+| [`Slice 0747`](slices/0747_ag_escalation_dispatch_daemon_control_foundation.md) | `S75-007` AG escalation dispatch daemon protected control foundation. |
+| [`Slice 0748`](slices/0748_ag_escalation_dispatch_daemon_postgres_smoke.md) | `S75-008` AG escalation dispatch daemon PostgreSQL smoke evidence. |
+| [`Slice 0749`](slices/0749_ag_escalation_dispatch_daemon_privacy_regression.md) | `S75-009` AG escalation dispatch daemon privacy regression. |
+| [`Slice 0750`](slices/0750_s75_operator_review_escalation_dispatch_daemon_closure.md) | `S75-010` S75 AG escalation dispatch daemon closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
