@@ -26,6 +26,7 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS_ENV,
     DISPATCH_EXECUTION_DAEMON_POLICY_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV,
+    DISPATCH_EXECUTION_DAEMON_TICK_PLAN_SCHEMA_VERSION,
     DISPATCH_EXECUTION_PROVIDER_CONFIG_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DEFAULT_PROVIDER_PROFILE,
     DISPATCH_EXECUTION_PROVIDER_MODE_ENV,
@@ -53,6 +54,7 @@ from nex_ag.operator_review_dispatch_execution import (
     MockNotificationDispatchProvider,
     assert_dispatch_execution_result_redacted,
     build_dispatch_execution_daemon_policy,
+    build_dispatch_execution_daemon_tick_plan,
     build_dispatch_execution_provider_catalog,
     build_dispatch_execution_provider_config,
     build_dispatch_live_http_transport_headers,
@@ -360,6 +362,112 @@ def test_dispatch_execution_daemon_policy_rejects_unknown_provider_mode() -> Non
     assert exc_info.value.error_code == (
         "ag.operator_review_escalation_dispatch_execution_provider_mode_unsupported"
     )
+
+
+def test_dispatch_execution_daemon_tick_plan_defaults_to_disabled_idle() -> None:
+    service, _dispatch_store = build_dispatch_service()
+
+    plan = build_dispatch_execution_daemon_tick_plan(
+        service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        planned_at="2026-09-14T11:43:00Z",
+    )
+
+    assert plan["daemon_tick_plan_schema_version"] == (
+        DISPATCH_EXECUTION_DAEMON_TICK_PLAN_SCHEMA_VERSION
+    )
+    assert plan["plan_status"] == "DISABLED"
+    assert plan["candidate_count"] == 0
+    assert plan["candidate_dispatch_ids"] == []
+    assert plan["candidate_status_counts"] == {}
+    assert plan["dry_run"] is True
+    assert plan["requires_confirm_tick"] is True
+    assert plan["will_mutate_without_confirm"] is False
+    assert plan["new_tables_required"] is False
+    assert_dispatch_execution_result_redacted(plan)
+
+    enabled_idle = build_dispatch_execution_daemon_tick_plan(
+        service,
+        request_id=REQUEST_ID,
+        policy=build_dispatch_execution_daemon_policy(
+            {DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1"}
+        ),
+        planned_at="2026-09-14T11:43:10Z",
+    )
+    assert enabled_idle["plan_status"] == "IDLE"
+    assert enabled_idle["candidate_count"] == 0
+
+
+def test_dispatch_execution_daemon_tick_plan_summarizes_candidates_without_mutation() -> None:
+    pending = sample_dispatch(
+        candidate_overrides={
+            "candidate_id": "case-0743:pending",
+            "case_id": "case-0743-pending",
+        }
+    )
+    retry_wait = sample_dispatch(
+        candidate_overrides={
+            "candidate_id": "case-0743:retry",
+            "case_id": "case-0743-retry",
+        }
+    )
+    retry_wait.update(
+        {
+            "dispatch_id": "dispatch-0743-retry",
+            "dispatch_status": "RETRY_WAIT",
+            "attempt_count": 1,
+            "last_error_code": "provider_timeout",
+            "next_attempt_at": "2026-09-14T12:00:00Z",
+        }
+    )
+    failed = sample_dispatch(
+        candidate_overrides={
+            "candidate_id": "case-0743:failed",
+            "case_id": "case-0743-failed",
+        }
+    )
+    failed.update(
+        {
+            "dispatch_id": "dispatch-0743-failed",
+            "dispatch_status": "FAILED",
+            "attempt_count": 3,
+        }
+    )
+    service, dispatch_store = build_dispatch_service(pending, retry_wait, failed)
+    policy = build_dispatch_execution_daemon_policy(
+        {
+            DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1",
+            DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV: "false",
+            DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV: "2",
+        }
+    )
+
+    plan = build_dispatch_execution_daemon_tick_plan(
+        service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        policy=policy,
+        planned_at="2026-09-14T11:44:00Z",
+    )
+
+    assert plan["plan_status"] == "READY"
+    assert plan["candidate_count"] == 2
+    assert plan["candidate_dispatch_ids"] == [
+        pending["dispatch_id"],
+        "dispatch-0743-retry",
+    ]
+    assert plan["candidate_status_counts"] == {"PENDING": 1, "RETRY_WAIT": 1}
+    assert plan["candidate_channel_counts"] == {"MOCK": 2}
+    assert plan["dry_run"] is False
+    assert plan["candidate_summaries"][1]["attempt_count"] == 1
+    assert plan["candidate_summaries"][1]["last_error_code"] == "provider_timeout"
+    assert dispatch_store.get(pending["dispatch_id"])["dispatch_status"] == "PENDING"
+    assert dispatch_store.get("dispatch-0743-retry")["dispatch_status"] == "RETRY_WAIT"
+    serialized = json.dumps(plan)
+    assert "idem-0713" not in serialized
+    assert "provider_timeout" in serialized
+    assert_dispatch_execution_result_redacted(plan)
 
 
 def test_dispatch_execution_provider_profile_rejects_unknown_or_live_channel() -> None:

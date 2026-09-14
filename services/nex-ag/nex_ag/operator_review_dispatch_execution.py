@@ -34,6 +34,9 @@ DISPATCH_EXECUTION_WORKER_RUN_SCHEMA_VERSION = (
 DISPATCH_EXECUTION_DAEMON_POLICY_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_daemon_policy.v1"
 )
+DISPATCH_EXECUTION_DAEMON_TICK_PLAN_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_daemon_tick_plan.v1"
+)
 DISPATCH_EXECUTION_RESULT_METADATA_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_result_metadata.v1"
 )
@@ -434,6 +437,81 @@ def build_dispatch_execution_daemon_policy(
     }
     assert_dispatch_execution_result_redacted(policy)
     return policy
+
+
+def build_dispatch_execution_daemon_tick_plan(
+    service: Any,
+    *,
+    request_id: str,
+    trace_id: str | None = None,
+    policy: Mapping[str, Any] | None = None,
+    provider_config: Mapping[str, Any] | None = None,
+    planned_at: str | None = None,
+) -> dict[str, Any]:
+    resolved_policy = (
+        dict(policy)
+        if policy is not None
+        else build_dispatch_execution_daemon_policy(
+            {},
+            provider_config=provider_config,
+        )
+    )
+    now = planned_at or _utc_now()
+    batch_limit = _bounded_batch_limit(resolved_policy.get("batch_limit"))
+    candidates = _worker_candidate_dispatches(
+        service,
+        request_id=request_id,
+        trace_id=trace_id,
+        limit=batch_limit,
+    )
+    plan_status = "READY"
+    if not bool(resolved_policy.get("enabled")):
+        plan_status = "DISABLED"
+    elif not candidates:
+        plan_status = "IDLE"
+    plan_id = str(
+        uuid5(
+            NAMESPACE_URL,
+            "ag-operator-review-escalation-dispatch-execution-daemon-tick-plan:"
+            f"{request_id}:{now}:{batch_limit}:"
+            f"{resolved_policy.get('effective_provider_mode')}:{len(candidates)}",
+        )
+    )
+    plan = {
+        "daemon_tick_plan_schema_version": (
+            DISPATCH_EXECUTION_DAEMON_TICK_PLAN_SCHEMA_VERSION
+        ),
+        "tick_plan_id": plan_id,
+        "plan_status": plan_status,
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "planned_at": now,
+        "source_table": resolved_policy.get("source_table", "ag_op_esc_dispatches"),
+        "batch_limit": batch_limit,
+        "candidate_count": len(candidates),
+        "candidate_dispatch_ids": [
+            str(candidate.get("dispatch_id") or "") for candidate in candidates
+        ],
+        "candidate_summaries": [
+            _dispatch_daemon_candidate_summary(candidate) for candidate in candidates
+        ],
+        "candidate_status_counts": _count_by_key(candidates, "dispatch_status"),
+        "candidate_channel_counts": _count_by_key(candidates, "channel_type"),
+        "configured_provider_mode": resolved_policy.get("configured_provider_mode"),
+        "effective_provider_mode": resolved_policy.get("effective_provider_mode"),
+        "live_network_calls_enabled": bool(
+            resolved_policy.get("live_network_calls_enabled")
+        ),
+        "dry_run": bool(resolved_policy.get("dry_run")),
+        "requires_confirm_tick": bool(
+            resolved_policy.get("requires_confirm_tick", True)
+        ),
+        "will_mutate_without_confirm": False,
+        "new_tables_required": False,
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(plan)
+    return plan
 
 
 def normalize_dispatch_execution_provider_mode(value: str | None) -> str:
@@ -1924,6 +2002,37 @@ def _worker_candidate_dispatches(
             if len(selected) >= limit:
                 return selected
     return selected
+
+
+def _dispatch_daemon_candidate_summary(
+    dispatch: Mapping[str, Any],
+) -> dict[str, Any]:
+    summary = {
+        "dispatch_id": str(dispatch.get("dispatch_id") or ""),
+        "case_id": str(dispatch.get("case_id") or ""),
+        "escalation_id": str(dispatch.get("escalation_id") or ""),
+        "dispatch_status": str(dispatch.get("dispatch_status") or ""),
+        "dispatch_intent": str(dispatch.get("dispatch_intent") or ""),
+        "channel_type": str(dispatch.get("channel_type") or ""),
+        "provider_profile": optional_text(dispatch.get("provider_profile")),
+        "attempt_count": _non_negative_int(dispatch.get("attempt_count")),
+        "last_error_code": optional_text(dispatch.get("last_error_code")),
+        "next_attempt_at": optional_text(dispatch.get("next_attempt_at")),
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(summary)
+    return summary
+
+
+def _count_by_key(
+    items: list[dict[str, Any]],
+    key: str,
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        value = str(item.get(key) or "UNKNOWN")
+        counts[value] = counts.get(value, 0) + 1
+    return counts
 
 
 def _execute_worker_item(
