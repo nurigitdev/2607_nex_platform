@@ -106,6 +106,8 @@ from nex_ag.operator_review_cases import (
     build_operator_review_case_sla_policy_projection,
     build_operator_review_escalation_dispatch_list_response,
     build_operator_review_escalation_list_response,
+    OperatorReviewCaseService,
+    OperatorReviewCaseStore,
 )
 from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV,
@@ -117,6 +119,7 @@ from nex_ag.operator_review_dispatch_execution import (
     build_dispatch_execution_daemon_control_request,
     build_dispatch_execution_daemon_policy,
     build_dispatch_execution_daemon_tick_plan,
+    run_dispatch_execution_daemon_tick_once,
 )
 from nex_ag.operator_reviews import ALLOWED_TARGET_SERVICES, OperatorReviewNoteError
 from nex_runtime.retrieval_policies import list_retrieval_policy_records
@@ -159,6 +162,9 @@ AG_OPERATOR_REVIEW_DISPATCH_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION = (
 )
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_TICK_PLAN_API_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_daemon_tick_plan_api.v1"
+)
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_TICK_ONCE_API_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_daemon_tick_once_api.v1"
 )
 AG_SERVICE_LOG_RETENTION_EVENT_SUCCEEDED = "ag.service_log_retention.succeeded"
 AG_SERVICE_LOG_RETENTION_EVENT_FAILED = "ag.service_log_retention.failed"
@@ -2300,6 +2306,24 @@ def register_unified_operation_routes(
             http_method="POST",
         )
 
+    @app.post(
+        "/admin/v1/operator-review/dispatch-daemon/tick-once", response_model=None
+    )
+    def post_operator_review_dispatch_daemon_tick_once(
+        request: Request,
+        payload: dict[str, Any] | None = None,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        return _dispatch_daemon_tick_once_route_response(
+            request,
+            operator_review_escalation_dispatch_store,
+            payload=payload,
+            http_method="POST",
+        )
+
     @app.get("/admin/v1/operations/workers", response_model=None)
     def list_worker_runtime_projection(
         request: Request,
@@ -2457,6 +2481,10 @@ def register_unified_operation_routes(
 class _OperatorReviewDispatchDaemonRouteService:
     def __init__(self, dispatch_store: Any) -> None:
         self._dispatch_store = dispatch_store
+        self._service = OperatorReviewCaseService(
+            OperatorReviewCaseStore(),
+            dispatch_store=dispatch_store,
+        )
 
     def list_escalation_dispatches(
         self,
@@ -2472,6 +2500,26 @@ class _OperatorReviewDispatchDaemonRouteService:
             limit=limit,
         )
         return {"items": [deepcopy(record) for record in records]}
+
+    def get_escalation_dispatch(self, dispatch_id: str) -> dict[str, Any]:
+        return self._service.get_escalation_dispatch(dispatch_id)
+
+    def apply_escalation_dispatch_action(
+        self,
+        dispatch_id: str,
+        payload: dict[str, Any],
+        *,
+        request_id: str,
+        trace_id: str | None,
+        idempotency_key: str | None,
+    ) -> dict[str, Any]:
+        return self._service.apply_escalation_dispatch_action(
+            dispatch_id,
+            payload,
+            request_id=request_id,
+            trace_id=trace_id,
+            idempotency_key=idempotency_key,
+        )
 
 
 def build_operator_review_escalation_dispatch_daemon_tick_plan_api_projection(
@@ -2561,6 +2609,111 @@ def build_operator_review_escalation_dispatch_daemon_tick_plan_api_projection(
     return projection
 
 
+def build_operator_review_escalation_dispatch_daemon_tick_once_api_projection(
+    *,
+    dispatch_store: Any | None,
+    payload: Mapping[str, Any] | None = None,
+    request_id: str,
+    trace_id: str | None = None,
+    http_method: str = "POST",
+) -> dict[str, Any]:
+    if dispatch_store is None:
+        raise OperationsQueryError(
+            error_code=(
+                "ag.operator_review_escalation_dispatch_daemon_dispatch_store_"
+                "unavailable"
+            ),
+            detail="Operator review escalation dispatch store is not configured.",
+            status_code=503,
+        )
+    normalized_payload = _dispatch_daemon_payload_mapping(payload)
+    control_request = build_dispatch_execution_daemon_control_request(
+        {**normalized_payload, "action": "tick_once"},
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    policy = build_dispatch_execution_daemon_policy(
+        _dispatch_daemon_policy_environ(
+            normalized_payload,
+            control_request=control_request,
+        )
+    )
+    admission = build_dispatch_execution_daemon_control_admission(
+        control_request,
+        policy=policy,
+    )
+    if admission["admission_status"] != "ACCEPTED":
+        reason = str(admission.get("rejection_reason") or "rejected")
+        raise OperationsQueryError(
+            error_code=(
+                "ag.operator_review_escalation_dispatch_daemon_control_"
+                f"{reason}"
+            ),
+            detail=f"Dispatch daemon tick-once control was rejected: {reason}.",
+            status_code=409,
+        )
+    try:
+        tick_result = run_dispatch_execution_daemon_tick_once(
+            _OperatorReviewDispatchDaemonRouteService(dispatch_store),
+            request_id=request_id,
+            trace_id=trace_id,
+            worker_id=str(
+                normalized_payload.get("worker_id")
+                or "ag-dispatch-execution-daemon"
+            ),
+            policy=policy,
+            confirm_tick=bool(control_request["confirm_tick"]),
+            dry_run=bool(control_request["dry_run"]),
+        )
+    except OperatorReviewNoteError:
+        raise
+    except Exception as exc:
+        raise OperationsQueryError(
+            error_code=(
+                "ag.operator_review_escalation_dispatch_daemon_tick_once_"
+                "unavailable"
+            ),
+            detail="Operator review escalation dispatch daemon tick-once failed.",
+            status_code=503,
+        ) from exc
+    projection = {
+        "projection_schema_version": (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_TICK_ONCE_API_SCHEMA_VERSION
+        ),
+        "projection_status": "READY",
+        "checked_at": _utc_now(),
+        "route": {
+            "path": "/admin/v1/operator-review/dispatch-daemon/tick-once",
+            "method": http_method.upper(),
+            "protected": True,
+            "mutation": not bool(tick_result["dry_run"]),
+            "requires_confirm_tick": True,
+        },
+        "control_request": control_request,
+        "control_admission": admission,
+        "policy": _dispatch_daemon_public_policy(policy),
+        "tick_result": tick_result,
+        "summary": {
+            "tick_status": tick_result["tick_status"],
+            "blocked_reason": tick_result["blocked_reason"],
+            "candidate_count": tick_result["candidate_count"],
+            "processed_count": tick_result["processed_count"],
+            "succeeded_count": tick_result["succeeded_count"],
+            "failed_count": tick_result["failed_count"],
+            "retry_wait_count": tick_result["retry_wait_count"],
+            "skipped_count": tick_result["skipped_count"],
+            "dry_run": tick_result["dry_run"],
+            "mutation_performed": not bool(tick_result["dry_run"])
+            and tick_result["tick_status"] == "COMPLETED",
+        },
+        "redaction": tick_result["redaction"],
+    }
+    if trace_id is not None:
+        projection["request_trace_id"] = trace_id
+    assert_dispatch_execution_result_redacted(projection)
+    return projection
+
+
 def _dispatch_daemon_tick_plan_route_response(
     request: Request,
     dispatch_store: Any | None,
@@ -2570,6 +2723,27 @@ def _dispatch_daemon_tick_plan_route_response(
 ) -> dict[str, Any] | JSONResponse:
     try:
         return build_operator_review_escalation_dispatch_daemon_tick_plan_api_projection(
+            dispatch_store=dispatch_store,
+            payload=payload,
+            request_id=request_id_from_headers(request),
+            trace_id=trace_id_from_headers(request),
+            http_method=http_method,
+        )
+    except OperatorReviewNoteError as exc:
+        return _dispatch_daemon_control_problem_response(request, exc)
+    except OperationsQueryError as exc:
+        return _dispatch_daemon_control_problem_response(request, exc)
+
+
+def _dispatch_daemon_tick_once_route_response(
+    request: Request,
+    dispatch_store: Any | None,
+    *,
+    payload: Mapping[str, Any] | None,
+    http_method: str,
+) -> dict[str, Any] | JSONResponse:
+    try:
+        return build_operator_review_escalation_dispatch_daemon_tick_once_api_projection(
             dispatch_store=dispatch_store,
             payload=payload,
             request_id=request_id_from_headers(request),
