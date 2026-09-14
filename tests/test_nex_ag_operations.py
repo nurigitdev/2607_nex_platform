@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 
@@ -4137,6 +4138,42 @@ def test_operator_review_dispatch_daemon_tick_once_route_maps_store_errors() -> 
     assert failing_store.json()["error_code"] == (
         "ag.operator_review_escalation_dispatch_daemon_tick_once_unavailable"
     )
+
+
+def test_operator_review_dispatch_daemon_runtime_openapi_matches_contract() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_unified_operation_routes(
+        app,
+        operator_review_escalation_dispatch_store=OperatorReviewEscalationDispatchStore(),
+    )
+    runtime_paths = app.openapi()["paths"]
+    static_contract = yaml.safe_load(
+        (CONTRACT_ROOT / "openapi" / "nex-ag.openapi.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    static_paths = static_contract["paths"]
+    expected = {
+        (
+            "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+            "get",
+        ): "getAgOperatorReviewDispatchDaemonTickPlan",
+        (
+            "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+            "post",
+        ): "postAgOperatorReviewDispatchDaemonTickPlan",
+        (
+            "/admin/v1/operator-review/dispatch-daemon/tick-once",
+            "post",
+        ): "postAgOperatorReviewDispatchDaemonTickOnce",
+    }
+
+    for (path, method), operation_id in expected.items():
+        runtime_operation = runtime_paths[path][method]
+        static_operation = static_paths[path][method]
+        assert runtime_operation["operationId"] == operation_id
+        assert static_operation["operationId"] == operation_id
+        assert runtime_operation["tags"] == static_operation["tags"] == ["Operations"]
 
 
 def test_operations_dashboard_escalation_dispatches_handles_filters_and_errors() -> (

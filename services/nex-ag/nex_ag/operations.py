@@ -2262,7 +2262,10 @@ def register_unified_operation_routes(
         )
 
     @app.get(
-        "/admin/v1/operator-review/dispatch-daemon/tick-plan", response_model=None
+        "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        response_model=None,
+        operation_id="getAgOperatorReviewDispatchDaemonTickPlan",
+        tags=["Operations"],
     )
     def get_operator_review_dispatch_daemon_tick_plan(
         request: Request,
@@ -2289,7 +2292,10 @@ def register_unified_operation_routes(
         )
 
     @app.post(
-        "/admin/v1/operator-review/dispatch-daemon/tick-plan", response_model=None
+        "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        response_model=None,
+        operation_id="postAgOperatorReviewDispatchDaemonTickPlan",
+        tags=["Operations"],
     )
     def post_operator_review_dispatch_daemon_tick_plan(
         request: Request,
@@ -2307,7 +2313,10 @@ def register_unified_operation_routes(
         )
 
     @app.post(
-        "/admin/v1/operator-review/dispatch-daemon/tick-once", response_model=None
+        "/admin/v1/operator-review/dispatch-daemon/tick-once",
+        response_model=None,
+        operation_id="postAgOperatorReviewDispatchDaemonTickOnce",
+        tags=["Operations"],
     )
     def post_operator_review_dispatch_daemon_tick_once(
         request: Request,
