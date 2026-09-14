@@ -12,6 +12,7 @@ from jsonschema import Draft202012Validator
 
 import nex_ag.operations as ag_operations
 from nex_ag.operations import (
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION,
     AG_SERVICE_LOG_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION,
     AG_SERVICE_LOG_RETENTION_DISPATCH_SCHEMA_VERSION,
     AG_SERVICE_LOG_RETENTION_EVENT_FAILED,
@@ -40,6 +41,7 @@ from nex_ag.operations import (
     build_job_operations_projection,
     build_operation_query_options,
     build_operation_source_readiness_projection,
+    build_operator_review_escalation_dispatch_daemon_runtime_projection,
     build_operations_dashboard_snapshot_projection,
     build_operations_issue_candidate_projection,
     build_operations_rollup_metrics_projection,
@@ -3628,6 +3630,137 @@ def test_operations_dashboard_snapshot_includes_escalation_dispatches() -> None:
     }
     assert projection["degraded_sources"] == []
     assert_ag_operations_projection_contract(projection)
+
+
+def test_operator_review_escalation_dispatch_daemon_runtime_projection_is_safe() -> None:
+    completed_tick = {
+        "tick_id": "tick-0746-completed",
+        "tick_status": "COMPLETED",
+        "blocked_reason": None,
+        "worker_id": "ag-dispatch-execution-daemon",
+        "executed_at": "2026-09-14T13:46:00Z",
+        "dry_run": False,
+        "candidate_count": 2,
+        "processed_count": 2,
+        "succeeded_count": 2,
+        "failed_count": 0,
+        "retry_wait_count": 0,
+        "skipped_count": 0,
+        "effective_provider_mode": "mock_first_only",
+        "new_tables_required": False,
+        "worker_run": {"items": [{"provider_payload": "secret"}]},
+    }
+    blocked_tick = {
+        "tick_id": "tick-0746-blocked",
+        "tick_status": "BLOCKED",
+        "blocked_reason": "confirm_tick_required",
+        "worker_id": "ag-dispatch-execution-daemon",
+        "executed_at": "2026-09-14T13:45:00Z",
+        "dry_run": True,
+        "candidate_count": 1,
+        "processed_count": 0,
+        "succeeded_count": 0,
+        "failed_count": 0,
+        "retry_wait_count": 0,
+        "skipped_count": 0,
+        "effective_provider_mode": "mock_http",
+        "new_tables_required": False,
+    }
+    retry_tick = {
+        "tick_id": "tick-0746-retry",
+        "tick_status": "COMPLETED",
+        "blocked_reason": None,
+        "worker_id": "ag-dispatch-execution-daemon",
+        "executed_at": "2026-09-14T13:44:00Z",
+        "dry_run": False,
+        "candidate_count": 1,
+        "processed_count": 1,
+        "succeeded_count": 0,
+        "failed_count": 0,
+        "retry_wait_count": 1,
+        "skipped_count": 0,
+        "effective_provider_mode": "live_http",
+        "new_tables_required": False,
+    }
+    policy = {
+        "enabled": True,
+        "dry_run": False,
+        "batch_limit": 5,
+        "cycle_limit": 1,
+        "interval_seconds": 60,
+        "source_table": "ag_op_esc_dispatches",
+        "configured_provider_mode": "live_http",
+        "effective_provider_mode": "mock_http",
+        "live_network_calls_enabled": False,
+        "requires_confirm_tick": True,
+        "requires_protected_control": True,
+        "new_tables_required": False,
+        "env": {"secret": "nuri1004"},
+    }
+
+    projection = build_operator_review_escalation_dispatch_daemon_runtime_projection(
+        [retry_tick, object(), completed_tick, blocked_tick],  # type: ignore[list-item]
+        policy=policy,
+        checked_at="2026-09-14T13:47:00Z",
+        limit=2,
+    )
+
+    assert projection["projection_schema_version"] == (
+        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["summary"]["tick_count"] == 3
+    assert projection["summary"]["completed_count"] == 2
+    assert projection["summary"]["blocked_count"] == 1
+    assert projection["summary"]["dry_run_count"] == 1
+    assert projection["summary"]["candidate_count_total"] == 4
+    assert projection["summary"]["processed_count_total"] == 3
+    assert projection["summary"]["succeeded_count_total"] == 2
+    assert projection["summary"]["retry_wait_count_total"] == 1
+    assert projection["summary"]["latest_executed_at"] == "2026-09-14T13:46:00Z"
+    assert projection["summary"]["by_tick_status"] == {
+        "BLOCKED": 1,
+        "COMPLETED": 2,
+    }
+    assert projection["summary"]["by_provider_mode"] == {
+        "live_http": 1,
+        "mock_first_only": 1,
+        "mock_http": 1,
+    }
+    assert projection["summary"]["by_blocked_reason"] == {
+        "NONE": 2,
+        "confirm_tick_required": 1,
+    }
+    assert [item["tick_id"] for item in projection["latest_ticks"]] == [
+        "tick-0746-completed",
+        "tick-0746-blocked",
+    ]
+    assert projection["policy"] == {
+        "enabled": True,
+        "dry_run": False,
+        "batch_limit": 5,
+        "cycle_limit": 1,
+        "interval_seconds": 60,
+        "source_table": "ag_op_esc_dispatches",
+        "configured_provider_mode": "live_http",
+        "effective_provider_mode": "mock_http",
+        "live_network_calls_enabled": False,
+        "requires_confirm_tick": True,
+        "requires_protected_control": True,
+        "new_tables_required": False,
+    }
+    assert projection["tick_once_path"].endswith("/tick-once")
+    serialized = json.dumps(projection)
+    assert '"provider_payload":' not in serialized
+    assert "nuri1004" not in serialized
+
+    empty = build_operator_review_escalation_dispatch_daemon_runtime_projection(
+        None,
+        checked_at=None,
+        limit="bad",  # type: ignore[arg-type]
+    )
+    assert empty["summary"]["tick_count"] == 0
+    assert empty["checked_at"] == "1970-01-01T00:00:00Z"
+    assert empty["policy"]["enabled"] is False
 
 
 def test_operations_dashboard_escalation_dispatches_handles_filters_and_errors() -> (

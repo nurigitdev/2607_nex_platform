@@ -143,6 +143,9 @@ AG_SERVICE_LOG_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION = (
 AG_GENERATION_QUALITY_ISSUE_DETAIL_PROJECTION_SCHEMA_VERSION = (
     "ag_generation_quality_issue_detail_projection.v1"
 )
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_daemon_runtime_projection.v1"
+)
 AG_SERVICE_LOG_RETENTION_EVENT_SUCCEEDED = "ag.service_log_retention.succeeded"
 AG_SERVICE_LOG_RETENTION_EVENT_FAILED = "ag.service_log_retention.failed"
 SERVICE_LOG_QUERY_POLICY_SCHEMA_VERSION = "service_log_query_policy.v1"
@@ -7228,6 +7231,109 @@ def _empty_operator_review_escalation_dispatch_summary() -> dict[str, Any]:
         "by_intent": {},
         "by_channel": {},
         "latest_updated_at": None,
+    }
+
+
+def build_operator_review_escalation_dispatch_daemon_runtime_projection(
+    tick_results: list[Mapping[str, Any]] | None,
+    *,
+    policy: Mapping[str, Any] | None = None,
+    checked_at: object | None = None,
+    limit: int = 10,
+) -> dict[str, Any]:
+    ticks = [
+        _operator_review_escalation_dispatch_daemon_tick_item(tick)
+        for tick in tick_results or []
+        if isinstance(tick, Mapping)
+    ]
+    ticks.sort(key=lambda item: item["executed_at"], reverse=True)
+    bounded_limit = max(1, min(_safe_int(limit), 50))
+    latest_executed_at = max(
+        (item["executed_at"] for item in ticks if item["executed_at"]),
+        default=None,
+    )
+    summary = {
+        "tick_count": len(ticks),
+        "completed_count": sum(
+            1 for item in ticks if item["tick_status"] == "COMPLETED"
+        ),
+        "blocked_count": sum(1 for item in ticks if item["tick_status"] == "BLOCKED"),
+        "dry_run_count": sum(1 for item in ticks if item["dry_run"] is True),
+        "candidate_count_total": sum(item["candidate_count"] for item in ticks),
+        "processed_count_total": sum(item["processed_count"] for item in ticks),
+        "succeeded_count_total": sum(item["succeeded_count"] for item in ticks),
+        "failed_count_total": sum(item["failed_count"] for item in ticks),
+        "retry_wait_count_total": sum(item["retry_wait_count"] for item in ticks),
+        "latest_executed_at": latest_executed_at,
+        "by_tick_status": _dashboard_count_by(ticks, "tick_status"),
+        "by_provider_mode": _dashboard_count_by(ticks, "effective_provider_mode"),
+        "by_blocked_reason": _dashboard_count_by(ticks, "blocked_reason"),
+    }
+    return {
+        "projection_schema_version": (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": "READY",
+        "checked_at": _dashboard_timestamp(checked_at),
+        "summary": summary,
+        "policy": _operator_review_escalation_dispatch_daemon_policy_item(policy),
+        "latest_ticks": ticks[:bounded_limit],
+        "tick_plan_path": "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        "tick_once_path": "/admin/v1/operator-review/dispatch-daemon/tick-once",
+        "redaction": (
+            _operator_review_escalation_dispatch_execution_result_redaction()
+        ),
+    }
+
+
+def _operator_review_escalation_dispatch_daemon_tick_item(
+    tick: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "tick_id": _nullable_string(tick.get("tick_id")),
+        "tick_status": _nullable_string(tick.get("tick_status")) or "UNKNOWN",
+        "blocked_reason": _nullable_string(tick.get("blocked_reason")) or "NONE",
+        "worker_id": _nullable_string(tick.get("worker_id")),
+        "executed_at": _dashboard_timestamp(tick.get("executed_at")),
+        "dry_run": bool(tick.get("dry_run")),
+        "candidate_count": _safe_int(tick.get("candidate_count")),
+        "processed_count": _safe_int(tick.get("processed_count")),
+        "succeeded_count": _safe_int(tick.get("succeeded_count")),
+        "failed_count": _safe_int(tick.get("failed_count")),
+        "retry_wait_count": _safe_int(tick.get("retry_wait_count")),
+        "skipped_count": _safe_int(tick.get("skipped_count")),
+        "effective_provider_mode": (
+            _nullable_string(tick.get("effective_provider_mode")) or "UNKNOWN"
+        ),
+        "new_tables_required": bool(tick.get("new_tables_required")),
+    }
+
+
+def _operator_review_escalation_dispatch_daemon_policy_item(
+    policy: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    source = dict(policy or {})
+    return {
+        "enabled": bool(source.get("enabled")),
+        "dry_run": bool(source.get("dry_run")),
+        "batch_limit": _safe_int(source.get("batch_limit")),
+        "cycle_limit": _safe_int(source.get("cycle_limit")),
+        "interval_seconds": _safe_int(source.get("interval_seconds")),
+        "source_table": (
+            _nullable_string(source.get("source_table")) or "ag_op_esc_dispatches"
+        ),
+        "configured_provider_mode": _nullable_string(
+            source.get("configured_provider_mode")
+        ),
+        "effective_provider_mode": _nullable_string(
+            source.get("effective_provider_mode")
+        ),
+        "live_network_calls_enabled": bool(source.get("live_network_calls_enabled")),
+        "requires_confirm_tick": bool(source.get("requires_confirm_tick", True)),
+        "requires_protected_control": bool(
+            source.get("requires_protected_control", True)
+        ),
+        "new_tables_required": bool(source.get("new_tables_required")),
     }
 
 
