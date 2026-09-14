@@ -107,7 +107,18 @@ from nex_ag.operator_review_cases import (
     build_operator_review_escalation_dispatch_list_response,
     build_operator_review_escalation_list_response,
 )
-from nex_ag.operator_reviews import ALLOWED_TARGET_SERVICES
+from nex_ag.operator_review_dispatch_execution import (
+    DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV,
+    DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV,
+    DISPATCH_EXECUTION_DAEMON_ENABLED_ENV,
+    DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV,
+    assert_dispatch_execution_result_redacted,
+    build_dispatch_execution_daemon_control_admission,
+    build_dispatch_execution_daemon_control_request,
+    build_dispatch_execution_daemon_policy,
+    build_dispatch_execution_daemon_tick_plan,
+)
+from nex_ag.operator_reviews import ALLOWED_TARGET_SERVICES, OperatorReviewNoteError
 from nex_runtime.retrieval_policies import list_retrieval_policy_records
 
 DEFAULT_OPERATIONAL_EVENT_STORE = InMemoryOperationalEventStore()
@@ -145,6 +156,9 @@ AG_GENERATION_QUALITY_ISSUE_DETAIL_PROJECTION_SCHEMA_VERSION = (
 )
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_daemon_runtime_projection.v1"
+)
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_TICK_PLAN_API_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_daemon_tick_plan_api.v1"
 )
 AG_SERVICE_LOG_RETENTION_EVENT_SUCCEEDED = "ag.service_log_retention.succeeded"
 AG_SERVICE_LOG_RETENTION_EVENT_FAILED = "ag.service_log_retention.failed"
@@ -2241,6 +2255,51 @@ def register_unified_operation_routes(
             request_trace_id=trace_id_from_headers(request),
         )
 
+    @app.get(
+        "/admin/v1/operator-review/dispatch-daemon/tick-plan", response_model=None
+    )
+    def get_operator_review_dispatch_daemon_tick_plan(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        enabled: bool | None = None,
+        dry_run: bool | None = None,
+        batch_limit: int | None = Query(default=None, ge=1),
+        provider_mode: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        payload = _dispatch_daemon_route_payload(
+            enabled=enabled,
+            dry_run=dry_run,
+            batch_limit=batch_limit,
+            provider_mode=provider_mode,
+        )
+        return _dispatch_daemon_tick_plan_route_response(
+            request,
+            operator_review_escalation_dispatch_store,
+            payload=payload,
+            http_method="GET",
+        )
+
+    @app.post(
+        "/admin/v1/operator-review/dispatch-daemon/tick-plan", response_model=None
+    )
+    def post_operator_review_dispatch_daemon_tick_plan(
+        request: Request,
+        payload: dict[str, Any] | None = None,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        return _dispatch_daemon_tick_plan_route_response(
+            request,
+            operator_review_escalation_dispatch_store,
+            payload=payload,
+            http_method="POST",
+        )
+
     @app.get("/admin/v1/operations/workers", response_model=None)
     def list_worker_runtime_projection(
         request: Request,
@@ -2393,6 +2452,238 @@ def register_unified_operation_routes(
             query_options=query_options,
             request_trace_id=trace_id_from_headers(request),
         )
+
+
+class _OperatorReviewDispatchDaemonRouteService:
+    def __init__(self, dispatch_store: Any) -> None:
+        self._dispatch_store = dispatch_store
+
+    def list_escalation_dispatches(
+        self,
+        *,
+        request_id: str,
+        trace_id: str | None = None,
+        dispatch_status: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        del request_id, trace_id
+        records = self._dispatch_store.list_dispatches(
+            dispatch_status=dispatch_status,
+            limit=limit,
+        )
+        return {"items": [deepcopy(record) for record in records]}
+
+
+def build_operator_review_escalation_dispatch_daemon_tick_plan_api_projection(
+    *,
+    dispatch_store: Any | None,
+    payload: Mapping[str, Any] | None = None,
+    request_id: str,
+    trace_id: str | None = None,
+    http_method: str = "GET",
+) -> dict[str, Any]:
+    if dispatch_store is None:
+        raise OperationsQueryError(
+            error_code=(
+                "ag.operator_review_escalation_dispatch_daemon_dispatch_store_"
+                "unavailable"
+            ),
+            detail="Operator review escalation dispatch store is not configured.",
+            status_code=503,
+        )
+    normalized_payload = _dispatch_daemon_payload_mapping(payload)
+    control_request = build_dispatch_execution_daemon_control_request(
+        {**normalized_payload, "action": "tick_plan"},
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    policy = build_dispatch_execution_daemon_policy(
+        _dispatch_daemon_policy_environ(
+            normalized_payload,
+            control_request=control_request,
+        )
+    )
+    admission = build_dispatch_execution_daemon_control_admission(
+        control_request,
+        policy=policy,
+    )
+    try:
+        plan = build_dispatch_execution_daemon_tick_plan(
+            _OperatorReviewDispatchDaemonRouteService(dispatch_store),
+            request_id=request_id,
+            trace_id=trace_id,
+            policy=policy,
+        )
+    except Exception as exc:
+        raise OperationsQueryError(
+            error_code=(
+                "ag.operator_review_escalation_dispatch_daemon_dispatch_source_"
+                "unavailable"
+            ),
+            detail="Operator review escalation dispatch source is unavailable.",
+            status_code=503,
+        ) from exc
+    projection = {
+        "projection_schema_version": (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_TICK_PLAN_API_SCHEMA_VERSION
+        ),
+        "projection_status": "READY",
+        "checked_at": _utc_now(),
+        "route": {
+            "path": "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+            "method": http_method.upper(),
+            "protected": True,
+            "mutation": False,
+            "requires_confirm_tick": False,
+        },
+        "control_request": control_request,
+        "control_admission": admission,
+        "policy": _dispatch_daemon_public_policy(policy),
+        "plan": plan,
+        "source": {
+            "status": "READY",
+            "source_table": policy.get("source_table", "ag_op_esc_dispatches"),
+            "new_tables_required": False,
+        },
+        "summary": {
+            "plan_status": plan["plan_status"],
+            "candidate_count": plan["candidate_count"],
+            "batch_limit": plan["batch_limit"],
+            "effective_provider_mode": plan["effective_provider_mode"],
+            "dry_run": plan["dry_run"],
+            "will_mutate_without_confirm": False,
+        },
+        "redaction": plan["redaction"],
+    }
+    if trace_id is not None:
+        projection["request_trace_id"] = trace_id
+    assert_dispatch_execution_result_redacted(projection)
+    return projection
+
+
+def _dispatch_daemon_tick_plan_route_response(
+    request: Request,
+    dispatch_store: Any | None,
+    *,
+    payload: Mapping[str, Any] | None,
+    http_method: str,
+) -> dict[str, Any] | JSONResponse:
+    try:
+        return build_operator_review_escalation_dispatch_daemon_tick_plan_api_projection(
+            dispatch_store=dispatch_store,
+            payload=payload,
+            request_id=request_id_from_headers(request),
+            trace_id=trace_id_from_headers(request),
+            http_method=http_method,
+        )
+    except OperatorReviewNoteError as exc:
+        return _dispatch_daemon_control_problem_response(request, exc)
+    except OperationsQueryError as exc:
+        return _dispatch_daemon_control_problem_response(request, exc)
+
+
+def _dispatch_daemon_route_payload(
+    *,
+    enabled: bool | None = None,
+    dry_run: bool | None = None,
+    batch_limit: int | None = None,
+    provider_mode: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    if enabled is not None:
+        payload["enabled"] = enabled
+    if dry_run is not None:
+        payload["dry_run"] = dry_run
+    if batch_limit is not None:
+        payload["batch_limit"] = batch_limit
+    if provider_mode is not None:
+        payload["provider_mode"] = provider_mode
+    return payload
+
+
+def _dispatch_daemon_payload_mapping(
+    payload: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    if payload is None:
+        return {}
+    if not isinstance(payload, Mapping):
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=(
+                "ag.operator_review_escalation_dispatch_daemon_control_payload_"
+                "invalid"
+            ),
+            detail="Dispatch daemon control payload must be an object.",
+        )
+    return dict(payload)
+
+
+def _dispatch_daemon_policy_environ(
+    payload: Mapping[str, Any],
+    *,
+    control_request: Mapping[str, Any],
+) -> dict[str, str]:
+    env = dict(os.environ)
+    if "enabled" in payload:
+        env[DISPATCH_EXECUTION_DAEMON_ENABLED_ENV] = _dispatch_daemon_bool_env_value(
+            payload.get("enabled")
+        )
+    if "dry_run" in payload:
+        env[DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV] = _dispatch_daemon_bool_env_value(
+            payload.get("dry_run")
+        )
+    if "batch_limit" in payload:
+        env[DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV] = str(
+            control_request["batch_limit"]
+        )
+    if control_request.get("provider_mode") is not None:
+        env[DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV] = str(
+            control_request["provider_mode"]
+        )
+    return env
+
+
+def _dispatch_daemon_bool_env_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    return "1" if str(value).strip().lower() in {"1", "true", "yes", "on"} else "0"
+
+
+def _dispatch_daemon_public_policy(policy: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "enabled": bool(policy.get("enabled")),
+        "dry_run": bool(policy.get("dry_run")),
+        "batch_limit": policy.get("batch_limit"),
+        "cycle_limit": policy.get("cycle_limit"),
+        "interval_seconds": policy.get("interval_seconds"),
+        "source_table": policy.get("source_table", "ag_op_esc_dispatches"),
+        "result_storage": policy.get("result_storage"),
+        "configured_provider_mode": policy.get("configured_provider_mode"),
+        "effective_provider_mode": policy.get("effective_provider_mode"),
+        "live_network_calls_enabled": bool(policy.get("live_network_calls_enabled")),
+        "requires_confirm_tick": bool(policy.get("requires_confirm_tick", True)),
+        "requires_protected_control": bool(
+            policy.get("requires_protected_control", True)
+        ),
+        "new_tables_required": bool(policy.get("new_tables_required")),
+    }
+
+
+def _dispatch_daemon_control_problem_response(
+    request: Request,
+    exc: OperationsQueryError | OperatorReviewNoteError,
+) -> JSONResponse:
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="Dispatch daemon control failed",
+        detail=exc.detail,
+        type_uri=(
+            "https://nex-platform.local/problems/"
+            "operator-review-dispatch-daemon-control-failed"
+        ),
+    )
 
 
 def build_operational_event_projection(

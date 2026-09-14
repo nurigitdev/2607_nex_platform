@@ -855,6 +855,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0749`](slices/0749_ag_escalation_dispatch_daemon_privacy_regression.md) | `S75-009` AG escalation dispatch daemon privacy regression. |
 | [`Slice 0750`](slices/0750_s75_operator_review_escalation_dispatch_daemon_closure.md) | `S75-010` S75 AG escalation dispatch daemon closure checkpoint. |
 | [`Slice 0751`](slices/0751_ag_escalation_dispatch_daemon_api_boundary_audit.md) | `S76-001` AG escalation dispatch daemon protected API boundary audit. |
+| [`Slice 0752`](slices/0752_ag_escalation_dispatch_daemon_tick_plan_api_route.md) | `S76-002` AG escalation dispatch daemon tick-plan API route. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

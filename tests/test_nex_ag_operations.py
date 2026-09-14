@@ -13,6 +13,7 @@ from jsonschema import Draft202012Validator
 import nex_ag.operations as ag_operations
 from nex_ag.operations import (
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_TICK_PLAN_API_SCHEMA_VERSION,
     AG_SERVICE_LOG_RETENTION_HISTORY_PROJECTION_SCHEMA_VERSION,
     AG_SERVICE_LOG_RETENTION_DISPATCH_SCHEMA_VERSION,
     AG_SERVICE_LOG_RETENTION_EVENT_FAILED,
@@ -42,6 +43,7 @@ from nex_ag.operations import (
     build_operation_query_options,
     build_operation_source_readiness_projection,
     build_operator_review_escalation_dispatch_daemon_runtime_projection,
+    build_operator_review_escalation_dispatch_daemon_tick_plan_api_projection,
     build_operations_dashboard_snapshot_projection,
     build_operations_issue_candidate_projection,
     build_operations_rollup_metrics_projection,
@@ -3761,6 +3763,192 @@ def test_operator_review_escalation_dispatch_daemon_runtime_projection_is_safe()
     assert empty["summary"]["tick_count"] == 0
     assert empty["checked_at"] == "1970-01-01T00:00:00Z"
     assert empty["policy"]["enabled"] is False
+
+
+def test_operator_review_dispatch_daemon_tick_plan_api_projection_is_read_only_and_safe() -> (
+    None
+):
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    pending = operator_review_escalation_dispatch_record(
+        dispatch_status="PENDING",
+        created_at="2026-08-05T00:00:21Z",
+    )
+    failed = operator_review_escalation_dispatch_record(
+        dispatch_status="FAILED",
+        channel_type="INCIDENT",
+        created_at="2026-08-05T00:00:22Z",
+    )
+    dispatch_store.save(pending)
+    dispatch_store.save(failed)
+
+    projection = (
+        build_operator_review_escalation_dispatch_daemon_tick_plan_api_projection(
+            dispatch_store=dispatch_store,
+            payload={
+                "enabled": True,
+                "dry_run": False,
+                "batch_limit": 1,
+                "provider_mode": "mock_http",
+                "database_url": "postgresql://nex_ag_user:nuri1004@127.0.0.1/db",
+            },
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            http_method="GET",
+        )
+    )
+
+    assert projection["projection_schema_version"] == (
+        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_TICK_PLAN_API_SCHEMA_VERSION
+    )
+    assert projection["route"] == {
+        "path": "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        "method": "GET",
+        "protected": True,
+        "mutation": False,
+        "requires_confirm_tick": False,
+    }
+    assert projection["control_request"]["action"] == "tick_plan"
+    assert projection["control_admission"]["admission_status"] == "ACCEPTED"
+    assert projection["policy"]["enabled"] is True
+    assert projection["policy"]["dry_run"] is False
+    assert projection["policy"]["batch_limit"] == 1
+    assert projection["policy"]["source_table"] == "ag_op_esc_dispatches"
+    assert projection["policy"]["new_tables_required"] is False
+    assert projection["plan"]["plan_status"] == "READY"
+    assert projection["summary"] == {
+        "plan_status": "READY",
+        "candidate_count": 1,
+        "batch_limit": 1,
+        "effective_provider_mode": "mock_http",
+        "dry_run": False,
+        "will_mutate_without_confirm": False,
+    }
+    assert projection["plan"]["candidate_dispatch_ids"] == [pending["dispatch_id"]]
+    assert dispatch_store.get(pending["dispatch_id"])["dispatch_status"] == "PENDING"
+    assert dispatch_store.get(failed["dispatch_id"])["dispatch_status"] == "FAILED"
+    serialized = json.dumps(projection)
+    assert "nuri1004" not in serialized
+    assert "postgresql://nex_ag_user" not in serialized
+
+
+def test_operator_review_dispatch_daemon_tick_plan_route_auth_and_errors() -> None:
+    class FailingDispatchStore(OperatorReviewEscalationDispatchStore):
+        def list_dispatches(self, **_: object) -> list[dict[str, Any]]:
+            raise RuntimeError("dispatch store unavailable")
+
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    dispatch_store.save(operator_review_escalation_dispatch_record())
+    register_unified_operation_routes(
+        app,
+        operator_review_escalation_dispatch_store=dispatch_store,
+    )
+    client = TestClient(app)
+
+    missing_auth = client.get("/admin/v1/operator-review/dispatch-daemon/tick-plan")
+    response = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        params={
+            "enabled": "true",
+            "dry_run": "false",
+            "batch_limit": 2,
+            "provider_mode": "mock_first_only",
+        },
+        headers={
+            **auth_headers(),
+            "traceparent": (
+                "00-4bf92f3577b34da6a3ce929d0e0e4736-"
+                "00f067aa0ba902b7-01"
+            ),
+        },
+    )
+    bad_provider = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        params={"provider_mode": "unsupported"},
+        headers=auth_headers(),
+    )
+    missing_store_app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_unified_operation_routes(missing_store_app)
+    missing_store = TestClient(missing_store_app).get(
+        "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        headers=auth_headers(),
+    )
+    failing_store_app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_unified_operation_routes(
+        failing_store_app,
+        operator_review_escalation_dispatch_store=FailingDispatchStore(),
+    )
+    failing_store = TestClient(failing_store_app).get(
+        "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        headers=auth_headers(),
+    )
+
+    assert missing_auth.status_code == 401
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["request_trace_id"] == TRACE_ID
+    assert payload["route"]["method"] == "GET"
+    assert payload["route"]["mutation"] is False
+    assert payload["summary"]["candidate_count"] == 1
+    assert payload["control_admission"]["admission_status"] == "ACCEPTED"
+    assert bad_provider.status_code == 422
+    assert bad_provider.json()["error_code"] == (
+        "ag.operator_review_escalation_dispatch_execution_provider_mode_unsupported"
+    )
+    assert missing_store.status_code == 503
+    assert missing_store.json()["error_code"] == (
+        "ag.operator_review_escalation_dispatch_daemon_dispatch_store_unavailable"
+    )
+    assert failing_store.status_code == 503
+    assert failing_store.json()["error_code"] == (
+        "ag.operator_review_escalation_dispatch_daemon_dispatch_source_unavailable"
+    )
+
+
+def test_operator_review_dispatch_daemon_tick_plan_post_forces_safe_plan_action() -> (
+    None
+):
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    dispatch_store.save(operator_review_escalation_dispatch_record())
+    register_unified_operation_routes(
+        app,
+        operator_review_escalation_dispatch_store=dispatch_store,
+    )
+
+    response = TestClient(app).post(
+        "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        json={
+            "action": "tick_once",
+            "enabled": True,
+            "dry_run": True,
+            "batch_limit": 2,
+            "provider_mode": "mock_http",
+            "operator_ref": {
+                "operator_type": "employee",
+                "operator_id": "emp-0752",
+            },
+            "authorization": "Bearer private",
+            "provider_payload": {"secret": "ed6@c496em"},
+            "database_url": "postgresql://nex_ag_user:nuri1004@127.0.0.1/db",
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["route"]["method"] == "POST"
+    assert payload["control_request"]["action"] == "tick_plan"
+    assert payload["control_request"]["operator_ref"] == {
+        "operator_type": "employee",
+        "operator_id": "emp-0752",
+    }
+    assert payload["control_admission"]["admission_status"] == "ACCEPTED"
+    assert payload["summary"]["will_mutate_without_confirm"] is False
+    serialized = json.dumps(payload)
+    assert "Bearer private" not in serialized
+    assert "ed6@c496em" not in serialized
+    assert "nuri1004" not in serialized
 
 
 def test_operations_dashboard_escalation_dispatches_handles_filters_and_errors() -> (
