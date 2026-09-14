@@ -1375,6 +1375,13 @@ Unified operations:
   adapters, HTTP client foundation, worker router, diagnostics dashboard,
   privacy regression, protected PostgreSQL smoke, documentation, and quality
   gate hooks while keeping live provider network delivery deferred.
+- Slice 0731 starts S74 with
+  `scripts/smoke/run_ag_operator_review_escalation_dispatch_live_http_transport_boundary_audit.py`.
+  The audit keeps real outbound notification and incident endpoints deferred,
+  records the local loopback HTTP server strategy for protected live-shape smoke,
+  and requires injected transport, explicit live-enable guardrails, redacted
+  endpoint hints, no raw headers/payloads in evidence, and continued AG dispatch
+  outbox/state-machine ownership.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

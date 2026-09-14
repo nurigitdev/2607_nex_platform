@@ -834,6 +834,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0728`](slices/0728_ag_escalation_dispatch_live_provider_privacy_regression.md) | `S73-008` AG escalation dispatch live-provider privacy regression pack. |
 | [`Slice 0729`](slices/0729_ag_escalation_dispatch_provider_postgresql_smoke.md) | `S73-009` AG escalation dispatch provider PostgreSQL smoke evidence. |
 | [`Slice 0730`](slices/0730_s73_operator_review_escalation_dispatch_provider_closure.md) | `S73-010` S73 operator review escalation dispatch provider readiness closure checkpoint. |
+| [`Slice 0731`](slices/0731_ag_escalation_dispatch_live_http_transport_boundary_audit.md) | `S74-001` AG escalation dispatch live HTTP transport boundary audit. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
