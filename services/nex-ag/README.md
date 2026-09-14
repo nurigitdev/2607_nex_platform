@@ -1386,6 +1386,10 @@ Unified operations:
   HTTP transport envelope builder. Raw endpoint URLs and bearer tokens remain
   transport-construction inputs only; persisted/provider evidence keeps safe
   payload hashes, request hashes, status codes, and redacted endpoint hints.
+- Slice 0733 adds safe live HTTP request planning and header guardrails. The
+  raw outbound headers can include Authorization only inside the injected
+  transport, while evidence records header names, request/envelope hashes, and
+  redacted endpoint hints.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

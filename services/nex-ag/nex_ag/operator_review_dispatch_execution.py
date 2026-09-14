@@ -46,6 +46,9 @@ DISPATCH_EXTERNAL_INCIDENT_PROVIDER_REQUEST_SCHEMA_VERSION = (
 DISPATCH_LIVE_HTTP_TRANSPORT_ENVELOPE_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_live_http_transport_envelope.v1"
 )
+DISPATCH_LIVE_HTTP_TRANSPORT_REQUEST_PLAN_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_live_http_transport_request_plan.v1"
+)
 DISPATCH_PROVIDER_HTTP_CLIENT_RESULT_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_provider_http_client_result.v1"
 )
@@ -964,7 +967,7 @@ class UrllibDispatchProviderHttpTransport:
         request = Request(
             endpoint_url,
             data=body,
-            headers=_live_http_transport_headers(
+            headers=build_dispatch_live_http_transport_headers(
                 provider_request,
                 attempt_number=attempt_number,
                 bearer_token=self.bearer_token,
@@ -1072,6 +1075,82 @@ def build_dispatch_live_http_transport_envelope(
     }
     assert_dispatch_execution_result_redacted(envelope)
     return envelope
+
+
+def build_dispatch_live_http_transport_headers(
+    provider_request: Mapping[str, Any],
+    *,
+    attempt_number: int,
+    bearer_token: str | None = None,
+    user_agent: str | None = None,
+) -> dict[str, str]:
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": optional_text(user_agent)
+        or DISPATCH_LIVE_HTTP_TRANSPORT_USER_AGENT,
+        "X-NEX-Dispatch-Request-Hash": str(
+            provider_request.get("provider_request_hash") or ""
+        ),
+        "X-NEX-Dispatch-Attempt": str(max(1, int(attempt_number))),
+    }
+    request_ref = provider_request.get("request_ref")
+    if isinstance(request_ref, Mapping) and optional_text(request_ref.get("trace_id")):
+        headers["X-NEX-Trace-Id"] = str(request_ref["trace_id"])
+    token = optional_text(bearer_token)
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+def build_dispatch_live_http_transport_request_plan(
+    provider_request: Mapping[str, Any],
+    *,
+    endpoint_url: str,
+    attempt_number: int,
+    bearer_token_configured: bool = False,
+) -> dict[str, Any]:
+    endpoint = _required_live_http_endpoint(endpoint_url)
+    envelope = build_dispatch_live_http_transport_envelope(
+        provider_request,
+        attempt_number=attempt_number,
+    )
+    safe_headers = build_dispatch_live_http_transport_headers(
+        provider_request,
+        attempt_number=attempt_number,
+        bearer_token="configured" if bearer_token_configured else None,
+    )
+    evidence_headers = sorted(
+        header for header in safe_headers if header.lower() != "authorization"
+    )
+    plan = {
+        "transport_request_plan_schema_version": (
+            DISPATCH_LIVE_HTTP_TRANSPORT_REQUEST_PLAN_SCHEMA_VERSION
+        ),
+        "provider_category": provider_request.get("provider_category"),
+        "provider_profile": provider_request.get("provider_profile"),
+        "provider_request_hash": provider_request.get("provider_request_hash"),
+        "endpoint_hint": _redacted_endpoint_hint(endpoint),
+        "method": str(provider_request.get("http", {}).get("method") or "POST"),
+        "attempt_number": max(1, int(attempt_number)),
+        "envelope_schema_version": envelope[
+            "transport_envelope_schema_version"
+        ],
+        "envelope_hash": sha256_text(
+            json.dumps(envelope, ensure_ascii=False, sort_keys=True)
+        ),
+        "evidence_header_names": evidence_headers,
+        "withheld_header_names": ["Authorization"]
+        if bearer_token_configured
+        else [],
+        "authorization_header_configured": bool(bearer_token_configured),
+        "raw_header_values_in_evidence_allowed": False,
+        "raw_endpoint_in_evidence_allowed": False,
+        "raw_payload_in_evidence_allowed": False,
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(plan)
+    return plan
 
 
 def execute_dispatch_provider_http_request(
@@ -1914,32 +1993,6 @@ def _required_live_http_endpoint(endpoint_url: str | None) -> str:
             detail="Dispatch live HTTP transport requires an http(s) endpoint.",
         )
     return endpoint
-
-
-def _live_http_transport_headers(
-    provider_request: Mapping[str, Any],
-    *,
-    attempt_number: int,
-    bearer_token: str | None,
-    user_agent: str,
-) -> dict[str, str]:
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "User-Agent": optional_text(user_agent)
-        or DISPATCH_LIVE_HTTP_TRANSPORT_USER_AGENT,
-        "X-NEX-Dispatch-Request-Hash": str(
-            provider_request.get("provider_request_hash") or ""
-        ),
-        "X-NEX-Dispatch-Attempt": str(max(1, int(attempt_number))),
-    }
-    request_ref = provider_request.get("request_ref")
-    if isinstance(request_ref, Mapping) and optional_text(request_ref.get("trace_id")):
-        headers["X-NEX-Trace-Id"] = str(request_ref["trace_id"])
-    token = optional_text(bearer_token)
-    if token is not None:
-        headers["Authorization"] = f"Bearer {token}"
-    return headers
 
 
 def _live_http_transport_response(

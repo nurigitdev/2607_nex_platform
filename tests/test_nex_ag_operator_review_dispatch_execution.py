@@ -35,6 +35,7 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_LIVE_PROVIDER_ENABLE_ENV,
     DISPATCH_LIVE_PROVIDER_PROFILE_ENV,
     DISPATCH_LIVE_HTTP_TRANSPORT_ENVELOPE_SCHEMA_VERSION,
+    DISPATCH_LIVE_HTTP_TRANSPORT_REQUEST_PLAN_SCHEMA_VERSION,
     DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV,
     DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV,
     DISPATCH_NOTIFICATION_PROVIDER_REQUEST_SCHEMA_VERSION,
@@ -46,8 +47,10 @@ from nex_ag.operator_review_dispatch_execution import (
     assert_dispatch_execution_result_redacted,
     build_dispatch_execution_provider_catalog,
     build_dispatch_execution_provider_config,
+    build_dispatch_live_http_transport_headers,
     build_dispatch_live_http_transport,
     build_dispatch_live_http_transport_envelope,
+    build_dispatch_live_http_transport_request_plan,
     build_external_incident_dispatch_provider_request,
     build_notification_dispatch_provider_request,
     build_dispatch_execution_result,
@@ -1023,6 +1026,61 @@ def test_dispatch_live_http_transport_envelope_and_urllib_send(
     assert captured["headers"]["X-nex-dispatch-attempt"] == "2"
     assert captured["body"]["provider_request_hash"] == request["provider_request_hash"]
     assert "transport-token-0732" not in json.dumps(result)
+
+
+def test_dispatch_live_http_transport_request_plan_redacts_headers_and_endpoint() -> None:
+    endpoint = "https://notify.internal.example/hook/secret/path"
+    request = build_notification_dispatch_provider_request(
+        sample_live_channel_dispatch(channel_type="EMAIL"),
+        provider_config=build_dispatch_execution_provider_config(
+            {
+                DISPATCH_EXECUTION_PROVIDER_MODE_ENV: "live_http",
+                DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV: endpoint,
+                DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV: "request-plan-token-0733",
+            }
+        ),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+
+    raw_headers = build_dispatch_live_http_transport_headers(
+        request,
+        attempt_number=0,
+        bearer_token="request-plan-token-0733",
+        user_agent=None,
+    )
+    plan = build_dispatch_live_http_transport_request_plan(
+        request,
+        endpoint_url=endpoint,
+        attempt_number=0,
+        bearer_token_configured=True,
+    )
+
+    assert raw_headers["Authorization"] == "Bearer request-plan-token-0733"
+    assert raw_headers["X-NEX-Dispatch-Attempt"] == "1"
+    assert raw_headers["X-NEX-Trace-Id"] == TRACE_ID
+    assert plan["transport_request_plan_schema_version"] == (
+        DISPATCH_LIVE_HTTP_TRANSPORT_REQUEST_PLAN_SCHEMA_VERSION
+    )
+    assert plan["endpoint_hint"] == "https://notify.internal.example/<redacted>"
+    assert plan["method"] == "POST"
+    assert plan["attempt_number"] == 1
+    assert plan["authorization_header_configured"] is True
+    assert plan["withheld_header_names"] == ["Authorization"]
+    assert "Authorization" not in plan["evidence_header_names"]
+    assert "X-NEX-Dispatch-Request-Hash" in plan["evidence_header_names"]
+    assert endpoint not in json.dumps(plan)
+    assert "request-plan-token-0733" not in json.dumps(plan)
+    assert plan["raw_header_values_in_evidence_allowed"] is False
+    assert_dispatch_execution_result_redacted(plan)
+
+    plan_without_token = build_dispatch_live_http_transport_request_plan(
+        request,
+        endpoint_url="http://127.0.0.1:43199/dispatch",
+        attempt_number=3,
+    )
+    assert plan_without_token["withheld_header_names"] == []
+    assert plan_without_token["authorization_header_configured"] is False
 
 
 def test_dispatch_live_http_transport_error_paths(

@@ -836,6 +836,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0730`](slices/0730_s73_operator_review_escalation_dispatch_provider_closure.md) | `S73-010` S73 operator review escalation dispatch provider readiness closure checkpoint. |
 | [`Slice 0731`](slices/0731_ag_escalation_dispatch_live_http_transport_boundary_audit.md) | `S74-001` AG escalation dispatch live HTTP transport boundary audit. |
 | [`Slice 0732`](slices/0732_ag_escalation_dispatch_live_http_transport_foundation.md) | `S74-002` AG escalation dispatch injectable live HTTP transport foundation. |
+| [`Slice 0733`](slices/0733_ag_escalation_dispatch_live_http_transport_request_guardrails.md) | `S74-003` AG escalation dispatch live HTTP transport request guardrails. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
