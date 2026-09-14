@@ -2552,6 +2552,7 @@
         "by_channel",
         "attention",
         "recent",
+        "daemon_controls",
         "source_statuses",
         "dispatch_list_path",
         "dispatch_detail_path_template",
@@ -2691,6 +2692,9 @@
             "additionalProperties": true
           }
         },
+        "daemon_controls": {
+          "$ref": "#/$defs/dashboard_operator_review_dispatch_daemon_controls"
+        },
         "source_statuses": {
           "type": "object",
           "additionalProperties": {
@@ -2710,6 +2714,78 @@
           "minLength": 1
         },
         "escalation_detail_path_template": {
+          "type": "string",
+          "minLength": 1
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "dashboard_operator_review_dispatch_daemon_controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "projection_status",
+        "summary",
+        "by_control_status",
+        "by_action",
+        "recent",
+        "source_statuses",
+        "control_history_path",
+        "tick_plan_path",
+        "tick_once_path",
+        "redaction"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "const": "ag_operator_review_escalation_dispatch_daemon_control_dashboard_section.v1"
+        },
+        "projection_status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "DEGRADED"
+          ]
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "by_control_status": {
+          "$ref": "#/$defs/string_integer_counts"
+        },
+        "by_action": {
+          "$ref": "#/$defs/string_integer_counts"
+        },
+        "recent": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "source_statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/source_status"
+          }
+        },
+        "control_history_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tick_plan_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tick_once_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_trace_id": {
           "type": "string",
           "minLength": 1
         },
@@ -3385,7 +3461,8 @@
             "operator_review_workbench",
             "operator_review_cases",
             "operator_review_escalations",
-            "operator_review_escalation_dispatches"
+            "operator_review_escalation_dispatches",
+            "operator_review_dispatch_daemon_controls"
           ]
         },
         "service_id": {

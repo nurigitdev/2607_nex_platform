@@ -4845,6 +4845,145 @@ def test_operations_dashboard_escalation_dispatches_handles_filters_and_errors()
     assert_ag_operations_projection_contract(unavailable)
 
 
+def test_operations_dashboard_includes_dispatch_daemon_control_history() -> None:
+    event_store = InMemoryOperationalEventStore()
+    event_store.append(
+        build_operational_event(
+            service_id="nex-ag",
+            event_type=AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_SUCCEEDED,
+            severity="INFO",
+            message="AG dispatch daemon tick_plan control completed.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            subject_ref={
+                "type": "operator_review_dispatch_daemon_control",
+                "id": "tick_plan",
+            },
+            details={
+                "action": "tick_plan",
+                "control_status": "SUCCEEDED",
+                "candidate_count": 2,
+                "source_table": "ag_op_esc_dispatches",
+                "provider_payload": {"secret": "ed6@c496em"},
+            },
+            created_at="2026-09-15T01:00:00Z",
+            event_id="dispatch-daemon-dashboard-control-001",
+        )
+    )
+    event_store.append(
+        build_operational_event(
+            service_id="nex-ag",
+            event_type=AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_REJECTED,
+            severity="WARNING",
+            message="AG dispatch daemon tick_once control rejected.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            subject_ref={
+                "type": "operator_review_dispatch_daemon_control",
+                "id": "tick_once",
+            },
+            details={
+                "action": "tick_once",
+                "control_status": "REJECTED",
+                "rejection_reason": "confirm_tick_required",
+                "status_code": 409,
+            },
+            created_at="2026-09-15T01:01:00Z",
+            event_id="dispatch-daemon-dashboard-control-002",
+        )
+    )
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    dispatch_store.save(operator_review_escalation_dispatch_record())
+
+    projection = build_operations_dashboard_snapshot_projection(
+        event_store=event_store,
+        operator_review_escalation_dispatch_store=dispatch_store,
+        recent_limit=1,
+        request_trace_id=TRACE_ID,
+    )
+    daemon_controls = projection["operator_review_escalation_dispatches"][
+        "daemon_controls"
+    ]
+    empty_controls = ag_operations._dashboard_operator_review_dispatch_daemon_control_section(
+        None,
+        options=build_operation_query_options(limit=500),
+        limit=2,
+        request_trace_id=None,
+    )
+
+    assert projection["projection_status"] == "READY"
+    assert daemon_controls["projection_schema_version"] == (
+        "ag_operator_review_escalation_dispatch_daemon_control_dashboard_section.v1"
+    )
+    assert daemon_controls["request_trace_id"] == TRACE_ID
+    assert daemon_controls["summary"]["control_count"] == 2
+    assert daemon_controls["summary"]["recent_count"] == 1
+    assert daemon_controls["summary"]["succeeded_count"] == 1
+    assert daemon_controls["summary"]["rejected_count"] == 1
+    assert daemon_controls["by_control_status"] == {
+        "REJECTED": 1,
+        "SUCCEEDED": 1,
+    }
+    assert daemon_controls["by_action"] == {"tick_once": 1, "tick_plan": 1}
+    assert daemon_controls["recent"][0]["control_event_id"] == (
+        "dispatch-daemon-dashboard-control-002"
+    )
+    assert daemon_controls["source_statuses"]["nex-ag"] == {
+        "status": "READY",
+        "service_id": "nex-ag",
+        "source_kind": "operational_events",
+        "control_count": 2,
+        "source_table": "service_operational_events",
+        "new_tables_required": False,
+        "event_count": 2,
+    }
+    assert daemon_controls["control_history_path"] == (
+        "/admin/v1/operator-review/dispatch-daemon/controls"
+    )
+    assert empty_controls["source_statuses"]["nex-ag"]["status"] == "NOT_CONFIGURED"
+    serialized = json.dumps(daemon_controls)
+    assert "ed6@c496em" not in serialized
+    assert '"provider_payload":' not in serialized
+    assert_ag_operations_projection_contract(projection)
+
+
+def test_operations_dashboard_reports_dispatch_daemon_control_history_degraded() -> (
+    None
+):
+    class FailingEventStore(InMemoryOperationalEventStore):
+        def list_events(self, **_: Any) -> list[dict[str, Any]]:
+            raise OperationalEventError(
+                error_code="operational_event.store_unavailable",
+                detail="event store down",
+                status_code=503,
+            )
+
+    dispatch_store = OperatorReviewEscalationDispatchStore()
+    dispatch_store.save(operator_review_escalation_dispatch_record())
+
+    projection = build_operations_dashboard_snapshot_projection(
+        event_store=FailingEventStore(),
+        operator_review_escalation_dispatch_store=dispatch_store,
+    )
+    daemon_controls = projection["operator_review_escalation_dispatches"][
+        "daemon_controls"
+    ]
+
+    assert projection["projection_status"] == "DEGRADED"
+    assert daemon_controls["projection_status"] == "DEGRADED"
+    assert daemon_controls["source_statuses"]["nex-ag"]["status"] == "UNAVAILABLE"
+    assert daemon_controls["source_statuses"]["nex-ag"]["error_code"] == (
+        "operational_event.store_unavailable"
+    )
+    assert {
+        (source["source_type"], source["service_id"], source["status"])
+        for source in projection["degraded_sources"]
+    } >= {
+        ("operator_review_dispatch_daemon_controls", "nex-ag", "UNAVAILABLE")
+    }
+    assert_ag_operations_projection_contract(projection)
+
+
 def test_operations_dashboard_route_wires_operator_review_workbench() -> None:
     app = build_service_app(SERVICE_SPECS["nex-ag"])
     note_store = OperatorReviewNoteStore()
@@ -5621,6 +5760,7 @@ def test_operations_dashboard_snapshot_handles_unavailable_candidate_sources() -
         ("jobs", "nex-cx", "UNAVAILABLE"),
         ("events", "nex-cx", "UNAVAILABLE"),
         ("logs", "nex-cx", "UNAVAILABLE"),
+        ("operator_review_dispatch_daemon_controls", "nex-ag", "UNAVAILABLE"),
     }
     assert projection["degraded_sources"][0]["error_code"] == "job.store_unavailable"
     assert projection["log_source_statuses"]["nex-cx"] == {
@@ -7216,11 +7356,12 @@ def test_operations_issue_candidate_projection_reports_unavailable_sources() -> 
         for candidate in projection["issue_candidates"]
     } == {
         ("operations_source_unavailable.v1", "nex-cx", "ERROR"),
+        ("operations_source_unavailable.v1", "nex-ag", "ERROR"),
     }
     assert projection["summary"]["by_rule"] == {
-        "operations_source_unavailable.v1": 2,
+        "operations_source_unavailable.v1": 3,
     }
-    assert projection["summary"]["by_severity"]["ERROR"] == 2
+    assert projection["summary"]["by_severity"]["ERROR"] == 3
     assert_ag_operations_projection_contract(projection)
 
 

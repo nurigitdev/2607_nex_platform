@@ -4613,6 +4613,7 @@ def build_operations_dashboard_snapshot_projection(
     operator_review_escalation_dispatches = (
         _dashboard_operator_review_escalation_dispatch_section(
             dispatch_store=operator_review_escalation_dispatch_store,
+            control_event_store=selected_event_store,
             service_id=service_id,
             options=options,
             limit=normalized_recent_limit,
@@ -4645,6 +4646,11 @@ def build_operations_dashboard_snapshot_projection(
         ],
         operator_review_escalation_dispatch_source_statuses=(
             operator_review_escalation_dispatches["source_statuses"]
+        ),
+        operator_review_dispatch_daemon_control_source_statuses=(
+            operator_review_escalation_dispatches["daemon_controls"][
+                "source_statuses"
+            ]
         ),
     )
     projection = {
@@ -7865,16 +7871,26 @@ def _empty_dashboard_operator_review_escalation_section(
 def _dashboard_operator_review_escalation_dispatch_section(
     *,
     dispatch_store: Any | None,
+    control_event_store: OperationalEventStore | None,
     service_id: str | None,
     options: OperationQueryOptions,
     limit: int,
     request_trace_id: str | None,
 ) -> dict[str, Any]:
     source_statuses: dict[str, dict[str, Any]] = {}
+    daemon_controls = _dashboard_operator_review_dispatch_daemon_control_section(
+        control_event_store,
+        options=options,
+        limit=limit,
+        request_trace_id=request_trace_id,
+    )
     if dispatch_store is None:
-        return _empty_dashboard_operator_review_escalation_dispatch_section(
-            source_statuses
-        )
+        return {
+            **_empty_dashboard_operator_review_escalation_dispatch_section(
+                source_statuses
+            ),
+            "daemon_controls": daemon_controls,
+        }
 
     target_service = service_id if service_id in ALLOWED_TARGET_SERVICES else None
     try:
@@ -7914,6 +7930,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
             **_empty_dashboard_operator_review_escalation_dispatch_section(
                 source_statuses
             ),
+            "daemon_controls": daemon_controls,
             "projection_status": "DEGRADED",
         }
 
@@ -7952,6 +7969,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
             if _operator_review_escalation_dispatch_attention_item_needs_action(item)
         ][:limit],
         "recent": items,
+        "daemon_controls": daemon_controls,
         "source_statuses": source_statuses,
         "dispatch_list_path": "/admin/v1/operator-review/dispatches",
         "dispatch_detail_path_template": (
@@ -8007,6 +8025,148 @@ def _empty_dashboard_operator_review_escalation_dispatch_section(
             "dispatch_record_payload": "safe_hashes_previews_refs_only",
         },
     }
+
+
+def _dashboard_operator_review_dispatch_daemon_control_section(
+    event_store: OperationalEventStore | None,
+    *,
+    options: OperationQueryOptions,
+    limit: int,
+    request_trace_id: str | None,
+) -> dict[str, Any]:
+    if event_store is None:
+        return _empty_dashboard_operator_review_dispatch_daemon_control_section(
+            {
+                "nex-ag": {
+                    "status": "NOT_CONFIGURED",
+                    "service_id": "nex-ag",
+                    "source_kind": "none",
+                    "control_count": 0,
+                    "source_table": "service_operational_events",
+                    "new_tables_required": False,
+                }
+            }
+        )
+    control_options = OperationQueryOptions(
+        limit=500,
+        since=options.since,
+        until=options.until,
+        sort=options.sort,
+        cursor=None,
+    )
+    try:
+        projection = (
+            build_operator_review_escalation_dispatch_daemon_control_history_projection(
+                event_store,
+                query_options=control_options,
+                request_trace_id=request_trace_id,
+            )
+        )
+    except Exception as exc:
+        return {
+            **_empty_dashboard_operator_review_dispatch_daemon_control_section(
+                {
+                    "nex-ag": {
+                        "status": "UNAVAILABLE",
+                        "service_id": "nex-ag",
+                        "source_kind": "operational_events",
+                        "control_count": 0,
+                        "source_table": "service_operational_events",
+                        "new_tables_required": False,
+                        "error_code": getattr(
+                            exc,
+                            "error_code",
+                            (
+                                "ag.operator_review_escalation_dispatch_daemon_"
+                                "control_history_source_unavailable"
+                            ),
+                        ),
+                        "detail": getattr(
+                            exc,
+                            "detail",
+                            "Dispatch daemon control history source could not be read.",
+                        ),
+                    }
+                }
+            ),
+            "projection_status": "DEGRADED",
+        }
+    recent_controls = list(projection["controls"])[:limit]
+    source_statuses = {
+        "nex-ag": _dashboard_operator_review_dispatch_daemon_control_source_status(
+            projection
+        )
+    }
+    section = {
+        "projection_schema_version": (
+            "ag_operator_review_escalation_dispatch_daemon_control_dashboard_section.v1"
+        ),
+        "projection_status": projection["projection_status"],
+        "summary": {
+            **dict(projection["summary"]),
+            "recent_count": len(recent_controls),
+        },
+        "by_control_status": dict(projection["summary"]["by_control_status"]),
+        "by_action": dict(projection["summary"]["by_action"]),
+        "recent": recent_controls,
+        "source_statuses": source_statuses,
+        "control_history_path": "/admin/v1/operator-review/dispatch-daemon/controls",
+        "tick_plan_path": "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        "tick_once_path": "/admin/v1/operator-review/dispatch-daemon/tick-once",
+        "redaction": dict(projection["redaction"]),
+    }
+    if request_trace_id is not None:
+        section["request_trace_id"] = request_trace_id
+    return section
+
+
+def _empty_dashboard_operator_review_dispatch_daemon_control_section(
+    source_statuses: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "projection_schema_version": (
+            "ag_operator_review_escalation_dispatch_daemon_control_dashboard_section.v1"
+        ),
+        "projection_status": "READY",
+        "summary": {
+            **_empty_dispatch_daemon_control_history_summary(),
+            "recent_count": 0,
+        },
+        "by_control_status": {},
+        "by_action": {},
+        "recent": [],
+        "source_statuses": source_statuses,
+        "control_history_path": "/admin/v1/operator-review/dispatch-daemon/controls",
+        "tick_plan_path": "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        "tick_once_path": "/admin/v1/operator-review/dispatch-daemon/tick-once",
+        "redaction": _dispatch_daemon_control_history_redaction(),
+    }
+
+
+def _dashboard_operator_review_dispatch_daemon_control_source_status(
+    projection: Mapping[str, Any],
+) -> dict[str, Any]:
+    source = _mapping_or_empty(projection.get("source"))
+    summary = _mapping_or_empty(projection.get("summary"))
+    status = _nullable_string(source.get("status")) or "UNKNOWN"
+    source_status = {
+        "status": status,
+        "service_id": "nex-ag",
+        "source_kind": "operational_events",
+        "control_count": _safe_int(summary.get("control_count")),
+        "source_table": (
+            _nullable_string(source.get("source_table"))
+            or "service_operational_events"
+        ),
+        "new_tables_required": bool(source.get("new_tables_required")),
+    }
+    if source.get("event_count") is not None:
+        source_status["event_count"] = _safe_int(source.get("event_count"))
+    if source.get("error_code") is not None:
+        source_status["error_code"] = source["error_code"]
+    if source.get("detail") is not None:
+        source_status["detail"] = source["detail"]
+    return source_status
 
 
 def _operator_review_escalation_dispatch_dashboard_summary(
@@ -9076,6 +9236,9 @@ def _dashboard_degraded_sources(
     operator_review_escalation_dispatch_source_statuses: (
         Mapping[str, dict[str, Any]] | None
     ) = None,
+    operator_review_dispatch_daemon_control_source_statuses: (
+        Mapping[str, dict[str, Any]] | None
+    ) = None,
 ) -> list[dict[str, Any]]:
     degraded: list[dict[str, Any]] = []
     for source in operation_sources:
@@ -9112,6 +9275,10 @@ def _dashboard_degraded_sources(
         (
             "operator_review_escalation_dispatches",
             operator_review_escalation_dispatch_source_statuses or {},
+        ),
+        (
+            "operator_review_dispatch_daemon_controls",
+            operator_review_dispatch_daemon_control_source_statuses or {},
         ),
     ):
         for service_id, source_status in statuses.items():
