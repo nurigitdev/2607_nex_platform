@@ -34,6 +34,9 @@ DISPATCH_EXECUTION_RESULT_METADATA_SCHEMA_VERSION = (
 DISPATCH_EXECUTION_PROVIDER_CONFIG_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_provider_config.v1"
 )
+DISPATCH_NOTIFICATION_PROVIDER_REQUEST_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_notification_request.v1"
+)
 DISPATCH_EXECUTION_DEFAULT_PROVIDER_PROFILE = "mock-default"
 DISPATCH_EXECUTION_PROVIDER_MODE = "mock_first_only"
 DISPATCH_EXECUTION_RESULT_STORAGE = "safe_hashes_statuses_counters_only"
@@ -79,6 +82,7 @@ ALLOWED_DISPATCH_EXECUTION_PROVIDER_MODES = (
     "mock_http",
     "live_http",
 )
+NOTIFICATION_DISPATCH_CHANNEL_TYPES = ("NOTIFICATION", "EMAIL", "WEBHOOK")
 DISPATCH_EXECUTION_RESULT_ACTIONS = {
     "SUCCEEDED": "SUCCEED",
     "FAILED": "FAIL",
@@ -340,6 +344,116 @@ def normalize_dispatch_execution_provider_profile(
     return dict(profile)
 
 
+def build_notification_dispatch_provider_request(
+    dispatch: Mapping[str, Any],
+    *,
+    provider_config: Mapping[str, Any] | None = None,
+    request_id: str | None = None,
+    trace_id: str | None = None,
+    requested_at: str | None = None,
+) -> dict[str, Any]:
+    channel_type = str(dispatch.get("channel_type") or "")
+    if channel_type not in NOTIFICATION_DISPATCH_CHANNEL_TYPES:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=(
+                "ag.operator_review_escalation_dispatch_notification_channel_"
+                "unsupported"
+            ),
+            detail=f"Unsupported notification dispatch channel_type: {channel_type}",
+        )
+    config = (
+        dict(provider_config)
+        if provider_config is not None
+        else build_dispatch_execution_provider_config({})
+    )
+    profile = _notification_provider_profile_for_channel(channel_type, config)
+    endpoint = _provider_config_endpoint(config, "notification")
+    http_settings = _provider_config_http_settings(config)
+    safe_payload = {
+        "safe_subject": optional_text(dispatch.get("safe_subject")),
+        "safe_body_preview": optional_text(dispatch.get("safe_body_preview")),
+        "safe_body_hash": optional_text(dispatch.get("safe_body_hash")),
+        "reason_codes": _safe_text_list(dispatch.get("reason_codes")),
+        "provider_payload_hash": optional_text(dispatch.get("provider_payload_hash")),
+    }
+    request_ref = {
+        "request_id_hash": sha256_text(request_id) if optional_text(request_id) else None,
+        "trace_id": optional_text(trace_id),
+    }
+    idempotency_hash = sha256_text(
+        json.dumps(
+            {
+                "dispatch_id": dispatch.get("dispatch_id"),
+                "request_id": request_id,
+                "provider_profile": profile["profile_id"],
+                "channel_type": channel_type,
+            },
+            sort_keys=True,
+        )
+    )
+    payload_hash = sha256_text(json.dumps(safe_payload, sort_keys=True))
+    request_hash = sha256_text(
+        json.dumps(
+            {
+                "dispatch_id": dispatch.get("dispatch_id"),
+                "channel_type": channel_type,
+                "provider_profile": profile["profile_id"],
+                "payload_hash": payload_hash,
+                "idempotency_hash": idempotency_hash,
+            },
+            sort_keys=True,
+        )
+    )
+    provider_ref = dispatch.get("provider_ref") or {}
+    request = {
+        "provider_request_schema_version": (
+            DISPATCH_NOTIFICATION_PROVIDER_REQUEST_SCHEMA_VERSION
+        ),
+        "provider_category": "notification",
+        "provider_type": profile["provider_type"],
+        "provider_profile": profile["profile_id"],
+        "provider_mode": str(config.get("effective_provider_mode") or "mock_http"),
+        "dispatch_id": str(dispatch.get("dispatch_id") or ""),
+        "escalation_id": str(dispatch.get("escalation_id") or ""),
+        "case_id": str(dispatch.get("case_id") or ""),
+        "dispatch_intent": str(dispatch.get("dispatch_intent") or ""),
+        "channel_type": channel_type,
+        "provider_id": str(
+            provider_ref.get("provider_id")
+            if isinstance(provider_ref, Mapping)
+            else "notification-provider"
+        ),
+        "safe_payload": safe_payload,
+        "safe_payload_hash": payload_hash,
+        "provider_request_hash": request_hash,
+        "idempotency_hash": idempotency_hash,
+        "request_ref": request_ref,
+        "http": {
+            "method": "POST",
+            "endpoint_hint": endpoint.get("endpoint_hint"),
+            "endpoint_configured": bool(endpoint.get("configured")),
+            "token_configured": bool(endpoint.get("token_configured")),
+            "timeout_seconds": http_settings["timeout_seconds"],
+            "connect_timeout_seconds": http_settings["connect_timeout_seconds"],
+            "read_timeout_seconds": http_settings["read_timeout_seconds"],
+            "max_retries": http_settings["max_retries"],
+            "backoff_seconds": http_settings["backoff_seconds"],
+        },
+        "activation": {
+            "configured_provider_mode": config.get("configured_provider_mode"),
+            "effective_provider_mode": config.get("effective_provider_mode"),
+            "live_network_calls_enabled": bool(
+                config.get("live_network_calls_enabled")
+            ),
+        },
+        "requested_at": requested_at or _utc_now(),
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(request)
+    return request
+
+
 def build_dispatch_execution_result(
     dispatch: Mapping[str, Any],
     *,
@@ -492,6 +606,87 @@ def execute_dispatch_with_mock_provider(
 ) -> dict[str, Any]:
     provider = build_mock_dispatch_execution_provider(profile_id)
     return provider.execute(dispatch, executed_at=executed_at)
+
+
+@dataclass(frozen=True)
+class MockNotificationDispatchProvider:
+    default_status_code: int = 202
+
+    def execute(
+        self,
+        dispatch: Mapping[str, Any],
+        *,
+        provider_config: Mapping[str, Any] | None = None,
+        request_id: str | None = None,
+        trace_id: str | None = None,
+        status_code: int | None = None,
+        executed_at: str | None = None,
+    ) -> dict[str, Any]:
+        now = executed_at or _utc_now()
+        request = build_notification_dispatch_provider_request(
+            dispatch,
+            provider_config=provider_config,
+            request_id=request_id,
+            trace_id=trace_id,
+            requested_at=now,
+        )
+        code = int(status_code if status_code is not None else self.default_status_code)
+        if 200 <= code < 300:
+            return _build_provider_adapter_execution_result(
+                dispatch,
+                request,
+                execution_status="SUCCEEDED",
+                safe_result_message="Mock notification provider accepted dispatch.",
+                http_status_code=code,
+                executed_at=now,
+            )
+        if code in {408, 425, 429} or code >= 500:
+            return _build_provider_adapter_execution_result(
+                dispatch,
+                request,
+                execution_status="RETRY_WAIT",
+                safe_result_message=(
+                    "Mock notification provider returned a retryable status."
+                ),
+                last_error_code="notification_provider_retryable_status",
+                next_attempt_at=_iso_after_seconds(
+                    now,
+                    DEFAULT_DISPATCH_EXECUTION_RETRY_DELAY_SECONDS,
+                ),
+                retryable=True,
+                http_status_code=code,
+                executed_at=now,
+            )
+        return _build_provider_adapter_execution_result(
+            dispatch,
+            request,
+            execution_status="FAILED",
+            safe_result_message="Mock notification provider rejected dispatch.",
+            last_error_code="notification_provider_rejected",
+            retryable=False,
+            http_status_code=code,
+            executed_at=now,
+        )
+
+
+def execute_dispatch_with_mock_notification_provider(
+    dispatch: Mapping[str, Any],
+    *,
+    provider_config: Mapping[str, Any] | None = None,
+    request_id: str | None = None,
+    trace_id: str | None = None,
+    status_code: int | None = None,
+    executed_at: str | None = None,
+) -> dict[str, Any]:
+    provider = MockNotificationDispatchProvider()
+    return provider.execute(
+        dispatch,
+        provider_config=provider_config,
+        request_id=request_id,
+        trace_id=trace_id,
+        status_code=status_code,
+        executed_at=executed_at,
+    )
 
 
 def build_dispatch_execution_transition_plan(
@@ -1117,6 +1312,163 @@ def _bounded_batch_limit(value: int | None) -> int:
     except (TypeError, ValueError):
         return DEFAULT_DISPATCH_EXECUTION_BATCH_LIMIT
     return max(1, min(parsed, MAX_DISPATCH_EXECUTION_BATCH_LIMIT))
+
+
+def _notification_provider_profile_for_channel(
+    channel_type: str,
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    preferred_profile_id = optional_text(config.get("live_provider_profile"))
+    preferred = DISPATCH_LIVE_PROVIDER_PROFILES.get(preferred_profile_id or "")
+    if preferred is not None and channel_type in preferred.get("channel_types", []):
+        return dict(preferred)
+    if channel_type == "EMAIL":
+        return dict(DISPATCH_LIVE_PROVIDER_PROFILES["email-notification-default"])
+    return dict(DISPATCH_LIVE_PROVIDER_PROFILES["notification-webhook-default"])
+
+
+def _provider_config_endpoint(
+    config: Mapping[str, Any],
+    endpoint_key: str,
+) -> dict[str, Any]:
+    endpoints = config.get("endpoints")
+    if isinstance(endpoints, Mapping):
+        endpoint = endpoints.get(endpoint_key)
+        if isinstance(endpoint, Mapping):
+            return dict(endpoint)
+    return {
+        "configured": False,
+        "endpoint_hint": None,
+        "token_configured": False,
+        "secret_storage": "env_only",
+    }
+
+
+def _provider_config_http_settings(config: Mapping[str, Any]) -> dict[str, Any]:
+    http = config.get("http")
+    if isinstance(http, Mapping):
+        return {
+            "timeout_seconds": float(
+                http.get("timeout_seconds", DEFAULT_DISPATCH_HTTP_TIMEOUT_SECONDS)
+            ),
+            "connect_timeout_seconds": float(
+                http.get(
+                    "connect_timeout_seconds",
+                    DEFAULT_DISPATCH_HTTP_CONNECT_TIMEOUT_SECONDS,
+                )
+            ),
+            "read_timeout_seconds": float(
+                http.get(
+                    "read_timeout_seconds",
+                    DEFAULT_DISPATCH_HTTP_READ_TIMEOUT_SECONDS,
+                )
+            ),
+            "max_retries": int(
+                http.get("max_retries", DEFAULT_DISPATCH_HTTP_MAX_RETRIES)
+            ),
+            "backoff_seconds": float(
+                http.get("backoff_seconds", DEFAULT_DISPATCH_HTTP_BACKOFF_SECONDS)
+            ),
+        }
+    return {
+        "timeout_seconds": DEFAULT_DISPATCH_HTTP_TIMEOUT_SECONDS,
+        "connect_timeout_seconds": DEFAULT_DISPATCH_HTTP_CONNECT_TIMEOUT_SECONDS,
+        "read_timeout_seconds": DEFAULT_DISPATCH_HTTP_READ_TIMEOUT_SECONDS,
+        "max_retries": DEFAULT_DISPATCH_HTTP_MAX_RETRIES,
+        "backoff_seconds": DEFAULT_DISPATCH_HTTP_BACKOFF_SECONDS,
+    }
+
+
+def _build_provider_adapter_execution_result(
+    dispatch: Mapping[str, Any],
+    provider_request: Mapping[str, Any],
+    *,
+    execution_status: str,
+    safe_result_message: str,
+    last_error_code: str | None = None,
+    next_attempt_at: str | None = None,
+    retryable: bool = False,
+    http_status_code: int | None = None,
+    executed_at: str | None = None,
+) -> dict[str, Any]:
+    normalized_status = _required_execution_status(execution_status)
+    if normalized_status == "FAILED" and optional_text(last_error_code) is None:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=(
+                "ag.operator_review_escalation_dispatch_execution_error_code_required"
+            ),
+            detail="FAILED provider adapter results require last_error_code.",
+        )
+    if normalized_status == "RETRY_WAIT" and optional_text(next_attempt_at) is None:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=(
+                "ag.operator_review_escalation_dispatch_execution_retry_at_required"
+            ),
+            detail="RETRY_WAIT provider adapter results require next_attempt_at.",
+        )
+    ref = json.dumps(
+        {
+            "provider_request_hash": provider_request.get("provider_request_hash"),
+            "execution_status": normalized_status,
+            "http_status_code": http_status_code,
+            "last_error_code": last_error_code,
+        },
+        sort_keys=True,
+    )
+    safe_message = operator_note_preview(safe_result_message)
+    result = {
+        "execution_result_schema_version": DISPATCH_EXECUTION_RESULT_SCHEMA_VERSION,
+        "dispatch_id": str(dispatch.get("dispatch_id") or ""),
+        "escalation_id": str(dispatch.get("escalation_id") or ""),
+        "case_id": str(dispatch.get("case_id") or ""),
+        "dispatch_status_before": str(dispatch.get("dispatch_status") or ""),
+        "dispatch_intent": str(dispatch.get("dispatch_intent") or ""),
+        "channel_type": str(dispatch.get("channel_type") or ""),
+        "execution_status": normalized_status,
+        "recommended_action": DISPATCH_EXECUTION_RESULT_ACTIONS[normalized_status],
+        "provider_mode": provider_request.get("provider_mode"),
+        "provider_category": provider_request.get("provider_category"),
+        "provider_profile": provider_request.get("provider_profile"),
+        "provider_request_hash": provider_request.get("provider_request_hash"),
+        "http_status_code": http_status_code,
+        "provider_result_ref": {
+            "provider_type": provider_request.get("provider_type"),
+            "provider_id": provider_request.get("provider_id"),
+            "provider_profile": provider_request.get("provider_profile"),
+            "provider_result_hash": sha256_text(ref),
+        },
+        "provider_result_hash": sha256_text(
+            json.dumps(
+                {
+                    "dispatch_id": dispatch.get("dispatch_id"),
+                    "status": normalized_status,
+                    "ref": ref,
+                    "message": safe_message,
+                },
+                sort_keys=True,
+            )
+        ),
+        "safe_result_preview": safe_message,
+        "retryable": bool(retryable),
+        "last_error_code": optional_text(last_error_code),
+        "next_attempt_at": optional_text(next_attempt_at),
+        "executed_at": executed_at or _utc_now(),
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(result)
+    return result
+
+
+def _safe_text_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [
+        text
+        for item in value
+        if (text := optional_text(item)) is not None
+    ]
 
 
 def _dispatch_provider_http_settings(env: Mapping[str, str]) -> dict[str, Any]:

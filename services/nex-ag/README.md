@@ -1334,6 +1334,11 @@ Unified operations:
   HTTP timeout/retry values are bounded from environment settings, notification
   and incident endpoints are exposed only as redacted readiness hints, and live
   network calls still require `NEX_AG_DISPATCH_LIVE_PROVIDER_ENABLE=1`.
+- Slice 0723 adds the notification/email/webhook provider request contract and
+  mock adapter. The adapter returns existing dispatch execution result semantics
+  for success, retryable, and rejected HTTP-shaped outcomes while request/result
+  payloads keep only safe previews, hashes, refs, endpoint hints, and bounded
+  timeout/retry settings.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -32,19 +32,24 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_LIVE_PROVIDER_PROFILE_ENV,
     DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV,
     DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV,
+    DISPATCH_NOTIFICATION_PROVIDER_REQUEST_SCHEMA_VERSION,
     DISPATCH_EXECUTION_RESULT_SCHEMA_VERSION,
+    MockNotificationDispatchProvider,
     assert_dispatch_execution_result_redacted,
     build_dispatch_execution_provider_catalog,
     build_dispatch_execution_provider_config,
+    build_notification_dispatch_provider_request,
     build_dispatch_execution_result,
     build_dispatch_execution_result_metadata,
     build_dispatch_execution_transition_plan,
     build_mock_dispatch_execution_provider,
     execute_dispatch_with_mock_provider,
+    execute_dispatch_with_mock_notification_provider,
     normalize_dispatch_execution_provider_mode,
     normalize_dispatch_execution_provider_profile,
     record_dispatch_execution_result_metadata,
     run_dispatch_execution_worker_once,
+    _build_provider_adapter_execution_result,
     _persist_worker_result_metadata,
     _worker_candidate_dispatches,
 )
@@ -107,6 +112,28 @@ def sample_dispatch(**plan_overrides: Any) -> dict[str, Any]:
     )
     assert isinstance(plan["dispatch_record"], dict)
     return plan["dispatch_record"]
+
+
+def sample_live_channel_dispatch(**overrides: Any) -> dict[str, Any]:
+    safe_body = overrides.pop("safe_body", None)
+    provider_fingerprint = overrides.pop("provider_payload_fingerprint", None)
+    dispatch = {
+        **sample_dispatch(),
+        "channel_type": "EMAIL",
+        "dispatch_intent": "NOTIFY_OWNER",
+        "provider_profile": "email-notification-default",
+        "safe_subject": "SLA warning",
+        "safe_body_hash": None,
+        "safe_body_preview": None,
+        "provider_payload_hash": None,
+    }
+    dispatch.update(overrides)
+    if safe_body is not None:
+        dispatch["safe_body_hash"] = sha256_text(str(safe_body))
+        dispatch["safe_body_preview"] = str(safe_body)
+    if provider_fingerprint is not None:
+        dispatch["provider_payload_hash"] = sha256_text(str(provider_fingerprint))
+    return dispatch
 
 
 def build_dispatch_service(
@@ -449,6 +476,194 @@ def test_mock_dispatch_execution_provider_rejects_unknown_profile() -> None:
 
     assert exc_info.value.error_code == (
         "ag.operator_review_escalation_dispatch_execution_provider_profile_unsupported"
+    )
+
+
+def test_notification_provider_request_shape_is_safe_and_redacted() -> None:
+    dispatch = sample_live_channel_dispatch(
+        channel_type="EMAIL",
+        dispatch_intent="NOTIFY_OWNER",
+        provider_profile="email-notification-default",
+        safe_subject="SLA warning for case-0723",
+        safe_body="Notify the assigned owner that the review case is near SLA.",
+        provider_payload_fingerprint="safe-provider-payload-fingerprint",
+    )
+    config = build_dispatch_execution_provider_config(
+        {
+            DISPATCH_EXECUTION_PROVIDER_MODE_ENV: "mock_http",
+            DISPATCH_LIVE_PROVIDER_PROFILE_ENV: "email-notification-default",
+            DISPATCH_NOTIFICATION_WEBHOOK_URL_ENV: "https://notify.invalid/path/secret",
+            DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV: "notify-token-0723",
+        }
+    )
+
+    request = build_notification_dispatch_provider_request(
+        dispatch,
+        provider_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        requested_at="2026-09-13T09:00:00Z",
+    )
+
+    assert request["provider_request_schema_version"] == (
+        DISPATCH_NOTIFICATION_PROVIDER_REQUEST_SCHEMA_VERSION
+    )
+    assert request["provider_category"] == "notification"
+    assert request["provider_type"] == "email_notification"
+    assert request["provider_profile"] == "email-notification-default"
+    assert request["provider_mode"] == "mock_http"
+    assert request["dispatch_id"] == dispatch["dispatch_id"]
+    assert request["channel_type"] == "EMAIL"
+    assert request["safe_payload"]["safe_subject"] == "SLA warning for case-0723"
+    assert request["safe_payload"]["safe_body_hash"] == dispatch["safe_body_hash"]
+    assert request["safe_payload"]["provider_payload_hash"] == (
+        dispatch["provider_payload_hash"]
+    )
+    assert request["http"]["method"] == "POST"
+    assert request["http"]["endpoint_hint"] == "https://notify.invalid/<redacted>"
+    assert request["http"]["token_configured"] is True
+    assert request["activation"]["live_network_calls_enabled"] is False
+    assert request["idempotency_hash"]
+    serialized = json.dumps(request)
+    assert "https://notify.invalid/path/secret" not in serialized
+    assert "notify-token-0723" not in serialized
+    assert "safe-provider-payload-fingerprint" not in serialized
+    assert_dispatch_execution_result_redacted(request)
+
+
+def test_notification_provider_request_rejects_non_notification_channel() -> None:
+    with pytest.raises(OperatorReviewNoteError) as exc_info:
+        build_notification_dispatch_provider_request(sample_dispatch())
+
+    assert exc_info.value.error_code == (
+        "ag.operator_review_escalation_dispatch_notification_channel_unsupported"
+    )
+
+
+def test_notification_provider_request_fallback_profiles_and_config_defaults() -> None:
+    email_request = build_notification_dispatch_provider_request(
+        sample_live_channel_dispatch(
+            channel_type="EMAIL",
+            reason_codes="not-a-list",
+        ),
+        provider_config={"effective_provider_mode": "mock_http"},
+        requested_at="2026-09-13T09:05:00Z",
+    )
+    assert email_request["provider_profile"] == "email-notification-default"
+    assert email_request["safe_payload"]["reason_codes"] == []
+    assert email_request["http"]["endpoint_configured"] is False
+    assert email_request["http"]["timeout_seconds"] == 15.0
+
+    webhook_request = build_notification_dispatch_provider_request(
+        sample_live_channel_dispatch(
+            channel_type="WEBHOOK",
+            provider_profile="notification-webhook-default",
+        ),
+        provider_config={
+            "effective_provider_mode": "mock_http",
+            "live_provider_profile": "email-notification-default",
+        },
+        requested_at="2026-09-13T09:06:00Z",
+    )
+    assert webhook_request["provider_profile"] == "notification-webhook-default"
+    assert webhook_request["provider_type"] == "notification_webhook"
+
+    malformed_endpoint = build_notification_dispatch_provider_request(
+        sample_live_channel_dispatch(channel_type="WEBHOOK"),
+        provider_config={
+            "effective_provider_mode": "mock_http",
+            "endpoints": {"notification": "not-a-dict"},
+        },
+    )
+    assert malformed_endpoint["http"]["endpoint_configured"] is False
+
+
+def test_mock_notification_provider_success_retry_and_failure_are_safe() -> None:
+    dispatch = sample_live_channel_dispatch(
+        channel_type="WEBHOOK",
+        dispatch_intent="NOTIFY_OPERATOR",
+        provider_profile="notification-webhook-default",
+        safe_subject="Dispatch webhook",
+        safe_body="Send a bounded dispatch notification.",
+    )
+    config = build_dispatch_execution_provider_config(
+        {DISPATCH_EXECUTION_PROVIDER_MODE_ENV: "mock_http"}
+    )
+    provider = MockNotificationDispatchProvider()
+
+    success = provider.execute(
+        dispatch,
+        provider_config=config,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        status_code=202,
+        executed_at="2026-09-13T09:10:00Z",
+    )
+
+    assert success["execution_status"] == "SUCCEEDED"
+    assert success["recommended_action"] == "SUCCEED"
+    assert success["provider_category"] == "notification"
+    assert success["provider_profile"] == "notification-webhook-default"
+    assert success["provider_mode"] == "mock_http"
+    assert success["http_status_code"] == 202
+    assert success["safe_result_preview"] == (
+        "Mock notification provider accepted dispatch."
+    )
+    assert success["retryable"] is False
+    assert success["provider_request_hash"]
+    assert_dispatch_execution_result_redacted(success)
+
+    retry = execute_dispatch_with_mock_notification_provider(
+        dispatch,
+        provider_config=config,
+        status_code=503,
+        executed_at="2026-09-13T09:11:00Z",
+    )
+    assert retry["execution_status"] == "RETRY_WAIT"
+    assert retry["recommended_action"] == "RETRY"
+    assert retry["retryable"] is True
+    assert retry["last_error_code"] == "notification_provider_retryable_status"
+    assert retry["next_attempt_at"] == "2026-09-13T09:16:00Z"
+
+    failed = execute_dispatch_with_mock_notification_provider(
+        dispatch,
+        provider_config=config,
+        status_code=400,
+        executed_at="2026-09-13T09:12:00Z",
+    )
+    assert failed["execution_status"] == "FAILED"
+    assert failed["recommended_action"] == "FAIL"
+    assert failed["retryable"] is False
+    assert failed["last_error_code"] == "notification_provider_rejected"
+    assert "raw_notification_payload" in json.dumps(failed)
+    assert "RAW_NOTIFICATION_PAYLOAD" not in json.dumps(failed)
+
+
+def test_provider_adapter_result_requires_failure_and_retry_context() -> None:
+    dispatch = sample_live_channel_dispatch(channel_type="EMAIL")
+    provider_request = build_notification_dispatch_provider_request(dispatch)
+
+    with pytest.raises(OperatorReviewNoteError) as failed_exc:
+        _build_provider_adapter_execution_result(
+            dispatch,
+            provider_request,
+            execution_status="FAILED",
+            safe_result_message="missing error",
+        )
+    assert failed_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_execution_error_code_required"
+    )
+
+    with pytest.raises(OperatorReviewNoteError) as retry_exc:
+        _build_provider_adapter_execution_result(
+            dispatch,
+            provider_request,
+            execution_status="RETRY_WAIT",
+            safe_result_message="missing retry timestamp",
+            last_error_code="notification_provider_retryable_status",
+        )
+    assert retry_exc.value.error_code == (
+        "ag.operator_review_escalation_dispatch_execution_retry_at_required"
     )
 
 
