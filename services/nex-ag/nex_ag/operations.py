@@ -174,6 +174,18 @@ AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_PROJECTION_SCHEMA_VERSION = (
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_PLAN_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_daemon_liveness_recovery_plan.v1"
 )
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_AUDIT_EVENT_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_daemon_liveness_recovery_audit_event.v1"
+)
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_PLANNED = (
+    "ag.operator_review_escalation_dispatch_daemon.liveness_recovery.planned"
+)
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_REJECTED = (
+    "ag.operator_review_escalation_dispatch_daemon.liveness_recovery.rejected"
+)
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_FAILED = (
+    "ag.operator_review_escalation_dispatch_daemon.liveness_recovery.failed"
+)
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_TICK_PLAN_API_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_daemon_tick_plan_api.v1"
 )
@@ -199,6 +211,11 @@ AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_TYPES = (
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_SUCCEEDED,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_REJECTED,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_FAILED,
+)
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_TYPES = (
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_PLANNED,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_REJECTED,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_FAILED,
 )
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_ACTIONS = ("tick_plan", "tick_once")
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_STATUSES = (
@@ -2472,6 +2489,7 @@ def register_unified_operation_routes(
             registry=registry,
             worker_id=worker_id,
             stale_after_seconds=stale_after_seconds,
+            audit_emitter=audit_emitter,
         )
 
     @app.get(
@@ -3091,6 +3109,151 @@ def emit_operator_review_escalation_dispatch_daemon_control_audit_event(
     )
 
 
+def build_operator_review_escalation_dispatch_daemon_liveness_recovery_audit_event_details(
+    *,
+    http_method: str,
+    route_path: str,
+    recovery_plan: Mapping[str, Any] | None = None,
+    error: OperationsQueryError | None = None,
+) -> dict[str, Any]:
+    details: dict[str, Any] = {
+        "recovery_audit_schema_version": (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_AUDIT_EVENT_SCHEMA_VERSION
+        ),
+        "action": "recovery_plan",
+        "http_method": http_method.upper(),
+        "route_path": route_path,
+        "source_heartbeat_table": "service_worker_heartbeats",
+        "source_event_table": "service_operational_events",
+        "new_tables_required": False,
+        "raw_request_payload_included": False,
+        "raw_provider_payload_included": False,
+        "sensitive_values_included": False,
+    }
+    if recovery_plan is None:
+        status_code = getattr(error, "status_code", 500)
+        details.update(
+            {
+                "recovery_status": (
+                    "REJECTED" if status_code < 500 else "FAILED"
+                ),
+                "error_code": getattr(error, "error_code", None),
+                "status_code": status_code,
+                "rejection_reason": _dispatch_daemon_error_reason(error),
+            }
+        )
+        return details
+
+    summary = _mapping_or_empty(recovery_plan.get("summary"))
+    source_evidence = _mapping_or_empty(recovery_plan.get("source_evidence"))
+    daemon_identity = _mapping_or_empty(recovery_plan.get("daemon_identity"))
+    recovery_plan_route = _mapping_or_empty(recovery_plan.get("recovery_plan_route"))
+    process_control_route = _mapping_or_empty(
+        recovery_plan.get("process_control_route")
+    )
+    recommended_actions = [
+        action
+        for action in recovery_plan.get("recommended_actions", [])
+        if isinstance(action, Mapping)
+    ]
+    details.update(
+        {
+            "recovery_status": "PLANNED",
+            "projection_schema_version": recovery_plan.get(
+                "projection_schema_version"
+            ),
+            "projection_status": recovery_plan.get("projection_status"),
+            "worker_id": _nullable_string(daemon_identity.get("worker_id")),
+            "worker_type": _nullable_string(daemon_identity.get("worker_type")),
+            "liveness_status": _nullable_string(
+                source_evidence.get("liveness_status")
+            ),
+            "heartbeat_present": bool(source_evidence.get("heartbeat_present")),
+            "stale": source_evidence.get("stale"),
+            "stale_after_seconds": _safe_optional_int(
+                source_evidence.get("stale_after_seconds")
+            ),
+            "action_count": _safe_optional_int(summary.get("action_count")),
+            "requires_operator_action": bool(
+                summary.get("requires_operator_action")
+            ),
+            "requires_confirm_process": bool(
+                summary.get("requires_confirm_process")
+            ),
+            "subprocess_mutation_performed": bool(
+                summary.get("subprocess_mutation_performed", False)
+            ),
+            "recovery_plan_route_protected": bool(
+                recovery_plan_route.get("protected")
+            ),
+            "recovery_plan_route_mutation": bool(
+                recovery_plan_route.get("mutation")
+            ),
+            "process_control_path": _nullable_string(
+                process_control_route.get("path")
+            ),
+            "recommended_action_ids": [
+                _nullable_string(action.get("action_id"))
+                for action in recommended_actions
+                if _nullable_string(action.get("action_id")) is not None
+            ],
+        }
+    )
+    return details
+
+
+def emit_operator_review_escalation_dispatch_daemon_liveness_recovery_audit_event(
+    emitter: OperationalEventEmitter | None,
+    *,
+    http_method: str,
+    request_id: str,
+    trace_id: str | None,
+    recovery_plan: Mapping[str, Any] | None = None,
+    error: OperationsQueryError | None = None,
+) -> OperationalEventEmitResult:
+    if emitter is None:
+        return OperationalEventEmitResult.failed(
+            error_code=(
+                "ag.operator_review_escalation_dispatch_daemon_liveness_recovery_audit_not_configured"
+            ),
+            detail="Dispatch daemon liveness recovery audit emitter is not configured.",
+            status_code=503,
+        )
+    route_path = "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan"
+    if error is None:
+        event_type = (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_PLANNED
+        )
+        severity = "INFO"
+        message = "AG dispatch daemon liveness recovery plan was viewed."
+    else:
+        status_code = getattr(error, "status_code", 500)
+        event_type = (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_REJECTED
+            if status_code < 500
+            else AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_FAILED
+        )
+        severity = "WARNING" if status_code < 500 else "ERROR"
+        message = "AG dispatch daemon liveness recovery plan failed."
+    return emitter.safe_emit(
+        event_type=event_type,
+        severity=severity,
+        message=message,
+        trace_id=trace_id,
+        request_id=request_id,
+        subject_ref={
+            "type": "operator_review_dispatch_daemon_liveness_recovery",
+            "id": "recovery_plan",
+        },
+        details=build_operator_review_escalation_dispatch_daemon_liveness_recovery_audit_event_details(
+            http_method=http_method,
+            route_path=route_path,
+            recovery_plan=recovery_plan,
+            error=error,
+        ),
+    )
+
+
 def _dispatch_daemon_error_reason(
     error: OperationsQueryError | OperatorReviewNoteError | None,
 ) -> str | None:
@@ -3484,7 +3647,9 @@ def _dispatch_daemon_liveness_recovery_plan_route_response(
     registry: OperationsSourceRegistry | None,
     worker_id: str,
     stale_after_seconds: int,
+    audit_emitter: OperationalEventEmitter | None = None,
 ) -> dict[str, Any] | JSONResponse:
+    request_id = request_id_from_headers(request)
     trace_id = trace_id_from_headers(request)
     try:
         liveness_projection = (
@@ -3496,16 +3661,36 @@ def _dispatch_daemon_liveness_recovery_plan_route_response(
                 request_trace_id=trace_id,
             )
         )
-        return build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
-            liveness_projection,
-            process_section={
-                "process_control_path": (
-                    "/admin/v1/operator-review/dispatch-daemon/process-controls"
-                )
-            },
-            request_trace_id=trace_id,
+        recovery_plan = (
+            build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
+                liveness_projection,
+                process_section={
+                    "process_control_path": (
+                        "/admin/v1/operator-review/dispatch-daemon/process-controls"
+                    )
+                },
+                request_trace_id=trace_id,
+            )
         )
+        audit_result = (
+            emit_operator_review_escalation_dispatch_daemon_liveness_recovery_audit_event(
+                audit_emitter,
+                http_method="GET",
+                request_id=request_id,
+                trace_id=trace_id,
+                recovery_plan=recovery_plan,
+            )
+        )
+        recovery_plan["audit_event"] = audit_result.to_summary()
+        return recovery_plan
     except OperationsQueryError as exc:
+        emit_operator_review_escalation_dispatch_daemon_liveness_recovery_audit_event(
+            audit_emitter,
+            http_method="GET",
+            request_id=request_id,
+            trace_id=trace_id,
+            error=exc,
+        )
         return _dispatch_daemon_control_problem_response(request, exc)
 
 
@@ -9094,7 +9279,8 @@ def build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
             "read_only_recovery_plan": True,
             "subprocess_mutation_allowed": False,
             "process_control_requires_confirm_process": True,
-            "audit_event_deferred_until_slice_0794": True,
+            "audit_event_supported": True,
+            "audit_event_details_shape": "safe_liveness_recovery_summary_only",
             "acknowledgement_suppression_deferred_until_slice_0796": True,
         },
         "new_tables_required": False,

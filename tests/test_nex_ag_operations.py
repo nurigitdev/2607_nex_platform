@@ -16,6 +16,10 @@ from nex_ag.operations import (
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_PROJECTION_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_PLAN_SCHEMA_VERSION,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_AUDIT_EVENT_SCHEMA_VERSION,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_FAILED,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_PLANNED,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_REJECTED,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_AUDIT_EVENT_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_FAILED,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_HISTORY_PROJECTION_SCHEMA_VERSION,
@@ -54,6 +58,7 @@ from nex_ag.operations import (
     build_operator_review_escalation_dispatch_daemon_runtime_projection,
     build_operator_review_escalation_dispatch_daemon_liveness_projection,
     build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan,
+    build_operator_review_escalation_dispatch_daemon_liveness_recovery_audit_event_details,
     build_operator_review_escalation_dispatch_daemon_control_audit_event_details,
     build_operator_review_escalation_dispatch_daemon_control_history_projection,
     build_operator_review_escalation_dispatch_daemon_process_control_api_projection,
@@ -79,6 +84,7 @@ from nex_ag.operations import (
     normalize_operation_event_search_query,
     normalize_operation_log_search_query,
     normalize_service_log_retention_days,
+    emit_operator_review_escalation_dispatch_daemon_liveness_recovery_audit_event,
     emit_operator_review_escalation_dispatch_daemon_control_audit_event,
     normalize_operation_cursor,
     normalize_operation_sort,
@@ -163,6 +169,7 @@ from nex_runtime import (
     InMemoryServiceLogStore,
     InMemoryWorkerHeartbeatStore,
     JobQueueError,
+    OperationalEventEmitter,
     OperationalEventError,
     RUNNING,
     SERVICE_SPECS,
@@ -4279,6 +4286,119 @@ def test_operator_review_dispatch_daemon_liveness_recovery_plan_rejects_bad_inpu
     )
 
 
+def test_operator_review_dispatch_daemon_liveness_recovery_audit_event_details_are_safe() -> (
+    None
+):
+    liveness = build_operator_review_escalation_dispatch_daemon_liveness_projection(
+        worker_heartbeat_stores={"nex-ag": InMemoryWorkerHeartbeatStore()},
+        checked_at="2026-09-15T14:03:00Z",
+        request_trace_id=TRACE_ID,
+    )
+    recovery_plan = (
+        build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
+            liveness,
+            checked_at="2026-09-15T14:03:05Z",
+            request_trace_id=TRACE_ID,
+        )
+    )
+    details = (
+        build_operator_review_escalation_dispatch_daemon_liveness_recovery_audit_event_details(
+            http_method="GET",
+            route_path="/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan",
+            recovery_plan=recovery_plan,
+        )
+    )
+    rejected = OperationsQueryError(
+        error_code=(
+            "ag.operator_review_dispatch_daemon_liveness_worker_id_invalid"
+        ),
+        detail="worker id invalid",
+        status_code=400,
+    )
+    failed = OperationsQueryError(
+        error_code="ag.operator_review_dispatch_daemon_liveness_unavailable",
+        detail="heartbeat source unavailable",
+        status_code=503,
+    )
+    rejected_details = (
+        build_operator_review_escalation_dispatch_daemon_liveness_recovery_audit_event_details(
+            http_method="GET",
+            route_path="/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan",
+            error=rejected,
+        )
+    )
+    failed_details = (
+        build_operator_review_escalation_dispatch_daemon_liveness_recovery_audit_event_details(
+            http_method="GET",
+            route_path="/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan",
+            error=failed,
+        )
+    )
+    no_emitter = (
+        emit_operator_review_escalation_dispatch_daemon_liveness_recovery_audit_event(
+            None,
+            http_method="GET",
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            recovery_plan=recovery_plan,
+        )
+    )
+    failed_store = InMemoryOperationalEventStore()
+    failed_emit = (
+        emit_operator_review_escalation_dispatch_daemon_liveness_recovery_audit_event(
+            OperationalEventEmitter(service_id="nex-ag", store=failed_store),
+            http_method="GET",
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            error=failed,
+        )
+    )
+
+    assert details["recovery_audit_schema_version"] == (
+        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_AUDIT_EVENT_SCHEMA_VERSION
+    )
+    assert details["recovery_status"] == "PLANNED"
+    assert details["projection_status"] == "ACTION_RECOMMENDED"
+    assert details["liveness_status"] == "MISSING"
+    assert details["action_count"] == 1
+    assert details["requires_confirm_process"] is True
+    assert details["subprocess_mutation_performed"] is False
+    assert details["recommended_action_ids"] == [
+        "start_or_inspect_dispatch_daemon_process"
+    ]
+    assert details["source_heartbeat_table"] == "service_worker_heartbeats"
+    assert details["source_event_table"] == "service_operational_events"
+    assert details["raw_request_payload_included"] is False
+    assert details["raw_provider_payload_included"] is False
+    assert details["sensitive_values_included"] is False
+    assert rejected_details["recovery_status"] == "REJECTED"
+    assert rejected_details["status_code"] == 400
+    assert rejected_details["rejection_reason"] == (
+        "operator_review_dispatch_daemon_liveness_worker_id_invalid"
+    )
+    assert failed_details["recovery_status"] == "FAILED"
+    assert failed_details["status_code"] == 503
+    assert failed_details["rejection_reason"] == "unavailable"
+    assert no_emitter.ok is False
+    assert no_emitter.error_code == (
+        "ag.operator_review_escalation_dispatch_daemon_liveness_recovery_audit_not_configured"
+    )
+    assert failed_emit.ok is True
+    assert failed_emit.to_summary()["event_type"] == (
+        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_FAILED
+    )
+    failed_events = failed_store.list_events(
+        event_type=(
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_FAILED
+        )
+    )
+    assert failed_events[0]["severity"] == "ERROR"
+    assert failed_events[0]["details"]["recovery_status"] == "FAILED"
+    serialized = json.dumps({"details": details, "failed": failed_details})
+    assert "postgresql://" not in serialized
+    assert "nuri1004" not in serialized
+
+
 def test_operator_review_dispatch_daemon_liveness_route_is_protected() -> None:
     heartbeat_store = InMemoryWorkerHeartbeatStore()
     heartbeat_store.upsert_heartbeat(
@@ -4329,8 +4449,10 @@ def test_operator_review_dispatch_daemon_liveness_route_is_protected() -> None:
 
 def test_operator_review_dispatch_daemon_liveness_recovery_plan_route_is_protected() -> None:
     app = build_service_app(SERVICE_SPECS["nex-ag"])
+    event_store = InMemoryOperationalEventStore()
     register_unified_operation_routes(
         app,
+        event_store=event_store,
         worker_heartbeat_stores={"nex-ag": InMemoryWorkerHeartbeatStore()},
     )
     client = TestClient(app)
@@ -4374,9 +4496,42 @@ def test_operator_review_dispatch_daemon_liveness_recovery_plan_route_is_protect
     )
     assert payload["summary"]["requires_confirm_process"] is True
     assert payload["process_control_route"]["subprocess_mutation_performed"] is False
+    assert payload["audit_event"]["ok"] is True
+    assert payload["audit_event"]["event_type"] == (
+        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_PLANNED
+    )
     assert invalid_worker.status_code == 400
     assert invalid_worker.json()["error_code"] == (
         "ag.operator_review_dispatch_daemon_liveness_worker_id_invalid"
+    )
+    planned_events = event_store.list_events(
+        event_type=(
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_PLANNED
+        )
+    )
+    rejected_events = event_store.list_events(
+        event_type=(
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_REJECTED
+        )
+    )
+    assert len(planned_events) == 1
+    assert planned_events[0]["severity"] == "INFO"
+    assert planned_events[0]["trace_id"] == TRACE_ID
+    assert planned_events[0]["subject_ref"] == {
+        "type": "operator_review_dispatch_daemon_liveness_recovery",
+        "id": "recovery_plan",
+    }
+    assert planned_events[0]["details"]["recovery_status"] == "PLANNED"
+    assert planned_events[0]["details"]["liveness_status"] == "MISSING"
+    assert planned_events[0]["details"]["action_count"] == 1
+    assert planned_events[0]["details"]["new_tables_required"] is False
+    assert planned_events[0]["details"]["raw_request_payload_included"] is False
+    assert len(rejected_events) == 1
+    assert rejected_events[0]["severity"] == "WARNING"
+    assert rejected_events[0]["details"]["recovery_status"] == "REJECTED"
+    assert rejected_events[0]["details"]["status_code"] == 400
+    assert rejected_events[0]["details"]["rejection_reason"] == (
+        "operator_review_dispatch_daemon_liveness_worker_id_invalid"
     )
 
 
