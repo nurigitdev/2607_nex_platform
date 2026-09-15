@@ -103,6 +103,7 @@ from nex_ag.operations import (
     _issue_candidates_from_generation_quality,
     _issue_candidates_from_operator_review_escalations,
     _issue_candidates_from_operator_review_cases,
+    _issue_candidates_from_operator_review_dispatch_daemon_controls,
     _issue_candidates_from_operator_review_escalation_dispatches,
     _issue_candidates_from_operator_review_workbench,
     _issue_candidates_from_remediation_executions,
@@ -5343,6 +5344,184 @@ def test_operations_issue_candidate_projection_includes_escalation_dispatches() 
     ]
 
 
+def test_operations_issue_candidate_projection_includes_dispatch_daemon_controls() -> (
+    None
+):
+    event_store = InMemoryOperationalEventStore()
+    event_store.append(
+        build_operational_event(
+            service_id="nex-ag",
+            event_type=AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_FAILED,
+            severity="ERROR",
+            message="AG dispatch daemon tick_once control failed.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            subject_ref={
+                "type": "operator_review_dispatch_daemon_control",
+                "id": "tick_once",
+            },
+            details={
+                "action": "tick_once",
+                "http_method": "POST",
+                "route_path": "/admin/v1/operator-review/dispatch-daemon/tick-once",
+                "control_status": "FAILED",
+                "error_code": "ag.operator_review_escalation_dispatch_daemon_tick_once_unavailable",
+                "status_code": 503,
+                "rejection_reason": "unavailable",
+                "source_table": "ag_op_esc_dispatches",
+                "provider_payload": {"secret": "ed6@c496em"},
+            },
+            created_at="2026-09-15T01:02:00Z",
+            event_id="dispatch-daemon-candidate-control-001",
+        )
+    )
+    event_store.append(
+        build_operational_event(
+            service_id="nex-ag",
+            event_type=AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_REJECTED,
+            severity="WARNING",
+            message="AG dispatch daemon tick_plan control rejected.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            subject_ref={
+                "type": "operator_review_dispatch_daemon_control",
+                "id": "tick_plan",
+            },
+            details={
+                "action": "tick_plan",
+                "http_method": "POST",
+                "route_path": "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+                "control_status": "REJECTED",
+                "status_code": 409,
+                "rejection_reason": "confirm_tick_required",
+                "source_table": "ag_op_esc_dispatches",
+            },
+            created_at="2026-09-15T01:01:00Z",
+            event_id="dispatch-daemon-candidate-control-002",
+        )
+    )
+    event_store.append(
+        build_operational_event(
+            service_id="nex-ag",
+            event_type=AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_SUCCEEDED,
+            severity="INFO",
+            message="AG dispatch daemon tick_plan control completed.",
+            trace_id=TRACE_ID,
+            request_id=REQUEST_ID,
+            subject_ref={
+                "type": "operator_review_dispatch_daemon_control",
+                "id": "tick_plan",
+            },
+            details={
+                "action": "tick_plan",
+                "control_status": "SUCCEEDED",
+            },
+            created_at="2026-09-15T01:00:00Z",
+            event_id="dispatch-daemon-candidate-control-003",
+        )
+    )
+
+    projection = build_operations_issue_candidate_projection(
+        event_store=event_store,
+        recent_limit=5,
+        request_trace_id=TRACE_ID,
+    )
+
+    candidates = [
+        candidate
+        for candidate in projection["issue_candidates"]
+        if candidate["rule_id"]
+        == "operator_review_dispatch_daemon_control_attention_required.v1"
+    ]
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["service_id"] == "nex-ag"
+    assert candidate["severity"] == "ERROR"
+    assert candidate["signal"] == {
+        "source_type": "operator_review_dispatch_daemon_control",
+        "status": "FAILED",
+        "count": 2,
+        "threshold": 1,
+        "failed_count": 1,
+        "rejected_count": 1,
+        "control_event_ids": [
+            "dispatch-daemon-candidate-control-001",
+            "dispatch-daemon-candidate-control-002",
+        ],
+        "actions": ["tick_once", "tick_plan"],
+        "control_statuses": ["FAILED", "REJECTED"],
+        "error_codes": [
+            "ag.operator_review_escalation_dispatch_daemon_tick_once_unavailable"
+        ],
+        "rejection_reasons": ["confirm_tick_required", "unavailable"],
+        "status_codes": [409, 503],
+        "route_paths": [
+            "/admin/v1/operator-review/dispatch-daemon/tick-once",
+            "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        ],
+        "control_history_path": "/admin/v1/operator-review/dispatch-daemon/controls",
+        "tick_plan_path": "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        "tick_once_path": "/admin/v1/operator-review/dispatch-daemon/tick-once",
+        "runbook_ids": [
+            "ag.operator_review_dispatch_daemon_control.failed_triage.v1",
+            "ag.operator_review_dispatch_daemon_control.rejected_request_review.v1",
+        ],
+        "recommended_operator_actions": [
+            "inspect_failed_dispatch_daemon_control",
+            "review_rejected_dispatch_daemon_control_request",
+        ],
+    }
+    assert projection["summary"]["by_rule"][
+        "operator_review_dispatch_daemon_control_attention_required.v1"
+    ] == 1
+    assert any(
+        rule["rule_id"]
+        == "operator_review_dispatch_daemon_control_attention_required.v1"
+        for rule in projection["rules"]
+    )
+    serialized = json.dumps(candidate)
+    assert "ed6@c496em" not in serialized
+    assert '"provider_payload":' not in serialized
+    assert_ag_operations_projection_contract(projection)
+
+    assert _issue_candidates_from_operator_review_dispatch_daemon_controls(None) == []
+    assert (
+        _issue_candidates_from_operator_review_dispatch_daemon_controls(
+            {"recent": "not-a-list"}
+        )
+        == []
+    )
+    assert (
+        _issue_candidates_from_operator_review_dispatch_daemon_controls(
+            {"recent": [{"control_status": "SUCCEEDED"}, "malformed"]}
+        )
+        == []
+    )
+    helper_candidates = _issue_candidates_from_operator_review_dispatch_daemon_controls(
+        {
+            "recent": [
+                {
+                    "control_event_id": "dispatch-daemon-candidate-control-004",
+                    "control_status": "REJECTED",
+                    "action": "tick_plan",
+                    "route_path": (
+                        "/admin/v1/operator-review/dispatch-daemon/tick-plan"
+                    ),
+                    "status_code": 409,
+                    "rejection_reason": "confirm_tick_required",
+                },
+                {"control_status": "SUCCEEDED"},
+                "malformed",
+            ]
+        }
+    )
+    assert helper_candidates[0]["severity"] == "WARNING"
+    assert helper_candidates[0]["signal"]["status"] == "REJECTED"
+    assert helper_candidates[0]["signal"]["runbook_ids"] == [
+        "ag.operator_review_dispatch_daemon_control.rejected_request_review.v1"
+    ]
+
+
 def test_escalation_dispatch_dashboard_helpers_cover_defensive_edges() -> None:
     assert (
         ag_operations._dashboard_operator_review_escalation_dispatch_attention_item(
@@ -5917,6 +6096,7 @@ def test_build_operations_issue_candidate_projection_flags_service_scope() -> No
         "remediation_execution_attention_required.v1",
         "operator_review_escalation_action_required.v1",
         "operator_review_escalation_dispatch_attention_required.v1",
+        "operator_review_dispatch_daemon_control_attention_required.v1",
         "operator_review_attention_required.v1",
         "operator_review_case_attention_required.v1",
     ]

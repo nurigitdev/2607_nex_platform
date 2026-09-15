@@ -437,6 +437,16 @@ OPERATIONS_ISSUE_CANDIDATE_RULES = (
         "signal_type": "operator_review_escalation_dispatch",
     },
     {
+        "rule_id": "operator_review_dispatch_daemon_control_attention_required.v1",
+        "severity": "WARNING",
+        "title": "Operator review dispatch daemon control attention required",
+        "description": (
+            "One or more dispatch daemon operator controls failed or were rejected."
+        ),
+        "enabled": True,
+        "signal_type": "operator_review_dispatch_daemon_control",
+    },
+    {
         "rule_id": "operator_review_attention_required.v1",
         "severity": "WARNING",
         "title": "Operator review attention required",
@@ -5300,6 +5310,17 @@ def build_operations_issue_candidates(
     candidates.extend(
         _issue_candidates_from_operator_review_escalation_dispatches(
             dashboard_snapshot.get("operator_review_escalation_dispatches")
+        )
+    )
+    dispatch_section = dashboard_snapshot.get("operator_review_escalation_dispatches")
+    daemon_control_section = (
+        dispatch_section.get("daemon_controls")
+        if isinstance(dispatch_section, Mapping)
+        else None
+    )
+    candidates.extend(
+        _issue_candidates_from_operator_review_dispatch_daemon_controls(
+            daemon_control_section
         )
     )
     if worker_runtime_projection is not None:
@@ -10371,6 +10392,134 @@ def _operator_review_escalation_dispatch_issue_operator_actions(
             actions.add("confirm_escalation_dispatch_outcome")
         if status == "PENDING":
             actions.add("start_or_cancel_pending_escalation_dispatch")
+    return sorted(actions)
+
+
+def _issue_candidates_from_operator_review_dispatch_daemon_controls(
+    section: object,
+) -> list[dict[str, Any]]:
+    if not isinstance(section, Mapping):
+        return []
+    recent = section.get("recent")
+    if not isinstance(recent, list):
+        return []
+    items = [
+        dict(item)
+        for item in recent
+        if isinstance(item, Mapping)
+        and _operator_review_dispatch_daemon_control_item_needs_attention(item)
+    ]
+    if not items:
+        return []
+    return [_operator_review_dispatch_daemon_control_issue_candidate(items)]
+
+
+def _operator_review_dispatch_daemon_control_item_needs_attention(
+    item: Mapping[str, Any],
+) -> bool:
+    return str(item.get("control_status") or "") in {"FAILED", "REJECTED"}
+
+
+def _operator_review_dispatch_daemon_control_issue_candidate(
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    status_counts = _dashboard_count_by(items, "control_status")
+    action_counts = _dashboard_count_by(items, "action")
+    failed_count = status_counts.get("FAILED", 0)
+    rejected_count = status_counts.get("REJECTED", 0)
+    severity = "ERROR" if failed_count else "WARNING"
+    return _operations_issue_candidate(
+        rule_id="operator_review_dispatch_daemon_control_attention_required.v1",
+        service_id="nex-ag",
+        severity=severity,
+        title="Operator review dispatch daemon control attention required",
+        detail=(
+            f"{len(items)} dispatch daemon operator control event(s) "
+            "need review."
+        ),
+        signal={
+            "source_type": "operator_review_dispatch_daemon_control",
+            "status": "FAILED" if failed_count else "REJECTED",
+            "count": len(items),
+            "threshold": 1,
+            "failed_count": failed_count,
+            "rejected_count": rejected_count,
+            "control_event_ids": sorted(
+                {
+                    str(control_event_id)
+                    for item in items
+                    if (control_event_id := item.get("control_event_id"))
+                }
+            ),
+            "actions": sorted(action_counts),
+            "control_statuses": sorted(status_counts),
+            "error_codes": sorted(
+                {
+                    str(error_code)
+                    for item in items
+                    if (error_code := item.get("error_code"))
+                }
+            ),
+            "rejection_reasons": sorted(
+                {
+                    str(rejection_reason)
+                    for item in items
+                    if (rejection_reason := item.get("rejection_reason"))
+                }
+            ),
+            "status_codes": sorted(
+                {
+                    int(status_code)
+                    for item in items
+                    if isinstance((status_code := item.get("status_code")), int)
+                    and not isinstance(status_code, bool)
+                }
+            ),
+            "route_paths": sorted(
+                {str(path) for item in items if (path := item.get("route_path"))}
+            ),
+            "control_history_path": (
+                "/admin/v1/operator-review/dispatch-daemon/controls"
+            ),
+            "tick_plan_path": "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+            "tick_once_path": "/admin/v1/operator-review/dispatch-daemon/tick-once",
+            "runbook_ids": (
+                _operator_review_dispatch_daemon_control_issue_runbook_ids(items)
+            ),
+            "recommended_operator_actions": (
+                _operator_review_dispatch_daemon_control_issue_operator_actions(items)
+            ),
+        },
+    )
+
+
+def _operator_review_dispatch_daemon_control_issue_runbook_ids(
+    items: list[dict[str, Any]],
+) -> list[str]:
+    runbook_ids: set[str] = set()
+    for item in items:
+        status = str(item.get("control_status") or "")
+        if status == "FAILED":
+            runbook_ids.add(
+                "ag.operator_review_dispatch_daemon_control.failed_triage.v1"
+            )
+        if status == "REJECTED":
+            runbook_ids.add(
+                "ag.operator_review_dispatch_daemon_control.rejected_request_review.v1"
+            )
+    return sorted(runbook_ids)
+
+
+def _operator_review_dispatch_daemon_control_issue_operator_actions(
+    items: list[dict[str, Any]],
+) -> list[str]:
+    actions: set[str] = set()
+    for item in items:
+        status = str(item.get("control_status") or "")
+        if status == "FAILED":
+            actions.add("inspect_failed_dispatch_daemon_control")
+        if status == "REJECTED":
+            actions.add("review_rejected_dispatch_daemon_control_request")
     return sorted(actions)
 
 
