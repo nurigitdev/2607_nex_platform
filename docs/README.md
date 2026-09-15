@@ -907,6 +907,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0801`](slices/0801_ag_escalation_dispatch_daemon_liveness_ack_suppression_state_boundary_audit.md) | `S81-001` AG dispatch daemon liveness acknowledgement/suppression state boundary audit. |
 | [`Slice 0802`](slices/0802_ag_dispatch_liveness_ack_state_persistence_foundation.md) | `S81-002` AG dispatch daemon liveness acknowledgement/suppression state persistence foundation. |
 | [`Slice 0803`](slices/0803_ag_dispatch_liveness_ack_state_machine.md) | `S81-003` AG dispatch daemon liveness acknowledgement/suppression state machine. |
+| [`Slice 0804`](slices/0804_ag_dispatch_liveness_ack_state_protected_action_api.md) | `S81-004` AG dispatch daemon liveness acknowledgement/suppression protected action API. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

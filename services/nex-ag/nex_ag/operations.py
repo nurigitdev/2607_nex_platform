@@ -109,6 +109,12 @@ from nex_ag.operator_review_cases import (
     OperatorReviewCaseService,
     OperatorReviewCaseStore,
 )
+from nex_ag.operator_review_liveness_ack import (
+    OperatorReviewLivenessAckStateError,
+    acknowledgement_key_for_liveness,
+    apply_operator_review_liveness_ack_state_transition,
+    default_operator_review_liveness_ack_state_store,
+)
 from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV,
     DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV,
@@ -191,6 +197,15 @@ AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_REJECTED = (
 )
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_FAILED = (
     "ag.operator_review_escalation_dispatch_daemon.liveness_recovery.failed"
+)
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_STATE_EVENT_APPLIED = (
+    "ag.operator_review_escalation_dispatch_daemon.liveness_ack_state.applied"
+)
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_STATE_EVENT_REJECTED = (
+    "ag.operator_review_escalation_dispatch_daemon.liveness_ack_state.rejected"
+)
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_STATE_EVENT_FAILED = (
+    "ag.operator_review_escalation_dispatch_daemon.liveness_ack_state.failed"
 )
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_TICK_PLAN_API_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_daemon_tick_plan_api.v1"
@@ -2109,6 +2124,7 @@ def register_unified_operation_routes(
     operator_review_case_store: Any | None = None,
     operator_review_escalation_store: Any | None = None,
     operator_review_escalation_dispatch_store: Any | None = None,
+    operator_review_liveness_ack_state_store: Any | None = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -2495,6 +2511,38 @@ def register_unified_operation_routes(
             registry=registry,
             worker_id=worker_id,
             stale_after_seconds=stale_after_seconds,
+            audit_emitter=audit_emitter,
+        )
+
+    @app.post(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-state",
+        response_model=None,
+        operation_id="postAgOperatorReviewDispatchDaemonLivenessAckState",
+        tags=["Operations"],
+    )
+    def post_operator_review_dispatch_daemon_liveness_ack_state(
+        request: Request,
+        payload: dict[str, Any] | None = None,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+        worker_id: str = "ag-dispatch-execution-daemon",
+        stale_after_seconds: int = Query(
+            default=DEFAULT_WORKER_STALE_AFTER_SECONDS,
+            ge=1,
+        ),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        return _dispatch_daemon_liveness_ack_state_route_response(
+            request,
+            worker_heartbeat_stores=worker_heartbeat_stores,
+            registry=registry,
+            state_store=operator_review_liveness_ack_state_store,
+            worker_id=worker_id,
+            stale_after_seconds=stale_after_seconds,
+            payload=payload,
+            idempotency_key=idempotency_key,
             audit_emitter=audit_emitter,
         )
 
@@ -3698,6 +3746,326 @@ def _dispatch_daemon_liveness_recovery_plan_route_response(
             error=exc,
         )
         return _dispatch_daemon_control_problem_response(request, exc)
+
+
+def _dispatch_daemon_liveness_ack_state_route_response(
+    request: Request,
+    *,
+    worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None,
+    registry: OperationsSourceRegistry | None,
+    state_store: Any | None,
+    worker_id: str,
+    stale_after_seconds: int,
+    payload: Mapping[str, Any] | None,
+    idempotency_key: str | None,
+    audit_emitter: OperationalEventEmitter | None = None,
+) -> dict[str, Any] | JSONResponse:
+    request_id = request_id_from_headers(request)
+    trace_id = trace_id_from_headers(request)
+    selected_store = state_store or default_operator_review_liveness_ack_state_store(
+        request.app
+    )
+    payload_mapping = _mapping_or_empty(payload)
+    try:
+        liveness_projection = (
+            build_operator_review_escalation_dispatch_daemon_liveness_projection(
+                worker_heartbeat_stores=worker_heartbeat_stores,
+                registry=registry,
+                worker_id=worker_id,
+                stale_after_seconds=stale_after_seconds,
+                request_trace_id=trace_id,
+            )
+        )
+        daemon_identity = _mapping_or_empty(
+            liveness_projection.get("daemon_identity")
+        )
+        summary = _mapping_or_empty(liveness_projection.get("summary"))
+        action = _liveness_ack_payload_string(payload_mapping, "action")
+        service_id = (
+            _nullable_string(daemon_identity.get("service_id"))
+            or DISPATCH_EXECUTION_DAEMON_HEARTBEAT_SERVICE_ID
+        )
+        selected_worker_id = (
+            _nullable_string(daemon_identity.get("worker_id"))
+            or "ag-dispatch-execution-daemon"
+        )
+        worker_type = (
+            _nullable_string(daemon_identity.get("worker_type"))
+            or DISPATCH_EXECUTION_DAEMON_HEARTBEAT_WORKER_TYPE
+        )
+        liveness_status = (
+            _nullable_string(summary.get("liveness_status")) or "UNKNOWN"
+        )
+        existing_state = _liveness_ack_existing_state(
+            selected_store,
+            action=action,
+            payload=payload_mapping,
+            service_id=service_id,
+            worker_id=selected_worker_id,
+            liveness_status=liveness_status,
+        )
+        if action == "clear" and isinstance(existing_state, Mapping):
+            liveness_status = str(existing_state.get("liveness_status") or liveness_status)
+            service_id = str(existing_state.get("service_id") or service_id)
+            selected_worker_id = str(existing_state.get("worker_id") or selected_worker_id)
+            worker_type = str(existing_state.get("worker_type") or worker_type)
+        mutation = apply_operator_review_liveness_ack_state_transition(
+            dict(existing_state) if isinstance(existing_state, Mapping) else None,
+            service_id=service_id,
+            worker_id=selected_worker_id,
+            worker_type=worker_type,
+            liveness_status=liveness_status,
+            action=action,
+            operator_ref=_liveness_ack_payload_mapping(payload_mapping, "operator_ref"),
+            reason_codes=_liveness_ack_payload_list(payload_mapping, "reason_codes"),
+            comment=payload_mapping.get("comment"),
+            idempotency_key=(
+                idempotency_key
+                if idempotency_key is not None
+                else payload_mapping.get("idempotency_key")
+            ),
+            requested_ttl_seconds=payload_mapping.get("requested_ttl_seconds"),
+            suppressed_until=payload_mapping.get("suppressed_until"),
+            observed_at=payload_mapping.get("observed_at"),
+            metadata={"request_id": request_id, "trace_id": trace_id},
+        )
+        saved_state = selected_store.save(mutation["state"])
+        mutation["state"] = saved_state
+        response = {
+            **mutation,
+            "route": {
+                "path": "/admin/v1/operator-review/dispatch-daemon/liveness/ack-state",
+                "method": "POST",
+                "protected": True,
+            },
+            "liveness_summary": {
+                "liveness_status": liveness_status,
+                "heartbeat_present": bool(summary.get("heartbeat_present")),
+                "source_projection_suppressed": False,
+            },
+        }
+        audit_result = emit_operator_review_liveness_ack_state_audit_event(
+            audit_emitter,
+            request_id=request_id,
+            trace_id=trace_id,
+            mutation=response,
+        )
+        response["audit_event"] = audit_result.to_summary()
+        return response
+    except OperatorReviewLivenessAckStateError as exc:
+        audit_result = emit_operator_review_liveness_ack_state_audit_event(
+            audit_emitter,
+            request_id=request_id,
+            trace_id=trace_id,
+            error=exc,
+        )
+        return _liveness_ack_state_problem_response(
+            request,
+            exc,
+            audit_result=audit_result,
+        )
+    except OperationsQueryError as exc:
+        audit_result = emit_operator_review_liveness_ack_state_audit_event(
+            audit_emitter,
+            request_id=request_id,
+            trace_id=trace_id,
+            error=exc,
+        )
+        return _liveness_ack_state_problem_response(
+            request,
+            exc,
+            audit_result=audit_result,
+        )
+
+
+def emit_operator_review_liveness_ack_state_audit_event(
+    emitter: OperationalEventEmitter | None,
+    *,
+    request_id: str,
+    trace_id: str | None,
+    mutation: Mapping[str, Any] | None = None,
+    error: OperatorReviewLivenessAckStateError | OperationsQueryError | None = None,
+) -> OperationalEventEmitResult:
+    if emitter is None:
+        return OperationalEventEmitResult.failed(
+            error_code="ag.operator_review_liveness_ack_state_audit_not_configured",
+            detail="Dispatch daemon liveness acknowledgement-state audit emitter is not configured.",
+            status_code=503,
+        )
+    if error is None:
+        event_type = (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_STATE_EVENT_APPLIED
+        )
+        severity = "INFO"
+        message = "AG dispatch daemon liveness acknowledgement state was applied."
+    else:
+        status_code = getattr(error, "status_code", 500)
+        event_type = (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_STATE_EVENT_REJECTED
+            if status_code < 500
+            else AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_STATE_EVENT_FAILED
+        )
+        severity = "WARNING" if status_code < 500 else "ERROR"
+        message = "AG dispatch daemon liveness acknowledgement state was rejected."
+    return emitter.safe_emit(
+        event_type=event_type,
+        severity=severity,
+        message=message,
+        trace_id=trace_id,
+        request_id=request_id,
+        subject_ref={
+            "type": "operator_review_dispatch_daemon_liveness_ack_state",
+            "id": _liveness_ack_audit_subject_id(mutation),
+        },
+        details=build_operator_review_liveness_ack_state_audit_event_details(
+            mutation=mutation,
+            error=error,
+        ),
+    )
+
+
+def build_operator_review_liveness_ack_state_audit_event_details(
+    *,
+    mutation: Mapping[str, Any] | None = None,
+    error: OperatorReviewLivenessAckStateError | OperationsQueryError | None = None,
+) -> dict[str, Any]:
+    transition = _mapping_or_empty(
+        mutation.get("transition") if isinstance(mutation, Mapping) else None
+    )
+    state = _mapping_or_empty(
+        mutation.get("state") if isinstance(mutation, Mapping) else None
+    )
+    return {
+        "ack_state_audit_schema_version": (
+            "ag_operator_review_escalation_dispatch_daemon_liveness_ack_state_audit_event.v1"
+        ),
+        "acknowledgement_key": _nullable_string(
+            transition.get("acknowledgement_key")
+            or state.get("acknowledgement_key")
+        ),
+        "ack_state_id": _nullable_string(
+            transition.get("ack_state_id") or state.get("ack_state_id")
+        ),
+        "action": _nullable_string(transition.get("action") or state.get("action")),
+        "state_status": _nullable_string(
+            transition.get("target_state_status") or state.get("state_status")
+        ),
+        "liveness_status": _nullable_string(
+            transition.get("liveness_status") or state.get("liveness_status")
+        ),
+        "error_code": getattr(error, "error_code", None),
+        "error_status_code": getattr(error, "status_code", None),
+        "redaction": {
+            "raw_comment_included": False,
+            "raw_idempotency_key_included": False,
+            "raw_heartbeat_payload_included": False,
+            "comment_hash_present": bool(state.get("comment_hash")),
+            "comment_preview_present": bool(state.get("comment_preview")),
+            "idempotency_key_hash_present": bool(state.get("idempotency_key_hash")),
+        },
+    }
+
+
+def _liveness_ack_existing_state(
+    state_store: Any,
+    *,
+    action: str,
+    payload: Mapping[str, Any],
+    service_id: str,
+    worker_id: str,
+    liveness_status: str,
+) -> Mapping[str, Any] | None:
+    acknowledgement_key = _nullable_string(payload.get("acknowledgement_key"))
+    if acknowledgement_key is None:
+        acknowledgement_key = acknowledgement_key_for_liveness(
+            service_id=service_id,
+            worker_id=worker_id,
+            liveness_status=liveness_status,
+        )
+    existing = state_store.get_by_acknowledgement_key(acknowledgement_key)
+    if action == "clear" and existing is None:
+        raise OperatorReviewLivenessAckStateError(
+            "clear requires an existing acknowledgement state.",
+            error_code="ag.operator_review_liveness_ack_clear_state_missing",
+            status_code=404,
+        )
+    return existing
+
+
+def _liveness_ack_payload_string(payload: Mapping[str, Any], key: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise OperatorReviewLivenessAckStateError(
+            f"{key} must be a non-empty string.",
+            error_code="ag.operator_review_liveness_ack_payload_invalid",
+        )
+    return value.strip()
+
+
+def _liveness_ack_payload_mapping(
+    payload: Mapping[str, Any],
+    key: str,
+) -> dict[str, Any]:
+    value = payload.get(key)
+    if not isinstance(value, Mapping):
+        raise OperatorReviewLivenessAckStateError(
+            f"{key} must be an object.",
+            error_code="ag.operator_review_liveness_ack_payload_invalid",
+        )
+    return dict(value)
+
+
+def _liveness_ack_payload_list(
+    payload: Mapping[str, Any],
+    key: str,
+) -> list[str]:
+    value = payload.get(key)
+    if not isinstance(value, list):
+        raise OperatorReviewLivenessAckStateError(
+            f"{key} must be a list.",
+            error_code="ag.operator_review_liveness_ack_payload_invalid",
+        )
+    return value
+
+
+def _liveness_ack_audit_subject_id(mutation: Mapping[str, Any] | None) -> str:
+    if not isinstance(mutation, Mapping):
+        return "unknown"
+    transition = _mapping_or_empty(mutation.get("transition"))
+    state = _mapping_or_empty(mutation.get("state"))
+    return (
+        _nullable_string(transition.get("ack_state_id"))
+        or _nullable_string(state.get("ack_state_id"))
+        or "unknown"
+    )
+
+
+def _liveness_ack_state_problem_response(
+    request: Request,
+    exc: OperatorReviewLivenessAckStateError | OperationsQueryError,
+    *,
+    audit_result: OperationalEventEmitResult | None = None,
+) -> JSONResponse:
+    return problem_response(
+        request,
+        status_code=getattr(exc, "status_code", 500),
+        error_code=getattr(exc, "error_code", "ag.operator_review_liveness_ack_failed"),
+        title="Dispatch daemon liveness acknowledgement state failed",
+        detail=getattr(exc, "detail", str(exc)),
+        type_uri=(
+            "https://nex-platform.local/problems/operator-review-liveness-ack-state-failed"
+        ),
+        details={
+            "audit_event": (
+                audit_result.to_summary()
+                if audit_result is not None
+                else {
+                    "ok": False,
+                    "error_code": "ag.operator_review_liveness_ack_state_audit_not_requested",
+                }
+            )
+        },
+    )
 
 
 def _dispatch_daemon_route_payload(

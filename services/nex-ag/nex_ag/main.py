@@ -32,7 +32,12 @@ from nex_ag.operator_reviews import (
 )
 from nex_ag.operator_review_cases import (
     default_operator_review_case_store,
+    default_operator_review_escalation_dispatch_store,
+    default_operator_review_escalation_store,
     register_operator_review_case_routes,
+)
+from nex_ag.operator_review_liveness_ack import (
+    default_operator_review_liveness_ack_state_store,
 )
 from nex_ag.operator_review_workbench import register_operator_review_workbench_routes
 from nex_ag.artifact_operations import register_artifact_operation_routes
@@ -84,6 +89,13 @@ GENERATION_REMEDIATION_TASK_STORES = {
 OPERATOR_REVIEW_NOTE_STORE = default_operator_review_note_store(app)
 OPERATOR_EVIDENCE_EXPORT_STORE = default_operator_evidence_export_store(app)
 OPERATOR_REVIEW_CASE_STORE = default_operator_review_case_store(app)
+OPERATOR_REVIEW_ESCALATION_STORE = default_operator_review_escalation_store(app)
+OPERATOR_REVIEW_ESCALATION_DISPATCH_STORE = (
+    default_operator_review_escalation_dispatch_store(app)
+)
+OPERATOR_REVIEW_LIVENESS_ACK_STATE_STORE = (
+    default_operator_review_liveness_ack_state_store(app)
+)
 register_readiness_routes(app)
 register_generation_audit_routes(app)
 register_generation_quality_disposition_routes(
@@ -108,6 +120,8 @@ register_operator_review_note_routes(
 register_operator_review_case_routes(
     app,
     store=OPERATOR_REVIEW_CASE_STORE,
+    escalation_store=OPERATOR_REVIEW_ESCALATION_STORE,
+    dispatch_store=OPERATOR_REVIEW_ESCALATION_DISPATCH_STORE,
     audit_event_store=SERVICE_PERSISTENCE.operational_event_store,
 )
 register_operator_review_workbench_routes(
@@ -148,6 +162,13 @@ register_unified_operation_routes(
     operator_review_note_store=OPERATOR_REVIEW_NOTE_STORE,
     operator_review_export_store=OPERATOR_EVIDENCE_EXPORT_STORE,
     operator_review_case_store=OPERATOR_REVIEW_CASE_STORE,
+    operator_review_escalation_store=OPERATOR_REVIEW_ESCALATION_STORE,
+    operator_review_escalation_dispatch_store=(
+        OPERATOR_REVIEW_ESCALATION_DISPATCH_STORE
+    ),
+    operator_review_liveness_ack_state_store=(
+        OPERATOR_REVIEW_LIVENESS_ACK_STATE_STORE
+    ),
     registry=OPERATIONS_SOURCE_REGISTRY,
     runtime=OPERATIONS_SOURCE_RUNTIME,
 )
