@@ -873,6 +873,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0767`](slices/0767_ag_escalation_dispatch_daemon_contract_openapi_hardening.md) | `S77-007` AG dispatch daemon contract/OpenAPI hardening. |
 | [`Slice 0768`](slices/0768_ag_escalation_dispatch_daemon_operations_postgres_smoke.md) | `S77-008` AG dispatch daemon operations PostgreSQL smoke evidence. |
 | [`Slice 0769`](slices/0769_ag_escalation_dispatch_daemon_operations_privacy_runbook_evidence.md) | `S77-009` AG dispatch daemon operations privacy/runbook evidence. |
+| [`Slice 0770`](slices/0770_s77_operator_review_escalation_dispatch_daemon_operations_closure.md) | `S77-010` S77 AG dispatch daemon operations closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
