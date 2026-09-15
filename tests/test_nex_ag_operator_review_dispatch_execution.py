@@ -29,6 +29,8 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS_ENV,
     DISPATCH_EXECUTION_DAEMON_LOOP_POLICY_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_POLICY_SCHEMA_VERSION,
+    DISPATCH_EXECUTION_DAEMON_PROCESS_METADATA_SCHEMA_VERSION,
+    DISPATCH_EXECUTION_DAEMON_PROCESS_RUNTIME_STATE_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV,
     DISPATCH_EXECUTION_DAEMON_TICK_EVENT_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_TICK_LOG_SCHEMA_VERSION,
@@ -64,6 +66,8 @@ from nex_ag.operator_review_dispatch_execution import (
     build_dispatch_execution_daemon_control_admission,
     build_dispatch_execution_daemon_control_request,
     build_dispatch_execution_daemon_loop_policy,
+    build_dispatch_execution_daemon_process_metadata,
+    build_dispatch_execution_daemon_process_runtime_state,
     build_dispatch_execution_daemon_tick_event,
     build_dispatch_execution_daemon_tick_log_entry,
     build_dispatch_execution_daemon_tick_plan,
@@ -563,6 +567,138 @@ def test_dispatch_execution_daemon_bounded_loop_helper_edges() -> None:
             maximum=10,
         )
         == 7
+    )
+
+
+def test_dispatch_execution_daemon_process_metadata_defaults_are_disabled() -> None:
+    metadata = build_dispatch_execution_daemon_process_metadata(
+        started_at="2026-09-15T10:00:00Z"
+    )
+
+    assert metadata["daemon_process_metadata_schema_version"] == (
+        DISPATCH_EXECUTION_DAEMON_PROCESS_METADATA_SCHEMA_VERSION
+    )
+    assert metadata["process_status"] == "DISABLED"
+    assert metadata["process_id"] is None
+    assert metadata["process_id_present"] is False
+    assert metadata["entrypoint"] == "python -m nex_ag.operator_review_dispatch_daemon"
+    assert metadata["loop_mode"] == "bounded"
+    assert metadata["lifecycle_event_source"] == "service_operational_events"
+    assert metadata["liveness_source"] == "service_worker_heartbeats"
+    assert metadata["new_tables_required"] is False
+    assert "postgresql://" not in json.dumps(metadata)
+    assert_dispatch_execution_result_redacted(metadata)
+
+
+def test_dispatch_execution_daemon_process_metadata_clamps_and_marks_ready() -> None:
+    policy = build_dispatch_execution_daemon_policy(
+        {
+            DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1",
+            DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT_ENV: "3",
+        }
+    )
+    loop_policy = build_dispatch_execution_daemon_loop_policy(policy=policy)
+
+    metadata = build_dispatch_execution_daemon_process_metadata(
+        process_id=9_999_999_999,
+        process_run_id="process-run-0773",
+        worker_id="ag-dispatch-daemon-0773",
+        entrypoint="python -m nex_ag.operator_review_dispatch_daemon --once",
+        policy=policy,
+        loop_policy=loop_policy,
+        started_at="2026-09-15T10:01:00Z",
+    )
+
+    assert metadata["process_run_id"] == "process-run-0773"
+    assert metadata["worker_id"] == "ag-dispatch-daemon-0773"
+    assert metadata["process_id"] == 2_147_483_647
+    assert metadata["process_id_present"] is True
+    assert metadata["process_status"] == "READY"
+    assert metadata["cycle_limit"] == 3
+    assert metadata["enabled"] is True
+
+
+def test_dispatch_execution_daemon_process_runtime_state_tracks_loop_results() -> None:
+    service, _dispatch_store = build_dispatch_service(sample_dispatch())
+    policy = build_dispatch_execution_daemon_policy(
+        {DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1"}
+    )
+    metadata = build_dispatch_execution_daemon_process_metadata(
+        policy=policy,
+        started_at="2026-09-15T10:02:00Z",
+    )
+    ready_state = build_dispatch_execution_daemon_process_runtime_state(
+        metadata,
+        observed_at="2026-09-15T10:02:01Z",
+    )
+
+    assert ready_state["daemon_process_runtime_state_schema_version"] == (
+        DISPATCH_EXECUTION_DAEMON_PROCESS_RUNTIME_STATE_SCHEMA_VERSION
+    )
+    assert ready_state["state_status"] == "READY"
+    assert ready_state["loop_summary"] is None
+    assert ready_state["control_family"].endswith("/dispatch-daemon/controls")
+
+    blocked_loop = run_dispatch_execution_daemon_bounded_loop(
+        service,
+        request_id=REQUEST_ID,
+        policy=policy,
+        started_at="2026-09-15T10:03:00Z",
+    )
+    blocked_state = build_dispatch_execution_daemon_process_runtime_state(
+        metadata,
+        loop_result=blocked_loop,
+        observed_at="2026-09-15T10:03:01Z",
+    )
+
+    assert blocked_state["state_status"] == "DEGRADED"
+    assert blocked_state["loop_summary"]["loop_status"] == "BLOCKED"
+    assert blocked_state["loop_summary"]["stop_reason"] == "confirm_tick_required"
+    assert blocked_state["new_tables_required"] is False
+    assert_dispatch_execution_result_redacted(blocked_state)
+
+
+def test_dispatch_execution_daemon_process_runtime_state_terminal_statuses() -> None:
+    disabled = build_dispatch_execution_daemon_process_metadata(
+        started_at="2026-09-15T10:04:00Z"
+    )
+    disabled_state = build_dispatch_execution_daemon_process_runtime_state(disabled)
+    assert disabled_state["state_status"] == "DISABLED"
+
+    enabled_policy = build_dispatch_execution_daemon_policy(
+        {DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1"}
+    )
+    metadata = build_dispatch_execution_daemon_process_metadata(policy=enabled_policy)
+    completed_state = build_dispatch_execution_daemon_process_runtime_state(
+        metadata,
+        loop_result={
+            "loop_status": "COMPLETED",
+            "stop_reason": "cycle_limit_reached",
+            "worker_id": "worker",
+            "cycle_count": 1,
+            "cycle_limit": 1,
+            "summary": {
+                "processed_count": 1,
+                "succeeded_count": 1,
+                "failed_count": 0,
+                "retry_wait_count": 0,
+            },
+            "new_tables_required": False,
+        },
+    )
+    unknown_state = dispatch_execution._dispatch_daemon_process_runtime_state_status(
+        {"process_status": "READY"},
+        {"loop_status": "RUNNING"},
+    )
+
+    assert completed_state["state_status"] == "STOPPED"
+    assert unknown_state == "UNKNOWN"
+    assert dispatch_execution._bounded_optional_process_id("bad") is None
+    assert (
+        dispatch_execution._dispatch_daemon_process_metadata_status(
+            {"enabled": True, "subprocess_started": True}
+        )
+        == "RUNNING"
     )
 
 

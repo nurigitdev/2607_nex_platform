@@ -52,6 +52,12 @@ DISPATCH_EXECUTION_DAEMON_LOOP_POLICY_SCHEMA_VERSION = (
 DISPATCH_EXECUTION_DAEMON_BOUNDED_LOOP_RESULT_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_daemon_bounded_loop_result.v1"
 )
+DISPATCH_EXECUTION_DAEMON_PROCESS_METADATA_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_daemon_process_metadata.v1"
+)
+DISPATCH_EXECUTION_DAEMON_PROCESS_RUNTIME_STATE_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_daemon_process_runtime_state.v1"
+)
 DISPATCH_EXECUTION_DAEMON_CONTROL_REQUEST_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_daemon_control_request.v1"
 )
@@ -91,6 +97,7 @@ MAX_DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT = 10
 DEFAULT_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS = 60
 MIN_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS = 1
 MAX_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS = 3600
+MAX_DISPATCH_EXECUTION_DAEMON_PROCESS_ID = 2_147_483_647
 DEFAULT_DISPATCH_HTTP_TIMEOUT_SECONDS = 15.0
 DEFAULT_DISPATCH_HTTP_CONNECT_TIMEOUT_SECONDS = 5.0
 DEFAULT_DISPATCH_HTTP_READ_TIMEOUT_SECONDS = 15.0
@@ -100,6 +107,9 @@ MAX_DISPATCH_HTTP_TIMEOUT_SECONDS = 120.0
 MAX_DISPATCH_HTTP_MAX_RETRIES = 5
 DISPATCH_LIVE_HTTP_TRANSPORT_USER_AGENT = (
     "nex-ag-dispatch-live-http-transport/1.0"
+)
+DEFAULT_DISPATCH_EXECUTION_DAEMON_ENTRYPOINT = (
+    "python -m nex_ag.operator_review_dispatch_daemon"
 )
 
 DISPATCH_EXECUTION_PROVIDER_MODE_ENV = "NEX_AG_DISPATCH_EXECUTION_PROVIDER_MODE"
@@ -837,6 +847,110 @@ def summarize_dispatch_execution_daemon_bounded_loop_result(
     }
     assert_dispatch_execution_result_redacted(summary)
     return summary
+
+
+def build_dispatch_execution_daemon_process_metadata(
+    *,
+    process_id: int | None = None,
+    process_run_id: str | None = None,
+    worker_id: str = "ag-dispatch-execution-daemon",
+    entrypoint: str | None = None,
+    policy: Mapping[str, Any] | None = None,
+    loop_policy: Mapping[str, Any] | None = None,
+    started_at: str | None = None,
+) -> dict[str, Any]:
+    resolved_policy = dict(policy or build_dispatch_execution_daemon_policy({}))
+    resolved_loop_policy = (
+        dict(loop_policy)
+        if loop_policy is not None
+        else build_dispatch_execution_daemon_loop_policy(policy=resolved_policy)
+    )
+    now = started_at or _utc_now()
+    normalized_process_id = _bounded_optional_process_id(process_id)
+    run_id = process_run_id or str(
+        uuid5(
+            NAMESPACE_URL,
+            "ag-dispatch-execution-daemon-process:"
+            f"{worker_id}:{normalized_process_id}:{now}",
+        )
+    )
+    metadata = {
+        "daemon_process_metadata_schema_version": (
+            DISPATCH_EXECUTION_DAEMON_PROCESS_METADATA_SCHEMA_VERSION
+        ),
+        "process_run_id": run_id,
+        "worker_id": worker_id,
+        "process_id": normalized_process_id,
+        "process_id_present": normalized_process_id is not None,
+        "entrypoint": optional_text(entrypoint)
+        or DEFAULT_DISPATCH_EXECUTION_DAEMON_ENTRYPOINT,
+        "process_status": _dispatch_daemon_process_metadata_status(
+            resolved_loop_policy
+        ),
+        "started_at": now,
+        "loop_mode": resolved_loop_policy.get("loop_mode", "bounded"),
+        "cycle_limit": _bounded_int_value(
+            resolved_loop_policy.get("cycle_limit"),
+            default=DEFAULT_DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT,
+            minimum=1,
+            maximum=MAX_DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT,
+        ),
+        "interval_seconds": _bounded_int_value(
+            resolved_loop_policy.get("interval_seconds"),
+            default=DEFAULT_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS,
+            minimum=MIN_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS,
+            maximum=MAX_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS,
+        ),
+        "enabled": bool(resolved_loop_policy.get("enabled")),
+        "dry_run": bool(resolved_loop_policy.get("dry_run")),
+        "effective_provider_mode": resolved_loop_policy.get("effective_provider_mode"),
+        "source_table": resolved_loop_policy.get("source_table", "ag_op_esc_dispatches"),
+        "result_storage": DISPATCH_EXECUTION_RESULT_STORAGE,
+        "lifecycle_event_source": "service_operational_events",
+        "liveness_source": "service_worker_heartbeats",
+        "new_tables_required": False,
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(metadata)
+    return metadata
+
+
+def build_dispatch_execution_daemon_process_runtime_state(
+    process_metadata: Mapping[str, Any],
+    *,
+    loop_result: Mapping[str, Any] | None = None,
+    observed_at: str | None = None,
+) -> dict[str, Any]:
+    loop_summary = (
+        summarize_dispatch_execution_daemon_bounded_loop_result(loop_result)
+        if loop_result is not None
+        else None
+    )
+    state = {
+        "daemon_process_runtime_state_schema_version": (
+            DISPATCH_EXECUTION_DAEMON_PROCESS_RUNTIME_STATE_SCHEMA_VERSION
+        ),
+        "state_status": _dispatch_daemon_process_runtime_state_status(
+            process_metadata,
+            loop_summary,
+        ),
+        "observed_at": observed_at or _utc_now(),
+        "process_run_id": process_metadata.get("process_run_id"),
+        "worker_id": process_metadata.get("worker_id"),
+        "process_id_present": bool(process_metadata.get("process_id_present")),
+        "entrypoint": process_metadata.get("entrypoint"),
+        "metadata_status": process_metadata.get("process_status"),
+        "loop_summary": loop_summary,
+        "control_family": "/admin/v1/operator-review/dispatch-daemon/controls",
+        "tick_plan_path": "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+        "tick_once_path": "/admin/v1/operator-review/dispatch-daemon/tick-once",
+        "lifecycle_event_source": process_metadata.get("lifecycle_event_source"),
+        "liveness_source": process_metadata.get("liveness_source"),
+        "new_tables_required": False,
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(state)
+    return state
 
 
 def build_dispatch_execution_daemon_tick_event(
@@ -2630,6 +2744,32 @@ def _dispatch_daemon_bounded_loop_summary(
     return summary
 
 
+def _dispatch_daemon_process_metadata_status(
+    loop_policy: Mapping[str, Any],
+) -> str:
+    if not bool(loop_policy.get("enabled")):
+        return "DISABLED"
+    if bool(loop_policy.get("subprocess_started")):
+        return "RUNNING"
+    return "READY"
+
+
+def _dispatch_daemon_process_runtime_state_status(
+    process_metadata: Mapping[str, Any],
+    loop_summary: Mapping[str, Any] | None,
+) -> str:
+    if str(process_metadata.get("process_status") or "") == "DISABLED":
+        return "DISABLED"
+    if loop_summary is None:
+        return str(process_metadata.get("process_status") or "UNKNOWN")
+    loop_status = str(loop_summary.get("loop_status") or "")
+    if loop_status == "BLOCKED":
+        return "DEGRADED"
+    if loop_status in {"COMPLETED", "IDLE", "SKIPPED"}:
+        return "STOPPED"
+    return "UNKNOWN"
+
+
 def _count_by_key(
     items: list[dict[str, Any]],
     key: str,
@@ -3262,6 +3402,16 @@ def _bounded_int_value(
     except (TypeError, ValueError):
         return default
     return max(minimum, min(parsed, maximum))
+
+
+def _bounded_optional_process_id(value: int | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0, min(parsed, MAX_DISPATCH_EXECUTION_DAEMON_PROCESS_ID))
 
 
 def _env_bool(
