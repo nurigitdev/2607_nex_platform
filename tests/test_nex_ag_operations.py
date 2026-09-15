@@ -18,6 +18,7 @@ from nex_ag.operations import (
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_PLAN_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_AUDIT_EVENT_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_DASHBOARD_SECTION_SCHEMA_VERSION,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_SUPPRESSION_POLICY_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_FAILED,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_PLANNED,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_REJECTED,
@@ -58,6 +59,7 @@ from nex_ag.operations import (
     build_operation_source_readiness_projection,
     build_operator_review_escalation_dispatch_daemon_runtime_projection,
     build_operator_review_escalation_dispatch_daemon_liveness_projection,
+    build_operator_review_escalation_dispatch_daemon_liveness_ack_suppression_policy,
     build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan,
     build_operator_review_escalation_dispatch_daemon_liveness_recovery_audit_event_details,
     build_operator_review_escalation_dispatch_daemon_control_audit_event_details,
@@ -3592,6 +3594,12 @@ def test_operations_dashboard_snapshot_includes_escalation_dispatches() -> None:
         "requires_operator_action"
     ] is False
     assert dispatches["daemon_recovery"]["recommended_actions"] == []
+    assert dispatches["daemon_recovery"]["acknowledgement_suppression_policy"][
+        "policy_status"
+    ] == "NOT_APPLICABLE"
+    assert dispatches["daemon_recovery"]["acknowledgement_suppression_policy"][
+        "supported_actions"
+    ] == []
     assert dispatches["daemon_recovery"]["source_statuses"]["nex-ag"][
         "status"
     ] == "READY"
@@ -4200,12 +4208,37 @@ def test_operator_review_dispatch_daemon_liveness_recovery_plan_contract() -> No
             },
         }
     ]
+    assert plan["acknowledgement_suppression_policy"] == {
+        "policy_schema_version": (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_SUPPRESSION_POLICY_SCHEMA_VERSION
+        ),
+        "policy_status": "ACTIONABLE",
+        "liveness_status": "STALE",
+        "acknowledgement_key": "nex-ag:ag-dispatch-execution-daemon:stale",
+        "supported_actions": ["acknowledge_once", "suppress_for_ttl"],
+        "default_suppression_ttl_seconds": 1800,
+        "max_suppression_ttl_seconds": 86400,
+        "state_storage": {
+            "status": "NOT_PERSISTED",
+            "source_table": "service_operational_events",
+            "new_tables_required": False,
+            "future_persistence": "operator_review_action_state",
+        },
+        "guardrails": {
+            "read_only_policy": True,
+            "does_not_suppress_current_projection": True,
+            "operator_identity_required": True,
+            "reason_required": True,
+            "raw_comment_included": False,
+        },
+    }
     assert plan["summary"] == {
         "liveness_status": "STALE",
         "action_count": 1,
         "requires_operator_action": True,
         "requires_confirm_process": False,
         "dry_run_only": True,
+        "acknowledgement_suppression_available": True,
         "subprocess_mutation_performed": False,
         "new_tables_required": False,
     }
@@ -4273,11 +4306,21 @@ def test_operator_review_dispatch_daemon_liveness_recovery_plan_status_matrix() 
     assert missing["summary"]["requires_confirm_process"] is True
     assert missing["recommended_actions"][0]["control_action"] == "start_process"
     assert missing["recommended_actions"][0]["requires_confirm_process"] is True
+    assert missing["acknowledgement_suppression_policy"]["policy_status"] == (
+        "ACTIONABLE"
+    )
+    assert missing["acknowledgement_suppression_policy"]["supported_actions"] == [
+        "acknowledge_once",
+        "suppress_for_ttl",
+    ]
     assert not_configured["projection_status"] == "SOURCE_ATTENTION"
     assert not_configured["recommended_actions"][0]["action_id"] == (
         "configure_dispatch_daemon_heartbeat_store"
     )
     assert not_configured["recommended_actions"][0]["safe_payload_template"] is None
+    assert not_configured["acknowledgement_suppression_policy"][
+        "policy_status"
+    ] == "SOURCE_ATTENTION"
     assert unavailable["projection_status"] == "SOURCE_ATTENTION"
     assert unavailable["recommended_actions"][0]["action_id"] == (
         "inspect_dispatch_daemon_heartbeat_store"
@@ -4285,10 +4328,76 @@ def test_operator_review_dispatch_daemon_liveness_recovery_plan_status_matrix() 
     assert fresh["projection_status"] == "NO_ACTION"
     assert fresh["summary"]["action_count"] == 0
     assert fresh["summary"]["requires_operator_action"] is False
+    assert fresh["summary"]["acknowledgement_suppression_available"] is False
+    assert fresh["acknowledgement_suppression_policy"][
+        "policy_status"
+    ] == "NOT_APPLICABLE"
+    assert fresh["acknowledgement_suppression_policy"]["supported_actions"] == []
     assert unknown["projection_status"] == "UNKNOWN_STATUS"
     assert unknown["recommended_actions"][0]["reason_code"] == (
         "unknown_liveness_status"
     )
+    assert unknown["acknowledgement_suppression_policy"]["policy_status"] == (
+        "UNKNOWN"
+    )
+
+
+def test_operator_review_dispatch_daemon_liveness_ack_suppression_policy_matrix() -> (
+    None
+):
+    stale = (
+        build_operator_review_escalation_dispatch_daemon_liveness_ack_suppression_policy(
+            "STALE",
+            service_id="nex-ag",
+            worker_id="ag-dispatch-execution-daemon",
+        )
+    )
+    missing = (
+        build_operator_review_escalation_dispatch_daemon_liveness_ack_suppression_policy(
+            "MISSING",
+            service_id="nex-ag",
+            worker_id="ag-dispatch-execution-daemon",
+        )
+    )
+    source_attention = (
+        build_operator_review_escalation_dispatch_daemon_liveness_ack_suppression_policy(
+            "SOURCE_UNAVAILABLE",
+            service_id="nex-ag",
+            worker_id="ag-dispatch-execution-daemon",
+        )
+    )
+    fresh = (
+        build_operator_review_escalation_dispatch_daemon_liveness_ack_suppression_policy(
+            "FRESH",
+        )
+    )
+    unknown = (
+        build_operator_review_escalation_dispatch_daemon_liveness_ack_suppression_policy(
+            "",
+        )
+    )
+
+    assert stale["policy_schema_version"] == (
+        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_SUPPRESSION_POLICY_SCHEMA_VERSION
+    )
+    assert stale["policy_status"] == "ACTIONABLE"
+    assert stale["acknowledgement_key"] == (
+        "nex-ag:ag-dispatch-execution-daemon:stale"
+    )
+    assert stale["supported_actions"] == ["acknowledge_once", "suppress_for_ttl"]
+    assert stale["state_storage"]["new_tables_required"] is False
+    assert stale["guardrails"]["raw_comment_included"] is False
+    assert missing["policy_status"] == "ACTIONABLE"
+    assert source_attention["policy_status"] == "SOURCE_ATTENTION"
+    assert source_attention["supported_actions"] == [
+        "acknowledge_source_attention",
+        "suppress_source_attention_for_ttl",
+    ]
+    assert fresh["policy_status"] == "NOT_APPLICABLE"
+    assert fresh["acknowledgement_key"] is None
+    assert fresh["supported_actions"] == []
+    assert unknown["policy_status"] == "UNKNOWN"
+    assert unknown["acknowledgement_key"] is None
 
 
 def test_operator_review_dispatch_daemon_liveness_recovery_plan_rejects_bad_inputs() -> None:
@@ -4580,6 +4689,10 @@ def test_dashboard_dispatch_daemon_liveness_recovery_section_handles_bad_project
     assert section["request_trace_id"] == TRACE_ID
     assert section["summary"]["new_tables_required"] is False
     assert section["recommended_actions"] == []
+    assert section["acknowledgement_suppression_policy"]["policy_status"] == (
+        "UNKNOWN"
+    )
+    assert section["acknowledgement_suppression_policy"]["supported_actions"] == []
     assert section["source_statuses"]["nex-ag"]["status"] == "UNAVAILABLE"
     assert section["source_statuses"]["nex-ag"]["error_code"] == (
         "ag.operator_review_dispatch_daemon_liveness_recovery_summary_missing"
@@ -5584,6 +5697,12 @@ def test_operations_dashboard_escalation_dispatches_handles_filters_and_errors()
     assert daemon_recovery["recommended_actions"][0]["action_id"] == (
         "start_or_inspect_dispatch_daemon_process"
     )
+    assert daemon_recovery["acknowledgement_suppression_policy"][
+        "policy_status"
+    ] == "ACTIONABLE"
+    assert daemon_recovery["acknowledgement_suppression_policy"][
+        "acknowledgement_key"
+    ] == "nex-ag:ag-dispatch-execution-daemon:missing"
     assert daemon_recovery["source_statuses"]["nex-ag"]["status"] == "READY"
     assert unavailable["operator_review_escalation_dispatches"][
         "projection_status"
@@ -5612,6 +5731,9 @@ def test_operations_dashboard_escalation_dispatches_handles_filters_and_errors()
     assert unavailable_recovery["recommended_actions"][0]["action_id"] == (
         "inspect_dispatch_daemon_heartbeat_store"
     )
+    assert unavailable_recovery["acknowledgement_suppression_policy"][
+        "policy_status"
+    ] == "SOURCE_ATTENTION"
     assert unavailable_recovery["source_statuses"]["nex-ag"]["status"] == "READY"
     assert {
         (source["source_type"], source["service_id"], source["status"])
@@ -6353,6 +6475,18 @@ def test_operations_issue_candidate_projection_includes_dispatch_daemon_liveness
     assert candidate["signal"]["recommended_operator_actions"] == [
         "inspect_stale_dispatch_daemon_heartbeat"
     ]
+    assert candidate["signal"]["acknowledgement_suppression_policy"] == {
+        "policy_schema_version": (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_SUPPRESSION_POLICY_SCHEMA_VERSION
+        ),
+        "policy_status": "ACTIONABLE",
+        "acknowledgement_key": "nex-ag:ag-dispatch-execution-daemon:stale",
+        "supported_actions": ["acknowledge_once", "suppress_for_ttl"],
+        "default_suppression_ttl_seconds": 1800,
+        "max_suppression_ttl_seconds": 86400,
+        "state_persisted": False,
+        "new_tables_required": False,
+    }
     assert projection["summary"]["by_rule"][
         "operator_review_dispatch_daemon_liveness_attention_required.v1"
     ] == 1
@@ -6405,10 +6539,94 @@ def test_operations_issue_candidate_projection_includes_dispatch_daemon_liveness
         stale_section,
         process_section=enabled_process,
     )
+    helper_with_bad_policy = (
+        _issue_candidates_from_operator_review_dispatch_daemon_liveness(
+            stale_section,
+            process_section=enabled_process,
+            recovery_section={
+                "acknowledgement_suppression_policy": {
+                    "policy_schema_version": (
+                        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_SUPPRESSION_POLICY_SCHEMA_VERSION
+                    ),
+                    "policy_status": "ACTIONABLE",
+                    "acknowledgement_key": "custom-key",
+                    "supported_actions": "bad",
+                    "default_suppression_ttl_seconds": "bad",
+                    "max_suppression_ttl_seconds": 7200,
+                    "state_storage": {
+                        "status": "PERSISTED",
+                        "new_tables_required": True,
+                    },
+                }
+            },
+        )
+    )
+    helper_with_mixed_policy = (
+        _issue_candidates_from_operator_review_dispatch_daemon_liveness(
+            stale_section,
+            process_section=enabled_process,
+            recovery_section={
+                "acknowledgement_suppression_policy": {
+                    "policy_schema_version": (
+                        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_SUPPRESSION_POLICY_SCHEMA_VERSION
+                    ),
+                    "policy_status": "ACTIONABLE",
+                    "acknowledgement_key": "mixed-key",
+                    "supported_actions": [
+                        "acknowledge_once",
+                        7,
+                        "suppress_for_ttl",
+                    ],
+                    "default_suppression_ttl_seconds": 45,
+                    "max_suppression_ttl_seconds": "bad",
+                    "state_storage": {"status": "NOT_PERSISTED"},
+                }
+            },
+        )
+    )
+    helper_without_process_path = (
+        ag_operations._operator_review_dispatch_daemon_liveness_issue_candidate(
+            stale_section,
+            summary=stale_section["summary"],
+            liveness_status="UNKNOWN",
+            process_section="not-a-mapping",
+            recovery_section="not-a-mapping",
+        )
+    )
     assert helper_candidates[0]["signal"]["status"] == "MISSING"
     assert helper_candidates[0]["signal"]["runbook_ids"] == [
         "ag.operator_review_dispatch_daemon_liveness.missing_heartbeat.v1"
     ]
+    assert helper_candidates[0]["signal"]["acknowledgement_suppression_policy"][
+        "acknowledgement_key"
+    ] == "nex-ag:ag-dispatch-execution-daemon:missing"
+    assert helper_with_bad_policy[0]["signal"]["acknowledgement_suppression_policy"][
+        "supported_actions"
+    ] == []
+    assert helper_with_bad_policy[0]["signal"]["acknowledgement_suppression_policy"][
+        "state_persisted"
+    ] is True
+    assert helper_with_bad_policy[0]["signal"]["acknowledgement_suppression_policy"][
+        "new_tables_required"
+    ] is True
+    assert helper_with_mixed_policy[0]["signal"]["acknowledgement_suppression_policy"][
+        "supported_actions"
+    ] == ["acknowledge_once", "suppress_for_ttl"]
+    assert helper_with_mixed_policy[0]["signal"]["acknowledgement_suppression_policy"][
+        "default_suppression_ttl_seconds"
+    ] == 45
+    assert helper_with_mixed_policy[0]["signal"]["acknowledgement_suppression_policy"][
+        "max_suppression_ttl_seconds"
+    ] is None
+    assert helper_with_mixed_policy[0]["signal"]["acknowledgement_suppression_policy"][
+        "state_persisted"
+    ] is False
+    assert helper_without_process_path["signal"]["process_control_path"] is None
+    assert helper_without_process_path["signal"]["runbook_ids"] == []
+    assert helper_without_process_path["signal"]["recommended_operator_actions"] == []
+    assert helper_without_process_path["signal"]["acknowledgement_suppression_policy"][
+        "supported_actions"
+    ] == []
 
 
 def test_escalation_dispatch_dashboard_helpers_cover_defensive_edges() -> None:

@@ -925,6 +925,31 @@
           }
         }
       ],
+      "acknowledgement_suppression_policy": {
+        "policy_schema_version": "ag_operator_review_escalation_dispatch_daemon_liveness_ack_suppression_policy.v1",
+        "policy_status": "ACTIONABLE",
+        "liveness_status": "MISSING",
+        "acknowledgement_key": "nex-ag:ag-dispatch-execution-daemon:missing",
+        "supported_actions": [
+          "acknowledge_once",
+          "suppress_for_ttl"
+        ],
+        "default_suppression_ttl_seconds": 1800,
+        "max_suppression_ttl_seconds": 86400,
+        "state_storage": {
+          "status": "NOT_PERSISTED",
+          "source_table": "service_operational_events",
+          "new_tables_required": false,
+          "future_persistence": "operator_review_action_state"
+        },
+        "guardrails": {
+          "read_only_policy": true,
+          "does_not_suppress_current_projection": true,
+          "operator_identity_required": true,
+          "reason_required": true,
+          "raw_comment_included": false
+        }
+      },
       "recovery_plan_path": "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan",
       "process_control_path": "/admin/v1/operator-review/dispatch-daemon/process-controls",
       "source_evidence": {

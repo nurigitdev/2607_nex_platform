@@ -180,6 +180,9 @@ AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_AUDIT_EVENT_SCHEMA_VERSION 
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_DASHBOARD_SECTION_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_daemon_liveness_recovery_dashboard_section.v1"
 )
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_SUPPRESSION_POLICY_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_daemon_liveness_ack_suppression_policy.v1"
+)
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_PLANNED = (
     "ag.operator_review_escalation_dispatch_daemon.liveness_recovery.planned"
 )
@@ -5759,6 +5762,11 @@ def build_operations_issue_candidates(
         if isinstance(dispatch_section, Mapping)
         else None
     )
+    daemon_recovery_section = (
+        dispatch_section.get("daemon_recovery")
+        if isinstance(dispatch_section, Mapping)
+        else None
+    )
     daemon_process_section = (
         dispatch_section.get("daemon_process")
         if isinstance(dispatch_section, Mapping)
@@ -5773,6 +5781,7 @@ def build_operations_issue_candidates(
         _issue_candidates_from_operator_review_dispatch_daemon_liveness(
             daemon_liveness_section,
             process_section=daemon_process_section,
+            recovery_section=daemon_recovery_section,
         )
     )
     if worker_runtime_projection is not None:
@@ -8643,6 +8652,11 @@ def _dashboard_operator_review_dispatch_daemon_liveness_recovery_section(
                 "new_tables_required": False,
             },
             "recommended_actions": [],
+            "acknowledgement_suppression_policy": (
+                build_operator_review_escalation_dispatch_daemon_liveness_ack_suppression_policy(
+                    "UNKNOWN",
+                )
+            ),
             "recovery_plan_path": (
                 "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan"
             ),
@@ -8697,6 +8711,13 @@ def _dashboard_operator_review_dispatch_daemon_liveness_recovery_section(
         },
         "recommended_actions": deepcopy(
             list(recovery_plan.get("recommended_actions", []))
+        ),
+        "acknowledgement_suppression_policy": deepcopy(
+            dict(
+                _mapping_or_empty(
+                    recovery_plan.get("acknowledgement_suppression_policy")
+                )
+            )
         ),
         "recovery_plan_path": _nullable_string(recovery_plan_route.get("path")),
         "process_control_path": _nullable_string(process_control_route.get("path")),
@@ -9321,6 +9342,66 @@ def build_operator_review_escalation_dispatch_daemon_liveness_projection(
     return projection
 
 
+def build_operator_review_escalation_dispatch_daemon_liveness_ack_suppression_policy(
+    liveness_status: str,
+    *,
+    service_id: str = DISPATCH_EXECUTION_DAEMON_HEARTBEAT_SERVICE_ID,
+    worker_id: str = "ag-dispatch-execution-daemon",
+) -> dict[str, Any]:
+    normalized_status = _nullable_string(liveness_status) or "UNKNOWN"
+    actionable = normalized_status in {"MISSING", "STALE"}
+    source_attention = normalized_status in {
+        "SOURCE_NOT_CONFIGURED",
+        "SOURCE_UNAVAILABLE",
+    }
+    supported_actions: list[str] = []
+    if actionable:
+        supported_actions = ["acknowledge_once", "suppress_for_ttl"]
+    elif source_attention:
+        supported_actions = [
+            "acknowledge_source_attention",
+            "suppress_source_attention_for_ttl",
+        ]
+    if actionable:
+        policy_status = "ACTIONABLE"
+    elif source_attention:
+        policy_status = "SOURCE_ATTENTION"
+    elif normalized_status == "FRESH":
+        policy_status = "NOT_APPLICABLE"
+    else:
+        policy_status = "UNKNOWN"
+
+    acknowledgement_key = (
+        f"{service_id}:{worker_id}:{normalized_status.lower()}"
+        if supported_actions
+        else None
+    )
+    return {
+        "policy_schema_version": (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_SUPPRESSION_POLICY_SCHEMA_VERSION
+        ),
+        "policy_status": policy_status,
+        "liveness_status": normalized_status,
+        "acknowledgement_key": acknowledgement_key,
+        "supported_actions": supported_actions,
+        "default_suppression_ttl_seconds": 1800,
+        "max_suppression_ttl_seconds": 86400,
+        "state_storage": {
+            "status": "NOT_PERSISTED",
+            "source_table": "service_operational_events",
+            "new_tables_required": False,
+            "future_persistence": "operator_review_action_state",
+        },
+        "guardrails": {
+            "read_only_policy": True,
+            "does_not_suppress_current_projection": True,
+            "operator_identity_required": True,
+            "reason_required": True,
+            "raw_comment_included": False,
+        },
+    }
+
+
 def build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
     liveness_projection: Mapping[str, Any],
     *,
@@ -9352,6 +9433,19 @@ def build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
     daemon_identity = _mapping_or_empty(liveness_projection.get("daemon_identity"))
     filters = _mapping_or_empty(liveness_projection.get("filters"))
     source_statuses = _mapping_or_empty(liveness_projection.get("source_statuses"))
+    ack_suppression_policy = (
+        build_operator_review_escalation_dispatch_daemon_liveness_ack_suppression_policy(
+            liveness_status,
+            service_id=(
+                _nullable_string(daemon_identity.get("service_id"))
+                or DISPATCH_EXECUTION_DAEMON_HEARTBEAT_SERVICE_ID
+            ),
+            worker_id=(
+                _nullable_string(daemon_identity.get("worker_id"))
+                or "ag-dispatch-execution-daemon"
+            ),
+        )
+    )
     recovery_actions = _operator_review_dispatch_daemon_liveness_recovery_actions(
         liveness_status,
         process_section=process_section,
@@ -9400,6 +9494,7 @@ def build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
             "subprocess_mutation_performed": False,
         },
         "recommended_actions": recovery_actions,
+        "acknowledgement_suppression_policy": ack_suppression_policy,
         "summary": {
             "liveness_status": liveness_status,
             "action_count": len(recovery_actions),
@@ -9410,6 +9505,9 @@ def build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
             "dry_run_only": all(action["dry_run_only"] for action in recovery_actions)
             if recovery_actions
             else True,
+            "acknowledgement_suppression_available": bool(
+                ack_suppression_policy["supported_actions"]
+            ),
             "subprocess_mutation_performed": False,
             "new_tables_required": False,
         },
@@ -9419,7 +9517,8 @@ def build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
             "process_control_requires_confirm_process": True,
             "audit_event_supported": True,
             "audit_event_details_shape": "safe_liveness_recovery_summary_only",
-            "acknowledgement_suppression_deferred_until_slice_0796": True,
+            "acknowledgement_suppression_policy_supported": True,
+            "acknowledgement_suppression_state_persistence_deferred": True,
         },
         "new_tables_required": False,
         "redaction": (
@@ -11611,6 +11710,7 @@ def _issue_candidates_from_operator_review_dispatch_daemon_liveness(
     section: object,
     *,
     process_section: object = None,
+    recovery_section: object = None,
 ) -> list[dict[str, Any]]:
     if not isinstance(section, Mapping):
         return []
@@ -11636,6 +11736,7 @@ def _issue_candidates_from_operator_review_dispatch_daemon_liveness(
             summary=summary,
             liveness_status=liveness_status,
             process_section=process_section,
+            recovery_section=recovery_section,
         )
     ]
 
@@ -11646,6 +11747,7 @@ def _operator_review_dispatch_daemon_liveness_issue_candidate(
     summary: Mapping[str, Any],
     liveness_status: str,
     process_section: object,
+    recovery_section: object,
 ) -> dict[str, Any]:
     daemon_identity = (
         section.get("daemon_identity")
@@ -11656,6 +11758,17 @@ def _operator_review_dispatch_daemon_liveness_issue_candidate(
     process_control_path = None
     if isinstance(process_section, Mapping):
         process_control_path = process_section.get("process_control_path")
+    ack_suppression_policy = (
+        _operator_review_dispatch_daemon_liveness_ack_suppression_policy_for_signal(
+            recovery_section,
+            liveness_status=liveness_status,
+            service_id=str(daemon_identity.get("service_id") or "nex-ag"),
+            worker_id=str(
+                daemon_identity.get("worker_id")
+                or "ag-dispatch-execution-daemon"
+            ),
+        )
+    )
     return _operations_issue_candidate(
         rule_id="operator_review_dispatch_daemon_liveness_attention_required.v1",
         service_id="nex-ag",
@@ -11695,6 +11808,7 @@ def _operator_review_dispatch_daemon_liveness_issue_candidate(
                     liveness_status
                 )
             ),
+            "acknowledgement_suppression_policy": ack_suppression_policy,
         },
     )
 
@@ -11717,6 +11831,54 @@ def _operator_review_dispatch_daemon_liveness_issue_operator_actions(
     if liveness_status == "MISSING":
         return ["start_or_inspect_dispatch_daemon_process"]
     return []
+
+
+def _operator_review_dispatch_daemon_liveness_ack_suppression_policy_for_signal(
+    recovery_section: object,
+    *,
+    liveness_status: str,
+    service_id: str,
+    worker_id: str,
+) -> dict[str, Any]:
+    policy: Mapping[str, Any] | None = None
+    if isinstance(recovery_section, Mapping):
+        candidate_policy = recovery_section.get("acknowledgement_suppression_policy")
+        if isinstance(candidate_policy, Mapping):
+            policy = candidate_policy
+    if policy is None:
+        policy = (
+            build_operator_review_escalation_dispatch_daemon_liveness_ack_suppression_policy(
+                liveness_status,
+                service_id=service_id,
+                worker_id=worker_id,
+            )
+        )
+    state_storage = _mapping_or_empty(policy.get("state_storage"))
+    supported_actions = policy.get("supported_actions", [])
+    if not isinstance(supported_actions, list):
+        supported_actions = []
+    return {
+        "policy_schema_version": _nullable_string(
+            policy.get("policy_schema_version")
+        ),
+        "policy_status": _nullable_string(policy.get("policy_status")),
+        "acknowledgement_key": _nullable_string(
+            policy.get("acknowledgement_key")
+        ),
+        "supported_actions": [
+            str(action)
+            for action in supported_actions
+            if isinstance(action, str)
+        ],
+        "default_suppression_ttl_seconds": _safe_optional_int(
+            policy.get("default_suppression_ttl_seconds")
+        ),
+        "max_suppression_ttl_seconds": _safe_optional_int(
+            policy.get("max_suppression_ttl_seconds")
+        ),
+        "state_persisted": state_storage.get("status") != "NOT_PERSISTED",
+        "new_tables_required": bool(state_storage.get("new_tables_required")),
+    }
 
 
 def _issue_candidates_from_remediation_executions(

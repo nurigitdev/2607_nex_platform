@@ -3067,6 +3067,7 @@
         "recovery_plan_status",
         "summary",
         "recommended_actions",
+        "acknowledgement_suppression_policy",
         "recovery_plan_path",
         "process_control_path",
         "source_statuses",
@@ -3137,6 +3138,83 @@
           "items": {
             "type": "object",
             "additionalProperties": true
+          }
+        },
+        "acknowledgement_suppression_policy": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "policy_schema_version",
+            "policy_status",
+            "liveness_status",
+            "acknowledgement_key",
+            "supported_actions",
+            "default_suppression_ttl_seconds",
+            "max_suppression_ttl_seconds",
+            "state_storage",
+            "guardrails"
+          ],
+          "properties": {
+            "policy_schema_version": {
+              "const": "ag_operator_review_escalation_dispatch_daemon_liveness_ack_suppression_policy.v1"
+            },
+            "policy_status": {
+              "type": "string",
+              "enum": [
+                "ACTIONABLE",
+                "SOURCE_ATTENTION",
+                "NOT_APPLICABLE",
+                "UNKNOWN"
+              ]
+            },
+            "liveness_status": {
+              "type": "string",
+              "minLength": 1
+            },
+            "acknowledgement_key": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "supported_actions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "default_suppression_ttl_seconds": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_suppression_ttl_seconds": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "state_storage": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "status",
+                "source_table",
+                "new_tables_required"
+              ],
+              "properties": {
+                "status": {
+                  "type": "string"
+                },
+                "source_table": {
+                  "const": "service_operational_events"
+                },
+                "new_tables_required": {
+                  "const": false
+                }
+              }
+            },
+            "guardrails": {
+              "type": "object",
+              "additionalProperties": true
+            }
           }
         },
         "recovery_plan_path": {

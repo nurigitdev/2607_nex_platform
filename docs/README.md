@@ -899,6 +899,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0793`](slices/0793_ag_escalation_dispatch_daemon_liveness_recovery_plan_route.md) | `S80-003` AG dispatch daemon protected liveness recovery-plan route. |
 | [`Slice 0794`](slices/0794_ag_escalation_dispatch_daemon_liveness_recovery_audit_event.md) | `S80-004` AG dispatch daemon liveness recovery audit event emission. |
 | [`Slice 0795`](slices/0795_ag_escalation_dispatch_daemon_liveness_recovery_dashboard.md) | `S80-005` AG dispatch daemon liveness recovery dashboard integration. |
+| [`Slice 0796`](slices/0796_ag_escalation_dispatch_daemon_liveness_ack_suppression_policy.md) | `S80-006` AG dispatch daemon liveness acknowledgement/suppression policy. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
