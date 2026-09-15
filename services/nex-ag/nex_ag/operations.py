@@ -2449,6 +2449,32 @@ def register_unified_operation_routes(
         )
 
     @app.get(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan",
+        response_model=None,
+        operation_id="getAgOperatorReviewDispatchDaemonLivenessRecoveryPlan",
+        tags=["Operations"],
+    )
+    def get_operator_review_dispatch_daemon_liveness_recovery_plan(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        worker_id: str = "ag-dispatch-execution-daemon",
+        stale_after_seconds: int = Query(
+            default=DEFAULT_WORKER_STALE_AFTER_SECONDS,
+            ge=1,
+        ),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        return _dispatch_daemon_liveness_recovery_plan_route_response(
+            request,
+            worker_heartbeat_stores=worker_heartbeat_stores,
+            registry=registry,
+            worker_id=worker_id,
+            stale_after_seconds=stale_after_seconds,
+        )
+
+    @app.get(
         "/admin/v1/operator-review/dispatch-daemon/controls",
         response_model=None,
         operation_id="listAgOperatorReviewDispatchDaemonControls",
@@ -3446,6 +3472,38 @@ def _dispatch_daemon_liveness_route_response(
             worker_id=worker_id,
             stale_after_seconds=stale_after_seconds,
             request_trace_id=trace_id_from_headers(request),
+        )
+    except OperationsQueryError as exc:
+        return _dispatch_daemon_control_problem_response(request, exc)
+
+
+def _dispatch_daemon_liveness_recovery_plan_route_response(
+    request: Request,
+    *,
+    worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None,
+    registry: OperationsSourceRegistry | None,
+    worker_id: str,
+    stale_after_seconds: int,
+) -> dict[str, Any] | JSONResponse:
+    trace_id = trace_id_from_headers(request)
+    try:
+        liveness_projection = (
+            build_operator_review_escalation_dispatch_daemon_liveness_projection(
+                worker_heartbeat_stores=worker_heartbeat_stores,
+                registry=registry,
+                worker_id=worker_id,
+                stale_after_seconds=stale_after_seconds,
+                request_trace_id=trace_id,
+            )
+        )
+        return build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
+            liveness_projection,
+            process_section={
+                "process_control_path": (
+                    "/admin/v1/operator-review/dispatch-daemon/process-controls"
+                )
+            },
+            request_trace_id=trace_id,
         )
     except OperationsQueryError as exc:
         return _dispatch_daemon_control_problem_response(request, exc)

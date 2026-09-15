@@ -4327,6 +4327,59 @@ def test_operator_review_dispatch_daemon_liveness_route_is_protected() -> None:
     )
 
 
+def test_operator_review_dispatch_daemon_liveness_recovery_plan_route_is_protected() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_unified_operation_routes(
+        app,
+        worker_heartbeat_stores={"nex-ag": InMemoryWorkerHeartbeatStore()},
+    )
+    client = TestClient(app)
+    path = "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan"
+
+    missing_auth = client.get(path)
+    ok = client.get(
+        path,
+        params={"stale_after_seconds": 60},
+        headers={
+            **auth_headers(),
+            "traceparent": (
+                "00-4bf92f3577b34da6a3ce929d0e0e4736-"
+                "00f067aa0ba902b7-01"
+            ),
+        },
+    )
+    invalid_worker = client.get(
+        path,
+        params={"worker_id": " "},
+        headers=auth_headers(),
+    )
+
+    assert missing_auth.status_code == 401
+    assert ok.status_code == 200
+    payload = ok.json()
+    assert payload["projection_schema_version"] == (
+        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_PLAN_SCHEMA_VERSION
+    )
+    assert payload["projection_status"] == "ACTION_RECOMMENDED"
+    assert payload["request_trace_id"] == TRACE_ID
+    assert payload["recovery_plan_route"] == {
+        "path": "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan",
+        "method": "GET",
+        "protected": True,
+        "mutation": False,
+    }
+    assert payload["source_evidence"]["liveness_status"] == "MISSING"
+    assert payload["recommended_actions"][0]["action_id"] == (
+        "start_or_inspect_dispatch_daemon_process"
+    )
+    assert payload["summary"]["requires_confirm_process"] is True
+    assert payload["process_control_route"]["subprocess_mutation_performed"] is False
+    assert invalid_worker.status_code == 400
+    assert invalid_worker.json()["error_code"] == (
+        "ag.operator_review_dispatch_daemon_liveness_worker_id_invalid"
+    )
+
+
 def test_operator_review_dispatch_daemon_process_control_route_is_protected() -> None:
     app = build_service_app(SERVICE_SPECS["nex-ag"])
     register_unified_operation_routes(app)
