@@ -14,6 +14,7 @@ from jsonschema import Draft202012Validator
 import nex_ag.operations as ag_operations
 from nex_ag.operations import (
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_PROJECTION_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_AUDIT_EVENT_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_FAILED,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_HISTORY_PROJECTION_SCHEMA_VERSION,
@@ -50,6 +51,7 @@ from nex_ag.operations import (
     build_operation_query_options,
     build_operation_source_readiness_projection,
     build_operator_review_escalation_dispatch_daemon_runtime_projection,
+    build_operator_review_escalation_dispatch_daemon_liveness_projection,
     build_operator_review_escalation_dispatch_daemon_control_audit_event_details,
     build_operator_review_escalation_dispatch_daemon_control_history_projection,
     build_operator_review_escalation_dispatch_daemon_process_control_api_projection,
@@ -3959,6 +3961,115 @@ def test_operator_review_dispatch_daemon_process_control_projection_is_safe() ->
     serialized = json.dumps(projection)
     assert "Bearer private" not in serialized
     assert "nuri1004" not in serialized
+
+
+def test_operator_review_dispatch_daemon_liveness_projection_fresh_and_stale() -> None:
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_store.upsert_heartbeat(
+        build_worker_heartbeat(
+            service_id="nex-ag",
+            worker_id="ag-dispatch-execution-daemon",
+            worker_type="operator_review_dispatch_daemon",
+            status="IDLE",
+            trace_id=TRACE_ID,
+            started_at="2026-09-15T14:00:00Z",
+            last_seen_at="2026-09-15T14:00:30Z",
+            metadata={"process_run_id": "process-run-0784"},
+        )
+    )
+
+    fresh = build_operator_review_escalation_dispatch_daemon_liveness_projection(
+        worker_heartbeat_stores={"nex-ag": heartbeat_store},
+        stale_after_seconds=60,
+        checked_at="2026-09-15T14:01:00Z",
+        request_trace_id=TRACE_ID,
+    )
+    stale = build_operator_review_escalation_dispatch_daemon_liveness_projection(
+        worker_heartbeat_stores={"nex-ag": heartbeat_store},
+        stale_after_seconds=10,
+        checked_at="2026-09-15T14:01:00Z",
+    )
+
+    assert fresh["projection_schema_version"] == (
+        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_PROJECTION_SCHEMA_VERSION
+    )
+    assert fresh["projection_status"] == "READY"
+    assert fresh["daemon_identity"] == {
+        "service_id": "nex-ag",
+        "worker_id": "ag-dispatch-execution-daemon",
+        "worker_type": "operator_review_dispatch_daemon",
+        "source_table": "service_worker_heartbeats",
+    }
+    assert fresh["summary"]["liveness_status"] == "FRESH"
+    assert fresh["summary"]["heartbeat_present"] is True
+    assert fresh["summary"]["heartbeat_status"] == "IDLE"
+    assert fresh["summary"]["stale"] is False
+    assert fresh["source_statuses"]["nex-ag"] == {
+        "status": "READY",
+        "service_id": "nex-ag",
+        "worker_count": 1,
+    }
+    assert fresh["request_trace_id"] == TRACE_ID
+    assert fresh["new_tables_required"] is False
+    assert stale["summary"]["liveness_status"] == "STALE"
+    assert stale["summary"]["stale"] is True
+    assert "postgresql://" not in json.dumps(fresh)
+    assert "nuri1004" not in json.dumps(fresh)
+
+
+def test_operator_review_dispatch_daemon_liveness_projection_missing_and_registry() -> None:
+    projection = build_operator_review_escalation_dispatch_daemon_liveness_projection(
+        worker_heartbeat_stores={"nex-ag": InMemoryWorkerHeartbeatStore()},
+        checked_at="2026-09-15T14:02:00Z",
+    )
+    registry_projection = (
+        build_operator_review_escalation_dispatch_daemon_liveness_projection(
+            registry=build_operations_source_registry(
+                worker_heartbeat_stores={"nex-ag": InMemoryWorkerHeartbeatStore()},
+            ),
+            stale_after_seconds=999999,
+            checked_at="2026-09-15T14:02:00Z",
+        )
+    )
+
+    assert projection["projection_status"] == "READY"
+    assert projection["summary"]["liveness_status"] == "MISSING"
+    assert projection["summary"]["heartbeat_present"] is False
+    assert projection["summary"]["new_tables_required"] is False
+    assert projection["filters"]["stale_after_seconds"] == 60
+    assert registry_projection["source_registry"]["sources"]["nex-ag"][
+        "worker_heartbeat_store"
+    ] == "InMemoryWorkerHeartbeatStore"
+    assert registry_projection["filters"]["stale_after_seconds"] == 86400
+
+
+def test_operator_review_dispatch_daemon_liveness_projection_source_errors() -> None:
+    not_configured = build_operator_review_escalation_dispatch_daemon_liveness_projection(
+        worker_heartbeat_stores={},
+        checked_at="2026-09-15T14:03:00Z",
+    )
+    unavailable = build_operator_review_escalation_dispatch_daemon_liveness_projection(
+        worker_heartbeat_stores={"nex-ag": BrokenWorkerHeartbeatStore()},
+        checked_at="2026-09-15T14:03:00Z",
+    )
+
+    assert not_configured["projection_status"] == "DEGRADED"
+    assert not_configured["summary"]["liveness_status"] == "SOURCE_NOT_CONFIGURED"
+    assert not_configured["source_statuses"]["nex-ag"]["status"] == "NOT_CONFIGURED"
+    assert unavailable["projection_status"] == "DEGRADED"
+    assert unavailable["summary"]["liveness_status"] == "SOURCE_UNAVAILABLE"
+    assert unavailable["source_statuses"]["nex-ag"]["status"] == "UNAVAILABLE"
+    assert unavailable["source_statuses"]["nex-ag"]["error_code"] == (
+        "worker_heartbeat.store_unavailable"
+    )
+
+    with pytest.raises(OperationsQueryError) as exc_info:
+        build_operator_review_escalation_dispatch_daemon_liveness_projection(
+            worker_id=" ",
+        )
+    assert exc_info.value.error_code == (
+        "ag.operator_review_dispatch_daemon_liveness_worker_id_invalid"
+    )
 
 
 def test_operator_review_dispatch_daemon_process_control_route_is_protected() -> None:

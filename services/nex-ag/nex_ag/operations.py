@@ -113,6 +113,8 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV,
     DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV,
     DISPATCH_EXECUTION_DAEMON_ENABLED_ENV,
+    DISPATCH_EXECUTION_DAEMON_HEARTBEAT_SERVICE_ID,
+    DISPATCH_EXECUTION_DAEMON_HEARTBEAT_WORKER_TYPE,
     DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV,
     assert_dispatch_execution_result_redacted,
     build_dispatch_execution_daemon_control_admission,
@@ -165,6 +167,9 @@ AG_GENERATION_QUALITY_ISSUE_DETAIL_PROJECTION_SCHEMA_VERSION = (
 )
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_daemon_runtime_projection.v1"
+)
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_PROJECTION_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_daemon_liveness_projection.v1"
 )
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_TICK_PLAN_API_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_daemon_tick_plan_api.v1"
@@ -8690,6 +8695,147 @@ def build_operator_review_escalation_dispatch_daemon_runtime_projection(
             _operator_review_escalation_dispatch_execution_result_redaction()
         ),
     }
+
+
+def build_operator_review_escalation_dispatch_daemon_liveness_projection(
+    *,
+    worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
+    registry: OperationsSourceRegistry | None = None,
+    worker_id: str = "ag-dispatch-execution-daemon",
+    stale_after_seconds: int = DEFAULT_WORKER_STALE_AFTER_SECONDS,
+    checked_at: object | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    normalized_worker_id = str(worker_id or "").strip()
+    if not normalized_worker_id:
+        raise OperationsQueryError(
+            error_code="ag.operator_review_dispatch_daemon_liveness_worker_id_invalid",
+            detail="worker_id must be a non-empty string.",
+            status_code=400,
+        )
+    normalized_stale_after = normalize_worker_stale_after_seconds(
+        stale_after_seconds
+    )
+    observed_at = _dashboard_timestamp(checked_at)
+    stores = (
+        registry.worker_heartbeat_stores()
+        if registry is not None
+        else (
+            DEFAULT_WORKER_HEARTBEAT_STORES
+            if worker_heartbeat_stores is None
+            else worker_heartbeat_stores
+        )
+    )
+    store = stores.get(DISPATCH_EXECUTION_DAEMON_HEARTBEAT_SERVICE_ID)
+    source_status: dict[str, Any]
+    heartbeat: dict[str, Any] | None = None
+    if store is None:
+        source_status = {
+            "status": "NOT_CONFIGURED",
+            "service_id": DISPATCH_EXECUTION_DAEMON_HEARTBEAT_SERVICE_ID,
+            "worker_count": 0,
+        }
+    else:
+        try:
+            heartbeat = store.get_heartbeat(
+                DISPATCH_EXECUTION_DAEMON_HEARTBEAT_SERVICE_ID,
+                normalized_worker_id,
+            )
+        except WorkerHeartbeatError as exc:
+            source_status = {
+                "status": "UNAVAILABLE",
+                "service_id": DISPATCH_EXECUTION_DAEMON_HEARTBEAT_SERVICE_ID,
+                "worker_count": 0,
+                "error_code": exc.error_code,
+                "detail": exc.detail,
+            }
+        else:
+            source_status = {
+                "status": "READY",
+                "service_id": DISPATCH_EXECUTION_DAEMON_HEARTBEAT_SERVICE_ID,
+                "worker_count": 1 if heartbeat is not None else 0,
+            }
+    projected_heartbeat = (
+        _project_worker_for_service(
+            DISPATCH_EXECUTION_DAEMON_HEARTBEAT_SERVICE_ID,
+            heartbeat,
+            stale_after_seconds=normalized_stale_after,
+            checked_at=observed_at,
+        )
+        if heartbeat is not None
+        else None
+    )
+    liveness_status = _dispatch_daemon_liveness_status(
+        source_status,
+        projected_heartbeat,
+    )
+    projection = {
+        "projection_schema_version": (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": (
+            "DEGRADED"
+            if source_status["status"] in {"NOT_CONFIGURED", "UNAVAILABLE"}
+            else "READY"
+        ),
+        "checked_at": observed_at,
+        "daemon_identity": {
+            "service_id": DISPATCH_EXECUTION_DAEMON_HEARTBEAT_SERVICE_ID,
+            "worker_id": normalized_worker_id,
+            "worker_type": DISPATCH_EXECUTION_DAEMON_HEARTBEAT_WORKER_TYPE,
+            "source_table": "service_worker_heartbeats",
+        },
+        "filters": {
+            "stale_after_seconds": normalized_stale_after,
+        },
+        "heartbeat": projected_heartbeat,
+        "summary": {
+            "liveness_status": liveness_status,
+            "heartbeat_present": projected_heartbeat is not None,
+            "heartbeat_status": (
+                projected_heartbeat.get("status")
+                if projected_heartbeat is not None
+                else None
+            ),
+            "stale": (
+                projected_heartbeat.get("stale")
+                if projected_heartbeat is not None
+                else None
+            ),
+            "last_seen_at": (
+                projected_heartbeat.get("last_seen_at")
+                if projected_heartbeat is not None
+                else None
+            ),
+            "new_tables_required": False,
+        },
+        "source_statuses": {
+            DISPATCH_EXECUTION_DAEMON_HEARTBEAT_SERVICE_ID: source_status,
+        },
+        "new_tables_required": False,
+        "redaction": (
+            _operator_review_escalation_dispatch_execution_result_redaction()
+        ),
+    }
+    if registry is not None:
+        projection["source_registry"] = registry.to_summary()
+    if request_trace_id is not None:
+        projection["request_trace_id"] = request_trace_id
+    assert_dispatch_execution_result_redacted(projection)
+    return projection
+
+
+def _dispatch_daemon_liveness_status(
+    source_status: Mapping[str, Any],
+    heartbeat: Mapping[str, Any] | None,
+) -> str:
+    if source_status.get("status") == "UNAVAILABLE":
+        return "SOURCE_UNAVAILABLE"
+    if source_status.get("status") == "NOT_CONFIGURED":
+        return "SOURCE_NOT_CONFIGURED"
+    if heartbeat is None:
+        return "MISSING"
+    return "STALE" if heartbeat.get("stale") is True else "FRESH"
 
 
 def _operator_review_escalation_dispatch_daemon_tick_item(

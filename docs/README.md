@@ -887,6 +887,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0781`](slices/0781_ag_escalation_dispatch_daemon_liveness_boundary_audit.md) | `S79-001` AG dispatch daemon liveness/heartbeat boundary audit and refactoring checkpoint. |
 | [`Slice 0782`](slices/0782_ag_escalation_dispatch_daemon_heartbeat_contract.md) | `S79-002` AG dispatch daemon heartbeat contract and wire shape. |
 | [`Slice 0783`](slices/0783_ag_escalation_dispatch_daemon_heartbeat_emission.md) | `S79-003` AG dispatch daemon executable heartbeat emission. |
+| [`Slice 0784`](slices/0784_ag_escalation_dispatch_daemon_liveness_read_model.md) | `S79-004` AG dispatch daemon liveness read-model foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
