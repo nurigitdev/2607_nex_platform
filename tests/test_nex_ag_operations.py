@@ -5621,6 +5621,10 @@ def test_operator_review_dispatch_daemon_runtime_openapi_matches_contract() -> N
             "/admin/v1/operator-review/dispatch-daemon/liveness",
             "get",
         ): "getAgOperatorReviewDispatchDaemonLiveness",
+        (
+            "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan",
+            "get",
+        ): "getAgOperatorReviewDispatchDaemonLivenessRecoveryPlan",
     }
 
     for (path, method), operation_id in expected.items():
