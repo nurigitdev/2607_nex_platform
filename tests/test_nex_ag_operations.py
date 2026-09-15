@@ -3537,9 +3537,23 @@ def test_operations_dashboard_snapshot_includes_escalation_dispatches() -> None:
     succeeded["metadata"]["last_execution_result_recorded"] = True
     dispatch_store.save(succeeded)
     dispatch_store.save(failed)
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_store.upsert_heartbeat(
+        build_worker_heartbeat(
+            service_id="nex-ag",
+            worker_id="ag-dispatch-execution-daemon",
+            worker_type="operator_review_dispatch_daemon",
+            status="IDLE",
+            trace_id=TRACE_ID,
+            started_at="2026-08-05T00:00:00Z",
+            last_seen_at="2999-01-01T00:00:00Z",
+            metadata={"process_run_id": "process-run-dashboard-0786"},
+        )
+    )
 
     projection = build_operations_dashboard_snapshot_projection(
         operator_review_escalation_dispatch_store=dispatch_store,
+        worker_heartbeat_stores={"nex-ag": heartbeat_store},
         service_id="nex-cx",
         recent_limit=2,
         request_trace_id=TRACE_ID,
@@ -3547,6 +3561,15 @@ def test_operations_dashboard_snapshot_includes_escalation_dispatches() -> None:
 
     dispatches = projection["operator_review_escalation_dispatches"]
     assert dispatches["projection_status"] == "READY"
+    assert dispatches["daemon_liveness"]["projection_schema_version"] == (
+        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_PROJECTION_SCHEMA_VERSION
+    )
+    assert dispatches["daemon_liveness"]["summary"]["liveness_status"] == "FRESH"
+    assert dispatches["daemon_liveness"]["summary"]["heartbeat_status"] == "IDLE"
+    assert dispatches["daemon_liveness"]["daemon_identity"]["worker_id"] == (
+        "ag-dispatch-execution-daemon"
+    )
+    assert dispatches["daemon_liveness"]["request_trace_id"] == TRACE_ID
     assert dispatches["summary"]["dispatch_count"] == 2
     assert dispatches["summary"]["attention_count"] == 1
     assert dispatches["summary"]["failed_count"] == 1
@@ -5073,6 +5096,7 @@ def test_operations_dashboard_escalation_dispatches_handles_filters_and_errors()
     )
     unavailable = build_operations_dashboard_snapshot_projection(
         operator_review_escalation_dispatch_store=FailingDispatchStore(),
+        worker_heartbeat_stores={"nex-ag": BrokenWorkerHeartbeatStore()},
         service_id="nex-cx",
         recent_limit=2,
     )
@@ -5099,6 +5123,12 @@ def test_operations_dashboard_escalation_dispatches_handles_filters_and_errors()
         "liveness_source": "service_worker_heartbeats",
         "new_tables_required": False,
     }
+    daemon_liveness = filtered["operator_review_escalation_dispatches"][
+        "daemon_liveness"
+    ]
+    assert daemon_liveness["projection_status"] == "READY"
+    assert daemon_liveness["summary"]["liveness_status"] == "MISSING"
+    assert daemon_liveness["summary"]["new_tables_required"] is False
     assert unavailable["operator_review_escalation_dispatches"][
         "projection_status"
     ] == "DEGRADED"
@@ -5109,10 +5139,19 @@ def test_operations_dashboard_escalation_dispatches_handles_filters_and_errors()
     assert unavailable["operator_review_escalation_dispatches"]["source_statuses"][
         "nex-ag"
     ]["error_code"] == "ag.operator_review_escalation_dispatch_source_unavailable"
+    assert unavailable["operator_review_escalation_dispatches"]["daemon_liveness"][
+        "projection_status"
+    ] == "DEGRADED"
+    assert unavailable["operator_review_escalation_dispatches"]["daemon_liveness"][
+        "source_statuses"
+    ]["nex-ag"]["error_code"] == "worker_heartbeat.store_unavailable"
     assert {
         (source["source_type"], source["service_id"], source["status"])
         for source in unavailable["degraded_sources"]
-    } == {("operator_review_escalation_dispatches", "nex-ag", "UNAVAILABLE")}
+    } == {
+        ("operator_review_escalation_dispatches", "nex-ag", "UNAVAILABLE"),
+        ("operator_review_dispatch_daemon_liveness", "nex-ag", "UNAVAILABLE"),
+    }
     assert_ag_operations_projection_contract(filtered)
     assert_ag_operations_projection_contract(unavailable)
 
@@ -6254,9 +6293,22 @@ def test_normalize_dashboard_recent_limit_clamps_bounds() -> None:
 
 
 def test_operations_dashboard_snapshot_route_requires_auth_returns_projection() -> None:
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_store.upsert_heartbeat(
+        build_worker_heartbeat(
+            service_id="nex-ag",
+            worker_id="ag-dispatch-execution-daemon",
+            worker_type="operator_review_dispatch_daemon",
+            status="IDLE",
+            trace_id=TRACE_ID,
+            started_at="2026-08-05T00:00:00Z",
+            last_seen_at="2999-01-01T00:00:00Z",
+        )
+    )
     registry = build_operations_source_registry(
         job_queues=build_job_queues(),
         event_stores=build_event_stores(),
+        worker_heartbeat_stores={"nex-ag": heartbeat_store},
     )
     runtime = build_ag_operations_source_runtime(environ={})
     cx_processing_store = InMemoryCxProcessingRunOperationsStore(
@@ -6273,6 +6325,7 @@ def test_operations_dashboard_snapshot_route_requires_auth_returns_projection() 
             )
         },
         cx_processing_run_stores={"nex-cx": cx_processing_store},
+        worker_heartbeat_stores={"nex-ag": heartbeat_store},
     )
     client = TestClient(app)
 
@@ -6298,6 +6351,9 @@ def test_operations_dashboard_snapshot_route_requires_auth_returns_projection() 
         "processing-run-001"
     )
     assert payload["retrieval_threshold_decisions"]["summary"]["total_decisions"] == 2
+    assert payload["operator_review_escalation_dispatches"]["daemon_liveness"][
+        "summary"
+    ]["liveness_status"] == "FRESH"
     assert payload["replay_candidates"][0]["control_path"] == (
         "/admin/v1/operations/jobs/nex-cx/job-cx-002/replay"
     )

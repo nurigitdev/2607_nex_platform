@@ -2236,6 +2236,7 @@ def register_unified_operation_routes(
             operator_review_escalation_dispatch_store=(
                 operator_review_escalation_dispatch_store
             ),
+            worker_heartbeat_stores=worker_heartbeat_stores,
             service_id=service_id,
             recent_limit=recent_limit,
             query_options=query_options,
@@ -4297,6 +4298,7 @@ def build_operations_issue_candidate_projection(
         operator_review_escalation_dispatch_store=(
             operator_review_escalation_dispatch_store
         ),
+        worker_heartbeat_stores=worker_heartbeat_stores,
         registry=registry,
         runtime=runtime,
         service_id=service_id,
@@ -4661,6 +4663,7 @@ def build_operations_dashboard_snapshot_projection(
     operator_review_case_store: Any | None = None,
     operator_review_escalation_store: Any | None = None,
     operator_review_escalation_dispatch_store: Any | None = None,
+    worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     service_id: str | None = None,
     recent_limit: int = 5,
     limit: int = 500,
@@ -4791,6 +4794,8 @@ def build_operations_dashboard_snapshot_projection(
         _dashboard_operator_review_escalation_dispatch_section(
             dispatch_store=operator_review_escalation_dispatch_store,
             control_event_store=selected_event_store,
+            worker_heartbeat_stores=worker_heartbeat_stores,
+            registry=registry,
             service_id=service_id,
             options=options,
             limit=normalized_recent_limit,
@@ -4826,6 +4831,11 @@ def build_operations_dashboard_snapshot_projection(
         ),
         operator_review_dispatch_daemon_control_source_statuses=(
             operator_review_escalation_dispatches["daemon_controls"][
+                "source_statuses"
+            ]
+        ),
+        operator_review_dispatch_daemon_liveness_source_statuses=(
+            operator_review_escalation_dispatches["daemon_liveness"][
                 "source_statuses"
             ]
         ),
@@ -8060,6 +8070,8 @@ def _dashboard_operator_review_escalation_dispatch_section(
     *,
     dispatch_store: Any | None,
     control_event_store: OperationalEventStore | None,
+    worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None,
+    registry: OperationsSourceRegistry | None,
     service_id: str | None,
     options: OperationQueryOptions,
     limit: int,
@@ -8075,6 +8087,11 @@ def _dashboard_operator_review_escalation_dispatch_section(
     daemon_process = _dashboard_operator_review_dispatch_daemon_process_section(
         request_trace_id=request_trace_id,
     )
+    daemon_liveness = _dashboard_operator_review_dispatch_daemon_liveness_section(
+        worker_heartbeat_stores=worker_heartbeat_stores,
+        registry=registry,
+        request_trace_id=request_trace_id,
+    )
     if dispatch_store is None:
         return {
             **_empty_dashboard_operator_review_escalation_dispatch_section(
@@ -8082,6 +8099,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
             ),
             "daemon_controls": daemon_controls,
             "daemon_process": daemon_process,
+            "daemon_liveness": daemon_liveness,
         }
 
     target_service = service_id if service_id in ALLOWED_TARGET_SERVICES else None
@@ -8124,6 +8142,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
             ),
             "daemon_controls": daemon_controls,
             "daemon_process": daemon_process,
+            "daemon_liveness": daemon_liveness,
             "projection_status": "DEGRADED",
         }
 
@@ -8164,6 +8183,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
         "recent": items,
         "daemon_controls": daemon_controls,
         "daemon_process": daemon_process,
+        "daemon_liveness": daemon_liveness,
         "source_statuses": source_statuses,
         "dispatch_list_path": "/admin/v1/operator-review/dispatches",
         "dispatch_detail_path_template": (
@@ -8197,6 +8217,11 @@ def _empty_dashboard_operator_review_escalation_dispatch_section(
         "attention": [],
         "recent": [],
         "daemon_process": _dashboard_operator_review_dispatch_daemon_process_section(
+            request_trace_id=None,
+        ),
+        "daemon_liveness": _dashboard_operator_review_dispatch_daemon_liveness_section(
+            worker_heartbeat_stores=None,
+            registry=None,
             request_trace_id=None,
         ),
         "source_statuses": source_statuses,
@@ -8274,6 +8299,19 @@ def _dashboard_operator_review_dispatch_daemon_process_section(
     if request_trace_id is not None:
         section["request_trace_id"] = request_trace_id
     return section
+
+
+def _dashboard_operator_review_dispatch_daemon_liveness_section(
+    *,
+    worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None,
+    registry: OperationsSourceRegistry | None,
+    request_trace_id: str | None,
+) -> dict[str, Any]:
+    return build_operator_review_escalation_dispatch_daemon_liveness_projection(
+        worker_heartbeat_stores=worker_heartbeat_stores,
+        registry=registry,
+        request_trace_id=request_trace_id,
+    )
 
 
 def _dashboard_operator_review_dispatch_daemon_control_section(
@@ -9629,6 +9667,9 @@ def _dashboard_degraded_sources(
     operator_review_dispatch_daemon_control_source_statuses: (
         Mapping[str, dict[str, Any]] | None
     ) = None,
+    operator_review_dispatch_daemon_liveness_source_statuses: (
+        Mapping[str, dict[str, Any]] | None
+    ) = None,
 ) -> list[dict[str, Any]]:
     degraded: list[dict[str, Any]] = []
     for source in operation_sources:
@@ -9670,12 +9711,21 @@ def _dashboard_degraded_sources(
             "operator_review_dispatch_daemon_controls",
             operator_review_dispatch_daemon_control_source_statuses or {},
         ),
+        (
+            "operator_review_dispatch_daemon_liveness",
+            operator_review_dispatch_daemon_liveness_source_statuses or {},
+        ),
     ):
         for service_id, source_status in statuses.items():
             status = str(source_status["status"])
             if status == "READY":
                 continue
             if source_type == "logs" and status == "NOT_CONFIGURED":
+                continue
+            if (
+                source_type == "operator_review_dispatch_daemon_liveness"
+                and status == "NOT_CONFIGURED"
+            ):
                 continue
             degraded_source = {
                 "source_type": source_type,

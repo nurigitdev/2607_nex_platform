@@ -2554,6 +2554,7 @@
         "recent",
         "daemon_controls",
         "daemon_process",
+        "daemon_liveness",
         "source_statuses",
         "dispatch_list_path",
         "dispatch_detail_path_template",
@@ -2698,6 +2699,9 @@
         },
         "daemon_process": {
           "$ref": "#/$defs/dashboard_operator_review_dispatch_daemon_process"
+        },
+        "daemon_liveness": {
+          "$ref": "#/$defs/dashboard_operator_review_dispatch_daemon_liveness"
         },
         "source_statuses": {
           "type": "object",
@@ -2891,6 +2895,154 @@
         "cli_entrypoint": {
           "type": "string",
           "minLength": 1
+        },
+        "request_trace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "dashboard_operator_review_dispatch_daemon_liveness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "projection_status",
+        "checked_at",
+        "daemon_identity",
+        "filters",
+        "heartbeat",
+        "summary",
+        "source_statuses",
+        "new_tables_required",
+        "redaction"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "const": "ag_operator_review_escalation_dispatch_daemon_liveness_projection.v1"
+        },
+        "projection_status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "DEGRADED"
+          ]
+        },
+        "checked_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "daemon_identity": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "service_id",
+            "worker_id",
+            "worker_type",
+            "source_table"
+          ],
+          "properties": {
+            "service_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "worker_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "worker_type": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source_table": {
+              "const": "service_worker_heartbeats"
+            }
+          }
+        },
+        "filters": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "stale_after_seconds"
+          ],
+          "properties": {
+            "stale_after_seconds": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "heartbeat": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "liveness_status",
+            "heartbeat_present",
+            "heartbeat_status",
+            "stale",
+            "last_seen_at",
+            "new_tables_required"
+          ],
+          "properties": {
+            "liveness_status": {
+              "type": "string",
+              "enum": [
+                "FRESH",
+                "STALE",
+                "MISSING",
+                "SOURCE_NOT_CONFIGURED",
+                "SOURCE_UNAVAILABLE"
+              ]
+            },
+            "heartbeat_present": {
+              "type": "boolean"
+            },
+            "heartbeat_status": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "stale": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "last_seen_at": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "new_tables_required": {
+              "const": false
+            }
+          }
+        },
+        "source_statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/source_status"
+          }
+        },
+        "new_tables_required": {
+          "const": false
+        },
+        "source_registry": {
+          "type": "object",
+          "additionalProperties": true
         },
         "request_trace_id": {
           "type": "string",
@@ -3569,7 +3721,8 @@
             "operator_review_cases",
             "operator_review_escalations",
             "operator_review_escalation_dispatches",
-            "operator_review_dispatch_daemon_controls"
+            "operator_review_dispatch_daemon_controls",
+            "operator_review_dispatch_daemon_liveness"
           ]
         },
         "service_id": {

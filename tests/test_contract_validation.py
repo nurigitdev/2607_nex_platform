@@ -589,6 +589,15 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
     )
     assert daemon_process["summary"]["new_tables_required"] is False
     assert daemon_process["redaction"]["provider_secrets_included"] is False
+    daemon_liveness = dashboard_example["operator_review_escalation_dispatches"][
+        "daemon_liveness"
+    ]
+    assert daemon_liveness["daemon_identity"]["source_table"] == (
+        "service_worker_heartbeats"
+    )
+    assert daemon_liveness["summary"]["liveness_status"] == "MISSING"
+    assert daemon_liveness["summary"]["new_tables_required"] is False
+    assert daemon_liveness["redaction"]["provider_secrets_included"] is False
 
 
 def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:

@@ -846,6 +846,50 @@
         "result_storage": "safe_hashes_statuses_counters_only"
       }
     },
+    "daemon_liveness": {
+      "projection_schema_version": "ag_operator_review_escalation_dispatch_daemon_liveness_projection.v1",
+      "projection_status": "READY",
+      "checked_at": "2026-09-15T00:00:00Z",
+      "daemon_identity": {
+        "service_id": "nex-ag",
+        "worker_id": "ag-dispatch-execution-daemon",
+        "worker_type": "operator_review_dispatch_daemon",
+        "source_table": "service_worker_heartbeats"
+      },
+      "filters": {
+        "stale_after_seconds": 120
+      },
+      "heartbeat": null,
+      "summary": {
+        "liveness_status": "MISSING",
+        "heartbeat_present": false,
+        "heartbeat_status": null,
+        "stale": null,
+        "last_seen_at": null,
+        "new_tables_required": false
+      },
+      "source_statuses": {
+        "nex-ag": {
+          "status": "READY",
+          "service_id": "nex-ag",
+          "worker_count": 0
+        }
+      },
+      "new_tables_required": false,
+      "redaction": {
+        "raw_notification_payload_included": false,
+        "raw_external_incident_payload_included": false,
+        "raw_provider_payload_included": false,
+        "raw_provider_error_included": false,
+        "raw_action_comment_included": false,
+        "raw_source_text_included": false,
+        "provider_secrets_included": false,
+        "database_urls_included": false,
+        "tokens_included": false,
+        "idempotency_keys_included": false,
+        "result_storage": "safe_hashes_statuses_counters_only"
+      }
+    },
     "source_statuses": {},
     "dispatch_list_path": "/admin/v1/operator-review/dispatches",
     "dispatch_detail_path_template": "/admin/v1/operator-review/dispatches/{dispatch_id}",
