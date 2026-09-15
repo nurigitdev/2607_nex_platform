@@ -882,6 +882,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0776`](slices/0776_ag_escalation_dispatch_daemon_process_control_api.md) | `S78-006` AG dispatch daemon protected process control API. |
 | [`Slice 0777`](slices/0777_ag_escalation_dispatch_daemon_process_dashboard.md) | `S78-007` AG dispatch daemon process operations dashboard. |
 | [`Slice 0778`](slices/0778_ag_escalation_dispatch_daemon_process_postgres_smoke.md) | `S78-008` AG dispatch daemon process PostgreSQL smoke evidence. |
+| [`Slice 0779`](slices/0779_ag_escalation_dispatch_daemon_process_privacy_runbook_evidence.md) | `S78-009` AG dispatch daemon process privacy/runbook evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
