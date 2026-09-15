@@ -18,10 +18,18 @@ from nex_ag.operator_review_liveness_ack import (
     _ack_state_record_params,
     _ack_state_select_sql,
     _ack_state_upsert_sql,
+    _allowed_actions_for_liveness,
+    _state_status_for_action,
+    _transition_suppressed_until,
+    ack_state_id_for_acknowledgement_key,
+    acknowledgement_key_for_liveness,
+    apply_operator_review_liveness_ack_state_transition,
     build_operator_review_liveness_ack_state_list_response,
     build_operator_review_liveness_ack_state_record,
+    build_operator_review_liveness_ack_state_transition,
     default_operator_review_liveness_ack_state_store,
     normalize_ack_state_limit,
+    project_operator_review_liveness_ack_state_effective_status,
 )
 from nex_ag.operator_reviews import sha256_text
 from nex_runtime import build_engine, build_session_factory
@@ -299,6 +307,191 @@ def test_liveness_ack_state_sql_helpers_and_projection_response() -> None:
     assert response["state_count"] == 1
     assert response["source_table"] == AG_OPERATOR_REVIEW_LIVENESS_ACK_STATE_TABLE
     assert response["redaction"]["raw_comment_included"] is False
+
+
+def test_liveness_ack_state_transition_suppresses_with_default_ttl() -> None:
+    mutation = apply_operator_review_liveness_ack_state_transition(
+        service_id="nex-ag",
+        worker_id="ag-dispatch-execution-daemon",
+        worker_type="operator_review_escalation_dispatch_execution_daemon",
+        liveness_status="STALE",
+        action="suppress_for_ttl",
+        operator_ref={"operator_type": "user", "operator_id": "employee-0001"},
+        reason_codes=["planned-maintenance"],
+        comment="temporarily mute",
+        idempotency_key="transition-0803",
+        observed_at="2026-09-16T01:00:00Z",
+    )
+
+    transition = mutation["transition"]
+    state = mutation["state"]
+    assert mutation["mutation_status"] == "ACCEPTED"
+    assert transition["target_state_status"] == "SUPPRESSED"
+    assert transition["previous_state_status"] is None
+    assert transition["requested_ttl_seconds"] == 1800
+    assert transition["suppressed_until"] == "2026-09-16T01:30:00Z"
+    assert transition["guardrails"]["process_control_invoked"] is False
+    assert state["ack_state_id"] == ack_state_id_for_acknowledgement_key(
+        "nex-ag:ag-dispatch-execution-daemon:stale"
+    )
+    assert state["metadata"]["last_transition"] == transition
+
+
+def test_liveness_ack_state_transition_acknowledges_source_attention_and_clears() -> None:
+    source_attention = apply_operator_review_liveness_ack_state_transition(
+        service_id="nex-ag",
+        worker_id="ag-dispatch-execution-daemon",
+        worker_type="operator_review_escalation_dispatch_execution_daemon",
+        liveness_status="SOURCE_UNAVAILABLE",
+        action="acknowledge_source_attention",
+        operator_ref={"operator_type": "service", "operator_id": "nex-ag"},
+        reason_codes=["source-maintenance"],
+        observed_at="2026-09-16T02:00:00Z",
+    )
+    clear = apply_operator_review_liveness_ack_state_transition(
+        source_attention["state"],
+        service_id="nex-ag",
+        worker_id="ag-dispatch-execution-daemon",
+        worker_type="operator_review_escalation_dispatch_execution_daemon",
+        liveness_status="SOURCE_UNAVAILABLE",
+        action="clear",
+        operator_ref={"operator_type": "user", "operator_id": "employee-0001"},
+        reason_codes=["source-recovered"],
+        observed_at="2026-09-16T02:10:00Z",
+    )
+
+    assert source_attention["state"]["state_status"] == "ACKNOWLEDGED"
+    assert clear["transition"]["previous_state_status"] == "ACKNOWLEDGED"
+    assert clear["state"]["state_status"] == "CLEARED"
+    assert clear["state"]["cleared_at"] == "2026-09-16T02:10:00Z"
+
+
+def test_liveness_ack_state_transition_validates_action_matrix() -> None:
+    cases = [
+        (
+            {
+                "liveness_status": "STALE",
+                "action": "acknowledge_source_attention",
+            },
+            "ag.operator_review_liveness_ack_action_not_allowed",
+        ),
+        (
+            {
+                "liveness_status": "SOURCE_NOT_CONFIGURED",
+                "action": "acknowledge_once",
+            },
+            "ag.operator_review_liveness_ack_action_not_allowed",
+        ),
+        (
+            {
+                "liveness_status": "STALE",
+                "action": "clear",
+            },
+            "ag.operator_review_liveness_ack_clear_state_missing",
+        ),
+        (
+            {
+                "liveness_status": "STALE",
+                "action": "suppress_for_ttl",
+                "requested_ttl_seconds": 86401,
+            },
+            "ag.operator_review_liveness_ack_ttl_too_large",
+        ),
+    ]
+    for overrides, error_code in cases:
+        payload = {
+            "service_id": "nex-ag",
+            "worker_id": "ag-dispatch-execution-daemon",
+            "worker_type": "operator_review_escalation_dispatch_execution_daemon",
+            "liveness_status": "STALE",
+            "action": "acknowledge_once",
+            "observed_at": "2026-09-16T03:00:00Z",
+        }
+        payload.update(overrides)
+        with pytest.raises(OperatorReviewLivenessAckStateError) as exc_info:
+            build_operator_review_liveness_ack_state_transition(**payload)
+        assert exc_info.value.error_code == error_code
+
+
+def test_liveness_ack_state_transition_keys_and_bad_datetime() -> None:
+    key = acknowledgement_key_for_liveness(
+        service_id="nex-ag",
+        worker_id="ag-dispatch-execution-daemon",
+        liveness_status="MISSING",
+    )
+    transition = build_operator_review_liveness_ack_state_transition(
+        service_id="nex-ag",
+        worker_id="ag-dispatch-execution-daemon",
+        worker_type="operator_review_escalation_dispatch_execution_daemon",
+        liveness_status="MISSING",
+        action="suppress_for_ttl",
+        requested_ttl_seconds=60,
+        suppressed_until="2026-09-16T03:10:00Z",
+        observed_at="2026-09-16T03:00:00Z",
+    )
+
+    assert key == "nex-ag:ag-dispatch-execution-daemon:missing"
+    assert transition["suppressed_until"] == "2026-09-16T03:10:00Z"
+    assert ack_state_id_for_acknowledgement_key(key).startswith("ack-")
+    with pytest.raises(OperatorReviewLivenessAckStateError) as exc_info:
+        project_operator_review_liveness_ack_state_effective_status(
+            sample_ack_record(suppressed_until="bad-datetime"),
+            observed_at="2026-09-16T03:00:00Z",
+        )
+    assert exc_info.value.error_code == "ag.operator_review_liveness_ack_datetime_invalid"
+
+
+def test_liveness_ack_state_effective_status_projection() -> None:
+    active = sample_ack_record(suppressed_until="2026-09-16T03:30:00Z")
+    expired = sample_ack_record(suppressed_until="2026-09-16T02:30:00Z")
+    acknowledged = sample_ack_record(
+        action="acknowledge_once",
+        state_status="ACKNOWLEDGED",
+        requested_ttl_seconds=None,
+        suppressed_until=None,
+    )
+
+    missing_projection = project_operator_review_liveness_ack_state_effective_status(
+        None,
+        observed_at="2026-09-16T03:00:00Z",
+    )
+    active_projection = project_operator_review_liveness_ack_state_effective_status(
+        active,
+        observed_at="2026-09-16T03:00:00Z",
+    )
+    expired_projection = project_operator_review_liveness_ack_state_effective_status(
+        expired,
+        observed_at="2026-09-16T03:00:00Z",
+    )
+    acknowledged_projection = project_operator_review_liveness_ack_state_effective_status(
+        acknowledged,
+        observed_at="2026-09-16T03:00:00Z",
+    )
+
+    assert missing_projection["projection_status"] == "MISSING"
+    assert active_projection["effective_state_status"] == "SUPPRESSED"
+    assert active_projection["expired"] is False
+    assert expired_projection["effective_state_status"] == "EXPIRED"
+    assert expired_projection["expired"] is True
+    assert acknowledged_projection["effective_state_status"] == "ACKNOWLEDGED"
+
+
+def test_liveness_ack_state_defensive_helper_branches() -> None:
+    assert _allowed_actions_for_liveness("UNKNOWN") == ()
+    assert _state_status_for_action("clear") == "CLEARED"
+    with pytest.raises(OperatorReviewLivenessAckStateError) as action_exc:
+        _state_status_for_action("unknown")
+    assert action_exc.value.error_code == (
+        "ag.operator_review_liveness_ack_state_action_invalid"
+    )
+    with pytest.raises(OperatorReviewLivenessAckStateError) as ttl_exc:
+        _transition_suppressed_until(
+            "suppress_for_ttl",
+            None,
+            None,
+            "2026-09-16T03:00:00Z",
+        )
+    assert ttl_exc.value.error_code == "ag.operator_review_liveness_ack_ttl_required"
 
 
 def test_liveness_ack_state_limit_and_default_store_selection() -> None:

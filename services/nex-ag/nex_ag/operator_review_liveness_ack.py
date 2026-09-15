@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -29,6 +31,8 @@ AG_OPERATOR_REVIEW_LIVENESS_ACK_STATE_TABLE = "ag_op_review_ack_state"
 MAX_ACK_COMMENT_PREVIEW_LENGTH = 240
 MAX_ACK_STATE_LIMIT = 200
 DEFAULT_ACK_STATE_LIMIT = 50
+DEFAULT_SUPPRESSION_TTL_SECONDS = 1800
+MAX_SUPPRESSION_TTL_SECONDS = 86400
 
 ACK_LIVENESS_STATUSES = (
     "MISSING",
@@ -45,6 +49,14 @@ ACK_ACTIONS = (
 )
 ACK_STATE_STATUSES = ("ACKNOWLEDGED", "SUPPRESSED", "EXPIRED", "CLEARED")
 ACK_TTL_ACTIONS = ("suppress_for_ttl", "suppress_source_attention_for_ttl")
+ACK_SOURCE_ATTENTION_ACTIONS = (
+    "acknowledge_source_attention",
+    "suppress_source_attention_for_ttl",
+)
+ACK_ACTIONABLE_ACTIONS = ("acknowledge_once", "suppress_for_ttl")
+LIVENESS_ACK_STATE_MUTATION_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_daemon_liveness_ack_state_mutation.v1"
+)
 
 
 class OperatorReviewLivenessAckStateError(ValueError):
@@ -339,6 +351,249 @@ def build_operator_review_liveness_ack_state_record(
         "created_at": observed_created_at,
         "updated_at": observed_updated_at,
         "cleared_at": _datetime_value(cleared_at) if cleared_at else None,
+    }
+
+
+def acknowledgement_key_for_liveness(
+    *,
+    service_id: str,
+    worker_id: str,
+    liveness_status: str,
+) -> str:
+    normalized_service_id = _required_text(
+        service_id,
+        "ag.operator_review_liveness_ack_service_id_invalid",
+        "service_id",
+    )
+    normalized_worker_id = _required_text(
+        worker_id,
+        "ag.operator_review_liveness_ack_worker_id_invalid",
+        "worker_id",
+    )
+    normalized_liveness_status = _required_choice(
+        liveness_status,
+        ACK_LIVENESS_STATUSES,
+        "ag.operator_review_liveness_ack_liveness_status_invalid",
+        "liveness_status",
+    )
+    return (
+        f"{normalized_service_id}:{normalized_worker_id}:"
+        f"{normalized_liveness_status.lower()}"
+    )
+
+
+def ack_state_id_for_acknowledgement_key(acknowledgement_key: str) -> str:
+    normalized_key = _required_text(
+        acknowledgement_key,
+        "ag.operator_review_liveness_ack_key_invalid",
+        "acknowledgement_key",
+    )
+    return f"ack-{uuid5(NAMESPACE_URL, f'nex-ag:{normalized_key}')}"
+
+
+def build_operator_review_liveness_ack_state_transition(
+    existing_state: dict[str, Any] | None = None,
+    *,
+    service_id: str,
+    worker_id: str,
+    worker_type: str,
+    liveness_status: str,
+    action: str,
+    requested_ttl_seconds: int | None = None,
+    suppressed_until: object | None = None,
+    observed_at: object | None = None,
+) -> dict[str, Any]:
+    normalized_liveness_status = _required_choice(
+        liveness_status,
+        ACK_LIVENESS_STATUSES,
+        "ag.operator_review_liveness_ack_liveness_status_invalid",
+        "liveness_status",
+    )
+    normalized_action = _required_choice(
+        action,
+        ACK_ACTIONS,
+        "ag.operator_review_liveness_ack_state_action_invalid",
+        "action",
+    )
+    observed = _datetime_value(observed_at) if observed_at else _utc_now()
+    _required_text(
+        service_id,
+        "ag.operator_review_liveness_ack_service_id_invalid",
+        "service_id",
+    )
+    _required_text(
+        worker_id,
+        "ag.operator_review_liveness_ack_worker_id_invalid",
+        "worker_id",
+    )
+    _required_text(
+        worker_type,
+        "ag.operator_review_liveness_ack_worker_type_invalid",
+        "worker_type",
+    )
+    if normalized_action == "clear":
+        if existing_state is None:
+            raise OperatorReviewLivenessAckStateError(
+                "clear requires an existing acknowledgement state.",
+                error_code="ag.operator_review_liveness_ack_clear_state_missing",
+            )
+        target_status = "CLEARED"
+    else:
+        allowed_actions = _allowed_actions_for_liveness(normalized_liveness_status)
+        if normalized_action not in allowed_actions:
+            raise OperatorReviewLivenessAckStateError(
+                "action is not allowed for the current liveness status.",
+                error_code="ag.operator_review_liveness_ack_action_not_allowed",
+            )
+        target_status = _state_status_for_action(normalized_action)
+
+    ttl_seconds = _transition_ttl_seconds(
+        normalized_action,
+        requested_ttl_seconds,
+    )
+    expires_at = _transition_suppressed_until(
+        normalized_action,
+        ttl_seconds,
+        suppressed_until,
+        observed,
+    )
+    acknowledgement_key = acknowledgement_key_for_liveness(
+        service_id=service_id,
+        worker_id=worker_id,
+        liveness_status=normalized_liveness_status,
+    )
+    previous_status = (
+        str(existing_state.get("state_status") or "")
+        if isinstance(existing_state, dict)
+        else None
+    )
+    return {
+        "mutation_schema_version": LIVENESS_ACK_STATE_MUTATION_SCHEMA_VERSION,
+        "transition_status": "ACCEPTED",
+        "acknowledgement_key": acknowledgement_key,
+        "ack_state_id": ack_state_id_for_acknowledgement_key(acknowledgement_key),
+        "action": normalized_action,
+        "previous_state_status": previous_status,
+        "target_state_status": target_status,
+        "liveness_status": normalized_liveness_status,
+        "requested_ttl_seconds": ttl_seconds,
+        "suppressed_until": expires_at,
+        "observed_at": observed,
+        "guardrails": {
+            "source_liveness_projection_suppressed": False,
+            "raw_comment_stored": False,
+            "raw_idempotency_key_stored": False,
+            "process_control_invoked": False,
+        },
+    }
+
+
+def apply_operator_review_liveness_ack_state_transition(
+    existing_state: dict[str, Any] | None = None,
+    *,
+    service_id: str,
+    worker_id: str,
+    worker_type: str,
+    liveness_status: str,
+    action: str,
+    operator_ref: dict[str, Any],
+    reason_codes: list[str],
+    comment: str | None = None,
+    idempotency_key: str | None = None,
+    requested_ttl_seconds: int | None = None,
+    suppressed_until: object | None = None,
+    observed_at: object | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    transition = build_operator_review_liveness_ack_state_transition(
+        existing_state,
+        service_id=service_id,
+        worker_id=worker_id,
+        worker_type=worker_type,
+        liveness_status=liveness_status,
+        action=action,
+        requested_ttl_seconds=requested_ttl_seconds,
+        suppressed_until=suppressed_until,
+        observed_at=observed_at,
+    )
+    state_metadata = dict(metadata or {})
+    state_metadata["last_transition"] = transition
+    state = build_operator_review_liveness_ack_state_record(
+        ack_state_id=transition["ack_state_id"],
+        acknowledgement_key=transition["acknowledgement_key"],
+        service_id=service_id,
+        worker_id=worker_id,
+        worker_type=worker_type,
+        liveness_status=transition["liveness_status"],
+        action=transition["action"],
+        state_status=transition["target_state_status"],
+        operator_ref=operator_ref,
+        reason_codes=reason_codes,
+        comment=comment,
+        idempotency_key=idempotency_key,
+        requested_ttl_seconds=transition["requested_ttl_seconds"],
+        suppressed_until=transition["suppressed_until"],
+        metadata=state_metadata,
+        created_at=(
+            existing_state.get("created_at")
+            if isinstance(existing_state, dict)
+            and existing_state.get("created_at") is not None
+            else transition["observed_at"]
+        ),
+        updated_at=transition["observed_at"],
+        cleared_at=(
+            transition["observed_at"]
+            if transition["target_state_status"] == "CLEARED"
+            else None
+        ),
+    )
+    return {
+        "mutation_schema_version": LIVENESS_ACK_STATE_MUTATION_SCHEMA_VERSION,
+        "mutation_status": "ACCEPTED",
+        "transition": transition,
+        "state": state,
+    }
+
+
+def project_operator_review_liveness_ack_state_effective_status(
+    state: dict[str, Any] | None,
+    *,
+    observed_at: object | None = None,
+) -> dict[str, Any]:
+    observed = _datetime_value(observed_at) if observed_at else _utc_now()
+    if not isinstance(state, dict):
+        return {
+            "projection_schema_version": (
+                "ag_operator_review_escalation_dispatch_daemon_liveness_ack_state_effective_status.v1"
+            ),
+            "projection_status": "MISSING",
+            "observed_at": observed,
+            "state_present": False,
+            "stored_state_status": None,
+            "effective_state_status": None,
+            "expired": False,
+            "suppressed_until": None,
+        }
+    stored_status = str(state.get("state_status") or "")
+    suppressed_until = state.get("suppressed_until")
+    expired = (
+        stored_status == "SUPPRESSED"
+        and suppressed_until is not None
+        and _parse_datetime(suppressed_until) <= _parse_datetime(observed)
+    )
+    return {
+        "projection_schema_version": (
+            "ag_operator_review_escalation_dispatch_daemon_liveness_ack_state_effective_status.v1"
+        ),
+        "projection_status": "READY",
+        "observed_at": observed,
+        "state_present": True,
+        "stored_state_status": stored_status,
+        "effective_state_status": "EXPIRED" if expired else stored_status,
+        "expired": expired,
+        "suppressed_until": (
+            _datetime_value(suppressed_until) if suppressed_until is not None else None
+        ),
     }
 
 
@@ -711,3 +966,70 @@ def _ack_state_store_unavailable_error() -> OperatorReviewLivenessAckStateError:
         error_code="ag.operator_review_liveness_ack_state_store_unavailable",
         status_code=503,
     )
+
+
+def _allowed_actions_for_liveness(liveness_status: str) -> tuple[str, ...]:
+    if liveness_status in {"MISSING", "STALE"}:
+        return ACK_ACTIONABLE_ACTIONS
+    if liveness_status in {"SOURCE_NOT_CONFIGURED", "SOURCE_UNAVAILABLE"}:
+        return ACK_SOURCE_ATTENTION_ACTIONS
+    return ()
+
+
+def _state_status_for_action(action: str) -> str:
+    if action in {"acknowledge_once", "acknowledge_source_attention"}:
+        return "ACKNOWLEDGED"
+    if action in ACK_TTL_ACTIONS:
+        return "SUPPRESSED"
+    if action == "clear":
+        return "CLEARED"
+    raise OperatorReviewLivenessAckStateError(
+        "action is not supported by the acknowledgement state machine.",
+        error_code="ag.operator_review_liveness_ack_state_action_invalid",
+    )
+
+
+def _transition_ttl_seconds(action: str, requested_ttl_seconds: int | None) -> int | None:
+    if action not in ACK_TTL_ACTIONS:
+        return None
+    ttl_seconds = (
+        DEFAULT_SUPPRESSION_TTL_SECONDS
+        if requested_ttl_seconds is None
+        else _optional_positive_int(requested_ttl_seconds, "requested_ttl_seconds")
+    )
+    if ttl_seconds > MAX_SUPPRESSION_TTL_SECONDS:
+        raise OperatorReviewLivenessAckStateError(
+            "requested_ttl_seconds exceeds the maximum suppression TTL.",
+            error_code="ag.operator_review_liveness_ack_ttl_too_large",
+        )
+    return ttl_seconds
+
+
+def _transition_suppressed_until(
+    action: str,
+    ttl_seconds: int | None,
+    suppressed_until: object | None,
+    observed_at: str,
+) -> str | None:
+    if action not in ACK_TTL_ACTIONS:
+        return None
+    if suppressed_until is not None:
+        return _datetime_value(suppressed_until)
+    if ttl_seconds is None:
+        raise OperatorReviewLivenessAckStateError(
+            "requested_ttl_seconds is required for TTL suppression.",
+            error_code="ag.operator_review_liveness_ack_ttl_required",
+        )
+    expires_at = _parse_datetime(observed_at) + timedelta(seconds=ttl_seconds)
+    return expires_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _parse_datetime(value: object) -> datetime:
+    normalized = _datetime_value(value)
+    try:
+        return datetime.fromisoformat(normalized.replace("Z", "+00:00")).astimezone(UTC)
+    except ValueError as exc:
+        raise OperatorReviewLivenessAckStateError(
+            "datetime values must be ISO-8601 timestamps.",
+            error_code="ag.operator_review_liveness_ack_datetime_invalid",
+        ) from exc
