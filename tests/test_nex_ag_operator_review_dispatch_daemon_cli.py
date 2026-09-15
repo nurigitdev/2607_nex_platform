@@ -5,6 +5,7 @@ from io import StringIO
 
 import pytest
 
+from nex_runtime import InMemoryOperationalEventStore, OperationalEventEmitter
 from nex_ag.operator_review_dispatch_daemon import (
     DISPATCH_EXECUTION_DAEMON_CLI_PLAN_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_CLI_RESULT_SCHEMA_VERSION,
@@ -103,6 +104,26 @@ def test_dispatch_daemon_cli_execute_run_once_idle() -> None:
     assert result["runtime_state"]["state_status"] == "STOPPED"
     assert result["new_tables_required"] is False
     assert_dispatch_execution_result_redacted(result)
+
+
+def test_dispatch_daemon_cli_execute_run_once_emits_lifecycle_events() -> None:
+    event_store = InMemoryOperationalEventStore()
+    emitter = OperationalEventEmitter(service_id="nex-ag", store=event_store)
+
+    result = execute_dispatch_execution_daemon_cli(
+        action="run_once",
+        environ={DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1"},
+        request_id="request-0775-lifecycle",
+        confirm_tick=True,
+        dry_run=True,
+        cycle_limit=1,
+        started_at="2026-09-15T12:05:00Z",
+        lifecycle_emitter=emitter,
+    )
+
+    assert result["result_status"] == "EXECUTED"
+    assert [event["ok"] for event in result["lifecycle_events"]] == [True, True]
+    assert len(event_store.list_events(service_id="nex-ag")) == 2
 
 
 def test_dispatch_daemon_cli_execute_run_once_blocks_without_confirm() -> None:

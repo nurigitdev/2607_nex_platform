@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from typing import Any, Mapping, Sequence, TextIO
 from uuid import NAMESPACE_URL, uuid5
 
+from nex_runtime import OperationalEventEmitter
+
 from nex_ag.operator_review_cases import (
     OperatorReviewCaseService,
     OperatorReviewCaseStore,
@@ -21,6 +23,7 @@ from nex_ag.operator_review_dispatch_execution import (
     build_dispatch_execution_daemon_policy,
     build_dispatch_execution_daemon_process_metadata,
     build_dispatch_execution_daemon_process_runtime_state,
+    emit_dispatch_execution_daemon_lifecycle_event,
     run_dispatch_execution_daemon_bounded_loop,
     summarize_dispatch_execution_daemon_bounded_loop_result,
     assert_dispatch_execution_result_redacted,
@@ -47,6 +50,7 @@ def build_dispatch_execution_daemon_cli_plan(
     dry_run: bool | None = None,
     cycle_limit: int | None = None,
     started_at: str | None = None,
+    lifecycle_emitter: OperationalEventEmitter | None = None,
 ) -> dict[str, Any]:
     normalized_action = _normalize_cli_action(action)
     now = started_at or _utc_now()
@@ -103,6 +107,7 @@ def execute_dispatch_execution_daemon_cli(
     dry_run: bool | None = None,
     cycle_limit: int | None = None,
     started_at: str | None = None,
+    lifecycle_emitter: OperationalEventEmitter | None = None,
 ) -> dict[str, Any]:
     plan = build_dispatch_execution_daemon_cli_plan(
         action=action,
@@ -116,7 +121,19 @@ def execute_dispatch_execution_daemon_cli(
         started_at=started_at,
     )
     loop_result = None
+    lifecycle_events = []
     if plan["action"] == "run_once":
+        if lifecycle_emitter is not None:
+            lifecycle_events.append(
+                emit_dispatch_execution_daemon_lifecycle_event(
+                    lifecycle_emitter,
+                    process_metadata=plan["process_metadata"],
+                    event_name="started",
+                    request_id=str(plan["request_id"]),
+                    trace_id=optional_text(plan.get("trace_id")),
+                    occurred_at=started_at,
+                ).to_summary()
+            )
         loop_result = build_dispatch_execution_daemon_bounded_loop_result(
             service or _empty_operator_review_service(),
             plan,
@@ -129,6 +146,19 @@ def execute_dispatch_execution_daemon_cli(
         loop_result=loop_result,
         observed_at=started_at,
     )
+    if loop_result is not None and lifecycle_emitter is not None:
+        lifecycle_events.append(
+            emit_dispatch_execution_daemon_lifecycle_event(
+                lifecycle_emitter,
+                process_metadata=plan["process_metadata"],
+                event_name="completed",
+                loop_result=loop_result,
+                runtime_state=runtime_state,
+                request_id=str(plan["request_id"]),
+                trace_id=optional_text(plan.get("trace_id")),
+                occurred_at=started_at,
+            ).to_summary()
+        )
     result = {
         "daemon_cli_result_schema_version": (
             DISPATCH_EXECUTION_DAEMON_CLI_RESULT_SCHEMA_VERSION
@@ -141,6 +171,7 @@ def execute_dispatch_execution_daemon_cli(
         )
         if loop_result is not None
         else None,
+        "lifecycle_events": lifecycle_events,
         "runtime_state": runtime_state,
         "new_tables_required": False,
         "redaction": plan["redaction"],

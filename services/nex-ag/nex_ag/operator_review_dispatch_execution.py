@@ -11,6 +11,8 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 from uuid import NAMESPACE_URL, uuid5
 
+from nex_runtime import OperationalEventEmitter, OperationalEventEmitResult
+
 from nex_ag.operator_reviews import (
     OperatorReviewNoteError,
     operator_note_preview,
@@ -57,6 +59,9 @@ DISPATCH_EXECUTION_DAEMON_PROCESS_METADATA_SCHEMA_VERSION = (
 )
 DISPATCH_EXECUTION_DAEMON_PROCESS_RUNTIME_STATE_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_daemon_process_runtime_state.v1"
+)
+DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_DETAILS_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_daemon_lifecycle_event_details.v1"
 )
 DISPATCH_EXECUTION_DAEMON_CONTROL_REQUEST_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_daemon_control_request.v1"
@@ -110,6 +115,15 @@ DISPATCH_LIVE_HTTP_TRANSPORT_USER_AGENT = (
 )
 DEFAULT_DISPATCH_EXECUTION_DAEMON_ENTRYPOINT = (
     "python -m nex_ag.operator_review_dispatch_daemon"
+)
+DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_STARTED = (
+    "ag.operator_review.escalation_dispatch.daemon_process.started"
+)
+DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_COMPLETED = (
+    "ag.operator_review.escalation_dispatch.daemon_process.completed"
+)
+DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_BLOCKED = (
+    "ag.operator_review.escalation_dispatch.daemon_process.blocked"
 )
 
 DISPATCH_EXECUTION_PROVIDER_MODE_ENV = "NEX_AG_DISPATCH_EXECUTION_PROVIDER_MODE"
@@ -951,6 +965,112 @@ def build_dispatch_execution_daemon_process_runtime_state(
     }
     assert_dispatch_execution_result_redacted(state)
     return state
+
+
+def build_dispatch_execution_daemon_lifecycle_event_details(
+    process_metadata: Mapping[str, Any],
+    *,
+    loop_result: Mapping[str, Any] | None = None,
+    runtime_state: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    loop_summary = (
+        summarize_dispatch_execution_daemon_bounded_loop_result(loop_result)
+        if loop_result is not None
+        else None
+    )
+    details = {
+        "daemon_lifecycle_event_details_schema_version": (
+            DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_DETAILS_SCHEMA_VERSION
+        ),
+        "process_run_id": process_metadata.get("process_run_id"),
+        "worker_id": process_metadata.get("worker_id"),
+        "process_status": process_metadata.get("process_status"),
+        "state_status": (runtime_state or {}).get("state_status")
+        if isinstance(runtime_state, Mapping)
+        else None,
+        "loop_status": (loop_summary or {}).get("loop_status")
+        if isinstance(loop_summary, Mapping)
+        else None,
+        "stop_reason": (loop_summary or {}).get("stop_reason")
+        if isinstance(loop_summary, Mapping)
+        else None,
+        "cycle_count": _non_negative_int((loop_summary or {}).get("cycle_count"))
+        if isinstance(loop_summary, Mapping)
+        else 0,
+        "processed_count": _non_negative_int(
+            (loop_summary or {}).get("processed_count")
+        )
+        if isinstance(loop_summary, Mapping)
+        else 0,
+        "succeeded_count": _non_negative_int(
+            (loop_summary or {}).get("succeeded_count")
+        )
+        if isinstance(loop_summary, Mapping)
+        else 0,
+        "failed_count": _non_negative_int((loop_summary or {}).get("failed_count"))
+        if isinstance(loop_summary, Mapping)
+        else 0,
+        "retry_wait_count": _non_negative_int(
+            (loop_summary or {}).get("retry_wait_count")
+        )
+        if isinstance(loop_summary, Mapping)
+        else 0,
+        "source_table": process_metadata.get("source_table", "ag_op_esc_dispatches"),
+        "lifecycle_event_source": "service_operational_events",
+        "liveness_source": process_metadata.get("liveness_source"),
+        "new_tables_required": False,
+        "raw_provider_payload_included": False,
+        "raw_request_payload_included": False,
+        "sensitive_values_included": False,
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(details)
+    return details
+
+
+def emit_dispatch_execution_daemon_lifecycle_event(
+    emitter: OperationalEventEmitter | None,
+    *,
+    process_metadata: Mapping[str, Any],
+    event_name: str,
+    loop_result: Mapping[str, Any] | None = None,
+    runtime_state: Mapping[str, Any] | None = None,
+    request_id: str | None = None,
+    trace_id: str | None = None,
+    occurred_at: str | None = None,
+) -> OperationalEventEmitResult:
+    if emitter is None:
+        return OperationalEventEmitResult.failed(
+            error_code=(
+                "ag.operator_review_escalation_dispatch_daemon_lifecycle_"
+                "emitter_not_configured"
+            ),
+            detail="Dispatch daemon lifecycle emitter is not configured.",
+            status_code=503,
+        )
+    event_type, severity, message = _dispatch_daemon_lifecycle_event_envelope(
+        event_name,
+        loop_result=loop_result,
+        runtime_state=runtime_state,
+    )
+    process_run_id = str(process_metadata.get("process_run_id") or "unknown")
+    return emitter.safe_emit(
+        event_type=event_type,
+        severity=severity,
+        message=message,
+        trace_id=trace_id,
+        request_id=request_id,
+        subject_ref={
+            "type": "operator_review_dispatch_daemon_process",
+            "id": process_run_id,
+        },
+        details=build_dispatch_execution_daemon_lifecycle_event_details(
+            process_metadata,
+            loop_result=loop_result,
+            runtime_state=runtime_state,
+        ),
+        created_at=occurred_at,
+    )
 
 
 def build_dispatch_execution_daemon_tick_event(
@@ -2768,6 +2888,42 @@ def _dispatch_daemon_process_runtime_state_status(
     if loop_status in {"COMPLETED", "IDLE", "SKIPPED"}:
         return "STOPPED"
     return "UNKNOWN"
+
+
+def _dispatch_daemon_lifecycle_event_envelope(
+    event_name: str,
+    *,
+    loop_result: Mapping[str, Any] | None,
+    runtime_state: Mapping[str, Any] | None,
+) -> tuple[str, str, str]:
+    normalized = str(event_name or "").replace("-", "_")
+    state_status = (
+        str(runtime_state.get("state_status") or "")
+        if isinstance(runtime_state, Mapping)
+        else ""
+    )
+    loop_status = (
+        str(loop_result.get("loop_status") or "")
+        if isinstance(loop_result, Mapping)
+        else ""
+    )
+    if normalized == "started":
+        return (
+            DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_STARTED,
+            "INFO",
+            "AG dispatch daemon process started.",
+        )
+    if state_status == "DEGRADED" or loop_status == "BLOCKED":
+        return (
+            DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_BLOCKED,
+            "WARNING",
+            "AG dispatch daemon process blocked.",
+        )
+    return (
+        DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_COMPLETED,
+        "INFO",
+        "AG dispatch daemon process completed.",
+    )
 
 
 def _count_by_key(

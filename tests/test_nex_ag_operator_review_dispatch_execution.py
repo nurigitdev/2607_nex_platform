@@ -8,6 +8,7 @@ from urllib.error import HTTPError, URLError
 import pytest
 
 import nex_ag.operator_review_dispatch_execution as dispatch_execution
+from nex_runtime import InMemoryOperationalEventStore, OperationalEventEmitter
 from nex_ag.operator_review_cases import (
     apply_operator_review_escalation_dispatch_action,
     build_operator_review_escalation_dispatch_plan,
@@ -27,6 +28,10 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV,
     DISPATCH_EXECUTION_DAEMON_ENABLED_ENV,
     DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS_ENV,
+    DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_BLOCKED,
+    DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_COMPLETED,
+    DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_DETAILS_SCHEMA_VERSION,
+    DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_STARTED,
     DISPATCH_EXECUTION_DAEMON_LOOP_POLICY_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_POLICY_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_PROCESS_METADATA_SCHEMA_VERSION,
@@ -66,6 +71,7 @@ from nex_ag.operator_review_dispatch_execution import (
     build_dispatch_execution_daemon_control_admission,
     build_dispatch_execution_daemon_control_request,
     build_dispatch_execution_daemon_loop_policy,
+    build_dispatch_execution_daemon_lifecycle_event_details,
     build_dispatch_execution_daemon_process_metadata,
     build_dispatch_execution_daemon_process_runtime_state,
     build_dispatch_execution_daemon_tick_event,
@@ -89,6 +95,7 @@ from nex_ag.operator_review_dispatch_execution import (
     execute_dispatch_with_mock_external_incident_provider,
     execute_dispatch_with_mock_notification_provider,
     execute_dispatch_with_provider_router,
+    emit_dispatch_execution_daemon_lifecycle_event,
     normalize_dispatch_execution_provider_mode,
     normalize_dispatch_execution_provider_profile,
     record_dispatch_execution_result_metadata,
@@ -699,6 +706,144 @@ def test_dispatch_execution_daemon_process_runtime_state_terminal_statuses() -> 
             {"enabled": True, "subprocess_started": True}
         )
         == "RUNNING"
+    )
+
+
+def test_dispatch_execution_daemon_lifecycle_details_are_safe() -> None:
+    metadata = build_dispatch_execution_daemon_process_metadata(
+        process_run_id="process-run-0775",
+        worker_id="worker-0775",
+        started_at="2026-09-15T12:00:00Z",
+    )
+    details = build_dispatch_execution_daemon_lifecycle_event_details(metadata)
+
+    assert details["daemon_lifecycle_event_details_schema_version"] == (
+        DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_DETAILS_SCHEMA_VERSION
+    )
+    assert details["process_run_id"] == "process-run-0775"
+    assert details["worker_id"] == "worker-0775"
+    assert details["cycle_count"] == 0
+    assert details["processed_count"] == 0
+    assert details["lifecycle_event_source"] == "service_operational_events"
+    assert details["new_tables_required"] is False
+    assert details["raw_provider_payload_included"] is False
+    assert_dispatch_execution_result_redacted(details)
+
+
+def test_dispatch_execution_daemon_lifecycle_emit_started() -> None:
+    event_store = InMemoryOperationalEventStore()
+    emitter = OperationalEventEmitter(service_id="nex-ag", store=event_store)
+    metadata = build_dispatch_execution_daemon_process_metadata(
+        process_run_id="process-run-0775-started",
+        worker_id="worker-0775",
+        started_at="2026-09-15T12:01:00Z",
+    )
+
+    result = emit_dispatch_execution_daemon_lifecycle_event(
+        emitter,
+        process_metadata=metadata,
+        event_name="started",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        occurred_at="2026-09-15T12:01:01Z",
+    )
+
+    assert result.ok is True
+    assert result.event is not None
+    assert result.event["event_type"] == DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_STARTED
+    assert result.event["severity"] == "INFO"
+    assert result.event["subject_ref"] == {
+        "type": "operator_review_dispatch_daemon_process",
+        "id": "process-run-0775-started",
+    }
+    assert event_store.get_event(result.event["event_id"]) is not None
+
+
+def test_dispatch_execution_daemon_lifecycle_emit_completed_and_blocked() -> None:
+    event_store = InMemoryOperationalEventStore()
+    emitter = OperationalEventEmitter(service_id="nex-ag", store=event_store)
+    service, _dispatch_store = build_dispatch_service()
+    policy = build_dispatch_execution_daemon_policy(
+        {DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1"}
+    )
+    metadata = build_dispatch_execution_daemon_process_metadata(
+        policy=policy,
+        process_run_id="process-run-0775-completed",
+        started_at="2026-09-15T12:02:00Z",
+    )
+    idle_loop = run_dispatch_execution_daemon_bounded_loop(
+        service,
+        request_id=REQUEST_ID,
+        policy=policy,
+        confirm_tick=True,
+        started_at="2026-09-15T12:02:01Z",
+    )
+    idle_state = build_dispatch_execution_daemon_process_runtime_state(
+        metadata,
+        loop_result=idle_loop,
+        observed_at="2026-09-15T12:02:02Z",
+    )
+    completed = emit_dispatch_execution_daemon_lifecycle_event(
+        emitter,
+        process_metadata=metadata,
+        event_name="completed",
+        loop_result=idle_loop,
+        runtime_state=idle_state,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        occurred_at="2026-09-15T12:02:03Z",
+    )
+
+    assert completed.ok is True
+    assert completed.event is not None
+    assert completed.event["event_type"] == (
+        DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_COMPLETED
+    )
+    assert completed.event["details"]["loop_status"] == "IDLE"
+
+    blocked_loop = run_dispatch_execution_daemon_bounded_loop(
+        service,
+        request_id=REQUEST_ID,
+        policy=policy,
+        confirm_tick=False,
+        started_at="2026-09-15T12:03:00Z",
+    )
+    blocked_state = build_dispatch_execution_daemon_process_runtime_state(
+        metadata,
+        loop_result=blocked_loop,
+    )
+    blocked = emit_dispatch_execution_daemon_lifecycle_event(
+        emitter,
+        process_metadata=metadata,
+        event_name="completed",
+        loop_result=blocked_loop,
+        runtime_state=blocked_state,
+    )
+
+    assert blocked.ok is True
+    assert blocked.event is not None
+    assert blocked.event["event_type"] == DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_BLOCKED
+    assert blocked.event["severity"] == "WARNING"
+    assert blocked.event["details"]["stop_reason"] == "confirm_tick_required"
+
+
+def test_dispatch_execution_daemon_lifecycle_emit_reports_missing_emitter() -> None:
+    metadata = build_dispatch_execution_daemon_process_metadata(
+        process_run_id="process-run-0775-missing",
+        started_at="2026-09-15T12:04:00Z",
+    )
+
+    result = emit_dispatch_execution_daemon_lifecycle_event(
+        None,
+        process_metadata=metadata,
+        event_name="started",
+    )
+
+    assert result.ok is False
+    assert result.status_code == 503
+    assert result.error_code == (
+        "ag.operator_review_escalation_dispatch_daemon_lifecycle_"
+        "emitter_not_configured"
     )
 
 
