@@ -5,7 +5,12 @@ from io import StringIO
 
 import pytest
 
-from nex_runtime import InMemoryOperationalEventStore, OperationalEventEmitter
+from nex_runtime import (
+    InMemoryOperationalEventStore,
+    InMemoryWorkerHeartbeatStore,
+    OperationalEventEmitter,
+    WorkerHeartbeatEmitter,
+)
 from nex_ag.operator_review_dispatch_daemon import (
     DISPATCH_EXECUTION_DAEMON_CLI_PLAN_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_CLI_RESULT_SCHEMA_VERSION,
@@ -83,6 +88,7 @@ def test_dispatch_daemon_cli_execute_plan_only() -> None:
     assert result["loop_result"] is None
     assert result["loop_summary"] is None
     assert result["runtime_state"]["state_status"] == "DISABLED"
+    assert result["heartbeat_events"] == []
     assert "loop=NONE" in summary_line(result)
 
 
@@ -102,6 +108,7 @@ def test_dispatch_daemon_cli_execute_run_once_idle() -> None:
     assert result["loop_summary"]["loop_status"] == "IDLE"
     assert result["loop_summary"]["stop_reason"] == "idle"
     assert result["runtime_state"]["state_status"] == "STOPPED"
+    assert result["heartbeat_events"] == []
     assert result["new_tables_required"] is False
     assert_dispatch_execution_result_redacted(result)
 
@@ -124,6 +131,87 @@ def test_dispatch_daemon_cli_execute_run_once_emits_lifecycle_events() -> None:
     assert result["result_status"] == "EXECUTED"
     assert [event["ok"] for event in result["lifecycle_events"]] == [True, True]
     assert len(event_store.list_events(service_id="nex-ag")) == 2
+
+
+def test_dispatch_daemon_cli_execute_run_once_emits_heartbeats() -> None:
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_emitter = WorkerHeartbeatEmitter(
+        service_id="nex-ag",
+        worker_id="ag-dispatch-execution-daemon",
+        worker_type="operator_review_dispatch_daemon",
+        store=heartbeat_store,
+        started_at="2026-09-15T13:10:00Z",
+    )
+
+    result = execute_dispatch_execution_daemon_cli(
+        action="run_once",
+        environ={DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1"},
+        request_id="request-0783-heartbeat",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+        confirm_tick=True,
+        dry_run=True,
+        cycle_limit=1,
+        started_at="2026-09-15T13:10:00Z",
+        heartbeat_emitter=heartbeat_emitter,
+    )
+
+    assert result["result_status"] == "EXECUTED"
+    assert [event["ok"] for event in result["heartbeat_events"]] == [
+        True,
+        True,
+        True,
+    ]
+    assert [event["status"] for event in result["heartbeat_events"]] == [
+        "STARTING",
+        "BUSY",
+        "STOPPED",
+    ]
+    stored = heartbeat_store.get_heartbeat(
+        "nex-ag",
+        "ag-dispatch-execution-daemon",
+    )
+    assert stored is not None
+    assert stored["status"] == "STOPPED"
+    assert stored["metadata"]["process_run_id"] == result["plan"]["process_metadata"][
+        "process_run_id"
+    ]
+    assert stored["metadata"]["liveness_source"] == "service_worker_heartbeats"
+    assert "heartbeats=3" in summary_line(result)
+
+
+def test_dispatch_daemon_cli_execute_blocked_run_emits_error_heartbeat() -> None:
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_emitter = WorkerHeartbeatEmitter(
+        service_id="nex-ag",
+        worker_id="ag-dispatch-execution-daemon",
+        worker_type="operator_review_dispatch_daemon",
+        store=heartbeat_store,
+        started_at="2026-09-15T13:11:00Z",
+    )
+
+    result = execute_dispatch_execution_daemon_cli(
+        action="run_once",
+        environ={DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1"},
+        request_id="request-0783-blocked",
+        confirm_tick=False,
+        dry_run=True,
+        cycle_limit=1,
+        started_at="2026-09-15T13:11:00Z",
+        heartbeat_emitter=heartbeat_emitter,
+    )
+
+    assert result["runtime_state"]["state_status"] == "DEGRADED"
+    assert [event["status"] for event in result["heartbeat_events"]] == [
+        "STARTING",
+        "BUSY",
+        "ERROR",
+    ]
+    stored = heartbeat_store.get_heartbeat(
+        "nex-ag",
+        "ag-dispatch-execution-daemon",
+    )
+    assert stored is not None
+    assert stored["status"] == "ERROR"
 
 
 def test_dispatch_daemon_cli_execute_run_once_blocks_without_confirm() -> None:

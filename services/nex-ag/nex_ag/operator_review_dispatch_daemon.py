@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import Any, Mapping, Sequence, TextIO
 from uuid import NAMESPACE_URL, uuid5
 
-from nex_runtime import OperationalEventEmitter
+from nex_runtime import OperationalEventEmitter, WorkerHeartbeatEmitter
 
 from nex_ag.operator_review_cases import (
     OperatorReviewCaseService,
@@ -21,6 +21,7 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_ENABLED_ENV,
     build_dispatch_execution_daemon_loop_policy,
     build_dispatch_execution_daemon_policy,
+    build_dispatch_execution_daemon_heartbeat,
     build_dispatch_execution_daemon_process_metadata,
     build_dispatch_execution_daemon_process_runtime_state,
     emit_dispatch_execution_daemon_lifecycle_event,
@@ -50,7 +51,6 @@ def build_dispatch_execution_daemon_cli_plan(
     dry_run: bool | None = None,
     cycle_limit: int | None = None,
     started_at: str | None = None,
-    lifecycle_emitter: OperationalEventEmitter | None = None,
 ) -> dict[str, Any]:
     normalized_action = _normalize_cli_action(action)
     now = started_at or _utc_now()
@@ -108,6 +108,7 @@ def execute_dispatch_execution_daemon_cli(
     cycle_limit: int | None = None,
     started_at: str | None = None,
     lifecycle_emitter: OperationalEventEmitter | None = None,
+    heartbeat_emitter: WorkerHeartbeatEmitter | None = None,
 ) -> dict[str, Any]:
     plan = build_dispatch_execution_daemon_cli_plan(
         action=action,
@@ -122,7 +123,37 @@ def execute_dispatch_execution_daemon_cli(
     )
     loop_result = None
     lifecycle_events = []
+    heartbeat_events = []
     if plan["action"] == "run_once":
+        if heartbeat_emitter is not None:
+            heartbeat_events.append(
+                heartbeat_emitter.safe_emit(
+                    status="STARTING",
+                    trace_id=optional_text(plan.get("trace_id")),
+                    metadata=build_dispatch_execution_daemon_heartbeat(
+                        plan["process_metadata"],
+                        status="STARTING",
+                        trace_id=optional_text(plan.get("trace_id")),
+                        observed_at=started_at,
+                    )["metadata"],
+                    observed_at=started_at,
+                ).to_summary()
+            )
+            heartbeat_events.append(
+                heartbeat_emitter.safe_emit(
+                    status="BUSY",
+                    active_job_id=_heartbeat_active_job_id(plan),
+                    trace_id=optional_text(plan.get("trace_id")),
+                    metadata=build_dispatch_execution_daemon_heartbeat(
+                        plan["process_metadata"],
+                        status="BUSY",
+                        active_job_id=_heartbeat_active_job_id(plan),
+                        trace_id=optional_text(plan.get("trace_id")),
+                        observed_at=started_at,
+                    )["metadata"],
+                    observed_at=started_at,
+                ).to_summary()
+            )
         if lifecycle_emitter is not None:
             lifecycle_events.append(
                 emit_dispatch_execution_daemon_lifecycle_event(
@@ -146,6 +177,24 @@ def execute_dispatch_execution_daemon_cli(
         loop_result=loop_result,
         observed_at=started_at,
     )
+    if loop_result is not None and heartbeat_emitter is not None:
+        final_status = (
+            "ERROR" if runtime_state["state_status"] == "DEGRADED" else "STOPPED"
+        )
+        heartbeat_events.append(
+            heartbeat_emitter.safe_emit(
+                status=final_status,
+                trace_id=optional_text(plan.get("trace_id")),
+                metadata=build_dispatch_execution_daemon_heartbeat(
+                    plan["process_metadata"],
+                    runtime_state=runtime_state,
+                    status=final_status,
+                    trace_id=optional_text(plan.get("trace_id")),
+                    observed_at=started_at,
+                )["metadata"],
+                observed_at=started_at,
+            ).to_summary()
+        )
     if loop_result is not None and lifecycle_emitter is not None:
         lifecycle_events.append(
             emit_dispatch_execution_daemon_lifecycle_event(
@@ -172,6 +221,7 @@ def execute_dispatch_execution_daemon_cli(
         if loop_result is not None
         else None,
         "lifecycle_events": lifecycle_events,
+        "heartbeat_events": heartbeat_events,
         "runtime_state": runtime_state,
         "new_tables_required": False,
         "redaction": plan["redaction"],
@@ -219,6 +269,7 @@ def summary_line(result: Mapping[str, Any]) -> str:
         f"action={plan.get('action')} "
         f"state={runtime_state.get('state_status')} "
         f"loop={loop_summary.get('loop_status', 'NONE')} "
+        f"heartbeats={len(result.get('heartbeat_events') or [])} "
         f"stop={loop_summary.get('stop_reason', 'none')} "
         f"new_tables={result.get('new_tables_required')}"
     )
@@ -293,6 +344,10 @@ def _normalize_cli_action(action: str) -> str:
     if normalized not in {"plan", "run_once"}:
         raise ValueError(f"Unsupported dispatch daemon CLI action: {action}")
     return normalized
+
+
+def _heartbeat_active_job_id(plan: Mapping[str, Any]) -> str:
+    return f"dispatch-daemon-loop:{plan['request_id']}"
 
 
 def _default_request_id(action: str, worker_id: str, started_at: str) -> str:
