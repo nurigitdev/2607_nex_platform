@@ -2553,6 +2553,7 @@
         "attention",
         "recent",
         "daemon_controls",
+        "daemon_process",
         "source_statuses",
         "dispatch_list_path",
         "dispatch_detail_path_template",
@@ -2695,6 +2696,9 @@
         "daemon_controls": {
           "$ref": "#/$defs/dashboard_operator_review_dispatch_daemon_controls"
         },
+        "daemon_process": {
+          "$ref": "#/$defs/dashboard_operator_review_dispatch_daemon_process"
+        },
         "source_statuses": {
           "type": "object",
           "additionalProperties": {
@@ -2782,6 +2786,109 @@
           "minLength": 1
         },
         "tick_once_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_trace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "dashboard_operator_review_dispatch_daemon_process": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "projection_status",
+        "summary",
+        "process_metadata",
+        "runtime_state",
+        "source_statuses",
+        "process_control_path",
+        "cli_entrypoint",
+        "redaction"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "const": "ag_operator_review_escalation_dispatch_daemon_process_dashboard_section.v1"
+        },
+        "projection_status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "DEGRADED"
+          ]
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "process_status",
+            "state_status",
+            "enabled",
+            "dry_run",
+            "loop_mode",
+            "cycle_limit",
+            "interval_seconds",
+            "effective_provider_mode",
+            "new_tables_required"
+          ],
+          "properties": {
+            "process_status": {
+              "type": "string"
+            },
+            "state_status": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "dry_run": {
+              "type": "boolean"
+            },
+            "loop_mode": {
+              "type": "string"
+            },
+            "cycle_limit": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "interval_seconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "effective_provider_mode": {
+              "type": "string"
+            },
+            "new_tables_required": {
+              "const": false
+            }
+          }
+        },
+        "process_metadata": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "runtime_state": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "source_statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/source_status"
+          }
+        },
+        "process_control_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cli_entrypoint": {
           "type": "string",
           "minLength": 1
         },

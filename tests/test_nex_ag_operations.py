@@ -4874,6 +4874,10 @@ def test_operator_review_dispatch_daemon_runtime_openapi_matches_contract() -> N
             "/admin/v1/operator-review/dispatch-daemon/tick-once",
             "post",
         ): "postAgOperatorReviewDispatchDaemonTickOnce",
+        (
+            "/admin/v1/operator-review/dispatch-daemon/process-controls",
+            "post",
+        ): "postAgOperatorReviewDispatchDaemonProcessControl",
     }
 
     for (path, method), operation_id in expected.items():
@@ -4916,9 +4920,28 @@ def test_operations_dashboard_escalation_dispatches_handles_filters_and_errors()
     assert filtered["operator_review_escalation_dispatches"]["source_statuses"][
         "nex-ag"
     ]["status"] == "READY"
+    daemon_process = filtered["operator_review_escalation_dispatches"][
+        "daemon_process"
+    ]
+    assert daemon_process["projection_status"] == "READY"
+    assert daemon_process["summary"]["new_tables_required"] is False
+    assert daemon_process["process_control_path"].endswith(
+        "/dispatch-daemon/process-controls"
+    )
+    assert daemon_process["source_statuses"]["nex-ag"] == {
+        "status": "READY",
+        "service_id": "nex-ag",
+        "source_kind": "policy_and_process_metadata",
+        "source_table": "service_operational_events",
+        "liveness_source": "service_worker_heartbeats",
+        "new_tables_required": False,
+    }
     assert unavailable["operator_review_escalation_dispatches"][
         "projection_status"
     ] == "DEGRADED"
+    assert unavailable["operator_review_escalation_dispatches"]["daemon_process"][
+        "summary"
+    ]["new_tables_required"] is False
     assert unavailable["projection_status"] == "DEGRADED"
     assert unavailable["operator_review_escalation_dispatches"]["source_statuses"][
         "nex-ag"

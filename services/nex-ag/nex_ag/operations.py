@@ -8021,12 +8021,16 @@ def _dashboard_operator_review_escalation_dispatch_section(
         limit=limit,
         request_trace_id=request_trace_id,
     )
+    daemon_process = _dashboard_operator_review_dispatch_daemon_process_section(
+        request_trace_id=request_trace_id,
+    )
     if dispatch_store is None:
         return {
             **_empty_dashboard_operator_review_escalation_dispatch_section(
                 source_statuses
             ),
             "daemon_controls": daemon_controls,
+            "daemon_process": daemon_process,
         }
 
     target_service = service_id if service_id in ALLOWED_TARGET_SERVICES else None
@@ -8068,6 +8072,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
                 source_statuses
             ),
             "daemon_controls": daemon_controls,
+            "daemon_process": daemon_process,
             "projection_status": "DEGRADED",
         }
 
@@ -8107,6 +8112,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
         ][:limit],
         "recent": items,
         "daemon_controls": daemon_controls,
+        "daemon_process": daemon_process,
         "source_statuses": source_statuses,
         "dispatch_list_path": "/admin/v1/operator-review/dispatches",
         "dispatch_detail_path_template": (
@@ -8139,6 +8145,9 @@ def _empty_dashboard_operator_review_escalation_dispatch_section(
         "by_channel": {},
         "attention": [],
         "recent": [],
+        "daemon_process": _dashboard_operator_review_dispatch_daemon_process_section(
+            request_trace_id=None,
+        ),
         "source_statuses": source_statuses,
         "dispatch_list_path": "/admin/v1/operator-review/dispatches",
         "dispatch_detail_path_template": (
@@ -8162,6 +8171,58 @@ def _empty_dashboard_operator_review_escalation_dispatch_section(
             "dispatch_record_payload": "safe_hashes_previews_refs_only",
         },
     }
+
+
+def _dashboard_operator_review_dispatch_daemon_process_section(
+    *,
+    request_trace_id: str | None,
+) -> dict[str, Any]:
+    policy = build_dispatch_execution_daemon_policy(os.environ)
+    loop_policy = build_dispatch_execution_daemon_loop_policy(policy=policy)
+    process_metadata = build_dispatch_execution_daemon_process_metadata(
+        policy=policy,
+        loop_policy=loop_policy,
+    )
+    runtime_state = build_dispatch_execution_daemon_process_runtime_state(
+        process_metadata,
+    )
+    section = {
+        "projection_schema_version": (
+            "ag_operator_review_escalation_dispatch_daemon_process_dashboard_section.v1"
+        ),
+        "projection_status": "READY",
+        "summary": {
+            "process_status": process_metadata["process_status"],
+            "state_status": runtime_state["state_status"],
+            "enabled": bool(process_metadata["enabled"]),
+            "dry_run": bool(process_metadata["dry_run"]),
+            "loop_mode": process_metadata["loop_mode"],
+            "cycle_limit": process_metadata["cycle_limit"],
+            "interval_seconds": process_metadata["interval_seconds"],
+            "effective_provider_mode": process_metadata["effective_provider_mode"],
+            "new_tables_required": False,
+        },
+        "process_metadata": process_metadata,
+        "runtime_state": runtime_state,
+        "source_statuses": {
+            "nex-ag": {
+                "status": "READY",
+                "service_id": "nex-ag",
+                "source_kind": "policy_and_process_metadata",
+                "source_table": "service_operational_events",
+                "liveness_source": "service_worker_heartbeats",
+                "new_tables_required": False,
+            }
+        },
+        "process_control_path": (
+            "/admin/v1/operator-review/dispatch-daemon/process-controls"
+        ),
+        "cli_entrypoint": process_metadata["entrypoint"],
+        "redaction": dict(process_metadata["redaction"]),
+    }
+    if request_trace_id is not None:
+        section["request_trace_id"] = request_trace_id
+    return section
 
 
 def _dashboard_operator_review_dispatch_daemon_control_section(

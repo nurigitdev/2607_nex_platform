@@ -880,6 +880,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0774`](slices/0774_ag_escalation_dispatch_daemon_executable_cli.md) | `S78-004` AG dispatch daemon executable CLI. |
 | [`Slice 0775`](slices/0775_ag_escalation_dispatch_daemon_lifecycle_event_persistence.md) | `S78-005` AG dispatch daemon lifecycle event persistence. |
 | [`Slice 0776`](slices/0776_ag_escalation_dispatch_daemon_process_control_api.md) | `S78-006` AG dispatch daemon protected process control API. |
+| [`Slice 0777`](slices/0777_ag_escalation_dispatch_daemon_process_dashboard.md) | `S78-007` AG dispatch daemon process operations dashboard. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

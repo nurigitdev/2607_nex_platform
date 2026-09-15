@@ -574,6 +574,14 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
         "/admin/v1/operator-review/dispatch-daemon/controls"
     )
     assert daemon_controls["redaction"]["raw_provider_payload_included"] is False
+    daemon_process = dashboard_example["operator_review_escalation_dispatches"][
+        "daemon_process"
+    ]
+    assert daemon_process["process_control_path"] == (
+        "/admin/v1/operator-review/dispatch-daemon/process-controls"
+    )
+    assert daemon_process["summary"]["new_tables_required"] is False
+    assert daemon_process["redaction"]["provider_secrets_included"] is False
 
 
 def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:
