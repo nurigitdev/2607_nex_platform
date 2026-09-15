@@ -52,6 +52,7 @@ from nex_ag.operations import (
     build_operator_review_escalation_dispatch_daemon_runtime_projection,
     build_operator_review_escalation_dispatch_daemon_control_audit_event_details,
     build_operator_review_escalation_dispatch_daemon_control_history_projection,
+    build_operator_review_escalation_dispatch_daemon_process_control_api_projection,
     build_operator_review_escalation_dispatch_daemon_tick_once_api_projection,
     build_operator_review_escalation_dispatch_daemon_tick_plan_api_projection,
     build_operations_dashboard_snapshot_projection,
@@ -3916,6 +3917,90 @@ def test_operator_review_dispatch_daemon_tick_plan_route_auth_and_errors() -> No
     assert failing_store.json()["error_code"] == (
         "ag.operator_review_escalation_dispatch_daemon_dispatch_source_unavailable"
     )
+
+
+def test_operator_review_dispatch_daemon_process_control_projection_is_safe() -> None:
+    projection = (
+        build_operator_review_escalation_dispatch_daemon_process_control_api_projection(
+            payload={
+                "action": "start_process",
+                "enabled": True,
+                "dry_run": False,
+                "confirm_process": True,
+                "operator_ref": {
+                    "operator_type": "user",
+                    "operator_id": "employee-0776",
+                    "authorization": "Bearer private",
+                },
+                "reason_codes": ["operator_start"],
+                "database_url": "postgresql://nex_ag_user:nuri1004@127.0.0.1/db",
+            },
+            request_id=REQUEST_ID,
+            trace_id=TRACE_ID,
+            http_method="POST",
+        )
+    )
+
+    assert projection["projection_status"] == "READY"
+    assert projection["route"] == {
+        "path": "/admin/v1/operator-review/dispatch-daemon/process-controls",
+        "method": "POST",
+        "protected": True,
+        "mutation": False,
+        "requires_confirm_process": True,
+    }
+    assert projection["control_request"]["action"] == "start_process"
+    assert projection["control_admission"]["admission_status"] == "ACCEPTED"
+    assert projection["process_metadata"]["process_status"] == "READY"
+    assert projection["runtime_state"]["state_status"] == "READY"
+    assert projection["summary"]["subprocess_mutation_performed"] is False
+    assert projection["summary"]["new_tables_required"] is False
+    assert projection["request_trace_id"] == TRACE_ID
+    serialized = json.dumps(projection)
+    assert "Bearer private" not in serialized
+    assert "nuri1004" not in serialized
+
+
+def test_operator_review_dispatch_daemon_process_control_route_is_protected() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_unified_operation_routes(app)
+    client = TestClient(app)
+    path = "/admin/v1/operator-review/dispatch-daemon/process-controls"
+
+    missing_auth = client.post(path, json={"action": "status_probe"})
+    ok = client.post(
+        path,
+        json={"action": "status_probe", "enabled": True},
+        headers=auth_headers(),
+    )
+    rejected = client.post(
+        path,
+        json={"action": "start_process", "enabled": True},
+        headers=auth_headers(),
+    )
+    unsupported = client.post(
+        path,
+        json={"action": "restart_forever"},
+        headers=auth_headers(),
+    )
+    noop = client.post(
+        path,
+        json={"action": "stop_process", "confirm_process": True},
+        headers=auth_headers(),
+    )
+
+    assert missing_auth.status_code == 401
+    assert ok.status_code == 200
+    ok_payload = ok.json()
+    assert ok_payload["control_request"]["action"] == "status_probe"
+    assert ok_payload["control_admission"]["admission_status"] == "ACCEPTED"
+    assert ok_payload["route"]["mutation"] is False
+    assert rejected.status_code == 409
+    assert rejected.json()["error_code"].endswith("confirm_process_required")
+    assert unsupported.status_code == 422
+    assert unsupported.json()["error_code"].endswith("action_unsupported")
+    assert noop.status_code == 200
+    assert noop.json()["control_admission"]["admission_status"] == "NOOP"
 
 
 def test_operator_review_dispatch_daemon_tick_plan_post_forces_safe_plan_action() -> (

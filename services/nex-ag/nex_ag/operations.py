@@ -117,7 +117,13 @@ from nex_ag.operator_review_dispatch_execution import (
     assert_dispatch_execution_result_redacted,
     build_dispatch_execution_daemon_control_admission,
     build_dispatch_execution_daemon_control_request,
+    build_dispatch_execution_daemon_loop_policy,
     build_dispatch_execution_daemon_policy,
+    build_dispatch_execution_daemon_process_control_admission,
+    build_dispatch_execution_daemon_process_control_projection,
+    build_dispatch_execution_daemon_process_control_request,
+    build_dispatch_execution_daemon_process_metadata,
+    build_dispatch_execution_daemon_process_runtime_state,
     build_dispatch_execution_daemon_tick_plan,
     run_dispatch_execution_daemon_tick_once,
 )
@@ -2377,6 +2383,26 @@ def register_unified_operation_routes(
             audit_emitter=audit_emitter,
         )
 
+    @app.post(
+        "/admin/v1/operator-review/dispatch-daemon/process-controls",
+        response_model=None,
+        operation_id="postAgOperatorReviewDispatchDaemonProcessControl",
+        tags=["Operations"],
+    )
+    def post_operator_review_dispatch_daemon_process_control(
+        request: Request,
+        payload: dict[str, Any] | None = None,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        return _dispatch_daemon_process_control_route_response(
+            request,
+            payload=payload,
+            http_method="POST",
+        )
+
     @app.get(
         "/admin/v1/operator-review/dispatch-daemon/controls",
         response_model=None,
@@ -2811,6 +2837,58 @@ def build_operator_review_escalation_dispatch_daemon_tick_once_api_projection(
         },
         "redaction": tick_result["redaction"],
     }
+    if trace_id is not None:
+        projection["request_trace_id"] = trace_id
+    assert_dispatch_execution_result_redacted(projection)
+    return projection
+
+
+def build_operator_review_escalation_dispatch_daemon_process_control_api_projection(
+    *,
+    payload: Mapping[str, Any] | None = None,
+    request_id: str,
+    trace_id: str | None = None,
+    http_method: str = "POST",
+) -> dict[str, Any]:
+    normalized_payload = _dispatch_daemon_payload_mapping(payload)
+    control_request = build_dispatch_execution_daemon_process_control_request(
+        normalized_payload,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    policy = build_dispatch_execution_daemon_policy(
+        _dispatch_daemon_process_policy_environ(normalized_payload)
+    )
+    loop_policy = build_dispatch_execution_daemon_loop_policy(policy=policy)
+    process_metadata = build_dispatch_execution_daemon_process_metadata(
+        policy=policy,
+        loop_policy=loop_policy,
+    )
+    runtime_state = build_dispatch_execution_daemon_process_runtime_state(
+        process_metadata,
+    )
+    admission = build_dispatch_execution_daemon_process_control_admission(
+        control_request,
+        process_metadata=process_metadata,
+    )
+    if admission["admission_status"] == "REJECTED":
+        reason = str(admission.get("rejection_reason") or "rejected")
+        raise OperationsQueryError(
+            error_code=(
+                "ag.operator_review_escalation_dispatch_daemon_process_control_"
+                f"{reason}"
+            ),
+            detail=f"Dispatch daemon process control was rejected: {reason}.",
+            status_code=409,
+        )
+    projection = build_dispatch_execution_daemon_process_control_projection(
+        process_metadata=process_metadata,
+        runtime_state=runtime_state,
+        control_request=control_request,
+        control_admission=admission,
+        checked_at=_utc_now(),
+    )
+    projection["route"]["method"] = http_method.upper()
     if trace_id is not None:
         projection["request_trace_id"] = trace_id
     assert_dispatch_execution_result_redacted(projection)
@@ -3287,6 +3365,27 @@ def _dispatch_daemon_tick_once_route_response(
         return _dispatch_daemon_control_problem_response(request, exc)
 
 
+def _dispatch_daemon_process_control_route_response(
+    request: Request,
+    *,
+    payload: Mapping[str, Any] | None,
+    http_method: str,
+) -> dict[str, Any] | JSONResponse:
+    request_id = request_id_from_headers(request)
+    trace_id = trace_id_from_headers(request)
+    try:
+        return build_operator_review_escalation_dispatch_daemon_process_control_api_projection(
+            payload=payload,
+            request_id=request_id,
+            trace_id=trace_id,
+            http_method=http_method,
+        )
+    except OperatorReviewNoteError as exc:
+        return _dispatch_daemon_control_problem_response(request, exc)
+    except OperationsQueryError as exc:
+        return _dispatch_daemon_control_problem_response(request, exc)
+
+
 def _dispatch_daemon_route_payload(
     *,
     enabled: bool | None = None,
@@ -3345,6 +3444,23 @@ def _dispatch_daemon_policy_environ(
         env[DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV] = str(
             control_request["provider_mode"]
         )
+    return env
+
+
+def _dispatch_daemon_process_policy_environ(
+    payload: Mapping[str, Any],
+) -> dict[str, str]:
+    env = dict(os.environ)
+    if "enabled" in payload:
+        env[DISPATCH_EXECUTION_DAEMON_ENABLED_ENV] = _dispatch_daemon_bool_env_value(
+            payload.get("enabled")
+        )
+    if "dry_run" in payload:
+        env[DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV] = _dispatch_daemon_bool_env_value(
+            payload.get("dry_run")
+        )
+    if optional_provider_mode := _nullable_string(payload.get("provider_mode")):
+        env[DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV] = optional_provider_mode
     return env
 
 

@@ -63,6 +63,15 @@ DISPATCH_EXECUTION_DAEMON_PROCESS_RUNTIME_STATE_SCHEMA_VERSION = (
 DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_DETAILS_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_daemon_lifecycle_event_details.v1"
 )
+DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_REQUEST_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_daemon_process_control_request.v1"
+)
+DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_ADMISSION_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_daemon_process_control_admission.v1"
+)
+DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_PROJECTION_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_daemon_process_control_projection.v1"
+)
 DISPATCH_EXECUTION_DAEMON_CONTROL_REQUEST_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_daemon_control_request.v1"
 )
@@ -169,6 +178,11 @@ ALLOWED_DISPATCH_EXECUTION_PROVIDER_MODES = (
 ALLOWED_DISPATCH_EXECUTION_DAEMON_CONTROL_ACTIONS = (
     "tick_plan",
     "tick_once",
+)
+ALLOWED_DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_ACTIONS = (
+    "status_probe",
+    "start_process",
+    "stop_process",
 )
 NOTIFICATION_DISPATCH_CHANNEL_TYPES = ("NOTIFICATION", "EMAIL", "WEBHOOK")
 EXTERNAL_INCIDENT_DISPATCH_CHANNEL_TYPES = ("INCIDENT",)
@@ -1071,6 +1085,139 @@ def emit_dispatch_execution_daemon_lifecycle_event(
         ),
         created_at=occurred_at,
     )
+
+
+def build_dispatch_execution_daemon_process_control_request(
+    payload: Mapping[str, Any] | None,
+    *,
+    request_id: str,
+    trace_id: str | None = None,
+    requested_at: str | None = None,
+) -> dict[str, Any]:
+    body = dict(payload or {})
+    action = optional_text(body.get("action")) or "status_probe"
+    if action not in ALLOWED_DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_ACTIONS:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=(
+                "ag.operator_review_escalation_dispatch_daemon_process_control_"
+                "action_unsupported"
+            ),
+            detail=f"Unsupported dispatch daemon process control action: {action}",
+        )
+    safe_request = {
+        "daemon_process_control_request_schema_version": (
+            DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_REQUEST_SCHEMA_VERSION
+        ),
+        "action": action,
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "confirm_process": _payload_bool(body, "confirm_process"),
+        "dry_run": _payload_bool(body, "dry_run", default=True),
+        "operator_ref": _dispatch_daemon_control_operator_ref(body.get("operator_ref")),
+        "reason_codes": _safe_text_list(body.get("reason_codes")),
+        "requested_at": requested_at or _utc_now(),
+        "subprocess_mutation_requested": action in {"start_process", "stop_process"},
+        "subprocess_mutation_performed": False,
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    safe_request["control_request_hash"] = sha256_text(
+        json.dumps(safe_request, sort_keys=True, default=str)
+    )
+    assert_dispatch_execution_result_redacted(safe_request)
+    return safe_request
+
+
+def build_dispatch_execution_daemon_process_control_admission(
+    control_request: Mapping[str, Any],
+    *,
+    process_metadata: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    action = str(control_request.get("action") or "")
+    if action not in ALLOWED_DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_ACTIONS:
+        raise OperatorReviewNoteError(
+            status_code=422,
+            error_code=(
+                "ag.operator_review_escalation_dispatch_daemon_process_control_"
+                "action_unsupported"
+            ),
+            detail=f"Unsupported dispatch daemon process control action: {action}",
+        )
+    process_status = str((process_metadata or {}).get("process_status") or "UNKNOWN")
+    rejection_reason = None
+    admission_status = "ACCEPTED"
+    if action in {"start_process", "stop_process"} and not bool(
+        control_request.get("confirm_process")
+    ):
+        admission_status = "REJECTED"
+        rejection_reason = "confirm_process_required"
+    elif action == "start_process" and process_status == "RUNNING":
+        admission_status = "NOOP"
+        rejection_reason = "process_already_running"
+    elif action == "stop_process" and process_status in {"DISABLED", "READY"}:
+        admission_status = "NOOP"
+        rejection_reason = "process_not_running"
+    admission = {
+        "daemon_process_control_admission_schema_version": (
+            DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_ADMISSION_SCHEMA_VERSION
+        ),
+        "admission_status": admission_status,
+        "rejection_reason": rejection_reason,
+        "action": action,
+        "control_request_hash": control_request.get("control_request_hash"),
+        "request_id": control_request.get("request_id"),
+        "trace_id": control_request.get("trace_id"),
+        "confirm_process": bool(control_request.get("confirm_process")),
+        "dry_run": bool(control_request.get("dry_run")),
+        "process_status": process_status,
+        "mutation_mode": "contract_only_no_subprocess",
+        "subprocess_mutation_performed": False,
+        "new_tables_required": False,
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(admission)
+    return admission
+
+
+def build_dispatch_execution_daemon_process_control_projection(
+    *,
+    process_metadata: Mapping[str, Any],
+    runtime_state: Mapping[str, Any],
+    control_request: Mapping[str, Any],
+    control_admission: Mapping[str, Any],
+    checked_at: str | None = None,
+) -> dict[str, Any]:
+    projection = {
+        "projection_schema_version": (
+            DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_PROJECTION_SCHEMA_VERSION
+        ),
+        "projection_status": "READY",
+        "checked_at": checked_at or _utc_now(),
+        "route": {
+            "path": "/admin/v1/operator-review/dispatch-daemon/process-controls",
+            "method": "POST",
+            "protected": True,
+            "mutation": False,
+            "requires_confirm_process": control_request.get("action")
+            in {"start_process", "stop_process"},
+        },
+        "control_request": dict(control_request),
+        "control_admission": dict(control_admission),
+        "process_metadata": dict(process_metadata),
+        "runtime_state": dict(runtime_state),
+        "summary": {
+            "action": control_request.get("action"),
+            "admission_status": control_admission.get("admission_status"),
+            "rejection_reason": control_admission.get("rejection_reason"),
+            "process_status": process_metadata.get("process_status"),
+            "state_status": runtime_state.get("state_status"),
+            "subprocess_mutation_performed": False,
+            "new_tables_required": False,
+        },
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(projection)
+    return projection
 
 
 def build_dispatch_execution_daemon_tick_event(

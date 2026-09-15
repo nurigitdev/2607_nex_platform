@@ -35,6 +35,9 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_LOOP_POLICY_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_POLICY_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_PROCESS_METADATA_SCHEMA_VERSION,
+    DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_ADMISSION_SCHEMA_VERSION,
+    DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_PROJECTION_SCHEMA_VERSION,
+    DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_REQUEST_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_PROCESS_RUNTIME_STATE_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV,
     DISPATCH_EXECUTION_DAEMON_TICK_EVENT_SCHEMA_VERSION,
@@ -73,6 +76,9 @@ from nex_ag.operator_review_dispatch_execution import (
     build_dispatch_execution_daemon_loop_policy,
     build_dispatch_execution_daemon_lifecycle_event_details,
     build_dispatch_execution_daemon_process_metadata,
+    build_dispatch_execution_daemon_process_control_admission,
+    build_dispatch_execution_daemon_process_control_projection,
+    build_dispatch_execution_daemon_process_control_request,
     build_dispatch_execution_daemon_process_runtime_state,
     build_dispatch_execution_daemon_tick_event,
     build_dispatch_execution_daemon_tick_log_entry,
@@ -845,6 +851,159 @@ def test_dispatch_execution_daemon_lifecycle_emit_reports_missing_emitter() -> N
         "ag.operator_review_escalation_dispatch_daemon_lifecycle_"
         "emitter_not_configured"
     )
+
+
+def test_dispatch_execution_daemon_process_control_request_is_safe() -> None:
+    request = build_dispatch_execution_daemon_process_control_request(
+        {
+            "action": "start_process",
+            "confirm_process": "1",
+            "dry_run": "0",
+            "operator_ref": {
+                "operator_type": "user",
+                "operator_id": "employee-0776",
+                "token": "secret-token",
+            },
+            "reason_codes": ["operator_start", "", None],
+            "raw_payload": {"password": "nuri1004"},
+        },
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        requested_at="2026-09-15T13:00:00Z",
+    )
+
+    assert request["daemon_process_control_request_schema_version"] == (
+        DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_REQUEST_SCHEMA_VERSION
+    )
+    assert request["action"] == "start_process"
+    assert request["confirm_process"] is True
+    assert request["dry_run"] is False
+    assert request["operator_ref"] == {
+        "operator_type": "user",
+        "operator_id": "employee-0776",
+    }
+    assert request["reason_codes"] == ["operator_start"]
+    assert request["subprocess_mutation_requested"] is True
+    assert request["subprocess_mutation_performed"] is False
+    assert "secret-token" not in json.dumps(request)
+    assert_dispatch_execution_result_redacted(request)
+
+
+def test_dispatch_execution_daemon_process_control_request_rejects_unknown() -> None:
+    with pytest.raises(OperatorReviewNoteError) as exc_info:
+        build_dispatch_execution_daemon_process_control_request(
+            {"action": "restart_forever"},
+            request_id=REQUEST_ID,
+        )
+
+    assert exc_info.value.error_code == (
+        "ag.operator_review_escalation_dispatch_daemon_process_control_"
+        "action_unsupported"
+    )
+
+    with pytest.raises(OperatorReviewNoteError):
+        build_dispatch_execution_daemon_process_control_admission(
+            {"action": "restart_forever"}
+        )
+
+
+def test_dispatch_execution_daemon_process_control_admission_paths() -> None:
+    metadata = build_dispatch_execution_daemon_process_metadata(
+        process_run_id="process-run-0776",
+        started_at="2026-09-15T13:01:00Z",
+    )
+    status_probe = build_dispatch_execution_daemon_process_control_request(
+        {"action": "status_probe"},
+        request_id=REQUEST_ID,
+    )
+    rejected_start = build_dispatch_execution_daemon_process_control_request(
+        {"action": "start_process"},
+        request_id=REQUEST_ID,
+    )
+    confirmed_start = build_dispatch_execution_daemon_process_control_request(
+        {"action": "start_process", "confirm_process": True},
+        request_id=REQUEST_ID,
+    )
+    confirmed_stop = build_dispatch_execution_daemon_process_control_request(
+        {"action": "stop_process", "confirm_process": True},
+        request_id=REQUEST_ID,
+    )
+
+    accepted = build_dispatch_execution_daemon_process_control_admission(
+        status_probe,
+        process_metadata=metadata,
+    )
+    rejected = build_dispatch_execution_daemon_process_control_admission(
+        rejected_start,
+        process_metadata=metadata,
+    )
+    start = build_dispatch_execution_daemon_process_control_admission(
+        confirmed_start,
+        process_metadata={**metadata, "process_status": "RUNNING"},
+    )
+    stop = build_dispatch_execution_daemon_process_control_admission(
+        confirmed_stop,
+        process_metadata=metadata,
+    )
+
+    assert accepted["daemon_process_control_admission_schema_version"] == (
+        DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_ADMISSION_SCHEMA_VERSION
+    )
+    assert accepted["admission_status"] == "ACCEPTED"
+    assert rejected["admission_status"] == "REJECTED"
+    assert rejected["rejection_reason"] == "confirm_process_required"
+    assert start["admission_status"] == "NOOP"
+    assert start["rejection_reason"] == "process_already_running"
+    assert stop["admission_status"] == "NOOP"
+    assert stop["rejection_reason"] == "process_not_running"
+    assert stop["subprocess_mutation_performed"] is False
+
+
+def test_dispatch_execution_daemon_process_control_projection_is_safe() -> None:
+    policy = build_dispatch_execution_daemon_policy(
+        {DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1"}
+    )
+    metadata = build_dispatch_execution_daemon_process_metadata(
+        policy=policy,
+        process_run_id="process-run-0776-projection",
+        started_at="2026-09-15T13:02:00Z",
+    )
+    runtime_state = build_dispatch_execution_daemon_process_runtime_state(
+        metadata,
+        observed_at="2026-09-15T13:02:01Z",
+    )
+    request = build_dispatch_execution_daemon_process_control_request(
+        {"action": "start_process", "confirm_process": True},
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    admission = build_dispatch_execution_daemon_process_control_admission(
+        request,
+        process_metadata=metadata,
+    )
+
+    projection = build_dispatch_execution_daemon_process_control_projection(
+        process_metadata=metadata,
+        runtime_state=runtime_state,
+        control_request=request,
+        control_admission=admission,
+        checked_at="2026-09-15T13:02:02Z",
+    )
+
+    assert projection["projection_schema_version"] == (
+        DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_PROJECTION_SCHEMA_VERSION
+    )
+    assert projection["route"] == {
+        "path": "/admin/v1/operator-review/dispatch-daemon/process-controls",
+        "method": "POST",
+        "protected": True,
+        "mutation": False,
+        "requires_confirm_process": True,
+    }
+    assert projection["summary"]["action"] == "start_process"
+    assert projection["summary"]["subprocess_mutation_performed"] is False
+    assert projection["summary"]["new_tables_required"] is False
+    assert_dispatch_execution_result_redacted(projection)
 
 
 def test_dispatch_execution_daemon_tick_plan_defaults_to_disabled_idle() -> None:
