@@ -892,6 +892,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0786`](slices/0786_ag_escalation_dispatch_daemon_liveness_dashboard.md) | `S79-006` AG dispatch daemon liveness operations dashboard integration. |
 | [`Slice 0787`](slices/0787_ag_escalation_dispatch_daemon_liveness_issue_candidate.md) | `S79-007` AG dispatch daemon liveness issue-candidate integration. |
 | [`Slice 0788`](slices/0788_ag_escalation_dispatch_daemon_liveness_postgres_smoke.md) | `S79-008` AG dispatch daemon liveness PostgreSQL smoke evidence. |
+| [`Slice 0789`](slices/0789_ag_escalation_dispatch_daemon_liveness_privacy_runbook_evidence.md) | `S79-009` AG dispatch daemon liveness privacy/runbook evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
