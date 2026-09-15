@@ -1864,6 +1864,37 @@ paths:
           description: Dispatch daemon process control was rejected.
         "422":
           description: Dispatch daemon process control request is invalid.
+  /admin/v1/operator-review/dispatch-daemon/liveness:
+    get:
+      operationId: getAgOperatorReviewDispatchDaemonLiveness
+      tags:
+        - Operations
+      parameters:
+        - name: worker_id
+          in: query
+          required: false
+          schema:
+            type: string
+            default: ag-dispatch-execution-daemon
+        - name: stale_after_seconds
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 60
+      responses:
+        "200":
+          description: Safe dispatch daemon liveness projection.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          description: Service claim is missing or invalid.
+        "400":
+          description: Dispatch daemon liveness request is invalid.
   /admin/v1/operator-review/dispatch-daemon/controls:
     get:
       operationId: listAgOperatorReviewDispatchDaemonControls
@@ -4273,6 +4304,7 @@ components:
           enum:
             - /admin/v1/operator-review/dispatch-daemon/tick-plan
             - /admin/v1/operator-review/dispatch-daemon/tick-once
+            - /admin/v1/operator-review/dispatch-daemon/liveness
             - /admin/v1/operator-review/dispatch-daemon/controls
         method:
           type: string

@@ -437,6 +437,7 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
     components = spec["components"]["schemas"]
     tick_plan = paths["/admin/v1/operator-review/dispatch-daemon/tick-plan"]
     tick_once = paths["/admin/v1/operator-review/dispatch-daemon/tick-once"]["post"]
+    liveness = paths["/admin/v1/operator-review/dispatch-daemon/liveness"]["get"]
     controls = paths["/admin/v1/operator-review/dispatch-daemon/controls"]["get"]
     control_request = components["AgOperatorReviewDispatchDaemonControlRequest"]
     route = components["AgOperatorReviewDispatchDaemonRoute"]
@@ -469,6 +470,7 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
         "postAgOperatorReviewDispatchDaemonTickPlan"
     )
     assert tick_once["operationId"] == "postAgOperatorReviewDispatchDaemonTickOnce"
+    assert liveness["operationId"] == "getAgOperatorReviewDispatchDaemonLiveness"
     assert controls["operationId"] == "listAgOperatorReviewDispatchDaemonControls"
     assert tick_plan["post"]["requestBody"]["content"]["application/json"]["schema"][
         "$ref"
@@ -533,8 +535,13 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
     assert route["properties"]["path"]["enum"] == [
         "/admin/v1/operator-review/dispatch-daemon/tick-plan",
         "/admin/v1/operator-review/dispatch-daemon/tick-once",
+        "/admin/v1/operator-review/dispatch-daemon/liveness",
         "/admin/v1/operator-review/dispatch-daemon/controls",
     ]
+    liveness_parameter_names = {
+        parameter["name"] for parameter in liveness["parameters"] if "name" in parameter
+    }
+    assert liveness_parameter_names == {"worker_id", "stale_after_seconds"}
     assert plan_projection["properties"]["projection_schema_version"]["const"] == (
         "ag_operator_review_escalation_dispatch_daemon_tick_plan_api.v1"
     )

@@ -4072,6 +4072,54 @@ def test_operator_review_dispatch_daemon_liveness_projection_source_errors() -> 
     )
 
 
+def test_operator_review_dispatch_daemon_liveness_route_is_protected() -> None:
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_store.upsert_heartbeat(
+        build_worker_heartbeat(
+            service_id="nex-ag",
+            worker_id="ag-dispatch-execution-daemon",
+            worker_type="operator_review_dispatch_daemon",
+            status="IDLE",
+            started_at="2026-09-15T14:04:00Z",
+            last_seen_at="2026-09-15T14:04:30Z",
+            metadata={"process_run_id": "process-run-0785"},
+        )
+    )
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_unified_operation_routes(
+        app,
+        worker_heartbeat_stores={"nex-ag": heartbeat_store},
+    )
+    client = TestClient(app)
+    path = "/admin/v1/operator-review/dispatch-daemon/liveness"
+
+    missing_auth = client.get(path)
+    ok = client.get(
+        path,
+        params={"stale_after_seconds": 60},
+        headers=auth_headers(),
+    )
+    invalid_worker = client.get(
+        path,
+        params={"worker_id": " "},
+        headers=auth_headers(),
+    )
+
+    assert missing_auth.status_code == 401
+    assert ok.status_code == 200
+    payload = ok.json()
+    assert payload["projection_schema_version"] == (
+        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_PROJECTION_SCHEMA_VERSION
+    )
+    assert payload["summary"]["liveness_status"] in {"FRESH", "STALE"}
+    assert payload["daemon_identity"]["worker_id"] == "ag-dispatch-execution-daemon"
+    assert payload["source_statuses"]["nex-ag"]["status"] == "READY"
+    assert invalid_worker.status_code == 400
+    assert invalid_worker.json()["error_code"] == (
+        "ag.operator_review_dispatch_daemon_liveness_worker_id_invalid"
+    )
+
+
 def test_operator_review_dispatch_daemon_process_control_route_is_protected() -> None:
     app = build_service_app(SERVICE_SPECS["nex-ag"])
     register_unified_operation_routes(app)
@@ -4989,6 +5037,10 @@ def test_operator_review_dispatch_daemon_runtime_openapi_matches_contract() -> N
             "/admin/v1/operator-review/dispatch-daemon/process-controls",
             "post",
         ): "postAgOperatorReviewDispatchDaemonProcessControl",
+        (
+            "/admin/v1/operator-review/dispatch-daemon/liveness",
+            "get",
+        ): "getAgOperatorReviewDispatchDaemonLiveness",
     }
 
     for (path, method), operation_id in expected.items():

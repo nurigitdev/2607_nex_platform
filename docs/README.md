@@ -888,6 +888,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0782`](slices/0782_ag_escalation_dispatch_daemon_heartbeat_contract.md) | `S79-002` AG dispatch daemon heartbeat contract and wire shape. |
 | [`Slice 0783`](slices/0783_ag_escalation_dispatch_daemon_heartbeat_emission.md) | `S79-003` AG dispatch daemon executable heartbeat emission. |
 | [`Slice 0784`](slices/0784_ag_escalation_dispatch_daemon_liveness_read_model.md) | `S79-004` AG dispatch daemon liveness read-model foundation. |
+| [`Slice 0785`](slices/0785_ag_escalation_dispatch_daemon_liveness_route.md) | `S79-005` AG dispatch daemon protected liveness route. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
