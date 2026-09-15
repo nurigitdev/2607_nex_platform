@@ -870,6 +870,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0764`](slices/0764_ag_escalation_dispatch_daemon_control_history_route.md) | `S77-004` AG dispatch daemon control history protected route. |
 | [`Slice 0765`](slices/0765_ag_escalation_dispatch_daemon_dashboard_integration.md) | `S77-005` AG dispatch daemon control history dashboard integration. |
 | [`Slice 0766`](slices/0766_ag_escalation_dispatch_daemon_issue_candidate_integration.md) | `S77-006` AG dispatch daemon control issue-candidate integration. |
+| [`Slice 0767`](slices/0767_ag_escalation_dispatch_daemon_contract_openapi_hardening.md) | `S77-007` AG dispatch daemon contract/OpenAPI hardening. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

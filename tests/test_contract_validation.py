@@ -437,6 +437,7 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
     components = spec["components"]["schemas"]
     tick_plan = paths["/admin/v1/operator-review/dispatch-daemon/tick-plan"]
     tick_once = paths["/admin/v1/operator-review/dispatch-daemon/tick-once"]["post"]
+    controls = paths["/admin/v1/operator-review/dispatch-daemon/controls"]["get"]
     control_request = components["AgOperatorReviewDispatchDaemonControlRequest"]
     route = components["AgOperatorReviewDispatchDaemonRoute"]
     plan_projection = components[
@@ -445,6 +446,21 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
     once_projection = components[
         "AgOperatorReviewDispatchDaemonTickOnceProjection"
     ]
+    control_history_projection = components[
+        "AgOperatorReviewDispatchDaemonControlHistoryProjection"
+    ]
+    control_history_item = components[
+        "AgOperatorReviewDispatchDaemonControlHistoryItem"
+    ]
+    ag_operations_projection = components["AgOperationsProjection"]
+    dashboard_example_path = (
+        Path(__file__).parents[1]
+        / "contracts"
+        / "examples"
+        / "operations"
+        / "ag_operations_dashboard_snapshot.mock_success.json"
+    )
+    dashboard_example = json.loads(dashboard_example_path.read_text(encoding="utf-8"))
 
     assert tick_plan["get"]["operationId"] == (
         "getAgOperatorReviewDispatchDaemonTickPlan"
@@ -453,6 +469,7 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
         "postAgOperatorReviewDispatchDaemonTickPlan"
     )
     assert tick_once["operationId"] == "postAgOperatorReviewDispatchDaemonTickOnce"
+    assert controls["operationId"] == "listAgOperatorReviewDispatchDaemonControls"
     assert tick_plan["post"]["requestBody"]["content"]["application/json"]["schema"][
         "$ref"
     ] == "#/components/schemas/AgOperatorReviewDispatchDaemonControlRequest"
@@ -467,6 +484,29 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
     assert tick_once["responses"]["200"]["content"]["application/json"]["schema"][
         "$ref"
     ] == "#/components/schemas/AgOperatorReviewDispatchDaemonTickOnceProjection"
+    assert controls["responses"]["200"]["content"]["application/json"]["schema"][
+        "$ref"
+    ] == (
+        "#/components/schemas/"
+        "AgOperatorReviewDispatchDaemonControlHistoryProjection"
+    )
+    control_parameter_names = {
+        parameter["name"] for parameter in controls["parameters"] if "name" in parameter
+    }
+    assert control_parameter_names >= {
+        "action",
+        "control_status",
+        "trace_id",
+    }
+    assert [
+        parameter["$ref"] for parameter in controls["parameters"] if "$ref" in parameter
+    ] == [
+        "#/components/parameters/since",
+        "#/components/parameters/until",
+        "#/components/parameters/sort",
+        "#/components/parameters/cursor",
+        "#/components/parameters/limit",
+    ]
     assert control_request["additionalProperties"] is False
     assert set(control_request["properties"]) == {
         "action",
@@ -480,6 +520,9 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
     }
     assert "provider_payload" not in control_request["properties"]
     assert "database_url" not in control_request["properties"]
+    assert control_request["properties"]["action"]["$ref"] == (
+        "#/components/schemas/AgOperatorReviewDispatchDaemonControlAction"
+    )
     assert components["AgOperatorReviewDispatchDaemonProviderMode"]["enum"] == [
         "mock_first_only",
         "mock_http",
@@ -490,12 +533,31 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
     assert route["properties"]["path"]["enum"] == [
         "/admin/v1/operator-review/dispatch-daemon/tick-plan",
         "/admin/v1/operator-review/dispatch-daemon/tick-once",
+        "/admin/v1/operator-review/dispatch-daemon/controls",
     ]
     assert plan_projection["properties"]["projection_schema_version"]["const"] == (
         "ag_operator_review_escalation_dispatch_daemon_tick_plan_api.v1"
     )
     assert once_projection["properties"]["projection_schema_version"]["const"] == (
         "ag_operator_review_escalation_dispatch_daemon_tick_once_api.v1"
+    )
+    assert control_history_projection["properties"]["projection_schema_version"][
+        "const"
+    ] == (
+        "ag_operator_review_escalation_dispatch_daemon_control_history_projection.v1"
+    )
+    assert control_history_projection["properties"]["controls"]["items"]["$ref"] == (
+        "#/components/schemas/AgOperatorReviewDispatchDaemonControlHistoryItem"
+    )
+    assert control_history_item["properties"]["action"]["$ref"] == (
+        "#/components/schemas/AgOperatorReviewDispatchDaemonControlHistoryAction"
+    )
+    assert components["AgOperatorReviewDispatchDaemonControlHistoryAction"][
+        "enum"
+    ] == ["tick_plan", "tick_once", "unknown"]
+    assert (
+        "ag_operator_review_escalation_dispatch_daemon_control_history_projection.v1"
+        in ag_operations_projection["properties"]["projection_schema_version"]["enum"]
     )
     assert plan_projection["properties"]["summary"]["properties"][
         "will_mutate_without_confirm"
@@ -505,6 +567,13 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
         "processed_count",
         "mutation_performed",
     }
+    daemon_controls = dashboard_example["operator_review_escalation_dispatches"][
+        "daemon_controls"
+    ]
+    assert daemon_controls["control_history_path"] == (
+        "/admin/v1/operator-review/dispatch-daemon/controls"
+    )
+    assert daemon_controls["redaction"]["raw_provider_payload_included"] is False
 
 
 def test_nex_ag_openapi_includes_worker_and_service_log_contracts() -> None:

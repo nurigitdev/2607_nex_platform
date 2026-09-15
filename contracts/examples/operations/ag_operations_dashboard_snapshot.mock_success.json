@@ -702,6 +702,46 @@
     "by_channel": {},
     "attention": [],
     "recent": [],
+    "daemon_controls": {
+      "projection_schema_version": "ag_operator_review_escalation_dispatch_daemon_control_dashboard_section.v1",
+      "projection_status": "READY",
+      "summary": {
+        "control_count": 0,
+        "succeeded_count": 0,
+        "rejected_count": 0,
+        "failed_count": 0,
+        "tick_plan_count": 0,
+        "tick_once_count": 0,
+        "mutation_performed_count": 0,
+        "latest_created_at": null,
+        "by_control_status": {},
+        "by_action": {},
+        "recent_count": 0
+      },
+      "by_control_status": {},
+      "by_action": {},
+      "recent": [],
+      "source_statuses": {
+        "nex-ag": {
+          "status": "READY",
+          "service_id": "nex-ag",
+          "source_kind": "operational_events",
+          "control_count": 0,
+          "source_table": "service_operational_events",
+          "new_tables_required": false,
+          "event_count": 0
+        }
+      },
+      "control_history_path": "/admin/v1/operator-review/dispatch-daemon/controls",
+      "tick_plan_path": "/admin/v1/operator-review/dispatch-daemon/tick-plan",
+      "tick_once_path": "/admin/v1/operator-review/dispatch-daemon/tick-once",
+      "redaction": {
+        "raw_request_payload_included": false,
+        "raw_provider_payload_included": false,
+        "sensitive_values_included": false,
+        "event_details_shape": "safe_control_summary_only"
+      }
+    },
     "source_statuses": {},
     "dispatch_list_path": "/admin/v1/operator-review/dispatches",
     "dispatch_detail_path_template": "/admin/v1/operator-review/dispatches/{dispatch_id}",

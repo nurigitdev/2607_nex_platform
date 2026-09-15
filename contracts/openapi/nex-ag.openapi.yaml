@@ -1838,6 +1838,47 @@ paths:
           description: Dispatch daemon tick-once request is invalid.
         "503":
           description: Operator review escalation dispatch daemon tick-once failed.
+  /admin/v1/operator-review/dispatch-daemon/controls:
+    get:
+      operationId: listAgOperatorReviewDispatchDaemonControls
+      tags:
+        - Operations
+      parameters:
+        - name: action
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonControlAction"
+        - name: control_status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonControlStatus"
+        - name: trace_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/TraceId"
+        - $ref: "#/components/parameters/since"
+        - $ref: "#/components/parameters/until"
+        - $ref: "#/components/parameters/sort"
+        - $ref: "#/components/parameters/cursor"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Safe dispatch daemon control history projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonControlHistoryProjection"
+        "400":
+          description: Dispatch daemon control history filter is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Dispatch daemon control history query is invalid.
+        "503":
+          description: Operational event source is unavailable.
   /admin/v1/operations/workers:
     get:
       operationId: getAgWorkerRuntimeProjection
@@ -3680,6 +3721,7 @@ components:
             - ag_operations_rollup_metrics_projection.v1
             - ag_operations_dashboard_snapshot_projection.v1
             - ag_operations_issue_candidate_projection.v1
+            - ag_operator_review_escalation_dispatch_daemon_control_history_projection.v1
             - ag_worker_runtime_projection.v1
             - ag_worker_detail_projection.v1
             - ag_cross_service_trace_timeline_projection.v1
@@ -4153,6 +4195,19 @@ components:
       enum:
         - tick_plan
         - tick_once
+    AgOperatorReviewDispatchDaemonControlHistoryAction:
+      type: string
+      enum:
+        - tick_plan
+        - tick_once
+        - unknown
+    AgOperatorReviewDispatchDaemonControlStatus:
+      type: string
+      enum:
+        - SUCCEEDED
+        - REJECTED
+        - FAILED
+        - UNKNOWN
     AgOperatorReviewDispatchDaemonControlRequest:
       type: object
       additionalProperties: false
@@ -4192,6 +4247,7 @@ components:
           enum:
             - /admin/v1/operator-review/dispatch-daemon/tick-plan
             - /admin/v1/operator-review/dispatch-daemon/tick-once
+            - /admin/v1/operator-review/dispatch-daemon/controls
         method:
           type: string
           enum:
@@ -4254,6 +4310,120 @@ components:
             will_mutate_without_confirm:
               type: boolean
               const: false
+        redaction:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewDispatchDaemonControlHistoryItem:
+      type: object
+      additionalProperties: true
+      required:
+        - control_event_id
+        - event_type
+        - severity
+        - action
+        - control_status
+        - created_at
+        - source_table
+        - new_tables_required
+        - redaction
+      properties:
+        control_event_id:
+          type: string
+          minLength: 1
+        event_type:
+          type: string
+          minLength: 1
+        severity:
+          type: string
+          enum:
+            - DEBUG
+            - INFO
+            - WARNING
+            - ERROR
+            - CRITICAL
+        action:
+          $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonControlHistoryAction"
+        control_status:
+          $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonControlStatus"
+        http_method:
+          type: string
+        route_path:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        trace_id:
+          oneOf:
+            - $ref: "#/components/schemas/TraceId"
+            - type: "null"
+        request_id:
+          type: string
+        source_table:
+          type: string
+          minLength: 1
+        new_tables_required:
+          type: boolean
+        error_code:
+          type: string
+        status_code:
+          type: integer
+        redaction:
+          type: object
+          additionalProperties: true
+          required:
+            - raw_request_payload_included
+            - raw_provider_payload_included
+            - sensitive_values_included
+    AgOperatorReviewDispatchDaemonControlHistoryProjection:
+      type: object
+      additionalProperties: true
+      required:
+        - projection_schema_version
+        - projection_status
+        - checked_at
+        - filters
+        - controls
+        - summary
+        - pagination
+        - source
+        - redaction
+      properties:
+        projection_schema_version:
+          type: string
+          const: ag_operator_review_escalation_dispatch_daemon_control_history_projection.v1
+        projection_status:
+          type: string
+          enum:
+            - READY
+            - DEGRADED
+        checked_at:
+          type: string
+          format: date-time
+        request_trace_id:
+          $ref: "#/components/schemas/TraceId"
+        filters:
+          type: object
+          additionalProperties: true
+        controls:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonControlHistoryItem"
+        summary:
+          type: object
+          additionalProperties: true
+          required:
+            - control_count
+            - succeeded_count
+            - rejected_count
+            - failed_count
+            - by_control_status
+            - by_action
+        pagination:
+          type: object
+          additionalProperties: true
+        source:
+          type: object
+          additionalProperties: true
         redaction:
           type: object
           additionalProperties: true
