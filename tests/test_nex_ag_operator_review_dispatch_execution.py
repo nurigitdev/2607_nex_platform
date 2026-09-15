@@ -8,7 +8,11 @@ from urllib.error import HTTPError, URLError
 import pytest
 
 import nex_ag.operator_review_dispatch_execution as dispatch_execution
-from nex_runtime import InMemoryOperationalEventStore, OperationalEventEmitter
+from nex_runtime import (
+    InMemoryOperationalEventStore,
+    OperationalEventEmitter,
+    WorkerHeartbeatError,
+)
 from nex_ag.operator_review_cases import (
     apply_operator_review_escalation_dispatch_action,
     build_operator_review_escalation_dispatch_plan,
@@ -38,6 +42,8 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_ADMISSION_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_PROJECTION_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_REQUEST_SCHEMA_VERSION,
+    DISPATCH_EXECUTION_DAEMON_HEARTBEAT_CONTRACT_SCHEMA_VERSION,
+    DISPATCH_EXECUTION_DAEMON_HEARTBEAT_WORKER_TYPE,
     DISPATCH_EXECUTION_DAEMON_PROCESS_RUNTIME_STATE_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV,
     DISPATCH_EXECUTION_DAEMON_TICK_EVENT_SCHEMA_VERSION,
@@ -73,6 +79,8 @@ from nex_ag.operator_review_dispatch_execution import (
     build_dispatch_execution_daemon_policy,
     build_dispatch_execution_daemon_control_admission,
     build_dispatch_execution_daemon_control_request,
+    build_dispatch_execution_daemon_heartbeat,
+    build_dispatch_execution_daemon_heartbeat_contract,
     build_dispatch_execution_daemon_loop_policy,
     build_dispatch_execution_daemon_lifecycle_event_details,
     build_dispatch_execution_daemon_process_metadata,
@@ -713,6 +721,137 @@ def test_dispatch_execution_daemon_process_runtime_state_terminal_statuses() -> 
         )
         == "RUNNING"
     )
+
+
+def test_dispatch_execution_daemon_heartbeat_contract_defaults_to_stopped() -> None:
+    metadata = build_dispatch_execution_daemon_process_metadata(
+        process_run_id="process-run-0782-disabled",
+        started_at="2026-09-15T13:00:00Z",
+    )
+
+    contract = build_dispatch_execution_daemon_heartbeat_contract(
+        metadata,
+        observed_at="2026-09-15T13:00:10Z",
+        stale_after_seconds=0,
+    )
+
+    assert contract["daemon_heartbeat_contract_schema_version"] == (
+        DISPATCH_EXECUTION_DAEMON_HEARTBEAT_CONTRACT_SCHEMA_VERSION
+    )
+    assert contract["contract_status"] == "READY"
+    assert contract["service_id"] == "nex-ag"
+    assert contract["worker_id"] == "ag-dispatch-execution-daemon"
+    assert contract["worker_type"] == DISPATCH_EXECUTION_DAEMON_HEARTBEAT_WORKER_TYPE
+    assert contract["heartbeat_schema_version"] == "worker_heartbeat.v1"
+    assert contract["heartbeat_status"] == "STOPPED"
+    assert contract["source_table"] == "service_worker_heartbeats"
+    assert contract["stale_after_seconds"] == 1
+    assert contract["max_stale_after_seconds"] == 86400
+    assert contract["status_mapping"]["process.DISABLED"] == "STOPPED"
+    assert contract["status_mapping"]["process.RUNNING"] == "IDLE"
+    assert contract["heartbeat"]["status"] == "STOPPED"
+    assert contract["heartbeat"]["last_seen_at"] == "2026-09-15T13:00:10Z"
+    assert contract["new_table_required"] is False
+    assert contract["mutation_in_contract_slice"] is False
+    assert "postgresql://" not in json.dumps(contract)
+    assert_dispatch_execution_result_redacted(contract)
+
+
+def test_dispatch_execution_daemon_heartbeat_wire_shape_tracks_ready_runtime() -> None:
+    policy = build_dispatch_execution_daemon_policy(
+        {DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1"}
+    )
+    metadata = build_dispatch_execution_daemon_process_metadata(
+        policy=policy,
+        process_run_id="process-run-0782-ready",
+        worker_id="ag-dispatch-worker-0782",
+        started_at="2026-09-15T13:01:00Z",
+    )
+    runtime_state = build_dispatch_execution_daemon_process_runtime_state(
+        metadata,
+        observed_at="2026-09-15T13:01:01Z",
+    )
+
+    heartbeat = build_dispatch_execution_daemon_heartbeat(
+        metadata,
+        runtime_state=runtime_state,
+        trace_id=TRACE_ID,
+        observed_at="2026-09-15T13:01:10Z",
+        metadata={
+            "operator_note": "safe",
+            "api_key": "must-not-leak",
+            "token": "must-not-leak",
+        },
+    )
+
+    assert heartbeat == {
+        "heartbeat_schema_version": "worker_heartbeat.v1",
+        "service_id": "nex-ag",
+        "worker_id": "ag-dispatch-worker-0782",
+        "worker_type": "operator_review_dispatch_daemon",
+        "status": "IDLE",
+        "active_job_id": None,
+        "trace_id": TRACE_ID,
+        "started_at": "2026-09-15T13:01:00Z",
+        "last_seen_at": "2026-09-15T13:01:10Z",
+        "metadata": {
+            "process_run_id": "process-run-0782-ready",
+            "process_status": "READY",
+            "state_status": "READY",
+            "loop_mode": "bounded",
+            "cycle_limit": 1,
+            "interval_seconds": 60,
+            "dry_run": True,
+            "effective_provider_mode": "mock_first_only",
+            "source_table": "ag_op_esc_dispatches",
+            "lifecycle_event_source": "service_operational_events",
+            "liveness_source": "service_worker_heartbeats",
+            "new_tables_required": False,
+            "operator_note": "safe",
+        },
+    }
+    assert "must-not-leak" not in json.dumps(heartbeat)
+
+
+def test_dispatch_execution_daemon_heartbeat_explicit_busy_and_errors() -> None:
+    metadata = build_dispatch_execution_daemon_process_metadata(
+        process_run_id="process-run-0782-busy",
+        started_at="2026-09-15T13:02:00Z",
+    )
+    busy = build_dispatch_execution_daemon_heartbeat(
+        metadata,
+        status="BUSY",
+        active_job_id="dispatch-tick-0782",
+        observed_at="2026-09-15T13:02:10Z",
+    )
+
+    assert busy["status"] == "BUSY"
+    assert busy["active_job_id"] == "dispatch-tick-0782"
+
+    with pytest.raises(WorkerHeartbeatError) as exc_info:
+        build_dispatch_execution_daemon_heartbeat(
+            metadata,
+            status="BUSY",
+            observed_at="2026-09-15T13:02:11Z",
+        )
+    assert exc_info.value.error_code == "worker_heartbeat.active_job_required"
+
+
+def test_dispatch_execution_daemon_heartbeat_marks_degraded_runtime_error() -> None:
+    metadata = build_dispatch_execution_daemon_process_metadata(
+        process_run_id="process-run-0782-degraded",
+        started_at="2026-09-15T13:03:00Z",
+    )
+    runtime_state = {"state_status": "DEGRADED"}
+
+    heartbeat = build_dispatch_execution_daemon_heartbeat(
+        metadata,
+        runtime_state=runtime_state,
+        observed_at="2026-09-15T13:03:10Z",
+    )
+
+    assert heartbeat["status"] == "ERROR"
+    assert heartbeat["metadata"]["state_status"] == "DEGRADED"
 
 
 def test_dispatch_execution_daemon_lifecycle_details_are_safe() -> None:

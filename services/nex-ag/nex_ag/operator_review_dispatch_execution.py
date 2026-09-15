@@ -11,7 +11,16 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 from uuid import NAMESPACE_URL, uuid5
 
-from nex_runtime import OperationalEventEmitter, OperationalEventEmitResult
+from nex_runtime import (
+    DEFAULT_WORKER_STALE_AFTER_SECONDS,
+    MAX_WORKER_STALE_AFTER_SECONDS,
+    WORKER_HEARTBEAT_SCHEMA_VERSION,
+    WORKER_HEARTBEAT_STATUSES,
+    build_worker_heartbeat,
+    normalize_worker_stale_after_seconds,
+    OperationalEventEmitter,
+    OperationalEventEmitResult,
+)
 
 from nex_ag.operator_reviews import (
     OperatorReviewNoteError,
@@ -72,6 +81,9 @@ DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_ADMISSION_SCHEMA_VERSION = (
 DISPATCH_EXECUTION_DAEMON_PROCESS_CONTROL_PROJECTION_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_daemon_process_control_projection.v1"
 )
+DISPATCH_EXECUTION_DAEMON_HEARTBEAT_CONTRACT_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_daemon_heartbeat_contract.v1"
+)
 DISPATCH_EXECUTION_DAEMON_CONTROL_REQUEST_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_daemon_control_request.v1"
 )
@@ -124,6 +136,10 @@ DISPATCH_LIVE_HTTP_TRANSPORT_USER_AGENT = (
 )
 DEFAULT_DISPATCH_EXECUTION_DAEMON_ENTRYPOINT = (
     "python -m nex_ag.operator_review_dispatch_daemon"
+)
+DISPATCH_EXECUTION_DAEMON_HEARTBEAT_SERVICE_ID = "nex-ag"
+DISPATCH_EXECUTION_DAEMON_HEARTBEAT_WORKER_TYPE = (
+    "operator_review_dispatch_daemon"
 )
 DISPATCH_EXECUTION_DAEMON_LIFECYCLE_EVENT_STARTED = (
     "ag.operator_review.escalation_dispatch.daemon_process.started"
@@ -979,6 +995,164 @@ def build_dispatch_execution_daemon_process_runtime_state(
     }
     assert_dispatch_execution_result_redacted(state)
     return state
+
+
+def build_dispatch_execution_daemon_heartbeat_contract(
+    process_metadata: Mapping[str, Any],
+    *,
+    runtime_state: Mapping[str, Any] | None = None,
+    status: str | None = None,
+    active_job_id: str | None = None,
+    trace_id: str | None = None,
+    observed_at: str | None = None,
+    stale_after_seconds: int = DEFAULT_WORKER_STALE_AFTER_SECONDS,
+    metadata: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    observed = observed_at or _utc_now()
+    heartbeat = build_dispatch_execution_daemon_heartbeat(
+        process_metadata,
+        runtime_state=runtime_state,
+        status=status,
+        active_job_id=active_job_id,
+        trace_id=trace_id,
+        observed_at=observed,
+        metadata=metadata,
+    )
+    normalized_stale_after = normalize_worker_stale_after_seconds(
+        stale_after_seconds
+    )
+    contract = {
+        "daemon_heartbeat_contract_schema_version": (
+            DISPATCH_EXECUTION_DAEMON_HEARTBEAT_CONTRACT_SCHEMA_VERSION
+        ),
+        "contract_status": "READY",
+        "service_id": DISPATCH_EXECUTION_DAEMON_HEARTBEAT_SERVICE_ID,
+        "worker_id": heartbeat["worker_id"],
+        "worker_type": heartbeat["worker_type"],
+        "heartbeat_schema_version": WORKER_HEARTBEAT_SCHEMA_VERSION,
+        "heartbeat_status": heartbeat["status"],
+        "source_table": "service_worker_heartbeats",
+        "liveness_source": process_metadata.get(
+            "liveness_source",
+            "service_worker_heartbeats",
+        ),
+        "stale_after_seconds": normalized_stale_after,
+        "max_stale_after_seconds": MAX_WORKER_STALE_AFTER_SECONDS,
+        "allowed_statuses": list(WORKER_HEARTBEAT_STATUSES),
+        "status_mapping": _dispatch_daemon_heartbeat_status_mapping(),
+        "heartbeat": heartbeat,
+        "new_table_required": False,
+        "mutation_in_contract_slice": False,
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(contract)
+    return contract
+
+
+def build_dispatch_execution_daemon_heartbeat(
+    process_metadata: Mapping[str, Any],
+    *,
+    runtime_state: Mapping[str, Any] | None = None,
+    status: str | None = None,
+    active_job_id: str | None = None,
+    trace_id: str | None = None,
+    observed_at: str | None = None,
+    metadata: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    observed = observed_at or _utc_now()
+    heartbeat_metadata = _dispatch_daemon_heartbeat_metadata(
+        process_metadata,
+        runtime_state=runtime_state,
+        extra_metadata=metadata,
+    )
+    return build_worker_heartbeat(
+        service_id=DISPATCH_EXECUTION_DAEMON_HEARTBEAT_SERVICE_ID,
+        worker_id=str(
+            process_metadata.get("worker_id")
+            or "ag-dispatch-execution-daemon"
+        ),
+        worker_type=DISPATCH_EXECUTION_DAEMON_HEARTBEAT_WORKER_TYPE,
+        status=(
+            status
+            if status is not None
+            else _dispatch_daemon_heartbeat_status(process_metadata, runtime_state)
+        ),
+        active_job_id=active_job_id,
+        trace_id=trace_id,
+        started_at=str(process_metadata.get("started_at") or observed),
+        last_seen_at=observed,
+        metadata=heartbeat_metadata,
+    )
+
+
+def _dispatch_daemon_heartbeat_metadata(
+    process_metadata: Mapping[str, Any],
+    *,
+    runtime_state: Mapping[str, Any] | None,
+    extra_metadata: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    safe_metadata = {
+        "process_run_id": process_metadata.get("process_run_id"),
+        "process_status": process_metadata.get("process_status"),
+        "state_status": (runtime_state or {}).get("state_status")
+        if isinstance(runtime_state, Mapping)
+        else None,
+        "loop_mode": process_metadata.get("loop_mode"),
+        "cycle_limit": process_metadata.get("cycle_limit"),
+        "interval_seconds": process_metadata.get("interval_seconds"),
+        "dry_run": bool(process_metadata.get("dry_run")),
+        "effective_provider_mode": process_metadata.get("effective_provider_mode"),
+        "source_table": process_metadata.get("source_table", "ag_op_esc_dispatches"),
+        "lifecycle_event_source": process_metadata.get(
+            "lifecycle_event_source",
+            "service_operational_events",
+        ),
+        "liveness_source": process_metadata.get(
+            "liveness_source",
+            "service_worker_heartbeats",
+        ),
+        "new_tables_required": False,
+    }
+    if extra_metadata is not None:
+        for key, value in extra_metadata.items():
+            if key in {
+                "raw_payload",
+                "raw_request",
+                "secret",
+                "token",
+                "password",
+                "api_key",
+            }:
+                continue
+            safe_metadata[str(key)] = value
+    return safe_metadata
+
+
+def _dispatch_daemon_heartbeat_status(
+    process_metadata: Mapping[str, Any],
+    runtime_state: Mapping[str, Any] | None,
+) -> str:
+    state_status = (
+        str(runtime_state.get("state_status") or "")
+        if isinstance(runtime_state, Mapping)
+        else ""
+    )
+    process_status = str(process_metadata.get("process_status") or "")
+    if state_status == "DEGRADED":
+        return "ERROR"
+    if state_status == "STOPPED" or process_status == "DISABLED":
+        return "STOPPED"
+    return "IDLE"
+
+
+def _dispatch_daemon_heartbeat_status_mapping() -> dict[str, str]:
+    return {
+        "process.DISABLED": "STOPPED",
+        "process.READY": "IDLE",
+        "process.RUNNING": "IDLE",
+        "runtime.DEGRADED": "ERROR",
+        "runtime.STOPPED": "STOPPED",
+    }
 
 
 def build_dispatch_execution_daemon_lifecycle_event_details(
