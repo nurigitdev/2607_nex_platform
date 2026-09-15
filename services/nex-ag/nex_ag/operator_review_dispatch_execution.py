@@ -5,7 +5,7 @@ import re
 import socket
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
@@ -45,6 +45,12 @@ DISPATCH_EXECUTION_DAEMON_TICK_EVENT_SCHEMA_VERSION = (
 )
 DISPATCH_EXECUTION_DAEMON_TICK_LOG_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_daemon_tick_log.v1"
+)
+DISPATCH_EXECUTION_DAEMON_LOOP_POLICY_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_daemon_loop_policy.v1"
+)
+DISPATCH_EXECUTION_DAEMON_BOUNDED_LOOP_RESULT_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_execution_daemon_bounded_loop_result.v1"
 )
 DISPATCH_EXECUTION_DAEMON_CONTROL_REQUEST_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_execution_daemon_control_request.v1"
@@ -623,6 +629,214 @@ def run_dispatch_execution_daemon_tick_once(
     }
     assert_dispatch_execution_result_redacted(result)
     return result
+
+
+def build_dispatch_execution_daemon_loop_policy(
+    environ: Mapping[str, str] | None = None,
+    *,
+    policy: Mapping[str, Any] | None = None,
+    provider_config: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    resolved_policy = (
+        dict(policy)
+        if policy is not None
+        else build_dispatch_execution_daemon_policy(
+            environ or {},
+            provider_config=provider_config,
+        )
+    )
+    loop_policy = {
+        "daemon_loop_policy_schema_version": (
+            DISPATCH_EXECUTION_DAEMON_LOOP_POLICY_SCHEMA_VERSION
+        ),
+        "loop_mode": "bounded",
+        "enabled": bool(resolved_policy.get("enabled")),
+        "dry_run": bool(resolved_policy.get("dry_run")),
+        "batch_limit": _bounded_batch_limit(resolved_policy.get("batch_limit")),
+        "cycle_limit": _bounded_int_value(
+            resolved_policy.get("cycle_limit"),
+            default=DEFAULT_DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT,
+            minimum=1,
+            maximum=MAX_DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT,
+        ),
+        "interval_seconds": _bounded_int_value(
+            resolved_policy.get("interval_seconds"),
+            default=DEFAULT_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS,
+            minimum=MIN_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS,
+            maximum=MAX_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS,
+        ),
+        "configured_provider_mode": resolved_policy.get("configured_provider_mode"),
+        "effective_provider_mode": resolved_policy.get("effective_provider_mode"),
+        "live_network_calls_enabled": bool(
+            resolved_policy.get("live_network_calls_enabled")
+        ),
+        "requires_confirm_tick": bool(
+            resolved_policy.get("requires_confirm_tick", True)
+        ),
+        "tick_executor": "run_dispatch_execution_daemon_tick_once",
+        "source_table": resolved_policy.get("source_table", "ag_op_esc_dispatches"),
+        "result_storage": DISPATCH_EXECUTION_RESULT_STORAGE,
+        "continuous_loop_started": False,
+        "subprocess_started": False,
+        "new_tables_required": False,
+        "guardrails": {
+            "finite_cycle_limit": True,
+            "confirm_tick_required": True,
+            "default_dry_run": True,
+            "sleep_is_injected": True,
+            "raw_payloads_allowed": False,
+            "provider_secrets_allowed": False,
+        },
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(loop_policy)
+    return loop_policy
+
+
+def run_dispatch_execution_daemon_bounded_loop(
+    service: Any,
+    *,
+    request_id: str,
+    trace_id: str | None = None,
+    worker_id: str = "ag-dispatch-execution-daemon",
+    policy: Mapping[str, Any] | None = None,
+    loop_policy: Mapping[str, Any] | None = None,
+    provider_config: Mapping[str, Any] | None = None,
+    provider_profile: str | None = None,
+    notification_status_code: int | None = None,
+    external_incident_status_code: int | None = None,
+    live_http_transport: Any | None = None,
+    confirm_tick: bool = False,
+    dry_run: bool | None = None,
+    started_at: str | None = None,
+    sleep_fn: Callable[[int], None] | None = None,
+) -> dict[str, Any]:
+    resolved_policy = dict(
+        policy
+        if policy is not None
+        else build_dispatch_execution_daemon_policy(
+            {},
+            provider_config=provider_config,
+        )
+    )
+    resolved_loop_policy = (
+        dict(loop_policy)
+        if loop_policy is not None
+        else build_dispatch_execution_daemon_loop_policy(policy=resolved_policy)
+    )
+    now = started_at or _utc_now()
+    cycle_limit = _bounded_int_value(
+        resolved_loop_policy.get("cycle_limit"),
+        default=DEFAULT_DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT,
+        minimum=1,
+        maximum=MAX_DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT,
+    )
+    interval_seconds = _bounded_int_value(
+        resolved_loop_policy.get("interval_seconds"),
+        default=DEFAULT_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS,
+        minimum=MIN_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS,
+        maximum=MAX_DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS,
+    )
+    ticks: list[dict[str, Any]] = []
+    stop_reason = "cycle_limit_reached"
+    if not bool(resolved_loop_policy.get("enabled")):
+        stop_reason = "daemon_disabled"
+    else:
+        for cycle_index in range(cycle_limit):
+            executed_at = _iso_after_seconds(now, cycle_index * interval_seconds)
+            tick = run_dispatch_execution_daemon_tick_once(
+                service,
+                request_id=f"{request_id}:cycle-{cycle_index + 1}",
+                trace_id=trace_id,
+                worker_id=worker_id,
+                policy=resolved_policy,
+                provider_config=provider_config,
+                provider_profile=provider_profile,
+                notification_status_code=notification_status_code,
+                external_incident_status_code=external_incident_status_code,
+                live_http_transport=live_http_transport,
+                confirm_tick=confirm_tick,
+                dry_run=dry_run,
+                executed_at=executed_at,
+            )
+            ticks.append(tick)
+            if str(tick.get("tick_status") or "") == "BLOCKED":
+                stop_reason = str(tick.get("blocked_reason") or "tick_blocked")
+                break
+            if _non_negative_int(tick.get("candidate_count")) == 0:
+                stop_reason = "idle"
+                break
+            if cycle_index + 1 < cycle_limit and sleep_fn is not None:
+                sleep_fn(interval_seconds)
+    loop_status = _dispatch_daemon_bounded_loop_status(ticks, stop_reason)
+    result = {
+        "daemon_bounded_loop_result_schema_version": (
+            DISPATCH_EXECUTION_DAEMON_BOUNDED_LOOP_RESULT_SCHEMA_VERSION
+        ),
+        "loop_id": str(
+            uuid5(
+                NAMESPACE_URL,
+                "ag-operator-review-escalation-dispatch-daemon-bounded-loop:"
+                f"{worker_id}:{request_id}:{now}:{cycle_limit}:{stop_reason}",
+            )
+        ),
+        "loop_status": loop_status,
+        "stop_reason": stop_reason,
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "worker_id": worker_id,
+        "started_at": now,
+        "completed_at": _iso_after_seconds(
+            now,
+            max(len(ticks) - 1, 0) * interval_seconds,
+        ),
+        "cycle_limit": cycle_limit,
+        "cycle_count": len(ticks),
+        "interval_seconds": interval_seconds,
+        "summary": _dispatch_daemon_bounded_loop_summary(ticks),
+        "tick_results": ticks,
+        "loop_policy": resolved_loop_policy,
+        "new_tables_required": False,
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(result)
+    return result
+
+
+def summarize_dispatch_execution_daemon_bounded_loop_result(
+    loop_result: Mapping[str, Any],
+) -> dict[str, Any]:
+    summary = {
+        "loop_status": str(loop_result.get("loop_status") or "UNKNOWN"),
+        "stop_reason": optional_text(loop_result.get("stop_reason")),
+        "worker_id": str(loop_result.get("worker_id") or ""),
+        "cycle_count": _non_negative_int(loop_result.get("cycle_count")),
+        "cycle_limit": _non_negative_int(loop_result.get("cycle_limit")),
+        "processed_count": _non_negative_int(
+            (loop_result.get("summary") or {}).get("processed_count")
+            if isinstance(loop_result.get("summary"), Mapping)
+            else 0
+        ),
+        "succeeded_count": _non_negative_int(
+            (loop_result.get("summary") or {}).get("succeeded_count")
+            if isinstance(loop_result.get("summary"), Mapping)
+            else 0
+        ),
+        "failed_count": _non_negative_int(
+            (loop_result.get("summary") or {}).get("failed_count")
+            if isinstance(loop_result.get("summary"), Mapping)
+            else 0
+        ),
+        "retry_wait_count": _non_negative_int(
+            (loop_result.get("summary") or {}).get("retry_wait_count")
+            if isinstance(loop_result.get("summary"), Mapping)
+            else 0
+        ),
+        "new_tables_required": bool(loop_result.get("new_tables_required")),
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(summary)
+    return summary
 
 
 def build_dispatch_execution_daemon_tick_event(
@@ -2361,6 +2575,61 @@ def _dispatch_daemon_tick_severity(tick_result: Mapping[str, Any]) -> str:
     return "INFO"
 
 
+def _dispatch_daemon_bounded_loop_status(
+    ticks: list[dict[str, Any]],
+    stop_reason: str,
+) -> str:
+    if stop_reason == "daemon_disabled":
+        return "SKIPPED"
+    if stop_reason not in {"idle", "cycle_limit_reached"}:
+        return "BLOCKED"
+    if not ticks:
+        return "IDLE"
+    if (
+        stop_reason == "idle"
+        and _non_negative_int(ticks[-1].get("candidate_count")) == 0
+    ):
+        return "IDLE"
+    return "COMPLETED"
+
+
+def _dispatch_daemon_bounded_loop_summary(
+    ticks: list[dict[str, Any]],
+) -> dict[str, Any]:
+    summary = {
+        "tick_count": len(ticks),
+        "completed_count": sum(
+            1 for tick in ticks if str(tick.get("tick_status") or "") == "COMPLETED"
+        ),
+        "blocked_count": sum(
+            1 for tick in ticks if str(tick.get("tick_status") or "") == "BLOCKED"
+        ),
+        "candidate_count": sum(
+            _non_negative_int(tick.get("candidate_count")) for tick in ticks
+        ),
+        "processed_count": sum(
+            _non_negative_int(tick.get("processed_count")) for tick in ticks
+        ),
+        "succeeded_count": sum(
+            _non_negative_int(tick.get("succeeded_count")) for tick in ticks
+        ),
+        "failed_count": sum(
+            _non_negative_int(tick.get("failed_count")) for tick in ticks
+        ),
+        "retry_wait_count": sum(
+            _non_negative_int(tick.get("retry_wait_count")) for tick in ticks
+        ),
+        "skipped_count": sum(
+            _non_negative_int(tick.get("skipped_count")) for tick in ticks
+        ),
+        "by_tick_status": _count_by_key(ticks, "tick_status"),
+        "by_blocked_reason": _count_by_key(ticks, "blocked_reason"),
+        "redaction": _dispatch_execution_redaction_flags(),
+    }
+    assert_dispatch_execution_result_redacted(summary)
+    return summary
+
+
 def _count_by_key(
     items: list[dict[str, Any]],
     key: str,
@@ -2977,6 +3246,20 @@ def _bounded_int_env(
     try:
         parsed = int(value)
     except ValueError:
+        return default
+    return max(minimum, min(parsed, maximum))
+
+
+def _bounded_int_value(
+    value: Any,
+    *,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
         return default
     return max(minimum, min(parsed, maximum))
 

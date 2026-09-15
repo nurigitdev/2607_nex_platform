@@ -22,10 +22,12 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV,
     DISPATCH_EXECUTION_DAEMON_CONTROL_ADMISSION_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_CONTROL_REQUEST_SCHEMA_VERSION,
+    DISPATCH_EXECUTION_DAEMON_BOUNDED_LOOP_RESULT_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT_ENV,
     DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV,
     DISPATCH_EXECUTION_DAEMON_ENABLED_ENV,
     DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS_ENV,
+    DISPATCH_EXECUTION_DAEMON_LOOP_POLICY_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_POLICY_SCHEMA_VERSION,
     DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV,
     DISPATCH_EXECUTION_DAEMON_TICK_EVENT_SCHEMA_VERSION,
@@ -61,6 +63,7 @@ from nex_ag.operator_review_dispatch_execution import (
     build_dispatch_execution_daemon_policy,
     build_dispatch_execution_daemon_control_admission,
     build_dispatch_execution_daemon_control_request,
+    build_dispatch_execution_daemon_loop_policy,
     build_dispatch_execution_daemon_tick_event,
     build_dispatch_execution_daemon_tick_log_entry,
     build_dispatch_execution_daemon_tick_plan,
@@ -85,7 +88,9 @@ from nex_ag.operator_review_dispatch_execution import (
     normalize_dispatch_execution_provider_mode,
     normalize_dispatch_execution_provider_profile,
     record_dispatch_execution_result_metadata,
+    run_dispatch_execution_daemon_bounded_loop,
     run_dispatch_execution_daemon_tick_once,
+    summarize_dispatch_execution_daemon_bounded_loop_result,
     run_dispatch_execution_worker_once,
     _build_dispatch_provider_http_client_result,
     _build_provider_adapter_execution_result,
@@ -371,6 +376,193 @@ def test_dispatch_execution_daemon_policy_rejects_unknown_provider_mode() -> Non
 
     assert exc_info.value.error_code == (
         "ag.operator_review_escalation_dispatch_execution_provider_mode_unsupported"
+    )
+
+
+def test_dispatch_execution_daemon_loop_policy_is_bounded_and_redacted() -> None:
+    policy = build_dispatch_execution_daemon_policy(
+        {
+            DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1",
+            DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV: "0",
+            DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV: "2",
+            DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT_ENV: "20",
+            DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS_ENV: "0",
+            DISPATCH_NOTIFICATION_SERVICE_TOKEN_ENV: "notify-token-0772",
+        }
+    )
+
+    loop_policy = build_dispatch_execution_daemon_loop_policy(policy=policy)
+
+    assert loop_policy["daemon_loop_policy_schema_version"] == (
+        DISPATCH_EXECUTION_DAEMON_LOOP_POLICY_SCHEMA_VERSION
+    )
+    assert loop_policy["loop_mode"] == "bounded"
+    assert loop_policy["enabled"] is True
+    assert loop_policy["dry_run"] is False
+    assert loop_policy["batch_limit"] == 2
+    assert loop_policy["cycle_limit"] == 10
+    assert loop_policy["interval_seconds"] == 1
+    assert loop_policy["tick_executor"] == "run_dispatch_execution_daemon_tick_once"
+    assert loop_policy["continuous_loop_started"] is False
+    assert loop_policy["subprocess_started"] is False
+    assert loop_policy["new_tables_required"] is False
+    assert loop_policy["guardrails"] == {
+        "finite_cycle_limit": True,
+        "confirm_tick_required": True,
+        "default_dry_run": True,
+        "sleep_is_injected": True,
+        "raw_payloads_allowed": False,
+        "provider_secrets_allowed": False,
+    }
+    assert "notify-token-0772" not in json.dumps(loop_policy)
+    assert_dispatch_execution_result_redacted(loop_policy)
+
+
+def test_dispatch_execution_daemon_bounded_loop_skips_disabled() -> None:
+    service, _dispatch_store = build_dispatch_service(sample_dispatch())
+
+    result = run_dispatch_execution_daemon_bounded_loop(
+        service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        started_at="2026-09-15T09:00:00Z",
+    )
+
+    assert result["daemon_bounded_loop_result_schema_version"] == (
+        DISPATCH_EXECUTION_DAEMON_BOUNDED_LOOP_RESULT_SCHEMA_VERSION
+    )
+    assert result["loop_status"] == "SKIPPED"
+    assert result["stop_reason"] == "daemon_disabled"
+    assert result["cycle_count"] == 0
+    assert result["tick_results"] == []
+    assert result["summary"]["tick_count"] == 0
+    assert result["new_tables_required"] is False
+    assert summarize_dispatch_execution_daemon_bounded_loop_result(result) == {
+        "loop_status": "SKIPPED",
+        "stop_reason": "daemon_disabled",
+        "worker_id": "ag-dispatch-execution-daemon",
+        "cycle_count": 0,
+        "cycle_limit": 1,
+        "processed_count": 0,
+        "succeeded_count": 0,
+        "failed_count": 0,
+        "retry_wait_count": 0,
+        "new_tables_required": False,
+        "redaction": result["redaction"],
+    }
+    assert_dispatch_execution_result_redacted(result)
+
+
+def test_dispatch_execution_daemon_bounded_loop_blocks_without_confirm() -> None:
+    service, dispatch_store = build_dispatch_service(sample_dispatch())
+    policy = build_dispatch_execution_daemon_policy(
+        {DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1"}
+    )
+
+    result = run_dispatch_execution_daemon_bounded_loop(
+        service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        policy=policy,
+        started_at="2026-09-15T09:01:00Z",
+    )
+
+    assert result["loop_status"] == "BLOCKED"
+    assert result["stop_reason"] == "confirm_tick_required"
+    assert result["cycle_count"] == 1
+    assert result["summary"]["blocked_count"] == 1
+    assert result["tick_results"][0]["blocked_reason"] == "confirm_tick_required"
+    assert dispatch_store.list_dispatches(limit=10)[0]["dispatch_status"] == "PENDING"
+
+
+def test_dispatch_execution_daemon_bounded_loop_runs_until_cycle_limit() -> None:
+    first = sample_dispatch(
+        candidate_overrides={"candidate_id": "case-0772:first", "case_id": "case-0772-a"}
+    )
+    second = sample_dispatch(
+        candidate_overrides={"candidate_id": "case-0772:second", "case_id": "case-0772-b"}
+    )
+    second["dispatch_id"] = "dispatch-0772-second"
+    service, dispatch_store = build_dispatch_service(first, second)
+    sleep_calls: list[int] = []
+    policy = build_dispatch_execution_daemon_policy(
+        {
+            DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1",
+            DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV: "0",
+            DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV: "1",
+            DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT_ENV: "2",
+            DISPATCH_EXECUTION_DAEMON_INTERVAL_SECONDS_ENV: "3",
+        }
+    )
+
+    result = run_dispatch_execution_daemon_bounded_loop(
+        service,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        policy=policy,
+        confirm_tick=True,
+        dry_run=False,
+        started_at="2026-09-15T09:02:00Z",
+        sleep_fn=sleep_calls.append,
+    )
+    summary = summarize_dispatch_execution_daemon_bounded_loop_result(result)
+
+    assert result["loop_status"] == "COMPLETED"
+    assert result["stop_reason"] == "cycle_limit_reached"
+    assert result["cycle_count"] == 2
+    assert result["summary"]["processed_count"] == 2
+    assert result["summary"]["succeeded_count"] == 2
+    assert result["tick_results"][0]["executed_at"] == "2026-09-15T09:02:00Z"
+    assert result["tick_results"][1]["executed_at"] == "2026-09-15T09:02:03Z"
+    assert sleep_calls == [3]
+    assert dispatch_store.get(first["dispatch_id"])["dispatch_status"] == "SUCCEEDED"
+    assert dispatch_store.get("dispatch-0772-second")["dispatch_status"] == "SUCCEEDED"
+    assert summary["processed_count"] == 2
+    assert summary["new_tables_required"] is False
+    assert_dispatch_execution_result_redacted(result)
+
+
+def test_dispatch_execution_daemon_bounded_loop_stops_when_idle() -> None:
+    service, _dispatch_store = build_dispatch_service()
+    policy = build_dispatch_execution_daemon_policy(
+        {
+            DISPATCH_EXECUTION_DAEMON_ENABLED_ENV: "1",
+            DISPATCH_EXECUTION_DAEMON_CYCLE_LIMIT_ENV: "3",
+        }
+    )
+
+    result = run_dispatch_execution_daemon_bounded_loop(
+        service,
+        request_id=REQUEST_ID,
+        policy=policy,
+        confirm_tick=True,
+        started_at="2026-09-15T09:03:00Z",
+    )
+
+    assert result["loop_status"] == "IDLE"
+    assert result["stop_reason"] == "idle"
+    assert result["cycle_count"] == 1
+    assert result["summary"]["candidate_count"] == 0
+    assert result["summary"]["by_tick_status"] == {"COMPLETED": 1}
+
+
+def test_dispatch_execution_daemon_bounded_loop_helper_edges() -> None:
+    assert dispatch_execution._dispatch_daemon_bounded_loop_status([], "idle") == "IDLE"
+    assert (
+        dispatch_execution._dispatch_daemon_bounded_loop_status(
+            [{"candidate_count": 1}],
+            "idle",
+        )
+        == "COMPLETED"
+    )
+    assert (
+        dispatch_execution._bounded_int_value(
+            "not-a-number",
+            default=7,
+            minimum=1,
+            maximum=10,
+        )
+        == 7
     )
 
 
