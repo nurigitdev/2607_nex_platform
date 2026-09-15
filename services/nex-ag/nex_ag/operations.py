@@ -177,6 +177,9 @@ AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_PLAN_SCHEMA_VERSION = (
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_AUDIT_EVENT_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_daemon_liveness_recovery_audit_event.v1"
 )
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_DASHBOARD_SECTION_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_daemon_liveness_recovery_dashboard_section.v1"
+)
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_PLANNED = (
     "ag.operator_review_escalation_dispatch_daemon.liveness_recovery.planned"
 )
@@ -8364,6 +8367,12 @@ def _dashboard_operator_review_escalation_dispatch_section(
         registry=registry,
         request_trace_id=request_trace_id,
     )
+    daemon_recovery = (
+        _dashboard_operator_review_dispatch_daemon_liveness_recovery_section(
+            liveness_projection=daemon_liveness,
+            request_trace_id=request_trace_id,
+        )
+    )
     if dispatch_store is None:
         return {
             **_empty_dashboard_operator_review_escalation_dispatch_section(
@@ -8372,6 +8381,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
             "daemon_controls": daemon_controls,
             "daemon_process": daemon_process,
             "daemon_liveness": daemon_liveness,
+            "daemon_recovery": daemon_recovery,
         }
 
     target_service = service_id if service_id in ALLOWED_TARGET_SERVICES else None
@@ -8415,6 +8425,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
             "daemon_controls": daemon_controls,
             "daemon_process": daemon_process,
             "daemon_liveness": daemon_liveness,
+            "daemon_recovery": daemon_recovery,
             "projection_status": "DEGRADED",
         }
 
@@ -8456,6 +8467,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
         "daemon_controls": daemon_controls,
         "daemon_process": daemon_process,
         "daemon_liveness": daemon_liveness,
+        "daemon_recovery": daemon_recovery,
         "source_statuses": source_statuses,
         "dispatch_list_path": "/admin/v1/operator-review/dispatches",
         "dispatch_detail_path_template": (
@@ -8495,6 +8507,18 @@ def _empty_dashboard_operator_review_escalation_dispatch_section(
             worker_heartbeat_stores=None,
             registry=None,
             request_trace_id=None,
+        ),
+        "daemon_recovery": (
+            _dashboard_operator_review_dispatch_daemon_liveness_recovery_section(
+                liveness_projection=(
+                    _dashboard_operator_review_dispatch_daemon_liveness_section(
+                        worker_heartbeat_stores=None,
+                        registry=None,
+                        request_trace_id=None,
+                    )
+                ),
+                request_trace_id=None,
+            )
         ),
         "source_statuses": source_statuses,
         "dispatch_list_path": "/admin/v1/operator-review/dispatches",
@@ -8584,6 +8608,120 @@ def _dashboard_operator_review_dispatch_daemon_liveness_section(
         registry=registry,
         request_trace_id=request_trace_id,
     )
+
+
+def _dashboard_operator_review_dispatch_daemon_liveness_recovery_section(
+    *,
+    liveness_projection: Mapping[str, Any],
+    request_trace_id: str | None,
+) -> dict[str, Any]:
+    try:
+        recovery_plan = (
+            build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
+                liveness_projection,
+                process_section={
+                    "process_control_path": (
+                        "/admin/v1/operator-review/dispatch-daemon/process-controls"
+                    )
+                },
+                request_trace_id=request_trace_id,
+            )
+        )
+    except OperationsQueryError as exc:
+        section = {
+            "projection_schema_version": (
+                AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_DASHBOARD_SECTION_SCHEMA_VERSION
+            ),
+            "projection_status": "DEGRADED",
+            "recovery_plan_status": "UNAVAILABLE",
+            "summary": {
+                "liveness_status": "UNKNOWN",
+                "action_count": 0,
+                "requires_operator_action": False,
+                "requires_confirm_process": False,
+                "subprocess_mutation_performed": False,
+                "new_tables_required": False,
+            },
+            "recommended_actions": [],
+            "recovery_plan_path": (
+                "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan"
+            ),
+            "process_control_path": (
+                "/admin/v1/operator-review/dispatch-daemon/process-controls"
+            ),
+            "source_statuses": {
+                "nex-ag": {
+                    "status": "UNAVAILABLE",
+                    "service_id": "nex-ag",
+                    "source_kind": "derived_liveness_recovery_plan",
+                    "source_table": "service_worker_heartbeats",
+                    "new_tables_required": False,
+                    "error_code": exc.error_code,
+                    "detail": exc.detail,
+                }
+            },
+            "redaction": (
+                _operator_review_escalation_dispatch_execution_result_redaction()
+            ),
+        }
+        if request_trace_id is not None:
+            section["request_trace_id"] = request_trace_id
+        return section
+
+    summary = _mapping_or_empty(recovery_plan.get("summary"))
+    source_evidence = _mapping_or_empty(recovery_plan.get("source_evidence"))
+    recovery_plan_route = _mapping_or_empty(recovery_plan.get("recovery_plan_route"))
+    process_control_route = _mapping_or_empty(
+        recovery_plan.get("process_control_route")
+    )
+    source_statuses = _mapping_or_empty(source_evidence.get("source_statuses"))
+    section = {
+        "projection_schema_version": (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_DASHBOARD_SECTION_SCHEMA_VERSION
+        ),
+        "projection_status": "READY",
+        "recovery_plan_status": recovery_plan.get("projection_status"),
+        "summary": {
+            "liveness_status": _nullable_string(summary.get("liveness_status")),
+            "action_count": _safe_optional_int(summary.get("action_count")),
+            "requires_operator_action": bool(
+                summary.get("requires_operator_action")
+            ),
+            "requires_confirm_process": bool(
+                summary.get("requires_confirm_process")
+            ),
+            "subprocess_mutation_performed": bool(
+                summary.get("subprocess_mutation_performed", False)
+            ),
+            "new_tables_required": False,
+        },
+        "recommended_actions": deepcopy(
+            list(recovery_plan.get("recommended_actions", []))
+        ),
+        "recovery_plan_path": _nullable_string(recovery_plan_route.get("path")),
+        "process_control_path": _nullable_string(process_control_route.get("path")),
+        "source_evidence": deepcopy(dict(source_evidence)),
+        "guardrails": deepcopy(dict(_mapping_or_empty(recovery_plan.get("guardrails")))),
+        "source_statuses": {
+            "nex-ag": {
+                "status": "READY",
+                "service_id": "nex-ag",
+                "source_kind": "derived_liveness_recovery_plan",
+                "source_table": "service_worker_heartbeats",
+                "liveness_status": _nullable_string(
+                    source_evidence.get("liveness_status")
+                ),
+                "liveness_source_status": _nullable_string(
+                    _mapping_or_empty(source_statuses.get("nex-ag")).get("status")
+                ),
+                "new_tables_required": False,
+            }
+        },
+        "redaction": deepcopy(dict(_mapping_or_empty(recovery_plan.get("redaction")))),
+    }
+    if request_trace_id is not None:
+        section["request_trace_id"] = request_trace_id
+    return section
 
 
 def _dashboard_operator_review_dispatch_daemon_control_section(

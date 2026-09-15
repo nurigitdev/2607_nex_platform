@@ -890,6 +890,92 @@
         "result_storage": "safe_hashes_statuses_counters_only"
       }
     },
+    "daemon_recovery": {
+      "projection_schema_version": "ag_operator_review_escalation_dispatch_daemon_liveness_recovery_dashboard_section.v1",
+      "projection_status": "READY",
+      "recovery_plan_status": "ACTION_RECOMMENDED",
+      "summary": {
+        "liveness_status": "MISSING",
+        "action_count": 1,
+        "requires_operator_action": true,
+        "requires_confirm_process": true,
+        "subprocess_mutation_performed": false,
+        "new_tables_required": false
+      },
+      "recommended_actions": [
+        {
+          "action_id": "start_or_inspect_dispatch_daemon_process",
+          "severity": "ERROR",
+          "title": "Start or inspect dispatch daemon process",
+          "reason_code": "missing_heartbeat",
+          "operator_action": "start_or_inspect_dispatch_daemon_process",
+          "control_action": "start_process",
+          "route_path": "/admin/v1/operator-review/dispatch-daemon/process-controls",
+          "requires_confirm_process": true,
+          "dry_run_only": true,
+          "mutation": false,
+          "subprocess_mutation_performed": false,
+          "runbook_ids": [
+            "ag.operator_review_dispatch_daemon_liveness.missing_heartbeat.v1"
+          ],
+          "safe_payload_template": {
+            "action": "start_process",
+            "dry_run": true,
+            "confirm_process": false
+          }
+        }
+      ],
+      "recovery_plan_path": "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan",
+      "process_control_path": "/admin/v1/operator-review/dispatch-daemon/process-controls",
+      "source_evidence": {
+        "liveness_route": "/admin/v1/operator-review/dispatch-daemon/liveness",
+        "liveness_status": "MISSING",
+        "heartbeat_present": false,
+        "heartbeat_status": null,
+        "stale": null,
+        "last_seen_at": null,
+        "stale_after_seconds": 120,
+        "source_statuses": {
+          "nex-ag": {
+            "status": "READY",
+            "service_id": "nex-ag",
+            "worker_count": 0
+          }
+        }
+      },
+      "guardrails": {
+        "read_only_recovery_plan": true,
+        "subprocess_mutation_allowed": false,
+        "process_control_requires_confirm_process": true,
+        "audit_event_supported": true,
+        "audit_event_details_shape": "safe_liveness_recovery_summary_only",
+        "acknowledgement_suppression_deferred_until_slice_0796": true
+      },
+      "source_statuses": {
+        "nex-ag": {
+          "status": "READY",
+          "service_id": "nex-ag",
+          "source_kind": "derived_liveness_recovery_plan",
+          "source_table": "service_worker_heartbeats",
+          "liveness_status": "MISSING",
+          "liveness_source_status": "READY",
+          "new_tables_required": false
+        }
+      },
+      "redaction": {
+        "raw_notification_payload_included": false,
+        "raw_external_incident_payload_included": false,
+        "raw_provider_payload_included": false,
+        "raw_provider_error_included": false,
+        "raw_action_comment_included": false,
+        "raw_source_text_included": false,
+        "provider_secrets_included": false,
+        "database_urls_included": false,
+        "tokens_included": false,
+        "idempotency_keys_included": false,
+        "result_storage": "safe_hashes_statuses_counters_only"
+      }
+    },
     "source_statuses": {},
     "dispatch_list_path": "/admin/v1/operator-review/dispatches",
     "dispatch_detail_path_template": "/admin/v1/operator-review/dispatches/{dispatch_id}",

@@ -17,6 +17,7 @@ from nex_ag.operations import (
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_PROJECTION_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_PLAN_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_AUDIT_EVENT_SCHEMA_VERSION,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_DASHBOARD_SECTION_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_FAILED,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_PLANNED,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_EVENT_REJECTED,
@@ -3580,6 +3581,26 @@ def test_operations_dashboard_snapshot_includes_escalation_dispatches() -> None:
         "ag-dispatch-execution-daemon"
     )
     assert dispatches["daemon_liveness"]["request_trace_id"] == TRACE_ID
+    assert dispatches["daemon_recovery"]["projection_schema_version"] == (
+        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_DASHBOARD_SECTION_SCHEMA_VERSION
+    )
+    assert dispatches["daemon_recovery"]["projection_status"] == "READY"
+    assert dispatches["daemon_recovery"]["recovery_plan_status"] == "NO_ACTION"
+    assert dispatches["daemon_recovery"]["summary"]["liveness_status"] == "FRESH"
+    assert dispatches["daemon_recovery"]["summary"]["action_count"] == 0
+    assert dispatches["daemon_recovery"]["summary"][
+        "requires_operator_action"
+    ] is False
+    assert dispatches["daemon_recovery"]["recommended_actions"] == []
+    assert dispatches["daemon_recovery"]["source_statuses"]["nex-ag"][
+        "status"
+    ] == "READY"
+    assert dispatches["daemon_recovery"]["recovery_plan_path"].endswith(
+        "/dispatch-daemon/liveness/recovery-plan"
+    )
+    assert dispatches["daemon_recovery"]["process_control_path"].endswith(
+        "/dispatch-daemon/process-controls"
+    )
     assert dispatches["summary"]["dispatch_count"] == 2
     assert dispatches["summary"]["attention_count"] == 1
     assert dispatches["summary"]["failed_count"] == 1
@@ -4533,6 +4554,37 @@ def test_operator_review_dispatch_daemon_liveness_recovery_plan_route_is_protect
     assert rejected_events[0]["details"]["rejection_reason"] == (
         "operator_review_dispatch_daemon_liveness_worker_id_invalid"
     )
+
+
+def test_dashboard_dispatch_daemon_liveness_recovery_section_handles_bad_projection() -> (
+    None
+):
+    section = (
+        ag_operations._dashboard_operator_review_dispatch_daemon_liveness_recovery_section(
+            liveness_projection={},
+            request_trace_id=TRACE_ID,
+        )
+    )
+    section_without_trace = (
+        ag_operations._dashboard_operator_review_dispatch_daemon_liveness_recovery_section(
+            liveness_projection={},
+            request_trace_id=None,
+        )
+    )
+
+    assert section["projection_schema_version"] == (
+        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_DASHBOARD_SECTION_SCHEMA_VERSION
+    )
+    assert section["projection_status"] == "DEGRADED"
+    assert section["recovery_plan_status"] == "UNAVAILABLE"
+    assert section["request_trace_id"] == TRACE_ID
+    assert section["summary"]["new_tables_required"] is False
+    assert section["recommended_actions"] == []
+    assert section["source_statuses"]["nex-ag"]["status"] == "UNAVAILABLE"
+    assert section["source_statuses"]["nex-ag"]["error_code"] == (
+        "ag.operator_review_dispatch_daemon_liveness_recovery_summary_missing"
+    )
+    assert "request_trace_id" not in section_without_trace
 
 
 def test_operator_review_dispatch_daemon_process_control_route_is_protected() -> None:
@@ -5521,6 +5573,18 @@ def test_operations_dashboard_escalation_dispatches_handles_filters_and_errors()
     assert daemon_liveness["projection_status"] == "READY"
     assert daemon_liveness["summary"]["liveness_status"] == "MISSING"
     assert daemon_liveness["summary"]["new_tables_required"] is False
+    daemon_recovery = filtered["operator_review_escalation_dispatches"][
+        "daemon_recovery"
+    ]
+    assert daemon_recovery["projection_status"] == "READY"
+    assert daemon_recovery["recovery_plan_status"] == "ACTION_RECOMMENDED"
+    assert daemon_recovery["summary"]["liveness_status"] == "MISSING"
+    assert daemon_recovery["summary"]["requires_operator_action"] is True
+    assert daemon_recovery["summary"]["requires_confirm_process"] is True
+    assert daemon_recovery["recommended_actions"][0]["action_id"] == (
+        "start_or_inspect_dispatch_daemon_process"
+    )
+    assert daemon_recovery["source_statuses"]["nex-ag"]["status"] == "READY"
     assert unavailable["operator_review_escalation_dispatches"][
         "projection_status"
     ] == "DEGRADED"
@@ -5537,6 +5601,18 @@ def test_operations_dashboard_escalation_dispatches_handles_filters_and_errors()
     assert unavailable["operator_review_escalation_dispatches"]["daemon_liveness"][
         "source_statuses"
     ]["nex-ag"]["error_code"] == "worker_heartbeat.store_unavailable"
+    unavailable_recovery = unavailable["operator_review_escalation_dispatches"][
+        "daemon_recovery"
+    ]
+    assert unavailable_recovery["projection_status"] == "READY"
+    assert unavailable_recovery["recovery_plan_status"] == "SOURCE_ATTENTION"
+    assert unavailable_recovery["summary"]["liveness_status"] == (
+        "SOURCE_UNAVAILABLE"
+    )
+    assert unavailable_recovery["recommended_actions"][0]["action_id"] == (
+        "inspect_dispatch_daemon_heartbeat_store"
+    )
+    assert unavailable_recovery["source_statuses"]["nex-ag"]["status"] == "READY"
     assert {
         (source["source_type"], source["service_id"], source["status"])
         for source in unavailable["degraded_sources"]

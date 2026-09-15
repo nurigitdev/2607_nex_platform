@@ -2555,6 +2555,7 @@
         "daemon_controls",
         "daemon_process",
         "daemon_liveness",
+        "daemon_recovery",
         "source_statuses",
         "dispatch_list_path",
         "dispatch_detail_path_template",
@@ -2702,6 +2703,9 @@
         },
         "daemon_liveness": {
           "$ref": "#/$defs/dashboard_operator_review_dispatch_daemon_liveness"
+        },
+        "daemon_recovery": {
+          "$ref": "#/$defs/dashboard_operator_review_dispatch_daemon_liveness_recovery"
         },
         "source_statuses": {
           "type": "object",
@@ -3043,6 +3047,119 @@
         "source_registry": {
           "type": "object",
           "additionalProperties": true
+        },
+        "request_trace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "dashboard_operator_review_dispatch_daemon_liveness_recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "projection_status",
+        "recovery_plan_status",
+        "summary",
+        "recommended_actions",
+        "recovery_plan_path",
+        "process_control_path",
+        "source_statuses",
+        "redaction"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "const": "ag_operator_review_escalation_dispatch_daemon_liveness_recovery_dashboard_section.v1"
+        },
+        "projection_status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "DEGRADED"
+          ]
+        },
+        "recovery_plan_status": {
+          "type": "string",
+          "enum": [
+            "NO_ACTION",
+            "ACTION_RECOMMENDED",
+            "SOURCE_ATTENTION",
+            "UNKNOWN_STATUS",
+            "UNAVAILABLE"
+          ]
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "liveness_status",
+            "action_count",
+            "requires_operator_action",
+            "requires_confirm_process",
+            "subprocess_mutation_performed",
+            "new_tables_required"
+          ],
+          "properties": {
+            "liveness_status": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "action_count": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "requires_operator_action": {
+              "type": "boolean"
+            },
+            "requires_confirm_process": {
+              "type": "boolean"
+            },
+            "subprocess_mutation_performed": {
+              "const": false
+            },
+            "new_tables_required": {
+              "const": false
+            }
+          }
+        },
+        "recommended_actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "recovery_plan_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "process_control_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_evidence": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "guardrails": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "source_statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/source_status"
+          }
         },
         "request_trace_id": {
           "type": "string",
