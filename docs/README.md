@@ -877,6 +877,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0771`](slices/0771_ag_escalation_dispatch_daemon_process_boundary_audit.md) | `S78-001` AG dispatch daemon process boundary audit and refactoring checkpoint. |
 | [`Slice 0772`](slices/0772_ag_escalation_dispatch_daemon_runtime_loop_policy.md) | `S78-002` AG dispatch daemon runtime loop policy. |
 | [`Slice 0773`](slices/0773_ag_escalation_dispatch_daemon_process_metadata_contract.md) | `S78-003` AG dispatch daemon process metadata contract. |
+| [`Slice 0774`](slices/0774_ag_escalation_dispatch_daemon_executable_cli.md) | `S78-004` AG dispatch daemon executable CLI. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
