@@ -458,6 +458,16 @@ OPERATIONS_ISSUE_CANDIDATE_RULES = (
         "signal_type": "operator_review_dispatch_daemon_control",
     },
     {
+        "rule_id": "operator_review_dispatch_daemon_liveness_attention_required.v1",
+        "severity": "ERROR",
+        "title": "Operator review dispatch daemon liveness attention required",
+        "description": (
+            "The enabled dispatch daemon has a missing or stale heartbeat."
+        ),
+        "enabled": True,
+        "signal_type": "operator_review_dispatch_daemon_liveness",
+    },
+    {
         "rule_id": "operator_review_attention_required.v1",
         "severity": "WARNING",
         "title": "Operator review attention required",
@@ -5495,9 +5505,25 @@ def build_operations_issue_candidates(
         if isinstance(dispatch_section, Mapping)
         else None
     )
+    daemon_liveness_section = (
+        dispatch_section.get("daemon_liveness")
+        if isinstance(dispatch_section, Mapping)
+        else None
+    )
+    daemon_process_section = (
+        dispatch_section.get("daemon_process")
+        if isinstance(dispatch_section, Mapping)
+        else None
+    )
     candidates.extend(
         _issue_candidates_from_operator_review_dispatch_daemon_controls(
             daemon_control_section
+        )
+    )
+    candidates.extend(
+        _issue_candidates_from_operator_review_dispatch_daemon_liveness(
+            daemon_liveness_section,
+            process_section=daemon_process_section,
         )
     )
     if worker_runtime_projection is not None:
@@ -8800,7 +8826,9 @@ def build_operator_review_escalation_dispatch_daemon_liveness_projection(
     normalized_stale_after = normalize_worker_stale_after_seconds(
         stale_after_seconds
     )
-    observed_at = _dashboard_timestamp(checked_at)
+    observed_at = (
+        _dashboard_timestamp(checked_at) if checked_at is not None else _utc_now()
+    )
     stores = (
         registry.worker_heartbeat_stores()
         if registry is not None
@@ -10940,6 +10968,118 @@ def _operator_review_dispatch_daemon_control_issue_operator_actions(
         if status == "REJECTED":
             actions.add("review_rejected_dispatch_daemon_control_request")
     return sorted(actions)
+
+
+def _issue_candidates_from_operator_review_dispatch_daemon_liveness(
+    section: object,
+    *,
+    process_section: object = None,
+) -> list[dict[str, Any]]:
+    if not isinstance(section, Mapping):
+        return []
+    summary = section.get("summary")
+    if not isinstance(summary, Mapping):
+        return []
+    liveness_status = str(summary.get("liveness_status") or "")
+    if liveness_status not in {"MISSING", "STALE"}:
+        return []
+    process_summary = (
+        process_section.get("summary")
+        if isinstance(process_section, Mapping)
+        else None
+    )
+    if (
+        not isinstance(process_summary, Mapping)
+        or process_summary.get("enabled") is not True
+    ):
+        return []
+    return [
+        _operator_review_dispatch_daemon_liveness_issue_candidate(
+            section,
+            summary=summary,
+            liveness_status=liveness_status,
+            process_section=process_section,
+        )
+    ]
+
+
+def _operator_review_dispatch_daemon_liveness_issue_candidate(
+    section: Mapping[str, Any],
+    *,
+    summary: Mapping[str, Any],
+    liveness_status: str,
+    process_section: object,
+) -> dict[str, Any]:
+    daemon_identity = (
+        section.get("daemon_identity")
+        if isinstance(section.get("daemon_identity"), Mapping)
+        else {}
+    )
+    filters = section.get("filters") if isinstance(section.get("filters"), Mapping) else {}
+    process_control_path = None
+    if isinstance(process_section, Mapping):
+        process_control_path = process_section.get("process_control_path")
+    return _operations_issue_candidate(
+        rule_id="operator_review_dispatch_daemon_liveness_attention_required.v1",
+        service_id="nex-ag",
+        severity="ERROR",
+        title="Operator review dispatch daemon liveness attention required",
+        detail=(
+            "The enabled operator review dispatch daemon has "
+            f"{liveness_status.lower()} heartbeat evidence."
+        ),
+        signal={
+            "source_type": "operator_review_dispatch_daemon_liveness",
+            "status": liveness_status,
+            "threshold": 1,
+            "service_id": daemon_identity.get("service_id", "nex-ag"),
+            "worker_id": daemon_identity.get(
+                "worker_id",
+                "ag-dispatch-execution-daemon",
+            ),
+            "worker_type": daemon_identity.get(
+                "worker_type",
+                DISPATCH_EXECUTION_DAEMON_HEARTBEAT_WORKER_TYPE,
+            ),
+            "heartbeat_status": summary.get("heartbeat_status"),
+            "heartbeat_present": bool(summary.get("heartbeat_present")),
+            "stale": summary.get("stale"),
+            "last_seen_at": summary.get("last_seen_at"),
+            "stale_after_seconds": _safe_int(filters.get("stale_after_seconds")),
+            "liveness_path": "/admin/v1/operator-review/dispatch-daemon/liveness",
+            "process_control_path": process_control_path,
+            "runbook_ids": (
+                _operator_review_dispatch_daemon_liveness_issue_runbook_ids(
+                    liveness_status
+                )
+            ),
+            "recommended_operator_actions": (
+                _operator_review_dispatch_daemon_liveness_issue_operator_actions(
+                    liveness_status
+                )
+            ),
+        },
+    )
+
+
+def _operator_review_dispatch_daemon_liveness_issue_runbook_ids(
+    liveness_status: str,
+) -> list[str]:
+    if liveness_status == "STALE":
+        return ["ag.operator_review_dispatch_daemon_liveness.stale_heartbeat.v1"]
+    if liveness_status == "MISSING":
+        return ["ag.operator_review_dispatch_daemon_liveness.missing_heartbeat.v1"]
+    return []
+
+
+def _operator_review_dispatch_daemon_liveness_issue_operator_actions(
+    liveness_status: str,
+) -> list[str]:
+    if liveness_status == "STALE":
+        return ["inspect_stale_dispatch_daemon_heartbeat"]
+    if liveness_status == "MISSING":
+        return ["start_or_inspect_dispatch_daemon_process"]
+    return []
 
 
 def _issue_candidates_from_remediation_executions(

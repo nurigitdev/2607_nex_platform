@@ -107,6 +107,7 @@ from nex_ag.operations import (
     _issue_candidates_from_operator_review_escalations,
     _issue_candidates_from_operator_review_cases,
     _issue_candidates_from_operator_review_dispatch_daemon_controls,
+    _issue_candidates_from_operator_review_dispatch_daemon_liveness,
     _issue_candidates_from_operator_review_escalation_dispatches,
     _issue_candidates_from_operator_review_workbench,
     _issue_candidates_from_remediation_executions,
@@ -5832,6 +5833,117 @@ def test_operations_issue_candidate_projection_includes_dispatch_daemon_controls
     ]
 
 
+def test_operations_issue_candidate_projection_includes_dispatch_daemon_liveness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NEX_AG_DISPATCH_DAEMON_ENABLED", "1")
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_store.upsert_heartbeat(
+        build_worker_heartbeat(
+            service_id="nex-ag",
+            worker_id="ag-dispatch-execution-daemon",
+            worker_type="operator_review_dispatch_daemon",
+            status="IDLE",
+            trace_id=TRACE_ID,
+            started_at="1970-01-01T00:00:00Z",
+            last_seen_at="1970-01-01T00:00:00Z",
+            metadata={"process_run_id": "process-run-stale-0787"},
+        )
+    )
+
+    projection = build_operations_issue_candidate_projection(
+        worker_heartbeat_stores={"nex-ag": heartbeat_store},
+        stale_after_seconds=60,
+        recent_limit=2,
+        request_trace_id=TRACE_ID,
+    )
+
+    candidates = [
+        candidate
+        for candidate in projection["issue_candidates"]
+        if candidate["rule_id"]
+        == "operator_review_dispatch_daemon_liveness_attention_required.v1"
+    ]
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["service_id"] == "nex-ag"
+    assert candidate["severity"] == "ERROR"
+    assert candidate["signal"]["source_type"] == (
+        "operator_review_dispatch_daemon_liveness"
+    )
+    assert candidate["signal"]["status"] == "STALE"
+    assert candidate["signal"]["worker_id"] == "ag-dispatch-execution-daemon"
+    assert candidate["signal"]["stale_after_seconds"] == 60
+    assert candidate["signal"]["liveness_path"] == (
+        "/admin/v1/operator-review/dispatch-daemon/liveness"
+    )
+    assert candidate["signal"]["process_control_path"] == (
+        "/admin/v1/operator-review/dispatch-daemon/process-controls"
+    )
+    assert candidate["signal"]["runbook_ids"] == [
+        "ag.operator_review_dispatch_daemon_liveness.stale_heartbeat.v1"
+    ]
+    assert candidate["signal"]["recommended_operator_actions"] == [
+        "inspect_stale_dispatch_daemon_heartbeat"
+    ]
+    assert projection["summary"]["by_rule"][
+        "operator_review_dispatch_daemon_liveness_attention_required.v1"
+    ] == 1
+    assert any(
+        rule["rule_id"]
+        == "operator_review_dispatch_daemon_liveness_attention_required.v1"
+        for rule in projection["rules"]
+    )
+    assert_ag_operations_projection_contract(projection)
+
+    stale_section = {
+        "summary": {
+            "liveness_status": "MISSING",
+            "heartbeat_present": False,
+            "heartbeat_status": None,
+            "stale": None,
+            "last_seen_at": None,
+        },
+        "daemon_identity": {
+            "service_id": "nex-ag",
+            "worker_id": "ag-dispatch-execution-daemon",
+            "worker_type": "operator_review_dispatch_daemon",
+        },
+        "filters": {"stale_after_seconds": 60},
+    }
+    enabled_process = {
+        "summary": {"enabled": True},
+        "process_control_path": (
+            "/admin/v1/operator-review/dispatch-daemon/process-controls"
+        ),
+    }
+    disabled_process = {"summary": {"enabled": False}}
+
+    assert _issue_candidates_from_operator_review_dispatch_daemon_liveness(None) == []
+    assert (
+        _issue_candidates_from_operator_review_dispatch_daemon_liveness(
+            {"summary": "not-a-mapping"},
+            process_section=enabled_process,
+        )
+        == []
+    )
+    assert (
+        _issue_candidates_from_operator_review_dispatch_daemon_liveness(
+            stale_section,
+            process_section=disabled_process,
+        )
+        == []
+    )
+    helper_candidates = _issue_candidates_from_operator_review_dispatch_daemon_liveness(
+        stale_section,
+        process_section=enabled_process,
+    )
+    assert helper_candidates[0]["signal"]["status"] == "MISSING"
+    assert helper_candidates[0]["signal"]["runbook_ids"] == [
+        "ag.operator_review_dispatch_daemon_liveness.missing_heartbeat.v1"
+    ]
+
+
 def test_escalation_dispatch_dashboard_helpers_cover_defensive_edges() -> None:
     assert (
         ag_operations._dashboard_operator_review_escalation_dispatch_attention_item(
@@ -6424,6 +6536,7 @@ def test_build_operations_issue_candidate_projection_flags_service_scope() -> No
         "operator_review_escalation_action_required.v1",
         "operator_review_escalation_dispatch_attention_required.v1",
         "operator_review_dispatch_daemon_control_attention_required.v1",
+        "operator_review_dispatch_daemon_liveness_attention_required.v1",
         "operator_review_attention_required.v1",
         "operator_review_case_attention_required.v1",
     ]
