@@ -15,6 +15,7 @@ import nex_ag.operations as ag_operations
 from nex_ag.operations import (
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_PROJECTION_SCHEMA_VERSION,
+    AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_PLAN_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_AUDIT_EVENT_SCHEMA_VERSION,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_EVENT_FAILED,
     AG_OPERATOR_REVIEW_DISPATCH_DAEMON_CONTROL_HISTORY_PROJECTION_SCHEMA_VERSION,
@@ -52,6 +53,7 @@ from nex_ag.operations import (
     build_operation_source_readiness_projection,
     build_operator_review_escalation_dispatch_daemon_runtime_projection,
     build_operator_review_escalation_dispatch_daemon_liveness_projection,
+    build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan,
     build_operator_review_escalation_dispatch_daemon_control_audit_event_details,
     build_operator_review_escalation_dispatch_daemon_control_history_projection,
     build_operator_review_escalation_dispatch_daemon_process_control_api_projection,
@@ -4093,6 +4095,187 @@ def test_operator_review_dispatch_daemon_liveness_projection_source_errors() -> 
         )
     assert exc_info.value.error_code == (
         "ag.operator_review_dispatch_daemon_liveness_worker_id_invalid"
+    )
+
+
+def test_operator_review_dispatch_daemon_liveness_recovery_plan_contract() -> None:
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_store.upsert_heartbeat(
+        build_worker_heartbeat(
+            service_id="nex-ag",
+            worker_id="ag-dispatch-execution-daemon",
+            worker_type="operator_review_dispatch_daemon",
+            status="IDLE",
+            started_at="2026-09-15T14:00:00Z",
+            last_seen_at="2026-09-15T14:00:00Z",
+        )
+    )
+    stale_liveness = build_operator_review_escalation_dispatch_daemon_liveness_projection(
+        worker_heartbeat_stores={"nex-ag": heartbeat_store},
+        stale_after_seconds=10,
+        checked_at="2026-09-15T14:01:00Z",
+    )
+
+    plan = build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
+        stale_liveness,
+        process_section={
+            "process_control_path": (
+                "/admin/v1/operator-review/dispatch-daemon/process-controls"
+            )
+        },
+        checked_at="2026-09-15T14:01:05Z",
+        request_trace_id=TRACE_ID,
+    )
+
+    assert plan["projection_schema_version"] == (
+        AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_PLAN_SCHEMA_VERSION
+    )
+    assert plan["projection_status"] == "ACTION_RECOMMENDED"
+    assert plan["checked_at"] == "2026-09-15T14:01:05Z"
+    assert plan["request_trace_id"] == TRACE_ID
+    assert plan["daemon_identity"]["source_table"] == "service_worker_heartbeats"
+    assert plan["source_evidence"]["liveness_status"] == "STALE"
+    assert plan["source_evidence"]["stale_after_seconds"] == 10
+    assert plan["recovery_plan_route"] == {
+        "path": "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan",
+        "method": "GET",
+        "protected": True,
+        "mutation": False,
+    }
+    assert plan["process_control_route"] == {
+        "path": "/admin/v1/operator-review/dispatch-daemon/process-controls",
+        "method": "POST",
+        "protected": True,
+        "mutation": False,
+        "subprocess_mutation_performed": False,
+    }
+    assert plan["recommended_actions"] == [
+        {
+            "action_id": "inspect_stale_dispatch_daemon_heartbeat",
+            "severity": "ERROR",
+            "title": "Inspect stale dispatch daemon heartbeat",
+            "reason_code": "stale_heartbeat",
+            "operator_action": "inspect_stale_dispatch_daemon_heartbeat",
+            "control_action": "status_probe",
+            "route_path": "/admin/v1/operator-review/dispatch-daemon/process-controls",
+            "requires_confirm_process": False,
+            "dry_run_only": True,
+            "mutation": False,
+            "subprocess_mutation_performed": False,
+            "runbook_ids": [
+                "ag.operator_review_dispatch_daemon_liveness.stale_heartbeat.v1"
+            ],
+            "safe_payload_template": {
+                "action": "status_probe",
+                "dry_run": True,
+                "confirm_process": False,
+            },
+        }
+    ]
+    assert plan["summary"] == {
+        "liveness_status": "STALE",
+        "action_count": 1,
+        "requires_operator_action": True,
+        "requires_confirm_process": False,
+        "dry_run_only": True,
+        "subprocess_mutation_performed": False,
+        "new_tables_required": False,
+    }
+    assert plan["guardrails"]["read_only_recovery_plan"] is True
+    assert plan["new_tables_required"] is False
+    serialized = json.dumps(plan)
+    assert "postgresql://" not in serialized
+    assert "nuri1004" not in serialized
+
+
+def test_operator_review_dispatch_daemon_liveness_recovery_plan_status_matrix() -> None:
+    base_liveness = build_operator_review_escalation_dispatch_daemon_liveness_projection(
+        worker_heartbeat_stores={"nex-ag": InMemoryWorkerHeartbeatStore()},
+        checked_at="2026-09-15T14:02:00Z",
+    )
+    missing = build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
+        base_liveness,
+        checked_at="2026-09-15T14:02:05Z",
+    )
+    source_not_configured_liveness = (
+        build_operator_review_escalation_dispatch_daemon_liveness_projection(
+            worker_heartbeat_stores={},
+            checked_at="2026-09-15T14:02:00Z",
+        )
+    )
+    source_unavailable_liveness = (
+        build_operator_review_escalation_dispatch_daemon_liveness_projection(
+            worker_heartbeat_stores={"nex-ag": BrokenWorkerHeartbeatStore()},
+            checked_at="2026-09-15T14:02:00Z",
+        )
+    )
+    fresh_liveness = {
+        **base_liveness,
+        "summary": {
+            **base_liveness["summary"],
+            "liveness_status": "FRESH",
+            "heartbeat_present": True,
+        },
+    }
+    unknown_liveness = {
+        **base_liveness,
+        "summary": {**base_liveness["summary"], "liveness_status": "ODD"},
+    }
+
+    not_configured = (
+        build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
+            source_not_configured_liveness,
+            checked_at="2026-09-15T14:02:05Z",
+        )
+    )
+    unavailable = build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
+        source_unavailable_liveness,
+        checked_at="2026-09-15T14:02:05Z",
+    )
+    fresh = build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
+        fresh_liveness,
+        checked_at="2026-09-15T14:02:05Z",
+    )
+    unknown = build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
+        unknown_liveness,
+        checked_at="2026-09-15T14:02:05Z",
+    )
+
+    assert missing["projection_status"] == "ACTION_RECOMMENDED"
+    assert missing["summary"]["requires_confirm_process"] is True
+    assert missing["recommended_actions"][0]["control_action"] == "start_process"
+    assert missing["recommended_actions"][0]["requires_confirm_process"] is True
+    assert not_configured["projection_status"] == "SOURCE_ATTENTION"
+    assert not_configured["recommended_actions"][0]["action_id"] == (
+        "configure_dispatch_daemon_heartbeat_store"
+    )
+    assert not_configured["recommended_actions"][0]["safe_payload_template"] is None
+    assert unavailable["projection_status"] == "SOURCE_ATTENTION"
+    assert unavailable["recommended_actions"][0]["action_id"] == (
+        "inspect_dispatch_daemon_heartbeat_store"
+    )
+    assert fresh["projection_status"] == "NO_ACTION"
+    assert fresh["summary"]["action_count"] == 0
+    assert fresh["summary"]["requires_operator_action"] is False
+    assert unknown["projection_status"] == "UNKNOWN_STATUS"
+    assert unknown["recommended_actions"][0]["reason_code"] == (
+        "unknown_liveness_status"
+    )
+
+
+def test_operator_review_dispatch_daemon_liveness_recovery_plan_rejects_bad_inputs() -> None:
+    with pytest.raises(OperationsQueryError) as invalid_projection:
+        build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
+            "bad",  # type: ignore[arg-type]
+        )
+    with pytest.raises(OperationsQueryError) as missing_summary:
+        build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan({})
+
+    assert invalid_projection.value.error_code == (
+        "ag.operator_review_dispatch_daemon_liveness_recovery_projection_invalid"
+    )
+    assert missing_summary.value.error_code == (
+        "ag.operator_review_dispatch_daemon_liveness_recovery_summary_missing"
     )
 
 

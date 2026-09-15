@@ -895,6 +895,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0789`](slices/0789_ag_escalation_dispatch_daemon_liveness_privacy_runbook_evidence.md) | `S79-009` AG dispatch daemon liveness privacy/runbook evidence. |
 | [`Slice 0790`](slices/0790_s79_operator_review_escalation_dispatch_daemon_liveness_closure.md) | `S79-010` S79 AG dispatch daemon liveness closure checkpoint. |
 | [`Slice 0791`](slices/0791_ag_escalation_dispatch_daemon_liveness_recovery_boundary_audit.md) | `S80-001` AG dispatch daemon liveness recovery boundary audit and refactoring checkpoint. |
+| [`Slice 0792`](slices/0792_ag_escalation_dispatch_daemon_liveness_recovery_plan_contract.md) | `S80-002` AG dispatch daemon liveness recovery action-plan contract. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

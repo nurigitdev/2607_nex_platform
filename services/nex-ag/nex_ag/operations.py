@@ -171,6 +171,9 @@ AG_OPERATOR_REVIEW_DISPATCH_DAEMON_RUNTIME_PROJECTION_SCHEMA_VERSION = (
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_PROJECTION_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_daemon_liveness_projection.v1"
 )
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_PLAN_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_daemon_liveness_recovery_plan.v1"
+)
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_TICK_PLAN_API_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_daemon_tick_plan_api.v1"
 )
@@ -8935,6 +8938,258 @@ def build_operator_review_escalation_dispatch_daemon_liveness_projection(
         projection["request_trace_id"] = request_trace_id
     assert_dispatch_execution_result_redacted(projection)
     return projection
+
+
+def build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
+    liveness_projection: Mapping[str, Any],
+    *,
+    process_section: Mapping[str, Any] | None = None,
+    checked_at: object | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    if not isinstance(liveness_projection, Mapping):
+        raise OperationsQueryError(
+            error_code=(
+                "ag.operator_review_dispatch_daemon_liveness_recovery_projection_invalid"
+            ),
+            detail="liveness_projection must be an object.",
+            status_code=400,
+        )
+    summary = _mapping_or_empty(liveness_projection.get("summary"))
+    if not summary:
+        raise OperationsQueryError(
+            error_code=(
+                "ag.operator_review_dispatch_daemon_liveness_recovery_summary_missing"
+            ),
+            detail="liveness_projection.summary is required for recovery planning.",
+            status_code=400,
+        )
+    liveness_status = _nullable_string(summary.get("liveness_status")) or "UNKNOWN"
+    observed_at = (
+        _dashboard_timestamp(checked_at) if checked_at is not None else _utc_now()
+    )
+    daemon_identity = _mapping_or_empty(liveness_projection.get("daemon_identity"))
+    filters = _mapping_or_empty(liveness_projection.get("filters"))
+    source_statuses = _mapping_or_empty(liveness_projection.get("source_statuses"))
+    recovery_actions = _operator_review_dispatch_daemon_liveness_recovery_actions(
+        liveness_status,
+        process_section=process_section,
+    )
+    plan = {
+        "projection_schema_version": (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_PLAN_SCHEMA_VERSION
+        ),
+        "projection_status": _dispatch_daemon_liveness_recovery_plan_status(
+            liveness_status,
+        ),
+        "checked_at": observed_at,
+        "daemon_identity": {
+            "service_id": _nullable_string(daemon_identity.get("service_id"))
+            or DISPATCH_EXECUTION_DAEMON_HEARTBEAT_SERVICE_ID,
+            "worker_id": _nullable_string(daemon_identity.get("worker_id"))
+            or "ag-dispatch-execution-daemon",
+            "worker_type": _nullable_string(daemon_identity.get("worker_type"))
+            or DISPATCH_EXECUTION_DAEMON_HEARTBEAT_WORKER_TYPE,
+            "source_table": _nullable_string(daemon_identity.get("source_table"))
+            or "service_worker_heartbeats",
+        },
+        "source_evidence": {
+            "liveness_route": "/admin/v1/operator-review/dispatch-daemon/liveness",
+            "liveness_status": liveness_status,
+            "heartbeat_present": bool(summary.get("heartbeat_present")),
+            "heartbeat_status": _nullable_string(summary.get("heartbeat_status")),
+            "stale": summary.get("stale"),
+            "last_seen_at": _nullable_string(summary.get("last_seen_at")),
+            "stale_after_seconds": _safe_int(filters.get("stale_after_seconds")),
+            "source_statuses": deepcopy(dict(source_statuses)),
+        },
+        "recovery_plan_route": {
+            "path": "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan",
+            "method": "GET",
+            "protected": True,
+            "mutation": False,
+        },
+        "process_control_route": {
+            "path": _dispatch_daemon_liveness_recovery_process_control_path(
+                process_section,
+            ),
+            "method": "POST",
+            "protected": True,
+            "mutation": False,
+            "subprocess_mutation_performed": False,
+        },
+        "recommended_actions": recovery_actions,
+        "summary": {
+            "liveness_status": liveness_status,
+            "action_count": len(recovery_actions),
+            "requires_operator_action": bool(recovery_actions),
+            "requires_confirm_process": any(
+                action["requires_confirm_process"] for action in recovery_actions
+            ),
+            "dry_run_only": all(action["dry_run_only"] for action in recovery_actions)
+            if recovery_actions
+            else True,
+            "subprocess_mutation_performed": False,
+            "new_tables_required": False,
+        },
+        "guardrails": {
+            "read_only_recovery_plan": True,
+            "subprocess_mutation_allowed": False,
+            "process_control_requires_confirm_process": True,
+            "audit_event_deferred_until_slice_0794": True,
+            "acknowledgement_suppression_deferred_until_slice_0796": True,
+        },
+        "new_tables_required": False,
+        "redaction": (
+            _operator_review_escalation_dispatch_execution_result_redaction()
+        ),
+    }
+    if request_trace_id is not None:
+        plan["request_trace_id"] = request_trace_id
+    assert_dispatch_execution_result_redacted(plan)
+    return plan
+
+
+def _dispatch_daemon_liveness_recovery_plan_status(liveness_status: str) -> str:
+    if liveness_status == "FRESH":
+        return "NO_ACTION"
+    if liveness_status in {"MISSING", "STALE"}:
+        return "ACTION_RECOMMENDED"
+    if liveness_status in {"SOURCE_NOT_CONFIGURED", "SOURCE_UNAVAILABLE"}:
+        return "SOURCE_ATTENTION"
+    return "UNKNOWN_STATUS"
+
+
+def _operator_review_dispatch_daemon_liveness_recovery_actions(
+    liveness_status: str,
+    *,
+    process_section: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    process_control_path = _dispatch_daemon_liveness_recovery_process_control_path(
+        process_section,
+    )
+    if liveness_status == "STALE":
+        return [
+            _dispatch_daemon_liveness_recovery_action(
+                action_id="inspect_stale_dispatch_daemon_heartbeat",
+                severity="ERROR",
+                title="Inspect stale dispatch daemon heartbeat",
+                reason_code="stale_heartbeat",
+                control_action="status_probe",
+                route_path=process_control_path,
+                requires_confirm_process=False,
+                runbook_ids=[
+                    "ag.operator_review_dispatch_daemon_liveness.stale_heartbeat.v1"
+                ],
+            )
+        ]
+    if liveness_status == "MISSING":
+        return [
+            _dispatch_daemon_liveness_recovery_action(
+                action_id="start_or_inspect_dispatch_daemon_process",
+                severity="ERROR",
+                title="Start or inspect dispatch daemon process",
+                reason_code="missing_heartbeat",
+                control_action="start_process",
+                route_path=process_control_path,
+                requires_confirm_process=True,
+                runbook_ids=[
+                    "ag.operator_review_dispatch_daemon_liveness.missing_heartbeat.v1"
+                ],
+            )
+        ]
+    if liveness_status == "SOURCE_NOT_CONFIGURED":
+        return [
+            _dispatch_daemon_liveness_recovery_action(
+                action_id="configure_dispatch_daemon_heartbeat_store",
+                severity="WARNING",
+                title="Configure dispatch daemon heartbeat store",
+                reason_code="heartbeat_source_not_configured",
+                control_action=None,
+                route_path=None,
+                requires_confirm_process=False,
+                runbook_ids=[
+                    "ag.operator_review_dispatch_daemon_liveness.source_not_configured.v1"
+                ],
+            )
+        ]
+    if liveness_status == "SOURCE_UNAVAILABLE":
+        return [
+            _dispatch_daemon_liveness_recovery_action(
+                action_id="inspect_dispatch_daemon_heartbeat_store",
+                severity="ERROR",
+                title="Inspect dispatch daemon heartbeat store",
+                reason_code="heartbeat_source_unavailable",
+                control_action=None,
+                route_path=None,
+                requires_confirm_process=False,
+                runbook_ids=[
+                    "ag.operator_review_dispatch_daemon_liveness.source_unavailable.v1"
+                ],
+            )
+        ]
+    if liveness_status == "FRESH":
+        return []
+    return [
+        _dispatch_daemon_liveness_recovery_action(
+            action_id="inspect_dispatch_daemon_liveness_projection",
+            severity="WARNING",
+            title="Inspect dispatch daemon liveness projection",
+            reason_code="unknown_liveness_status",
+            control_action=None,
+            route_path=None,
+            requires_confirm_process=False,
+            runbook_ids=[
+                "ag.operator_review_dispatch_daemon_liveness.unknown_status.v1"
+            ],
+        )
+    ]
+
+
+def _dispatch_daemon_liveness_recovery_action(
+    *,
+    action_id: str,
+    severity: str,
+    title: str,
+    reason_code: str,
+    control_action: str | None,
+    route_path: str | None,
+    requires_confirm_process: bool,
+    runbook_ids: list[str],
+) -> dict[str, Any]:
+    return {
+        "action_id": action_id,
+        "severity": severity,
+        "title": title,
+        "reason_code": reason_code,
+        "operator_action": action_id,
+        "control_action": control_action,
+        "route_path": route_path,
+        "requires_confirm_process": requires_confirm_process,
+        "dry_run_only": True,
+        "mutation": False,
+        "subprocess_mutation_performed": False,
+        "runbook_ids": runbook_ids,
+        "safe_payload_template": (
+            {
+                "action": control_action,
+                "dry_run": True,
+                "confirm_process": False,
+            }
+            if control_action is not None
+            else None
+        ),
+    }
+
+
+def _dispatch_daemon_liveness_recovery_process_control_path(
+    process_section: Mapping[str, Any] | None,
+) -> str:
+    if isinstance(process_section, Mapping):
+        path = _nullable_string(process_section.get("process_control_path"))
+        if path is not None:
+            return path
+    return "/admin/v1/operator-review/dispatch-daemon/process-controls"
 
 
 def _dispatch_daemon_liveness_status(
