@@ -905,6 +905,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0799`](slices/0799_ag_escalation_dispatch_daemon_liveness_recovery_openapi_hardening.md) | `S80-009` AG dispatch daemon liveness recovery static OpenAPI/schema hardening. |
 | [`Slice 0800`](slices/0800_s80_operator_review_escalation_dispatch_daemon_liveness_recovery_closure.md) | `S80-010` AG dispatch daemon liveness recovery foundation closure checkpoint. |
 | [`Slice 0801`](slices/0801_ag_escalation_dispatch_daemon_liveness_ack_suppression_state_boundary_audit.md) | `S81-001` AG dispatch daemon liveness acknowledgement/suppression state boundary audit. |
+| [`Slice 0802`](slices/0802_ag_dispatch_liveness_ack_state_persistence_foundation.md) | `S81-002` AG dispatch daemon liveness acknowledgement/suppression state persistence foundation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
