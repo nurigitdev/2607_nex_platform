@@ -441,9 +441,33 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
     recovery_plan = paths[
         "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan"
     ]["get"]
+    ack_state = paths[
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-state"
+    ]["post"]
+    ack_state_list = paths[
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states"
+    ]["get"]
+    ack_state_detail = paths[
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states/{ack_state_id}"
+    ]["get"]
     controls = paths["/admin/v1/operator-review/dispatch-daemon/controls"]["get"]
     control_request = components["AgOperatorReviewDispatchDaemonControlRequest"]
     route = components["AgOperatorReviewDispatchDaemonRoute"]
+    ack_state_request = components[
+        "AgOperatorReviewDispatchDaemonLivenessAckStateRequest"
+    ]
+    ack_state_mutation_projection = components[
+        "AgOperatorReviewDispatchDaemonLivenessAckStateMutationProjection"
+    ]
+    ack_state_list_projection = components[
+        "AgOperatorReviewDispatchDaemonLivenessAckStateListProjection"
+    ]
+    ack_state_detail_projection = components[
+        "AgOperatorReviewDispatchDaemonLivenessAckStateDetailProjection"
+    ]
+    ack_state_overlay = components[
+        "AgOperatorReviewDispatchDaemonLivenessAckStateOverlay"
+    ]
     plan_projection = components[
         "AgOperatorReviewDispatchDaemonTickPlanProjection"
     ]
@@ -480,6 +504,15 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
     assert recovery_plan["operationId"] == (
         "getAgOperatorReviewDispatchDaemonLivenessRecoveryPlan"
     )
+    assert ack_state["operationId"] == (
+        "postAgOperatorReviewDispatchDaemonLivenessAckState"
+    )
+    assert ack_state_list["operationId"] == (
+        "listAgOperatorReviewDispatchDaemonLivenessAckStates"
+    )
+    assert ack_state_detail["operationId"] == (
+        "getAgOperatorReviewDispatchDaemonLivenessAckState"
+    )
     assert controls["operationId"] == "listAgOperatorReviewDispatchDaemonControls"
     assert tick_plan["post"]["requestBody"]["content"]["application/json"]["schema"][
         "$ref"
@@ -506,6 +539,30 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
     ]["$ref"] == (
         "#/components/schemas/"
         "AgOperatorReviewDispatchDaemonLivenessRecoveryPlanProjection"
+    )
+    assert ack_state["requestBody"]["content"]["application/json"]["schema"][
+        "$ref"
+    ] == (
+        "#/components/schemas/"
+        "AgOperatorReviewDispatchDaemonLivenessAckStateRequest"
+    )
+    assert ack_state["responses"]["200"]["content"]["application/json"]["schema"][
+        "$ref"
+    ] == (
+        "#/components/schemas/"
+        "AgOperatorReviewDispatchDaemonLivenessAckStateMutationProjection"
+    )
+    assert ack_state_list["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ]["$ref"] == (
+        "#/components/schemas/"
+        "AgOperatorReviewDispatchDaemonLivenessAckStateListProjection"
+    )
+    assert ack_state_detail["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ]["$ref"] == (
+        "#/components/schemas/"
+        "AgOperatorReviewDispatchDaemonLivenessAckStateDetailProjection"
     )
     control_parameter_names = {
         parameter["name"] for parameter in controls["parameters"] if "name" in parameter
@@ -564,6 +621,33 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
         if "name" in parameter
     }
     assert recovery_parameter_names == {"worker_id", "stale_after_seconds"}
+    ack_state_parameter_names = {
+        parameter["name"] for parameter in ack_state["parameters"] if "name" in parameter
+    }
+    assert ack_state_parameter_names == {
+        "worker_id",
+        "stale_after_seconds",
+        "Idempotency-Key",
+    }
+    ack_state_list_parameter_names = {
+        parameter["name"]
+        for parameter in ack_state_list["parameters"]
+        if "name" in parameter
+    }
+    assert ack_state_list_parameter_names == {
+        "service_id",
+        "worker_id",
+        "liveness_status",
+        "state_status",
+        "limit",
+        "observed_at",
+    }
+    ack_state_detail_parameter_names = {
+        parameter["name"]
+        for parameter in ack_state_detail["parameters"]
+        if "name" in parameter
+    }
+    assert ack_state_detail_parameter_names == {"ack_state_id", "observed_at"}
     assert plan_projection["properties"]["projection_schema_version"]["const"] == (
         "ag_operator_review_escalation_dispatch_daemon_tick_plan_api.v1"
     )
@@ -586,6 +670,49 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
         "SOURCE_ATTENTION",
         "UNKNOWN_STATUS",
     ]
+    assert "acknowledgement_state_overlay" in recovery_plan_projection["required"]
+    assert recovery_plan_projection["properties"]["acknowledgement_state_overlay"][
+        "$ref"
+    ] == (
+        "#/components/schemas/"
+        "AgOperatorReviewDispatchDaemonLivenessAckStateOverlay"
+    )
+    assert ack_state_request["additionalProperties"] is False
+    assert set(ack_state_request["required"]) == {
+        "action",
+        "operator_ref",
+        "reason_codes",
+    }
+    assert ack_state_request["properties"]["action"]["enum"] == [
+        "acknowledge_once",
+        "suppress_for_ttl",
+        "acknowledge_source_attention",
+        "suppress_source_attention_for_ttl",
+        "clear",
+    ]
+    assert ack_state_mutation_projection["properties"]["route"]["properties"][
+        "path"
+    ]["const"] == (
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-state"
+    )
+    assert ack_state_list_projection["properties"]["source_table"]["const"] == (
+        "ag_op_review_ack_state"
+    )
+    assert ack_state_detail_projection["properties"]["projection_schema_version"][
+        "const"
+    ] == (
+        "ag_operator_review_escalation_dispatch_daemon_liveness_ack_state_detail.v1"
+    )
+    assert ack_state_overlay["properties"]["overlay_status"]["enum"] == [
+        "NOT_APPLICABLE",
+        "STORE_NOT_BOUND",
+        "NO_STATE",
+        "STATE_PRESENT",
+        "UNAVAILABLE",
+    ]
+    assert ack_state_overlay["properties"]["source_projection_suppressed"][
+        "const"
+    ] is False
     assert recovery_plan_projection["properties"]["recovery_plan_route"][
         "properties"
     ]["path"]["const"] == (
@@ -666,6 +793,12 @@ def test_nex_ag_openapi_includes_dispatch_daemon_api_contract() -> None:
         "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan"
     )
     assert daemon_recovery["summary"]["new_tables_required"] is False
+    assert daemon_recovery["acknowledgement_state_overlay"]["source_table"] == (
+        "ag_op_review_ack_state"
+    )
+    assert daemon_recovery["acknowledgement_state_overlay"][
+        "source_projection_suppressed"
+    ] is False
     assert daemon_recovery["redaction"]["provider_secrets_included"] is False
 
 

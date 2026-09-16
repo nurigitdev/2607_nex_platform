@@ -1925,6 +1925,138 @@ paths:
           description: Service claim is missing or invalid.
         "400":
           description: Dispatch daemon liveness recovery request is invalid.
+  /admin/v1/operator-review/dispatch-daemon/liveness/ack-state:
+    post:
+      operationId: postAgOperatorReviewDispatchDaemonLivenessAckState
+      tags:
+        - Operations
+      parameters:
+        - name: worker_id
+          in: query
+          required: false
+          schema:
+            type: string
+            default: ag-dispatch-execution-daemon
+        - name: stale_after_seconds
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 60
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonLivenessAckStateRequest"
+      responses:
+        "200":
+          description: Safe dispatch daemon liveness acknowledgement state mutation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonLivenessAckStateMutationProjection"
+        "400":
+          description: Liveness acknowledgement request is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "409":
+          description: Liveness acknowledgement action was rejected.
+        "503":
+          description: Liveness acknowledgement state store is unavailable.
+  /admin/v1/operator-review/dispatch-daemon/liveness/ack-states:
+    get:
+      operationId: listAgOperatorReviewDispatchDaemonLivenessAckStates
+      tags:
+        - Operations
+      parameters:
+        - name: service_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: worker_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: liveness_status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: state_status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: observed_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Safe dispatch daemon liveness acknowledgement state list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonLivenessAckStateListProjection"
+        "400":
+          description: Liveness acknowledgement state query is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "503":
+          description: Liveness acknowledgement state store is unavailable.
+  /admin/v1/operator-review/dispatch-daemon/liveness/ack-states/{ack_state_id}:
+    get:
+      operationId: getAgOperatorReviewDispatchDaemonLivenessAckState
+      tags:
+        - Operations
+      parameters:
+        - name: ack_state_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: observed_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Safe dispatch daemon liveness acknowledgement state detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonLivenessAckStateDetailProjection"
+        "400":
+          description: Liveness acknowledgement state query is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Liveness acknowledgement state was not found.
+        "503":
+          description: Liveness acknowledgement state store is unavailable.
   /admin/v1/operator-review/dispatch-daemon/controls:
     get:
       operationId: listAgOperatorReviewDispatchDaemonControls
@@ -4585,6 +4717,7 @@ components:
         - process_control_route
         - recommended_actions
         - acknowledgement_suppression_policy
+        - acknowledgement_state_overlay
         - summary
         - guardrails
         - new_tables_required
@@ -4804,6 +4937,8 @@ components:
             guardrails:
               type: object
               additionalProperties: true
+        acknowledgement_state_overlay:
+          $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonLivenessAckStateOverlay"
         summary:
           type: object
           additionalProperties: true
@@ -4872,6 +5007,277 @@ components:
         new_tables_required:
           type: boolean
           const: false
+        redaction:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewDispatchDaemonLivenessAckStateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - action
+        - operator_ref
+        - reason_codes
+      properties:
+        action:
+          type: string
+          enum:
+            - acknowledge_once
+            - suppress_for_ttl
+            - acknowledge_source_attention
+            - suppress_source_attention_for_ttl
+            - clear
+        acknowledgement_key:
+          type: string
+          minLength: 1
+        operator_ref:
+          type: object
+          additionalProperties: true
+        reason_codes:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+        comment:
+          type: string
+        idempotency_key:
+          type: string
+          minLength: 1
+        requested_ttl_seconds:
+          type: integer
+          minimum: 1
+          maximum: 86400
+        suppressed_until:
+          type: string
+          format: date-time
+        observed_at:
+          type: string
+          format: date-time
+    AgOperatorReviewDispatchDaemonLivenessAckStateItem:
+      type: object
+      additionalProperties: true
+      required:
+        - ack_state_id
+        - acknowledgement_key
+        - service_id
+        - worker_id
+        - worker_type
+        - liveness_status
+        - action
+        - state_status
+        - redaction
+      properties:
+        ack_state_id:
+          type: string
+          minLength: 1
+        acknowledgement_key:
+          type: string
+          minLength: 1
+        service_id:
+          type: string
+          const: nex-ag
+        worker_id:
+          type: string
+          minLength: 1
+        worker_type:
+          type: string
+          const: operator_review_dispatch_daemon
+        liveness_status:
+          type: string
+        action:
+          type: string
+        state_status:
+          type: string
+        effective_status:
+          type: object
+          additionalProperties: true
+        redaction:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewDispatchDaemonLivenessAckStateOverlay:
+      type: object
+      additionalProperties: true
+      required:
+        - overlay_schema_version
+        - overlay_status
+        - acknowledgement_key
+        - source_table
+        - state_present
+        - state_mutated
+        - source_projection_suppressed
+        - issue_candidate_suppressed
+        - read_model_path
+        - effective_status
+        - redaction
+      properties:
+        overlay_schema_version:
+          type: string
+          const: ag_operator_review_escalation_dispatch_daemon_liveness_ack_state_overlay.v1
+        overlay_status:
+          type: string
+          enum:
+            - NOT_APPLICABLE
+            - STORE_NOT_BOUND
+            - NO_STATE
+            - STATE_PRESENT
+            - UNAVAILABLE
+        acknowledgement_key:
+          oneOf:
+            - type: string
+              minLength: 1
+            - type: "null"
+        source_table:
+          type: string
+          const: ag_op_review_ack_state
+        state_present:
+          type: boolean
+        state_mutated:
+          type: boolean
+          const: false
+        source_projection_suppressed:
+          type: boolean
+          const: false
+        issue_candidate_suppressed:
+          type: boolean
+          const: false
+        read_model_path:
+          type: string
+          const: /admin/v1/operator-review/dispatch-daemon/liveness/ack-states
+        effective_status:
+          type: object
+          additionalProperties: true
+        redaction:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewDispatchDaemonLivenessAckStateMutationProjection:
+      type: object
+      additionalProperties: true
+      required:
+        - mutation_schema_version
+        - mutation_status
+        - transition
+        - state
+        - route
+        - liveness_summary
+        - audit_event
+      properties:
+        mutation_schema_version:
+          type: string
+          const: ag_operator_review_escalation_dispatch_daemon_liveness_ack_state_mutation.v1
+        mutation_status:
+          type: string
+          const: ACCEPTED
+        transition:
+          type: object
+          additionalProperties: true
+        state:
+          $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonLivenessAckStateItem"
+        route:
+          type: object
+          additionalProperties: false
+          required:
+            - path
+            - method
+            - protected
+          properties:
+            path:
+              type: string
+              const: /admin/v1/operator-review/dispatch-daemon/liveness/ack-state
+            method:
+              type: string
+              const: POST
+            protected:
+              type: boolean
+              const: true
+        liveness_summary:
+          type: object
+          additionalProperties: true
+          required:
+            - liveness_status
+            - heartbeat_present
+            - source_projection_suppressed
+          properties:
+            source_projection_suppressed:
+              type: boolean
+              const: false
+        audit_event:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewDispatchDaemonLivenessAckStateListProjection:
+      type: object
+      additionalProperties: true
+      required:
+        - projection_schema_version
+        - projection_status
+        - checked_at
+        - state_count
+        - states
+        - source_table
+        - filters
+        - route
+        - read_model
+        - redaction
+      properties:
+        projection_schema_version:
+          type: string
+          const: ag_operator_review_escalation_dispatch_daemon_liveness_ack_state_list.v1
+        projection_status:
+          type: string
+          const: READY
+        checked_at:
+          type: string
+          format: date-time
+        state_count:
+          type: integer
+          minimum: 0
+        states:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonLivenessAckStateItem"
+        source_table:
+          type: string
+          const: ag_op_review_ack_state
+        filters:
+          type: object
+          additionalProperties: true
+        route:
+          type: object
+          additionalProperties: true
+        read_model:
+          type: object
+          additionalProperties: true
+        redaction:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewDispatchDaemonLivenessAckStateDetailProjection:
+      type: object
+      additionalProperties: true
+      required:
+        - projection_schema_version
+        - projection_status
+        - checked_at
+        - state
+        - route
+        - read_model
+        - redaction
+      properties:
+        projection_schema_version:
+          type: string
+          const: ag_operator_review_escalation_dispatch_daemon_liveness_ack_state_detail.v1
+        projection_status:
+          type: string
+          const: READY
+        checked_at:
+          type: string
+          format: date-time
+        state:
+          $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonLivenessAckStateItem"
+        route:
+          type: object
+          additionalProperties: true
+        read_model:
+          type: object
+          additionalProperties: true
         redaction:
           type: object
           additionalProperties: true
