@@ -118,6 +118,9 @@ from nex_ag.operator_review_liveness_ack import (
     default_operator_review_liveness_ack_state_store,
     project_operator_review_liveness_ack_state_effective_status,
 )
+from nex_ag.liveness_ack_expiry_reconciliation import (
+    run_operator_review_liveness_ack_expiry_reconciliation,
+)
 from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV,
     DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV,
@@ -209,6 +212,15 @@ AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_STATE_EVENT_REJECTED = (
 )
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_STATE_EVENT_FAILED = (
     "ag.operator_review_escalation_dispatch_daemon.liveness_ack_state.failed"
+)
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_EXPIRY_EVENT_RECONCILED = (
+    "ag.operator_review_escalation_dispatch_daemon.liveness_ack_expiry.reconciled"
+)
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_EXPIRY_EVENT_REJECTED = (
+    "ag.operator_review_escalation_dispatch_daemon.liveness_ack_expiry.rejected"
+)
+AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_EXPIRY_EVENT_FAILED = (
+    "ag.operator_review_escalation_dispatch_daemon.liveness_ack_expiry.failed"
 )
 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_TICK_PLAN_API_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_daemon_tick_plan_api.v1"
@@ -2556,6 +2568,27 @@ def register_unified_operation_routes(
             audit_emitter=audit_emitter,
         )
 
+    @app.post(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states/reconcile-expired",
+        response_model=None,
+        operation_id="postAgOperatorReviewDispatchDaemonLivenessAckExpiryReconcile",
+        tags=["Operations"],
+    )
+    def post_operator_review_dispatch_daemon_liveness_ack_expiry_reconcile(
+        request: Request,
+        payload: dict[str, Any] | None = None,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        return _dispatch_daemon_liveness_ack_expiry_reconcile_route_response(
+            request,
+            state_store=operator_review_liveness_ack_state_store,
+            payload=payload,
+            audit_emitter=audit_emitter,
+        )
+
     @app.get(
         "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states",
         response_model=None,
@@ -3996,6 +4029,58 @@ def _dispatch_daemon_liveness_ack_state_list_route_response(
         return _liveness_ack_state_problem_response(request, exc)
 
 
+def _dispatch_daemon_liveness_ack_expiry_reconcile_route_response(
+    request: Request,
+    *,
+    state_store: Any | None,
+    payload: Mapping[str, Any] | None,
+    audit_emitter: OperationalEventEmitter | None = None,
+) -> dict[str, Any] | JSONResponse:
+    request_id = request_id_from_headers(request)
+    trace_id = trace_id_from_headers(request)
+    selected_store = state_store or default_operator_review_liveness_ack_state_store(
+        request.app
+    )
+    payload_mapping = _mapping_or_empty(payload)
+    try:
+        result = run_operator_review_liveness_ack_expiry_reconciliation(
+            selected_store,
+            observed_at=payload_mapping.get("observed_at"),
+            limit=payload_mapping.get("limit"),
+        )
+        response = {
+            **result,
+            "route": {
+                "path": (
+                    "/admin/v1/operator-review/dispatch-daemon/liveness/"
+                    "ack-states/reconcile-expired"
+                ),
+                "method": "POST",
+                "protected": True,
+            },
+        }
+        audit_result = emit_operator_review_liveness_ack_expiry_audit_event(
+            audit_emitter,
+            request_id=request_id,
+            trace_id=trace_id,
+            result=response,
+        )
+        response["audit_event"] = audit_result.to_summary()
+        return response
+    except OperatorReviewLivenessAckStateError as exc:
+        audit_result = emit_operator_review_liveness_ack_expiry_audit_event(
+            audit_emitter,
+            request_id=request_id,
+            trace_id=trace_id,
+            error=exc,
+        )
+        return _liveness_ack_state_problem_response(
+            request,
+            exc,
+            audit_result=audit_result,
+        )
+
+
 def _dispatch_daemon_liveness_ack_state_detail_route_response(
     request: Request,
     *,
@@ -4128,6 +4213,79 @@ def build_operator_review_liveness_ack_state_audit_event_details(
             "comment_hash_present": bool(state.get("comment_hash")),
             "comment_preview_present": bool(state.get("comment_preview")),
             "idempotency_key_hash_present": bool(state.get("idempotency_key_hash")),
+        },
+    }
+
+
+def emit_operator_review_liveness_ack_expiry_audit_event(
+    emitter: OperationalEventEmitter | None,
+    *,
+    request_id: str,
+    trace_id: str | None,
+    result: Mapping[str, Any] | None = None,
+    error: OperatorReviewLivenessAckStateError | None = None,
+) -> OperationalEventEmitResult:
+    if emitter is None:
+        return OperationalEventEmitResult.failed(
+            error_code="ag.operator_review_liveness_ack_expiry_audit_not_configured",
+            detail="Liveness acknowledgement expiry audit emitter is not configured.",
+            status_code=503,
+        )
+    if error is None:
+        event_type = (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_EXPIRY_EVENT_RECONCILED
+        )
+        severity = "INFO"
+        message = "AG liveness acknowledgement expiry reconciliation completed."
+    else:
+        status_code = getattr(error, "status_code", 500)
+        event_type = (
+            AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_EXPIRY_EVENT_REJECTED
+            if status_code < 500
+            else AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_ACK_EXPIRY_EVENT_FAILED
+        )
+        severity = "WARNING" if status_code < 500 else "ERROR"
+        message = "AG liveness acknowledgement expiry reconciliation failed."
+    return emitter.safe_emit(
+        event_type=event_type,
+        severity=severity,
+        message=message,
+        trace_id=trace_id,
+        request_id=request_id,
+        subject_ref={
+            "type": "operator_review_liveness_ack_expiry_reconciliation",
+            "id": "batch",
+        },
+        details=build_operator_review_liveness_ack_expiry_audit_event_details(
+            result=result,
+            error=error,
+        ),
+    )
+
+
+def build_operator_review_liveness_ack_expiry_audit_event_details(
+    *,
+    result: Mapping[str, Any] | None = None,
+    error: OperatorReviewLivenessAckStateError | None = None,
+) -> dict[str, Any]:
+    selected = _mapping_or_empty(result)
+    return {
+        "ack_expiry_audit_schema_version": (
+            "ag_operator_review_liveness_ack_expiry_reconciliation_audit_event.v1"
+        ),
+        "run_status": _nullable_string(selected.get("run_status")),
+        "candidate_count": _safe_optional_int(selected.get("candidate_count")) or 0,
+        "applied_count": _safe_optional_int(selected.get("applied_count")) or 0,
+        "conflict_count": _safe_optional_int(selected.get("conflict_count")) or 0,
+        "skipped_count": _safe_optional_int(selected.get("skipped_count")) or 0,
+        "error_code": getattr(error, "error_code", None),
+        "error_status_code": getattr(error, "status_code", None),
+        "redaction": {
+            "outcomes_included": False,
+            "raw_comments_included": False,
+            "raw_idempotency_keys_included": False,
+            "raw_payloads_included": False,
+            "database_urls_included": False,
         },
     }
 
