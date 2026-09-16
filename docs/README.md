@@ -916,6 +916,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0810`](slices/0810_s81_operator_review_escalation_dispatch_daemon_liveness_ack_state_closure.md) | `S81-010` AG dispatch daemon liveness acknowledgement/suppression state closure checkpoint. |
 | [`Slice 0811`](slices/0811_ag_dispatch_liveness_ack_expiry_reconciliation_boundary_audit.md) | `S82-001` AG dispatch daemon liveness acknowledgement expiry reconciliation boundary audit and refactoring checkpoint. |
 | [`Slice 0812`](slices/0812_ag_dispatch_liveness_ack_expiry_reconciliation_contract.md) | `S82-002` AG dispatch daemon liveness acknowledgement expiry reconciliation contract and pure transition. |
+| [`Slice 0813`](slices/0813_ag_dispatch_liveness_ack_expiry_persistence_adapter.md) | `S82-003` AG dispatch daemon liveness acknowledgement expiry candidate persistence adapter. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

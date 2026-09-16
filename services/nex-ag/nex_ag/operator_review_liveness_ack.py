@@ -128,6 +128,53 @@ class OperatorReviewLivenessAckStateStore:
     def delete(self, ack_state_id: str) -> int:
         return 1 if self.records.pop(ack_state_id, None) is not None else 0
 
+    def list_expiry_candidates(
+        self,
+        *,
+        observed_at: object,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        observed = _datetime_value(observed_at)
+        selected = [
+            record
+            for record in self.records.values()
+            if build_operator_review_liveness_ack_expiry_reconciliation_candidate(
+                record,
+                observed_at=observed,
+            )["candidate_status"]
+            == "ELIGIBLE"
+        ]
+        selected.sort(
+            key=lambda record: (
+                str(record.get("suppressed_until") or ""),
+                str(record.get("ack_state_id") or ""),
+            )
+        )
+        return selected[:normalize_ack_state_limit(limit)]
+
+    def apply_expiry_reconciliation(
+        self,
+        state: dict[str, Any],
+        *,
+        expected_updated_at: object,
+    ) -> bool:
+        ack_state_id = str(state.get("ack_state_id") or "")
+        current = self.records.get(ack_state_id)
+        if current is None:
+            return False
+        if current.get("state_status") != "SUPPRESSED":
+            return False
+        if current.get("updated_at") != _datetime_value(expected_updated_at):
+            return False
+        candidate = build_operator_review_liveness_ack_expiry_reconciliation_candidate(
+            current,
+            observed_at=state.get("updated_at"),
+        )
+        if candidate["candidate_status"] != "ELIGIBLE":
+            return False
+        self.records[ack_state_id] = dict(state)
+        return True
+
 
 class SqlAlchemyOperatorReviewLivenessAckStateStore:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
@@ -230,6 +277,57 @@ class SqlAlchemyOperatorReviewLivenessAckStateStore:
                 )
                 session.commit()
                 return int(result.rowcount or 0)
+        except SQLAlchemyError as exc:
+            raise _ack_state_store_unavailable_error() from exc
+
+    def list_expiry_candidates(
+        self,
+        *,
+        observed_at: object,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        params = {
+            "observed_at": _datetime_value(observed_at),
+            "limit": normalize_ack_state_limit(limit),
+        }
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(_ack_expiry_candidate_select_sql()),
+                        params,
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [_ack_state_record_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _ack_state_store_unavailable_error() from exc
+
+    def apply_expiry_reconciliation(
+        self,
+        state: dict[str, Any],
+        *,
+        expected_updated_at: object,
+    ) -> bool:
+        params = {
+            "ack_state_id": state.get("ack_state_id"),
+            "expected_updated_at": _datetime_value(expected_updated_at),
+            "observed_at": _datetime_value(state.get("updated_at")),
+            "metadata": json.dumps(
+                state.get("metadata") or {},
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        }
+        try:
+            with self._session_factory() as session:
+                result = session.execute(
+                    text(_ack_expiry_cas_update_sql(_dialect_name(session))),
+                    params,
+                )
+                session.commit()
+                return int(result.rowcount or 0) == 1
         except SQLAlchemyError as exc:
             raise _ack_state_store_unavailable_error() from exc
 
@@ -882,6 +980,29 @@ def _ack_state_select_sql(where_clause: str) -> str:
             cleared_at
         FROM ag_op_review_ack_state
         WHERE {where_clause}
+    """
+
+
+def _ack_expiry_candidate_select_sql() -> str:
+    return _ack_state_select_sql(
+        "state_status = 'SUPPRESSED' "
+        "AND suppressed_until IS NOT NULL "
+        "AND suppressed_until <= :observed_at"
+    ) + " ORDER BY suppressed_until ASC, ack_state_id ASC LIMIT :limit"
+
+
+def _ack_expiry_cas_update_sql(dialect_name: str) -> str:
+    metadata_expr = _json_param_expr("metadata", dialect_name)
+    return f"""
+        UPDATE ag_op_review_ack_state
+        SET state_status = 'EXPIRED',
+            updated_at = :observed_at,
+            metadata = {metadata_expr}
+        WHERE ack_state_id = :ack_state_id
+          AND state_status = 'SUPPRESSED'
+          AND updated_at = :expected_updated_at
+          AND suppressed_until IS NOT NULL
+          AND suppressed_until <= :observed_at
     """
 
 
