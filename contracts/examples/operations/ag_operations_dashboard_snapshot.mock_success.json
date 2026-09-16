@@ -950,6 +950,32 @@
           "raw_comment_included": false
         }
       },
+      "acknowledgement_state_overlay": {
+        "overlay_schema_version": "ag_operator_review_escalation_dispatch_daemon_liveness_ack_state_overlay.v1",
+        "overlay_status": "STORE_NOT_BOUND",
+        "acknowledgement_key": "nex-ag:ag-dispatch-execution-daemon:missing",
+        "source_table": "ag_op_review_ack_state",
+        "state_present": false,
+        "state_mutated": false,
+        "source_projection_suppressed": false,
+        "issue_candidate_suppressed": false,
+        "read_model_path": "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states",
+        "effective_status": {
+          "projection_schema_version": "ag_operator_review_escalation_dispatch_daemon_liveness_ack_state_effective_status.v1",
+          "projection_status": "MISSING",
+          "observed_at": "2026-09-16T00:00:00Z",
+          "state_present": false,
+          "stored_state_status": null,
+          "effective_state_status": null,
+          "expired": false,
+          "suppressed_until": null
+        },
+        "redaction": {
+          "raw_comment_included": false,
+          "raw_idempotency_key_included": false,
+          "raw_payloads_included": false
+        }
+      },
       "recovery_plan_path": "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan",
       "process_control_path": "/admin/v1/operator-review/dispatch-daemon/process-controls",
       "source_evidence": {

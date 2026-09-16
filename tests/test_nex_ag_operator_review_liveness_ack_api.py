@@ -437,6 +437,42 @@ def test_dispatch_liveness_ack_state_list_route_projects_effective_status() -> N
     assert payload["redaction"]["raw_comment_included"] is False
 
 
+def test_dispatch_liveness_recovery_plan_route_includes_ack_state_overlay() -> None:
+    client, ack_store, _event_store, heartbeat_store = build_client()
+    upsert_dispatch_heartbeat(heartbeat_store, last_seen_at="2020-01-01T00:00:00Z")
+    created = client.post(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-state",
+        headers=auth_headers(),
+        json={
+            "action": "acknowledge_once",
+            "operator_ref": {
+                "operator_type": "user",
+                "operator_id": "employee-0806",
+            },
+            "reason_codes": ["operator-reviewed"],
+            "observed_at": "2026-09-16T05:05:00Z",
+        },
+    )
+    ack_state_id = created.json()["state"]["ack_state_id"]
+
+    response = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan",
+        headers=auth_headers(),
+        params={"stale_after_seconds": 60},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    overlay = payload["acknowledgement_state_overlay"]
+    assert overlay["overlay_status"] == "STATE_PRESENT"
+    assert overlay["ack_state_id"] == ack_state_id
+    assert overlay["state_status"] == "ACKNOWLEDGED"
+    assert overlay["effective_state_status"] == "ACKNOWLEDGED"
+    assert overlay["source_projection_suppressed"] is False
+    assert overlay["issue_candidate_suppressed"] is False
+    assert ack_store.get(ack_state_id)["state_status"] == "ACKNOWLEDGED"
+
+
 def test_dispatch_liveness_ack_state_detail_route_returns_state() -> None:
     client, _ack_store, _event_store, heartbeat_store = build_client()
     upsert_dispatch_heartbeat(heartbeat_store, last_seen_at="2020-01-01T00:00:00Z")

@@ -110,6 +110,7 @@ from nex_ag.operator_review_cases import (
     OperatorReviewCaseStore,
 )
 from nex_ag.operator_review_liveness_ack import (
+    AG_OPERATOR_REVIEW_LIVENESS_ACK_STATE_TABLE,
     OperatorReviewLivenessAckStateError,
     acknowledgement_key_for_liveness,
     apply_operator_review_liveness_ack_state_transition,
@@ -2290,6 +2291,9 @@ def register_unified_operation_routes(
             operator_review_escalation_dispatch_store=(
                 operator_review_escalation_dispatch_store
             ),
+            operator_review_liveness_ack_state_store=(
+                operator_review_liveness_ack_state_store
+            ),
             worker_heartbeat_stores=worker_heartbeat_stores,
             service_id=service_id,
             recent_limit=recent_limit,
@@ -2357,6 +2361,9 @@ def register_unified_operation_routes(
             operator_review_escalation_store=operator_review_escalation_store,
             operator_review_escalation_dispatch_store=(
                 operator_review_escalation_dispatch_store
+            ),
+            operator_review_liveness_ack_state_store=(
+                operator_review_liveness_ack_state_store
             ),
             worker_heartbeat_stores=worker_heartbeat_stores,
             registry=registry,
@@ -2513,6 +2520,7 @@ def register_unified_operation_routes(
             registry=registry,
             worker_id=worker_id,
             stale_after_seconds=stale_after_seconds,
+            state_store=operator_review_liveness_ack_state_store,
             audit_emitter=audit_emitter,
         )
 
@@ -3755,6 +3763,7 @@ def _dispatch_daemon_liveness_recovery_plan_route_response(
     registry: OperationsSourceRegistry | None,
     worker_id: str,
     stale_after_seconds: int,
+    state_store: Any | None = None,
     audit_emitter: OperationalEventEmitter | None = None,
 ) -> dict[str, Any] | JSONResponse:
     request_id = request_id_from_headers(request)
@@ -3777,6 +3786,10 @@ def _dispatch_daemon_liveness_recovery_plan_route_response(
                         "/admin/v1/operator-review/dispatch-daemon/process-controls"
                     )
                 },
+                ack_state_store=(
+                    state_store
+                    or default_operator_review_liveness_ack_state_store(request.app)
+                ),
                 request_trace_id=trace_id,
             )
         )
@@ -5087,6 +5100,7 @@ def build_operations_issue_candidate_projection(
     operator_review_case_store: Any | None = None,
     operator_review_escalation_store: Any | None = None,
     operator_review_escalation_dispatch_store: Any | None = None,
+    operator_review_liveness_ack_state_store: Any | None = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     registry: OperationsSourceRegistry | None = None,
     runtime: AgOperationsSourceRuntime | None = None,
@@ -5121,6 +5135,9 @@ def build_operations_issue_candidate_projection(
         operator_review_escalation_store=operator_review_escalation_store,
         operator_review_escalation_dispatch_store=(
             operator_review_escalation_dispatch_store
+        ),
+        operator_review_liveness_ack_state_store=(
+            operator_review_liveness_ack_state_store
         ),
         worker_heartbeat_stores=worker_heartbeat_stores,
         registry=registry,
@@ -5487,6 +5504,7 @@ def build_operations_dashboard_snapshot_projection(
     operator_review_case_store: Any | None = None,
     operator_review_escalation_store: Any | None = None,
     operator_review_escalation_dispatch_store: Any | None = None,
+    operator_review_liveness_ack_state_store: Any | None = None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None = None,
     service_id: str | None = None,
     recent_limit: int = 5,
@@ -5618,6 +5636,7 @@ def build_operations_dashboard_snapshot_projection(
         _dashboard_operator_review_escalation_dispatch_section(
             dispatch_store=operator_review_escalation_dispatch_store,
             control_event_store=selected_event_store,
+            ack_state_store=operator_review_liveness_ack_state_store,
             worker_heartbeat_stores=worker_heartbeat_stores,
             registry=registry,
             service_id=service_id,
@@ -8916,6 +8935,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
     *,
     dispatch_store: Any | None,
     control_event_store: OperationalEventStore | None,
+    ack_state_store: Any | None,
     worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None,
     registry: OperationsSourceRegistry | None,
     service_id: str | None,
@@ -8941,6 +8961,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
     daemon_recovery = (
         _dashboard_operator_review_dispatch_daemon_liveness_recovery_section(
             liveness_projection=daemon_liveness,
+            ack_state_store=ack_state_store,
             request_trace_id=request_trace_id,
         )
     )
@@ -9088,6 +9109,7 @@ def _empty_dashboard_operator_review_escalation_dispatch_section(
                         request_trace_id=None,
                     )
                 ),
+                ack_state_store=None,
                 request_trace_id=None,
             )
         ),
@@ -9184,7 +9206,8 @@ def _dashboard_operator_review_dispatch_daemon_liveness_section(
 def _dashboard_operator_review_dispatch_daemon_liveness_recovery_section(
     *,
     liveness_projection: Mapping[str, Any],
-    request_trace_id: str | None,
+    ack_state_store: Any | None = None,
+    request_trace_id: str | None = None,
 ) -> dict[str, Any]:
     try:
         recovery_plan = (
@@ -9195,10 +9218,16 @@ def _dashboard_operator_review_dispatch_daemon_liveness_recovery_section(
                         "/admin/v1/operator-review/dispatch-daemon/process-controls"
                     )
                 },
+                ack_state_store=ack_state_store,
                 request_trace_id=request_trace_id,
             )
         )
     except OperationsQueryError as exc:
+        ack_suppression_policy = (
+            build_operator_review_escalation_dispatch_daemon_liveness_ack_suppression_policy(
+                "UNKNOWN",
+            )
+        )
         section = {
             "projection_schema_version": (
                 AG_OPERATOR_REVIEW_DISPATCH_DAEMON_LIVENESS_RECOVERY_DASHBOARD_SECTION_SCHEMA_VERSION
@@ -9214,9 +9243,12 @@ def _dashboard_operator_review_dispatch_daemon_liveness_recovery_section(
                 "new_tables_required": False,
             },
             "recommended_actions": [],
-            "acknowledgement_suppression_policy": (
-                build_operator_review_escalation_dispatch_daemon_liveness_ack_suppression_policy(
-                    "UNKNOWN",
+            "acknowledgement_suppression_policy": ack_suppression_policy,
+            "acknowledgement_state_overlay": (
+                _operator_review_dispatch_daemon_liveness_ack_state_overlay(
+                    ack_suppression_policy,
+                    ack_state_store=ack_state_store,
+                    observed_at=_utc_now(),
                 )
             ),
             "recovery_plan_path": (
@@ -9280,6 +9312,9 @@ def _dashboard_operator_review_dispatch_daemon_liveness_recovery_section(
                     recovery_plan.get("acknowledgement_suppression_policy")
                 )
             )
+        ),
+        "acknowledgement_state_overlay": deepcopy(
+            dict(_mapping_or_empty(recovery_plan.get("acknowledgement_state_overlay")))
         ),
         "recovery_plan_path": _nullable_string(recovery_plan_route.get("path")),
         "process_control_path": _nullable_string(process_control_route.get("path")),
@@ -9964,10 +9999,95 @@ def build_operator_review_escalation_dispatch_daemon_liveness_ack_suppression_po
     }
 
 
+def _operator_review_dispatch_daemon_liveness_ack_state_overlay(
+    policy: Mapping[str, Any],
+    *,
+    ack_state_store: Any | None,
+    observed_at: object,
+) -> dict[str, Any]:
+    acknowledgement_key = _nullable_string(policy.get("acknowledgement_key"))
+    overlay: dict[str, Any] = {
+        "overlay_schema_version": (
+            "ag_operator_review_escalation_dispatch_daemon_liveness_ack_state_overlay.v1"
+        ),
+        "overlay_status": "NOT_APPLICABLE",
+        "acknowledgement_key": acknowledgement_key,
+        "source_table": AG_OPERATOR_REVIEW_LIVENESS_ACK_STATE_TABLE,
+        "state_present": False,
+        "state_mutated": False,
+        "source_projection_suppressed": False,
+        "issue_candidate_suppressed": False,
+        "read_model_path": (
+            "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states"
+        ),
+        "effective_status": (
+            project_operator_review_liveness_ack_state_effective_status(
+                None,
+                observed_at=observed_at,
+            )
+        ),
+        "redaction": {
+            "raw_comment_included": False,
+            "raw_idempotency_key_included": False,
+            "raw_payloads_included": False,
+        },
+    }
+    if acknowledgement_key is None:
+        return overlay
+    if ack_state_store is None:
+        overlay["overlay_status"] = "STORE_NOT_BOUND"
+        return overlay
+    try:
+        state = ack_state_store.get_by_acknowledgement_key(acknowledgement_key)
+    except OperatorReviewLivenessAckStateError as exc:
+        overlay.update(
+            {
+                "overlay_status": "UNAVAILABLE",
+                "error_code": exc.error_code,
+                "status_code": exc.status_code,
+            }
+        )
+        return overlay
+    if state is None:
+        overlay["overlay_status"] = "NO_STATE"
+        return overlay
+
+    effective_status = project_operator_review_liveness_ack_state_effective_status(
+        dict(state),
+        observed_at=observed_at,
+    )
+    overlay.update(
+        {
+            "overlay_status": "STATE_PRESENT",
+            "state_present": True,
+            "ack_state_id": _nullable_string(state.get("ack_state_id")),
+            "action": _nullable_string(state.get("action")),
+            "state_status": _nullable_string(state.get("state_status")),
+            "liveness_status": _nullable_string(state.get("liveness_status")),
+            "effective_status": effective_status,
+            "effective_state_status": _nullable_string(
+                effective_status.get("effective_state_status")
+            ),
+            "suppressed_until": _nullable_string(
+                effective_status.get("suppressed_until")
+            ),
+            "reason_codes": [
+                str(reason)
+                for reason in state.get("reason_codes", [])
+                if isinstance(reason, str)
+            ],
+            "created_at": _nullable_string(state.get("created_at")),
+            "updated_at": _nullable_string(state.get("updated_at")),
+        }
+    )
+    return overlay
+
+
 def build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
     liveness_projection: Mapping[str, Any],
     *,
     process_section: Mapping[str, Any] | None = None,
+    ack_state_store: Any | None = None,
     checked_at: object | None = None,
     request_trace_id: str | None = None,
 ) -> dict[str, Any]:
@@ -10006,6 +10126,13 @@ def build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
                 _nullable_string(daemon_identity.get("worker_id"))
                 or "ag-dispatch-execution-daemon"
             ),
+        )
+    )
+    acknowledgement_state_overlay = (
+        _operator_review_dispatch_daemon_liveness_ack_state_overlay(
+            ack_suppression_policy,
+            ack_state_store=ack_state_store,
+            observed_at=observed_at,
         )
     )
     recovery_actions = _operator_review_dispatch_daemon_liveness_recovery_actions(
@@ -10057,6 +10184,7 @@ def build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
         },
         "recommended_actions": recovery_actions,
         "acknowledgement_suppression_policy": ack_suppression_policy,
+        "acknowledgement_state_overlay": acknowledgement_state_overlay,
         "summary": {
             "liveness_status": liveness_status,
             "action_count": len(recovery_actions),
@@ -12371,6 +12499,11 @@ def _operator_review_dispatch_daemon_liveness_issue_candidate(
                 )
             ),
             "acknowledgement_suppression_policy": ack_suppression_policy,
+            "acknowledgement_state_overlay": (
+                _operator_review_dispatch_daemon_liveness_ack_state_overlay_for_signal(
+                    recovery_section
+                )
+            ),
         },
     )
 
@@ -12440,6 +12573,40 @@ def _operator_review_dispatch_daemon_liveness_ack_suppression_policy_for_signal(
         ),
         "state_persisted": state_storage.get("status") != "NOT_PERSISTED",
         "new_tables_required": bool(state_storage.get("new_tables_required")),
+    }
+
+
+def _operator_review_dispatch_daemon_liveness_ack_state_overlay_for_signal(
+    recovery_section: object,
+) -> dict[str, Any]:
+    overlay = (
+        recovery_section.get("acknowledgement_state_overlay")
+        if isinstance(recovery_section, Mapping)
+        else None
+    )
+    if not isinstance(overlay, Mapping):
+        return {
+            "overlay_status": "UNKNOWN",
+            "state_present": False,
+            "source_projection_suppressed": False,
+            "issue_candidate_suppressed": False,
+        }
+    return {
+        "overlay_status": _nullable_string(overlay.get("overlay_status")),
+        "acknowledgement_key": _nullable_string(overlay.get("acknowledgement_key")),
+        "state_present": bool(overlay.get("state_present")),
+        "ack_state_id": _nullable_string(overlay.get("ack_state_id")),
+        "state_status": _nullable_string(overlay.get("state_status")),
+        "effective_state_status": _nullable_string(
+            overlay.get("effective_state_status")
+        ),
+        "source_projection_suppressed": bool(
+            overlay.get("source_projection_suppressed")
+        ),
+        "issue_candidate_suppressed": bool(
+            overlay.get("issue_candidate_suppressed")
+        ),
+        "read_model_path": _nullable_string(overlay.get("read_model_path")),
     }
 
 

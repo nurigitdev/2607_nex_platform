@@ -156,6 +156,11 @@ from nex_ag.operator_review_cases import (
     build_operator_review_case_escalation_projection,
     build_operator_review_escalation_record,
 )
+from nex_ag.operator_review_liveness_ack import (
+    OperatorReviewLivenessAckStateError,
+    OperatorReviewLivenessAckStateStore,
+    build_operator_review_liveness_ack_state_record,
+)
 from nex_ag.remediation_execution_operations import (
     InMemoryRemediationExecutionOperationsStore,
     build_remediation_execution_operations_projection,
@@ -4249,6 +4254,109 @@ def test_operator_review_dispatch_daemon_liveness_recovery_plan_contract() -> No
     assert "nuri1004" not in serialized
 
 
+def test_operator_review_dispatch_daemon_liveness_recovery_plan_ack_state_overlay() -> (
+    None
+):
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_store.upsert_heartbeat(
+        build_worker_heartbeat(
+            service_id="nex-ag",
+            worker_id="ag-dispatch-execution-daemon",
+            worker_type="operator_review_dispatch_daemon",
+            status="IDLE",
+            started_at="2026-09-15T14:00:00Z",
+            last_seen_at="2026-09-15T14:00:00Z",
+        )
+    )
+    liveness = build_operator_review_escalation_dispatch_daemon_liveness_projection(
+        worker_heartbeat_stores={"nex-ag": heartbeat_store},
+        stale_after_seconds=10,
+        checked_at="2026-09-15T14:01:00Z",
+    )
+    ack_store = OperatorReviewLivenessAckStateStore()
+    ack_store.save(
+        build_operator_review_liveness_ack_state_record(
+            ack_state_id="ack-state-0806-stale",
+            acknowledgement_key="nex-ag:ag-dispatch-execution-daemon:stale",
+            service_id="nex-ag",
+            worker_id="ag-dispatch-execution-daemon",
+            worker_type="operator_review_dispatch_daemon",
+            liveness_status="STALE",
+            action="suppress_for_ttl",
+            state_status="SUPPRESSED",
+            operator_ref={"operator_type": "user", "operator_id": "employee-0806"},
+            reason_codes=["maintenance-window"],
+            comment="bounded operator comment",
+            idempotency_key="raw-idempotency-0806",
+            requested_ttl_seconds=600,
+            suppressed_until="2999-01-01T00:00:00Z",
+            created_at="2026-09-15T14:00:30Z",
+            updated_at="2026-09-15T14:00:30Z",
+        )
+    )
+
+    plan = build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
+        liveness,
+        ack_state_store=ack_store,
+        checked_at="2026-09-15T14:01:05Z",
+    )
+    no_state_plan = (
+        build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
+            liveness,
+            ack_state_store=OperatorReviewLivenessAckStateStore(),
+            checked_at="2026-09-15T14:01:05Z",
+        )
+    )
+
+    overlay = plan["acknowledgement_state_overlay"]
+    assert overlay["overlay_status"] == "STATE_PRESENT"
+    assert overlay["ack_state_id"] == "ack-state-0806-stale"
+    assert overlay["state_status"] == "SUPPRESSED"
+    assert overlay["effective_state_status"] == "SUPPRESSED"
+    assert overlay["source_projection_suppressed"] is False
+    assert overlay["issue_candidate_suppressed"] is False
+    assert overlay["state_mutated"] is False
+    assert overlay["read_model_path"] == (
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states"
+    )
+    assert no_state_plan["acknowledgement_state_overlay"]["overlay_status"] == (
+        "NO_STATE"
+    )
+    assert no_state_plan["acknowledgement_state_overlay"]["state_present"] is False
+    serialized = json.dumps(plan)
+    assert "raw-idempotency-0806" not in serialized
+
+
+def test_operator_review_dispatch_daemon_liveness_recovery_plan_ack_overlay_error() -> (
+    None
+):
+    class BrokenAckStateStore:
+        def get_by_acknowledgement_key(self, _key: str) -> dict[str, Any] | None:
+            raise OperatorReviewLivenessAckStateError(
+                "ack store unavailable",
+                error_code="ag.operator_review_liveness_ack_state_store_unavailable",
+                status_code=503,
+            )
+
+    liveness = build_operator_review_escalation_dispatch_daemon_liveness_projection(
+        worker_heartbeat_stores={},
+        checked_at="2026-09-15T14:01:00Z",
+    )
+
+    plan = build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
+        liveness,
+        ack_state_store=BrokenAckStateStore(),
+        checked_at="2026-09-15T14:01:05Z",
+    )
+
+    overlay = plan["acknowledgement_state_overlay"]
+    assert overlay["overlay_status"] == "UNAVAILABLE"
+    assert overlay["error_code"] == (
+        "ag.operator_review_liveness_ack_state_store_unavailable"
+    )
+    assert overlay["source_projection_suppressed"] is False
+
+
 def test_operator_review_dispatch_daemon_liveness_recovery_plan_status_matrix() -> None:
     base_liveness = build_operator_review_escalation_dispatch_daemon_liveness_projection(
         worker_heartbeat_stores={"nex-ag": InMemoryWorkerHeartbeatStore()},
@@ -6631,6 +6739,83 @@ def test_operations_issue_candidate_projection_includes_dispatch_daemon_liveness
     assert helper_without_process_path["signal"]["acknowledgement_suppression_policy"][
         "supported_actions"
     ] == []
+
+
+def test_dashboard_and_issue_candidates_include_liveness_ack_state_overlay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NEX_AG_DISPATCH_DAEMON_ENABLED", "1")
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    heartbeat_store.upsert_heartbeat(
+        build_worker_heartbeat(
+            service_id="nex-ag",
+            worker_id="ag-dispatch-execution-daemon",
+            worker_type="operator_review_dispatch_daemon",
+            status="IDLE",
+            trace_id=TRACE_ID,
+            started_at="1970-01-01T00:00:00Z",
+            last_seen_at="1970-01-01T00:00:00Z",
+        )
+    )
+    ack_store = OperatorReviewLivenessAckStateStore()
+    ack_store.save(
+        build_operator_review_liveness_ack_state_record(
+            ack_state_id="ack-state-0806-dashboard",
+            acknowledgement_key="nex-ag:ag-dispatch-execution-daemon:stale",
+            service_id="nex-ag",
+            worker_id="ag-dispatch-execution-daemon",
+            worker_type="operator_review_dispatch_daemon",
+            liveness_status="STALE",
+            action="acknowledge_once",
+            state_status="ACKNOWLEDGED",
+            operator_ref={"operator_type": "user", "operator_id": "employee-0806"},
+            reason_codes=["operator-reviewed"],
+            created_at="2026-09-16T00:00:00Z",
+            updated_at="2026-09-16T00:00:00Z",
+        )
+    )
+
+    dashboard = build_operations_dashboard_snapshot_projection(
+        worker_heartbeat_stores={"nex-ag": heartbeat_store},
+        operator_review_liveness_ack_state_store=ack_store,
+        recent_limit=2,
+        request_trace_id=TRACE_ID,
+    )
+    issue_projection = build_operations_issue_candidate_projection(
+        worker_heartbeat_stores={"nex-ag": heartbeat_store},
+        operator_review_liveness_ack_state_store=ack_store,
+        stale_after_seconds=60,
+        recent_limit=2,
+        request_trace_id=TRACE_ID,
+    )
+
+    recovery_overlay = dashboard["operator_review_escalation_dispatches"][
+        "daemon_recovery"
+    ]["acknowledgement_state_overlay"]
+    assert recovery_overlay["overlay_status"] == "STATE_PRESENT"
+    assert recovery_overlay["ack_state_id"] == "ack-state-0806-dashboard"
+    assert recovery_overlay["effective_state_status"] == "ACKNOWLEDGED"
+    assert recovery_overlay["source_projection_suppressed"] is False
+    assert dashboard["operator_review_escalation_dispatches"]["daemon_liveness"][
+        "summary"
+    ]["liveness_status"] == "STALE"
+
+    candidates = [
+        candidate
+        for candidate in issue_projection["issue_candidates"]
+        if candidate["rule_id"]
+        == "operator_review_dispatch_daemon_liveness_attention_required.v1"
+    ]
+    assert len(candidates) == 1
+    signal_overlay = candidates[0]["signal"]["acknowledgement_state_overlay"]
+    assert signal_overlay["overlay_status"] == "STATE_PRESENT"
+    assert signal_overlay["state_present"] is True
+    assert signal_overlay["effective_state_status"] == "ACKNOWLEDGED"
+    assert signal_overlay["source_projection_suppressed"] is False
+    assert signal_overlay["issue_candidate_suppressed"] is False
+    assert issue_projection["summary"]["by_rule"][
+        "operator_review_dispatch_daemon_liveness_attention_required.v1"
+    ] == 1
 
 
 def test_escalation_dispatch_dashboard_helpers_cover_defensive_edges() -> None:

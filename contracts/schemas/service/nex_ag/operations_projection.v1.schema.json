@@ -3068,6 +3068,7 @@
         "summary",
         "recommended_actions",
         "acknowledgement_suppression_policy",
+        "acknowledgement_state_overlay",
         "recovery_plan_path",
         "process_control_path",
         "source_statuses",
@@ -3217,6 +3218,9 @@
             }
           }
         },
+        "acknowledgement_state_overlay": {
+          "$ref": "#/$defs/dashboard_operator_review_dispatch_daemon_liveness_ack_state_overlay"
+        },
         "recovery_plan_path": {
           "type": "string",
           "minLength": 1
@@ -3242,6 +3246,71 @@
         "request_trace_id": {
           "type": "string",
           "minLength": 1
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "dashboard_operator_review_dispatch_daemon_liveness_ack_state_overlay": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "overlay_schema_version",
+        "overlay_status",
+        "acknowledgement_key",
+        "source_table",
+        "state_present",
+        "state_mutated",
+        "source_projection_suppressed",
+        "issue_candidate_suppressed",
+        "read_model_path",
+        "effective_status",
+        "redaction"
+      ],
+      "properties": {
+        "overlay_schema_version": {
+          "const": "ag_operator_review_escalation_dispatch_daemon_liveness_ack_state_overlay.v1"
+        },
+        "overlay_status": {
+          "type": "string",
+          "enum": [
+            "NOT_APPLICABLE",
+            "STORE_NOT_BOUND",
+            "NO_STATE",
+            "STATE_PRESENT",
+            "UNAVAILABLE"
+          ]
+        },
+        "acknowledgement_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_table": {
+          "const": "ag_op_review_ack_state"
+        },
+        "state_present": {
+          "type": "boolean"
+        },
+        "state_mutated": {
+          "const": false
+        },
+        "source_projection_suppressed": {
+          "const": false
+        },
+        "issue_candidate_suppressed": {
+          "const": false
+        },
+        "read_model_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effective_status": {
+          "type": "object",
+          "additionalProperties": true
         },
         "redaction": {
           "type": "object",
