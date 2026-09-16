@@ -113,7 +113,9 @@ from nex_ag.operator_review_liveness_ack import (
     OperatorReviewLivenessAckStateError,
     acknowledgement_key_for_liveness,
     apply_operator_review_liveness_ack_state_transition,
+    build_operator_review_liveness_ack_state_list_response,
     default_operator_review_liveness_ack_state_store,
+    project_operator_review_liveness_ack_state_effective_status,
 )
 from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV,
@@ -2547,6 +2549,58 @@ def register_unified_operation_routes(
         )
 
     @app.get(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states",
+        response_model=None,
+        operation_id="listAgOperatorReviewDispatchDaemonLivenessAckStates",
+        tags=["Operations"],
+    )
+    def list_operator_review_dispatch_daemon_liveness_ack_states(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        worker_id: str | None = None,
+        liveness_status: str | None = None,
+        state_status: str | None = None,
+        limit: int = Query(default=50, ge=1, le=200),
+        observed_at: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        return _dispatch_daemon_liveness_ack_state_list_route_response(
+            request,
+            state_store=operator_review_liveness_ack_state_store,
+            service_id=service_id,
+            worker_id=worker_id,
+            liveness_status=liveness_status,
+            state_status=state_status,
+            limit=limit,
+            observed_at=observed_at,
+        )
+
+    @app.get(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states/{ack_state_id}",
+        response_model=None,
+        operation_id="getAgOperatorReviewDispatchDaemonLivenessAckState",
+        tags=["Operations"],
+    )
+    def get_operator_review_dispatch_daemon_liveness_ack_state(
+        request: Request,
+        ack_state_id: str,
+        authorization: str | None = Header(default=None),
+        observed_at: str | None = None,
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        return _dispatch_daemon_liveness_ack_state_detail_route_response(
+            request,
+            state_store=operator_review_liveness_ack_state_store,
+            ack_state_id=ack_state_id,
+            observed_at=observed_at,
+        )
+
+    @app.get(
         "/admin/v1/operator-review/dispatch-daemon/controls",
         response_model=None,
         operation_id="listAgOperatorReviewDispatchDaemonControls",
@@ -3878,6 +3932,105 @@ def _dispatch_daemon_liveness_ack_state_route_response(
         )
 
 
+def _dispatch_daemon_liveness_ack_state_list_route_response(
+    request: Request,
+    *,
+    state_store: Any | None,
+    service_id: str | None,
+    worker_id: str | None,
+    liveness_status: str | None,
+    state_status: str | None,
+    limit: int,
+    observed_at: str | None,
+) -> dict[str, Any] | JSONResponse:
+    selected_store = state_store or default_operator_review_liveness_ack_state_store(
+        request.app
+    )
+    try:
+        observed = _liveness_ack_state_observed_at(observed_at)
+        states = selected_store.list_states(
+            service_id=_liveness_ack_state_filter_value(service_id),
+            worker_id=_liveness_ack_state_filter_value(worker_id),
+            liveness_status=_liveness_ack_state_filter_value(liveness_status),
+            state_status=_liveness_ack_state_filter_value(state_status),
+            limit=limit,
+        )
+        response = build_operator_review_liveness_ack_state_list_response(
+            [
+                _liveness_ack_state_read_item(state, observed_at=observed)
+                for state in states
+            ],
+            checked_at=observed,
+        )
+        response["filters"] = {
+            "service_id": _liveness_ack_state_filter_value(service_id),
+            "worker_id": _liveness_ack_state_filter_value(worker_id),
+            "liveness_status": _liveness_ack_state_filter_value(liveness_status),
+            "state_status": _liveness_ack_state_filter_value(state_status),
+            "limit": limit,
+        }
+        response["route"] = {
+            "path": "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states",
+            "method": "GET",
+            "protected": True,
+        }
+        response["read_model"] = {
+            "effective_status_projected": True,
+            "state_mutated": False,
+        }
+        return response
+    except OperatorReviewLivenessAckStateError as exc:
+        return _liveness_ack_state_problem_response(request, exc)
+
+
+def _dispatch_daemon_liveness_ack_state_detail_route_response(
+    request: Request,
+    *,
+    state_store: Any | None,
+    ack_state_id: str,
+    observed_at: str | None,
+) -> dict[str, Any] | JSONResponse:
+    selected_store = state_store or default_operator_review_liveness_ack_state_store(
+        request.app
+    )
+    try:
+        observed = _liveness_ack_state_observed_at(observed_at)
+        state = selected_store.get(ack_state_id)
+        if state is None:
+            raise OperatorReviewLivenessAckStateError(
+                "ack_state_id was not found.",
+                error_code="ag.operator_review_liveness_ack_state_not_found",
+                status_code=404,
+            )
+        return {
+            "projection_schema_version": (
+                "ag_operator_review_escalation_dispatch_daemon_liveness_ack_state_detail.v1"
+            ),
+            "projection_status": "READY",
+            "checked_at": observed,
+            "state": _liveness_ack_state_read_item(state, observed_at=observed),
+            "route": {
+                "path": (
+                    "/admin/v1/operator-review/dispatch-daemon/liveness/"
+                    "ack-states/{ack_state_id}"
+                ),
+                "method": "GET",
+                "protected": True,
+            },
+            "read_model": {
+                "effective_status_projected": True,
+                "state_mutated": False,
+            },
+            "redaction": {
+                "raw_comment_included": False,
+                "raw_idempotency_key_included": False,
+                "raw_payloads_included": False,
+            },
+        }
+    except OperatorReviewLivenessAckStateError as exc:
+        return _liveness_ack_state_problem_response(request, exc)
+
+
 def emit_operator_review_liveness_ack_state_audit_event(
     emitter: OperationalEventEmitter | None,
     *,
@@ -4026,6 +4179,47 @@ def _liveness_ack_payload_list(
             error_code="ag.operator_review_liveness_ack_payload_invalid",
         )
     return value
+
+
+def _liveness_ack_state_read_item(
+    state: Mapping[str, Any],
+    *,
+    observed_at: object,
+) -> dict[str, Any]:
+    item = deepcopy(dict(state))
+    item["effective_status"] = project_operator_review_liveness_ack_state_effective_status(
+        dict(state),
+        observed_at=observed_at,
+    )
+    return item
+
+
+def _liveness_ack_state_observed_at(observed_at: str | None) -> object:
+    if observed_at is None:
+        return _utc_now()
+    text = str(observed_at).strip()
+    if not text:
+        raise OperatorReviewLivenessAckStateError(
+            "observed_at must be an ISO-8601 timestamp.",
+            error_code="ag.operator_review_liveness_ack_observed_at_invalid",
+        )
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise OperatorReviewLivenessAckStateError(
+            "observed_at must be an ISO-8601 timestamp.",
+            error_code="ag.operator_review_liveness_ack_observed_at_invalid",
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _liveness_ack_state_filter_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _liveness_ack_audit_subject_id(mutation: Mapping[str, Any] | None) -> str:

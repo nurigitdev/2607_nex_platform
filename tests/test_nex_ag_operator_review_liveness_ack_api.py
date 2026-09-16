@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+from typing import Any
+
 from fastapi.testclient import TestClient
 
 from nex_ag.operations import (
@@ -14,6 +16,7 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_HEARTBEAT_WORKER_TYPE,
 )
 from nex_ag.operator_review_liveness_ack import OperatorReviewLivenessAckStateStore
+from nex_ag.operator_review_liveness_ack import OperatorReviewLivenessAckStateError
 from nex_runtime import (
     IDLE,
     InMemoryOperationalEventStore,
@@ -58,6 +61,23 @@ def build_client() -> tuple[
         },
     )
     return TestClient(app), ack_store, event_store, heartbeat_store
+
+
+def build_client_with_ack_store(
+    ack_store: Any,
+) -> tuple[TestClient, InMemoryOperationalEventStore, InMemoryWorkerHeartbeatStore]:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    event_store = InMemoryOperationalEventStore()
+    heartbeat_store = InMemoryWorkerHeartbeatStore()
+    register_unified_operation_routes(
+        app,
+        event_store=event_store,
+        operator_review_liveness_ack_state_store=ack_store,
+        worker_heartbeat_stores={
+            DISPATCH_EXECUTION_DAEMON_HEARTBEAT_SERVICE_ID: heartbeat_store
+        },
+    )
+    return TestClient(app), event_store, heartbeat_store
 
 
 def upsert_dispatch_heartbeat(
@@ -370,5 +390,225 @@ def test_liveness_ack_state_audit_emits_failed_event_for_server_error() -> None:
     )
     assert result.event["severity"] == "ERROR"
     assert result.event["details"]["error_code"] == (
+        "ag.operator_review_liveness_ack_state_store_unavailable"
+    )
+
+
+def test_dispatch_liveness_ack_state_list_route_projects_effective_status() -> None:
+    client, ack_store, _event_store, heartbeat_store = build_client()
+    upsert_dispatch_heartbeat(heartbeat_store, last_seen_at="2020-01-01T00:00:00Z")
+    created = client.post(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-state",
+        headers=auth_headers(),
+        json={
+            "action": "suppress_for_ttl",
+            "operator_ref": {
+                "operator_type": "user",
+                "operator_id": "employee-0805",
+            },
+            "reason_codes": ["maintenance-window"],
+            "requested_ttl_seconds": 60,
+            "observed_at": "2026-09-16T05:00:00Z",
+        },
+    )
+    ack_state_id = created.json()["state"]["ack_state_id"]
+
+    response = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states",
+        headers=auth_headers(),
+        params={
+            "state_status": "SUPPRESSED",
+            "observed_at": "2026-09-16T05:02:00Z",
+            "limit": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["state_count"] == 1
+    assert payload["route"]["protected"] is True
+    assert payload["read_model"]["effective_status_projected"] is True
+    assert payload["read_model"]["state_mutated"] is False
+    state = payload["states"][0]
+    assert state["ack_state_id"] == ack_state_id
+    assert state["state_status"] == "SUPPRESSED"
+    assert state["effective_status"]["effective_state_status"] == "EXPIRED"
+    assert ack_store.get(ack_state_id)["state_status"] == "SUPPRESSED"
+    assert payload["redaction"]["raw_comment_included"] is False
+
+
+def test_dispatch_liveness_ack_state_detail_route_returns_state() -> None:
+    client, _ack_store, _event_store, heartbeat_store = build_client()
+    upsert_dispatch_heartbeat(heartbeat_store, last_seen_at="2020-01-01T00:00:00Z")
+    created = client.post(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-state",
+        headers=auth_headers(),
+        json={
+            "action": "acknowledge_once",
+            "operator_ref": {
+                "operator_type": "user",
+                "operator_id": "employee-0805",
+            },
+            "reason_codes": ["operator-reviewed"],
+            "observed_at": "2026-09-16T05:05:00Z",
+        },
+    )
+    ack_state_id = created.json()["state"]["ack_state_id"]
+
+    response = client.get(
+        (
+            "/admin/v1/operator-review/dispatch-daemon/liveness/"
+            f"ack-states/{ack_state_id}"
+        ),
+        headers=auth_headers(),
+        params={"observed_at": "2026-09-16T05:06:00Z"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["projection_status"] == "READY"
+    assert payload["state"]["ack_state_id"] == ack_state_id
+    assert payload["state"]["effective_status"]["effective_state_status"] == (
+        "ACKNOWLEDGED"
+    )
+    assert payload["redaction"]["raw_payloads_included"] is False
+
+
+def test_dispatch_liveness_ack_state_read_routes_are_protected() -> None:
+    client, _ack_store, _event_store, _heartbeat_store = build_client()
+
+    response = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states"
+    )
+
+    assert response.status_code == 401
+
+    detail_response = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states/missing"
+    )
+
+    assert detail_response.status_code == 401
+
+
+def test_dispatch_liveness_ack_state_detail_route_rejects_missing_state() -> None:
+    client, _ack_store, _event_store, _heartbeat_store = build_client()
+
+    response = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states/missing",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == (
+        "ag.operator_review_liveness_ack_state_not_found"
+    )
+
+
+def test_dispatch_liveness_ack_state_list_route_rejects_bad_observed_at() -> None:
+    client, _ack_store, _event_store, _heartbeat_store = build_client()
+
+    response = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states",
+        headers=auth_headers(),
+        params={"observed_at": "not-a-date"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == (
+        "ag.operator_review_liveness_ack_observed_at_invalid"
+    )
+
+
+def test_dispatch_liveness_ack_state_list_route_rejects_blank_observed_at() -> None:
+    client, _ack_store, _event_store, _heartbeat_store = build_client()
+
+    response = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states",
+        headers=auth_headers(),
+        params={"observed_at": "   "},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == (
+        "ag.operator_review_liveness_ack_observed_at_invalid"
+    )
+
+
+def test_dispatch_liveness_ack_state_list_route_treats_naive_observed_at_as_utc() -> None:
+    client, _ack_store, _event_store, heartbeat_store = build_client()
+    upsert_dispatch_heartbeat(heartbeat_store, last_seen_at="2020-01-01T00:00:00Z")
+    client.post(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-state",
+        headers=auth_headers(),
+        json={
+            "action": "acknowledge_once",
+            "operator_ref": {
+                "operator_type": "user",
+                "operator_id": "employee-0805",
+            },
+            "reason_codes": ["operator-reviewed"],
+            "observed_at": "2026-09-16T05:05:00Z",
+        },
+    )
+
+    response = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states",
+        headers=auth_headers(),
+        params={"observed_at": "2026-09-16T05:06:00"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["checked_at"] == "2026-09-16T05:06:00Z"
+
+
+def test_dispatch_liveness_ack_state_list_route_ignores_blank_filter() -> None:
+    client, _ack_store, _event_store, heartbeat_store = build_client()
+    upsert_dispatch_heartbeat(heartbeat_store, last_seen_at="2020-01-01T00:00:00Z")
+    client.post(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-state",
+        headers=auth_headers(),
+        json={
+            "action": "acknowledge_once",
+            "operator_ref": {
+                "operator_type": "user",
+                "operator_id": "employee-0805",
+            },
+            "reason_codes": ["operator-reviewed"],
+            "observed_at": "2026-09-16T05:05:00Z",
+        },
+    )
+
+    response = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states",
+        headers=auth_headers(),
+        params={"state_status": "   "},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["filters"]["state_status"] is None
+    assert payload["state_count"] == 1
+
+
+def test_dispatch_liveness_ack_state_list_route_reports_store_error() -> None:
+    class BrokenAckStateStore:
+        def list_states(self, **_kwargs: Any) -> list[dict[str, Any]]:
+            raise OperatorReviewLivenessAckStateError(
+                "ack state store unavailable",
+                error_code="ag.operator_review_liveness_ack_state_store_unavailable",
+                status_code=503,
+            )
+
+    client, _event_store, _heartbeat_store = build_client_with_ack_store(
+        BrokenAckStateStore()
+    )
+
+    response = client.get(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == (
         "ag.operator_review_liveness_ack_state_store_unavailable"
     )
