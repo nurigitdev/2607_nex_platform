@@ -57,6 +57,9 @@ ACK_ACTIONABLE_ACTIONS = ("acknowledge_once", "suppress_for_ttl")
 LIVENESS_ACK_STATE_MUTATION_SCHEMA_VERSION = (
     "ag_operator_review_escalation_dispatch_daemon_liveness_ack_state_mutation.v1"
 )
+LIVENESS_ACK_EXPIRY_RECONCILIATION_SCHEMA_VERSION = (
+    "ag_operator_review_escalation_dispatch_daemon_liveness_ack_expiry_reconciliation.v1"
+)
 
 
 class OperatorReviewLivenessAckStateError(ValueError):
@@ -594,6 +597,109 @@ def project_operator_review_liveness_ack_state_effective_status(
         "suppressed_until": (
             _datetime_value(suppressed_until) if suppressed_until is not None else None
         ),
+    }
+
+
+def build_operator_review_liveness_ack_expiry_reconciliation_candidate(
+    state: dict[str, Any] | None,
+    *,
+    observed_at: object | None = None,
+) -> dict[str, Any]:
+    observed = _datetime_value(observed_at) if observed_at else _utc_now()
+    if not isinstance(state, dict):
+        return {
+            "reconciliation_schema_version": (
+                LIVENESS_ACK_EXPIRY_RECONCILIATION_SCHEMA_VERSION
+            ),
+            "candidate_status": "SKIPPED",
+            "reason": "state_missing",
+            "observed_at": observed,
+            "ack_state_id": None,
+            "acknowledgement_key": None,
+            "expected_state_status": None,
+            "expected_updated_at": None,
+            "target_state_status": None,
+        }
+    projection = project_operator_review_liveness_ack_state_effective_status(
+        state,
+        observed_at=observed,
+    )
+    stored_status = projection["stored_state_status"]
+    suppressed_until = projection["suppressed_until"]
+    if stored_status != "SUPPRESSED":
+        candidate_status = "SKIPPED"
+        reason = "state_not_suppressed"
+    elif suppressed_until is None:
+        candidate_status = "SKIPPED"
+        reason = "suppression_deadline_missing"
+    elif projection["expired"] is not True:
+        candidate_status = "SKIPPED"
+        reason = "suppression_active"
+    else:
+        candidate_status = "ELIGIBLE"
+        reason = "suppression_expired"
+    return {
+        "reconciliation_schema_version": (
+            LIVENESS_ACK_EXPIRY_RECONCILIATION_SCHEMA_VERSION
+        ),
+        "candidate_status": candidate_status,
+        "reason": reason,
+        "observed_at": observed,
+        "ack_state_id": state.get("ack_state_id"),
+        "acknowledgement_key": state.get("acknowledgement_key"),
+        "expected_state_status": stored_status,
+        "expected_updated_at": state.get("updated_at"),
+        "target_state_status": "EXPIRED" if candidate_status == "ELIGIBLE" else None,
+        "suppressed_until": suppressed_until,
+        "guardrails": {
+            "compare_and_set_required": True,
+            "source_liveness_projection_mutated": False,
+            "raw_comment_required": False,
+            "raw_payload_required": False,
+        },
+    }
+
+
+def apply_operator_review_liveness_ack_expiry_reconciliation(
+    state: dict[str, Any] | None,
+    *,
+    observed_at: object | None = None,
+) -> dict[str, Any]:
+    candidate = build_operator_review_liveness_ack_expiry_reconciliation_candidate(
+        state,
+        observed_at=observed_at,
+    )
+    if candidate["candidate_status"] != "ELIGIBLE":
+        return {
+            "reconciliation_schema_version": (
+                LIVENESS_ACK_EXPIRY_RECONCILIATION_SCHEMA_VERSION
+            ),
+            "mutation_status": "SKIPPED",
+            "candidate": candidate,
+            "state": dict(state) if isinstance(state, dict) else None,
+        }
+    updated = dict(state or {})
+    metadata = dict(updated.get("metadata") or {})
+    metadata["last_expiry_reconciliation"] = {
+        "observed_at": candidate["observed_at"],
+        "previous_state_status": candidate["expected_state_status"],
+        "target_state_status": candidate["target_state_status"],
+        "reason": candidate["reason"],
+    }
+    updated.update(
+        {
+            "state_status": "EXPIRED",
+            "updated_at": candidate["observed_at"],
+            "metadata": metadata,
+        }
+    )
+    return {
+        "reconciliation_schema_version": (
+            LIVENESS_ACK_EXPIRY_RECONCILIATION_SCHEMA_VERSION
+        ),
+        "mutation_status": "APPLIED",
+        "candidate": candidate,
+        "state": updated,
     }
 
 
