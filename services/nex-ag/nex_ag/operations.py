@@ -10184,6 +10184,12 @@ def _operator_review_dispatch_daemon_liveness_ack_state_overlay(
                 observed_at=observed_at,
             )
         ),
+        "expiry_reconciliation": (
+            _operator_review_liveness_ack_expiry_reconciliation_overlay(
+                None,
+                effective_status=None,
+            )
+        ),
         "redaction": {
             "raw_comment_included": False,
             "raw_idempotency_key_included": False,
@@ -10194,6 +10200,9 @@ def _operator_review_dispatch_daemon_liveness_ack_state_overlay(
         return overlay
     if ack_state_store is None:
         overlay["overlay_status"] = "STORE_NOT_BOUND"
+        overlay["expiry_reconciliation"]["reconciliation_status"] = (
+            "STORE_NOT_BOUND"
+        )
         return overlay
     try:
         state = ack_state_store.get_by_acknowledgement_key(acknowledgement_key)
@@ -10205,9 +10214,11 @@ def _operator_review_dispatch_daemon_liveness_ack_state_overlay(
                 "status_code": exc.status_code,
             }
         )
+        overlay["expiry_reconciliation"]["reconciliation_status"] = "UNAVAILABLE"
         return overlay
     if state is None:
         overlay["overlay_status"] = "NO_STATE"
+        overlay["expiry_reconciliation"]["reconciliation_status"] = "NO_STATE"
         return overlay
 
     effective_status = project_operator_review_liveness_ack_state_effective_status(
@@ -10236,9 +10247,58 @@ def _operator_review_dispatch_daemon_liveness_ack_state_overlay(
             ],
             "created_at": _nullable_string(state.get("created_at")),
             "updated_at": _nullable_string(state.get("updated_at")),
+            "expiry_reconciliation": (
+                _operator_review_liveness_ack_expiry_reconciliation_overlay(
+                    state,
+                    effective_status=effective_status,
+                )
+            ),
         }
     )
     return overlay
+
+
+def _operator_review_liveness_ack_expiry_reconciliation_overlay(
+    state: Mapping[str, Any] | None,
+    *,
+    effective_status: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    stored_status = _nullable_string(
+        state.get("state_status") if isinstance(state, Mapping) else None
+    )
+    projected_status = _nullable_string(
+        effective_status.get("effective_state_status")
+        if isinstance(effective_status, Mapping)
+        else None
+    )
+    if stored_status == "SUPPRESSED" and projected_status == "EXPIRED":
+        reconciliation_status = "PENDING"
+    elif stored_status == "EXPIRED":
+        reconciliation_status = "RECONCILED"
+    elif stored_status is None:
+        reconciliation_status = "NOT_APPLICABLE"
+    else:
+        reconciliation_status = "NOT_DUE"
+    return {
+        "overlay_schema_version": (
+            "ag_operator_review_liveness_ack_expiry_reconciliation_overlay.v1"
+        ),
+        "reconciliation_status": reconciliation_status,
+        "reconciliation_pending": reconciliation_status == "PENDING",
+        "stored_state_status": stored_status,
+        "effective_state_status": projected_status,
+        "source_table": AG_OPERATOR_REVIEW_LIVENESS_ACK_STATE_TABLE,
+        "reconcile_path": (
+            "/admin/v1/operator-review/dispatch-daemon/liveness/"
+            "ack-states/reconcile-expired"
+        ),
+        "state_mutated": False,
+        "redaction": {
+            "raw_comment_included": False,
+            "raw_idempotency_key_included": False,
+            "raw_payloads_included": False,
+        },
+    }
 
 
 def build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
@@ -12765,6 +12825,29 @@ def _operator_review_dispatch_daemon_liveness_ack_state_overlay_for_signal(
             overlay.get("issue_candidate_suppressed")
         ),
         "read_model_path": _nullable_string(overlay.get("read_model_path")),
+        "expiry_reconciliation": _operator_review_liveness_ack_expiry_signal(
+            overlay.get("expiry_reconciliation")
+        ),
+    }
+
+
+def _operator_review_liveness_ack_expiry_signal(value: object) -> dict[str, Any]:
+    reconciliation = _mapping_or_empty(value)
+    return {
+        "reconciliation_status": _nullable_string(
+            reconciliation.get("reconciliation_status")
+        ),
+        "reconciliation_pending": bool(
+            reconciliation.get("reconciliation_pending")
+        ),
+        "stored_state_status": _nullable_string(
+            reconciliation.get("stored_state_status")
+        ),
+        "effective_state_status": _nullable_string(
+            reconciliation.get("effective_state_status")
+        ),
+        "reconcile_path": _nullable_string(reconciliation.get("reconcile_path")),
+        "state_mutated": False,
     }
 
 
