@@ -937,10 +937,9 @@
         "default_suppression_ttl_seconds": 1800,
         "max_suppression_ttl_seconds": 86400,
         "state_storage": {
-          "status": "NOT_PERSISTED",
-          "source_table": "service_operational_events",
-          "new_tables_required": false,
-          "future_persistence": "operator_review_action_state"
+          "status": "PERSISTED",
+          "source_table": "ag_op_review_ack_state",
+          "new_tables_required": false
         },
         "guardrails": {
           "read_only_policy": true,
@@ -969,6 +968,21 @@
           "effective_state_status": null,
           "expired": false,
           "suppressed_until": null
+        },
+        "expiry_reconciliation": {
+          "overlay_schema_version": "ag_operator_review_liveness_ack_expiry_reconciliation_overlay.v1",
+          "reconciliation_status": "NOT_APPLICABLE",
+          "reconciliation_pending": false,
+          "stored_state_status": null,
+          "effective_state_status": null,
+          "source_table": "ag_op_review_ack_state",
+          "reconcile_path": "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states/reconcile-expired",
+          "state_mutated": false,
+          "redaction": {
+            "raw_comment_included": false,
+            "raw_idempotency_key_included": false,
+            "raw_payloads_included": false
+          }
         },
         "redaction": {
           "raw_comment_included": false,
@@ -1000,7 +1014,8 @@
         "process_control_requires_confirm_process": true,
         "audit_event_supported": true,
         "audit_event_details_shape": "safe_liveness_recovery_summary_only",
-        "acknowledgement_suppression_deferred_until_slice_0796": true
+        "acknowledgement_suppression_policy_supported": true,
+        "acknowledgement_suppression_state_persistence_active": true
       },
       "source_statuses": {
         "nex-ag": {

@@ -10142,10 +10142,9 @@ def build_operator_review_escalation_dispatch_daemon_liveness_ack_suppression_po
         "default_suppression_ttl_seconds": 1800,
         "max_suppression_ttl_seconds": 86400,
         "state_storage": {
-            "status": "NOT_PERSISTED",
-            "source_table": "service_operational_events",
+            "status": "PERSISTED",
+            "source_table": AG_OPERATOR_REVIEW_LIVENESS_ACK_STATE_TABLE,
             "new_tables_required": False,
-            "future_persistence": "operator_review_action_state",
         },
         "guardrails": {
             "read_only_policy": True,
@@ -10426,7 +10425,7 @@ def build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
             "audit_event_supported": True,
             "audit_event_details_shape": "safe_liveness_recovery_summary_only",
             "acknowledgement_suppression_policy_supported": True,
-            "acknowledgement_suppression_state_persistence_deferred": True,
+            "acknowledgement_suppression_state_persistence_active": True,
         },
         "new_tables_required": False,
         "redaction": (

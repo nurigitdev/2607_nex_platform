@@ -1971,6 +1971,30 @@ paths:
           description: Liveness acknowledgement action was rejected.
         "503":
           description: Liveness acknowledgement state store is unavailable.
+  /admin/v1/operator-review/dispatch-daemon/liveness/ack-states/reconcile-expired:
+    post:
+      operationId: postAgOperatorReviewDispatchDaemonLivenessAckExpiryReconcile
+      tags:
+        - Operations
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonLivenessAckExpiryReconciliationRequest"
+      responses:
+        "200":
+          description: Bounded acknowledgement expiry reconciliation result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonLivenessAckExpiryReconciliationProjection"
+        "400":
+          description: Reconciliation timestamp or batch limit is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "503":
+          description: Liveness acknowledgement state store is unavailable.
   /admin/v1/operator-review/dispatch-daemon/liveness/ack-states:
     get:
       operationId: listAgOperatorReviewDispatchDaemonLivenessAckStates
@@ -4981,7 +5005,7 @@ components:
             - audit_event_supported
             - audit_event_details_shape
             - acknowledgement_suppression_policy_supported
-            - acknowledgement_suppression_state_persistence_deferred
+            - acknowledgement_suppression_state_persistence_active
           properties:
             read_only_recovery_plan:
               type: boolean
@@ -5001,7 +5025,7 @@ components:
             acknowledgement_suppression_policy_supported:
               type: boolean
               const: true
-            acknowledgement_suppression_state_persistence_deferred:
+            acknowledgement_suppression_state_persistence_active:
               type: boolean
               const: true
         new_tables_required:
@@ -5108,6 +5132,7 @@ components:
         - issue_candidate_suppressed
         - read_model_path
         - effective_status
+        - expiry_reconciliation
         - redaction
       properties:
         overlay_schema_version:
@@ -5146,7 +5171,174 @@ components:
         effective_status:
           type: object
           additionalProperties: true
+        expiry_reconciliation:
+          $ref: "#/components/schemas/AgOperatorReviewDispatchDaemonLivenessAckExpiryReconciliationOverlay"
         redaction:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewDispatchDaemonLivenessAckExpiryReconciliationOverlay:
+      type: object
+      additionalProperties: true
+      required:
+        - overlay_schema_version
+        - reconciliation_status
+        - reconciliation_pending
+        - stored_state_status
+        - effective_state_status
+        - source_table
+        - reconcile_path
+        - state_mutated
+        - redaction
+      properties:
+        overlay_schema_version:
+          type: string
+          const: ag_operator_review_liveness_ack_expiry_reconciliation_overlay.v1
+        reconciliation_status:
+          type: string
+          enum:
+            - NOT_APPLICABLE
+            - STORE_NOT_BOUND
+            - NO_STATE
+            - UNAVAILABLE
+            - NOT_DUE
+            - PENDING
+            - RECONCILED
+        reconciliation_pending:
+          type: boolean
+        stored_state_status:
+          oneOf:
+            - type: string
+            - type: "null"
+        effective_state_status:
+          oneOf:
+            - type: string
+            - type: "null"
+        source_table:
+          type: string
+          const: ag_op_review_ack_state
+        reconcile_path:
+          type: string
+          const: /admin/v1/operator-review/dispatch-daemon/liveness/ack-states/reconcile-expired
+        state_mutated:
+          type: boolean
+          const: false
+        redaction:
+          type: object
+          additionalProperties: true
+    AgOperatorReviewDispatchDaemonLivenessAckExpiryReconciliationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        observed_at:
+          type: string
+          format: date-time
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+    AgOperatorReviewDispatchDaemonLivenessAckExpiryReconciliationProjection:
+      type: object
+      additionalProperties: true
+      required:
+        - run_schema_version
+        - run_status
+        - observed_at
+        - batch_limit
+        - candidate_count
+        - applied_count
+        - conflict_count
+        - skipped_count
+        - outcomes
+        - guardrails
+        - route
+        - audit_event
+      properties:
+        run_schema_version:
+          type: string
+          const: ag_operator_review_liveness_ack_expiry_reconciliation_run.v1
+        run_status:
+          type: string
+          enum:
+            - COMPLETED
+            - COMPLETED_WITH_CONFLICTS
+        observed_at:
+          type: string
+          format: date-time
+        batch_limit:
+          type: integer
+          minimum: 1
+          maximum: 200
+        candidate_count:
+          type: integer
+          minimum: 0
+        applied_count:
+          type: integer
+          minimum: 0
+        conflict_count:
+          type: integer
+          minimum: 0
+        skipped_count:
+          type: integer
+          minimum: 0
+        outcomes:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - ack_state_id
+              - acknowledgement_key
+              - status
+              - reason
+              - expected_state_status
+              - target_state_status
+            properties:
+              ack_state_id:
+                oneOf:
+                  - type: string
+                  - type: "null"
+              acknowledgement_key:
+                oneOf:
+                  - type: string
+                  - type: "null"
+              status:
+                type: string
+                enum:
+                  - APPLIED
+                  - CONFLICT
+                  - SKIPPED
+              reason:
+                type: string
+              expected_state_status:
+                oneOf:
+                  - type: string
+                  - type: "null"
+              target_state_status:
+                oneOf:
+                  - type: string
+                  - type: "null"
+        guardrails:
+          type: object
+          additionalProperties: true
+        route:
+          type: object
+          additionalProperties: false
+          required:
+            - path
+            - method
+            - protected
+          properties:
+            path:
+              type: string
+              const: /admin/v1/operator-review/dispatch-daemon/liveness/ack-states/reconcile-expired
+            method:
+              type: string
+              const: POST
+            protected:
+              type: boolean
+              const: true
+        audit_event:
           type: object
           additionalProperties: true
     AgOperatorReviewDispatchDaemonLivenessAckStateMutationProjection:

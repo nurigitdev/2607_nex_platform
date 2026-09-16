@@ -4224,10 +4224,9 @@ def test_operator_review_dispatch_daemon_liveness_recovery_plan_contract() -> No
         "default_suppression_ttl_seconds": 1800,
         "max_suppression_ttl_seconds": 86400,
         "state_storage": {
-            "status": "NOT_PERSISTED",
-            "source_table": "service_operational_events",
+            "status": "PERSISTED",
+            "source_table": "ag_op_review_ack_state",
             "new_tables_required": False,
-            "future_persistence": "operator_review_action_state",
         },
         "guardrails": {
             "read_only_policy": True,
@@ -5733,6 +5732,11 @@ def test_operator_review_dispatch_daemon_runtime_openapi_matches_contract() -> N
             "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan",
             "get",
         ): "getAgOperatorReviewDispatchDaemonLivenessRecoveryPlan",
+        (
+            "/admin/v1/operator-review/dispatch-daemon/liveness/"
+            "ack-states/reconcile-expired",
+            "post",
+        ): "postAgOperatorReviewDispatchDaemonLivenessAckExpiryReconcile",
     }
 
     for (path, method), operation_id in expected.items():
@@ -6596,7 +6600,7 @@ def test_operations_issue_candidate_projection_includes_dispatch_daemon_liveness
         "supported_actions": ["acknowledge_once", "suppress_for_ttl"],
         "default_suppression_ttl_seconds": 1800,
         "max_suppression_ttl_seconds": 86400,
-        "state_persisted": False,
+        "state_persisted": True,
         "new_tables_required": False,
     }
     assert projection["summary"]["by_rule"][

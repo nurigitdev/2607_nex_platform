@@ -3202,10 +3202,10 @@
               ],
               "properties": {
                 "status": {
-                  "type": "string"
+                  "const": "PERSISTED"
                 },
                 "source_table": {
-                  "const": "service_operational_events"
+                  "const": "ag_op_review_ack_state"
                 },
                 "new_tables_required": {
                   "const": false
@@ -3267,6 +3267,7 @@
         "issue_candidate_suppressed",
         "read_model_path",
         "effective_status",
+        "expiry_reconciliation",
         "redaction"
       ],
       "properties": {
@@ -3311,6 +3312,69 @@
         "effective_status": {
           "type": "object",
           "additionalProperties": true
+        },
+        "expiry_reconciliation": {
+          "$ref": "#/$defs/dashboard_operator_review_liveness_ack_expiry_reconciliation_overlay"
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "dashboard_operator_review_liveness_ack_expiry_reconciliation_overlay": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "overlay_schema_version",
+        "reconciliation_status",
+        "reconciliation_pending",
+        "stored_state_status",
+        "effective_state_status",
+        "source_table",
+        "reconcile_path",
+        "state_mutated",
+        "redaction"
+      ],
+      "properties": {
+        "overlay_schema_version": {
+          "const": "ag_operator_review_liveness_ack_expiry_reconciliation_overlay.v1"
+        },
+        "reconciliation_status": {
+          "type": "string",
+          "enum": [
+            "NOT_APPLICABLE",
+            "STORE_NOT_BOUND",
+            "NO_STATE",
+            "UNAVAILABLE",
+            "NOT_DUE",
+            "PENDING",
+            "RECONCILED"
+          ]
+        },
+        "reconciliation_pending": {
+          "type": "boolean"
+        },
+        "stored_state_status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "effective_state_status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_table": {
+          "const": "ag_op_review_ack_state"
+        },
+        "reconcile_path": {
+          "const": "/admin/v1/operator-review/dispatch-daemon/liveness/ack-states/reconcile-expired"
+        },
+        "state_mutated": {
+          "const": false
         },
         "redaction": {
           "type": "object",
