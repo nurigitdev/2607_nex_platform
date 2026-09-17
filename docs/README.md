@@ -923,6 +923,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0817`](slices/0817_ag_dispatch_liveness_ack_expiry_contract_hardening.md) | `S82-007` AG dispatch daemon liveness acknowledgement expiry OpenAPI and operations schema hardening. |
 | [`Slice 0818`](slices/0818_ag_dispatch_liveness_ack_expiry_postgres_smoke.md) | `S82-008` AG dispatch daemon liveness acknowledgement expiry PostgreSQL smoke evidence. |
 | [`Slice 0819`](slices/0819_ag_dispatch_liveness_ack_expiry_privacy_runbook.md) | `S82-009` AG dispatch daemon liveness acknowledgement expiry privacy, concurrency, and operator runbook evidence. |
+| [`Slice 0820`](slices/0820_s82_ag_dispatch_liveness_ack_expiry_reconciliation_closure.md) | `S82-010` AG dispatch daemon liveness acknowledgement expiry reconciliation closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
