@@ -124,6 +124,10 @@ from nex_ag.liveness_ack_expiry_reconciliation import (
 from nex_ag.liveness_ack_expiry_automation_operations import (
     build_liveness_ack_expiry_automation_operations_projection,
 )
+from nex_ag.recovery_notification_policy import (
+    RecoveryNotificationPolicyError,
+    build_recovery_notification_plan,
+)
 from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV,
     DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV,
@@ -2539,6 +2543,33 @@ def register_unified_operation_routes(
             audit_emitter=audit_emitter,
         )
 
+    @app.get(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-notification-preview",
+        response_model=None,
+        operation_id="getAgOperatorReviewDispatchDaemonRecoveryNotificationPreview",
+        tags=["Operations"],
+    )
+    def get_operator_review_dispatch_daemon_recovery_notification_preview(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        worker_id: str = "ag-dispatch-execution-daemon",
+        stale_after_seconds: int = Query(
+            default=DEFAULT_WORKER_STALE_AFTER_SECONDS,
+            ge=1,
+        ),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        return _dispatch_daemon_recovery_notification_preview_route_response(
+            request,
+            worker_heartbeat_stores=worker_heartbeat_stores,
+            registry=registry,
+            worker_id=worker_id,
+            stale_after_seconds=stale_after_seconds,
+            state_store=operator_review_liveness_ack_state_store,
+        )
+
     @app.post(
         "/admin/v1/operator-review/dispatch-daemon/liveness/ack-state",
         response_model=None,
@@ -3848,6 +3879,59 @@ def _dispatch_daemon_liveness_recovery_plan_route_response(
             trace_id=trace_id,
             error=exc,
         )
+        return _dispatch_daemon_control_problem_response(request, exc)
+
+
+def _dispatch_daemon_recovery_notification_preview_route_response(
+    request: Request,
+    *,
+    worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None,
+    registry: OperationsSourceRegistry | None,
+    worker_id: str,
+    stale_after_seconds: int,
+    state_store: Any | None = None,
+) -> dict[str, Any] | JSONResponse:
+    trace_id = trace_id_from_headers(request)
+    try:
+        liveness_projection = (
+            build_operator_review_escalation_dispatch_daemon_liveness_projection(
+                worker_heartbeat_stores=worker_heartbeat_stores,
+                registry=registry,
+                worker_id=worker_id,
+                stale_after_seconds=stale_after_seconds,
+                request_trace_id=trace_id,
+            )
+        )
+        recovery_plan = (
+            build_operator_review_escalation_dispatch_daemon_liveness_recovery_plan(
+                liveness_projection,
+                process_section={
+                    "process_control_path": (
+                        "/admin/v1/operator-review/dispatch-daemon/process-controls"
+                    )
+                },
+                ack_state_store=(
+                    state_store
+                    or default_operator_review_liveness_ack_state_store(request.app)
+                ),
+                request_trace_id=trace_id,
+            )
+        )
+        preview = build_recovery_notification_plan(
+            recovery_plan,
+            request_trace_id=trace_id,
+        )
+        preview["preview_route"] = {
+            "path": (
+                "/admin/v1/operator-review/dispatch-daemon/liveness/"
+                "recovery-notification-preview"
+            ),
+            "method": "GET",
+            "protected": True,
+            "mutation": False,
+        }
+        return preview
+    except (OperationsQueryError, RecoveryNotificationPolicyError) as exc:
         return _dispatch_daemon_control_problem_response(request, exc)
 
 
