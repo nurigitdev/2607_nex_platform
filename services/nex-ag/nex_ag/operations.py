@@ -128,6 +128,9 @@ from nex_ag.recovery_notification_policy import (
     RecoveryNotificationPolicyError,
     build_recovery_notification_plan,
 )
+from nex_ag.recovery_notification_operations import (
+    build_recovery_notification_operations_projection,
+)
 from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV,
     DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV,
@@ -9210,6 +9213,10 @@ def _dashboard_operator_review_escalation_dispatch_section(
             request_trace_id=request_trace_id,
         )
     )
+    recovery_notification = build_recovery_notification_operations_projection(
+        daemon_recovery,
+        request_trace_id=request_trace_id,
+    )
     ack_expiry_automation = (
         build_liveness_ack_expiry_automation_operations_projection(
             control_event_store,
@@ -9226,6 +9233,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
             "daemon_process": daemon_process,
             "daemon_liveness": daemon_liveness,
             "daemon_recovery": daemon_recovery,
+            "recovery_notification": recovery_notification,
             "ack_expiry_automation": ack_expiry_automation,
         }
 
@@ -9271,6 +9279,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
             "daemon_process": daemon_process,
             "daemon_liveness": daemon_liveness,
             "daemon_recovery": daemon_recovery,
+            "recovery_notification": recovery_notification,
             "ack_expiry_automation": ack_expiry_automation,
             "projection_status": "DEGRADED",
         }
@@ -9314,6 +9323,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
         "daemon_process": daemon_process,
         "daemon_liveness": daemon_liveness,
         "daemon_recovery": daemon_recovery,
+        "recovery_notification": recovery_notification,
         "ack_expiry_automation": ack_expiry_automation,
         "source_statuses": source_statuses,
         "dispatch_list_path": "/admin/v1/operator-review/dispatches",
@@ -9333,6 +9343,18 @@ def _dashboard_operator_review_escalation_dispatch_section(
 def _empty_dashboard_operator_review_escalation_dispatch_section(
     source_statuses: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
+    daemon_liveness = _dashboard_operator_review_dispatch_daemon_liveness_section(
+        worker_heartbeat_stores=None,
+        registry=None,
+        request_trace_id=None,
+    )
+    daemon_recovery = (
+        _dashboard_operator_review_dispatch_daemon_liveness_recovery_section(
+            liveness_projection=daemon_liveness,
+            ack_state_store=None,
+            request_trace_id=None,
+        )
+    )
     return {
         "projection_schema_version": (
             "ag_operator_review_escalation_dispatch_dashboard_section.v1"
@@ -9350,23 +9372,10 @@ def _empty_dashboard_operator_review_escalation_dispatch_section(
         "daemon_process": _dashboard_operator_review_dispatch_daemon_process_section(
             request_trace_id=None,
         ),
-        "daemon_liveness": _dashboard_operator_review_dispatch_daemon_liveness_section(
-            worker_heartbeat_stores=None,
-            registry=None,
-            request_trace_id=None,
-        ),
-        "daemon_recovery": (
-            _dashboard_operator_review_dispatch_daemon_liveness_recovery_section(
-                liveness_projection=(
-                    _dashboard_operator_review_dispatch_daemon_liveness_section(
-                        worker_heartbeat_stores=None,
-                        registry=None,
-                        request_trace_id=None,
-                    )
-                ),
-                ack_state_store=None,
-                request_trace_id=None,
-            )
+        "daemon_liveness": daemon_liveness,
+        "daemon_recovery": daemon_recovery,
+        "recovery_notification": (
+            build_recovery_notification_operations_projection(daemon_recovery)
         ),
         "ack_expiry_automation": (
             build_liveness_ack_expiry_automation_operations_projection(None)

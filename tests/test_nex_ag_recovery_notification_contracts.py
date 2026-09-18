@@ -1,0 +1,132 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from jsonschema import Draft202012Validator
+import yaml
+
+import nex_ag.operations as operations
+from nex_ag.recovery_notification_policy import (
+    RECOVERY_NOTIFICATION_CRITICAL_BYPASS_SUPPRESSION_ENV,
+    RECOVERY_NOTIFICATION_DELIVERY_ENABLED_ENV,
+    RECOVERY_NOTIFICATION_MIN_SEVERITY_ENV,
+    RECOVERY_NOTIFICATION_POLICY_ENABLED_ENV,
+    RECOVERY_NOTIFICATION_REPEAT_WINDOW_SECONDS_ENV,
+)
+
+
+ROOT = Path(__file__).resolve().parents[1]
+OPENAPI_PATH = ROOT / "contracts" / "openapi" / "nex-ag.openapi.yaml"
+OPERATIONS_SCHEMA_PATH = (
+    ROOT
+    / "contracts"
+    / "schemas"
+    / "service"
+    / "nex_ag"
+    / "operations_projection.v1.schema.json"
+)
+FIXTURE_PATH = (
+    ROOT
+    / "contracts"
+    / "examples"
+    / "operations"
+    / "ag_operations_dashboard_snapshot.mock_success.json"
+)
+PREVIEW_PATH = (
+    "/admin/v1/operator-review/dispatch-daemon/liveness/"
+    "recovery-notification-preview"
+)
+POLICY_ENV_NAMES = (
+    RECOVERY_NOTIFICATION_POLICY_ENABLED_ENV,
+    RECOVERY_NOTIFICATION_DELIVERY_ENABLED_ENV,
+    RECOVERY_NOTIFICATION_MIN_SEVERITY_ENV,
+    RECOVERY_NOTIFICATION_REPEAT_WINDOW_SECONDS_ENV,
+    RECOVERY_NOTIFICATION_CRITICAL_BYPASS_SUPPRESSION_ENV,
+)
+
+
+def _clear_policy_environment(monkeypatch) -> None:
+    for name in POLICY_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_dashboard_includes_recovery_notification_projection(monkeypatch) -> None:
+    _clear_policy_environment(monkeypatch)
+
+    dashboard = operations.build_operations_dashboard_snapshot_projection(
+        recent_limit=5,
+        request_trace_id="trace-0837",
+    )
+    dispatches = dashboard["operator_review_escalation_dispatches"]
+    notification = dispatches["recovery_notification"]
+
+    assert notification["projection_status"] == "READY"
+    assert notification["notification_status"] == "PREVIEW_ONLY"
+    assert notification["summary"]["severity"] == "ERROR"
+    assert notification["summary"]["provider_invocation_performed"] is False
+    assert notification["preview"]["safe_payload"]["liveness_status"] == (
+        "MISSING"
+    )
+    assert notification["preview_path"] == PREVIEW_PATH
+    assert notification["request_trace_id"] == "trace-0837"
+
+
+def test_empty_dashboard_dispatch_projection_includes_notification(
+    monkeypatch,
+) -> None:
+    _clear_policy_environment(monkeypatch)
+
+    dispatches = (
+        operations._empty_dashboard_operator_review_escalation_dispatch_section({})
+    )
+
+    assert dispatches["recovery_notification"]["projection_status"] == "READY"
+    assert dispatches["recovery_notification"]["new_tables_required"] is False
+
+
+def test_dashboard_schema_and_fixture_freeze_recovery_notification() -> None:
+    schema = json.loads(OPERATIONS_SCHEMA_PATH.read_text(encoding="utf-8"))
+    fixture = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+
+    Draft202012Validator.check_schema(schema)
+    Draft202012Validator(schema).validate(fixture)
+    dispatch_schema = schema["$defs"][
+        "dashboard_operator_review_escalation_dispatches"
+    ]
+    notification = fixture["operator_review_escalation_dispatches"][
+        "recovery_notification"
+    ]
+
+    assert "recovery_notification" in dispatch_schema["required"]
+    assert dispatch_schema["properties"]["recovery_notification"] == {
+        "$ref": "#/$defs/dashboard_recovery_notification"
+    }
+    assert notification["notification_status"] == "PREVIEW_ONLY"
+    assert notification["preview"]["delivery"]["performed"] is False
+
+
+def test_openapi_freezes_recovery_notification_preview_contract() -> None:
+    contract = yaml.safe_load(OPENAPI_PATH.read_text(encoding="utf-8"))
+    operation = contract["paths"][PREVIEW_PATH]["get"]
+    response_schema = operation["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    component = contract["components"]["schemas"]["AgRecoveryNotificationPlan"]
+
+    assert operation["operationId"] == (
+        "getAgOperatorReviewDispatchDaemonRecoveryNotificationPreview"
+    )
+    assert operation["tags"] == ["Operations"]
+    assert set(operation["responses"]) == {"200", "400", "401"}
+    assert response_schema == {
+        "$ref": "#/components/schemas/AgRecoveryNotificationPlan"
+    }
+    assert component["additionalProperties"] is False
+    assert component["properties"]["preview_route"]["properties"]["path"][
+        "const"
+    ] == PREVIEW_PATH
+    assert component["properties"]["delivery"]["properties"][
+        "provider_invocation_performed"
+    ]["const"] is False
+

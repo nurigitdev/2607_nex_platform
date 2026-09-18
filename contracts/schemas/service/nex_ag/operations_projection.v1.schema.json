@@ -2556,6 +2556,7 @@
         "daemon_process",
         "daemon_liveness",
         "daemon_recovery",
+        "recovery_notification",
         "ack_expiry_automation",
         "source_statuses",
         "dispatch_list_path",
@@ -2708,6 +2709,9 @@
         "daemon_recovery": {
           "$ref": "#/$defs/dashboard_operator_review_dispatch_daemon_liveness_recovery"
         },
+        "recovery_notification": {
+          "$ref": "#/$defs/dashboard_recovery_notification"
+        },
         "ack_expiry_automation": {
           "$ref": "#/$defs/dashboard_ack_expiry_automation"
         },
@@ -2732,6 +2736,92 @@
         "escalation_detail_path_template": {
           "type": "string",
           "minLength": 1
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "dashboard_recovery_notification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "projection_status",
+        "notification_status",
+        "policy",
+        "summary",
+        "preview",
+        "preview_path",
+        "source_statuses",
+        "new_tables_required",
+        "redaction"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "const": "ag_recovery_notification_operations_projection.v1"
+        },
+        "projection_status": {
+          "type": "string",
+          "enum": ["READY", "DEGRADED"]
+        },
+        "notification_status": {
+          "type": "string",
+          "enum": [
+            "PREVIEW_ONLY",
+            "READY",
+            "SUPPRESSED",
+            "NOT_REQUIRED",
+            "SOURCE_UNAVAILABLE"
+          ]
+        },
+        "policy": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "enabled",
+            "delivery_enabled",
+            "minimum_severity",
+            "repeat_window_seconds",
+            "critical_bypass_suppression",
+            "decision_status",
+            "severity",
+            "eligible",
+            "provider_invocation_performed",
+            "new_tables_required"
+          ]
+        },
+        "preview": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": true
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "preview_path": {
+          "const": "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-notification-preview"
+        },
+        "source_statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/source_status"
+          }
+        },
+        "request_trace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "new_tables_required": {
+          "const": false
         },
         "redaction": {
           "type": "object",

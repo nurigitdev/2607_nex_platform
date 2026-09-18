@@ -1042,6 +1042,132 @@
         "result_storage": "safe_hashes_statuses_counters_only"
       }
     },
+    "recovery_notification": {
+      "projection_schema_version": "ag_recovery_notification_operations_projection.v1",
+      "projection_status": "READY",
+      "notification_status": "PREVIEW_ONLY",
+      "policy": {
+        "notification_policy_schema_version": "ag_recovery_notification_policy.v1",
+        "policy_status": "ENABLED",
+        "enabled": true,
+        "delivery_enabled": false,
+        "evaluation_mode": "deterministic_preview_only",
+        "minimum_severity": "WARNING",
+        "severity_order": ["INFO", "WARNING", "ERROR", "CRITICAL"],
+        "repeat_window_seconds": 900,
+        "critical_bypass_suppression": true,
+        "preview_channels": ["operations_dashboard"],
+        "source_surfaces": [
+          "dispatch_daemon_liveness_recovery_plan",
+          "acknowledgement_suppression_state_overlay"
+        ],
+        "source_tables": [
+          "ag_op_review_ack_state",
+          "service_operational_events"
+        ],
+        "new_tables_required": false,
+        "guardrails": {
+          "delivery_disabled_by_default": true,
+          "external_provider_invocation_allowed": false,
+          "dispatch_persistence_allowed": false,
+          "active_suppression_evaluated": true,
+          "acknowledgement_repeat_suppression_evaluated": true,
+          "severity_escalation_may_bypass_acknowledgement": true,
+          "retention_or_physical_delete_performed": false
+        },
+        "redaction": {
+          "raw_comments_included": false,
+          "raw_idempotency_keys_included": false,
+          "raw_payloads_included": false,
+          "provider_endpoints_included": false,
+          "provider_tokens_included": false,
+          "database_urls_included": false
+        }
+      },
+      "summary": {
+        "enabled": true,
+        "delivery_enabled": false,
+        "minimum_severity": "WARNING",
+        "repeat_window_seconds": 900,
+        "critical_bypass_suppression": true,
+        "decision_status": "ELIGIBLE",
+        "severity": "ERROR",
+        "eligible": true,
+        "provider_invocation_performed": false,
+        "new_tables_required": false
+      },
+      "preview": {
+        "notification_plan_schema_version": "ag_recovery_notification_plan.v1",
+        "notification_plan_id": "be2eedcd-9a87-5de2-bba6-1d10292656e6",
+        "plan_status": "PREVIEW_ONLY",
+        "decision": {
+          "decision_status": "ELIGIBLE",
+          "eligible": true,
+          "delivery_authorized_by_policy": false,
+          "severity": "ERROR",
+          "minimum_severity": "WARNING",
+          "effective_ack_state": "NONE",
+          "reason_codes": ["eligible_recovery_signal"]
+        },
+        "audience": ["nex-ag-operators"],
+        "preview_channels": ["operations_dashboard"],
+        "safe_payload": {
+          "payload_schema_version": "ag_recovery_notification_preview_payload.v1",
+          "title": "[ERROR] AG dispatch recovery attention: MISSING",
+          "summary": "Dispatch recovery policy evaluated 1 action(s) as ELIGIBLE.",
+          "service_id": "nex-ag",
+          "worker_id": "ag-dispatch-execution-daemon",
+          "liveness_status": "MISSING",
+          "severity": "ERROR",
+          "action_count": 1,
+          "reason_codes": ["eligible_recovery_signal"],
+          "evaluated_at": "2026-09-18T00:00:00Z",
+          "recovery_plan_path": "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan"
+        },
+        "request_trace_id": null,
+        "delivery": {
+          "authorized_by_policy": false,
+          "performed": false,
+          "provider_invocation_performed": false,
+          "provider_profile_id": null,
+          "provider_endpoint": null
+        },
+        "source": {
+          "kind": "derived_recovery_notification_policy",
+          "recovery_plan_schema_version": "ag_operator_review_escalation_dispatch_daemon_liveness_recovery_dashboard_section.v1",
+          "raw_recovery_plan_included": false
+        },
+        "new_tables_required": false,
+        "redaction": {
+          "raw_comments_included": false,
+          "raw_idempotency_keys_included": false,
+          "raw_payloads_included": false,
+          "provider_endpoints_included": false,
+          "provider_tokens_included": false,
+          "database_urls_included": false
+        }
+      },
+      "preview_path": "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-notification-preview",
+      "source_statuses": {
+        "nex-ag": {
+          "status": "READY",
+          "service_id": "nex-ag",
+          "source_kind": "derived_recovery_notification_policy",
+          "source_table": "ag_op_review_ack_state",
+          "new_tables_required": false
+        }
+      },
+      "new_tables_required": false,
+      "redaction": {
+        "raw_recovery_plan_included": false,
+        "raw_comments_included": false,
+        "raw_idempotency_keys_included": false,
+        "provider_payloads_included": false,
+        "provider_endpoints_included": false,
+        "provider_tokens_included": false,
+        "database_urls_included": false
+      }
+    },
     "ack_expiry_automation": {
       "projection_schema_version": "ag_ack_expiry_automation_operations_projection.v1",
       "projection_status": "READY",
