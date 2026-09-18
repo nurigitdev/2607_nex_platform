@@ -2556,6 +2556,7 @@
         "daemon_process",
         "daemon_liveness",
         "daemon_recovery",
+        "ack_expiry_automation",
         "source_statuses",
         "dispatch_list_path",
         "dispatch_detail_path_template",
@@ -2707,6 +2708,9 @@
         "daemon_recovery": {
           "$ref": "#/$defs/dashboard_operator_review_dispatch_daemon_liveness_recovery"
         },
+        "ack_expiry_automation": {
+          "$ref": "#/$defs/dashboard_ack_expiry_automation"
+        },
         "source_statuses": {
           "type": "object",
           "additionalProperties": {
@@ -2728,6 +2732,104 @@
         "escalation_detail_path_template": {
           "type": "string",
           "minLength": 1
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "dashboard_ack_expiry_automation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "projection_status",
+        "automation_status",
+        "policy",
+        "summary",
+        "recent_events",
+        "source_statuses",
+        "scheduler",
+        "event_query_path",
+        "new_tables_required",
+        "redaction"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "const": "ag_ack_expiry_automation_operations_projection.v1"
+        },
+        "projection_status": {
+          "type": "string",
+          "enum": ["READY", "DEGRADED"]
+        },
+        "automation_status": {
+          "type": "string",
+          "enum": [
+            "DISABLED",
+            "WAITING_FIRST_RUN",
+            "RUNNING",
+            "HEALTHY",
+            "ATTENTION",
+            "DEGRADED",
+            "SOURCE_UNAVAILABLE"
+          ]
+        },
+        "policy": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "enabled",
+            "execution_mode",
+            "batch_limit",
+            "cadence_seconds",
+            "event_count",
+            "by_lifecycle",
+            "latest_event_type",
+            "latest_event_at",
+            "requires_operator_action",
+            "new_tables_required"
+          ]
+        },
+        "recent_events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "source_statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/source_status"
+          }
+        },
+        "scheduler": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "owner",
+            "cadence_seconds",
+            "cli_entrypoint",
+            "arguments",
+            "continuous_loop_started",
+            "subprocess_started"
+          ]
+        },
+        "event_query_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_trace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "new_tables_required": {
+          "const": false
         },
         "redaction": {
           "type": "object",

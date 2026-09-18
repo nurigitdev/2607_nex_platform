@@ -1042,6 +1042,87 @@
         "result_storage": "safe_hashes_statuses_counters_only"
       }
     },
+    "ack_expiry_automation": {
+      "projection_schema_version": "ag_ack_expiry_automation_operations_projection.v1",
+      "projection_status": "READY",
+      "automation_status": "DISABLED",
+      "policy": {
+        "automation_policy_schema_version": "ag_ack_expiry_automation_policy.v1",
+        "policy_status": "DISABLED",
+        "enabled": false,
+        "execution_mode": "externally_scheduled_bounded_run_once",
+        "batch_limit": 50,
+        "cadence_seconds": 60,
+        "requires_confirm_tick": true,
+        "source_table": "ag_op_review_ack_state",
+        "event_table": "service_operational_events",
+        "tick_executor": "run_operator_review_liveness_ack_expiry_reconciliation",
+        "new_tables_required": false,
+        "continuous_loop_started": false,
+        "subprocess_started": false,
+        "guardrails": {
+          "disabled_by_default": true,
+          "bounded_batch": true,
+          "compare_and_set": true,
+          "external_scheduler_owns_cadence": true,
+          "source_liveness_projection_mutated": false,
+          "retention_or_physical_delete_performed": false
+        },
+        "redaction": {
+          "raw_comments_included": false,
+          "raw_idempotency_keys_included": false,
+          "raw_payloads_included": false,
+          "database_urls_included": false,
+          "tokens_included": false
+        }
+      },
+      "summary": {
+        "enabled": false,
+        "execution_mode": "externally_scheduled_bounded_run_once",
+        "batch_limit": 50,
+        "cadence_seconds": 60,
+        "event_count": 0,
+        "by_lifecycle": {
+          "started": 0,
+          "completed": 0,
+          "blocked": 0,
+          "failed": 0
+        },
+        "latest_event_type": null,
+        "latest_event_at": null,
+        "requires_operator_action": false,
+        "new_tables_required": false
+      },
+      "recent_events": [],
+      "source_statuses": {
+        "nex-ag": {
+          "status": "READY",
+          "service_id": "nex-ag",
+          "source_kind": "operational_events",
+          "source_table": "service_operational_events",
+          "event_count": 0,
+          "new_tables_required": false
+        }
+      },
+      "scheduler": {
+        "owner": "external_scheduler",
+        "cadence_seconds": 60,
+        "cli_entrypoint": "python -m nex_ag.liveness_ack_expiry_automation_cli",
+        "arguments": ["--run-once", "--confirm-tick", "--summary"],
+        "continuous_loop_started": false,
+        "subprocess_started": false
+      },
+      "event_query_path": "/admin/v1/operations/events?service_id=nex-ag",
+      "new_tables_required": false,
+      "redaction": {
+        "raw_comments_included": false,
+        "raw_idempotency_keys_included": false,
+        "raw_payloads_included": false,
+        "database_urls_included": false,
+        "tokens_included": false,
+        "exception_details_included": false
+      }
+    },
     "source_statuses": {},
     "dispatch_list_path": "/admin/v1/operator-review/dispatches",
     "dispatch_detail_path_template": "/admin/v1/operator-review/dispatches/{dispatch_id}",

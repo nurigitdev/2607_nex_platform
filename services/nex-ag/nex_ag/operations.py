@@ -121,6 +121,9 @@ from nex_ag.operator_review_liveness_ack import (
 from nex_ag.liveness_ack_expiry_reconciliation import (
     run_operator_review_liveness_ack_expiry_reconciliation,
 )
+from nex_ag.liveness_ack_expiry_automation_operations import (
+    build_liveness_ack_expiry_automation_operations_projection,
+)
 from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV,
     DISPATCH_EXECUTION_DAEMON_DRY_RUN_ENV,
@@ -9123,6 +9126,13 @@ def _dashboard_operator_review_escalation_dispatch_section(
             request_trace_id=request_trace_id,
         )
     )
+    ack_expiry_automation = (
+        build_liveness_ack_expiry_automation_operations_projection(
+            control_event_store,
+            event_limit=limit,
+            request_trace_id=request_trace_id,
+        )
+    )
     if dispatch_store is None:
         return {
             **_empty_dashboard_operator_review_escalation_dispatch_section(
@@ -9132,6 +9142,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
             "daemon_process": daemon_process,
             "daemon_liveness": daemon_liveness,
             "daemon_recovery": daemon_recovery,
+            "ack_expiry_automation": ack_expiry_automation,
         }
 
     target_service = service_id if service_id in ALLOWED_TARGET_SERVICES else None
@@ -9176,6 +9187,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
             "daemon_process": daemon_process,
             "daemon_liveness": daemon_liveness,
             "daemon_recovery": daemon_recovery,
+            "ack_expiry_automation": ack_expiry_automation,
             "projection_status": "DEGRADED",
         }
 
@@ -9218,6 +9230,7 @@ def _dashboard_operator_review_escalation_dispatch_section(
         "daemon_process": daemon_process,
         "daemon_liveness": daemon_liveness,
         "daemon_recovery": daemon_recovery,
+        "ack_expiry_automation": ack_expiry_automation,
         "source_statuses": source_statuses,
         "dispatch_list_path": "/admin/v1/operator-review/dispatches",
         "dispatch_detail_path_template": (
@@ -9270,6 +9283,9 @@ def _empty_dashboard_operator_review_escalation_dispatch_section(
                 ack_state_store=None,
                 request_trace_id=None,
             )
+        ),
+        "ack_expiry_automation": (
+            build_liveness_ack_expiry_automation_operations_projection(None)
         ),
         "source_statuses": source_statuses,
         "dispatch_list_path": "/admin/v1/operator-review/dispatches",
