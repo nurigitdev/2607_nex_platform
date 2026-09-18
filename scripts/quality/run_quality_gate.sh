@@ -275,6 +275,7 @@ node apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_ack_expiry_automation_boundary_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_ack_expiry_automation_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_ack_expiry_automation_privacy_runbook_evidence.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s83_ag_ack_expiry_automation_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary
