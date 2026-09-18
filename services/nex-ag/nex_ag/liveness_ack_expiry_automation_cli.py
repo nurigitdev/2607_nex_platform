@@ -9,6 +9,8 @@ from uuid import NAMESPACE_URL, uuid5
 
 from nex_runtime import (
     DatabaseConfigError,
+    OperationalEventEmitter,
+    SqlAlchemyOperationalEventStore,
     build_engine,
     build_session_factory,
     database_pool_settings,
@@ -18,6 +20,7 @@ from nex_runtime import (
 from .liveness_ack_expiry_automation import (
     build_liveness_ack_expiry_automation_policy,
     build_liveness_ack_expiry_automation_tick_plan,
+    emit_liveness_ack_expiry_automation_event,
     run_liveness_ack_expiry_automation_tick_once,
 )
 from .operator_review_liveness_ack import (
@@ -47,6 +50,7 @@ def execute_liveness_ack_expiry_automation_cli(
     trace_id: str | None = None,
     confirm_tick: bool = False,
     observed_at: object | None = None,
+    lifecycle_emitter: OperationalEventEmitter | None = None,
 ) -> dict[str, Any]:
     normalized_action = _normalize_action(action)
     env = os.environ if environ is None else environ
@@ -57,18 +61,53 @@ def execute_liveness_ack_expiry_automation_cli(
         str(resolved_observed_at),
     )
     tick_result = None
+    lifecycle_events: list[dict[str, Any]] = []
     if normalized_action == "run_once":
-        tick_result = run_liveness_ack_expiry_automation_tick_once(
-            state_store,
-            request_id=resolved_request_id,
-            trace_id=trace_id,
-            policy=policy,
-            confirm_tick=confirm_tick,
-            executed_at=resolved_observed_at,
+        lifecycle_events.append(
+            emit_liveness_ack_expiry_automation_event(
+                lifecycle_emitter,
+                event_name="started",
+                request_id=resolved_request_id,
+                trace_id=trace_id,
+                occurred_at=str(resolved_observed_at),
+            ).to_summary()
         )
+        try:
+            tick_result = run_liveness_ack_expiry_automation_tick_once(
+                state_store,
+                request_id=resolved_request_id,
+                trace_id=trace_id,
+                policy=policy,
+                confirm_tick=confirm_tick,
+                executed_at=resolved_observed_at,
+            )
+        except Exception as exc:
+            lifecycle_events.append(
+                emit_liveness_ack_expiry_automation_event(
+                    lifecycle_emitter,
+                    event_name="failed",
+                    request_id=resolved_request_id,
+                    trace_id=trace_id,
+                    error_code=_safe_error_code(exc),
+                    occurred_at=str(resolved_observed_at),
+                ).to_summary()
+            )
+            raise
         plan = tick_result["plan"]
         result_status = (
             "BLOCKED" if tick_result["tick_status"] == "BLOCKED" else "EXECUTED"
+        )
+        lifecycle_events.append(
+            emit_liveness_ack_expiry_automation_event(
+                lifecycle_emitter,
+                event_name="blocked"
+                if result_status == "BLOCKED"
+                else "completed",
+                request_id=resolved_request_id,
+                trace_id=trace_id,
+                result=tick_result,
+                occurred_at=str(resolved_observed_at),
+            ).to_summary()
         )
     else:
         plan = build_liveness_ack_expiry_automation_tick_plan(
@@ -94,6 +133,7 @@ def execute_liveness_ack_expiry_automation_cli(
         ),
         "plan": plan,
         "tick_result": tick_result,
+        "lifecycle_events": lifecycle_events,
         "new_tables_required": False,
         "redaction": policy["redaction"],
     }
@@ -125,6 +165,17 @@ def build_liveness_ack_expiry_automation_runtime_store(
             session_factory_builder(engine)
         ),
         engine,
+    )
+
+
+def build_liveness_ack_expiry_automation_lifecycle_emitter(
+    engine: Any,
+    *,
+    session_factory_builder: Callable[[Any], Any] = build_session_factory,
+) -> OperationalEventEmitter:
+    return OperationalEventEmitter(
+        service_id=ACK_EXPIRY_AUTOMATION_SERVICE_ID,
+        store=SqlAlchemyOperationalEventStore(session_factory_builder(engine)),
     )
 
 
@@ -182,11 +233,15 @@ def main(
     env = os.environ if environ is None else environ
     policy = build_liveness_ack_expiry_automation_policy(env)
     engine = None
+    lifecycle_emitter = None
     try:
         if policy["enabled"]:
             store, engine = build_liveness_ack_expiry_automation_runtime_store(
                 database_env=args.database_env,
                 environ=env,
+            )
+            lifecycle_emitter = (
+                build_liveness_ack_expiry_automation_lifecycle_emitter(engine)
             )
         else:
             store = OperatorReviewLivenessAckStateStore()
@@ -198,6 +253,7 @@ def main(
             trace_id=args.trace_id,
             confirm_tick=args.confirm_tick,
             observed_at=args.observed_at,
+            lifecycle_emitter=lifecycle_emitter,
         )
     except DatabaseConfigError as exc:
         failure = {
@@ -233,6 +289,15 @@ def _default_request_id(action: str, observed_at: str) -> str:
             NAMESPACE_URL,
             f"nex-ag:ack-expiry-automation-cli:{action}:{observed_at}",
         )
+    )
+
+
+def _safe_error_code(exc: Exception) -> str:
+    error_code = getattr(exc, "error_code", None)
+    return (
+        str(error_code)
+        if error_code
+        else "ag.ack_expiry_automation_tick_failed"
     )
 
 

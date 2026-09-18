@@ -929,6 +929,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0823`](slices/0823_ag_ack_expiry_automation_tick_plan.md) | `S83-003` AG acknowledgement expiry automation read-only tick plan. |
 | [`Slice 0824`](slices/0824_ag_ack_expiry_automation_tick_execution.md) | `S83-004` AG acknowledgement expiry confirmed bounded tick execution. |
 | [`Slice 0825`](slices/0825_ag_ack_expiry_automation_cli.md) | `S83-005` AG acknowledgement expiry externally scheduled executable CLI. |
+| [`Slice 0826`](slices/0826_ag_ack_expiry_automation_lifecycle_events.md) | `S83-006` AG acknowledgement expiry automation lifecycle operational events. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

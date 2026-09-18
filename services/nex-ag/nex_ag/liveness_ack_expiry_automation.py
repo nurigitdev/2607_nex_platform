@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 from typing import Any, Mapping
 from uuid import NAMESPACE_URL, uuid5
 
+from nex_runtime import OperationalEventEmitter, OperationalEventEmitResult
+
 from .liveness_ack_expiry_reconciliation import (
     run_operator_review_liveness_ack_expiry_reconciliation,
 )
@@ -20,6 +22,25 @@ ACK_EXPIRY_AUTOMATION_TICK_PLAN_SCHEMA_VERSION = (
 )
 ACK_EXPIRY_AUTOMATION_TICK_RESULT_SCHEMA_VERSION = (
     "ag_ack_expiry_automation_tick_result.v1"
+)
+ACK_EXPIRY_AUTOMATION_EVENT_DETAILS_SCHEMA_VERSION = (
+    "ag_ack_expiry_automation_event_details.v1"
+)
+ACK_EXPIRY_AUTOMATION_EVENT_STARTED = (
+    "ag.operator_review_escalation_dispatch_daemon."
+    "liveness_ack_expiry_automation.started"
+)
+ACK_EXPIRY_AUTOMATION_EVENT_COMPLETED = (
+    "ag.operator_review_escalation_dispatch_daemon."
+    "liveness_ack_expiry_automation.completed"
+)
+ACK_EXPIRY_AUTOMATION_EVENT_BLOCKED = (
+    "ag.operator_review_escalation_dispatch_daemon."
+    "liveness_ack_expiry_automation.blocked"
+)
+ACK_EXPIRY_AUTOMATION_EVENT_FAILED = (
+    "ag.operator_review_escalation_dispatch_daemon."
+    "liveness_ack_expiry_automation.failed"
 )
 ACK_EXPIRY_AUTOMATION_ENABLED_ENV = "NEX_AG_ACK_EXPIRY_AUTOMATION_ENABLED"
 ACK_EXPIRY_AUTOMATION_BATCH_LIMIT_ENV = (
@@ -236,6 +257,81 @@ def run_liveness_ack_expiry_automation_tick_once(
     }
 
 
+def build_liveness_ack_expiry_automation_event_details(
+    *,
+    result: Mapping[str, Any] | None = None,
+    error_code: str | None = None,
+) -> dict[str, Any]:
+    tick = result if isinstance(result, Mapping) else {}
+    plan = tick.get("plan") if isinstance(tick.get("plan"), Mapping) else {}
+    return {
+        "automation_event_details_schema_version": (
+            ACK_EXPIRY_AUTOMATION_EVENT_DETAILS_SCHEMA_VERSION
+        ),
+        "tick_id": tick.get("tick_id"),
+        "tick_status": tick.get("tick_status"),
+        "blocked_reason": tick.get("blocked_reason"),
+        "plan_status": plan.get("plan_status"),
+        "batch_limit": int(plan.get("batch_limit") or 0),
+        "planned_candidate_count": int(
+            tick.get("planned_candidate_count") or 0
+        ),
+        "candidate_count": int(tick.get("candidate_count") or 0),
+        "applied_count": int(tick.get("applied_count") or 0),
+        "conflict_count": int(tick.get("conflict_count") or 0),
+        "skipped_count": int(tick.get("skipped_count") or 0),
+        "mutation_performed": bool(tick.get("mutation_performed")),
+        "failure_code": str(error_code) if error_code else None,
+        "source_table": "ag_op_review_ack_state",
+        "event_table": "service_operational_events",
+        "new_tables_required": False,
+        "raw_comments_included": False,
+        "raw_idempotency_keys_included": False,
+        "raw_payloads_included": False,
+        "sensitive_values_included": False,
+    }
+
+
+def emit_liveness_ack_expiry_automation_event(
+    emitter: OperationalEventEmitter | None,
+    *,
+    event_name: str,
+    request_id: str,
+    trace_id: str | None = None,
+    result: Mapping[str, Any] | None = None,
+    error_code: str | None = None,
+    occurred_at: str | None = None,
+) -> OperationalEventEmitResult:
+    if emitter is None:
+        return OperationalEventEmitResult.failed(
+            error_code="ag.ack_expiry_automation_event_emitter_not_configured",
+            detail="Acknowledgement expiry automation event emitter is not configured.",
+            status_code=503,
+        )
+    event_type, severity, message = _automation_event_envelope(event_name)
+    tick_id = (
+        str(result.get("tick_id"))
+        if isinstance(result, Mapping) and result.get("tick_id")
+        else str(request_id)
+    )
+    return emitter.safe_emit(
+        event_type=event_type,
+        severity=severity,
+        message=message,
+        trace_id=trace_id,
+        request_id=request_id,
+        subject_ref={
+            "type": "ag_ack_expiry_automation_tick",
+            "id": tick_id,
+        },
+        details=build_liveness_ack_expiry_automation_event_details(
+            result=result,
+            error_code=error_code,
+        ),
+        created_at=occurred_at,
+    )
+
+
 def _automation_candidate_summary(candidate: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "ack_state_id": candidate.get("ack_state_id"),
@@ -272,3 +368,32 @@ def _bounded_int(
     except (TypeError, ValueError):
         parsed = default
     return max(minimum, min(parsed, maximum))
+
+
+def _automation_event_envelope(event_name: str) -> tuple[str, str, str]:
+    normalized = str(event_name or "").replace("-", "_")
+    envelopes = {
+        "started": (
+            ACK_EXPIRY_AUTOMATION_EVENT_STARTED,
+            "INFO",
+            "AG acknowledgement expiry automation tick started.",
+        ),
+        "completed": (
+            ACK_EXPIRY_AUTOMATION_EVENT_COMPLETED,
+            "INFO",
+            "AG acknowledgement expiry automation tick completed.",
+        ),
+        "blocked": (
+            ACK_EXPIRY_AUTOMATION_EVENT_BLOCKED,
+            "WARNING",
+            "AG acknowledgement expiry automation tick blocked.",
+        ),
+        "failed": (
+            ACK_EXPIRY_AUTOMATION_EVENT_FAILED,
+            "ERROR",
+            "AG acknowledgement expiry automation tick failed.",
+        ),
+    }
+    if normalized not in envelopes:
+        raise ValueError(f"Unsupported acknowledgement expiry event: {event_name}")
+    return envelopes[normalized]

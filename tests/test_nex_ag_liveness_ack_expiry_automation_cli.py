@@ -207,6 +207,11 @@ def test_main_enabled_runtime_disposes_engine(monkeypatch: pytest.MonkeyPatch) -
         "build_liveness_ack_expiry_automation_runtime_store",
         lambda **_kwargs: (store, engine),
     )
+    monkeypatch.setattr(
+        cli,
+        "build_liveness_ack_expiry_automation_lifecycle_emitter",
+        lambda _engine: None,
+    )
     stdout = io.StringIO()
 
     exit_code = cli.main(
