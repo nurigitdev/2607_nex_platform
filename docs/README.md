@@ -934,6 +934,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0828`](slices/0828_ag_ack_expiry_automation_postgres_smoke.md) | `S83-008` AG acknowledgement expiry automation actual PostgreSQL smoke evidence. |
 | [`Slice 0829`](slices/0829_ag_ack_expiry_automation_privacy_runbook.md) | `S83-009` AG acknowledgement expiry automation privacy and operator runbook evidence. |
 | [`Slice 0830`](slices/0830_s83_ag_ack_expiry_automation_closure.md) | `S83-010` AG acknowledgement expiry externally scheduled run-once automation closure checkpoint. |
+| [`Slice 0831`](slices/0831_ag_recovery_notification_policy_boundary_audit.md) | `S84-001` AG dispatch recovery notification policy boundary audit. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
