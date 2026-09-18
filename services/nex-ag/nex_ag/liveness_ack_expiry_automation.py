@@ -5,6 +5,9 @@ from datetime import UTC, datetime
 from typing import Any, Mapping
 from uuid import NAMESPACE_URL, uuid5
 
+from .liveness_ack_expiry_reconciliation import (
+    run_operator_review_liveness_ack_expiry_reconciliation,
+)
 from .operator_review_liveness_ack import _parse_datetime
 from .operator_reviews import _datetime_value
 
@@ -14,6 +17,9 @@ ACK_EXPIRY_AUTOMATION_POLICY_SCHEMA_VERSION = (
 )
 ACK_EXPIRY_AUTOMATION_TICK_PLAN_SCHEMA_VERSION = (
     "ag_ack_expiry_automation_tick_plan.v1"
+)
+ACK_EXPIRY_AUTOMATION_TICK_RESULT_SCHEMA_VERSION = (
+    "ag_ack_expiry_automation_tick_result.v1"
 )
 ACK_EXPIRY_AUTOMATION_ENABLED_ENV = "NEX_AG_ACK_EXPIRY_AUTOMATION_ENABLED"
 ACK_EXPIRY_AUTOMATION_BATCH_LIMIT_ENV = (
@@ -138,6 +144,94 @@ def build_liveness_ack_expiry_automation_tick_plan(
         "will_mutate": False,
         "source_table": "ag_op_review_ack_state",
         "new_tables_required": False,
+        "redaction": resolved_policy["redaction"],
+    }
+
+
+def run_liveness_ack_expiry_automation_tick_once(
+    state_store: Any,
+    *,
+    request_id: str,
+    trace_id: str | None = None,
+    policy: Mapping[str, Any] | None = None,
+    environ: Mapping[str, str] | None = None,
+    confirm_tick: bool = False,
+    executed_at: object | None = None,
+) -> dict[str, Any]:
+    resolved_policy = dict(
+        policy
+        if policy is not None
+        else build_liveness_ack_expiry_automation_policy(environ)
+    )
+    observed = _datetime_value(
+        _parse_datetime(executed_at if executed_at is not None else datetime.now(UTC))
+    )
+    plan = build_liveness_ack_expiry_automation_tick_plan(
+        state_store,
+        request_id=request_id,
+        trace_id=trace_id,
+        policy=resolved_policy,
+        planned_at=observed,
+    )
+    blocked_reason = None
+    if not bool(resolved_policy.get("enabled")):
+        blocked_reason = "automation_disabled"
+    elif not confirm_tick:
+        blocked_reason = "confirm_tick_required"
+    worker_run = (
+        run_operator_review_liveness_ack_expiry_reconciliation(
+            state_store,
+            observed_at=observed,
+            limit=int(resolved_policy["batch_limit"]),
+        )
+        if blocked_reason is None
+        else None
+    )
+    tick_status = (
+        "BLOCKED"
+        if blocked_reason is not None
+        else (
+            "COMPLETED_WITH_CONFLICTS"
+            if int((worker_run or {}).get("conflict_count") or 0) > 0
+            else "COMPLETED"
+        )
+    )
+    tick_id = str(
+        uuid5(
+            NAMESPACE_URL,
+            "nex-ag:ack-expiry-automation-tick:"
+            f"{request_id}:{observed}:{plan['tick_plan_id']}:{confirm_tick}",
+        )
+    )
+    return {
+        "tick_result_schema_version": (
+            ACK_EXPIRY_AUTOMATION_TICK_RESULT_SCHEMA_VERSION
+        ),
+        "tick_id": tick_id,
+        "tick_status": tick_status,
+        "blocked_reason": blocked_reason,
+        "request_id": str(request_id),
+        "trace_id": str(trace_id) if trace_id is not None else None,
+        "executed_at": observed,
+        "confirm_tick": bool(confirm_tick),
+        "plan": plan,
+        "worker_run": worker_run,
+        "planned_candidate_count": int(plan["candidate_count"]),
+        "candidate_count": int((worker_run or {}).get("candidate_count") or 0),
+        "applied_count": int((worker_run or {}).get("applied_count") or 0),
+        "conflict_count": int((worker_run or {}).get("conflict_count") or 0),
+        "skipped_count": int((worker_run or {}).get("skipped_count") or 0),
+        "mutation_performed": int((worker_run or {}).get("applied_count") or 0)
+        > 0,
+        "new_tables_required": False,
+        "guardrails": {
+            "enabled_required": True,
+            "confirm_tick_required": True,
+            "execution_requeries_candidates": True,
+            "compare_and_set": True,
+            "continuous_loop_started": False,
+            "subprocess_started": False,
+        },
         "redaction": resolved_policy["redaction"],
     }
 
