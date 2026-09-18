@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
+from re import fullmatch
 from typing import Any, Mapping
+from uuid import NAMESPACE_URL, uuid5
 
 
 RECOVERY_NOTIFICATION_POLICY_SCHEMA_VERSION = (
@@ -11,6 +13,7 @@ RECOVERY_NOTIFICATION_POLICY_SCHEMA_VERSION = (
 RECOVERY_NOTIFICATION_DECISION_SCHEMA_VERSION = (
     "ag_recovery_notification_decision.v1"
 )
+RECOVERY_NOTIFICATION_PLAN_SCHEMA_VERSION = "ag_recovery_notification_plan.v1"
 RECOVERY_NOTIFICATION_POLICY_ENABLED_ENV = (
     "NEX_AG_RECOVERY_NOTIFICATION_POLICY_ENABLED"
 )
@@ -101,14 +104,7 @@ def build_recovery_notification_policy(
             "severity_escalation_may_bypass_acknowledgement": True,
             "retention_or_physical_delete_performed": False,
         },
-        "redaction": {
-            "raw_comments_included": False,
-            "raw_idempotency_keys_included": False,
-            "raw_payloads_included": False,
-            "provider_endpoints_included": False,
-            "provider_tokens_included": False,
-            "database_urls_included": False,
-        },
+        "redaction": _redaction_contract(),
     }
 
 
@@ -201,7 +197,98 @@ def evaluate_recovery_notification_eligibility(
         "reason_codes": reason_codes,
         "repeat_window_seconds": int(resolved_policy["repeat_window_seconds"]),
         "new_tables_required": False,
-        "redaction": resolved_policy["redaction"],
+        "redaction": _redaction_contract(),
+    }
+
+
+def build_recovery_notification_plan(
+    recovery_plan: Mapping[str, Any],
+    *,
+    policy: Mapping[str, Any] | None = None,
+    environ: Mapping[str, str] | None = None,
+    evaluated_at: object | None = None,
+    request_trace_id: str | None = None,
+) -> dict[str, Any]:
+    decision = evaluate_recovery_notification_eligibility(
+        recovery_plan,
+        policy=policy,
+        environ=environ,
+        evaluated_at=evaluated_at,
+    )
+    daemon_identity = recovery_plan.get("daemon_identity")
+    identity = daemon_identity if isinstance(daemon_identity, Mapping) else {}
+    service_id = _safe_identifier(identity.get("service_id"), default="nex-ag")
+    worker_id = _safe_identifier(
+        identity.get("worker_id"),
+        default="ag-dispatch-execution-daemon",
+    )
+    trace_id = _safe_identifier(request_trace_id, default=None)
+    plan_status = _notification_plan_status(decision)
+    plan_id = str(
+        uuid5(
+            NAMESPACE_URL,
+            "nex-ag:recovery-notification-plan:"
+            f"{service_id}:{worker_id}:{decision['liveness_status']}:"
+            f"{decision['severity']}:{decision['effective_ack_state']}:"
+            f"{decision['evaluated_at']}",
+        )
+    )
+    safe_payload = {
+        "payload_schema_version": "ag_recovery_notification_preview_payload.v1",
+        "title": _notification_title(
+            decision["severity"],
+            decision["liveness_status"],
+        ),
+        "summary": _notification_summary(decision),
+        "service_id": service_id,
+        "worker_id": worker_id,
+        "liveness_status": decision["liveness_status"],
+        "severity": decision["severity"],
+        "action_count": decision["action_count"],
+        "reason_codes": list(decision["reason_codes"]),
+        "evaluated_at": decision["evaluated_at"],
+        "recovery_plan_path": (
+            "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-plan"
+        ),
+    }
+    return {
+        "notification_plan_schema_version": RECOVERY_NOTIFICATION_PLAN_SCHEMA_VERSION,
+        "notification_plan_id": plan_id,
+        "plan_status": plan_status,
+        "decision": {
+            key: decision[key]
+            for key in (
+                "decision_status",
+                "eligible",
+                "delivery_authorized_by_policy",
+                "severity",
+                "minimum_severity",
+                "effective_ack_state",
+                "reason_codes",
+            )
+        },
+        "audience": ["nex-ag-operators"],
+        "preview_channels": ["operations_dashboard"],
+        "safe_payload": safe_payload,
+        "request_trace_id": trace_id,
+        "delivery": {
+            "authorized_by_policy": bool(
+                decision["delivery_authorized_by_policy"]
+            ),
+            "performed": False,
+            "provider_invocation_performed": False,
+            "provider_profile_id": None,
+            "provider_endpoint": None,
+        },
+        "source": {
+            "kind": "derived_recovery_notification_policy",
+            "recovery_plan_schema_version": recovery_plan.get(
+                "projection_schema_version"
+            ),
+            "raw_recovery_plan_included": False,
+        },
+        "new_tables_required": False,
+        "redaction": _redaction_contract(),
     }
 
 
@@ -266,3 +353,45 @@ def _datetime_value(value: object | None) -> str:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _notification_plan_status(decision: Mapping[str, Any]) -> str:
+    if decision.get("decision_status") == "SUPPRESSED":
+        return "SUPPRESSED"
+    if not bool(decision.get("eligible")):
+        return "NOT_REQUIRED"
+    if bool(decision.get("delivery_authorized_by_policy")):
+        return "READY"
+    return "PREVIEW_ONLY"
+
+
+def _safe_identifier(value: object, *, default: str | None) -> str | None:
+    if not isinstance(value, str):
+        return default
+    normalized = value.strip()
+    if not normalized or len(normalized) > 64:
+        return default
+    return normalized if fullmatch(r"[A-Za-z0-9._:-]+", normalized) else default
+
+
+def _notification_title(severity: str, liveness_status: str) -> str:
+    return f"[{severity}] AG dispatch recovery attention: {liveness_status}"
+
+
+def _notification_summary(decision: Mapping[str, Any]) -> str:
+    return (
+        "Dispatch recovery policy evaluated "
+        f"{decision.get('action_count', 0)} action(s) as "
+        f"{decision.get('decision_status', 'UNKNOWN')}."
+    )
+
+
+def _redaction_contract() -> dict[str, bool]:
+    return {
+        "raw_comments_included": False,
+        "raw_idempotency_keys_included": False,
+        "raw_payloads_included": False,
+        "provider_endpoints_included": False,
+        "provider_tokens_included": False,
+        "database_urls_included": False,
+    }
