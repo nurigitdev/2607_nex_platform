@@ -1430,6 +1430,10 @@ Unified operations:
   dispatch planner through a default-false internal flag. Existing callers stay
   blocked on `live_channel_deferred`; only a context-matched S86 admission can
   open the notification, email, or webhook handoff.
+- Slice 0854 extends the protected recovery-notification delivery POST with
+  explicit live confirmation and environment-backed provider readiness checks.
+  A passing request persists a pending outbox row but does not invoke the
+  provider, keeping admission and execution as separate operator actions.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

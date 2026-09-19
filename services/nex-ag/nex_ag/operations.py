@@ -139,6 +139,7 @@ from nex_ag.recovery_notification_delivery import (
     RecoveryNotificationDeliveryError,
     build_recovery_notification_delivery_admission,
     build_recovery_notification_dispatch_handoff,
+    build_recovery_notification_live_admission,
     persist_recovery_notification_dispatch_handoff,
 )
 from nex_ag.operator_review_dispatch_execution import (
@@ -149,6 +150,7 @@ from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_HEARTBEAT_WORKER_TYPE,
     DISPATCH_EXECUTION_DAEMON_PROVIDER_MODE_ENV,
     assert_dispatch_execution_result_redacted,
+    build_dispatch_execution_provider_config,
     build_dispatch_execution_daemon_control_admission,
     build_dispatch_execution_daemon_control_request,
     build_dispatch_execution_daemon_loop_policy,
@@ -4068,6 +4070,15 @@ def _dispatch_daemon_recovery_notification_delivery_route_response(
             channel_type=request_payload.get("channel_type"),
             provider_profile=request_payload.get("provider_profile"),
         )
+        live_admission = None
+        if admission["delivery"]["channel_type"] != "MOCK":
+            live_admission = build_recovery_notification_live_admission(
+                admission,
+                build_dispatch_execution_provider_config(os.environ),
+                confirm_live_delivery=request_payload[
+                    "confirm_live_delivery"
+                ],
+            )
         handoff = build_recovery_notification_dispatch_handoff(
             preview,
             admission,
@@ -4075,6 +4086,7 @@ def _dispatch_daemon_recovery_notification_delivery_route_response(
             request_id=request_id,
             trace_id=trace_id,
             idempotency_key=normalized_idempotency_key,
+            live_admission=live_admission,
         )
         response = persist_recovery_notification_dispatch_handoff(
             handoff,
@@ -4088,6 +4100,16 @@ def _dispatch_daemon_recovery_notification_delivery_route_response(
             "method": "POST",
             "protected": True,
             "mutation": True,
+        }
+        response["live_delivery"] = {
+            "requested": live_admission is not None,
+            "admitted": live_admission is not None,
+            "provider_mode": (
+                live_admission["delivery"]["provider_mode"]
+                if live_admission is not None
+                else None
+            ),
+            "provider_invocation_performed": False,
         }
         return JSONResponse(
             status_code=201 if response["idempotency_status"] == "NEW" else 200,
@@ -4121,6 +4143,15 @@ def _recovery_notification_delivery_payload(
         normalized[field] = value.strip()
     normalized["channel_type"] = payload.get("channel_type")
     normalized["provider_profile"] = payload.get("provider_profile")
+    confirm_live_delivery = payload.get("confirm_live_delivery", False)
+    if not isinstance(confirm_live_delivery, bool):
+        raise RecoveryNotificationDeliveryError(
+            "confirm_live_delivery must be a boolean.",
+            error_code=(
+                "ag.recovery_notification_delivery_live_confirmation_invalid"
+            ),
+        )
+    normalized["confirm_live_delivery"] = confirm_live_delivery
     return normalized
 
 

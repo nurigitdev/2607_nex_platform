@@ -240,7 +240,7 @@ def test_delivery_route_rejects_disabled_policy_and_live_channel(
     )
     assert live.status_code == 409
     assert live.json()["error_code"] == (
-        "ag.recovery_notification_dispatch_handoff_blocked"
+        "ag.recovery_notification_live_confirmation_required"
     )
 
 

@@ -957,6 +957,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0851`](slices/0851_ag_recovery_notification_live_delivery_boundary_audit.md) | `S86-001` AG recovery notification live delivery boundary audit and refactoring checkpoint. |
 | [`Slice 0852`](slices/0852_ag_recovery_notification_live_delivery_admission.md) | `S86-002` AG recovery notification live delivery admission and configuration contract. |
 | [`Slice 0853`](slices/0853_ag_recovery_notification_live_dispatch_handoff.md) | `S86-003` AG recovery notification explicitly admitted live dispatch handoff wiring. |
+| [`Slice 0854`](slices/0854_ag_recovery_notification_live_delivery_api.md) | `S86-004` AG protected recovery notification live delivery API guardrails. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
