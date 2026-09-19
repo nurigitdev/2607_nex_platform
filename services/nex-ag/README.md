@@ -1448,6 +1448,10 @@ Unified operations:
   PostgreSQL persistence boundary. It runs migrations, persists and executes
   one targeted recovery dispatch, verifies safe `live_http` and HTTP 202
   metadata, and removes every seeded row before reporting success.
+- Slice 0859 freezes live-delivery privacy and failure-mode evidence. It covers
+  default-disabled admission, two-stage confirmation, required transport
+  injection, retry wait, terminal no-op behavior, projection redaction, and the
+  operator runbook while keeping raw endpoint and credential values absent.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

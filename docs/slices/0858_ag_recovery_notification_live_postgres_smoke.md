@@ -37,6 +37,12 @@ NEX_AG_TEST_DATABASE_URL='postgresql+psycopg://nex_ag_user:***@127.0.0.1:5432/ne
 The regular quality gate invokes the script without opt-in, where it reports a
 safe skip and performs no database or network work.
 
+Observed protected evidence against the local `nex_ag_test` database:
+
+```text
+ag_recovery_notification_live_postgres_smoke=pass database=nex_ag_test provider=live_http http=202 requests=1 cleaned=True
+```
+
 ## Verification
 
 ```bash
