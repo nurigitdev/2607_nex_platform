@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any, Mapping
 
 from .operator_review_cases import build_operator_review_escalation_dispatch_plan
+from .operator_review_dispatch_execution import run_dispatch_execution_worker_once
 from .recovery_notification_policy import RECOVERY_NOTIFICATION_PLAN_SCHEMA_VERSION
 
 
@@ -16,6 +17,9 @@ RECOVERY_NOTIFICATION_DISPATCH_HANDOFF_SCHEMA_VERSION = (
 RECOVERY_NOTIFICATION_DELIVERY_MUTATION_SCHEMA_VERSION = (
     "ag_recovery_notification_delivery_mutation.v1"
 )
+RECOVERY_NOTIFICATION_DELIVERY_EXECUTION_SCHEMA_VERSION = (
+    "ag_recovery_notification_delivery_execution.v1"
+)
 RECOVERY_NOTIFICATION_DELIVERY_CHANNELS = (
     "MOCK",
     "NOTIFICATION",
@@ -25,6 +29,9 @@ RECOVERY_NOTIFICATION_DELIVERY_CHANNELS = (
 )
 DEFAULT_RECOVERY_NOTIFICATION_DELIVERY_CHANNEL = "MOCK"
 DEFAULT_RECOVERY_NOTIFICATION_PROVIDER_PROFILE = "mock-default"
+DEFAULT_RECOVERY_NOTIFICATION_DELIVERY_WORKER_ID = (
+    "ag-recovery-notification-delivery-worker"
+)
 
 
 class RecoveryNotificationDeliveryError(ValueError):
@@ -355,6 +362,96 @@ def persist_recovery_notification_dispatch_handoff(
         dict(saved),
         idempotency_status="NEW",
     )
+
+
+def run_recovery_notification_delivery_mock_once(
+    service: Any,
+    *,
+    dispatch_id: str,
+    request_id: str,
+    trace_id: str | None = None,
+    worker_id: str = DEFAULT_RECOVERY_NOTIFICATION_DELIVERY_WORKER_ID,
+    confirm_run: bool = False,
+    executed_at: str | None = None,
+) -> dict[str, Any]:
+    normalized_dispatch_id = _required_text(
+        dispatch_id,
+        field="dispatch_id",
+        error_code="ag.recovery_notification_delivery_dispatch_id_required",
+    )
+    dispatch = service.get_escalation_dispatch(normalized_dispatch_id)
+    metadata = _mapping(
+        dispatch.get("metadata"),
+        field="dispatch.metadata",
+        error_code="ag.recovery_notification_delivery_execution_metadata_invalid",
+    )
+    marker = metadata.get("recovery_notification_delivery")
+    if not isinstance(marker, Mapping):
+        raise RecoveryNotificationDeliveryError(
+            "dispatch is not a recovery notification delivery.",
+            error_code="ag.recovery_notification_delivery_execution_marker_required",
+            status_code=409,
+        )
+    if str(dispatch.get("channel_type") or "").upper() != "MOCK":
+        raise RecoveryNotificationDeliveryError(
+            "bounded recovery notification execution supports MOCK only.",
+            error_code="ag.recovery_notification_delivery_execution_mock_only",
+            status_code=409,
+        )
+
+    worker_run = run_dispatch_execution_worker_once(
+        service,
+        request_id=_required_text(
+            request_id,
+            field="request_id",
+            error_code="ag.recovery_notification_delivery_request_id_required",
+        ),
+        trace_id=_optional_text(trace_id),
+        worker_id=_required_text(
+            worker_id,
+            field="worker_id",
+            error_code="ag.recovery_notification_delivery_worker_id_required",
+        ),
+        batch_limit=1,
+        provider_profile=_optional_text(dispatch.get("provider_profile")),
+        provider_mode="mock_first_only",
+        confirm_run=confirm_run,
+        executed_at=executed_at,
+        candidate_dispatch_ids={normalized_dispatch_id},
+    )
+    processed_count = int(worker_run.get("processed_count") or 0)
+    execution_status = (
+        "BLOCKED"
+        if worker_run.get("run_status") == "BLOCKED"
+        else "COMPLETED" if processed_count else "NOOP"
+    )
+    return {
+        "delivery_execution_schema_version": (
+            RECOVERY_NOTIFICATION_DELIVERY_EXECUTION_SCHEMA_VERSION
+        ),
+        "execution_status": execution_status,
+        "dispatch_id": normalized_dispatch_id,
+        "case_id": dispatch.get("case_id"),
+        "escalation_id": dispatch.get("escalation_id"),
+        "notification_plan_id": marker.get("notification_plan_id"),
+        "worker_run": worker_run,
+        "guardrails": {
+            "existing_dispatch_execution_worker_reused": True,
+            "target_dispatch_filter_applied": True,
+            "batch_limit": 1,
+            "provider_mode": "mock_first_only",
+            "external_network_allowed": False,
+            "live_channel_allowed": False,
+            "new_tables_required": False,
+        },
+        "redaction": {
+            "raw_notification_payload_included": False,
+            "request_signature_included": False,
+            "idempotency_key_included": False,
+            "provider_secrets_included": False,
+            "database_urls_included": False,
+        },
+    }
 
 
 def _delivery_mutation_response(

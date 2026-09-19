@@ -5,7 +5,7 @@ import re
 import socket
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Collection, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
@@ -2780,6 +2780,7 @@ def run_dispatch_execution_worker_once(
     confirm_run: bool = False,
     dry_run: bool = False,
     executed_at: str | None = None,
+    candidate_dispatch_ids: Collection[str] | None = None,
 ) -> dict[str, Any]:
     now = executed_at or _utc_now()
     limit = _bounded_batch_limit(batch_limit)
@@ -2808,6 +2809,7 @@ def run_dispatch_execution_worker_once(
         request_id=request_id,
         trace_id=trace_id,
         limit=limit,
+        dispatch_ids=candidate_dispatch_ids,
     )
     items: list[dict[str, Any]] = []
     for dispatch in candidates[:limit]:
@@ -3049,9 +3051,25 @@ def _worker_candidate_dispatches(
     request_id: str,
     trace_id: str | None,
     limit: int,
+    dispatch_ids: Collection[str] | None = None,
 ) -> list[dict[str, Any]]:
     selected: list[dict[str, Any]] = []
     seen: set[str] = set()
+    allowed_dispatch_ids = (
+        {str(item) for item in dispatch_ids} if dispatch_ids is not None else None
+    )
+    if allowed_dispatch_ids is not None:
+        for dispatch_id in sorted(allowed_dispatch_ids):
+            item = service.get_escalation_dispatch(dispatch_id)
+            if str(item.get("dispatch_status") or "") in {
+                "PENDING",
+                "RETRY_WAIT",
+                "FAILED",
+            }:
+                selected.append(item)
+            if len(selected) >= limit:
+                break
+        return selected
     for status in ("PENDING", "RETRY_WAIT", "FAILED"):
         response = service.list_escalation_dispatches(
             request_id=request_id,
