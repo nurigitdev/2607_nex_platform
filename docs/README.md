@@ -961,6 +961,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0855`](slices/0855_ag_recovery_notification_live_execution.md) | `S86-005` AG targeted recovery notification live execution and safe result projection. |
 | [`Slice 0856`](slices/0856_ag_recovery_notification_live_contract_hardening.md) | `S86-006` AG recovery notification live OpenAPI, schema, and operations contract hardening. |
 | [`Slice 0857`](slices/0857_ag_recovery_notification_live_loopback_smoke.md) | `S86-007` AG recovery notification protected local loopback live HTTP smoke. |
+| [`Slice 0858`](slices/0858_ag_recovery_notification_live_postgres_smoke.md) | `S86-008` AG recovery notification actual PostgreSQL plus loopback live HTTP smoke. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

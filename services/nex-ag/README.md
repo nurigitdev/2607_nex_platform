@@ -1444,6 +1444,10 @@ Unified operations:
 - Slice 0857 adds an opt-in local loopback smoke that exercises the full
   recovery-plan-to-live-HTTP path with the real urllib transport while keeping
   external notification endpoints deferred.
+- Slice 0858 combines that live HTTP path with the actual `nex_ag_test`
+  PostgreSQL persistence boundary. It runs migrations, persists and executes
+  one targeted recovery dispatch, verifies safe `live_http` and HTTP 202
+  metadata, and removes every seeded row before reporting success.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
