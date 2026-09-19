@@ -1441,6 +1441,9 @@ Unified operations:
 - Slice 0856 freezes live confirmation, admission status, and safe execution
   diagnostics in JSON Schema and OpenAPI with positive fixtures plus a negative
   endpoint-leak fixture.
+- Slice 0857 adds an opt-in local loopback smoke that exercises the full
+  recovery-plan-to-live-HTTP path with the real urllib transport while keeping
+  external notification endpoints deferred.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
