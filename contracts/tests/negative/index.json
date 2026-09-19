@@ -371,6 +371,11 @@
       "schema": "schemas/service/nex_ag/recovery_notification_delivery.v1.schema.json"
     },
     {
+      "name": "ag_recovery_notification_live_delivery_endpoint_leak",
+      "path": "tests/negative/operations/ag_recovery_notification_live_delivery.endpoint_leak.json",
+      "schema": "schemas/service/nex_ag/recovery_notification_delivery.v1.schema.json"
+    },
+    {
       "name": "ae_web_fetch_mode_smoke_evidence_raw_database_url",
       "path": "tests/negative/operations/ae_web_fetch_mode_smoke_evidence.raw_database_url.json",
       "schema": "schemas/service/nex_ae_web/fetch_mode_smoke_evidence.v1.schema.json"

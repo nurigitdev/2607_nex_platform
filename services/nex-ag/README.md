@@ -1438,6 +1438,9 @@ Unified operations:
   dispatch. It rechecks runtime readiness, requires confirmation and injected
   transport, reuses the dispatch worker/state machine, and surfaces only safe
   provider result diagnostics in the recovery delivery read model.
+- Slice 0856 freezes live confirmation, admission status, and safe execution
+  diagnostics in JSON Schema and OpenAPI with positive fixtures plus a negative
+  endpoint-leak fixture.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

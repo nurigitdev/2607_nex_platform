@@ -2031,7 +2031,7 @@ paths:
         "404":
           description: Explicit operator review case or escalation was not found.
         "409":
-          description: Delivery is not authorized, context mismatched, or idempotency conflicts.
+          description: Delivery is not authorized, live confirmation/readiness failed, context mismatched, or idempotency conflicts.
         "422":
           description: Delivery request or admitted context is invalid.
         "503":
@@ -5403,6 +5403,9 @@ components:
           type: string
           minLength: 1
           maxLength: 128
+        confirm_live_delivery:
+          type: boolean
+          default: false
     AgRecoveryNotificationDeliveryMutation:
       type: object
       additionalProperties: false
@@ -5416,6 +5419,7 @@ components:
         - dispatch_record
         - delivery
         - delivery_route
+        - live_delivery
       properties:
         delivery_mutation_schema_version:
           type: string
@@ -5453,6 +5457,29 @@ components:
               const: false
         delivery_route:
           $ref: "#/components/schemas/AgRecoveryNotificationDeliveryRoute"
+        live_delivery:
+          type: object
+          additionalProperties: false
+          required:
+            - requested
+            - admitted
+            - provider_mode
+            - provider_invocation_performed
+          properties:
+            requested:
+              type: boolean
+            admitted:
+              type: boolean
+            provider_mode:
+              type:
+                - string
+                - "null"
+              enum:
+                - live_http
+                - null
+            provider_invocation_performed:
+              type: boolean
+              const: false
     AgRecoveryNotificationDeliveryProjection:
       type: object
       additionalProperties: false
@@ -5548,6 +5575,7 @@ components:
               - created_at
               - updated_at
               - completed_at
+              - execution
               - detail_path
             properties:
               dispatch_id:
@@ -5597,6 +5625,71 @@ components:
                 type:
                   - string
                   - "null"
+              execution:
+                type:
+                  - object
+                  - "null"
+                additionalProperties: false
+                required:
+                  - execution_status
+                  - provider_mode
+                  - provider_category
+                  - provider_profile
+                  - provider_result_hash
+                  - http_status_code
+                  - response_body_hash
+                  - attempt_count
+                  - safe_result_preview
+                  - retryable
+                  - last_error_code
+                  - executed_at
+                properties:
+                  execution_status:
+                    type:
+                      - string
+                      - "null"
+                  provider_mode:
+                    type:
+                      - string
+                      - "null"
+                  provider_category:
+                    type:
+                      - string
+                      - "null"
+                  provider_profile:
+                    type:
+                      - string
+                      - "null"
+                  provider_result_hash:
+                    type:
+                      - string
+                      - "null"
+                  http_status_code:
+                    type:
+                      - integer
+                      - "null"
+                    minimum: 0
+                  response_body_hash:
+                    type:
+                      - string
+                      - "null"
+                  attempt_count:
+                    type: integer
+                    minimum: 0
+                  safe_result_preview:
+                    type:
+                      - string
+                      - "null"
+                  retryable:
+                    type: boolean
+                  last_error_code:
+                    type:
+                      - string
+                      - "null"
+                  executed_at:
+                    type:
+                      - string
+                      - "null"
               detail_path:
                 type: string
                 minLength: 1

@@ -56,6 +56,28 @@ DELIVERY_NEGATIVE_FIXTURE_PATH = (
     / "operations"
     / "ag_recovery_notification_delivery.raw_payload_leak.json"
 )
+LIVE_DELIVERY_FIXTURE_PATH = (
+    ROOT
+    / "contracts"
+    / "examples"
+    / "operations"
+    / "ag_recovery_notification_live_delivery.mock_success.json"
+)
+LIVE_MUTATION_FIXTURE_PATH = (
+    ROOT
+    / "contracts"
+    / "examples"
+    / "operations"
+    / "ag_recovery_notification_live_mutation.mock_success.json"
+)
+LIVE_ENDPOINT_NEGATIVE_FIXTURE_PATH = (
+    ROOT
+    / "contracts"
+    / "tests"
+    / "negative"
+    / "operations"
+    / "ag_recovery_notification_live_delivery.endpoint_leak.json"
+)
 PREVIEW_PATH = (
     "/admin/v1/operator-review/dispatch-daemon/liveness/"
     "recovery-notification-preview"
@@ -179,6 +201,30 @@ def test_delivery_schema_accepts_safe_fixture_and_rejects_raw_payload() -> None:
     assert fixture["redaction"]["request_signatures_included"] is False
 
 
+def test_delivery_schema_freezes_live_mutation_execution_and_endpoint_guard() -> None:
+    schema = json.loads(DELIVERY_SCHEMA_PATH.read_text(encoding="utf-8"))
+    live_delivery = json.loads(
+        LIVE_DELIVERY_FIXTURE_PATH.read_text(encoding="utf-8")
+    )
+    live_mutation = json.loads(
+        LIVE_MUTATION_FIXTURE_PATH.read_text(encoding="utf-8")
+    )
+    endpoint_leak = json.loads(
+        LIVE_ENDPOINT_NEGATIVE_FIXTURE_PATH.read_text(encoding="utf-8")
+    )
+    validator = Draft202012Validator(schema)
+
+    validator.validate(live_delivery)
+    validator.validate(live_mutation)
+    assert list(validator.iter_errors(endpoint_leak))
+    execution = live_delivery["recent"][0]["execution"]
+    assert execution["provider_mode"] == "live_http"
+    assert execution["http_status_code"] == 202
+    assert live_mutation["live_delivery"]["provider_invocation_performed"] is False
+    assert '"provider_endpoint":' not in json.dumps(live_delivery)
+    assert '"provider_token":' not in json.dumps(live_mutation)
+
+
 def test_openapi_freezes_recovery_notification_delivery_contract() -> None:
     contract = yaml.safe_load(OPENAPI_PATH.read_text(encoding="utf-8"))
     path_item = contract["paths"][DELIVERY_PATH]
@@ -212,9 +258,20 @@ def test_openapi_freezes_recovery_notification_delivery_contract() -> None:
     assert schemas["AgRecoveryNotificationDeliveryRequest"][
         "additionalProperties"
     ] is False
+    assert schemas["AgRecoveryNotificationDeliveryRequest"]["properties"][
+        "confirm_live_delivery"
+    ] == {"type": "boolean", "default": False}
     assert schemas["AgRecoveryNotificationDeliveryMutation"][
         "additionalProperties"
     ] is False
+    assert "live_delivery" in schemas["AgRecoveryNotificationDeliveryMutation"][
+        "required"
+    ]
     assert schemas["AgRecoveryNotificationDeliveryProjection"][
         "additionalProperties"
     ] is False
+    recent = schemas["AgRecoveryNotificationDeliveryProjection"]["properties"][
+        "recent"
+    ]["items"]
+    assert "execution" in recent["required"]
+    assert recent["properties"]["execution"]["additionalProperties"] is False

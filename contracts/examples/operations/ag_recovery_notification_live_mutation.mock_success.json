@@ -1,0 +1,31 @@
+{
+  "delivery_mutation_schema_version": "ag_recovery_notification_delivery_mutation.v1",
+  "mutation_status": "PERSISTED",
+  "idempotency_status": "NEW",
+  "notification_plan_id": "plan-0856",
+  "case_id": "case-0856",
+  "escalation_id": "escalation-0856",
+  "dispatch_record": {
+    "dispatch_schema_version": "ag_operator_review_escalation_dispatch.v1",
+    "dispatch_id": "dispatch-0856",
+    "case_id": "case-0856",
+    "escalation_id": "escalation-0856",
+    "dispatch_status": "PENDING"
+  },
+  "delivery": {
+    "dispatch_persistence_performed": true,
+    "provider_invocation_performed": false
+  },
+  "delivery_route": {
+    "path": "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-notification-deliveries",
+    "method": "POST",
+    "protected": true,
+    "mutation": true
+  },
+  "live_delivery": {
+    "requested": true,
+    "admitted": true,
+    "provider_mode": "live_http",
+    "provider_invocation_performed": false
+  }
+}

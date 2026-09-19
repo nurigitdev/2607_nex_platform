@@ -56,6 +56,9 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 128
+        },
+        "confirm_live_delivery": {
+          "type": "boolean"
         }
       }
     },
@@ -99,7 +102,8 @@
         "escalation_id",
         "dispatch_record",
         "delivery",
-        "delivery_route"
+        "delivery_route",
+        "live_delivery"
       ],
       "properties": {
         "delivery_mutation_schema_version": {
@@ -178,6 +182,100 @@
         },
         "delivery_route": {
           "$ref": "#/$defs/delivery_route"
+        },
+        "live_delivery": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requested",
+            "admitted",
+            "provider_mode",
+            "provider_invocation_performed"
+          ],
+          "properties": {
+            "requested": {
+              "type": "boolean"
+            },
+            "admitted": {
+              "type": "boolean"
+            },
+            "provider_mode": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "live_http",
+                null
+              ]
+            },
+            "provider_invocation_performed": {
+              "const": false
+            }
+          }
+        }
+      }
+    },
+    "execution_projection": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "execution_status",
+        "provider_mode",
+        "provider_category",
+        "provider_profile",
+        "provider_result_hash",
+        "http_status_code",
+        "response_body_hash",
+        "attempt_count",
+        "safe_result_preview",
+        "retryable",
+        "last_error_code",
+        "executed_at"
+      ],
+      "properties": {
+        "execution_status": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "provider_mode": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "provider_category": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "provider_profile": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "provider_result_hash": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "http_status_code": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "response_body_hash": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "attempt_count": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "safe_result_preview": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "last_error_code": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "executed_at": {
+          "$ref": "#/$defs/nullable_string"
         }
       }
     },
@@ -202,6 +300,7 @@
         "created_at",
         "updated_at",
         "completed_at",
+        "execution",
         "detail_path"
       ],
       "properties": {
@@ -263,6 +362,9 @@
         },
         "completed_at": {
           "$ref": "#/$defs/nullable_string"
+        },
+        "execution": {
+          "$ref": "#/$defs/execution_projection"
         },
         "detail_path": {
           "$ref": "#/$defs/non_empty_string"

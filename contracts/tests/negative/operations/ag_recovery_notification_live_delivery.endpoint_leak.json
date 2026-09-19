@@ -1,0 +1,8 @@
+{
+  "case_id": "case-0856",
+  "escalation_id": "escalation-0856",
+  "channel_type": "NOTIFICATION",
+  "provider_profile": "notification-webhook-default",
+  "confirm_live_delivery": true,
+  "provider_endpoint": "https://notification.example.invalid/private-hook"
+}

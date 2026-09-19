@@ -4,38 +4,51 @@
   "delivery_status": "ACTIVE",
   "summary": {
     "total": 1,
-    "pending": 1,
+    "pending": 0,
     "dispatching": 0,
-    "succeeded": 0,
+    "succeeded": 1,
     "failed": 0,
     "retry_wait": 0,
     "cancelled": 0,
-    "provider_invocation_performed": false
+    "provider_invocation_performed": true
   },
   "by_status": {
-    "PENDING": 1
+    "SUCCEEDED": 1
   },
   "recent": [
     {
-      "dispatch_id": "dispatch-0846",
-      "case_id": "case-0846",
-      "escalation_id": "escalation-0846",
-      "dispatch_status": "PENDING",
+      "dispatch_id": "dispatch-0856",
+      "case_id": "case-0856",
+      "escalation_id": "escalation-0856",
+      "dispatch_status": "SUCCEEDED",
       "dispatch_intent": "NOTIFY_OPERATOR",
-      "channel_type": "MOCK",
-      "provider_profile": "mock-default",
+      "channel_type": "NOTIFICATION",
+      "provider_profile": "notification-webhook-default",
       "target_service": "nex-ag",
       "target_kind": "dispatch_daemon",
       "target_id": "ag-dispatch-execution-daemon",
       "safe_subject": "AG dispatch recovery attention",
       "safe_body_preview": "Dispatch recovery policy authorized delivery.",
-      "attempt_count": 0,
+      "attempt_count": 1,
       "last_error_code": null,
-      "created_at": "2026-09-19T00:00:00Z",
-      "updated_at": "2026-09-19T00:00:00Z",
-      "completed_at": null,
-      "execution": null,
-      "detail_path": "/admin/v1/operator-review/dispatches/dispatch-0846"
+      "created_at": "2026-09-19T08:00:00Z",
+      "updated_at": "2026-09-19T08:00:01Z",
+      "completed_at": "2026-09-19T08:00:01Z",
+      "execution": {
+        "execution_status": "SUCCEEDED",
+        "provider_mode": "live_http",
+        "provider_category": "notification",
+        "provider_profile": "notification-webhook-default",
+        "provider_result_hash": "safe-provider-result-hash-0856",
+        "http_status_code": 202,
+        "response_body_hash": "safe-response-body-hash-0856",
+        "attempt_count": 1,
+        "safe_result_preview": "Notification provider accepted dispatch.",
+        "retryable": false,
+        "last_error_code": null,
+        "executed_at": "2026-09-19T08:00:01Z"
+      },
+      "detail_path": "/admin/v1/operator-review/dispatches/dispatch-0856"
     }
   ],
   "source_statuses": {
