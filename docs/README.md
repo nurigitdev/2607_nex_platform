@@ -968,6 +968,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0862`](slices/0862_ag_audit_event_integrity_contract.md) | `S87-002` AG deterministic audit-event integrity verification contract. |
 | [`Slice 0863`](slices/0863_ag_audit_trace_correlation_continuity.md) | `S87-003` AG audit trace, request, and evidence-export correlation continuity verification. |
 | [`Slice 0864`](slices/0864_ag_audit_evidence_package_builder.md) | `S87-004` AG deterministic redacted audit evidence package builder and verifier. |
+| [`Slice 0865`](slices/0865_ag_audit_evidence_protected_api.md) | `S87-005` AG protected server-selected audit evidence package and verification API. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

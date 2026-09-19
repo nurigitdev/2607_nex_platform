@@ -131,6 +131,7 @@ def verify_audit_evidence_package(package: object) -> dict[str, Any]:
 
     observed_manifest_hash: str | None = None
     observed_package_hash: str | None = None
+    verified_package_id: str | None = None
     if not isinstance(manifest, Mapping):
         issues.append(_issue("manifest_not_object"))
     else:
@@ -148,11 +149,13 @@ def verify_audit_evidence_package(package: object) -> dict[str, Any]:
         expected_id = f"ag-audit-package-{observed_package_hash[:32]}"
         if package_id != expected_id:
             issues.append(_issue("package_id_mismatch"))
+        else:
+            verified_package_id = package_id
     elif package_id is None:
         issues.append(_issue("package_id_invalid"))
 
     return _verification_result(
-        package_id=package_id,
+        package_id=verified_package_id,
         expected_manifest_hash=expected_manifest_hash,
         observed_manifest_hash=observed_manifest_hash,
         expected_package_hash=expected_package_hash,

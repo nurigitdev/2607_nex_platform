@@ -15,6 +15,8 @@ and evidence-export references without exposing event or evidence bodies.
 - rejects a request ID that spans more than one trace;
 - reports valid events without a trace ID;
 - detects missing expected traces and required event types;
+- applies expected event IDs to the nested integrity report so package builders
+  can bind both reports to the same verification criteria;
 - validates evidence-export IDs and SHA-256 hashes;
 - detects duplicate exports and exports whose trace is absent;
 - bounds each verification to 500 exports;

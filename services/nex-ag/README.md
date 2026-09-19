@@ -1471,6 +1471,9 @@ Unified operations:
 - Slice 0864 adds a deterministic redacted audit-evidence package builder and
   independent verifier. It binds integrity, correlation, and existing export
   hashes, detects copied-package tampering, and stores no raw evidence content.
+- Slice 0865 exposes package creation and verification through protected admin
+  routes. Source records are selected from server stores, caller package input
+  is never echoed, and metadata-only operational events record both actions.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -5,6 +5,7 @@ from nex_runtime import (
     register_service_job_control_routes,
     register_service_log_retention_routes,
 )
+from nex_ag.audit_evidence_api import register_audit_evidence_routes
 from nex_ag.generation_audit import register_generation_audit_routes
 from nex_ag.generation_quality_disposition import (
     register_generation_quality_disposition_routes,
@@ -114,6 +115,12 @@ register_generation_remediation_execution_routes(
 register_operator_review_note_routes(
     app,
     store=OPERATOR_REVIEW_NOTE_STORE,
+    export_store=OPERATOR_EVIDENCE_EXPORT_STORE,
+    audit_event_store=SERVICE_PERSISTENCE.operational_event_store,
+)
+register_audit_evidence_routes(
+    app,
+    event_store=SERVICE_PERSISTENCE.operational_event_store,
     export_store=OPERATOR_EVIDENCE_EXPORT_STORE,
     audit_event_store=SERVICE_PERSISTENCE.operational_event_store,
 )

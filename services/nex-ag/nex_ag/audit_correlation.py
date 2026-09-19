@@ -21,6 +21,7 @@ def build_audit_correlation_continuity_report(
     events: list[dict[str, Any]],
     *,
     evidence_exports: list[dict[str, Any]] | None = None,
+    expected_event_ids: list[str] | None = None,
     expected_trace_ids: list[str] | None = None,
     required_event_types: list[str] | None = None,
     checked_at: str | None = None,
@@ -36,6 +37,7 @@ def build_audit_correlation_continuity_report(
     )
     integrity = build_audit_event_integrity_report(
         events,
+        expected_event_ids=expected_event_ids,
         checked_at=checked_at,
     )
     valid_ids = {str(item["event_id"]) for item in integrity["items"]}

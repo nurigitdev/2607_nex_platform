@@ -207,6 +207,18 @@ def test_expected_trace_and_required_event_types_are_enforced() -> None:
     assert missing_type["missing_event_types"] == ["ag.audit.completed"]
 
 
+def test_expected_event_ids_are_applied_to_nested_integrity_report() -> None:
+    result = build_audit_correlation_continuity_report(
+        [_event("event-present")],
+        expected_event_ids=["event-missing", "event-present"],
+        checked_at=CHECKED_AT,
+    )
+
+    assert result["continuity_status"] == "FAILED"
+    assert result["event_integrity"]["integrity_status"] == "FAILED"
+    assert result["event_integrity"]["summary"]["missing_expected_count"] == 1
+
+
 def test_evidence_export_shape_hash_duplicates_and_orphans_are_reported() -> None:
     exports: list[object] = [
         "invalid",

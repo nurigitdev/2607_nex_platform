@@ -388,6 +388,7 @@ def test_verifier_rejects_non_object_and_missing_shape() -> None:
         "package_verification_status_invalid",
     }
     assert malformed_with_id["verification_status"] == "FAILED"
+    assert malformed_with_id["package_id"] is None
     assert "package_id_invalid" not in {
         item["issue_code"] for item in malformed_with_id["issues"]
     }
@@ -411,6 +412,7 @@ def test_verifier_detects_manifest_and_package_tampering() -> None:
     result = verify_audit_evidence_package(package)
 
     assert result["verification_status"] == "FAILED"
+    assert result["package_id"] is None
     assert {item["issue_code"] for item in result["issues"]} == {
         "manifest_export_duplicate",
         "manifest_export_hash_invalid",
