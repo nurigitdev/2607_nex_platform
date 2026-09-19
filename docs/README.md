@@ -953,6 +953,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0847`](slices/0847_ag_recovery_notification_delivery_mock_execution.md) | `S85-007` AG recovery notification targeted bounded MOCK execution integration. |
 | [`Slice 0848`](slices/0848_ag_recovery_notification_delivery_postgres_smoke.md) | `S85-008` AG recovery notification delivery actual PostgreSQL smoke evidence. |
 | [`Slice 0849`](slices/0849_ag_recovery_notification_delivery_privacy_runbook.md) | `S85-009` AG recovery notification delivery privacy regression and operator runbook. |
+| [`Slice 0850`](slices/0850_s85_ag_recovery_notification_delivery_closure.md) | `S85-010` S85 AG recovery notification delivery closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
