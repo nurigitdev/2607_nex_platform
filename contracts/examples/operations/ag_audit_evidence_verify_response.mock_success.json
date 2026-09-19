@@ -1,0 +1,16 @@
+{
+  "response_schema_version": "ag_audit_evidence_verify_response.v1",
+  "request_id": "request-0867",
+  "request_trace_id": "cccccccccccccccccccccccccccccccc",
+  "verification": {
+    "verification_schema_version": "ag_audit_evidence_package_verification.v1",
+    "verification_status": "VERIFIED",
+    "package_id": "ag-audit-package-5436696f9844ab6c018c29dc6f1f4849",
+    "expected_manifest_hash": "61a946a5183ba61bcaa24567e416fd9a174678510242b3671996566888aade95",
+    "observed_manifest_hash": "61a946a5183ba61bcaa24567e416fd9a174678510242b3671996566888aade95",
+    "expected_package_hash": "5436696f9844ab6c018c29dc6f1f4849b2c264cc0fdf7f1c81468c4b960cbc2c",
+    "observed_package_hash": "5436696f9844ab6c018c29dc6f1f4849b2c264cc0fdf7f1c81468c4b960cbc2c",
+    "issues": [],
+    "issue_count": 0
+  }
+}

@@ -629,6 +629,21 @@
       "name": "ae_retrieval_interaction_mock",
       "path": "examples/retrieval/ae_retrieval_interaction.mock_success.json",
       "schema": "schemas/service/nex_ae_api/retrieval_interaction.v1.schema.json"
+    },
+    {
+      "name": "ag_audit_evidence_package_response_mock",
+      "path": "examples/operations/ag_audit_evidence_package_response.mock_success.json",
+      "schema": "schemas/service/nex_ag/audit_evidence.v1.schema.json"
+    },
+    {
+      "name": "ag_audit_evidence_verify_response_mock",
+      "path": "examples/operations/ag_audit_evidence_verify_response.mock_success.json",
+      "schema": "schemas/service/nex_ag/audit_evidence.v1.schema.json"
+    },
+    {
+      "name": "ag_audit_evidence_operations_projection_mock",
+      "path": "examples/operations/ag_audit_evidence_operations_projection.mock_success.json",
+      "schema": "schemas/service/nex_ag/audit_evidence.v1.schema.json"
     }
   ]
 }

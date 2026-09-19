@@ -1,0 +1,847 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ag/audit_evidence.v1.schema.json",
+  "title": "NeX AG Audit Integrity Evidence Surface",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/package_response"
+    },
+    {
+      "$ref": "#/$defs/verify_response"
+    },
+    {
+      "$ref": "#/$defs/operations_projection"
+    }
+  ],
+  "$defs": {
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nullable_string": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "nullable_non_empty_string": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "non_negative_integer": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "nullable_non_negative_integer": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nullable_sha256": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "package_id": {
+      "type": "string",
+      "pattern": "^ag-audit-package-[0-9a-f]{32}$"
+    },
+    "nullable_package_id": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/package_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "nullable_trace_id": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/trace_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "create_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trace_id"
+      ],
+      "properties": {
+        "trace_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "expected_event_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/non_empty_string"
+          }
+        },
+        "required_event_types": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/non_empty_string"
+          }
+        }
+      }
+    },
+    "report_reference": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/integrity_report_reference"
+        },
+        {
+          "$ref": "#/$defs/correlation_report_reference"
+        }
+      ]
+    },
+    "integrity_report_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "report_type",
+        "schema_version",
+        "status",
+        "report_hash"
+      ],
+      "properties": {
+        "report_type": {
+          "const": "event_integrity"
+        },
+        "schema_version": {
+          "const": "ag_audit_event_integrity_report.v1"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "VERIFIED",
+            "FAILED",
+            "NO_EVENTS"
+          ]
+        },
+        "report_hash": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "correlation_report_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "report_type",
+        "schema_version",
+        "status",
+        "report_hash"
+      ],
+      "properties": {
+        "report_type": {
+          "const": "correlation_continuity"
+        },
+        "schema_version": {
+          "const": "ag_audit_correlation_report.v1"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "CONTIGUOUS",
+            "FAILED",
+            "NO_CORRELATION"
+          ]
+        },
+        "report_hash": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "evidence_export_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "export_id",
+        "trace_id",
+        "evidence_hash",
+        "evidence_item_count",
+        "export_status",
+        "redaction_profile"
+      ],
+      "properties": {
+        "export_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_non_empty_string"
+        },
+        "evidence_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "evidence_item_count": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "export_status": {
+          "type": "string",
+          "enum": [
+            "REQUESTED",
+            "READY",
+            "FAILED",
+            "CANCELLED"
+          ]
+        },
+        "redaction_profile": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "manifest_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "report_count",
+        "evidence_export_count",
+        "evidence_item_count"
+      ],
+      "properties": {
+        "report_count": {
+          "const": 2
+        },
+        "evidence_export_count": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "evidence_item_count": {
+          "$ref": "#/$defs/non_negative_integer"
+        }
+      }
+    },
+    "manifest_redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_payloads_included",
+        "event_messages_included",
+        "event_details_included",
+        "evidence_bodies_included",
+        "credentials_included",
+        "storage_paths_included"
+      ],
+      "properties": {
+        "raw_payloads_included": {
+          "const": false
+        },
+        "event_messages_included": {
+          "const": false
+        },
+        "event_details_included": {
+          "const": false
+        },
+        "evidence_bodies_included": {
+          "const": false
+        },
+        "credentials_included": {
+          "const": false
+        },
+        "storage_paths_included": {
+          "const": false
+        }
+      }
+    },
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_schema_version",
+        "hash_algorithm",
+        "reports",
+        "evidence_exports",
+        "summary",
+        "redaction"
+      ],
+      "properties": {
+        "manifest_schema_version": {
+          "const": "ag_audit_evidence_manifest.v1"
+        },
+        "hash_algorithm": {
+          "const": "sha256_canonical_json"
+        },
+        "reports": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/integrity_report_reference"
+            },
+            {
+              "$ref": "#/$defs/correlation_report_reference"
+            }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "evidence_exports": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {
+            "$ref": "#/$defs/evidence_export_reference"
+          }
+        },
+        "summary": {
+          "$ref": "#/$defs/manifest_summary"
+        },
+        "redaction": {
+          "$ref": "#/$defs/manifest_redaction"
+        }
+      }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package_schema_version",
+        "package_id",
+        "verification_status",
+        "generated_at",
+        "hash_algorithm",
+        "manifest",
+        "manifest_hash",
+        "package_hash"
+      ],
+      "properties": {
+        "package_schema_version": {
+          "const": "ag_audit_evidence_package.v1"
+        },
+        "package_id": {
+          "$ref": "#/$defs/package_id"
+        },
+        "verification_status": {
+          "type": "string",
+          "enum": [
+            "VERIFIED",
+            "FAILED",
+            "NO_EVIDENCE"
+          ]
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "hash_algorithm": {
+          "const": "sha256_canonical_json"
+        },
+        "manifest": {
+          "$ref": "#/$defs/manifest"
+        },
+        "manifest_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "package_hash": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "verification_issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issue_code",
+        "subject_id"
+      ],
+      "properties": {
+        "issue_code": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "subject_id": {
+          "$ref": "#/$defs/nullable_string"
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verification_schema_version",
+        "verification_status",
+        "package_id",
+        "expected_manifest_hash",
+        "observed_manifest_hash",
+        "expected_package_hash",
+        "observed_package_hash",
+        "issues",
+        "issue_count"
+      ],
+      "properties": {
+        "verification_schema_version": {
+          "const": "ag_audit_evidence_package_verification.v1"
+        },
+        "verification_status": {
+          "type": "string",
+          "enum": [
+            "VERIFIED",
+            "FAILED"
+          ]
+        },
+        "package_id": {
+          "$ref": "#/$defs/nullable_package_id"
+        },
+        "expected_manifest_hash": {
+          "$ref": "#/$defs/nullable_sha256"
+        },
+        "observed_manifest_hash": {
+          "$ref": "#/$defs/nullable_sha256"
+        },
+        "expected_package_hash": {
+          "$ref": "#/$defs/nullable_sha256"
+        },
+        "observed_package_hash": {
+          "$ref": "#/$defs/nullable_sha256"
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/verification_issue"
+          }
+        },
+        "issue_count": {
+          "$ref": "#/$defs/non_negative_integer"
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "server_selected",
+        "event_count",
+        "evidence_export_count",
+        "expected_event_count",
+        "required_event_type_count"
+      ],
+      "properties": {
+        "server_selected": {
+          "const": true
+        },
+        "event_count": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "evidence_export_count": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "expected_event_count": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "required_event_type_count": {
+          "$ref": "#/$defs/non_negative_integer"
+        }
+      }
+    },
+    "package_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "response_schema_version",
+        "request_id",
+        "request_trace_id",
+        "source_trace_id",
+        "selection",
+        "package",
+        "verification"
+      ],
+      "properties": {
+        "response_schema_version": {
+          "const": "ag_audit_evidence_package_response.v1"
+        },
+        "request_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "request_trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "source_trace_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "selection": {
+          "$ref": "#/$defs/selection"
+        },
+        "package": {
+          "$ref": "#/$defs/package"
+        },
+        "verification": {
+          "$ref": "#/$defs/verification"
+        }
+      }
+    },
+    "verify_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package"
+      ],
+      "properties": {
+        "package": {
+          "$ref": "#/$defs/package"
+        }
+      }
+    },
+    "verify_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "response_schema_version",
+        "request_id",
+        "request_trace_id",
+        "verification"
+      ],
+      "properties": {
+        "response_schema_version": {
+          "const": "ag_audit_evidence_verify_response.v1"
+        },
+        "request_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "request_trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "verification": {
+          "$ref": "#/$defs/verification"
+        }
+      }
+    },
+    "operations_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package_generation_count",
+        "package_verification_count",
+        "failed_action_count",
+        "evidence_export_count",
+        "hash_ready_export_count",
+        "invalid_hash_export_count"
+      ],
+      "properties": {
+        "package_generation_count": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "package_verification_count": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "failed_action_count": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "evidence_export_count": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "hash_ready_export_count": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "invalid_hash_export_count": {
+          "$ref": "#/$defs/non_negative_integer"
+        }
+      }
+    },
+    "operations_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_id",
+        "event_type",
+        "severity",
+        "trace_id",
+        "request_id",
+        "package_id",
+        "package_hash",
+        "verification_status",
+        "issue_count",
+        "created_at"
+      ],
+      "properties": {
+        "event_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "event_type": {
+          "type": "string",
+          "enum": [
+            "ag.audit_evidence_package.generated",
+            "ag.audit_evidence_package.verified"
+          ]
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ]
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_non_empty_string"
+        },
+        "request_id": {
+          "$ref": "#/$defs/nullable_non_empty_string"
+        },
+        "package_id": {
+          "$ref": "#/$defs/nullable_package_id"
+        },
+        "package_hash": {
+          "$ref": "#/$defs/nullable_sha256"
+        },
+        "verification_status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "VERIFIED",
+            "FAILED",
+            "NO_EVIDENCE",
+            null
+          ]
+        },
+        "issue_count": {
+          "$ref": "#/$defs/nullable_non_negative_integer"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "operations_export": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "export_id",
+        "trace_id",
+        "export_status",
+        "evidence_hash",
+        "evidence_item_count",
+        "redaction_profile",
+        "updated_at"
+      ],
+      "properties": {
+        "export_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "trace_id": {
+          "$ref": "#/$defs/nullable_non_empty_string"
+        },
+        "export_status": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "evidence_hash": {
+          "$ref": "#/$defs/nullable_sha256"
+        },
+        "evidence_item_count": {
+          "$ref": "#/$defs/nullable_non_negative_integer"
+        },
+        "redaction_profile": {
+          "$ref": "#/$defs/nullable_non_empty_string"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/nullable_non_empty_string"
+        }
+      }
+    },
+    "source_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "service_id",
+        "source_table",
+        "read_only"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "UNAVAILABLE",
+            "NOT_CONFIGURED",
+            "FILTERED"
+          ]
+        },
+        "service_id": {
+          "const": "nex-ag"
+        },
+        "source_table": {
+          "type": "string",
+          "enum": [
+            "service_operational_events",
+            "ag_ev_exports"
+          ]
+        },
+        "read_only": {
+          "const": true
+        },
+        "record_count": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "error_code": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "operations_redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_messages_included",
+        "event_details_included",
+        "evidence_manifests_included",
+        "operator_refs_included",
+        "credentials_included",
+        "storage_paths_included"
+      ],
+      "properties": {
+        "event_messages_included": {
+          "const": false
+        },
+        "event_details_included": {
+          "const": false
+        },
+        "evidence_manifests_included": {
+          "const": false
+        },
+        "operator_refs_included": {
+          "const": false
+        },
+        "credentials_included": {
+          "const": false
+        },
+        "storage_paths_included": {
+          "const": false
+        }
+      }
+    },
+    "operations_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "projection_status",
+        "integrity_status",
+        "checked_at",
+        "summary",
+        "recent_actions",
+        "recent_exports",
+        "source_statuses",
+        "paths",
+        "new_tables_required",
+        "redaction"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "const": "ag_audit_evidence_operations_projection.v1"
+        },
+        "projection_status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "DEGRADED",
+            "NOT_CONFIGURED"
+          ]
+        },
+        "integrity_status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "ATTENTION",
+            "EMPTY",
+            "FILTERED",
+            "SOURCE_UNAVAILABLE"
+          ]
+        },
+        "checked_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "request_trace_id": {
+          "$ref": "#/$defs/nullable_trace_id"
+        },
+        "summary": {
+          "$ref": "#/$defs/operations_summary"
+        },
+        "recent_actions": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/operations_action"
+          }
+        },
+        "recent_exports": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/operations_export"
+          }
+        },
+        "source_statuses": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operational_events",
+            "evidence_exports"
+          ],
+          "properties": {
+            "operational_events": {
+              "$ref": "#/$defs/source_status"
+            },
+            "evidence_exports": {
+              "$ref": "#/$defs/source_status"
+            }
+          }
+        },
+        "paths": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operations",
+            "create_package",
+            "verify_package"
+          ],
+          "properties": {
+            "operations": {
+              "const": "/admin/v1/operations/audit-integrity"
+            },
+            "create_package": {
+              "const": "/admin/v1/audit-integrity/evidence-packages"
+            },
+            "verify_package": {
+              "const": "/admin/v1/audit-integrity/evidence-packages/verify"
+            }
+          }
+        },
+        "new_tables_required": {
+          "const": false
+        },
+        "redaction": {
+          "$ref": "#/$defs/operations_redaction"
+        }
+      }
+    }
+  }
+}

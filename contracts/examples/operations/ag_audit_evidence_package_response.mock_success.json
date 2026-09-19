@@ -1,0 +1,74 @@
+{
+  "response_schema_version": "ag_audit_evidence_package_response.v1",
+  "request_id": "request-0867",
+  "request_trace_id": "cccccccccccccccccccccccccccccccc",
+  "source_trace_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "selection": {
+    "server_selected": true,
+    "event_count": 1,
+    "evidence_export_count": 1,
+    "expected_event_count": 1,
+    "required_event_type_count": 1
+  },
+  "package": {
+    "package_schema_version": "ag_audit_evidence_package.v1",
+    "package_id": "ag-audit-package-5436696f9844ab6c018c29dc6f1f4849",
+    "verification_status": "VERIFIED",
+    "generated_at": "2026-09-20T08:00:00Z",
+    "hash_algorithm": "sha256_canonical_json",
+    "manifest": {
+      "manifest_schema_version": "ag_audit_evidence_manifest.v1",
+      "hash_algorithm": "sha256_canonical_json",
+      "reports": [
+        {
+          "report_type": "event_integrity",
+          "schema_version": "ag_audit_event_integrity_report.v1",
+          "status": "VERIFIED",
+          "report_hash": "b69c1249a3b4d39a19eba4f45615271c2fe93288e50173cf82d74106e0ceb299"
+        },
+        {
+          "report_type": "correlation_continuity",
+          "schema_version": "ag_audit_correlation_report.v1",
+          "status": "CONTIGUOUS",
+          "report_hash": "90a254f5bf9d6c931f93c11269fd65c15a134117e387033486e78f5a38765450"
+        }
+      ],
+      "evidence_exports": [
+        {
+          "export_id": "export-0867",
+          "trace_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "evidence_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_item_count": 1,
+          "export_status": "READY",
+          "redaction_profile": "ag_redacted_manifest_v1"
+        }
+      ],
+      "summary": {
+        "report_count": 2,
+        "evidence_export_count": 1,
+        "evidence_item_count": 1
+      },
+      "redaction": {
+        "raw_payloads_included": false,
+        "event_messages_included": false,
+        "event_details_included": false,
+        "evidence_bodies_included": false,
+        "credentials_included": false,
+        "storage_paths_included": false
+      }
+    },
+    "manifest_hash": "61a946a5183ba61bcaa24567e416fd9a174678510242b3671996566888aade95",
+    "package_hash": "5436696f9844ab6c018c29dc6f1f4849b2c264cc0fdf7f1c81468c4b960cbc2c"
+  },
+  "verification": {
+    "verification_schema_version": "ag_audit_evidence_package_verification.v1",
+    "verification_status": "VERIFIED",
+    "package_id": "ag-audit-package-5436696f9844ab6c018c29dc6f1f4849",
+    "expected_manifest_hash": "61a946a5183ba61bcaa24567e416fd9a174678510242b3671996566888aade95",
+    "observed_manifest_hash": "61a946a5183ba61bcaa24567e416fd9a174678510242b3671996566888aade95",
+    "expected_package_hash": "5436696f9844ab6c018c29dc6f1f4849b2c264cc0fdf7f1c81468c4b960cbc2c",
+    "observed_package_hash": "5436696f9844ab6c018c29dc6f1f4849b2c264cc0fdf7f1c81468c4b960cbc2c",
+    "issues": [],
+    "issue_count": 0
+  }
+}

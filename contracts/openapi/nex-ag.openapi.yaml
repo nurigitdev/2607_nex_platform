@@ -394,6 +394,80 @@ paths:
           description: CX execution detail is invalid or cannot be reconciled.
         "503":
           description: CX remediation execution endpoint or AG task store is unavailable.
+  /admin/v1/operations/audit-integrity:
+    get:
+      operationId: getAgAuditEvidenceOperationsProjection
+      tags:
+        - Operations
+      parameters:
+        - $ref: "#/components/parameters/serviceId"
+        - name: recent_limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 5
+      responses:
+        "200":
+          description: Redacted audit evidence integrity operations projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgAuditEvidenceOperationsProjection"
+        "401":
+          description: Service or admin user claim is missing or invalid.
+  /admin/v1/audit-integrity/evidence-packages:
+    post:
+      operationId: createAgAuditEvidencePackage
+      tags:
+        - Operations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgAuditEvidencePackageCreateRequest"
+      responses:
+        "200":
+          description: Server-selected audit records packaged with deterministic hashes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgAuditEvidencePackageResponse"
+        "401":
+          description: Service or user claim is missing or invalid.
+        "403":
+          description: Authenticated user is not an administrator.
+        "422":
+          description: Selection or source evidence cannot produce a valid package.
+        "503":
+          description: Audit event or evidence export storage is unavailable.
+  /admin/v1/audit-integrity/evidence-packages/verify:
+    post:
+      operationId: verifyAgAuditEvidencePackage
+      tags:
+        - Operations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgAuditEvidencePackageVerifyRequest"
+      responses:
+        "200":
+          description: Deterministic package verification result without source payload echo.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgAuditEvidenceVerifyResponse"
+        "401":
+          description: Service or user claim is missing or invalid.
+        "403":
+          description: Authenticated user is not an administrator.
+        "422":
+          description: Verification envelope is invalid.
   /admin/v1/operations:
     get:
       operationId: getAgUnifiedOperationsProjection
@@ -4045,6 +4119,615 @@ components:
             - by_status
             - by_action_type
             - latest_updated_at
+    AgAuditEvidenceSha256:
+      type: string
+      pattern: "^[0-9a-f]{64}$"
+    AgAuditEvidencePackageId:
+      type: string
+      pattern: "^ag-audit-package-[0-9a-f]{32}$"
+    AgAuditEvidencePackageCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - trace_id
+      properties:
+        trace_id:
+          type: string
+          minLength: 1
+        expected_event_ids:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+        required_event_types:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+    AgAuditEvidenceReportReference:
+      type: object
+      additionalProperties: false
+      required:
+        - report_type
+        - schema_version
+        - status
+        - report_hash
+      properties:
+        report_type:
+          type: string
+          enum:
+            - event_integrity
+            - correlation_continuity
+        schema_version:
+          type: string
+          enum:
+            - ag_audit_event_integrity_report.v1
+            - ag_audit_correlation_report.v1
+        status:
+          type: string
+          enum:
+            - VERIFIED
+            - FAILED
+            - NO_EVENTS
+            - CONTIGUOUS
+            - NO_CORRELATION
+        report_hash:
+          $ref: "#/components/schemas/AgAuditEvidenceSha256"
+    AgAuditEvidenceExportReference:
+      type: object
+      additionalProperties: false
+      required:
+        - export_id
+        - trace_id
+        - evidence_hash
+        - evidence_item_count
+        - export_status
+        - redaction_profile
+      properties:
+        export_id:
+          type: string
+          minLength: 1
+        trace_id:
+          type:
+            - string
+            - "null"
+        evidence_hash:
+          $ref: "#/components/schemas/AgAuditEvidenceSha256"
+        evidence_item_count:
+          type: integer
+          minimum: 0
+        export_status:
+          type: string
+          enum:
+            - REQUESTED
+            - READY
+            - FAILED
+            - CANCELLED
+        redaction_profile:
+          type: string
+          minLength: 1
+    AgAuditEvidenceManifest:
+      type: object
+      additionalProperties: false
+      required:
+        - manifest_schema_version
+        - hash_algorithm
+        - reports
+        - evidence_exports
+        - summary
+        - redaction
+      properties:
+        manifest_schema_version:
+          type: string
+          const: ag_audit_evidence_manifest.v1
+        hash_algorithm:
+          type: string
+          const: sha256_canonical_json
+        reports:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            $ref: "#/components/schemas/AgAuditEvidenceReportReference"
+        evidence_exports:
+          type: array
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/AgAuditEvidenceExportReference"
+        summary:
+          type: object
+          additionalProperties: false
+          required:
+            - report_count
+            - evidence_export_count
+            - evidence_item_count
+          properties:
+            report_count:
+              type: integer
+              const: 2
+            evidence_export_count:
+              type: integer
+              minimum: 0
+            evidence_item_count:
+              type: integer
+              minimum: 0
+        redaction:
+          type: object
+          additionalProperties: false
+          required:
+            - raw_payloads_included
+            - event_messages_included
+            - event_details_included
+            - evidence_bodies_included
+            - credentials_included
+            - storage_paths_included
+          properties:
+            raw_payloads_included:
+              type: boolean
+              const: false
+            event_messages_included:
+              type: boolean
+              const: false
+            event_details_included:
+              type: boolean
+              const: false
+            evidence_bodies_included:
+              type: boolean
+              const: false
+            credentials_included:
+              type: boolean
+              const: false
+            storage_paths_included:
+              type: boolean
+              const: false
+    AgAuditEvidencePackage:
+      type: object
+      additionalProperties: false
+      required:
+        - package_schema_version
+        - package_id
+        - verification_status
+        - generated_at
+        - hash_algorithm
+        - manifest
+        - manifest_hash
+        - package_hash
+      properties:
+        package_schema_version:
+          type: string
+          const: ag_audit_evidence_package.v1
+        package_id:
+          $ref: "#/components/schemas/AgAuditEvidencePackageId"
+        verification_status:
+          type: string
+          enum:
+            - VERIFIED
+            - FAILED
+            - NO_EVIDENCE
+        generated_at:
+          type: string
+          format: date-time
+        hash_algorithm:
+          type: string
+          const: sha256_canonical_json
+        manifest:
+          $ref: "#/components/schemas/AgAuditEvidenceManifest"
+        manifest_hash:
+          $ref: "#/components/schemas/AgAuditEvidenceSha256"
+        package_hash:
+          $ref: "#/components/schemas/AgAuditEvidenceSha256"
+    AgAuditEvidenceVerification:
+      type: object
+      additionalProperties: false
+      required:
+        - verification_schema_version
+        - verification_status
+        - package_id
+        - expected_manifest_hash
+        - observed_manifest_hash
+        - expected_package_hash
+        - observed_package_hash
+        - issues
+        - issue_count
+      properties:
+        verification_schema_version:
+          type: string
+          const: ag_audit_evidence_package_verification.v1
+        verification_status:
+          type: string
+          enum:
+            - VERIFIED
+            - FAILED
+        package_id:
+          oneOf:
+            - $ref: "#/components/schemas/AgAuditEvidencePackageId"
+            - type: "null"
+        expected_manifest_hash:
+          oneOf:
+            - $ref: "#/components/schemas/AgAuditEvidenceSha256"
+            - type: "null"
+        observed_manifest_hash:
+          oneOf:
+            - $ref: "#/components/schemas/AgAuditEvidenceSha256"
+            - type: "null"
+        expected_package_hash:
+          oneOf:
+            - $ref: "#/components/schemas/AgAuditEvidenceSha256"
+            - type: "null"
+        observed_package_hash:
+          oneOf:
+            - $ref: "#/components/schemas/AgAuditEvidenceSha256"
+            - type: "null"
+        issues:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - issue_code
+              - subject_id
+            properties:
+              issue_code:
+                type: string
+                minLength: 1
+              subject_id:
+                type:
+                  - string
+                  - "null"
+        issue_count:
+          type: integer
+          minimum: 0
+    AgAuditEvidencePackageResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - response_schema_version
+        - request_id
+        - request_trace_id
+        - source_trace_id
+        - selection
+        - package
+        - verification
+      properties:
+        response_schema_version:
+          type: string
+          const: ag_audit_evidence_package_response.v1
+        request_id:
+          type: string
+          minLength: 1
+        request_trace_id:
+          oneOf:
+            - $ref: "#/components/schemas/TraceId"
+            - type: "null"
+        source_trace_id:
+          type: string
+          minLength: 1
+        selection:
+          type: object
+          additionalProperties: false
+          required:
+            - server_selected
+            - event_count
+            - evidence_export_count
+            - expected_event_count
+            - required_event_type_count
+          properties:
+            server_selected:
+              type: boolean
+              const: true
+            event_count:
+              type: integer
+              minimum: 0
+            evidence_export_count:
+              type: integer
+              minimum: 0
+            expected_event_count:
+              type: integer
+              minimum: 0
+            required_event_type_count:
+              type: integer
+              minimum: 0
+        package:
+          $ref: "#/components/schemas/AgAuditEvidencePackage"
+        verification:
+          $ref: "#/components/schemas/AgAuditEvidenceVerification"
+    AgAuditEvidencePackageVerifyRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - package
+      properties:
+        package:
+          $ref: "#/components/schemas/AgAuditEvidencePackage"
+    AgAuditEvidenceVerifyResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - response_schema_version
+        - request_id
+        - request_trace_id
+        - verification
+      properties:
+        response_schema_version:
+          type: string
+          const: ag_audit_evidence_verify_response.v1
+        request_id:
+          type: string
+          minLength: 1
+        request_trace_id:
+          oneOf:
+            - $ref: "#/components/schemas/TraceId"
+            - type: "null"
+        verification:
+          $ref: "#/components/schemas/AgAuditEvidenceVerification"
+    AgAuditEvidenceOperationsProjection:
+      type: object
+      additionalProperties: false
+      required:
+        - projection_schema_version
+        - projection_status
+        - integrity_status
+        - checked_at
+        - summary
+        - recent_actions
+        - recent_exports
+        - source_statuses
+        - paths
+        - new_tables_required
+        - redaction
+      properties:
+        projection_schema_version:
+          type: string
+          const: ag_audit_evidence_operations_projection.v1
+        projection_status:
+          type: string
+          enum:
+            - READY
+            - DEGRADED
+            - NOT_CONFIGURED
+        integrity_status:
+          type: string
+          enum:
+            - READY
+            - ATTENTION
+            - EMPTY
+            - FILTERED
+            - SOURCE_UNAVAILABLE
+        checked_at:
+          type: string
+          format: date-time
+        request_trace_id:
+          oneOf:
+            - $ref: "#/components/schemas/TraceId"
+            - type: "null"
+        summary:
+          type: object
+          additionalProperties: false
+          required:
+            - package_generation_count
+            - package_verification_count
+            - failed_action_count
+            - evidence_export_count
+            - hash_ready_export_count
+            - invalid_hash_export_count
+          properties:
+            package_generation_count:
+              type: integer
+              minimum: 0
+            package_verification_count:
+              type: integer
+              minimum: 0
+            failed_action_count:
+              type: integer
+              minimum: 0
+            evidence_export_count:
+              type: integer
+              minimum: 0
+            hash_ready_export_count:
+              type: integer
+              minimum: 0
+            invalid_hash_export_count:
+              type: integer
+              minimum: 0
+        recent_actions:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - event_id
+              - event_type
+              - severity
+              - trace_id
+              - request_id
+              - package_id
+              - package_hash
+              - verification_status
+              - issue_count
+              - created_at
+            properties:
+              event_id:
+                type: string
+                minLength: 1
+              event_type:
+                type: string
+                enum:
+                  - ag.audit_evidence_package.generated
+                  - ag.audit_evidence_package.verified
+              severity:
+                $ref: "#/components/schemas/OperationalEventSeverity"
+              trace_id:
+                type:
+                  - string
+                  - "null"
+              request_id:
+                type:
+                  - string
+                  - "null"
+              package_id:
+                oneOf:
+                  - $ref: "#/components/schemas/AgAuditEvidencePackageId"
+                  - type: "null"
+              package_hash:
+                oneOf:
+                  - $ref: "#/components/schemas/AgAuditEvidenceSha256"
+                  - type: "null"
+              verification_status:
+                type:
+                  - string
+                  - "null"
+                enum:
+                  - VERIFIED
+                  - FAILED
+                  - NO_EVIDENCE
+                  - null
+              issue_count:
+                type:
+                  - integer
+                  - "null"
+                minimum: 0
+              created_at:
+                type: string
+                format: date-time
+        recent_exports:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - export_id
+              - trace_id
+              - export_status
+              - evidence_hash
+              - evidence_item_count
+              - redaction_profile
+              - updated_at
+            properties:
+              export_id:
+                type: string
+                minLength: 1
+              trace_id:
+                type:
+                  - string
+                  - "null"
+              export_status:
+                type:
+                  - string
+                  - "null"
+              evidence_hash:
+                oneOf:
+                  - $ref: "#/components/schemas/AgAuditEvidenceSha256"
+                  - type: "null"
+              evidence_item_count:
+                type:
+                  - integer
+                  - "null"
+                minimum: 0
+              redaction_profile:
+                type:
+                  - string
+                  - "null"
+              updated_at:
+                type:
+                  - string
+                  - "null"
+        source_statuses:
+          type: object
+          additionalProperties: false
+          required:
+            - operational_events
+            - evidence_exports
+          properties:
+            operational_events:
+              $ref: "#/components/schemas/AgAuditEvidenceSourceStatus"
+            evidence_exports:
+              $ref: "#/components/schemas/AgAuditEvidenceSourceStatus"
+        paths:
+          type: object
+          additionalProperties: false
+          required:
+            - operations
+            - create_package
+            - verify_package
+          properties:
+            operations:
+              type: string
+              const: /admin/v1/operations/audit-integrity
+            create_package:
+              type: string
+              const: /admin/v1/audit-integrity/evidence-packages
+            verify_package:
+              type: string
+              const: /admin/v1/audit-integrity/evidence-packages/verify
+        new_tables_required:
+          type: boolean
+          const: false
+        redaction:
+          type: object
+          additionalProperties: false
+          required:
+            - event_messages_included
+            - event_details_included
+            - evidence_manifests_included
+            - operator_refs_included
+            - credentials_included
+            - storage_paths_included
+          properties:
+            event_messages_included:
+              type: boolean
+              const: false
+            event_details_included:
+              type: boolean
+              const: false
+            evidence_manifests_included:
+              type: boolean
+              const: false
+            operator_refs_included:
+              type: boolean
+              const: false
+            credentials_included:
+              type: boolean
+              const: false
+            storage_paths_included:
+              type: boolean
+              const: false
+    AgAuditEvidenceSourceStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - service_id
+        - source_table
+        - read_only
+      properties:
+        status:
+          type: string
+          enum:
+            - READY
+            - UNAVAILABLE
+            - NOT_CONFIGURED
+            - FILTERED
+        service_id:
+          type: string
+          const: nex-ag
+        source_table:
+          type: string
+          enum:
+            - service_operational_events
+            - ag_ev_exports
+        read_only:
+          type: boolean
+          const: true
+        record_count:
+          type: integer
+          minimum: 0
+        error_code:
+          type: string
+          minLength: 1
     AgOperationsProjection:
       type: object
       required:

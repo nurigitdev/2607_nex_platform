@@ -1,0 +1,82 @@
+{
+  "projection_schema_version": "ag_audit_evidence_operations_projection.v1",
+  "projection_status": "READY",
+  "integrity_status": "READY",
+  "checked_at": "2026-09-20T08:04:00Z",
+  "request_trace_id": "cccccccccccccccccccccccccccccccc",
+  "summary": {
+    "package_generation_count": 1,
+    "package_verification_count": 1,
+    "failed_action_count": 0,
+    "evidence_export_count": 1,
+    "hash_ready_export_count": 1,
+    "invalid_hash_export_count": 0
+  },
+  "recent_actions": [
+    {
+      "event_id": "event-verified-0867",
+      "event_type": "ag.audit_evidence_package.verified",
+      "severity": "INFO",
+      "trace_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "request_id": "request-0867",
+      "package_id": "ag-audit-package-5436696f9844ab6c018c29dc6f1f4849",
+      "package_hash": null,
+      "verification_status": "VERIFIED",
+      "issue_count": 0,
+      "created_at": "2026-09-20T08:03:00Z"
+    },
+    {
+      "event_id": "event-generated-0867",
+      "event_type": "ag.audit_evidence_package.generated",
+      "severity": "INFO",
+      "trace_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "request_id": "request-0867",
+      "package_id": "ag-audit-package-5436696f9844ab6c018c29dc6f1f4849",
+      "package_hash": "5436696f9844ab6c018c29dc6f1f4849b2c264cc0fdf7f1c81468c4b960cbc2c",
+      "verification_status": "VERIFIED",
+      "issue_count": null,
+      "created_at": "2026-09-20T08:02:00Z"
+    }
+  ],
+  "recent_exports": [
+    {
+      "export_id": "export-0867",
+      "trace_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "export_status": "READY",
+      "evidence_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "evidence_item_count": 1,
+      "redaction_profile": "ag_redacted_manifest_v1",
+      "updated_at": "2026-09-20T08:01:00Z"
+    }
+  ],
+  "source_statuses": {
+    "operational_events": {
+      "status": "READY",
+      "service_id": "nex-ag",
+      "source_table": "service_operational_events",
+      "read_only": true,
+      "record_count": 2
+    },
+    "evidence_exports": {
+      "status": "READY",
+      "service_id": "nex-ag",
+      "source_table": "ag_ev_exports",
+      "read_only": true,
+      "record_count": 1
+    }
+  },
+  "paths": {
+    "operations": "/admin/v1/operations/audit-integrity",
+    "create_package": "/admin/v1/audit-integrity/evidence-packages",
+    "verify_package": "/admin/v1/audit-integrity/evidence-packages/verify"
+  },
+  "new_tables_required": false,
+  "redaction": {
+    "event_messages_included": false,
+    "event_details_included": false,
+    "evidence_manifests_included": false,
+    "operator_refs_included": false,
+    "credentials_included": false,
+    "storage_paths_included": false
+  }
+}

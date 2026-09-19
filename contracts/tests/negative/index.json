@@ -444,6 +444,21 @@
       "name": "ae_retrieval_interaction_raw_user_message_leak",
       "path": "tests/negative/retrieval/ae_retrieval_interaction.raw_user_message_leak.json",
       "schema": "schemas/service/nex_ae_api/retrieval_interaction.v1.schema.json"
+    },
+    {
+      "name": "ag_audit_evidence_verify_response_raw_payload_leak",
+      "path": "tests/negative/operations/ag_audit_evidence_verify_response.raw_payload_leak.json",
+      "schema": "schemas/service/nex_ag/audit_evidence.v1.schema.json"
+    },
+    {
+      "name": "ag_audit_evidence_verify_response_untrusted_package_id",
+      "path": "tests/negative/operations/ag_audit_evidence_verify_response.untrusted_package_id.json",
+      "schema": "schemas/service/nex_ag/audit_evidence.v1.schema.json"
+    },
+    {
+      "name": "ag_audit_evidence_operations_projection_manifest_leak",
+      "path": "tests/negative/operations/ag_audit_evidence_operations_projection.manifest_leak.json",
+      "schema": "schemas/service/nex_ag/audit_evidence.v1.schema.json"
     }
   ]
 }

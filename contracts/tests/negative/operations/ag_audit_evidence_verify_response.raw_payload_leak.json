@@ -1,0 +1,24 @@
+{
+  "response_schema_version": "ag_audit_evidence_verify_response.v1",
+  "request_id": "request-0867-negative",
+  "request_trace_id": "cccccccccccccccccccccccccccccccc",
+  "raw_payload": {
+    "credential": "must-not-cross-contract"
+  },
+  "verification": {
+    "verification_schema_version": "ag_audit_evidence_package_verification.v1",
+    "verification_status": "FAILED",
+    "package_id": null,
+    "expected_manifest_hash": null,
+    "observed_manifest_hash": null,
+    "expected_package_hash": null,
+    "observed_package_hash": null,
+    "issues": [
+      {
+        "issue_code": "package_not_object",
+        "subject_id": null
+      }
+    ],
+    "issue_count": 1
+  }
+}

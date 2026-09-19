@@ -273,8 +273,7 @@
       "$ref": "#/$defs/dashboard_operator_review_escalation_dispatches"
     },
     "audit_integrity": {
-      "type": "object",
-      "additionalProperties": true
+      "$ref": "#/$defs/dashboard_audit_integrity"
     },
     "replay_candidates": {
       "type": "array",
@@ -4476,6 +4475,385 @@
         "NOT_REQUIRED",
         "UNKNOWN"
       ]
+    },
+    "dashboard_audit_integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "projection_status",
+        "integrity_status",
+        "checked_at",
+        "summary",
+        "recent_actions",
+        "recent_exports",
+        "source_statuses",
+        "paths",
+        "new_tables_required",
+        "redaction"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "const": "ag_audit_evidence_operations_projection.v1"
+        },
+        "projection_status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "DEGRADED",
+            "NOT_CONFIGURED"
+          ]
+        },
+        "integrity_status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "ATTENTION",
+            "EMPTY",
+            "FILTERED",
+            "SOURCE_UNAVAILABLE"
+          ]
+        },
+        "checked_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "request_trace_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/trace_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "$ref": "#/$defs/dashboard_audit_integrity_summary"
+        },
+        "recent_actions": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/dashboard_audit_integrity_action"
+          }
+        },
+        "recent_exports": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/dashboard_audit_integrity_export"
+          }
+        },
+        "source_statuses": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operational_events",
+            "evidence_exports"
+          ],
+          "properties": {
+            "operational_events": {
+              "$ref": "#/$defs/dashboard_audit_integrity_source_status"
+            },
+            "evidence_exports": {
+              "$ref": "#/$defs/dashboard_audit_integrity_source_status"
+            }
+          }
+        },
+        "paths": {
+          "$ref": "#/$defs/dashboard_audit_integrity_paths"
+        },
+        "new_tables_required": {
+          "const": false
+        },
+        "redaction": {
+          "$ref": "#/$defs/dashboard_audit_integrity_redaction"
+        }
+      }
+    },
+    "dashboard_audit_integrity_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package_generation_count",
+        "package_verification_count",
+        "failed_action_count",
+        "evidence_export_count",
+        "hash_ready_export_count",
+        "invalid_hash_export_count"
+      ],
+      "properties": {
+        "package_generation_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "package_verification_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_action_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence_export_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hash_ready_export_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "invalid_hash_export_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "dashboard_audit_integrity_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_id",
+        "event_type",
+        "severity",
+        "trace_id",
+        "request_id",
+        "package_id",
+        "package_hash",
+        "verification_status",
+        "issue_count",
+        "created_at"
+      ],
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "event_type": {
+          "type": "string",
+          "enum": [
+            "ag.audit_evidence_package.generated",
+            "ag.audit_evidence_package.verified"
+          ]
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ]
+        },
+        "trace_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "request_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "package_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^ag-audit-package-[0-9a-f]{32}$"
+        },
+        "package_hash": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "verification_status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "VERIFIED",
+            "FAILED",
+            "NO_EVIDENCE",
+            null
+          ]
+        },
+        "issue_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "dashboard_audit_integrity_export": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "export_id",
+        "trace_id",
+        "export_status",
+        "evidence_hash",
+        "evidence_item_count",
+        "redaction_profile",
+        "updated_at"
+      ],
+      "properties": {
+        "export_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "export_status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence_hash": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_item_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "redaction_profile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "updated_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "dashboard_audit_integrity_source_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "service_id",
+        "source_table",
+        "read_only"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "UNAVAILABLE",
+            "NOT_CONFIGURED",
+            "FILTERED"
+          ]
+        },
+        "service_id": {
+          "const": "nex-ag"
+        },
+        "source_table": {
+          "type": "string",
+          "enum": [
+            "service_operational_events",
+            "ag_ev_exports"
+          ]
+        },
+        "read_only": {
+          "const": true
+        },
+        "record_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error_code": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "dashboard_audit_integrity_paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operations",
+        "create_package",
+        "verify_package"
+      ],
+      "properties": {
+        "operations": {
+          "const": "/admin/v1/operations/audit-integrity"
+        },
+        "create_package": {
+          "const": "/admin/v1/audit-integrity/evidence-packages"
+        },
+        "verify_package": {
+          "const": "/admin/v1/audit-integrity/evidence-packages/verify"
+        }
+      }
+    },
+    "dashboard_audit_integrity_redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_messages_included",
+        "event_details_included",
+        "evidence_manifests_included",
+        "operator_refs_included",
+        "credentials_included",
+        "storage_paths_included"
+      ],
+      "properties": {
+        "event_messages_included": {
+          "const": false
+        },
+        "event_details_included": {
+          "const": false
+        },
+        "evidence_manifests_included": {
+          "const": false
+        },
+        "operator_refs_included": {
+          "const": false
+        },
+        "credentials_included": {
+          "const": false
+        },
+        "storage_paths_included": {
+          "const": false
+        }
+      }
     },
     "dashboard_degraded_source": {
       "type": "object",

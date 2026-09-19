@@ -1,0 +1,21 @@
+{
+  "response_schema_version": "ag_audit_evidence_verify_response.v1",
+  "request_id": "request-0867-negative",
+  "request_trace_id": "cccccccccccccccccccccccccccccccc",
+  "verification": {
+    "verification_schema_version": "ag_audit_evidence_package_verification.v1",
+    "verification_status": "FAILED",
+    "package_id": "attacker-controlled-package-id",
+    "expected_manifest_hash": null,
+    "observed_manifest_hash": null,
+    "expected_package_hash": null,
+    "observed_package_hash": null,
+    "issues": [
+      {
+        "issue_code": "package_hash_invalid",
+        "subject_id": null
+      }
+    ],
+    "issue_count": 1
+  }
+}
