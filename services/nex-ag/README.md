@@ -1434,6 +1434,10 @@ Unified operations:
   explicit live confirmation and environment-backed provider readiness checks.
   A passing request persists a pending outbox row but does not invoke the
   provider, keeping admission and execution as separate operator actions.
+- Slice 0855 adds a bounded live execution adapter for one selected recovery
+  dispatch. It rechecks runtime readiness, requires confirmation and injected
+  transport, reuses the dispatch worker/state machine, and surfaces only safe
+  provider result diagnostics in the recovery delivery read model.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

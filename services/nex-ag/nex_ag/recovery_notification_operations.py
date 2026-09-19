@@ -303,10 +303,34 @@ def _delivery_projection_item(record: Mapping[str, Any]) -> dict[str, Any]:
         "created_at": record.get("created_at"),
         "updated_at": record.get("updated_at"),
         "completed_at": record.get("completed_at"),
+        "execution": _delivery_execution_projection(record),
         "detail_path": (
             "/admin/v1/operator-review/dispatches/"
             f"{record.get('dispatch_id')}"
         ),
+    }
+
+
+def _delivery_execution_projection(record: Mapping[str, Any]) -> dict[str, Any] | None:
+    metadata = record.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return None
+    result = metadata.get("last_execution_result")
+    if not isinstance(result, Mapping):
+        return None
+    return {
+        "execution_status": result.get("execution_status"),
+        "provider_mode": result.get("provider_mode"),
+        "provider_category": result.get("provider_category"),
+        "provider_profile": result.get("provider_profile"),
+        "provider_result_hash": result.get("provider_result_hash"),
+        "http_status_code": result.get("http_status_code"),
+        "response_body_hash": result.get("response_body_hash"),
+        "attempt_count": int(result.get("attempt_count") or 0),
+        "safe_result_preview": result.get("safe_result_preview"),
+        "retryable": bool(result.get("retryable")),
+        "last_error_code": result.get("last_error_code"),
+        "executed_at": result.get("executed_at"),
     }
 
 

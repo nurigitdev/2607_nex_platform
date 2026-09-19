@@ -23,6 +23,9 @@ RECOVERY_NOTIFICATION_DELIVERY_EXECUTION_SCHEMA_VERSION = (
 RECOVERY_NOTIFICATION_LIVE_ADMISSION_SCHEMA_VERSION = (
     "ag_recovery_notification_live_admission.v1"
 )
+RECOVERY_NOTIFICATION_LIVE_EXECUTION_SCHEMA_VERSION = (
+    "ag_recovery_notification_live_execution.v1"
+)
 RECOVERY_NOTIFICATION_DELIVERY_CHANNELS = (
     "MOCK",
     "NOTIFICATION",
@@ -34,6 +37,9 @@ DEFAULT_RECOVERY_NOTIFICATION_DELIVERY_CHANNEL = "MOCK"
 DEFAULT_RECOVERY_NOTIFICATION_PROVIDER_PROFILE = "mock-default"
 DEFAULT_RECOVERY_NOTIFICATION_DELIVERY_WORKER_ID = (
     "ag-recovery-notification-delivery-worker"
+)
+DEFAULT_RECOVERY_NOTIFICATION_LIVE_WORKER_ID = (
+    "ag-recovery-notification-live-delivery-worker"
 )
 RECOVERY_NOTIFICATION_LIVE_CHANNELS = (
     "NOTIFICATION",
@@ -601,6 +607,162 @@ def run_recovery_notification_delivery_mock_once(
             "request_signature_included": False,
             "idempotency_key_included": False,
             "provider_secrets_included": False,
+            "database_urls_included": False,
+        },
+    }
+
+
+def run_recovery_notification_delivery_live_once(
+    service: Any,
+    *,
+    dispatch_id: str,
+    request_id: str,
+    provider_config: Mapping[str, Any],
+    live_http_transport: Any | None = None,
+    trace_id: str | None = None,
+    worker_id: str = DEFAULT_RECOVERY_NOTIFICATION_LIVE_WORKER_ID,
+    confirm_run: bool = False,
+    executed_at: str | None = None,
+) -> dict[str, Any]:
+    normalized_dispatch_id = _required_text(
+        dispatch_id,
+        field="dispatch_id",
+        error_code="ag.recovery_notification_live_execution_dispatch_id_required",
+    )
+    normalized_request_id = _required_text(
+        request_id,
+        field="request_id",
+        error_code="ag.recovery_notification_live_execution_request_id_required",
+    )
+    normalized_worker_id = _required_text(
+        worker_id,
+        field="worker_id",
+        error_code="ag.recovery_notification_live_execution_worker_id_required",
+    )
+    config = _mapping(
+        provider_config,
+        field="provider_config",
+        error_code="ag.recovery_notification_live_execution_config_invalid",
+    )
+    dispatch = service.get_escalation_dispatch(normalized_dispatch_id)
+    metadata = _mapping(
+        dispatch.get("metadata"),
+        field="dispatch.metadata",
+        error_code="ag.recovery_notification_live_execution_metadata_invalid",
+    )
+    marker = metadata.get("recovery_notification_delivery")
+    if not isinstance(marker, Mapping):
+        raise RecoveryNotificationDeliveryError(
+            "dispatch is not a recovery notification delivery.",
+            error_code="ag.recovery_notification_live_execution_marker_required",
+            status_code=409,
+        )
+    channel_type = str(dispatch.get("channel_type") or "").upper()
+    if channel_type not in RECOVERY_NOTIFICATION_LIVE_CHANNELS:
+        raise RecoveryNotificationDeliveryError(
+            "bounded live execution requires a recovery notification channel.",
+            error_code="ag.recovery_notification_live_execution_channel_unsupported",
+            status_code=409,
+        )
+    if (
+        config.get("configured_provider_mode") != "live_http"
+        or config.get("effective_provider_mode") != "live_http"
+        or config.get("live_network_calls_enabled") is not True
+    ):
+        raise RecoveryNotificationDeliveryError(
+            "Recovery notification live HTTP execution is not enabled.",
+            error_code="ag.recovery_notification_live_execution_not_enabled",
+            status_code=409,
+        )
+    endpoint = _nested_mapping(
+        config,
+        "endpoints",
+        "notification",
+        error_code="ag.recovery_notification_live_execution_endpoint_invalid",
+    )
+    if endpoint.get("configured") is not True:
+        raise RecoveryNotificationDeliveryError(
+            "Recovery notification live HTTP endpoint is not configured.",
+            error_code="ag.recovery_notification_live_execution_endpoint_required",
+            status_code=409,
+        )
+    profile_id = _required_text(
+        dispatch.get("provider_profile"),
+        field="dispatch.provider_profile",
+        error_code="ag.recovery_notification_live_execution_profile_required",
+    )
+    profile = _nested_mapping(
+        config,
+        "profiles",
+        "live_readiness",
+        profile_id,
+        error_code="ag.recovery_notification_live_execution_profile_unknown",
+    )
+    channel_types = profile.get("channel_types")
+    if not isinstance(channel_types, list) or channel_type not in channel_types:
+        raise RecoveryNotificationDeliveryError(
+            "Recovery notification live execution profile does not support channel.",
+            error_code="ag.recovery_notification_live_execution_profile_mismatch",
+            status_code=409,
+        )
+    if confirm_run and live_http_transport is None:
+        raise RecoveryNotificationDeliveryError(
+            "Confirmed live execution requires an injected HTTP transport.",
+            error_code="ag.recovery_notification_live_execution_transport_required",
+            status_code=503,
+        )
+    worker_run = run_dispatch_execution_worker_once(
+        service,
+        request_id=normalized_request_id,
+        trace_id=_optional_text(trace_id),
+        worker_id=normalized_worker_id,
+        batch_limit=1,
+        provider_profile=profile_id,
+        provider_mode="live_http",
+        provider_config=config,
+        live_http_transport=live_http_transport,
+        confirm_run=confirm_run,
+        executed_at=executed_at,
+        candidate_dispatch_ids={normalized_dispatch_id},
+    )
+    processed_count = int(worker_run.get("processed_count") or 0)
+    execution_status = (
+        "BLOCKED"
+        if worker_run.get("run_status") == "BLOCKED"
+        else "COMPLETED" if processed_count else "NOOP"
+    )
+    return {
+        "live_execution_schema_version": (
+            RECOVERY_NOTIFICATION_LIVE_EXECUTION_SCHEMA_VERSION
+        ),
+        "execution_status": execution_status,
+        "dispatch_id": normalized_dispatch_id,
+        "case_id": dispatch.get("case_id"),
+        "escalation_id": dispatch.get("escalation_id"),
+        "notification_plan_id": marker.get("notification_plan_id"),
+        "worker_run": worker_run,
+        "delivery": {
+            "channel_type": channel_type,
+            "provider_profile": profile_id,
+            "provider_mode": "live_http",
+            "provider_invocation_performed": bool(
+                confirm_run and processed_count
+            ),
+        },
+        "guardrails": {
+            "existing_dispatch_execution_worker_reused": True,
+            "target_dispatch_filter_applied": True,
+            "batch_limit": 1,
+            "explicit_confirmation_required": True,
+            "injected_transport_required": True,
+            "new_tables_required": False,
+        },
+        "redaction": {
+            "raw_notification_payload_included": False,
+            "endpoint_value_included": False,
+            "authorization_header_included": False,
+            "provider_secret_included": False,
+            "idempotency_key_included": False,
             "database_urls_included": False,
         },
     }
