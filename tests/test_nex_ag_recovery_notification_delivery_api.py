@@ -11,6 +11,7 @@ from nex_ag.operator_review_cases import (
     OperatorReviewEscalationDispatchStore,
     OperatorReviewEscalationStore,
 )
+from nex_ag.operator_reviews import OperatorReviewNoteError
 from nex_runtime import (
     InMemoryWorkerHeartbeatStore,
     SERVICE_SPECS,
@@ -65,6 +66,7 @@ def build_client(
     *,
     case: dict[str, Any] | None = None,
     escalation: dict[str, Any] | None = None,
+    dispatch_store_override: Any | None = None,
 ) -> tuple[
     TestClient,
     OperatorReviewCaseStore,
@@ -73,7 +75,9 @@ def build_client(
 ]:
     case_store = OperatorReviewCaseStore()
     escalation_store = OperatorReviewEscalationStore()
-    dispatch_store = OperatorReviewEscalationDispatchStore()
+    dispatch_store = (
+        dispatch_store_override or OperatorReviewEscalationDispatchStore()
+    )
     if case is not None:
         case_store.save(case)
     if escalation is not None:
@@ -268,4 +272,49 @@ def test_delivery_route_returns_preview_validation_error(
     assert response.status_code == 400
     assert response.json()["error_code"] == (
         "ag.operator_review_dispatch_daemon_liveness_worker_id_invalid"
+    )
+
+
+def test_delivery_read_route_is_protected_and_filters_recovery_dispatches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NEX_AG_RECOVERY_NOTIFICATION_DELIVERY_ENABLED", "1")
+    client, *_ = build_client(case=case_record(), escalation=escalation_record())
+
+    assert client.get(PATH).status_code == 401
+    created = client.post(PATH, json=request_payload(), headers=auth_headers())
+    response = client.get(PATH, headers=auth_headers())
+
+    assert created.status_code == 201
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["projection_status"] == "READY"
+    assert payload["summary"]["total"] == 1
+    assert payload["recent"][0]["dispatch_id"] == (
+        created.json()["dispatch_record"]["dispatch_id"]
+    )
+    assert payload["read_route"] == {
+        "path": PATH,
+        "method": "GET",
+        "protected": True,
+        "mutation": False,
+    }
+
+
+def test_delivery_read_route_normalizes_store_error() -> None:
+    class FailingDispatchStore:
+        def list_dispatches(self, **_kwargs):
+            raise OperatorReviewNoteError(
+                status_code=503,
+                error_code="ag.operator_review_case_store_unavailable",
+                detail="dispatch source unavailable",
+            )
+
+    client, *_ = build_client(dispatch_store_override=FailingDispatchStore())
+
+    response = client.get(PATH, headers=auth_headers())
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == (
+        "ag.operator_review_case_store_unavailable"
     )

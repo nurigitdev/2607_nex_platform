@@ -132,6 +132,7 @@ from nex_ag.recovery_notification_policy import (
     build_recovery_notification_plan,
 )
 from nex_ag.recovery_notification_operations import (
+    build_recovery_notification_delivery_operations_projection,
     build_recovery_notification_operations_projection,
 )
 from nex_ag.recovery_notification_delivery import (
@@ -2617,6 +2618,27 @@ def register_unified_operation_routes(
             dispatch_store=operator_review_escalation_dispatch_store,
         )
 
+    @app.get(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/"
+        "recovery-notification-deliveries",
+        response_model=None,
+        operation_id="listAgOperatorReviewDispatchDaemonRecoveryNotificationDeliveries",
+        tags=["Operations"],
+    )
+    def list_operator_review_dispatch_daemon_recovery_notification_deliveries(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        limit: int = Query(default=50, ge=1, le=50),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        return _dispatch_daemon_recovery_notification_delivery_list_route_response(
+            request,
+            dispatch_store=operator_review_escalation_dispatch_store,
+            limit=limit,
+        )
+
     @app.post(
         "/admin/v1/operator-review/dispatch-daemon/liveness/ack-state",
         response_model=None,
@@ -4115,6 +4137,37 @@ def _recovery_notification_idempotency_key(value: object) -> str:
             error_code="ag.recovery_notification_delivery_idempotency_key_invalid",
         )
     return normalized
+
+
+def _dispatch_daemon_recovery_notification_delivery_list_route_response(
+    request: Request,
+    *,
+    dispatch_store: Any | None,
+    limit: int,
+) -> dict[str, Any] | JSONResponse:
+    try:
+        selected_store = (
+            dispatch_store
+            or default_operator_review_escalation_dispatch_store(request.app)
+        )
+        records = selected_store.list_dispatches(limit=500)
+        projection = build_recovery_notification_delivery_operations_projection(
+            [dict(record) for record in records],
+            limit=limit,
+            request_trace_id=trace_id_from_headers(request),
+        )
+        projection["read_route"] = {
+            "path": (
+                "/admin/v1/operator-review/dispatch-daemon/liveness/"
+                "recovery-notification-deliveries"
+            ),
+            "method": "GET",
+            "protected": True,
+            "mutation": False,
+        }
+        return projection
+    except (OperatorReviewNoteError, RecoveryNotificationDeliveryError) as exc:
+        return _dispatch_daemon_control_problem_response(request, exc)
 
 
 def _dispatch_daemon_liveness_ack_state_route_response(
@@ -9396,6 +9449,13 @@ def _dashboard_operator_review_escalation_dispatch_section(
         daemon_recovery,
         request_trace_id=request_trace_id,
     )
+    recovery_notification["delivery"] = (
+        build_recovery_notification_delivery_operations_projection(
+            [],
+            limit=limit,
+            request_trace_id=request_trace_id,
+        )
+    )
     ack_expiry_automation = (
         build_liveness_ack_expiry_automation_operations_projection(
             control_event_store,
@@ -9450,6 +9510,19 @@ def _dashboard_operator_review_escalation_dispatch_section(
             ),
             status="UNAVAILABLE",
         )
+        recovery_notification["delivery"] = (
+            build_recovery_notification_delivery_operations_projection(
+                None,
+                error_code=str(
+                    getattr(
+                        exc,
+                        "error_code",
+                        "ag.recovery_notification_delivery_source_unavailable",
+                    )
+                ),
+                request_trace_id=request_trace_id,
+            )
+        )
         return {
             **_empty_dashboard_operator_review_escalation_dispatch_section(
                 source_statuses
@@ -9464,6 +9537,13 @@ def _dashboard_operator_review_escalation_dispatch_section(
         }
 
     summary = _operator_review_escalation_dispatch_dashboard_summary(dispatch_list)
+    recovery_notification["delivery"] = (
+        build_recovery_notification_delivery_operations_projection(
+            visible_records,
+            limit=limit,
+            request_trace_id=request_trace_id,
+        )
+    )
     source_statuses[
         "nex-ag"
     ] = _dashboard_operator_review_escalation_dispatch_source_status(

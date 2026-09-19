@@ -171,3 +171,112 @@ def test_recovery_notification_operations_helpers() -> None:
     }
     error = RecoveryNotificationPolicyError("bad", error_code="test")
     assert error.error_code == "test"
+
+
+def delivery_record(
+    dispatch_id: str,
+    status: str,
+    *,
+    updated_at: str,
+    attempt_count: int = 0,
+    recovery: bool = True,
+) -> dict[str, Any]:
+    return {
+        "dispatch_id": dispatch_id,
+        "case_id": "case-0845",
+        "escalation_id": "escalation-0845",
+        "dispatch_status": status,
+        "dispatch_intent": "NOTIFY_OPERATOR",
+        "channel_type": "MOCK",
+        "provider_profile": "mock-default",
+        "target_service": "nex-ag",
+        "target_kind": "dispatch_daemon",
+        "target_id": "ag-dispatch-execution-daemon",
+        "safe_subject": "Safe recovery subject",
+        "safe_body_preview": "Safe recovery body",
+        "attempt_count": attempt_count,
+        "last_error_code": None,
+        "created_at": updated_at,
+        "updated_at": updated_at,
+        "completed_at": None,
+        "metadata": (
+            {"recovery_notification_delivery": {"request_signature": {}}}
+            if recovery
+            else {}
+        ),
+    }
+
+
+def test_recovery_notification_delivery_operations_projection() -> None:
+    result = operations.build_recovery_notification_delivery_operations_projection(
+        [
+            delivery_record(
+                "dispatch-old",
+                "PENDING",
+                updated_at="2026-09-19T01:00:00Z",
+            ),
+            delivery_record(
+                "dispatch-new",
+                "SUCCEEDED",
+                updated_at="2026-09-19T02:00:00Z",
+                attempt_count=1,
+            ),
+            delivery_record(
+                "dispatch-unrelated",
+                "FAILED",
+                updated_at="2026-09-19T03:00:00Z",
+                recovery=False,
+            ),
+        ],
+        limit=1,
+        request_trace_id="trace-0845",
+    )
+
+    assert result["projection_status"] == "READY"
+    assert result["delivery_status"] == "ACTIVE"
+    assert result["summary"]["total"] == 2
+    assert result["summary"]["pending"] == 1
+    assert result["summary"]["succeeded"] == 1
+    assert result["summary"]["provider_invocation_performed"] is True
+    assert result["by_status"] == {"PENDING": 1, "SUCCEEDED": 1}
+    assert [item["dispatch_id"] for item in result["recent"]] == ["dispatch-new"]
+    assert result["request_trace_id"] == "trace-0845"
+    assert not any(result["redaction"].values())
+    assert all(
+        sensitive_key not in item
+        for item in result["recent"]
+        for sensitive_key in (
+            "request_signature",
+            "provider_payload_hash",
+            "safe_body_hash",
+            "idempotency_key_hash",
+        )
+    )
+
+
+def test_recovery_notification_delivery_operations_empty_and_degraded() -> None:
+    empty = operations.build_recovery_notification_delivery_operations_projection(
+        [],
+        limit=0,
+    )
+    degraded = operations.build_recovery_notification_delivery_operations_projection(
+        None,
+        error_code="ag.test.source_unavailable",
+        request_trace_id="trace-degraded-0845",
+    )
+
+    assert empty["delivery_status"] == "EMPTY"
+    assert empty["summary"]["total"] == 0
+    assert degraded["projection_status"] == "DEGRADED"
+    assert degraded["delivery_status"] == "SOURCE_UNAVAILABLE"
+    assert degraded["source_statuses"]["nex-ag"]["error_code"] == (
+        "ag.test.source_unavailable"
+    )
+    assert degraded["request_trace_id"] == "trace-degraded-0845"
+
+
+def test_recovery_notification_delivery_operations_helper_edges() -> None:
+    assert operations._is_recovery_notification_dispatch({}) is False
+    assert operations._is_recovery_notification_dispatch(
+        {"metadata": {"recovery_notification_delivery": "invalid"}}
+    ) is False
