@@ -279,6 +279,7 @@ node apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_recovery_notification_policy_boundary_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_recovery_notification_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_recovery_notification_delivery_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ag_recovery_notification_delivery_privacy_runbook_evidence.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_recovery_notification_privacy_runbook_evidence.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s84_ag_recovery_notification_policy_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_recovery_notification_delivery_boundary_audit.py --summary

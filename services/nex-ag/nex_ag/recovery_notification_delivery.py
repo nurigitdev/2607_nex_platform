@@ -472,12 +472,24 @@ def _delivery_mutation_response(
         ),
         "case_id": handoff.get("case_id"),
         "escalation_id": handoff.get("escalation_id"),
-        "dispatch_record": dispatch_record,
+        "dispatch_record": _without_private_request_signatures(dispatch_record),
         "delivery": {
             "dispatch_persistence_performed": idempotency_status == "NEW",
             "provider_invocation_performed": False,
         },
     }
+
+
+def _without_private_request_signatures(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _without_private_request_signatures(child)
+            for key, child in value.items()
+            if str(key) != "request_signature"
+        }
+    if isinstance(value, list):
+        return [_without_private_request_signatures(child) for child in value]
+    return value
 
 
 def _assert_admission_matches_plan(

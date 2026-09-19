@@ -126,6 +126,14 @@ def test_delivery_route_is_protected_persists_and_replays(
     assert replayed.status_code == 200
     assert replayed.json()["idempotency_status"] == "REPLAYED"
     assert replayed.json()["delivery"]["dispatch_persistence_performed"] is False
+    assert "request_signature" not in str(created.json())
+    assert "request_signature" not in str(replayed.json())
+    persisted_metadata = dispatch_store.get(
+        created.json()["dispatch_record"]["dispatch_id"]
+    )["metadata"]
+    assert "request_signature" in persisted_metadata[
+        "recovery_notification_delivery"
+    ]
     assert len(dispatch_store.records) == 1
 
 
