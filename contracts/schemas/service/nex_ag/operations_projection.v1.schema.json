@@ -272,6 +272,10 @@
     "operator_review_escalation_dispatches": {
       "$ref": "#/$defs/dashboard_operator_review_escalation_dispatches"
     },
+    "audit_integrity": {
+      "type": "object",
+      "additionalProperties": true
+    },
     "replay_candidates": {
       "type": "array",
       "items": {

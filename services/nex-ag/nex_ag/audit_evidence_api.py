@@ -12,6 +12,11 @@ from nex_ag.audit_evidence_package import (
     build_audit_evidence_package,
     verify_audit_evidence_package,
 )
+from nex_ag.audit_evidence_operations import (
+    AUDIT_EVIDENCE_PACKAGE_GENERATED_EVENT_TYPE,
+    AUDIT_EVIDENCE_PACKAGE_VERIFIED_EVENT_TYPE,
+    build_audit_evidence_operations_projection,
+)
 from nex_ag.audit_integrity import (
     MAX_AUDIT_INTEGRITY_EVENTS,
     AuditIntegrityError,
@@ -36,12 +41,6 @@ AUDIT_EVIDENCE_PACKAGE_RESPONSE_SCHEMA_VERSION = (
 )
 AUDIT_EVIDENCE_VERIFY_RESPONSE_SCHEMA_VERSION = (
     "ag_audit_evidence_verify_response.v1"
-)
-AUDIT_EVIDENCE_PACKAGE_GENERATED_EVENT_TYPE = (
-    "ag.audit_evidence_package.generated"
-)
-AUDIT_EVIDENCE_PACKAGE_VERIFIED_EVENT_TYPE = (
-    "ag.audit_evidence_package.verified"
 )
 _CREATE_FIELDS = {"trace_id", "expected_event_ids", "required_event_types"}
 
@@ -158,6 +157,24 @@ def register_audit_evidence_routes(
         service_id="nex-ag",
         store=audit_event_store or event_store,
     )
+
+    @app.get("/admin/v1/operations/audit-integrity", response_model=None)
+    def get_audit_evidence_operations(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        service_id: str | None = None,
+        recent_limit: int = 5,
+    ):
+        auth_problem = _authorize_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        return build_audit_evidence_operations_projection(
+            event_store=event_store,
+            export_store=export_store,
+            service_id=service_id,
+            recent_limit=recent_limit,
+            request_trace_id=trace_id_from_headers(request),
+        )
 
     @app.post("/admin/v1/audit-integrity/evidence-packages", response_model=None)
     def create_audit_evidence_package(

@@ -1474,6 +1474,9 @@ Unified operations:
 - Slice 0865 exposes package creation and verification through protected admin
   routes. Source records are selected from server stores, caller package input
   is never echoed, and metadata-only operational events record both actions.
+- Slice 0866 adds a protected audit-integrity operations projection and unified
+  dashboard section with safe package-action counts, export hash readiness,
+  bounded recent metadata, and explicit source availability states.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

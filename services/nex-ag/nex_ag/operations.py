@@ -164,6 +164,9 @@ from nex_ag.operator_review_dispatch_execution import (
     run_dispatch_execution_daemon_tick_once,
 )
 from nex_ag.operator_reviews import ALLOWED_TARGET_SERVICES, OperatorReviewNoteError
+from nex_ag.audit_evidence_operations import (
+    build_audit_evidence_operations_projection,
+)
 from nex_runtime.retrieval_policies import list_retrieval_policy_records
 
 DEFAULT_OPERATIONAL_EVENT_STORE = InMemoryOperationalEventStore()
@@ -6156,6 +6159,13 @@ def build_operations_dashboard_snapshot_projection(
             request_trace_id=request_trace_id,
         )
     )
+    audit_integrity = build_audit_evidence_operations_projection(
+        event_store=selected_event_store,
+        export_store=operator_review_export_store,
+        service_id=service_id,
+        recent_limit=normalized_recent_limit,
+        request_trace_id=request_trace_id,
+    )
     degraded_sources = _dashboard_degraded_sources(
         operation_sources=readiness_projection["sources"],
         job_source_statuses=rollup_projection["job_source_statuses"],
@@ -6222,6 +6232,7 @@ def build_operations_dashboard_snapshot_projection(
         "operator_review_escalation_dispatches": (
             operator_review_escalation_dispatches
         ),
+        "audit_integrity": audit_integrity,
         "degraded_sources": degraded_sources,
         "job_source_statuses": rollup_projection["job_source_statuses"],
         "event_source_statuses": rollup_projection["event_source_statuses"],
