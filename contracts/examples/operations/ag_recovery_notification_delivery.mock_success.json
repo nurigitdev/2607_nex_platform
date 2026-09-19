@@ -1,0 +1,62 @@
+{
+  "projection_schema_version": "ag_recovery_notification_delivery_operations_projection.v1",
+  "projection_status": "READY",
+  "delivery_status": "ACTIVE",
+  "summary": {
+    "total": 1,
+    "pending": 1,
+    "dispatching": 0,
+    "succeeded": 0,
+    "failed": 0,
+    "retry_wait": 0,
+    "cancelled": 0,
+    "provider_invocation_performed": false
+  },
+  "by_status": {
+    "PENDING": 1
+  },
+  "recent": [
+    {
+      "dispatch_id": "dispatch-0846",
+      "case_id": "case-0846",
+      "escalation_id": "escalation-0846",
+      "dispatch_status": "PENDING",
+      "dispatch_intent": "NOTIFY_OPERATOR",
+      "channel_type": "MOCK",
+      "provider_profile": "mock-default",
+      "target_service": "nex-ag",
+      "target_kind": "dispatch_daemon",
+      "target_id": "ag-dispatch-execution-daemon",
+      "safe_subject": "AG dispatch recovery attention",
+      "safe_body_preview": "Dispatch recovery policy authorized delivery.",
+      "attempt_count": 0,
+      "last_error_code": null,
+      "created_at": "2026-09-19T00:00:00Z",
+      "updated_at": "2026-09-19T00:00:00Z",
+      "completed_at": null,
+      "detail_path": "/admin/v1/operator-review/dispatches/dispatch-0846"
+    }
+  ],
+  "source_statuses": {
+    "nex-ag": {
+      "status": "READY",
+      "service_id": "nex-ag",
+      "source_kind": "existing_escalation_dispatch_outbox",
+      "source_table": "ag_op_esc_dispatches",
+      "new_tables_required": false
+    }
+  },
+  "delivery_path": "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-notification-deliveries",
+  "new_tables_required": false,
+  "redaction": {
+    "raw_recovery_plan_included": false,
+    "raw_notification_payload_included": false,
+    "provider_payload_hashes_included": false,
+    "safe_body_hashes_included": false,
+    "request_signatures_included": false,
+    "provider_endpoints_included": false,
+    "provider_tokens_included": false,
+    "database_urls_included": false,
+    "idempotency_keys_included": false
+  }
+}

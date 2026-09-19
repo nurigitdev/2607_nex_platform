@@ -1,0 +1,462 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ag/recovery_notification_delivery.v1.schema.json",
+  "title": "NeX AG Recovery Notification Delivery Surface",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/mutation_response"
+    },
+    {
+      "$ref": "#/$defs/operations_projection"
+    }
+  ],
+  "$defs": {
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nullable_string": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "non_negative_integer": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "escalation_id"
+      ],
+      "properties": {
+        "case_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "escalation_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "channel_type": {
+          "type": "string",
+          "enum": [
+            "MOCK",
+            "NOTIFICATION",
+            "EMAIL",
+            "WEBHOOK",
+            "INCIDENT"
+          ]
+        },
+        "provider_profile": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "delivery_route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "method",
+        "protected",
+        "mutation"
+      ],
+      "properties": {
+        "path": {
+          "const": "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-notification-deliveries"
+        },
+        "method": {
+          "type": "string",
+          "enum": [
+            "GET",
+            "POST"
+          ]
+        },
+        "protected": {
+          "const": true
+        },
+        "mutation": {
+          "type": "boolean"
+        }
+      }
+    },
+    "mutation_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "delivery_mutation_schema_version",
+        "mutation_status",
+        "idempotency_status",
+        "notification_plan_id",
+        "case_id",
+        "escalation_id",
+        "dispatch_record",
+        "delivery",
+        "delivery_route"
+      ],
+      "properties": {
+        "delivery_mutation_schema_version": {
+          "const": "ag_recovery_notification_delivery_mutation.v1"
+        },
+        "mutation_status": {
+          "const": "PERSISTED"
+        },
+        "idempotency_status": {
+          "type": "string",
+          "enum": [
+            "NEW",
+            "REPLAYED"
+          ]
+        },
+        "notification_plan_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "case_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "escalation_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "dispatch_record": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "dispatch_schema_version",
+            "dispatch_id",
+            "case_id",
+            "escalation_id",
+            "dispatch_status"
+          ],
+          "properties": {
+            "dispatch_schema_version": {
+              "const": "ag_operator_review_escalation_dispatch.v1"
+            },
+            "dispatch_id": {
+              "$ref": "#/$defs/non_empty_string"
+            },
+            "case_id": {
+              "$ref": "#/$defs/non_empty_string"
+            },
+            "escalation_id": {
+              "$ref": "#/$defs/non_empty_string"
+            },
+            "dispatch_status": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "DISPATCHING",
+                "SUCCEEDED",
+                "FAILED",
+                "RETRY_WAIT",
+                "CANCELLED"
+              ]
+            }
+          }
+        },
+        "delivery": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "dispatch_persistence_performed",
+            "provider_invocation_performed"
+          ],
+          "properties": {
+            "dispatch_persistence_performed": {
+              "type": "boolean"
+            },
+            "provider_invocation_performed": {
+              "const": false
+            }
+          }
+        },
+        "delivery_route": {
+          "$ref": "#/$defs/delivery_route"
+        }
+      }
+    },
+    "delivery_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispatch_id",
+        "case_id",
+        "escalation_id",
+        "dispatch_status",
+        "dispatch_intent",
+        "channel_type",
+        "provider_profile",
+        "target_service",
+        "target_kind",
+        "target_id",
+        "safe_subject",
+        "safe_body_preview",
+        "attempt_count",
+        "last_error_code",
+        "created_at",
+        "updated_at",
+        "completed_at",
+        "detail_path"
+      ],
+      "properties": {
+        "dispatch_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "case_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "escalation_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "dispatch_status": {
+          "type": "string",
+          "enum": [
+            "PENDING",
+            "DISPATCHING",
+            "SUCCEEDED",
+            "FAILED",
+            "RETRY_WAIT",
+            "CANCELLED"
+          ]
+        },
+        "dispatch_intent": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "channel_type": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "provider_profile": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "target_service": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "target_kind": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "target_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "safe_subject": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "safe_body_preview": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "attempt_count": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "last_error_code": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "created_at": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "completed_at": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "detail_path": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "pending",
+        "dispatching",
+        "succeeded",
+        "failed",
+        "retry_wait",
+        "cancelled",
+        "provider_invocation_performed"
+      ],
+      "properties": {
+        "total": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "pending": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "dispatching": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "succeeded": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "failed": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "retry_wait": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "cancelled": {
+          "$ref": "#/$defs/non_negative_integer"
+        },
+        "provider_invocation_performed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "source_status": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "status",
+        "service_id",
+        "source_kind",
+        "source_table",
+        "new_tables_required"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "UNAVAILABLE"
+          ]
+        },
+        "service_id": {
+          "const": "nex-ag"
+        },
+        "source_kind": {
+          "const": "existing_escalation_dispatch_outbox"
+        },
+        "source_table": {
+          "const": "ag_op_esc_dispatches"
+        },
+        "new_tables_required": {
+          "const": false
+        }
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_recovery_plan_included",
+        "raw_notification_payload_included",
+        "provider_payload_hashes_included",
+        "safe_body_hashes_included",
+        "request_signatures_included",
+        "provider_endpoints_included",
+        "provider_tokens_included",
+        "database_urls_included",
+        "idempotency_keys_included"
+      ],
+      "properties": {
+        "raw_recovery_plan_included": {
+          "const": false
+        },
+        "raw_notification_payload_included": {
+          "const": false
+        },
+        "provider_payload_hashes_included": {
+          "const": false
+        },
+        "safe_body_hashes_included": {
+          "const": false
+        },
+        "request_signatures_included": {
+          "const": false
+        },
+        "provider_endpoints_included": {
+          "const": false
+        },
+        "provider_tokens_included": {
+          "const": false
+        },
+        "database_urls_included": {
+          "const": false
+        },
+        "idempotency_keys_included": {
+          "const": false
+        }
+      }
+    },
+    "operations_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "projection_status",
+        "delivery_status",
+        "summary",
+        "by_status",
+        "recent",
+        "source_statuses",
+        "delivery_path",
+        "new_tables_required",
+        "redaction"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "const": "ag_recovery_notification_delivery_operations_projection.v1"
+        },
+        "projection_status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "DEGRADED"
+          ]
+        },
+        "delivery_status": {
+          "type": "string",
+          "enum": [
+            "ACTIVE",
+            "EMPTY",
+            "SOURCE_UNAVAILABLE"
+          ]
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "by_status": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/non_negative_integer"
+          }
+        },
+        "recent": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/delivery_item"
+          }
+        },
+        "source_statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/source_status"
+          }
+        },
+        "delivery_path": {
+          "const": "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-notification-deliveries"
+        },
+        "request_trace_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "new_tables_required": {
+          "const": false
+        },
+        "redaction": {
+          "$ref": "#/$defs/redaction"
+        },
+        "read_route": {
+          "$ref": "#/$defs/delivery_route"
+        }
+      }
+    }
+  }
+}

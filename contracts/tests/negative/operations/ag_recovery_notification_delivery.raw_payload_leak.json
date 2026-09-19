@@ -1,0 +1,9 @@
+{
+  "case_id": "case-0846",
+  "escalation_id": "escalation-0846",
+  "channel_type": "MOCK",
+  "provider_profile": "mock-default",
+  "raw_notification_payload": {
+    "body": "must not cross the contract boundary"
+  }
+}

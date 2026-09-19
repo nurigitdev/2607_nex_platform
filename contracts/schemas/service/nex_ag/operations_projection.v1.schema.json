@@ -2753,6 +2753,7 @@
         "policy",
         "summary",
         "preview",
+        "delivery",
         "preview_path",
         "source_statuses",
         "new_tables_required",
@@ -2808,8 +2809,7 @@
           ]
         },
         "delivery": {
-          "type": "object",
-          "additionalProperties": true
+          "$ref": "#/$defs/recovery_notification_delivery_operations"
         },
         "preview_path": {
           "const": "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-notification-preview"
@@ -2830,6 +2830,259 @@
         "redaction": {
           "type": "object",
           "additionalProperties": true
+        }
+      }
+    },
+    "recovery_notification_delivery_operations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "projection_status",
+        "delivery_status",
+        "summary",
+        "by_status",
+        "recent",
+        "source_statuses",
+        "delivery_path",
+        "new_tables_required",
+        "redaction"
+      ],
+      "properties": {
+        "projection_schema_version": {
+          "const": "ag_recovery_notification_delivery_operations_projection.v1"
+        },
+        "projection_status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "DEGRADED"
+          ]
+        },
+        "delivery_status": {
+          "type": "string",
+          "enum": [
+            "ACTIVE",
+            "EMPTY",
+            "SOURCE_UNAVAILABLE"
+          ]
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "total",
+            "pending",
+            "dispatching",
+            "succeeded",
+            "failed",
+            "retry_wait",
+            "cancelled",
+            "provider_invocation_performed"
+          ],
+          "properties": {
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "pending": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "dispatching": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "succeeded": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "failed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "retry_wait": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cancelled": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "provider_invocation_performed": {
+              "type": "boolean"
+            }
+          }
+        },
+        "by_status": {
+          "$ref": "#/$defs/string_integer_counts"
+        },
+        "recent": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "dispatch_id",
+              "case_id",
+              "escalation_id",
+              "dispatch_status",
+              "dispatch_intent",
+              "channel_type",
+              "provider_profile",
+              "target_service",
+              "target_kind",
+              "target_id",
+              "safe_subject",
+              "safe_body_preview",
+              "attempt_count",
+              "last_error_code",
+              "created_at",
+              "updated_at",
+              "completed_at",
+              "detail_path"
+            ],
+            "properties": {
+              "dispatch_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "case_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "escalation_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "dispatch_status": {
+                "type": "string"
+              },
+              "dispatch_intent": {
+                "type": "string"
+              },
+              "channel_type": {
+                "type": "string"
+              },
+              "provider_profile": {
+                "type": "string"
+              },
+              "target_service": {
+                "type": "string"
+              },
+              "target_kind": {
+                "type": "string"
+              },
+              "target_id": {
+                "type": "string"
+              },
+              "safe_subject": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "safe_body_preview": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "attempt_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "last_error_code": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "created_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "updated_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "completed_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "detail_path": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "source_statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/source_status"
+          }
+        },
+        "delivery_path": {
+          "const": "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-notification-deliveries"
+        },
+        "request_trace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "new_tables_required": {
+          "const": false
+        },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "raw_recovery_plan_included",
+            "raw_notification_payload_included",
+            "provider_payload_hashes_included",
+            "safe_body_hashes_included",
+            "request_signatures_included",
+            "provider_endpoints_included",
+            "provider_tokens_included",
+            "database_urls_included",
+            "idempotency_keys_included"
+          ],
+          "properties": {
+            "raw_recovery_plan_included": {
+              "const": false
+            },
+            "raw_notification_payload_included": {
+              "const": false
+            },
+            "provider_payload_hashes_included": {
+              "const": false
+            },
+            "safe_body_hashes_included": {
+              "const": false
+            },
+            "request_signatures_included": {
+              "const": false
+            },
+            "provider_endpoints_included": {
+              "const": false
+            },
+            "provider_tokens_included": {
+              "const": false
+            },
+            "database_urls_included": {
+              "const": false
+            },
+            "idempotency_keys_included": {
+              "const": false
+            }
+          }
         }
       }
     },

@@ -1147,6 +1147,45 @@
           "database_urls_included": false
         }
       },
+      "delivery": {
+        "projection_schema_version": "ag_recovery_notification_delivery_operations_projection.v1",
+        "projection_status": "READY",
+        "delivery_status": "EMPTY",
+        "summary": {
+          "total": 0,
+          "pending": 0,
+          "dispatching": 0,
+          "succeeded": 0,
+          "failed": 0,
+          "retry_wait": 0,
+          "cancelled": 0,
+          "provider_invocation_performed": false
+        },
+        "by_status": {},
+        "recent": [],
+        "source_statuses": {
+          "nex-ag": {
+            "status": "READY",
+            "service_id": "nex-ag",
+            "source_kind": "existing_escalation_dispatch_outbox",
+            "source_table": "ag_op_esc_dispatches",
+            "new_tables_required": false
+          }
+        },
+        "delivery_path": "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-notification-deliveries",
+        "new_tables_required": false,
+        "redaction": {
+          "raw_recovery_plan_included": false,
+          "raw_notification_payload_included": false,
+          "provider_payload_hashes_included": false,
+          "safe_body_hashes_included": false,
+          "request_signatures_included": false,
+          "provider_endpoints_included": false,
+          "provider_tokens_included": false,
+          "database_urls_included": false,
+          "idempotency_keys_included": false
+        }
+      },
       "preview_path": "/admin/v1/operator-review/dispatch-daemon/liveness/recovery-notification-preview",
       "source_statuses": {
         "nex-ag": {

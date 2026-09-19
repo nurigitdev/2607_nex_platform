@@ -1955,6 +1955,87 @@ paths:
           description: Service claim is missing or invalid.
         "400":
           description: Recovery notification policy request is invalid.
+  /admin/v1/operator-review/dispatch-daemon/liveness/recovery-notification-deliveries:
+    get:
+      operationId: listAgOperatorReviewDispatchDaemonRecoveryNotificationDeliveries
+      tags:
+        - Operations
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 50
+      responses:
+        "200":
+          description: Redacted recovery notification delivery operations projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgRecoveryNotificationDeliveryProjection"
+        "401":
+          description: Service claim is missing or invalid.
+        "503":
+          description: Escalation dispatch store is unavailable.
+    post:
+      operationId: postAgOperatorReviewDispatchDaemonRecoveryNotificationDelivery
+      tags:
+        - Operations
+      parameters:
+        - name: worker_id
+          in: query
+          required: false
+          schema:
+            type: string
+            default: ag-dispatch-execution-daemon
+        - name: stale_after_seconds
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 60
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgRecoveryNotificationDeliveryRequest"
+      responses:
+        "200":
+          description: Existing idempotent recovery notification delivery was replayed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgRecoveryNotificationDeliveryMutation"
+        "201":
+          description: Recovery notification delivery was admitted and persisted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgRecoveryNotificationDeliveryMutation"
+        "400":
+          description: Recovery notification liveness request is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Explicit operator review case or escalation was not found.
+        "409":
+          description: Delivery is not authorized, context mismatched, or idempotency conflicts.
+        "422":
+          description: Delivery request or admitted context is invalid.
+        "503":
+          description: Recovery notification delivery persistence is unavailable.
   /admin/v1/operator-review/dispatch-daemon/liveness/ack-state:
     post:
       operationId: postAgOperatorReviewDispatchDaemonLivenessAckState
@@ -5281,6 +5362,263 @@ components:
             mutation:
               type: boolean
               const: false
+    AgRecoveryNotificationDeliveryRoute:
+      type: object
+      additionalProperties: false
+      required:
+        - path
+        - method
+        - protected
+        - mutation
+      properties:
+        path:
+          type: string
+          const: /admin/v1/operator-review/dispatch-daemon/liveness/recovery-notification-deliveries
+        method:
+          type: string
+          enum:
+            - GET
+            - POST
+        protected:
+          type: boolean
+          const: true
+        mutation:
+          type: boolean
+    AgRecoveryNotificationDeliveryRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - case_id
+        - escalation_id
+      properties:
+        case_id:
+          type: string
+          minLength: 1
+        escalation_id:
+          type: string
+          minLength: 1
+        channel_type:
+          $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchChannelType"
+        provider_profile:
+          type: string
+          minLength: 1
+          maxLength: 128
+    AgRecoveryNotificationDeliveryMutation:
+      type: object
+      additionalProperties: false
+      required:
+        - delivery_mutation_schema_version
+        - mutation_status
+        - idempotency_status
+        - notification_plan_id
+        - case_id
+        - escalation_id
+        - dispatch_record
+        - delivery
+        - delivery_route
+      properties:
+        delivery_mutation_schema_version:
+          type: string
+          const: ag_recovery_notification_delivery_mutation.v1
+        mutation_status:
+          type: string
+          const: PERSISTED
+        idempotency_status:
+          type: string
+          enum:
+            - NEW
+            - REPLAYED
+        notification_plan_id:
+          type: string
+          minLength: 1
+        case_id:
+          type: string
+          minLength: 1
+        escalation_id:
+          type: string
+          minLength: 1
+        dispatch_record:
+          $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchSurface"
+        delivery:
+          type: object
+          additionalProperties: false
+          required:
+            - dispatch_persistence_performed
+            - provider_invocation_performed
+          properties:
+            dispatch_persistence_performed:
+              type: boolean
+            provider_invocation_performed:
+              type: boolean
+              const: false
+        delivery_route:
+          $ref: "#/components/schemas/AgRecoveryNotificationDeliveryRoute"
+    AgRecoveryNotificationDeliveryProjection:
+      type: object
+      additionalProperties: false
+      required:
+        - projection_schema_version
+        - projection_status
+        - delivery_status
+        - summary
+        - by_status
+        - recent
+        - source_statuses
+        - delivery_path
+        - new_tables_required
+        - redaction
+        - read_route
+      properties:
+        projection_schema_version:
+          type: string
+          const: ag_recovery_notification_delivery_operations_projection.v1
+        projection_status:
+          type: string
+          enum:
+            - READY
+            - DEGRADED
+        delivery_status:
+          type: string
+          enum:
+            - ACTIVE
+            - EMPTY
+            - SOURCE_UNAVAILABLE
+        summary:
+          type: object
+          additionalProperties: false
+          required:
+            - total
+            - pending
+            - dispatching
+            - succeeded
+            - failed
+            - retry_wait
+            - cancelled
+            - provider_invocation_performed
+          properties:
+            total:
+              type: integer
+              minimum: 0
+            pending:
+              type: integer
+              minimum: 0
+            dispatching:
+              type: integer
+              minimum: 0
+            succeeded:
+              type: integer
+              minimum: 0
+            failed:
+              type: integer
+              minimum: 0
+            retry_wait:
+              type: integer
+              minimum: 0
+            cancelled:
+              type: integer
+              minimum: 0
+            provider_invocation_performed:
+              type: boolean
+        by_status:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+        recent:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - dispatch_id
+              - case_id
+              - escalation_id
+              - dispatch_status
+              - dispatch_intent
+              - channel_type
+              - provider_profile
+              - target_service
+              - target_kind
+              - target_id
+              - safe_subject
+              - safe_body_preview
+              - attempt_count
+              - last_error_code
+              - created_at
+              - updated_at
+              - completed_at
+              - detail_path
+            properties:
+              dispatch_id:
+                type: string
+              case_id:
+                type: string
+              escalation_id:
+                type: string
+              dispatch_status:
+                $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchStatus"
+              dispatch_intent:
+                $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchIntent"
+              channel_type:
+                $ref: "#/components/schemas/AgOperatorReviewEscalationDispatchChannelType"
+              provider_profile:
+                type: string
+              target_service:
+                type: string
+              target_kind:
+                type: string
+              target_id:
+                type: string
+              safe_subject:
+                type:
+                  - string
+                  - "null"
+              safe_body_preview:
+                type:
+                  - string
+                  - "null"
+              attempt_count:
+                type: integer
+                minimum: 0
+              last_error_code:
+                type:
+                  - string
+                  - "null"
+              created_at:
+                type:
+                  - string
+                  - "null"
+              updated_at:
+                type:
+                  - string
+                  - "null"
+              completed_at:
+                type:
+                  - string
+                  - "null"
+              detail_path:
+                type: string
+                minLength: 1
+        source_statuses:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: true
+        delivery_path:
+          type: string
+          const: /admin/v1/operator-review/dispatch-daemon/liveness/recovery-notification-deliveries
+        request_trace_id:
+          type: string
+          minLength: 1
+        new_tables_required:
+          type: boolean
+          const: false
+        redaction:
+          type: object
+          additionalProperties: true
+        read_route:
+          $ref: "#/components/schemas/AgRecoveryNotificationDeliveryRoute"
     AgOperatorReviewDispatchDaemonLivenessAckStateRequest:
       type: object
       additionalProperties: false

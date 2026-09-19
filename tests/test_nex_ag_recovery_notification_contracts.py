@@ -26,6 +26,14 @@ OPERATIONS_SCHEMA_PATH = (
     / "nex_ag"
     / "operations_projection.v1.schema.json"
 )
+DELIVERY_SCHEMA_PATH = (
+    ROOT
+    / "contracts"
+    / "schemas"
+    / "service"
+    / "nex_ag"
+    / "recovery_notification_delivery.v1.schema.json"
+)
 FIXTURE_PATH = (
     ROOT
     / "contracts"
@@ -33,9 +41,28 @@ FIXTURE_PATH = (
     / "operations"
     / "ag_operations_dashboard_snapshot.mock_success.json"
 )
+DELIVERY_FIXTURE_PATH = (
+    ROOT
+    / "contracts"
+    / "examples"
+    / "operations"
+    / "ag_recovery_notification_delivery.mock_success.json"
+)
+DELIVERY_NEGATIVE_FIXTURE_PATH = (
+    ROOT
+    / "contracts"
+    / "tests"
+    / "negative"
+    / "operations"
+    / "ag_recovery_notification_delivery.raw_payload_leak.json"
+)
 PREVIEW_PATH = (
     "/admin/v1/operator-review/dispatch-daemon/liveness/"
     "recovery-notification-preview"
+)
+DELIVERY_PATH = (
+    "/admin/v1/operator-review/dispatch-daemon/liveness/"
+    "recovery-notification-deliveries"
 )
 POLICY_ENV_NAMES = (
     RECOVERY_NOTIFICATION_POLICY_ENABLED_ENV,
@@ -104,6 +131,10 @@ def test_dashboard_schema_and_fixture_freeze_recovery_notification() -> None:
     }
     assert notification["notification_status"] == "PREVIEW_ONLY"
     assert notification["preview"]["delivery"]["performed"] is False
+    assert "delivery" in schema["$defs"]["dashboard_recovery_notification"][
+        "required"
+    ]
+    assert notification["delivery"]["delivery_status"] == "EMPTY"
 
 
 def test_openapi_freezes_recovery_notification_preview_contract() -> None:
@@ -130,3 +161,60 @@ def test_openapi_freezes_recovery_notification_preview_contract() -> None:
         "provider_invocation_performed"
     ]["const"] is False
 
+
+def test_delivery_schema_accepts_safe_fixture_and_rejects_raw_payload() -> None:
+    schema = json.loads(DELIVERY_SCHEMA_PATH.read_text(encoding="utf-8"))
+    fixture = json.loads(DELIVERY_FIXTURE_PATH.read_text(encoding="utf-8"))
+    negative = json.loads(
+        DELIVERY_NEGATIVE_FIXTURE_PATH.read_text(encoding="utf-8")
+    )
+    validator = Draft202012Validator(schema)
+
+    Draft202012Validator.check_schema(schema)
+    validator.validate(fixture)
+    assert list(validator.iter_errors(negative))
+    assert fixture["source_statuses"]["nex-ag"]["source_table"] == (
+        "ag_op_esc_dispatches"
+    )
+    assert fixture["redaction"]["request_signatures_included"] is False
+
+
+def test_openapi_freezes_recovery_notification_delivery_contract() -> None:
+    contract = yaml.safe_load(OPENAPI_PATH.read_text(encoding="utf-8"))
+    path_item = contract["paths"][DELIVERY_PATH]
+    get_operation = path_item["get"]
+    post_operation = path_item["post"]
+    schemas = contract["components"]["schemas"]
+
+    assert get_operation["operationId"] == (
+        "listAgOperatorReviewDispatchDaemonRecoveryNotificationDeliveries"
+    )
+    assert get_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/AgRecoveryNotificationDeliveryProjection"}
+    assert post_operation["operationId"] == (
+        "postAgOperatorReviewDispatchDaemonRecoveryNotificationDelivery"
+    )
+    assert post_operation["requestBody"]["required"] is True
+    assert post_operation["requestBody"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/AgRecoveryNotificationDeliveryRequest"}
+    assert set(post_operation["responses"]) == {
+        "200",
+        "201",
+        "400",
+        "401",
+        "404",
+        "409",
+        "422",
+        "503",
+    }
+    assert schemas["AgRecoveryNotificationDeliveryRequest"][
+        "additionalProperties"
+    ] is False
+    assert schemas["AgRecoveryNotificationDeliveryMutation"][
+        "additionalProperties"
+    ] is False
+    assert schemas["AgRecoveryNotificationDeliveryProjection"][
+        "additionalProperties"
+    ] is False
