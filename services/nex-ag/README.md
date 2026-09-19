@@ -1461,6 +1461,9 @@ Unified operations:
   audit. AG reuses `service_operational_events` and `ag_ev_exports`, performs
   read-only deterministic SHA-256 verification, adds no table or migration, and
   keeps retention/purge assigned to S89.
+- Slice 0862 adds a pure operational-event integrity report. It detects invalid
+  records, duplicate or missing event IDs, timestamp errors, and expected hash
+  mismatches while returning only sorted metadata and canonical SHA-256 hashes.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
