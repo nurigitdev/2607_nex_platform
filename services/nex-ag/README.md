@@ -1426,6 +1426,10 @@ Unified operations:
   contract. Explicit confirmation, effective `live_http` mode, live enablement,
   endpoint readiness, and channel-compatible provider configuration are all
   required without exposing endpoint or token values.
+- Slice 0853 wires an admitted recovery notification into the existing live
+  dispatch planner through a default-false internal flag. Existing callers stay
+  blocked on `live_channel_deferred`; only a context-matched S86 admission can
+  open the notification, email, or webhook handoff.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

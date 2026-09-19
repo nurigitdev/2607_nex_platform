@@ -297,6 +297,7 @@ def build_recovery_notification_dispatch_handoff(
     trace_id: str | None = None,
     idempotency_key: str | None = None,
     created_at: str | None = None,
+    live_admission: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     plan = _mapping(
         notification_plan,
@@ -343,6 +344,15 @@ def build_recovery_notification_dispatch_handoff(
             "delivery admission dispatch_intent must be NOTIFY_OPERATOR.",
             error_code="ag.recovery_notification_delivery_dispatch_intent_invalid",
         )
+    live_channel_allowed = False
+    if live_admission is not None:
+        _assert_live_admission_matches(
+            live_admission,
+            delivery_admission=admission,
+            channel_type=channel_type,
+            provider_profile=provider_profile,
+        )
+        live_channel_allowed = True
     notification_plan_id = _required_text(
         plan.get("notification_plan_id"),
         field="notification_plan.notification_plan_id",
@@ -374,6 +384,11 @@ def build_recovery_notification_dispatch_handoff(
                     "delivery_admission_schema_version"
                 ),
                 "recovery_notification_payload_redacted": True,
+                "live_admission_schema_version": (
+                    live_admission.get("live_admission_schema_version")
+                    if live_channel_allowed
+                    else None
+                ),
             },
         },
         request_id=_required_text(
@@ -384,6 +399,7 @@ def build_recovery_notification_dispatch_handoff(
         trace_id=_optional_text(trace_id),
         idempotency_key=_optional_text(idempotency_key),
         created_at=created_at,
+        allow_live_channel=live_channel_allowed,
     )
     dispatch_required = bool(
         dispatch_plan.get("decision", {}).get("dispatch_required")
@@ -406,7 +422,10 @@ def build_recovery_notification_dispatch_handoff(
             "existing_dispatch_outbox_required": True,
             "dispatch_persistence_performed": False,
             "provider_invocation_performed": False,
-            "live_channel_guardrail_preserved": channel_type != "MOCK",
+            "live_channel_guardrail_preserved": (
+                channel_type != "MOCK" and not live_channel_allowed
+            ),
+            "live_channel_explicitly_admitted": live_channel_allowed,
             "raw_notification_payload_included": False,
         },
     }
@@ -681,6 +700,61 @@ def _assert_admission_matches_plan(
                 error_code="ag.recovery_notification_delivery_target_mismatch",
                 status_code=409,
             )
+
+
+def _assert_live_admission_matches(
+    live_admission: Mapping[str, Any],
+    *,
+    delivery_admission: Mapping[str, Any],
+    channel_type: str,
+    provider_profile: str,
+) -> None:
+    live = _mapping(
+        live_admission,
+        field="live_admission",
+        error_code="ag.recovery_notification_live_handoff_admission_invalid",
+    )
+    if live.get("live_admission_schema_version") != (
+        RECOVERY_NOTIFICATION_LIVE_ADMISSION_SCHEMA_VERSION
+    ) or live.get("admission_status") != "ADMITTED":
+        raise RecoveryNotificationDeliveryError(
+            "live_admission must be an admitted S86 contract.",
+            error_code="ag.recovery_notification_live_handoff_admission_required",
+            status_code=409,
+        )
+    for field in (
+        "notification_plan_id",
+        "case_id",
+        "escalation_id",
+    ):
+        if live.get(field) != delivery_admission.get(field):
+            raise RecoveryNotificationDeliveryError(
+                f"live_admission {field} does not match delivery_admission.",
+                error_code="ag.recovery_notification_live_handoff_context_mismatch",
+                status_code=409,
+            )
+    selection = _mapping(
+        live.get("delivery"),
+        field="live_admission.delivery",
+        error_code="ag.recovery_notification_live_handoff_selection_invalid",
+    )
+    if (
+        selection.get("channel_type") != channel_type
+        or selection.get("provider_profile") != provider_profile
+        or selection.get("provider_mode") != "live_http"
+        or selection.get("dispatch_intent") != "NOTIFY_OPERATOR"
+    ):
+        raise RecoveryNotificationDeliveryError(
+            "live_admission delivery selection does not match the handoff.",
+            error_code="ag.recovery_notification_live_handoff_selection_mismatch",
+            status_code=409,
+        )
+    if channel_type not in RECOVERY_NOTIFICATION_LIVE_CHANNELS:
+        raise RecoveryNotificationDeliveryError(
+            "live_admission cannot open a non-notification channel.",
+            error_code="ag.recovery_notification_live_handoff_channel_unsupported",
+            status_code=409,
+        )
 
 
 def _safe_reason_codes(value: object) -> list[str]:

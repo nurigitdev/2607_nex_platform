@@ -5240,6 +5240,7 @@ def build_operator_review_escalation_dispatch_plan(
     trace_id: str | None,
     idempotency_key: str | None = None,
     created_at: str | None = None,
+    allow_live_channel: bool = False,
 ) -> dict[str, Any]:
     payload_value = dict(payload or {})
     assert_operator_review_note_payload_redaction_safe(payload_value)
@@ -5273,6 +5274,7 @@ def build_operator_review_escalation_dispatch_plan(
         escalation,
         channel_type=channel_type,
         dispatch_intent=dispatch_intent,
+        allow_live_channel=allow_live_channel,
     )
     dispatch_required = not blocking_reasons
     now = created_at or _utc_now()
@@ -7364,6 +7366,7 @@ def _escalation_dispatch_blocking_reasons(
     *,
     channel_type: str,
     dispatch_intent: str | None,
+    allow_live_channel: bool = False,
 ) -> list[str]:
     reasons: list[str] = []
     status = optional_text(escalation.get("escalation_status"))
@@ -7376,7 +7379,7 @@ def _escalation_dispatch_blocking_reasons(
         reasons.append("dispatch_intent_not_available")
     elif dispatch_intent not in INITIAL_ESCALATION_DISPATCH_INTENTS:
         reasons.append("dispatch_intent_not_initial")
-    if channel_type != "MOCK":
+    if channel_type != "MOCK" and not allow_live_channel:
         reasons.append("live_channel_deferred")
     return reasons
 
