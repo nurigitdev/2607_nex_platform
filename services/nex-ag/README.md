@@ -1464,6 +1464,10 @@ Unified operations:
 - Slice 0862 adds a pure operational-event integrity report. It detects invalid
   records, duplicate or missing event IDs, timestamp errors, and expected hash
   mismatches while returning only sorted metadata and canonical SHA-256 hashes.
+- Slice 0863 adds a pure trace-correlation continuity report. It links verified
+  events and evidence-export hashes by trace, detects request-to-trace conflicts,
+  missing trace metadata, orphan exports, and required event-type gaps, and
+  excludes event or evidence bodies from the result.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
