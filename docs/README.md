@@ -970,6 +970,9 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0864`](slices/0864_ag_audit_evidence_package_builder.md) | `S87-004` AG deterministic redacted audit evidence package builder and verifier. |
 | [`Slice 0865`](slices/0865_ag_audit_evidence_protected_api.md) | `S87-005` AG protected server-selected audit evidence package and verification API. |
 | [`Slice 0866`](slices/0866_ag_audit_integrity_operations_projection.md) | `S87-006` AG audit integrity operations read model and unified dashboard projection. |
+| [`Slice 0867`](slices/0867_ag_audit_evidence_contract_hardening.md) | `S87-007` AG audit evidence JSON Schema and OpenAPI contract hardening. |
+| [`Slice 0868`](slices/0868_ag_audit_evidence_postgresql_smoke.md) | `S87-008` AG audit evidence actual PostgreSQL smoke evidence. |
+| [`Slice 0869`](slices/0869_ag_audit_evidence_privacy_runbook.md) | `S87-009` AG audit evidence privacy, tamper failure modes, and operator runbook evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
