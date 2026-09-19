@@ -1452,6 +1452,11 @@ Unified operations:
   default-disabled admission, two-stage confirmation, required transport
   injection, retry wait, terminal no-op behavior, projection redaction, and the
   operator runbook while keeping raw endpoint and credential values absent.
+- Slice 0860 closes S86. Recovery notifications now have explicit live
+  admission, existing-outbox persistence, bounded targeted live execution,
+  OpenAPI/JSON Schema contracts, real urllib loopback proof, actual opt-in
+  `nex_ag_test` evidence, privacy/runbook evidence, and no new table or index.
+  Activation of a real external notification endpoint remains deferred.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
