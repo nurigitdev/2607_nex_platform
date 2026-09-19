@@ -946,6 +946,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0840`](slices/0840_s84_ag_recovery_notification_policy_closure.md) | `S84-010` AG recovery notification policy foundation closure checkpoint. |
 | [`Slice 0841`](slices/0841_ag_recovery_notification_delivery_boundary_audit.md) | `S85-001` AG recovery notification delivery boundary audit and decision checkpoint. |
 | [`Slice 0842`](slices/0842_ag_recovery_notification_delivery_admission.md) | `S85-002` AG recovery notification delivery admission contract with explicit case/escalation context. |
+| [`Slice 0843`](slices/0843_ag_recovery_notification_dispatch_handoff.md) | `S85-003` AG recovery notification handoff into the existing escalation dispatch planner. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

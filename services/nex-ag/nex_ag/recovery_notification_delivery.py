@@ -3,11 +3,15 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, Mapping
 
+from .operator_review_cases import build_operator_review_escalation_dispatch_plan
 from .recovery_notification_policy import RECOVERY_NOTIFICATION_PLAN_SCHEMA_VERSION
 
 
 RECOVERY_NOTIFICATION_DELIVERY_ADMISSION_SCHEMA_VERSION = (
     "ag_recovery_notification_delivery_admission.v1"
+)
+RECOVERY_NOTIFICATION_DISPATCH_HANDOFF_SCHEMA_VERSION = (
+    "ag_recovery_notification_dispatch_handoff.v1"
 )
 RECOVERY_NOTIFICATION_DELIVERY_CHANNELS = (
     "MOCK",
@@ -139,6 +143,180 @@ def build_recovery_notification_delivery_admission(
             "provider_secrets_included": False,
         },
     }
+
+
+def build_recovery_notification_dispatch_handoff(
+    notification_plan: Mapping[str, Any],
+    delivery_admission: Mapping[str, Any],
+    escalation_record: Mapping[str, Any],
+    *,
+    request_id: str,
+    trace_id: str | None = None,
+    idempotency_key: str | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    plan = _mapping(
+        notification_plan,
+        field="notification_plan",
+        error_code="ag.recovery_notification_delivery_plan_invalid",
+    )
+    admission = _mapping(
+        delivery_admission,
+        field="delivery_admission",
+        error_code="ag.recovery_notification_delivery_admission_invalid",
+    )
+    escalation = _mapping(
+        escalation_record,
+        field="escalation_record",
+        error_code="ag.recovery_notification_delivery_escalation_invalid",
+    )
+    _assert_plan_admissible(plan)
+    _assert_admission_matches_plan(admission, plan, escalation)
+
+    safe_payload = _mapping(
+        plan.get("safe_payload"),
+        field="notification_plan.safe_payload",
+        error_code="ag.recovery_notification_delivery_safe_payload_invalid",
+    )
+    selection = _mapping(
+        admission.get("delivery"),
+        field="delivery_admission.delivery",
+        error_code="ag.recovery_notification_delivery_selection_invalid",
+    )
+    channel_type = _channel_type(selection.get("channel_type"))
+    provider_profile = _required_text(
+        selection.get("provider_profile"),
+        field="delivery_admission.delivery.provider_profile",
+        error_code="ag.recovery_notification_delivery_provider_profile_required",
+        maximum=128,
+    )
+    dispatch_intent = _required_text(
+        selection.get("dispatch_intent"),
+        field="delivery_admission.delivery.dispatch_intent",
+        error_code="ag.recovery_notification_delivery_dispatch_intent_required",
+    )
+    if dispatch_intent != "NOTIFY_OPERATOR":
+        raise RecoveryNotificationDeliveryError(
+            "delivery admission dispatch_intent must be NOTIFY_OPERATOR.",
+            error_code="ag.recovery_notification_delivery_dispatch_intent_invalid",
+        )
+    notification_plan_id = _required_text(
+        plan.get("notification_plan_id"),
+        field="notification_plan.notification_plan_id",
+        error_code="ag.recovery_notification_delivery_plan_id_required",
+    )
+    dispatch_plan = build_operator_review_escalation_dispatch_plan(
+        dict(escalation),
+        {
+            "channel_type": channel_type,
+            "provider_profile": provider_profile,
+            "dispatch_intent": dispatch_intent,
+            "reason_codes": _safe_reason_codes(admission.get("reason_codes")),
+            "safe_subject": _required_text(
+                safe_payload.get("title"),
+                field="notification_plan.safe_payload.title",
+                error_code="ag.recovery_notification_delivery_title_required",
+                maximum=200,
+            ),
+            "safe_body": _required_text(
+                safe_payload.get("summary"),
+                field="notification_plan.safe_payload.summary",
+                error_code="ag.recovery_notification_delivery_summary_required",
+                maximum=240,
+            ),
+            "metadata": {
+                "source_kind": "recovery_notification_delivery",
+                "notification_plan_id": notification_plan_id,
+                "delivery_admission_schema_version": admission.get(
+                    "delivery_admission_schema_version"
+                ),
+                "recovery_notification_payload_redacted": True,
+            },
+        },
+        request_id=_required_text(
+            request_id,
+            field="request_id",
+            error_code="ag.recovery_notification_delivery_request_id_required",
+        ),
+        trace_id=_optional_text(trace_id),
+        idempotency_key=_optional_text(idempotency_key),
+        created_at=created_at,
+    )
+    dispatch_required = bool(
+        dispatch_plan.get("decision", {}).get("dispatch_required")
+    )
+    return {
+        "dispatch_handoff_schema_version": (
+            RECOVERY_NOTIFICATION_DISPATCH_HANDOFF_SCHEMA_VERSION
+        ),
+        "handoff_status": "READY_TO_PERSIST" if dispatch_required else "BLOCKED",
+        "notification_plan_id": notification_plan_id,
+        "case_id": admission["case_id"],
+        "escalation_id": admission["escalation_id"],
+        "dispatch_plan": dispatch_plan,
+        "dispatch_record": dispatch_plan.get("dispatch_record"),
+        "blocking_reasons": list(
+            dispatch_plan.get("decision", {}).get("blocking_reasons") or []
+        ),
+        "guardrails": {
+            "existing_dispatch_planner_reused": True,
+            "existing_dispatch_outbox_required": True,
+            "dispatch_persistence_performed": False,
+            "provider_invocation_performed": False,
+            "live_channel_guardrail_preserved": channel_type != "MOCK",
+            "raw_notification_payload_included": False,
+        },
+    }
+
+
+def _assert_admission_matches_plan(
+    admission: Mapping[str, Any],
+    plan: Mapping[str, Any],
+    escalation: Mapping[str, Any],
+) -> None:
+    if admission.get("delivery_admission_schema_version") != (
+        RECOVERY_NOTIFICATION_DELIVERY_ADMISSION_SCHEMA_VERSION
+    ) or admission.get("admission_status") != "ADMITTED":
+        raise RecoveryNotificationDeliveryError(
+            "delivery_admission is not admitted or has an unsupported schema.",
+            error_code="ag.recovery_notification_delivery_admission_not_admitted",
+            status_code=409,
+        )
+    if admission.get("notification_plan_id") != plan.get("notification_plan_id"):
+        raise RecoveryNotificationDeliveryError(
+            "delivery_admission notification_plan_id does not match the plan.",
+            error_code="ag.recovery_notification_delivery_plan_context_mismatch",
+            status_code=409,
+        )
+    for field in ("case_id", "escalation_id"):
+        if admission.get(field) != escalation.get(field):
+            raise RecoveryNotificationDeliveryError(
+                f"delivery_admission {field} does not match escalation_record.",
+                error_code="ag.recovery_notification_delivery_context_mismatch",
+                status_code=409,
+            )
+    target = _mapping(
+        admission.get("target"),
+        field="delivery_admission.target",
+        error_code="ag.recovery_notification_delivery_target_invalid",
+    )
+    for field in ("target_service", "target_kind", "target_id"):
+        if target.get(field) != escalation.get(field):
+            raise RecoveryNotificationDeliveryError(
+                f"delivery_admission target {field} does not match escalation_record.",
+                error_code="ag.recovery_notification_delivery_target_mismatch",
+                status_code=409,
+            )
+
+
+def _safe_reason_codes(value: object) -> list[str]:
+    supplied = value if isinstance(value, list) else []
+    normalized = [
+        text
+        for item in supplied
+        if (text := _optional_text(item)) is not None
+    ]
+    return list(dict.fromkeys(["recovery_notification_delivery", *normalized]))
 
 
 def _assert_plan_admissible(plan: Mapping[str, Any]) -> None:
