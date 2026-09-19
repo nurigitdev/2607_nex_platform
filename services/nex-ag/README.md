@@ -1468,6 +1468,9 @@ Unified operations:
   events and evidence-export hashes by trace, detects request-to-trace conflicts,
   missing trace metadata, orphan exports, and required event-type gaps, and
   excludes event or evidence bodies from the result.
+- Slice 0864 adds a deterministic redacted audit-evidence package builder and
+  independent verifier. It binds integrity, correlation, and existing export
+  hashes, detects copied-package tampering, and stores no raw evidence content.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
