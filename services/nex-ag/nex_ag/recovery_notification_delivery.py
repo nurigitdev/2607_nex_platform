@@ -13,6 +13,9 @@ RECOVERY_NOTIFICATION_DELIVERY_ADMISSION_SCHEMA_VERSION = (
 RECOVERY_NOTIFICATION_DISPATCH_HANDOFF_SCHEMA_VERSION = (
     "ag_recovery_notification_dispatch_handoff.v1"
 )
+RECOVERY_NOTIFICATION_DELIVERY_MUTATION_SCHEMA_VERSION = (
+    "ag_recovery_notification_delivery_mutation.v1"
+)
 RECOVERY_NOTIFICATION_DELIVERY_CHANNELS = (
     "MOCK",
     "NOTIFICATION",
@@ -265,6 +268,117 @@ def build_recovery_notification_dispatch_handoff(
             "provider_invocation_performed": False,
             "live_channel_guardrail_preserved": channel_type != "MOCK",
             "raw_notification_payload_included": False,
+        },
+    }
+
+
+def persist_recovery_notification_dispatch_handoff(
+    dispatch_handoff: Mapping[str, Any],
+    dispatch_store: Any,
+) -> dict[str, Any]:
+    handoff = _mapping(
+        dispatch_handoff,
+        field="dispatch_handoff",
+        error_code="ag.recovery_notification_dispatch_handoff_invalid",
+    )
+    if handoff.get("dispatch_handoff_schema_version") != (
+        RECOVERY_NOTIFICATION_DISPATCH_HANDOFF_SCHEMA_VERSION
+    ):
+        raise RecoveryNotificationDeliveryError(
+            "dispatch_handoff has an unsupported schema version.",
+            error_code="ag.recovery_notification_dispatch_handoff_schema_unsupported",
+        )
+    dispatch_record = handoff.get("dispatch_record")
+    if handoff.get("handoff_status") != "READY_TO_PERSIST" or not isinstance(
+        dispatch_record, Mapping
+    ):
+        raise RecoveryNotificationDeliveryError(
+            "dispatch_handoff is not ready to persist.",
+            error_code="ag.recovery_notification_dispatch_handoff_blocked",
+            status_code=409,
+        )
+    if dispatch_store is None:
+        raise RecoveryNotificationDeliveryError(
+            "operator review escalation dispatch store is unavailable.",
+            error_code="ag.recovery_notification_dispatch_store_unavailable",
+            status_code=503,
+        )
+
+    record = dict(dispatch_record)
+    metadata = dict(record.get("metadata") or {})
+    request_signature = {
+        "case_id": handoff.get("case_id"),
+        "escalation_id": handoff.get("escalation_id"),
+        "channel_type": record.get("channel_type"),
+        "provider_profile": record.get("provider_profile"),
+        "safe_body_hash": record.get("safe_body_hash"),
+        "provider_payload_hash": record.get("provider_payload_hash"),
+    }
+    delivery_summary = {
+        "delivery_mutation_schema_version": (
+            RECOVERY_NOTIFICATION_DELIVERY_MUTATION_SCHEMA_VERSION
+        ),
+        "notification_plan_id": handoff.get("notification_plan_id"),
+        "request_signature": request_signature,
+        "provider_invocation_performed": False,
+    }
+    existing = dispatch_store.get(record["dispatch_id"])
+    if existing is not None:
+        existing_metadata = existing.get("metadata")
+        existing_summary = (
+            existing_metadata.get("recovery_notification_delivery")
+            if isinstance(existing_metadata, Mapping)
+            else None
+        )
+        if not isinstance(existing_summary, Mapping) or (
+            existing_summary.get("request_signature") != request_signature
+        ):
+            raise RecoveryNotificationDeliveryError(
+                "Idempotency key already maps to a different recovery notification.",
+                error_code=(
+                    "ag.recovery_notification_delivery_idempotency_conflict"
+                ),
+                status_code=409,
+            )
+        return _delivery_mutation_response(
+            handoff,
+            dict(existing),
+            idempotency_status="REPLAYED",
+            notification_plan_id=existing_summary.get("notification_plan_id"),
+        )
+
+    metadata["recovery_notification_delivery"] = delivery_summary
+    record["metadata"] = metadata
+    saved = dispatch_store.save(record)
+    return _delivery_mutation_response(
+        handoff,
+        dict(saved),
+        idempotency_status="NEW",
+    )
+
+
+def _delivery_mutation_response(
+    handoff: Mapping[str, Any],
+    dispatch_record: dict[str, Any],
+    *,
+    idempotency_status: str,
+    notification_plan_id: object | None = None,
+) -> dict[str, Any]:
+    return {
+        "delivery_mutation_schema_version": (
+            RECOVERY_NOTIFICATION_DELIVERY_MUTATION_SCHEMA_VERSION
+        ),
+        "mutation_status": "PERSISTED",
+        "idempotency_status": idempotency_status,
+        "notification_plan_id": (
+            notification_plan_id or handoff.get("notification_plan_id")
+        ),
+        "case_id": handoff.get("case_id"),
+        "escalation_id": handoff.get("escalation_id"),
+        "dispatch_record": dispatch_record,
+        "delivery": {
+            "dispatch_persistence_performed": idempotency_status == "NEW",
+            "provider_invocation_performed": False,
         },
     }
 

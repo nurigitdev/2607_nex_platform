@@ -108,6 +108,9 @@ from nex_ag.operator_review_cases import (
     build_operator_review_escalation_list_response,
     OperatorReviewCaseService,
     OperatorReviewCaseStore,
+    default_operator_review_case_store,
+    default_operator_review_escalation_dispatch_store,
+    default_operator_review_escalation_store,
 )
 from nex_ag.operator_review_liveness_ack import (
     AG_OPERATOR_REVIEW_LIVENESS_ACK_STATE_TABLE,
@@ -130,6 +133,12 @@ from nex_ag.recovery_notification_policy import (
 )
 from nex_ag.recovery_notification_operations import (
     build_recovery_notification_operations_projection,
+)
+from nex_ag.recovery_notification_delivery import (
+    RecoveryNotificationDeliveryError,
+    build_recovery_notification_delivery_admission,
+    build_recovery_notification_dispatch_handoff,
+    persist_recovery_notification_dispatch_handoff,
 )
 from nex_ag.operator_review_dispatch_execution import (
     DISPATCH_EXECUTION_DAEMON_BATCH_LIMIT_ENV,
@@ -2574,6 +2583,41 @@ def register_unified_operation_routes(
         )
 
     @app.post(
+        "/admin/v1/operator-review/dispatch-daemon/liveness/"
+        "recovery-notification-deliveries",
+        response_model=None,
+        operation_id="postAgOperatorReviewDispatchDaemonRecoveryNotificationDelivery",
+        tags=["Operations"],
+    )
+    def post_operator_review_dispatch_daemon_recovery_notification_delivery(
+        request: Request,
+        payload: dict[str, Any] | None = None,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+        worker_id: str = "ag-dispatch-execution-daemon",
+        stale_after_seconds: int = Query(
+            default=DEFAULT_WORKER_STALE_AFTER_SECONDS,
+            ge=1,
+        ),
+    ):
+        auth_problem = _authorize_ag_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        return _dispatch_daemon_recovery_notification_delivery_route_response(
+            request,
+            payload=payload,
+            idempotency_key=idempotency_key,
+            worker_heartbeat_stores=worker_heartbeat_stores,
+            registry=registry,
+            worker_id=worker_id,
+            stale_after_seconds=stale_after_seconds,
+            state_store=operator_review_liveness_ack_state_store,
+            case_store=operator_review_case_store,
+            escalation_store=operator_review_escalation_store,
+            dispatch_store=operator_review_escalation_dispatch_store,
+        )
+
+    @app.post(
         "/admin/v1/operator-review/dispatch-daemon/liveness/ack-state",
         response_model=None,
         operation_id="postAgOperatorReviewDispatchDaemonLivenessAckState",
@@ -3936,6 +3980,141 @@ def _dispatch_daemon_recovery_notification_preview_route_response(
         return preview
     except (OperationsQueryError, RecoveryNotificationPolicyError) as exc:
         return _dispatch_daemon_control_problem_response(request, exc)
+
+
+def _dispatch_daemon_recovery_notification_delivery_route_response(
+    request: Request,
+    *,
+    payload: Mapping[str, Any] | None,
+    idempotency_key: str | None,
+    worker_heartbeat_stores: Mapping[str, WorkerHeartbeatStore] | None,
+    registry: OperationsSourceRegistry | None,
+    worker_id: str,
+    stale_after_seconds: int,
+    state_store: Any | None,
+    case_store: Any | None,
+    escalation_store: Any | None,
+    dispatch_store: Any | None,
+) -> JSONResponse:
+    trace_id = trace_id_from_headers(request)
+    request_id = request_id_from_headers(request)
+    try:
+        request_payload = _recovery_notification_delivery_payload(payload)
+        normalized_idempotency_key = _recovery_notification_idempotency_key(
+            idempotency_key
+        )
+        selected_case_store = case_store or default_operator_review_case_store(
+            request.app
+        )
+        selected_escalation_store = (
+            escalation_store or default_operator_review_escalation_store(request.app)
+        )
+        selected_dispatch_store = (
+            dispatch_store
+            or default_operator_review_escalation_dispatch_store(request.app)
+        )
+        case_record = selected_case_store.get(request_payload["case_id"])
+        if case_record is None:
+            raise RecoveryNotificationDeliveryError(
+                "Operator review case was not found.",
+                error_code="ag.recovery_notification_delivery_case_not_found",
+                status_code=404,
+            )
+        escalation_record = selected_escalation_store.get(
+            request_payload["escalation_id"]
+        )
+        if escalation_record is None:
+            raise RecoveryNotificationDeliveryError(
+                "Operator review escalation was not found.",
+                error_code="ag.recovery_notification_delivery_escalation_not_found",
+                status_code=404,
+            )
+        preview = _dispatch_daemon_recovery_notification_preview_route_response(
+            request,
+            worker_heartbeat_stores=worker_heartbeat_stores,
+            registry=registry,
+            worker_id=worker_id,
+            stale_after_seconds=stale_after_seconds,
+            state_store=state_store,
+        )
+        if isinstance(preview, JSONResponse):
+            return preview
+        admission = build_recovery_notification_delivery_admission(
+            preview,
+            case_record,
+            escalation_record,
+            channel_type=request_payload.get("channel_type"),
+            provider_profile=request_payload.get("provider_profile"),
+        )
+        handoff = build_recovery_notification_dispatch_handoff(
+            preview,
+            admission,
+            escalation_record,
+            request_id=request_id,
+            trace_id=trace_id,
+            idempotency_key=normalized_idempotency_key,
+        )
+        response = persist_recovery_notification_dispatch_handoff(
+            handoff,
+            selected_dispatch_store,
+        )
+        response["delivery_route"] = {
+            "path": (
+                "/admin/v1/operator-review/dispatch-daemon/liveness/"
+                "recovery-notification-deliveries"
+            ),
+            "method": "POST",
+            "protected": True,
+            "mutation": True,
+        }
+        return JSONResponse(
+            status_code=201 if response["idempotency_status"] == "NEW" else 200,
+            content=response,
+        )
+    except (
+        OperationsQueryError,
+        OperatorReviewNoteError,
+        RecoveryNotificationPolicyError,
+        RecoveryNotificationDeliveryError,
+    ) as exc:
+        return _dispatch_daemon_control_problem_response(request, exc)
+
+
+def _recovery_notification_delivery_payload(
+    payload: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    if not isinstance(payload, Mapping):
+        raise RecoveryNotificationDeliveryError(
+            "request body must be an object.",
+            error_code="ag.recovery_notification_delivery_payload_invalid",
+        )
+    normalized: dict[str, Any] = {}
+    for field in ("case_id", "escalation_id"):
+        value = payload.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise RecoveryNotificationDeliveryError(
+                f"{field} is required.",
+                error_code=f"ag.recovery_notification_delivery_{field}_required",
+            )
+        normalized[field] = value.strip()
+    normalized["channel_type"] = payload.get("channel_type")
+    normalized["provider_profile"] = payload.get("provider_profile")
+    return normalized
+
+
+def _recovery_notification_idempotency_key(value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise RecoveryNotificationDeliveryError(
+            "Idempotency-Key header is required.",
+            error_code="ag.recovery_notification_delivery_idempotency_key_required",
+        )
+    normalized = value.strip()
+    if len(normalized) > 200:
+        raise RecoveryNotificationDeliveryError(
+            "Idempotency-Key must be at most 200 characters.",
+            error_code="ag.recovery_notification_delivery_idempotency_key_invalid",
+        )
+    return normalized
 
 
 def _dispatch_daemon_liveness_ack_state_route_response(

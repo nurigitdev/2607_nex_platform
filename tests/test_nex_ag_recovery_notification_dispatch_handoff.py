@@ -287,3 +287,38 @@ def test_dispatch_handoff_reason_codes_are_safe_and_unique() -> None:
         "recovery_notification_delivery",
         "case_escalation_context_verified",
     ]
+
+
+def test_dispatch_handoff_persistence_rejects_invalid_boundary() -> None:
+    plan = ready_plan()
+    handoff = delivery.build_recovery_notification_dispatch_handoff(
+        plan,
+        admission(plan),
+        escalation_record(),
+        request_id="request-0843",
+    )
+
+    with pytest.raises(delivery.RecoveryNotificationDeliveryError) as invalid_exc:
+        delivery.persist_recovery_notification_dispatch_handoff(
+            None,  # type: ignore[arg-type]
+            object(),
+        )
+    assert invalid_exc.value.error_code == (
+        "ag.recovery_notification_dispatch_handoff_invalid"
+    )
+
+    with pytest.raises(delivery.RecoveryNotificationDeliveryError) as schema_exc:
+        delivery.persist_recovery_notification_dispatch_handoff(
+            {**handoff, "dispatch_handoff_schema_version": "unsupported"},
+            object(),
+        )
+    assert schema_exc.value.error_code == (
+        "ag.recovery_notification_dispatch_handoff_schema_unsupported"
+    )
+
+    with pytest.raises(delivery.RecoveryNotificationDeliveryError) as store_exc:
+        delivery.persist_recovery_notification_dispatch_handoff(handoff, None)
+    assert store_exc.value.error_code == (
+        "ag.recovery_notification_dispatch_store_unavailable"
+    )
+    assert store_exc.value.status_code == 503
