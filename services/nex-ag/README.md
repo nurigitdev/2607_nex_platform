@@ -1417,6 +1417,11 @@ Unified operations:
   `ag_op_esc_dispatches` as the source of record, requires explicit confirmation
   and dry-run support, and defers background daemon loops plus real external
   endpoint delivery.
+- Slice 0851 starts S86 with a recovery notification live-delivery boundary
+  audit. S86 reuses the S85 outbox handoff and S74 live HTTP transport, keeps
+  live delivery disabled by default, requires explicit enablement plus injected
+  transport, and uses a local loopback server until a real external notification
+  endpoint is available.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.
