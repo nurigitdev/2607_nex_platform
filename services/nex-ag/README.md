@@ -1422,6 +1422,10 @@ Unified operations:
   live delivery disabled by default, requires explicit enablement plus injected
   transport, and uses a local loopback server until a real external notification
   endpoint is available.
+- Slice 0852 adds the pure recovery notification live-delivery admission
+  contract. Explicit confirmation, effective `live_http` mode, live enablement,
+  endpoint readiness, and channel-compatible provider configuration are all
+  required without exposing endpoint or token values.
 - The mock-first AG operations dashboard smoke covers the full operations
   endpoint family, including CX processing run list/detail visibility, and is
   included in `scripts/quality/run_quality_gate.sh`.

@@ -955,6 +955,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0849`](slices/0849_ag_recovery_notification_delivery_privacy_runbook.md) | `S85-009` AG recovery notification delivery privacy regression and operator runbook. |
 | [`Slice 0850`](slices/0850_s85_ag_recovery_notification_delivery_closure.md) | `S85-010` S85 AG recovery notification delivery closure checkpoint. |
 | [`Slice 0851`](slices/0851_ag_recovery_notification_live_delivery_boundary_audit.md) | `S86-001` AG recovery notification live delivery boundary audit and refactoring checkpoint. |
+| [`Slice 0852`](slices/0852_ag_recovery_notification_live_delivery_admission.md) | `S86-002` AG recovery notification live delivery admission and configuration contract. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

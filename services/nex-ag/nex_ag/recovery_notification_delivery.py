@@ -20,6 +20,9 @@ RECOVERY_NOTIFICATION_DELIVERY_MUTATION_SCHEMA_VERSION = (
 RECOVERY_NOTIFICATION_DELIVERY_EXECUTION_SCHEMA_VERSION = (
     "ag_recovery_notification_delivery_execution.v1"
 )
+RECOVERY_NOTIFICATION_LIVE_ADMISSION_SCHEMA_VERSION = (
+    "ag_recovery_notification_live_admission.v1"
+)
 RECOVERY_NOTIFICATION_DELIVERY_CHANNELS = (
     "MOCK",
     "NOTIFICATION",
@@ -31,6 +34,11 @@ DEFAULT_RECOVERY_NOTIFICATION_DELIVERY_CHANNEL = "MOCK"
 DEFAULT_RECOVERY_NOTIFICATION_PROVIDER_PROFILE = "mock-default"
 DEFAULT_RECOVERY_NOTIFICATION_DELIVERY_WORKER_ID = (
     "ag-recovery-notification-delivery-worker"
+)
+RECOVERY_NOTIFICATION_LIVE_CHANNELS = (
+    "NOTIFICATION",
+    "EMAIL",
+    "WEBHOOK",
 )
 
 
@@ -151,6 +159,131 @@ def build_recovery_notification_delivery_admission(
             "provider_invocation_performed": False,
             "raw_notification_payload_included": False,
             "provider_secrets_included": False,
+        },
+    }
+
+
+def build_recovery_notification_live_admission(
+    delivery_admission: Mapping[str, Any],
+    provider_config: Mapping[str, Any],
+    *,
+    confirm_live_delivery: bool = False,
+    admitted_at: object | None = None,
+) -> dict[str, Any]:
+    admission = _mapping(
+        delivery_admission,
+        field="delivery_admission",
+        error_code="ag.recovery_notification_live_admission_invalid",
+    )
+    config = _mapping(
+        provider_config,
+        field="provider_config",
+        error_code="ag.recovery_notification_live_provider_config_invalid",
+    )
+    if admission.get("delivery_admission_schema_version") != (
+        RECOVERY_NOTIFICATION_DELIVERY_ADMISSION_SCHEMA_VERSION
+    ) or admission.get("admission_status") != "ADMITTED":
+        raise RecoveryNotificationDeliveryError(
+            "delivery_admission must be an admitted S85 delivery contract.",
+            error_code="ag.recovery_notification_live_base_admission_required",
+            status_code=409,
+        )
+    selection = _mapping(
+        admission.get("delivery"),
+        field="delivery_admission.delivery",
+        error_code="ag.recovery_notification_live_selection_invalid",
+    )
+    channel_type = _channel_type(selection.get("channel_type"))
+    if channel_type not in RECOVERY_NOTIFICATION_LIVE_CHANNELS:
+        raise RecoveryNotificationDeliveryError(
+            "Recovery notification live delivery requires a notification channel.",
+            error_code="ag.recovery_notification_live_channel_unsupported",
+            status_code=409,
+        )
+    provider_profile = _required_text(
+        selection.get("provider_profile"),
+        field="delivery_admission.delivery.provider_profile",
+        error_code="ag.recovery_notification_live_provider_profile_required",
+        maximum=128,
+    )
+    if not confirm_live_delivery:
+        raise RecoveryNotificationDeliveryError(
+            "Recovery notification live delivery requires explicit confirmation.",
+            error_code="ag.recovery_notification_live_confirmation_required",
+            status_code=409,
+        )
+    if (
+        config.get("configured_provider_mode") != "live_http"
+        or config.get("effective_provider_mode") != "live_http"
+        or config.get("live_network_calls_enabled") is not True
+    ):
+        raise RecoveryNotificationDeliveryError(
+            "Recovery notification live HTTP provider is not enabled.",
+            error_code="ag.recovery_notification_live_provider_not_enabled",
+            status_code=409,
+        )
+    endpoint = _nested_mapping(
+        config,
+        "endpoints",
+        "notification",
+        error_code="ag.recovery_notification_live_endpoint_config_invalid",
+    )
+    if endpoint.get("configured") is not True:
+        raise RecoveryNotificationDeliveryError(
+            "Recovery notification live HTTP endpoint is not configured.",
+            error_code="ag.recovery_notification_live_endpoint_required",
+            status_code=409,
+        )
+    profile = _nested_mapping(
+        config,
+        "profiles",
+        "live_readiness",
+        provider_profile,
+        error_code="ag.recovery_notification_live_provider_profile_unknown",
+    )
+    channel_types = profile.get("channel_types")
+    if not isinstance(channel_types, list) or channel_type not in channel_types:
+        raise RecoveryNotificationDeliveryError(
+            "Recovery notification channel is not supported by provider profile.",
+            error_code="ag.recovery_notification_live_profile_channel_mismatch",
+            status_code=409,
+        )
+    target = _mapping(
+        admission.get("target"),
+        field="delivery_admission.target",
+        error_code="ag.recovery_notification_live_target_invalid",
+    )
+    return {
+        "live_admission_schema_version": (
+            RECOVERY_NOTIFICATION_LIVE_ADMISSION_SCHEMA_VERSION
+        ),
+        "admission_status": "ADMITTED",
+        "notification_plan_id": admission.get("notification_plan_id"),
+        "case_id": admission.get("case_id"),
+        "escalation_id": admission.get("escalation_id"),
+        "target": dict(target),
+        "delivery": {
+            "channel_type": channel_type,
+            "provider_profile": provider_profile,
+            "provider_mode": "live_http",
+            "dispatch_intent": "NOTIFY_OPERATOR",
+        },
+        "readiness": {
+            "live_network_calls_enabled": True,
+            "endpoint_configured": True,
+            "token_configured": bool(endpoint.get("token_configured")),
+            "explicit_confirmation": True,
+        },
+        "admitted_at": _datetime_value(admitted_at),
+        "guardrails": {
+            "generic_live_planner_default_closed": True,
+            "injected_transport_required": True,
+            "targeted_dispatch_filter_required": True,
+            "dispatch_persistence_performed": False,
+            "provider_invocation_performed": False,
+            "endpoint_value_included": False,
+            "provider_secret_included": False,
+            "raw_notification_payload_included": False,
         },
     }
 
@@ -490,6 +623,24 @@ def _without_private_request_signatures(value: Any) -> Any:
     if isinstance(value, list):
         return [_without_private_request_signatures(child) for child in value]
     return value
+
+
+def _nested_mapping(
+    value: Mapping[str, Any],
+    *keys: str,
+    error_code: str,
+) -> dict[str, Any]:
+    current: Any = value
+    for key in keys:
+        if not isinstance(current, Mapping):
+            break
+        current = current.get(key)
+    if not isinstance(current, Mapping):
+        raise RecoveryNotificationDeliveryError(
+            f"{'.'.join(keys)} must be an object.",
+            error_code=error_code,
+        )
+    return dict(current)
 
 
 def _assert_admission_matches_plan(
