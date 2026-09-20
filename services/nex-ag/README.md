@@ -1461,6 +1461,12 @@ Unified operations:
   audit. AG reuses `service_operational_events` and `ag_ev_exports`, performs
   read-only deterministic SHA-256 verification, adds no table or migration, and
   keeps retention/purge assigned to S89.
+- Slice 0881 starts S89 with an audit/evidence retention, archive, and purge
+  boundary audit. AG keeps `service_operational_events` and `ag_ev_exports` as
+  source tables, requires recoverable archive payload storage through an
+  injected adapter before physical purge, and proposes the short
+  `ag_ret_archives` table for sealed receipts and purge tombstones. Metadata-only
+  hashes do not authorize deletion, and dry-run remains the default.
 - Slice 0862 adds a pure operational-event integrity report. It detects invalid
   records, duplicate or missing event IDs, timestamp errors, and expected hash
   mismatches while returning only sorted metadata and canonical SHA-256 hashes.
