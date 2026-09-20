@@ -981,6 +981,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0875`](slices/0875_ag_source_timeout_failure_isolation.md) | `S88-005` AG bounded source timeout and partial-projection failure isolation. |
 | [`Slice 0876`](slices/0876_ag_resilience_performance_operations_projection.md) | `S88-006` AG protected DB pool and resilience-performance operations projection. |
 | [`Slice 0877`](slices/0877_ag_resilience_index_contract_hardening.md) | `S88-007` AG deterministic read indexes and resilience API contract hardening. |
+| [`Slice 0878`](slices/0878_ag_resilience_postgresql_bounded_load_smoke.md) | `S88-008` AG actual PostgreSQL migration, bounded-load, index, latency, and cleanup evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
