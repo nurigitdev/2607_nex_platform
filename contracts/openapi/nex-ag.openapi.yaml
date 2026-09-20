@@ -429,6 +429,69 @@ paths:
           description: Pagination cursor is invalid or incompatible.
         "503":
           description: Admission capacity is exhausted.
+  /admin/v1/operations/audit-retention:
+    get:
+      operationId: getAgAuditRetentionOperationsProjection
+      tags:
+        - Operations
+      parameters:
+        - name: as_of
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: Redacted retention candidates, archive receipts, and policy posture.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgAuditRetentionOperationsProjection"
+        "400":
+          description: Retention query parameters are invalid.
+        "401":
+          description: Service or admin user claim is missing or invalid.
+        "403":
+          description: Authenticated user is not an administrator.
+        "503":
+          description: Retention persistence is unavailable.
+  /admin/v1/operations/audit-retention/purge:
+    post:
+      operationId: executeAgAuditRetentionPurge
+      tags:
+        - Operations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgAuditRetentionPurgeRequest"
+      responses:
+        "200":
+          description: Dry-run assessment or guarded purge execution result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgAuditRetentionPurgeExecution"
+        "400":
+          description: Purge request or explicit confirmation is invalid.
+        "401":
+          description: Service or admin user claim is missing or invalid.
+        "403":
+          description: Authenticated user is not an administrator.
+        "409":
+          description: Source or archive receipt changed concurrently.
+        "503":
+          description: Retention persistence is unavailable.
   /admin/v1/operations/resilience-performance:
     get:
       operationId: getAgResiliencePerformanceOperationsProjection
@@ -4800,6 +4863,419 @@ components:
         invalid_record_count:
           type: integer
           minimum: 0
+    AgAuditRetentionOperationsProjection:
+      type: object
+      additionalProperties: false
+      required:
+        - projection_schema_version
+        - projection_status
+        - service_id
+        - policy
+        - checked_at
+        - candidates
+        - receipts
+        - attention_reasons
+        - privacy
+      properties:
+        projection_schema_version:
+          type: string
+          const: ag_audit_retention_operations_projection.v1
+        projection_status:
+          type: string
+          enum:
+            - READY
+            - ATTENTION
+        service_id:
+          type: string
+          const: nex-ag
+        policy:
+          $ref: "#/components/schemas/AgAuditRetentionPolicyProjection"
+        checked_at:
+          type: string
+          format: date-time
+        candidates:
+          $ref: "#/components/schemas/AgAuditRetentionCandidatePage"
+        receipts:
+          $ref: "#/components/schemas/AgAuditRetentionReceiptSummary"
+        attention_reasons:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+              - UNARCHIVED_RETENTION_CANDIDATES
+              - INVALID_SOURCE_ROWS
+              - ARCHIVE_FAILURES
+              - PURGE_READY_RECEIPTS
+        privacy:
+          type: object
+          additionalProperties: false
+          required:
+            - raw_payload_included
+            - object_reference_included
+            - credentials_included
+            - confirmation_included
+          properties:
+            raw_payload_included:
+              type: boolean
+              const: false
+            object_reference_included:
+              type: boolean
+              const: false
+            credentials_included:
+              type: boolean
+              const: false
+            confirmation_included:
+              type: boolean
+              const: false
+    AgAuditRetentionPolicyProjection:
+      type: object
+      additionalProperties: false
+      required:
+        - policy_id
+        - sources
+        - archive_provider_mode
+        - archive_grace_days
+        - execute_enabled
+        - dry_run_default
+      properties:
+        policy_id:
+          type: string
+          const: ag-audit-retention-v1
+        sources:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - source_kind
+              - retention_days
+            properties:
+              source_kind:
+                type: string
+                enum:
+                  - operational_event
+                  - evidence_export
+              retention_days:
+                type: integer
+                minimum: 30
+                maximum: 3650
+        archive_provider_mode:
+          type: string
+          enum:
+            - mock
+            - external
+        archive_grace_days:
+          type: integer
+          minimum: 1
+          maximum: 365
+        execute_enabled:
+          type: boolean
+        dry_run_default:
+          type: boolean
+          const: true
+    AgAuditRetentionCandidatePage:
+      type: object
+      additionalProperties: false
+      required:
+        - candidate_page_schema_version
+        - policy_id
+        - as_of
+        - limit
+        - candidate_count
+        - eligible_count
+        - invalid_record_count
+        - has_more
+        - items
+        - raw_payload_included
+      properties:
+        candidate_page_schema_version:
+          type: string
+          const: ag_retention_candidate_page.v1
+        policy_id:
+          type: string
+          const: ag-audit-retention-v1
+        as_of:
+          type: string
+          format: date-time
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 500
+        candidate_count:
+          type: integer
+          minimum: 0
+        eligible_count:
+          type: integer
+          minimum: 0
+        invalid_record_count:
+          type: integer
+          minimum: 0
+        has_more:
+          type: boolean
+        items:
+          type: array
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/AgAuditRetentionCandidate"
+        raw_payload_included:
+          type: boolean
+          const: false
+    AgAuditRetentionCandidate:
+      type: object
+      additionalProperties: false
+      required:
+        - candidate_schema_version
+        - candidate_id
+        - source_kind
+        - source_id
+        - source_timestamp
+        - retention_days
+        - retention_cutoff
+        - content_sha256
+        - archive_required
+        - archive_status
+        - purge_eligible
+        - raw_payload_included
+      properties:
+        candidate_schema_version:
+          type: string
+          const: ag_retention_candidate.v1
+        candidate_id:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        source_kind:
+          type: string
+          enum:
+            - operational_event
+            - evidence_export
+        source_id:
+          type: string
+          minLength: 1
+        source_timestamp:
+          type: string
+          format: date-time
+        retention_days:
+          type: integer
+          minimum: 30
+          maximum: 3650
+        retention_cutoff:
+          type: string
+          format: date-time
+        content_sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        archive_required:
+          type: boolean
+          const: true
+        archive_status:
+          type: string
+          const: UNARCHIVED
+        purge_eligible:
+          type: boolean
+          const: false
+        raw_payload_included:
+          type: boolean
+          const: false
+    AgAuditRetentionReceiptSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - returned_count
+        - status_counts
+        - purge_ready_count
+        - recent
+      properties:
+        returned_count:
+          type: integer
+          minimum: 0
+        status_counts:
+          type: object
+          additionalProperties: false
+          required:
+            - FAILED
+            - MOCKED
+            - PURGED
+            - REQUESTED
+            - SEALED
+          properties:
+            FAILED:
+              type: integer
+              minimum: 0
+            MOCKED:
+              type: integer
+              minimum: 0
+            PURGED:
+              type: integer
+              minimum: 0
+            REQUESTED:
+              type: integer
+              minimum: 0
+            SEALED:
+              type: integer
+              minimum: 0
+        purge_ready_count:
+          type: integer
+          minimum: 0
+        recent:
+          type: array
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/AgAuditRetentionReceipt"
+    AgAuditRetentionReceipt:
+      type: object
+      additionalProperties: false
+      required:
+        - archive_id
+        - source_kind
+        - source_id
+        - archive_provider_mode
+        - archive_status
+        - archived_at
+        - purge_after
+        - purged_at
+      properties:
+        archive_id:
+          type: string
+          minLength: 1
+        source_kind:
+          type: string
+          enum:
+            - operational_event
+            - evidence_export
+        source_id:
+          type: string
+          minLength: 1
+        archive_provider_mode:
+          type: string
+          enum:
+            - mock
+            - external
+        archive_status:
+          type: string
+          enum:
+            - REQUESTED
+            - MOCKED
+            - SEALED
+            - FAILED
+            - PURGED
+        archived_at:
+          type: string
+          format: date-time
+        purge_after:
+          type:
+            - string
+            - "null"
+          format: date-time
+        purged_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+    AgAuditRetentionPurgeRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - source_kind
+        - source_id
+      properties:
+        source_kind:
+          type: string
+          enum:
+            - operational_event
+            - evidence_export
+        source_id:
+          type: string
+          minLength: 1
+        as_of:
+          type: string
+          format: date-time
+        mode:
+          type: string
+          enum:
+            - DRY_RUN
+            - EXECUTE
+          default: DRY_RUN
+        confirmation:
+          type:
+            - string
+            - "null"
+    AgAuditRetentionPurgeExecution:
+      type: object
+      additionalProperties: false
+      required:
+        - purge_execution_schema_version
+        - mode
+        - status
+        - source_kind
+        - source_id
+        - archive_id
+        - archive_status
+        - reason
+        - checked_at
+        - deleted_count
+        - idempotent_noop
+        - raw_payload_included
+        - confirmation_included
+      properties:
+        purge_execution_schema_version:
+          type: string
+          const: ag_retention_purge_execution.v1
+        mode:
+          type: string
+          enum:
+            - DRY_RUN
+            - EXECUTE
+        status:
+          type: string
+          enum:
+            - ELIGIBLE
+            - BLOCKED
+            - PURGED
+            - NOOP
+        source_kind:
+          type: string
+          enum:
+            - operational_event
+            - evidence_export
+        source_id:
+          type: string
+          minLength: 1
+        archive_id:
+          type:
+            - string
+            - "null"
+        archive_status:
+          type:
+            - string
+            - "null"
+          enum:
+            - null
+            - REQUESTED
+            - MOCKED
+            - SEALED
+            - FAILED
+            - PURGED
+        reason:
+          type: string
+          minLength: 1
+        checked_at:
+          type: string
+          format: date-time
+        deleted_count:
+          type: integer
+          minimum: 0
+          maximum: 1
+        idempotent_noop:
+          type: boolean
+        raw_payload_included:
+          type: boolean
+          const: false
+        confirmation_included:
+          type: boolean
+          const: false
     AgResiliencePerformanceOperationsProjection:
       type: object
       additionalProperties: false

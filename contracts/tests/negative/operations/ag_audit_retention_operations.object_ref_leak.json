@@ -1,0 +1,54 @@
+{
+  "projection_schema_version": "ag_audit_retention_operations_projection.v1",
+  "projection_status": "READY",
+  "service_id": "nex-ag",
+  "policy": {
+    "policy_id": "ag-audit-retention-v1",
+    "sources": [
+      {"source_kind": "operational_event", "retention_days": 365},
+      {"source_kind": "evidence_export", "retention_days": 365}
+    ],
+    "archive_provider_mode": "external",
+    "archive_grace_days": 30,
+    "execute_enabled": true,
+    "dry_run_default": true
+  },
+  "checked_at": "2026-09-20T12:00:00Z",
+  "candidates": {
+    "candidate_page_schema_version": "ag_retention_candidate_page.v1",
+    "policy_id": "ag-audit-retention-v1",
+    "as_of": "2026-09-20T12:00:00Z",
+    "limit": 100,
+    "candidate_count": 0,
+    "eligible_count": 0,
+    "invalid_record_count": 0,
+    "has_more": false,
+    "items": [],
+    "raw_payload_included": false
+  },
+  "receipts": {
+    "returned_count": 1,
+    "status_counts": {"FAILED": 0, "MOCKED": 0, "PURGED": 0, "REQUESTED": 0, "SEALED": 1},
+    "purge_ready_count": 1,
+    "recent": [
+      {
+        "archive_id": "archive-0001",
+        "source_kind": "operational_event",
+        "source_id": "event-0001",
+        "archive_provider_mode": "external",
+        "archive_status": "SEALED",
+        "archived_at": "2026-08-01T00:00:00Z",
+        "purge_after": "2026-08-31T00:00:00Z",
+        "purged_at": null,
+        "archive_object_ref": "s3://private-bucket/private-object"
+      }
+    ]
+  },
+  "attention_reasons": ["PURGE_READY_RECEIPTS"],
+  "privacy": {
+    "raw_payload_included": false,
+    "object_reference_included": false,
+    "credentials_included": false,
+    "confirmation_included": false
+  }
+}

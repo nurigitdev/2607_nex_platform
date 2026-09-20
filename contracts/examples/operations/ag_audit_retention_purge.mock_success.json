@@ -1,0 +1,15 @@
+{
+  "purge_execution_schema_version": "ag_retention_purge_execution.v1",
+  "mode": "DRY_RUN",
+  "status": "ELIGIBLE",
+  "source_kind": "operational_event",
+  "source_id": "event-0001",
+  "archive_id": "archive-0001",
+  "archive_status": "SEALED",
+  "reason": "eligible",
+  "checked_at": "2026-09-20T12:00:00Z",
+  "deleted_count": 0,
+  "idempotent_noop": false,
+  "raw_payload_included": false,
+  "confirmation_included": false
+}

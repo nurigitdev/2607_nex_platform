@@ -1487,6 +1487,9 @@ Unified operations:
   and its guarded `/purge` command. The projection includes bounded metadata,
   policy posture, receipt counts, and operator attention reasons while omitting
   source payloads, archive references, hashes, credentials, and confirmations.
+- Slice 0887 freezes those two routes in strict JSON Schema and OpenAPI,
+  registers privacy-leak negative fixtures, and adds short deterministic
+  PostgreSQL indexes for oldest-first retention candidate reads.
 - Slice 0862 adds a pure operational-event integrity report. It detects invalid
   records, duplicate or missing event IDs, timestamp errors, and expected hash
   mismatches while returning only sorted metadata and canonical SHA-256 hashes.

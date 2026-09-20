@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ag/audit_retention.v1.schema.json",
+  "title": "NeX AG Audit Retention Lifecycle Contract",
+  "oneOf": [
+    {"$ref": "#/$defs/operations_projection"},
+    {"$ref": "#/$defs/purge_execution"}
+  ],
+  "$defs": {
+    "source_kind": {
+      "type": "string",
+      "enum": ["operational_event", "evidence_export"]
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_schema_version",
+        "candidate_id",
+        "source_kind",
+        "source_id",
+        "source_timestamp",
+        "retention_days",
+        "retention_cutoff",
+        "content_sha256",
+        "archive_required",
+        "archive_status",
+        "purge_eligible",
+        "raw_payload_included"
+      ],
+      "properties": {
+        "candidate_schema_version": {"const": "ag_retention_candidate.v1"},
+        "candidate_id": {"$ref": "#/$defs/sha256"},
+        "source_kind": {"$ref": "#/$defs/source_kind"},
+        "source_id": {"type": "string", "minLength": 1},
+        "source_timestamp": {"type": "string", "format": "date-time"},
+        "retention_days": {"type": "integer", "minimum": 30, "maximum": 3650},
+        "retention_cutoff": {"type": "string", "format": "date-time"},
+        "content_sha256": {"$ref": "#/$defs/sha256"},
+        "archive_required": {"const": true},
+        "archive_status": {"const": "UNARCHIVED"},
+        "purge_eligible": {"const": false},
+        "raw_payload_included": {"const": false}
+      }
+    },
+    "candidate_page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_page_schema_version",
+        "policy_id",
+        "as_of",
+        "limit",
+        "candidate_count",
+        "eligible_count",
+        "invalid_record_count",
+        "has_more",
+        "items",
+        "raw_payload_included"
+      ],
+      "properties": {
+        "candidate_page_schema_version": {"const": "ag_retention_candidate_page.v1"},
+        "policy_id": {"const": "ag-audit-retention-v1"},
+        "as_of": {"type": "string", "format": "date-time"},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 500},
+        "candidate_count": {"type": "integer", "minimum": 0},
+        "eligible_count": {"type": "integer", "minimum": 0},
+        "invalid_record_count": {"type": "integer", "minimum": 0},
+        "has_more": {"type": "boolean"},
+        "items": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {"$ref": "#/$defs/candidate"}
+        },
+        "raw_payload_included": {"const": false}
+      }
+    },
+    "receipt_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "archive_id",
+        "source_kind",
+        "source_id",
+        "archive_provider_mode",
+        "archive_status",
+        "archived_at",
+        "purge_after",
+        "purged_at"
+      ],
+      "properties": {
+        "archive_id": {"type": "string", "minLength": 1},
+        "source_kind": {"$ref": "#/$defs/source_kind"},
+        "source_id": {"type": "string", "minLength": 1},
+        "archive_provider_mode": {"type": "string", "enum": ["mock", "external"]},
+        "archive_status": {
+          "type": "string",
+          "enum": ["REQUESTED", "MOCKED", "SEALED", "FAILED", "PURGED"]
+        },
+        "archived_at": {"type": "string", "format": "date-time"},
+        "purge_after": {"type": ["string", "null"], "format": "date-time"},
+        "purged_at": {"type": ["string", "null"], "format": "date-time"}
+      }
+    },
+    "operations_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_schema_version",
+        "projection_status",
+        "service_id",
+        "policy",
+        "checked_at",
+        "candidates",
+        "receipts",
+        "attention_reasons",
+        "privacy"
+      ],
+      "properties": {
+        "projection_schema_version": {"const": "ag_audit_retention_operations_projection.v1"},
+        "projection_status": {"type": "string", "enum": ["READY", "ATTENTION"]},
+        "service_id": {"const": "nex-ag"},
+        "policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "policy_id",
+            "sources",
+            "archive_provider_mode",
+            "archive_grace_days",
+            "execute_enabled",
+            "dry_run_default"
+          ],
+          "properties": {
+            "policy_id": {"const": "ag-audit-retention-v1"},
+            "sources": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["source_kind", "retention_days"],
+                "properties": {
+                  "source_kind": {"$ref": "#/$defs/source_kind"},
+                  "retention_days": {"type": "integer", "minimum": 30, "maximum": 3650}
+                }
+              }
+            },
+            "archive_provider_mode": {"type": "string", "enum": ["mock", "external"]},
+            "archive_grace_days": {"type": "integer", "minimum": 1, "maximum": 365},
+            "execute_enabled": {"type": "boolean"},
+            "dry_run_default": {"const": true}
+          }
+        },
+        "checked_at": {"type": "string", "format": "date-time"},
+        "candidates": {"$ref": "#/$defs/candidate_page"},
+        "receipts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["returned_count", "status_counts", "purge_ready_count", "recent"],
+          "properties": {
+            "returned_count": {"type": "integer", "minimum": 0},
+            "status_counts": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["FAILED", "MOCKED", "PURGED", "REQUESTED", "SEALED"],
+              "properties": {
+                "FAILED": {"type": "integer", "minimum": 0},
+                "MOCKED": {"type": "integer", "minimum": 0},
+                "PURGED": {"type": "integer", "minimum": 0},
+                "REQUESTED": {"type": "integer", "minimum": 0},
+                "SEALED": {"type": "integer", "minimum": 0}
+              }
+            },
+            "purge_ready_count": {"type": "integer", "minimum": 0},
+            "recent": {
+              "type": "array",
+              "maxItems": 500,
+              "items": {"$ref": "#/$defs/receipt_projection"}
+            }
+          }
+        },
+        "attention_reasons": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "UNARCHIVED_RETENTION_CANDIDATES",
+              "INVALID_SOURCE_ROWS",
+              "ARCHIVE_FAILURES",
+              "PURGE_READY_RECEIPTS"
+            ]
+          }
+        },
+        "privacy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "raw_payload_included",
+            "object_reference_included",
+            "credentials_included",
+            "confirmation_included"
+          ],
+          "properties": {
+            "raw_payload_included": {"const": false},
+            "object_reference_included": {"const": false},
+            "credentials_included": {"const": false},
+            "confirmation_included": {"const": false}
+          }
+        }
+      }
+    },
+    "purge_execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "purge_execution_schema_version",
+        "mode",
+        "status",
+        "source_kind",
+        "source_id",
+        "archive_id",
+        "archive_status",
+        "reason",
+        "checked_at",
+        "deleted_count",
+        "idempotent_noop",
+        "raw_payload_included",
+        "confirmation_included"
+      ],
+      "properties": {
+        "purge_execution_schema_version": {"const": "ag_retention_purge_execution.v1"},
+        "mode": {"type": "string", "enum": ["DRY_RUN", "EXECUTE"]},
+        "status": {"type": "string", "enum": ["ELIGIBLE", "BLOCKED", "PURGED", "NOOP"]},
+        "source_kind": {"$ref": "#/$defs/source_kind"},
+        "source_id": {"type": "string", "minLength": 1},
+        "archive_id": {"type": ["string", "null"]},
+        "archive_status": {
+          "type": ["string", "null"],
+          "enum": [null, "REQUESTED", "MOCKED", "SEALED", "FAILED", "PURGED"]
+        },
+        "reason": {"type": "string", "minLength": 1},
+        "checked_at": {"type": "string", "format": "date-time"},
+        "deleted_count": {"type": "integer", "minimum": 0, "maximum": 1},
+        "idempotent_noop": {"type": "boolean"},
+        "raw_payload_included": {"const": false},
+        "confirmation_included": {"const": false}
+      }
+    }
+  }
+}

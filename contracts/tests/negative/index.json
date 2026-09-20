@@ -464,6 +464,16 @@
       "name": "ag_resilience_performance_operations_database_url_leak",
       "path": "tests/negative/operations/ag_resilience_performance_operations.database_url_leak.json",
       "schema": "schemas/service/nex_ag/resilience_performance.v1.schema.json"
+    },
+    {
+      "name": "ag_audit_retention_operations_object_ref_leak",
+      "path": "tests/negative/operations/ag_audit_retention_operations.object_ref_leak.json",
+      "schema": "schemas/service/nex_ag/audit_retention.v1.schema.json"
+    },
+    {
+      "name": "ag_audit_retention_purge_confirmation_leak",
+      "path": "tests/negative/operations/ag_audit_retention_purge.confirmation_leak.json",
+      "schema": "schemas/service/nex_ag/audit_retention.v1.schema.json"
     }
   ]
 }
