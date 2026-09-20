@@ -1507,6 +1507,9 @@ Unified operations:
 - Slice 0893 adds a machine-checkable 33-requirement evidence inventory across
   shared generation quality (S34-S38), AG operations foundation (S53), AG
   operator governance (S63-S81), and AG MVP hardening (S82-S89).
+- Slice 0894 adds a deterministic fail-closed acceptance evaluator. Missing,
+  skipped, stale, future-dated, threshold-failing, wrong-database, unclean, or
+  unknown evidence blocks the CX transition with privacy-safe reason codes.
 - Slice 0862 adds a pure operational-event integrity report. It detects invalid
   records, duplicate or missing event IDs, timestamp errors, and expected hash
   mismatches while returning only sorted metadata and canonical SHA-256 hashes.

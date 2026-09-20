@@ -997,6 +997,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0891`](slices/0891_ag_mvp_acceptance_cx_transition_boundary_audit.md) | `S90-001` AG service MVP acceptance and CX transition boundary audit. |
 | [`Slice 0892`](slices/0892_ag_mvp_acceptance_policy.md) | `S90-002` Validated AG service MVP acceptance gate and evidence policy. |
 | [`Slice 0893`](slices/0893_ag_mvp_evidence_inventory.md) | `S90-003` Canonical machine-checkable AG MVP requirement closure evidence inventory. |
+| [`Slice 0894`](slices/0894_ag_mvp_acceptance_evaluator.md) | `S90-004` Deterministic fail-closed AG service MVP acceptance evaluator. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
