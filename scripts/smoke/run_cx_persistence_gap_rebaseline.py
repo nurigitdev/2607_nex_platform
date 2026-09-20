@@ -37,7 +37,8 @@ def run_cx_persistence_gap_rebaseline() -> dict[str, Any]:
         "private_payloads_separated": (
             len(private_boundaries) == 6
             and all(
-                item["decision_status"] == "PENDING_SLICE_0904"
+                item["decision_status"]
+                in {"PENDING_SLICE_0904", "FROZEN_SLICE_0904"}
                 for item in private_boundaries
             )
         ),

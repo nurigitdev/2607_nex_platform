@@ -278,7 +278,7 @@ def build_cx_persistence_gap_audit(
         "observed_store_counts": counts,
         "surfaces": surfaces,
         "private_payload_boundaries": [
-            {**boundary, "decision_status": "PENDING_SLICE_0904"}
+            {**boundary, "decision_status": "FROZEN_SLICE_0904"}
             for boundary in CX_PRIVATE_PAYLOAD_BOUNDARIES
         ],
         "deferred_schema_decisions": [
@@ -307,7 +307,7 @@ def build_cx_persistence_gap_audit(
         ],
         "gap_classification": {
             "durable_public_metadata": "CLOSED",
-            "private_payload_durability": "DECISION_REQUIRED",
+            "private_payload_durability": "BOUNDARY_FROZEN_IMPLEMENTATION_PENDING",
             "optional_zero_item_index_headers": "DEFERRED_OPTIMIZATION",
         },
     }

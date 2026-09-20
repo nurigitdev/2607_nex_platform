@@ -15,6 +15,10 @@ NeX Content Experience service.
   `cx_persistence_gap_audit.v2`: all ten public metadata surfaces are closed,
   six private payload durability boundaries move to the Slice 0904 decision,
   and only two optional zero-item index header tables remain deferred.
+- Slice 0904 freezes restart-safe ownership for all six private payloads.
+  Source bytes are durable, decoded source text is reconstructable, and chunk
+  text, summary text, chunk vectors, and summary vectors require private
+  adapters in S92. Public PostgreSQL records remain metadata-only.
 
 Owned database env: `NEX_CX_DATABASE_URL`.
 

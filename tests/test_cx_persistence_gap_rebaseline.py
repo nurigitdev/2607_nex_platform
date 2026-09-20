@@ -15,7 +15,7 @@ def test_rebaseline_closes_metadata_and_separates_private_payloads() -> None:
     assert result["summary"]["deferred_schema_decision_count"] == 2
     assert result["gap_classification"] == {
         "durable_public_metadata": "CLOSED",
-        "private_payload_durability": "DECISION_REQUIRED",
+        "private_payload_durability": "BOUNDARY_FROZEN_IMPLEMENTATION_PENDING",
         "optional_zero_item_index_headers": "DEFERRED_OPTIMIZATION",
     }
 
