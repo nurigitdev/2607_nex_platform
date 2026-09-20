@@ -14,7 +14,7 @@ from nex_cx.retrieval_persistence import build_retrieval_runtime_persistence_dec
 from nex_cx.source_ownership import build_source_ownership_boundary_decision
 
 
-CX_PERSISTENCE_GAP_AUDIT_SCHEMA_VERSION = "cx_persistence_gap_audit.v1"
+CX_PERSISTENCE_GAP_AUDIT_SCHEMA_VERSION = "cx_persistence_gap_audit.v2"
 CX_PERSISTENCE_AUDIT_MODES = ("memory", "postgres")
 
 CX_CONTENT_PERSISTENCE_SURFACES: tuple[dict[str, Any], ...] = (
@@ -167,43 +167,6 @@ CX_PRIVATE_PAYLOAD_BOUNDARIES: tuple[dict[str, str], ...] = (
 
 CX_DEFERRED_SCHEMA_DECISIONS: tuple[dict[str, Any], ...] = (
     {
-        "decision_id": "processing_runs",
-        "surface_id": "processing_runs",
-        "decision_status": "ag_dashboard_integrated",
-        "candidate_tables": [
-            CX_DOCUMENT_PROCESSING_RUN_TABLE,
-            CX_DOCUMENT_PROCESSING_STEP_TABLE,
-        ],
-        "minimum_persisted_metadata": [
-            "pipeline_run_id",
-            "pipeline_schema_version",
-            "document_id",
-            "trace_id",
-            "request_id",
-            "status",
-            "job_id",
-            "job_status",
-            "step_total",
-            "step_succeeded",
-            "step_skipped",
-            "step_failed",
-            "queued_at",
-            "started_at",
-            "completed_at",
-            "updated_at",
-            "steps[].step_order",
-            "steps[].step_id",
-            "steps[].status",
-            "steps[].output_ref_hash",
-            "steps[].error_code",
-            "steps[].error_detail_sha256",
-        ],
-        "private_payload_policy": (
-            "run_header_step_status_output_ref_hash_and_error_hash_only"
-        ),
-        "decision_trigger": "slice_0192_cx_source_ownership_boundary_decision",
-    },
-    {
         "decision_id": "lexical_index_header",
         "surface_id": "lexical_index",
         "decision_status": "header_table_deferred",
@@ -264,6 +227,12 @@ def build_cx_persistence_gap_audit(
                 surface.get("target_table_status")
                 or ("migration_present" if surface["target_tables"] else "schema_deferred")
             ),
+            "persistence_class": "durable_public_metadata",
+            "gap_status": (
+                "OPEN"
+                if surface["postgres_adapter_required"]
+                else "CLOSED"
+            ),
         }
         for surface in CX_CONTENT_PERSISTENCE_SURFACES
     ]
@@ -282,28 +251,35 @@ def build_cx_persistence_gap_audit(
     return {
         "audit_schema_version": CX_PERSISTENCE_GAP_AUDIT_SCHEMA_VERSION,
         "service_id": "nex-cx",
-        "checkpoint_slice": "0181",
+        "checkpoint_slice": "0903",
         "persistence_mode": mode,
         "store_type": type(store).__name__ if store is not None else None,
         "content_repository_type": (
             type(store.content_repository).__name__ if store is not None else None
         ),
-        "checkpoint_status": "ACTION_REQUIRED",
+        "checkpoint_status": "REBASELINED",
         "summary": {
             "surface_count": len(surfaces),
+            "durable_metadata_surface_count": sum(
+                surface["gap_status"] == "CLOSED" for surface in surfaces
+            ),
+            "durable_metadata_gap_count": sum(
+                surface["gap_status"] == "OPEN" for surface in surfaces
+            ),
             "postgres_adapter_gap_count": postgres_gap_count,
             "schema_deferred_count": schema_deferred_count,
             "migration_pending_count": migration_pending_count,
             "deferred_schema_decision_count": len(CX_DEFERRED_SCHEMA_DECISIONS),
             "private_payload_boundary_count": len(CX_PRIVATE_PAYLOAD_BOUNDARIES),
             "next_recommended_slice": (
-                "0201_cx_owner_scoped_document_library_projection"
+                "0904_cx_private_payload_storage_boundary_decision"
             ),
         },
         "observed_store_counts": counts,
         "surfaces": surfaces,
         "private_payload_boundaries": [
-            dict(boundary) for boundary in CX_PRIVATE_PAYLOAD_BOUNDARIES
+            {**boundary, "decision_status": "PENDING_SLICE_0904"}
+            for boundary in CX_PRIVATE_PAYLOAD_BOUNDARIES
         ],
         "deferred_schema_decisions": [
             deepcopy_decision(decision) for decision in CX_DEFERRED_SCHEMA_DECISIONS
@@ -327,8 +303,13 @@ def build_cx_persistence_gap_audit(
             "Persist metadata, hashes, previews, lineage, and storage URIs only.",
             "Keep raw source bytes, chunk text, summaries, and vectors outside public records.",
             "Preserve owner-scoped duplicate detection and migrate legacy tenant_id + owner_user_id to OA subject refs.",
-            "Add PostgreSQL write-through behind existing store/repository ports before changing routes.",
+            "Keep PostgreSQL write-through behind existing store/repository ports.",
         ],
+        "gap_classification": {
+            "durable_public_metadata": "CLOSED",
+            "private_payload_durability": "DECISION_REQUIRED",
+            "optional_zero_item_index_headers": "DEFERRED_OPTIMIZATION",
+        },
     }
 
 

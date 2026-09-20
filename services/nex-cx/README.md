@@ -11,6 +11,10 @@ NeX Content Experience service.
   contract, migration, test, and route evidence. `TRACEABLE` is deliberately
   narrower than acceptance; it is the baseline for the persistence-gap
   re-evaluation in Slice 0903.
+- Slice 0903 replaces the stale Slice 0181 persistence checkpoint with
+  `cx_persistence_gap_audit.v2`: all ten public metadata surfaces are closed,
+  six private payload durability boundaries move to the Slice 0904 decision,
+  and only two optional zero-item index header tables remain deferred.
 
 Owned database env: `NEX_CX_DATABASE_URL`.
 
@@ -151,8 +155,8 @@ Internal persistence boundary:
 - The current adapter is in-memory for mock-first testing; PostgreSQL
   write-through is added after migration execution is stable.
 - `nex_cx.persistence_audit.build_cx_persistence_gap_audit()` emits the
-  `cx_persistence_gap_audit.v1` checkpoint. It records current memory-only
-  surfaces, target migration tables, and private payload boundaries without
+  `cx_persistence_gap_audit.v2` checkpoint. It records durable public metadata
+  surfaces, optional schema decisions, and private payload boundaries without
   exposing raw source text, chunk text, summary text, provider endpoints, or
   vectors.
 - `SqlAlchemyCxContentRepository` persists source file metadata, content object

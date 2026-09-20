@@ -49,20 +49,22 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
 
     assert audit["audit_schema_version"] == CX_PERSISTENCE_GAP_AUDIT_SCHEMA_VERSION
     assert audit["service_id"] == "nex-cx"
-    assert audit["checkpoint_slice"] == "0181"
+    assert audit["checkpoint_slice"] == "0903"
     assert audit["persistence_mode"] == "memory"
-    assert audit["checkpoint_status"] == "ACTION_REQUIRED"
+    assert audit["checkpoint_status"] == "REBASELINED"
     assert audit["store_type"] is None
     assert audit["content_repository_type"] is None
     assert audit["summary"] == {
         "surface_count": 10,
+        "durable_metadata_surface_count": 10,
+        "durable_metadata_gap_count": 0,
         "postgres_adapter_gap_count": 0,
         "schema_deferred_count": 0,
         "migration_pending_count": 0,
-        "deferred_schema_decision_count": 3,
+        "deferred_schema_decision_count": 2,
         "private_payload_boundary_count": 6,
         "next_recommended_slice": (
-            "0201_cx_owner_scoped_document_library_projection"
+            "0904_cx_private_payload_storage_boundary_decision"
         ),
     }
     assert all(count == 0 for count in audit["observed_store_counts"].values())
@@ -97,7 +99,6 @@ def test_cx_persistence_gap_audit_defaults_to_empty_memory_checkpoint() -> None:
     } == {
         "chunk_embedding_index_header",
         "lexical_index_header",
-        "processing_runs",
     }
     assert (
         audit["retrieval_runtime_persistence_decision"]["decision_status"]
@@ -207,28 +208,20 @@ def test_cx_persistence_gap_audit_records_deferred_schema_decisions() -> None:
         for decision in audit["deferred_schema_decisions"]
     }
 
-    processing = decisions["processing_runs"]
     lexical_header = decisions["lexical_index_header"]
     chunk_embedding_header = decisions["chunk_embedding_index_header"]
 
-    assert processing["candidate_tables"] == [
-        "cx_document_processing_runs",
-        "cx_document_processing_steps",
-    ]
-    assert processing["decision_status"] == "ag_dashboard_integrated"
-    assert "step_total" in processing["minimum_persisted_metadata"]
-    assert "steps[].error_detail_sha256" in processing["minimum_persisted_metadata"]
     assert lexical_header["decision_status"] == "header_table_deferred"
     assert chunk_embedding_header["decision_status"] == "header_table_deferred"
-    assert len(CX_DEFERRED_SCHEMA_DECISIONS) == 3
+    assert len(CX_DEFERRED_SCHEMA_DECISIONS) == 2
 
-    processing["candidate_tables"].append("mutated")
+    lexical_header["candidate_tables"].append("mutated")
     fresh = build_cx_persistence_gap_audit()
-    fresh_processing = {
+    fresh_lexical = {
         decision["decision_id"]: decision
         for decision in fresh["deferred_schema_decisions"]
-    }["processing_runs"]
-    assert "mutated" not in fresh_processing["candidate_tables"]
+    }["lexical_index_header"]
+    assert "mutated" not in fresh_lexical["candidate_tables"]
 
 
 def test_cx_persistence_gap_audit_accepts_repository_without_public_dicts() -> None:

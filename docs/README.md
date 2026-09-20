@@ -1006,6 +1006,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0900`](slices/0900_s90_ag_mvp_acceptance_cx_transition_closure.md) | `S90-010` AG service MVP acceptance and NeX-CX transition closure checkpoint. |
 | [`Slice 0901`](slices/0901_cx_current_state_reaudit_boundary.md) | `S91-001` CX current-state re-audit and refactoring boundary checkpoint. |
 | [`Slice 0902`](slices/0902_cx_capability_traceability_inventory.md) | `S91-002` Machine-checkable CX SRS capability traceability inventory. |
+| [`Slice 0903`](slices/0903_cx_persistence_gap_rebaseline.md) | `S91-003` Current-state CX persistence gap re-baseline. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
