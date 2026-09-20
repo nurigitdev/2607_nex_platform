@@ -1490,6 +1490,9 @@ Unified operations:
 - Slice 0887 freezes those two routes in strict JSON Schema and OpenAPI,
   registers privacy-leak negative fixtures, and adds short deterministic
   PostgreSQL indexes for oldest-first retention candidate reads.
+- Slice 0888 proves the two-source retention lifecycle against the actual
+  `nex_ag_test` database: candidate selection, recoverable sealed receipts,
+  dry-run, confirmed purge, idempotent retry, index use, and zero-residue cleanup.
 - Slice 0862 adds a pure operational-event integrity report. It detects invalid
   records, duplicate or missing event IDs, timestamp errors, and expected hash
   mismatches while returning only sorted metadata and canonical SHA-256 hashes.

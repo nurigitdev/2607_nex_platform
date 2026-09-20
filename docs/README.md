@@ -991,6 +991,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0885`](slices/0885_ag_guarded_physical_purge_execution.md) | `S89-005` AG dry-run-first, receipt-gated, transactional physical purge execution. |
 | [`Slice 0886`](slices/0886_ag_audit_retention_operations_projection.md) | `S89-006` AG protected retention lifecycle projection and purge route wiring. |
 | [`Slice 0887`](slices/0887_ag_audit_retention_contract_index_hardening.md) | `S89-007` AG retention JSON Schema/OpenAPI contract and deterministic candidate index hardening. |
+| [`Slice 0888`](slices/0888_ag_audit_retention_postgresql_smoke.md) | `S89-008` AG retention actual PostgreSQL archive, purge, idempotency, index, and cleanup smoke evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
