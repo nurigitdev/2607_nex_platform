@@ -1513,6 +1513,9 @@ Unified operations:
 - Slice 0895 exposes a read-only protected MVP acceptance route. Evidence is
   server-selected, client POSTs are rejected, provider failures are redacted,
   and the default partial provider remains blocked until live evidence exists.
+- Slice 0896 freezes that operations projection in strict JSON Schema and
+  OpenAPI, including negative fixtures that reject raw evidence, database URLs,
+  and credentials.
 - Slice 0862 adds a pure operational-event integrity report. It detects invalid
   records, duplicate or missing event IDs, timestamp errors, and expected hash
   mismatches while returning only sorted metadata and canonical SHA-256 hashes.

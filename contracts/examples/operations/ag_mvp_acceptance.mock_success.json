@@ -1,0 +1,31 @@
+{
+  "report_schema_version": "ag_mvp_acceptance_report.v1",
+  "acceptance_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "service_id": "nex-ag",
+  "acceptance_scope": "nex_ag_service_mvp",
+  "evaluated_at": "2026-09-20T03:00:00Z",
+  "status": "ACCEPTED",
+  "transition_status": "READY_FOR_CX",
+  "gates": [
+    {"gate_id": "ag_requirement_closures", "severity": "BLOCKING", "status": "PASS", "reason_codes": []},
+    {"gate_id": "contract_validation", "severity": "BLOCKING", "status": "PASS", "reason_codes": []},
+    {"gate_id": "unit_regression", "severity": "BLOCKING", "status": "PASS", "reason_codes": []},
+    {"gate_id": "statement_coverage", "severity": "BLOCKING", "status": "PASS", "reason_codes": []},
+    {"gate_id": "branch_coverage", "severity": "BLOCKING", "status": "PASS", "reason_codes": []},
+    {"gate_id": "postgres_smoke", "severity": "BLOCKING", "status": "PASS", "reason_codes": []},
+    {"gate_id": "privacy_failure_runbooks", "severity": "BLOCKING", "status": "PASS", "reason_codes": []},
+    {"gate_id": "cx_transition_handoff", "severity": "BLOCKING", "status": "PASS", "reason_codes": []}
+  ],
+  "blockers": [],
+  "summary": {"gate_count": 8, "passed_gate_count": 8, "blocked_gate_count": 0},
+  "advisory_deferrals": [
+    "product_wide_mvp_release_approval",
+    "production_deployment_certification",
+    "production_identity_and_external_notification_integration",
+    "distributed_load_and_disaster_recovery_certification"
+  ],
+  "raw_evidence_included": false,
+  "request_trace_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "evidence_source_status": "COLLECTED",
+  "server_selected": true
+}

@@ -659,6 +659,11 @@
       "name": "ag_audit_retention_purge_mock",
       "path": "examples/operations/ag_audit_retention_purge.mock_success.json",
       "schema": "schemas/service/nex_ag/audit_retention.v1.schema.json"
+    },
+    {
+      "name": "ag_mvp_acceptance_mock",
+      "path": "examples/operations/ag_mvp_acceptance.mock_success.json",
+      "schema": "schemas/service/nex_ag/mvp_acceptance.v1.schema.json"
     }
   ]
 }

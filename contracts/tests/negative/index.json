@@ -474,6 +474,16 @@
       "name": "ag_audit_retention_purge_confirmation_leak",
       "path": "tests/negative/operations/ag_audit_retention_purge.confirmation_leak.json",
       "schema": "schemas/service/nex_ag/audit_retention.v1.schema.json"
+    },
+    {
+      "name": "ag_mvp_acceptance_raw_evidence_leak",
+      "path": "tests/negative/operations/ag_mvp_acceptance.raw_evidence_leak.json",
+      "schema": "schemas/service/nex_ag/mvp_acceptance.v1.schema.json"
+    },
+    {
+      "name": "ag_mvp_acceptance_database_url_leak",
+      "path": "tests/negative/operations/ag_mvp_acceptance.database_url_leak.json",
+      "schema": "schemas/service/nex_ag/mvp_acceptance.v1.schema.json"
     }
   ]
 }

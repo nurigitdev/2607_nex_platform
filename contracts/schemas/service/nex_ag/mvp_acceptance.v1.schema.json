@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ag/mvp_acceptance.v1.schema.json",
+  "title": "NeX AG MVP Acceptance Operations Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "report_schema_version",
+    "acceptance_id",
+    "service_id",
+    "acceptance_scope",
+    "evaluated_at",
+    "status",
+    "transition_status",
+    "gates",
+    "blockers",
+    "summary",
+    "advisory_deferrals",
+    "raw_evidence_included",
+    "request_trace_id",
+    "evidence_source_status",
+    "server_selected"
+  ],
+  "properties": {
+    "report_schema_version": {"const": "ag_mvp_acceptance_report.v1"},
+    "acceptance_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "service_id": {"const": "nex-ag"},
+    "acceptance_scope": {"const": "nex_ag_service_mvp"},
+    "evaluated_at": {"type": "string", "format": "date-time"},
+    "status": {"type": "string", "enum": ["ACCEPTED", "BLOCKED"]},
+    "transition_status": {"type": "string", "enum": ["READY_FOR_CX", "BLOCKED"]},
+    "gates": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": {"$ref": "#/$defs/gate_result"}
+    },
+    "blockers": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {"$ref": "#/$defs/blocker"}
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gate_count", "passed_gate_count", "blocked_gate_count"],
+      "properties": {
+        "gate_count": {"const": 8},
+        "passed_gate_count": {"type": "integer", "minimum": 0, "maximum": 8},
+        "blocked_gate_count": {"type": "integer", "minimum": 0, "maximum": 8}
+      }
+    },
+    "advisory_deferrals": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "product_wide_mvp_release_approval",
+          "production_deployment_certification",
+          "production_identity_and_external_notification_integration",
+          "distributed_load_and_disaster_recovery_certification"
+        ]
+      }
+    },
+    "raw_evidence_included": {"const": false},
+    "request_trace_id": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "evidence_source_status": {"type": "string", "enum": ["COLLECTED", "UNAVAILABLE"]},
+    "server_selected": {"const": true}
+  },
+  "$defs": {
+    "gate_id": {
+      "type": "string",
+      "enum": [
+        "ag_requirement_closures",
+        "contract_validation",
+        "unit_regression",
+        "statement_coverage",
+        "branch_coverage",
+        "postgres_smoke",
+        "privacy_failure_runbooks",
+        "cx_transition_handoff"
+      ]
+    },
+    "reason_code": {
+      "type": "string",
+      "enum": [
+        "evidence_missing",
+        "status_not_pass",
+        "observed_at_invalid",
+        "evidence_from_future",
+        "evidence_stale",
+        "requirement_count_incomplete",
+        "closure_inventory_has_issues",
+        "contract_family_empty",
+        "regression_pass_count_below_minimum",
+        "regression_failures_present",
+        "coverage_below_threshold",
+        "postgres_backend_not_proven",
+        "test_database_not_proven",
+        "postgres_cleanup_not_proven",
+        "runbook_inventory_incomplete",
+        "handoff_target_invalid",
+        "handoff_manifest_not_sealed",
+        "gate_evaluator_missing"
+      ]
+    },
+    "gate_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gate_id", "severity", "status", "reason_codes"],
+      "properties": {
+        "gate_id": {"$ref": "#/$defs/gate_id"},
+        "severity": {"const": "BLOCKING"},
+        "status": {"type": "string", "enum": ["PASS", "BLOCKED"]},
+        "reason_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/reason_code"}
+        }
+      }
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gate_id", "reason_codes"],
+      "properties": {
+        "gate_id": {"$ref": "#/$defs/gate_id"},
+        "reason_codes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/reason_code"}
+        }
+      }
+    }
+  }
+}
