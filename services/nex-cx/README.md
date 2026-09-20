@@ -7,6 +7,10 @@ NeX Content Experience service.
   historical gap descriptions; the audit covers `CX-FR-001` through
   `CX-FR-008`, adds no table, and requires actual `nex_cx_test` evidence before
   S91 closure.
+- Slice 0902 maps each of those eight requirements to implementation,
+  contract, migration, test, and route evidence. `TRACEABLE` is deliberately
+  narrower than acceptance; it is the baseline for the persistence-gap
+  re-evaluation in Slice 0903.
 
 Owned database env: `NEX_CX_DATABASE_URL`.
 
