@@ -23,6 +23,10 @@ NeX Content Experience service.
   five job, processing, retrieval, and generation surfaces still lack a
   principal-bound authorization context. S92 should introduce one shared
   `CxAccessContext` instead of adding route-specific authorization branches.
+- Slice 0906 freezes a targeted runtime refactoring sequence: central access
+  context, app-owned dependency composition, private payload ports, then
+  narrower route protocols. Existing repository/provider protocols and memory
+  regression adapters are retained; no big-bang rewrite is planned.
 
 Owned database env: `NEX_CX_DATABASE_URL`.
 

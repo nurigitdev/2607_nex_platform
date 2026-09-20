@@ -1009,6 +1009,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0903`](slices/0903_cx_persistence_gap_rebaseline.md) | `S91-003` Current-state CX persistence gap re-baseline. |
 | [`Slice 0904`](slices/0904_cx_private_payload_storage_boundary_decision.md) | `S91-004` Restart-safe CX private payload storage boundary decision. |
 | [`Slice 0905`](slices/0905_cx_ownership_permission_enforcement_audit.md) | `S91-005` CX ownership metadata versus effective permission-enforcement audit. |
+| [`Slice 0906`](slices/0906_cx_runtime_coupling_refactoring_checkpoint.md) | `S91-006` CX runtime coupling and targeted-refactoring checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
