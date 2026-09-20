@@ -123,6 +123,7 @@ register_audit_evidence_routes(
     event_store=SERVICE_PERSISTENCE.operational_event_store,
     export_store=OPERATOR_EVIDENCE_EXPORT_STORE,
     audit_event_store=SERVICE_PERSISTENCE.operational_event_store,
+    persistence_runtime=SERVICE_PERSISTENCE,
 )
 register_operator_review_case_routes(
     app,

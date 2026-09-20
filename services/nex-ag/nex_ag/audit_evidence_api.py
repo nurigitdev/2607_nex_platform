@@ -29,7 +29,12 @@ from nex_ag.resilience_performance import (
     AgConcurrencyAdmissionGuard,
     AgSourceIsolationExecutor,
     build_ag_concurrency_admission_guard,
+    build_ag_resilience_performance_policy,
     build_ag_source_isolation_executor,
+)
+from nex_ag.resilience_performance_operations import (
+    AG_RESILIENCE_PERFORMANCE_OPERATIONS_PATH,
+    build_ag_resilience_performance_operations_projection,
 )
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
@@ -158,6 +163,7 @@ def register_audit_evidence_routes(
     audit_event_store: OperationalEventStore | None = None,
     admission_guard: AgConcurrencyAdmissionGuard | None = None,
     source_executor: AgSourceIsolationExecutor | None = None,
+    persistence_runtime: Any | None = None,
 ) -> None:
     service = AuditEvidencePackageService(
         event_store=event_store,
@@ -173,6 +179,29 @@ def register_audit_evidence_routes(
     selected_source_executor = (
         source_executor or build_ag_source_isolation_executor()
     )
+    resilience_policy = build_ag_resilience_performance_policy()
+
+    @app.get(AG_RESILIENCE_PERFORMANCE_OPERATIONS_PATH, response_model=None)
+    def get_resilience_performance_operations(
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = _authorize_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        runtime = persistence_runtime or getattr(
+            app.state,
+            "nex_persistence",
+            None,
+        )
+        return build_ag_resilience_performance_operations_projection(
+            policy=resilience_policy,
+            admission_snapshot=selected_admission_guard.snapshot(),
+            source_snapshot=selected_source_executor.snapshot(),
+            api_engine=getattr(runtime, "api_engine", None),
+            worker_engine=getattr(runtime, "worker_engine", None),
+            request_trace_id=trace_id_from_headers(request),
+        )
 
     @app.get("/admin/v1/operations/audit-integrity", response_model=None)
     def get_audit_evidence_operations(
