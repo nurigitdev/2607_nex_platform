@@ -4,6 +4,7 @@ import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 
@@ -13,6 +14,7 @@ MIN_STATEMENT_COVERAGE_FLOOR = 95.0
 MIN_BRANCH_COVERAGE_FLOOR = 85.0
 MAX_EVIDENCE_AGE_HOURS = 168
 MAX_REQUIRED_REGRESSION_TESTS = 1_000_000
+ROOT = Path(__file__).resolve().parents[3]
 
 
 @dataclass(frozen=True)
@@ -22,6 +24,13 @@ class AgMvpAcceptancePolicyError(ValueError):
 
     def __str__(self) -> str:
         return self.detail
+
+
+@dataclass(frozen=True)
+class AgMvpEvidenceSpec:
+    requirement: str
+    capability_group: str
+    closure_slice: str
 
 
 def build_ag_mvp_acceptance_policy(
@@ -130,6 +139,140 @@ def acceptance_gate_by_id(
         error_code="ag.mvp_acceptance.gate_unknown",
         detail="Acceptance gate is not registered.",
     )
+
+
+def build_ag_mvp_evidence_inventory(root: Path = ROOT) -> dict[str, Any]:
+    specs = ag_mvp_evidence_specs()
+    entries = [_inspect_evidence_spec(root, spec) for spec in specs]
+    requirements = [spec.requirement for spec in specs]
+    issues = [
+        issue
+        for entry in entries
+        for issue in entry["issues"]
+    ]
+    checks = {
+        "requirement_count_complete": len(entries) == 33,
+        "requirements_unique": len(requirements) == len(set(requirements)),
+        "closure_runners_present": all(
+            entry["closure_runner_count"] == 1 for entry in entries
+        ),
+        "closure_docs_present": all(
+            entry["closure_document_count"] == 1 for entry in entries
+        ),
+        "closure_identity_tokens_present": all(
+            entry["identity_tokens_present"] for entry in entries
+        ),
+    }
+    passed = all(checks.values()) and not issues
+    return {
+        "inventory_schema_version": "ag_mvp_evidence_inventory.v1",
+        "service_id": "nex-ag",
+        "status": "PASS" if passed else "FAIL",
+        "failure_code": (
+            None if passed else "ag.mvp_acceptance.evidence_inventory_invalid"
+        ),
+        "scope": {
+            "first_requirement": "S34",
+            "last_requirement": "S89",
+            "included_requirement_count": len(entries),
+            "ae_only_s39_s62_included": False,
+        },
+        "entries": entries,
+        "checks": checks,
+        "issues": issues,
+    }
+
+
+def ag_mvp_evidence_specs() -> tuple[AgMvpEvidenceSpec, ...]:
+    groups = (
+        ("shared_generation_quality", range(34, 39)),
+        ("ag_operations_foundation", (53,)),
+        ("ag_operator_governance", range(63, 82)),
+        ("ag_mvp_hardening", range(82, 90)),
+    )
+    return tuple(
+        AgMvpEvidenceSpec(
+            requirement=f"S{number}",
+            capability_group=group,
+            closure_slice=("0711" if number == 71 else f"{number * 10:04d}"),
+        )
+        for group, numbers in groups
+        for number in numbers
+    )
+
+
+def _inspect_evidence_spec(
+    root: Path, spec: AgMvpEvidenceSpec
+) -> dict[str, Any]:
+    number = int(spec.requirement[1:])
+    runners = sorted(
+        (root / "scripts/smoke").glob(
+            f"run_s{number}_*_closure.py"
+        )
+    )
+    documents = sorted(
+        (root / "docs/slices").glob(
+            f"{spec.closure_slice}_*closure*.md"
+        )
+    )
+    runner_text = _single_file_text(runners)
+    document_text = _single_file_text(documents)
+    identity_tokens_present = (
+        len(runners) == 1
+        and len(documents) == 1
+        and "SCHEMA_VERSION" in runner_text
+        and f"s{number}_" in runner_text.lower()
+        and "closure.v1" in runner_text
+        and f"# Slice {spec.closure_slice}" in document_text
+    )
+    issues: list[dict[str, Any]] = []
+    if len(runners) != 1:
+        issues.append(
+            {
+                "category": "closure_runner_count_invalid",
+                "requirement": spec.requirement,
+                "observed_count": len(runners),
+            }
+        )
+    if len(documents) != 1:
+        issues.append(
+            {
+                "category": "closure_document_count_invalid",
+                "requirement": spec.requirement,
+                "observed_count": len(documents),
+            }
+        )
+    if len(runners) == 1 and len(documents) == 1 and not identity_tokens_present:
+        issues.append(
+            {
+                "category": "closure_identity_token_missing",
+                "requirement": spec.requirement,
+            }
+        )
+    return {
+        "requirement": spec.requirement,
+        "capability_group": spec.capability_group,
+        "closure_slice": spec.closure_slice,
+        "closure_runner": _relative_path(root, runners),
+        "closure_document": _relative_path(root, documents),
+        "closure_runner_count": len(runners),
+        "closure_document_count": len(documents),
+        "identity_tokens_present": identity_tokens_present,
+        "status": "READY" if not issues else "INVALID",
+        "issues": issues,
+    }
+
+
+def _single_file_text(paths: list[Path]) -> str:
+    if len(paths) != 1:
+        return ""
+    return paths[0].read_text(encoding="utf-8")
+
+
+def _relative_path(root: Path, paths: list[Path]) -> str | None:
+    if len(paths) != 1:
+        return None
+    return paths[0].relative_to(root).as_posix()
 
 
 def _blocking_gates() -> list[dict[str, Any]]:
