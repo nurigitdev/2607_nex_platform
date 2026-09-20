@@ -1471,6 +1471,10 @@ Unified operations:
   types default to 365-day retention, archive grace defaults to 30 days, each
   batch is capped at 500 rows, and physical purge stays disabled unless an
   external archive provider is selected explicitly.
+- Slice 0883 adds in-memory and SQLAlchemy retention-candidate read models over
+  `service_operational_events` and `ag_ev_exports`. Candidate pages are bounded,
+  oldest-first, hash-verifiable, and metadata-only; unarchived rows remain
+  explicitly ineligible for purge.
 - Slice 0862 adds a pure operational-event integrity report. It detects invalid
   records, duplicate or missing event IDs, timestamp errors, and expected hash
   mismatches while returning only sorted metadata and canonical SHA-256 hashes.

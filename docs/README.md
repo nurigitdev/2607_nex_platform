@@ -986,6 +986,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0880`](slices/0880_s88_ag_resilience_performance_closure.md) | `S88-010` S88 AG resilience and bounded-performance closure checkpoint. |
 | [`Slice 0881`](slices/0881_ag_audit_retention_archive_purge_boundary_audit.md) | `S89-001` AG audit/evidence retention, archive, and guarded-purge boundary audit. |
 | [`Slice 0882`](slices/0882_ag_audit_retention_archive_policy.md) | `S89-002` AG validated audit/evidence retention and archive policy contract. |
+| [`Slice 0883`](slices/0883_ag_audit_retention_candidate_read_model.md) | `S89-003` AG bounded, redacted audit/evidence retention candidate read model. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
