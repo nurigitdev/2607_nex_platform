@@ -1479,6 +1479,10 @@ Unified operations:
   Recoverable external receipts become `SEALED`; mock receipts remain `MOCKED`
   without a purge date. Only hashes and safe lifecycle metadata are persisted,
   never archive object references or source payloads.
+- Slice 0885 adds receipt-gated physical purge execution. Dry-run is the default;
+  execute requires explicit policy enablement and confirmation, then rechecks
+  the external sealed receipt, grace period, and source hash in the same
+  transaction that deletes the source and writes the `PURGED` tombstone.
 - Slice 0862 adds a pure operational-event integrity report. It detects invalid
   records, duplicate or missing event IDs, timestamp errors, and expected hash
   mismatches while returning only sorted metadata and canonical SHA-256 hashes.

@@ -988,6 +988,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0882`](slices/0882_ag_audit_retention_archive_policy.md) | `S89-002` AG validated audit/evidence retention and archive policy contract. |
 | [`Slice 0883`](slices/0883_ag_audit_retention_candidate_read_model.md) | `S89-003` AG bounded, redacted audit/evidence retention candidate read model. |
 | [`Slice 0884`](slices/0884_ag_archive_receipt_persistence_sealing.md) | `S89-004` AG immutable archive receipt persistence and external-provider sealing. |
+| [`Slice 0885`](slices/0885_ag_guarded_physical_purge_execution.md) | `S89-005` AG dry-run-first, receipt-gated, transactional physical purge execution. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
