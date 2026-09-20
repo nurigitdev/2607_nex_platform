@@ -1467,6 +1467,10 @@ Unified operations:
   injected adapter before physical purge, and proposes the short
   `ag_ret_archives` table for sealed receipts and purge tombstones. Metadata-only
   hashes do not authorize deletion, and dry-run remains the default.
+- Slice 0882 adds the canonical `nex_ag.audit_retention` policy. Both AG source
+  types default to 365-day retention, archive grace defaults to 30 days, each
+  batch is capped at 500 rows, and physical purge stays disabled unless an
+  external archive provider is selected explicitly.
 - Slice 0862 adds a pure operational-event integrity report. It detects invalid
   records, duplicate or missing event IDs, timestamp errors, and expected hash
   mismatches while returning only sorted metadata and canonical SHA-256 hashes.
