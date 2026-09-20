@@ -12,6 +12,18 @@
     "invalid_hash_export_count": 0
   },
   "recent_actions": [],
+  "action_pagination": {
+    "limit": 5,
+    "returned": 0,
+    "has_more": false,
+    "next_cursor": null,
+    "sort": "desc",
+    "stable_ordering": [
+      "created_at",
+      "event_id"
+    ],
+    "invalid_record_count": 0
+  },
   "recent_exports": [
     {
       "export_id": "export-0867-negative",

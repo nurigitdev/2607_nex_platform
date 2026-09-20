@@ -937,6 +937,28 @@ def test_sqlalchemy_export_store_roundtrips_and_updates_sqlite() -> None:
     engine.dispose()
 
 
+def test_sqlalchemy_export_store_uses_same_descending_tie_breaker_as_memory() -> None:
+    store, engine = sqlite_export_store()
+    first = build_export(
+        idempotency_key="idem-0877-tie-a",
+        created_at="2026-09-20T09:00:00Z",
+    )
+    second = build_export(
+        idempotency_key="idem-0877-tie-b",
+        created_at="2026-09-20T09:00:00Z",
+    )
+
+    store.save(first)
+    store.save(second)
+    listed = store.list_exports(trace_id=TRACE_ID, limit=10)
+
+    assert [record["export_id"] for record in listed] == sorted(
+        [first["export_id"], second["export_id"]],
+        reverse=True,
+    )
+    engine.dispose()
+
+
 def test_sqlalchemy_export_store_reports_unavailable() -> None:
     class FailingSessionFactory:
         def __call__(self) -> "FailingSessionFactory":

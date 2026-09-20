@@ -644,6 +644,11 @@
       "name": "ag_audit_evidence_operations_projection_mock",
       "path": "examples/operations/ag_audit_evidence_operations_projection.mock_success.json",
       "schema": "schemas/service/nex_ag/audit_evidence.v1.schema.json"
+    },
+    {
+      "name": "ag_resilience_performance_operations_mock",
+      "path": "examples/operations/ag_resilience_performance_operations.mock_success.json",
+      "schema": "schemas/service/nex_ag/resilience_performance.v1.schema.json"
     }
   ]
 }

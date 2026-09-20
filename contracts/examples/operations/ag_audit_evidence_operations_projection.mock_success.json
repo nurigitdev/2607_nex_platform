@@ -38,6 +38,18 @@
       "created_at": "2026-09-20T08:02:00Z"
     }
   ],
+  "action_pagination": {
+    "limit": 5,
+    "returned": 2,
+    "has_more": false,
+    "next_cursor": null,
+    "sort": "desc",
+    "stable_ordering": [
+      "created_at",
+      "event_id"
+    ],
+    "invalid_record_count": 0
+  },
   "recent_exports": [
     {
       "export_id": "export-0867",

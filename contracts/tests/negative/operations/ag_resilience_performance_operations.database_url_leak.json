@@ -1,0 +1,91 @@
+{
+  "projection_schema_version": "ag_resilience_performance_operations_projection.v1",
+  "projection_status": "NOT_CONFIGURED",
+  "service_id": "nex-ag",
+  "policy_id": "ag-resilience-performance-v1",
+  "checked_at": "2026-09-20T09:00:00Z",
+  "request_trace_id": null,
+  "performance_budget": {
+    "query": {
+      "default_page_size": 50,
+      "max_page_size": 500,
+      "hard_max_page_size": 500,
+      "stable_ordering_required": true,
+      "slow_operation_ms": 1000
+    },
+    "admission": {
+      "max_in_flight": 8,
+      "wait_timeout_ms": 100,
+      "overflow_action": "reject_retryable_503"
+    },
+    "source_isolation": {
+      "timeout_ms": 2000,
+      "failure_action": "degraded_partial_projection",
+      "raw_error_exposure": false
+    },
+    "bounded_smoke": {
+      "request_count": 25,
+      "concurrency": 4,
+      "p95_budget_ms": 1500,
+      "destructive": false
+    }
+  },
+  "runtime": {
+    "admission": {
+      "schema_version": "ag_concurrency_admission_snapshot.v1",
+      "max_in_flight": 8,
+      "wait_timeout_ms": 100,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "admitted_total": 0,
+      "rejected_total": 0,
+      "process_local": true
+    },
+    "source_isolation": {
+      "schema_version": "ag_source_isolation_snapshot.v1",
+      "timeout_ms": 2000,
+      "slow_operation_ms": 1000,
+      "max_workers": 2,
+      "completed_total": 0,
+      "failed_total": 0,
+      "timed_out_total": 0,
+      "slow_total": 0,
+      "last_elapsed_ms": null,
+      "raw_errors_included": false
+    },
+    "database_pools": {
+      "api": {
+        "status": "NOT_CONFIGURED",
+        "workload": "api",
+        "configured_pool_size": 5,
+        "configured_max_overflow": 10,
+        "configured_capacity": 15,
+        "checked_out": null,
+        "checked_in": null,
+        "overflow_in_use": null,
+        "available_capacity": null,
+        "utilization_percent": null,
+        "database_url": "postgresql://nex_ag_user:private@localhost/nex_ag_test"
+      },
+      "worker": {
+        "status": "NOT_CONFIGURED",
+        "workload": "worker",
+        "configured_pool_size": 2,
+        "configured_max_overflow": 4,
+        "configured_capacity": 6,
+        "checked_out": null,
+        "checked_in": null,
+        "overflow_in_use": null,
+        "available_capacity": null,
+        "utilization_percent": null
+      }
+    }
+  },
+  "attention_reasons": [],
+  "privacy": {
+    "database_url_included": false,
+    "credentials_included": false,
+    "sql_included": false,
+    "raw_errors_included": false
+  }
+}

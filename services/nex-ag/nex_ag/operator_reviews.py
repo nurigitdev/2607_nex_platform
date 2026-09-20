@@ -377,7 +377,7 @@ class SqlAlchemyOperatorEvidenceExportStore:
                         text(
                             _evidence_export_select_sql(
                                 where_clause
-                                + " ORDER BY updated_at DESC, export_id ASC"
+                                + " ORDER BY updated_at DESC, export_id DESC"
                                 + " LIMIT :limit"
                             )
                         ),

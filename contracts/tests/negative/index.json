@@ -459,6 +459,11 @@
       "name": "ag_audit_evidence_operations_projection_manifest_leak",
       "path": "tests/negative/operations/ag_audit_evidence_operations_projection.manifest_leak.json",
       "schema": "schemas/service/nex_ag/audit_evidence.v1.schema.json"
+    },
+    {
+      "name": "ag_resilience_performance_operations_database_url_leak",
+      "path": "tests/negative/operations/ag_resilience_performance_operations.database_url_leak.json",
+      "schema": "schemas/service/nex_ag/resilience_performance.v1.schema.json"
     }
   ]
 }

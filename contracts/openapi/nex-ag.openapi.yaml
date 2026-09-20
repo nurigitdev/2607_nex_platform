@@ -409,6 +409,13 @@ paths:
             minimum: 1
             maximum: 50
             default: 5
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 1024
       responses:
         "200":
           description: Redacted audit evidence integrity operations projection.
@@ -418,6 +425,26 @@ paths:
                 $ref: "#/components/schemas/AgAuditEvidenceOperationsProjection"
         "401":
           description: Service or admin user claim is missing or invalid.
+        "400":
+          description: Pagination cursor is invalid or incompatible.
+        "503":
+          description: Admission capacity is exhausted.
+  /admin/v1/operations/resilience-performance:
+    get:
+      operationId: getAgResiliencePerformanceOperationsProjection
+      tags:
+        - Operations
+      responses:
+        "200":
+          description: Redacted AG resilience budgets, runtime counters, and database pool metrics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgResiliencePerformanceOperationsProjection"
+        "401":
+          description: Service or admin user claim is missing or invalid.
+        "403":
+          description: Authenticated user is not an administrator.
   /admin/v1/audit-integrity/evidence-packages:
     post:
       operationId: createAgAuditEvidencePackage
@@ -4472,6 +4499,7 @@ components:
         - checked_at
         - summary
         - recent_actions
+        - action_pagination
         - recent_exports
         - source_statuses
         - paths
@@ -4592,6 +4620,8 @@ components:
               created_at:
                 type: string
                 format: date-time
+        action_pagination:
+          $ref: "#/components/schemas/AgStablePagination"
         recent_exports:
           type: array
           maxItems: 50
@@ -4709,6 +4739,7 @@ components:
           enum:
             - READY
             - UNAVAILABLE
+            - TIMEOUT
             - NOT_CONFIGURED
             - FILTERED
         service_id:
@@ -4728,6 +4759,382 @@ components:
         error_code:
           type: string
           minLength: 1
+    AgStablePagination:
+      type: object
+      additionalProperties: false
+      required:
+        - limit
+        - returned
+        - has_more
+        - next_cursor
+        - sort
+        - stable_ordering
+        - invalid_record_count
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+        returned:
+          type: integer
+          minimum: 0
+          maximum: 50
+        has_more:
+          type: boolean
+        next_cursor:
+          type:
+            - string
+            - "null"
+          minLength: 1
+          maxLength: 1024
+        sort:
+          type: string
+          const: desc
+        stable_ordering:
+          type: array
+          prefixItems:
+            - const: created_at
+            - const: event_id
+          minItems: 2
+          maxItems: 2
+        invalid_record_count:
+          type: integer
+          minimum: 0
+    AgResiliencePerformanceOperationsProjection:
+      type: object
+      additionalProperties: false
+      required:
+        - projection_schema_version
+        - projection_status
+        - service_id
+        - policy_id
+        - checked_at
+        - request_trace_id
+        - performance_budget
+        - runtime
+        - attention_reasons
+        - privacy
+      properties:
+        projection_schema_version:
+          type: string
+          const: ag_resilience_performance_operations_projection.v1
+        projection_status:
+          type: string
+          enum:
+            - READY
+            - ATTENTION
+            - NOT_CONFIGURED
+            - DEGRADED
+        service_id:
+          type: string
+          const: nex-ag
+        policy_id:
+          type: string
+          const: ag-resilience-performance-v1
+        checked_at:
+          type: string
+          format: date-time
+        request_trace_id:
+          oneOf:
+            - $ref: "#/components/schemas/TraceId"
+            - type: "null"
+        performance_budget:
+          $ref: "#/components/schemas/AgResiliencePerformanceBudget"
+        runtime:
+          $ref: "#/components/schemas/AgResiliencePerformanceRuntime"
+        attention_reasons:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+              - DATABASE_API_POOL_SATURATED
+              - DATABASE_WORKER_POOL_SATURATED
+              - DATABASE_API_POOL_METRICS_UNAVAILABLE
+              - DATABASE_WORKER_POOL_METRICS_UNAVAILABLE
+              - ADMISSION_REJECTIONS
+              - SOURCE_TIMEOUTS
+              - SOURCE_FAILURES
+              - SOURCE_SLOW_OPERATIONS
+        privacy:
+          type: object
+          additionalProperties: false
+          required:
+            - database_url_included
+            - credentials_included
+            - sql_included
+            - raw_errors_included
+          properties:
+            database_url_included:
+              type: boolean
+              const: false
+            credentials_included:
+              type: boolean
+              const: false
+            sql_included:
+              type: boolean
+              const: false
+            raw_errors_included:
+              type: boolean
+              const: false
+    AgResiliencePerformanceBudget:
+      type: object
+      additionalProperties: false
+      required:
+        - query
+        - admission
+        - source_isolation
+        - bounded_smoke
+      properties:
+        query:
+          type: object
+          additionalProperties: false
+          required:
+            - default_page_size
+            - max_page_size
+            - hard_max_page_size
+            - stable_ordering_required
+            - slow_operation_ms
+          properties:
+            default_page_size:
+              type: integer
+              minimum: 1
+            max_page_size:
+              type: integer
+              minimum: 1
+              maximum: 500
+            hard_max_page_size:
+              type: integer
+              const: 500
+            stable_ordering_required:
+              type: boolean
+              const: true
+            slow_operation_ms:
+              type: integer
+              minimum: 1
+        admission:
+          type: object
+          additionalProperties: false
+          required:
+            - max_in_flight
+            - wait_timeout_ms
+            - overflow_action
+          properties:
+            max_in_flight:
+              type: integer
+              minimum: 1
+            wait_timeout_ms:
+              type: integer
+              minimum: 1
+            overflow_action:
+              type: string
+              const: reject_retryable_503
+        source_isolation:
+          type: object
+          additionalProperties: false
+          required:
+            - timeout_ms
+            - failure_action
+            - raw_error_exposure
+          properties:
+            timeout_ms:
+              type: integer
+              minimum: 1
+            failure_action:
+              type: string
+              const: degraded_partial_projection
+            raw_error_exposure:
+              type: boolean
+              const: false
+        bounded_smoke:
+          type: object
+          additionalProperties: false
+          required:
+            - request_count
+            - concurrency
+            - p95_budget_ms
+            - destructive
+          properties:
+            request_count:
+              type: integer
+              minimum: 1
+            concurrency:
+              type: integer
+              minimum: 1
+            p95_budget_ms:
+              type: integer
+              minimum: 1
+            destructive:
+              type: boolean
+              const: false
+    AgResiliencePerformanceRuntime:
+      type: object
+      additionalProperties: false
+      required:
+        - admission
+        - source_isolation
+        - database_pools
+      properties:
+        admission:
+          $ref: "#/components/schemas/AgConcurrencyAdmissionSnapshot"
+        source_isolation:
+          $ref: "#/components/schemas/AgSourceIsolationSnapshot"
+        database_pools:
+          type: object
+          additionalProperties: false
+          required:
+            - api
+            - worker
+          properties:
+            api:
+              $ref: "#/components/schemas/AgDatabasePoolSnapshot"
+            worker:
+              $ref: "#/components/schemas/AgDatabasePoolSnapshot"
+    AgConcurrencyAdmissionSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - max_in_flight
+        - wait_timeout_ms
+        - in_flight
+        - peak_in_flight
+        - admitted_total
+        - rejected_total
+        - process_local
+      properties:
+        schema_version:
+          type: string
+          const: ag_concurrency_admission_snapshot.v1
+        max_in_flight:
+          type: integer
+          minimum: 1
+        wait_timeout_ms:
+          type: integer
+          minimum: 1
+        in_flight:
+          type: integer
+          minimum: 0
+        peak_in_flight:
+          type: integer
+          minimum: 0
+        admitted_total:
+          type: integer
+          minimum: 0
+        rejected_total:
+          type: integer
+          minimum: 0
+        process_local:
+          type: boolean
+          const: true
+    AgSourceIsolationSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - timeout_ms
+        - slow_operation_ms
+        - max_workers
+        - completed_total
+        - failed_total
+        - timed_out_total
+        - slow_total
+        - last_elapsed_ms
+        - raw_errors_included
+      properties:
+        schema_version:
+          type: string
+          const: ag_source_isolation_snapshot.v1
+        timeout_ms:
+          type: integer
+          minimum: 1
+        slow_operation_ms:
+          type: integer
+          minimum: 1
+        max_workers:
+          type: integer
+          minimum: 1
+        completed_total:
+          type: integer
+          minimum: 0
+        failed_total:
+          type: integer
+          minimum: 0
+        timed_out_total:
+          type: integer
+          minimum: 0
+        slow_total:
+          type: integer
+          minimum: 0
+        last_elapsed_ms:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        raw_errors_included:
+          type: boolean
+          const: false
+    AgDatabasePoolSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - workload
+        - configured_pool_size
+        - configured_max_overflow
+        - configured_capacity
+        - checked_out
+        - checked_in
+        - overflow_in_use
+        - available_capacity
+        - utilization_percent
+      properties:
+        status:
+          type: string
+          enum:
+            - READY
+            - ATTENTION
+            - NOT_CONFIGURED
+            - UNAVAILABLE
+        workload:
+          type: string
+          enum:
+            - api
+            - worker
+        configured_pool_size:
+          type: integer
+          minimum: 1
+        configured_max_overflow:
+          type: integer
+          minimum: 0
+        configured_capacity:
+          type: integer
+          minimum: 1
+        checked_out:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        checked_in:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        overflow_in_use:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        available_capacity:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        utilization_percent:
+          type:
+            - number
+            - "null"
+          minimum: 0
     AgOperationsProjection:
       type: object
       required:

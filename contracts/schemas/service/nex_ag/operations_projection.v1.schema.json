@@ -4486,6 +4486,7 @@
         "checked_at",
         "summary",
         "recent_actions",
+        "action_pagination",
         "recent_exports",
         "source_statuses",
         "paths",

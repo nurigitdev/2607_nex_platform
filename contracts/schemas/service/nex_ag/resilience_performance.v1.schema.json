@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ag/resilience_performance.v1.schema.json",
+  "title": "NeX AG Resilience Performance Operations Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "projection_schema_version",
+    "projection_status",
+    "service_id",
+    "policy_id",
+    "checked_at",
+    "request_trace_id",
+    "performance_budget",
+    "runtime",
+    "attention_reasons",
+    "privacy"
+  ],
+  "properties": {
+    "projection_schema_version": {
+      "const": "ag_resilience_performance_operations_projection.v1"
+    },
+    "projection_status": {
+      "type": "string",
+      "enum": ["READY", "ATTENTION", "NOT_CONFIGURED", "DEGRADED"]
+    },
+    "service_id": {
+      "const": "nex-ag"
+    },
+    "policy_id": {
+      "const": "ag-resilience-performance-v1"
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "request_trace_id": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "performance_budget": {
+      "$ref": "#/$defs/performance_budget"
+    },
+    "runtime": {
+      "$ref": "#/$defs/runtime"
+    },
+    "attention_reasons": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "DATABASE_API_POOL_SATURATED",
+          "DATABASE_WORKER_POOL_SATURATED",
+          "DATABASE_API_POOL_METRICS_UNAVAILABLE",
+          "DATABASE_WORKER_POOL_METRICS_UNAVAILABLE",
+          "ADMISSION_REJECTIONS",
+          "SOURCE_TIMEOUTS",
+          "SOURCE_FAILURES",
+          "SOURCE_SLOW_OPERATIONS"
+        ]
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "database_url_included",
+        "credentials_included",
+        "sql_included",
+        "raw_errors_included"
+      ],
+      "properties": {
+        "database_url_included": {"const": false},
+        "credentials_included": {"const": false},
+        "sql_included": {"const": false},
+        "raw_errors_included": {"const": false}
+      }
+    }
+  },
+  "$defs": {
+    "positive_integer": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "non_negative_integer": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "performance_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query", "admission", "source_isolation", "bounded_smoke"],
+      "properties": {
+        "query": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "default_page_size",
+            "max_page_size",
+            "hard_max_page_size",
+            "stable_ordering_required",
+            "slow_operation_ms"
+          ],
+          "properties": {
+            "default_page_size": {"$ref": "#/$defs/positive_integer"},
+            "max_page_size": {"$ref": "#/$defs/positive_integer"},
+            "hard_max_page_size": {"const": 500},
+            "stable_ordering_required": {"const": true},
+            "slow_operation_ms": {"$ref": "#/$defs/positive_integer"}
+          }
+        },
+        "admission": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["max_in_flight", "wait_timeout_ms", "overflow_action"],
+          "properties": {
+            "max_in_flight": {"$ref": "#/$defs/positive_integer"},
+            "wait_timeout_ms": {"$ref": "#/$defs/positive_integer"},
+            "overflow_action": {"const": "reject_retryable_503"}
+          }
+        },
+        "source_isolation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["timeout_ms", "failure_action", "raw_error_exposure"],
+          "properties": {
+            "timeout_ms": {"$ref": "#/$defs/positive_integer"},
+            "failure_action": {"const": "degraded_partial_projection"},
+            "raw_error_exposure": {"const": false}
+          }
+        },
+        "bounded_smoke": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["request_count", "concurrency", "p95_budget_ms", "destructive"],
+          "properties": {
+            "request_count": {"$ref": "#/$defs/positive_integer"},
+            "concurrency": {"$ref": "#/$defs/positive_integer"},
+            "p95_budget_ms": {"$ref": "#/$defs/positive_integer"},
+            "destructive": {"const": false}
+          }
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["admission", "source_isolation", "database_pools"],
+      "properties": {
+        "admission": {"$ref": "#/$defs/admission_snapshot"},
+        "source_isolation": {"$ref": "#/$defs/source_snapshot"},
+        "database_pools": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["api", "worker"],
+          "properties": {
+            "api": {"$ref": "#/$defs/pool_snapshot"},
+            "worker": {"$ref": "#/$defs/pool_snapshot"}
+          }
+        }
+      }
+    },
+    "admission_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "max_in_flight",
+        "wait_timeout_ms",
+        "in_flight",
+        "peak_in_flight",
+        "admitted_total",
+        "rejected_total",
+        "process_local"
+      ],
+      "properties": {
+        "schema_version": {"const": "ag_concurrency_admission_snapshot.v1"},
+        "max_in_flight": {"$ref": "#/$defs/positive_integer"},
+        "wait_timeout_ms": {"$ref": "#/$defs/positive_integer"},
+        "in_flight": {"$ref": "#/$defs/non_negative_integer"},
+        "peak_in_flight": {"$ref": "#/$defs/non_negative_integer"},
+        "admitted_total": {"$ref": "#/$defs/non_negative_integer"},
+        "rejected_total": {"$ref": "#/$defs/non_negative_integer"},
+        "process_local": {"const": true}
+      }
+    },
+    "source_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "timeout_ms",
+        "slow_operation_ms",
+        "max_workers",
+        "completed_total",
+        "failed_total",
+        "timed_out_total",
+        "slow_total",
+        "last_elapsed_ms",
+        "raw_errors_included"
+      ],
+      "properties": {
+        "schema_version": {"const": "ag_source_isolation_snapshot.v1"},
+        "timeout_ms": {"$ref": "#/$defs/positive_integer"},
+        "slow_operation_ms": {"$ref": "#/$defs/positive_integer"},
+        "max_workers": {"$ref": "#/$defs/positive_integer"},
+        "completed_total": {"$ref": "#/$defs/non_negative_integer"},
+        "failed_total": {"$ref": "#/$defs/non_negative_integer"},
+        "timed_out_total": {"$ref": "#/$defs/non_negative_integer"},
+        "slow_total": {"$ref": "#/$defs/non_negative_integer"},
+        "last_elapsed_ms": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "raw_errors_included": {"const": false}
+      }
+    },
+    "pool_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "workload",
+        "configured_pool_size",
+        "configured_max_overflow",
+        "configured_capacity",
+        "checked_out",
+        "checked_in",
+        "overflow_in_use",
+        "available_capacity",
+        "utilization_percent"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["READY", "ATTENTION", "NOT_CONFIGURED", "UNAVAILABLE"]
+        },
+        "workload": {
+          "type": "string",
+          "enum": ["api", "worker"]
+        },
+        "configured_pool_size": {"$ref": "#/$defs/positive_integer"},
+        "configured_max_overflow": {"$ref": "#/$defs/non_negative_integer"},
+        "configured_capacity": {"$ref": "#/$defs/positive_integer"},
+        "checked_out": {"type": ["integer", "null"], "minimum": 0},
+        "checked_in": {"type": ["integer", "null"], "minimum": 0},
+        "overflow_in_use": {"type": ["integer", "null"], "minimum": 0},
+        "available_capacity": {"type": ["integer", "null"], "minimum": 0},
+        "utilization_percent": {"type": ["number", "null"], "minimum": 0}
+      }
+    }
+  }
+}
