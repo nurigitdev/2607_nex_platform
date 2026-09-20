@@ -292,6 +292,7 @@ node apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_audit_integrity_evidence_boundary_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_audit_evidence_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_resilience_performance_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ag_resilience_performance_privacy_runbook_evidence.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_audit_evidence_privacy_runbook_evidence.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s87_ag_audit_integrity_evidence_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_resilience_performance_boundary_audit.py --summary
