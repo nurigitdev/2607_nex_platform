@@ -1510,6 +1510,9 @@ Unified operations:
 - Slice 0894 adds a deterministic fail-closed acceptance evaluator. Missing,
   skipped, stale, future-dated, threshold-failing, wrong-database, unclean, or
   unknown evidence blocks the CX transition with privacy-safe reason codes.
+- Slice 0895 exposes a read-only protected MVP acceptance route. Evidence is
+  server-selected, client POSTs are rejected, provider failures are redacted,
+  and the default partial provider remains blocked until live evidence exists.
 - Slice 0862 adds a pure operational-event integrity report. It detects invalid
   records, duplicate or missing event IDs, timestamp errors, and expected hash
   mismatches while returning only sorted metadata and canonical SHA-256 hashes.

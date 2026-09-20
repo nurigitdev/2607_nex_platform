@@ -11,6 +11,7 @@ from nex_ag.audit_retention_operations import (
     register_ag_audit_retention_routes,
 )
 from nex_ag.generation_audit import register_generation_audit_routes
+from nex_ag.mvp_acceptance_api import register_ag_mvp_acceptance_routes
 from nex_ag.generation_quality_disposition import (
     register_generation_quality_disposition_routes,
 )
@@ -133,6 +134,7 @@ register_audit_evidence_routes(
     persistence_runtime=SERVICE_PERSISTENCE,
 )
 register_ag_audit_retention_routes(app, **AUDIT_RETENTION_STORES)
+register_ag_mvp_acceptance_routes(app)
 register_operator_review_case_routes(
     app,
     store=OPERATOR_REVIEW_CASE_STORE,
