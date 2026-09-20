@@ -978,6 +978,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0872`](slices/0872_ag_resilience_performance_budget_policy.md) | `S88-002` AG validated resilience and performance budget policy contract. |
 | [`Slice 0873`](slices/0873_ag_stable_bounded_pagination.md) | `S88-003` AG stable bounded keyset pagination for audit-integrity actions. |
 | [`Slice 0874`](slices/0874_ag_concurrency_admission_load_shedding.md) | `S88-004` AG process-local concurrency admission and retryable load shedding. |
+| [`Slice 0875`](slices/0875_ag_source_timeout_failure_isolation.md) | `S88-005` AG bounded source timeout and partial-projection failure isolation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

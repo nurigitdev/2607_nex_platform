@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,10 @@ from nex_ag.audit_evidence_operations import (
 )
 from nex_ag.operations import build_operations_dashboard_snapshot_projection
 from nex_ag.operator_reviews import OperatorEvidenceExportStore
-from nex_ag.resilience_performance import AgConcurrencyAdmissionGuard
+from nex_ag.resilience_performance import (
+    AgConcurrencyAdmissionGuard,
+    AgSourceIsolationExecutor,
+)
 from nex_runtime import (
     InMemoryOperationalEventStore,
     SERVICE_SPECS,
@@ -237,6 +241,18 @@ class _FailingExportStore:
         raise RuntimeError("private export database error")
 
 
+class _SlowEventStore:
+    def list_events(self, **_: object) -> list[dict[str, Any]]:
+        time.sleep(0.03)
+        return []
+
+
+class _SlowExportStore:
+    def list_exports(self, **_: object) -> list[dict[str, Any]]:
+        time.sleep(0.03)
+        return []
+
+
 def test_source_failures_are_degraded_without_exception_details() -> None:
     event_failed = build_audit_evidence_operations_projection(
         event_store=_FailingEventStore(),  # type: ignore[arg-type]
@@ -257,6 +273,53 @@ def test_source_failures_are_degraded_without_exception_details() -> None:
     assert export_failed["source_statuses"]["evidence_exports"]["error_code"] == (
         "ag.audit_evidence.export_source_unavailable"
     )
+
+
+def test_source_timeouts_are_isolated_and_redacted() -> None:
+    event_executor = AgSourceIsolationExecutor(
+        timeout_ms=2,
+        slow_operation_ms=1,
+        max_workers=2,
+    )
+    export_executor = AgSourceIsolationExecutor(
+        timeout_ms=2,
+        slow_operation_ms=1,
+        max_workers=2,
+    )
+    try:
+        event_timeout = build_audit_evidence_operations_projection(
+            event_store=_SlowEventStore(),  # type: ignore[arg-type]
+            export_store=_export_store(_export()),
+            source_executor=event_executor,
+        )
+        export_timeout = build_audit_evidence_operations_projection(
+            event_store=_event_store(),
+            export_store=_SlowExportStore(),
+            source_executor=export_executor,
+        )
+    finally:
+        event_executor.close()
+        export_executor.close()
+
+    assert event_timeout["projection_status"] == "DEGRADED"
+    assert event_timeout["source_statuses"]["operational_events"] == {
+        "status": "TIMEOUT",
+        "service_id": "nex-ag",
+        "source_table": "service_operational_events",
+        "read_only": True,
+        "error_code": "ag.audit_evidence.event_source_timeout",
+    }
+    assert event_timeout["source_statuses"]["evidence_exports"]["status"] == (
+        "READY"
+    )
+    assert export_timeout["projection_status"] == "DEGRADED"
+    assert export_timeout["source_statuses"]["evidence_exports"]["status"] == (
+        "TIMEOUT"
+    )
+    assert "private" not in str(event_timeout)
+    assert "private" not in str(export_timeout)
+    assert event_executor.snapshot()["timed_out_total"] == 1
+    assert export_executor.snapshot()["timed_out_total"] == 1
 
 
 def test_event_projection_normalizes_malformed_optional_details() -> None:

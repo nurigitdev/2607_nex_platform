@@ -27,7 +27,9 @@ from nex_ag.resilience_performance import AgStablePaginationError
 from nex_ag.resilience_performance import (
     AgAdmissionRejectedError,
     AgConcurrencyAdmissionGuard,
+    AgSourceIsolationExecutor,
     build_ag_concurrency_admission_guard,
+    build_ag_source_isolation_executor,
 )
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
@@ -155,6 +157,7 @@ def register_audit_evidence_routes(
     export_store: Any,
     audit_event_store: OperationalEventStore | None = None,
     admission_guard: AgConcurrencyAdmissionGuard | None = None,
+    source_executor: AgSourceIsolationExecutor | None = None,
 ) -> None:
     service = AuditEvidencePackageService(
         event_store=event_store,
@@ -166,6 +169,9 @@ def register_audit_evidence_routes(
     )
     selected_admission_guard = (
         admission_guard or build_ag_concurrency_admission_guard()
+    )
+    selected_source_executor = (
+        source_executor or build_ag_source_isolation_executor()
     )
 
     @app.get("/admin/v1/operations/audit-integrity", response_model=None)
@@ -187,6 +193,7 @@ def register_audit_evidence_routes(
                     service_id=service_id,
                     recent_limit=recent_limit,
                     action_cursor=cursor,
+                    source_executor=selected_source_executor,
                     request_trace_id=trace_id_from_headers(request),
                 )
         except (AgStablePaginationError, AgAdmissionRejectedError) as exc:

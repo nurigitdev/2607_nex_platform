@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import base64
 import binascii
+import concurrent.futures
 import json
 import os
 import threading
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from nex_runtime import DatabaseConfigError, database_pool_settings
 
@@ -43,6 +45,16 @@ class AgAdmissionRejectedError(RuntimeError):
     error_code: str
     detail: str
     retry_after_ms: int
+    status_code: int = 503
+
+    def __str__(self) -> str:
+        return self.detail
+
+
+@dataclass
+class AgSourceTimeoutError(TimeoutError):
+    error_code: str
+    detail: str
     status_code: int = 503
 
     def __str__(self) -> str:
@@ -118,6 +130,88 @@ class _AgAdmissionLease:
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
         self._guard._release()
         return False
+
+
+class AgSourceIsolationExecutor:
+    def __init__(
+        self,
+        *,
+        timeout_ms: int,
+        slow_operation_ms: int,
+        max_workers: int,
+    ) -> None:
+        for name, value in (
+            ("timeout_ms", timeout_ms),
+            ("slow_operation_ms", slow_operation_ms),
+            ("max_workers", max_workers),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        if slow_operation_ms > timeout_ms:
+            raise ValueError("slow_operation_ms cannot exceed timeout_ms")
+        self.timeout_ms = timeout_ms
+        self.slow_operation_ms = slow_operation_ms
+        self.max_workers = max_workers
+        self._executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix="nex-ag-source",
+        )
+        self._metrics_lock = threading.Lock()
+        self._completed_total = 0
+        self._failed_total = 0
+        self._timed_out_total = 0
+        self._slow_total = 0
+        self._last_elapsed_ms: int | None = None
+
+    def execute(self, operation: Callable[[], Any]) -> Any:
+        if not callable(operation):
+            raise ValueError("operation must be callable")
+        started = time.perf_counter()
+        future = self._executor.submit(operation)
+        try:
+            result = future.result(timeout=self.timeout_ms / 1000.0)
+        except concurrent.futures.TimeoutError as exc:
+            future.cancel()
+            self._record("timeout", self.timeout_ms)
+            raise AgSourceTimeoutError(
+                error_code="ag.resilience.source_timeout",
+                detail="AG source did not complete within its time budget.",
+            ) from exc
+        except Exception:
+            self._record("failed", _elapsed_ms(started))
+            raise
+        self._record("completed", _elapsed_ms(started))
+        return result
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._metrics_lock:
+            return {
+                "schema_version": "ag_source_isolation_snapshot.v1",
+                "timeout_ms": self.timeout_ms,
+                "slow_operation_ms": self.slow_operation_ms,
+                "max_workers": self.max_workers,
+                "completed_total": self._completed_total,
+                "failed_total": self._failed_total,
+                "timed_out_total": self._timed_out_total,
+                "slow_total": self._slow_total,
+                "last_elapsed_ms": self._last_elapsed_ms,
+                "raw_errors_included": False,
+            }
+
+    def close(self, *, wait: bool = True) -> None:
+        self._executor.shutdown(wait=wait, cancel_futures=True)
+
+    def _record(self, outcome: str, elapsed_ms: int) -> None:
+        with self._metrics_lock:
+            if outcome == "completed":
+                self._completed_total += 1
+            elif outcome == "failed":
+                self._failed_total += 1
+            else:
+                self._timed_out_total += 1
+            if elapsed_ms >= self.slow_operation_ms:
+                self._slow_total += 1
+            self._last_elapsed_ms = elapsed_ms
 
 
 def build_ag_resilience_performance_policy(
@@ -219,6 +313,20 @@ def build_ag_concurrency_admission_guard(
     return AgConcurrencyAdmissionGuard(
         max_in_flight=admission["max_in_flight"],
         wait_timeout_ms=admission["wait_timeout_ms"],
+    )
+
+
+def build_ag_source_isolation_executor(
+    environ: Mapping[str, str] | None = None,
+) -> AgSourceIsolationExecutor:
+    policy = build_ag_resilience_performance_policy(environ)
+    isolation = policy["source_isolation"]
+    query = policy["query"]
+    admission = policy["admission"]
+    return AgSourceIsolationExecutor(
+        timeout_ms=isolation["timeout_ms"],
+        slow_operation_ms=query["slow_operation_ms"],
+        max_workers=min(2, admission["max_in_flight"]),
     )
 
 
@@ -454,3 +562,7 @@ def _cursor_error() -> AgStablePaginationError:
         error_code="ag.resilience.pagination_cursor_invalid",
         detail="Pagination cursor is invalid or incompatible.",
     )
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, round((time.perf_counter() - started) * 1000))

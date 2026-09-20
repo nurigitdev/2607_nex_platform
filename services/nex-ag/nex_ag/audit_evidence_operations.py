@@ -6,7 +6,11 @@ from typing import Any, Mapping
 
 from nex_runtime import OperationalEventStore
 
-from nex_ag.resilience_performance import build_stable_keyset_page
+from nex_ag.resilience_performance import (
+    AgSourceIsolationExecutor,
+    AgSourceTimeoutError,
+    build_stable_keyset_page,
+)
 
 
 AUDIT_EVIDENCE_OPERATIONS_SCHEMA_VERSION = (
@@ -36,6 +40,7 @@ def build_audit_evidence_operations_projection(
     service_id: str | None = None,
     recent_limit: int = 5,
     action_cursor: str | None = None,
+    source_executor: AgSourceIsolationExecutor | None = None,
     request_trace_id: str | None = None,
 ) -> dict[str, Any]:
     bounded_limit = max(1, min(50, int(recent_limit)))
@@ -55,11 +60,21 @@ def build_audit_evidence_operations_projection(
     event_records: list[dict[str, Any]] | None
     export_records: list[dict[str, Any]] | None
     try:
-        event_records = _audit_events(event_store)
+        event_records = _execute_source(
+            source_executor,
+            lambda: _audit_events(event_store),
+        )
         event_status = _source_status(
             "READY",
             "service_operational_events",
             record_count=len(event_records),
+        )
+    except AgSourceTimeoutError:
+        event_records = None
+        event_status = _source_status(
+            "TIMEOUT",
+            "service_operational_events",
+            error_code="ag.audit_evidence.event_source_timeout",
         )
     except Exception:
         event_records = None
@@ -73,11 +88,21 @@ def build_audit_evidence_operations_projection(
         export_status = _source_status("NOT_CONFIGURED", "ag_ev_exports")
     else:
         try:
-            export_records = export_store.list_exports(limit=500)
+            export_records = _execute_source(
+                source_executor,
+                lambda: export_store.list_exports(limit=500),
+            )
             export_status = _source_status(
                 "READY",
                 "ag_ev_exports",
                 record_count=len(export_records),
+            )
+        except AgSourceTimeoutError:
+            export_records = None
+            export_status = _source_status(
+                "TIMEOUT",
+                "ag_ev_exports",
+                error_code="ag.audit_evidence.export_source_timeout",
             )
         except Exception:
             export_records = None
@@ -125,6 +150,13 @@ def _audit_events(event_store: OperationalEventStore) -> list[dict[str, Any]]:
         ),
         reverse=True,
     )
+
+
+def _execute_source(
+    executor: AgSourceIsolationExecutor | None,
+    operation: Any,
+) -> Any:
+    return operation() if executor is None else executor.execute(operation)
 
 
 def _integrity_status(

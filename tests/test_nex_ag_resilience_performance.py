@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import threading
+import time
 
 import pytest
 
@@ -12,9 +13,12 @@ from nex_ag.resilience_performance import (
     AgAdmissionRejectedError,
     AgConcurrencyAdmissionGuard,
     AgResiliencePerformancePolicyError,
+    AgSourceIsolationExecutor,
+    AgSourceTimeoutError,
     AgStablePaginationError,
     build_ag_resilience_performance_policy,
     build_ag_concurrency_admission_guard,
+    build_ag_source_isolation_executor,
     build_stable_keyset_page,
 )
 
@@ -452,3 +456,89 @@ def test_admission_guard_factory_uses_validated_policy() -> None:
 
     assert guard.max_in_flight == 2
     assert guard.wait_timeout_ms == 5
+
+
+def test_source_isolation_executor_records_success_slow_failure_and_timeout() -> None:
+    executor = AgSourceIsolationExecutor(
+        timeout_ms=20,
+        slow_operation_ms=1,
+        max_workers=2,
+    )
+    try:
+        assert executor.execute(lambda: "ready") == "ready"
+        assert executor.execute(lambda: (time.sleep(0.002), "slow")[1]) == "slow"
+        with pytest.raises(RuntimeError, match="private failure"):
+            executor.execute(
+                lambda: (_ for _ in ()).throw(RuntimeError("private failure"))
+            )
+        with pytest.raises(AgSourceTimeoutError) as exc_info:
+            executor.execute(lambda: time.sleep(0.05))
+        assert exc_info.value.error_code == "ag.resilience.source_timeout"
+        assert exc_info.value.status_code == 503
+        assert str(exc_info.value) == exc_info.value.detail
+        assert "private" not in exc_info.value.detail
+    finally:
+        executor.close()
+
+    snapshot = executor.snapshot()
+    assert snapshot["completed_total"] == 2
+    assert snapshot["failed_total"] == 1
+    assert snapshot["timed_out_total"] == 1
+    assert snapshot["slow_total"] >= 2
+    assert snapshot["raw_errors_included"] is False
+    assert "private failure" not in str(snapshot)
+
+
+@pytest.mark.parametrize(
+    ("timeout_ms", "slow_operation_ms", "max_workers"),
+    [
+        (0, 1, 1),
+        (True, 1, 1),
+        (1, 0, 1),
+        (1, True, 1),
+        (1, 1, 0),
+        (1, 1, True),
+        (1, 2, 1),
+    ],
+)
+def test_source_isolation_executor_rejects_invalid_configuration(
+    timeout_ms: int,
+    slow_operation_ms: int,
+    max_workers: int,
+) -> None:
+    with pytest.raises(ValueError):
+        AgSourceIsolationExecutor(
+            timeout_ms=timeout_ms,
+            slow_operation_ms=slow_operation_ms,
+            max_workers=max_workers,
+        )
+
+
+def test_source_isolation_executor_rejects_non_callable() -> None:
+    executor = AgSourceIsolationExecutor(
+        timeout_ms=10,
+        slow_operation_ms=5,
+        max_workers=1,
+    )
+    try:
+        with pytest.raises(ValueError):
+            executor.execute("not-callable")  # type: ignore[arg-type]
+    finally:
+        executor.close(wait=False)
+
+
+def test_source_isolation_factory_uses_policy_and_admission_bound() -> None:
+    executor = build_ag_source_isolation_executor(
+        {
+            "NEX_AG_DB_POOL_SIZE": "1",
+            "NEX_AG_DB_MAX_OVERFLOW": "0",
+            "NEX_AG_PERF_SOURCE_TIMEOUT_MS": "10",
+            "NEX_AG_PERF_SLOW_OPERATION_MS": "5",
+        }
+    )
+    try:
+        assert executor.timeout_ms == 10
+        assert executor.slow_operation_ms == 5
+        assert executor.max_workers == 1
+    finally:
+        executor.close()

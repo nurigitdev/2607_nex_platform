@@ -680,6 +680,7 @@
           "enum": [
             "READY",
             "UNAVAILABLE",
+            "TIMEOUT",
             "NOT_CONFIGURED",
             "FILTERED"
           ]
