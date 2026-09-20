@@ -2,6 +2,12 @@
 
 NeX Content Experience service.
 
+- Slice 0901 starts the S91 current-state re-audit. Repository code,
+  migrations, contracts, and executable evidence now take precedence over
+  historical gap descriptions; the audit covers `CX-FR-001` through
+  `CX-FR-008`, adds no table, and requires actual `nex_cx_test` evidence before
+  S91 closure.
+
 Owned database env: `NEX_CX_DATABASE_URL`.
 
 Document ingestion storage defaults:
