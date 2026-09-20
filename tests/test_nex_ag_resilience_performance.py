@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import base64
 import json
+import threading
 
 import pytest
 
 from nex_ag.resilience_performance import (
     AG_RESILIENCE_PERFORMANCE_POLICY_ID,
     AG_RESILIENCE_PERFORMANCE_POLICY_SCHEMA_VERSION,
+    AgAdmissionRejectedError,
+    AgConcurrencyAdmissionGuard,
     AgResiliencePerformancePolicyError,
     AgStablePaginationError,
     build_ag_resilience_performance_policy,
+    build_ag_concurrency_admission_guard,
     build_stable_keyset_page,
 )
 
@@ -359,3 +363,92 @@ def test_stable_page_rejects_invalid_or_incompatible_cursor(cursor: str) -> None
 
     assert exc_info.value.error_code == "ag.resilience.pagination_cursor_invalid"
     assert "not!base64" not in exc_info.value.detail
+
+
+def test_admission_guard_tracks_peak_and_releases_after_success_and_error() -> None:
+    guard = AgConcurrencyAdmissionGuard(max_in_flight=2, wait_timeout_ms=10)
+
+    with guard.admit("read"):
+        with guard.admit("verify"):
+            assert guard.snapshot()["in_flight"] == 2
+            assert guard.snapshot()["peak_in_flight"] == 2
+    with pytest.raises(RuntimeError):
+        with guard.admit("create"):
+            raise RuntimeError("expected")
+
+    snapshot = guard.snapshot()
+    assert snapshot == {
+        "schema_version": "ag_concurrency_admission_snapshot.v1",
+        "max_in_flight": 2,
+        "wait_timeout_ms": 10,
+        "in_flight": 0,
+        "peak_in_flight": 2,
+        "admitted_total": 3,
+        "rejected_total": 0,
+        "process_local": True,
+    }
+
+
+def test_admission_guard_rejects_when_capacity_is_held() -> None:
+    guard = AgConcurrencyAdmissionGuard(max_in_flight=1, wait_timeout_ms=1)
+    entered = threading.Event()
+    release = threading.Event()
+
+    def hold_capacity() -> None:
+        with guard.admit("holder"):
+            entered.set()
+            release.wait(timeout=1)
+
+    thread = threading.Thread(target=hold_capacity)
+    thread.start()
+    assert entered.wait(timeout=1)
+    try:
+        with pytest.raises(AgAdmissionRejectedError) as exc_info:
+            with guard.admit("rejected"):
+                pass
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.retry_after_ms == 1
+        assert str(exc_info.value) == exc_info.value.detail
+        assert guard.snapshot()["rejected_total"] == 1
+    finally:
+        release.set()
+        thread.join(timeout=1)
+
+    assert guard.snapshot()["in_flight"] == 0
+
+
+@pytest.mark.parametrize(
+    ("max_in_flight", "wait_timeout_ms"),
+    [(0, 1), (True, 1), (1, 0), (1, True)],
+)
+def test_admission_guard_rejects_invalid_configuration(
+    max_in_flight: int,
+    wait_timeout_ms: int,
+) -> None:
+    with pytest.raises(ValueError):
+        AgConcurrencyAdmissionGuard(
+            max_in_flight=max_in_flight,
+            wait_timeout_ms=wait_timeout_ms,
+        )
+
+
+@pytest.mark.parametrize("operation", ["", " ", None])
+def test_admission_guard_rejects_invalid_operation(operation: object) -> None:
+    guard = AgConcurrencyAdmissionGuard(max_in_flight=1, wait_timeout_ms=1)
+
+    with pytest.raises(ValueError):
+        with guard.admit(operation):  # type: ignore[arg-type]
+            pass
+
+
+def test_admission_guard_factory_uses_validated_policy() -> None:
+    guard = build_ag_concurrency_admission_guard(
+        {
+            "NEX_AG_DB_POOL_SIZE": "2",
+            "NEX_AG_DB_MAX_OVERFLOW": "0",
+            "NEX_AG_PERF_ADMISSION_WAIT_MS": "5",
+        }
+    )
+
+    assert guard.max_in_flight == 2
+    assert guard.wait_timeout_ms == 5

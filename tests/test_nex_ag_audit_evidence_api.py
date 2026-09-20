@@ -19,6 +19,7 @@ from nex_ag.operator_reviews import (
     OperatorEvidenceExportStore,
     OperatorReviewNoteError,
 )
+from nex_ag.resilience_performance import AgConcurrencyAdmissionGuard
 from nex_runtime import (
     InMemoryOperationalEventStore,
     SERVICE_SPECS,
@@ -112,6 +113,7 @@ def _client(
     export_store: Any | None = None,
     audit_event_store: InMemoryOperationalEventStore | None = None,
     use_default_audit_store: bool = False,
+    admission_guard: AgConcurrencyAdmissionGuard | None = None,
 ) -> tuple[TestClient, Any, Any, InMemoryOperationalEventStore]:
     selected_events = event_store or _event_store()
     selected_exports = export_store or _export_store()
@@ -123,6 +125,8 @@ def _client(
     }
     if not use_default_audit_store:
         kwargs["audit_event_store"] = selected_audit
+    if admission_guard is not None:
+        kwargs["admission_guard"] = admission_guard
     register_audit_evidence_routes(app, **kwargs)
     return TestClient(app), selected_events, selected_exports, selected_audit
 
@@ -167,6 +171,30 @@ def test_service_selects_server_records_and_returns_verified_package() -> None:
     assert "must-redact" not in serialized
     assert "must-not-appear" not in serialized
     assert "employee-private" not in serialized
+
+
+def test_create_and_verify_routes_load_shed_when_admission_is_exhausted() -> None:
+    guard = AgConcurrencyAdmissionGuard(max_in_flight=1, wait_timeout_ms=1)
+    client, _, _, _ = _client(admission_guard=guard)
+
+    with guard.admit("test_holder"):
+        create_response = client.post(
+            "/admin/v1/audit-integrity/evidence-packages",
+            headers=_admin_headers(),
+            json=_create_payload(),
+        )
+        verify_response = client.post(
+            "/admin/v1/audit-integrity/evidence-packages/verify",
+            headers=_admin_headers(),
+            json={"package": {}},
+        )
+
+    for response in (create_response, verify_response):
+        assert response.status_code == 503
+        assert response.json()["error_code"] == (
+            "ag.resilience.admission_capacity_exhausted"
+        )
+    assert guard.snapshot()["rejected_total"] == 2
 
 
 def test_admin_create_and_verify_routes_emit_safe_audit_events() -> None:

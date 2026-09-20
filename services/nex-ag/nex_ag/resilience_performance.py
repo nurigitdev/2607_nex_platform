@@ -4,6 +4,7 @@ import base64
 import binascii
 import json
 import os
+import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -35,6 +36,88 @@ class AgStablePaginationError(ValueError):
 
     def __str__(self) -> str:
         return self.detail
+
+
+@dataclass
+class AgAdmissionRejectedError(RuntimeError):
+    error_code: str
+    detail: str
+    retry_after_ms: int
+    status_code: int = 503
+
+    def __str__(self) -> str:
+        return self.detail
+
+
+class AgConcurrencyAdmissionGuard:
+    def __init__(self, *, max_in_flight: int, wait_timeout_ms: int) -> None:
+        if isinstance(max_in_flight, bool) or max_in_flight < 1:
+            raise ValueError("max_in_flight must be greater than 0")
+        if isinstance(wait_timeout_ms, bool) or wait_timeout_ms < 1:
+            raise ValueError("wait_timeout_ms must be greater than 0")
+        self.max_in_flight = max_in_flight
+        self.wait_timeout_ms = wait_timeout_ms
+        self._semaphore = threading.BoundedSemaphore(max_in_flight)
+        self._metrics_lock = threading.Lock()
+        self._in_flight = 0
+        self._peak_in_flight = 0
+        self._admitted_total = 0
+        self._rejected_total = 0
+
+    def admit(self, operation: str) -> _AgAdmissionLease:
+        if not isinstance(operation, str) or not operation.strip():
+            raise ValueError("operation must be a non-empty string")
+        return _AgAdmissionLease(self)
+
+    def _acquire(self) -> None:
+        acquired = self._semaphore.acquire(
+            timeout=self.wait_timeout_ms / 1000.0
+        )
+        if not acquired:
+            with self._metrics_lock:
+                self._rejected_total += 1
+            raise AgAdmissionRejectedError(
+                error_code="ag.resilience.admission_capacity_exhausted",
+                detail="AG operation capacity is temporarily exhausted; retry later.",
+                retry_after_ms=self.wait_timeout_ms,
+            )
+        with self._metrics_lock:
+            self._in_flight += 1
+            self._admitted_total += 1
+            self._peak_in_flight = max(
+                self._peak_in_flight,
+                self._in_flight,
+            )
+
+    def _release(self) -> None:
+        with self._metrics_lock:
+            self._in_flight -= 1
+        self._semaphore.release()
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._metrics_lock:
+            return {
+                "schema_version": "ag_concurrency_admission_snapshot.v1",
+                "max_in_flight": self.max_in_flight,
+                "wait_timeout_ms": self.wait_timeout_ms,
+                "in_flight": self._in_flight,
+                "peak_in_flight": self._peak_in_flight,
+                "admitted_total": self._admitted_total,
+                "rejected_total": self._rejected_total,
+                "process_local": True,
+            }
+
+
+class _AgAdmissionLease:
+    def __init__(self, guard: AgConcurrencyAdmissionGuard) -> None:
+        self._guard = guard
+
+    def __enter__(self) -> None:
+        self._guard._acquire()
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
+        self._guard._release()
+        return False
 
 
 def build_ag_resilience_performance_policy(
@@ -126,6 +209,17 @@ def build_ag_resilience_performance_policy(
             "destructive": False,
         },
     }
+
+
+def build_ag_concurrency_admission_guard(
+    environ: Mapping[str, str] | None = None,
+) -> AgConcurrencyAdmissionGuard:
+    policy = build_ag_resilience_performance_policy(environ)
+    admission = policy["admission"]
+    return AgConcurrencyAdmissionGuard(
+        max_in_flight=admission["max_in_flight"],
+        wait_timeout_ms=admission["wait_timeout_ms"],
+    )
 
 
 def build_stable_keyset_page(

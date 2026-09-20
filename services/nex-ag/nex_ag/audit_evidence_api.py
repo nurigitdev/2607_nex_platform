@@ -24,6 +24,11 @@ from nex_ag.audit_integrity import (
 )
 from nex_ag.operator_reviews import OperatorReviewNoteError
 from nex_ag.resilience_performance import AgStablePaginationError
+from nex_ag.resilience_performance import (
+    AgAdmissionRejectedError,
+    AgConcurrencyAdmissionGuard,
+    build_ag_concurrency_admission_guard,
+)
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
     DEFAULT_USER_SCOPE,
@@ -149,6 +154,7 @@ def register_audit_evidence_routes(
     event_store: OperationalEventStore,
     export_store: Any,
     audit_event_store: OperationalEventStore | None = None,
+    admission_guard: AgConcurrencyAdmissionGuard | None = None,
 ) -> None:
     service = AuditEvidencePackageService(
         event_store=event_store,
@@ -157,6 +163,9 @@ def register_audit_evidence_routes(
     audit_emitter = OperationalEventEmitter(
         service_id="nex-ag",
         store=audit_event_store or event_store,
+    )
+    selected_admission_guard = (
+        admission_guard or build_ag_concurrency_admission_guard()
     )
 
     @app.get("/admin/v1/operations/audit-integrity", response_model=None)
@@ -171,15 +180,16 @@ def register_audit_evidence_routes(
         if auth_problem is not None:
             return auth_problem
         try:
-            return build_audit_evidence_operations_projection(
-                event_store=event_store,
-                export_store=export_store,
-                service_id=service_id,
-                recent_limit=recent_limit,
-                action_cursor=cursor,
-                request_trace_id=trace_id_from_headers(request),
-            )
-        except AgStablePaginationError as exc:
+            with selected_admission_guard.admit("audit_integrity_read"):
+                return build_audit_evidence_operations_projection(
+                    event_store=event_store,
+                    export_store=export_store,
+                    service_id=service_id,
+                    recent_limit=recent_limit,
+                    action_cursor=cursor,
+                    request_trace_id=trace_id_from_headers(request),
+                )
+        except (AgStablePaginationError, AgAdmissionRejectedError) as exc:
             return _problem_response(request, exc)
 
     @app.post("/admin/v1/audit-integrity/evidence-packages", response_model=None)
@@ -192,12 +202,14 @@ def register_audit_evidence_routes(
         if auth_problem is not None:
             return auth_problem
         try:
-            response = service.create_package(
-                payload,
-                request_id=request_id_from_headers(request),
-                request_trace_id=trace_id_from_headers(request),
-            )
+            with selected_admission_guard.admit("audit_evidence_create"):
+                response = service.create_package(
+                    payload,
+                    request_id=request_id_from_headers(request),
+                    request_trace_id=trace_id_from_headers(request),
+                )
         except (
+            AgAdmissionRejectedError,
             AuditEvidenceApiError,
             AuditEvidencePackageError,
             AuditIntegrityError,
@@ -241,12 +253,13 @@ def register_audit_evidence_routes(
         if auth_problem is not None:
             return auth_problem
         try:
-            response = service.verify_package(
-                payload,
-                request_id=request_id_from_headers(request),
-                request_trace_id=trace_id_from_headers(request),
-            )
-        except AuditEvidenceApiError as exc:
+            with selected_admission_guard.admit("audit_evidence_verify"):
+                response = service.verify_package(
+                    payload,
+                    request_id=request_id_from_headers(request),
+                    request_trace_id=trace_id_from_headers(request),
+                )
+        except (AgAdmissionRejectedError, AuditEvidenceApiError) as exc:
             return _problem_response(request, exc)
         verification = response["verification"]
         audit_emitter.safe_emit(
@@ -374,7 +387,9 @@ def _problem_response(
     exc: AuditEvidenceApiError
     | AuditEvidencePackageError
     | AuditIntegrityError
-    | OperatorReviewNoteError,
+    | OperatorReviewNoteError
+    | AgStablePaginationError
+    | AgAdmissionRejectedError,
 ) -> JSONResponse:
     return problem_response(
         request,

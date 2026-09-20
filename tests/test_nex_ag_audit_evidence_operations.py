@@ -17,6 +17,7 @@ from nex_ag.audit_evidence_operations import (
 )
 from nex_ag.operations import build_operations_dashboard_snapshot_projection
 from nex_ag.operator_reviews import OperatorEvidenceExportStore
+from nex_ag.resilience_performance import AgConcurrencyAdmissionGuard
 from nex_runtime import (
     InMemoryOperationalEventStore,
     SERVICE_SPECS,
@@ -363,6 +364,28 @@ def test_operations_route_pages_actions_and_rejects_invalid_cursor() -> None:
         "ag.resilience.pagination_cursor_invalid"
     )
     assert "private-invalid-cursor" not in str(invalid.json())
+
+
+def test_operations_route_load_sheds_when_admission_is_exhausted() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    guard = AgConcurrencyAdmissionGuard(max_in_flight=1, wait_timeout_ms=1)
+    register_audit_evidence_routes(
+        app,
+        event_store=_event_store(),
+        export_store=_export_store(),
+        admission_guard=guard,
+    )
+    client = TestClient(app)
+
+    with guard.admit("test_holder"):
+        response = client.get(AUDIT_EVIDENCE_OPERATIONS_PATH, headers=_headers())
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == (
+        "ag.resilience.admission_capacity_exhausted"
+    )
+    assert "capacity" in response.json()["detail"].lower()
+    assert guard.snapshot()["rejected_total"] == 1
 
 
 def test_unified_dashboard_contains_audit_integrity_section_and_contract() -> None:
