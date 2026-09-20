@@ -27,6 +27,10 @@ NeX Content Experience service.
   context, app-owned dependency composition, private payload ports, then
   narrower route protocols. Existing repository/provider protocols and memory
   regression adapters are retained; no big-bang rewrite is planned.
+- Slice 0907 verifies the 13-file versioned SQL migration chain, 16 core table
+  references, and PostgreSQL identifier lengths. SQL migrations are currently
+  canonical; Alembic config construction exists but no CX Alembic script tree
+  is configured, so one history must be chosen before the next schema change.
 
 Owned database env: `NEX_CX_DATABASE_URL`.
 
