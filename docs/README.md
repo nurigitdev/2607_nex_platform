@@ -975,6 +975,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0869`](slices/0869_ag_audit_evidence_privacy_runbook.md) | `S87-009` AG audit evidence privacy, tamper failure modes, and operator runbook evidence. |
 | [`Slice 0870`](slices/0870_s87_ag_audit_integrity_evidence_closure.md) | `S87-010` S87 AG audit integrity and evidence package closure checkpoint. |
 | [`Slice 0871`](slices/0871_ag_resilience_performance_boundary_audit.md) | `S88-001` AG resilience and bounded-performance boundary audit. |
+| [`Slice 0872`](slices/0872_ag_resilience_performance_budget_policy.md) | `S88-002` AG validated resilience and performance budget policy contract. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
