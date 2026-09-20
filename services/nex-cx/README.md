@@ -31,6 +31,10 @@ NeX Content Experience service.
   references, and PostgreSQL identifier lengths. SQL migrations are currently
   canonical; Alembic config construction exists but no CX Alembic script tree
   is configured, so one history must be chosen before the next schema change.
+- Slice 0908 separates contract validity from coverage completeness. Four CX
+  runtime operations are absent from OpenAPI, one CX schema lacks a negative
+  fixture, and the CX OpenAPI version is stale; these six drift items become
+  S92 contract-hardening inputs.
 
 Owned database env: `NEX_CX_DATABASE_URL`.
 
