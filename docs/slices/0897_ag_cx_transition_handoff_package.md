@@ -7,8 +7,12 @@ NeX-CX inherits after NeX-AG service MVP acceptance.
 
 ## Handoff
 
-- A package can be sealed only from an `ACCEPTED` NeX-AG report whose transition
-  status is `READY_FOR_CX` and whose acceptance ID is canonical SHA-256.
+- The manifest is first sealed as an acceptance-independent candidate. It fixes
+  the exact CX assets that the acceptance gate evaluates and carries an
+  `acceptance_binding_status` of `PENDING`.
+- After every blocking gate passes, a separate `BOUND` attestation binds the
+  accepted report ID to the sealed manifest hash. This two-stage protocol avoids
+  requiring an accepted report to construct evidence needed by that same report.
 - Eleven existing CX JSON Schema contracts and four implementation checkpoints
   are represented by repository-relative path and SHA-256 only.
 - The manifest fixes OA identity, AE upload/chat, and MO provider execution as
@@ -20,8 +24,10 @@ NeX-CX inherits after NeX-AG service MVP acceptance.
 - The recommended next entry is an S91 CX current-state re-audit and refactoring
   checkpoint, not an assumption that old CX findings remain current.
 
-The package contains no raw document content, prompt/generation body, database
-URL, credential, or local absolute path. Its manifest hash detects mutation.
+The candidate and attestation contain no raw document content,
+prompt/generation body, database URL, credential, or local absolute path. Their
+independent hashes detect mutation. Slice 0898 is the canonical runtime proof of
+this refined two-stage protocol.
 
 ## Verification
 
@@ -34,7 +40,7 @@ URL, credential, or local absolute path. Its manifest hash detects mutation.
 Observed verification:
 
 ```text
-focused handoff tests: 9 passed
+focused handoff tests: 12 passed
 handoff module statement/branch coverage: 100%
 aggregate regression: 6228 passed, 1 known warning
 statement=75180/76061=98.841719146475%

@@ -11,6 +11,10 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[3]
 AG_CX_TRANSITION_HANDOFF_SCHEMA_VERSION = "ag_cx_transition_handoff.v1"
+AG_CX_TRANSITION_ATTESTATION_SCHEMA_VERSION = (
+    "ag_cx_transition_handoff_attestation.v1"
+)
+AG_MVP_ACCEPTANCE_POLICY_ID = "ag-mvp-acceptance-v1"
 
 REQUIRED_CONTRACT_PATHS = (
     "contracts/schemas/service/nex_cx/upload_registration.v1.schema.json",
@@ -43,13 +47,11 @@ class AgCxTransitionHandoffError(ValueError):
         return self.detail
 
 
-def build_ag_cx_transition_handoff(
-    acceptance_report: Mapping[str, Any],
+def build_ag_cx_transition_handoff_candidate(
     *,
     generated_at: datetime,
     root: Path = ROOT,
 ) -> dict[str, Any]:
-    _validate_acceptance_report(acceptance_report)
     normalized_time = _normalize_time(generated_at)
     assets = [
         _asset_projection(root, path, "contract")
@@ -68,7 +70,8 @@ def build_ag_cx_transition_handoff(
             "cx_current_state_reaudit_and_refactoring_checkpoint"
         ),
         "generated_at": _timestamp(normalized_time),
-        "acceptance_id": acceptance_report["acceptance_id"],
+        "acceptance_policy_id": AG_MVP_ACCEPTANCE_POLICY_ID,
+        "acceptance_binding_status": "PENDING",
         "manifest_status": "SEALED",
         "assets": assets,
         "checkpoints": checkpoints,
@@ -111,6 +114,39 @@ def build_ag_cx_transition_handoff(
     }
 
 
+def bind_ag_cx_transition_handoff(
+    candidate: Mapping[str, Any],
+    acceptance_report: Mapping[str, Any],
+    *,
+    bound_at: datetime,
+) -> dict[str, Any]:
+    verification = verify_ag_cx_transition_handoff(candidate)
+    if verification["status"] != "VERIFIED":
+        raise AgCxTransitionHandoffError(
+            error_code="ag.cx_handoff.candidate_invalid",
+            detail="CX handoff candidate must be verified before binding.",
+        )
+    _validate_acceptance_report(acceptance_report)
+    normalized_time = _normalize_time(bound_at)
+    body = {
+        "attestation_schema_version": (
+            AG_CX_TRANSITION_ATTESTATION_SCHEMA_VERSION
+        ),
+        "attestation_status": "BOUND",
+        "source_service": "nex-ag",
+        "target_service": "nex-cx",
+        "manifest_hash": candidate["manifest_hash"],
+        "acceptance_id": acceptance_report["acceptance_id"],
+        "bound_at": _timestamp(normalized_time),
+        "transition_status": "READY_FOR_CX",
+        "raw_evidence_included": False,
+    }
+    return {
+        **body,
+        "attestation_hash": _sha256(_canonical_json(body).encode("utf-8")),
+    }
+
+
 def verify_ag_cx_transition_handoff(package: Any) -> dict[str, Any]:
     if not isinstance(package, Mapping):
         return _verification(False, "package_invalid")
@@ -127,9 +163,44 @@ def verify_ag_cx_transition_handoff(package: Any) -> dict[str, Any]:
         or package.get("source_service") != "nex-ag"
         or package.get("target_service") != "nex-cx"
         or package.get("manifest_status") != "SEALED"
+        or package.get("acceptance_policy_id")
+        != AG_MVP_ACCEPTANCE_POLICY_ID
+        or package.get("acceptance_binding_status") != "PENDING"
     ):
         return _verification(False, "manifest_identity_invalid")
     return _verification(True, None)
+
+
+def verify_ag_cx_transition_handoff_attestation(
+    attestation: Any,
+    *,
+    candidate: Mapping[str, Any],
+    acceptance_report: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(attestation, Mapping):
+        return _attestation_verification(False, "attestation_invalid")
+    attestation_hash = attestation.get("attestation_hash")
+    if not isinstance(attestation_hash, str) or len(attestation_hash) != 64:
+        return _attestation_verification(False, "attestation_hash_invalid")
+    body = {
+        key: value
+        for key, value in attestation.items()
+        if key != "attestation_hash"
+    }
+    calculated = _sha256(_canonical_json(body).encode("utf-8"))
+    if not _constant_time_equal(attestation_hash, calculated):
+        return _attestation_verification(False, "attestation_hash_mismatch")
+    if (
+        attestation.get("attestation_schema_version")
+        != AG_CX_TRANSITION_ATTESTATION_SCHEMA_VERSION
+        or attestation.get("attestation_status") != "BOUND"
+        or attestation.get("manifest_hash") != candidate.get("manifest_hash")
+        or attestation.get("acceptance_id")
+        != acceptance_report.get("acceptance_id")
+        or attestation.get("transition_status") != "READY_FOR_CX"
+    ):
+        return _attestation_verification(False, "attestation_binding_invalid")
+    return _attestation_verification(True, None)
 
 
 def _validate_acceptance_report(report: Mapping[str, Any]) -> None:
@@ -183,6 +254,18 @@ def _normalize_time(value: datetime) -> datetime:
 def _verification(valid: bool, failure_code: str | None) -> dict[str, Any]:
     return {
         "verification_schema_version": "ag_cx_transition_handoff_verification.v1",
+        "status": "VERIFIED" if valid else "INVALID",
+        "failure_code": failure_code,
+    }
+
+
+def _attestation_verification(
+    valid: bool, failure_code: str | None
+) -> dict[str, Any]:
+    return {
+        "verification_schema_version": (
+            "ag_cx_transition_handoff_attestation_verification.v1"
+        ),
         "status": "VERIFIED" if valid else "INVALID",
         "failure_code": failure_code,
     }
