@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -19,6 +22,16 @@ HARD_MAX_PAGE_SIZE = 500
 class AgResiliencePerformancePolicyError(ValueError):
     error_code: str
     detail: str
+
+    def __str__(self) -> str:
+        return self.detail
+
+
+@dataclass
+class AgStablePaginationError(ValueError):
+    error_code: str
+    detail: str
+    status_code: int = 400
 
     def __str__(self) -> str:
         return self.detail
@@ -115,6 +128,62 @@ def build_ag_resilience_performance_policy(
     }
 
 
+def build_stable_keyset_page(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    limit: int,
+    cursor: str | None,
+    timestamp_field: str,
+    identity_field: str,
+    sort: str = "desc",
+    max_limit: int = HARD_MAX_PAGE_SIZE,
+) -> dict[str, Any]:
+    normalized_limit = _page_limit(limit, max_limit=max_limit)
+    normalized_sort = sort.strip().lower() if isinstance(sort, str) else ""
+    if normalized_sort not in {"asc", "desc"}:
+        raise AgStablePaginationError(
+            error_code="ag.resilience.pagination_sort_invalid",
+            detail="Pagination sort must be asc or desc.",
+        )
+    anchor = _decode_cursor(cursor, expected_sort=normalized_sort)
+    keyed_records: list[tuple[tuple[str, str], Mapping[str, Any]]] = []
+    invalid_record_count = 0
+    for record in records:
+        key = _record_key(
+            record,
+            timestamp_field=timestamp_field,
+            identity_field=identity_field,
+        )
+        if key is None:
+            invalid_record_count += 1
+            continue
+        if anchor is not None:
+            is_after = key > anchor if normalized_sort == "asc" else key < anchor
+            if not is_after:
+                continue
+        keyed_records.append((key, record))
+    keyed_records.sort(
+        key=lambda item: item[0],
+        reverse=normalized_sort == "desc",
+    )
+    selected = keyed_records[: normalized_limit + 1]
+    has_more = len(selected) > normalized_limit
+    page_records = selected[:normalized_limit]
+    next_cursor = None
+    if has_more and page_records:
+        next_cursor = _encode_cursor(page_records[-1][0], sort=normalized_sort)
+    return {
+        "items": [dict(item[1]) for item in page_records],
+        "pagination": {
+            "limit": normalized_limit,
+            "returned": len(page_records),
+            "has_more": has_more,
+            "next_cursor": next_cursor,
+            "sort": normalized_sort,
+            "stable_ordering": [timestamp_field, identity_field],
+            "invalid_record_count": invalid_record_count,
+        },
+    }
 def _validate_policy_relationships(
     values: Mapping[str, int],
     *,
@@ -201,4 +270,93 @@ def _policy_error(suffix: str, detail: str) -> AgResiliencePerformancePolicyErro
     return AgResiliencePerformancePolicyError(
         error_code=f"ag.resilience.{suffix}",
         detail=detail,
+    )
+
+
+def _page_limit(value: int, *, max_limit: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise AgStablePaginationError(
+            error_code="ag.resilience.pagination_limit_invalid",
+            detail="Pagination limit must be an integer.",
+        )
+    if max_limit < 1 or value < 1 or value > max_limit:
+        raise AgStablePaginationError(
+            error_code="ag.resilience.pagination_limit_invalid",
+            detail=f"Pagination limit must be between 1 and {max_limit}.",
+        )
+    return value
+
+
+def _record_key(
+    record: Mapping[str, Any],
+    *,
+    timestamp_field: str,
+    identity_field: str,
+) -> tuple[str, str] | None:
+    timestamp = record.get(timestamp_field)
+    identity = record.get(identity_field)
+    if not isinstance(timestamp, str) or not timestamp.strip():
+        return None
+    if not isinstance(identity, str) or not identity.strip():
+        return None
+    return timestamp.strip(), identity.strip()
+
+
+def _encode_cursor(key: tuple[str, str], *, sort: str) -> str:
+    payload = json.dumps(
+        {
+            "identity": key[1],
+            "sort": sort,
+            "timestamp": key[0],
+            "version": 1,
+        },
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_cursor(
+    value: str | None,
+    *,
+    expected_sort: str,
+) -> tuple[str, str] | None:
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip()
+    if len(normalized) > 1024:
+        raise _cursor_error()
+    padding = "=" * (-len(normalized) % 4)
+    try:
+        decoded = base64.b64decode(
+            normalized + padding,
+            altchars=b"-_",
+            validate=True,
+        ).decode("utf-8")
+        payload = json.loads(decoded)
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise _cursor_error() from exc
+    if not isinstance(payload, Mapping) or set(payload) != {
+        "identity",
+        "sort",
+        "timestamp",
+        "version",
+    }:
+        raise _cursor_error()
+    if payload.get("version") != 1 or payload.get("sort") != expected_sort:
+        raise _cursor_error()
+    timestamp = payload.get("timestamp")
+    identity = payload.get("identity")
+    if not isinstance(timestamp, str) or not timestamp.strip():
+        raise _cursor_error()
+    if not isinstance(identity, str) or not identity.strip():
+        raise _cursor_error()
+    return timestamp.strip(), identity.strip()
+
+
+def _cursor_error() -> AgStablePaginationError:
+    return AgStablePaginationError(
+        error_code="ag.resilience.pagination_cursor_invalid",
+        detail="Pagination cursor is invalid or incompatible.",
     )

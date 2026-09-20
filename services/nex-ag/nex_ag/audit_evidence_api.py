@@ -23,6 +23,7 @@ from nex_ag.audit_integrity import (
     build_audit_event_integrity_report,
 )
 from nex_ag.operator_reviews import OperatorReviewNoteError
+from nex_ag.resilience_performance import AgStablePaginationError
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
     DEFAULT_USER_SCOPE,
@@ -164,17 +165,22 @@ def register_audit_evidence_routes(
         authorization: str | None = Header(default=None),
         service_id: str | None = None,
         recent_limit: int = 5,
+        cursor: str | None = None,
     ):
         auth_problem = _authorize_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
-        return build_audit_evidence_operations_projection(
-            event_store=event_store,
-            export_store=export_store,
-            service_id=service_id,
-            recent_limit=recent_limit,
-            request_trace_id=trace_id_from_headers(request),
-        )
+        try:
+            return build_audit_evidence_operations_projection(
+                event_store=event_store,
+                export_store=export_store,
+                service_id=service_id,
+                recent_limit=recent_limit,
+                action_cursor=cursor,
+                request_trace_id=trace_id_from_headers(request),
+            )
+        except AgStablePaginationError as exc:
+            return _problem_response(request, exc)
 
     @app.post("/admin/v1/audit-integrity/evidence-packages", response_model=None)
     def create_audit_evidence_package(

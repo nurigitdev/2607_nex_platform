@@ -4538,6 +4538,9 @@
             "$ref": "#/$defs/dashboard_audit_integrity_action"
           }
         },
+        "action_pagination": {
+          "$ref": "#/$defs/dashboard_audit_integrity_pagination"
+        },
         "recent_exports": {
           "type": "array",
           "maxItems": 50,
@@ -4569,6 +4572,55 @@
         },
         "redaction": {
           "$ref": "#/$defs/dashboard_audit_integrity_redaction"
+        }
+      }
+    },
+    "dashboard_audit_integrity_pagination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "limit",
+        "returned",
+        "has_more",
+        "next_cursor",
+        "sort",
+        "stable_ordering",
+        "invalid_record_count"
+      ],
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "returned": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 50
+        },
+        "has_more": {
+          "type": "boolean"
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "sort": {
+          "const": "desc"
+        },
+        "stable_ordering": {
+          "const": [
+            "created_at",
+            "event_id"
+          ]
+        },
+        "invalid_record_count": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },

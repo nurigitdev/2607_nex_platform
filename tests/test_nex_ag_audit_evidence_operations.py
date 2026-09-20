@@ -150,6 +150,9 @@ def test_operations_projection_is_ready_sorted_bounded_and_redacted() -> None:
     assert [item["event_id"] for item in result["recent_actions"]] == [
         "event-verified"
     ]
+    assert result["action_pagination"]["returned"] == 1
+    assert result["action_pagination"]["has_more"] is True
+    assert result["action_pagination"]["next_cursor"] is not None
     assert [item["export_id"] for item in result["recent_exports"]] == [
         "export-0866-b"
     ]
@@ -311,6 +314,55 @@ def test_operations_route_is_protected_and_returns_projection() -> None:
     assert response.json()["integrity_status"] == "READY"
     assert response.json()["request_trace_id"] == REQUEST_TRACE_ID
     assert unauthorized.status_code == 401
+
+
+def test_operations_route_pages_actions_and_rejects_invalid_cursor() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_audit_evidence_routes(
+        app,
+        event_store=_event_store(
+            _event(
+                "event-route-a",
+                event_type=AUDIT_EVIDENCE_PACKAGE_GENERATED_EVENT_TYPE,
+                created_at="2026-09-20T07:00:00Z",
+            ),
+            _event(
+                "event-route-b",
+                event_type=AUDIT_EVIDENCE_PACKAGE_VERIFIED_EVENT_TYPE,
+                created_at="2026-09-20T07:01:00Z",
+            ),
+        ),
+        export_store=_export_store(_export()),
+    )
+    client = TestClient(app)
+
+    first = client.get(
+        AUDIT_EVIDENCE_OPERATIONS_PATH,
+        headers=_headers(),
+        params={"recent_limit": 1},
+    )
+    cursor = first.json()["action_pagination"]["next_cursor"]
+    second = client.get(
+        AUDIT_EVIDENCE_OPERATIONS_PATH,
+        headers=_headers(),
+        params={"recent_limit": 1, "cursor": cursor},
+    )
+    invalid = client.get(
+        AUDIT_EVIDENCE_OPERATIONS_PATH,
+        headers=_headers(),
+        params={"cursor": "private-invalid-cursor"},
+    )
+
+    assert first.status_code == 200
+    assert first.json()["recent_actions"][0]["event_id"] == "event-route-b"
+    assert second.status_code == 200
+    assert second.json()["recent_actions"][0]["event_id"] == "event-route-a"
+    assert second.json()["action_pagination"]["has_more"] is False
+    assert invalid.status_code == 400
+    assert invalid.json()["error_code"] == (
+        "ag.resilience.pagination_cursor_invalid"
+    )
+    assert "private-invalid-cursor" not in str(invalid.json())
 
 
 def test_unified_dashboard_contains_audit_integrity_section_and_contract() -> None:

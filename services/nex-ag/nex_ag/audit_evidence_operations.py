@@ -6,6 +6,8 @@ from typing import Any, Mapping
 
 from nex_runtime import OperationalEventStore
 
+from nex_ag.resilience_performance import build_stable_keyset_page
+
 
 AUDIT_EVIDENCE_OPERATIONS_SCHEMA_VERSION = (
     "ag_audit_evidence_operations_projection.v1"
@@ -33,6 +35,7 @@ def build_audit_evidence_operations_projection(
     export_store: Any | None,
     service_id: str | None = None,
     recent_limit: int = 5,
+    action_cursor: str | None = None,
     request_trace_id: str | None = None,
 ) -> dict[str, Any]:
     bounded_limit = max(1, min(50, int(recent_limit)))
@@ -45,6 +48,7 @@ def build_audit_evidence_operations_projection(
             event_source_status=_source_status("FILTERED", "service_operational_events"),
             export_source_status=_source_status("FILTERED", "ag_ev_exports"),
             recent_limit=bounded_limit,
+            action_cursor=action_cursor,
             request_trace_id=request_trace_id,
         )
 
@@ -100,6 +104,7 @@ def build_audit_evidence_operations_projection(
         event_source_status=event_status,
         export_source_status=export_status,
         recent_limit=bounded_limit,
+        action_cursor=action_cursor,
         request_trace_id=request_trace_id,
     )
 
@@ -147,6 +152,7 @@ def _base_projection(
     event_source_status: dict[str, Any],
     export_source_status: dict[str, Any],
     recent_limit: int,
+    action_cursor: str | None,
     request_trace_id: str | None,
 ) -> dict[str, Any]:
     generated = [
@@ -161,6 +167,15 @@ def _base_projection(
     ]
     valid_hash_count = sum(
         1 for item in export_records if _safe_hash(item.get("evidence_hash")) is not None
+    )
+    action_page = build_stable_keyset_page(
+        event_records,
+        limit=recent_limit,
+        cursor=action_cursor,
+        timestamp_field="created_at",
+        identity_field="event_id",
+        sort="desc",
+        max_limit=50,
     )
     projection = {
         "projection_schema_version": AUDIT_EVIDENCE_OPERATIONS_SCHEMA_VERSION,
@@ -178,8 +193,9 @@ def _base_projection(
             "invalid_hash_export_count": len(export_records) - valid_hash_count,
         },
         "recent_actions": [
-            _event_projection(event) for event in event_records[:recent_limit]
+            _event_projection(event) for event in action_page["items"]
         ],
+        "action_pagination": action_page["pagination"],
         "recent_exports": [
             _export_projection(item)
             for item in sorted(
