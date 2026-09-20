@@ -1499,6 +1499,11 @@ Unified operations:
 - Slice 0890 closes S89 with aligned boundary, runtime, contract, actual
   PostgreSQL, privacy, and runbook evidence. Production object storage,
   cross-service orchestration, legal holds, and the S90 transition remain deferred.
+- Slice 0891 freezes S90 as NeX-AG service MVP acceptance and NeX-CX development
+  transition, not product-wide release or production deployment approval.
+- Slice 0892 adds the canonical `nex_ag.mvp_acceptance` policy with eight
+  blocking gates, strict non-skipped evidence, 98% statement and 96% branch
+  acceptance defaults, and required actual `nex_ag_test` evidence.
 - Slice 0862 adds a pure operational-event integrity report. It detects invalid
   records, duplicate or missing event IDs, timestamp errors, and expected hash
   mismatches while returning only sorted metadata and canonical SHA-256 hashes.
