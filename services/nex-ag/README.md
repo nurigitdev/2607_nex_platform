@@ -1475,6 +1475,10 @@ Unified operations:
   `service_operational_events` and `ag_ev_exports`. Candidate pages are bounded,
   oldest-first, hash-verifiable, and metadata-only; unarchived rows remain
   explicitly ineligible for purge.
+- Slice 0884 adds the short `ag_ret_archives` table and immutable receipt stores.
+  Recoverable external receipts become `SEALED`; mock receipts remain `MOCKED`
+  without a purge date. Only hashes and safe lifecycle metadata are persisted,
+  never archive object references or source payloads.
 - Slice 0862 adds a pure operational-event integrity report. It detects invalid
   records, duplicate or missing event IDs, timestamp errors, and expected hash
   mismatches while returning only sorted metadata and canonical SHA-256 hashes.
