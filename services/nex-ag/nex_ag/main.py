@@ -6,6 +6,10 @@ from nex_runtime import (
     register_service_log_retention_routes,
 )
 from nex_ag.audit_evidence_api import register_audit_evidence_routes
+from nex_ag.audit_retention_operations import (
+    build_ag_audit_retention_runtime_stores,
+    register_ag_audit_retention_routes,
+)
 from nex_ag.generation_audit import register_generation_audit_routes
 from nex_ag.generation_quality_disposition import (
     register_generation_quality_disposition_routes,
@@ -97,6 +101,9 @@ OPERATOR_REVIEW_ESCALATION_DISPATCH_STORE = (
 OPERATOR_REVIEW_LIVENESS_ACK_STATE_STORE = (
     default_operator_review_liveness_ack_state_store(app)
 )
+AUDIT_RETENTION_STORES = build_ag_audit_retention_runtime_stores(
+    SERVICE_PERSISTENCE
+)
 register_readiness_routes(app)
 register_generation_audit_routes(app)
 register_generation_quality_disposition_routes(
@@ -125,6 +132,7 @@ register_audit_evidence_routes(
     audit_event_store=SERVICE_PERSISTENCE.operational_event_store,
     persistence_runtime=SERVICE_PERSISTENCE,
 )
+register_ag_audit_retention_routes(app, **AUDIT_RETENTION_STORES)
 register_operator_review_case_routes(
     app,
     store=OPERATOR_REVIEW_CASE_STORE,
