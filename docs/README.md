@@ -993,6 +993,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0887`](slices/0887_ag_audit_retention_contract_index_hardening.md) | `S89-007` AG retention JSON Schema/OpenAPI contract and deterministic candidate index hardening. |
 | [`Slice 0888`](slices/0888_ag_audit_retention_postgresql_smoke.md) | `S89-008` AG retention actual PostgreSQL archive, purge, idempotency, index, and cleanup smoke evidence. |
 | [`Slice 0889`](slices/0889_ag_audit_retention_privacy_runbook.md) | `S89-009` AG retention privacy, failure-mode, PostgreSQL evidence, and operator runbook hardening. |
+| [`Slice 0890`](slices/0890_s89_ag_audit_retention_closure.md) | `S89-010` S89 AG audit/evidence retention, archive, and guarded-purge closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

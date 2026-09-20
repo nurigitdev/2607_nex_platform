@@ -1496,6 +1496,9 @@ Unified operations:
 - Slice 0889 turns default-disabled, mock, archive, grace, source, confirmation,
   concurrency, idempotency, migration, connectivity, and cleanup outcomes into
   privacy-safe operator evidence and explicit runbook actions.
+- Slice 0890 closes S89 with aligned boundary, runtime, contract, actual
+  PostgreSQL, privacy, and runbook evidence. Production object storage,
+  cross-service orchestration, legal holds, and the S90 transition remain deferred.
 - Slice 0862 adds a pure operational-event integrity report. It detects invalid
   records, duplicate or missing event IDs, timestamp errors, and expected hash
   mismatches while returning only sorted metadata and canonical SHA-256 hashes.
