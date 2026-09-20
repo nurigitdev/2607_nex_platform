@@ -994,6 +994,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0888`](slices/0888_ag_audit_retention_postgresql_smoke.md) | `S89-008` AG retention actual PostgreSQL archive, purge, idempotency, index, and cleanup smoke evidence. |
 | [`Slice 0889`](slices/0889_ag_audit_retention_privacy_runbook.md) | `S89-009` AG retention privacy, failure-mode, PostgreSQL evidence, and operator runbook hardening. |
 | [`Slice 0890`](slices/0890_s89_ag_audit_retention_closure.md) | `S89-010` S89 AG audit/evidence retention, archive, and guarded-purge closure checkpoint. |
+| [`Slice 0891`](slices/0891_ag_mvp_acceptance_cx_transition_boundary_audit.md) | `S90-001` AG service MVP acceptance and CX transition boundary audit. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
