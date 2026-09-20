@@ -19,6 +19,10 @@ NeX Content Experience service.
   Source bytes are durable, decoded source text is reconstructable, and chunk
   text, summary text, chunk vectors, and summary vectors require private
   adapters in S92. Public PostgreSQL records remain metadata-only.
+- Slice 0905 confirms that owner-filtered document projections exist, while
+  five job, processing, retrieval, and generation surfaces still lack a
+  principal-bound authorization context. S92 should introduce one shared
+  `CxAccessContext` instead of adding route-specific authorization branches.
 
 Owned database env: `NEX_CX_DATABASE_URL`.
 
