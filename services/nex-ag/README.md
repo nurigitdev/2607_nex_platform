@@ -1528,6 +1528,11 @@ Unified operations:
   runbook, candidate, and attestation failure into privacy-safe evidence and an
   explicit operator action. It also requires the actual Slice 0898 database
   proof and keeps raw documents, prompts, generations, and credentials absent.
+- Slice 0900 closes S90 with aligned boundary, eight-gate policy, 33-requirement
+  inventory, evaluator/API, contracts, actual PostgreSQL, privacy/runbook, and
+  two-stage handoff evidence. NeX-AG service MVP status is accepted and S91 may
+  begin with a CX current-state re-audit; product-wide release and production
+  certification remain deferred.
 - Slice 0862 adds a pure operational-event integrity report. It detects invalid
   records, duplicate or missing event IDs, timestamp errors, and expected hash
   mismatches while returning only sorted metadata and canonical SHA-256 hashes.
