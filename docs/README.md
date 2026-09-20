@@ -1002,6 +1002,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0896`](slices/0896_ag_mvp_acceptance_contract_operations_hardening.md) | `S90-006` Strict AG MVP acceptance JSON Schema, OpenAPI, and privacy fixture hardening. |
 | [`Slice 0897`](slices/0897_ag_cx_transition_handoff_package.md) | `S90-007` Deterministic redacted AG-to-CX transition handoff package. |
 | [`Slice 0898`](slices/0898_ag_mvp_acceptance_postgresql_smoke.md) | `S90-008` Two-stage AG MVP acceptance and actual PostgreSQL handoff smoke evidence. |
+| [`Slice 0899`](slices/0899_ag_mvp_acceptance_privacy_runbook.md) | `S90-009` AG MVP acceptance privacy, failure-mode, and operator runbook evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

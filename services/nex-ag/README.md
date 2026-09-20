@@ -1524,6 +1524,10 @@ Unified operations:
   verifiable `BOUND` attestation links the accepted report ID to its manifest
   hash. Its protected smoke applies migrations and proves insert, direct select,
   cleanup, all eight gates, and zero residue on the actual `nex_ag_test` database.
+- Slice 0899 converts every acceptance evidence, coverage, PostgreSQL, cleanup,
+  runbook, candidate, and attestation failure into privacy-safe evidence and an
+  explicit operator action. It also requires the actual Slice 0898 database
+  proof and keeps raw documents, prompts, generations, and credentials absent.
 - Slice 0862 adds a pure operational-event integrity report. It detects invalid
   records, duplicate or missing event IDs, timestamp errors, and expected hash
   mismatches while returning only sorted metadata and canonical SHA-256 hashes.
