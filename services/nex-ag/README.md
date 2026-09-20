@@ -1516,6 +1516,9 @@ Unified operations:
 - Slice 0896 freezes that operations projection in strict JSON Schema and
   OpenAPI, including negative fixtures that reject raw evidence, database URLs,
   and credentials.
+- Slice 0897 adds a deterministic, SHA-256-sealed AG-to-CX transition manifest
+  over 11 CX contracts and four checkpoints, with explicit dependencies,
+  ownership boundaries, deferred risks, and an S91 re-audit entry point.
 - Slice 0862 adds a pure operational-event integrity report. It detects invalid
   records, duplicate or missing event IDs, timestamp errors, and expected hash
   mismatches while returning only sorted metadata and canonical SHA-256 hashes.
