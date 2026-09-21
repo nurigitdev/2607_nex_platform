@@ -7,10 +7,9 @@ from typing import TYPE_CHECKING, Any
 from fastapi import FastAPI, Header, Query, Request
 
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
     problem_response,
-    validate_authorization_header,
 )
+from nex_cx.authorization import authorize_cx_request
 from nex_cx.repository import (
     CX_SOURCE_OWNERSHIP_REF_SCHEMA_VERSION,
     CxContentRepositoryError,
@@ -52,7 +51,7 @@ def register_document_library_routes(
         owner_user_id: str | None = Query(default=None),
         limit: int | None = Query(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -720,24 +719,3 @@ def _positive_int_or_none(value: object) -> int | None:
     if value < 1:
         return None
     return value
-
-
-def _authorize_cx_request(
-    request: Request,
-    authorization: str | None,
-):
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-cx",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if result.ok:
-        return None
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "CX requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )

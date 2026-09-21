@@ -22,13 +22,12 @@ from nex_runtime.recovery import (
     select_generation_recovery_policy,
 )
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
     issue_mock_service_token,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
 )
+from nex_cx.authorization import authorize_cx_request
 from nex_cx.drafts import build_structured_draft
 from nex_cx.progress import (
     build_cx_generation_failure_progress_events,
@@ -217,7 +216,7 @@ def register_generation_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -309,7 +308,7 @@ def register_generation_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -331,7 +330,7 @@ def register_generation_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -353,7 +352,7 @@ def register_generation_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -1507,28 +1506,6 @@ def _optional_string(value: Any) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return None
-
-
-def _authorize_cx_request(
-    request: Request,
-    authorization: str | None,
-) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-cx",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if result.ok:
-        return None
-
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "CX requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
 
 
 def _generation_problem_response(

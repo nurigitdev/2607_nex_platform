@@ -9,7 +9,6 @@ from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
     BUSY,
     CX_PROCESSING_EVENT_FAILED,
     CX_PROCESSING_EVENT_STARTED,
@@ -36,12 +35,12 @@ from nex_runtime import (
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
     worker_heartbeat_emitter_from_app,
     run_worker_once,
 )
 from nex_runtime.prompts import PromptRegistryStore
 
+from nex_cx.authorization import authorize_cx_request
 from nex_cx.chunking import ChunkingError, build_and_store_chunk_set
 from nex_cx.embedding_index import (
     DEFAULT_EMBEDDING_ALIAS,
@@ -140,7 +139,7 @@ def register_processing_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -167,7 +166,7 @@ def register_processing_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -189,7 +188,7 @@ def register_processing_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -1012,28 +1011,6 @@ def _failed_step_id(steps: list[dict[str, Any]]) -> str | None:
 
 def _count_steps(steps: list[dict[str, Any]], status: str) -> int:
     return sum(1 for step in steps if step["status"] == status)
-
-
-def _authorize_cx_request(
-    request: Request,
-    authorization: str | None,
-) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-cx",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if result.ok:
-        return None
-
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "CX requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
 
 
 def _processing_problem_response(

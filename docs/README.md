@@ -1016,6 +1016,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0910`](slices/0910_s91_cx_current_state_reaudit_closure.md) | `S91-010` CX current-state re-audit closure and ordered S92 handoff. |
 | [`Slice 0911`](slices/0911_cx_private_content_ownership_boundary_audit.md) | `S92-001` CX private-content and ownership-persistence boundary audit. |
 | [`Slice 0912`](slices/0912_cx_access_context_contract_resolver.md) | `S92-002` Immutable CX access-context contract and trusted-service resolver. |
+| [`Slice 0913`](slices/0913_cx_central_authorization_enforcement.md) | `S92-003` Centralized CX caller authentication and authorization enforcement. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

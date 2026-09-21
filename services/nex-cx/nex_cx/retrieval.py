@@ -14,12 +14,10 @@ from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
     issue_mock_service_token,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
 )
 from nex_runtime.retrieval_policies import CURRENT_POLICY_ID, WEIGHTED_RRF_POLICY_ID
 from nex_runtime.retrieval_policies import (
@@ -27,6 +25,7 @@ from nex_runtime.retrieval_policies import (
 )
 from nex_runtime.retrieval_policies import active_retrieval_policy_record, retrieval_policy_by_id
 
+from nex_cx.authorization import authorize_cx_request
 from nex_cx.ingestion import ContentIngestionStore
 from nex_cx.lexical_index import query_terms_for_lexical_index
 
@@ -168,7 +167,7 @@ def register_retrieval_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -191,7 +190,7 @@ def register_retrieval_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -1350,28 +1349,6 @@ def _optional_policy_int(
             detail=f"retrieval_policy.{key} must be between {minimum} and {maximum}.",
         )
     return value
-
-
-def _authorize_cx_request(
-    request: Request,
-    authorization: str | None,
-) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-cx",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if result.ok:
-        return None
-
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "CX requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
 
 
 def _retrieval_problem_response(

@@ -16,7 +16,7 @@ def test_repository_runtime_coupling_audit_freezes_targeted_refactor() -> None:
         "refactor_required_count": 5,
         "accepted_for_now_count": 1,
         "good_boundary_count": 2,
-        "duplicated_authorization_helper_count": 12,
+        "duplicated_authorization_helper_count": 0,
         "evidence_gap_count": 0,
     }
     assert result["refactoring_readiness"] == (
@@ -44,7 +44,7 @@ def test_summary_line_reports_coupling_counts() -> None:
 
     assert runner.summary_line(result) == (
         "cx_runtime_coupling_audit=pass refactor_required=5 "
-        "good_boundaries=2 auth_helpers=12 evidence_gaps=0"
+        "good_boundaries=2 auth_helpers=0 evidence_gaps=0"
     )
     assert runner.summary_line({"status": "FAIL"}) == (
         "cx_runtime_coupling_audit=fail refactor_required=0 "

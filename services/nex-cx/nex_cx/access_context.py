@@ -6,7 +6,11 @@ from datetime import datetime
 import re
 from typing import Any
 
-from nex_runtime import DEFAULT_SERVICE_SCOPE, validate_authorization_header
+from nex_runtime import (
+    DEFAULT_SERVICE_SCOPE,
+    ServiceClaims,
+    validate_authorization_header,
+)
 from nex_cx.source_ownership import (
     OA_TENANT_SUBJECT_TYPE,
     OA_USER_SUBJECT_TYPE,
@@ -75,6 +79,28 @@ def resolve_cx_access_context(
     allowed_callers: Collection[str] = CX_ACCESS_CONTEXT_ALLOWED_CALLERS,
     now: datetime | None = None,
 ) -> CxAccessContext:
+    claims = authenticate_cx_service_claim(
+        authorization=authorization,
+        allowed_callers=allowed_callers,
+        now=now,
+    )
+
+    return CxAccessContext(
+        caller_service_id=claims.service_id,
+        tenant_id=_normalize_identifier(tenant_id, field_name="tenant_id"),
+        subject_id=_normalize_identifier(subject_id, field_name="subject_id"),
+        request_id=_normalize_identifier(request_id, field_name="request_id"),
+        trace_id=_normalize_identifier(trace_id, field_name="trace_id"),
+        scopes=tuple(claims.scopes),
+    )
+
+
+def authenticate_cx_service_claim(
+    *,
+    authorization: str | None,
+    allowed_callers: Collection[str] = CX_ACCESS_CONTEXT_ALLOWED_CALLERS,
+    now: datetime | None = None,
+) -> ServiceClaims:
     validation = validate_authorization_header(
         authorization,
         expected_audience="nex-cx",
@@ -95,15 +121,7 @@ def resolve_cx_access_context(
             error_code="CX_CALLER_SERVICE_FORBIDDEN",
             detail="The calling service is not allowed to assert CX ownership context.",
         )
-
-    return CxAccessContext(
-        caller_service_id=caller_service_id,
-        tenant_id=_normalize_identifier(tenant_id, field_name="tenant_id"),
-        subject_id=_normalize_identifier(subject_id, field_name="subject_id"),
-        request_id=_normalize_identifier(request_id, field_name="request_id"),
-        trace_id=_normalize_identifier(trace_id, field_name="trace_id"),
-        scopes=tuple(validation.claims.scopes),
-    )
+    return validation.claims
 
 
 def build_access_context_ownership_ref(

@@ -15,7 +15,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
     JobQueue,
     JobQueueError,
     build_common_job,
@@ -23,8 +22,8 @@ from nex_runtime import (
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
 )
+from nex_cx.authorization import authorize_cx_request
 from nex_cx.remediation_execution_boundary import (
     RemediationExecutionBoundaryError,
     assert_cx_remediation_execution_payload_redaction_safe,
@@ -220,7 +219,7 @@ def register_remediation_execution_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -276,7 +275,7 @@ def register_remediation_execution_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -304,7 +303,7 @@ def register_remediation_execution_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -753,27 +752,6 @@ def optional_text(value: Any) -> str | None:
 
 def _mapping(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
-
-
-def _authorize_cx_request(
-    request: Request,
-    authorization: str | None,
-) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-cx",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if result.ok:
-        return None
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "CX requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
 
 
 def _remediation_execution_problem_response(

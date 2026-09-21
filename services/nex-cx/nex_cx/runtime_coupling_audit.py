@@ -46,11 +46,11 @@ COUPLING_FINDINGS = (
     ),
     CouplingFinding(
         "duplicated_service_authorization",
-        "services/nex-cx/nex_cx/document_library.py",
-        "def _authorize_cx_request(",
+        "docs/slices/0906_cx_runtime_coupling_refactoring_checkpoint.md",
+        "service authorization helpers",
         "REFACTOR_REQUIRED",
         "MEDIUM",
-        "Authorization logic is repeated across CX route modules.",
+        "S91 recorded the authorization duplication that S92 must remove.",
     ),
     CouplingFinding(
         "global_generation_store",
@@ -115,6 +115,7 @@ def build_cx_runtime_coupling_audit(root: Path = ROOT) -> dict[str, Any]:
     auth_helper_count = sum(
         "def _authorize_cx_request(" in path.read_text(encoding="utf-8")
         for path in (root / "services/nex-cx/nex_cx").glob("*.py")
+        if path.name != "runtime_coupling_audit.py"
     ) if (root / "services/nex-cx/nex_cx").is_dir() else 0
     return {
         "audit_schema_version": CX_RUNTIME_COUPLING_AUDIT_SCHEMA_VERSION,

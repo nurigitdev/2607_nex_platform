@@ -15,7 +15,6 @@ from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
     SubjectRegistryResolver,
     SubjectRegistryResolverError,
     build_common_job,
@@ -24,8 +23,8 @@ from nex_runtime import (
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
 )
+from nex_cx.authorization import authorize_cx_request
 from nex_cx.document_library import build_document_detail_projection
 from nex_cx.repository import (
     CxContentRepositoryError,
@@ -706,7 +705,7 @@ def register_ingestion_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -751,7 +750,7 @@ def register_ingestion_routes(
         tenant_id: str | None = Query(default=None),
         owner_user_id: str | None = Query(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -815,7 +814,7 @@ def register_ingestion_routes(
         tenant_id: str | None = Query(default=None),
         owner_user_id: str | None = Query(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -877,7 +876,7 @@ def register_ingestion_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -899,7 +898,7 @@ def register_ingestion_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -920,7 +919,7 @@ def register_ingestion_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_cx_request(request, authorization)
+        auth_problem = authorize_cx_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -2041,28 +2040,6 @@ def _document_id(tenant_id: str, owner_user_id: str, source_sha256: str) -> str:
 
 def _upload_id(document_id: str, request_id: str, trace_id: str) -> str:
     return str(uuid5(NAMESPACE_URL, f"cx-upload:{document_id}:{request_id}:{trace_id}"))
-
-
-def _authorize_cx_request(
-    request: Request,
-    authorization: str | None,
-) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-cx",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if result.ok:
-        return None
-
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "CX requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
 
 
 def _ingestion_problem_response(
