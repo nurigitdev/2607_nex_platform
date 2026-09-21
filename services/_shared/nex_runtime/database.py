@@ -67,6 +67,10 @@ def service_database_settings(
     env = environ if environ is not None else os.environ
     database_url = required_database_url(database_env, env)
     vector_database_env = VECTOR_DATABASE_ENVS.get(service_id)
+    if vector_database_env is not None and database_env.endswith("_TEST_DATABASE_URL"):
+        vector_database_env = vector_database_env.replace(
+            "_DATABASE_URL", "_TEST_DATABASE_URL"
+        )
     vector_database_url = None
     redacted_vector_database_url = None
     vector_uses_primary = True

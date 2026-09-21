@@ -130,6 +130,35 @@ def test_service_database_settings_accepts_separate_cx_vector_database() -> None
     assert settings.redacted_vector_database_url == "postgresql://nex_vector_user:***@localhost/nex_vector_dev"
 
 
+def test_service_database_settings_uses_test_vector_override_for_test_profile() -> None:
+    settings = service_database_settings(
+        service_id="nex-cx",
+        database_env="NEX_CX_TEST_DATABASE_URL",
+        environ={
+            "NEX_CX_TEST_DATABASE_URL": "postgresql://nex_cx_user:secret@localhost/nex_cx_test",
+            "NEX_CX_VECTOR_TEST_DATABASE_URL": "postgresql://nex_vector_user:secret@localhost/nex_vector_test",
+        },
+    )
+
+    assert settings.vector_database_env == "NEX_CX_VECTOR_TEST_DATABASE_URL"
+    assert settings.vector_database_url.endswith("/nex_vector_test")
+    assert settings.vector_uses_primary is False
+
+
+def test_service_database_settings_falls_back_to_primary_for_test_vectors() -> None:
+    settings = service_database_settings(
+        service_id="nex-cx",
+        database_env="NEX_CX_TEST_DATABASE_URL",
+        environ={
+            "NEX_CX_TEST_DATABASE_URL": "postgresql://nex_cx_user:secret@localhost/nex_cx_test",
+        },
+    )
+
+    assert settings.vector_database_env == "NEX_CX_VECTOR_TEST_DATABASE_URL"
+    assert settings.vector_database_url == settings.database_url
+    assert settings.vector_uses_primary is True
+
+
 def test_service_database_settings_rejects_placeholder_vector_database() -> None:
     with pytest.raises(DatabaseConfigError, match="NEX_CX_VECTOR_DATABASE_URL"):
         service_database_settings(
