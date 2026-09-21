@@ -1044,6 +1044,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0938`](slices/0938_cx_vector_readiness_api_observability.md) | `S94-008` Protected vector readiness/reconciliation API and metadata-only operational observability. |
 | [`Slice 0939`](slices/0939_cx_vector_live_embedding_pgvector_smoke.md) | `S94-009` Protected OpenAI-compatible remote embedding to actual `nex_cx_test` pgvector publish/retrieval evidence. |
 | [`Slice 0940`](slices/0940_s94_cx_vector_storage_freshness_closure.md) | `S94-010` CX vector storage and index freshness foundation closure with explicit S95 handoff. |
+| [`Slice 0941`](slices/0941_cx_permission_hybrid_retrieval_boundary_audit.md) | `S95-001` Permission-filtered hybrid retrieval boundary audit and implementation plan. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
