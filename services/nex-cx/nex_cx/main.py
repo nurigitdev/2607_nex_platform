@@ -20,6 +20,11 @@ from nex_cx.ingestion import (
     build_storage_config,
     register_ingestion_routes,
 )
+from nex_cx.ingestion_orchestration_repository import (
+    InMemoryIngestionRunRepository,
+    IngestionRunRepository,
+    SqlAlchemyIngestionRunRepository,
+)
 from nex_cx.lexical_index import register_lexical_index_routes
 from nex_cx.processing import register_processing_routes
 from nex_cx.prompts import DEFAULT_CX_PROMPT_STORE
@@ -65,6 +70,21 @@ def build_cx_remediation_execution_store(
     return None
 
 
+def build_cx_ingestion_run_repository(
+    runtime: ServicePersistenceRuntime,
+) -> IngestionRunRepository:
+    if (
+        runtime.mode == PERSISTENCE_MODE_POSTGRES
+        and runtime.api_session_factory is not None
+    ):
+        return SqlAlchemyIngestionRunRepository(
+            runtime.api_session_factory,
+            database_env=runtime.database_env,
+            redacted_database_url=runtime.redacted_database_url,
+        )
+    return InMemoryIngestionRunRepository()
+
+
 SERVICE_SPEC = SERVICE_SPECS["nex-cx"]
 app = build_service_app(SERVICE_SPEC)
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
@@ -80,6 +100,9 @@ CX_PROCESSING_RUN_REPOSITORY: CxContentRepository | None = (
     else None
 )
 CX_REMEDIATION_EXECUTION_STORE = build_cx_remediation_execution_store(
+    SERVICE_PERSISTENCE,
+)
+CX_INGESTION_RUN_REPOSITORY = build_cx_ingestion_run_repository(
     SERVICE_PERSISTENCE,
 )
 register_service_job_control_routes(
@@ -116,6 +139,8 @@ register_ingestion_routes(
         if SERVICE_PERSISTENCE.mode == PERSISTENCE_MODE_POSTGRES
         else "memory"
     ),
+    job_queue=SERVICE_PERSISTENCE.job_queue,
+    ingestion_run_repository=CX_INGESTION_RUN_REPOSITORY,
 )
 register_document_library_routes(
     app,

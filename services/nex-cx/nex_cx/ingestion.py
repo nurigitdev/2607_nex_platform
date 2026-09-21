@@ -69,6 +69,13 @@ from nex_cx.extractors import (
     markdown_from_source_text,
     normalize_extractor_output,
 )
+from nex_cx.ingestion_admission import (
+    DurableIngestionAdmissionError,
+    admit_durable_ingestion,
+)
+from nex_cx.ingestion_orchestration import IngestionOrchestrationPolicy
+from nex_cx.ingestion_orchestration_repository import IngestionRunRepository
+from nex_runtime import JobQueue
 
 DEFAULT_DATA_ROOT = "/data/nex-platform"
 DEFAULT_CHUNK_POLICY = "chunk_1000_100"
@@ -700,6 +707,9 @@ def register_ingestion_routes(
     database_env: str | None = None,
     redacted_database_url: str | None = None,
     source_kind: str = "memory",
+    job_queue: JobQueue | None = None,
+    ingestion_run_repository: IngestionRunRepository | None = None,
+    ingestion_policy: IngestionOrchestrationPolicy | None = None,
 ) -> None:
     ingestion_store = store or DEFAULT_INGESTION_STORE
     config = storage_config or build_storage_config()
@@ -707,6 +717,10 @@ def register_ingestion_routes(
         owner_resolver_mode or os.getenv(UPLOAD_OWNER_RESOLVER_MODE_ENV)
     )
     resolver = owner_resolver
+    if (job_queue is None) != (ingestion_run_repository is None):
+        raise ValueError(
+            "job_queue and ingestion_run_repository must be configured together"
+        )
     if resolver is None and resolver_mode != UPLOAD_OWNER_RESOLVER_DISABLED:
         resolver = build_default_subject_registry_resolver(caller_service_id="nex-cx")
 
@@ -765,6 +779,23 @@ def register_ingestion_routes(
             tenant_id=ownership["tenant_id"],
             owner_user_id=ownership["owner_user_id"],
         )
+        if job_queue is not None and ingestion_run_repository is not None:
+            try:
+                admit_durable_ingestion(
+                    saved_record,
+                    job_queue=job_queue,
+                    run_repository=ingestion_run_repository,
+                    policy=ingestion_policy,
+                )
+            except DurableIngestionAdmissionError as exc:
+                return _ingestion_problem_response(
+                    request,
+                    IngestionError(
+                        status_code=exc.status_code,
+                        error_code=exc.error_code,
+                        detail=exc.detail,
+                    ),
+                )
         return JSONResponse(
             status_code=200 if saved_record["dedupe"]["status"] == "ALREADY_EXISTS" else 202,
             content=saved_record,
@@ -1288,7 +1319,7 @@ def build_ingestion_job(
         request_id=request_id,
         subject_ref=build_subject_ref("cx.document", document_id),
         idempotency_key=upload_id,
-        max_attempts=1,
+        max_attempts=3,
         retryable=True,
         links={
             "document": f"/api/v1/documents/{document_id}",

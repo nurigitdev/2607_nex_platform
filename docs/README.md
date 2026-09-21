@@ -1027,6 +1027,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0921`](slices/0921_cx_durable_ingestion_boundary_audit.md) | `S93-001` CX durable-ingestion orchestration boundary audit and ordered implementation plan. |
 | [`Slice 0922`](slices/0922_cx_ingestion_orchestration_state_contract.md) | `S93-002` Strict durable-ingestion run, checkpoint, lease, retry, and transition contract. |
 | [`Slice 0923`](slices/0923_cx_durable_ingestion_run_repository.md) | `S93-003` Owner-scoped durable-ingestion run repository, short table migration, and optimistic checkpoint locking. |
+| [`Slice 0924`](slices/0924_cx_durable_ingestion_admission.md) | `S93-004` Idempotent upload-to-JobQueue and durable-ingestion-run admission wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
