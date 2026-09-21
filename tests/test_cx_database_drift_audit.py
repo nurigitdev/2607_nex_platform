@@ -16,8 +16,8 @@ def test_repository_database_drift_audit_passes_static_chain() -> None:
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
     assert result["issues"] == []
-    assert result["summary"]["migration_count"] == 14
-    assert result["summary"]["core_table_count"] == 17
+    assert result["summary"]["migration_count"] == 15
+    assert result["summary"]["core_table_count"] == 18
     assert result["summary"]["longest_identifier_length"] <= 63
     assert result["migration_strategy"] == {
         "canonical": "versioned_sql_schema_migrations_runner",
@@ -78,7 +78,7 @@ def test_summary_line_and_runner_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_cx_database_drift_audit()
 
     assert "drift_audit=pass" in runner.summary_line(passing)
-    assert "migrations=14" in runner.summary_line(passing)
+    assert "migrations=15" in runner.summary_line(passing)
     assert "alembic=NOT_CONFIGURED" in runner.summary_line(passing)
     monkeypatch.setattr(runner, "run_cx_database_drift_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0
