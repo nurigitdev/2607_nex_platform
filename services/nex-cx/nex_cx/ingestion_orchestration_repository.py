@@ -57,6 +57,9 @@ class IngestionRunRepository(Protocol):
     ) -> dict[str, Any] | None:
         ...
 
+    def find_by_job_id(self, job_id: str) -> dict[str, Any] | None:
+        ...
+
     def list_for_document(
         self,
         document_id: str,
@@ -134,6 +137,12 @@ class InMemoryIngestionRunRepository:
             if run_id is not None and run_id in self.records
             else None
         )
+
+    def find_by_job_id(self, job_id: str) -> dict[str, Any] | None:
+        for record in self.records.values():
+            if record["job_id"] == job_id:
+                return deepcopy(record)
+        return None
 
     def list_for_document(
         self,
@@ -238,6 +247,9 @@ class SqlAlchemyIngestionRunRepository:
                 "owner_subject_id": owner_subject_id,
             },
         )
+
+    def find_by_job_id(self, job_id: str) -> dict[str, Any] | None:
+        return self._select_one("job_id = :job_id", {"job_id": job_id})
 
     def list_for_document(
         self,

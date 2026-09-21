@@ -120,6 +120,8 @@ def test_repository_create_is_owner_scoped_and_idempotent(factory) -> None:
     assert repository.find_by_idempotency_key(
         "missing", tenant_id="tenant-a", owner_subject_id="user-a"
     ) is None
+    assert repository.find_by_job_id(first["job_id"]) == first
+    assert repository.find_by_job_id("missing") is None
 
 
 @pytest.mark.parametrize(
@@ -238,6 +240,7 @@ def test_sqlalchemy_repository_maps_database_failures_to_unavailable() -> None:
         lambda: repository.get(
             run["run_id"], tenant_id="tenant-a", owner_subject_id="user-a"
         ),
+        lambda: repository.find_by_job_id(run["job_id"]),
         lambda: repository.list_for_document(
             run["document_id"],
             tenant_id="tenant-a",
