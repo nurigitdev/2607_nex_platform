@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS cx_ingest_runs (
         CHECK (run_schema_version = 'cx_ingest_run.v1'),
     document_id UUID NOT NULL REFERENCES cx_content_objects(content_object_id)
         ON DELETE CASCADE,
-    job_id UUID NOT NULL REFERENCES service_jobs(job_id),
+    job_id TEXT NOT NULL REFERENCES service_jobs(job_id),
     idempotency_key TEXT NOT NULL CHECK (char_length(idempotency_key) <= 256),
     status TEXT NOT NULL CHECK (
         status IN (

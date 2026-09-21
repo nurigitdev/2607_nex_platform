@@ -23,6 +23,8 @@ def test_migration_defines_short_metadata_only_ingestion_run_table() -> None:
     assert sql.startswith("begin;") and sql.endswith("commit;")
     assert "create table if not exists cx_ingest_runs" in sql
     assert len("cx_ingest_runs") == 14
+    assert "job_id text not null references service_jobs(job_id)" in sql
+    assert "job_id uuid" not in sql
     assert "run_schema_version text not null default 'cx_ingest_run.v1'" in sql
     assert "step_states jsonb not null" in sql
     assert "checkpoint_version integer not null" in sql
