@@ -1014,6 +1014,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0908`](slices/0908_cx_contract_api_drift_audit.md) | `S91-008` CX runtime route, OpenAPI, schema, and fixture drift audit. |
 | [`Slice 0909`](slices/0909_cx_postgresql_reaudit_privacy_runbook.md) | `S91-009` Actual CX PostgreSQL schema, privacy, and rollback-probe evidence. |
 | [`Slice 0910`](slices/0910_s91_cx_current_state_reaudit_closure.md) | `S91-010` CX current-state re-audit closure and ordered S92 handoff. |
+| [`Slice 0911`](slices/0911_cx_private_content_ownership_boundary_audit.md) | `S92-001` CX private-content and ownership-persistence boundary audit. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
