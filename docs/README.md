@@ -1042,6 +1042,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0936`](slices/0936_cx_vector_reconciliation.md) | `S94-006` Durable stale detection and same-identity/replacement reindex reconciliation. |
 | [`Slice 0937`](slices/0937_cx_vector_retrieval_freshness_enforcement.md) | `S94-007` Owner-scoped retrieval admission gated by source, profile, and current pgvector payload freshness. |
 | [`Slice 0938`](slices/0938_cx_vector_readiness_api_observability.md) | `S94-008` Protected vector readiness/reconciliation API and metadata-only operational observability. |
+| [`Slice 0939`](slices/0939_cx_vector_live_embedding_pgvector_smoke.md) | `S94-009` Protected OpenAI-compatible remote embedding to actual `nex_cx_test` pgvector publish/retrieval evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
