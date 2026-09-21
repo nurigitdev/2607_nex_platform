@@ -1034,6 +1034,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0928`](slices/0928_cx_ingestion_protected_api_contracts.md) | `S93-008` Protected owner progress, restart-plan, recovery, and observability contracts. |
 | [`Slice 0929`](slices/0929_cx_ingestion_operations_postgresql_smoke.md) | `S93-009` Actual PostgreSQL durable-ingestion admission, restart, recovery, isolation, and cleanup evidence. |
 | [`Slice 0930`](slices/0930_s93_cx_durable_ingestion_closure.md) | `S93-010` CX durable-ingestion orchestration closure and S94 handoff. |
+| [`Slice 0931`](slices/0931_cx_vector_storage_freshness_boundary_audit.md) | `S94-001` CX vector storage, index freshness, pgvector, and live-provider boundary audit. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
