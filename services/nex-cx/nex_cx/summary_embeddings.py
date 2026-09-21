@@ -15,7 +15,12 @@ from nex_runtime import (
     trace_id_from_headers,
 )
 
-from nex_cx.authorization import authorize_cx_request
+from nex_cx.api_ownership import document_visible_to_owner
+from nex_cx.authorization import (
+    CX_SUBJECT_HEADER,
+    CX_TENANT_HEADER,
+    authorize_cx_owner_request,
+)
 from nex_cx.embedding_index import (
     DEFAULT_EMBEDDING_ALIAS,
     MoEmbeddingClient,
@@ -47,10 +52,16 @@ def register_summary_embedding_routes(
         document_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request, authorization, tenant_id=cx_tenant_id, subject_id=cx_subject_id
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
+        if not document_visible_to_owner(access_context, store, document_id):
+            return _summary_embedding_not_found(request, document_id)
 
         try:
             return build_and_store_summary_embedding_index(
@@ -69,10 +80,16 @@ def register_summary_embedding_routes(
         document_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request, authorization, tenant_id=cx_tenant_id, subject_id=cx_subject_id
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
+        if not document_visible_to_owner(access_context, store, document_id):
+            return _summary_embedding_not_found(request, document_id)
 
         record = store.get_summary_embedding_index(document_id)
         if record is None:
@@ -85,6 +102,20 @@ def register_summary_embedding_routes(
                 ),
             )
         return record
+
+
+def _summary_embedding_not_found(
+    request: Request,
+    document_id: str,
+) -> JSONResponse:
+    return _summary_embedding_problem_response(
+        request,
+        SummaryEmbeddingError(
+            status_code=404,
+            error_code="cx.summary_embedding_not_found",
+            detail=f"Document summary embedding was not found: {document_id}",
+        ),
+    )
 
 
 def build_and_store_summary_embedding_index(

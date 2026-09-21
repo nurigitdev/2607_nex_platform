@@ -73,12 +73,14 @@ def upload_registration(
     )
 
 
-def auth_headers() -> dict[str, str]:
+def auth_headers(tenant_id: str = "local-tenant", subject_id: str = "local-user") -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-ae-api", audience="nex-cx")
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": REQUEST_ID,
         "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+        "X-NEX-Tenant-ID": tenant_id,
+        "X-NEX-Subject-ID": subject_id,
     }
 
 
@@ -730,7 +732,7 @@ def test_document_library_route_lists_owner_scoped_documents(
     response = client.get(
         "/api/v1/documents",
         params={"tenant_id": "tenant-a", "owner_user_id": "user-a", "limit": 10},
-        headers=auth_headers(),
+        headers=auth_headers("tenant-a", "user-a"),
     )
 
     assert response.status_code == 200
@@ -768,7 +770,7 @@ def test_document_library_route_maps_query_validation_error() -> None:
     response = client.get(
         "/api/v1/documents",
         params={"tenant_id": " ", "owner_user_id": "user-a"},
-        headers=auth_headers(),
+        headers=auth_headers("tenant-a", "user-a"),
     )
 
     assert response.status_code == 400
@@ -785,7 +787,7 @@ def test_document_library_route_maps_repository_unavailable() -> None:
     response = client.get(
         "/api/v1/documents",
         params={"tenant_id": "tenant-a", "owner_user_id": "user-a"},
-        headers=auth_headers(),
+        headers=auth_headers("tenant-a", "user-a"),
     )
 
     assert response.status_code == 503

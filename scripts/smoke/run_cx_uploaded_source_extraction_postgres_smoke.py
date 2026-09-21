@@ -171,7 +171,12 @@ def _execute_uploaded_source_extraction_smoke(
                     "tenant_id": tenant_id,
                     "owner_user_id": owner_user_id,
                 },
-                headers=_service_headers(trace_id=trace_id, request_id=request_id),
+                headers=_service_headers(
+                    trace_id=trace_id,
+                    request_id=request_id,
+                    tenant_id=tenant_id,
+                    owner_user_id=owner_user_id,
+                ),
             )
             upload_response.raise_for_status()
             upload = upload_response.json()
@@ -185,7 +190,12 @@ def _execute_uploaded_source_extraction_smoke(
 
             extraction_response = client.post(
                 f"/api/v1/jobs/{upload['extraction']['job_id']}/run",
-                headers=_service_headers(trace_id=trace_id, request_id=str(uuid4())),
+                headers=_service_headers(
+                    trace_id=trace_id,
+                    request_id=str(uuid4()),
+                    tenant_id=tenant_id,
+                    owner_user_id=owner_user_id,
+                ),
             )
             extraction_response.raise_for_status()
             extraction = extraction_response.json()

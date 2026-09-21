@@ -49,12 +49,14 @@ TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
 
 
-def auth_headers() -> dict[str, str]:
+def auth_headers(tenant_id: str = "local-tenant", subject_id: str = "local-user") -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-ag", audience="nex-cx")
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": REQUEST_ID,
         "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+        "X-NEX-Tenant-ID": tenant_id,
+        "X-NEX-Subject-ID": subject_id,
     }
 
 
@@ -173,6 +175,10 @@ def parent_generation_record() -> dict[str, Any]:
         "trace_id": TRACE_ID,
         "request_id": REQUEST_ID,
         "status": "COMPLETED",
+        "tenant_ref_type": "oa.tenant",
+        "tenant_ref_id": "local-tenant",
+        "owner_subject_ref_type": "oa.user",
+        "owner_subject_ref_id": "local-user",
     }
 
 
@@ -200,6 +206,7 @@ def test_cx_remediation_execution_route_accepts_and_stores_result() -> None:
 
 def test_cx_remediation_execution_read_model_lists_and_gets_persisted_rows() -> None:
     client, generation_store, execution_store = build_route_client()
+    generation_store.save(parent_generation_record())
     accepted = build_cx_remediation_execution_result(
         remediation_request(),
         created_at="2026-08-26T00:00:00Z",
@@ -232,7 +239,7 @@ def test_cx_remediation_execution_read_model_lists_and_gets_persisted_rows() -> 
         headers=auth_headers(),
     )
 
-    assert generation_store.get("cx-gen-001") is None
+    assert generation_store.get("cx-gen-001") is not None
     assert listed.status_code == 200
     assert listed.json()["list_schema_version"] == (
         CX_REMEDIATION_EXECUTION_LIST_SCHEMA_VERSION
@@ -420,9 +427,11 @@ def test_cx_remediation_execution_read_model_reports_store_errors() -> None:
             )
 
     app = build_service_app(SERVICE_SPECS["nex-cx"])
+    generation_store = GenerationExecutionStore()
+    generation_store.save(parent_generation_record())
     register_remediation_execution_routes(
         app,
-        generation_store=GenerationExecutionStore(),
+        generation_store=generation_store,
         execution_store=FailingExecutionStore(),
     )
     client = TestClient(app)

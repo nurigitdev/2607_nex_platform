@@ -64,12 +64,18 @@ class TestClientCxRecoverySourceClient:
         self,
         cx_generation_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
         response = self.client.get(
             f"/api/v1/generations/{cx_generation_id}",
-            headers=service_headers("nex-ae-api", "nex-cx", trace_id, request_id),
+            headers={
+                **service_headers("nex-ae-api", "nex-cx", trace_id, request_id),
+                "X-NEX-Tenant-ID": tenant_id,
+                "X-NEX-Subject-ID": owner_user_id,
+            },
         )
         response.raise_for_status()
         return response.json()
@@ -260,12 +266,20 @@ def service_headers(
     request_id: str,
 ) -> dict[str, str]:
     token = issue_mock_service_token(service_id=service_id, audience=audience).access_token
-    return {
+    headers = {
         "Authorization": f"Bearer {token}",
         "X-Request-ID": request_id,
         "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
         "X-Service-ID": service_id,
     }
+    if audience == "nex-cx":
+        headers.update(
+            {
+                "X-NEX-Tenant-ID": "local-tenant",
+                "X-NEX-Subject-ID": "local-user",
+            }
+        )
+    return headers
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -29,6 +29,7 @@ from nex_ae_api.retrieval import (
     RetrievalInteractionError,
     build_cx_retrieval_payload,
 )
+from nex_ae_api.cx_owner_context import cx_owner_headers, cx_owner_scope_from_payload
 from nex_ae_api.analytics import (
     PromptAnalyticsError,
     PromptAnalyticsStore,
@@ -101,6 +102,7 @@ class HttpCxGenerationClient:
                 "X-Request-ID": request_id,
                 "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
                 "X-Service-ID": "nex-ae-api",
+                **cx_owner_headers(*cx_owner_scope_from_payload(payload)),
             },
             timeout=self.timeout_seconds,
         )
@@ -508,10 +510,15 @@ def build_cx_generation_payload(
             detail="generation must be an object when supplied.",
         )
 
+    tenant_id, subject_id = chat_owner_scope_from_payload(source_payload)
     return {
         "trace_id": trace_id,
         "client_request_id": interaction_id,
         "cx_generation_id": source_payload.get("cx_generation_id"),
+        "ownership_ref": {
+            "tenant_ref": {"type": "oa.tenant", "id": tenant_id},
+            "owner_subject_ref": {"type": "oa.user", "id": subject_id},
+        },
         "execution_mode": generation.get(
             "execution_mode",
             "GROUNDED_ANSWER" if retrieval_enabled else "GENERAL_ANSWER",

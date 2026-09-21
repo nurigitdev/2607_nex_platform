@@ -15,7 +15,12 @@ from nex_runtime import (
     trace_id_from_headers,
 )
 
-from nex_cx.authorization import authorize_cx_request
+from nex_cx.api_ownership import document_visible_to_owner
+from nex_cx.authorization import (
+    CX_SUBJECT_HEADER,
+    CX_TENANT_HEADER,
+    authorize_cx_owner_request,
+)
 from nex_cx.ingestion import ContentIngestionStore, CxStorageConfig, build_storage_config
 
 SUPPORTED_TOKENIZERS = {"mecab_ko", "korean_mixed_v1"}
@@ -48,10 +53,16 @@ def register_lexical_index_routes(
         document_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request, authorization, tenant_id=cx_tenant_id, subject_id=cx_subject_id
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
+        if not document_visible_to_owner(access_context, store, document_id):
+            return _lexical_not_found(request, document_id)
 
         try:
             return build_and_store_lexical_index(
@@ -69,10 +80,16 @@ def register_lexical_index_routes(
         document_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request, authorization, tenant_id=cx_tenant_id, subject_id=cx_subject_id
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
+        if not document_visible_to_owner(access_context, store, document_id):
+            return _lexical_not_found(request, document_id)
 
         lexical_index = store.get_lexical_index(document_id)
         if lexical_index is None:
@@ -85,6 +102,17 @@ def register_lexical_index_routes(
                 ),
             )
         return lexical_index
+
+
+def _lexical_not_found(request: Request, document_id: str) -> JSONResponse:
+    return _lexical_problem_response(
+        request,
+        LexicalIndexError(
+            status_code=404,
+            error_code="cx.lexical_index_not_found",
+            detail=f"Lexical index was not found: {document_id}",
+        ),
+    )
 
 
 def build_and_store_lexical_index(

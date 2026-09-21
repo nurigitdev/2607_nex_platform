@@ -22,6 +22,7 @@ from nex_runtime import (
     request_id_from_headers,
     trace_id_from_headers,
 )
+from nex_ae_api.cx_owner_context import cx_owner_headers, cx_owner_scope_from_payload
 
 if TYPE_CHECKING:
     from nex_ae_api.auth_guard import BrowserUserAuthContext
@@ -87,6 +88,7 @@ class HttpCxUploadClient:
                 "X-Request-ID": request_id,
                 "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
                 "X-Service-ID": "nex-ae-api",
+                **cx_owner_headers(*cx_owner_scope_from_payload(request_payload)),
             },
             timeout=self.timeout_seconds,
         )

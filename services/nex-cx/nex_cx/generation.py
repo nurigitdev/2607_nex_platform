@@ -27,7 +27,13 @@ from nex_runtime import (
     request_id_from_headers,
     trace_id_from_headers,
 )
-from nex_cx.authorization import authorize_cx_request
+from nex_cx.access_context import CxAccessContext
+from nex_cx.api_ownership import owner_scoped_record, record_visible_to_owner
+from nex_cx.authorization import (
+    CX_SUBJECT_HEADER,
+    CX_TENANT_HEADER,
+    authorize_cx_owner_request,
+)
 from nex_cx.drafts import build_structured_draft
 from nex_cx.progress import (
     build_cx_generation_failure_progress_events,
@@ -215,10 +221,17 @@ def register_generation_routes(
         payload: dict[str, Any],
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request,
+            authorization,
+            tenant_id=cx_tenant_id,
+            subject_id=cx_subject_id,
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
 
         request_id = request_id_from_headers(request)
         trace_id = payload.get("trace_id") or trace_id_from_headers(request)
@@ -226,6 +239,7 @@ def register_generation_routes(
             compatibility_rule, retrieval_package = validate_generation_request(
                 payload,
                 retrieval_store=retrieval_store,
+                access_context=access_context,
             )
             mo_payload = build_mo_generation_payload(payload, trace_id=trace_id)
             try:
@@ -245,7 +259,7 @@ def register_generation_routes(
                     trace_id=trace_id,
                 )
                 generation_store.save(
-                    failure_record,
+                    owner_scoped_record(access_context, failure_record),
                     progress_events=build_cx_generation_failure_progress_events(
                         source_payload=payload,
                         mo_payload=mo_payload,
@@ -277,15 +291,18 @@ def register_generation_routes(
                 trace_id=trace_id,
             )
             return generation_store.save(
-                build_generation_execution_record(
-                    source_payload=payload,
-                    mo_payload=mo_payload,
-                    mo_response=mo_response,
-                    compatibility_rule=compatibility_rule,
-                    retrieval_package=retrieval_package,
-                    structured_draft=structured_draft,
-                    request_id=request_id,
-                    trace_id=trace_id,
+                owner_scoped_record(
+                    access_context,
+                    build_generation_execution_record(
+                        source_payload=payload,
+                        mo_payload=mo_payload,
+                        mo_response=mo_response,
+                        compatibility_rule=compatibility_rule,
+                        retrieval_package=retrieval_package,
+                        structured_draft=structured_draft,
+                        request_id=request_id,
+                        trace_id=trace_id,
+                    ),
                 ),
                 structured_draft=structured_draft,
                 progress_events=progress_events,
@@ -307,13 +324,20 @@ def register_generation_routes(
         cx_generation_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request,
+            authorization,
+            tenant_id=cx_tenant_id,
+            subject_id=cx_subject_id,
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
 
         record = generation_store.get(cx_generation_id)
-        if record is None:
+        if record is None or not record_visible_to_owner(access_context, record):
             return _generation_problem_response(
                 request,
                 GenerationFacadeError(
@@ -329,13 +353,25 @@ def register_generation_routes(
         cx_generation_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request,
+            authorization,
+            tenant_id=cx_tenant_id,
+            subject_id=cx_subject_id,
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
 
+        record = generation_store.get(cx_generation_id)
         draft = generation_store.get_structured_draft(cx_generation_id)
-        if draft is None:
+        if (
+            record is None
+            or not record_visible_to_owner(access_context, record)
+            or draft is None
+        ):
             return _generation_problem_response(
                 request,
                 GenerationFacadeError(
@@ -351,13 +387,20 @@ def register_generation_routes(
         cx_generation_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request,
+            authorization,
+            tenant_id=cx_tenant_id,
+            subject_id=cx_subject_id,
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
 
         record = generation_store.get(cx_generation_id)
-        if record is None:
+        if record is None or not record_visible_to_owner(access_context, record):
             return _generation_problem_response(
                 request,
                 GenerationFacadeError(
@@ -604,10 +647,12 @@ def validate_generation_request(
     source_payload: dict[str, Any],
     *,
     retrieval_store: RetrievalPackageStore | None,
+    access_context: CxAccessContext | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     decision = evaluate_grounded_generation_boundary(
         source_payload,
         retrieval_store=retrieval_store,
+        access_context=access_context,
     )
     if decision.error is not None:
         raise decision.error
@@ -706,6 +751,7 @@ def evaluate_grounded_generation_boundary(
     source_payload: dict[str, Any],
     *,
     retrieval_store: RetrievalPackageStore | None,
+    access_context: CxAccessContext | None = None,
 ) -> GroundedGenerationBoundaryDecision:
     stage_status = {stage: "NOT_RUN" for stage in GROUNDING_BOUNDARY_STAGES}
     compatibility_rule: dict[str, Any] | None = None
@@ -804,7 +850,10 @@ def evaluate_grounded_generation_boundary(
     retrieval_package = retrieval_store.get_retrieval_package(
         retrieval_ref["retrieval_package_id"]
     )
-    if retrieval_package is None:
+    if retrieval_package is None or (
+        access_context is not None
+        and not record_visible_to_owner(access_context, retrieval_package)
+    ):
         error = GenerationFacadeError(
             status_code=404,
             error_code="cx.retrieval_package_not_found",

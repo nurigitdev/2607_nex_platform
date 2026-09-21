@@ -1,7 +1,13 @@
 openapi: 3.1.0
 info:
   title: NeX CX API
-  version: 0.0.0-slice0003
+  version: 0.92.0
+  x-nex-owner-context:
+    propagation: trusted-service-asserted-subject
+    requiredHeaders:
+      - X-NEX-Tenant-ID
+      - X-NEX-Subject-ID
+    crossOwnerVisibility: not-found
 tags:
   - name: Platform
   - name: Content
@@ -305,6 +311,9 @@ paths:
         "422":
           description: Replay payload is invalid.
   /api/v1/documents:
+    parameters: &cxOwnerContextParameters
+      - $ref: "#/components/parameters/CxTenantId"
+      - $ref: "#/components/parameters/CxSubjectId"
     get:
       operationId: listCxOwnerScopedDocuments
       tags:
@@ -392,6 +401,7 @@ paths:
         "503":
           description: CX content repository is unavailable.
   /api/v1/documents/uploads:
+    parameters: *cxOwnerContextParameters
     post:
       operationId: registerCxDocumentUpload
       tags:
@@ -547,6 +557,7 @@ paths:
         "422":
           description: Upload metadata is invalid or unsafe.
   /api/v1/documents/{document_id}:
+    parameters: *cxOwnerContextParameters
     get:
       operationId: getCxDocumentDetail
       tags:
@@ -928,6 +939,7 @@ paths:
         "404":
           description: Document detail was not found or is not visible.
   /api/v1/documents/{document_id}/extraction:
+    parameters: *cxOwnerContextParameters
     get:
       operationId: getCxTextExtraction
       tags:
@@ -945,7 +957,31 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: Extraction result was not found.
+  /api/v1/documents/{document_id}/source-file/materialization:
+    parameters: *cxOwnerContextParameters
+    get:
+      operationId: getCxSourceFileMaterialization
+      tags:
+        - Content
+      parameters:
+        - $ref: "#/components/parameters/CxTenantId"
+        - $ref: "#/components/parameters/CxSubjectId"
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Owner-scoped, redacted source-file materialization receipt.
+        "400":
+          description: Compatibility owner aliases are invalid.
+        "401":
+          description: Service claim or owner context is missing or invalid.
+        "404":
+          description: Source-file materialization was not found or is not visible.
   /api/v1/documents/{document_id}/chunks:
+    parameters: *cxOwnerContextParameters
     get:
       operationId: getCxChunkSet
       tags:
@@ -964,6 +1000,7 @@ paths:
         "404":
           description: Chunk set was not found.
   /api/v1/documents/{document_id}/chunks/run:
+    parameters: *cxOwnerContextParameters
     post:
       operationId: runCxChunking
       tags:
@@ -984,6 +1021,7 @@ paths:
         "409":
           description: Extracted Markdown file is missing.
   /api/v1/documents/{document_id}/embeddings:
+    parameters: *cxOwnerContextParameters
     get:
       operationId: getCxEmbeddingIndex
       tags:
@@ -1002,6 +1040,7 @@ paths:
         "404":
           description: Embedding index was not found.
   /api/v1/documents/{document_id}/embeddings/run:
+    parameters: *cxOwnerContextParameters
     post:
       operationId: runCxEmbeddingIndex
       tags:
@@ -1024,6 +1063,7 @@ paths:
         "502":
           description: MO embedding response was invalid.
   /api/v1/documents/{document_id}/lexical-index:
+    parameters: *cxOwnerContextParameters
     get:
       operationId: getCxLexicalIndex
       tags:
@@ -1042,6 +1082,7 @@ paths:
         "404":
           description: Lexical index was not found.
   /api/v1/documents/{document_id}/lexical-index/run:
+    parameters: *cxOwnerContextParameters
     post:
       operationId: runCxLexicalIndex
       tags:
@@ -1064,6 +1105,7 @@ paths:
         "500":
           description: No configured tokenizer is available.
   /api/v1/documents/{document_id}/summary:
+    parameters: *cxOwnerContextParameters
     get:
       operationId: getCxDocumentSummary
       tags:
@@ -1082,6 +1124,7 @@ paths:
         "404":
           description: Document summary was not found.
   /api/v1/documents/{document_id}/summary/run:
+    parameters: *cxOwnerContextParameters
     post:
       operationId: runCxDocumentSummary
       tags:
@@ -1102,6 +1145,7 @@ paths:
         "409":
           description: Extracted Markdown file is missing.
   /api/v1/documents/{document_id}/summary-embedding:
+    parameters: *cxOwnerContextParameters
     get:
       operationId: getCxDocumentSummaryEmbedding
       tags:
@@ -1120,6 +1164,7 @@ paths:
         "404":
           description: Document summary embedding was not found.
   /api/v1/documents/{document_id}/summary-embedding/run:
+    parameters: *cxOwnerContextParameters
     post:
       operationId: runCxDocumentSummaryEmbedding
       tags:
@@ -1142,6 +1187,7 @@ paths:
         "502":
           description: MO embedding response was invalid.
   /api/v1/jobs/{job_id}:
+    parameters: *cxOwnerContextParameters
     get:
       operationId: getCxIngestionJob
       tags:
@@ -1160,6 +1206,7 @@ paths:
         "404":
           description: Ingestion job was not found.
   /api/v1/jobs/{job_id}/run:
+    parameters: *cxOwnerContextParameters
     post:
       operationId: runCxIngestionJob
       tags:
@@ -1180,6 +1227,7 @@ paths:
         "409":
           description: Source content is unavailable for mock extraction.
   /api/v1/retrieval/context:
+    parameters: *cxOwnerContextParameters
     post:
       operationId: createCxRetrievalContext
       tags:
@@ -1221,7 +1269,77 @@ paths:
           description: Service claim is missing or invalid.
         "422":
           description: Retrieval request is invalid.
+  /api/v1/documents/{document_id}/processing:
+    parameters: *cxOwnerContextParameters
+    get:
+      operationId: getCxDocumentProcessing
+      tags:
+        - Content
+      parameters:
+        - $ref: "#/components/parameters/CxTenantId"
+        - $ref: "#/components/parameters/CxSubjectId"
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Latest owner-scoped processing run.
+        "401":
+          description: Service claim or owner context is missing or invalid.
+        "404":
+          description: Processing run was not found or is not visible.
+        "503":
+          description: Processing persistence is unavailable.
+  /api/v1/documents/{document_id}/processing/enqueue:
+    parameters: *cxOwnerContextParameters
+    post:
+      operationId: enqueueCxDocumentProcessing
+      tags:
+        - Content
+      parameters:
+        - $ref: "#/components/parameters/CxTenantId"
+        - $ref: "#/components/parameters/CxSubjectId"
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Owner-scoped processing run was queued.
+        "401":
+          description: Service claim or owner context is missing or invalid.
+        "404":
+          description: Document was not found or is not visible.
+        "409":
+          description: Processing job state does not allow enqueue.
+  /api/v1/documents/{document_id}/processing/run:
+    parameters: *cxOwnerContextParameters
+    post:
+      operationId: runCxDocumentProcessing
+      tags:
+        - Content
+      parameters:
+        - $ref: "#/components/parameters/CxTenantId"
+        - $ref: "#/components/parameters/CxSubjectId"
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Owner-scoped processing run completed.
+        "401":
+          description: Service claim or owner context is missing or invalid.
+        "404":
+          description: Document was not found or is not visible.
+        "409":
+          description: Processing dependency or state is not ready.
   /api/v1/retrieval/context/{retrieval_package_id}:
+    parameters: *cxOwnerContextParameters
     get:
       operationId: getCxRetrievalContext
       tags:
@@ -1278,6 +1396,7 @@ paths:
         "404":
           description: No active generation recovery policy matched the failure code.
   /api/v1/generations:
+    parameters: *cxOwnerContextParameters
     post:
       operationId: createCxGeneration
       tags:
@@ -1298,6 +1417,7 @@ paths:
         "504":
           description: MO provider timeout; CX stores a failed generation record with recovery policy lineage.
   /api/v1/generations/{cx_generation_id}:
+    parameters: *cxOwnerContextParameters
     get:
       operationId: getCxGeneration
       tags:
@@ -1316,6 +1436,7 @@ paths:
         "404":
           description: CX generation record was not found.
   /api/v1/generations/{cx_generation_id}/structured-draft:
+    parameters: *cxOwnerContextParameters
     get:
       operationId: getCxStructuredDraft
       tags:
@@ -1334,6 +1455,7 @@ paths:
         "404":
           description: CX structured draft was not found.
   /api/v1/generations/{cx_generation_id}/events:
+    parameters: *cxOwnerContextParameters
     get:
       operationId: getCxGenerationEvents
       tags:
@@ -1352,6 +1474,7 @@ paths:
         "404":
           description: CX generation record was not found.
   /api/v1/generations/{cx_generation_id}/remediation-executions:
+    parameters: *cxOwnerContextParameters
     get:
       operationId: listCxRemediationExecutions
       tags:
@@ -1598,6 +1721,7 @@ paths:
         "422":
           description: AG-only actions, parent mutation requests, raw text, provider details, credentials, model paths, or storage paths are rejected.
   /api/v1/generations/{cx_generation_id}/remediation-executions/{remediation_action_id}:
+    parameters: *cxOwnerContextParameters
     get:
       operationId: getCxRemediationExecution
       tags:
@@ -1878,3 +2002,25 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: Prompt render event was not found.
+components:
+  parameters:
+    CxTenantId:
+      name: X-NEX-Tenant-ID
+      in: header
+      required: true
+      description: OA tenant identifier asserted by an authorized platform service.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$'
+    CxSubjectId:
+      name: X-NEX-Subject-ID
+      in: header
+      required: true
+      description: OA user identifier asserted by an authorized platform service.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$'

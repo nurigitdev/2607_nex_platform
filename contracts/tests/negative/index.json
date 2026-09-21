@@ -1,6 +1,11 @@
 {
   "negative_examples": [
     {
+      "name": "cx_source_ownership_boundary_decision_missing_status",
+      "path": "tests/negative/retrieval/cx_source_ownership_boundary_decision.missing_status.json",
+      "schema": "schemas/service/nex_cx/source_ownership_boundary_decision.v1.schema.json"
+    },
+    {
       "name": "problem_json_missing_trace_id",
       "path": "tests/negative/common/problem_json.missing_trace_id.json",
       "schema": "schemas/common/problem_json.v1.schema.json"

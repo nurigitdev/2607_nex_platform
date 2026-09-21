@@ -8,13 +8,18 @@ from fastapi.responses import JSONResponse
 from nex_runtime import problem_response
 from nex_cx.access_context import (
     CX_ACCESS_CONTEXT_ALLOWED_CALLERS,
+    CxAccessContext,
     CxAccessContextError,
     authenticate_cx_service_claim,
+    resolve_cx_access_context,
 )
 
 
 CX_CALLER_SERVICE_STATE_KEY = "cx_caller_service_id"
 CX_CALLER_SCOPES_STATE_KEY = "cx_caller_scopes"
+CX_ACCESS_CONTEXT_STATE_KEY = "cx_access_context"
+CX_TENANT_HEADER = "X-NEX-Tenant-ID"
+CX_SUBJECT_HEADER = "X-NEX-Subject-ID"
 
 
 def authorize_cx_request(
@@ -34,6 +39,41 @@ def authorize_cx_request(
     setattr(request.state, CX_CALLER_SERVICE_STATE_KEY, claims.service_id)
     setattr(request.state, CX_CALLER_SCOPES_STATE_KEY, claims.scopes)
     return None
+
+
+def authorize_cx_owner_request(
+    request: Request,
+    authorization: str | None,
+    *,
+    tenant_id: object,
+    subject_id: object,
+    now: datetime | None = None,
+) -> CxAccessContext | JSONResponse:
+    try:
+        context = resolve_cx_access_context(
+            authorization=authorization,
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+            request_id=request.headers.get("X-Request-ID"),
+            trace_id=_trace_id_from_request(request),
+            now=now,
+        )
+    except CxAccessContextError as exc:
+        return _authorization_problem_response(request, exc)
+
+    setattr(request.state, CX_CALLER_SERVICE_STATE_KEY, context.caller_service_id)
+    setattr(request.state, CX_CALLER_SCOPES_STATE_KEY, context.scopes)
+    setattr(request.state, CX_ACCESS_CONTEXT_STATE_KEY, context)
+    return context
+
+
+def _trace_id_from_request(request: Request) -> str | None:
+    traceparent = request.headers.get("traceparent")
+    if traceparent:
+        parts = traceparent.split("-")
+        if len(parts) == 4:
+            return parts[1]
+    return request.headers.get("X-Trace-ID")
 
 
 def _authorization_problem_response(

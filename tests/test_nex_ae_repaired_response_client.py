@@ -175,6 +175,8 @@ class FakeCxRepairedResponseSourceClient:
         *,
         parent_cx_generation_id: str,
         remediation_action_id: str,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str | None = None,
         trace_id: str | None = None,
     ) -> dict[str, Any]:
@@ -183,6 +185,8 @@ class FakeCxRepairedResponseSourceClient:
                 "method": "detail",
                 "parent_cx_generation_id": parent_cx_generation_id,
                 "remediation_action_id": remediation_action_id,
+                "tenant_id": tenant_id,
+                "owner_user_id": owner_user_id,
                 "request_id": request_id,
                 "trace_id": trace_id,
             }
@@ -193,6 +197,8 @@ class FakeCxRepairedResponseSourceClient:
         self,
         *,
         cx_generation_id: str,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str | None = None,
         trace_id: str | None = None,
     ) -> dict[str, Any]:
@@ -200,6 +206,8 @@ class FakeCxRepairedResponseSourceClient:
             {
                 "method": "generation",
                 "cx_generation_id": cx_generation_id,
+                "tenant_id": tenant_id,
+                "owner_user_id": owner_user_id,
                 "request_id": request_id,
                 "trace_id": trace_id,
             }
@@ -226,11 +234,15 @@ def test_http_cx_repaired_response_client_gets_detail_and_generation() -> None:
     detail = client.get_remediation_execution_detail(
         parent_cx_generation_id="cx-gen/001",
         remediation_action_id="ag-remediation-action-001",
+        tenant_id="tenant-001",
+        owner_user_id="user-001",
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     )
     generation = client.get_repaired_generation_record(
         cx_generation_id="cx-gen-repair-001",
+        tenant_id="tenant-001",
+        owner_user_id="user-001",
     )
 
     assert detail["detail_schema_version"] == CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION
@@ -244,6 +256,8 @@ def test_http_cx_repaired_response_client_gets_detail_and_generation() -> None:
         "Authorization": "Bearer cx-token",
         "X-Request-ID": REQUEST_ID,
         "X-Service-ID": "nex-ae-api",
+        "X-NEX-Tenant-ID": "tenant-001",
+        "X-NEX-Subject-ID": "user-001",
         "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
     }
     assert calls[0]["timeout"] == 12.5
@@ -283,6 +297,8 @@ def test_http_cx_repaired_response_client_maps_failures() -> None:
         problem_client.get_remediation_execution_detail(
             parent_cx_generation_id="cx-gen-001",
             remediation_action_id="ag-remediation-action-001",
+            tenant_id="tenant-001",
+            owner_user_id="user-001",
         )
 
     assert problem.value.status_code == 404
@@ -297,7 +313,11 @@ def test_http_cx_repaired_response_client_maps_failures() -> None:
         requester=timeout_request,
     )
     with pytest.raises(CxRepairedResponseSourceClientError) as timeout:
-        timeout_client.get_repaired_generation_record(cx_generation_id="cx-gen-001")
+        timeout_client.get_repaired_generation_record(
+            cx_generation_id="cx-gen-001",
+            tenant_id="tenant-001",
+            owner_user_id="user-001",
+        )
 
     assert timeout.value.status_code == 504
     assert timeout.value.retryable is True
@@ -313,6 +333,8 @@ def test_http_cx_repaired_response_client_maps_failures() -> None:
         down_client.get_remediation_execution_detail(
             parent_cx_generation_id="cx-gen-001",
             remediation_action_id="ag-remediation-action-001",
+            tenant_id="tenant-001",
+            owner_user_id="user-001",
         )
 
     assert down.value.status_code == 503
@@ -358,9 +380,15 @@ def test_http_cx_repaired_response_client_rejects_invalid_responses(
         {
             "parent_cx_generation_id": "cx-gen-001",
             "remediation_action_id": "ag-remediation-action-001",
+            "tenant_id": "tenant-001",
+            "owner_user_id": "user-001",
         }
         if method_name == "get_remediation_execution_detail"
-        else {"cx_generation_id": "cx-gen-repair-001"}
+        else {
+            "cx_generation_id": "cx-gen-repair-001",
+            "tenant_id": "tenant-001",
+            "owner_user_id": "user-001",
+        }
     )
 
     with pytest.raises(CxRepairedResponseSourceClientError) as exc_info:
@@ -445,12 +473,16 @@ def test_repaired_response_source_package_fetches_and_sanitizes_materials() -> N
             "method": "detail",
             "parent_cx_generation_id": "cx-gen-001",
             "remediation_action_id": "ag-remediation-action-001",
+            "tenant_id": "tenant-001",
+            "owner_user_id": "user-001",
             "request_id": REQUEST_ID,
             "trace_id": TRACE_ID,
         },
         {
             "method": "generation",
             "cx_generation_id": "cx-gen-repair-001",
+            "tenant_id": "tenant-001",
+            "owner_user_id": "user-001",
             "request_id": REQUEST_ID,
             "trace_id": TRACE_ID,
         },
@@ -714,11 +746,17 @@ def test_source_material_required_text_rejects_blank_http_ids() -> None:
         client.get_remediation_execution_detail(
             parent_cx_generation_id=" ",
             remediation_action_id="ag-remediation-action-001",
+            tenant_id="tenant-001",
+            owner_user_id="user-001",
         )
 
     assert "parent_cx_generation_id" in parent_error.value.error_code
 
     with pytest.raises(CxRepairedResponseSourceClientError) as generation_error:
-        client.get_repaired_generation_record(cx_generation_id="")
+        client.get_repaired_generation_record(
+            cx_generation_id="",
+            tenant_id="tenant-001",
+            owner_user_id="user-001",
+        )
 
     assert "cx_generation_id" in generation_error.value.error_code

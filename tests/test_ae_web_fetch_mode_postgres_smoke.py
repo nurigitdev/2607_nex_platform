@@ -392,8 +392,20 @@ def test_document_client_optional_summary_methods_return_none() -> None:
         FakeClient(response=FakeResponse(200, {}))  # type: ignore[arg-type]
     )
 
-    assert client.get_summary("doc", request_id="req", trace_id="a" * 32) is None
-    assert client.get_summary_embedding("doc", request_id="req", trace_id="a" * 32) is None
+    assert client.get_summary(
+        "doc",
+        tenant_id="tenant-001",
+        owner_user_id="user-001",
+        request_id="req",
+        trace_id="a" * 32,
+    ) is None
+    assert client.get_summary_embedding(
+        "doc",
+        tenant_id="tenant-001",
+        owner_user_id="user-001",
+        request_id="req",
+        trace_id="a" * 32,
+    ) is None
 
 
 def test_db_marker_helpers_use_expected_sql_shape() -> None:

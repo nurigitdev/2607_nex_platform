@@ -19,6 +19,7 @@ from nex_runtime import (
     trace_id_from_headers,
     validate_authorization_header,
 )
+from nex_ae_api.cx_owner_context import cx_owner_headers, cx_owner_scope_from_payload
 from nex_runtime.recovery import (
     GenerationRecoveryPolicyError,
     recovery_action_allowed,
@@ -52,6 +53,8 @@ class CxRecoverySourceClient(Protocol):
         self,
         cx_generation_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
@@ -68,6 +71,8 @@ class HttpCxRecoverySourceClient:
         self,
         cx_generation_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
@@ -82,6 +87,7 @@ class HttpCxRecoverySourceClient:
                 "X-Request-ID": request_id,
                 "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
                 "X-Service-ID": "nex-ae-api",
+                **cx_owner_headers(tenant_id, owner_user_id),
             },
             timeout=self.timeout_seconds,
         )
@@ -148,10 +154,13 @@ def register_generation_recovery_request_routes(
         request_id = request_id_from_headers(request)
         trace_id = payload.get("trace_id") or trace_id_from_headers(request)
         try:
+            owner_scope = cx_owner_scope_from_payload(payload)
             cx_generation_id = required_string(payload, "cx_generation_id")
             requested_action = required_action(payload)
             cx_record = client.get_generation(
                 cx_generation_id,
+                tenant_id=owner_scope[0],
+                owner_user_id=owner_scope[1],
                 request_id=request_id,
                 trace_id=trace_id,
             )

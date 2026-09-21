@@ -48,14 +48,14 @@ def run_cx_central_authorization_enforcement(
             {
                 "path": str(path.relative_to(root)) if path.is_file() else filename,
                 "present": path.is_file(),
-                "central_import": (
-                    "from nex_cx.authorization import authorize_cx_request"
-                    in content
-                ),
+                "central_import": "from nex_cx.authorization import" in content,
                 "local_helper_absent": (
                     path.is_file() and "def _authorize_cx_request(" not in content
                 ),
-                "guard_call_present": "authorize_cx_request(" in content,
+                "guard_call_present": (
+                    "authorize_cx_request(" in content
+                    or "authorize_cx_owner_request(" in content
+                ),
             }
         )
 

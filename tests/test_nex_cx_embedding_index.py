@@ -85,12 +85,14 @@ class FailingMoEmbeddingClient:
         )
 
 
-def auth_headers() -> dict[str, str]:
+def auth_headers(tenant_id: str = "local-tenant", subject_id: str = "local-user") -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-ae-api", audience="nex-cx")
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": REQUEST_ID,
         "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+        "X-NEX-Tenant-ID": tenant_id,
+        "X-NEX-Subject-ID": subject_id,
     }
 
 
@@ -379,7 +381,7 @@ def test_embedding_index_endpoint_reports_missing_chunk_set(tmp_path: Path) -> N
     )
 
     assert response.status_code == 404
-    assert response.json()["error_code"] == "cx.chunk_set_not_found"
+    assert response.json()["error_code"] == "cx.embedding_index_not_found"
 
 
 def test_embedding_index_endpoint_reports_mo_failure(tmp_path: Path) -> None:

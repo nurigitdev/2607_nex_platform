@@ -231,7 +231,7 @@ def _execute_status_sync_worker_smoke(
         )
         enqueued_job = job_queue.enqueue(job)
         cx_status_client = InProcessCxRemediationExecutionStatusClient(
-            _build_cx_client(cx_store),
+            _build_cx_client(cx_store, generation_id=generation_id),
         )
         heartbeat_emitter = WorkerHeartbeatEmitter(
             service_id=AG_SERVICE_ID,

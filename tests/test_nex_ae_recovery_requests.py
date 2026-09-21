@@ -34,12 +34,16 @@ class FakeCxRecoveryClient:
         self,
         cx_generation_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
         self.calls.append(
             {
                 "cx_generation_id": cx_generation_id,
+                "tenant_id": tenant_id,
+                "owner_user_id": owner_user_id,
                 "request_id": request_id,
                 "trace_id": trace_id,
             }
@@ -291,6 +295,8 @@ def test_http_cx_recovery_source_client_gets_generation_with_mock_token(monkeypa
 
     response = HttpCxRecoverySourceClient(base_url="http://cx.test").get_generation(
         "cx-gen-001",
+        tenant_id="tenant-001",
+        owner_user_id="user-001",
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     )
@@ -315,6 +321,8 @@ def test_http_cx_recovery_source_client_maps_problem_and_non_json(monkeypatch) -
     try:
         HttpCxRecoverySourceClient(base_url="http://cx.test").get_generation(
             "cx-gen-001",
+            tenant_id="tenant-001",
+            owner_user_id="user-001",
             request_id=REQUEST_ID,
             trace_id=TRACE_ID,
         )
@@ -331,6 +339,8 @@ def test_http_cx_recovery_source_client_maps_problem_and_non_json(monkeypatch) -
     try:
         HttpCxRecoverySourceClient(base_url="http://cx.test").get_generation(
             "cx-gen-001",
+            tenant_id="tenant-001",
+            owner_user_id="user-001",
             request_id=REQUEST_ID,
             trace_id=TRACE_ID,
         )

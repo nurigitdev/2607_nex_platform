@@ -89,7 +89,12 @@ class TestClientCxUploadClient:
         response = self.client.post(
             "/api/v1/documents/uploads",
             json=payload,
-            headers=_cx_service_headers(trace_id=trace_id, request_id=request_id),
+            headers=_cx_service_headers(
+                trace_id=trace_id,
+                request_id=request_id,
+                tenant_id=str(payload.get("tenant_id") or "local-tenant"),
+                owner_user_id=str(payload.get("owner_user_id") or "local-user"),
+            ),
         )
         self.calls.append(
             {
@@ -131,7 +136,12 @@ class TestClientCxDocumentLibraryClient:
                 "tenant_id": tenant_id,
                 "owner_user_id": owner_user_id,
             },
-            headers=_cx_service_headers(trace_id=trace_id, request_id=request_id),
+            headers=_cx_service_headers(
+                trace_id=trace_id,
+                request_id=request_id,
+                tenant_id=tenant_id,
+                owner_user_id=owner_user_id,
+            ),
         )
         self.calls.append(
             {
@@ -156,6 +166,8 @@ class TestClientCxDocumentLibraryClient:
         self,
         document_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any] | None:
@@ -165,6 +177,8 @@ class TestClientCxDocumentLibraryClient:
         self,
         document_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any] | None:
@@ -412,13 +426,21 @@ def _ae_service_headers(*, trace_id: str, request_id: str) -> dict[str, str]:
     }
 
 
-def _cx_service_headers(*, trace_id: str, request_id: str) -> dict[str, str]:
+def _cx_service_headers(
+    *,
+    trace_id: str,
+    request_id: str,
+    tenant_id: str,
+    owner_user_id: str,
+) -> dict[str, str]:
     issued = issue_mock_service_token(service_id=SERVICE_ID, audience=CX_SERVICE_ID)
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": request_id,
         "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
         "X-Service-ID": SERVICE_ID,
+        "X-NEX-Tenant-ID": tenant_id,
+        "X-NEX-Subject-ID": owner_user_id,
     }
 
 

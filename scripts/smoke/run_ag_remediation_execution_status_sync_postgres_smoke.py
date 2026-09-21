@@ -235,7 +235,7 @@ def _execute_status_sync_smoke(
             )
         )
         cx_status_client = InProcessCxRemediationExecutionStatusClient(
-            _build_cx_client(cx_store),
+            _build_cx_client(cx_store, generation_id=generation_id),
         )
         ag_client = _build_ag_client(
             ag_store=ag_store,
@@ -348,11 +348,21 @@ def _build_ag_client(
     return TestClient(app)
 
 
-def _build_cx_client(cx_store: Any) -> TestClient:
+def _build_cx_client(cx_store: Any, *, generation_id: str) -> TestClient:
     app = build_service_app(SERVICE_SPECS[CX_SERVICE_ID])
+    generation_store = GenerationExecutionStore()
+    generation_store.save(
+        {
+            "cx_generation_id": generation_id,
+            "tenant_ref_type": "oa.tenant",
+            "tenant_ref_id": "local-tenant",
+            "owner_subject_ref_type": "oa.user",
+            "owner_subject_ref_id": "local-user",
+        }
+    )
     register_remediation_execution_routes(
         app,
-        generation_store=GenerationExecutionStore(),
+        generation_store=generation_store,
         execution_store=cx_store,
     )
     return TestClient(app)
@@ -490,6 +500,8 @@ def _cx_service_headers(
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": request_id or f"ag-remediation-status-sync-{uuid4().hex}",
         "traceparent": f"00-{trace_id or TRACE_ID}-00f067aa0ba902b7-01",
+        "X-NEX-Tenant-ID": "local-tenant",
+        "X-NEX-Subject-ID": "local-user",
     }
 
 

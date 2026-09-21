@@ -427,9 +427,17 @@ def service_headers(
     request_id: str = REQUEST_ID,
 ) -> dict[str, str]:
     token = issue_mock_service_token(service_id=service_id, audience=audience).access_token
-    return {
+    headers = {
         "Authorization": f"Bearer {token}",
         "X-Request-ID": request_id,
         "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
         "X-Service-ID": service_id,
     }
+    if audience == "nex-cx":
+        headers.update(
+            {
+                "X-NEX-Tenant-ID": "local-tenant",
+                "X-NEX-Subject-ID": "local-user",
+            }
+        )
+    return headers

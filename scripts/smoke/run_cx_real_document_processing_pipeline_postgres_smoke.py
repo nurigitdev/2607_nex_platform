@@ -614,7 +614,12 @@ def _run_one_format_pipeline_smoke(
             "tenant_id": tenant_id,
             "owner_user_id": f"{owner_user_id}-{source_format}",
         },
-        headers=_service_headers(trace_id=trace_id, request_id=str(uuid4())),
+        headers=_service_headers(
+            trace_id=trace_id,
+            request_id=str(uuid4()),
+            tenant_id=tenant_id,
+            owner_user_id=f"{owner_user_id}-{source_format}",
+        ),
     )
     upload_response.raise_for_status()
     upload = upload_response.json()
@@ -634,7 +639,12 @@ def _run_one_format_pipeline_smoke(
 
     processing_response = client.post(
         f"/api/v1/documents/{document_id}/processing/run",
-        headers=_service_headers(trace_id=trace_id, request_id=str(uuid4())),
+        headers=_service_headers(
+            trace_id=trace_id,
+            request_id=str(uuid4()),
+            tenant_id=tenant_id,
+            owner_user_id=f"{owner_user_id}-{source_format}",
+        ),
     )
     processing_response.raise_for_status()
     pipeline_run = processing_response.json()

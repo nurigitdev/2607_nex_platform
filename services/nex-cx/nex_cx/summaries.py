@@ -20,7 +20,12 @@ from nex_runtime.prompts import (
     render_prompt_from_binding,
 )
 
-from nex_cx.authorization import authorize_cx_request
+from nex_cx.api_ownership import document_visible_to_owner
+from nex_cx.authorization import (
+    CX_SUBJECT_HEADER,
+    CX_TENANT_HEADER,
+    authorize_cx_owner_request,
+)
 from nex_cx.ingestion import ContentIngestionStore, sha256_text
 from nex_cx.prompts import CX_DOCUMENT_SUMMARY_BINDING
 
@@ -50,10 +55,16 @@ def register_summary_routes(
         document_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request, authorization, tenant_id=cx_tenant_id, subject_id=cx_subject_id
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
+        if not document_visible_to_owner(access_context, store, document_id):
+            return _summary_not_found(request, document_id)
 
         try:
             return build_and_store_document_summary(
@@ -71,10 +82,16 @@ def register_summary_routes(
         document_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request, authorization, tenant_id=cx_tenant_id, subject_id=cx_subject_id
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
+        if not document_visible_to_owner(access_context, store, document_id):
+            return _summary_not_found(request, document_id)
 
         summary = store.get_document_summary(document_id)
         if summary is None:
@@ -87,6 +104,17 @@ def register_summary_routes(
                 ),
             )
         return summary
+
+
+def _summary_not_found(request: Request, document_id: str) -> JSONResponse:
+    return _summary_problem_response(
+        request,
+        SummaryError(
+            status_code=404,
+            error_code="cx.document_summary_not_found",
+            detail=f"Document summary was not found: {document_id}",
+        ),
+    )
 
 
 def build_and_store_document_summary(

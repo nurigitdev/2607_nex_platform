@@ -19,6 +19,7 @@ from nex_runtime import (
     trace_id_from_headers,
 )
 from nex_ae_api.auth_guard import BrowserUserAuthContext
+from nex_ae_api.cx_owner_context import cx_owner_headers, cx_owner_scope_from_payload
 from nex_ae_api.route_auth import authorize_ae_facade_route_request
 
 
@@ -58,6 +59,7 @@ class HttpCxRetrievalClient:
                 "X-Request-ID": request_id,
                 "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
                 "X-Service-ID": "nex-ae-api",
+                **cx_owner_headers(*cx_owner_scope_from_payload(payload)),
             },
             timeout=self.timeout_seconds,
         )

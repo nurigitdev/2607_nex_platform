@@ -23,7 +23,12 @@ from nex_runtime import (
     request_id_from_headers,
     trace_id_from_headers,
 )
-from nex_cx.authorization import authorize_cx_request
+from nex_cx.api_ownership import record_visible_to_owner
+from nex_cx.authorization import (
+    CX_SUBJECT_HEADER,
+    CX_TENANT_HEADER,
+    authorize_cx_owner_request,
+)
 from nex_cx.remediation_execution_boundary import (
     RemediationExecutionBoundaryError,
     assert_cx_remediation_execution_payload_redaction_safe,
@@ -218,10 +223,14 @@ def register_remediation_execution_routes(
         payload: dict[str, Any],
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request, authorization, tenant_id=cx_tenant_id, subject_id=cx_subject_id
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
 
         try:
             validated_payload = validate_cx_remediation_execution_request(payload)
@@ -240,7 +249,10 @@ def register_remediation_execution_routes(
                     retryable=False,
                 )
             parent_record = generation_store.get(cx_generation_id)
-            if parent_record is None:
+            if parent_record is None or not record_visible_to_owner(
+                access_context,
+                parent_record,
+            ):
                 raise RemediationExecutionError(
                     status_code=404,
                     error_code="cx.remediation_execution_parent_not_found",
@@ -274,12 +286,26 @@ def register_remediation_execution_routes(
         cx_generation_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request, authorization, tenant_id=cx_tenant_id, subject_id=cx_subject_id
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
 
         try:
+            parent_record = generation_store.get(cx_generation_id)
+            if parent_record is None or not record_visible_to_owner(
+                access_context,
+                parent_record,
+            ):
+                raise RemediationExecutionError(
+                    status_code=404,
+                    error_code="cx.remediation_execution_parent_not_found",
+                    detail=f"Parent CX generation record was not found: {cx_generation_id}",
+                )
             records = selected_execution_store.list_for_parent(cx_generation_id)
             return build_cx_remediation_execution_list_response(
                 records,
@@ -302,12 +328,26 @@ def register_remediation_execution_routes(
         remediation_action_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request, authorization, tenant_id=cx_tenant_id, subject_id=cx_subject_id
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
 
         try:
+            parent_record = generation_store.get(cx_generation_id)
+            if parent_record is None or not record_visible_to_owner(
+                access_context,
+                parent_record,
+            ):
+                raise RemediationExecutionError(
+                    status_code=404,
+                    error_code="cx.remediation_execution_not_found",
+                    detail=f"CX remediation execution was not found: {remediation_action_id}",
+                )
             record = selected_execution_store.get(remediation_action_id)
             if (
                 record is None

@@ -170,7 +170,12 @@ def _execute_document_detail_smoke(
             detail_response = client.get(
                 f"/api/v1/documents/{document_id}",
                 params={"tenant_id": tenant_id, "owner_user_id": owner_user_id},
-                headers=_service_headers(trace_id=trace_id, request_id=request_id),
+                headers=_service_headers(
+                    trace_id=trace_id,
+                    request_id=request_id,
+                    tenant_id=tenant_id,
+                    owner_user_id=owner_user_id,
+                ),
             )
             detail_response.raise_for_status()
             detail = detail_response.json()
@@ -180,7 +185,12 @@ def _execute_document_detail_smoke(
                     "tenant_id": tenant_id,
                     "owner_user_id": other_owner_user_id,
                 },
-                headers=_service_headers(trace_id=trace_id, request_id=request_id),
+                headers=_service_headers(
+                    trace_id=trace_id,
+                    request_id=request_id,
+                    tenant_id=tenant_id,
+                    owner_user_id=other_owner_user_id,
+                ),
             )
             persisted_owner_count = _count_active_owner_documents(
                 engine,

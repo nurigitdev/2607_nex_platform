@@ -24,7 +24,18 @@ from nex_runtime import (
     request_id_from_headers,
     trace_id_from_headers,
 )
-from nex_cx.authorization import authorize_cx_request
+from nex_cx.access_context import CxAccessContext
+from nex_cx.api_ownership import (
+    CxApiOwnershipError,
+    content_object_visible_to_owner,
+    require_optional_owner_aliases_match,
+    require_owner_assertion_match,
+)
+from nex_cx.authorization import (
+    CX_SUBJECT_HEADER,
+    CX_TENANT_HEADER,
+    authorize_cx_owner_request,
+)
 from nex_cx.document_library import build_document_detail_projection
 from nex_cx.repository import (
     CxContentRepositoryError,
@@ -704,10 +715,17 @@ def register_ingestion_routes(
         payload: dict[str, Any],
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request,
+            authorization,
+            tenant_id=cx_tenant_id,
+            subject_id=cx_subject_id,
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
 
         request_id = request_id_from_headers(request)
         trace_id = payload.get("trace_id") or trace_id_from_headers(request)
@@ -718,12 +736,22 @@ def register_ingestion_routes(
                 request_id=request_id,
                 trace_id=trace_id,
             )
+            require_owner_assertion_match(access_context, record["ownership_ref"])
             resolve_upload_ownership(
                 record["ownership_ref"],
                 owner_resolver=resolver,
                 owner_resolver_mode=resolver_mode,
                 request_id=request_id,
                 trace_id=trace_id,
+            )
+        except CxApiOwnershipError as exc:
+            return _ingestion_problem_response(
+                request,
+                IngestionError(
+                    status_code=403,
+                    error_code=exc.error_code,
+                    detail=exc.detail,
+                ),
             )
         except IngestionError as exc:
             return _ingestion_problem_response(request, exc)
@@ -747,28 +775,50 @@ def register_ingestion_routes(
         document_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
         tenant_id: str | None = Query(default=None),
         owner_user_id: str | None = Query(default=None),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request,
+            authorization,
+            tenant_id=cx_tenant_id,
+            subject_id=cx_subject_id,
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
 
         try:
+            require_optional_owner_aliases_match(
+                access_context,
+                tenant_id=tenant_id,
+                owner_user_id=owner_user_id,
+            )
             projection = build_document_detail_projection(
                 store=ingestion_store,
                 document_id=document_id,
-                tenant_id=tenant_id,
-                owner_user_id=owner_user_id,
+                tenant_id=access_context.tenant_id,
+                owner_user_id=access_context.subject_id,
                 source_kind=source_kind,
                 database_env=database_env,
                 redacted_database_url=redacted_database_url,
             )
-        except ValueError as exc:
+        except (ValueError, CxApiOwnershipError) as exc:
             return problem_response(
                 request,
-                status_code=400,
-                error_code="cx.document_detail_query_invalid",
+                status_code=(
+                    404
+                    if isinstance(exc, CxApiOwnershipError)
+                    and exc.error_code == "cx.owner_scope_mismatch"
+                    else 400
+                ),
+                error_code=(
+                    "cx.document_not_found"
+                    if isinstance(exc, CxApiOwnershipError)
+                    and exc.error_code == "cx.owner_scope_mismatch"
+                    else "cx.document_detail_query_invalid"
+                ),
                 title="Document detail query failed",
                 detail=str(exc),
                 type_uri=(
@@ -811,28 +861,50 @@ def register_ingestion_routes(
         document_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
         tenant_id: str | None = Query(default=None),
         owner_user_id: str | None = Query(default=None),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request,
+            authorization,
+            tenant_id=cx_tenant_id,
+            subject_id=cx_subject_id,
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
 
         try:
+            require_optional_owner_aliases_match(
+                access_context,
+                tenant_id=tenant_id,
+                owner_user_id=owner_user_id,
+            )
             receipt = build_source_file_materialization_receipt(
                 store=ingestion_store,
                 document_id=document_id,
-                tenant_id=tenant_id,
-                owner_user_id=owner_user_id,
+                tenant_id=access_context.tenant_id,
+                owner_user_id=access_context.subject_id,
                 source_kind=source_kind,
                 database_env=database_env,
                 redacted_database_url=redacted_database_url,
             )
-        except ValueError as exc:
+        except (ValueError, CxApiOwnershipError) as exc:
             return problem_response(
                 request,
-                status_code=400,
-                error_code="cx.source_file_materialization_query_invalid",
+                status_code=(
+                    404
+                    if isinstance(exc, CxApiOwnershipError)
+                    and exc.error_code == "cx.owner_scope_mismatch"
+                    else 400
+                ),
+                error_code=(
+                    "cx.source_file_materialization_not_found"
+                    if isinstance(exc, CxApiOwnershipError)
+                    and exc.error_code == "cx.owner_scope_mismatch"
+                    else "cx.source_file_materialization_query_invalid"
+                ),
                 title="Source-file materialization query failed",
                 detail=str(exc),
                 type_uri=(
@@ -875,13 +947,24 @@ def register_ingestion_routes(
         job_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request,
+            authorization,
+            tenant_id=cx_tenant_id,
+            subject_id=cx_subject_id,
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
 
         job = ingestion_store.get_job(job_id)
-        if job is None:
+        if job is None or not _job_visible_to_owner(
+            ingestion_store,
+            job,
+            access_context,
+        ):
             return _ingestion_problem_response(
                 request,
                 IngestionError(
@@ -897,10 +980,31 @@ def register_ingestion_routes(
         job_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request,
+            authorization,
+            tenant_id=cx_tenant_id,
+            subject_id=cx_subject_id,
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
+        job = ingestion_store.get_job(job_id)
+        if job is None or not _job_visible_to_owner(
+            ingestion_store,
+            job,
+            access_context,
+        ):
+            return _ingestion_problem_response(
+                request,
+                IngestionError(
+                    status_code=404,
+                    error_code="cx.ingestion_job_not_found",
+                    detail=f"Ingestion job was not found: {job_id}",
+                ),
+            )
 
         try:
             return run_text_extraction_job(
@@ -918,13 +1022,24 @@ def register_ingestion_routes(
         document_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request,
+            authorization,
+            tenant_id=cx_tenant_id,
+            subject_id=cx_subject_id,
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
 
         result = ingestion_store.get_extraction_result(document_id)
-        if result is None:
+        if result is None or not _document_visible_to_owner(
+            ingestion_store,
+            document_id,
+            access_context,
+        ):
             return _ingestion_problem_response(
                 request,
                 IngestionError(
@@ -934,6 +1049,30 @@ def register_ingestion_routes(
                 ),
             )
         return result
+
+
+def _job_visible_to_owner(
+    store: ContentIngestionStore,
+    job: object,
+    access_context: CxAccessContext,
+) -> bool:
+    if not isinstance(job, Mapping):
+        return False
+    subject_ref = job.get("subject_ref")
+    if not isinstance(subject_ref, Mapping) or subject_ref.get("type") != "cx.document":
+        return False
+    return _document_visible_to_owner(store, subject_ref.get("id"), access_context)
+
+
+def _document_visible_to_owner(
+    store: ContentIngestionStore,
+    document_id: object,
+    access_context: CxAccessContext,
+) -> bool:
+    if not isinstance(document_id, str):
+        return False
+    content_object = store.content_repository.get_content_object(document_id)
+    return content_object_visible_to_owner(access_context, content_object)
 
 
 def build_upload_registration(

@@ -225,6 +225,8 @@ def _service_headers(*, trace_id: str, request_id: str) -> dict[str, str]:
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": request_id,
         "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
+        "X-NEX-Tenant-ID": "local-tenant",
+        "X-NEX-Subject-ID": "local-user",
     }
 
 

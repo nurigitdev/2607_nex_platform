@@ -181,7 +181,12 @@ def _execute_upload_ownership_smoke(
                     "owner_user_id": ownership_ref["owner_subject_ref"]["id"],
                     "ownership_ref": ownership_ref,
                 },
-                headers=_service_headers(trace_id=trace_id, request_id=request_id),
+                headers=_service_headers(
+                    trace_id=trace_id,
+                    request_id=request_id,
+                    tenant_id=ownership_ref["tenant_ref"]["id"],
+                    owner_user_id=ownership_ref["owner_subject_ref"]["id"],
+                ),
             )
             response.raise_for_status()
             payload = response.json()
@@ -373,12 +378,20 @@ def _storage_config(temp_dir: Path) -> CxStorageConfig:
     )
 
 
-def _service_headers(*, trace_id: str, request_id: str) -> dict[str, str]:
+def _service_headers(
+    *,
+    trace_id: str,
+    request_id: str,
+    tenant_id: str = "local-tenant",
+    owner_user_id: str = "local-user",
+) -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-ae-api", audience=SERVICE_ID)
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": request_id,
         "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
+        "X-NEX-Tenant-ID": tenant_id,
+        "X-NEX-Subject-ID": owner_user_id,
     }
 
 

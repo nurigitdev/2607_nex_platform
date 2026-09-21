@@ -140,9 +140,19 @@ def _execute_read_model_smoke(
         redacted_database_url=redact_database_url(database_url),
     )
     app = build_service_app(SERVICE_SPEC)
+    generation_store = GenerationExecutionStore()
+    generation_store.save(
+        {
+            "cx_generation_id": parent_id,
+            "tenant_ref_type": "oa.tenant",
+            "tenant_ref_id": "local-tenant",
+            "owner_subject_ref_type": "oa.user",
+            "owner_subject_ref_id": "local-user",
+        }
+    )
     register_remediation_execution_routes(
         app,
-        generation_store=GenerationExecutionStore(),
+        generation_store=generation_store,
         execution_store=execution_store,
     )
     client = TestClient(app)
@@ -305,6 +315,8 @@ def _service_headers(*, request_id: str) -> dict[str, str]:
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": request_id,
         "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+        "X-NEX-Tenant-ID": "local-tenant",
+        "X-NEX-Subject-ID": "local-user",
     }
 
 

@@ -1021,6 +1021,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0915`](slices/0915_cx_filesystem_private_text_store.md) | `S92-005` Restart-safe owner-scoped filesystem private text adapter. |
 | [`Slice 0916`](slices/0916_cx_private_vector_store_metadata_linkage.md) | `S92-006` Replaceable private vector adapter and metadata-only receipt linkage. |
 | [`Slice 0917`](slices/0917_cx_owner_lineage_persistence.md) | `S92-007` Owner-scoped CX job, processing, retrieval, generation, and remediation lineage persistence. |
+| [`Slice 0918`](slices/0918_cx_api_contract_ownership_hardening.md) | `S92-008` Canonical owner headers, AE propagation, CX route enforcement, and OpenAPI ownership hardening. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

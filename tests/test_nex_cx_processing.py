@@ -139,12 +139,25 @@ def storage_config(tmp_path: Path) -> CxStorageConfig:
     )
 
 
-def auth_headers() -> dict[str, str]:
+def auth_headers(tenant_id: str = "local-tenant", subject_id: str = "local-user") -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-ae-api", audience="nex-cx")
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": REQUEST_ID,
         "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+        "X-NEX-Tenant-ID": tenant_id,
+        "X-NEX-Subject-ID": subject_id,
+    }
+
+
+def grant_local_document_owner(store: ContentIngestionStore, document_id: str) -> None:
+    store.content_repository.content_objects[document_id] = {
+        "content_object_id": document_id,
+        "lifecycle_status": "ACTIVE",
+        "ownership_ref": {
+            "tenant_ref": {"type": "oa.tenant", "id": "local-tenant"},
+            "owner_subject_ref": {"type": "oa.user", "id": "local-user"},
+        },
     }
 
 
@@ -887,6 +900,7 @@ def test_processing_route_read_latest_prefers_persisted_repository(
         tmp_path,
         processing_run_repository=persisted_repository,
     )
+    grant_local_document_owner(store, document_id)
     memory_job = build_processing_job(
         document_id=document_id,
         pipeline_run_id="memory-run",
@@ -929,6 +943,7 @@ def test_processing_route_read_latest_falls_back_to_memory_record(
         tmp_path,
         processing_run_repository=InMemoryCxContentRepository(),
     )
+    grant_local_document_owner(store, document_id)
     job = build_processing_job(
         document_id=document_id,
         pipeline_run_id="memory-only-run",
@@ -962,12 +977,13 @@ def test_processing_route_read_latest_falls_back_to_memory_record(
 def test_processing_route_read_latest_maps_repository_error_to_problem(
     tmp_path: Path,
 ) -> None:
-    client, _, _ = build_test_client(
+    client, store, _ = build_test_client(
         tmp_path,
         processing_run_repository=(
             UnavailableProcessingRunRepository()  # type: ignore[arg-type]
         ),
     )
+    grant_local_document_owner(store, "unavailable")
 
     response = client.get(
         "/api/v1/documents/unavailable/processing",
@@ -1199,15 +1215,8 @@ def test_processing_route_problem_includes_safe_pipeline_details(tmp_path: Path)
     )
 
     assert response.status_code == 404
-    assert response.json()["error_code"] == "cx.document_not_found"
-    assert response.json()["details"]["failed_step"] == "extraction"
-    assert response.json()["details"]["job_status"] == "FAILED"
-    assert response.json()["details"]["step_summary"] == {
-        "total": 1,
-        "succeeded": 0,
-        "skipped": 0,
-        "failed": 1,
-    }
+    assert response.json()["error_code"] == "cx.processing_run_not_found"
+    assert response.json()["details"] == {}
 
 
 def test_processing_read_reports_not_found(tmp_path: Path) -> None:

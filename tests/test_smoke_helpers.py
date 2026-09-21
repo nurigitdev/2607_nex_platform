@@ -7501,12 +7501,20 @@ def test_ae_document_detail_postgres_smoke_adapter_and_json_edges() -> None:
     )
 
     assert (
-        summary_adapter.get_summary("doc", request_id="request", trace_id="trace")
+        summary_adapter.get_summary(
+            "doc",
+            tenant_id="tenant",
+            owner_user_id="owner",
+            request_id="request",
+            trace_id="trace",
+        )
         is None
     )
     assert (
         summary_adapter.get_summary_embedding(
             "doc",
+            tenant_id="tenant",
+            owner_user_id="owner",
             request_id="request",
             trace_id="trace",
         )

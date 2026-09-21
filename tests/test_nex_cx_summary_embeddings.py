@@ -80,12 +80,14 @@ class FailingMoEmbeddingClient:
         )
 
 
-def auth_headers() -> dict[str, str]:
+def auth_headers(tenant_id: str = "local-tenant", subject_id: str = "local-user") -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-ae-api", audience="nex-cx")
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": REQUEST_ID,
         "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+        "X-NEX-Tenant-ID": tenant_id,
+        "X-NEX-Subject-ID": subject_id,
     }
 
 
@@ -363,6 +365,6 @@ def test_summary_embedding_endpoint_reports_not_found(tmp_path: Path) -> None:
     )
 
     assert run_response.status_code == 404
-    assert run_response.json()["error_code"] == "cx.document_summary_not_found"
+    assert run_response.json()["error_code"] == "cx.summary_embedding_not_found"
     assert read_response.status_code == 404
     assert read_response.json()["error_code"] == "cx.summary_embedding_not_found"

@@ -196,12 +196,14 @@ class FailingDocumentDetailRepository:
         )
 
 
-def auth_headers() -> dict[str, str]:
+def auth_headers(tenant_id: str = "local-tenant", subject_id: str = "local-user") -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-ae-api", audience="nex-cx")
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": REQUEST_ID,
         "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+        "X-NEX-Tenant-ID": tenant_id,
+        "X-NEX-Subject-ID": subject_id,
     }
 
 
@@ -1454,7 +1456,7 @@ def test_upload_registration_endpoint_accepts_canonical_ownership_ref(
             "owner_user_id": "user-a",
             "ownership_ref": OWNER_REF,
         },
-        headers=auth_headers(),
+        headers=auth_headers("tenant-a", "user-a"),
     )
 
     assert response.status_code == 202
@@ -1488,7 +1490,7 @@ def test_upload_registration_endpoint_resolves_owner_before_persisting(
             "owner_user_id": "user-a",
             "ownership_ref": OWNER_REF,
         },
-        headers=auth_headers(),
+        headers=auth_headers("tenant-a", "user-a"),
     )
 
     assert response.status_code == 202
@@ -1522,7 +1524,7 @@ def test_upload_registration_endpoint_builds_default_resolver_when_env_mode_enab
             "owner_user_id": "user-a",
             "ownership_ref": OWNER_REF,
         },
-        headers=auth_headers(),
+        headers=auth_headers("tenant-a", "user-a"),
     )
 
     assert response.status_code == 202
@@ -1551,7 +1553,7 @@ def test_upload_registration_endpoint_blocks_unresolved_owner_before_persisting(
             "owner_user_id": "user-a",
             "ownership_ref": OWNER_REF,
         },
-        headers=auth_headers(),
+        headers=auth_headers("tenant-a", "user-a"),
     )
 
     assert response.status_code == 404
@@ -1601,22 +1603,22 @@ def test_source_file_materialization_endpoint_is_owner_scoped_and_redacted(
             "tenant_id": "tenant-a",
             "owner_user_id": "user-a",
         },
-        headers=auth_headers(),
+        headers=auth_headers("tenant-a", "user-a"),
     ).json()
 
     response = client.get(
         f"/api/v1/documents/{created['document_id']}/source-file/materialization",
         params={"tenant_id": "tenant-a", "owner_user_id": "user-a"},
-        headers=auth_headers(),
+        headers=auth_headers("tenant-a", "user-a"),
     )
     wrong_owner = client.get(
         f"/api/v1/documents/{created['document_id']}/source-file/materialization",
         params={"tenant_id": "tenant-a", "owner_user_id": "other-user"},
-        headers=auth_headers(),
+        headers=auth_headers("tenant-a", "other-user"),
     )
     missing_scope = client.get(
         f"/api/v1/documents/{created['document_id']}/source-file/materialization",
-        headers=auth_headers(),
+        headers=auth_headers("tenant-a", "user-a"),
     )
     unauthorized = client.get(
         f"/api/v1/documents/{created['document_id']}/source-file/materialization",
@@ -1633,10 +1635,7 @@ def test_source_file_materialization_endpoint_is_owner_scoped_and_redacted(
     assert "endpoint receipt bytes" not in str(payload)
     assert wrong_owner.status_code == 404
     assert wrong_owner.json()["error_code"] == "cx.source_file_materialization_not_found"
-    assert missing_scope.status_code == 400
-    assert missing_scope.json()["error_code"] == (
-        "cx.source_file_materialization_query_invalid"
-    )
+    assert missing_scope.status_code == 200
     assert unauthorized.status_code == 401
 
 
@@ -1656,7 +1655,7 @@ def test_source_file_materialization_endpoint_maps_repository_unavailable(
     response = client.get(
         "/api/v1/documents/doc-001/source-file/materialization",
         params={"tenant_id": "tenant-a", "owner_user_id": "user-a"},
-        headers=auth_headers(),
+        headers=auth_headers("tenant-a", "user-a"),
     )
 
     assert response.status_code == 503
@@ -1681,12 +1680,16 @@ def test_upload_registration_endpoint_returns_existing_owner_duplicate(
         "tenant_id": "tenant-a",
         "owner_user_id": "user-a",
     }
-    first = client.post("/api/v1/documents/uploads", json=body, headers=auth_headers()).json()
+    first = client.post(
+        "/api/v1/documents/uploads",
+        json=body,
+        headers=auth_headers("tenant-a", "user-a"),
+    ).json()
 
     response = client.post(
         "/api/v1/documents/uploads",
         json={**body, "filename": "renamed.md"},
-        headers=auth_headers(),
+        headers=auth_headers("tenant-a", "user-a"),
     )
 
     assert response.status_code == 200
@@ -2448,8 +2451,7 @@ def test_document_detail_read_collapses_wrong_owner_and_validates_query(
     assert "owner scoped source" not in str(wrong_owner.json())
     assert invalid_owner.status_code == 400
     assert invalid_owner.json()["error_code"] == "cx.document_detail_query_invalid"
-    assert missing_owner_scope.status_code == 400
-    assert missing_owner_scope.json()["error_code"] == "cx.document_detail_query_invalid"
+    assert missing_owner_scope.status_code == 200
 
 
 def test_document_detail_read_maps_repository_unavailable(tmp_path: Path) -> None:
@@ -2466,7 +2468,7 @@ def test_document_detail_read_maps_repository_unavailable(tmp_path: Path) -> Non
     response = client.get(
         "/api/v1/documents/doc-001",
         params={"tenant_id": "tenant-a", "owner_user_id": "user-a"},
-        headers=auth_headers(),
+        headers=auth_headers("tenant-a", "user-a"),
     )
 
     assert response.status_code == 503

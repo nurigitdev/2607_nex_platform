@@ -35,12 +35,14 @@ TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
 
 
-def auth_headers() -> dict[str, str]:
+def auth_headers(tenant_id: str = "local-tenant", subject_id: str = "local-user") -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-ae-api", audience="nex-cx")
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": REQUEST_ID,
         "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+        "X-NEX-Tenant-ID": tenant_id,
+        "X-NEX-Subject-ID": subject_id,
     }
 
 
@@ -465,7 +467,7 @@ def test_lexical_index_endpoint_reports_missing_chunk_set(tmp_path: Path) -> Non
     )
 
     assert response.status_code == 404
-    assert response.json()["error_code"] == "cx.chunk_set_not_found"
+    assert response.json()["error_code"] == "cx.lexical_index_not_found"
 
 
 def test_lexical_index_read_reports_not_found(tmp_path: Path) -> None:

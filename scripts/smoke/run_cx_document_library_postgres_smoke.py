@@ -190,7 +190,12 @@ def _execute_document_library_smoke(
                     "owner_user_id": owner_a,
                     "limit": 10,
                 },
-                headers=_service_headers(trace_id=trace_id, request_id=request_id),
+                headers=_service_headers(
+                    trace_id=trace_id,
+                    request_id=request_id,
+                    tenant_id=tenant_id,
+                    owner_user_id=owner_a,
+                ),
             )
             list_response.raise_for_status()
             projection = list_response.json()
@@ -282,7 +287,12 @@ def _upload_document(
             "tenant_id": tenant_id,
             "owner_user_id": owner_user_id,
         },
-        headers=_service_headers(trace_id=trace_id, request_id=request_id),
+        headers=_service_headers(
+            trace_id=trace_id,
+            request_id=request_id,
+            tenant_id=tenant_id,
+            owner_user_id=owner_user_id,
+        ),
     )
     response.raise_for_status()
     return response.json()

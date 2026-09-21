@@ -56,18 +56,24 @@ class RetrievalStore:
         return None
 
 
-def auth_headers() -> dict[str, str]:
+def auth_headers(tenant_id: str = "local-tenant", subject_id: str = "local-user") -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-ae-api", audience="nex-cx")
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": REQUEST_ID,
         "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+        "X-NEX-Tenant-ID": tenant_id,
+        "X-NEX-Subject-ID": subject_id,
     }
 
 
 def retrieval_package() -> dict[str, Any]:
     return {
         "retrieval_package_id": "cx-ret-001",
+        "tenant_ref_type": "oa.tenant",
+        "tenant_ref_id": "local-tenant",
+        "owner_subject_ref_type": "oa.user",
+        "owner_subject_ref_id": "local-user",
         "package_hash": "d" * 64,
         "status": "READY",
         "evidence_items": [

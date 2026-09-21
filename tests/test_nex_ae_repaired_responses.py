@@ -279,6 +279,8 @@ class FakeCxRepairedResponseSourceClient:
         *,
         parent_cx_generation_id: str,
         remediation_action_id: str,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str | None = None,
         trace_id: str | None = None,
     ) -> dict[str, Any]:
@@ -287,6 +289,8 @@ class FakeCxRepairedResponseSourceClient:
                 "method": "detail",
                 "parent_cx_generation_id": parent_cx_generation_id,
                 "remediation_action_id": remediation_action_id,
+                "tenant_id": tenant_id,
+                "owner_user_id": owner_user_id,
                 "request_id": request_id,
                 "trace_id": trace_id,
             }
@@ -297,6 +301,8 @@ class FakeCxRepairedResponseSourceClient:
         self,
         *,
         cx_generation_id: str,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str | None = None,
         trace_id: str | None = None,
     ) -> dict[str, Any]:
@@ -304,6 +310,8 @@ class FakeCxRepairedResponseSourceClient:
             {
                 "method": "generation",
                 "cx_generation_id": cx_generation_id,
+                "tenant_id": tenant_id,
+                "owner_user_id": owner_user_id,
                 "request_id": request_id,
                 "trace_id": trace_id,
             }
@@ -611,12 +619,16 @@ def test_repaired_response_handoff_route_creates_and_reads_record() -> None:
             "method": "detail",
             "parent_cx_generation_id": "cx-gen-001",
             "remediation_action_id": "ag-remediation-action-001",
+            "tenant_id": "tenant-001",
+            "owner_user_id": "user-001",
             "request_id": REQUEST_ID,
             "trace_id": TRACE_ID,
         },
         {
             "method": "generation",
             "cx_generation_id": "cx-gen-repair-001",
+            "tenant_id": "tenant-001",
+            "owner_user_id": "user-001",
             "request_id": REQUEST_ID,
             "trace_id": TRACE_ID,
         },

@@ -114,7 +114,10 @@ def build_cx_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
         "positive_examples_complete": (
             not cx_positive_missing and not generation_positive_missing
         ),
+        "runtime_operations_documented": not missing_openapi_operations,
+        "cx_negative_examples_complete": not cx_negative_missing,
         "generation_negative_examples_complete": not generation_negative_missing,
+        "openapi_version_maintained": not version_stale,
     }
     passed = all(checks.values()) and not issues
     return {
@@ -123,7 +126,7 @@ def build_cx_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
         "requirement": "S91",
         "status": "PASS" if passed else "FAIL",
         "failure_code": None if passed else "cx_contract_api_drift_audit_failed",
-        "contract_readiness": "GAPS_CONFIRMED" if passed else "AUDIT_FAILED",
+        "contract_readiness": "HARDENED" if passed else "AUDIT_FAILED",
         "summary": {
             "runtime_operation_count": len(runtime_operations),
             "openapi_operation_count": len(openapi_operations),
@@ -156,16 +159,13 @@ def build_cx_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
         "drift_items": drift_items,
         "checks": checks,
         "issues": issues,
-        "target_hardening": {
+        "hardening": {
             "requirement": "S92",
-            "actions": [
-                "document all four missing runtime operations in CX OpenAPI",
-                "add a negative fixture for source ownership boundary decision",
-                "replace the slice0003 OpenAPI version with a maintained API version",
-                "add contract-index completeness checks to the validator",
-            ],
+            "owner_context_headers": ["X-NEX-Tenant-ID", "X-NEX-Subject-ID"],
+            "cross_owner_visibility": "not-found",
+            "contract_index_complete": True,
         },
-        "next_slice": "0909",
+        "next_slice": "0919",
     }
 
 

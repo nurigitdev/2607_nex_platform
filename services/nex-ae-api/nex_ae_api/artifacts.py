@@ -48,6 +48,7 @@ from nex_runtime import (
     validate_authorization_header,
     worker_heartbeat_store_from_app,
 )
+from nex_ae_api.cx_owner_context import cx_owner_headers, cx_owner_scope_from_payload
 
 
 DEFAULT_TENANT_ID = "local-tenant"
@@ -280,6 +281,8 @@ class CxArtifactSourceClient(Protocol):
         self,
         cx_generation_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
@@ -289,6 +292,8 @@ class CxArtifactSourceClient(Protocol):
         self,
         cx_generation_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
@@ -332,6 +337,8 @@ class HttpCxArtifactSourceClient:
         self,
         cx_generation_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
@@ -339,12 +346,16 @@ class HttpCxArtifactSourceClient:
             f"/api/v1/generations/{cx_generation_id}",
             request_id=request_id,
             trace_id=trace_id,
+            tenant_id=tenant_id,
+            owner_user_id=owner_user_id,
         )
 
     def get_structured_draft(
         self,
         cx_generation_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
@@ -352,6 +363,8 @@ class HttpCxArtifactSourceClient:
             f"/api/v1/generations/{cx_generation_id}/structured-draft",
             request_id=request_id,
             trace_id=trace_id,
+            tenant_id=tenant_id,
+            owner_user_id=owner_user_id,
         )
 
     def _get_json(
@@ -360,6 +373,8 @@ class HttpCxArtifactSourceClient:
         *,
         request_id: str,
         trace_id: str,
+        tenant_id: str,
+        owner_user_id: str,
     ) -> dict[str, Any]:
         token = self.service_token or issue_mock_service_token(
             service_id="nex-ae-api",
@@ -372,6 +387,7 @@ class HttpCxArtifactSourceClient:
                 "X-Request-ID": request_id,
                 "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
                 "X-Service-ID": "nex-ae-api",
+                **cx_owner_headers(tenant_id, owner_user_id),
             },
             timeout=self.timeout_seconds,
         )
@@ -1977,6 +1993,7 @@ def register_artifact_handoff_routes(
         request_id = request_id_from_headers(request)
         trace_id = payload.get("trace_id") or trace_id_from_headers(request)
         try:
+            owner_scope = cx_owner_scope_from_payload(payload)
             cx_generation_id = required_string(
                 payload,
                 "cx_generation_id",
@@ -1984,11 +2001,15 @@ def register_artifact_handoff_routes(
             )
             generation_record = client.get_generation(
                 cx_generation_id,
+                tenant_id=owner_scope[0],
+                owner_user_id=owner_scope[1],
                 request_id=request_id,
                 trace_id=trace_id,
             )
             structured_draft = client.get_structured_draft(
                 cx_generation_id,
+                tenant_id=owner_scope[0],
+                owner_user_id=owner_scope[1],
                 request_id=request_id,
                 trace_id=trace_id,
             )
@@ -3718,8 +3739,25 @@ def register_artifact_handoff_routes(
                 }
             target_formats = render_target_formats_from_payload(payload, record)
             source_ref = record["source_refs"][0]
+            owner_ref = record.get("owner_actor_ref")
+            if not isinstance(owner_ref, dict):
+                raise ArtifactHandoffError(
+                    status_code=409,
+                    error_code="ae.artifact_owner_scope_invalid",
+                    detail="Artifact owner scope is unavailable.",
+                )
             structured_draft = client.get_structured_draft(
                 source_ref["cx_generation_id"],
+                tenant_id=required_string(
+                    owner_ref,
+                    "tenant_id",
+                    "ae.artifact_owner_scope_invalid",
+                ),
+                owner_user_id=required_string(
+                    owner_ref,
+                    "actor_id",
+                    "ae.artifact_owner_scope_invalid",
+                ),
                 request_id=request_id_from_headers(request),
                 trace_id=payload.get("trace_id") or trace_id_from_headers(request),
             )

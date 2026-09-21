@@ -40,7 +40,13 @@ from nex_runtime import (
 )
 from nex_runtime.prompts import PromptRegistryStore
 
-from nex_cx.authorization import authorize_cx_request
+from nex_cx.access_context import CxAccessContext
+from nex_cx.api_ownership import content_object_visible_to_owner
+from nex_cx.authorization import (
+    CX_SUBJECT_HEADER,
+    CX_TENANT_HEADER,
+    authorize_cx_owner_request,
+)
 from nex_cx.chunking import ChunkingError, build_and_store_chunk_set
 from nex_cx.embedding_index import (
     DEFAULT_EMBEDDING_ALIAS,
@@ -138,10 +144,19 @@ def register_processing_routes(
         document_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request,
+            authorization,
+            tenant_id=cx_tenant_id,
+            subject_id=cx_subject_id,
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
+        if not _processing_document_visible(store, document_id, access_context):
+            return _processing_not_found(request, document_id)
 
         try:
             return run_document_processing_pipeline(
@@ -165,10 +180,19 @@ def register_processing_routes(
         document_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request,
+            authorization,
+            tenant_id=cx_tenant_id,
+            subject_id=cx_subject_id,
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
+        if not _processing_document_visible(store, document_id, access_context):
+            return _processing_not_found(request, document_id)
 
         try:
             record = enqueue_document_processing_pipeline(
@@ -187,10 +211,19 @@ def register_processing_routes(
         document_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request,
+            authorization,
+            tenant_id=cx_tenant_id,
+            subject_id=cx_subject_id,
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
+        if not _processing_document_visible(store, document_id, access_context):
+            return _processing_not_found(request, document_id)
 
         try:
             persisted_record = _get_latest_persisted_processing_run(
@@ -222,6 +255,26 @@ def register_processing_routes(
                 ),
             )
         return record
+
+
+def _processing_document_visible(
+    store: ContentIngestionStore,
+    document_id: str,
+    access_context: CxAccessContext,
+) -> bool:
+    content_object = store.content_repository.get_content_object(document_id)
+    return content_object_visible_to_owner(access_context, content_object)
+
+
+def _processing_not_found(request: Request, document_id: str) -> JSONResponse:
+    return _processing_problem_response(
+        request,
+        ProcessingPipelineError(
+            status_code=404,
+            error_code="cx.processing_run_not_found",
+            detail=f"Processing run was not found: {document_id}",
+        ),
+    )
 
 
 def _get_latest_persisted_processing_run(

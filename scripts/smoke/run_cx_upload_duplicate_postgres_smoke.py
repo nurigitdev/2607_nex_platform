@@ -281,7 +281,12 @@ def _upload_document(
             "tenant_id": tenant_id,
             "owner_user_id": owner_user_id,
         },
-        headers=_service_headers(trace_id=trace_id, request_id=request_id),
+        headers=_service_headers(
+            trace_id=trace_id,
+            request_id=request_id,
+            tenant_id=tenant_id,
+            owner_user_id=owner_user_id,
+        ),
     )
     response.raise_for_status()
     return response.status_code, response.json()

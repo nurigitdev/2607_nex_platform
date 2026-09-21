@@ -16,6 +16,7 @@ from nex_runtime import (
     trace_id_from_headers,
 )
 from nex_ae_api.auth_guard import BrowserUserAuthContext
+from nex_ae_api.cx_owner_context import cx_owner_headers
 from nex_ae_api.route_auth import authorize_ae_facade_route_request
 from nex_ae_api.uploads import DEFAULT_UPLOAD_HANDOFF_STORE, UploadHandoffStore
 
@@ -40,6 +41,8 @@ class CxDocumentLibraryClient(Protocol):
         self,
         document_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any] | None:
@@ -49,6 +52,8 @@ class CxDocumentLibraryClient(Protocol):
         self,
         document_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any] | None:
@@ -79,12 +84,16 @@ class HttpCxDocumentLibraryClient:
             request_id=request_id,
             trace_id=trace_id,
             not_found_as_none=False,
+            tenant_id=tenant_id,
+            owner_user_id=owner_user_id,
         )
 
     def get_summary(
         self,
         document_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any] | None:
@@ -93,12 +102,16 @@ class HttpCxDocumentLibraryClient:
             request_id=request_id,
             trace_id=trace_id,
             not_found_as_none=True,
+            tenant_id=tenant_id,
+            owner_user_id=owner_user_id,
         )
 
     def get_summary_embedding(
         self,
         document_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any] | None:
@@ -107,6 +120,8 @@ class HttpCxDocumentLibraryClient:
             request_id=request_id,
             trace_id=trace_id,
             not_found_as_none=True,
+            tenant_id=tenant_id,
+            owner_user_id=owner_user_id,
         )
 
     def _get_json(
@@ -117,6 +132,8 @@ class HttpCxDocumentLibraryClient:
         request_id: str,
         trace_id: str,
         not_found_as_none: bool,
+        tenant_id: str,
+        owner_user_id: str,
     ) -> dict[str, Any] | None:
         token = self.service_token or issue_mock_service_token(
             service_id="nex-ae-api",
@@ -129,6 +146,7 @@ class HttpCxDocumentLibraryClient:
                 "X-Request-ID": request_id,
                 "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
                 "X-Service-ID": "nex-ae-api",
+                **cx_owner_headers(tenant_id, owner_user_id),
             },
             params=params,
             timeout=self.timeout_seconds,
@@ -300,11 +318,15 @@ def build_document_library_item_from_cx(
         ),
         summary=client.get_summary(
             document_id,
+            tenant_id=owner_scope["tenant_id"],
+            owner_user_id=owner_scope["owner_user_id"],
             request_id=request_id,
             trace_id=trace_id,
         ),
         summary_embedding=client.get_summary_embedding(
             document_id,
+            tenant_id=owner_scope["tenant_id"],
+            owner_user_id=owner_scope["owner_user_id"],
             request_id=request_id,
             trace_id=trace_id,
         ),

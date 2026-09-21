@@ -72,6 +72,8 @@ class FakeCxDocumentLibraryClient:
         self,
         document_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any] | None:
@@ -90,6 +92,8 @@ class FakeCxDocumentLibraryClient:
         self,
         document_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any] | None:
@@ -815,10 +819,18 @@ def test_http_cx_document_library_client_fetches_and_maps_errors(
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     ) == {"document_id": "doc-001"}
-    assert client.get_summary("doc-001", request_id=REQUEST_ID, trace_id=TRACE_ID) is None
+    assert client.get_summary(
+        "doc-001",
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    ) is None
     with pytest.raises(DocumentLibraryError) as exc:
         client.get_summary_embedding(
             "doc-001",
+            tenant_id="tenant-a",
+            owner_user_id="user-a",
             request_id=REQUEST_ID,
             trace_id=TRACE_ID,
         )

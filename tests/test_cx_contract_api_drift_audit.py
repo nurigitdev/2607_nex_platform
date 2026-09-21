@@ -16,31 +16,24 @@ def test_repository_contract_api_audit_confirms_known_drift() -> None:
     result = build_cx_contract_api_drift_audit()
 
     assert result["status"] == "PASS"
-    assert result["contract_readiness"] == "GAPS_CONFIRMED"
+    assert result["contract_readiness"] == "HARDENED"
     assert all(result["checks"].values())
     assert result["summary"] == {
         "runtime_operation_count": 29,
-        "openapi_operation_count": 39,
-        "runtime_openapi_covered_count": 25,
-        "missing_openapi_operation_count": 4,
+        "openapi_operation_count": 43,
+        "runtime_openapi_covered_count": 29,
+        "missing_openapi_operation_count": 0,
         "shared_openapi_operation_count": 5,
         "cx_schema_count": 11,
         "cx_positive_fixture_covered_count": 11,
-        "cx_negative_fixture_covered_count": 10,
+        "cx_negative_fixture_covered_count": 11,
         "generation_schema_count": 7,
-        "drift_count": 6,
+        "drift_count": 0,
         "audit_issue_count": 0,
     }
-    assert result["openapi_version"] == "0.0.0-slice0003"
-    assert result["missing_negative_fixtures"] == [
-        "schemas/service/nex_cx/source_ownership_boundary_decision.v1.schema.json"
-    ]
-    assert {item["path"] for item in result["missing_openapi_operations"]} == {
-        "/api/v1/documents/{document_id}/processing",
-        "/api/v1/documents/{document_id}/processing/enqueue",
-        "/api/v1/documents/{document_id}/processing/run",
-        "/api/v1/documents/{document_id}/source-file/materialization",
-    }
+    assert result["openapi_version"] == "0.92.0"
+    assert result["missing_negative_fixtures"] == []
+    assert result["missing_openapi_operations"] == []
 
 
 def test_contract_api_audit_fails_closed_without_inputs(tmp_path: Path) -> None:
@@ -87,13 +80,13 @@ def test_summary_line_and_runner_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_cx_contract_api_drift_audit()
 
     assert runner.summary_line(passing) == (
-        "cx_contract_api_drift_audit=pass readiness=GAPS_CONFIRMED "
-        "runtime_routes=29 openapi_missing=4 schema_negative=10/11 drift=6"
+        "cx_contract_api_drift_audit=pass readiness=HARDENED "
+        "runtime_routes=29 openapi_missing=0 schema_negative=11/11 drift=0"
     )
     assert "readiness=UNKNOWN" in runner.summary_line({"status": "FAIL"})
     monkeypatch.setattr(runner, "run_cx_contract_api_drift_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0
-    assert "drift=6" in capsys.readouterr().out
+    assert "drift=0" in capsys.readouterr().out
     assert runner.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
 

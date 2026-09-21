@@ -9,6 +9,7 @@ from urllib.parse import quote
 import httpx
 
 from nex_runtime import issue_mock_service_token
+from nex_ae_api.cx_owner_context import cx_owner_headers
 from nex_ae_api.repaired_responses import (
     CX_GENERATION_EXECUTION_RECORD_SCHEMA_VERSION,
     CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION,
@@ -70,6 +71,8 @@ class CxRepairedResponseSourceClient(Protocol):
         *,
         parent_cx_generation_id: str,
         remediation_action_id: str,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str | None = None,
         trace_id: str | None = None,
     ) -> dict[str, Any]:
@@ -79,6 +82,8 @@ class CxRepairedResponseSourceClient(Protocol):
         self,
         *,
         cx_generation_id: str,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str | None = None,
         trace_id: str | None = None,
     ) -> dict[str, Any]:
@@ -108,6 +113,8 @@ class HttpCxRepairedResponseSourceClient:
         *,
         parent_cx_generation_id: str,
         remediation_action_id: str,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str | None = None,
         trace_id: str | None = None,
     ) -> dict[str, Any]:
@@ -128,6 +135,8 @@ class HttpCxRepairedResponseSourceClient:
                 request_id or f"ae-cx-repaired-response-detail:{action_id}"
             ),
             trace_id=trace_id,
+            tenant_id=tenant_id,
+            owner_user_id=owner_user_id,
             failure_namespace="detail",
             failure_label="CX remediation execution detail",
         )
@@ -148,6 +157,8 @@ class HttpCxRepairedResponseSourceClient:
         self,
         *,
         cx_generation_id: str,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str | None = None,
         trace_id: str | None = None,
     ) -> dict[str, Any]:
@@ -159,6 +170,8 @@ class HttpCxRepairedResponseSourceClient:
             f"/api/v1/generations/{_quote_path_segment(generation_id)}",
             request_id=request_id or f"ae-cx-repaired-generation:{generation_id}",
             trace_id=trace_id,
+            tenant_id=tenant_id,
+            owner_user_id=owner_user_id,
             failure_namespace="generation",
             failure_label="CX repaired generation",
         )
@@ -179,6 +192,8 @@ class HttpCxRepairedResponseSourceClient:
         *,
         request_id: str,
         trace_id: str | None,
+        tenant_id: str,
+        owner_user_id: str,
         failure_namespace: str,
         failure_label: str,
     ) -> dict[str, Any]:
@@ -190,6 +205,7 @@ class HttpCxRepairedResponseSourceClient:
             "Authorization": f"Bearer {token}",
             "X-Request-ID": request_id,
             "X-Service-ID": "nex-ae-api",
+            **cx_owner_headers(tenant_id, owner_user_id),
         }
         selected_trace_id = optional_text(trace_id)
         if selected_trace_id is not None:
@@ -273,9 +289,21 @@ def build_repaired_response_source_package(
         "remediation_action_id",
         error_code="ae.repaired_response_remediation_action_id_required",
     )
+    tenant_id = required_text(
+        source_payload,
+        "tenant_id",
+        error_code="ae.repaired_response_tenant_id_required",
+    )
+    owner_user_id = required_text(
+        source_payload,
+        "owner_user_id",
+        error_code="ae.repaired_response_owner_user_id_required",
+    )
     detail = client.get_remediation_execution_detail(
         parent_cx_generation_id=parent_generation_id,
         remediation_action_id=remediation_action_id,
+        tenant_id=tenant_id,
+        owner_user_id=owner_user_id,
         request_id=request_id,
         trace_id=trace_id,
     )
@@ -289,6 +317,8 @@ def build_repaired_response_source_package(
     )
     generation = client.get_repaired_generation_record(
         cx_generation_id=repair_generation_id,
+        tenant_id=tenant_id,
+        owner_user_id=owner_user_id,
         request_id=request_id,
         trace_id=trace_id,
     )

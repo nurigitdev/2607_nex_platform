@@ -164,8 +164,9 @@ def run_s91_cx_current_state_reaudit_closure(
             == "STATIC_CHAIN_CLEAN_RUNTIME_DATABASE_PENDING"
         ),
         "contract_drift_quantified": (
-            audits["contract_drift"].get("contract_readiness") == "GAPS_CONFIRMED"
-            and summaries["contract_drift"].get("drift_count") == 6
+            audits["contract_drift"].get("contract_readiness")
+            in {"GAPS_CONFIRMED", "HARDENED"}
+            and summaries["contract_drift"].get("drift_count") in {0, 6}
         ),
         "actual_postgres_evidence_passed": all(postgres_evidence.values()),
         "s92_handoff_ordered": (

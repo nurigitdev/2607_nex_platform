@@ -99,6 +99,8 @@ class FakeCxArtifactSourceClient:
         self,
         cx_generation_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
@@ -113,6 +115,8 @@ class FakeCxArtifactSourceClient:
         self,
         cx_generation_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:

@@ -115,12 +115,14 @@ class FakeRetrievalPackageStore:
         return None
 
 
-def auth_headers() -> dict[str, str]:
+def auth_headers(tenant_id: str = "local-tenant", subject_id: str = "local-user") -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-ae-api", audience="nex-cx")
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
         "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        "X-NEX-Tenant-ID": tenant_id,
+        "X-NEX-Subject-ID": subject_id,
     }
 
 
@@ -135,6 +137,10 @@ def build_test_client() -> tuple[TestClient, FakeMoClient, GenerationExecutionSt
 def grounded_package(*, status: str = "READY", package_hash: str = "d" * 64) -> dict[str, Any]:
     return {
         "retrieval_package_id": "cx-ret-001",
+        "tenant_ref_type": "oa.tenant",
+        "tenant_ref_id": "local-tenant",
+        "owner_subject_ref_type": "oa.user",
+        "owner_subject_ref_id": "local-user",
         "package_hash": package_hash,
         "status": status,
         "query_text": "Private retrieval query that must stay outside audit.",

@@ -203,6 +203,8 @@ class FakeCxArtifactSourceClient:
         self,
         cx_generation_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
@@ -213,6 +215,8 @@ class FakeCxArtifactSourceClient:
         self,
         cx_generation_id: str,
         *,
+        tenant_id: str,
+        owner_user_id: str,
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
@@ -8671,11 +8675,15 @@ def test_http_cx_artifact_source_client_reads_generation_and_draft(monkeypatch) 
 
     assert client.get_generation(
         "cx-gen-001",
+        tenant_id="tenant-001",
+        owner_user_id="user-001",
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     ) == {"cx_generation_id": "cx-gen-001"}
     assert client.get_structured_draft(
         "cx-gen-001",
+        tenant_id="tenant-001",
+        owner_user_id="user-001",
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
     ) == {"structured_draft_id": "draft-001"}
@@ -8700,6 +8708,8 @@ def test_http_cx_artifact_source_client_maps_error_and_bad_json(monkeypatch) -> 
     with pytest.raises(ArtifactHandoffError) as exc_info:
         HttpCxArtifactSourceClient(base_url="http://cx.test").get_generation(
             "cx-gen-001",
+            tenant_id="tenant-001",
+            owner_user_id="user-001",
             request_id=REQUEST_ID,
             trace_id=TRACE_ID,
         )
@@ -8713,6 +8723,8 @@ def test_http_cx_artifact_source_client_maps_error_and_bad_json(monkeypatch) -> 
     with pytest.raises(ArtifactHandoffError) as fallback_exc:
         HttpCxArtifactSourceClient(base_url="http://cx.test").get_structured_draft(
             "cx-gen-001",
+            tenant_id="tenant-001",
+            owner_user_id="user-001",
             request_id=REQUEST_ID,
             trace_id=TRACE_ID,
         )

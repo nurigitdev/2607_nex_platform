@@ -5,11 +5,20 @@ from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, Header, Query, Request
+from fastapi.responses import JSONResponse
 
 from nex_runtime import (
     problem_response,
 )
-from nex_cx.authorization import authorize_cx_request
+from nex_cx.api_ownership import (
+    CxApiOwnershipError,
+    require_optional_owner_aliases_match,
+)
+from nex_cx.authorization import (
+    CX_SUBJECT_HEADER,
+    CX_TENANT_HEADER,
+    authorize_cx_owner_request,
+)
 from nex_cx.repository import (
     CX_SOURCE_OWNERSHIP_REF_SCHEMA_VERSION,
     CxContentRepositoryError,
@@ -47,29 +56,51 @@ def register_document_library_routes(
     def list_documents(
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
         tenant_id: str | None = Query(default=None),
         owner_user_id: str | None = Query(default=None),
         limit: int | None = Query(default=None),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request,
+            authorization,
+            tenant_id=cx_tenant_id,
+            subject_id=cx_subject_id,
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
 
         try:
-            return build_document_library_projection(
-                store=store,
+            require_optional_owner_aliases_match(
+                access_context,
                 tenant_id=tenant_id,
                 owner_user_id=owner_user_id,
+            )
+            return build_document_library_projection(
+                store=store,
+                tenant_id=access_context.tenant_id,
+                owner_user_id=access_context.subject_id,
                 limit=limit,
                 source_kind=source_kind,
                 database_env=database_env,
                 redacted_database_url=redacted_database_url,
             )
-        except ValueError as exc:
+        except (ValueError, CxApiOwnershipError) as exc:
             return problem_response(
                 request,
-                status_code=400,
-                error_code="cx.document_library_query_invalid",
+                status_code=(
+                    403
+                    if isinstance(exc, CxApiOwnershipError)
+                    and exc.error_code == "cx.owner_scope_mismatch"
+                    else 400
+                ),
+                error_code=(
+                    "cx.owner_scope_mismatch"
+                    if isinstance(exc, CxApiOwnershipError)
+                    and exc.error_code == "cx.owner_scope_mismatch"
+                    else "cx.document_library_query_invalid"
+                ),
                 title="Document library query failed",
                 detail=str(exc),
                 type_uri=(

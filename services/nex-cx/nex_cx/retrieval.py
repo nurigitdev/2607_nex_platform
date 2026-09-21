@@ -25,7 +25,17 @@ from nex_runtime.retrieval_policies import (
 )
 from nex_runtime.retrieval_policies import active_retrieval_policy_record, retrieval_policy_by_id
 
-from nex_cx.authorization import authorize_cx_request
+from nex_cx.access_context import CxAccessContext
+from nex_cx.api_ownership import (
+    content_object_visible_to_owner,
+    owner_scoped_record,
+    record_visible_to_owner,
+)
+from nex_cx.authorization import (
+    CX_SUBJECT_HEADER,
+    CX_TENANT_HEADER,
+    authorize_cx_owner_request,
+)
 from nex_cx.ingestion import ContentIngestionStore
 from nex_cx.lexical_index import query_terms_for_lexical_index
 
@@ -166,10 +176,17 @@ def register_retrieval_routes(
         payload: dict[str, Any],
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request,
+            authorization,
+            tenant_id=cx_tenant_id,
+            subject_id=cx_subject_id,
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
 
         try:
             package = build_retrieval_context_package(
@@ -179,6 +196,7 @@ def register_retrieval_routes(
                 trace_id=payload.get("trace_id") or trace_id_from_headers(request),
                 rerank_client=client,
                 reranker_alias=alias,
+                access_context=access_context,
             )
         except RetrievalError as exc:
             return _retrieval_problem_response(request, exc)
@@ -189,13 +207,20 @@ def register_retrieval_routes(
         retrieval_package_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
     ):
-        auth_problem = authorize_cx_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        access_context = authorize_cx_owner_request(
+            request,
+            authorization,
+            tenant_id=cx_tenant_id,
+            subject_id=cx_subject_id,
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
 
         package = store.get_retrieval_package(retrieval_package_id)
-        if package is None:
+        if package is None or not record_visible_to_owner(access_context, package):
             return _retrieval_problem_response(
                 request,
                 RetrievalError(
@@ -215,6 +240,7 @@ def build_retrieval_context_package(
     trace_id: str,
     rerank_client: MoRerankClient | None = None,
     reranker_alias: str = DEFAULT_RERANKER_ALIAS,
+    access_context: CxAccessContext | None = None,
 ) -> dict[str, Any]:
     query_text = _query_text(payload)
     top_k = _top_k(payload)
@@ -225,7 +251,11 @@ def build_retrieval_context_package(
     query_embedding = query_embedding_from_payload(payload)
     query_embedding_snapshot = build_query_embedding_snapshot(query_embedding)
     actor_claims_ref = payload.get("actor_claims_ref", {"actor_type": "service", "actor_id": "local_mock"})
-    document_ids = document_ids_from_scope(payload.get("document_scope"), store)
+    document_ids = document_ids_from_scope(
+        payload.get("document_scope"),
+        store,
+        access_context=access_context,
+    )
     candidates = rank_retrieval_candidates(
         query_text=query_text,
         document_ids=document_ids,
@@ -291,6 +321,8 @@ def build_retrieval_context_package(
         "created_at": now,
         "updated_at": now,
     }
+    if access_context is not None:
+        return owner_scoped_record(access_context, package)
     return package
 
 
@@ -1125,9 +1157,18 @@ def build_warnings(
 def document_ids_from_scope(
     document_scope: Any,
     store: ContentIngestionStore,
+    *,
+    access_context: CxAccessContext | None = None,
 ) -> list[str]:
     if document_scope is None:
-        return sorted(store.chunk_sets)
+        candidates = sorted(store.chunk_sets)
+        if access_context is None:
+            return candidates
+        return [
+            document_id
+            for document_id in candidates
+            if _retrieval_document_visible(store, document_id, access_context)
+        ]
     if not isinstance(document_scope, dict):
         raise RetrievalError(
             status_code=422,
@@ -1136,7 +1177,7 @@ def document_ids_from_scope(
         )
     document_ids = document_scope.get("document_ids")
     if document_ids is None:
-        return sorted(store.chunk_sets)
+        return document_ids_from_scope(None, store, access_context=access_context)
     if not isinstance(document_ids, list) or not all(
         isinstance(document_id, str) and document_id for document_id in document_ids
     ):
@@ -1145,7 +1186,31 @@ def document_ids_from_scope(
             error_code="cx.document_scope_invalid",
             detail="document_scope.document_ids must be a list of strings.",
         )
-    return [document_id for document_id in document_ids if document_id in store.chunk_sets]
+    visible_ids = []
+    for document_id in document_ids:
+        if document_id not in store.chunk_sets:
+            continue
+        if access_context is not None and not _retrieval_document_visible(
+            store,
+            document_id,
+            access_context,
+        ):
+            raise RetrievalError(
+                status_code=404,
+                error_code="cx.document_scope_not_found",
+                detail="One or more requested documents were not found.",
+            )
+        visible_ids.append(document_id)
+    return visible_ids
+
+
+def _retrieval_document_visible(
+    store: ContentIngestionStore,
+    document_id: str,
+    access_context: CxAccessContext,
+) -> bool:
+    content_object = store.content_repository.get_content_object(document_id)
+    return content_object_visible_to_owner(access_context, content_object)
 
 
 def package_hash_for(
