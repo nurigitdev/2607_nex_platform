@@ -1046,6 +1046,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0940`](slices/0940_s94_cx_vector_storage_freshness_closure.md) | `S94-010` CX vector storage and index freshness foundation closure with explicit S95 handoff. |
 | [`Slice 0941`](slices/0941_cx_permission_hybrid_retrieval_boundary_audit.md) | `S95-001` Permission-filtered hybrid retrieval boundary audit and implementation plan. |
 | [`Slice 0942`](slices/0942_cx_retrieval_permission_decision_contract.md) | `S95-002` Fail-closed owner-private permission decision, snapshot, and evidence contract. |
+| [`Slice 0943`](slices/0943_cx_owner_scoped_lexical_candidate_adapter.md) | `S95-003` Owner-scoped PostgreSQL BM25 lexical candidate adapter. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
