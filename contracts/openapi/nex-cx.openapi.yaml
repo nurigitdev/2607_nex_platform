@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX CX API
-  version: 0.93.0
+  version: 0.94.0
   x-nex-owner-context:
     propagation: trusted-service-asserted-subject
     requiredHeaders:
@@ -416,6 +416,70 @@ paths:
           description: Job is not running or its lease has not expired.
         "503":
           description: Job queue or durable run persistence is unavailable.
+  /api/v1/vector-indexes/{vector_index_id}/readiness:
+    get:
+      operationId: getCxOwnerScopedVectorIndexReadiness
+      tags:
+        - Content
+      parameters:
+        - $ref: "#/components/parameters/CxTenantId"
+        - $ref: "#/components/parameters/CxSubjectId"
+        - name: vector_index_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Owner-scoped persisted and evaluated vector index readiness.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CxVectorIndexReadiness"
+        "401":
+          description: Service claim or owner context is missing or invalid.
+        "404":
+          description: Vector index was not found or is not visible to the owner.
+        "503":
+          description: Vector manifest or pgvector persistence is unavailable.
+  /api/v1/vector-indexes/{vector_index_id}/readiness/reconcile:
+    post:
+      operationId: reconcileCxOwnerScopedVectorIndexReadiness
+      tags:
+        - Content
+      parameters:
+        - $ref: "#/components/parameters/CxTenantId"
+        - $ref: "#/components/parameters/CxSubjectId"
+        - name: vector_index_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CxVectorIndexReconciliationRequest"
+      responses:
+        "200":
+          description: Explicit vector freshness reconciliation result and observability summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CxVectorIndexReconciliationResponse"
+        "401":
+          description: Service claim or owner context is missing or invalid.
+        "404":
+          description: Vector index was not found or is not visible to the owner.
+        "409":
+          description: Vector manifest checkpoint changed concurrently.
+        "422":
+          description: Source snapshot, embedding profile, or timestamp is invalid.
+        "503":
+          description: Vector manifest or pgvector persistence is unavailable.
   /api/v1/documents:
     parameters: &cxOwnerContextParameters
       - $ref: "#/components/parameters/CxTenantId"
@@ -2131,6 +2195,142 @@ components:
         maxLength: 128
         pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$'
   schemas:
+    CxVectorSourceSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - chunk_set_id
+        - chunk_policy_id
+        - source_markdown_sha256
+        - chunk_count
+        - chunk_refs
+        - source_fingerprint
+      properties:
+        chunk_set_id: {type: string, format: uuid}
+        chunk_policy_id: {type: string, minLength: 1}
+        source_markdown_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        chunk_count: {type: integer, minimum: 0}
+        chunk_refs:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [chunk_id, ordinal, text_sha256]
+            properties:
+              chunk_id: {type: string, format: uuid}
+              ordinal: {type: integer, minimum: 0}
+              text_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        source_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+    CxEmbeddingProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - profile_schema_version
+        - provider_alias
+        - model_profile_id
+        - model_revision
+        - deployment_id
+        - vector_dimension
+        - profile_fingerprint
+      properties:
+        profile_schema_version: {const: cx_embedding_profile.v1}
+        provider_alias: {type: string, minLength: 1}
+        model_profile_id: {type: string, minLength: 1}
+        model_revision: {type: string, minLength: 1}
+        deployment_id: {type: string, minLength: 1}
+        vector_dimension: {type: integer, minimum: 1}
+        profile_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+    CxVectorIndexReadiness:
+      type: object
+      additionalProperties: false
+      required:
+        - readiness_schema_version
+        - vector_index_id
+        - content_object_id
+        - status
+        - status_reason
+        - freshness_status
+        - freshness_reason
+        - checkpoint_version
+        - expected_vector_count
+        - actual_vector_count
+        - retrieval_usable
+        - rebuild_required
+        - action
+      properties:
+        readiness_schema_version: {const: cx_vector_index_readiness.v1}
+        vector_index_id: {type: string, format: uuid}
+        content_object_id: {type: string, format: uuid}
+        status:
+          type: string
+          enum: [BUILDING, READY, STALE, REBUILD_REQUIRED, FAILED]
+        status_reason: {type: [string, "null"]}
+        freshness_status:
+          type: string
+          enum: [BUILDING, READY, STALE, REBUILD_REQUIRED, FAILED]
+        freshness_reason: {type: [string, "null"]}
+        checkpoint_version: {type: integer, minimum: 0}
+        expected_vector_count: {type: integer, minimum: 0}
+        actual_vector_count: {type: integer, minimum: 0}
+        retrieval_usable: {type: boolean}
+        rebuild_required: {type: boolean}
+        action:
+          type: string
+          enum: [NONE, WAIT_FOR_BUILD, ADMIT_REBUILD]
+    CxVectorIndexReconciliationRequest:
+      type: object
+      additionalProperties: false
+      required: [source_snapshot, embedding_profile, observed_at]
+      properties:
+        source_snapshot:
+          $ref: "#/components/schemas/CxVectorSourceSnapshot"
+        embedding_profile:
+          $ref: "#/components/schemas/CxEmbeddingProfile"
+        observed_at: {type: string, format: date-time}
+    CxVectorIndexReconciliationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - readiness_schema_version
+        - vector_index_id
+        - content_object_id
+        - status
+        - status_reason
+        - freshness_status
+        - freshness_reason
+        - checkpoint_version
+        - expected_vector_count
+        - actual_vector_count
+        - retrieval_usable
+        - rebuild_required
+        - action
+        - observability
+      properties:
+        readiness_schema_version: {const: cx_vector_index_readiness.v1}
+        vector_index_id: {type: string, format: uuid}
+        content_object_id: {type: string, format: uuid}
+        status:
+          type: string
+          enum: [BUILDING, READY, STALE, REBUILD_REQUIRED, FAILED]
+        status_reason: {type: [string, "null"]}
+        freshness_status:
+          type: string
+          enum: [BUILDING, READY, STALE, REBUILD_REQUIRED, FAILED]
+        freshness_reason: {type: [string, "null"]}
+        checkpoint_version: {type: integer, minimum: 0}
+        expected_vector_count: {type: integer, minimum: 0}
+        actual_vector_count: {type: integer, minimum: 0}
+        retrieval_usable: {type: boolean}
+        rebuild_required: {type: boolean}
+        action:
+          type: string
+          enum: [NONE, WAIT_FOR_BUILD, ADMIT_REBUILD]
+        observability:
+          type: object
+          additionalProperties: true
+          required: [ok]
+          properties:
+            ok: {type: boolean}
     CxIngestionRunReadModel:
       type: object
       additionalProperties: false

@@ -38,6 +38,15 @@ from nex_cx.remediation_execution import (
 )
 from nex_cx.summary_embeddings import register_summary_embedding_routes
 from nex_cx.summaries import register_summary_routes
+from nex_cx.pgvector_store import (
+    PgVectorCxVectorStore,
+    build_pgvector_cx_vector_store,
+)
+from nex_cx.vector_index_operations import register_vector_index_operations_routes
+from nex_cx.vector_index_repository import (
+    SqlAlchemyVectorIndexRepository,
+    VectorIndexRepository,
+)
 
 
 def build_cx_content_repository(
@@ -86,6 +95,23 @@ def build_cx_ingestion_run_repository(
     return InMemoryIngestionRunRepository()
 
 
+def build_cx_vector_operations_dependencies(
+    runtime: ServicePersistenceRuntime,
+) -> tuple[VectorIndexRepository | None, PgVectorCxVectorStore | None]:
+    if (
+        runtime.mode == PERSISTENCE_MODE_POSTGRES
+        and runtime.api_session_factory is not None
+    ):
+        return (
+            SqlAlchemyVectorIndexRepository(runtime.api_session_factory),
+            build_pgvector_cx_vector_store(
+                database_env=runtime.database_env,
+                workload="api",
+            ),
+        )
+    return None, None
+
+
 SERVICE_SPEC = SERVICE_SPECS["nex-cx"]
 app = build_service_app(SERVICE_SPEC)
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
@@ -105,6 +131,9 @@ CX_REMEDIATION_EXECUTION_STORE = build_cx_remediation_execution_store(
 )
 CX_INGESTION_RUN_REPOSITORY = build_cx_ingestion_run_repository(
     SERVICE_PERSISTENCE,
+)
+CX_VECTOR_INDEX_REPOSITORY, CX_VECTOR_STORE = (
+    build_cx_vector_operations_dependencies(SERVICE_PERSISTENCE)
 )
 register_service_job_control_routes(
     app,
@@ -147,6 +176,11 @@ register_ingestion_operations_routes(
     app,
     job_queue=SERVICE_PERSISTENCE.job_queue,
     run_repository=CX_INGESTION_RUN_REPOSITORY,
+)
+register_vector_index_operations_routes(
+    app,
+    repository=CX_VECTOR_INDEX_REPOSITORY,
+    vector_store=CX_VECTOR_STORE,
 )
 register_document_library_routes(
     app,

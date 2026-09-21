@@ -1041,6 +1041,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0935`](slices/0935_cx_atomic_private_vector_publish.md) | `S94-005` Compensating atomic private-vector publish and READY manifest checkpoint wiring. |
 | [`Slice 0936`](slices/0936_cx_vector_reconciliation.md) | `S94-006` Durable stale detection and same-identity/replacement reindex reconciliation. |
 | [`Slice 0937`](slices/0937_cx_vector_retrieval_freshness_enforcement.md) | `S94-007` Owner-scoped retrieval admission gated by source, profile, and current pgvector payload freshness. |
+| [`Slice 0938`](slices/0938_cx_vector_readiness_api_observability.md) | `S94-008` Protected vector readiness/reconciliation API and metadata-only operational observability. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
