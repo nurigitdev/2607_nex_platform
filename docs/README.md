@@ -1038,6 +1038,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0932`](slices/0932_cx_vector_index_freshness_contract.md) | `S94-002` Metadata-only embedding profile, source fingerprint, freshness state, and transition contract. |
 | [`Slice 0933`](slices/0933_cx_vector_index_persistence_schema.md) | `S94-003` Owner-scoped vector manifest and pgvector payload persistence schema. |
 | [`Slice 0934`](slices/0934_cx_owner_scoped_pgvector_adapter.md) | `S94-004` Manifest-bound owner-scoped pgvector adapter and optional vector database routing. |
+| [`Slice 0935`](slices/0935_cx_atomic_private_vector_publish.md) | `S94-005` Compensating atomic private-vector publish and READY manifest checkpoint wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
