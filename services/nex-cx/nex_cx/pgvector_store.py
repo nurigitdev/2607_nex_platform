@@ -23,7 +23,10 @@ from nex_cx.private_content import (
     serialize_private_vector,
     sha256_private_vector,
 )
-from nex_cx.vector_index_freshness import validate_vector_index_manifest
+from nex_cx.vector_index_freshness import (
+    build_vector_payload_snapshot,
+    validate_vector_index_manifest,
+)
 from nex_runtime import (
     build_engine,
     build_session_factory,
@@ -335,6 +338,45 @@ class BoundPgVectorCxVectorStore:
             }
             for row in rows
         ]
+
+    def payload_snapshot(
+        self,
+        *,
+        access_context: CxAccessContext,
+    ) -> dict[str, Any]:
+        self._assert_context(access_context)
+        try:
+            with self._session_factory() as session:
+                rows = session.execute(
+                    text(
+                        """
+                        SELECT vector_id, chunk_id, embedding_sha256,
+                               vector_dimension
+                        FROM cx_vectors
+                        WHERE vector_index_id = :vector_index_id
+                          AND tenant_ref_id = :tenant_id
+                          AND owner_subject_ref_id = :owner_subject_id
+                        ORDER BY chunk_id
+                        """
+                    ),
+                    {
+                        "vector_index_id": str(self.binding.vector_index_id),
+                        "tenant_id": self.binding.tenant_id,
+                        "owner_subject_id": self.binding.owner_subject_id,
+                    },
+                ).mappings().all()
+        except SQLAlchemyError as exc:
+            raise _storage_unavailable() from exc
+        receipts = [
+            {
+                "chunk_id": str(row["chunk_id"]),
+                "embedding_sha256": row["embedding_sha256"],
+                "vector_dimension": row["vector_dimension"],
+                "storage_uri": f"cx-private://pgvector/{row['vector_id']}",
+            }
+            for row in rows
+        ]
+        return build_vector_payload_snapshot(receipts)
 
     def storage_uri(self, key: CxPrivatePayloadKey) -> str:
         self._assert_key_shape(key)

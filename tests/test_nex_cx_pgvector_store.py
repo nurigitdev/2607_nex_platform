@@ -63,12 +63,15 @@ class _Session:
             return _Result(one=self.rows.get(identity))
         if sql.startswith("INSERT INTO cx_vectors"):
             self.rows[identity] = {
+                "vector_id": parameters["vector_id"],
                 "embedding": parameters["embedding"],
                 "embedding_sha256": parameters["embedding_sha256"],
                 "vector_dimension": parameters["vector_dimension"],
                 "chunk_id": parameters["chunk_id"],
             }
             return _Result(rowcount=1)
+        if sql.startswith("SELECT vector_id"):
+            return _Result(rows=list(self.rows.values()))
         if sql.startswith("SELECT embedding::text"):
             return _Result(one=self.rows.get(identity))
         if sql.startswith("DELETE FROM cx_vectors"):
@@ -189,6 +192,9 @@ def test_bound_pgvector_store_round_trip_idempotency_search_and_delete():
             "score": 0.875,
         }
     ]
+    snapshot = store.payload_snapshot(access_context=_context())
+    assert snapshot["payload_count"] == 1
+    assert len(snapshot["payload_fingerprint"]) == 64
     assert store.delete_vector(access_context=_context(), key=key) is True
     assert store.delete_vector(access_context=_context(), key=key) is False
     assert store.get_vector(
@@ -350,7 +356,7 @@ def test_pgvector_store_maps_sqlalchemy_failures_without_leaking_details():
     assert "password" not in caught.value.detail
 
 
-@pytest.mark.parametrize("operation", ["put", "delete", "search"])
+@pytest.mark.parametrize("operation", ["put", "delete", "search", "snapshot"])
 def test_pgvector_store_maps_each_sqlalchemy_failure(operation):
     class FailingFactory:
         def __call__(self):
@@ -375,8 +381,10 @@ def test_pgvector_store_maps_each_sqlalchemy_failure(operation):
             )
         elif operation == "delete":
             store.delete_vector(access_context=_context(), key=key)
-        else:
+        elif operation == "search":
             store.search(access_context=_context(), query_vector=vector, limit=1)
+        else:
+            store.payload_snapshot(access_context=_context())
     assert caught.value.error_code == "CX_PGVECTOR_STORAGE_UNAVAILABLE"
 
 
@@ -390,6 +398,10 @@ def test_pgvector_search_enforces_bound_owner_and_uses_2560_index_branch():
             limit=1,
         )
     assert caught.value.error_code == "CX_PRIVATE_PAYLOAD_NOT_FOUND"
+
+    with pytest.raises(CxPrivateContentError) as snapshot:
+        store.payload_snapshot(access_context=_context(owner="other"))
+    assert snapshot.value.error_code == "CX_PRIVATE_PAYLOAD_NOT_FOUND"
 
     assert store.search(
         access_context=_context(), query_vector=[0.0] * 2560, limit=1

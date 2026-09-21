@@ -1040,6 +1040,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0934`](slices/0934_cx_owner_scoped_pgvector_adapter.md) | `S94-004` Manifest-bound owner-scoped pgvector adapter and optional vector database routing. |
 | [`Slice 0935`](slices/0935_cx_atomic_private_vector_publish.md) | `S94-005` Compensating atomic private-vector publish and READY manifest checkpoint wiring. |
 | [`Slice 0936`](slices/0936_cx_vector_reconciliation.md) | `S94-006` Durable stale detection and same-identity/replacement reindex reconciliation. |
+| [`Slice 0937`](slices/0937_cx_vector_retrieval_freshness_enforcement.md) | `S94-007` Owner-scoped retrieval admission gated by source, profile, and current pgvector payload freshness. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from typing import Any
 
 from nex_cx.access_context import CxAccessContext
@@ -24,11 +23,17 @@ from nex_cx.vector_index_repository import (
 )
 
 
-@dataclass(frozen=True)
 class VectorIndexPublishError(RuntimeError):
-    error_code: str
-    detail: str
-    retryable: bool = False
+    def __init__(
+        self,
+        error_code: str,
+        detail: str,
+        retryable: bool = False,
+    ) -> None:
+        super().__init__(detail)
+        self.error_code = error_code
+        self.detail = detail
+        self.retryable = retryable
 
 
 def publish_vector_index(

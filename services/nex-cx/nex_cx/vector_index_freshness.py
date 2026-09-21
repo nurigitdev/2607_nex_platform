@@ -47,10 +47,11 @@ _FORBIDDEN_KEYS = frozenset(
 )
 
 
-@dataclass(frozen=True)
 class VectorIndexContractError(ValueError):
-    error_code: str
-    detail: str
+    def __init__(self, error_code: str, detail: str) -> None:
+        super().__init__(detail)
+        self.error_code = error_code
+        self.detail = detail
 
 
 def build_embedding_profile(
@@ -184,18 +185,41 @@ def mark_vector_index_ready(
             "cx.vector_index.payload_dimension_mismatch",
             "Payload receipt dimensions must match the embedding profile.",
         )
-    receipts.sort(key=lambda item: expected_ids.index(item["chunk_id"]))
+    snapshot = build_vector_payload_snapshot(receipts)
     updated = {
         **current,
         "status": "READY",
         "status_reason": None,
-        "payload_count": len(receipts),
-        "payload_fingerprint": _sha256_json(receipts),
+        "payload_count": snapshot["payload_count"],
+        "payload_fingerprint": snapshot["payload_fingerprint"],
         "checkpoint_version": current["checkpoint_version"] + 1,
         "updated_at": _timestamp(observed_at, "observed_at"),
         "ready_at": _timestamp(observed_at, "observed_at"),
     }
     return validate_vector_index_manifest(updated)
+
+
+def build_vector_payload_snapshot(
+    payload_receipts: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    if not isinstance(payload_receipts, Sequence) or isinstance(
+        payload_receipts, (str, bytes)
+    ):
+        raise VectorIndexContractError(
+            "cx.vector_index.payload_receipts_invalid",
+            "Vector payload receipts must be a sequence.",
+        )
+    receipts = [_payload_receipt(item) for item in payload_receipts]
+    if len({item["chunk_id"] for item in receipts}) != len(receipts):
+        raise VectorIndexContractError(
+            "cx.vector_index.payload_set_mismatch",
+            "Vector payload receipts must contain unique chunk identifiers.",
+        )
+    receipts.sort(key=lambda item: item["chunk_id"])
+    return {
+        "payload_count": len(receipts),
+        "payload_fingerprint": _sha256_json(receipts),
+    }
 
 
 def transition_vector_index_state(
