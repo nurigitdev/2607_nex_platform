@@ -324,6 +324,7 @@ node apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_owner_lineage_persistence_contract.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_api_contract_ownership_hardening.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_private_ownership_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s92_cx_private_content_ownership_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary

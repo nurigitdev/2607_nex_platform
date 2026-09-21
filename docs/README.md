@@ -1023,6 +1023,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0917`](slices/0917_cx_owner_lineage_persistence.md) | `S92-007` Owner-scoped CX job, processing, retrieval, generation, and remediation lineage persistence. |
 | [`Slice 0918`](slices/0918_cx_api_contract_ownership_hardening.md) | `S92-008` Canonical owner headers, AE propagation, CX route enforcement, and OpenAPI ownership hardening. |
 | [`Slice 0919`](slices/0919_cx_private_ownership_postgresql_smoke.md) | `S92-009` Actual PostgreSQL owner-lineage, isolation, private-metadata rejection, and cleanup smoke evidence. |
+| [`Slice 0920`](slices/0920_s92_cx_private_content_ownership_closure.md) | `S92-010` CX private-content storage and owner-enforcement closure checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
