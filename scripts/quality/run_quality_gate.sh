@@ -334,6 +334,7 @@ node apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_ingestion_restart_read_model_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_ingestion_operations_contract_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_ingestion_operations_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s93_cx_durable_ingestion_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary

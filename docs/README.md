@@ -1031,6 +1031,9 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0925`](slices/0925_cx_checkpointed_ingestion_coordinator.md) | `S93-005` Six-step durable-ingestion coordinator with one-version-per-step metadata checkpoints. |
 | [`Slice 0926`](slices/0926_cx_ingestion_worker_retry_recovery.md) | `S93-006` Bounded ingestion worker with synchronized retry backoff and expired-lease recovery. |
 | [`Slice 0927`](slices/0927_cx_ingestion_restart_hydration_read_model.md) | `S93-007` Read-only restart hydration plan and owner-scoped ingestion progress read model. |
+| [`Slice 0928`](slices/0928_cx_ingestion_protected_api_contracts.md) | `S93-008` Protected owner progress, restart-plan, recovery, and observability contracts. |
+| [`Slice 0929`](slices/0929_cx_ingestion_operations_postgresql_smoke.md) | `S93-009` Actual PostgreSQL durable-ingestion admission, restart, recovery, isolation, and cleanup evidence. |
+| [`Slice 0930`](slices/0930_s93_cx_durable_ingestion_closure.md) | `S93-010` CX durable-ingestion orchestration closure and S94 handoff. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
