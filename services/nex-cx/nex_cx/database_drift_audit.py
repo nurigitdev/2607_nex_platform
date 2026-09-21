@@ -8,6 +8,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[3]
 CX_DATABASE_DRIFT_AUDIT_SCHEMA_VERSION = "cx_database_drift_audit.v1"
 POSTGRES_IDENTIFIER_MAX_LENGTH = 63
+MINIMUM_CX_MIGRATION_COUNT = 13
 
 CORE_CX_TABLES = frozenset(
     {
@@ -27,6 +28,7 @@ CORE_CX_TABLES = frozenset(
         "cx_document_processing_runs",
         "cx_document_processing_steps",
         "cx_remediation_execution_attempts",
+        "cx_generation_executions",
     }
 )
 
@@ -77,6 +79,7 @@ def build_cx_database_drift_audit(root: Path = ROOT) -> dict[str, Any]:
     repository_paths = (
         root / "services/nex-cx/nex_cx/repository.py",
         root / "services/nex-cx/nex_cx/remediation_execution.py",
+        root / "services/nex-cx/nex_cx/generation_persistence.py",
     )
     repository_source = "\n".join(
         path.read_text(encoding="utf-8")
@@ -101,7 +104,7 @@ def build_cx_database_drift_audit(root: Path = ROOT) -> dict[str, Any]:
         )
     )
     checks = {
-        "migration_count_expected": len(migrations) == 13,
+        "migration_count_expected": len(migrations) >= MINIMUM_CX_MIGRATION_COUNT,
         "migration_versions_ordered_unique": (
             versions == sorted(versions) and len(versions) == len(set(versions))
         ),

@@ -1020,6 +1020,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0914`](slices/0914_cx_private_content_capability_ports.md) | `S92-004` Owner-scoped private text/vector storage capability ports. |
 | [`Slice 0915`](slices/0915_cx_filesystem_private_text_store.md) | `S92-005` Restart-safe owner-scoped filesystem private text adapter. |
 | [`Slice 0916`](slices/0916_cx_private_vector_store_metadata_linkage.md) | `S92-006` Replaceable private vector adapter and metadata-only receipt linkage. |
+| [`Slice 0917`](slices/0917_cx_owner_lineage_persistence.md) | `S92-007` Owner-scoped CX job, processing, retrieval, generation, and remediation lineage persistence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
