@@ -291,6 +291,53 @@ def test_filesystem_text_store_maps_read_failure_to_retryable_error(
     assert caught.value.retryable is True
 
 
+def test_filesystem_text_store_maps_existing_payload_read_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FileSystemCxPrivateTextStore(tmp_path)
+    checksum = sha256_private_text("private")
+    store.put_text(
+        access_context=_context(),
+        key=_key(),
+        text="private",
+        expected_sha256=checksum,
+    )
+    monkeypatch.setattr(Path, "read_bytes", lambda self: (_ for _ in ()).throw(OSError()))
+
+    with pytest.raises(CxPrivateContentError) as caught:
+        store.put_text(
+            access_context=_context(),
+            key=_key(),
+            text="private",
+            expected_sha256=checksum,
+        )
+
+    assert caught.value.error_code == "CX_PRIVATE_TEXT_STORAGE_UNAVAILABLE"
+    assert caught.value.retryable is True
+
+
+def test_filesystem_text_store_maps_delete_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FileSystemCxPrivateTextStore(tmp_path)
+    checksum = sha256_private_text("private")
+    store.put_text(
+        access_context=_context(),
+        key=_key(),
+        text="private",
+        expected_sha256=checksum,
+    )
+    monkeypatch.setattr(Path, "unlink", lambda self: (_ for _ in ()).throw(OSError()))
+
+    with pytest.raises(CxPrivateContentError) as caught:
+        store.delete_text(access_context=_context(), key=_key())
+
+    assert caught.value.error_code == "CX_PRIVATE_TEXT_STORAGE_UNAVAILABLE"
+    assert caught.value.retryable is True
+
+
 def test_filesystem_text_store_handles_publish_race(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

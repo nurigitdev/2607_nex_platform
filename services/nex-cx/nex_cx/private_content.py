@@ -289,12 +289,17 @@ def sha256_private_text(text: str) -> str:
 
 
 def sha256_private_vector(vector: Sequence[float]) -> str:
+    return hashlib.sha256(serialize_private_vector(vector)).hexdigest()
+
+
+def serialize_private_vector(vector: Sequence[float]) -> bytes:
     payload = json.dumps(
-        [float(value) for value in vector],
+        {"embedding": [float(value) for value in vector]},
         ensure_ascii=True,
+        sort_keys=True,
         separators=(",", ":"),
     )
-    return hashlib.sha256(payload.encode("ascii")).hexdigest()
+    return payload.encode("ascii")
 
 
 def _assert_expected_sha256(expected: str, actual: str) -> None:

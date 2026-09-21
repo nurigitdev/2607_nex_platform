@@ -320,6 +320,7 @@ node apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_central_authorization_enforcement.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_private_content_capability_contract.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_private_text_store_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_cx_private_vector_store_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary

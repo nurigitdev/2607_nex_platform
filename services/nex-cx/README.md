@@ -44,6 +44,7 @@ Document ingestion storage defaults:
 - Extracted Markdown: `NEX_CX_EXTRACTED_MARKDOWN_ROOT` or `/data/nex-platform/cx/extracted-markdown`
 - Extraction temp: `NEX_CX_EXTRACTION_TEMP_ROOT` or `/data/nex-platform/cx/extraction-temp`
 - Private chunk/summary text: `NEX_CX_PRIVATE_TEXT_STORAGE_ROOT` or `/data/nex-platform/cx/private-text`
+- Local private vectors: `NEX_CX_PRIVATE_VECTOR_STORAGE_ROOT` or `/data/nex-platform/cx/private-vectors`
 - Max upload size: `NEX_CX_MAX_UPLOAD_SIZE_BYTES` or `52428800`
 
 Local source files are stored outside PostgreSQL using a storage key shaped as
