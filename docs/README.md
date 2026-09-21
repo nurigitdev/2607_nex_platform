@@ -1018,6 +1018,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0912`](slices/0912_cx_access_context_contract_resolver.md) | `S92-002` Immutable CX access-context contract and trusted-service resolver. |
 | [`Slice 0913`](slices/0913_cx_central_authorization_enforcement.md) | `S92-003` Centralized CX caller authentication and authorization enforcement. |
 | [`Slice 0914`](slices/0914_cx_private_content_capability_ports.md) | `S92-004` Owner-scoped private text/vector storage capability ports. |
+| [`Slice 0915`](slices/0915_cx_filesystem_private_text_store.md) | `S92-005` Restart-safe owner-scoped filesystem private text adapter. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
