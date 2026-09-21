@@ -1030,6 +1030,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0924`](slices/0924_cx_durable_ingestion_admission.md) | `S93-004` Idempotent upload-to-JobQueue and durable-ingestion-run admission wiring. |
 | [`Slice 0925`](slices/0925_cx_checkpointed_ingestion_coordinator.md) | `S93-005` Six-step durable-ingestion coordinator with one-version-per-step metadata checkpoints. |
 | [`Slice 0926`](slices/0926_cx_ingestion_worker_retry_recovery.md) | `S93-006` Bounded ingestion worker with synchronized retry backoff and expired-lease recovery. |
+| [`Slice 0927`](slices/0927_cx_ingestion_restart_hydration_read_model.md) | `S93-007` Read-only restart hydration plan and owner-scoped ingestion progress read model. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
