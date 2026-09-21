@@ -108,8 +108,8 @@ def build_cx_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
 
     checks = {
         "audit_inputs_present": not issues,
-        "runtime_operation_inventory_complete": len(runtime_operations) == 29,
-        "cx_schema_inventory_complete": len(cx_schemas) == 11,
+        "runtime_operation_inventory_complete": len(runtime_operations) == 31,
+        "cx_schema_inventory_complete": len(cx_schemas) == 14,
         "generation_schema_inventory_complete": len(generation_schemas) == 7,
         "positive_examples_complete": (
             not cx_positive_missing and not generation_positive_missing

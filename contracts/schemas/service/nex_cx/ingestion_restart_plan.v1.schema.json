@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_cx/ingestion_restart_plan.v1.schema.json",
+  "title": "NeX CX Durable Ingestion Restart Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["restart_plan_schema_version", "observed_at", "limit", "job_count", "action_counts", "mutation_performed", "items"],
+  "properties": {
+    "restart_plan_schema_version": {"const": "cx_ingestion_restart_plan.v1"},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "limit": {"type": "integer", "minimum": 1, "maximum": 500},
+    "job_count": {"type": "integer", "minimum": 0},
+    "action_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "READY": {"type": "integer", "minimum": 1},
+        "READY_RETRY": {"type": "integer", "minimum": 1},
+        "WAITING_RETRY": {"type": "integer", "minimum": 1},
+        "ACTIVE": {"type": "integer", "minimum": 1},
+        "RECOVER_EXPIRED_LEASE": {"type": "integer", "minimum": 1},
+        "TERMINAL": {"type": "integer", "minimum": 1},
+        "RECONCILE": {"type": "integer", "minimum": 1}
+      }
+    },
+    "mutation_performed": {"const": false},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["job_id", "run_id", "document_id", "job_status", "run_status", "current_step", "checkpoint_version", "lease_expires_at", "retry_at", "action", "reason"],
+        "properties": {
+          "job_id": {"type": "string", "minLength": 1},
+          "run_id": {"type": ["string", "null"]},
+          "document_id": {"type": "string", "minLength": 1},
+          "job_status": {"type": "string", "minLength": 1},
+          "run_status": {"type": ["string", "null"]},
+          "current_step": {"type": ["string", "null"]},
+          "checkpoint_version": {"type": ["integer", "null"], "minimum": 0},
+          "lease_expires_at": {"$ref": "#/$defs/optional_date_time"},
+          "retry_at": {"$ref": "#/$defs/optional_date_time"},
+          "action": {"enum": ["READY", "READY_RETRY", "WAITING_RETRY", "ACTIVE", "RECOVER_EXPIRED_LEASE", "TERMINAL", "RECONCILE"]},
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "optional_date_time": {
+      "oneOf": [
+        {"type": "string", "format": "date-time"},
+        {"type": "null"}
+      ]
+    }
+  }
+}

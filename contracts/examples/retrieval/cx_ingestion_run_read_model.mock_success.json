@@ -1,0 +1,29 @@
+{
+  "read_model_schema_version": "cx_ingestion_run_read_model.v1",
+  "run_id": "run-0928",
+  "document_id": "document-0928",
+  "job_id": "job-0928",
+  "status": "RUNNING",
+  "current_step": "extraction",
+  "attempt_count": 1,
+  "max_attempts": 3,
+  "checkpoint_version": 1,
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "request-0928",
+  "lease_expires_at": "2026-09-21T00:02:00Z",
+  "retry_at": null,
+  "last_error": null,
+  "created_at": "2026-09-21T00:00:00Z",
+  "updated_at": "2026-09-21T00:00:00Z",
+  "completed_at": null,
+  "step_total": 6,
+  "step_completed": 0,
+  "steps": [
+    {"step_id": "extraction", "status": "RUNNING", "attempt_count": 1, "output_ref": null, "error_code": null, "started_at": "2026-09-21T00:00:00Z", "completed_at": null},
+    {"step_id": "chunking", "status": "PENDING", "attempt_count": 0, "output_ref": null, "error_code": null, "started_at": null, "completed_at": null},
+    {"step_id": "lexical_index", "status": "PENDING", "attempt_count": 0, "output_ref": null, "error_code": null, "started_at": null, "completed_at": null},
+    {"step_id": "embedding_index", "status": "PENDING", "attempt_count": 0, "output_ref": null, "error_code": null, "started_at": null, "completed_at": null},
+    {"step_id": "summary", "status": "PENDING", "attempt_count": 0, "output_ref": null, "error_code": null, "started_at": null, "completed_at": null},
+    {"step_id": "summary_embedding", "status": "PENDING", "attempt_count": 0, "output_ref": null, "error_code": null, "started_at": null, "completed_at": null}
+  ]
+}

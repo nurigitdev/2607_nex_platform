@@ -166,7 +166,7 @@ def run_s92_cx_private_content_ownership_closure(
             and evidence["access_context"].get("ownership_ref") is not None
         ),
         "central_authorization_closed": (
-            summaries["authorization"].get("centralized_route_module_count") == 11
+            summaries["authorization"].get("centralized_route_module_count") == 12
             and summaries["authorization"].get("failed_check_count") == 0
         ),
         "private_capability_ports_closed": (
@@ -185,7 +185,7 @@ def run_s92_cx_private_content_ownership_closure(
             and summaries["owner_lineage"].get("issue_count") == 0
         ),
         "api_contract_ownership_closed": (
-            summaries["api_hardening"].get("owner_guarded_module_count") == 11
+            summaries["api_hardening"].get("owner_guarded_module_count") == 12
             and summaries["api_hardening"].get("drift_count") == 0
             and summaries["api_hardening"].get("issue_count") == 0
         ),

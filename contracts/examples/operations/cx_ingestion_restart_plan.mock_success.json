@@ -1,0 +1,23 @@
+{
+  "restart_plan_schema_version": "cx_ingestion_restart_plan.v1",
+  "observed_at": "2026-09-21T00:03:00Z",
+  "limit": 100,
+  "job_count": 1,
+  "action_counts": {"RECOVER_EXPIRED_LEASE": 1},
+  "mutation_performed": false,
+  "items": [
+    {
+      "job_id": "job-0928",
+      "run_id": "run-0928",
+      "document_id": "document-0928",
+      "job_status": "RUNNING",
+      "run_status": "RUNNING",
+      "current_step": "extraction",
+      "checkpoint_version": 1,
+      "lease_expires_at": "2026-09-21T00:02:00Z",
+      "retry_at": null,
+      "action": "RECOVER_EXPIRED_LEASE",
+      "reason": "worker_lease_expired"
+    }
+  ]
+}

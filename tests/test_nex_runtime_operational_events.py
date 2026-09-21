@@ -12,6 +12,7 @@ import nex_runtime.operational_events as runtime_events
 from nex_runtime import (
     AG_JOB_CONTROL_EVENT_FAILED,
     AG_JOB_CONTROL_EVENT_SUCCEEDED,
+    CX_INGESTION_LEASE_RECOVERED_EVENT,
     CX_PROCESSING_EVENT_FAILED,
     CX_PROCESSING_EVENT_STARTED,
     CX_PROCESSING_EVENT_SUCCEEDED,
@@ -242,6 +243,7 @@ def test_operational_event_taxonomy_lists_filters_and_summarizes_cx_specs() -> N
     summary = summarize_operational_event_taxonomy(taxonomy)
 
     assert [item["event_type"] for item in cx_taxonomy] == [
+        CX_INGESTION_LEASE_RECOVERED_EVENT,
         CX_PROCESSING_EVENT_FAILED,
         CX_PROCESSING_EVENT_STARTED,
         CX_PROCESSING_EVENT_SUCCEEDED,
@@ -279,10 +281,22 @@ def test_operational_event_taxonomy_lists_filters_and_summarizes_cx_specs() -> N
         "heartbeat_error_code",
     ]
     assert summary["total"] == len(DEFAULT_OPERATIONAL_EVENT_TAXONOMY)
-    assert summary["by_service"] == {"nex-ag": 2, "nex-cx": 6}
+    assert summary["by_service"] == {"nex-ag": 2, "nex-cx": 7}
     assert summary["by_severity"]["INFO"] == 5
     assert summary["by_severity"]["ERROR"] == 3
-    assert summary["by_subject_type"] == {"cx.document": 3, "job": 2, "worker": 3}
+    assert summary["by_severity"]["WARNING"] == 1
+    assert summary["by_subject_type"] == {"cx.document": 3, "job": 3, "worker": 3}
+
+    unknown_severity = summarize_operational_event_taxonomy(
+        [{**taxonomy[0], "default_severity": "NOTICE"}]
+    )
+    assert unknown_severity["by_severity"] == {
+        "DEBUG": 0,
+        "INFO": 0,
+        "WARNING": 0,
+        "ERROR": 0,
+        "CRITICAL": 0,
+    }
 
 
 def test_operational_event_taxonomy_rejects_invalid_or_sensitive_shapes() -> None:

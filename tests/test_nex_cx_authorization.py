@@ -114,8 +114,8 @@ def test_authorization_evidence_passes_for_repository() -> None:
     assert evidence["status"] == "PASS"
     assert all(evidence["checks"].values())
     assert evidence["summary"] == {
-        "route_module_count": 11,
-        "centralized_route_module_count": 11,
+        "route_module_count": 12,
+        "centralized_route_module_count": 12,
         "failed_check_count": 0,
         "postgres_required": False,
         "dgx_required": False,
@@ -138,7 +138,7 @@ def test_authorization_evidence_cli_paths(monkeypatch, capsys) -> None:
         lambda: passing,
     )
     assert evidence_runner.main(["--summary"]) == 0
-    assert "modules=11/11" in capsys.readouterr().out
+    assert "modules=12/12" in capsys.readouterr().out
     assert evidence_runner.main([]) == 0
     assert json.loads(capsys.readouterr().out)["status"] == "PASS"
 

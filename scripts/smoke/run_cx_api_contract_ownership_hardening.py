@@ -37,6 +37,7 @@ ROUTE_MODULES = (
     "embedding_index.py",
     "generation.py",
     "ingestion.py",
+    "ingestion_operations.py",
     "lexical_index.py",
     "processing.py",
     "remediation_execution.py",
@@ -94,7 +95,7 @@ def run_cx_api_contract_ownership_hardening(root: Path = ROOT) -> dict[str, Any]
         "owner_context_applies_to_runtime_paths": (
             openapi.count("parameters: *cxOwnerContextParameters") >= 27
         ),
-        "openapi_version_hardened": "version: 0.92.0" in openapi,
+        "openapi_version_hardened": "version: 0.93.0" in openapi,
         "negative_fixture_indexed": (
             "cx_source_ownership_boundary_decision.missing_status.json"
             in negative_index

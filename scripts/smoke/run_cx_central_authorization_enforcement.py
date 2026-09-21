@@ -27,6 +27,7 @@ ROUTE_MODULES = (
     "embedding_index.py",
     "generation.py",
     "ingestion.py",
+    "ingestion_operations.py",
     "lexical_index.py",
     "processing.py",
     "remediation_execution.py",

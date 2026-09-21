@@ -576,6 +576,21 @@
       "schema": "schemas/service/nex_cx/upload_registration.v1.schema.json"
     },
     {
+      "name": "cx_ingestion_run_read_model_mock",
+      "path": "examples/retrieval/cx_ingestion_run_read_model.mock_success.json",
+      "schema": "schemas/service/nex_cx/ingestion_run_read_model.v1.schema.json"
+    },
+    {
+      "name": "cx_ingestion_restart_plan_mock",
+      "path": "examples/operations/cx_ingestion_restart_plan.mock_success.json",
+      "schema": "schemas/service/nex_cx/ingestion_restart_plan.v1.schema.json"
+    },
+    {
+      "name": "cx_ingestion_recovery_mock",
+      "path": "examples/operations/cx_ingestion_recovery.mock_success.json",
+      "schema": "schemas/service/nex_cx/ingestion_recovery.v1.schema.json"
+    },
+    {
       "name": "cx_source_ownership_boundary_decision_mock",
       "path": "examples/retrieval/cx_source_ownership_boundary_decision.mock_success.json",
       "schema": "schemas/service/nex_cx/source_ownership_boundary_decision.v1.schema.json"

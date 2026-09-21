@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_cx/ingestion_recovery.v1.schema.json",
+  "title": "NeX CX Expired Ingestion Lease Recovery",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["recovery_schema_version", "action", "result", "observability"],
+  "properties": {
+    "recovery_schema_version": {"const": "cx_ingestion_recovery.v1"},
+    "action": {"const": "RECOVER_EXPIRED_LEASE"},
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["worker_result_schema_version", "worker_id", "status", "job_id", "job_status", "run_id", "run_status", "checkpoint_version", "retry_at", "error_code", "failed_step", "recovered", "observed_at"],
+      "properties": {
+        "worker_result_schema_version": {"const": "cx_ingestion_worker_result.v1"},
+        "worker_id": {"type": "string", "minLength": 1},
+        "status": {"enum": ["RETRY_SCHEDULED", "FAILED"]},
+        "job_id": {"type": "string", "minLength": 1},
+        "job_status": {"type": "string", "minLength": 1},
+        "run_id": {"type": "string", "minLength": 1},
+        "run_status": {"type": "string", "minLength": 1},
+        "checkpoint_version": {"type": "integer", "minimum": 1},
+        "retry_at": {"type": ["string", "null"], "format": "date-time"},
+        "error_code": {"type": "string", "minLength": 1},
+        "failed_step": {"type": "string", "minLength": 1},
+        "recovered": {"const": true},
+        "observed_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "observability": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ok", "event_id", "service_id", "event_type", "severity"],
+          "properties": {
+            "ok": {"const": true},
+            "event_id": {"type": "string", "minLength": 1},
+            "service_id": {"const": "nex-cx"},
+            "event_type": {"const": "cx.ingestion.lease_recovered"},
+            "severity": {"const": "WARNING"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ok", "error_code", "detail", "status_code"],
+          "properties": {
+            "ok": {"const": false},
+            "error_code": {"type": "string", "minLength": 1},
+            "detail": {"type": "string", "minLength": 1},
+            "status_code": {"type": "integer", "minimum": 400}
+          }
+        }
+      ]
+    }
+  }
+}

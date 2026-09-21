@@ -21,6 +21,7 @@ CX_PROCESSING_EVENT_FAILED = "cx.processing.failed"
 CX_WORKER_LIFECYCLE_EVENT_BUSY = "cx.worker.lifecycle.busy"
 CX_WORKER_LIFECYCLE_EVENT_IDLE = "cx.worker.lifecycle.idle"
 CX_WORKER_LIFECYCLE_EVENT_ERROR = "cx.worker.lifecycle.error"
+CX_INGESTION_LEASE_RECOVERED_EVENT = "cx.ingestion.lease_recovered"
 AG_JOB_CONTROL_EVENT_SUCCEEDED = "ag.job_control.succeeded"
 AG_JOB_CONTROL_EVENT_FAILED = "ag.job_control.failed"
 
@@ -736,6 +737,24 @@ DEFAULT_OPERATIONAL_EVENT_TAXONOMY: tuple[OperationalEventTypeSpec, ...] = (
         ),
         description="CX processing worker failed a job and reported error state.",
         lifecycle_state="error",
+    ),
+    OperationalEventTypeSpec(
+        service_id="nex-cx",
+        event_type=CX_INGESTION_LEASE_RECOVERED_EVENT,
+        default_severity="WARNING",
+        subject_type="job",
+        detail_keys=(
+            "run_id",
+            "job_status",
+            "run_status",
+            "checkpoint_version",
+            "retry_at",
+            "failed_step",
+            "error_code",
+            "recovered",
+        ),
+        description="CX recovered an expired durable ingestion worker lease.",
+        lifecycle_state="recovered",
     ),
 )
 

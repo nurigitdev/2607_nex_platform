@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX CX API
-  version: 0.92.0
+  version: 0.93.0
   x-nex-owner-context:
     propagation: trusted-service-asserted-subject
     requiredHeaders:
@@ -17,6 +17,7 @@ tags:
   - name: Prompts
   - name: InternalJobControl
   - name: InternalServiceLogs
+  - name: InternalIngestion
 paths:
   /health:
     get:
@@ -310,6 +311,111 @@ paths:
           description: Source job is not replayable or replay idempotency conflicts.
         "422":
           description: Replay payload is invalid.
+  /api/v1/ingestion-runs/{run_id}:
+    get:
+      operationId: getCxOwnerScopedIngestionRun
+      tags:
+        - Content
+      parameters:
+        - $ref: "#/components/parameters/CxTenantId"
+        - $ref: "#/components/parameters/CxSubjectId"
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Owner-scoped, private-payload-free durable ingestion run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CxIngestionRunReadModel"
+        "401":
+          description: Service claim or owner context is missing or invalid.
+        "404":
+          description: Ingestion run was not found or is not visible to the owner.
+        "503":
+          description: Durable ingestion persistence is unavailable.
+  /api/v1/documents/{document_id}/ingestion-runs:
+    get:
+      operationId: listCxOwnerScopedDocumentIngestionRuns
+      tags:
+        - Content
+      parameters:
+        - $ref: "#/components/parameters/CxTenantId"
+        - $ref: "#/components/parameters/CxSubjectId"
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Owner-scoped durable ingestion history for one document.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CxIngestionRunCollection"
+        "401":
+          description: Service claim or owner context is missing or invalid.
+        "503":
+          description: Durable ingestion persistence is unavailable.
+  /internal/v1/ingestion/restart-plan:
+    get:
+      operationId: getCxIngestionRestartPlan
+      tags:
+        - InternalIngestion
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Read-only durable queue/run restart classification.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CxIngestionRestartPlan"
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Restart plan limit is invalid.
+        "503":
+          description: Job queue or durable run persistence is unavailable.
+  /internal/v1/ingestion/jobs/{job_id}/recover-expired-lease:
+    post:
+      operationId: recoverCxExpiredIngestionLease
+      tags:
+        - InternalIngestion
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Expired ingestion lease was recovered and safely observed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CxIngestionRecovery"
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Job or durable ingestion run was not found.
+        "409":
+          description: Job is not running or its lease has not expired.
+        "503":
+          description: Job queue or durable run persistence is unavailable.
   /api/v1/documents:
     parameters: &cxOwnerContextParameters
       - $ref: "#/components/parameters/CxTenantId"
@@ -2024,3 +2130,145 @@ components:
         minLength: 1
         maxLength: 128
         pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$'
+  schemas:
+    CxIngestionRunReadModel:
+      type: object
+      additionalProperties: false
+      required:
+        - read_model_schema_version
+        - run_id
+        - document_id
+        - job_id
+        - status
+        - current_step
+        - attempt_count
+        - max_attempts
+        - checkpoint_version
+        - trace_id
+        - request_id
+        - lease_expires_at
+        - retry_at
+        - last_error
+        - created_at
+        - updated_at
+        - completed_at
+        - step_total
+        - step_completed
+        - steps
+      properties:
+        read_model_schema_version:
+          const: cx_ingestion_run_read_model.v1
+        run_id: {type: string}
+        document_id: {type: string}
+        job_id: {type: string}
+        status: {type: string}
+        current_step: {type: [string, "null"]}
+        attempt_count: {type: integer, minimum: 0}
+        max_attempts: {type: integer, minimum: 1}
+        checkpoint_version: {type: integer, minimum: 0}
+        trace_id: {type: string}
+        request_id: {type: string}
+        lease_expires_at: {type: [string, "null"], format: date-time}
+        retry_at: {type: [string, "null"], format: date-time}
+        last_error: {type: [object, "null"], additionalProperties: true}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        completed_at: {type: [string, "null"], format: date-time}
+        step_total: {type: integer, minimum: 0}
+        step_completed: {type: integer, minimum: 0}
+        steps:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [step_id, status, attempt_count, output_ref, error_code, started_at, completed_at]
+            properties:
+              step_id: {type: string}
+              status: {type: string}
+              attempt_count: {type: integer, minimum: 0}
+              output_ref: {type: [string, "null"]}
+              error_code: {type: [string, "null"]}
+              started_at: {type: [string, "null"], format: date-time}
+              completed_at: {type: [string, "null"], format: date-time}
+    CxIngestionRunCollection:
+      type: object
+      additionalProperties: false
+      required: [read_model_schema_version, document_id, run_count, status_counts, runs]
+      properties:
+        read_model_schema_version:
+          const: cx_ingestion_run_read_model.v1
+        document_id: {type: string}
+        run_count: {type: integer, minimum: 0}
+        status_counts:
+          type: object
+          additionalProperties: {type: integer, minimum: 1}
+        runs:
+          type: array
+          items:
+            $ref: "#/components/schemas/CxIngestionRunReadModel"
+    CxIngestionRestartPlan:
+      type: object
+      additionalProperties: false
+      required: [restart_plan_schema_version, observed_at, limit, job_count, action_counts, mutation_performed, items]
+      properties:
+        restart_plan_schema_version:
+          const: cx_ingestion_restart_plan.v1
+        observed_at: {type: string, format: date-time}
+        limit: {type: integer, minimum: 1, maximum: 500}
+        job_count: {type: integer, minimum: 0}
+        action_counts:
+          type: object
+          additionalProperties: {type: integer, minimum: 1}
+        mutation_performed:
+          const: false
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [job_id, run_id, document_id, job_status, run_status, current_step, checkpoint_version, lease_expires_at, retry_at, action, reason]
+            properties:
+              job_id: {type: string}
+              run_id: {type: [string, "null"]}
+              document_id: {type: string}
+              job_status: {type: string}
+              run_status: {type: [string, "null"]}
+              current_step: {type: [string, "null"]}
+              checkpoint_version: {type: [integer, "null"], minimum: 0}
+              lease_expires_at: {type: [string, "null"], format: date-time}
+              retry_at: {type: [string, "null"], format: date-time}
+              action: {type: string}
+              reason: {type: string}
+    CxIngestionRecovery:
+      type: object
+      additionalProperties: false
+      required: [recovery_schema_version, action, result, observability]
+      properties:
+        recovery_schema_version:
+          const: cx_ingestion_recovery.v1
+        action:
+          const: RECOVER_EXPIRED_LEASE
+        result:
+          type: object
+          additionalProperties: false
+          required: [worker_result_schema_version, worker_id, status, job_id, job_status, run_id, run_status, checkpoint_version, retry_at, error_code, failed_step, recovered, observed_at]
+          properties:
+            worker_result_schema_version: {const: cx_ingestion_worker_result.v1}
+            worker_id: {type: string}
+            status: {type: string}
+            job_id: {type: string}
+            job_status: {type: string}
+            run_id: {type: string}
+            run_status: {type: string}
+            checkpoint_version: {type: integer, minimum: 1}
+            retry_at: {type: [string, "null"], format: date-time}
+            error_code: {type: string}
+            failed_step: {type: string}
+            recovered: {const: true}
+            observed_at: {type: string, format: date-time}
+        observability:
+          type: object
+          additionalProperties: true
+          required: [ok]
+          properties:
+            ok: {type: boolean}

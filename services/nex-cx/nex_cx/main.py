@@ -25,6 +25,7 @@ from nex_cx.ingestion_orchestration_repository import (
     IngestionRunRepository,
     SqlAlchemyIngestionRunRepository,
 )
+from nex_cx.ingestion_operations import register_ingestion_operations_routes
 from nex_cx.lexical_index import register_lexical_index_routes
 from nex_cx.processing import register_processing_routes
 from nex_cx.prompts import DEFAULT_CX_PROMPT_STORE
@@ -141,6 +142,11 @@ register_ingestion_routes(
     ),
     job_queue=SERVICE_PERSISTENCE.job_queue,
     ingestion_run_repository=CX_INGESTION_RUN_REPOSITORY,
+)
+register_ingestion_operations_routes(
+    app,
+    job_queue=SERVICE_PERSISTENCE.job_queue,
+    run_repository=CX_INGESTION_RUN_REPOSITORY,
 )
 register_document_library_routes(
     app,

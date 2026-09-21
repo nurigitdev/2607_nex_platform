@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_cx/ingestion_run_read_model.v1.schema.json",
+  "title": "NeX CX Durable Ingestion Run Read Model",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "read_model_schema_version", "run_id", "document_id", "job_id", "status",
+    "current_step", "attempt_count", "max_attempts", "checkpoint_version",
+    "trace_id", "request_id", "lease_expires_at", "retry_at", "last_error",
+    "created_at", "updated_at", "completed_at", "step_total", "step_completed", "steps"
+  ],
+  "properties": {
+    "read_model_schema_version": {"const": "cx_ingestion_run_read_model.v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "document_id": {"type": "string", "minLength": 1},
+    "job_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["QUEUED", "RUNNING", "WAITING_RETRY", "SUCCEEDED", "FAILED", "CANCELLED"]},
+    "current_step": {"type": ["string", "null"]},
+    "attempt_count": {"type": "integer", "minimum": 0},
+    "max_attempts": {"type": "integer", "minimum": 1},
+    "checkpoint_version": {"type": "integer", "minimum": 0},
+    "trace_id": {"type": "string", "minLength": 1},
+    "request_id": {"type": "string", "minLength": 1},
+    "lease_expires_at": {"$ref": "#/$defs/optional_date_time"},
+    "retry_at": {"$ref": "#/$defs/optional_date_time"},
+    "last_error": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["error_code", "failed_step", "retryable", "failed_at"],
+          "properties": {
+            "error_code": {"type": "string", "minLength": 1},
+            "failed_step": {"type": "string", "minLength": 1},
+            "retryable": {"type": "boolean"},
+            "failed_at": {"type": "string", "format": "date-time"}
+          }
+        }
+      ]
+    },
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"$ref": "#/$defs/optional_date_time"},
+    "step_total": {"type": "integer", "minimum": 0},
+    "step_completed": {"type": "integer", "minimum": 0},
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["step_id", "status", "attempt_count", "output_ref", "error_code", "started_at", "completed_at"],
+        "properties": {
+          "step_id": {"type": "string", "minLength": 1},
+          "status": {"enum": ["PENDING", "RUNNING", "SUCCEEDED", "SKIPPED", "FAILED"]},
+          "attempt_count": {"type": "integer", "minimum": 0},
+          "output_ref": {"type": ["string", "null"]},
+          "error_code": {"type": ["string", "null"]},
+          "started_at": {"$ref": "#/$defs/optional_date_time"},
+          "completed_at": {"$ref": "#/$defs/optional_date_time"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "optional_date_time": {
+      "oneOf": [
+        {"type": "string", "format": "date-time"},
+        {"type": "null"}
+      ]
+    }
+  }
+}

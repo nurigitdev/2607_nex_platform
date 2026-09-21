@@ -1,0 +1,26 @@
+{
+  "recovery_schema_version": "cx_ingestion_recovery.v1",
+  "action": "RECOVER_EXPIRED_LEASE",
+  "result": {
+    "worker_result_schema_version": "cx_ingestion_worker_result.v1",
+    "worker_id": "cx-ingestion-worker",
+    "status": "RETRY_SCHEDULED",
+    "job_id": "job-0928",
+    "job_status": "QUEUED",
+    "run_id": "run-0928",
+    "run_status": "WAITING_RETRY",
+    "checkpoint_version": 2,
+    "retry_at": "2026-09-21T00:03:30Z",
+    "error_code": "cx.ingestion_worker.lease_expired",
+    "failed_step": "extraction",
+    "recovered": true,
+    "observed_at": "2026-09-21T00:03:00Z"
+  },
+  "observability": {
+    "ok": true,
+    "event_id": "24fa667c-196f-5a4a-82a0-d0f28ce19928",
+    "service_id": "nex-cx",
+    "event_type": "cx.ingestion.lease_recovered",
+    "severity": "WARNING"
+  }
+}
