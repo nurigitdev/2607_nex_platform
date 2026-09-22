@@ -88,7 +88,7 @@ def test_protected_dgx_live_profile_passes_and_redacts_live_values() -> None:
             return httpx.Response(200, json={"data": [{"embedding": [0.1]}]})
         if url.endswith("/v1/rerank"):
             assert kwargs["json"] == {
-                "model": "Qwen3-Reranker-0.6B",
+                "model": "Qwen3-Reranker-4B",
                 "query": "nex live provider preflight",
                 "documents": ["NeX live provider preflight document."],
                 "top_n": 1,
@@ -181,7 +181,7 @@ def test_protected_dgx_live_profile_uses_vllm_defaults() -> None:
     )
     assert defaults["NEX_MO_REMOTE_EMBEDDING_MODEL"] == "Qwen3-Embedding-4B"
     assert defaults["NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE"] == "rerank"
-    assert defaults["NEX_MO_REMOTE_RERANKER_MODEL"] == "Qwen3-Reranker-0.6B"
+    assert defaults["NEX_MO_REMOTE_RERANKER_MODEL"] == "Qwen3-Reranker-4B"
 
 
 def test_protected_dgx_live_profile_keeps_legacy_pcx_defaults_separate() -> None:

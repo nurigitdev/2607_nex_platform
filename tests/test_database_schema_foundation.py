@@ -416,6 +416,20 @@ def test_cx_schema_tracks_retrieval_package_metadata_without_raw_text() -> None:
     assert "raw_evidence" not in compact
 
 
+def test_cx_schema_allows_hash_only_private_retrieval_evidence() -> None:
+    migration = normalized(
+        read_migration_named(
+            "nex-cx",
+            "0949_cx_retrieval_private_preview_nullable.sql",
+        )
+    )
+
+    assert "alter table cx_retrieval_evidence_items" in migration
+    assert "alter column evidence_text_preview drop not null" in migration
+    assert "0949_cx_retrieval_private_preview_nullable" in migration
+    assert "schema_migrations" in migration
+
+
 def test_cx_schema_tracks_processing_run_metadata_without_raw_payloads() -> None:
     compact = normalized(read_migration("nex-cx"))
     processing = normalized(

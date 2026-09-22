@@ -111,7 +111,7 @@ def test_protected_remote_provider_live_smoke_executes_three_providers_and_redac
             )
         if url.endswith("/v1/rerank"):
             assert kwargs["json"] == {
-                "model": "Qwen3-Reranker-0.6B",
+                "model": "Qwen3-Reranker-4B",
                 "query": smoke.RERANK_QUERY,
                 "documents": smoke.RERANK_DOCUMENTS,
                 "top_n": 2,

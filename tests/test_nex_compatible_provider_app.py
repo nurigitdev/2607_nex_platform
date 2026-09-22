@@ -52,7 +52,7 @@ def test_embedding_health_matches_contract_and_hides_runtime_paths() -> None:
     }
 
 
-def test_reranker_health_uses_current_qwen_0_6b_default() -> None:
+def test_reranker_health_uses_current_qwen_4b_default() -> None:
     settings = CompatibleProviderSettings.from_env(
         {"NEX_COMPAT_PROVIDER_CAPABILITY": "reranking"}
     )
@@ -62,8 +62,8 @@ def test_reranker_health_uses_current_qwen_0_6b_default() -> None:
         "schemas/service/nex_mo/compatible_provider_health.v1.schema.json",
         payload,
     )
-    assert payload["model_name"] == "Qwen3-Reranker-0.6B"
-    assert payload["provider_model_id"] == "Qwen/Qwen3-Reranker-0.6B"
+    assert payload["model_name"] == "Qwen3-Reranker-4B"
+    assert payload["provider_model_id"] == "Qwen/Qwen3-Reranker-4B"
     assert payload["runtime_metadata"] == {
         "backend": "mock",
         "request_shape": "nex_rerank_v1",
@@ -140,7 +140,7 @@ def test_rerank_endpoint_sorts_caps_and_optionally_returns_documents() -> None:
     response = client.post(
         "/v1/rerank",
         json={
-            "model": "Qwen3-Reranker-0.6B",
+            "model": "Qwen3-Reranker-4B",
             "query": "alpha beta",
             "documents": ["alpha beta document", "unrelated", "alpha only"],
             "top_n": 2,
@@ -165,7 +165,7 @@ def test_rerank_endpoint_omits_documents_by_default_and_caps_to_available_docs()
     response = client.post(
         "/v1/rerank",
         json={
-            "model": "Qwen3-Reranker-0.6B",
+            "model": "Qwen3-Reranker-4B",
             "query": "alpha",
             "documents": ["beta", "alpha"],
             "top_n": 10,
@@ -188,7 +188,7 @@ def test_provider_process_rejects_disabled_capability_endpoint() -> None:
     assert embedding_client.post(
         "/v1/rerank",
         json={
-            "model": "Qwen3-Reranker-0.6B",
+            "model": "Qwen3-Reranker-4B",
             "query": "alpha",
             "documents": ["alpha"],
         },

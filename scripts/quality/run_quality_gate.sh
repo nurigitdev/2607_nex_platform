@@ -353,6 +353,7 @@ node apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_weighted_rrf_rerank_privacy_contract.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_hybrid_retrieval_package_contract.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_retrieval_operations_observability.py --summary
+"$PYTHON_BIN" scripts/smoke/run_cx_permission_hybrid_live_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary

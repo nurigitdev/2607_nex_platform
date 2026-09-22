@@ -21,15 +21,15 @@ def test_local_live_provider_config_skips_without_live_mode() -> None:
         for profile in snapshot["model_profiles"]
         if profile["provider_capability"] == "reranking"
     )
-    assert reranker_profile["profile_name"] == "qwen3_reranker_0_6b_bf16"
-    assert reranker_profile["model_name"] == "Qwen3-Reranker-0.6B"
+    assert reranker_profile["profile_name"] == "qwen3_reranker_4b_bf16"
+    assert reranker_profile["model_name"] == "Qwen3-Reranker-4B"
 
     reranker_preflight = next(
         config
         for config in snapshot["preflight_configs"]
         if config["capability"] == "reranking"
     )
-    assert reranker_preflight["expected_models"] == ["Qwen3-Reranker-0.6B"]
+    assert reranker_preflight["expected_models"] == ["Qwen3-Reranker-4B"]
     assert reranker_preflight["timeout_seconds"] == 15.0
     assert reranker_preflight["timeout_env"] == (
         "NEX_MO_REMOTE_RERANKER_TIMEOUT_SECONDS"
@@ -67,8 +67,8 @@ def test_local_live_provider_config_passes_with_current_dgx_reranker_model() -> 
         for config in snapshot["execution_configs"]
         if config["capability"] == "reranking"
     )
-    assert reranker_config["model_name"] == "Qwen3-Reranker-0.6B"
-    assert reranker_config["model_revision"] == "Qwen3-Reranker-0.6B"
+    assert reranker_config["model_name"] == "Qwen3-Reranker-4B"
+    assert reranker_config["model_revision"] == "Qwen3-Reranker-4B"
     assert reranker_config["timeout_seconds"] == 15.0
     assert snapshot["profile_policy"]["request_shapes"] == {
         "embedding": "openai_embeddings",
@@ -98,7 +98,7 @@ def test_local_live_provider_config_reports_missing_endpoint_and_mismatch() -> N
         if issue["error_code"] == "expected_model_mismatch"
     )
     assert mismatch["capability"] == "reranking"
-    assert mismatch["model_name"] == "Qwen3-Reranker-0.6B"
+    assert mismatch["model_name"] == "Qwen3-Reranker-4B"
     assert mismatch["expected_models"] == ["Qwen3-reranker-4B"]
 
 

@@ -61,7 +61,7 @@ def test_remote_provider_configs_use_current_env_contract() -> None:
         "rerank",
         "openai_models",
     ]
-    assert configs[1].expected_models == ("Qwen3-Reranker-0.6B",)
+    assert configs[1].expected_models == ("Qwen3-Reranker-4B",)
     assert configs[2].url == "http://dgx.local:12000/v1/models"
     assert configs[2].headers()["Authorization"] == "Bearer secret"
     assert [config.timeout_seconds for config in configs] == [8.5, 8.5, 8.5]
@@ -929,7 +929,7 @@ def test_direct_vllm_profile_executes_three_providers_and_records_safe_telemetry
         "input": ["alpha", "beta"],
     }
     assert calls[1]["json"] == {
-        "model": "Qwen3-Reranker-0.6B",
+        "model": "Qwen3-Reranker-4B",
         "query": "quality",
         "documents": ["doc-a", "doc-b"],
         "top_n": 1,

@@ -476,7 +476,7 @@ def remote_reranker_config_issues(env: dict[str, str]) -> list[dict[str, object]
         )
     expected_models = expected_models_from_env(
         env.get("NEX_MO_LIVE_EXPECTED_RERANKER_MODELS"),
-        ("Qwen3-Reranker-0.6B",),
+        ("Qwen3-Reranker-4B",),
     )
     if expected_models and config.model_name not in expected_models:
         issues.append(

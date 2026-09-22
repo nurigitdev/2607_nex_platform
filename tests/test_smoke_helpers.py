@@ -3332,7 +3332,7 @@ def test_cx_retrieval_postgres_smoke_remote_reranker_fake_route_path(
 
     def requester(method: str, url: str, **kwargs: object) -> object:
         calls.append({"method": method, "url": url, **kwargs})
-        assert kwargs["json"]["model"] == "Qwen3-Reranker-0.6B"
+        assert kwargs["json"]["model"] == "Qwen3-Reranker-4B"
         assert kwargs["json"]["top_n"] == 1
         return FakeRerankerResponse()
 
@@ -3342,8 +3342,8 @@ def test_cx_retrieval_postgres_smoke_remote_reranker_fake_route_path(
             cx_retrieval_smoke.REMOTE_RERANKER_ENV: "1",
             "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9113/v1/rerank",
             "NEX_MO_REMOTE_RERANKER_API_KEY": "reranker-secret",
-            "NEX_MO_REMOTE_RERANKER_MODEL": "Qwen3-Reranker-0.6B",
-            "NEX_MO_LIVE_EXPECTED_RERANKER_MODELS": "Qwen3-Reranker-0.6B",
+            "NEX_MO_REMOTE_RERANKER_MODEL": "Qwen3-Reranker-4B",
+            "NEX_MO_LIVE_EXPECTED_RERANKER_MODELS": "Qwen3-Reranker-4B",
         },
         rerank_requester=requester,
     )
@@ -3445,7 +3445,7 @@ def test_cx_retrieval_postgres_smoke_helpers_cover_error_edges(
         {
             "NEX_MO_REMOTE_RERANKER_URL": "http://reranker.local/v1/rerank",
             "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE": "nex_pcx_rerank_v1",
-            "NEX_MO_REMOTE_RERANKER_MODEL": "Qwen3-Reranker-0.6B",
+            "NEX_MO_REMOTE_RERANKER_MODEL": "Qwen3-Reranker-4B",
         }
     ) == [
         {
@@ -3466,7 +3466,7 @@ def test_cx_retrieval_postgres_smoke_helpers_cover_error_edges(
             {
                 "NEX_MO_REMOTE_RERANKER_URL": "http://reranker.local/v1/rerank",
                 "NEX_MO_REMOTE_RERANKER_MODEL": "wrong-model",
-                "NEX_MO_LIVE_EXPECTED_RERANKER_MODELS": "Qwen3-Reranker-0.6B",
+                "NEX_MO_LIVE_EXPECTED_RERANKER_MODELS": "Qwen3-Reranker-4B",
             }
         )[0]["error_code"]
         == "remote_reranker_expected_model_mismatch"
@@ -3486,7 +3486,7 @@ def test_cx_retrieval_postgres_smoke_helpers_cover_error_edges(
     remote_env = {
         cx_retrieval_smoke.REMOTE_RERANKER_ENV: "1",
         "NEX_MO_REMOTE_RERANKER_URL": "http://reranker.local/v1/rerank",
-        "NEX_MO_REMOTE_RERANKER_MODEL": "Qwen3-Reranker-0.6B",
+        "NEX_MO_REMOTE_RERANKER_MODEL": "Qwen3-Reranker-4B",
     }
 
     class FailingRerankerResponse:

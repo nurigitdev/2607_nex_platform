@@ -75,7 +75,7 @@ def test_protected_live_rag_smoke_runs_live_shape_and_redacts_values() -> None:
                 },
             )
         if url.endswith("/v1/rerank"):
-            assert payload["model"] == "Qwen3-Reranker-0.6B"
+            assert payload["model"] == "Qwen3-Reranker-4B"
             return httpx.Response(
                 200,
                 json={

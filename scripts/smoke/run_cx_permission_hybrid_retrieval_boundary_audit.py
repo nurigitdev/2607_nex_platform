@@ -261,7 +261,7 @@ def _boundary_decision() -> dict[str, Any]:
         "remote_provider_required_now": False,
         "remote_provider_required_slice": "0949",
         "live_embedding_model": "Qwen3-Embedding-4B",
-        "live_reranker_model": "Qwen3-Reranker-0.6B",
+        "live_reranker_model": "Qwen3-Reranker-4B",
     }
 
 

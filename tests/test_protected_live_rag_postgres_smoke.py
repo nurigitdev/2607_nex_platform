@@ -24,8 +24,8 @@ def _live_env(database_url: str = "postgresql://user:secret@localhost/db") -> di
         "NEX_MO_LIVE_EXPECTED_EMBEDDING_MODELS": "Qwen3-Embedding-4B",
         "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9113/v1/rerank",
         "NEX_MO_REMOTE_RERANKER_API_KEY": "live-reranker-secret",
-        "NEX_MO_REMOTE_RERANKER_MODEL": "Qwen3-Reranker-0.6B",
-        "NEX_MO_LIVE_EXPECTED_RERANKER_MODELS": "Qwen3-Reranker-0.6B",
+        "NEX_MO_REMOTE_RERANKER_MODEL": "Qwen3-Reranker-4B",
+        "NEX_MO_LIVE_EXPECTED_RERANKER_MODELS": "Qwen3-Reranker-4B",
         "NEX_MO_VLLM_CHAT_COMPLETIONS_URL": (
             "http://dgx.local:12000/v1/chat/completions"
         ),
@@ -66,7 +66,7 @@ def _fake_remote_request(
                 },
             )
         if url.endswith("/v1/rerank"):
-            assert payload["model"] == "Qwen3-Reranker-0.6B"
+            assert payload["model"] == "Qwen3-Reranker-4B"
             assert payload["top_n"] == 1
             return httpx.Response(
                 200,

@@ -12,8 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 DEFAULT_EMBEDDING_MODEL = "Qwen3-embedding-4B"
-DEFAULT_RERANKER_MODEL = "Qwen3-Reranker-0.6B"
-DEFAULT_RERANKER_PROVIDER_MODEL_ID = "Qwen/Qwen3-Reranker-0.6B"
+DEFAULT_RERANKER_MODEL = "Qwen3-Reranker-4B"
+DEFAULT_RERANKER_PROVIDER_MODEL_ID = "Qwen/Qwen3-Reranker-4B"
 DEFAULT_MODEL_ROOT = "/data/nex-platform/models"
 DEFAULT_MOCK_DIMENSIONS = 8
 PRIVATE_RUNTIME_KEY_PATTERN = re.compile(r"(path|dir|url|token|secret|password|key)")

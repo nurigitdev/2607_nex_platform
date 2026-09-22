@@ -41,7 +41,7 @@ def test_compatible_provider_live_smoke_passes_and_redacts_env_values() -> None:
         if url == "http://dgx.local:9112/v1/models":
             return httpx.Response(200, json=models_response("Qwen3-Embedding-4B"))
         if url == "http://dgx.local:9113/v1/models":
-            return httpx.Response(200, json=models_response("Qwen3-Reranker-0.6B"))
+            return httpx.Response(200, json=models_response("Qwen3-Reranker-4B"))
         if url.endswith("/v1/embeddings"):
             assert kwargs["json"] == {
                 "model": "Qwen3-Embedding-4B",
@@ -108,7 +108,7 @@ def test_compatible_provider_live_smoke_accepts_data_model_list_and_score_key() 
         if url == "http://dgx.local:9112/v1/models":
             return httpx.Response(200, json={"models": ["Qwen3-Embedding-4B"]})
         if url == "http://dgx.local:9113/v1/models":
-            return httpx.Response(200, json={"models": ["Qwen3-Reranker-0.6B"]})
+            return httpx.Response(200, json={"models": ["Qwen3-Reranker-4B"]})
         if url.endswith("/v1/embeddings"):
             return httpx.Response(
                 200,
@@ -122,7 +122,7 @@ def test_compatible_provider_live_smoke_accepts_data_model_list_and_score_key() 
         return httpx.Response(
             200,
             json={
-                "model": "Qwen3-Reranker-0.6B",
+                "model": "Qwen3-Reranker-4B",
                 "data": [{"index": 1, "score": 0.7}],
                 "usage": {"prompt_tokens": 3, "total_tokens": 3},
             },
@@ -135,7 +135,7 @@ def test_compatible_provider_live_smoke_accepts_data_model_list_and_score_key() 
 
     assert evidence["status"] == "PASS"
     assert evidence["checks"][3]["observed"] == {
-        "model": "Qwen3-Reranker-0.6B",
+        "model": "Qwen3-Reranker-4B",
         "result_count": 1,
         "top_index": 1,
     }
@@ -159,7 +159,7 @@ def test_compatible_provider_live_smoke_reports_response_dimension_mismatch() ->
         if url == "http://dgx.local:9112/v1/models":
             return httpx.Response(200, json=models_response("Qwen3-Embedding-4B"))
         if url == "http://dgx.local:9113/v1/models":
-            return httpx.Response(200, json=models_response("Qwen3-Reranker-0.6B"))
+            return httpx.Response(200, json=models_response("Qwen3-Reranker-4B"))
         if url.endswith("/v1/embeddings"):
             return httpx.Response(
                 200,
@@ -189,7 +189,7 @@ def test_compatible_provider_live_smoke_reports_response_dimension_mismatch() ->
 def test_compatible_provider_live_smoke_reports_bad_rerank_shape() -> None:
     def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
         if url.endswith("/v1/models"):
-            model = "Qwen3-Reranker-0.6B" if ":9113" in url else "Qwen3-Embedding-4B"
+            model = "Qwen3-Reranker-4B" if ":9113" in url else "Qwen3-Embedding-4B"
             return httpx.Response(200, json=models_response(model))
         if url.endswith("/v1/embeddings"):
             return httpx.Response(

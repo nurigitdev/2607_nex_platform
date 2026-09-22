@@ -8,8 +8,7 @@ Model profile defaults:
 
 - Model root: `NEX_MO_MODEL_ROOT` or `/data/nex-platform/models`
 - Embedding: `qwen3_embedding_4b_bf16` at `qwen3-embedding-4b-bf16`
-- Reranker: `qwen3_reranker_0_6b_bf16` at
-  `qwen3-reranker-0.6b-bf16`
+- Reranker: `qwen3_reranker_4b_bf16` at `qwen3-reranker-4b-bf16`
 - Generation primary: `qwen3_5_122b_a10b_nvfp4` at
   `qwen3.5-122b-a10b-nvfp4`
 - Generation candidate: `qwen3_6_27b_nvfp4` at `qwen3.6-27b-nvfp4`
@@ -20,7 +19,7 @@ Model profile defaults:
   part of the default regression gate.
 - Local live config guard can be run without network calls. It verifies that
   selected execution models and live preflight expected models agree, including
-  the current DGX-Spark reranker target `Qwen3-Reranker-0.6B`.
+  the current DGX-Spark reranker target `Qwen3-Reranker-4B`.
 - Protected live profiles are split by provider shape:
   - `dgx_vllm`: canonical direct vLLM profile for embedding, reranking, and
     generation.
