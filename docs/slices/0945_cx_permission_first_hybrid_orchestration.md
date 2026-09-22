@@ -44,8 +44,8 @@ Results:
 - Deterministic contract evidence: `9/9` checks passed.
 - Full quality gate: `6968 passed`; repository statement coverage 98.87% and
   branch coverage 96.51%.
-- Contract validation: 85 JSON Schemas, 136 examples, 101 OpenAPI operations,
-  and 7 shared parameters passed.
+- Contract validation: 85 JSON Schemas, 136 examples, 101 negative examples,
+  and 7 OpenAPI documents passed.
 
 This deterministic Slice does not require PostgreSQL or remote providers, so
 both remained disabled. The complete actual hybrid path is reserved for Slice
