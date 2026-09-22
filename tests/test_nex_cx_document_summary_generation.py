@@ -72,7 +72,7 @@ def _response(text: str = "Deployment is approved for 2026-10-01.") -> dict[str,
     return {
         "mo_generation_id": "mo-summary-0954",
         "alias": "general-llm-default",
-        "model_revision": "Qwen3.5-122B-A10B-NVFP4",
+        "model_revision": "Qwen3.5-4B",
         "deployment_id": "mock-generation-local",
         "provider_type": "mock-generation",
         "output": {"type": "text", "text": text},
@@ -137,6 +137,7 @@ def test_summary_generation_payload_keeps_raw_markdown_out_of_metadata() -> None
 
     assert payload["alias"] == "general-llm-default"
     assert payload["generation_profile"] == "document-summary"
+    assert payload["reasoning_mode"] == "disabled"
     assert payload["timeout_ms"] == 60_000
     assert payload["messages"][1]["content"].endswith(MARKDOWN)
     assert payload["metadata"]["model_profile_id"] == DEFAULT_SUMMARY_MODEL_PROFILE

@@ -99,7 +99,7 @@ def test_protected_dgx_live_profile_passes_and_redacts_live_values() -> None:
             )
         return httpx.Response(
             200,
-            json={"data": [{"id": "Qwen3.5-122B-A10B-NVFP4"}]},
+            json={"data": [{"id": "Qwen3.5-4B"}]},
         )
 
     evidence = protected_live.run_protected_dgx_live_profile(
@@ -212,7 +212,7 @@ def test_protected_dgx_live_profile_profile_arg_marks_effective_legacy_profile()
             return httpx.Response(200, json={"results": [{"index": 0, "score": 0.9}]})
         return httpx.Response(
             200,
-            json={"data": [{"id": "Qwen3.5-122B-A10B-NVFP4"}]},
+            json={"data": [{"id": "Qwen3.5-4B"}]},
         )
 
     evidence = protected_live.run_protected_dgx_live_profile(

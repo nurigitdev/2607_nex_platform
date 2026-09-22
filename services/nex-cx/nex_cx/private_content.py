@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 import re
+import struct
 from typing import Protocol, runtime_checkable
 
 from nex_cx.access_context import CxAccessContext
@@ -228,6 +229,20 @@ def normalize_private_vector(
                 error_code="CX_PRIVATE_VECTOR_INVALID",
                 detail="Private vector values must be finite numbers.",
             )
+        try:
+            number = struct.unpack("!f", struct.pack("!f", number))[0]
+        except OverflowError as exc:
+            raise CxPrivateContentError(
+                status_code=422,
+                error_code="CX_PRIVATE_VECTOR_INVALID",
+                detail="Private vector values must fit IEEE-754 float32.",
+            ) from exc
+        if not math.isfinite(number):
+            raise CxPrivateContentError(
+                status_code=422,
+                error_code="CX_PRIVATE_VECTOR_INVALID",
+                detail="Private vector values must fit IEEE-754 float32.",
+            )
         normalized.append(number)
     result = tuple(normalized)
     _assert_expected_sha256(expected_sha256, sha256_private_vector(result))
@@ -293,8 +308,12 @@ def sha256_private_vector(vector: Sequence[float]) -> str:
 
 
 def serialize_private_vector(vector: Sequence[float]) -> bytes:
+    canonical = [
+        struct.unpack("!f", struct.pack("!f", float(value)))[0]
+        for value in vector
+    ]
     payload = json.dumps(
-        {"embedding": [float(value) for value in vector]},
+        {"embedding": canonical},
         ensure_ascii=True,
         sort_keys=True,
         separators=(",", ":"),

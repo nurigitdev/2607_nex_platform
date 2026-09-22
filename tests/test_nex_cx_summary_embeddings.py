@@ -22,6 +22,7 @@ from nex_cx.summary_embeddings import (
     sha256_json,
     store_summary_embedding_index,
 )
+from nex_cx.private_content import sha256_private_vector
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
 
 
@@ -175,7 +176,7 @@ def test_store_summary_embedding_index_hashes_vector_without_leak(
     )
 
     assert record["summary_embedding_schema_version"] == "cx_document_summary_embedding.v1"
-    assert record["embedding_sha256"] == sha256_json({"embedding": [0.0, 0.5, 1.0]})
+    assert record["embedding_sha256"] == sha256_private_vector([0.0, 0.5, 1.0])
     assert record["vector_dimension"] == 3
     assert store.get_summary_embedding_vector(summary["document_summary_id"]) == [
         0.0,

@@ -30,8 +30,8 @@ def _live_env(database_url: str = "postgresql://user:secret@localhost/db") -> di
             "http://dgx.local:12000/v1/chat/completions"
         ),
         "NEX_MO_VLLM_API_KEY": "live-generation-secret",
-        "NEX_MO_VLLM_MODEL": "Qwen3.5-122B-A10B-NVFP4",
-        "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": "Qwen3.5-122B-A10B-NVFP4",
+        "NEX_MO_VLLM_MODEL": "Qwen3.5-4B",
+        "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": "Qwen3.5-4B",
         "NEX_MO_PROVIDER_MODE": "live",
         "NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE": "openai_embeddings",
         "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE": "rerank",
@@ -75,7 +75,7 @@ def _fake_remote_request(
                     "usage": {"prompt_tokens": 8, "total_tokens": 8},
                 },
             )
-        assert payload["model"] == "Qwen3.5-122B-A10B-NVFP4"
+        assert payload["model"] == "Qwen3.5-4B"
         assert payload["messages"][0]["role"] == "user"
         return httpx.Response(
             200,

@@ -35,7 +35,7 @@ def test_boundary_decision_freezes_summary_similarity_scope() -> None:
 
     assert decision["summary_hard_limit_chars"] == 1000
     assert decision["summary_generation_model"] == (
-        "Qwen3.5-122B-A10B-NVFP4"
+        "Qwen3.5-4B"
     )
     assert decision["summary_embedding_model"] == "Qwen3-Embedding-4B"
     assert decision["summary_embedding_dimension"] == 2560

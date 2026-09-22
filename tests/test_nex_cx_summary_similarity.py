@@ -129,6 +129,7 @@ def test_owner_scoped_summary_similarity_returns_safe_ranked_candidates():
         "summary.summary_text_sha256 = summary_vector.summary_text_sha256",
         "summary.document_summary_id = ( SELECT latest.document_summary_id",
         "summary_vector.profile_fingerprint = :profile_fingerprint",
+        "CAST(:exclude_content_object_id AS uuid) IS NULL",
     ):
         assert token in sql
 

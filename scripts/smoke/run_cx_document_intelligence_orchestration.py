@@ -39,7 +39,7 @@ class _GenerationClient:
         return {
             "mo_generation_id": "mo-summary-0957-evidence",
             "alias": "general-llm-default",
-            "model_revision": "Qwen3.5-122B-A10B-NVFP4",
+            "model_revision": "Qwen3.5-4B",
             "deployment_id": "mock-generation-0957",
             "provider_type": "mock-generation",
             "output": {
@@ -221,7 +221,7 @@ def _run(work_root: Path) -> dict[str, object]:
         "generation_profile": run_result["summary"]["summarizer"][
             "model_revision"
         ]
-        == "Qwen3.5-122B-A10B-NVFP4",
+        == "Qwen3.5-4B",
         "embedding_profile": run_result["summary_embedding"]["model_revision"]
         == "Qwen3-Embedding-4B",
         "vector_fresh": run_result["summary_vector"]["freshness"]["usable"]

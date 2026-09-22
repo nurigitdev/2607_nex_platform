@@ -148,6 +148,19 @@ def test_private_vector_contract_normalizes_and_verifies_integrity() -> None:
     ) == (1.0, -0.5, 0.25)
 
 
+def test_private_vector_contract_uses_float32_canonical_integrity() -> None:
+    vector = [0.123456789123, -0.987654321987]
+    expected = sha256_private_vector(vector)
+    normalized = normalize_private_vector(
+        key=_key("summary_embedding"),
+        vector=vector,
+        expected_sha256=expected,
+    )
+
+    assert normalized != tuple(vector)
+    assert sha256_private_vector(normalized) == expected
+
+
 def test_private_vector_contract_rejects_wrong_kind() -> None:
     with pytest.raises(CxPrivateContentError) as caught:
         normalize_private_vector(

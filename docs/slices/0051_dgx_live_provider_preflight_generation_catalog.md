@@ -33,6 +33,10 @@ manually or as a protected release/nightly check.
 Slice 0061 aligned the reranker expected model with the current DGX-Spark
 remote provider runtime.
 
+Slice 0959 superseded the selected generation profile with
+`qwen3_5_4b_bf16` / `Qwen3.5-4B` after the live provider moved to port `9111`.
+The 122B entry above records the catalog state at Slice 0051.
+
 ## Files
 
 - `services/nex-mo/nex_mo/providers.py`

@@ -126,7 +126,7 @@ def test_protected_remote_provider_live_smoke_executes_three_providers_and_redac
                     "usage": {"prompt_tokens": 5, "total_tokens": 5},
                 },
             )
-        assert kwargs["json"]["model"] == "Qwen3.5-122B-A10B-NVFP4"
+        assert kwargs["json"]["model"] == "Qwen3.5-4B"
         assert kwargs["json"]["messages"] == [
             {"role": "user", "content": smoke.GENERATION_PROMPT}
         ]

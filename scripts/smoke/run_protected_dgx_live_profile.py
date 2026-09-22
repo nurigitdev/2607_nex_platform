@@ -236,10 +236,10 @@ def protected_dgx_vllm_profile_defaults() -> dict[str, str]:
         "NEX_MO_REMOTE_RERANKER_MODEL_REVISION": "Qwen3-Reranker-4B",
         "NEX_MO_REMOTE_RERANKER_DEPLOYMENT_ID": "vllm-reranker-http",
         "NEX_MO_LIVE_EXPECTED_RERANKER_MODELS": "Qwen3-Reranker-4B",
-        "NEX_MO_VLLM_MODEL": "Qwen3.5-122B-A10B-NVFP4",
-        "NEX_MO_VLLM_MODEL_REVISION": "Qwen3.5-122B-A10B-NVFP4",
+        "NEX_MO_VLLM_MODEL": "Qwen3.5-4B",
+        "NEX_MO_VLLM_MODEL_REVISION": "Qwen3.5-4B",
         "NEX_MO_VLLM_DEPLOYMENT_ID": "vllm-generation-http",
-        "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": "Qwen3.5-122B-A10B-NVFP4",
+        "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": "Qwen3.5-4B",
     }
 
 
@@ -265,10 +265,10 @@ def protected_dgx_pcx_legacy_profile_defaults() -> dict[str, str]:
         "NEX_MO_REMOTE_RERANKER_SOURCE_PROFILE_NAME": "qwen3_4b_2560",
         "NEX_MO_REMOTE_RERANKER_SOURCE_RETRIEVAL_STRATEGY": "preflight",
         "NEX_MO_REMOTE_RERANKER_SOURCE_SCORE": "0.5",
-        "NEX_MO_VLLM_MODEL": "Qwen3.5-122B-A10B-NVFP4",
-        "NEX_MO_VLLM_MODEL_REVISION": "Qwen3.5-122B-A10B-NVFP4",
+        "NEX_MO_VLLM_MODEL": "Qwen3.5-4B",
+        "NEX_MO_VLLM_MODEL_REVISION": "Qwen3.5-4B",
         "NEX_MO_VLLM_DEPLOYMENT_ID": "vllm-generation-http",
-        "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": "Qwen3.5-122B-A10B-NVFP4",
+        "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": "Qwen3.5-4B",
     }
 
 

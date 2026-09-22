@@ -30,7 +30,7 @@ def _source(label: str = "a"):
 def _profile(revision: str = "v1", *, prompt: str | None = "prompt-v1"):
     return build_summary_generation_profile(
         provider_alias="generation",
-        model_profile_id="Qwen3.5-122B-A10B-NVFP4",
+        model_profile_id="Qwen3.5-4B",
         model_revision=revision,
         deployment_id="deployment-a",
         prompt_template_version_id=prompt,

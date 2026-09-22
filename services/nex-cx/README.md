@@ -171,7 +171,7 @@ Internal persistence boundary:
 - Document summaries use `summary_1000_0`, target 900 chars, and hard limit
   1000 chars so summary text fits within one default retrieval chunk.
 - Document-summary generation can use the NeX-MO `general-llm-default` port with
-  the `Qwen3.5-122B-A10B-NVFP4` profile. The adapter rejects truncated or
+  the `Qwen3.5-4B` profile. The adapter rejects truncated or
   over-limit responses and records safe model/deployment lineage.
 - Summary embeddings index the document summary separately from chunk
   embeddings for future document-level similarity features.
@@ -424,6 +424,16 @@ Grounded generation validation:
   live retrieval score, smoke override threshold, default low-confidence
   threshold, default confidence bucket, and whether generation was allowed only
   because the smoke threshold was lowered.
+- Protected document-intelligence PostgreSQL/DGX evidence is available through
+  `scripts/smoke/run_cx_document_intelligence_live_postgres_smoke.py`. It is
+  skipped by default and only writes when
+  `NEX_CX_DOCUMENT_INTELLIGENCE_LIVE_POSTGRES_SMOKE=1` is set with the `test`
+  profile. The smoke verifies the exact `nex_cx_test` database and role, runs
+  migrations, generates and embeds two owner-private summaries through the
+  live MO provider path, publishes 2560-dimensional pgvector rows, performs an
+  owner-scoped similarity query, observes metadata-only events, and removes
+  all temporary database and filesystem fixtures. Its evidence excludes source
+  text, generated summary text, vectors, storage paths, endpoints, and secrets.
 - CX retrieval PostgreSQL smoke evidence is available through
   `scripts/smoke/run_cx_retrieval_postgres_smoke.py`. It is skipped by default
   and only writes to the CX test database when

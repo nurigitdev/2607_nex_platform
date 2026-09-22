@@ -12,7 +12,7 @@ def test_document_intelligence_summary_contract_passes() -> None:
     assert result["passed_checks"] == 10
     assert all(result["checks"].values())
     assert result["summary_hard_limit_chars"] == 1000
-    assert result["generation_model"] == "Qwen3.5-122B-A10B-NVFP4"
+    assert result["generation_model"] == "Qwen3.5-4B"
     assert result["embedding_model"] == "Qwen3-Embedding-4B"
     assert result["postgres_required"] is False
     assert result["remote_provider_required"] is False

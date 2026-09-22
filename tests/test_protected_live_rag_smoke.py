@@ -83,7 +83,7 @@ def test_protected_live_rag_smoke_runs_live_shape_and_redacts_values() -> None:
                     "usage": {"prompt_tokens": 4, "total_tokens": 4},
                 },
             )
-        assert payload["model"] == "Qwen3.5-122B-A10B-NVFP4"
+        assert payload["model"] == "Qwen3.5-4B"
         assert payload["messages"][0]["role"] == "user"
         return httpx.Response(
             200,

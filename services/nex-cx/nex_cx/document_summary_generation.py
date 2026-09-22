@@ -10,7 +10,7 @@ from nex_cx.generation import MoGenerationClient
 
 
 DEFAULT_SUMMARY_GENERATION_ALIAS = "general-llm-default"
-DEFAULT_SUMMARY_MODEL_PROFILE = "Qwen3.5-122B-A10B-NVFP4"
+DEFAULT_SUMMARY_MODEL_PROFILE = "Qwen3.5-4B"
 DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS = 512
 DEFAULT_SUMMARY_TIMEOUT_MS = 60_000
 
@@ -58,6 +58,7 @@ def build_document_summary_generation_payload(
         "provider_capability": "generation",
         "workload_class": "LLM_BATCH",
         "generation_profile": "document-summary",
+        "reasoning_mode": "disabled",
         "messages": [
             {"role": "system", "content": prompt},
             {

@@ -69,7 +69,7 @@ class FakeGenerationClient:
         return {
             "mo_generation_id": "mo-summary-0957",
             "alias": "general-llm-default",
-            "model_revision": "Qwen3.5-122B-A10B-NVFP4",
+            "model_revision": "Qwen3.5-4B",
             "deployment_id": "mock-generation-0957",
             "provider_type": "mock-generation",
             "output": {

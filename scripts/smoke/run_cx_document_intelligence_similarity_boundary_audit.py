@@ -97,7 +97,7 @@ EVIDENCE_TOKENS = (
     EvidenceToken(
         "generation_model",
         "scripts/smoke/run_protected_dgx_live_profile.py",
-        '"NEX_MO_VLLM_MODEL": "Qwen3.5-122B-A10B-NVFP4"',
+        '"NEX_MO_VLLM_MODEL": "Qwen3.5-4B"',
     ),
     EvidenceToken(
         "embedding_model",
@@ -325,7 +325,7 @@ def _boundary_decision() -> dict[str, Any]:
         "summary_source": "latest_ready_extracted_markdown",
         "summary_hard_limit_chars": 1000,
         "summary_storage_policy": "private_durable_payload_reference",
-        "summary_generation_model": "Qwen3.5-122B-A10B-NVFP4",
+        "summary_generation_model": "Qwen3.5-4B",
         "summary_embedding_model": "Qwen3-Embedding-4B",
         "summary_embedding_dimension": 2560,
         "similarity_backend": "owner_scoped_fresh_postgresql_pgvector",

@@ -276,7 +276,7 @@ def test_remote_provider_configs_keep_legacy_live_endpoint_fallbacks() -> None:
 
 
 def test_selected_generation_model_default_follows_profile_catalog() -> None:
-    assert selected_generation_model_names({}) == ("Qwen3.5-122B-A10B-NVFP4",)
+    assert selected_generation_model_names({}) == ("Qwen3.5-4B",)
     assert selected_generation_model_names(
         {
             "NEX_MO_GENERATION_PROFILE": "qwen3_6_27b_nvfp4",
@@ -907,6 +907,7 @@ def test_direct_vllm_profile_executes_three_providers_and_records_safe_telemetry
             "alias": "general-llm-default",
             "provider_capability": "generation",
             "prompt": "Say hello.",
+            "reasoning_mode": "enabled",
             "max_output_tokens": 32,
         },
         request_id="req-001",
@@ -934,8 +935,9 @@ def test_direct_vllm_profile_executes_three_providers_and_records_safe_telemetry
         "documents": ["doc-a", "doc-b"],
         "top_n": 1,
     }
-    assert calls[2]["json"]["model"] == "Qwen3.5-122B-A10B-NVFP4"
+    assert calls[2]["json"]["model"] == "Qwen3.5-4B"
     assert calls[2]["json"]["messages"] == [{"role": "user", "content": "Say hello."}]
+    assert calls[2]["json"]["chat_template_kwargs"] == {"enable_thinking": True}
     assert all(call["headers"]["Authorization"] == "Bearer secret" for call in calls)
 
     assert embedding["model_revision"] == "Qwen3-Embedding-4B"
@@ -1171,6 +1173,7 @@ def test_execute_remote_generation_request_posts_chat_completion_and_normalizes(
                 {"role": "user", "content": "Draft the summary."},
             ],
             "response_format": {"type": "json_object"},
+            "reasoning_mode": "disabled",
             "max_output_tokens": 128,
             "temperature": 0.2,
             "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
@@ -1205,6 +1208,7 @@ def test_execute_remote_generation_request_posts_chat_completion_and_normalizes(
                 "temperature": 0.2,
                 "max_tokens": 128,
                 "stream": False,
+                "chat_template_kwargs": {"enable_thinking": False},
                 "response_format": {"type": "json_object"},
             },
             "timeout": DEFAULT_REMOTE_GENERATION_TIMEOUT_SECONDS,
@@ -1292,6 +1296,7 @@ def test_execute_remote_generation_request_rejects_missing_config_and_streaming(
         ({"prompt": "x", "temperature": "warm"}, "mo.request_invalid"),
         ({"prompt": "x", "max_output_tokens": 0}, "mo.request_invalid"),
         ({"prompt": "x", "max_output_tokens": 2048}, "mo.generation_parameter_out_of_bounds"),
+        ({"prompt": "x", "reasoning_mode": "sometimes"}, "mo.request_invalid"),
         ({"prompt": "x", "provider_endpoint": "http://bad.local"}, "mo.provider_field_forbidden"),
     ],
 )
@@ -1418,7 +1423,7 @@ def test_run_remote_provider_preflight_check_validates_vllm_model_list() -> None
         url="http://dgx.local:12000/v1/models",
         method="GET",
         request_shape="openai_models",
-        expected_models=("Qwen3.5-122B-A10B-NVFP4",),
+        expected_models=("Qwen3.5-4B",),
     )
 
     def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
@@ -1427,7 +1432,7 @@ def test_run_remote_provider_preflight_check_validates_vllm_model_list() -> None
             200,
             json={
                 "data": [
-                    {"id": "Qwen3.5-122B-A10B-NVFP4"},
+                    {"id": "Qwen3.5-4B"},
                     {"id": "Qwen3.6-27B-NVFP4"},
                 ]
             },
@@ -1446,7 +1451,7 @@ def test_run_remote_provider_preflight_check_reports_missing_config_and_models()
         url="",
         method="GET",
         request_shape="openai_models",
-        expected_models=("Qwen3.5-122B-A10B-NVFP4",),
+        expected_models=("Qwen3.5-4B",),
     )
 
     assert run_remote_provider_preflight_check(missing_config)["failure_code"] == (
@@ -1459,7 +1464,7 @@ def test_run_remote_provider_preflight_check_reports_missing_config_and_models()
         url="http://dgx.local:12000/v1/models",
         method="GET",
         request_shape="openai_models",
-        expected_models=("Qwen3.5-122B-A10B-NVFP4",),
+        expected_models=("Qwen3.5-4B",),
     )
 
     def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
@@ -1469,7 +1474,7 @@ def test_run_remote_provider_preflight_check_reports_missing_config_and_models()
 
     assert result["status"] == "FAIL"
     assert result["failure_code"] == "expected_model_missing"
-    assert result["missing_expected_models"] == ["Qwen3.5-122B-A10B-NVFP4"]
+    assert result["missing_expected_models"] == ["Qwen3.5-4B"]
 
 
 def test_run_remote_provider_preflight_check_reports_http_and_response_errors() -> None:
@@ -1481,7 +1486,7 @@ def test_run_remote_provider_preflight_check_reports_http_and_response_errors() 
         url="http://dgx.local:12000/v1/models",
         method="GET",
         request_shape="openai_models",
-        expected_models=("Qwen3.5-122B-A10B-NVFP4",),
+        expected_models=("Qwen3.5-4B",),
     )
 
     assert run_remote_provider_preflight_check(

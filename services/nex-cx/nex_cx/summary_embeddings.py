@@ -27,6 +27,7 @@ from nex_cx.embedding_index import (
     build_default_mo_embedding_client,
 )
 from nex_cx.ingestion import ContentIngestionStore, sha256_text
+from nex_cx.private_content import sha256_private_vector
 
 
 @dataclass(frozen=True)
@@ -190,7 +191,7 @@ def store_summary_embedding_index(
         "model_revision": mo_response["model_revision"],
         "deployment_id": mo_response["deployment_id"],
         "summary_text_sha256": summary["summary_text_sha256"],
-        "embedding_sha256": sha256_json({"embedding": vector}),
+        "embedding_sha256": sha256_private_vector(vector),
         "vector_dimension": len(vector),
         "usage": mo_response.get("usage", {}),
         "created_at": now,

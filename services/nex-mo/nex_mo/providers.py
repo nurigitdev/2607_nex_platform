@@ -22,13 +22,14 @@ from nex_runtime import (
 
 DEFAULT_MODEL_ROOT = "/data/nex-platform/models"
 DEFAULT_PROVIDER_MODE = "mock"
-DEFAULT_GENERATION_PROFILE = "qwen3_5_122b_a10b_nvfp4"
+DEFAULT_GENERATION_PROFILE = "qwen3_5_4b_bf16"
 GENERATION_PROFILE_CANDIDATES: tuple[dict[str, str], ...] = (
     {
-        "profile_name": "qwen3_5_122b_a10b_nvfp4",
+        "profile_name": "qwen3_5_4b_bf16",
         "alias": "general-llm-default",
-        "model_name": "Qwen3.5-122B-A10B-NVFP4",
-        "model_path_suffix": "qwen3.5-122b-a10b-nvfp4",
+        "model_name": "Qwen3.5-4B",
+        "model_path_suffix": "qwen3.5-4b-bf16",
+        "precision": "BF16",
         "candidate_role": "primary",
         "selection_reason": "Current DGX-Spark vLLM generation target.",
     },
@@ -37,6 +38,7 @@ GENERATION_PROFILE_CANDIDATES: tuple[dict[str, str], ...] = (
         "alias": "general-llm-fast",
         "model_name": "Qwen3.6-27B-NVFP4",
         "model_path_suffix": "qwen3.6-27b-nvfp4",
+        "precision": "NVFP4",
         "candidate_role": "candidate",
         "selection_reason": "Lower-latency generation candidate.",
     },
@@ -45,6 +47,7 @@ GENERATION_PROFILE_CANDIDATES: tuple[dict[str, str], ...] = (
         "alias": "general-llm-kai-candidate",
         "model_name": "K-AI generation model",
         "model_path_suffix": "k-ai-generation-candidate",
+        "precision": "NVFP4",
         "candidate_role": "planned",
         "selection_reason": "Domestic K-AI generation model planned for evaluation.",
     },
@@ -251,7 +254,7 @@ def build_generation_model_profiles(
                 alias=candidate["alias"],
                 provider_mode=provider_mode,
                 model_name=candidate["model_name"],
-                precision="NVFP4",
+                precision=candidate["precision"],
                 runtime_engine="vllm",
                 model_path=generation_model_path(
                     env,
@@ -308,7 +311,7 @@ def generation_model_path(
     selected: bool,
 ) -> str:
     profile_specific_env = {
-        "qwen3_5_122b_a10b_nvfp4": "NEX_MO_GENERATION_QWEN35_122B_MODEL_PATH",
+        "qwen3_5_4b_bf16": "NEX_MO_GENERATION_QWEN35_4B_MODEL_PATH",
         "qwen3_6_27b_nvfp4": "NEX_MO_GENERATION_QWEN36_27B_MODEL_PATH",
         "k_ai_generation_candidate": "NEX_MO_GENERATION_KAI_MODEL_PATH",
     }[profile_name]

@@ -22,7 +22,7 @@ def test_dgx_preflight_skips_when_not_enabled() -> None:
 
     assert evidence["status"] == "SKIPPED"
     assert evidence["checks"] == []
-    assert "qwen3_5_122b_a10b_nvfp4" in {
+    assert "qwen3_5_4b_bf16" in {
         profile["profile_name"] for profile in evidence["model_profiles"]
     }
 
@@ -38,7 +38,7 @@ def test_dgx_preflight_passes_when_expected_models_are_observed() -> None:
             return httpx.Response(200, json={"results": [{"index": 0, "score": 0.91}]})
         return httpx.Response(
             200,
-            json={"data": [{"id": "Qwen3.5-122B-A10B-NVFP4"}]},
+            json={"data": [{"id": "Qwen3.5-4B"}]},
         )
 
     evidence = dgx_preflight.run_dgx_live_provider_preflight(
@@ -102,7 +102,7 @@ def test_dgx_preflight_reports_missing_endpoint_and_model() -> None:
     assert missing_model["status"] == "FAIL"
     assert missing_model["checks"][2]["failure_code"] == "expected_model_missing"
     assert missing_model["checks"][2]["missing_expected_models"] == [
-        "Qwen3.5-122B-A10B-NVFP4",
+        "Qwen3.5-4B",
     ]
 
 

@@ -1462,10 +1462,26 @@ def _chat_completion_request_payload(
         "max_tokens": max_output_tokens,
         "stream": False,
     }
+    reasoning_mode = _reasoning_mode(payload)
+    if reasoning_mode != "provider_default":
+        request_payload["chat_template_kwargs"] = {
+            "enable_thinking": reasoning_mode == "enabled"
+        }
     response_format = payload.get("response_format")
     if isinstance(response_format, dict) and response_format.get("type") == "json_object":
         request_payload["response_format"] = {"type": "json_object"}
     return request_payload
+
+
+def _reasoning_mode(payload: dict[str, Any]) -> str:
+    value = payload.get("reasoning_mode", "provider_default")
+    if value not in {"provider_default", "enabled", "disabled"}:
+        raise ProviderRouteError(
+            400,
+            "mo.request_invalid",
+            "reasoning_mode must be provider_default, enabled, or disabled.",
+        )
+    return str(value)
 
 
 def _chat_messages_from_payload(payload: dict[str, Any]) -> list[dict[str, str]]:

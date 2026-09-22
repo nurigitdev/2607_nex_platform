@@ -182,7 +182,7 @@ WITH eligible AS (
           LIMIT 1
       )
       AND (
-          :exclude_content_object_id IS NULL
+          CAST(:exclude_content_object_id AS uuid) IS NULL
           OR summary_vector.content_object_id <> CAST(:exclude_content_object_id AS uuid)
       )
 ),

@@ -122,7 +122,7 @@ def _source(label: str) -> dict[str, Any]:
 def _profile(revision: str) -> dict[str, Any]:
     return build_summary_generation_profile(
         provider_alias="general-llm-default",
-        model_profile_id="Qwen3.5-122B-A10B-NVFP4",
+        model_profile_id="Qwen3.5-4B",
         model_revision=revision,
         deployment_id="contract-local",
         prompt_template_version_id="prompt-v1",
