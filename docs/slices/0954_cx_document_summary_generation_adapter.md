@@ -10,7 +10,7 @@ default regression composition.
 
 - Builds a `general-llm-default` MO request with the prompt-registry system
   prompt and extracted Markdown as separate system/user messages.
-- Uses the current `Qwen3.5-122B-A10B-NVFP4` model profile, deterministic
+- Uses the current `Qwen3.5-4B` model profile, deterministic
   temperature, non-streaming batch workload, 512 output tokens, and the
   60-second generation timeout profile.
 - Keeps raw Markdown inside the provider request only. Request metadata carries

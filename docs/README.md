@@ -1062,6 +1062,8 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0956`](slices/0956_cx_owner_scoped_summary_similarity.md) | `S96-006` Permission-first owner-scoped current-summary cosine similarity adapter. |
 | [`Slice 0957`](slices/0957_cx_document_intelligence_orchestration_api.md) | `S96-007` Durable document-intelligence orchestration, production dependency composition, and owner-scoped API wiring. |
 | [`Slice 0958`](slices/0958_cx_document_intelligence_observability_contracts.md) | `S96-008` Metadata-only document-intelligence operational events and explicit raw-safe API response contracts. |
+| [`Slice 0959`](slices/0959_cx_document_intelligence_live_postgresql_dgx_smoke.md) | `S96-009` Protected actual PostgreSQL plus live DGX generation/embedding document-intelligence evidence. |
+| [`Slice 0960`](slices/0960_s96_cx_document_intelligence_summary_similarity_closure.md) | `S96-010` Owner-private document intelligence and summary-similarity closure with explicit S97 handoff. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

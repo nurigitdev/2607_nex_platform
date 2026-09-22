@@ -30,7 +30,7 @@ similarity, API, and observability boundaries before extending the CX runtime.
 - The source is the latest READY extracted Markdown. Generated summaries remain
   below the existing 1000-character hard limit and are stored as private
   durable payloads referenced by public metadata.
-- The current generation profile is `Qwen3.5-122B-A10B-NVFP4`; summary vectors
+- The current generation profile is `Qwen3.5-4B`; summary vectors
   use `Qwen3-Embedding-4B`, dimension 2560, and cosine similarity.
 - PostgreSQL/pgvector is the production summary-vector backend, with owner and
   freshness filtering before similarity ranking.

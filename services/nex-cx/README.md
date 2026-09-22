@@ -434,6 +434,12 @@ Grounded generation validation:
   owner-scoped similarity query, observes metadata-only events, and removes
   all temporary database and filesystem fixtures. Its evidence excludes source
   text, generated summary text, vectors, storage paths, endpoints, and secrets.
+- S96 closure is enforced by
+  `scripts/smoke/run_s96_cx_document_intelligence_summary_similarity_closure.py`.
+  The deterministic checkpoint requires all summary contract, durable private
+  storage, generation, pgvector freshness, owner-scoped similarity,
+  orchestration, metadata-only observability, and protected Slice 0959 evidence
+  before reporting `READY_FOR_S97`.
 - CX retrieval PostgreSQL smoke evidence is available through
   `scripts/smoke/run_cx_retrieval_postgres_smoke.py`. It is skipped by default
   and only writes to the CX test database when

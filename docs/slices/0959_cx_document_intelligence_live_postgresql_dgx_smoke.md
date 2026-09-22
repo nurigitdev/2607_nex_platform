@@ -62,6 +62,7 @@ Observed on 2026-09-23:
 - DGX model catalog at port `9111`: `Qwen3.5-4B`.
 - Protected live smoke: PASS against database `nex_cx_test` and role
   `nex_cx_user`.
+- All `15/15` protected live checks passed.
 - Two live summaries and two live 2560-dimensional embeddings became READY.
 - Owner-scoped similarity returned one candidate while excluding the source.
 - Post-cleanup owner content rows: `0`; owner summary-vector rows: `0`.

@@ -21,7 +21,7 @@ remote generation are wired.
   payload references make a summary unusable.
 - Provides a public projection that excludes the private storage key, source
   snapshot, and deployment identifier.
-- Freezes the current generation model as `Qwen3.5-122B-A10B-NVFP4` and the
+- Freezes the current generation model as `Qwen3.5-4B` and the
   future summary embedding model as `Qwen3-Embedding-4B`.
 
 This Slice adds no table, migration, route, provider call, or persistent row.
