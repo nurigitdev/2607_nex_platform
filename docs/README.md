@@ -1055,6 +1055,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0949`](slices/0949_cx_permission_hybrid_live_postgres_smoke.md) | `S95-009` Protected actual PostgreSQL, pgvector, DGX embedding, and Qwen3-Reranker-4B hybrid retrieval evidence. |
 | [`Slice 0950`](slices/0950_s95_cx_permission_hybrid_retrieval_closure.md) | `S95-010` Permission-filtered owner-private hybrid retrieval closure with explicit S96 handoff. |
 | [`Slice 0951`](slices/0951_cx_document_intelligence_similarity_boundary_audit.md) | `S96-001` Document intelligence and owner-private summary similarity boundary audit. |
+| [`Slice 0952`](slices/0952_cx_document_intelligence_summary_contract.md) | `S96-002` Hash-bound summary source, generation-profile, manifest, and freshness contract. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
