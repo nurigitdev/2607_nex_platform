@@ -170,6 +170,9 @@ Internal persistence boundary:
   succeeded, and failed lifecycle states.
 - Document summaries use `summary_1000_0`, target 900 chars, and hard limit
   1000 chars so summary text fits within one default retrieval chunk.
+- Document-summary generation can use the NeX-MO `general-llm-default` port with
+  the `Qwen3.5-122B-A10B-NVFP4` profile. The adapter rejects truncated or
+  over-limit responses and records safe model/deployment lineage.
 - Summary embeddings index the document summary separately from chunk
   embeddings for future document-level similarity features.
 - Prompt registry seed `cx.document_summary.default` records the bounded summary

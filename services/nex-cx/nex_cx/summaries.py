@@ -27,6 +27,12 @@ from nex_cx.authorization import (
     authorize_cx_owner_request,
 )
 from nex_cx.ingestion import ContentIngestionStore, sha256_text
+from nex_cx.document_summary_generation import (
+    DEFAULT_SUMMARY_MODEL_PROFILE,
+    DocumentSummaryGenerationError,
+    generate_document_summary,
+)
+from nex_cx.generation import GenerationFacadeError, MoGenerationClient
 from nex_cx.prompts import CX_DOCUMENT_SUMMARY_BINDING
 
 
@@ -34,6 +40,12 @@ DEFAULT_SUMMARY_CHUNK_POLICY = "summary_1000_0"
 DEFAULT_SUMMARY_MAX_CHARS = 900
 DEFAULT_SUMMARY_HARD_LIMIT_CHARS = 1000
 DEFAULT_SUMMARIZER_PROFILE = "mock-document-summary"
+DEFAULT_SUMMARY_SYSTEM_PROMPT = (
+    "Summarize extracted Markdown for retrieval. Keep the summary under "
+    "{summary_max_chars} characters and never exceed "
+    "{summary_hard_limit_chars} characters. Preserve concrete entities, "
+    "dates, and user-visible decisions."
+)
 
 
 @dataclass(frozen=True)
@@ -49,6 +61,7 @@ def register_summary_routes(
     *,
     store: ContentIngestionStore,
     prompt_store: PromptRegistryStore | None = None,
+    generation_client: MoGenerationClient | None = None,
 ) -> None:
     @app.post("/api/v1/documents/{document_id}/summary/run", response_model=None)
     def run_summary(
@@ -71,6 +84,7 @@ def register_summary_routes(
                 document_id,
                 store=store,
                 prompt_store=prompt_store,
+                generation_client=generation_client,
                 request_id=request_id_from_headers(request),
                 trace_id=trace_id_from_headers(request),
             )
@@ -122,6 +136,7 @@ def build_and_store_document_summary(
     *,
     store: ContentIngestionStore,
     prompt_store: PromptRegistryStore | None = None,
+    generation_client: MoGenerationClient | None = None,
     request_id: str,
     trace_id: str,
     max_chars: int = DEFAULT_SUMMARY_MAX_CHARS,
@@ -145,11 +160,49 @@ def build_and_store_document_summary(
         )
 
     markdown_text = markdown_path.read_text(encoding="utf-8")
-    summary_text = summarize_markdown_text(
-        markdown_text,
-        max_chars=max_chars,
-        hard_limit_chars=hard_limit_chars,
-    )
+    generation_result: dict[str, Any] | None = None
+    if generation_client is None:
+        summary_text = summarize_markdown_text(
+            markdown_text,
+            max_chars=max_chars,
+            hard_limit_chars=hard_limit_chars,
+        )
+    else:
+        prompt_package = render_summary_prompt_package(
+            prompt_store=prompt_store,
+            request_id=request_id,
+            trace_id=trace_id,
+            max_chars=max_chars,
+            hard_limit_chars=hard_limit_chars,
+        )
+        system_prompt = (
+            prompt_package["rendered_prompt"]
+            if prompt_package is not None
+            else DEFAULT_SUMMARY_SYSTEM_PROMPT.format(
+                summary_max_chars=max_chars,
+                summary_hard_limit_chars=hard_limit_chars,
+            )
+        )
+        try:
+            generation_result = generate_document_summary(
+                client=generation_client,
+                markdown_text=markdown_text,
+                source_markdown_sha256=extraction["extracted_markdown_sha256"],
+                system_prompt=system_prompt,
+                request_id=request_id,
+                trace_id=trace_id,
+                summary_max_chars=max_chars,
+                summary_hard_limit_chars=hard_limit_chars,
+                model_profile_id=DEFAULT_SUMMARY_MODEL_PROFILE,
+            )
+        except (DocumentSummaryGenerationError, GenerationFacadeError) as exc:
+            raise SummaryError(
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                detail=exc.detail,
+                retryable=exc.retryable,
+            ) from exc
+        summary_text = generation_result["summary_text"]
     prompt_event = render_summary_prompt_event(
         prompt_store=prompt_store,
         request_id=request_id,
@@ -167,6 +220,7 @@ def build_and_store_document_summary(
         trace_id=trace_id,
         max_chars=max_chars,
         hard_limit_chars=hard_limit_chars,
+        generation_result=generation_result,
     )
     return store.save_document_summary(record, summary_text=summary_text)
 
@@ -179,6 +233,26 @@ def render_summary_prompt_event(
     max_chars: int,
     hard_limit_chars: int,
     output_text: str,
+) -> dict[str, Any] | None:
+    package = render_summary_prompt_package(
+        prompt_store=prompt_store,
+        request_id=request_id,
+        trace_id=trace_id,
+        max_chars=max_chars,
+        hard_limit_chars=hard_limit_chars,
+        output_text=output_text,
+    )
+    return package["render_event"] if package is not None else None
+
+
+def render_summary_prompt_package(
+    *,
+    prompt_store: PromptRegistryStore | None,
+    request_id: str,
+    trace_id: str,
+    max_chars: int,
+    hard_limit_chars: int,
+    output_text: str | None = None,
 ) -> dict[str, Any] | None:
     if prompt_store is None:
         return None
@@ -201,7 +275,7 @@ def render_summary_prompt_event(
             error_code=exc.error_code,
             detail=exc.detail,
         ) from exc
-    return result["render_event"]
+    return result
 
 
 def summarize_markdown_text(
@@ -266,6 +340,7 @@ def build_document_summary_record(
     trace_id: str,
     max_chars: int,
     hard_limit_chars: int,
+    generation_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if len(summary_text) > hard_limit_chars:
         raise SummaryError(
@@ -308,12 +383,16 @@ def build_document_summary_record(
         "provider_prompt_package_hash": (
             prompt_event["rendered_prompt_hash"] if prompt_event else None
         ),
-        "summarizer": {
-            "provider": "local_mock",
-            "mode": "markdown_summary",
-            "model_profile_id": DEFAULT_SUMMARIZER_PROFILE,
-            "model_revision": "slice-0027",
-        },
+        "summarizer": (
+            generation_result["provider"]
+            if generation_result is not None
+            else {
+                "provider": "local_mock",
+                "mode": "markdown_summary",
+                "model_profile_id": DEFAULT_SUMMARIZER_PROFILE,
+                "model_revision": "slice-0027",
+            }
+        ),
         "created_at": now,
         "updated_at": now,
     }
