@@ -1,3 +1,5 @@
+import os
+
 from nex_runtime import (
     PERSISTENCE_MODE_POSTGRES,
     SERVICE_SPECS,
@@ -11,9 +13,20 @@ from nex_runtime.compatibility import register_generation_compatibility_routes
 from nex_runtime.prompts import register_prompt_registry_routes
 from nex_runtime.recovery import register_generation_recovery_policy_routes
 from nex_cx.chunking import register_chunking_routes
+from nex_cx.document_intelligence_orchestration import (
+    register_document_intelligence_routes,
+)
 from nex_cx.document_library import register_document_library_routes
-from nex_cx.embedding_index import register_embedding_index_routes
-from nex_cx.generation import DEFAULT_GENERATION_STORE, register_generation_routes
+from nex_cx.embedding_index import (
+    DEFAULT_EMBEDDING_ALIAS,
+    build_default_mo_embedding_client,
+    register_embedding_index_routes,
+)
+from nex_cx.generation import (
+    DEFAULT_GENERATION_STORE,
+    build_default_mo_client,
+    register_generation_routes,
+)
 from nex_cx.ingestion import (
     DEFAULT_INGESTION_STORE,
     CxStorageConfig,
@@ -38,9 +51,21 @@ from nex_cx.remediation_execution import (
 )
 from nex_cx.summary_embeddings import register_summary_embedding_routes
 from nex_cx.summaries import register_summary_routes
+from nex_cx.private_text_store import (
+    FileSystemCxPrivateTextStore,
+    build_private_text_store,
+)
 from nex_cx.pgvector_store import (
     PgVectorCxVectorStore,
     build_pgvector_cx_vector_store,
+)
+from nex_cx.summary_pgvector_store import (
+    SummaryPgVectorStore,
+    build_summary_pgvector_store,
+)
+from nex_cx.summary_similarity import (
+    PostgresSummarySimilarityStore,
+    build_summary_similarity_store,
 )
 from nex_cx.vector_index_operations import register_vector_index_operations_routes
 from nex_cx.vector_index_repository import (
@@ -112,6 +137,31 @@ def build_cx_vector_operations_dependencies(
     return None, None
 
 
+def build_cx_document_intelligence_dependencies(
+    runtime: ServicePersistenceRuntime,
+) -> tuple[
+    FileSystemCxPrivateTextStore | None,
+    SummaryPgVectorStore | None,
+    PostgresSummarySimilarityStore | None,
+]:
+    if (
+        runtime.mode == PERSISTENCE_MODE_POSTGRES
+        and runtime.api_session_factory is not None
+    ):
+        return (
+            build_private_text_store(),
+            build_summary_pgvector_store(
+                database_env=runtime.database_env,
+                workload="worker",
+            ),
+            build_summary_similarity_store(
+                database_env=runtime.database_env,
+                workload="api",
+            ),
+        )
+    return None, None, None
+
+
 SERVICE_SPEC = SERVICE_SPECS["nex-cx"]
 app = build_service_app(SERVICE_SPEC)
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
@@ -135,6 +185,16 @@ CX_INGESTION_RUN_REPOSITORY = build_cx_ingestion_run_repository(
 CX_VECTOR_INDEX_REPOSITORY, CX_VECTOR_STORE = (
     build_cx_vector_operations_dependencies(SERVICE_PERSISTENCE)
 )
+(
+    CX_PRIVATE_SUMMARY_TEXT_STORE,
+    CX_SUMMARY_VECTOR_STORE,
+    CX_SUMMARY_SIMILARITY_STORE,
+) = build_cx_document_intelligence_dependencies(SERVICE_PERSISTENCE)
+if CX_PRIVATE_SUMMARY_TEXT_STORE is not None:
+    DEFAULT_INGESTION_STORE.private_summary_text_store = CX_PRIVATE_SUMMARY_TEXT_STORE
+CX_MO_GENERATION_CLIENT = build_default_mo_client()
+CX_MO_EMBEDDING_CLIENT = build_default_mo_embedding_client()
+CX_EMBEDDING_ALIAS = os.getenv("NEX_CX_EMBEDDING_ALIAS", DEFAULT_EMBEDDING_ALIAS)
 register_service_job_control_routes(
     app,
     service_id=SERVICE_SPEC.service_id,
@@ -209,8 +269,23 @@ register_summary_routes(
     app,
     store=DEFAULT_INGESTION_STORE,
     prompt_store=DEFAULT_CX_PROMPT_STORE,
+    generation_client=CX_MO_GENERATION_CLIENT,
 )
-register_summary_embedding_routes(app, store=DEFAULT_INGESTION_STORE)
+register_document_intelligence_routes(
+    app,
+    store=DEFAULT_INGESTION_STORE,
+    generation_client=CX_MO_GENERATION_CLIENT,
+    embedding_client=CX_MO_EMBEDDING_CLIENT,
+    embedding_alias=CX_EMBEDDING_ALIAS,
+    summary_vector_store=CX_SUMMARY_VECTOR_STORE,
+    summary_similarity_store=CX_SUMMARY_SIMILARITY_STORE,
+)
+register_summary_embedding_routes(
+    app,
+    store=DEFAULT_INGESTION_STORE,
+    mo_client=CX_MO_EMBEDDING_CLIENT,
+    embedding_alias=CX_EMBEDDING_ALIAS,
+)
 register_prompt_registry_routes(
     app,
     store=DEFAULT_CX_PROMPT_STORE,

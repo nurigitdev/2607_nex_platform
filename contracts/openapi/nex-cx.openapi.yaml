@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX CX API
-  version: 0.94.0
+  version: 0.96.0
   x-nex-owner-context:
     propagation: trusted-service-asserted-subject
     requiredHeaders:
@@ -1356,6 +1356,74 @@ paths:
           description: Private summary text is unavailable.
         "502":
           description: MO embedding response was invalid.
+  /api/v1/documents/{document_id}/intelligence/run:
+    parameters: *cxOwnerContextParameters
+    post:
+      operationId: runCxDocumentIntelligence
+      tags:
+        - Content
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Owner-scoped summary, embedding, and summary vector are ready.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Document intelligence resource was not found for the owner scope.
+        "409":
+          description: Summary lineage or summary vector is missing or stale.
+        "502":
+          description: A generation or embedding provider response was invalid.
+        "503":
+          description: Document intelligence persistence or a provider is unavailable.
+  /api/v1/documents/{document_id}/intelligence/similar:
+    parameters: *cxOwnerContextParameters
+    post:
+      operationId: searchCxSimilarDocumentSummaries
+      tags:
+        - Content
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 10
+                minimum_score:
+                  type: number
+                  minimum: -1
+                  maximum: 1
+                  default: 0
+      responses:
+        "200":
+          description: Owner-scoped fresh document-summary similarity candidates.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Source document was not found for the owner scope.
+        "409":
+          description: Source summary vector is missing or stale.
+        "422":
+          description: Similarity limit or score is invalid.
+        "503":
+          description: Document intelligence persistence is unavailable.
   /api/v1/jobs/{job_id}:
     parameters: *cxOwnerContextParameters
     get:

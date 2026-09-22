@@ -185,7 +185,9 @@ def run_s92_cx_private_content_ownership_closure(
             and summaries["owner_lineage"].get("issue_count") == 0
         ),
         "api_contract_ownership_closed": (
-            summaries["api_hardening"].get("owner_guarded_module_count") == 12
+            summaries["api_hardening"].get("route_module_count", 0) >= 12
+            and summaries["api_hardening"].get("owner_guarded_module_count")
+            == summaries["api_hardening"].get("route_module_count")
             and summaries["api_hardening"].get("drift_count") == 0
             and summaries["api_hardening"].get("issue_count") == 0
         ),

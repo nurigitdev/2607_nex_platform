@@ -33,6 +33,7 @@ from nex_cx.contract_api_drift_audit import (  # noqa: E402
 SCHEMA_VERSION = "cx_api_contract_ownership_hardening.v1"
 ROUTE_MODULES = (
     "chunking.py",
+    "document_intelligence_orchestration.py",
     "document_library.py",
     "embedding_index.py",
     "generation.py",
@@ -95,7 +96,7 @@ def run_cx_api_contract_ownership_hardening(root: Path = ROOT) -> dict[str, Any]
         "owner_context_applies_to_runtime_paths": (
             openapi.count("parameters: *cxOwnerContextParameters") >= 27
         ),
-        "openapi_version_hardened": "version: 0.94.0" in openapi,
+        "openapi_version_hardened": "version: 0.96.0" in openapi,
         "negative_fixture_indexed": (
             "cx_source_ownership_boundary_decision.missing_status.json"
             in negative_index

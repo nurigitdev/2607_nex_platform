@@ -230,13 +230,20 @@ Internal persistence boundary:
   text remains in the private summary text boundary.
 - When `private_summary_text_store` is injected, summary text is durably stored
   through the S92 owner-scoped filesystem port and the in-process summary map
-  becomes a reloadable cache. The default regression composition remains
-  memory-only until the S96 runtime wiring Slice.
+  becomes a reloadable cache. PostgreSQL runtime composition enables this
+  durable adapter, while deterministic memory mode remains isolated from local
+  filesystem and pgvector dependencies.
 - Summary embedding records now write through to
   `cx_document_summary_embeddings` when the repository supports it. Persisted
   rows store provider/model lineage, vector dimension, embedding hash, optional
   storage URI, status, and trace metadata only. Raw summary vectors are stored
   separately through the owner-scoped summary pgvector boundary.
+- `POST /api/v1/documents/{document_id}/intelligence/run` composes live NeX-MO
+  summary generation, summary embedding, durable private text, public metadata,
+  and summary pgvector publication into one owner-authorized operation.
+- `POST /api/v1/documents/{document_id}/intelligence/similar` reloads the
+  current fresh source-summary vector from private pgvector storage and performs
+  owner-filtered cosine search without accepting or returning raw vectors.
 - Retrieval package metadata now writes through to `cx_retrieval_packages` and
   `cx_retrieval_evidence_items` when evidence lineage points at persisted
   content/chunk rows. The persisted rows store query/evidence SHA-256 hashes,
