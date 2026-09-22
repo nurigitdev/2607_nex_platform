@@ -1052,6 +1052,8 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0946`](slices/0946_cx_weighted_rrf_rerank_privacy_hardening.md) | `S95-006` Weighted RRF fusion and owner-authorized rerank text privacy hardening. |
 | [`Slice 0947`](slices/0947_cx_hybrid_retrieval_package_api_persistence_wiring.md) | `S95-007` Canonical retrieval API wiring and private owner hash-only persistence boundary. |
 | [`Slice 0948`](slices/0948_cx_retrieval_operations_observability.md) | `S95-008` Metadata-only retrieval outcome and failure operational events. |
+| [`Slice 0949`](slices/0949_cx_permission_hybrid_live_postgres_smoke.md) | `S95-009` Protected actual PostgreSQL, pgvector, DGX embedding, and Qwen3-Reranker-4B hybrid retrieval evidence. |
+| [`Slice 0950`](slices/0950_s95_cx_permission_hybrid_retrieval_closure.md) | `S95-010` Permission-filtered owner-private hybrid retrieval closure with explicit S96 handoff. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
