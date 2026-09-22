@@ -1048,6 +1048,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0942`](slices/0942_cx_retrieval_permission_decision_contract.md) | `S95-002` Fail-closed owner-private permission decision, snapshot, and evidence contract. |
 | [`Slice 0943`](slices/0943_cx_owner_scoped_lexical_candidate_adapter.md) | `S95-003` Owner-scoped PostgreSQL BM25 lexical candidate adapter. |
 | [`Slice 0944`](slices/0944_cx_fresh_vector_candidate_adapter.md) | `S95-004` Permission-admitted fresh pgvector candidate adapter with fail-closed lineage validation. |
+| [`Slice 0945`](slices/0945_cx_permission_first_hybrid_orchestration.md) | `S95-005` Permission-first BM25 and fresh-vector candidate orchestration. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
