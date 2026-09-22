@@ -14,7 +14,9 @@ from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
+    OperationalEventEmitter,
     issue_mock_service_token,
+    operational_event_emitter_from_app,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
@@ -43,6 +45,10 @@ from nex_cx.hybrid_retrieval_package import (
     HybridRetrievalPackageRuntime,
 )
 from nex_cx.lexical_index import query_terms_for_lexical_index
+from nex_cx.retrieval_observability import (
+    observe_retrieval_failure,
+    observe_retrieval_package,
+)
 
 DEFAULT_TOP_K = 5
 MAX_TOP_K = 20
@@ -171,11 +177,16 @@ def register_retrieval_routes(
     rerank_client: MoRerankClient | None = None,
     reranker_alias: str | None = None,
     hybrid_runtime: HybridRetrievalPackageRuntime | None = None,
+    event_emitter: OperationalEventEmitter | None = None,
 ) -> None:
     client = rerank_client
     if client is None and _env_flag("NEX_CX_RERANKER_ENABLED"):
         client = build_default_mo_rerank_client()
     alias = reranker_alias or os.getenv("NEX_CX_RERANKER_ALIAS", DEFAULT_RERANKER_ALIAS)
+    emitter = event_emitter or operational_event_emitter_from_app(
+        app,
+        service_id="nex-cx",
+    )
 
     @app.post("/api/v1/retrieval/context", response_model=None)
     def create_retrieval_context(
@@ -194,6 +205,8 @@ def register_retrieval_routes(
         if isinstance(access_context, JSONResponse):
             return access_context
 
+        runtime_mode = "hardened" if hybrid_runtime is not None else "legacy"
+        stage = "package_build"
         try:
             if hybrid_runtime is not None:
                 package = hybrid_runtime.build_package(
@@ -210,9 +223,49 @@ def register_retrieval_routes(
                     reranker_alias=alias,
                     access_context=access_context,
                 )
+            stage = "persistence"
+            saved = store.save_retrieval_package(package)
         except (RetrievalError, HybridRetrievalPackageError, HybridRankingError) as exc:
+            observe_retrieval_failure(
+                emitter,
+                error_code=exc.error_code,
+                status_code=exc.status_code,
+                retryable=exc.retryable,
+                stage=stage,
+                runtime_mode=runtime_mode,
+                trace_id=trace_id_from_headers(request),
+                request_id=request_id_from_headers(request),
+            )
             return _retrieval_problem_response(request, exc)
-        return store.save_retrieval_package(package)
+        except Exception:
+            runtime_failed = stage == "package_build"
+            exc = HybridRetrievalPackageError(
+                status_code=503,
+                error_code=(
+                    "CX_RETRIEVAL_RUNTIME_UNAVAILABLE"
+                    if runtime_failed
+                    else "CX_RETRIEVAL_PERSISTENCE_UNAVAILABLE"
+                ),
+                detail=(
+                    "Retrieval package runtime is unavailable."
+                    if runtime_failed
+                    else "Retrieval package persistence is unavailable."
+                ),
+                retryable=True,
+            )
+            observe_retrieval_failure(
+                emitter,
+                error_code=exc.error_code,
+                status_code=exc.status_code,
+                retryable=exc.retryable,
+                stage=stage,
+                runtime_mode=runtime_mode,
+                trace_id=trace_id_from_headers(request),
+                request_id=request_id_from_headers(request),
+            )
+            return _retrieval_problem_response(request, exc)
+        observe_retrieval_package(emitter, saved)
+        return saved
 
     @app.get("/api/v1/retrieval/context/{retrieval_package_id}", response_model=None)
     def get_retrieval_context(

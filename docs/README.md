@@ -1051,6 +1051,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0945`](slices/0945_cx_permission_first_hybrid_orchestration.md) | `S95-005` Permission-first BM25 and fresh-vector candidate orchestration. |
 | [`Slice 0946`](slices/0946_cx_weighted_rrf_rerank_privacy_hardening.md) | `S95-006` Weighted RRF fusion and owner-authorized rerank text privacy hardening. |
 | [`Slice 0947`](slices/0947_cx_hybrid_retrieval_package_api_persistence_wiring.md) | `S95-007` Canonical retrieval API wiring and private owner hash-only persistence boundary. |
+| [`Slice 0948`](slices/0948_cx_retrieval_operations_observability.md) | `S95-008` Metadata-only retrieval outcome and failure operational events. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
