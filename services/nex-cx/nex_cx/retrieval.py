@@ -37,6 +37,11 @@ from nex_cx.authorization import (
     authorize_cx_owner_request,
 )
 from nex_cx.ingestion import ContentIngestionStore
+from nex_cx.hybrid_ranking import HybridRankingError
+from nex_cx.hybrid_retrieval_package import (
+    HybridRetrievalPackageError,
+    HybridRetrievalPackageRuntime,
+)
 from nex_cx.lexical_index import query_terms_for_lexical_index
 
 DEFAULT_TOP_K = 5
@@ -165,6 +170,7 @@ def register_retrieval_routes(
     store: ContentIngestionStore,
     rerank_client: MoRerankClient | None = None,
     reranker_alias: str | None = None,
+    hybrid_runtime: HybridRetrievalPackageRuntime | None = None,
 ) -> None:
     client = rerank_client
     if client is None and _env_flag("NEX_CX_RERANKER_ENABLED"):
@@ -189,16 +195,22 @@ def register_retrieval_routes(
             return access_context
 
         try:
-            package = build_retrieval_context_package(
-                payload,
-                store=store,
-                request_id=request_id_from_headers(request),
-                trace_id=payload.get("trace_id") or trace_id_from_headers(request),
-                rerank_client=client,
-                reranker_alias=alias,
-                access_context=access_context,
-            )
-        except RetrievalError as exc:
+            if hybrid_runtime is not None:
+                package = hybrid_runtime.build_package(
+                    payload,
+                    access_context=access_context,
+                )
+            else:
+                package = build_retrieval_context_package(
+                    payload,
+                    store=store,
+                    request_id=request_id_from_headers(request),
+                    trace_id=payload.get("trace_id") or trace_id_from_headers(request),
+                    rerank_client=client,
+                    reranker_alias=alias,
+                    access_context=access_context,
+                )
+        except (RetrievalError, HybridRetrievalPackageError, HybridRankingError) as exc:
             return _retrieval_problem_response(request, exc)
         return store.save_retrieval_package(package)
 
@@ -1418,7 +1430,7 @@ def _optional_policy_int(
 
 def _retrieval_problem_response(
     request: Request,
-    exc: RetrievalError,
+    exc: RetrievalError | HybridRetrievalPackageError | HybridRankingError,
 ) -> JSONResponse:
     return problem_response(
         request,

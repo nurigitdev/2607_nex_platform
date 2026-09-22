@@ -108,6 +108,9 @@ def build_retrieval_runtime_persistence_decision() -> dict[str, Any]:
 def build_retrieval_package_persistence_preview(
     package: Mapping[str, Any],
 ) -> dict[str, Any]:
+    hash_only_private_owner = (
+        package.get("persistence_payload_policy") == "hash_only_private_owner"
+    )
     query_text = _string_value(package.get("query_text"))
     query_embedding_snapshot = _mapping_value(package.get("query_embedding_snapshot"))
     retrieval_profile = _mapping_value(package.get("retrieval_profile"))
@@ -120,6 +123,7 @@ def build_retrieval_package_persistence_preview(
         _build_evidence_item_preview(
             item,
             retrieval_package_id=retrieval_package_id,
+            hash_only_private_owner=hash_only_private_owner,
         )
         for item in _list_value(package.get("evidence_items"))
         if isinstance(item, Mapping)
@@ -133,7 +137,9 @@ def build_retrieval_package_persistence_preview(
         "trace_id": package.get("trace_id"),
         "request_id": package.get("request_id"),
         "query_text_sha256": sha256_text(query_text) if query_text is not None else None,
-        "query_text_preview": bounded_text_preview(query_text),
+        "query_text_preview": (
+            None if hash_only_private_owner else bounded_text_preview(query_text)
+        ),
         "query_embedding_provided": bool(
             query_embedding_snapshot.get(
                 "provided",
@@ -178,6 +184,7 @@ def _build_evidence_item_preview(
     item: Mapping[str, Any],
     *,
     retrieval_package_id: object,
+    hash_only_private_owner: bool,
 ) -> dict[str, Any]:
     evidence_text = _string_value(item.get("text"))
     return {
@@ -194,7 +201,9 @@ def _build_evidence_item_preview(
         "evidence_text_sha256": (
             sha256_text(evidence_text) if evidence_text is not None else None
         ),
-        "evidence_text_preview": bounded_text_preview(evidence_text),
+        "evidence_text_preview": (
+            None if hash_only_private_owner else bounded_text_preview(evidence_text)
+        ),
         "scores": item.get("scores"),
         "final_score": _final_score(item.get("scores")),
         "matched_terms": item.get("matched_terms"),

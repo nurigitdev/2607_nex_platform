@@ -155,6 +155,30 @@ def test_retrieval_package_persistence_preview_handles_sparse_runtime_package() 
     assert preview["evidence_items"][0]["final_score"] == 0.0
 
 
+def test_retrieval_package_persistence_preview_redacts_private_owner_text() -> None:
+    package = {
+        "retrieval_package_id": "retrieval-private-owner",
+        "persistence_payload_policy": "hash_only_private_owner",
+        "query_text": "private query",
+        "evidence_items": [
+            {
+                "evidence_id": "evidence-private-owner",
+                "rank": 1,
+                "text": "private evidence",
+            }
+        ],
+    }
+
+    preview = build_retrieval_package_persistence_preview(package)
+
+    assert preview["header"]["query_text_sha256"] == sha256_text("private query")
+    assert preview["header"]["query_text_preview"] is None
+    assert preview["evidence_items"][0]["evidence_text_sha256"] == sha256_text(
+        "private evidence"
+    )
+    assert preview["evidence_items"][0]["evidence_text_preview"] is None
+
+
 def test_bounded_text_preview_covers_empty_short_long_and_tiny_limits() -> None:
     assert bounded_text_preview(None) is None
     assert bounded_text_preview("") is None
