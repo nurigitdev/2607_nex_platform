@@ -17,6 +17,11 @@ from nex_cx.document_intelligence_orchestration import (
     run_document_intelligence,
     search_similar_document_summaries,
 )
+from nex_cx.document_intelligence_observability import (
+    CX_DOCUMENT_INTELLIGENCE_FAILED_EVENT,
+    CX_DOCUMENT_INTELLIGENCE_READY_EVENT,
+    CX_DOCUMENT_INTELLIGENCE_SIMILARITY_EVENT,
+)
 from nex_cx.generation import GenerationFacadeError
 from nex_cx.ingestion import (
     ContentIngestionStore,
@@ -28,7 +33,13 @@ from nex_cx.private_content import build_private_payload_receipt
 from nex_cx.summaries import build_and_store_document_summary
 from nex_cx.summary_embeddings import SummaryEmbeddingError
 from nex_cx.summary_similarity import SummarySimilarityError
-from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
+from nex_runtime import (
+    InMemoryOperationalEventStore,
+    OperationalEventEmitter,
+    SERVICE_SPECS,
+    build_service_app,
+    issue_mock_service_token,
+)
 
 
 REQUEST_ID = "request-0957"
@@ -423,6 +434,7 @@ def test_document_intelligence_routes_enforce_auth_owner_and_dependencies(
 ) -> None:
     store, document_id = _store_with_extraction(tmp_path)
     app = build_service_app(SERVICE_SPECS["nex-cx"])
+    events = InMemoryOperationalEventStore()
     register_document_intelligence_routes(
         app,
         store=store,
@@ -431,6 +443,7 @@ def test_document_intelligence_routes_enforce_auth_owner_and_dependencies(
         embedding_alias=EMBEDDING_ALIAS,
         summary_vector_store=None,
         summary_similarity_store=None,
+        event_emitter=OperationalEventEmitter(service_id="nex-cx", store=events),
     )
     client = TestClient(app)
 
@@ -454,6 +467,12 @@ def test_document_intelligence_routes_enforce_auth_owner_and_dependencies(
     assert unavailable.status_code == 503
     assert unavailable.json()["retryable"] is True
     assert missing.status_code == 404
+    failures = events.list_events(event_type=CX_DOCUMENT_INTELLIGENCE_FAILED_EVENT)
+    assert len(failures) == 1
+    assert failures[0]["details"]["operation"] == "run"
+    assert failures[0]["details"]["error_code"] == (
+        "CX_DOCUMENT_INTELLIGENCE_RUNTIME_UNAVAILABLE"
+    )
 
 
 def test_document_intelligence_routes_run_and_search_with_defaults(
@@ -463,6 +482,7 @@ def test_document_intelligence_routes_run_and_search_with_defaults(
     vectors = MemorySummaryVectorStore()
     similarity = FakeSimilarityStore()
     app = build_service_app(SERVICE_SPECS["nex-cx"])
+    events = InMemoryOperationalEventStore()
     register_document_intelligence_routes(
         app,
         store=store,
@@ -471,6 +491,7 @@ def test_document_intelligence_routes_run_and_search_with_defaults(
         embedding_alias=EMBEDDING_ALIAS,
         summary_vector_store=vectors,
         summary_similarity_store=similarity,
+        event_emitter=OperationalEventEmitter(service_id="nex-cx", store=events),
     )
     client = TestClient(app)
 
@@ -486,8 +507,16 @@ def test_document_intelligence_routes_run_and_search_with_defaults(
 
     assert run_response.status_code == 200
     assert search_response.status_code == 200
+    assert run_response.json()["observability"]["ok"] is True
+    assert search_response.json()["observability"]["ok"] is True
     assert similarity.calls[0]["limit"] == 10
     assert similarity.calls[0]["minimum_score"] == 0.0
+    assert len(
+        events.list_events(event_type=CX_DOCUMENT_INTELLIGENCE_READY_EVENT)
+    ) == 1
+    assert len(
+        events.list_events(event_type=CX_DOCUMENT_INTELLIGENCE_SIMILARITY_EVENT)
+    ) == 1
 
 
 def test_run_rejects_unfresh_publication(tmp_path: Path) -> None:

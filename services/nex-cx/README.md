@@ -244,6 +244,13 @@ Internal persistence boundary:
 - `POST /api/v1/documents/{document_id}/intelligence/similar` reloads the
   current fresh source-summary vector from private pgvector storage and performs
   owner-filtered cosine search without accepting or returning raw vectors.
+- Document-intelligence run, similarity, and failure outcomes emit deterministic
+  operational events containing only hashes, model lineage, freshness, counts,
+  status, and correlation metadata. Summary text, candidate previews, storage
+  URIs, provider details, and vectors are never copied into event details.
+- Both document-intelligence APIs are bound to explicit JSON Schema and OpenAPI
+  response contracts. Positive fixtures prove the supported projection, while
+  negative fixtures reject raw-summary and query-vector fields.
 - Retrieval package metadata now writes through to `cx_retrieval_packages` and
   `cx_retrieval_evidence_items` when evidence lineage points at persisted
   content/chunk rows. The persisted rows store query/evidence SHA-256 hashes,

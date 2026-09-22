@@ -16,14 +16,14 @@ def test_repository_document_intelligence_boundary_audit_passes() -> None:
     assert result["summary"] == {
         "foundation_count": 8,
         "gap_count": 7,
-        "open_gap_count": 1,
-        "resolved_gap_count": 6,
+        "open_gap_count": 0,
+        "resolved_gap_count": 7,
         "planned_slice_count": 10,
         "issue_count": 0,
     }
-    assert list(result["gap_states"].values()).count("OPEN") == 1
+    assert list(result["gap_states"].values()).count("OPEN") == 0
     assert result["gap_states"]["document_intelligence_observability_missing"] == (
-        "OPEN"
+        "RESOLVED"
     )
     assert len(result["implementation_gaps"]) == 7
     assert len(result["slice_plan"]) == 10
@@ -76,7 +76,7 @@ def test_boundary_audit_helpers(tmp_path: Path) -> None:
 def test_boundary_audit_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = audit.run_cx_document_intelligence_similarity_boundary_audit()
     assert audit.summary_line(passing) == (
-        "cx_document_intelligence_similarity_boundary=pass foundations=8 gaps=7 open=1 "
+        "cx_document_intelligence_similarity_boundary=pass foundations=8 gaps=7 open=0 "
         "scope=owner_private_document_intelligence_summary_similarity "
         "remote_required_now=False issues=0"
     )

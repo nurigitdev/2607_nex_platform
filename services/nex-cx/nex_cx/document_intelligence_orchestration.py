@@ -9,7 +9,13 @@ from typing import Any, Protocol
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
-from nex_runtime import problem_response, request_id_from_headers, trace_id_from_headers
+from nex_runtime import (
+    OperationalEventEmitter,
+    operational_event_emitter_from_app,
+    problem_response,
+    request_id_from_headers,
+    trace_id_from_headers,
+)
 
 from nex_cx.access_context import CxAccessContext
 from nex_cx.api_ownership import document_visible_to_owner
@@ -17,6 +23,11 @@ from nex_cx.authorization import (
     CX_SUBJECT_HEADER,
     CX_TENANT_HEADER,
     authorize_cx_owner_request,
+)
+from nex_cx.document_intelligence_observability import (
+    observe_document_intelligence_failure,
+    observe_document_intelligence_ready,
+    observe_document_intelligence_similarity,
 )
 from nex_cx.embedding_index import EmbeddingIndexError, MoEmbeddingClient
 from nex_cx.generation import MoGenerationClient
@@ -104,7 +115,13 @@ def register_document_intelligence_routes(
     embedding_alias: str,
     summary_vector_store: SummaryVectorStore | None,
     summary_similarity_store: SummarySimilarityStore | None,
+    event_emitter: OperationalEventEmitter | None = None,
 ) -> None:
+    emitter = event_emitter or operational_event_emitter_from_app(
+        app,
+        service_id="nex-cx",
+    )
+
     @app.post(
         "/api/v1/documents/{document_id}/intelligence/run",
         response_model=None,
@@ -126,8 +143,10 @@ def register_document_intelligence_routes(
             return access_context
         if not document_visible_to_owner(access_context, store, document_id):
             return _problem_response(request, _not_found())
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
         try:
-            return run_document_intelligence(
+            result = run_document_intelligence(
                 access_context=access_context,
                 document_id=document_id,
                 store=store,
@@ -135,11 +154,29 @@ def register_document_intelligence_routes(
                 embedding_client=embedding_client,
                 embedding_alias=embedding_alias,
                 summary_vector_store=_required_vector_store(summary_vector_store),
-                request_id=request_id_from_headers(request),
-                trace_id=trace_id_from_headers(request),
+                request_id=request_id,
+                trace_id=trace_id,
             )
         except DocumentIntelligenceError as exc:
+            observe_document_intelligence_failure(
+                emitter,
+                document_id=document_id,
+                operation="run",
+                error_code=exc.error_code,
+                status_code=exc.status_code,
+                retryable=exc.retryable,
+                trace_id=trace_id,
+                request_id=request_id,
+            )
             return _problem_response(request, exc)
+        observability = observe_document_intelligence_ready(
+            emitter,
+            document_id=document_id,
+            result=result,
+            trace_id=trace_id,
+            request_id=request_id,
+        )
+        return {**result, "observability": observability.to_summary()}
 
     @app.post(
         "/api/v1/documents/{document_id}/intelligence/similar",
@@ -163,8 +200,10 @@ def register_document_intelligence_routes(
             return access_context
         if not document_visible_to_owner(access_context, store, document_id):
             return _problem_response(request, _not_found())
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
         try:
-            return search_similar_document_summaries(
+            result = search_similar_document_summaries(
                 access_context=access_context,
                 document_id=document_id,
                 store=store,
@@ -179,7 +218,25 @@ def register_document_intelligence_routes(
                 ),
             )
         except DocumentIntelligenceError as exc:
+            observe_document_intelligence_failure(
+                emitter,
+                document_id=document_id,
+                operation="similarity",
+                error_code=exc.error_code,
+                status_code=exc.status_code,
+                retryable=exc.retryable,
+                trace_id=trace_id,
+                request_id=request_id,
+            )
             return _problem_response(request, exc)
+        observability = observe_document_intelligence_similarity(
+            emitter,
+            document_id=document_id,
+            result=result,
+            trace_id=trace_id,
+            request_id=request_id,
+        )
+        return {**result, "observability": observability.to_summary()}
 
 
 def run_document_intelligence(

@@ -1,0 +1,56 @@
+{
+  "document_intelligence_similarity_schema_version": "cx_document_intelligence_similarity.v1",
+  "source_document": {
+    "content_object_id": "62cbb468-147e-5e66-9bd8-4551a5807cf6",
+    "document_summary_id": "3c2a0d32-a313-5446-93da-1a418b148b25",
+    "summary_embedding_id": "1ac5a8dc-d619-54d9-96e0-d06ae4e7408a",
+    "profile_fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "freshness": {
+    "freshness_schema_version": "cx_summary_vector_freshness.v1",
+    "state": "READY",
+    "usable": true,
+    "reasons": [],
+    "document_summary_id": "3c2a0d32-a313-5446-93da-1a418b148b25",
+    "summary_embedding_id": "1ac5a8dc-d619-54d9-96e0-d06ae4e7408a",
+    "profile_fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "result": {
+    "summary_similarity_result_schema_version": "cx_summary_similarity_result.v1",
+    "candidate_source": "postgresql_pgvector_summary",
+    "metric": "cosine",
+    "query_embedding_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "query_dimension": 2560,
+    "profile_fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "minimum_score": 0.7,
+    "excluded_content_object_id": "62cbb468-147e-5e66-9bd8-4551a5807cf6",
+    "candidate_count": 1,
+    "candidates": [
+      {
+        "summary_similarity_candidate_schema_version": "cx_summary_similarity_candidate.v1",
+        "candidate_rank": 1,
+        "content_object_id": "35d8961a-7b5c-544a-b58b-67a96610ae34",
+        "document_summary_id": "80c13992-67b4-5fea-a4da-e87bd8de21ab",
+        "summary_embedding_id": "15b41220-25be-5bdc-ae97-a5303cd04dd2",
+        "original_filename": "deployment-policy.md",
+        "content_type": "text/markdown",
+        "summary_text_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "summary_char_count": 72,
+        "embedding_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "vector_dimension": 2560,
+        "profile_fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "similarity_score": 0.91,
+        "cosine_distance": 0.09
+      }
+    ]
+  },
+  "raw_summary_included": false,
+  "raw_vector_included": false,
+  "observability": {
+    "ok": true,
+    "event_id": "162026bb-e710-5261-876d-242916377c73",
+    "service_id": "nex-cx",
+    "event_type": "cx.document_intelligence.similarity_observed",
+    "severity": "INFO"
+  }
+}

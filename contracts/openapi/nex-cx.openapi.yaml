@@ -1371,6 +1371,10 @@ paths:
       responses:
         "200":
           description: Owner-scoped summary, embedding, and summary vector are ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CxDocumentIntelligenceRun"
         "401":
           description: Service claim is missing or invalid.
         "404":
@@ -1414,6 +1418,10 @@ paths:
       responses:
         "200":
           description: Owner-scoped fresh document-summary similarity candidates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CxDocumentIntelligenceSimilarity"
         "401":
           description: Service claim is missing or invalid.
         "404":
@@ -2263,6 +2271,244 @@ components:
         maxLength: 128
         pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$'
   schemas:
+    CxDocumentIntelligenceObservability:
+      type: object
+      additionalProperties: false
+      required: [ok]
+      properties:
+        ok: {type: boolean}
+        event_id: {type: string, format: uuid}
+        service_id: {const: nex-cx}
+        event_type: {type: string, minLength: 1}
+        severity: {type: string, enum: [INFO, WARNING, ERROR, CRITICAL]}
+        error_code: {type: string, minLength: 1}
+        detail: {type: string, minLength: 1}
+        status_code: {type: integer, minimum: 400, maximum: 599}
+      allOf:
+        - if:
+            properties:
+              ok: {const: true}
+          then:
+            required: [event_id, service_id, event_type, severity]
+          else:
+            required: [error_code, detail, status_code]
+    CxSummaryVectorFreshness:
+      type: object
+      additionalProperties: false
+      required:
+        - freshness_schema_version
+        - state
+        - usable
+        - reasons
+        - document_summary_id
+        - summary_embedding_id
+        - profile_fingerprint
+      properties:
+        freshness_schema_version: {const: cx_summary_vector_freshness.v1}
+        state: {type: string, enum: [READY, STALE]}
+        usable: {type: boolean}
+        reasons:
+          type: array
+          uniqueItems: true
+          items: {type: string, minLength: 1}
+        document_summary_id: {type: string, format: uuid}
+        summary_embedding_id: {type: string, format: uuid}
+        profile_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+    CxDocumentIntelligenceRun:
+      type: object
+      additionalProperties: false
+      required:
+        - document_intelligence_run_schema_version
+        - document_id
+        - status
+        - summary
+        - summary_embedding
+        - summary_vector
+        - raw_summary_included
+        - raw_vector_included
+        - observability
+      properties:
+        document_intelligence_run_schema_version:
+          const: cx_document_intelligence_run.v1
+        document_id: {type: string, format: uuid}
+        status: {const: READY}
+        summary:
+          type: object
+          additionalProperties: false
+          required:
+            - document_summary_id
+            - status
+            - summary_text_sha256
+            - summary_char_count
+            - summary_preview
+            - summary_storage_uri
+            - source_markdown_sha256
+            - summarizer
+            - updated_at
+          properties:
+            document_summary_id: {type: string, format: uuid}
+            status: {const: READY}
+            summary_text_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+            summary_char_count: {type: integer, minimum: 1, maximum: 1000}
+            summary_preview: {type: string, minLength: 1, maxLength: 240}
+            summary_storage_uri: {type: string, minLength: 1}
+            source_markdown_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+            summarizer:
+              type: object
+              additionalProperties: false
+              required: [provider, mode, model_profile_id, model_revision]
+              properties:
+                provider: {type: string, minLength: 1}
+                mode: {type: string, minLength: 1}
+                model_profile_id: {type: string, minLength: 1}
+                model_revision: {type: string, minLength: 1}
+                deployment_id: {type: string, minLength: 1}
+                provider_type: {type: string, minLength: 1}
+                mo_generation_id: {type: string, minLength: 1}
+                finish_reason: {type: string, minLength: 1}
+                usage: {type: object, additionalProperties: true}
+                provider_prompt_package_hash: {type: string, pattern: '^[0-9a-f]{64}$'}
+            updated_at: {type: string, format: date-time}
+        summary_embedding:
+          type: object
+          additionalProperties: false
+          required:
+            - summary_embedding_id
+            - document_summary_id
+            - provider_alias
+            - model_profile_id
+            - model_revision
+            - deployment_id
+            - embedding_sha256
+            - vector_dimension
+          properties:
+            summary_embedding_id: {type: string, format: uuid}
+            document_summary_id: {type: string, format: uuid}
+            provider_alias: {type: string, minLength: 1}
+            model_profile_id: {type: string, minLength: 1}
+            model_revision: {type: string, minLength: 1}
+            deployment_id: {type: string, minLength: 1}
+            embedding_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+            vector_dimension: {type: integer, minimum: 1, maximum: 8192}
+        summary_vector:
+          type: object
+          additionalProperties: false
+          required:
+            - summary_vector_id
+            - storage_backend
+            - storage_uri
+            - embedding_sha256
+            - vector_dimension
+            - profile_fingerprint
+            - freshness
+          properties:
+            summary_vector_id: {type: string, format: uuid}
+            storage_backend: {type: string, minLength: 1}
+            storage_uri: {type: string, minLength: 1}
+            embedding_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+            vector_dimension: {type: integer, minimum: 1, maximum: 8192}
+            profile_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+            freshness:
+              $ref: "#/components/schemas/CxSummaryVectorFreshness"
+        raw_summary_included: {const: false}
+        raw_vector_included: {const: false}
+        observability:
+          $ref: "#/components/schemas/CxDocumentIntelligenceObservability"
+    CxDocumentIntelligenceSimilarity:
+      type: object
+      additionalProperties: false
+      required:
+        - document_intelligence_similarity_schema_version
+        - source_document
+        - freshness
+        - result
+        - raw_summary_included
+        - raw_vector_included
+        - observability
+      properties:
+        document_intelligence_similarity_schema_version:
+          const: cx_document_intelligence_similarity.v1
+        source_document:
+          type: object
+          additionalProperties: false
+          required:
+            - content_object_id
+            - document_summary_id
+            - summary_embedding_id
+            - profile_fingerprint
+          properties:
+            content_object_id: {type: string, format: uuid}
+            document_summary_id: {type: string, format: uuid}
+            summary_embedding_id: {type: string, format: uuid}
+            profile_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+        freshness:
+          $ref: "#/components/schemas/CxSummaryVectorFreshness"
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - summary_similarity_result_schema_version
+            - candidate_source
+            - metric
+            - query_embedding_sha256
+            - query_dimension
+            - profile_fingerprint
+            - minimum_score
+            - excluded_content_object_id
+            - candidate_count
+            - candidates
+          properties:
+            summary_similarity_result_schema_version:
+              const: cx_summary_similarity_result.v1
+            candidate_source: {const: postgresql_pgvector_summary}
+            metric: {const: cosine}
+            query_embedding_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+            query_dimension: {type: integer, minimum: 1, maximum: 8192}
+            profile_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+            minimum_score: {type: number, minimum: -1, maximum: 1}
+            excluded_content_object_id: {type: [string, "null"], format: uuid}
+            candidate_count: {type: integer, minimum: 0, maximum: 100}
+            candidates:
+              type: array
+              maxItems: 100
+              items:
+                type: object
+                additionalProperties: false
+                required:
+                  - summary_similarity_candidate_schema_version
+                  - candidate_rank
+                  - content_object_id
+                  - document_summary_id
+                  - summary_embedding_id
+                  - original_filename
+                  - content_type
+                  - summary_text_sha256
+                  - summary_char_count
+                  - embedding_sha256
+                  - vector_dimension
+                  - profile_fingerprint
+                  - similarity_score
+                  - cosine_distance
+                properties:
+                  summary_similarity_candidate_schema_version:
+                    const: cx_summary_similarity_candidate.v1
+                  candidate_rank: {type: integer, minimum: 1}
+                  content_object_id: {type: string, format: uuid}
+                  document_summary_id: {type: string, format: uuid}
+                  summary_embedding_id: {type: string, format: uuid}
+                  original_filename: {type: string, minLength: 1, maxLength: 512}
+                  content_type: {type: string, minLength: 1, maxLength: 160}
+                  summary_text_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+                  summary_char_count: {type: integer, minimum: 0, maximum: 1000}
+                  embedding_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+                  vector_dimension: {type: integer, minimum: 1, maximum: 8192}
+                  profile_fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+                  similarity_score: {type: number, minimum: -1, maximum: 1}
+                  cosine_distance: {type: number, minimum: 0, maximum: 2}
+        raw_summary_included: {const: false}
+        raw_vector_included: {const: false}
+        observability:
+          $ref: "#/components/schemas/CxDocumentIntelligenceObservability"
     CxVectorSourceSnapshot:
       type: object
       additionalProperties: false

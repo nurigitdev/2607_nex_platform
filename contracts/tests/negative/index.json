@@ -431,6 +431,16 @@
       "schema": "schemas/service/nex_cx/document_summary_embedding.v1.schema.json"
     },
     {
+      "name": "cx_document_intelligence_run_raw_summary_leak",
+      "path": "tests/negative/retrieval/cx_document_intelligence_run.raw_summary_leak.json",
+      "schema": "schemas/service/nex_cx/document_intelligence_run.v1.schema.json"
+    },
+    {
+      "name": "cx_document_intelligence_similarity_vector_leak",
+      "path": "tests/negative/retrieval/cx_document_intelligence_similarity.vector_leak.json",
+      "schema": "schemas/service/nex_cx/document_intelligence_similarity.v1.schema.json"
+    },
+    {
       "name": "cx_document_library_projection_storage_uri_leak",
       "path": "tests/negative/retrieval/cx_document_library_projection.storage_uri_leak.json",
       "schema": "schemas/service/nex_cx/document_library_projection.v1.schema.json"

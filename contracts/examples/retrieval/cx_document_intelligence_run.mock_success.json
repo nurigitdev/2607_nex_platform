@@ -1,0 +1,67 @@
+{
+  "document_intelligence_run_schema_version": "cx_document_intelligence_run.v1",
+  "document_id": "62cbb468-147e-5e66-9bd8-4551a5807cf6",
+  "status": "READY",
+  "summary": {
+    "document_summary_id": "3c2a0d32-a313-5446-93da-1a418b148b25",
+    "status": "READY",
+    "summary_text_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "summary_char_count": 58,
+    "summary_preview": "The approved deployment date is 2026-10-01 with rollback.",
+    "summary_storage_uri": "cx-private://tenant/user/document_summary/3c2a0d32-a313-5446-93da-1a418b148b25",
+    "source_markdown_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "summarizer": {
+      "provider": "general-llm-default",
+      "mode": "mo_generation",
+      "model_profile_id": "cx-document-summary-default",
+      "model_revision": "Qwen3.5-122B-A10B-NVFP4",
+      "deployment_id": "dgx-generation-primary",
+      "provider_type": "openai-compatible",
+      "mo_generation_id": "mo-generation-0958",
+      "finish_reason": "STOP",
+      "usage": {
+        "input_tokens": 120,
+        "output_tokens": 24,
+        "total_tokens": 144
+      },
+      "provider_prompt_package_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "updated_at": "2026-09-22T02:00:00Z"
+  },
+  "summary_embedding": {
+    "summary_embedding_id": "1ac5a8dc-d619-54d9-96e0-d06ae4e7408a",
+    "document_summary_id": "3c2a0d32-a313-5446-93da-1a418b148b25",
+    "provider_alias": "qwen3-embedding-4b",
+    "model_profile_id": "qwen3-embedding-4b-bf16",
+    "model_revision": "Qwen3-Embedding-4B",
+    "deployment_id": "dgx-embedding-primary",
+    "embedding_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "vector_dimension": 2560
+  },
+  "summary_vector": {
+    "summary_vector_id": "9f5f01d8-b075-57b4-9990-096adf3355e7",
+    "storage_backend": "postgresql-pgvector-summary-v1",
+    "storage_uri": "cx-private://postgresql/cx_summary_vectors/9f5f01d8-b075-57b4-9990-096adf3355e7",
+    "embedding_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "vector_dimension": 2560,
+    "profile_fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "freshness": {
+      "freshness_schema_version": "cx_summary_vector_freshness.v1",
+      "state": "READY",
+      "usable": true,
+      "reasons": [],
+      "document_summary_id": "3c2a0d32-a313-5446-93da-1a418b148b25",
+      "summary_embedding_id": "1ac5a8dc-d619-54d9-96e0-d06ae4e7408a",
+      "profile_fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  },
+  "raw_summary_included": false,
+  "raw_vector_included": false,
+  "observability": {
+    "ok": true,
+    "event_id": "d799c96e-703f-5e2c-8219-89dde55cf958",
+    "service_id": "nex-cx",
+    "event_type": "cx.document_intelligence.ready",
+    "severity": "INFO"
+  }
+}

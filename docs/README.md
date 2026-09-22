@@ -1061,6 +1061,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0955`](slices/0955_cx_summary_vector_pgvector_freshness.md) | `S96-005` Owner-scoped summary pgvector payload persistence and current-lineage freshness. |
 | [`Slice 0956`](slices/0956_cx_owner_scoped_summary_similarity.md) | `S96-006` Permission-first owner-scoped current-summary cosine similarity adapter. |
 | [`Slice 0957`](slices/0957_cx_document_intelligence_orchestration_api.md) | `S96-007` Durable document-intelligence orchestration, production dependency composition, and owner-scoped API wiring. |
+| [`Slice 0958`](slices/0958_cx_document_intelligence_observability_contracts.md) | `S96-008` Metadata-only document-intelligence operational events and explicit raw-safe API response contracts. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

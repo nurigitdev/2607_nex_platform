@@ -626,6 +626,16 @@
       "schema": "schemas/service/nex_cx/document_summary_embedding.v1.schema.json"
     },
     {
+      "name": "cx_document_intelligence_run_mock",
+      "path": "examples/retrieval/cx_document_intelligence_run.mock_success.json",
+      "schema": "schemas/service/nex_cx/document_intelligence_run.v1.schema.json"
+    },
+    {
+      "name": "cx_document_intelligence_similarity_mock",
+      "path": "examples/retrieval/cx_document_intelligence_similarity.mock_success.json",
+      "schema": "schemas/service/nex_cx/document_intelligence_similarity.v1.schema.json"
+    },
+    {
       "name": "cx_document_library_projection_mock",
       "path": "examples/retrieval/cx_document_library_projection.mock_success.json",
       "schema": "schemas/service/nex_cx/document_library_projection.v1.schema.json"
