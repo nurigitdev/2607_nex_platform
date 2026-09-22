@@ -1059,6 +1059,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0953`](slices/0953_cx_durable_private_summary_storage.md) | `S96-003` Owner-scoped durable private summary text persistence and restart reload. |
 | [`Slice 0954`](slices/0954_cx_document_summary_generation_adapter.md) | `S96-004` Fail-closed NeX-MO document summary generation adapter and model lineage. |
 | [`Slice 0955`](slices/0955_cx_summary_vector_pgvector_freshness.md) | `S96-005` Owner-scoped summary pgvector payload persistence and current-lineage freshness. |
+| [`Slice 0956`](slices/0956_cx_owner_scoped_summary_similarity.md) | `S96-006` Permission-first owner-scoped current-summary cosine similarity adapter. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

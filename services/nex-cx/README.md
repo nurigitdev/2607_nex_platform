@@ -183,6 +183,10 @@ Internal persistence boundary:
   stored payload. The Qwen3-Embedding-4B 2560-dimension path has a partial HNSW
   cosine index; actual PostgreSQL and DGX verification is deferred to Slice
   0959.
+- Summary similarity filters by exact tenant/owner and embedding profile before
+  cosine ranking. Only ACTIVE content with the latest READY summary and matching
+  READY embedding lineage is eligible; results contain safe metadata and scores,
+  never raw vectors or cross-owner identities.
 - Prompt registry seed `cx.document_summary.default` records the bounded summary
   system prompt and prompt render events for summary jobs.
 - The current adapter is in-memory for mock-first testing; PostgreSQL

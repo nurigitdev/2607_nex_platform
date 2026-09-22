@@ -140,7 +140,7 @@ def run_cx_document_intelligence_similarity_boundary_audit(
     migration_source = _read_text(
         root / "database/nex-cx/migrations/0021_content_summary_prompt_foundation.sql"
     )
-    gap_checks = {
+    gap_observations = {
         "summary_generation_is_local_mock": (
             'DEFAULT_SUMMARIZER_PROFILE = "mock-document-summary"' in summary_source
             and '"provider": "local_mock"' in summary_source
@@ -166,6 +166,43 @@ def run_cx_document_intelligence_similarity_boundary_audit(
         "document_intelligence_observability_missing": not (
             root / "services/nex-cx/nex_cx/document_intelligence_observability.py"
         ).is_file(),
+    }
+    resolution_checks = {
+        "summary_generation_is_local_mock": (
+            root / "services/nex-cx/nex_cx/document_summary_generation.py"
+        ).is_file(),
+        "private_summary_text_is_process_local": (
+            root / "services/nex-cx/nex_cx/document_summary_storage.py"
+        ).is_file(),
+        "summary_vector_is_process_local": (
+            root / "services/nex-cx/nex_cx/summary_pgvector_store.py"
+        ).is_file(),
+        "summary_pgvector_payload_missing": (
+            root
+            / "database/nex-cx/migrations/0955_cx_summary_vector_persistence.sql"
+        ).is_file(),
+        "owner_scoped_summary_similarity_missing": (
+            root / "services/nex-cx/nex_cx/summary_similarity.py"
+        ).is_file(),
+        "summary_similarity_freshness_guard_missing": all(
+            (
+                (
+                    root / "services/nex-cx/nex_cx/summary_pgvector_store.py"
+                ).is_file(),
+                (root / "services/nex-cx/nex_cx/summary_similarity.py").is_file(),
+            )
+        ),
+        "document_intelligence_observability_missing": (
+            root / "services/nex-cx/nex_cx/document_intelligence_observability.py"
+        ).is_file(),
+    }
+    gap_checks = {
+        name: gap_observations[name] or resolution_checks[name]
+        for name in gap_observations
+    }
+    gap_states = {
+        name: "RESOLVED" if resolution_checks[name] else "OPEN"
+        for name in gap_observations
     }
     checks = {
         "required_paths_present": all(item["present"] for item in paths),
@@ -205,7 +242,7 @@ def run_cx_document_intelligence_similarity_boundary_audit(
             _group_present(tokens, group)
             for group in ("generation_model", "embedding_model")
         ),
-        "implementation_gaps_confirmed": all(gap_checks.values()),
+        "implementation_gaps_accounted_for": all(gap_checks.values()),
     }
     issues = [
         {"category": "path_missing", "path": item["path"]}
@@ -222,7 +259,7 @@ def run_cx_document_intelligence_similarity_boundary_audit(
         if not item["present"]
     )
     issues.extend(
-        {"category": "expected_gap_not_confirmed", "gap": name}
+        {"category": "implementation_gap_unaccounted", "gap": name}
         for name, confirmed in gap_checks.items()
         if not confirmed
     )
@@ -237,11 +274,15 @@ def run_cx_document_intelligence_similarity_boundary_audit(
             if passed
             else "cx_document_intelligence_similarity_boundary_failed"
         ),
-        "boundary_readiness": "GAPS_CONFIRMED" if passed else "AUDIT_FAILED",
+        "boundary_readiness": "BOUNDARY_CURRENT" if passed else "AUDIT_FAILED",
         "decision": _boundary_decision(),
         "summary": {
             "foundation_count": 8,
             "gap_count": 7,
+            "open_gap_count": sum(state == "OPEN" for state in gap_states.values()),
+            "resolved_gap_count": sum(
+                state == "RESOLVED" for state in gap_states.values()
+            ),
             "planned_slice_count": 10,
             "issue_count": len(issues),
         },
@@ -268,6 +309,9 @@ def run_cx_document_intelligence_similarity_boundary_audit(
         ],
         "checks": checks,
         "gap_checks": gap_checks,
+        "gap_observations": gap_observations,
+        "gap_resolutions": resolution_checks,
+        "gap_states": gap_states,
         "required_paths": paths,
         "required_tokens": tokens,
         "issues": issues,
@@ -325,6 +369,7 @@ def summary_line(result: Mapping[str, Any]) -> str:
         f"{str(result.get('status') or 'FAIL').lower()} "
         f"foundations={summary.get('foundation_count', 0)} "
         f"gaps={summary.get('gap_count', 0)} "
+        f"open={summary.get('open_gap_count', 0)} "
         f"scope={decision.get('feature_scope', 'unknown')} "
         f"remote_required_now={decision.get('remote_provider_required_now', True)} "
         f"issues={summary.get('issue_count', 0)}"

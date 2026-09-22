@@ -10,15 +10,21 @@ def test_repository_document_intelligence_boundary_audit_passes() -> None:
     result = audit.run_cx_document_intelligence_similarity_boundary_audit()
 
     assert result["status"] == "PASS"
-    assert result["boundary_readiness"] == "GAPS_CONFIRMED"
+    assert result["boundary_readiness"] == "BOUNDARY_CURRENT"
     assert all(result["checks"].values())
     assert all(result["gap_checks"].values())
     assert result["summary"] == {
         "foundation_count": 8,
         "gap_count": 7,
+        "open_gap_count": 1,
+        "resolved_gap_count": 6,
         "planned_slice_count": 10,
         "issue_count": 0,
     }
+    assert list(result["gap_states"].values()).count("OPEN") == 1
+    assert result["gap_states"]["document_intelligence_observability_missing"] == (
+        "OPEN"
+    )
     assert len(result["implementation_gaps"]) == 7
     assert len(result["slice_plan"]) == 10
     assert result["next_slice"] == "0952"
@@ -70,7 +76,7 @@ def test_boundary_audit_helpers(tmp_path: Path) -> None:
 def test_boundary_audit_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = audit.run_cx_document_intelligence_similarity_boundary_audit()
     assert audit.summary_line(passing) == (
-        "cx_document_intelligence_similarity_boundary=pass foundations=8 gaps=7 "
+        "cx_document_intelligence_similarity_boundary=pass foundations=8 gaps=7 open=1 "
         "scope=owner_private_document_intelligence_summary_similarity "
         "remote_required_now=False issues=0"
     )
