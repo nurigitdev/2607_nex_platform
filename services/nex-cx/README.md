@@ -175,6 +175,14 @@ Internal persistence boundary:
   over-limit responses and records safe model/deployment lineage.
 - Summary embeddings index the document summary separately from chunk
   embeddings for future document-level similarity features.
+- `cx_summary_vectors` is the private PostgreSQL/pgvector payload table for
+  summary embeddings. Its lineage trigger requires an ACTIVE owner-matched
+  document plus READY summary and embedding metadata before accepting a vector.
+- Summary-vector freshness fails closed when the current owner, content,
+  summary hash, embedding profile, vector digest, or dimension differs from the
+  stored payload. The Qwen3-Embedding-4B 2560-dimension path has a partial HNSW
+  cosine index; actual PostgreSQL and DGX verification is deferred to Slice
+  0959.
 - Prompt registry seed `cx.document_summary.default` records the bounded summary
   system prompt and prompt render events for summary jobs.
 - The current adapter is in-memory for mock-first testing; PostgreSQL
@@ -223,8 +231,8 @@ Internal persistence boundary:
 - Summary embedding records now write through to
   `cx_document_summary_embeddings` when the repository supports it. Persisted
   rows store provider/model lineage, vector dimension, embedding hash, optional
-  storage URI, status, and trace metadata only. Raw summary vectors remain in
-  the private summary embedding vector boundary.
+  storage URI, status, and trace metadata only. Raw summary vectors are stored
+  separately through the owner-scoped summary pgvector boundary.
 - Retrieval package metadata now writes through to `cx_retrieval_packages` and
   `cx_retrieval_evidence_items` when evidence lineage points at persisted
   content/chunk rows. The persisted rows store query/evidence SHA-256 hashes,

@@ -30,6 +30,7 @@ CORE_CX_TABLES = frozenset(
         "cx_remediation_execution_attempts",
         "cx_generation_executions",
         "cx_ingest_runs",
+        "cx_summary_vectors",
     }
 )
 
@@ -82,6 +83,7 @@ def build_cx_database_drift_audit(root: Path = ROOT) -> dict[str, Any]:
         root / "services/nex-cx/nex_cx/remediation_execution.py",
         root / "services/nex-cx/nex_cx/generation_persistence.py",
         root / "services/nex-cx/nex_cx/ingestion_orchestration_repository.py",
+        root / "services/nex-cx/nex_cx/summary_pgvector_store.py",
     )
     repository_source = "\n".join(
         path.read_text(encoding="utf-8")
