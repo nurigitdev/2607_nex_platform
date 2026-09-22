@@ -37,6 +37,11 @@ from nex_cx.authorization import (
     authorize_cx_owner_request,
 )
 from nex_cx.document_library import build_document_detail_projection
+from nex_cx.document_summary_storage import (
+    load_document_summary_text,
+    persist_document_summary_text,
+)
+from nex_cx.private_content import CxPrivateContentError, CxPrivateTextStore
 from nex_cx.repository import (
     CxContentRepositoryError,
     CxContentRepository,
@@ -151,6 +156,7 @@ class ContentIngestionStore:
         default_factory=InMemoryCxContentRepository
     )
     document_content_refs: dict[str, dict[str, str]] = field(default_factory=dict)
+    private_summary_text_store: CxPrivateTextStore | None = None
 
     def save_upload_registration(
         self,
@@ -504,16 +510,70 @@ class ContentIngestionStore:
         *,
         summary_text: str,
     ) -> dict[str, Any]:
-        self.document_summaries[record["document_id"]] = record
-        self.summary_texts[record["document_summary_id"]] = summary_text
-        self._persist_document_summary_metadata(record)
-        return record
+        stored_record = record
+        if self.private_summary_text_store is not None:
+            stored_record = persist_document_summary_text(
+                private_text_store=self.private_summary_text_store,
+                access_context=self._summary_owner_access_context(record),
+                summary=record,
+                summary_text=summary_text,
+            )
+        self.document_summaries[stored_record["document_id"]] = stored_record
+        self.summary_texts[stored_record["document_summary_id"]] = summary_text
+        self._persist_document_summary_metadata(stored_record)
+        return stored_record
 
     def get_document_summary(self, document_id: str) -> dict[str, Any] | None:
         return self.document_summaries.get(document_id)
 
     def get_summary_text(self, document_summary_id: str) -> str | None:
-        return self.summary_texts.get(document_summary_id)
+        cached = self.summary_texts.get(document_summary_id)
+        if cached is not None or self.private_summary_text_store is None:
+            return cached
+        summary = next(
+            (
+                record
+                for record in self.document_summaries.values()
+                if record.get("document_summary_id") == document_summary_id
+            ),
+            None,
+        )
+        if summary is None:
+            return None
+        text = load_document_summary_text(
+            private_text_store=self.private_summary_text_store,
+            access_context=self._summary_owner_access_context(summary),
+            summary=summary,
+        )
+        if text is not None:
+            self.summary_texts[document_summary_id] = text
+        return text
+
+    def _summary_owner_access_context(
+        self,
+        summary: Mapping[str, Any],
+    ) -> CxAccessContext:
+        document_id = str(summary.get("document_id") or "")
+        document = self.documents.get(document_id)
+        if document is None:
+            raise CxPrivateContentError(
+                status_code=409,
+                error_code="CX_SUMMARY_OWNER_LINEAGE_MISSING",
+                detail="Summary private storage requires document owner lineage.",
+            )
+        ownership_ref = _ownership_ref_from_upload_record(document)
+        return CxAccessContext(
+            caller_service_id="nex-cx",
+            tenant_id=ownership_ref["tenant_ref"]["id"],
+            subject_id=ownership_ref["owner_subject_ref"]["id"],
+            request_id=str(
+                summary.get("request_id") or document.get("request_id") or "internal"
+            ),
+            trace_id=str(
+                summary.get("trace_id") or document.get("trace_id") or "internal"
+            ),
+            scopes=("service:call",),
+        )
 
     def _persist_document_summary_metadata(self, record: dict[str, Any]) -> None:
         required_keys = {

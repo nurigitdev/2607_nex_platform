@@ -213,6 +213,10 @@ Internal persistence boundary:
   repository supports it. Persisted rows store summary hashes, storage URI,
   limits, status, prompt/model lineage, and trace metadata only; full summary
   text remains in the private summary text boundary.
+- When `private_summary_text_store` is injected, summary text is durably stored
+  through the S92 owner-scoped filesystem port and the in-process summary map
+  becomes a reloadable cache. The default regression composition remains
+  memory-only until the S96 runtime wiring Slice.
 - Summary embedding records now write through to
   `cx_document_summary_embeddings` when the repository supports it. Persisted
   rows store provider/model lineage, vector dimension, embedding hash, optional
