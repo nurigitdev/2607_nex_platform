@@ -195,6 +195,27 @@ def test_generation_persistence_accepts_absent_optional_metadata() -> None:
     assert persisted["usage"] == {}
 
 
+def test_generation_persistence_keeps_private_output_reference_metadata() -> None:
+    persisted = build_generation_persistence_record(
+        _record(
+            response_metadata={
+                "finish_reason": "STOP",
+                "output_hash": "b" * 64,
+                "private_output_schema_version": "cx_generation_private_output.v1",
+                "output_storage_backend": "filesystem-text-v1",
+                "output_storage_uri": "cx-private://filesystem-text-v1/safe/ref",
+                "output_size_bytes": 42,
+            }
+        ),
+        owner_lineage=_lineage(),
+    )
+
+    assert persisted["response_metadata"]["output_storage_uri"].startswith(
+        "cx-private://"
+    )
+    assert generation_persistence_has_private_payload(persisted) is False
+
+
 def test_private_payload_detection_is_recursive() -> None:
     assert generation_persistence_has_private_payload({"prompt": "private"}) is True
     assert generation_persistence_has_private_payload(

@@ -31,7 +31,16 @@ _REQUEST_METADATA_FIELDS = frozenset(
         "grounded_response_quality_issue_count",
     }
 )
-_RESPONSE_METADATA_FIELDS = frozenset({"finish_reason", "output_hash"})
+_RESPONSE_METADATA_FIELDS = frozenset(
+    {
+        "finish_reason",
+        "output_hash",
+        "private_output_schema_version",
+        "output_storage_backend",
+        "output_storage_uri",
+        "output_size_bytes",
+    }
+)
 _RUNTIME_METADATA_FIELDS = frozenset(
     {
         "request_id",

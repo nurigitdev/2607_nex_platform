@@ -72,7 +72,7 @@ def load_generation_output(
     metadata: Mapping[str, Any],
 ) -> str | None:
     """Reload owner-private generated text and verify its metadata binding."""
-    _validate_metadata(metadata)
+    validated = validate_generation_output_metadata(metadata)
     key = build_private_payload_key(
         access_context,
         payload_kind=GENERATION_OUTPUT_PAYLOAD_KIND,
@@ -81,11 +81,11 @@ def load_generation_output(
     text = private_text_store.get_text(
         access_context=access_context,
         key=key,
-        expected_sha256=str(metadata["output_sha256"]),
+        expected_sha256=validated["output_sha256"],
     )
     if text is None:
         return None
-    if len(text.encode("utf-8")) != metadata["output_size_bytes"]:
+    if len(text.encode("utf-8")) != validated["output_size_bytes"]:
         raise CxPrivateContentError(
             status_code=409,
             error_code="CX_GENERATION_OUTPUT_SIZE_MISMATCH",
@@ -105,7 +105,9 @@ def build_generation_output_store(
     return FileSystemCxPrivateTextStore(root)
 
 
-def _validate_metadata(metadata: Mapping[str, Any]) -> None:
+def validate_generation_output_metadata(
+    metadata: Mapping[str, Any],
+) -> dict[str, Any]:
     if metadata.get("private_output_schema_version") != (
         GENERATION_PRIVATE_OUTPUT_SCHEMA_VERSION
     ):
@@ -126,6 +128,13 @@ def _validate_metadata(metadata: Mapping[str, Any]) -> None:
     size_bytes = metadata.get("output_size_bytes")
     if isinstance(size_bytes, bool) or not isinstance(size_bytes, int) or size_bytes < 1:
         raise _metadata_invalid("output size is invalid.")
+    return {
+        "private_output_schema_version": GENERATION_PRIVATE_OUTPUT_SCHEMA_VERSION,
+        "output_storage_backend": backend.strip(),
+        "output_storage_uri": storage_uri,
+        "output_sha256": output_sha256,
+        "output_size_bytes": size_bytes,
+    }
 
 
 def _metadata_invalid(detail: str) -> CxPrivateContentError:
