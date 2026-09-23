@@ -1077,6 +1077,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0971`](slices/0971_tiered_regression_gate_foundation.md) | Development-process tiered Slice/Checkpoint/Full regression gate foundation with unchanged Full Gate fallback. |
 | [`Slice 0972`](slices/0972_cx_worker_operations_resilience_boundary_audit.md) | `S98-001` CX worker operations/resilience boundary audit and ordered implementation plan. |
 | [`Slice 0973`](slices/0973_cx_worker_execution_state_contract.md) | `S98-002` Strict metadata-only CX worker execution and state-transition contract. |
+| [`Slice 0974`](slices/0974_cx_durable_worker_claim_lease.md) | `S98-003` Durable queue claim, renewable lease, and competing-worker exclusion controls. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
