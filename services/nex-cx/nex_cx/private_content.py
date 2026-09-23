@@ -14,7 +14,9 @@ from nex_cx.access_context import CxAccessContext
 
 CX_PRIVATE_PAYLOAD_KEY_SCHEMA_VERSION = "cx_private_payload_key.v1"
 CX_PRIVATE_PAYLOAD_RECEIPT_SCHEMA_VERSION = "cx_private_payload_receipt.v1"
-PRIVATE_TEXT_PAYLOAD_KINDS = frozenset({"chunk_text", "summary_text"})
+PRIVATE_TEXT_PAYLOAD_KINDS = frozenset(
+    {"chunk_text", "generation_output", "summary_text"}
+)
 PRIVATE_VECTOR_PAYLOAD_KINDS = frozenset(
     {"chunk_embedding", "summary_embedding"}
 )
