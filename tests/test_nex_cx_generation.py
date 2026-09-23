@@ -1004,6 +1004,11 @@ def test_generation_record_can_be_read_back() -> None:
 
     assert response.status_code == 200
     assert response.json()["cx_generation_id"] == created["cx_generation_id"]
+    assert response.json()["read_model_schema_version"] == (
+        "cx_generation_read_model.v1"
+    )
+    assert response.json()["content_ref"]["available"] is False
+    assert "output_preview" not in response.text
 
 
 def test_generation_read_returns_problem_for_unknown_record() -> None:

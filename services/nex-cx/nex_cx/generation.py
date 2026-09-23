@@ -22,7 +22,9 @@ from nex_runtime.recovery import (
     select_generation_recovery_policy,
 )
 from nex_runtime import (
+    OperationalEventEmitter,
     issue_mock_service_token,
+    operational_event_emitter_from_app,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
@@ -52,6 +54,11 @@ from nex_cx.generation_runtime import (
 from nex_cx.generation_read_model import (
     GenerationReadModel,
     GenerationReadModelError,
+    project_generation_read_model,
+)
+from nex_cx.generation_observability import (
+    observe_generation_outcome,
+    observe_generation_request_failure,
 )
 from nex_cx.progress import (
     build_cx_generation_failure_progress_events,
@@ -235,9 +242,14 @@ def register_generation_routes(
     retrieval_store: RetrievalPackageStore | None = None,
     execution_runtime: GroundedGenerationRuntime | None = None,
     read_model: GenerationReadModel | None = None,
+    event_emitter: OperationalEventEmitter | None = None,
 ) -> None:
     generation_store = store or DEFAULT_GENERATION_STORE
     client = mo_client or build_default_mo_client()
+    emitter = event_emitter or operational_event_emitter_from_app(
+        app,
+        service_id="nex-cx",
+    )
 
     @app.post("/api/v1/generations", response_model=None)
     def create_generation(
@@ -297,6 +309,7 @@ def register_generation_routes(
                             retryable=True,
                         )
                     generation_store.save(replayed)
+                    observe_generation_outcome(emitter, replayed, replayed=True)
                     if replayed["status"] == "FAILED":
                         return _generation_problem_response(
                             request,
@@ -359,6 +372,7 @@ def register_generation_routes(
                         trace_id=trace_id,
                     ),
                 )
+                observe_generation_outcome(emitter, stored_failure)
                 return _generation_problem_response(request, exc)
             structured_draft = build_structured_draft(
                 cx_generation_id=mo_payload["cx_generation_id"],
@@ -400,12 +414,23 @@ def register_generation_routes(
                     )
                 except GroundedGenerationRuntimeError as exc:
                     raise _runtime_facade_error(exc) from exc
-            return generation_store.save(
+            stored_record = generation_store.save(
                 stored_record,
                 structured_draft=structured_draft,
                 progress_events=progress_events,
             )
+            observe_generation_outcome(emitter, stored_record)
+            return stored_record
         except GenerationCompatibilityError as exc:
+            observe_generation_request_failure(
+                emitter,
+                operation="create",
+                error_code=exc.error_code,
+                status_code=exc.status_code,
+                retryable=False,
+                trace_id=trace_id,
+                request_id=request_id,
+            )
             return _generation_problem_response(
                 request,
                 GenerationFacadeError(
@@ -415,6 +440,15 @@ def register_generation_routes(
                 ),
             )
         except GenerationFacadeError as exc:
+            observe_generation_request_failure(
+                emitter,
+                operation="create",
+                error_code=exc.error_code,
+                status_code=exc.status_code,
+                retryable=exc.retryable,
+                trace_id=trace_id,
+                request_id=request_id,
+            )
             return _generation_problem_response(request, exc)
 
     @app.get("/api/v1/generations/{cx_generation_id}", response_model=None)
@@ -444,6 +478,16 @@ def register_generation_routes(
                 else generation_store.get(cx_generation_id)
             )
         except GenerationReadModelError as exc:
+            observe_generation_request_failure(
+                emitter,
+                operation="metadata_read",
+                error_code=exc.error_code,
+                status_code=exc.status_code,
+                retryable=exc.retryable,
+                trace_id=trace_id_from_headers(request),
+                request_id=request_id_from_headers(request),
+                cx_generation_id=cx_generation_id,
+            )
             return _generation_problem_response(
                 request,
                 _read_model_facade_error(exc),
@@ -457,7 +501,11 @@ def register_generation_routes(
                     detail=f"Generation record was not found: {cx_generation_id}",
                 ),
             )
-        return record
+        return (
+            record
+            if read_model is not None
+            else project_generation_read_model(record)
+        )
 
     @app.get("/api/v1/generations/{cx_generation_id}/content", response_model=None)
     def get_generation_content(
@@ -476,14 +524,25 @@ def register_generation_routes(
         if isinstance(access_context, JSONResponse):
             return access_context
         if read_model is None:
+            failure = GenerationFacadeError(
+                status_code=503,
+                error_code="cx.generation_read_model_unavailable",
+                detail="Durable generation content is unavailable.",
+                retryable=True,
+            )
+            observe_generation_request_failure(
+                emitter,
+                operation="content_read",
+                error_code=failure.error_code,
+                status_code=failure.status_code,
+                retryable=failure.retryable,
+                trace_id=trace_id_from_headers(request),
+                request_id=request_id_from_headers(request),
+                cx_generation_id=cx_generation_id,
+            )
             return _generation_problem_response(
                 request,
-                GenerationFacadeError(
-                    status_code=503,
-                    error_code="cx.generation_read_model_unavailable",
-                    detail="Durable generation content is unavailable.",
-                    retryable=True,
-                ),
+                failure,
             )
         try:
             content = read_model.get_content(
@@ -491,6 +550,16 @@ def register_generation_routes(
                 access_context=access_context,
             )
         except GenerationReadModelError as exc:
+            observe_generation_request_failure(
+                emitter,
+                operation="content_read",
+                error_code=exc.error_code,
+                status_code=exc.status_code,
+                retryable=exc.retryable,
+                trace_id=trace_id_from_headers(request),
+                request_id=request_id_from_headers(request),
+                cx_generation_id=cx_generation_id,
+            )
             return _generation_problem_response(
                 request,
                 _read_model_facade_error(exc),

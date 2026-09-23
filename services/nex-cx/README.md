@@ -440,6 +440,11 @@ Grounded generation validation:
   storage, generation, pgvector freshness, owner-scoped similarity,
   orchestration, metadata-only observability, and protected Slice 0959 evidence
   before reporting `READY_FOR_S97`.
+- Grounded-generation terminal outcomes emit deterministic metadata-only
+  operational events for completed, failed, replayed, and durable-read failure
+  states. Generation metadata reads use an explicit allowlisted projection,
+  while raw generated text remains available only through the authenticated
+  owner-scoped `/api/v1/generations/{cx_generation_id}/content` route.
 - CX retrieval PostgreSQL smoke evidence is available through
   `scripts/smoke/run_cx_retrieval_postgres_smoke.py`. It is skipped by default
   and only writes to the CX test database when

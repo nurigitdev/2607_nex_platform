@@ -16,6 +16,72 @@ from nex_cx.private_content import CxPrivateContentError, CxPrivateTextStore
 
 CX_GENERATION_READ_MODEL_SCHEMA_VERSION = "cx_generation_read_model.v1"
 CX_GENERATION_CONTENT_SCHEMA_VERSION = "cx_generation_content.v1"
+_READ_MODEL_FIELDS = frozenset(
+    {
+        "record_schema_version",
+        "cx_generation_id",
+        "tenant_ref_type",
+        "tenant_ref_id",
+        "owner_subject_ref_type",
+        "owner_subject_ref_id",
+        "status",
+        "retrieval_package_id",
+        "trace_id",
+        "request_id",
+        "alias",
+        "provider_capability",
+        "mo_generation_id",
+        "request_metadata",
+        "response_metadata",
+        "mo_runtime_metadata",
+        "usage",
+        "failure",
+        "recovery_lineage",
+        "created_at",
+        "updated_at",
+    }
+)
+_REQUEST_METADATA_FIELDS = frozenset(
+    {
+        "provider_prompt_package_hash",
+        "generation_request_hash",
+        "response_format_type",
+        "source_has_messages",
+        "source_has_prompt",
+        "compatibility_rule_id",
+        "grounding_required",
+        "retrieval_package_id",
+        "retrieval_package_hash",
+        "selected_evidence_count",
+        "structured_draft_id",
+        "draft_validation_status",
+        "grounded_response_quality_audit_schema_version",
+        "grounded_response_quality_status",
+        "grounded_response_quality_issue_count",
+    }
+)
+_RESPONSE_METADATA_FIELDS = frozenset({"finish_reason", "output_hash"})
+_RUNTIME_METADATA_FIELDS = frozenset(
+    {
+        "request_id",
+        "trace_id",
+        "queue_ms",
+        "provider_ms",
+        "total_ms",
+        "route_id",
+        "admission_decision",
+        "provider_request_id",
+    }
+)
+_USAGE_FIELDS = frozenset(
+    {
+        "prompt_tokens",
+        "completion_tokens",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -126,10 +192,32 @@ def project_generation_read_model(record: Mapping[str, Any]) -> dict[str, Any]:
     private_output = record.get("private_output_metadata")
     content_ref = _safe_content_ref(private_output)
     projection = {
-        key: deepcopy(value)
-        for key, value in record.items()
-        if key != "private_output_metadata"
+        key: deepcopy(record[key])
+        for key in _READ_MODEL_FIELDS
+        if key in record
     }
+    projection["request_metadata"] = _safe_metadata(
+        record.get("request_metadata"),
+        allowed_fields=_REQUEST_METADATA_FIELDS,
+    )
+    projection["response_metadata"] = _safe_metadata(
+        record.get("response_metadata"),
+        allowed_fields=_RESPONSE_METADATA_FIELDS,
+    )
+    projection["mo_runtime_metadata"] = _safe_metadata(
+        record.get("mo_runtime_metadata"),
+        allowed_fields=_RUNTIME_METADATA_FIELDS,
+    )
+    projection["usage"] = _safe_metadata(
+        record.get("usage"),
+        allowed_fields=_USAGE_FIELDS,
+    )
+    projection.setdefault(
+        "retrieval_package_id",
+        projection["request_metadata"].get("retrieval_package_id"),
+    )
+    projection.setdefault("failure", None)
+    projection.setdefault("recovery_lineage", None)
     return {
         "read_model_schema_version": CX_GENERATION_READ_MODEL_SCHEMA_VERSION,
         **projection,
@@ -148,4 +236,18 @@ def _safe_content_ref(value: object) -> dict[str, Any]:
         "available": True,
         "content_sha256": value.get("output_sha256"),
         "size_bytes": value.get("output_size_bytes"),
+    }
+
+
+def _safe_metadata(
+    value: object,
+    *,
+    allowed_fields: frozenset[str],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        key: deepcopy(item)
+        for key, item in value.items()
+        if key in allowed_fields
     }

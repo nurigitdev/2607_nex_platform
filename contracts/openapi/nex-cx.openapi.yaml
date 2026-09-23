@@ -1677,6 +1677,10 @@ paths:
       responses:
         "200":
           description: CX generation execution record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CxGenerationReadModel"
         "401":
           description: Service claim is missing or invalid.
         "404":
@@ -1715,6 +1719,10 @@ paths:
       responses:
         "200":
           description: Owner-scoped generated content verified against its durable hash and byte size.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CxGenerationContent"
         "401":
           description: Service claim is missing or invalid.
         "404":
@@ -2294,6 +2302,125 @@ components:
         maxLength: 128
         pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$'
   schemas:
+    CxGenerationReadModel:
+      type: object
+      additionalProperties: false
+      required:
+        - read_model_schema_version
+        - record_schema_version
+        - cx_generation_id
+        - tenant_ref_type
+        - tenant_ref_id
+        - owner_subject_ref_type
+        - owner_subject_ref_id
+        - status
+        - retrieval_package_id
+        - trace_id
+        - request_id
+        - alias
+        - provider_capability
+        - mo_generation_id
+        - request_metadata
+        - response_metadata
+        - mo_runtime_metadata
+        - usage
+        - failure
+        - recovery_lineage
+        - created_at
+        - updated_at
+        - content_ref
+      properties:
+        read_model_schema_version: {const: cx_generation_read_model.v1}
+        record_schema_version: {const: cx_generation_execution_record.v1}
+        cx_generation_id: {type: string, minLength: 1}
+        tenant_ref_type: {type: string, minLength: 1}
+        tenant_ref_id: {type: string, minLength: 1}
+        owner_subject_ref_type: {type: string, minLength: 1}
+        owner_subject_ref_id: {type: string, minLength: 1}
+        status: {type: string, enum: [COMPLETED, FAILED]}
+        retrieval_package_id: {type: [string, "null"], minLength: 1}
+        trace_id: {type: string, pattern: '^[0-9a-f]{32}$'}
+        request_id: {type: string, minLength: 1}
+        alias: {type: string, minLength: 1}
+        provider_capability: {const: generation}
+        mo_generation_id: {type: [string, "null"], minLength: 1}
+        request_metadata:
+          type: object
+          additionalProperties: false
+          properties:
+            provider_prompt_package_hash: {type: string, pattern: '^[0-9a-f]{64}$'}
+            generation_request_hash: {type: string, pattern: '^[0-9a-f]{64}$'}
+            response_format_type: {type: string, enum: [text, json_object, json_schema]}
+            source_has_messages: {type: boolean}
+            source_has_prompt: {type: boolean}
+            compatibility_rule_id: {type: [string, "null"]}
+            grounding_required: {type: boolean}
+            retrieval_package_id: {type: [string, "null"]}
+            retrieval_package_hash: {type: [string, "null"], pattern: '^[0-9a-f]{64}$'}
+            selected_evidence_count: {type: integer, minimum: 0}
+            structured_draft_id: {type: [string, "null"]}
+            draft_validation_status: {type: [string, "null"]}
+            grounded_response_quality_audit_schema_version: {type: [string, "null"]}
+            grounded_response_quality_status: {type: [string, "null"]}
+            grounded_response_quality_issue_count: {type: [integer, "null"], minimum: 0}
+        response_metadata:
+          type: object
+          additionalProperties: false
+          properties:
+            finish_reason: {type: [string, "null"]}
+            output_hash: {type: [string, "null"], pattern: '^[0-9a-f]{64}$'}
+        mo_runtime_metadata:
+          type: object
+          additionalProperties: false
+          properties:
+            request_id: {type: string}
+            trace_id: {type: string}
+            queue_ms: {type: integer, minimum: 0}
+            provider_ms: {type: integer, minimum: 0}
+            total_ms: {type: integer, minimum: 0}
+            route_id: {type: string}
+            admission_decision: {type: string}
+            provider_request_id: {type: string}
+        usage:
+          type: object
+          additionalProperties: false
+          properties:
+            prompt_tokens: {type: integer, minimum: 0}
+            completion_tokens: {type: integer, minimum: 0}
+            input_tokens: {type: integer, minimum: 0}
+            output_tokens: {type: integer, minimum: 0}
+            total_tokens: {type: integer, minimum: 0}
+        failure: {type: [object, "null"], additionalProperties: true}
+        recovery_lineage: {type: [object, "null"], additionalProperties: true}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        content_ref:
+          type: object
+          additionalProperties: false
+          required: [available, content_sha256, size_bytes]
+          properties:
+            available: {type: boolean}
+            content_sha256: {type: [string, "null"], pattern: '^[0-9a-f]{64}$'}
+            size_bytes: {type: [integer, "null"], minimum: 1}
+    CxGenerationContent:
+      type: object
+      additionalProperties: false
+      required:
+        - content_schema_version
+        - cx_generation_id
+        - content_type
+        - content
+        - content_sha256
+        - size_bytes
+        - owner_scope_enforced
+      properties:
+        content_schema_version: {const: cx_generation_content.v1}
+        cx_generation_id: {type: string, minLength: 1}
+        content_type: {const: "text/plain; charset=utf-8"}
+        content: {type: string, minLength: 1}
+        content_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        size_bytes: {type: integer, minimum: 1}
+        owner_scope_enforced: {const: true}
     CxDocumentIntelligenceObservability:
       type: object
       additionalProperties: false

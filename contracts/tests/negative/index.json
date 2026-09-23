@@ -81,6 +81,16 @@
       "schema": "schemas/generation/cx_generation_execution_record.v1.schema.json"
     },
     {
+      "name": "cx_generation_read_model_storage_uri_leak",
+      "path": "tests/negative/generation/cx_generation_read_model.storage_uri_leak.json",
+      "schema": "schemas/generation/cx_generation_read_model.v1.schema.json"
+    },
+    {
+      "name": "cx_generation_content_owner_scope_disabled",
+      "path": "tests/negative/generation/cx_generation_content.owner_scope_disabled.json",
+      "schema": "schemas/generation/cx_generation_content.v1.schema.json"
+    },
+    {
       "name": "generation_compatibility_rule_embedding_capability",
       "path": "tests/negative/generation/generation_compatibility_rule.embedding_capability.json",
       "schema": "schemas/generation/generation_compatibility_rule.v1.schema.json"

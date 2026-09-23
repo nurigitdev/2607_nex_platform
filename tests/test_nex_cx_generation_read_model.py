@@ -241,6 +241,54 @@ def test_read_model_failed_and_inconsistent_content_fail_closed(
     }
 
 
+def test_read_model_projection_allowlists_nested_metadata() -> None:
+    projection = project_generation_read_model(
+        {
+            **_record(),
+            "unexpected_top_level": "private",
+            "request_metadata": {
+                "generation_request_hash": "b" * 64,
+                "raw_prompt": "private prompt",
+            },
+            "response_metadata": {
+                "finish_reason": "STOP",
+                "output_hash": OUTPUT_HASH,
+                "output_preview": OUTPUT_TEXT,
+                "output_storage_uri": "file:///private/output",
+            },
+            "mo_runtime_metadata": {
+                "provider_ms": 11,
+                "provider_url": "http://private-provider",
+            },
+            "usage": {"total_tokens": 21, "raw_usage": "private"},
+            "private_output_metadata": None,
+        }
+    )
+
+    serialized = json.dumps(projection, default=str)
+    assert "unexpected_top_level" not in projection
+    assert "raw_prompt" not in serialized
+    assert "output_preview" not in serialized
+    assert "output_storage_uri" not in serialized
+    assert "provider_url" not in serialized
+    assert "raw_usage" not in serialized
+
+    empty_metadata = project_generation_read_model(
+        {
+            **_record(),
+            "request_metadata": None,
+            "response_metadata": None,
+            "mo_runtime_metadata": None,
+            "usage": None,
+            "private_output_metadata": None,
+        }
+    )
+    assert empty_metadata["request_metadata"] == {}
+    assert empty_metadata["response_metadata"] == {}
+    assert empty_metadata["mo_runtime_metadata"] == {}
+    assert empty_metadata["usage"] == {}
+
+
 def test_read_model_reports_missing_and_corrupt_private_payload(
     persisted_read_model: GenerationReadModel,
 ) -> None:

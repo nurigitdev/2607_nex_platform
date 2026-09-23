@@ -1071,6 +1071,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0965`](slices/0965_cx_sql_generation_runtime_repository.md) | `S97-005` Owner-scoped SQL generation runtime repository and private-output reference schema. |
 | [`Slice 0966`](slices/0966_cx_idempotent_grounded_execution_runtime.md) | `S97-006` Owner-scoped idempotent bounded generation admission, durable write-through, and route wiring. |
 | [`Slice 0967`](slices/0967_cx_restart_safe_generation_read_model.md) | `S97-007` Restart-safe owner-scoped generation metadata and verified private-content read model. |
+| [`Slice 0968`](slices/0968_cx_generation_observability_contract_hardening.md) | `S97-008` Metadata-only generation observability plus strict restart-safe read API contracts. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
