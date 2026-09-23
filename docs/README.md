@@ -1064,6 +1064,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0958`](slices/0958_cx_document_intelligence_observability_contracts.md) | `S96-008` Metadata-only document-intelligence operational events and explicit raw-safe API response contracts. |
 | [`Slice 0959`](slices/0959_cx_document_intelligence_live_postgresql_dgx_smoke.md) | `S96-009` Protected actual PostgreSQL plus live DGX generation/embedding document-intelligence evidence. |
 | [`Slice 0960`](slices/0960_s96_cx_document_intelligence_summary_similarity_closure.md) | `S96-010` Owner-private document intelligence and summary-similarity closure with explicit S97 handoff. |
+| [`Slice 0961`](slices/0961_cx_grounded_generation_runtime_boundary_audit.md) | `S97-001` Owner-private grounded-generation runtime boundary audit and ordered hardening plan. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
