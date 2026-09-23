@@ -62,6 +62,7 @@ accepted as a command-line argument or included in output evidence.
 - Focused generation/runtime/live-smoke regression: `81 passed`.
 - New protected smoke and boundary audit modules: `100%` statement and branch
   coverage in their focused suite.
+- Protected live smoke checks: `12/12` passed.
 - Full regression suite: `7487 passed`; statement coverage `98.89%`, branch
   coverage `96.62%`.
 - Contract validation: `89` schemas, `140` examples, `105` negative examples,

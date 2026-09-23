@@ -1073,6 +1073,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0967`](slices/0967_cx_restart_safe_generation_read_model.md) | `S97-007` Restart-safe owner-scoped generation metadata and verified private-content read model. |
 | [`Slice 0968`](slices/0968_cx_generation_observability_contract_hardening.md) | `S97-008` Metadata-only generation observability plus strict restart-safe read API contracts. |
 | [`Slice 0969`](slices/0969_cx_grounded_generation_live_postgresql_dgx_smoke.md) | `S97-009` Protected actual PostgreSQL and live DGX grounded-generation runtime evidence. |
+| [`Slice 0970`](slices/0970_s97_cx_grounded_generation_runtime_closure.md) | `S97-010` Owner-private grounded-generation runtime closure with explicit S98 handoff. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
