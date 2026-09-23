@@ -22,7 +22,7 @@ def test_repository_s94_closure_passes() -> None:
         "stale_reason_count": 11,
         "postgres_check_count": 53,
         "live_check_count": 11,
-        "runtime_route_count": 35,
+        "runtime_route_count": 36,
         "missing_file_count": 0,
         "missing_token_count": 0,
     }

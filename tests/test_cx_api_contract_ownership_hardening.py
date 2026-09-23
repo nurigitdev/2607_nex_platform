@@ -14,7 +14,7 @@ def test_api_contract_ownership_hardening_passes() -> None:
     assert result["summary"] == {
         "route_module_count": 13,
         "owner_guarded_module_count": 13,
-        "runtime_operation_count": 35,
+        "runtime_operation_count": 36,
         "drift_count": 0,
         "check_count": 11,
         "issue_count": 0,

@@ -28,6 +28,7 @@ from nex_cx.generation import (
     register_generation_routes,
 )
 from nex_cx.generation_private_output import build_generation_output_store
+from nex_cx.generation_read_model import GenerationReadModel
 from nex_cx.generation_repository import SqlAlchemyGenerationRuntimeRepository
 from nex_cx.generation_runtime import (
     GroundedGenerationRuntime,
@@ -189,6 +190,17 @@ def build_cx_generation_runtime(
     return None
 
 
+def build_cx_generation_read_model(
+    generation_runtime: GroundedGenerationRuntime | None,
+) -> GenerationReadModel | None:
+    if generation_runtime is None:
+        return None
+    return GenerationReadModel(
+        repository=generation_runtime.execution_repository,
+        private_output_store=generation_runtime.private_output_store,
+    )
+
+
 SERVICE_SPEC = SERVICE_SPECS["nex-cx"]
 app = build_service_app(SERVICE_SPEC)
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
@@ -213,6 +225,7 @@ CX_VECTOR_INDEX_REPOSITORY, CX_VECTOR_STORE = (
     build_cx_vector_operations_dependencies(SERVICE_PERSISTENCE)
 )
 CX_GENERATION_RUNTIME = build_cx_generation_runtime(SERVICE_PERSISTENCE)
+CX_GENERATION_READ_MODEL = build_cx_generation_read_model(CX_GENERATION_RUNTIME)
 (
     CX_PRIVATE_SUMMARY_TEXT_STORE,
     CX_SUMMARY_VECTOR_STORE,
@@ -238,6 +251,7 @@ register_generation_routes(
     store=DEFAULT_GENERATION_STORE,
     retrieval_store=DEFAULT_INGESTION_STORE,
     execution_runtime=CX_GENERATION_RUNTIME,
+    read_model=CX_GENERATION_READ_MODEL,
 )
 register_remediation_execution_routes(
     app,

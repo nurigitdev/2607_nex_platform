@@ -1700,6 +1700,29 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: CX structured draft was not found.
+  /api/v1/generations/{cx_generation_id}/content:
+    parameters: *cxOwnerContextParameters
+    get:
+      operationId: getCxGenerationContent
+      tags:
+        - Generation
+      parameters:
+        - name: cx_generation_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Owner-scoped generated content verified against its durable hash and byte size.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: CX generation record was not found in the owner scope.
+        "409":
+          description: Generated content is unavailable for the execution state or failed integrity verification.
+        "503":
+          description: Durable generation metadata or private content storage is unavailable.
   /api/v1/generations/{cx_generation_id}/events:
     parameters: *cxOwnerContextParameters
     get:

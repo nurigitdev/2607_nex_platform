@@ -49,6 +49,10 @@ from nex_cx.generation_runtime import (
     GroundedGenerationRuntime,
     GroundedGenerationRuntimeError,
 )
+from nex_cx.generation_read_model import (
+    GenerationReadModel,
+    GenerationReadModelError,
+)
 from nex_cx.progress import (
     build_cx_generation_failure_progress_events,
     build_cx_generation_progress_events,
@@ -230,6 +234,7 @@ def register_generation_routes(
     mo_client: MoGenerationClient | None = None,
     retrieval_store: RetrievalPackageStore | None = None,
     execution_runtime: GroundedGenerationRuntime | None = None,
+    read_model: GenerationReadModel | None = None,
 ) -> None:
     generation_store = store or DEFAULT_GENERATION_STORE
     client = mo_client or build_default_mo_client()
@@ -429,7 +434,20 @@ def register_generation_routes(
         if isinstance(access_context, JSONResponse):
             return access_context
 
-        record = generation_store.get(cx_generation_id)
+        try:
+            record = (
+                read_model.get_metadata(
+                    cx_generation_id,
+                    access_context=access_context,
+                )
+                if read_model is not None
+                else generation_store.get(cx_generation_id)
+            )
+        except GenerationReadModelError as exc:
+            return _generation_problem_response(
+                request,
+                _read_model_facade_error(exc),
+            )
         if record is None or not record_visible_to_owner(access_context, record):
             return _generation_problem_response(
                 request,
@@ -440,6 +458,53 @@ def register_generation_routes(
                 ),
             )
         return record
+
+    @app.get("/api/v1/generations/{cx_generation_id}/content", response_model=None)
+    def get_generation_content(
+        cx_generation_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
+    ):
+        access_context = authorize_cx_owner_request(
+            request,
+            authorization,
+            tenant_id=cx_tenant_id,
+            subject_id=cx_subject_id,
+        )
+        if isinstance(access_context, JSONResponse):
+            return access_context
+        if read_model is None:
+            return _generation_problem_response(
+                request,
+                GenerationFacadeError(
+                    status_code=503,
+                    error_code="cx.generation_read_model_unavailable",
+                    detail="Durable generation content is unavailable.",
+                    retryable=True,
+                ),
+            )
+        try:
+            content = read_model.get_content(
+                cx_generation_id,
+                access_context=access_context,
+            )
+        except GenerationReadModelError as exc:
+            return _generation_problem_response(
+                request,
+                _read_model_facade_error(exc),
+            )
+        if content is None:
+            return _generation_problem_response(
+                request,
+                GenerationFacadeError(
+                    status_code=404,
+                    error_code="cx.generation_not_found",
+                    detail=f"Generation record was not found: {cx_generation_id}",
+                ),
+            )
+        return content
 
     @app.get("/api/v1/generations/{cx_generation_id}/structured-draft", response_model=None)
     def get_structured_draft(
@@ -1687,6 +1752,17 @@ def _optional_string(value: Any) -> str | None:
 
 def _runtime_facade_error(
     exc: GroundedGenerationRuntimeError,
+) -> GenerationFacadeError:
+    return GenerationFacadeError(
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        detail=exc.detail,
+        retryable=exc.retryable,
+    )
+
+
+def _read_model_facade_error(
+    exc: GenerationReadModelError,
 ) -> GenerationFacadeError:
     return GenerationFacadeError(
         status_code=exc.status_code,

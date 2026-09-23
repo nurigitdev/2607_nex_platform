@@ -212,7 +212,7 @@ def run_cx_grounded_generation_runtime_boundary_audit(
         "sql_generation_runtime_store_missing": "0965",
         "idempotent_execution_admission_missing": "0966",
         "restart_safe_generation_read_model_missing": "0967",
-        "generation_observability_missing": "0968",
+        "grounded_generation_observability_missing": "0968",
         "protected_live_evidence_missing": "0969",
     }
     next_slice = next(
