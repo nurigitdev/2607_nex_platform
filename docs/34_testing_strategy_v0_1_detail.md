@@ -22,7 +22,7 @@ for UI changes, mock-first provider testing, and separate live smoke evidence.
 | Mock-first correctness | CI must prove behavior without DGX/vLLM availability. |
 | Live smoke is evidence | Live provider checks are valuable but should not replace deterministic tests. |
 | Contract before implementation | JSON Schema/OpenAPI examples become validation fixtures. |
-| One quality gate | Run regression and coverage in one command whenever possible. |
+| One command per tier | Run regression and coverage together through the selected Slice, Checkpoint, or Full Gate. |
 | Branches matter | Branch coverage is reported and treated as a first-class gate. |
 | Evidence stays small | Screenshots, smoke markdown, and contract fixtures should be reviewable. |
 
@@ -41,14 +41,25 @@ for UI changes, mock-first provider testing, and separate live smoke evidence.
 
 ## Quality Gate
 
-The implementation should provide a single quality gate command that runs
-regression tests and coverage together.
+The implementation provides tier-specific commands that keep regression and
+coverage in the same pytest invocation while preserving the original Full Gate
+as an independent fallback.
 
 ```bash
-NEX_PROFILE=test \
-NEX_TEST_DATABASE_URL="postgresql://<service_test_user>:<secret>@127.0.0.1:5432/<service_test_db>" \
-  scripts/quality/run_quality_gate.sh
+scripts/quality/run_slice_gate.sh --service nex-cx \
+  --test tests/test_current_slice.py \
+  --coverage-target services/nex-cx/nex_cx/changed_module.py
+scripts/quality/run_checkpoint_gate.sh
+scripts/quality/run_quality_gate.sh
 ```
+
+Slice Gate runs for every Slice, Checkpoint Gate runs at the fifth Slice in a
+requirement or on risk escalation, and Full Gate runs at the tenth/closure
+Slice. Shared runtime, auth, migration, cross-service, multi-service, quality
+infrastructure, and release changes may escalate directly to Full Gate.
+Checkpoint collects the `tests` directory once and excludes historical closure
+files; focused paths are validated but are not added as duplicate pytest
+collection roots.
 
 The gate must report:
 
@@ -59,8 +70,10 @@ The gate must report:
 - Slowest test summary when available.
 - Contract fixture validation summary.
 
-The first policy target is statement coverage 95% and branch coverage 85% unless
-the implementation team records a temporary written exception.
+The Slice and Checkpoint targets are statement coverage 95% and branch coverage
+94%. The backward-compatible Full Gate retains its original 95% and 85%
+minimums, while unexplained decline from the latest Full Gate baseline remains
+a regression signal.
 
 ## Required Branch Coverage Themes
 

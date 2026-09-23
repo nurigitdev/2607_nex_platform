@@ -1,35 +1,77 @@
 # NeX-Platform Development Process
 
-Status: Baseline for Slice 0002.
+Status: Tiered regression baseline for Slice 0971.
 
 This process applies to implementation slices after the Slice 0000
 documentation baseline. It keeps feature work small, regression-tested, and
 aligned with service ownership.
 
-## Quality Gate
+## Quality Gates
 
-Run the single-pass quality gate for every source-code slice:
+Regression remains mandatory for every source-code Slice. The execution scope
+uses three tiers so historical coverage evidence does not dominate ordinary
+feature work.
+
+| Tier | Cadence | Scope |
+| --- | --- | --- |
+| Slice Gate | Every Slice | Owning-service regression, focused tests, changed-source coverage, contracts, and explicitly selected smoke. |
+| Checkpoint Gate | Fifth Slice in a requirement, or risk escalation | Platform regression excluding historical `test_s*_closure.py`, service/provider coverage, contracts, and selected smoke. |
+| Full Gate | Tenth/closure Slice, release, or explicit escalation | Original complete pytest/coverage run, all historical smoke/closure summaries, contracts, and protected checks selected by environment. |
+
+The cadence is requirement-relative. It does not depend on the final digit of
+the repository Slice number.
 
 ```bash
+# Every ordinary CX Slice
+scripts/quality/run_slice_gate.sh --service nex-cx \
+  --test tests/test_current_slice.py \
+  --coverage-target services/nex-cx/nex_cx/changed_module.py \
+  --smoke scripts/smoke/run_current_slice.py
+
+# Fifth requirement Slice
+scripts/quality/run_checkpoint_gate.sh \
+  --test tests/test_current_requirement_boundary.py \
+  --smoke scripts/smoke/run_current_requirement_boundary.py
+
+# Tenth/closure Slice, or immediate fallback at any time
 scripts/quality/run_quality_gate.sh
 ```
 
-The command runs pytest regression tests and collects statement and branch
-coverage in the same pytest invocation:
-
-```bash
-./.venv/bin/python -m pytest --cov=services --cov=scripts --cov-branch
-```
+`--test`, `--coverage-target`, and `--smoke` are repeatable. Coverage targets
+are repository file or directory paths and each explicit target must meet the
+Slice thresholds independently. Slice Gate always adds the owning service's
+complete regression selection, so focused arguments cannot accidentally
+replace service regression. Checkpoint Gate validates each `--test` path but
+collects the `tests` directory only once; non-closure focused tests are already
+part of that collection, while closure tests remain Full Gate evidence. Both
+accelerated tiers run contract validation and fail immediately when any
+command fails.
 
 Coverage thresholds:
 
-| Metric | Minimum |
-| --- | ---: |
-| Statement coverage | 95% |
-| Branch coverage | 85% |
+| Gate | Statement | Branch |
+| --- | ---: | ---: |
+| Slice/Checkpoint | 95% | 94% |
+| Full compatibility gate | 95% | 85% |
 
-The quality gate writes local coverage output under `reports/coverage/`.
-Reports are local evidence and are not committed by default.
+The Full Gate thresholds remain backward-compatible. Its observed aggregate
+coverage must also be compared with the preceding successful Full Gate;
+unexplained coverage reduction is investigated even when the minimum passes.
+Reports are written below `reports/quality/` or `reports/coverage/` and are not
+committed.
+
+### Escalation Rules
+
+Run Checkpoint or Full Gate earlier than the normal cadence when a Slice changes
+shared runtime code, authentication/authorization, the migration runner,
+cross-service contracts, multiple services, quality infrastructure, or a
+production bootstrap path. PostgreSQL, Playwright, and live-provider smoke
+remain explicit protected evidence and must run when the Slice claims those
+boundaries.
+
+The rollback path is always the unchanged
+`scripts/quality/run_quality_gate.sh`; the tiered runner is not a dependency of
+the Full Gate.
 
 ## Slice Start Checklist
 
@@ -54,7 +96,8 @@ large refactor with new domain behavior.
 
 Every source-code slice should leave one clear regression signal:
 
-- `scripts/quality/run_quality_gate.sh` passes.
+- The gate required by the cadence and risk level passes.
+- The Slice note records the tier, command, result, and elapsed time.
 - Statement and branch coverage meet the thresholds, or a written exception is
   recorded in the slice note.
 - New behavior has focused tests at the unit, API, contract, or smoke layer

@@ -77,12 +77,16 @@ Every backend shell exposes:
 
 ## Development Process
 
-Run the quality gate for source-code slices:
+Run the owning-service gate for ordinary source-code Slices:
 
 ```bash
-scripts/quality/run_quality_gate.sh
+scripts/quality/run_slice_gate.sh --service nex-cx \
+  --test tests/test_current_slice.py \
+  --coverage-target services/nex-cx/nex_cx/changed_module.py
 ```
 
-Current thresholds are 95% statement coverage and 85% branch coverage. See
-[Development Process](docs/development_process.md) for the slice checklist and
-refactoring rule.
+Run `scripts/quality/run_checkpoint_gate.sh` at the fifth requirement Slice and
+the unchanged `scripts/quality/run_quality_gate.sh` at the tenth/closure Slice
+or whenever full regression is required. See
+[Development Process](docs/development_process.md) for coverage thresholds,
+risk escalation, rollback, the Slice checklist, and the refactoring rule.
