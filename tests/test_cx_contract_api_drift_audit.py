@@ -24,9 +24,9 @@ def test_repository_contract_api_audit_confirms_known_drift() -> None:
         "runtime_openapi_covered_count": 36,
         "missing_openapi_operation_count": 0,
         "shared_openapi_operation_count": 5,
-        "cx_schema_count": 16,
-        "cx_positive_fixture_covered_count": 16,
-        "cx_negative_fixture_covered_count": 16,
+        "cx_schema_count": 17,
+        "cx_positive_fixture_covered_count": 17,
+        "cx_negative_fixture_covered_count": 17,
         "generation_schema_count": 7,
         "drift_count": 0,
         "audit_issue_count": 0,
@@ -81,7 +81,7 @@ def test_summary_line_and_runner_main_paths(monkeypatch, capsys) -> None:
 
     assert runner.summary_line(passing) == (
         "cx_contract_api_drift_audit=pass readiness=HARDENED "
-        "runtime_routes=36 openapi_missing=0 schema_negative=16/16 drift=0"
+        "runtime_routes=36 openapi_missing=0 schema_negative=17/17 drift=0"
     )
     assert "readiness=UNKNOWN" in runner.summary_line({"status": "FAIL"})
     monkeypatch.setattr(runner, "run_cx_contract_api_drift_audit", lambda: passing)

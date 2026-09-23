@@ -26,6 +26,11 @@
       "schema": "schemas/common/worker_heartbeat.v1.schema.json"
     },
     {
+      "name": "cx_worker_execution_claimed",
+      "path": "examples/operations/cx_worker_execution.claimed.json",
+      "schema": "schemas/service/nex_cx/worker_execution.v1.schema.json"
+    },
+    {
       "name": "service_log_entry_info",
       "path": "examples/common/service_log_entry.info.json",
       "schema": "schemas/common/service_log_entry.v1.schema.json"

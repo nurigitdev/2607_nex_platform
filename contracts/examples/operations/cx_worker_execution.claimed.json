@@ -1,0 +1,26 @@
+{
+  "execution_schema_version": "cx_worker_execution.v1",
+  "execution_id": "job-1:1",
+  "job_id": "job-1",
+  "job_type": "cx.document_ingestion",
+  "workload": "document_ingestion",
+  "worker_id": "cx-ingestion-worker-1",
+  "worker_type": "cx-ingestion",
+  "state": "CLAIMED",
+  "state_version": 1,
+  "attempt_count": 1,
+  "max_attempts": 3,
+  "retryable": true,
+  "trace_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "request_id": "request-1",
+  "subject_ref": {
+    "type": "cx.document",
+    "id": "document-1"
+  },
+  "lease_expires_at": "2026-09-23T00:02:00Z",
+  "cancellation_requested_at": null,
+  "error_code": null,
+  "started_at": "2026-09-23T00:00:00Z",
+  "updated_at": "2026-09-23T00:00:00Z",
+  "completed_at": null
+}

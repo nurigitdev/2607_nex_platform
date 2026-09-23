@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_cx/worker_execution.v1.schema.json",
+  "title": "NeX-CX Worker Execution",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "execution_schema_version",
+    "execution_id",
+    "job_id",
+    "job_type",
+    "workload",
+    "worker_id",
+    "worker_type",
+    "state",
+    "state_version",
+    "attempt_count",
+    "max_attempts",
+    "retryable",
+    "trace_id",
+    "request_id",
+    "subject_ref",
+    "lease_expires_at",
+    "cancellation_requested_at",
+    "error_code",
+    "started_at",
+    "updated_at",
+    "completed_at"
+  ],
+  "properties": {
+    "execution_schema_version": {"const": "cx_worker_execution.v1"},
+    "execution_id": {"type": "string", "minLength": 1},
+    "job_id": {"type": "string", "minLength": 1},
+    "job_type": {"type": "string", "pattern": "^cx\\.[a-z0-9_.-]+$"},
+    "workload": {
+      "type": "string",
+      "enum": [
+        "document_ingestion",
+        "document_processing",
+        "remediation_execution"
+      ]
+    },
+    "worker_id": {"type": "string", "minLength": 1},
+    "worker_type": {"type": "string", "minLength": 1},
+    "state": {
+      "type": "string",
+      "enum": [
+        "CLAIMED",
+        "RUNNING",
+        "CANCELLATION_REQUESTED",
+        "SUCCEEDED",
+        "RETRY_SCHEDULED",
+        "DEAD_LETTERED",
+        "CANCELLED"
+      ]
+    },
+    "state_version": {"type": "integer", "minimum": 1},
+    "attempt_count": {"type": "integer", "minimum": 1},
+    "max_attempts": {"type": "integer", "minimum": 1},
+    "retryable": {"type": "boolean"},
+    "trace_id": {"type": "string", "minLength": 1},
+    "request_id": {"type": "string", "minLength": 1},
+    "subject_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "minLength": 1}
+      }
+    },
+    "lease_expires_at": {"type": ["string", "null"], "format": "date-time"},
+    "cancellation_requested_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "error_code": {"type": ["string", "null"], "minLength": 1},
+    "started_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": ["string", "null"], "format": "date-time"}
+  }
+}
