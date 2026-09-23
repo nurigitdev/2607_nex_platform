@@ -205,6 +205,24 @@ def run_cx_grounded_generation_runtime_boundary_audit(
         name: "RESOLVED" if resolution_checks[name] else "OPEN"
         for name in gap_observations
     }
+    gap_slices = {
+        "provider_prompt_evidence_binding_missing": "0962",
+        "provider_output_structure_validation_weak": "0963",
+        "durable_private_generated_output_missing": "0964",
+        "sql_generation_runtime_store_missing": "0965",
+        "idempotent_execution_admission_missing": "0966",
+        "restart_safe_generation_read_model_missing": "0967",
+        "generation_observability_missing": "0968",
+        "protected_live_evidence_missing": "0969",
+    }
+    next_slice = next(
+        (
+            gap_slices[name]
+            for name, state in gap_states.items()
+            if state == "OPEN"
+        ),
+        "0970",
+    )
     checks = {
         "required_paths_present": all(item["present"] for item in paths),
         "required_tokens_present": all(item["present"] for item in tokens),
@@ -297,7 +315,7 @@ def run_cx_grounded_generation_runtime_boundary_audit(
         "required_paths": paths,
         "required_tokens": tokens,
         "issues": issues,
-        "next_slice": "0962",
+        "next_slice": next_slice,
     }
 
 

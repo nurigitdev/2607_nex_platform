@@ -323,6 +323,41 @@ def test_grounded_generation_endpoint_validates_retrieval_package_and_lineage() 
     assert payload["request_metadata"]["retrieval_package_id"] == "cx-ret-001"
     assert payload["request_metadata"]["selected_evidence_count"] == 1
     assert store.get(payload["cx_generation_id"]) == payload
+    provider_payload = mo_client.calls[0]["payload"]
+    assert provider_payload["prompt"] is None
+    assert provider_payload["messages"][0]["role"] == "system"
+    assert "untrusted data" in provider_payload["messages"][0]["content"]
+    assert "Private source evidence" in provider_payload["messages"][1]["content"]
+    assert "Second private source evidence" not in provider_payload["messages"][1][
+        "content"
+    ]
+    assert provider_payload["metadata"]["selected_evidence_count"] == 1
+    assert provider_payload["metadata"]["grounding_context_policy"] == (
+        "owner_admitted_untrusted_evidence_v1"
+    )
+
+
+def test_grounded_generation_rejects_invalid_private_evidence_before_mo_call() -> None:
+    package = grounded_package()
+    package["evidence_items"][0]["text"] = ""
+    app = build_service_app(SERVICE_SPECS["nex-cx"])
+    mo_client = FakeMoClient()
+    register_generation_routes(
+        app,
+        store=GenerationExecutionStore(),
+        mo_client=mo_client,
+        retrieval_store=FakeRetrievalPackageStore(package),
+    )
+
+    response = TestClient(app).post(
+        "/api/v1/generations",
+        json=grounded_payload(selected_evidence_ids=["evidence-001"]),
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error_code"] == "cx.grounded_prompt_package_invalid"
+    assert mo_client.calls == []
 
 
 def test_grounded_generation_boundary_audit_admits_ready_package_and_stays_raw_safe() -> None:

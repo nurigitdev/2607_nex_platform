@@ -35,6 +35,11 @@ from nex_cx.authorization import (
     authorize_cx_owner_request,
 )
 from nex_cx.drafts import build_structured_draft
+from nex_cx.grounded_prompt import (
+    GroundedPromptPackageError,
+    build_grounded_prompt_package,
+    grounded_prompt_safe_metadata,
+)
 from nex_cx.progress import (
     build_cx_generation_failure_progress_events,
     build_cx_generation_progress_events,
@@ -241,7 +246,11 @@ def register_generation_routes(
                 retrieval_store=retrieval_store,
                 access_context=access_context,
             )
-            mo_payload = build_mo_generation_payload(payload, trace_id=trace_id)
+            mo_payload = build_mo_generation_payload(
+                payload,
+                trace_id=trace_id,
+                retrieval_package=retrieval_package,
+            )
             try:
                 mo_response = client.create_generation(
                     mo_payload,
@@ -428,6 +437,7 @@ def build_mo_generation_payload(
     source_payload: dict[str, Any],
     *,
     trace_id: str,
+    retrieval_package: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     leaked = sorted(FORBIDDEN_PROVIDER_FIELDS & set(source_payload))
     if leaked:
@@ -438,9 +448,34 @@ def build_mo_generation_payload(
         )
 
     prompt_text = prompt_text_from_payload(source_payload)
-    provider_prompt_package_hash = source_payload.get(
-        "provider_prompt_package_hash",
-        sha256_text(prompt_text),
+    grounded_prompt_package: dict[str, Any] | None = None
+    if retrieval_package is not None:
+        try:
+            grounded_prompt_package = build_grounded_prompt_package(
+                query_text=prompt_text,
+                retrieval_package=retrieval_package,
+                selected_evidence_ids=selected_evidence_ids_from_payload(
+                    source_payload
+                ),
+            )
+        except GroundedPromptPackageError as exc:
+            raise GenerationFacadeError(
+                status_code=422,
+                error_code=exc.error_code,
+                detail=exc.detail,
+            ) from exc
+    provider_prompt_package_hash = (
+        grounded_prompt_package["provider_prompt_package_hash"]
+        if grounded_prompt_package is not None
+        else source_payload.get(
+            "provider_prompt_package_hash",
+            sha256_text(prompt_text),
+        )
+    )
+    grounded_metadata = (
+        grounded_prompt_safe_metadata(grounded_prompt_package)
+        if grounded_prompt_package is not None
+        else {}
     )
     request_hash = sha256_json(
         {
@@ -466,8 +501,16 @@ def build_mo_generation_payload(
         "provider_capability": source_payload.get("provider_capability", "generation"),
         "workload_class": source_payload.get("workload_class", "LLM_INTERACTIVE"),
         "generation_profile": source_payload.get("generation_profile", "general-answer"),
-        "messages": source_payload.get("messages"),
-        "prompt": source_payload.get("prompt"),
+        "messages": (
+            grounded_prompt_package["messages"]
+            if grounded_prompt_package is not None
+            else source_payload.get("messages")
+        ),
+        "prompt": (
+            None
+            if grounded_prompt_package is not None
+            else source_payload.get("prompt")
+        ),
         "response_format": source_payload.get("response_format", {"type": "text"}),
         "max_output_tokens": source_payload.get("max_output_tokens", 256),
         "temperature": source_payload.get("temperature", 0.0),
@@ -475,6 +518,7 @@ def build_mo_generation_payload(
         "timeout_ms": source_payload.get("timeout_ms", 5000),
         "metadata": {
             **source_payload.get("metadata", {}),
+            **grounded_metadata,
             "generation_request_hash": request_hash,
         },
     }

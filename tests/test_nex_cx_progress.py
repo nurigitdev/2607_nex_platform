@@ -80,12 +80,14 @@ def retrieval_package() -> dict[str, Any]:
             {
                 "evidence_id": "evidence-001",
                 "citation_label": "[1]",
+                "text": "First grounded evidence.",
                 "scores": {"final_score": 0.87},
                 "quality_flags": [],
             },
             {
                 "evidence_id": "evidence-002",
                 "citation_label": "[2]",
+                "text": "Second grounded evidence.",
                 "scores": {"final_score": 0.42},
                 "quality_flags": [],
             },

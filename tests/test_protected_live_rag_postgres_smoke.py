@@ -76,7 +76,10 @@ def _fake_remote_request(
                 },
             )
         assert payload["model"] == "Qwen3.5-4B"
-        assert payload["messages"][0]["role"] == "user"
+        assert payload["messages"][0]["role"] == "system"
+        assert "untrusted data" in payload["messages"][0]["content"]
+        assert payload["messages"][1]["role"] == "user"
+        assert "cx_grounded_context_envelope.v1" in payload["messages"][1]["content"]
         return httpx.Response(
             200,
             json={
