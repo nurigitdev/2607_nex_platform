@@ -31,6 +31,7 @@ from nex_runtime import (
     build_session_factory,
     build_subject_ref,
     plan_dead_letter_replay,
+    plan_job_dead_letter,
     plan_job_retry,
     summarize_jobs,
     transition_common_job,
@@ -217,6 +218,43 @@ def test_job_retry_policy_plans_requeue_and_dead_letter_decisions() -> None:
 
     assert invalid_status.value.error_code == "job.retry_status_invalid"
     assert invalid_policy.value.error_code == "job_retry_policy.max_delay_invalid"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error_code"),
+    [
+        ({"initial_delay_seconds": -1}, "job_retry_policy.initial_delay_invalid"),
+        ({"max_delay_seconds": -1}, "job_retry_policy.max_delay_invalid"),
+        ({"backoff_multiplier": 0.5}, "job_retry_policy.multiplier_invalid"),
+    ],
+)
+def test_job_retry_policy_rejects_each_invalid_bound(
+    kwargs: dict[str, Any],
+    error_code: str,
+) -> None:
+    with pytest.raises(JobQueueError) as invalid:
+        JobRetryPolicy(**kwargs)
+    assert invalid.value.error_code == error_code
+
+
+def test_job_dead_letter_plan_forces_terminal_safe_error() -> None:
+    decision = plan_job_dead_letter(
+        sample_job(status=RUNNING, attempt_count=1, max_attempts=5),
+        error=build_job_error(
+            error_code="cx.worker.poison",
+            detail="Safe poison classification.",
+            retryable=True,
+        ),
+        failed_at=NOW,
+    )
+
+    assert decision.action == RETRY_ACTION_DEAD_LETTER
+    assert decision.available_at is None
+    assert decision.error["retryable"] is False
+    assert decision.error["dead_lettered"] is True
+    with pytest.raises(JobQueueError) as invalid:
+        plan_job_dead_letter(sample_job(status=QUEUED), failed_at=NOW)
+    assert invalid.value.error_code == "job.dead_letter_status_invalid"
 
 
 def test_plan_dead_letter_replay_creates_new_queued_job_with_lineage_and_payload_copy() -> None:
@@ -581,6 +619,30 @@ def test_in_memory_job_queue_retries_with_backoff_then_dead_letters() -> None:
     assert dead_lettered["error"]["dead_lettered"] is True
 
 
+def test_in_memory_job_queue_forces_dead_letter_and_reports_missing() -> None:
+    queue = InMemoryJobQueue()
+    queue.enqueue(sample_job(max_attempts=5))
+    running = queue.claim_next_job("worker-001", updated_at=NOW)
+    assert running is not None
+
+    dead = queue.dead_letter_job(
+        running["job_id"],
+        error=build_job_error(
+            error_code="cx.worker.poison",
+            detail="Safe poison classification.",
+            retryable=False,
+        ),
+        failed_at=LATER,
+    )
+
+    assert dead["status"] == FAILED
+    assert dead["retryable"] is False
+    assert dead["error"]["dead_lettered"] is True
+    with pytest.raises(JobQueueError) as missing:
+        queue.dead_letter_job("missing", failed_at=LATER)
+    assert missing.value.error_code == "job.not_found"
+
+
 def test_in_memory_job_queue_claim_returns_none_and_rejects_blank_worker() -> None:
     queue = InMemoryJobQueue()
 
@@ -775,6 +837,39 @@ def test_sqlalchemy_job_queue_retries_with_available_at_and_dead_letters() -> No
         queue.retry_job(dead_lettered["job_id"])
     assert missing.value.error_code == "job.not_found"
     assert invalid_status.value.error_code == "job.retry_status_invalid"
+
+
+def test_sqlalchemy_job_queue_forces_dead_letter_and_handles_failures() -> None:
+    queue = sqlite_job_queue()
+    queue.enqueue(sample_job(max_attempts=5))
+    running = queue.claim_next_job("worker-001", updated_at=NOW)
+    assert running is not None
+
+    dead = queue.dead_letter_job(
+        running["job_id"],
+        error=build_job_error(
+            error_code="cx.worker.poison",
+            detail="Safe poison classification.",
+            retryable=False,
+        ),
+        failed_at=LATER,
+    )
+
+    assert dead["status"] == FAILED
+    assert dead["error"]["dead_lettered"] is True
+    with pytest.raises(JobQueueError) as missing:
+        queue.dead_letter_job("missing", failed_at=LATER)
+    assert missing.value.error_code == "job.not_found"
+    with pytest.raises(JobQueueError) as invalid:
+        queue.dead_letter_job(dead["job_id"], failed_at=LATER)
+    assert invalid.value.error_code == "job.dead_letter_status_invalid"
+
+    broken = SqlAlchemyJobQueue(
+        build_session_factory(build_engine("sqlite+pysqlite:///:memory:"))
+    )
+    with pytest.raises(JobQueueError) as unavailable:
+        broken.dead_letter_job("job", failed_at=LATER)
+    assert unavailable.value.error_code == "job.store_unavailable"
 
 
 def test_sqlalchemy_job_queue_json_and_timestamp_helpers_cover_backend_edges() -> None:

@@ -13,7 +13,6 @@ from nex_runtime import (
     RUNNING as JOB_RUNNING,
     JobQueue,
     JobQueueError,
-    build_job_error,
 )
 from nex_cx.worker_contracts import (
     CANCELLED,
@@ -29,6 +28,10 @@ from nex_cx.worker_leases import (
     CxWorkerLeasePolicy,
     SqlAlchemyCxWorkerLeaseStore,
     claim_next_worker_execution,
+)
+from nex_cx.worker_resilience import (
+    CxWorkerResilienceError,
+    settle_worker_failure,
 )
 
 
@@ -281,26 +284,31 @@ def _execute_claimed(
     except CxWorkerRuntimeError:
         raise
     except Exception as exc:
-        error_code = _safe_error_code(exc)
         failed_at = observed_clock()
         try:
-            job = job_queue.retry_job(
-                str(started["job_id"]),
-                error=build_job_error(
-                    error_code=error_code,
-                    detail=SAFE_HANDLER_FAILURE_DETAIL,
-                    retryable=True,
-                ),
+            settlement = settle_worker_failure(
+                job_queue=job_queue,
+                job=_job(job_queue, str(started["job_id"])),
+                failure=exc,
                 failed_at=failed_at,
             )
-        except JobQueueError as queue_exc:
-            raise _dependency_error("failure_write_failed", queue_exc) from queue_exc
-        target = RETRY_SCHEDULED if job["status"] == JOB_QUEUED else DEAD_LETTERED
+        except CxWorkerResilienceError as settlement_error:
+            raise CxWorkerRuntimeError(
+                error_code="cx.worker_runtime.failure_write_failed",
+                detail=settlement_error.detail,
+                status_code=settlement_error.status_code,
+                retryable=settlement_error.retryable,
+            ) from settlement_error
+        target = (
+            RETRY_SCHEDULED
+            if settlement["action"] == "RETRY_SCHEDULED"
+            else DEAD_LETTERED
+        )
         return transition_cx_worker_execution(
             started,
             target,
             observed_at=failed_at,
-            error_code=error_code,
+            error_code=str(settlement["error_code"]),
         )
 
 

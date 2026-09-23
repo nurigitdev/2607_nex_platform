@@ -78,6 +78,15 @@ class JobQueue(Protocol):
     ) -> dict[str, Any]:
         ...
 
+    def dead_letter_job(
+        self,
+        job_id: str,
+        *,
+        error: dict[str, Any] | None = None,
+        failed_at: str | None = None,
+    ) -> dict[str, Any]:
+        ...
+
     def cancel_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
         ...
 
@@ -350,6 +359,29 @@ def plan_job_retry(
     )
 
 
+def plan_job_dead_letter(
+    job: dict[str, Any],
+    *,
+    error: dict[str, Any] | None = None,
+    failed_at: str | None = None,
+) -> JobRetryDecision:
+    normalized = validate_common_job(job)
+    if normalized["status"] != RUNNING:
+        raise JobQueueError(
+            error_code="job.dead_letter_status_invalid",
+            detail="only RUNNING jobs can be dead-lettered",
+            status_code=409,
+        )
+    observed_failed_at = failed_at or _utc_now()
+    safe_error = _normalize_job_error(error, retryable=False)
+    return JobRetryDecision(
+        action=RETRY_ACTION_DEAD_LETTER,
+        failed_at=observed_failed_at,
+        available_at=None,
+        error={**safe_error, "retryable": False, "dead_lettered": True},
+    )
+
+
 def build_subject_ref(subject_type: str, subject_id: str) -> dict[str, str]:
     return {
         "type": _required_string(subject_type, "subject_ref.type"),
@@ -571,6 +603,30 @@ class InMemoryJobQueue:
         self.jobs[job_id] = updated
         return deepcopy(updated)
 
+    def dead_letter_job(
+        self,
+        job_id: str,
+        *,
+        error: dict[str, Any] | None = None,
+        failed_at: str | None = None,
+    ) -> dict[str, Any]:
+        job = self.jobs.get(job_id)
+        if job is None:
+            raise JobQueueError(
+                error_code="job.not_found",
+                detail=f"job was not found: {job_id}",
+                status_code=404,
+            )
+        decision = plan_job_dead_letter(job, error=error, failed_at=failed_at)
+        updated = deepcopy(job)
+        updated["status"] = FAILED
+        updated["retryable"] = False
+        updated["error"] = decision.error
+        updated["available_at"] = decision.failed_at
+        updated["updated_at"] = decision.failed_at
+        self.jobs[job_id] = updated
+        return deepcopy(updated)
+
     def cancel_job(self, job_id: str, *, updated_at: str | None = None) -> dict[str, Any]:
         return self._transition(job_id, CANCELLED, updated_at=updated_at)
 
@@ -695,6 +751,27 @@ class SqlAlchemyJobQueue:
                     error=error,
                     failed_at=failed_at,
                     policy=policy,
+                )
+            )
+        except JobQueueError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _job_store_unavailable() from exc
+
+    def dead_letter_job(
+        self,
+        job_id: str,
+        *,
+        error: dict[str, Any] | None = None,
+        failed_at: str | None = None,
+    ) -> dict[str, Any]:
+        try:
+            return self._run_in_transaction(
+                lambda session: self._dead_letter_job(
+                    session,
+                    job_id=job_id,
+                    error=error,
+                    failed_at=failed_at,
                 )
             )
         except JobQueueError:
@@ -883,6 +960,31 @@ class SqlAlchemyJobQueue:
                 status_code=404,
             )
         decision = plan_job_retry(job, error=error, failed_at=failed_at, policy=policy)
+        self._update_job_retry_decision(session, job, decision)
+        stored = self._select_job(session, job_id)
+        assert stored is not None
+        return stored
+
+    def _dead_letter_job(
+        self,
+        session: Session,
+        *,
+        job_id: str,
+        error: dict[str, Any] | None,
+        failed_at: str | None,
+    ) -> dict[str, Any]:
+        job = self._select_job(session, job_id, for_update=True)
+        if job is None:
+            raise JobQueueError(
+                error_code="job.not_found",
+                detail=f"job was not found: {job_id}",
+                status_code=404,
+            )
+        decision = plan_job_dead_letter(
+            job,
+            error=error,
+            failed_at=failed_at,
+        )
         self._update_job_retry_decision(session, job, decision)
         stored = self._select_job(session, job_id)
         assert stored is not None

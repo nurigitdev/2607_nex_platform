@@ -1079,6 +1079,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0973`](slices/0973_cx_worker_execution_state_contract.md) | `S98-002` Strict metadata-only CX worker execution and state-transition contract. |
 | [`Slice 0974`](slices/0974_cx_durable_worker_claim_lease.md) | `S98-003` Durable queue claim, renewable lease, and competing-worker exclusion controls. |
 | [`Slice 0975`](slices/0975_cx_bounded_worker_runtime_cancellation.md) | `S98-004` Max-job/time bounded worker runtime with cooperative cancellation checkpoints. |
+| [`Slice 0976`](slices/0976_cx_worker_retry_poison_operations.md) | `S98-005` Classified bounded retry/backoff, immediate poison dead-letter, and requirement Checkpoint Gate. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

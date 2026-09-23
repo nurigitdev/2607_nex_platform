@@ -272,6 +272,8 @@ def test_runtime_policy_and_helpers_reject_invalid_values() -> None:
     assert _safe_error_code(RuntimeError("private")) == (
         "cx.worker_runtime.handler_failed"
     )
+    coded = type("CodedFailure", (Exception,), {"error_code": " cx.test "})()
+    assert _safe_error_code(coded) == "cx.test"
 
 
 def test_queue_dependency_failures_are_typed_and_safe() -> None:
