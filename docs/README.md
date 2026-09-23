@@ -1081,6 +1081,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0975`](slices/0975_cx_bounded_worker_runtime_cancellation.md) | `S98-004` Max-job/time bounded worker runtime with cooperative cancellation checkpoints. |
 | [`Slice 0976`](slices/0976_cx_worker_retry_poison_operations.md) | `S98-005` Classified bounded retry/backoff, immediate poison dead-letter, and requirement Checkpoint Gate. |
 | [`Slice 0977`](slices/0977_cx_worker_lifecycle_readiness_shutdown.md) | `S98-006` Heartbeat-backed readiness and graceful worker shutdown integrated with the bounded runtime. |
+| [`Slice 0978`](slices/0978_cx_worker_restart_reconciliation.md) | `S98-007` Restart-safe lease/heartbeat reconciliation with fail-closed workload recovery handlers. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
