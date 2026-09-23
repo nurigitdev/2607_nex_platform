@@ -1075,6 +1075,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0969`](slices/0969_cx_grounded_generation_live_postgresql_dgx_smoke.md) | `S97-009` Protected actual PostgreSQL and live DGX grounded-generation runtime evidence. |
 | [`Slice 0970`](slices/0970_s97_cx_grounded_generation_runtime_closure.md) | `S97-010` Owner-private grounded-generation runtime closure with explicit S98 handoff. |
 | [`Slice 0971`](slices/0971_tiered_regression_gate_foundation.md) | Development-process tiered Slice/Checkpoint/Full regression gate foundation with unchanged Full Gate fallback. |
+| [`Slice 0972`](slices/0972_cx_worker_operations_resilience_boundary_audit.md) | `S98-001` CX worker operations/resilience boundary audit and ordered implementation plan. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
