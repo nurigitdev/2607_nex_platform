@@ -512,6 +512,7 @@ def generation_execution_request_hash(mo_payload: Mapping[str, Any]) -> str:
             "provider_prompt_package_hash"
         ),
         "response_format": mo_payload.get("response_format"),
+        "reasoning_mode": mo_payload.get("reasoning_mode", "provider_default"),
         "max_output_tokens": mo_payload.get("max_output_tokens"),
         "temperature": mo_payload.get("temperature"),
         "stream": mo_payload.get("stream"),

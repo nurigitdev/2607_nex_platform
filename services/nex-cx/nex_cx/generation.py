@@ -702,6 +702,9 @@ def build_mo_generation_payload(
             "provider_capability": source_payload.get("provider_capability", "generation"),
             "provider_prompt_package_hash": provider_prompt_package_hash,
             "response_format": source_payload.get("response_format", {"type": "text"}),
+            "reasoning_mode": source_payload.get(
+                "reasoning_mode", "provider_default"
+            ),
             "metadata": source_payload.get("metadata", {}),
         }
     )
@@ -730,6 +733,7 @@ def build_mo_generation_payload(
             else source_payload.get("prompt")
         ),
         "response_format": source_payload.get("response_format", {"type": "text"}),
+        "reasoning_mode": source_payload.get("reasoning_mode", "provider_default"),
         "max_output_tokens": source_payload.get("max_output_tokens", 256),
         "temperature": source_payload.get("temperature", 0.0),
         "stream": source_payload.get("stream", False),

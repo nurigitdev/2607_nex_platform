@@ -220,6 +220,19 @@ def test_build_mo_generation_payload_hashes_prompt_metadata() -> None:
     assert payload["alias"] == "general-llm-default"
     assert len(payload["provider_prompt_package_hash"]) == 64
     assert len(payload["metadata"]["generation_request_hash"]) == 64
+    assert payload["reasoning_mode"] == "provider_default"
+
+    disabled = build_mo_generation_payload(
+        {
+            "prompt": "Summarize contract evidence.",
+            "reasoning_mode": "disabled",
+        },
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    )
+    assert disabled["reasoning_mode"] == "disabled"
+    assert disabled["metadata"]["generation_request_hash"] != payload["metadata"][
+        "generation_request_hash"
+    ]
 
 
 def test_compatibility_payload_defaults_legacy_generation_to_general_answer() -> None:

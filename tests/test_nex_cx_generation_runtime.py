@@ -391,9 +391,13 @@ def test_request_hash_ignores_transport_identity_but_tracks_semantics() -> None:
     semantic_changed = generation_execution_request_hash(
         _mo_payload(max_output_tokens=512)
     )
+    reasoning_changed = generation_execution_request_hash(
+        _mo_payload(reasoning_mode="disabled")
+    )
 
     assert first == transport_changed
     assert first != semantic_changed
+    assert first != reasoning_changed
 
 
 def test_in_memory_admission_repository_terminal_guards() -> None:
