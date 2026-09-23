@@ -44,6 +44,11 @@ from nex_cx.grounded_output_validation import (
     GroundedOutputValidationError,
     normalize_generation_provider_response,
 )
+from nex_cx.generation_runtime import (
+    GroundedGenerationAdmission,
+    GroundedGenerationRuntime,
+    GroundedGenerationRuntimeError,
+)
 from nex_cx.progress import (
     build_cx_generation_failure_progress_events,
     build_cx_generation_progress_events,
@@ -224,6 +229,7 @@ def register_generation_routes(
     store: GenerationExecutionStore | None = None,
     mo_client: MoGenerationClient | None = None,
     retrieval_store: RetrievalPackageStore | None = None,
+    execution_runtime: GroundedGenerationRuntime | None = None,
 ) -> None:
     generation_store = store or DEFAULT_GENERATION_STORE
     client = mo_client or build_default_mo_client()
@@ -235,6 +241,10 @@ def register_generation_routes(
         authorization: str | None = Header(default=None),
         cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
         cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
+        idempotency_key: str | None = Header(
+            default=None,
+            alias="Idempotency-Key",
+        ),
     ):
         access_context = authorize_cx_owner_request(
             request,
@@ -258,6 +268,36 @@ def register_generation_routes(
                 trace_id=trace_id,
                 retrieval_package=retrieval_package,
             )
+            runtime_admission: GroundedGenerationAdmission | None = None
+            if execution_runtime is not None:
+                try:
+                    runtime_admission = execution_runtime.admit(
+                        source_payload=payload,
+                        mo_payload=mo_payload,
+                        access_context=access_context,
+                        request_id=request_id,
+                        trace_id=trace_id,
+                        idempotency_key=idempotency_key,
+                    )
+                except GroundedGenerationRuntimeError as exc:
+                    raise _runtime_facade_error(exc) from exc
+                mo_payload = runtime_admission.mo_payload
+                if runtime_admission.is_replay:
+                    replayed = runtime_admission.existing_record
+                    if replayed is None:
+                        raise GenerationFacadeError(
+                            status_code=503,
+                            error_code="cx.generation_runtime.replay_unavailable",
+                            detail="Generation replay record is unavailable.",
+                            retryable=True,
+                        )
+                    generation_store.save(replayed)
+                    if replayed["status"] == "FAILED":
+                        return _generation_problem_response(
+                            request,
+                            _replayed_failure(replayed),
+                        )
+                    return replayed
             try:
                 try:
                     raw_mo_response = client.create_generation(
@@ -292,8 +332,18 @@ def register_generation_routes(
                     request_id=request_id,
                     trace_id=trace_id,
                 )
+                stored_failure = owner_scoped_record(access_context, failure_record)
+                if execution_runtime is not None and runtime_admission is not None:
+                    try:
+                        stored_failure = execution_runtime.persist_failed(
+                            admission=runtime_admission,
+                            execution_record=failure_record,
+                            access_context=access_context,
+                        )
+                    except GroundedGenerationRuntimeError as runtime_exc:
+                        raise _runtime_facade_error(runtime_exc) from runtime_exc
                 generation_store.save(
-                    owner_scoped_record(access_context, failure_record),
+                    stored_failure,
                     progress_events=build_cx_generation_failure_progress_events(
                         source_payload=payload,
                         mo_payload=mo_payload,
@@ -324,20 +374,29 @@ def register_generation_routes(
                 request_id=request_id,
                 trace_id=trace_id,
             )
+            execution_record = build_generation_execution_record(
+                source_payload=payload,
+                mo_payload=mo_payload,
+                mo_response=mo_response,
+                compatibility_rule=compatibility_rule,
+                retrieval_package=retrieval_package,
+                structured_draft=structured_draft,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            stored_record = owner_scoped_record(access_context, execution_record)
+            if execution_runtime is not None and runtime_admission is not None:
+                try:
+                    stored_record = execution_runtime.persist_completed(
+                        admission=runtime_admission,
+                        execution_record=execution_record,
+                        output_text=output_text_from_mo_response(mo_response),
+                        access_context=access_context,
+                    )
+                except GroundedGenerationRuntimeError as exc:
+                    raise _runtime_facade_error(exc) from exc
             return generation_store.save(
-                owner_scoped_record(
-                    access_context,
-                    build_generation_execution_record(
-                        source_payload=payload,
-                        mo_payload=mo_payload,
-                        mo_response=mo_response,
-                        compatibility_rule=compatibility_rule,
-                        retrieval_package=retrieval_package,
-                        structured_draft=structured_draft,
-                        request_id=request_id,
-                        trace_id=trace_id,
-                    ),
-                ),
+                stored_record,
                 structured_draft=structured_draft,
                 progress_events=progress_events,
             )
@@ -1624,6 +1683,29 @@ def _optional_string(value: Any) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return None
+
+
+def _runtime_facade_error(
+    exc: GroundedGenerationRuntimeError,
+) -> GenerationFacadeError:
+    return GenerationFacadeError(
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        detail=exc.detail,
+        retryable=exc.retryable,
+    )
+
+
+def _replayed_failure(record: dict[str, Any]) -> GenerationFacadeError:
+    failure = record.get("failure")
+    failure = failure if isinstance(failure, dict) else {}
+    error_code = str(failure.get("failure_code") or "cx.generation_failed")
+    return GenerationFacadeError(
+        status_code=504 if error_code == "mo.provider_timeout" else 502,
+        error_code=error_code,
+        detail="The idempotent generation attempt previously failed.",
+        retryable=bool(failure.get("retryable", False)),
+    )
 
 
 def _generation_problem_response(

@@ -302,8 +302,17 @@ def _optional_uuid(value: object, *, field_name: str) -> str | None:
 
 def _required_datetime(value: object, *, field_name: str) -> datetime:
     if isinstance(value, datetime):
-        return value
-    raise _invalid(f"{field_name} must be a datetime value.")
+        observed = value
+    elif isinstance(value, str):
+        try:
+            observed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise _invalid(f"{field_name} must be an ISO-8601 datetime value.") from exc
+    else:
+        raise _invalid(f"{field_name} must be a datetime value.")
+    if observed.tzinfo is None:
+        raise _invalid(f"{field_name} must include a timezone.")
+    return observed
 
 
 def _invalid(detail: str) -> CxGenerationPersistenceError:

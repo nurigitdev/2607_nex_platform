@@ -54,7 +54,7 @@ def test_repository_postgres_reaudit_evaluation_passes() -> None:
     assert result["status"] == "PASS"
     assert result["database_readiness"] == "ACTUAL_TEST_DATABASE_CLEAN"
     assert all(result["checks"].values())
-    assert result["summary"]["expected_migration_count"] == 20
+    assert result["summary"]["expected_migration_count"] == 21
     assert result["summary"]["core_table_count"] == 19
     assert result["private_column_violations"] == []
     assert result["privacy_policy"]["scope"] == "public_schema"
@@ -118,7 +118,7 @@ def test_expected_state_and_identifier_parser_fail_closed_without_inputs(
     tmp_path: Path,
 ) -> None:
     expected = expected_cx_postgres_state()
-    assert len(expected["migration_versions"]) == 20
+    assert len(expected["migration_versions"]) == 21
     assert expected["indexes"]
     assert expected["constraints"]
     assert _named_identifiers("CREATE INDEX idx_x ON x (id)", r"INDEX\s+([a-z_]+)") == {
@@ -191,7 +191,7 @@ def test_database_snapshot_reads_catalog_and_rolls_back_probe() -> None:
     )
 
     assert snapshot["database"] == "nex_cx_test"
-    assert len(snapshot["migration_versions"]) == 20
+    assert len(snapshot["migration_versions"]) == 21
     assert snapshot["rollback_probe"] == {
         "write_observed": True,
         "read_observed": True,
@@ -245,7 +245,7 @@ def test_runner_executes_migration_snapshot_and_redacts_failures(monkeypatch) ->
 def test_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = evaluate_cx_postgres_reaudit(_snapshot(), _migration())
     assert "postgres_reaudit=pass" in runner.summary_line(passing)
-    assert "migrations=20/20" in runner.summary_line(passing)
+    assert "migrations=21/21" in runner.summary_line(passing)
     assert "database=not-run" in runner.summary_line({"status": "SKIPPED"})
 
     monkeypatch.setattr(runner, "run_cx_current_state_postgres_reaudit", lambda: passing)

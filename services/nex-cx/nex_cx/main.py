@@ -27,6 +27,12 @@ from nex_cx.generation import (
     build_default_mo_client,
     register_generation_routes,
 )
+from nex_cx.generation_private_output import build_generation_output_store
+from nex_cx.generation_repository import SqlAlchemyGenerationRuntimeRepository
+from nex_cx.generation_runtime import (
+    GroundedGenerationRuntime,
+    SqlAlchemyGenerationAdmissionRepository,
+)
 from nex_cx.ingestion import (
     DEFAULT_INGESTION_STORE,
     CxStorageConfig,
@@ -162,6 +168,27 @@ def build_cx_document_intelligence_dependencies(
     return None, None, None
 
 
+def build_cx_generation_runtime(
+    runtime: ServicePersistenceRuntime,
+) -> GroundedGenerationRuntime | None:
+    if (
+        runtime.mode == PERSISTENCE_MODE_POSTGRES
+        and runtime.api_session_factory is not None
+    ):
+        return GroundedGenerationRuntime(
+            admission_repository=SqlAlchemyGenerationAdmissionRepository(
+                runtime.api_session_factory
+            ),
+            execution_repository=SqlAlchemyGenerationRuntimeRepository(
+                runtime.api_session_factory,
+                database_env=runtime.database_env,
+                redacted_database_url=runtime.redacted_database_url,
+            ),
+            private_output_store=build_generation_output_store(),
+        )
+    return None
+
+
 SERVICE_SPEC = SERVICE_SPECS["nex-cx"]
 app = build_service_app(SERVICE_SPEC)
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
@@ -185,6 +212,7 @@ CX_INGESTION_RUN_REPOSITORY = build_cx_ingestion_run_repository(
 CX_VECTOR_INDEX_REPOSITORY, CX_VECTOR_STORE = (
     build_cx_vector_operations_dependencies(SERVICE_PERSISTENCE)
 )
+CX_GENERATION_RUNTIME = build_cx_generation_runtime(SERVICE_PERSISTENCE)
 (
     CX_PRIVATE_SUMMARY_TEXT_STORE,
     CX_SUMMARY_VECTOR_STORE,
@@ -209,6 +237,7 @@ register_generation_routes(
     app,
     store=DEFAULT_GENERATION_STORE,
     retrieval_store=DEFAULT_INGESTION_STORE,
+    execution_runtime=CX_GENERATION_RUNTIME,
 )
 register_remediation_execution_routes(
     app,

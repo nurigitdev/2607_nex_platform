@@ -1069,6 +1069,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0963`](slices/0963_cx_provider_output_citation_validation.md) | `S97-003` Fail-closed provider-output normalization and selected-evidence citation validation. |
 | [`Slice 0964`](slices/0964_cx_durable_private_generation_output.md) | `S97-004` Durable owner-scoped generated-output storage with opaque raw-safe metadata. |
 | [`Slice 0965`](slices/0965_cx_sql_generation_runtime_repository.md) | `S97-005` Owner-scoped SQL generation runtime repository and private-output reference schema. |
+| [`Slice 0966`](slices/0966_cx_idempotent_grounded_execution_runtime.md) | `S97-006` Owner-scoped idempotent bounded generation admission, durable write-through, and route wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
