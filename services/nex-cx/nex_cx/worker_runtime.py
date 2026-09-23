@@ -29,6 +29,7 @@ from nex_cx.worker_leases import (
     SqlAlchemyCxWorkerLeaseStore,
     claim_next_worker_execution,
 )
+from nex_cx.worker_lifecycle import CxWorkerLifecycleController
 from nex_cx.worker_resilience import (
     CxWorkerResilienceError,
     settle_worker_failure,
@@ -185,15 +186,22 @@ def run_bounded_worker_batch(
     workload: str,
     runtime_policy: CxWorkerRuntimePolicy | None = None,
     lease_policy: CxWorkerLeasePolicy | None = None,
+    lifecycle: CxWorkerLifecycleController | None = None,
     clock: WorkerClock | None = None,
 ) -> dict[str, Any]:
     resolved_runtime_policy = runtime_policy or CxWorkerRuntimePolicy()
     observed_clock = clock or _utc_now
     started_at = _timestamp(observed_clock(), "started_at")
+    if lifecycle is not None:
+        lifecycle.starting(observed_at=_wire_timestamp(started_at))
+        lifecycle.idle(observed_at=_wire_timestamp(started_at))
     executions: list[dict[str, Any]] = []
     stop_reason = "MAX_JOBS"
     for _ in range(resolved_runtime_policy.max_jobs):
         observed = _timestamp(observed_clock(), "observed_at")
+        if lifecycle is not None and not lifecycle.can_claim:
+            stop_reason = "SHUTDOWN"
+            break
         if (observed - started_at).total_seconds() >= (
             resolved_runtime_policy.max_duration_seconds
         ):
@@ -211,13 +219,33 @@ def run_bounded_worker_batch(
         if execution is None:
             stop_reason = "IDLE"
             break
-        outcome = _execute_claimed(
-            execution,
-            job_queue=job_queue,
-            handler=handler,
-            observed_clock=observed_clock,
-        )
+        if lifecycle is not None:
+            lifecycle.busy(
+                job_id=str(execution["job_id"]),
+                trace_id=str(execution["trace_id"]),
+                observed_at=_wire_timestamp(observed),
+            )
+        try:
+            outcome = _execute_claimed(
+                execution,
+                job_queue=job_queue,
+                handler=handler,
+                observed_clock=observed_clock,
+            )
+        except Exception as exc:
+            if lifecycle is not None:
+                lifecycle.failed(
+                    error_code=str(
+                        getattr(exc, "error_code", "cx.worker_runtime.failed")
+                    ),
+                    job_id=str(execution["job_id"]),
+                    trace_id=str(execution["trace_id"]),
+                    observed_at=observed_clock(),
+                )
+            raise
         executions.append(outcome)
+        if lifecycle is not None:
+            lifecycle.idle(observed_at=observed_clock())
         if (
             outcome["state"] in {RETRY_SCHEDULED, DEAD_LETTERED}
             and resolved_runtime_policy.stop_on_failure
@@ -225,6 +253,9 @@ def run_bounded_worker_batch(
             stop_reason = "FAILURE"
             break
     completed_at = _timestamp(observed_clock(), "completed_at")
+    if lifecycle is not None and lifecycle.shutdown_requested:
+        lifecycle.stopping(observed_at=_wire_timestamp(completed_at))
+        lifecycle.stopped(observed_at=_wire_timestamp(completed_at))
     return _runtime_result(
         worker_id=worker_id,
         worker_type=worker_type,
