@@ -55,7 +55,7 @@ class FakeMoClient:
             "model_revision": "mock-llm-v1",
             "deployment_id": "mock-generation-local",
             "provider_type": "mock-generation",
-            "output": {"type": "text", "text": "Mock CX response."},
+            "output": {"type": "text", "text": "Mock CX response [1]."},
             "finish_reason": "STOP",
             "usage": {"input_tokens": 3, "output_tokens": 4, "total_tokens": 7},
             "runtime_metadata": {
@@ -358,6 +358,50 @@ def test_grounded_generation_rejects_invalid_private_evidence_before_mo_call() -
     assert response.status_code == 422
     assert response.json()["error_code"] == "cx.grounded_prompt_package_invalid"
     assert mo_client.calls == []
+
+
+def test_grounded_generation_persists_uncited_provider_output_as_failure() -> None:
+    class UncitedMoClient(FakeMoClient):
+        def create_generation(
+            self,
+            payload: dict[str, Any],
+            *,
+            request_id: str,
+            trace_id: str,
+        ) -> dict[str, Any]:
+            response = super().create_generation(
+                payload,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            response["output"]["text"] = "Uncited grounded answer."
+            return response
+
+    app = build_service_app(SERVICE_SPECS["nex-cx"])
+    store = GenerationExecutionStore()
+    mo_client = UncitedMoClient()
+    register_generation_routes(
+        app,
+        store=store,
+        mo_client=mo_client,
+        retrieval_store=FakeRetrievalPackageStore(grounded_package()),
+    )
+
+    response = TestClient(app).post(
+        "/api/v1/generations",
+        json=grounded_payload(selected_evidence_ids=["evidence-001"]),
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 502
+    assert response.json()["error_code"] == "cx.citation_required_missing"
+    assert len(store.records) == 1
+    failure = next(iter(store.records.values()))
+    assert failure["status"] == "FAILED"
+    assert failure["failure"]["failure_code"] == "cx.citation_required_missing"
+    assert store.get_progress_events(failure["cx_generation_id"])[-1][
+        "current_stage"
+    ] == "CITATION_VALIDATING"
 
 
 def test_grounded_generation_boundary_audit_admits_ready_package_and_stays_raw_safe() -> None:

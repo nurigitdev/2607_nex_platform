@@ -88,7 +88,7 @@ def _fake_remote_request(
                     {
                         "message": {
                             "role": "assistant",
-                            "content": "Protected live RAG PostgreSQL answer.",
+                            "content": "Protected live RAG PostgreSQL answer [1].",
                         },
                         "finish_reason": "stop",
                     }

@@ -40,6 +40,10 @@ from nex_cx.grounded_prompt import (
     build_grounded_prompt_package,
     grounded_prompt_safe_metadata,
 )
+from nex_cx.grounded_output_validation import (
+    GroundedOutputValidationError,
+    normalize_generation_provider_response,
+)
 from nex_cx.progress import (
     build_cx_generation_failure_progress_events,
     build_cx_generation_progress_events,
@@ -49,6 +53,9 @@ FORBIDDEN_PROVIDER_FIELDS = {"provider_url", "model_path", "provider_endpoint", 
 FAILED_STAGE_BY_ERROR_CODE = {
     "mo.provider_timeout": "GENERATING",
     "mo.request_failed": "MO_ADMISSION_WAITING",
+    "cx.provider_output_invalid": "GENERATING",
+    "cx.provider_output_incomplete": "GENERATING",
+    "cx.citation_required_missing": "CITATION_VALIDATING",
     "cx.citation_validation_failed": "CITATION_VALIDATING",
 }
 CX_GROUNDED_GENERATION_BOUNDARY_AUDIT_SCHEMA_VERSION = (
@@ -252,11 +259,29 @@ def register_generation_routes(
                 retrieval_package=retrieval_package,
             )
             try:
-                mo_response = client.create_generation(
-                    mo_payload,
-                    request_id=request_id,
-                    trace_id=trace_id,
-                )
+                try:
+                    raw_mo_response = client.create_generation(
+                        mo_payload,
+                        request_id=request_id,
+                        trace_id=trace_id,
+                    )
+                    mo_response = normalize_generation_provider_response(
+                        raw_mo_response,
+                        grounding_required=bool(
+                            compatibility_rule.get("grounding_required")
+                        ),
+                        retrieval_package=retrieval_package,
+                        selected_evidence_ids=selected_evidence_ids_from_payload(
+                            payload
+                        ),
+                    )
+                except GroundedOutputValidationError as exc:
+                    raise GenerationFacadeError(
+                        status_code=exc.status_code,
+                        error_code=exc.error_code,
+                        detail=exc.detail,
+                        retryable=exc.retryable,
+                    ) from exc
             except GenerationFacadeError as exc:
                 failure_record = build_generation_failure_record(
                     source_payload=payload,

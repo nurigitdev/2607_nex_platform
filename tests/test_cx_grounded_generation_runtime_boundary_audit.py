@@ -14,8 +14,8 @@ def test_repository_grounded_generation_runtime_boundary_passes() -> None:
     assert result["summary"] == {
         "foundation_count": 5,
         "gap_count": 8,
-        "open_gap_count": 7,
-        "resolved_gap_count": 1,
+        "open_gap_count": 6,
+        "resolved_gap_count": 2,
         "planned_slice_count": 10,
         "issue_count": 0,
     }
@@ -24,8 +24,11 @@ def test_repository_grounded_generation_runtime_boundary_passes() -> None:
     assert result["gap_states"]["provider_prompt_evidence_binding_missing"] == (
         "RESOLVED"
     )
-    assert list(result["gap_states"].values()).count("OPEN") == 7
-    assert result["next_slice"] == "0963"
+    assert result["gap_states"]["provider_output_structure_validation_weak"] == (
+        "RESOLVED"
+    )
+    assert list(result["gap_states"].values()).count("OPEN") == 6
+    assert result["next_slice"] == "0964"
 
 
 def test_grounded_generation_runtime_boundary_freezes_runtime_decisions() -> None:
@@ -83,7 +86,7 @@ def test_grounded_generation_runtime_boundary_summary_and_main(
     passing = audit.run_cx_grounded_generation_runtime_boundary_audit()
     assert audit.summary_line(passing) == (
         "cx_grounded_generation_runtime_boundary=pass foundations=5 gaps=8 "
-        "open=7 scope=owner_private_grounded_generation_runtime "
+        "open=6 scope=owner_private_grounded_generation_runtime "
         "remote_required_now=False issues=0"
     )
     assert "scope=unknown" in audit.summary_line({"status": "FAIL"})

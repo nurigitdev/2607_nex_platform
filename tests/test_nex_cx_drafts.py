@@ -41,6 +41,9 @@ class CitationMoClient:
         return {
             "mo_generation_id": "mo-gen-001",
             "alias": payload["alias"],
+            "model_revision": "mock-llm-v1",
+            "deployment_id": "mock-generation-local",
+            "provider_type": "mock-generation",
             "output": {"type": "text", "text": self.output_text},
             "finish_reason": "STOP",
             "usage": {"input_tokens": 2, "output_tokens": 3, "total_tokens": 5},

@@ -96,7 +96,7 @@ def test_protected_live_rag_smoke_runs_live_shape_and_redacts_values() -> None:
                     {
                         "message": {
                             "role": "assistant",
-                            "content": "Protected live RAG smoke answer.",
+                            "content": "Protected live RAG smoke answer [1].",
                         },
                         "finish_reason": "stop",
                     }

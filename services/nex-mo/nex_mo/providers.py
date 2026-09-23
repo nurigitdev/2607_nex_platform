@@ -502,7 +502,12 @@ def create_mock_generation_response(
         }
     )
     input_tokens = _token_count(prompt_text)
-    output_text = f"[mock:{route.alias}] {prompt_text[:160]}"
+    grounded_citation_label = _grounded_citation_label(payload)
+    output_text = (
+        f"[mock:{route.alias}] Grounded mock answer {grounded_citation_label}."
+        if grounded_citation_label is not None
+        else f"[mock:{route.alias}] {prompt_text[:160]}"
+    )
     output_tokens = _token_count(output_text)
     now = _utc_now()
 
@@ -756,6 +761,35 @@ def _prompt_text(payload: dict[str, Any]) -> str:
         "mo.request_invalid",
         "prompt or messages are required.",
     )
+
+
+def _grounded_citation_label(payload: dict[str, Any]) -> str | None:
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, dict) or metadata.get("grounding_context_policy") != (
+        "owner_admitted_untrusted_evidence_v1"
+    ):
+        return None
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        return None
+    for message in messages:
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if not isinstance(content, str) or "\n" not in content:
+            continue
+        try:
+            envelope = json.loads(content.split("\n", maxsplit=1)[1])
+        except json.JSONDecodeError:
+            continue
+        evidence = envelope.get("evidence") if isinstance(envelope, dict) else None
+        if not isinstance(evidence, list) or not evidence:
+            continue
+        first = evidence[0]
+        label = first.get("citation_label") if isinstance(first, dict) else None
+        if isinstance(label, str) and label:
+            return label
+    return None
 
 
 def _reject_raw_provider_fields(payload: dict[str, Any]) -> None:

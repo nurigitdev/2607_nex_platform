@@ -12,6 +12,7 @@ from nex_mo.providers import (
     ModelProfile,
     ProviderRoute,
     ProviderRouteError,
+    _grounded_citation_label,
     build_model_profile_catalog,
     create_embedding_response,
     create_generation_response,
@@ -606,6 +607,120 @@ def test_mock_generation_response_is_deterministic() -> None:
     assert first["mo_generation_id"] == second["mo_generation_id"]
     assert first["runtime_metadata"]["route_id"] == "route-general-llm-default"
     assert "provider_url" not in first["runtime_metadata"]
+
+
+def test_mock_generation_response_cites_grounded_context_envelope() -> None:
+    response = create_mock_generation_response(
+        {
+            "alias": "general-llm-default",
+            "provider_capability": "generation",
+            "messages": [
+                {"role": "system", "content": "Grounding instructions."},
+                {
+                    "role": "user",
+                    "content": (
+                        "Grounded context envelope:\n"
+                        '{"evidence":[{"citation_label":"[2]",'
+                        '"content":"private evidence"}],"question":"question"}'
+                    ),
+                },
+            ],
+            "metadata": {
+                "grounding_context_policy": (
+                    "owner_admitted_untrusted_evidence_v1"
+                )
+            },
+        },
+        request_id="req-001",
+        trace_id="trace-001",
+    )
+
+    assert response["output"]["text"] == (
+        "[mock:general-llm-default] Grounded mock answer [2]."
+    )
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"metadata": {}},
+        {
+            "metadata": {
+                "grounding_context_policy": "owner_admitted_untrusted_evidence_v1"
+            },
+            "messages": None,
+        },
+        {
+            "metadata": {
+                "grounding_context_policy": "owner_admitted_untrusted_evidence_v1"
+            },
+            "messages": [None, {"role": "system", "content": "ignored"}],
+        },
+        {
+            "metadata": {
+                "grounding_context_policy": "owner_admitted_untrusted_evidence_v1"
+            },
+            "messages": [{"role": "user", "content": None}],
+        },
+        {
+            "metadata": {
+                "grounding_context_policy": "owner_admitted_untrusted_evidence_v1"
+            },
+            "messages": [{"role": "user", "content": "no-json-envelope"}],
+        },
+        {
+            "metadata": {
+                "grounding_context_policy": "owner_admitted_untrusted_evidence_v1"
+            },
+            "messages": [{"role": "user", "content": "envelope:\nnot-json"}],
+        },
+        {
+            "metadata": {
+                "grounding_context_policy": "owner_admitted_untrusted_evidence_v1"
+            },
+            "messages": [{"role": "user", "content": "envelope:\n[]"}],
+        },
+        {
+            "metadata": {
+                "grounding_context_policy": "owner_admitted_untrusted_evidence_v1"
+            },
+            "messages": [
+                {"role": "user", "content": 'envelope:\n{"evidence":null}'}
+            ],
+        },
+        {
+            "metadata": {
+                "grounding_context_policy": "owner_admitted_untrusted_evidence_v1"
+            },
+            "messages": [
+                {"role": "user", "content": 'envelope:\n{"evidence":[]}'}
+            ],
+        },
+        {
+            "metadata": {
+                "grounding_context_policy": "owner_admitted_untrusted_evidence_v1"
+            },
+            "messages": [
+                {"role": "user", "content": 'envelope:\n{"evidence":[null]}'}
+            ],
+        },
+        {
+            "metadata": {
+                "grounding_context_policy": "owner_admitted_untrusted_evidence_v1"
+            },
+            "messages": [
+                {
+                    "role": "user",
+                    "content": 'envelope:\n{"evidence":[{"citation_label":""}]}',
+                }
+            ],
+        },
+    ],
+)
+def test_grounded_mock_citation_label_fails_closed_for_malformed_envelope(
+    payload: dict[str, object],
+) -> None:
+    assert _grounded_citation_label(payload) is None
 
 
 def test_create_generation_response_uses_remote_adapter_in_live_mode() -> None:

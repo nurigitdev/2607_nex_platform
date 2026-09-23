@@ -1066,6 +1066,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0960`](slices/0960_s96_cx_document_intelligence_summary_similarity_closure.md) | `S96-010` Owner-private document intelligence and summary-similarity closure with explicit S97 handoff. |
 | [`Slice 0961`](slices/0961_cx_grounded_generation_runtime_boundary_audit.md) | `S97-001` Owner-private grounded-generation runtime boundary audit and ordered hardening plan. |
 | [`Slice 0962`](slices/0962_cx_grounded_prompt_package_evidence_binding.md) | `S97-002` Canonical untrusted-context prompt assembly and exact retrieval-evidence binding. |
+| [`Slice 0963`](slices/0963_cx_provider_output_citation_validation.md) | `S97-003` Fail-closed provider-output normalization and selected-evidence citation validation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
