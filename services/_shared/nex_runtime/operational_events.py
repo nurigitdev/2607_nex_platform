@@ -22,6 +22,8 @@ CX_WORKER_LIFECYCLE_EVENT_BUSY = "cx.worker.lifecycle.busy"
 CX_WORKER_LIFECYCLE_EVENT_IDLE = "cx.worker.lifecycle.idle"
 CX_WORKER_LIFECYCLE_EVENT_ERROR = "cx.worker.lifecycle.error"
 CX_INGESTION_LEASE_RECOVERED_EVENT = "cx.ingestion.lease_recovered"
+CX_WORKER_CANCELLATION_REQUESTED_EVENT = "cx.worker.cancellation.requested"
+CX_WORKER_RECONCILIATION_APPLIED_EVENT = "cx.worker.reconciliation.applied"
 AG_JOB_CONTROL_EVENT_SUCCEEDED = "ag.job_control.succeeded"
 AG_JOB_CONTROL_EVENT_FAILED = "ag.job_control.failed"
 
@@ -755,6 +757,29 @@ DEFAULT_OPERATIONAL_EVENT_TAXONOMY: tuple[OperationalEventTypeSpec, ...] = (
         ),
         description="CX recovered an expired durable ingestion worker lease.",
         lifecycle_state="recovered",
+    ),
+    OperationalEventTypeSpec(
+        service_id="nex-cx",
+        event_type=CX_WORKER_CANCELLATION_REQUESTED_EVENT,
+        default_severity="INFO",
+        subject_type="job",
+        detail_keys=("job_type", "job_status", "already_cancelled"),
+        description="CX accepted a cooperative worker job cancellation request.",
+        lifecycle_state="cancelled",
+    ),
+    OperationalEventTypeSpec(
+        service_id="nex-cx",
+        event_type=CX_WORKER_RECONCILIATION_APPLIED_EVENT,
+        default_severity="WARNING",
+        subject_type="worker.fleet",
+        detail_keys=(
+            "running_job_count",
+            "recoverable_count",
+            "manual_review_count",
+            "applied_count",
+        ),
+        description="CX applied a durable worker restart reconciliation plan.",
+        lifecycle_state="reconciled",
     ),
 )
 

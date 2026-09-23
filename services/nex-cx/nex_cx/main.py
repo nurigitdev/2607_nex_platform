@@ -46,6 +46,10 @@ from nex_cx.ingestion_orchestration_repository import (
     SqlAlchemyIngestionRunRepository,
 )
 from nex_cx.ingestion_operations import register_ingestion_operations_routes
+from nex_cx.ingestion_worker import (
+    CX_INGESTION_JOB_TYPE,
+    recover_expired_ingestion_job,
+)
 from nex_cx.lexical_index import register_lexical_index_routes
 from nex_cx.processing import register_processing_routes
 from nex_cx.prompts import DEFAULT_CX_PROMPT_STORE
@@ -79,6 +83,8 @@ from nex_cx.vector_index_repository import (
     SqlAlchemyVectorIndexRepository,
     VectorIndexRepository,
 )
+from nex_cx.worker_leases import SqlAlchemyCxWorkerLeaseStore
+from nex_cx.worker_operations import register_worker_operations_routes
 
 
 def build_cx_content_repository(
@@ -201,6 +207,17 @@ def build_cx_generation_read_model(
     )
 
 
+def build_cx_worker_lease_store(
+    runtime: ServicePersistenceRuntime,
+) -> SqlAlchemyCxWorkerLeaseStore | None:
+    if (
+        runtime.mode == PERSISTENCE_MODE_POSTGRES
+        and runtime.worker_session_factory is not None
+    ):
+        return SqlAlchemyCxWorkerLeaseStore(runtime.worker_session_factory)
+    return None
+
+
 SERVICE_SPEC = SERVICE_SPECS["nex-cx"]
 app = build_service_app(SERVICE_SPEC)
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
@@ -226,6 +243,7 @@ CX_VECTOR_INDEX_REPOSITORY, CX_VECTOR_STORE = (
 )
 CX_GENERATION_RUNTIME = build_cx_generation_runtime(SERVICE_PERSISTENCE)
 CX_GENERATION_READ_MODEL = build_cx_generation_read_model(CX_GENERATION_RUNTIME)
+CX_WORKER_LEASE_STORE = build_cx_worker_lease_store(SERVICE_PERSISTENCE)
 (
     CX_PRIVATE_SUMMARY_TEXT_STORE,
     CX_SUMMARY_VECTOR_STORE,
@@ -279,6 +297,22 @@ register_ingestion_operations_routes(
     app,
     job_queue=SERVICE_PERSISTENCE.job_queue,
     run_repository=CX_INGESTION_RUN_REPOSITORY,
+)
+register_worker_operations_routes(
+    app,
+    job_queue=SERVICE_PERSISTENCE.job_queue,
+    heartbeat_store=SERVICE_PERSISTENCE.worker_heartbeat_store,
+    lease_store=CX_WORKER_LEASE_STORE,
+    recovery_handlers={
+        CX_INGESTION_JOB_TYPE: lambda job, observed_at: (
+            recover_expired_ingestion_job(
+                str(job["job_id"]),
+                job_queue=SERVICE_PERSISTENCE.job_queue,
+                run_repository=CX_INGESTION_RUN_REPOSITORY,
+                observed_at=observed_at,
+            )
+        )
+    },
 )
 register_vector_index_operations_routes(
     app,

@@ -18,6 +18,7 @@ tags:
   - name: InternalJobControl
   - name: InternalServiceLogs
   - name: InternalIngestion
+  - name: InternalWorkers
 paths:
   /health:
     get:
@@ -416,6 +417,139 @@ paths:
           description: Job is not running or its lease has not expired.
         "503":
           description: Job queue or durable run persistence is unavailable.
+  /internal/v1/workers/{worker_id}/readiness:
+    get:
+      operationId: getCxWorkerReadiness
+      tags:
+        - InternalWorkers
+      parameters:
+        - name: worker_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: stale_after_seconds
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 86400
+            default: 60
+      responses:
+        "200":
+          description: Heartbeat-backed CX worker readiness projection.
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Readiness query parameters are invalid.
+        "503":
+          description: Worker heartbeat persistence is unavailable.
+  /internal/v1/workers/reconciliation-plan:
+    get:
+      operationId: getCxWorkerReconciliationPlan
+      tags:
+        - InternalWorkers
+      parameters:
+        - name: observed_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: heartbeat_stale_after_seconds
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 86400
+            default: 60
+      responses:
+        "200":
+          description: Read-only durable lease and heartbeat reconciliation plan.
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Reconciliation query parameters are invalid.
+        "503":
+          description: PostgreSQL worker persistence is unavailable.
+  /internal/v1/workers/reconcile:
+    post:
+      operationId: reconcileCxWorkers
+      tags:
+        - InternalWorkers
+      parameters:
+        - name: observed_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: heartbeat_stale_after_seconds
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 86400
+            default: 60
+      responses:
+        "200":
+          description: Applied worker reconciliation result and safe observability summary.
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Reconciliation query parameters are invalid.
+        "503":
+          description: PostgreSQL worker persistence is unavailable.
+  /internal/v1/workers/jobs/{job_id}/cancel:
+    post:
+      operationId: cancelCxWorkerJob
+      tags:
+        - InternalWorkers
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Idempotent cooperative worker cancellation request result.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Worker job was not found.
+        "409":
+          description: Worker job cannot transition to cancelled.
+        "503":
+          description: Job queue persistence is unavailable.
+  /internal/v1/workers/dead-letters:
+    get:
+      operationId: listCxWorkerDeadLetters
+      tags:
+        - InternalWorkers
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+      responses:
+        "200":
+          description: Bounded metadata-only CX worker dead-letter projection.
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Dead-letter query limit is invalid.
+        "503":
+          description: Job queue persistence is unavailable.
   /api/v1/vector-indexes/{vector_index_id}/readiness:
     get:
       operationId: getCxOwnerScopedVectorIndexReadiness

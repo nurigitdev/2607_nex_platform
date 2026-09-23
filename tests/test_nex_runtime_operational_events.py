@@ -17,8 +17,10 @@ from nex_runtime import (
     CX_PROCESSING_EVENT_STARTED,
     CX_PROCESSING_EVENT_SUCCEEDED,
     CX_WORKER_LIFECYCLE_EVENT_BUSY,
+    CX_WORKER_CANCELLATION_REQUESTED_EVENT,
     CX_WORKER_LIFECYCLE_EVENT_ERROR,
     CX_WORKER_LIFECYCLE_EVENT_IDLE,
+    CX_WORKER_RECONCILIATION_APPLIED_EVENT,
     DEFAULT_OPERATIONAL_EVENT_TAXONOMY,
     DatabasePoolSettings,
     InMemoryOperationalEventStore,
@@ -247,9 +249,11 @@ def test_operational_event_taxonomy_lists_filters_and_summarizes_cx_specs() -> N
         CX_PROCESSING_EVENT_FAILED,
         CX_PROCESSING_EVENT_STARTED,
         CX_PROCESSING_EVENT_SUCCEEDED,
+        CX_WORKER_CANCELLATION_REQUESTED_EVENT,
         CX_WORKER_LIFECYCLE_EVENT_BUSY,
         CX_WORKER_LIFECYCLE_EVENT_ERROR,
         CX_WORKER_LIFECYCLE_EVENT_IDLE,
+        CX_WORKER_RECONCILIATION_APPLIED_EVENT,
     ]
     assert [item["event_type"] for item in ag_taxonomy] == [
         AG_JOB_CONTROL_EVENT_FAILED,
@@ -281,11 +285,16 @@ def test_operational_event_taxonomy_lists_filters_and_summarizes_cx_specs() -> N
         "heartbeat_error_code",
     ]
     assert summary["total"] == len(DEFAULT_OPERATIONAL_EVENT_TAXONOMY)
-    assert summary["by_service"] == {"nex-ag": 2, "nex-cx": 7}
-    assert summary["by_severity"]["INFO"] == 5
+    assert summary["by_service"] == {"nex-ag": 2, "nex-cx": 9}
+    assert summary["by_severity"]["INFO"] == 6
     assert summary["by_severity"]["ERROR"] == 3
-    assert summary["by_severity"]["WARNING"] == 1
-    assert summary["by_subject_type"] == {"cx.document": 3, "job": 3, "worker": 3}
+    assert summary["by_severity"]["WARNING"] == 2
+    assert summary["by_subject_type"] == {
+        "cx.document": 3,
+        "job": 4,
+        "worker": 3,
+        "worker.fleet": 1,
+    }
 
     unknown_severity = summarize_operational_event_taxonomy(
         [{**taxonomy[0], "default_severity": "NOTICE"}]

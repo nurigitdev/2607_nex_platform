@@ -14,8 +14,8 @@ def test_repository_worker_operations_resilience_boundary_passes() -> None:
     assert result["summary"] == {
         "foundation_count": 6,
         "gap_count": 8,
-        "open_gap_count": 2,
-        "resolved_gap_count": 6,
+        "open_gap_count": 1,
+        "resolved_gap_count": 7,
         "planned_slice_count": 10,
         "issue_count": 0,
     }
@@ -39,8 +39,9 @@ def test_repository_worker_operations_resilience_boundary_passes() -> None:
     assert result["gap_states"]["restart_reconciliation_missing"] == (
         "RESOLVED"
     )
-    assert list(result["gap_states"].values()).count("OPEN") == 2
-    assert result["next_slice"] == "0979"
+    assert result["gap_states"]["worker_operations_api_missing"] == "RESOLVED"
+    assert list(result["gap_states"].values()).count("OPEN") == 1
+    assert result["next_slice"] == "0980"
 
 
 def test_worker_operations_boundary_freezes_runtime_decisions() -> None:
@@ -107,7 +108,7 @@ def test_worker_operations_boundary_helpers_and_main(monkeypatch, capsys) -> Non
     assert audit._group_present([], "missing") is False
     assert audit.summary_line(passing) == (
         "cx_worker_operations_resilience_boundary=pass foundations=6 gaps=8 "
-        "open=2 scope=cx_worker_operations_and_resilience "
+        "open=1 scope=cx_worker_operations_and_resilience "
         "postgres_required_now=False issues=0"
     )
     assert "scope=unknown" in audit.summary_line({"status": "FAIL"})
