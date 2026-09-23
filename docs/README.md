@@ -1083,6 +1083,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0977`](slices/0977_cx_worker_lifecycle_readiness_shutdown.md) | `S98-006` Heartbeat-backed readiness and graceful worker shutdown integrated with the bounded runtime. |
 | [`Slice 0978`](slices/0978_cx_worker_restart_reconciliation.md) | `S98-007` Restart-safe lease/heartbeat reconciliation with fail-closed workload recovery handlers. |
 | [`Slice 0979`](slices/0979_cx_worker_operations_api_observability.md) | `S98-008` Protected worker operations API and metadata-only cancellation/reconciliation observability. |
+| [`Slice 0980`](slices/0980_cx_worker_operations_postgresql_smoke.md) | `S98-009` Actual PostgreSQL concurrent claim, lease CAS, restart recovery, protected operations, and cleanup evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
