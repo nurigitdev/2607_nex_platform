@@ -1088,6 +1088,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0982`](slices/0982_cx_async_generation_recovery_boundary_audit.md) | `S99-001` Asynchronous grounded-generation execution/recovery boundary audit and ten-Slice plan. |
 | [`Slice 0983`](slices/0983_cx_async_generation_execution_job_contract.md) | `S99-002` Deterministic metadata-only asynchronous grounded-generation job contract. |
 | [`Slice 0984`](slices/0984_cx_durable_private_generation_request_envelope.md) | `S99-003` Immutable owner-private generation request envelope with restart integrity verification. |
+| [`Slice 0985`](slices/0985_cx_async_generation_idempotent_queue_admission.md) | `S99-004` Retry-safe durable admission, private request persistence, and deterministic queue wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

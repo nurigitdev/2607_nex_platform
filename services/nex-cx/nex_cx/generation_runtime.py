@@ -52,6 +52,10 @@ class GroundedGenerationAdmission:
     def is_replay(self) -> bool:
         return self.decision == "REPLAY"
 
+    @property
+    def is_join(self) -> bool:
+        return self.decision == "JOIN"
+
 
 @runtime_checkable
 class GenerationAdmissionRepository(Protocol):
@@ -356,6 +360,7 @@ class GroundedGenerationRuntime:
         request_id: str,
         trace_id: str,
         idempotency_key: str | None,
+        allow_in_progress_join: bool = False,
     ) -> GroundedGenerationAdmission:
         now = _utc_datetime(self.clock())
         request_hash = generation_execution_request_hash(mo_payload)
@@ -416,6 +421,10 @@ class GroundedGenerationRuntime:
                 detail="Generation admission is terminal but its execution record is unavailable.",
                 status_code=503,
                 retryable=True,
+            )
+        if status == "IN_PROGRESS" and allow_in_progress_join:
+            return GroundedGenerationAdmission(
+                "JOIN", reserved, resolved_payload
             )
         raise GroundedGenerationRuntimeError(
             error_code="cx.generation_runtime.in_progress",
