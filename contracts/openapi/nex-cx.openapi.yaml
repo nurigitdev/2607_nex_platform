@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX CX API
-  version: 0.96.0
+  version: 0.99.0
   x-nex-owner-context:
     propagation: trusted-service-asserted-subject
     requiredHeaders:
@@ -1775,6 +1775,101 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: No active generation recovery policy matched the failure code.
+  /api/v1/generation-jobs:
+    parameters: *cxOwnerContextParameters
+    post:
+      operationId: createCxAsyncGenerationJob
+      tags:
+        - Generation
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Owner-private grounded-generation request accepted by the synchronous generation boundary.
+      responses:
+        "200":
+          description: A terminal generation result was replayed without enqueueing another job.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CxAsyncGenerationAdmission"
+        "202":
+          description: The request was enqueued or joined to its existing in-progress job.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CxAsyncGenerationAdmission"
+        "401":
+          description: Service claim or owner context is missing or invalid.
+        "409":
+          description: Idempotency or generation admission state conflicts with the request.
+        "422":
+          description: Generation request or private request envelope is invalid.
+        "503":
+          description: Durable generation, private request, or job persistence is unavailable.
+  /api/v1/generation-jobs/{job_id}:
+    parameters: *cxOwnerContextParameters
+    get:
+      operationId: getCxAsyncGenerationJob
+      tags:
+        - Generation
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Owner-safe asynchronous generation job state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CxAsyncGenerationJob"
+        "401":
+          description: Service claim or owner context is missing or invalid.
+        "404":
+          description: The job is absent or not visible to the requesting owner.
+        "503":
+          description: Job persistence is unavailable.
+  /api/v1/generation-jobs/{job_id}/cancel:
+    parameters: *cxOwnerContextParameters
+    post:
+      operationId: cancelCxAsyncGenerationJob
+      tags:
+        - Generation
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The queued or running job accepted cooperative cancellation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CxAsyncGenerationJob"
+        "401":
+          description: Service claim or owner context is missing or invalid.
+        "404":
+          description: The job is absent or not visible to the requesting owner.
+        "409":
+          description: The job is already terminal and cannot be cancelled.
+        "503":
+          description: Durable generation, private request, or job persistence is unavailable.
   /api/v1/generations:
     parameters: *cxOwnerContextParameters
     post:
@@ -2436,6 +2531,71 @@ components:
         maxLength: 128
         pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$'
   schemas:
+    CxAsyncGenerationAdmission:
+      type: object
+      additionalProperties: false
+      required:
+        - admission_status
+        - job
+        - generation
+      properties:
+        admission_status:
+          type: string
+          enum: [ENQUEUED, JOINED, REPLAYED]
+        job:
+          oneOf:
+            - $ref: "#/components/schemas/CxAsyncGenerationJob"
+            - type: "null"
+        generation:
+          oneOf:
+            - type: object
+            - type: "null"
+    CxAsyncGenerationJob:
+      type: object
+      additionalProperties: false
+      required:
+        - async_generation_schema_version
+        - job_id
+        - cx_generation_id
+        - status
+        - attempt_count
+        - max_attempts
+        - retryable
+        - available_at
+        - created_at
+        - updated_at
+        - links
+        - error
+      properties:
+        async_generation_schema_version: {const: cx_async_generation_job.v1}
+        job_id: {type: string, format: uuid}
+        cx_generation_id: {type: string, minLength: 1}
+        status:
+          type: string
+          enum: [QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLED]
+        attempt_count: {type: integer, minimum: 0}
+        max_attempts: {type: integer, minimum: 1}
+        retryable: {type: boolean}
+        available_at: {type: [string, "null"], format: date-time}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        links:
+          type: object
+          additionalProperties: false
+          required: [generation, async_job]
+          properties:
+            generation: {type: string, minLength: 1}
+            async_job: {type: string, minLength: 1}
+        error:
+          oneOf:
+            - type: "null"
+            - type: object
+              additionalProperties: false
+              required: [error_code, retryable, dead_lettered]
+              properties:
+                error_code: {type: string, minLength: 1}
+                retryable: {type: boolean}
+                dead_lettered: {type: boolean}
     CxGenerationReadModel:
       type: object
       additionalProperties: false

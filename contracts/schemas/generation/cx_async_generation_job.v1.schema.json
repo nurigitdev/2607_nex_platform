@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/generation/cx_async_generation_job.v1.schema.json",
+  "title": "NeX CX Owner-Safe Asynchronous Generation Job",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "async_generation_schema_version",
+    "job_id",
+    "cx_generation_id",
+    "status",
+    "attempt_count",
+    "max_attempts",
+    "retryable",
+    "available_at",
+    "created_at",
+    "updated_at",
+    "links",
+    "error"
+  ],
+  "properties": {
+    "async_generation_schema_version": {
+      "const": "cx_async_generation_job.v1"
+    },
+    "job_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "cx_generation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"]
+    },
+    "attempt_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_attempts": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "available_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generation", "async_job"],
+      "properties": {
+        "generation": {"type": "string", "minLength": 1},
+        "async_job": {"type": "string", "minLength": 1}
+      }
+    },
+    "error": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["error_code", "retryable", "dead_lettered"],
+          "properties": {
+            "error_code": {"type": "string", "minLength": 1},
+            "retryable": {"type": "boolean"},
+            "dead_lettered": {"type": "boolean"}
+          }
+        }
+      ]
+    }
+  }
+}

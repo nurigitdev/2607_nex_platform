@@ -704,6 +704,11 @@
       "name": "ag_mvp_acceptance_mock",
       "path": "examples/operations/ag_mvp_acceptance.mock_success.json",
       "schema": "schemas/service/nex_ag/mvp_acceptance.v1.schema.json"
+    },
+    {
+      "name": "cx_async_generation_job_queued",
+      "path": "examples/generation/cx_async_generation_job.queued.json",
+      "schema": "schemas/generation/cx_async_generation_job.v1.schema.json"
     }
   ]
 }

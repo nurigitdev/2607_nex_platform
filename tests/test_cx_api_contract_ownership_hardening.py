@@ -12,9 +12,9 @@ def test_api_contract_ownership_hardening_passes() -> None:
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
     assert result["summary"] == {
-        "route_module_count": 13,
-        "owner_guarded_module_count": 13,
-        "runtime_operation_count": 36,
+        "route_module_count": 14,
+        "owner_guarded_module_count": 14,
+        "runtime_operation_count": 39,
         "drift_count": 0,
         "check_count": 11,
         "issue_count": 0,
@@ -38,7 +38,7 @@ def test_api_contract_ownership_hardening_fails_closed(tmp_path: Path) -> None:
 def test_api_contract_ownership_hardening_summary_and_cli(monkeypatch, capsys) -> None:
     passing = hardening.run_cx_api_contract_ownership_hardening()
     assert hardening.summary_line(passing).startswith(
-        "cx_api_contract_ownership_hardening=pass modules=13/13"
+        "cx_api_contract_ownership_hardening=pass modules=14/14"
     )
     assert "modules=0/0" in hardening.summary_line({"status": "FAIL"})
 

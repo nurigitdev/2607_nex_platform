@@ -19,19 +19,19 @@ def test_repository_contract_api_audit_confirms_known_drift() -> None:
     assert result["contract_readiness"] == "HARDENED"
     assert all(result["checks"].values())
     assert result["summary"] == {
-        "runtime_operation_count": 36,
-        "openapi_operation_count": 57,
-        "runtime_openapi_covered_count": 36,
+        "runtime_operation_count": 39,
+        "openapi_operation_count": 60,
+        "runtime_openapi_covered_count": 39,
         "missing_openapi_operation_count": 0,
         "shared_openapi_operation_count": 5,
         "cx_schema_count": 17,
         "cx_positive_fixture_covered_count": 17,
         "cx_negative_fixture_covered_count": 17,
-        "generation_schema_count": 7,
+        "generation_schema_count": 8,
         "drift_count": 0,
         "audit_issue_count": 0,
     }
-    assert result["openapi_version"] == "0.96.0"
+    assert result["openapi_version"] == "0.99.0"
     assert result["missing_negative_fixtures"] == []
     assert result["missing_openapi_operations"] == []
 
@@ -81,7 +81,7 @@ def test_summary_line_and_runner_main_paths(monkeypatch, capsys) -> None:
 
     assert runner.summary_line(passing) == (
         "cx_contract_api_drift_audit=pass readiness=HARDENED "
-        "runtime_routes=36 openapi_missing=0 schema_negative=17/17 drift=0"
+        "runtime_routes=39 openapi_missing=0 schema_negative=17/17 drift=0"
     )
     assert "readiness=UNKNOWN" in runner.summary_line({"status": "FAIL"})
     monkeypatch.setattr(runner, "run_cx_contract_api_drift_audit", lambda: passing)

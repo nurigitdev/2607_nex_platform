@@ -217,3 +217,29 @@ def test_malformed_job_is_hidden(tmp_path) -> None:
         "/api/v1/generation-jobs/malformed", headers=_headers()
     )
     assert response.status_code == 404
+
+
+def test_terminal_replay_without_live_job_skips_job_event(
+    tmp_path, monkeypatch
+) -> None:
+    from nex_cx import async_generation_operations as operations
+
+    client, _, _ = _client(tmp_path)
+    monkeypatch.setattr(
+        operations,
+        "admit_async_generation",
+        lambda **kwargs: {
+            "admission_status": "REPLAYED",
+            "job": None,
+            "generation": {"cx_generation_id": "generation-1"},
+        },
+    )
+
+    response = client.post(
+        "/api/v1/generation-jobs",
+        json={"prompt": "private"},
+        headers=_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["job"] is None

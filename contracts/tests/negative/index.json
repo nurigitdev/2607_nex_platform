@@ -529,6 +529,11 @@
       "name": "ag_mvp_acceptance_database_url_leak",
       "path": "tests/negative/operations/ag_mvp_acceptance.database_url_leak.json",
       "schema": "schemas/service/nex_ag/mvp_acceptance.v1.schema.json"
+    },
+    {
+      "name": "cx_async_generation_job_raw_prompt_leak",
+      "path": "tests/negative/generation/cx_async_generation_job.raw_prompt_leak.json",
+      "schema": "schemas/generation/cx_async_generation_job.v1.schema.json"
     }
   ]
 }

@@ -1092,6 +1092,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0986`](slices/0986_cx_async_generation_mock_worker_execution.md) | `S99-005` S98 bounded-worker execution with owner-private reload and deterministic mock provider. |
 | [`Slice 0987`](slices/0987_cx_async_generation_retry_cancellation_recovery.md) | `S99-006` Retry, cancellation, attempt exhaustion, and expired-lease generation convergence. |
 | [`Slice 0988`](slices/0988_cx_async_generation_owner_operations_api.md) | `S99-007` Owner-scoped async admission, polling, cancellation, and production recovery wiring. |
+| [`Slice 0989`](slices/0989_cx_async_generation_contract_openapi_observability.md) | `S99-008` Owner-safe async generation schema/OpenAPI and metadata-only lifecycle observability. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

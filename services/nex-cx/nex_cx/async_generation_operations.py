@@ -7,6 +7,8 @@ from fastapi.responses import JSONResponse
 from nex_runtime import (
     JobQueue,
     JobQueueError,
+    OperationalEventEmitter,
+    operational_event_emitter_from_app,
     request_id_from_headers,
     trace_id_from_headers,
 )
@@ -24,6 +26,7 @@ from nex_cx.async_generation_contracts import (
     project_async_generation_job,
     validate_async_generation_job,
 )
+from nex_cx.async_generation_observability import observe_async_generation_job
 from nex_cx.async_generation_recovery import (
     AsyncGenerationCancellation,
     async_generation_access_context,
@@ -48,7 +51,13 @@ def register_async_generation_operations_routes(
     runtime: GroundedGenerationRuntime | None,
     request_store: CxPrivateTextStore,
     retrieval_store: RetrievalPackageStore | None = None,
+    event_emitter: OperationalEventEmitter | None = None,
 ) -> None:
+    emitter = event_emitter or operational_event_emitter_from_app(
+        app,
+        service_id="nex-cx",
+    )
+
     @app.post("/api/v1/generation-jobs", response_model=None)
     def create_async_generation(
         payload: dict[str, Any],
@@ -100,6 +109,14 @@ def register_async_generation_operations_routes(
                 job_queue=job_queue,
             )
             status_code = 200 if result["admission_status"] == "REPLAYED" else 202
+            if result["job"] is not None:
+                observe_async_generation_job(
+                    emitter,
+                    result["job"],
+                    action=result["admission_status"],
+                    trace_id=trace_id,
+                    request_id=request_id,
+                )
             return JSONResponse(status_code=status_code, content=result)
         except (AsyncGenerationAdmissionError, GenerationFacadeError) as exc:
             return _exception_problem(exc)
@@ -175,7 +192,15 @@ def register_async_generation_operations_routes(
                     runtime=runtime,
                     failure=AsyncGenerationCancellation("cancelled"),
                 )
-            return project_async_generation_job(cancelled)
+            projected = project_async_generation_job(cancelled)
+            observe_async_generation_job(
+                emitter,
+                projected,
+                action="CANCELLED",
+                trace_id=trace_id_from_headers(request),
+                request_id=request_id_from_headers(request),
+            )
+            return projected
         except (JobQueueError, CxPrivateContentError) as exc:
             return _exception_problem(exc)
 
