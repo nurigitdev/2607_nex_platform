@@ -243,3 +243,36 @@ def test_terminal_replay_without_live_job_skips_job_event(
 
     assert response.status_code == 200
     assert response.json()["job"] is None
+
+
+def test_terminal_postgres_replay_serializes_repository_datetimes(
+    tmp_path, monkeypatch
+) -> None:
+    from nex_cx import async_generation_operations as operations
+
+    client, _, _ = _client(tmp_path)
+    replayed_at = datetime(2026, 9, 24, 4, tzinfo=UTC)
+    monkeypatch.setattr(
+        operations,
+        "admit_async_generation",
+        lambda **kwargs: {
+            "admission_status": "REPLAYED",
+            "job": None,
+            "generation": {
+                "cx_generation_id": "generation-1",
+                "created_at": replayed_at,
+                "updated_at": replayed_at,
+            },
+        },
+    )
+
+    response = client.post(
+        "/api/v1/generation-jobs",
+        json={"prompt": "private"},
+        headers=_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["generation"]["created_at"] == (
+        "2026-09-24T04:00:00+00:00"
+    )

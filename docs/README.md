@@ -1093,6 +1093,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0987`](slices/0987_cx_async_generation_retry_cancellation_recovery.md) | `S99-006` Retry, cancellation, attempt exhaustion, and expired-lease generation convergence. |
 | [`Slice 0988`](slices/0988_cx_async_generation_owner_operations_api.md) | `S99-007` Owner-scoped async admission, polling, cancellation, and production recovery wiring. |
 | [`Slice 0989`](slices/0989_cx_async_generation_contract_openapi_observability.md) | `S99-008` Owner-safe async generation schema/OpenAPI and metadata-only lifecycle observability. |
+| [`Slice 0990`](slices/0990_cx_async_generation_postgresql_recovery_smoke.md) | `S99-009` Actual CX test PostgreSQL async execution, retry, lease recovery, cancellation, restart, and cleanup evidence using a deterministic mock provider. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

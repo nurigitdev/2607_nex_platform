@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import FastAPI, Header, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from nex_runtime import (
     JobQueue,
@@ -117,7 +118,10 @@ def register_async_generation_operations_routes(
                     trace_id=trace_id,
                     request_id=request_id,
                 )
-            return JSONResponse(status_code=status_code, content=result)
+            return JSONResponse(
+                status_code=status_code,
+                content=jsonable_encoder(result),
+            )
         except (AsyncGenerationAdmissionError, GenerationFacadeError) as exc:
             return _exception_problem(exc)
 
