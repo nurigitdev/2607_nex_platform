@@ -5,11 +5,14 @@ from typing import Any, Mapping
 from nex_runtime import JobQueue
 
 from nex_cx.access_context import CxAccessContext
+from nex_cx.async_generation_contracts import validate_async_generation_job
 from nex_cx.generation import GenerationFacadeError, build_generation_failure_record
 from nex_cx.generation_runtime import (
     GroundedGenerationAdmission,
     GroundedGenerationRuntime,
 )
+from nex_cx.generation_request_store import load_generation_request_envelope
+from nex_cx.private_content import CxPrivateTextStore
 from nex_cx.worker_resilience import settle_worker_failure
 
 
@@ -20,6 +23,12 @@ class AsyncGenerationLeaseExpired(RuntimeError):
     error_code = "cx.async_generation.lease_expired"
     status_code = 503
     retryable = True
+
+
+class AsyncGenerationCancellation(RuntimeError):
+    error_code = "cx.async_generation.cancelled"
+    status_code = 409
+    retryable = False
 
 
 def should_finalize_generation_failure(
@@ -116,4 +125,57 @@ def recover_expired_async_generation_job(
         "status": settlement["action"],
         "generation": generation,
         "private_payload_included": False,
+    }
+
+
+def recover_persisted_async_generation_job(
+    job: Mapping[str, Any],
+    observed_at: str,
+    *,
+    job_queue: JobQueue,
+    request_store: CxPrivateTextStore,
+    runtime: GroundedGenerationRuntime,
+) -> dict[str, Any]:
+    normalized = validate_async_generation_job(job)
+    context = async_generation_access_context(normalized)
+    payload = normalized["payload"]
+    envelope = load_generation_request_envelope(
+        private_text_store=request_store,
+        access_context=context,
+        cx_generation_id=payload["cx_generation_id"],
+        receipt=async_generation_request_receipt(payload),
+    )
+    if envelope is None:
+        raise ValueError("Private async generation request is unavailable.")
+    return recover_expired_async_generation_job(
+        normalized,
+        observed_at,
+        job_queue=job_queue,
+        envelope=envelope,
+        access_context=context,
+        runtime=runtime,
+    )
+
+
+def async_generation_access_context(job: Mapping[str, Any]) -> CxAccessContext:
+    payload = job["payload"]
+    return CxAccessContext(
+        caller_service_id="nex-cx",
+        tenant_id=str(payload["tenant_ref_id"]),
+        subject_id=str(payload["owner_subject_ref_id"]),
+        request_id=str(job["request_id"]),
+        trace_id=str(job["trace_id"]),
+        scopes=("service:call",),
+    )
+
+
+def async_generation_request_receipt(
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "request_receipt_schema_version": "cx_generation_request_receipt.v1",
+        "request_storage_backend": "owner-private",
+        "request_storage_uri": "cx-private://generation-request",
+        "request_envelope_sha256": payload["request_envelope_sha256"],
+        "request_envelope_size_bytes": payload["request_envelope_size_bytes"],
     }

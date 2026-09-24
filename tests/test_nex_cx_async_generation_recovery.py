@@ -13,6 +13,7 @@ from nex_cx.async_generation_recovery import (
     AsyncGenerationLeaseExpired,
     finalize_async_generation_failure,
     recover_expired_async_generation_job,
+    recover_persisted_async_generation_job,
     should_finalize_generation_failure,
 )
 from nex_cx.async_generation_worker import (
@@ -174,3 +175,25 @@ def test_worker_finalizes_last_retryable_attempt(tmp_path) -> None:
 
 def test_async_generation_is_specialized_recovery_workload() -> None:
     assert "cx.grounded-generation.execute" in SPECIALIZED_RECOVERY_JOB_TYPES
+
+
+def test_persisted_recovery_reloads_private_envelope(tmp_path) -> None:
+    runtime, queue, request_store, job, _ = _admitted(tmp_path)
+    result = recover_persisted_async_generation_job(
+        job,
+        "2026-09-24T02:02:00Z",
+        job_queue=queue,
+        request_store=request_store,
+        runtime=runtime,
+    )
+    assert result["status"] == "RETRY_SCHEDULED"
+
+    runtime, queue, _, job, _ = _admitted(tmp_path / "missing")
+    with pytest.raises(ValueError, match="unavailable"):
+        recover_persisted_async_generation_job(
+            job,
+            "2026-09-24T02:02:00Z",
+            job_queue=queue,
+            request_store=FileSystemCxPrivateTextStore(tmp_path / "empty"),
+            runtime=runtime,
+        )

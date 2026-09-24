@@ -13,6 +13,13 @@ from nex_runtime.compatibility import register_generation_compatibility_routes
 from nex_runtime.prompts import register_prompt_registry_routes
 from nex_runtime.recovery import register_generation_recovery_policy_routes
 from nex_cx.chunking import register_chunking_routes
+from nex_cx.async_generation_contracts import CX_ASYNC_GENERATION_JOB_TYPE
+from nex_cx.async_generation_operations import (
+    register_async_generation_operations_routes,
+)
+from nex_cx.async_generation_recovery import (
+    recover_persisted_async_generation_job,
+)
 from nex_cx.document_intelligence_orchestration import (
     register_document_intelligence_routes,
 )
@@ -28,6 +35,7 @@ from nex_cx.generation import (
     register_generation_routes,
 )
 from nex_cx.generation_private_output import build_generation_output_store
+from nex_cx.generation_request_store import build_generation_request_store
 from nex_cx.generation_read_model import GenerationReadModel
 from nex_cx.generation_repository import SqlAlchemyGenerationRuntimeRepository
 from nex_cx.generation_runtime import (
@@ -243,6 +251,7 @@ CX_VECTOR_INDEX_REPOSITORY, CX_VECTOR_STORE = (
 )
 CX_GENERATION_RUNTIME = build_cx_generation_runtime(SERVICE_PERSISTENCE)
 CX_GENERATION_READ_MODEL = build_cx_generation_read_model(CX_GENERATION_RUNTIME)
+CX_GENERATION_REQUEST_STORE = build_generation_request_store()
 CX_WORKER_LEASE_STORE = build_cx_worker_lease_store(SERVICE_PERSISTENCE)
 (
     CX_PRIVATE_SUMMARY_TEXT_STORE,
@@ -270,6 +279,13 @@ register_generation_routes(
     retrieval_store=DEFAULT_INGESTION_STORE,
     execution_runtime=CX_GENERATION_RUNTIME,
     read_model=CX_GENERATION_READ_MODEL,
+)
+register_async_generation_operations_routes(
+    app,
+    job_queue=SERVICE_PERSISTENCE.job_queue,
+    runtime=CX_GENERATION_RUNTIME,
+    request_store=CX_GENERATION_REQUEST_STORE,
+    retrieval_store=DEFAULT_INGESTION_STORE,
 )
 register_remediation_execution_routes(
     app,
@@ -311,7 +327,22 @@ register_worker_operations_routes(
                 run_repository=CX_INGESTION_RUN_REPOSITORY,
                 observed_at=observed_at,
             )
-        )
+        ),
+        **(
+            {
+                CX_ASYNC_GENERATION_JOB_TYPE: lambda job, observed_at: (
+                    recover_persisted_async_generation_job(
+                        job,
+                        observed_at,
+                        job_queue=SERVICE_PERSISTENCE.job_queue,
+                        request_store=CX_GENERATION_REQUEST_STORE,
+                        runtime=CX_GENERATION_RUNTIME,
+                    )
+                )
+            }
+            if CX_GENERATION_RUNTIME is not None
+            else {}
+        ),
     },
 )
 register_vector_index_operations_routes(

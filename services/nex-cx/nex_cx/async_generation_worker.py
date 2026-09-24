@@ -8,6 +8,8 @@ from nex_runtime import JobQueue, JobQueueError
 from nex_cx.access_context import CxAccessContext
 from nex_cx.async_generation_contracts import validate_async_generation_job
 from nex_cx.async_generation_recovery import (
+    async_generation_access_context,
+    async_generation_request_receipt,
     finalize_async_generation_failure,
     should_finalize_generation_failure,
 )
@@ -77,12 +79,12 @@ class AsyncGenerationWorkerHandler:
                 )
             normalized_job = validate_async_generation_job(job)
             payload = normalized_job["payload"]
-            context = _worker_access_context(normalized_job)
+            context = async_generation_access_context(normalized_job)
             envelope = load_generation_request_envelope(
                 private_text_store=self.request_store,
                 access_context=context,
                 cx_generation_id=payload["cx_generation_id"],
-                receipt=_request_receipt(payload),
+                receipt=async_generation_request_receipt(payload),
             )
             if envelope is None:
                 raise AsyncGenerationWorkerError(
@@ -214,28 +216,6 @@ class AsyncGenerationWorkerHandler:
                 runtime=self.runtime,
                 failure=failure,
             )
-
-
-def _worker_access_context(job: Mapping[str, Any]) -> CxAccessContext:
-    payload = job["payload"]
-    return CxAccessContext(
-        caller_service_id="nex-cx",
-        tenant_id=payload["tenant_ref_id"],
-        subject_id=payload["owner_subject_ref_id"],
-        request_id=job["request_id"],
-        trace_id=job["trace_id"],
-        scopes=("service:call",),
-    )
-
-
-def _request_receipt(payload: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        "request_receipt_schema_version": "cx_generation_request_receipt.v1",
-        "request_storage_backend": "owner-private",
-        "request_storage_uri": "cx-private://generation-request",
-        "request_envelope_sha256": payload["request_envelope_sha256"],
-        "request_envelope_size_bytes": payload["request_envelope_size_bytes"],
-    }
 
 
 def _mapped_error(exc: object) -> AsyncGenerationWorkerError:
