@@ -37,7 +37,9 @@ RECONCILIATION_ACTIONS = (
     HEALTHY,
     MANUAL_REVIEW,
 )
-SPECIALIZED_RECOVERY_JOB_TYPES = frozenset({"cx.document_ingestion"})
+SPECIALIZED_RECOVERY_JOB_TYPES = frozenset(
+    {"cx.document_ingestion", "cx.grounded-generation.execute"}
+)
 
 RecoveryHandler = Callable[[dict[str, Any], str], Mapping[str, Any]]
 

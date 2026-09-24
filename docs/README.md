@@ -1090,6 +1090,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0984`](slices/0984_cx_durable_private_generation_request_envelope.md) | `S99-003` Immutable owner-private generation request envelope with restart integrity verification. |
 | [`Slice 0985`](slices/0985_cx_async_generation_idempotent_queue_admission.md) | `S99-004` Retry-safe durable admission, private request persistence, and deterministic queue wiring. |
 | [`Slice 0986`](slices/0986_cx_async_generation_mock_worker_execution.md) | `S99-005` S98 bounded-worker execution with owner-private reload and deterministic mock provider. |
+| [`Slice 0987`](slices/0987_cx_async_generation_retry_cancellation_recovery.md) | `S99-006` Retry, cancellation, attempt exhaustion, and expired-lease generation convergence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

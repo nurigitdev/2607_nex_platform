@@ -7,6 +7,10 @@ from nex_runtime import JobQueue, JobQueueError
 
 from nex_cx.access_context import CxAccessContext
 from nex_cx.async_generation_contracts import validate_async_generation_job
+from nex_cx.async_generation_recovery import (
+    finalize_async_generation_failure,
+    should_finalize_generation_failure,
+)
 from nex_cx.drafts import build_structured_draft
 from nex_cx.generation import (
     GenerationFacadeError,
@@ -26,7 +30,10 @@ from nex_cx.grounded_output_validation import (
     normalize_generation_provider_response,
 )
 from nex_cx.private_content import CxPrivateContentError, CxPrivateTextStore
-from nex_cx.worker_runtime import CxCancellationToken
+from nex_cx.worker_runtime import (
+    CxCancellationToken,
+    CxWorkerCancellationRequested,
+)
 
 
 CX_ASYNC_GENERATION_WORKER_RESULT_SCHEMA_VERSION = (
@@ -57,6 +64,9 @@ class AsyncGenerationWorkerHandler:
         execution: dict[str, Any],
         cancellation: CxCancellationToken,
     ) -> Mapping[str, Any]:
+        normalized_job: dict[str, Any] | None = None
+        context: CxAccessContext | None = None
+        envelope: dict[str, Any] | None = None
         try:
             job = self.job_queue.get_job(str(execution["job_id"]))
             if job is None:
@@ -144,14 +154,35 @@ class AsyncGenerationWorkerHandler:
                 "provider_called": True,
                 "private_output_included": False,
             }
-        except AsyncGenerationWorkerError:
+        except CxWorkerCancellationRequested as exc:
+            self._finalize_if_ready(
+                normalized_job,
+                envelope,
+                context,
+                AsyncGenerationWorkerError(
+                    error_code=exc.error_code,
+                    detail="Asynchronous generation cancellation was requested.",
+                    status_code=409,
+                    retryable=False,
+                ),
+                force=True,
+            )
+            raise
+        except AsyncGenerationWorkerError as exc:
+            self._finalize_if_ready(
+                normalized_job, envelope, context, exc
+            )
             raise
         except GroundedOutputValidationError as exc:
-            raise _mapped_error(exc) from exc
+            mapped = _mapped_error(exc)
+            self._finalize_if_ready(normalized_job, envelope, context, mapped)
+            raise mapped from exc
         except GroundedGenerationRuntimeError as exc:
             raise _mapped_error(exc) from exc
         except CxPrivateContentError as exc:
-            raise _mapped_error(exc) from exc
+            mapped = _mapped_error(exc)
+            self._finalize_if_ready(normalized_job, envelope, context, mapped)
+            raise mapped from exc
         except JobQueueError as exc:
             raise AsyncGenerationWorkerError(
                 error_code=exc.error_code,
@@ -160,7 +191,29 @@ class AsyncGenerationWorkerHandler:
                 retryable=exc.status_code >= 500,
             ) from exc
         except GenerationFacadeError as exc:
-            raise _mapped_error(exc) from exc
+            mapped = _mapped_error(exc)
+            self._finalize_if_ready(normalized_job, envelope, context, mapped)
+            raise mapped from exc
+
+    def _finalize_if_ready(
+        self,
+        job: Mapping[str, Any] | None,
+        envelope: Mapping[str, Any] | None,
+        context: CxAccessContext | None,
+        failure: object,
+        *,
+        force: bool = False,
+    ) -> None:
+        if job is None or envelope is None or context is None:
+            return
+        if force or should_finalize_generation_failure(job, failure):
+            finalize_async_generation_failure(
+                job=job,
+                envelope=envelope,
+                access_context=context,
+                runtime=self.runtime,
+                failure=failure,
+            )
 
 
 def _worker_access_context(job: Mapping[str, Any]) -> CxAccessContext:
