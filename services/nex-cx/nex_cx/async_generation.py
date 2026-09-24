@@ -94,6 +94,9 @@ def admit_async_generation(
             request_envelope_size_bytes=receipt["request_envelope_size_bytes"],
             trace_id=trace_id,
             request_id=request_id,
+            created_at=admission.admission["created_at"].isoformat().replace(
+                "+00:00", "Z"
+            ),
         )
         stored = validate_async_generation_job(job_queue.enqueue(candidate))
         _assert_same_envelope(stored, candidate)

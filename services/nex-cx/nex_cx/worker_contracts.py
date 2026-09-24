@@ -54,6 +54,7 @@ VALID_EXECUTION_TRANSITIONS = {
 }
 
 CURRENT_CX_WORKLOADS = {
+    "grounded_generation": "cx.grounded-generation.execute",
     "document_ingestion": "cx.document_ingestion",
     "document_processing": "cx.document_processing",
     "remediation_execution": "cx.remediation_execution",
