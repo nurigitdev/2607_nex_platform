@@ -21,7 +21,7 @@ def test_repository_s92_closure_passes() -> None:
         "evidence_count": 8,
         "passed_evidence_count": 8,
         "private_store_count": 2,
-        "owner_guarded_module_count": 13,
+        "owner_guarded_module_count": 14,
         "owner_lineage_table_count": 4,
         "contract_drift_count": 0,
         "postgres_check_count": 17,
@@ -103,7 +103,7 @@ def test_s92_closure_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = closure.run_s92_cx_private_content_ownership_closure()
     assert closure.summary_line(passing) == (
         "s92_cx_private_content_ownership_closure=pass evidence=8/8 "
-        "owner_modules=13 postgres_checks=17 contract_drift=0 next=S93"
+        "owner_modules=14 postgres_checks=17 contract_drift=0 next=S93"
     )
     assert "next=blocked" in closure.summary_line({"status": "FAIL"})
 
