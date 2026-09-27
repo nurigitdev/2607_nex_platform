@@ -1062,3 +1062,7 @@ Artifact library management:
 - Slice 1004 re-baselines fifteen AE persistence surfaces: six PostgreSQL-ready,
   two delegated to CX/OA, and seven explicit gaps. It does not add tables;
   schema, adapter, and runtime-configuration gaps remain separate decisions.
+- Slice 1005 finds seven hardened authentication/ownership surfaces and three
+  high-risk legacy boundaries. Workspace, chat, and artifact-file delivery
+  still use service-claim-only authorization and must adopt browser claim owner
+  enforcement before new browser-facing feature work.
