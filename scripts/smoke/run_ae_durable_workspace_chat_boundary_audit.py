@@ -88,13 +88,13 @@ GAP_RESOLUTION_PATHS = {
         "docs/slices/1016_ae_owner_scoped_workspace_api.md"
     ),
     "chat_owner_scope_missing": (
-        "docs/slices/1017_ae_owner_scoped_chat_repository_api.md"
+        "docs/slices/1017_ae_owner_scoped_chat_persistence_api.md"
     ),
     "durable_orchestration_missing": (
         "docs/slices/1018_ae_durable_workspace_chat_orchestration.md"
     ),
     "contract_observability_missing": (
-        "docs/slices/1019_ae_workspace_chat_contract_observability.md"
+        "docs/slices/1019_ae_workspace_chat_contract_openapi_observability.md"
     ),
     "postgres_evidence_missing": (
         "docs/slices/1020_ae_workspace_chat_postgresql_smoke.md"

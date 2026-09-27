@@ -14,9 +14,11 @@ def test_repository_boundary_audit_passes() -> None:
     assert all(result["checks"].values())
     assert result["summary"]["foundation_count"] == 7
     assert result["summary"]["gap_count"] == 8
-    assert result["summary"]["open_gap_count"] + result["summary"]["resolved_gap_count"] == 8
+    assert result["summary"]["open_gap_count"] == 0
+    assert result["summary"]["resolved_gap_count"] == 8
     assert result["summary"]["planned_slice_count"] == 10
     assert result["issues"] == []
+    assert result["next_slice"] == "1021"
 
 
 def test_boundary_freezes_storage_ownership_and_quality_policy() -> None:

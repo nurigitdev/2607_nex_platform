@@ -1124,6 +1124,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1018`](slices/1018_ae_durable_workspace_chat_orchestration.md) | `S102-007` Add idempotent PENDING-to-terminal workspace-bound chat orchestration and activity lineage. |
 | [`Slice 1019`](slices/1019_ae_workspace_chat_contract_openapi_observability.md) | `S102-008` Align workspace/chat contracts and AE OpenAPI 1.0 with metadata-only lifecycle observability. |
 | [`Slice 1020`](slices/1020_ae_workspace_chat_postgresql_smoke.md) | `S102-009` Prove durable workspace/chat lifecycle, owner isolation, restart reads, events, and cleanup on actual `nex_ae_test`. |
+| [`Slice 1021`](slices/1021_s102_ae_durable_workspace_chat_closure.md) | `S102-010` Close durable AE workspace/chat orchestration with actual PostgreSQL evidence and Full Gate. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
