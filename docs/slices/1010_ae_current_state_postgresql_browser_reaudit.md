@@ -46,3 +46,6 @@ Observed verification:
   coverage `95.48%`.
 - Contract validation: `92` schemas, `145` examples, `109` negative examples,
   and `7` OpenAPI documents passed.
+
+Protected evidence marker: `database=nex_ae_test migrations=22/22 browser=PASS
+forbidden_columns=0 failed_checks=0`.
