@@ -125,6 +125,8 @@ def test_dgx_preflight_reports_fetch_errors_and_env_model_overrides() -> None:
 
 def test_dgx_preflight_main_summary_and_output(monkeypatch, capsys, tmp_path) -> None:
     monkeypatch.delenv("NEX_MO_LIVE_PREFLIGHT", raising=False)
+    for key in dgx_preflight.PROTECTED_EVIDENCE_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
 
     assert dgx_preflight.main(["--summary"]) == 0
     assert "dgx_live_provider_preflight=skipped" in capsys.readouterr().out
