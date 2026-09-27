@@ -1069,3 +1069,6 @@ Artifact library management:
 - Slice 1006 measures four oversized runtime modules and eight duplicated route
   authorization helpers, then freezes an incremental P0-P3 refactoring order
   while preserving public contracts and provider/storage Protocol boundaries.
+- Slice 1007 validates the static AE SQL migration chain and records historical
+  PostgreSQL identifier truncation and duplicate-index drift for reconciliation
+  before the next schema change. Actual test-DB comparison remains Slice 1010.
