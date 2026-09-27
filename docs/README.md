@@ -1127,6 +1127,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1021`](slices/1021_s102_ae_durable_workspace_chat_closure.md) | `S102-010` Close durable AE workspace/chat orchestration with actual PostgreSQL evidence and Full Gate. |
 | [`Slice 1022`](slices/1022_ae_intent_template_policy_boundary_audit.md) | `S103-001` Freeze AE intent, template, prompt, compatibility, persistence, and runtime-policy ownership. |
 | [`Slice 1023`](slices/1023_ae_intent_execution_mode_contract.md) | `S103-002` Resolve canonical AE execution modes with explicit-mode precedence and deterministic fallback. |
+| [`Slice 1024`](slices/1024_ae_prompt_template_registry_postgresql_adapter.md) | `S103-003` Add a restart-safe SQLAlchemy adapter for AE prompt/template bindings and render events. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
