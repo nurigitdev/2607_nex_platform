@@ -1084,3 +1084,7 @@ Artifact library management:
 - Slice 1011 closes S101 with eight passing audits and actual database/browser
   evidence, then orders the ownership, persistence, contract, runtime, database,
   and Web findings for targeted S102 hardening.
+- Slice 1012 starts S102 by freezing the durable workspace and chat
+  orchestration boundary: two short workspace tables, a nullable legacy-safe
+  chat workspace link, OA-claim browser ownership, and actual PostgreSQL proof
+  before closure.

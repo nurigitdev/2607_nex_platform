@@ -1115,6 +1115,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1009`](slices/1009_ae_web_runtime_i18n_accessibility_drift_audit.md) | `S101-008` Audit AE Web composition, localization, accessibility, and Playwright readiness. |
 | [`Slice 1010`](slices/1010_ae_current_state_postgresql_browser_reaudit.md) | `S101-009` Re-audit the actual AE test PostgreSQL catalog, domain rollback probe, and Playwright browser runtime. |
 | [`Slice 1011`](slices/1011_s101_ae_current_state_reaudit_closure.md) | `S101-010` Close the AE current-state re-audit and order the targeted S102 hardening handoff. |
+| [`Slice 1012`](slices/1012_ae_durable_workspace_chat_boundary_audit.md) | `S102-001` Freeze the durable workspace and chat orchestration boundary and ordered hardening plan. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
