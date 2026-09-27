@@ -1096,6 +1096,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0990`](slices/0990_cx_async_generation_postgresql_recovery_smoke.md) | `S99-009` Actual CX test PostgreSQL async execution, retry, lease recovery, cancellation, restart, and cleanup evidence using a deterministic mock provider. |
 | [`Slice 0991`](slices/0991_s99_cx_async_generation_recovery_closure.md) | `S99-010` Asynchronous grounded-generation execution/recovery closure with actual PostgreSQL evidence and S100 handoff. |
 | [`Slice 0992`](slices/0992_cx_mvp_integration_ae_handoff_boundary_audit.md) | `S100-001` CX MVP integration and AE handoff production-boundary audit. |
+| [`Slice 0993`](slices/0993_cx_mvp_lifecycle_contract.md) | `S100-002` Owner-safe metadata-only lifecycle contract from ingestion through AE handoff. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
