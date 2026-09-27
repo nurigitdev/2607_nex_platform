@@ -709,6 +709,21 @@
       "name": "cx_async_generation_job_queued",
       "path": "examples/generation/cx_async_generation_job.queued.json",
       "schema": "schemas/generation/cx_async_generation_job.v1.schema.json"
+    },
+    {
+      "name": "cx_generation_handoff_pending",
+      "path": "examples/generation/cx_generation_handoff.pending.json",
+      "schema": "schemas/generation/cx_generation_handoff.v1.schema.json"
+    },
+    {
+      "name": "cx_generation_handoff_blocked",
+      "path": "examples/generation/cx_generation_handoff.blocked.json",
+      "schema": "schemas/generation/cx_generation_handoff.v1.schema.json"
+    },
+    {
+      "name": "cx_generation_handoff_ready",
+      "path": "examples/generation/cx_generation_handoff.ready.json",
+      "schema": "schemas/generation/cx_generation_handoff.v1.schema.json"
     }
   ]
 }

@@ -27,11 +27,11 @@ def test_repository_contract_api_audit_confirms_known_drift() -> None:
         "cx_schema_count": 17,
         "cx_positive_fixture_covered_count": 17,
         "cx_negative_fixture_covered_count": 17,
-        "generation_schema_count": 8,
+        "generation_schema_count": 9,
         "drift_count": 0,
         "audit_issue_count": 0,
     }
-    assert result["openapi_version"] == "0.99.0"
+    assert result["openapi_version"] == "1.0.0"
     assert result["missing_negative_fixtures"] == []
     assert result["missing_openapi_operations"] == []
 

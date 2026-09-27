@@ -1,0 +1,75 @@
+{
+  "handoff_schema_version": "cx_generation_handoff.v1",
+  "handoff_status": "READY",
+  "next_action": "PRESENT_GENERATION_TO_OWNER",
+  "job": {
+    "async_generation_schema_version": "cx_async_generation_job.v1",
+    "job_id": "99900000-0000-0000-0000-000000000003",
+    "cx_generation_id": "cx-generation-handoff-003",
+    "status": "SUCCEEDED",
+    "attempt_count": 1,
+    "max_attempts": 3,
+    "retryable": false,
+    "available_at": null,
+    "created_at": "2026-09-27T04:00:00Z",
+    "updated_at": "2026-09-27T04:00:02Z",
+    "links": {
+      "generation": "/api/v1/generations/cx-generation-handoff-003",
+      "async_job": "/api/v1/generation-jobs/99900000-0000-0000-0000-000000000003"
+    },
+    "error": null
+  },
+  "generation": {
+    "read_model_schema_version": "cx_generation_read_model.v1",
+    "record_schema_version": "cx_generation_execution_record.v1",
+    "cx_generation_id": "cx-generation-handoff-003",
+    "tenant_ref_type": "oa.tenant",
+    "tenant_ref_id": "tenant-s100",
+    "owner_subject_ref_type": "oa.user",
+    "owner_subject_ref_id": "employee-s100",
+    "status": "COMPLETED",
+    "retrieval_package_id": "retrieval-package-s100",
+    "trace_id": "99900000000000000000000000000003",
+    "request_id": "request-s100-003",
+    "alias": "general-llm-default",
+    "provider_capability": "generation",
+    "mo_generation_id": "mo-generation-s100-003",
+    "request_metadata": {
+      "provider_prompt_package_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "generation_request_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "response_format_type": "text",
+      "source_has_messages": true,
+      "source_has_prompt": false,
+      "compatibility_rule_id": "compat-grounded-answer-v1",
+      "grounding_required": true,
+      "retrieval_package_id": "retrieval-package-s100",
+      "retrieval_package_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "selected_evidence_count": 1
+    },
+    "response_metadata": {
+      "finish_reason": "STOP",
+      "output_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "mo_runtime_metadata": {"provider_ms": 18, "total_ms": 21},
+    "usage": {"input_tokens": 120, "output_tokens": 24, "total_tokens": 144},
+    "failure": null,
+    "recovery_lineage": null,
+    "created_at": "2026-09-27T04:00:00Z",
+    "updated_at": "2026-09-27T04:00:02Z",
+    "content_ref": {
+      "available": true,
+      "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "size_bytes": 36
+    }
+  },
+  "content": {
+    "content_schema_version": "cx_generation_content.v1",
+    "cx_generation_id": "cx-generation-handoff-003",
+    "content_type": "text/plain; charset=utf-8",
+    "content": "Owner-private grounded answer [1].",
+    "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "size_bytes": 36,
+    "owner_scope_enforced": true
+  },
+  "owner_scope_enforced": true
+}

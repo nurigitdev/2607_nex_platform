@@ -14,6 +14,7 @@ HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete"})
 CORE_GENERATION_SCHEMA_NAMES = frozenset(
     {
         "cx_async_generation_job.v1.schema.json",
+        "cx_generation_handoff.v1.schema.json",
         "cx_generation_execution_record.v1.schema.json",
         "cx_structured_draft.v1.schema.json",
         "cx_remediation_execution_request.v1.schema.json",
@@ -111,7 +112,7 @@ def build_cx_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
         "audit_inputs_present": not issues,
         "runtime_operation_inventory_complete": len(runtime_operations) == 40,
         "cx_schema_inventory_complete": len(cx_schemas) == 17,
-        "generation_schema_inventory_complete": len(generation_schemas) == 8,
+        "generation_schema_inventory_complete": len(generation_schemas) == 9,
         "positive_examples_complete": (
             not cx_positive_missing and not generation_positive_missing
         ),

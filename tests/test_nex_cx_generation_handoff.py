@@ -7,6 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 from nex_runtime import (
     InMemoryJobQueue,
+    InMemoryOperationalEventStore,
+    OperationalEventEmitter,
     SERVICE_SPECS,
     build_service_app,
     issue_mock_service_token,
@@ -39,10 +41,14 @@ def _context(subject_id: str = "employee-0996") -> CxAccessContext:
     )
 
 
-def _job() -> dict:
+def _job(
+    *,
+    generation_id: str = GENERATION_ID,
+    admission_id: str = "admission-0996",
+) -> dict:
     return build_async_generation_job(
-        cx_generation_id=GENERATION_ID,
-        admission_id="admission-0996",
+        cx_generation_id=generation_id,
+        admission_id=admission_id,
         access_context=_context(),
         request_envelope_sha256="a" * 64,
         request_envelope_size_bytes=100,
@@ -327,3 +333,44 @@ def test_handoff_route_requires_auth_and_reports_missing_read_model(tmp_path) ->
     )
     assert unavailable.status_code == 503
     assert unavailable.json()["retryable"] is True
+
+
+def test_handoff_route_emits_metadata_only_success_and_failure_events(tmp_path) -> None:
+    app = build_service_app(SERVICE_SPECS["nex-cx"])
+    queue = InMemoryJobQueue()
+    pending_job = queue.enqueue(_job())
+    succeeded_job = queue.enqueue(
+        _job(
+            generation_id="cx-generation-0999-failure",
+            admission_id="admission-0999-failure",
+        )
+    )
+    queue.start_job(succeeded_job["job_id"])
+    queue.complete_job(succeeded_job["job_id"])
+    events = InMemoryOperationalEventStore()
+    register_async_generation_operations_routes(
+        app,
+        job_queue=queue,
+        runtime=None,
+        request_store=FileSystemCxPrivateTextStore(tmp_path / "requests"),
+        event_emitter=OperationalEventEmitter(service_id="nex-cx", store=events),
+    )
+    client = TestClient(app)
+
+    pending = client.get(
+        f"/api/v1/generation-jobs/{pending_job['job_id']}/handoff",
+        headers=_headers(),
+    )
+    failed = client.get(
+        f"/api/v1/generation-jobs/{succeeded_job['job_id']}/handoff",
+        headers=_headers(),
+    )
+
+    assert pending.status_code == 200
+    assert failed.status_code == 503
+    observed = events.list_events()
+    assert {event["event_type"] for event in observed} == {
+        "cx.generation_handoff.observed",
+        "cx.generation_handoff.failed",
+    }
+    assert all("content" not in event["details"] for event in observed)

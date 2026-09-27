@@ -45,6 +45,10 @@ from nex_cx.generation_handoff import (
     GenerationHandoffError,
     build_generation_handoff,
 )
+from nex_cx.generation_handoff_observability import (
+    observe_generation_handoff,
+    observe_generation_handoff_failure,
+)
 from nex_cx.generation_read_model import GenerationReadModel
 from nex_cx.generation_runtime import GroundedGenerationRuntime
 from nex_cx.private_content import CxPrivateContentError, CxPrivateTextStore
@@ -169,12 +173,30 @@ def register_async_generation_operations_routes(
             job = job_queue.get_job(job_id)
             if job is None or not _visible(job, context.tenant_id, context.subject_id):
                 return _not_found()
-            return build_generation_handoff(
+            handoff = build_generation_handoff(
                 job,
                 read_model=read_model,
                 access_context=context,
             )
+            observe_generation_handoff(
+                emitter,
+                handoff,
+                trace_id=trace_id_from_headers(request),
+                request_id=request_id_from_headers(request),
+            )
+            return handoff
         except (JobQueueError, GenerationHandoffError) as exc:
+            observe_generation_handoff_failure(
+                emitter,
+                job_id=job_id,
+                error_code=str(
+                    getattr(exc, "error_code", "cx.generation_handoff.failed")
+                ),
+                status_code=int(getattr(exc, "status_code", 500)),
+                retryable=bool(getattr(exc, "retryable", False)),
+                trace_id=trace_id_from_headers(request),
+                request_id=request_id_from_headers(request),
+            )
             return _exception_problem(exc)
 
     @app.post("/api/v1/generation-jobs/{job_id}/cancel", response_model=None)

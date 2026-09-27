@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX CX API
-  version: 0.99.0
+  version: 1.0.0
   x-nex-owner-context:
     propagation: trusted-service-asserted-subject
     requiredHeaders:
@@ -1861,8 +1861,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                description: Detailed cx_generation_handoff.v1 schema is hardened in Slice 0999.
+                $ref: "#/components/schemas/CxGenerationHandoff"
         "401":
           description: Service claim or owner context is missing or invalid.
         "404":
@@ -2743,6 +2742,41 @@ components:
         content: {type: string, minLength: 1}
         content_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
         size_bytes: {type: integer, minimum: 1}
+        owner_scope_enforced: {const: true}
+    CxGenerationHandoff:
+      type: object
+      additionalProperties: false
+      description: >-
+        Owner-safe AE handoff. PENDING and BLOCKED responses contain no
+        generation or content; READY contains the durable metadata and verified
+        owner-private content projections.
+      required:
+        - handoff_schema_version
+        - handoff_status
+        - next_action
+        - job
+        - generation
+        - content
+        - owner_scope_enforced
+      properties:
+        handoff_schema_version: {const: cx_generation_handoff.v1}
+        handoff_status: {type: string, enum: [PENDING, READY, BLOCKED]}
+        next_action:
+          type: string
+          enum:
+            - POLL_GENERATION_JOB
+            - PRESENT_GENERATION_TO_OWNER
+            - RETRY_OR_REPAIR_GENERATION
+        job:
+          $ref: "#/components/schemas/CxAsyncGenerationJob"
+        generation:
+          oneOf:
+            - $ref: "#/components/schemas/CxGenerationReadModel"
+            - type: "null"
+        content:
+          oneOf:
+            - $ref: "#/components/schemas/CxGenerationContent"
+            - type: "null"
         owner_scope_enforced: {const: true}
     CxDocumentIntelligenceObservability:
       type: object

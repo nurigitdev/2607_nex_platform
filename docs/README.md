@@ -1102,6 +1102,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0996`](slices/0996_cx_ae_generation_handoff_projection.md) | `S100-005` Owner-safe asynchronous generation job and durable result handoff projection for AE. |
 | [`Slice 0997`](slices/0997_cx_bounded_citation_repair.md) | `S100-006` One-attempt citation repair with immutable retrieval-package binding. |
 | [`Slice 0998`](slices/0998_cx_production_runtime_composition.md) | `S100-007` PostgreSQL production composition for permission-hardened retrieval and durable vector indexing. |
+| [`Slice 0999`](slices/0999_cx_handoff_contract_openapi_observability.md) | `S100-008` Canonical AE handoff schema, CX OpenAPI 1.0.0, and metadata-only polling observability. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

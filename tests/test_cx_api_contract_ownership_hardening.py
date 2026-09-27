@@ -35,6 +35,13 @@ def test_api_contract_ownership_hardening_fails_closed(tmp_path: Path) -> None:
     assert hardening._read_text(tmp_path / "missing") == ""
 
 
+def test_openapi_version_hardening_accepts_mvp_and_rejects_stale_versions() -> None:
+    assert hardening._openapi_version_hardened("info:\n  version: 0.99.0\n")
+    assert hardening._openapi_version_hardened("info:\n  version: 1.0.0\n")
+    assert not hardening._openapi_version_hardened("info:\n  version: 0.3.0\n")
+    assert not hardening._openapi_version_hardened("info:\n  title: missing\n")
+
+
 def test_api_contract_ownership_hardening_summary_and_cli(monkeypatch, capsys) -> None:
     passing = hardening.run_cx_api_contract_ownership_hardening()
     assert hardening.summary_line(passing).startswith(

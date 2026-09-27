@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 import json
 from pathlib import Path
+import re
 import sys
 from typing import Any
 
@@ -97,7 +98,7 @@ def run_cx_api_contract_ownership_hardening(root: Path = ROOT) -> dict[str, Any]
         "owner_context_applies_to_runtime_paths": (
             openapi.count("parameters: *cxOwnerContextParameters") >= 27
         ),
-        "openapi_version_hardened": "version: 0.99.0" in openapi,
+        "openapi_version_hardened": _openapi_version_hardened(openapi),
         "negative_fixture_indexed": (
             "cx_source_ownership_boundary_decision.missing_status.json"
             in negative_index
@@ -201,6 +202,13 @@ def _runtime_evidence() -> dict[str, bool]:
             "X-NEX-Subject-ID": "employee-0918",
         },
     }
+
+
+def _openapi_version_hardened(source: str) -> bool:
+    match = re.search(r"(?m)^\s{2}version:\s*['\"]?(\d+)\.(\d+)\.(\d+)", source)
+    if match is None:
+        return False
+    return tuple(int(value) for value in match.groups()) >= (0, 99, 0)
 
 
 def _request() -> Request:

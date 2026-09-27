@@ -534,6 +534,16 @@
       "name": "cx_async_generation_job_raw_prompt_leak",
       "path": "tests/negative/generation/cx_async_generation_job.raw_prompt_leak.json",
       "schema": "schemas/generation/cx_async_generation_job.v1.schema.json"
+    },
+    {
+      "name": "cx_generation_handoff_raw_storage_leak",
+      "path": "tests/negative/generation/cx_generation_handoff.raw_storage_leak.json",
+      "schema": "schemas/generation/cx_generation_handoff.v1.schema.json"
+    },
+    {
+      "name": "cx_generation_handoff_owner_scope_disabled",
+      "path": "tests/negative/generation/cx_generation_handoff.owner_scope_disabled.json",
+      "schema": "schemas/generation/cx_generation_handoff.v1.schema.json"
     }
   ]
 }

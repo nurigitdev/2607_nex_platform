@@ -1,0 +1,25 @@
+{
+  "handoff_schema_version": "cx_generation_handoff.v1",
+  "handoff_status": "PENDING",
+  "next_action": "POLL_GENERATION_JOB",
+  "job": {
+    "async_generation_schema_version": "cx_async_generation_job.v1",
+    "job_id": "99900000-0000-0000-0000-000000000005",
+    "cx_generation_id": "cx-generation-handoff-005",
+    "status": "RUNNING",
+    "attempt_count": 1,
+    "max_attempts": 3,
+    "retryable": true,
+    "available_at": null,
+    "created_at": "2026-09-27T04:00:00Z",
+    "updated_at": "2026-09-27T04:00:01Z",
+    "links": {
+      "generation": "/api/v1/generations/cx-generation-handoff-005",
+      "async_job": "/api/v1/generation-jobs/99900000-0000-0000-0000-000000000005"
+    },
+    "error": null
+  },
+  "generation": null,
+  "content": null,
+  "owner_scope_enforced": false
+}
