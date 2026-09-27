@@ -26,6 +26,7 @@ from nex_cx.document_intelligence_orchestration import (
 from nex_cx.document_library import register_document_library_routes
 from nex_cx.embedding_index import (
     DEFAULT_EMBEDDING_ALIAS,
+    MoEmbeddingClient,
     build_default_mo_embedding_client,
     register_embedding_index_routes,
 )
@@ -44,6 +45,7 @@ from nex_cx.generation_runtime import (
 )
 from nex_cx.ingestion import (
     DEFAULT_INGESTION_STORE,
+    ContentIngestionStore,
     CxStorageConfig,
     build_storage_config,
     register_ingestion_routes,
@@ -59,10 +61,16 @@ from nex_cx.ingestion_worker import (
     recover_expired_ingestion_job,
 )
 from nex_cx.lexical_index import register_lexical_index_routes
+from nex_cx.mvp_runtime import CxMvpRuntimeComposition, build_cx_mvp_runtime
 from nex_cx.processing import register_processing_routes
 from nex_cx.prompts import DEFAULT_CX_PROMPT_STORE
 from nex_cx.repository import CxContentRepository, SqlAlchemyCxContentRepository
-from nex_cx.retrieval import register_retrieval_routes
+from nex_cx.retrieval import (
+    DEFAULT_RERANKER_ALIAS,
+    MoRerankClient,
+    build_default_mo_rerank_client,
+    register_retrieval_routes,
+)
 from nex_cx.remediation_execution import (
     RemediationExecutionStoreProtocol,
     SqlAlchemyRemediationExecutionStore,
@@ -226,6 +234,49 @@ def build_cx_worker_lease_store(
     return None
 
 
+def build_cx_mvp_runtime_composition(
+    runtime: ServicePersistenceRuntime,
+    *,
+    store: ContentIngestionStore = DEFAULT_INGESTION_STORE,
+    storage_config: CxStorageConfig,
+    content_repository: CxContentRepository,
+    vector_repository: VectorIndexRepository | None,
+    retrieval_vector_store: PgVectorCxVectorStore | None,
+    private_text_store: FileSystemCxPrivateTextStore | None,
+    embedding_client: MoEmbeddingClient,
+    embedding_alias: str,
+    rerank_client: MoRerankClient | None,
+    reranker_alias: str,
+) -> CxMvpRuntimeComposition | None:
+    if (
+        runtime.mode != PERSISTENCE_MODE_POSTGRES
+        or runtime.api_session_factory is None
+        or vector_repository is None
+        or retrieval_vector_store is None
+        or private_text_store is None
+    ):
+        return None
+    ingestion_vector_store = build_pgvector_cx_vector_store(
+        database_env=runtime.database_env,
+        workload="worker",
+    )
+    return build_cx_mvp_runtime(
+        session_factory=runtime.api_session_factory,
+        store=store,
+        storage_config=storage_config,
+        content_repository=content_repository,
+        vector_repository=vector_repository,
+        retrieval_vector_store=retrieval_vector_store,
+        ingestion_vector_store=ingestion_vector_store,
+        private_text_store=private_text_store,
+        embedding_client=embedding_client,
+        embedding_alias=embedding_alias,
+        rerank_client=rerank_client,
+        reranker_alias=reranker_alias,
+        prompt_store=DEFAULT_CX_PROMPT_STORE,
+    )
+
+
 SERVICE_SPEC = SERVICE_SPECS["nex-cx"]
 app = build_service_app(SERVICE_SPEC)
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
@@ -262,7 +313,25 @@ if CX_PRIVATE_SUMMARY_TEXT_STORE is not None:
     DEFAULT_INGESTION_STORE.private_summary_text_store = CX_PRIVATE_SUMMARY_TEXT_STORE
 CX_MO_GENERATION_CLIENT = build_default_mo_client()
 CX_MO_EMBEDDING_CLIENT = build_default_mo_embedding_client()
+CX_MO_RERANK_CLIENT = build_default_mo_rerank_client()
 CX_EMBEDDING_ALIAS = os.getenv("NEX_CX_EMBEDDING_ALIAS", DEFAULT_EMBEDDING_ALIAS)
+CX_RERANKER_ALIAS = os.getenv("NEX_CX_RERANKER_ALIAS", DEFAULT_RERANKER_ALIAS)
+CX_MVP_RUNTIME = build_cx_mvp_runtime_composition(
+    SERVICE_PERSISTENCE,
+    storage_config=CX_STORAGE_CONFIG,
+    content_repository=CX_CONTENT_REPOSITORY,
+    vector_repository=CX_VECTOR_INDEX_REPOSITORY,
+    retrieval_vector_store=CX_VECTOR_STORE,
+    private_text_store=CX_PRIVATE_SUMMARY_TEXT_STORE,
+    embedding_client=CX_MO_EMBEDDING_CLIENT,
+    embedding_alias=CX_EMBEDDING_ALIAS,
+    rerank_client=CX_MO_RERANK_CLIENT,
+    reranker_alias=CX_RERANKER_ALIAS,
+)
+app.state.cx_mvp_runtime = CX_MVP_RUNTIME
+app.state.cx_ingestion_step_handlers = (
+    CX_MVP_RUNTIME.ingestion_step_handlers if CX_MVP_RUNTIME is not None else None
+)
 register_service_job_control_routes(
     app,
     service_id=SERVICE_SPEC.service_id,
@@ -373,7 +442,15 @@ register_processing_routes(
     job_queue=SERVICE_PERSISTENCE.job_queue,
     processing_run_repository=CX_PROCESSING_RUN_REPOSITORY,
 )
-register_retrieval_routes(app, store=DEFAULT_INGESTION_STORE)
+register_retrieval_routes(
+    app,
+    store=DEFAULT_INGESTION_STORE,
+    hybrid_runtime=(
+        CX_MVP_RUNTIME.hybrid_retrieval_runtime
+        if CX_MVP_RUNTIME is not None
+        else None
+    ),
+)
 register_summary_routes(
     app,
     store=DEFAULT_INGESTION_STORE,
