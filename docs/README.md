@@ -1107,6 +1107,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1001`](slices/1001_s100_cx_mvp_integration_ae_handoff_closure.md) | `S100-010` Machine-checkable CX MVP integration and AE handoff closure with Full Gate handoff to S101. |
 | [`Slice 1002`](slices/1002_ae_current_state_reaudit_boundary.md) | `S101-001` Combined AE API/Web current-state re-audit and refactoring boundary checkpoint. |
 | [`Slice 1003`](slices/1003_ae_capability_traceability_inventory.md) | `S101-002` Trace all eleven AE API/Web functional requirements to repository evidence. |
+| [`Slice 1004`](slices/1004_ae_persistence_gap_rebaseline.md) | `S101-003` Re-baseline PostgreSQL-ready, delegated, and in-memory AE persistence surfaces. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -379,6 +379,7 @@ node apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary
 "$PYTHON_BIN" scripts/smoke/run_s100_cx_mvp_integration_ae_handoff_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_current_state_reaudit_boundary.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_capability_traceability_inventory.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_persistence_gap_rebaseline.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary

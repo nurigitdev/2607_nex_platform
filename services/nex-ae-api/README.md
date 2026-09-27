@@ -1059,3 +1059,6 @@ Artifact library management:
   migration, test, and route evidence. Traceability is deliberately separated
   from acceptance so in-memory or stale-contract gaps remain visible to the
   following audit slices.
+- Slice 1004 re-baselines fifteen AE persistence surfaces: six PostgreSQL-ready,
+  two delegated to CX/OA, and seven explicit gaps. It does not add tables;
+  schema, adapter, and runtime-configuration gaps remain separate decisions.
