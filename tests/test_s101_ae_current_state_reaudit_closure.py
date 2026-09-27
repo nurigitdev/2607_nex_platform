@@ -20,7 +20,7 @@ def test_repository_s101_closure_passes_with_confirmed_gaps() -> None:
         "high_risk_ownership_gap_count": 1,
         "required_refactoring_count": 7,
         "database_identifier_drift_count": 8,
-        "contract_drift_count": 34,
+        "contract_drift_count": 33,
         "web_refactor_count": 4,
         "missing_file_count": 0,
         "missing_token_count": 0,
@@ -98,7 +98,7 @@ def test_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = closure.run_s101_ae_current_state_reaudit_closure()
     assert closure.summary_line(passing) == (
         "s101_ae_current_state_reaudit_closure=pass audits=8/8 "
-        "persistence_gaps=7 ownership_gaps=1 contract_drift=34 next=S102"
+        "persistence_gaps=7 ownership_gaps=1 contract_drift=33 next=S102"
     )
     assert "next=blocked" in closure.summary_line({"status": "FAIL"})
 

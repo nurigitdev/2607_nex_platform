@@ -1122,6 +1122,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1016`](slices/1016_ae_owner_scoped_workspace_api.md) | `S102-005` Wire claim-authoritative owner-scoped workspace APIs to durable production persistence. |
 | [`Slice 1017`](slices/1017_ae_owner_scoped_chat_persistence_api.md) | `S102-006` Harden chat persistence and APIs with workspace lineage and owner-filtered reads. |
 | [`Slice 1018`](slices/1018_ae_durable_workspace_chat_orchestration.md) | `S102-007` Add idempotent PENDING-to-terminal workspace-bound chat orchestration and activity lineage. |
+| [`Slice 1019`](slices/1019_ae_workspace_chat_contract_openapi_observability.md) | `S102-008` Align workspace/chat contracts and AE OpenAPI 1.0 with metadata-only lifecycle observability. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

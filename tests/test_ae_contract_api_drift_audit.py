@@ -25,13 +25,13 @@ def test_repository_contract_api_audit_confirms_known_drift() -> None:
         "runtime_openapi_covered_count": 43,
         "missing_openapi_operation_count": 28,
         "shared_openapi_operation_count": 5,
-        "schema_count": 22,
-        "positive_fixture_covered_count": 20,
-        "negative_fixture_covered_count": 19,
-        "drift_count": 34,
+        "schema_count": 23,
+        "positive_fixture_covered_count": 21,
+        "negative_fixture_covered_count": 20,
+        "drift_count": 33,
         "audit_issue_count": 0,
     }
-    assert result["openapi_version"] == "0.0.0-slice0003"
+    assert result["openapi_version"] == "1.0.0"
     assert len(result["missing_positive_fixtures"]) == 2
     assert len(result["missing_negative_fixtures"]) == 3
 
@@ -81,13 +81,13 @@ def test_summary_line_and_runner_main_paths(monkeypatch, capsys) -> None:
 
     assert runner.summary_line(passing) == (
         "ae_contract_api_drift_audit=pass readiness=GAPS_CONFIRMED "
-        "runtime_routes=71 openapi_missing=28 schema_positive=20/22 "
-        "schema_negative=19/22 drift=34"
+        "runtime_routes=71 openapi_missing=28 schema_positive=21/23 "
+        "schema_negative=20/23 drift=33"
     )
     assert "readiness=UNKNOWN" in runner.summary_line({"status": "FAIL"})
     monkeypatch.setattr(runner, "run_ae_contract_api_drift_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0
-    assert "drift=34" in capsys.readouterr().out
+    assert "drift=33" in capsys.readouterr().out
     assert runner.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
 

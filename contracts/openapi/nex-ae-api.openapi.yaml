@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX AE API
-  version: 0.0.0-slice0003
+  version: 1.0.0
 tags:
   - name: Platform
   - name: Auth
@@ -135,9 +135,19 @@ paths:
       operationId: createAeWorkspace
       tags:
         - Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AeWorkspaceCreateRequest"
       responses:
         "200":
           description: AE workspace state created with runtime defaults.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeWorkspaceState"
         "400":
           description: Workspace request is invalid.
         "401":
@@ -156,6 +166,10 @@ paths:
       responses:
         "200":
           description: AE workspace state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeWorkspaceState"
         "401":
           description: Service claim is missing or invalid.
         "404":
@@ -174,6 +188,10 @@ paths:
       responses:
         "200":
           description: Safe AE workspace activity entries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeWorkspaceActivityCollection"
         "401":
           description: Service claim is missing or invalid.
         "404":
@@ -748,9 +766,19 @@ paths:
       operationId: createAeChatInteraction
       tags:
         - Chat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AeChatInteractionRequest"
       responses:
         "200":
           description: AE chat interaction created, optionally grounded by CX retrieval, linked to CX generation when evidence is available, or safely recorded as failed when CX blocks generation on retrieval quality.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeChatInteraction"
         "400":
           description: Chat interaction request is invalid.
         "401":
@@ -773,6 +801,10 @@ paths:
       responses:
         "200":
           description: AE chat interaction record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeChatInteraction"
         "401":
           description: Service claim is missing or invalid.
         "404":
@@ -1501,3 +1533,224 @@ paths:
           description: Proposed automation recommendations for the user.
         "401":
           description: Service claim is missing or invalid.
+components:
+  schemas:
+    AeWorkspaceCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - title
+      properties:
+        workspace_id:
+          type: string
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+        locale:
+          type: string
+        chat_document_id:
+          type: string
+        tenant_id:
+          type: string
+          description: Service-call scope; browser calls derive it from OA claims.
+        owner_user_id:
+          type: string
+          description: Service-call scope; browser calls derive it from OA claims.
+        runtime_defaults:
+          type: object
+          additionalProperties: true
+    AeWorkspaceState:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/workspace_state.v1.schema.json
+      additionalProperties: true
+      required:
+        - workspace_schema_version
+        - workspace_id
+        - tenant_id
+        - owner_user_id
+        - title
+        - chat_document_id
+        - activity_summary
+        - trace_id
+        - request_id
+        - created_at
+        - updated_at
+      properties:
+        workspace_schema_version:
+          const: ae_workspace_state.v1
+        workspace_id:
+          type: string
+        tenant_id:
+          type: string
+        owner_user_id:
+          type: string
+        title:
+          type: string
+        chat_document_id:
+          type: string
+        activity_summary:
+          type: object
+        trace_id:
+          type: string
+        request_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AeWorkspaceActivity:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/workspace_activity.v1.schema.json
+      additionalProperties: false
+      required:
+        - activity_schema_version
+        - activity_id
+        - workspace_id
+        - activity_type
+        - trace_id
+        - request_id
+        - summary
+        - metadata
+        - created_at
+      properties:
+        activity_schema_version:
+          const: ae_workspace_activity.v1
+        activity_id:
+          type: string
+        workspace_id:
+          type: string
+        activity_type:
+          type: string
+          enum:
+            - workspace.created
+            - chat.interaction.started
+            - chat.interaction.completed
+            - chat.interaction.no_answer
+            - chat.interaction.failed
+        trace_id:
+          type: string
+        request_id:
+          type: string
+        summary:
+          type: string
+          maxLength: 120
+        metadata:
+          type: object
+          description: Redacted state metadata; raw prompt and response content are forbidden.
+        created_at:
+          type: string
+          format: date-time
+    AeWorkspaceActivityCollection:
+      type: object
+      additionalProperties: false
+      required:
+        - workspace_id
+        - activities
+      properties:
+        workspace_id:
+          type: string
+        activities:
+          type: array
+          items:
+            $ref: "#/components/schemas/AeWorkspaceActivity"
+    AeChatInteractionRequest:
+      type: object
+      additionalProperties: true
+      required:
+        - user_message
+      properties:
+        interaction_id:
+          type: string
+        workspace_id:
+          type: string
+        chat_document_id:
+          type: string
+        user_message:
+          type: string
+          minLength: 1
+          writeOnly: true
+        retrieval:
+          type: object
+        generation:
+          type: object
+    AeChatInteraction:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/chat_interaction.v1.schema.json
+      additionalProperties: true
+      required:
+        - interaction_schema_version
+        - interaction_id
+        - workspace_id
+        - chat_document_id
+        - tenant_id
+        - user_id
+        - owner_user_id
+        - status
+        - trace_id
+        - request_id
+        - user_message_hash
+        - cx_generation_id
+        - cx_status
+        - generation
+        - retrieval
+        - artifact_refs
+        - created_at
+        - updated_at
+      properties:
+        interaction_schema_version:
+          const: ae_chat_interaction.v1
+        interaction_id:
+          type: string
+        workspace_id:
+          type:
+            - string
+            - "null"
+        chat_document_id:
+          type: string
+        tenant_id:
+          type: string
+        user_id:
+          type: string
+        owner_user_id:
+          type: string
+        status:
+          type: string
+          enum:
+            - PENDING
+            - COMPLETED
+            - NO_ANSWER
+            - FAILED
+        trace_id:
+          type: string
+        request_id:
+          type: string
+        user_message_hash:
+          type: string
+          description: SHA-256 digest; raw prompt is never returned.
+        cx_generation_id:
+          type:
+            - string
+            - "null"
+        cx_status:
+          type: string
+        generation:
+          type:
+            - object
+            - "null"
+        retrieval:
+          type:
+            - object
+            - "null"
+        artifact_refs:
+          type: array
+          items:
+            type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time

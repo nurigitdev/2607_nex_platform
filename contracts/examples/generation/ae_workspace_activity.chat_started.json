@@ -1,0 +1,15 @@
+{
+  "activity_schema_version": "ae_workspace_activity.v1",
+  "activity_id": "activity-1019",
+  "workspace_id": "workspace-001",
+  "activity_type": "chat.interaction.started",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "request-1019",
+  "summary": "Chat interaction pending.",
+  "metadata": {
+    "interaction_id": "interaction-1019",
+    "status": "PENDING",
+    "user_message_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "created_at": "2026-09-27T00:00:00Z"
+}

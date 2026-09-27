@@ -1,7 +1,11 @@
 {
   "interaction_schema_version": "ae_chat_interaction.v1",
   "interaction_id": "interaction-grounded-001",
+  "workspace_id": null,
   "chat_document_id": "chat-001",
+  "tenant_id": "local-tenant",
+  "user_id": "local-user",
+  "owner_user_id": "local-user",
   "status": "COMPLETED",
   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
   "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",

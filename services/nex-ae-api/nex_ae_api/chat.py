@@ -16,7 +16,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from nex_runtime import (
+    OperationalEventEmitter,
     issue_mock_service_token,
+    operational_event_emitter_from_app,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
@@ -51,6 +53,7 @@ from nex_ae_api.workspace_chat_orchestration import (
     bind_workspace_chat_request,
     idempotent_chat_record,
 )
+from nex_ae_api.workspace_chat_observability import observe_workspace_chat_state
 
 AE_CHAT_RETRIEVAL_QUALITY_WARNING_CONTRACT_VERSION = (
     "ae_chat_retrieval_quality_warning.v1"
@@ -330,11 +333,16 @@ def register_chat_routes(
     cx_client: CxGenerationClient | None = None,
     retrieval_client: CxRetrievalClient | None = None,
     analytics_store: PromptAnalyticsStore | None = None,
+    event_emitter: OperationalEventEmitter | None = None,
 ) -> None:
     chat_store = store or build_default_chat_store(app)
     app.state.ae_chat_store = chat_store
     client = cx_client or build_default_cx_client()
     retrieval = retrieval_client or build_default_cx_retrieval_client()
+    emitter = event_emitter or operational_event_emitter_from_app(
+        app,
+        service_id="nex-ae-api",
+    )
 
     @app.post("/api/v1/chat/interactions", response_model=None)
     def create_chat_interaction(
@@ -375,6 +383,7 @@ def register_chat_routes(
                     trace_id=trace_id,
                 )
             )
+            observe_workspace_chat_state(emitter, pending_record)
             append_workspace_chat_activity(
                 binding,
                 workspace_store=workspace_store,
@@ -404,6 +413,7 @@ def register_chat_routes(
                             pending_record,
                         )
                     )
+                    observe_workspace_chat_state(emitter, saved_no_answer)
                     record_chat_prompt_analytics(
                         analytics_store,
                         source_payload=payload,
@@ -446,6 +456,7 @@ def register_chat_routes(
                             pending_record,
                         )
                     )
+                    observe_workspace_chat_state(emitter, saved_quality_rejection)
                     record_chat_prompt_analytics(
                         analytics_store,
                         source_payload=payload,
@@ -475,6 +486,7 @@ def register_chat_routes(
                     pending_record,
                 )
             )
+            observe_workspace_chat_state(emitter, saved_record)
             record_chat_prompt_analytics(
                 analytics_store,
                 source_payload=payload,
@@ -504,6 +516,7 @@ def register_chat_routes(
                 failure=chat_error,
                 request_id=request_id,
                 trace_id=trace_id,
+                event_emitter=emitter,
             )
             return _chat_problem_response(
                 request,
@@ -524,6 +537,7 @@ def register_chat_routes(
                 failure=chat_error,
                 request_id=request_id,
                 trace_id=trace_id,
+                event_emitter=emitter,
             )
             return _chat_problem_response(
                 request,
@@ -538,6 +552,7 @@ def register_chat_routes(
                 failure=exc,
                 request_id=request_id,
                 trace_id=trace_id,
+                event_emitter=emitter,
             )
             return _chat_problem_response(request, exc)
         except WorkspaceChatOwnerError as exc:
@@ -551,6 +566,7 @@ def register_chat_routes(
                 failure=exc,
                 request_id=request_id,
                 trace_id=trace_id,
+                event_emitter=emitter,
             )
             return _chat_problem_response(request, exc)
 
@@ -1847,11 +1863,15 @@ def _persist_failed_chat_attempt(
     failure: Any,
     request_id: str,
     trace_id: str,
+    event_emitter: OperationalEventEmitter,
 ) -> None:
     if binding is None or pending_record is None:
         return
     try:
-        chat_store.save(build_failed_chat_interaction_record(pending_record, failure))
+        failed_record = chat_store.save(
+            build_failed_chat_interaction_record(pending_record, failure)
+        )
+        observe_workspace_chat_state(event_emitter, failed_record)
     except ChatInteractionError:
         pass
     try:

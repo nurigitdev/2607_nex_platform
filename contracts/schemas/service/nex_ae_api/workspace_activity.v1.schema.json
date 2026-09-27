@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/workspace_activity.v1.schema.json",
+  "title": "NeX AE Workspace Activity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "activity_schema_version",
+    "activity_id",
+    "workspace_id",
+    "activity_type",
+    "trace_id",
+    "request_id",
+    "summary",
+    "metadata",
+    "created_at"
+  ],
+  "properties": {
+    "activity_schema_version": {
+      "const": "ae_workspace_activity.v1"
+    },
+    "activity_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspace_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "activity_type": {
+      "type": "string",
+      "enum": [
+        "workspace.created",
+        "chat.interaction.started",
+        "chat.interaction.completed",
+        "chat.interaction.no_answer",
+        "chat.interaction.failed"
+      ]
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "metadata": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/workspaceCreatedMetadata"
+        },
+        {
+          "$ref": "#/$defs/chatInteractionMetadata"
+        }
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "workspaceCreatedMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tenant_id",
+        "owner_user_id"
+      ],
+      "properties": {
+        "tenant_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_user_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "chatInteractionMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "interaction_id",
+        "status",
+        "user_message_hash"
+      ],
+      "properties": {
+        "interaction_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PENDING",
+            "COMPLETED",
+            "NO_ANSWER",
+            "FAILED"
+          ]
+        },
+        "user_message_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

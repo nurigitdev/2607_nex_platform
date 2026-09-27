@@ -91,9 +91,9 @@ def build_ae_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
         "audit_inputs_present": not issues,
         "runtime_operation_inventory_complete": len(runtime_operations) == 71,
         "openapi_operation_inventory_complete": len(openapi_operations) == 52,
-        "ae_schema_inventory_complete": len(ae_schemas) == 12,
+        "ae_schema_inventory_complete": len(ae_schemas) == 13,
         "generation_schema_inventory_complete": len(generation_schemas) == 10,
-        "drift_classified": len(drift_items) == 34,
+        "drift_classified": len(drift_items) == 33,
     }
     passed = all(checks.values()) and not issues
     return {

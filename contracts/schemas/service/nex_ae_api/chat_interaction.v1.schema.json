@@ -7,7 +7,11 @@
   "required": [
     "interaction_schema_version",
     "interaction_id",
+    "workspace_id",
     "chat_document_id",
+    "tenant_id",
+    "user_id",
+    "owner_user_id",
     "status",
     "trace_id",
     "request_id",
@@ -29,13 +33,33 @@
       "type": "string",
       "minLength": 1
     },
+    "workspace_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
     "chat_document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "user_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner_user_id": {
       "type": "string",
       "minLength": 1
     },
     "status": {
       "type": "string",
       "enum": [
+        "PENDING",
         "COMPLETED",
         "NO_ANSWER",
         "FAILED"
@@ -67,6 +91,7 @@
     "cx_status": {
       "type": "string",
       "enum": [
+        "PENDING",
         "COMPLETED",
         "NO_ANSWER",
         "LOW_CONFIDENCE",
@@ -123,7 +148,14 @@
       ]
     },
     "failure": {
-      "$ref": "#/$defs/generationQualityRejectionFailure"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/generationQualityRejectionFailure"
+        },
+        {
+          "$ref": "#/$defs/chatExecutionFailure"
+        }
+      ]
     },
     "retrieval": {
       "anyOf": [
@@ -489,6 +521,35 @@
         },
         "recommended_action": {
           "$ref": "#/$defs/retrievalQualityRecommendedAction"
+        },
+        "raw_error_detail_included": {
+          "const": false
+        }
+      }
+    },
+    "chatExecutionFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "failure_schema_version",
+        "error_code",
+        "failed_stage",
+        "retryable",
+        "raw_error_detail_included"
+      ],
+      "properties": {
+        "failure_schema_version": {
+          "const": "ae_chat_execution_failure.v1"
+        },
+        "error_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failed_stage": {
+          "const": "workspace_chat_orchestration"
+        },
+        "retryable": {
+          "type": "boolean"
         },
         "raw_error_detail_included": {
           "const": false

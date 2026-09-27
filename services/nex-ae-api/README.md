@@ -1113,3 +1113,7 @@ Artifact library management:
   before provider work, transition to completed, no-answer, or failed metadata,
   and append metadata-only workspace activities. Exact retries return the
   existing record without a duplicate provider call or duplicate activity.
+- Slice 1019 promotes the workspace/chat API contract to AE OpenAPI `1.0.0`,
+  adds strict pending interaction and workspace-activity schemas, and emits
+  idempotent metadata-only chat state events without prompt, response, owner,
+  provider, or retrieval identifier content.

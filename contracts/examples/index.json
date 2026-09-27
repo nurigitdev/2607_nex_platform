@@ -306,6 +306,11 @@
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
     },
     {
+      "name": "ae_chat_interaction_pending",
+      "path": "examples/generation/ae_chat_interaction.pending.json",
+      "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
+    },
+    {
       "name": "ae_prompt_analytics_mock",
       "path": "examples/generation/ae_prompt_analytics.mock_success.json",
       "schema": "schemas/service/nex_ae_api/prompt_analytics.v1.schema.json"
@@ -314,6 +319,11 @@
       "name": "ae_workspace_state_mock",
       "path": "examples/generation/ae_workspace_state.mock_success.json",
       "schema": "schemas/service/nex_ae_api/workspace_state.v1.schema.json"
+    },
+    {
+      "name": "ae_workspace_activity_chat_started",
+      "path": "examples/generation/ae_workspace_activity.chat_started.json",
+      "schema": "schemas/service/nex_ae_api/workspace_activity.v1.schema.json"
     },
     {
       "name": "ae_upload_handoff_mock",

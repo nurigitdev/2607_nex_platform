@@ -168,7 +168,7 @@ def run_s101_ae_current_state_reaudit_closure(
             == "STATIC_CHAIN_VALID_DRIFT_REMEDIATION_REQUIRED"
         ),
         "contract_drift_quantified": (
-            summaries["contract_drift"].get("drift_count") == 34
+            summaries["contract_drift"].get("drift_count") == 33
             and audits["contract_drift"].get("contract_readiness")
             == "GAPS_CONFIRMED"
         ),
