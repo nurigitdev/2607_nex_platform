@@ -35,6 +35,26 @@ def test_database_migrations_are_transactional_and_secret_free() -> None:
         assert re.search(r"nuri\d+", compact) is None
 
 
+def test_ae_workspace_activity_persistence_schema_is_metadata_only() -> None:
+    compact = normalized(
+        read_migration_named(
+            "nex-ae-api",
+            "1014_ae_workspace_activity_persistence.sql",
+        )
+    )
+
+    assert "create table if not exists ae_workspaces" in compact
+    assert "create table if not exists ae_workspace_activities" in compact
+    assert "alter table ae_chat_interactions" in compact
+    assert "add column if not exists workspace_id uuid null" in compact
+    assert "idx_ae_ws_owner_time" in compact
+    assert "idx_ae_ws_act_time" in compact
+    assert "idx_ae_chat_ws_owner_time" in compact
+    assert "1014_ae_workspace_activity_persistence" in compact
+    for forbidden in ("raw_prompt", "raw_output", "source_bytes", "access_token"):
+        assert forbidden not in compact
+
+
 def test_service_job_queue_foundation_exists_for_every_service_database() -> None:
     for service_id in SERVICE_IDS:
         compact = normalized(

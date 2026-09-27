@@ -16,7 +16,7 @@ def test_repository_database_drift_audit_classifies_identifier_drift() -> None:
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
     assert result["issues"] == []
-    assert result["summary"]["migration_count"] == 22
+    assert result["summary"]["migration_count"] == 23
     assert result["summary"]["core_table_count"] == 15
     assert result["summary"]["overlength_identifier_count"] > 0
     assert result["summary"]["drift_finding_count"] == 1
@@ -80,7 +80,7 @@ def test_summary_line_and_runner_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_ae_database_drift_audit()
 
     assert "database_drift_audit=pass" in runner.summary_line(passing)
-    assert "migrations=22" in runner.summary_line(passing)
+    assert "migrations=23" in runner.summary_line(passing)
     assert "alembic=NOT_CONFIGURED" in runner.summary_line(passing)
     monkeypatch.setattr(runner, "run_ae_database_drift_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0

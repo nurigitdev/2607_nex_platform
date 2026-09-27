@@ -65,7 +65,7 @@ def test_repository_postgres_reaudit_evaluation_passes() -> None:
         "ACTUAL_TEST_DATABASE_AND_BROWSER_VERIFIED"
     )
     assert all(result["checks"].values())
-    assert result["summary"]["expected_migration_count"] == 22
+    assert result["summary"]["expected_migration_count"] == 23
     assert result["summary"]["core_table_count"] == 15
     assert result["forbidden_private_columns"] == []
     assert result["privacy_policy"]["transaction"] == "rollback_required"
@@ -148,7 +148,7 @@ def test_expected_state_normalizes_postgres_identifiers_and_missing_inputs(
     tmp_path: Path,
 ) -> None:
     expected = expected_ae_postgres_state()
-    assert len(expected["migration_versions"]) == 22
+    assert len(expected["migration_versions"]) == 23
     assert expected["indexes"]
     assert expected["constraints"]
     assert max(map(len, expected["indexes"])) <= 63
@@ -230,7 +230,7 @@ def test_database_snapshot_reads_catalog_and_runs_domain_rollback_probe() -> Non
     )
 
     assert snapshot["database"] == "nex_ae_test"
-    assert len(snapshot["migration_versions"]) == 22
+    assert len(snapshot["migration_versions"]) == 23
     assert snapshot["domain_probe"] == {
         "insert_observed": True,
         "upsert_observed": True,
@@ -326,7 +326,7 @@ def test_summary_and_main_paths(monkeypatch, capsys) -> None:
         privacy_runbook_ready=True,
     )
     assert "postgres_reaudit=pass" in runner.summary_line(passing)
-    assert "migrations=22/22" in runner.summary_line(passing)
+    assert "migrations=23/23" in runner.summary_line(passing)
     assert "browser=pass" in runner.summary_line(passing)
     assert "database=not-run" in runner.summary_line({"status": "SKIPPED"})
 

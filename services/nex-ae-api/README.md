@@ -1091,3 +1091,6 @@ Artifact library management:
 - Slice 1013 adds the shared workspace/chat owner-scope contract. OA browser
   claims are authoritative, service calls require explicit scope, canonical and
   compatibility identifiers must agree, and persisted visibility fails closed.
+- Slice 1014 adds `ae_workspaces`, `ae_workspace_activities`, and the nullable
+  `ae_chat_interactions.workspace_id` lineage column with short indexes and a
+  metadata-only privacy boundary.
