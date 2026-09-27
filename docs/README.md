@@ -1116,6 +1116,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1010`](slices/1010_ae_current_state_postgresql_browser_reaudit.md) | `S101-009` Re-audit the actual AE test PostgreSQL catalog, domain rollback probe, and Playwright browser runtime. |
 | [`Slice 1011`](slices/1011_s101_ae_current_state_reaudit_closure.md) | `S101-010` Close the AE current-state re-audit and order the targeted S102 hardening handoff. |
 | [`Slice 1012`](slices/1012_ae_durable_workspace_chat_boundary_audit.md) | `S102-001` Freeze the durable workspace and chat orchestration boundary and ordered hardening plan. |
+| [`Slice 1013`](slices/1013_ae_workspace_chat_owner_scope_contract.md) | `S102-002` Establish shared browser-claim and service-payload owner-scope enforcement for workspace and chat. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

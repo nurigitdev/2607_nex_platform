@@ -1088,3 +1088,6 @@ Artifact library management:
   orchestration boundary: two short workspace tables, a nullable legacy-safe
   chat workspace link, OA-claim browser ownership, and actual PostgreSQL proof
   before closure.
+- Slice 1013 adds the shared workspace/chat owner-scope contract. OA browser
+  claims are authoritative, service calls require explicit scope, canonical and
+  compatibility identifiers must agree, and persisted visibility fails closed.

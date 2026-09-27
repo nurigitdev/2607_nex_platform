@@ -388,6 +388,7 @@ node apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_current_state_postgres_reaudit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s101_ae_current_state_reaudit_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_durable_workspace_chat_boundary_audit.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_workspace_chat_owner_scope_contract.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary
