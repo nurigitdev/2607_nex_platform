@@ -1111,6 +1111,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1005`](slices/1005_ae_auth_ownership_privacy_audit.md) | `S101-004` Audit browser claim ownership, service-call authority, and privacy boundaries. |
 | [`Slice 1006`](slices/1006_ae_runtime_coupling_refactoring_checkpoint.md) | `S101-005` Measure AE runtime coupling and freeze the incremental P0-P3 refactoring order. |
 | [`Slice 1007`](slices/1007_ae_database_migration_drift_audit.md) | `S101-006` Audit AE SQL migration integrity, table traceability, and PostgreSQL identifier drift. |
+| [`Slice 1008`](slices/1008_ae_contract_api_drift_audit.md) | `S101-007` Compare AE runtime operations, OpenAPI coverage, and positive/negative contract fixtures. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

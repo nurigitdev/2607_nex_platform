@@ -1072,3 +1072,6 @@ Artifact library management:
 - Slice 1007 validates the static AE SQL migration chain and records historical
   PostgreSQL identifier truncation and duplicate-index drift for reconciliation
   before the next schema change. Actual test-DB comparison remains Slice 1010.
+- Slice 1008 measures runtime/OpenAPI and fixture drift: 28 runtime operations
+  are undocumented, three schemas lack negative fixtures, and the API version is
+  stale. These become an S102 contract-hardening input.
