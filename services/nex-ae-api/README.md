@@ -1055,3 +1055,7 @@ Artifact library management:
   current-state re-audit boundary. The audit covers all eleven AEAPI/AEWEB
   functional requirements, requires actual `nex_ae_test` and deterministic
   browser evidence before closure, and introduces no table or data mutation.
+- Slice 1003 maps those eleven requirements to implementation, contract,
+  migration, test, and route evidence. Traceability is deliberately separated
+  from acceptance so in-memory or stale-contract gaps remain visible to the
+  following audit slices.
