@@ -14,6 +14,7 @@ for path in (ROOT / "services" / "nex-ae-api", ROOT / "services" / "_shared"):
 
 from fastapi.testclient import TestClient  # noqa: E402
 from nex_ae_api.chat import ChatInteractionStore, register_chat_routes  # noqa: E402
+from nex_ae_api.workspace import WorkspaceStateStore  # noqa: E402
 from nex_runtime import (  # noqa: E402
     SERVICE_SPECS,
     build_service_app,
@@ -48,6 +49,18 @@ def run_owner_scoped_chat_api_smoke() -> dict[str, Any]:
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
     store = ChatInteractionStore()
     register_chat_routes(app, store=store, cx_client=DeterministicCxClient())
+    workspace_store = WorkspaceStateStore()
+    workspace_store.create_workspace(
+        payload={
+            "workspace_id": "11111111-1111-4111-8111-111111111111",
+            "chat_document_id": "22222222-2222-4222-8222-222222222222",
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+        },
+        request_id="workspace-request-1017",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    )
+    app.state.ae_workspace_store = workspace_store
     client = TestClient(app)
     owner = _headers("tenant-a", "user-a")
     other = _headers("tenant-a", "user-b")

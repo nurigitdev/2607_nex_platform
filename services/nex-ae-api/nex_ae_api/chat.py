@@ -44,6 +44,13 @@ from nex_ae_api.workspace_chat_auth import (
     owner_scoped_payload,
     record_matches_owner,
 )
+from nex_ae_api.workspace_chat_orchestration import (
+    WorkspaceChatBinding,
+    WorkspaceChatOrchestrationError,
+    append_workspace_chat_activity,
+    bind_workspace_chat_request,
+    idempotent_chat_record,
+)
 
 AE_CHAT_RETRIEVAL_QUALITY_WARNING_CONTRACT_VERSION = (
     "ae_chat_retrieval_quality_warning.v1"
@@ -341,12 +348,43 @@ def register_chat_routes(
 
         request_id = request_id_from_headers(request)
         trace_id = payload.get("trace_id") or trace_id_from_headers(request)
+        binding: WorkspaceChatBinding | None = None
+        pending_record: dict[str, Any] | None = None
+        workspace_store = getattr(request.app.state, "ae_workspace_store", None)
         try:
             payload = _owner_scoped_chat_payload(payload, auth_context)
             if analytics_store is not None:
                 owner_scope_from_payload(payload)
+            retrieval_enabled = should_use_retrieval(payload)
+            binding = bind_workspace_chat_request(
+                payload,
+                trace_id=trace_id,
+                workspace_store=workspace_store,
+            )
+            payload = binding.payload
+            existing = idempotent_chat_record(binding, chat_store=chat_store)
+            if existing is not None:
+                return existing
+
+            cx_payload = build_cx_generation_payload(payload, trace_id=trace_id)
+            pending_record = chat_store.save(
+                build_pending_chat_interaction_record(
+                    source_payload=payload,
+                    cx_payload=cx_payload,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+            )
+            append_workspace_chat_activity(
+                binding,
+                workspace_store=workspace_store,
+                activity_type="chat.interaction.started",
+                status="PENDING",
+                request_id=request_id,
+                trace_id=trace_id,
+            )
             retrieval_package = None
-            if should_use_retrieval(payload):
+            if retrieval_enabled:
                 retrieval_payload = build_cx_retrieval_payload(payload, trace_id=trace_id)
                 retrieval_package = retrieval.create_retrieval_context(
                     retrieval_payload,
@@ -355,12 +393,15 @@ def register_chat_routes(
                 )
                 if retrieval_package["status"] == "NO_ANSWER":
                     saved_no_answer = chat_store.save(
-                        build_no_answer_chat_interaction_record(
-                            source_payload=payload,
-                            retrieval_payload=retrieval_payload,
-                            retrieval_package=retrieval_package,
-                            request_id=request_id,
-                            trace_id=trace_id,
+                        _terminal_chat_record(
+                            build_no_answer_chat_interaction_record(
+                                source_payload=payload,
+                                retrieval_payload=retrieval_payload,
+                                retrieval_package=retrieval_package,
+                                request_id=request_id,
+                                trace_id=trace_id,
+                            ),
+                            pending_record,
                         )
                     )
                     record_chat_prompt_analytics(
@@ -369,9 +410,16 @@ def register_chat_routes(
                         chat_record=saved_no_answer,
                         retrieval_used=True,
                     )
+                    append_workspace_chat_activity(
+                        binding,
+                        workspace_store=workspace_store,
+                        activity_type="chat.interaction.no_answer",
+                        status="NO_ANSWER",
+                        request_id=request_id,
+                        trace_id=trace_id,
+                    )
                     return saved_no_answer
 
-            cx_payload = build_cx_generation_payload(payload, trace_id=trace_id)
             if retrieval_package is not None:
                 cx_payload = attach_retrieval_package_to_generation_payload(
                     cx_payload,
@@ -386,13 +434,16 @@ def register_chat_routes(
             except ChatInteractionError as exc:
                 if is_generation_quality_rejection(exc) and retrieval_package is not None:
                     saved_quality_rejection = chat_store.save(
-                        build_generation_quality_rejected_chat_interaction_record(
-                            source_payload=payload,
-                            cx_payload=cx_payload,
-                            retrieval_package=retrieval_package,
-                            failure=exc,
-                            request_id=request_id,
-                            trace_id=trace_id,
+                        _terminal_chat_record(
+                            build_generation_quality_rejected_chat_interaction_record(
+                                source_payload=payload,
+                                cx_payload=cx_payload,
+                                retrieval_package=retrieval_package,
+                                failure=exc,
+                                request_id=request_id,
+                                trace_id=trace_id,
+                            ),
+                            pending_record,
                         )
                     )
                     record_chat_prompt_analytics(
@@ -401,16 +452,27 @@ def register_chat_routes(
                         chat_record=saved_quality_rejection,
                         retrieval_used=True,
                     )
+                    append_workspace_chat_activity(
+                        binding,
+                        workspace_store=workspace_store,
+                        activity_type="chat.interaction.failed",
+                        status="FAILED",
+                        request_id=request_id,
+                        trace_id=trace_id,
+                    )
                     return saved_quality_rejection
                 raise
             saved_record = chat_store.save(
-                build_chat_interaction_record(
-                    source_payload=payload,
-                    cx_payload=cx_payload,
-                    cx_record=cx_record,
-                    retrieval_package=retrieval_package,
-                    request_id=request_id,
-                    trace_id=trace_id,
+                _terminal_chat_record(
+                    build_chat_interaction_record(
+                        source_payload=payload,
+                        cx_payload=cx_payload,
+                        cx_record=cx_record,
+                        retrieval_package=retrieval_package,
+                        request_id=request_id,
+                        trace_id=trace_id,
+                    ),
+                    pending_record,
                 )
             )
             record_chat_prompt_analytics(
@@ -419,29 +481,77 @@ def register_chat_routes(
                 chat_record=saved_record,
                 retrieval_used=retrieval_package is not None,
             )
+            append_workspace_chat_activity(
+                binding,
+                workspace_store=workspace_store,
+                activity_type="chat.interaction.completed",
+                status="COMPLETED",
+                request_id=request_id,
+                trace_id=trace_id,
+            )
             return saved_record
         except PromptAnalyticsError as exc:
+            chat_error = ChatInteractionError(
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                detail=exc.detail,
+            )
+            _persist_failed_chat_attempt(
+                chat_store=chat_store,
+                workspace_store=workspace_store,
+                binding=binding,
+                pending_record=pending_record,
+                failure=chat_error,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
             return _chat_problem_response(
                 request,
-                ChatInteractionError(
-                    status_code=exc.status_code,
-                    error_code=exc.error_code,
-                    detail=exc.detail,
-                ),
+                chat_error,
             )
         except RetrievalInteractionError as exc:
+            chat_error = ChatInteractionError(
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                detail=exc.detail,
+                retryable=exc.retryable,
+            )
+            _persist_failed_chat_attempt(
+                chat_store=chat_store,
+                workspace_store=workspace_store,
+                binding=binding,
+                pending_record=pending_record,
+                failure=chat_error,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
             return _chat_problem_response(
                 request,
-                ChatInteractionError(
-                    status_code=exc.status_code,
-                    error_code=exc.error_code,
-                    detail=exc.detail,
-                    retryable=exc.retryable,
-                ),
+                chat_error,
             )
         except ChatInteractionError as exc:
+            _persist_failed_chat_attempt(
+                chat_store=chat_store,
+                workspace_store=workspace_store,
+                binding=binding,
+                pending_record=pending_record,
+                failure=exc,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
             return _chat_problem_response(request, exc)
         except WorkspaceChatOwnerError as exc:
+            return _chat_problem_response(request, exc)
+        except WorkspaceChatOrchestrationError as exc:
+            _persist_failed_chat_attempt(
+                chat_store=chat_store,
+                workspace_store=workspace_store,
+                binding=binding,
+                pending_record=pending_record,
+                failure=exc,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
             return _chat_problem_response(request, exc)
 
     @app.get("/api/v1/chat/interactions/{interaction_id}", response_model=None)
@@ -646,6 +756,66 @@ def build_chat_interaction_record(
         "created_at": now,
         "updated_at": now,
     }
+
+
+def build_pending_chat_interaction_record(
+    *,
+    source_payload: dict[str, Any],
+    cx_payload: dict[str, Any],
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    user_message = user_message_from_payload(source_payload)
+    tenant_id, user_id = chat_owner_scope_from_payload(source_payload)
+    now = _utc_now()
+    return {
+        "interaction_schema_version": "ae_chat_interaction.v1",
+        "interaction_id": cx_payload["client_request_id"],
+        "workspace_id": _optional_text(source_payload.get("workspace_id")),
+        "chat_document_id": cx_payload["metadata"]["chat_document_id"],
+        "tenant_id": tenant_id,
+        "user_id": user_id,
+        "owner_user_id": user_id,
+        "status": "PENDING",
+        "trace_id": trace_id,
+        "request_id": request_id,
+        "user_message_hash": cx_payload["metadata"]["user_message_hash"],
+        "user_message_preview": user_message[:120],
+        "cx_generation_id": None,
+        "cx_status": "PENDING",
+        "generation": None,
+        "retrieval": None,
+        "artifact_refs": [],
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def build_failed_chat_interaction_record(
+    pending_record: dict[str, Any],
+    failure: Any,
+) -> dict[str, Any]:
+    return {
+        **pending_record,
+        "status": "FAILED",
+        "cx_status": "FAILED",
+        "generation": None,
+        "failure": {
+            "failure_schema_version": "ae_chat_execution_failure.v1",
+            "error_code": failure.error_code,
+            "failed_stage": "workspace_chat_orchestration",
+            "retryable": bool(getattr(failure, "retryable", False)),
+            "raw_error_detail_included": False,
+        },
+        "updated_at": _utc_now(),
+    }
+
+
+def _terminal_chat_record(
+    record: dict[str, Any],
+    pending_record: dict[str, Any],
+) -> dict[str, Any]:
+    return {**record, "created_at": pending_record["created_at"]}
 
 
 def build_no_answer_chat_interaction_record(
@@ -1668,9 +1838,42 @@ def _get_visible_chat_record(
     return record if record is not None and record_matches_owner(record, scope) else None
 
 
+def _persist_failed_chat_attempt(
+    *,
+    chat_store: Any,
+    workspace_store: Any | None,
+    binding: WorkspaceChatBinding | None,
+    pending_record: dict[str, Any] | None,
+    failure: Any,
+    request_id: str,
+    trace_id: str,
+) -> None:
+    if binding is None or pending_record is None:
+        return
+    try:
+        chat_store.save(build_failed_chat_interaction_record(pending_record, failure))
+    except ChatInteractionError:
+        pass
+    try:
+        append_workspace_chat_activity(
+            binding,
+            workspace_store=workspace_store,
+            activity_type="chat.interaction.failed",
+            status="FAILED",
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+    except WorkspaceChatOrchestrationError:
+        pass
+
+
 def _chat_problem_response(
     request: Request,
-    exc: ChatInteractionError | WorkspaceChatOwnerError,
+    exc: (
+        ChatInteractionError
+        | WorkspaceChatOwnerError
+        | WorkspaceChatOrchestrationError
+    ),
 ) -> JSONResponse:
     return problem_response(
         request,

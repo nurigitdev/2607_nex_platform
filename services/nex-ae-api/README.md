@@ -1108,3 +1108,8 @@ Artifact library management:
   and persists the nullable workspace lineage through SQLAlchemy. Owner-filtered
   SQL reads keep unauthorized rows outside the API read model while legacy
   service calls retain their local compatibility defaults.
+- Slice 1018 validates workspace existence, owner, and chat-document lineage
+  before any CX call. Workspace-bound interactions persist a PENDING record
+  before provider work, transition to completed, no-answer, or failed metadata,
+  and append metadata-only workspace activities. Exact retries return the
+  existing record without a duplicate provider call or duplicate activity.

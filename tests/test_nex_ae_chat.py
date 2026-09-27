@@ -35,6 +35,7 @@ from nex_ae_api.chat import (
     user_message_from_payload,
 )
 from nex_ae_api.retrieval import RetrievalInteractionError
+from nex_ae_api.workspace import WorkspaceStateStore
 from nex_runtime import (
     SERVICE_SPECS,
     build_service_app,
@@ -250,6 +251,29 @@ def build_grounded_test_client(
     return TestClient(app), cx_client, retrieval, store
 
 
+def attach_workspace(
+    app: Any,
+    *,
+    workspace_id: str = "11111111-1111-4111-8111-111111111111",
+    chat_document_id: str = "22222222-2222-4222-8222-222222222222",
+    tenant_id: str = "tenant-a",
+    owner_user_id: str = "user-a",
+) -> WorkspaceStateStore:
+    store = WorkspaceStateStore()
+    store.create_workspace(
+        payload={
+            "workspace_id": workspace_id,
+            "chat_document_id": chat_document_id,
+            "tenant_id": tenant_id,
+            "owner_user_id": owner_user_id,
+        },
+        request_id="workspace-request-001",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    )
+    app.state.ae_workspace_store = store
+    return store
+
+
 def sqlite_chat_session_factory():
     engine = create_engine(
         "sqlite+pysqlite://",
@@ -448,6 +472,18 @@ def test_chat_interaction_can_be_read_back() -> None:
 
 def test_browser_chat_routes_derive_owner_and_hide_cross_owner_records() -> None:
     client, _, store = build_test_client()
+    workspace_store = WorkspaceStateStore()
+    workspace_store.create_workspace(
+        payload={
+            "workspace_id": "11111111-1111-4111-8111-111111111111",
+            "chat_document_id": "browser-chat-001",
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+        },
+        request_id="workspace-request-001",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    )
+    client.app.state.ae_workspace_store = workspace_store
     owner = user_headers("tenant-a", "user-a")
     other = user_headers("tenant-a", "user-b")
     created = client.post(
@@ -514,6 +550,139 @@ def test_browser_chat_route_rejects_payload_owner_mismatch() -> None:
 
     assert response.status_code == 403
     assert response.json()["error_code"] == "ae.browser_owner_scope_mismatch"
+
+
+def test_workspace_bound_chat_is_durable_and_retry_idempotent() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    chat_store = ChatInteractionStore()
+    cx_client = FakeCxClient()
+    register_chat_routes(app, store=chat_store, cx_client=cx_client)
+    workspace_store = attach_workspace(app)
+    client = TestClient(app)
+    request_payload = {
+        "interaction_id": "workspace-interaction-001",
+        "workspace_id": "11111111-1111-4111-8111-111111111111",
+        "user_message": "Summarize this workspace.",
+    }
+
+    created = client.post(
+        "/api/v1/chat/interactions",
+        json=request_payload,
+        headers=user_headers("tenant-a", "user-a"),
+    )
+    repeated = client.post(
+        "/api/v1/chat/interactions",
+        json=request_payload,
+        headers=user_headers("tenant-a", "user-a"),
+    )
+    activities = workspace_store.list_activities(
+        "11111111-1111-4111-8111-111111111111"
+    )
+
+    assert created.status_code == 200
+    assert repeated.json() == created.json()
+    assert created.json()["workspace_id"] == request_payload["workspace_id"]
+    assert created.json()["chat_document_id"] == (
+        "22222222-2222-4222-8222-222222222222"
+    )
+    assert len(cx_client.calls) == 1
+    assert [item["activity_type"] for item in activities] == [
+        "workspace.created",
+        "chat.interaction.started",
+        "chat.interaction.completed",
+    ]
+    assert "Summarize this workspace." not in str(activities)
+
+
+def test_workspace_bound_chat_rejects_owner_and_document_before_provider() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    chat_store = ChatInteractionStore()
+    cx_client = FakeCxClient()
+    register_chat_routes(app, store=chat_store, cx_client=cx_client)
+    attach_workspace(app)
+    client = TestClient(app)
+    base_payload = {
+        "workspace_id": "11111111-1111-4111-8111-111111111111",
+        "user_message": "Summarize this workspace.",
+    }
+
+    cross_owner = client.post(
+        "/api/v1/chat/interactions",
+        json=base_payload,
+        headers=user_headers("tenant-a", "user-b"),
+    )
+    wrong_document = client.post(
+        "/api/v1/chat/interactions",
+        json={**base_payload, "chat_document_id": "different-document"},
+        headers=user_headers("tenant-a", "user-a"),
+    )
+
+    assert cross_owner.status_code == 404
+    assert cross_owner.json()["error_code"] == "ae.workspace_not_found"
+    assert wrong_document.status_code == 409
+    assert wrong_document.json()["error_code"] == (
+        "ae.workspace_chat_document_mismatch"
+    )
+    assert cx_client.calls == []
+    assert chat_store.records == {}
+
+
+def test_workspace_bound_chat_persists_provider_failure_and_no_answer_activity() -> None:
+    failed_app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    failed_store = ChatInteractionStore()
+    register_chat_routes(
+        failed_app,
+        store=failed_store,
+        cx_client=RejectingCxClient(
+            error_code="mo.provider_timeout",
+            detail="Provider timed out with private detail.",
+            retryable=True,
+        ),
+    )
+    failed_workspace = attach_workspace(failed_app)
+    failed_response = TestClient(failed_app).post(
+        "/api/v1/chat/interactions",
+        json={
+            "interaction_id": "workspace-failed-001",
+            "workspace_id": "11111111-1111-4111-8111-111111111111",
+            "user_message": "Generate a grounded answer.",
+        },
+        headers=user_headers("tenant-a", "user-a"),
+    )
+
+    no_answer_app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    no_answer_store = ChatInteractionStore()
+    register_chat_routes(
+        no_answer_app,
+        store=no_answer_store,
+        cx_client=FakeCxClient(),
+        retrieval_client=FakeRetrievalClient(status="NO_ANSWER"),
+    )
+    no_answer_workspace = attach_workspace(no_answer_app)
+    no_answer_response = TestClient(no_answer_app).post(
+        "/api/v1/chat/interactions",
+        json={
+            "interaction_id": "workspace-no-answer-001",
+            "workspace_id": "11111111-1111-4111-8111-111111111111",
+            "user_message": "Find unavailable evidence.",
+            "retrieval": {"enabled": True},
+        },
+        headers=user_headers("tenant-a", "user-a"),
+    )
+
+    assert failed_response.status_code == 409
+    assert failed_store.get("workspace-failed-001")["status"] == "FAILED"
+    assert failed_store.get("workspace-failed-001")["failure"][
+        "raw_error_detail_included"
+    ] is False
+    assert failed_workspace.list_activities(
+        "11111111-1111-4111-8111-111111111111"
+    )[-1]["activity_type"] == "chat.interaction.failed"
+    assert no_answer_response.status_code == 200
+    assert no_answer_response.json()["status"] == "NO_ANSWER"
+    assert no_answer_workspace.list_activities(
+        "11111111-1111-4111-8111-111111111111"
+    )[-1]["activity_type"] == "chat.interaction.no_answer"
 
 
 def test_chat_artifact_link_route_attaches_and_lists_refs() -> None:
@@ -1644,7 +1813,15 @@ def test_chat_interaction_keeps_non_quality_generation_failure_as_problem() -> N
 
     assert response.status_code == 409
     assert response.json()["error_code"] == "mo.provider_timeout"
-    assert store.get("interaction-001") is None
+    failed = store.get("interaction-001")
+    assert failed["status"] == "FAILED"
+    assert failed["failure"] == {
+        "failure_schema_version": "ae_chat_execution_failure.v1",
+        "error_code": "mo.provider_timeout",
+        "failed_stage": "workspace_chat_orchestration",
+        "retryable": True,
+        "raw_error_detail_included": False,
+    }
 
 
 def test_chat_interaction_with_retrieval_disabled_skips_retrieval() -> None:
