@@ -1130,6 +1130,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1024`](slices/1024_ae_prompt_template_registry_postgresql_adapter.md) | `S103-003` Add a restart-safe SQLAlchemy adapter for AE prompt/template bindings and render events. |
 | [`Slice 1025`](slices/1025_ae_runtime_compatibility_policy_resolver.md) | `S103-004` Resolve exact versioned AE runtime policy and reject unsafe provider fields. |
 | [`Slice 1026`](slices/1026_ae_runtime_policy_inspection_api.md) | `S103-005` Expose protected policy resolution and privacy-safe prompt binding inspection. |
+| [`Slice 1027`](slices/1027_ae_generation_policy_package.md) | `S103-006` Compose deterministic owner-bound policy packages without raw prompt/evidence/provider runtime data. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
