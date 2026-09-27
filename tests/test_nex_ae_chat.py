@@ -35,7 +35,12 @@ from nex_ae_api.chat import (
     user_message_from_payload,
 )
 from nex_ae_api.retrieval import RetrievalInteractionError
-from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
+from nex_runtime import (
+    SERVICE_SPECS,
+    build_service_app,
+    issue_mock_service_token,
+    issue_mock_user_token,
+)
 
 
 class FakeCxClient:
@@ -211,6 +216,11 @@ def auth_headers() -> dict[str, str]:
     }
 
 
+def user_headers(tenant_id: str, user_id: str) -> dict[str, str]:
+    issued = issue_mock_user_token(tenant_id=tenant_id, user_id=user_id)
+    return {"Authorization": f"Bearer {issued.access_token}"}
+
+
 def build_test_client() -> tuple[TestClient, FakeCxClient, ChatInteractionStore]:
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
     store = ChatInteractionStore()
@@ -254,6 +264,7 @@ def sqlite_chat_session_factory():
                 CREATE TABLE ae_chat_interactions (
                     chat_interaction_id TEXT PRIMARY KEY,
                     interaction_schema_version TEXT NOT NULL,
+                    workspace_id TEXT,
                     tenant_id TEXT NOT NULL,
                     user_id TEXT NOT NULL,
                     chat_document_id TEXT NOT NULL,
@@ -435,6 +446,76 @@ def test_chat_interaction_can_be_read_back() -> None:
     assert response.json()["interaction_id"] == created["interaction_id"]
 
 
+def test_browser_chat_routes_derive_owner_and_hide_cross_owner_records() -> None:
+    client, _, store = build_test_client()
+    owner = user_headers("tenant-a", "user-a")
+    other = user_headers("tenant-a", "user-b")
+    created = client.post(
+        "/api/v1/chat/interactions",
+        json={
+            "interaction_id": "browser-interaction-001",
+            "workspace_id": "11111111-1111-4111-8111-111111111111",
+            "chat_document_id": "browser-chat-001",
+            "user_message": "Summarize the workspace.",
+        },
+        headers=owner,
+    )
+    record = created.json()
+
+    assert created.status_code == 200
+    assert record["tenant_id"] == "tenant-a"
+    assert record["user_id"] == "user-a"
+    assert record["owner_user_id"] == "user-a"
+    assert record["workspace_id"] == "11111111-1111-4111-8111-111111111111"
+    assert store.get_for_owner(
+        record["interaction_id"],
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    ) == record
+    assert store.get_for_owner(
+        record["interaction_id"],
+        tenant_id="tenant-a",
+        owner_user_id="user-b",
+    ) is None
+    assert client.get(
+        f"/api/v1/chat/interactions/{record['interaction_id']}", headers=owner
+    ).status_code == 200
+    assert client.get(
+        f"/api/v1/chat/interactions/{record['interaction_id']}", headers=other
+    ).status_code == 404
+    assert client.get(
+        f"/api/v1/chat/interactions/{record['interaction_id']}/artifact-links",
+        headers=other,
+    ).status_code == 404
+    assert client.post(
+        f"/api/v1/chat/interactions/{record['interaction_id']}/artifact-links",
+        json={
+            "artifact": sample_artifact_record(
+                chat_document_id="browser-chat-001",
+                interaction_id="browser-interaction-001",
+            )
+        },
+        headers=other,
+    ).status_code == 404
+
+
+def test_browser_chat_route_rejects_payload_owner_mismatch() -> None:
+    client, _, _ = build_test_client()
+
+    response = client.post(
+        "/api/v1/chat/interactions",
+        json={
+            "user_message": "hello",
+            "tenant_id": "tenant-a",
+            "user_id": "user-b",
+        },
+        headers=user_headers("tenant-a", "user-a"),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error_code"] == "ae.browser_owner_scope_mismatch"
+
+
 def test_chat_artifact_link_route_attaches_and_lists_refs() -> None:
     client, _, store = build_test_client()
     created = client.post(
@@ -515,6 +596,7 @@ def test_sqlalchemy_chat_store_persists_interaction_and_artifact_refs() -> None:
     record = build_chat_interaction_record(
         source_payload={
             "interaction_id": interaction_id,
+            "workspace_id": "11111111-1111-4111-8111-111111111111",
             "chat_document_id": chat_document_id,
             "tenant_id": "tenant-a",
             "user_id": "user-a",
@@ -574,6 +656,8 @@ def test_sqlalchemy_chat_store_persists_interaction_and_artifact_refs() -> None:
     assert attached is not None
     assert attached["tenant_id"] == "tenant-a"
     assert attached["user_id"] == "user-a"
+    assert attached["owner_user_id"] == "user-a"
+    assert attached["workspace_id"] == "11111111-1111-4111-8111-111111111111"
     assert attached["generation"]["usage"] == {"total_tokens": 5}
     assert attached["artifact_refs"] == [artifact_ref]
     assert repeated == attached
@@ -582,6 +666,16 @@ def test_sqlalchemy_chat_store_persists_interaction_and_artifact_refs() -> None:
         artifact_ref,
         artifact_ref_new_version,
     ]
+    assert store.get_for_owner(
+        interaction_id,
+        tenant_id="tenant-a",
+        owner_user_id="user-a",
+    )["workspace_id"] == "11111111-1111-4111-8111-111111111111"
+    assert store.get_for_owner(
+        interaction_id,
+        tenant_id="tenant-a",
+        owner_user_id="user-b",
+    ) is None
 
 
 def test_sqlalchemy_chat_store_persists_failed_record_and_missing_attach() -> None:
@@ -678,6 +772,7 @@ def test_chat_routes_use_sqlalchemy_default_store_when_persistence_attached() ->
     )
 
     assert created.status_code == 200
+    assert isinstance(app.state.ae_chat_store, SqlAlchemyChatInteractionStore)
     assert build_default_chat_store(app).__class__ is SqlAlchemyChatInteractionStore
     assert attached.status_code == 200
     assert len(attached.json()["artifact_refs"]) == 1

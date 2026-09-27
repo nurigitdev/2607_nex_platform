@@ -1103,3 +1103,8 @@ Artifact library management:
   detail or activity reads are collapsed to the same not-found response as a
   missing workspace. The S101 live audits now record this completed hardening
   while continuing to track the remaining chat and artifact authorization gaps.
+- Slice 1017 wires chat routes to the same facade authorization, derives browser
+  ownership from OA claims, hides cross-owner interactions and artifact links,
+  and persists the nullable workspace lineage through SQLAlchemy. Owner-filtered
+  SQL reads keep unauthorized rows outside the API read model while legacy
+  service calls retain their local compatibility defaults.

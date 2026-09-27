@@ -51,6 +51,7 @@ def sqlite_chat_session_factory():
                 CREATE TABLE ae_chat_interactions (
                     chat_interaction_id TEXT PRIMARY KEY,
                     interaction_schema_version TEXT NOT NULL,
+                    workspace_id TEXT,
                     tenant_id TEXT NOT NULL,
                     user_id TEXT NOT NULL,
                     chat_document_id TEXT NOT NULL,

@@ -20,9 +20,9 @@ def test_repository_auth_ownership_privacy_audit_tracks_remaining_gaps() -> None
     assert result["issues"] == []
     assert result["summary"] == {
         "surface_count": 10,
-        "hardened_count": 8,
-        "refactor_count": 2,
-        "high_risk_count": 2,
+        "hardened_count": 9,
+        "refactor_count": 1,
+        "high_risk_count": 1,
         "evidence_issue_count": 0,
     }
     assert result["decision"]["new_table_required"] is False
@@ -38,7 +38,6 @@ def test_high_risk_refactors_are_exact_and_owner_related() -> None:
     }
 
     assert set(high_risk) == {
-        "chat_routes",
         "artifact_file_delivery_routes",
     }
     assert all(item["status"] == "REFACTOR_REQUIRED" for item in high_risk.values())
@@ -90,10 +89,10 @@ def test_runner_summary_json_and_failure_paths(monkeypatch, capsys) -> None:
     passing = runner.run_ae_auth_ownership_privacy_audit()
 
     assert "audit=pass" in runner.summary_line(passing)
-    assert "high_risk=2" in runner.summary_line(passing)
+    assert "high_risk=1" in runner.summary_line(passing)
     monkeypatch.setattr(runner, "run_ae_auth_ownership_privacy_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0
-    assert "hardened=8" in capsys.readouterr().out
+    assert "hardened=9" in capsys.readouterr().out
     assert runner.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
 

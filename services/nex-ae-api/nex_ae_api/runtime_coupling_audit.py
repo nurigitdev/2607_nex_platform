@@ -133,7 +133,7 @@ def build_ae_runtime_coupling_audit(
         "all_large_modules_classified": all(
             item["over_budget"] for item in module_results
         ),
-        "duplicated_authorization_measured": helper_count >= 7,
+        "duplicated_authorization_measured": helper_count >= 6,
         "good_boundaries_preserved": sum(
             item["disposition"] == "GOOD_BOUNDARY" for item in finding_results
         )

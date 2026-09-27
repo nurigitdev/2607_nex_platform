@@ -16,12 +16,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
     issue_mock_service_token,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
 )
 from nex_ae_api.retrieval import (
     CxRetrievalClient,
@@ -35,6 +33,16 @@ from nex_ae_api.analytics import (
     PromptAnalyticsStore,
     owner_scope_from_payload,
     record_chat_prompt_analytics,
+)
+from nex_ae_api.route_auth import (
+    AeFacadeRouteAuthContext,
+    authorize_ae_facade_route_request,
+)
+from nex_ae_api.workspace_chat_auth import (
+    WorkspaceChatOwnerError,
+    browser_owner_scope,
+    owner_scoped_payload,
+    record_matches_owner,
 )
 
 AE_CHAT_RETRIEVAL_QUALITY_WARNING_CONTRACT_VERSION = (
@@ -128,6 +136,23 @@ class ChatInteractionStore:
     def get(self, interaction_id: str) -> dict[str, Any] | None:
         return self.records.get(interaction_id)
 
+    def get_for_owner(
+        self,
+        interaction_id: str,
+        *,
+        tenant_id: str,
+        owner_user_id: str,
+    ) -> dict[str, Any] | None:
+        record = self.get(interaction_id)
+        if record is None:
+            return None
+        if (
+            record.get("tenant_id") != tenant_id
+            or record.get("user_id") != owner_user_id
+        ):
+            return None
+        return record
+
     def attach_artifact_ref(
         self,
         *,
@@ -172,6 +197,29 @@ class SqlAlchemyChatInteractionStore:
         try:
             with self._session_factory() as session:
                 return _load_chat_interaction_record(session, interaction_id)
+        except SQLAlchemyError as exc:
+            raise ChatInteractionError(
+                status_code=503,
+                error_code="ae.chat_store_unavailable",
+                detail="AE chat interaction store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def get_for_owner(
+        self,
+        interaction_id: str,
+        *,
+        tenant_id: str,
+        owner_user_id: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return _load_chat_interaction_record(
+                    session,
+                    interaction_id,
+                    tenant_id=tenant_id,
+                    owner_user_id=owner_user_id,
+                )
         except SQLAlchemyError as exc:
             raise ChatInteractionError(
                 status_code=503,
@@ -277,6 +325,7 @@ def register_chat_routes(
     analytics_store: PromptAnalyticsStore | None = None,
 ) -> None:
     chat_store = store or build_default_chat_store(app)
+    app.state.ae_chat_store = chat_store
     client = cx_client or build_default_cx_client()
     retrieval = retrieval_client or build_default_cx_retrieval_client()
 
@@ -286,13 +335,14 @@ def register_chat_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
         request_id = request_id_from_headers(request)
         trace_id = payload.get("trace_id") or trace_id_from_headers(request)
         try:
+            payload = _owner_scoped_chat_payload(payload, auth_context)
             if analytics_store is not None:
                 owner_scope_from_payload(payload)
             retrieval_package = None
@@ -391,6 +441,8 @@ def register_chat_routes(
             )
         except ChatInteractionError as exc:
             return _chat_problem_response(request, exc)
+        except WorkspaceChatOwnerError as exc:
+            return _chat_problem_response(request, exc)
 
     @app.get("/api/v1/chat/interactions/{interaction_id}", response_model=None)
     def get_chat_interaction(
@@ -398,11 +450,14 @@ def register_chat_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
-        record = chat_store.get(interaction_id)
+        try:
+            record = _get_visible_chat_record(chat_store, interaction_id, auth_context)
+        except ChatInteractionError as exc:
+            return _chat_problem_response(request, exc)
         if record is None:
             return _chat_problem_response(
                 request,
@@ -424,12 +479,12 @@ def register_chat_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
         try:
-            record = chat_store.get(interaction_id)
+            record = _get_visible_chat_record(chat_store, interaction_id, auth_context)
             if record is None:
                 raise ChatInteractionError(
                     status_code=404,
@@ -467,11 +522,14 @@ def register_chat_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
-        record = chat_store.get(interaction_id)
+        try:
+            record = _get_visible_chat_record(chat_store, interaction_id, auth_context)
+        except ChatInteractionError as exc:
+            return _chat_problem_response(request, exc)
         if record is None:
             return _chat_problem_response(
                 request,
@@ -562,9 +620,11 @@ def build_chat_interaction_record(
     return {
         "interaction_schema_version": "ae_chat_interaction.v1",
         "interaction_id": cx_payload["client_request_id"],
+        "workspace_id": _optional_text(source_payload.get("workspace_id")),
         "chat_document_id": cx_payload["metadata"]["chat_document_id"],
         "tenant_id": tenant_id,
         "user_id": user_id,
+        "owner_user_id": user_id,
         "status": "COMPLETED",
         "trace_id": trace_id,
         "request_id": request_id,
@@ -602,9 +662,11 @@ def build_no_answer_chat_interaction_record(
     return {
         "interaction_schema_version": "ae_chat_interaction.v1",
         "interaction_id": retrieval_payload["metadata"]["ae_retrieval_interaction_id"],
+        "workspace_id": _optional_text(source_payload.get("workspace_id")),
         "chat_document_id": retrieval_payload["metadata"]["chat_document_id"],
         "tenant_id": tenant_id,
         "user_id": user_id,
+        "owner_user_id": user_id,
         "status": "NO_ANSWER",
         "trace_id": trace_id,
         "request_id": request_id,
@@ -635,9 +697,11 @@ def build_generation_quality_rejected_chat_interaction_record(
     return {
         "interaction_schema_version": "ae_chat_interaction.v1",
         "interaction_id": cx_payload["client_request_id"],
+        "workspace_id": _optional_text(source_payload.get("workspace_id")),
         "chat_document_id": cx_payload["metadata"]["chat_document_id"],
         "tenant_id": tenant_id,
         "user_id": user_id,
+        "owner_user_id": user_id,
         "status": "FAILED",
         "trace_id": trace_id,
         "request_id": request_id,
@@ -1183,11 +1247,19 @@ def _persist_chat_interaction_record(
 def _load_chat_interaction_record(
     session: Session,
     interaction_id: str,
+    *,
+    tenant_id: str | None = None,
+    owner_user_id: str | None = None,
 ) -> dict[str, Any] | None:
+    where_clause = "chat_interaction_id = :interaction_id"
+    params = {"interaction_id": interaction_id}
+    if tenant_id is not None and owner_user_id is not None:
+        where_clause += " AND tenant_id = :tenant_id AND user_id = :owner_user_id"
+        params.update({"tenant_id": tenant_id, "owner_user_id": owner_user_id})
     row = (
         session.execute(
-            text(_chat_interaction_select_sql("chat_interaction_id = :interaction_id")),
-            {"interaction_id": interaction_id},
+            text(_chat_interaction_select_sql(where_clause)),
+            params,
         )
         .mappings()
         .first()
@@ -1231,6 +1303,7 @@ def _chat_interaction_upsert_sql(dialect_name: str) -> str:
         INSERT INTO ae_chat_interactions (
             chat_interaction_id,
             interaction_schema_version,
+            workspace_id,
             tenant_id,
             user_id,
             chat_document_id,
@@ -1252,6 +1325,7 @@ def _chat_interaction_upsert_sql(dialect_name: str) -> str:
         VALUES (
             :interaction_id,
             :interaction_schema_version,
+            :workspace_id,
             :tenant_id,
             :user_id,
             :chat_document_id,
@@ -1272,6 +1346,7 @@ def _chat_interaction_upsert_sql(dialect_name: str) -> str:
         )
         ON CONFLICT (chat_interaction_id) DO UPDATE SET
             interaction_schema_version = excluded.interaction_schema_version,
+            workspace_id = excluded.workspace_id,
             tenant_id = excluded.tenant_id,
             user_id = excluded.user_id,
             chat_document_id = excluded.chat_document_id,
@@ -1296,6 +1371,7 @@ def _chat_interaction_select_sql(where_clause: str) -> str:
         SELECT
             interaction_schema_version,
             chat_interaction_id,
+            workspace_id,
             tenant_id,
             user_id,
             chat_document_id,
@@ -1392,6 +1468,7 @@ def _chat_interaction_params(record: dict[str, Any]) -> dict[str, Any]:
             "ae_chat_interaction.v1",
         ),
         "interaction_id": record["interaction_id"],
+        "workspace_id": record.get("workspace_id"),
         "tenant_id": record.get("tenant_id") or DEFAULT_TENANT_ID,
         "user_id": record.get("user_id") or DEFAULT_USER_ID,
         "chat_document_id": record["chat_document_id"],
@@ -1474,9 +1551,13 @@ def _chat_interaction_from_row(
     record = {
         "interaction_schema_version": data["interaction_schema_version"],
         "interaction_id": str(data["chat_interaction_id"]),
+        "workspace_id": (
+            str(data["workspace_id"]) if data.get("workspace_id") is not None else None
+        ),
         "chat_document_id": str(data["chat_document_id"]),
         "tenant_id": data["tenant_id"],
         "user_id": data["user_id"],
+        "owner_user_id": data["user_id"],
         "status": data["status"],
         "trace_id": data["trace_id"],
         "request_id": data["request_id"],
@@ -1548,31 +1629,48 @@ def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def _authorize_ae_request(
-    request: Request,
-    authorization: str | None,
-) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-ae-api",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
+def _owner_scoped_chat_payload(
+    payload: dict[str, Any],
+    auth_context: AeFacadeRouteAuthContext,
+) -> dict[str, Any]:
+    if auth_context.browser_context is not None:
+        return owner_scoped_payload(payload, auth_context)[0]
+    explicit_tenant = isinstance(payload.get("tenant_id"), str) and bool(
+        payload["tenant_id"].strip()
     )
-    if result.ok:
-        return None
+    explicit_owner = any(
+        isinstance(payload.get(key), str) and bool(payload[key].strip())
+        for key in ("owner_user_id", "user_id")
+    )
+    if isinstance(payload.get("ownership_ref"), dict) or (
+        explicit_tenant and explicit_owner
+    ):
+        return owner_scoped_payload(payload, auth_context)[0]
+    return dict(payload)
 
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "AE API requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
+
+def _get_visible_chat_record(
+    store: Any,
+    interaction_id: str,
+    auth_context: AeFacadeRouteAuthContext,
+) -> dict[str, Any] | None:
+    scope = browser_owner_scope(auth_context)
+    if scope is None:
+        return store.get(interaction_id)
+    get_for_owner = getattr(store, "get_for_owner", None)
+    if callable(get_for_owner):
+        return get_for_owner(
+            interaction_id,
+            tenant_id=scope.tenant_id,
+            owner_user_id=scope.owner_user_id,
+        )
+    record = store.get(interaction_id)
+    return record if record is not None and record_matches_owner(record, scope) else None
 
 
 def _chat_problem_response(
     request: Request,
-    exc: ChatInteractionError,
+    exc: ChatInteractionError | WorkspaceChatOwnerError,
 ) -> JSONResponse:
     return problem_response(
         request,
@@ -1580,7 +1678,7 @@ def _chat_problem_response(
         error_code=exc.error_code,
         title="Chat interaction failed",
         detail=exc.detail,
-        retryable=exc.retryable,
+        retryable=getattr(exc, "retryable", False),
         type_uri="https://nex-platform.local/problems/chat-interaction-failed",
     )
 
