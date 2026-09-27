@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from nex_runtime.prompts import PromptRegistryStore, PromptSeed, seed_prompt_registry
 
 
@@ -79,9 +81,22 @@ AE_PROMPT_SEEDS = [
 
 
 def seed_ae_prompt_registry(
-    store: PromptRegistryStore = DEFAULT_AE_PROMPT_STORE,
+    store: Any = DEFAULT_AE_PROMPT_STORE,
 ) -> list[dict[str, object]]:
     return seed_prompt_registry(store, AE_PROMPT_SEEDS)
+
+
+def build_default_ae_prompt_store(app: Any) -> Any:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is None:
+        return DEFAULT_AE_PROMPT_STORE
+
+    from nex_ae_api.prompt_persistence import SqlAlchemyAePromptRegistryStore
+
+    store = SqlAlchemyAePromptRegistryStore(session_factory)
+    seed_ae_prompt_registry(store)
+    return store
 
 
 seed_ae_prompt_registry()
