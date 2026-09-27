@@ -32,6 +32,7 @@ from nex_ae_api.workspace import register_workspace_routes
 SERVICE_SPEC = SERVICE_SPECS["nex-ae-api"]
 app = build_service_app(SERVICE_SPEC)
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
+AE_PROMPT_STORE = build_default_ae_prompt_store(app)
 register_service_job_control_routes(
     app,
     service_id=SERVICE_SPEC.service_id,
@@ -50,13 +51,16 @@ register_artifact_handoff_routes(app)
 register_generation_compatibility_routes(app, expected_audience="nex-ae-api")
 register_generation_recovery_policy_routes(app, expected_audience="nex-ae-api")
 register_generation_recovery_request_routes(app)
-register_chat_routes(app, analytics_store=DEFAULT_PROMPT_ANALYTICS_STORE)
+register_chat_routes(
+    app,
+    analytics_store=DEFAULT_PROMPT_ANALYTICS_STORE,
+    prompt_store=AE_PROMPT_STORE,
+)
 register_generation_feedback_routes(app)
 register_repaired_response_handoff_routes(app)
 register_repaired_response_decision_routes(app)
 register_retrieval_routes(app)
 register_prompt_analytics_routes(app, store=DEFAULT_PROMPT_ANALYTICS_STORE)
-AE_PROMPT_STORE = build_default_ae_prompt_store(app)
 register_prompt_registry_routes(
     app,
     store=AE_PROMPT_STORE,

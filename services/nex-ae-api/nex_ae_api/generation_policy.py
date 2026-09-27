@@ -28,12 +28,19 @@ def build_generation_policy_package(
     *,
     runtime_policy: Mapping[str, Any],
     prompt_binding: Mapping[str, Any],
+    prompt_render_event: Mapping[str, Any] | None = None,
     retrieval_package: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     user_message = _required_text(source_payload.get("user_message"), "user_message")
     _reject_provider_runtime(source_payload.get("generation"))
     _validate_runtime_policy(runtime_policy)
     prompt_ref = _validate_prompt_binding(runtime_policy, prompt_binding)
+    if prompt_render_event is not None:
+        prompt_ref["render_event_ref"] = _prompt_render_event_ref(
+            prompt_binding,
+            prompt_render_event,
+            user_message=user_message,
+        )
     retrieval_ref, selected_ids = _retrieval_policy(
         source_payload,
         runtime_policy=runtime_policy,
@@ -151,6 +158,45 @@ def _validate_prompt_binding(
         "content_sha256": _sha256_value(
             prompt_binding.get("content_sha256"), "content_sha256"
         ),
+    }
+
+
+def _prompt_render_event_ref(
+    prompt_binding: Mapping[str, Any],
+    prompt_render_event: Mapping[str, Any],
+    *,
+    user_message: str,
+) -> dict[str, Any]:
+    if (
+        prompt_render_event.get("prompt_binding_id")
+        != prompt_binding.get("prompt_binding_id")
+        or prompt_render_event.get("prompt_template_version_id")
+        != prompt_binding.get("prompt_template_version_id")
+    ):
+        raise GenerationPolicyPackageError(
+            409,
+            "ae.generation_policy_render_event_mismatch",
+            "Prompt render event does not match the resolved prompt binding.",
+        )
+    user_prompt_hash = _sha256_value(
+        prompt_render_event.get("user_prompt_hash"), "user_prompt_hash"
+    )
+    if user_prompt_hash != _sha256_text(user_message):
+        raise GenerationPolicyPackageError(
+            409,
+            "ae.generation_policy_user_prompt_hash_mismatch",
+            "Prompt render event does not match the user message hash.",
+        )
+    return {
+        "prompt_render_event_id": _required_text(
+            prompt_render_event.get("prompt_render_event_id"),
+            "prompt_render_event_id",
+        ),
+        "rendered_prompt_hash": _sha256_value(
+            prompt_render_event.get("rendered_prompt_hash"),
+            "rendered_prompt_hash",
+        ),
+        "user_prompt_hash": user_prompt_hash,
     }
 
 

@@ -1131,6 +1131,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1025`](slices/1025_ae_runtime_compatibility_policy_resolver.md) | `S103-004` Resolve exact versioned AE runtime policy and reject unsafe provider fields. |
 | [`Slice 1026`](slices/1026_ae_runtime_policy_inspection_api.md) | `S103-005` Expose protected policy resolution and privacy-safe prompt binding inspection. |
 | [`Slice 1027`](slices/1027_ae_generation_policy_package.md) | `S103-006` Compose deterministic owner-bound policy packages without raw prompt/evidence/provider runtime data. |
+| [`Slice 1028`](slices/1028_ae_chat_runtime_policy_orchestration.md) | `S103-007` Wire exact policy, prompt render lineage, CX package, and durable chat policy snapshots. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

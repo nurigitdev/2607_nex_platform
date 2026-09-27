@@ -45,10 +45,36 @@ class DeterministicCxClient:
         }
 
 
+class DeterministicRetrievalClient:
+    def create_retrieval_context(self, payload, *, request_id, trace_id):
+        return {
+            "retrieval_package_id": "retrieval-1017",
+            "package_hash": "b" * 64,
+            "status": "READY",
+            "purpose": payload["purpose"],
+            "evidence_items": [
+                {
+                    "evidence_id": "evidence-1017",
+                    "citation_label": "[1]",
+                    "text": "deterministic private evidence",
+                    "quality_flags": [],
+                }
+            ],
+            "score_summary": {"best_score": 0.9, "confidence_bucket": "HIGH"},
+            "warnings": [],
+            "no_answer_reason": None,
+        }
+
+
 def run_owner_scoped_chat_api_smoke() -> dict[str, Any]:
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
     store = ChatInteractionStore()
-    register_chat_routes(app, store=store, cx_client=DeterministicCxClient())
+    register_chat_routes(
+        app,
+        store=store,
+        cx_client=DeterministicCxClient(),
+        retrieval_client=DeterministicRetrievalClient(),
+    )
     workspace_store = WorkspaceStateStore()
     workspace_store.create_workspace(
         payload={

@@ -70,6 +70,7 @@ class FakeRetrievalClient:
             "purpose": payload["purpose"],
             "evidence_items": [
                 {
+                    "evidence_id": "evidence-analytics-001",
                     "citation_label": "[1]",
                     "text": "Trace evidence from CX.",
                 }
@@ -249,6 +250,7 @@ def test_chat_route_records_prompt_analytics_for_completed_interaction() -> None
         app,
         store=ChatInteractionStore(),
         cx_client=FakeCxClient(),
+        retrieval_client=FakeRetrievalClient(),
         analytics_store=analytics_store,
     )
     client = TestClient(app)

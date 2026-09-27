@@ -23,6 +23,14 @@ from nex_runtime import (
     request_id_from_headers,
     trace_id_from_headers,
 )
+from nex_runtime.prompts import PromptRegistryError, render_prompt_from_binding
+from nex_ae_api.generation_policy import (
+    GenerationPolicyPackageError,
+    build_generation_policy_package,
+)
+from nex_ae_api.intent_policy import IntentPolicyError
+from nex_ae_api.prompt_persistence import PromptRepositoryError
+from nex_ae_api.prompts import DEFAULT_AE_PROMPT_STORE
 from nex_ae_api.retrieval import (
     CxRetrievalClient,
     HttpCxRetrievalClient,
@@ -39,6 +47,11 @@ from nex_ae_api.analytics import (
 from nex_ae_api.route_auth import (
     AeFacadeRouteAuthContext,
     authorize_ae_facade_route_request,
+)
+from nex_ae_api.runtime_policy import RuntimePolicyError, resolve_runtime_policy
+from nex_ae_api.runtime_policy_api import (
+    RuntimePolicyApiError,
+    resolve_safe_prompt_binding,
 )
 from nex_ae_api.workspace_chat_auth import (
     WorkspaceChatOwnerError,
@@ -334,11 +347,17 @@ def register_chat_routes(
     retrieval_client: CxRetrievalClient | None = None,
     analytics_store: PromptAnalyticsStore | None = None,
     event_emitter: OperationalEventEmitter | None = None,
+    prompt_store: Any | None = None,
 ) -> None:
     chat_store = store or build_default_chat_store(app)
     app.state.ae_chat_store = chat_store
     client = cx_client or build_default_cx_client()
     retrieval = retrieval_client or build_default_cx_retrieval_client()
+    prompts = (
+        prompt_store
+        or getattr(app.state, "ae_prompt_store", None)
+        or DEFAULT_AE_PROMPT_STORE
+    )
     emitter = event_emitter or operational_event_emitter_from_app(
         app,
         service_id="nex-ae-api",
@@ -363,7 +382,6 @@ def register_chat_routes(
             payload = _owner_scoped_chat_payload(payload, auth_context)
             if analytics_store is not None:
                 owner_scope_from_payload(payload)
-            retrieval_enabled = should_use_retrieval(payload)
             binding = bind_workspace_chat_request(
                 payload,
                 trace_id=trace_id,
@@ -374,11 +392,37 @@ def register_chat_routes(
             if existing is not None:
                 return existing
 
-            cx_payload = build_cx_generation_payload(payload, trace_id=trace_id)
+            runtime_policy = resolve_runtime_policy(payload)
+            prompt_binding = resolve_safe_prompt_binding(
+                prompts,
+                binding_key=runtime_policy["prompt_contract_ref"][
+                    "prompt_binding_key"
+                ],
+                prompt_version=runtime_policy["prompt_contract_ref"]["prompt_version"],
+            )
+            prompt_render_event = render_prompt_from_binding(
+                prompts,
+                binding_key=prompt_binding["binding_key"],
+                variables={},
+                request_id=request_id,
+                trace_id=trace_id,
+                user_prompt=user_message_from_payload(payload),
+            )["render_event"]
+            retrieval_enabled = runtime_policy["intent_decision"][
+                "retrieval_required"
+            ]
+            cx_payload = build_cx_generation_payload(
+                payload,
+                trace_id=trace_id,
+                runtime_policy=runtime_policy,
+            )
             pending_record = chat_store.save(
                 build_pending_chat_interaction_record(
                     source_payload=payload,
                     cx_payload=cx_payload,
+                    runtime_policy=runtime_policy,
+                    prompt_binding=prompt_binding,
+                    prompt_render_event=prompt_render_event,
                     request_id=request_id,
                     trace_id=trace_id,
                 )
@@ -407,6 +451,9 @@ def register_chat_routes(
                                 source_payload=payload,
                                 retrieval_payload=retrieval_payload,
                                 retrieval_package=retrieval_package,
+                                runtime_policy=runtime_policy,
+                                prompt_binding=prompt_binding,
+                                prompt_render_event=prompt_render_event,
                                 request_id=request_id,
                                 trace_id=trace_id,
                             ),
@@ -435,6 +482,17 @@ def register_chat_routes(
                     cx_payload,
                     retrieval_package,
                 )
+            policy_package = build_generation_policy_package(
+                payload,
+                runtime_policy=runtime_policy,
+                prompt_binding=prompt_binding,
+                prompt_render_event=prompt_render_event,
+                retrieval_package=retrieval_package,
+            )
+            cx_payload = attach_generation_policy_package(
+                cx_payload,
+                policy_package,
+            )
             try:
                 cx_record = client.create_generation(
                     cx_payload,
@@ -450,6 +508,10 @@ def register_chat_routes(
                                 cx_payload=cx_payload,
                                 retrieval_package=retrieval_package,
                                 failure=exc,
+                                runtime_policy=runtime_policy,
+                                prompt_binding=prompt_binding,
+                                prompt_render_event=prompt_render_event,
+                                policy_package=policy_package,
                                 request_id=request_id,
                                 trace_id=trace_id,
                             ),
@@ -480,6 +542,10 @@ def register_chat_routes(
                         cx_payload=cx_payload,
                         cx_record=cx_record,
                         retrieval_package=retrieval_package,
+                        runtime_policy=runtime_policy,
+                        prompt_binding=prompt_binding,
+                        prompt_render_event=prompt_render_event,
+                        policy_package=policy_package,
                         request_id=request_id,
                         trace_id=trace_id,
                     ),
@@ -522,6 +588,26 @@ def register_chat_routes(
                 request,
                 chat_error,
             )
+        except (
+            IntentPolicyError,
+            RuntimePolicyError,
+            RuntimePolicyApiError,
+            GenerationPolicyPackageError,
+            PromptRegistryError,
+            PromptRepositoryError,
+        ) as exc:
+            chat_error = _policy_error_to_chat(exc)
+            _persist_failed_chat_attempt(
+                chat_store=chat_store,
+                workspace_store=workspace_store,
+                binding=binding,
+                pending_record=pending_record,
+                failure=chat_error,
+                request_id=request_id,
+                trace_id=trace_id,
+                event_emitter=emitter,
+            )
+            return _chat_problem_response(request, chat_error)
         except RetrievalInteractionError as exc:
             chat_error = ChatInteractionError(
                 status_code=exc.status_code,
@@ -676,6 +762,7 @@ def build_cx_generation_payload(
     source_payload: dict[str, Any],
     *,
     trace_id: str,
+    runtime_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     user_message = user_message_from_payload(source_payload)
     message_hash = sha256_text(user_message)
@@ -695,6 +782,11 @@ def build_cx_generation_payload(
         )
 
     tenant_id, subject_id = chat_owner_scope_from_payload(source_payload)
+    resolved_intent = (runtime_policy or {}).get("intent_decision", {})
+    resolved_parameters = (runtime_policy or {}).get("generation_parameters", {})
+    resolved_template = (runtime_policy or {}).get("template_ref", {})
+    resolved_prompt = (runtime_policy or {}).get("prompt_contract_ref", {})
+    resolved_output = (runtime_policy or {}).get("output_contract", {})
     return {
         "trace_id": trace_id,
         "client_request_id": interaction_id,
@@ -703,30 +795,54 @@ def build_cx_generation_payload(
             "tenant_ref": {"type": "oa.tenant", "id": tenant_id},
             "owner_subject_ref": {"type": "oa.user", "id": subject_id},
         },
-        "execution_mode": generation.get(
+        "execution_mode": resolved_intent.get(
             "execution_mode",
-            "GROUNDED_ANSWER" if retrieval_enabled else "GENERAL_ANSWER",
+            generation.get(
+                "execution_mode",
+                "GROUNDED_ANSWER" if retrieval_enabled else "GENERAL_ANSWER",
+            ),
         ),
-        "template_id": generation.get("template_id", "none"),
-        "prompt_binding_id": generation.get(
+        "template_id": resolved_template.get(
+            "template_id", generation.get("template_id", "none")
+        ),
+        "prompt_binding_id": resolved_prompt.get(
+            "prompt_binding_key",
+            generation.get(
             "prompt_binding_id",
             "ae.grounded_chat.default",
+            ),
         ),
-        "output_contract_id": generation.get("output_contract_id", "text_answer_v1"),
+        "output_contract_id": resolved_output.get(
+            "output_contract_id",
+            generation.get("output_contract_id", "text_answer_v1"),
+        ),
         "alias": generation.get("alias", "general-llm-default"),
-        "provider_capability": generation.get("provider_capability", "generation"),
-        "generation_profile": generation.get(
+        "provider_capability": (runtime_policy or {}).get(
+            "provider_capability",
+            generation.get("provider_capability", "generation"),
+        ),
+        "generation_profile": (runtime_policy or {}).get(
             "generation_profile",
-            "grounded-answer" if retrieval_enabled else "general-answer",
+            generation.get(
+                "generation_profile",
+                "grounded-answer" if retrieval_enabled else "general-answer",
+            ),
         ),
         "messages": [{"role": "user", "content": user_message}],
         "response_format": generation.get("response_format", {"type": "text"}),
-        "max_output_tokens": generation.get("max_output_tokens", 256),
-        "temperature": generation.get("temperature", 0.0),
+        "max_output_tokens": resolved_parameters.get(
+            "max_output_tokens", generation.get("max_output_tokens", 256)
+        ),
+        "temperature": resolved_parameters.get(
+            "temperature", generation.get("temperature", 0.0)
+        ),
         "metadata": {
             "ae_interaction_id": interaction_id,
             "chat_document_id": chat_document_id,
             "user_message_hash": message_hash,
+            "policy_snapshot_hash": (runtime_policy or {}).get(
+                "policy_snapshot_hash"
+            ),
         },
     }
 
@@ -739,10 +855,31 @@ def build_chat_interaction_record(
     retrieval_package: dict[str, Any] | None = None,
     request_id: str,
     trace_id: str,
+    runtime_policy: dict[str, Any] | None = None,
+    prompt_binding: dict[str, Any] | None = None,
+    prompt_render_event: dict[str, Any] | None = None,
+    policy_package: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     user_message = user_message_from_payload(source_payload)
     tenant_id, user_id = chat_owner_scope_from_payload(source_payload)
     now = _utc_now()
+    generation = {
+        "alias": cx_record["alias"],
+        "provider_capability": cx_record["provider_capability"],
+        "mo_generation_id": cx_record["mo_generation_id"],
+        "finish_reason": cx_record["response_metadata"]["finish_reason"],
+        "output_preview": cx_record["response_metadata"]["output_preview"],
+        "usage": cx_record["usage"],
+        "grounded_response_quality": grounded_response_quality_contract(cx_record),
+    }
+    policy_summary = build_policy_generation_summary(
+        runtime_policy=runtime_policy,
+        prompt_binding=prompt_binding,
+        prompt_render_event=prompt_render_event,
+        policy_package=policy_package,
+    )
+    if policy_summary is not None:
+        generation["policy"] = policy_summary
     return {
         "interaction_schema_version": "ae_chat_interaction.v1",
         "interaction_id": cx_payload["client_request_id"],
@@ -758,15 +895,7 @@ def build_chat_interaction_record(
         "user_message_preview": user_message[:120],
         "cx_generation_id": cx_record["cx_generation_id"],
         "cx_status": cx_record["status"],
-        "generation": {
-            "alias": cx_record["alias"],
-            "provider_capability": cx_record["provider_capability"],
-            "mo_generation_id": cx_record["mo_generation_id"],
-            "finish_reason": cx_record["response_metadata"]["finish_reason"],
-            "output_preview": cx_record["response_metadata"]["output_preview"],
-            "usage": cx_record["usage"],
-            "grounded_response_quality": grounded_response_quality_contract(cx_record),
-        },
+        "generation": generation,
         "retrieval": retrieval_summary(retrieval_package),
         "artifact_refs": [],
         "created_at": now,
@@ -780,10 +909,18 @@ def build_pending_chat_interaction_record(
     cx_payload: dict[str, Any],
     request_id: str,
     trace_id: str,
+    runtime_policy: dict[str, Any] | None = None,
+    prompt_binding: dict[str, Any] | None = None,
+    prompt_render_event: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     user_message = user_message_from_payload(source_payload)
     tenant_id, user_id = chat_owner_scope_from_payload(source_payload)
     now = _utc_now()
+    policy_summary = build_policy_generation_summary(
+        runtime_policy=runtime_policy,
+        prompt_binding=prompt_binding,
+        prompt_render_event=prompt_render_event,
+    )
     return {
         "interaction_schema_version": "ae_chat_interaction.v1",
         "interaction_id": cx_payload["client_request_id"],
@@ -799,7 +936,7 @@ def build_pending_chat_interaction_record(
         "user_message_preview": user_message[:120],
         "cx_generation_id": None,
         "cx_status": "PENDING",
-        "generation": None,
+        "generation": {"policy": policy_summary} if policy_summary else None,
         "retrieval": None,
         "artifact_refs": [],
         "created_at": now,
@@ -815,7 +952,7 @@ def build_failed_chat_interaction_record(
         **pending_record,
         "status": "FAILED",
         "cx_status": "FAILED",
-        "generation": None,
+        "generation": pending_record.get("generation"),
         "failure": {
             "failure_schema_version": "ae_chat_execution_failure.v1",
             "error_code": failure.error_code,
@@ -841,10 +978,18 @@ def build_no_answer_chat_interaction_record(
     retrieval_package: dict[str, Any],
     request_id: str,
     trace_id: str,
+    runtime_policy: dict[str, Any] | None = None,
+    prompt_binding: dict[str, Any] | None = None,
+    prompt_render_event: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     user_message = user_message_from_payload(source_payload)
     tenant_id, user_id = chat_owner_scope_from_payload(source_payload)
     now = _utc_now()
+    policy_summary = build_policy_generation_summary(
+        runtime_policy=runtime_policy,
+        prompt_binding=prompt_binding,
+        prompt_render_event=prompt_render_event,
+    )
     return {
         "interaction_schema_version": "ae_chat_interaction.v1",
         "interaction_id": retrieval_payload["metadata"]["ae_retrieval_interaction_id"],
@@ -860,7 +1005,7 @@ def build_no_answer_chat_interaction_record(
         "user_message_preview": user_message[:120],
         "cx_generation_id": None,
         "cx_status": retrieval_package["status"],
-        "generation": None,
+        "generation": {"policy": policy_summary} if policy_summary else None,
         "retrieval": retrieval_summary(retrieval_package),
         "artifact_refs": [],
         "created_at": now,
@@ -876,10 +1021,20 @@ def build_generation_quality_rejected_chat_interaction_record(
     failure: ChatInteractionError,
     request_id: str,
     trace_id: str,
+    runtime_policy: dict[str, Any] | None = None,
+    prompt_binding: dict[str, Any] | None = None,
+    prompt_render_event: dict[str, Any] | None = None,
+    policy_package: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     user_message = user_message_from_payload(source_payload)
     tenant_id, user_id = chat_owner_scope_from_payload(source_payload)
     now = _utc_now()
+    policy_summary = build_policy_generation_summary(
+        runtime_policy=runtime_policy,
+        prompt_binding=prompt_binding,
+        prompt_render_event=prompt_render_event,
+        policy_package=policy_package,
+    )
     return {
         "interaction_schema_version": "ae_chat_interaction.v1",
         "interaction_id": cx_payload["client_request_id"],
@@ -895,7 +1050,7 @@ def build_generation_quality_rejected_chat_interaction_record(
         "user_message_preview": user_message[:120],
         "cx_generation_id": None,
         "cx_status": "FAILED",
-        "generation": None,
+        "generation": {"policy": policy_summary} if policy_summary else None,
         "failure": generation_quality_rejection_failure_summary(
             failure,
             retrieval_package,
@@ -904,6 +1059,39 @@ def build_generation_quality_rejected_chat_interaction_record(
         "artifact_refs": [],
         "created_at": now,
         "updated_at": now,
+    }
+
+
+def build_policy_generation_summary(
+    *,
+    runtime_policy: dict[str, Any] | None,
+    prompt_binding: dict[str, Any] | None,
+    prompt_render_event: dict[str, Any] | None,
+    policy_package: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    values = (runtime_policy, prompt_binding, prompt_render_event)
+    if all(value is None for value in values):
+        return None
+    if any(value is None for value in values):
+        raise ChatInteractionError(
+            status_code=500,
+            error_code="ae.runtime_policy_summary_incomplete",
+            detail="Runtime policy persistence summary is incomplete.",
+        )
+    return {
+        "policy_summary_schema_version": "ae_chat_runtime_policy_summary.v1",
+        "runtime_policy_snapshot": dict(runtime_policy),
+        "prompt_binding": dict(prompt_binding),
+        "prompt_render_event_ref": {
+            "prompt_render_event_id": prompt_render_event["prompt_render_event_id"],
+            "rendered_prompt_hash": prompt_render_event["rendered_prompt_hash"],
+            "user_prompt_hash": prompt_render_event["user_prompt_hash"],
+        },
+        "generation_policy_package": (
+            dict(policy_package) if policy_package is not None else None
+        ),
+        "raw_prompt_included": False,
+        "provider_runtime_included": False,
     }
 
 
@@ -1128,6 +1316,28 @@ def attach_retrieval_package_to_generation_payload(
             "retrieval_quality_flag_kinds": quality_warnings["quality_flag_kinds"],
             "retrieval_quality_recommended_action": quality_warnings[
                 "recommended_action"
+            ],
+        },
+    }
+
+
+def attach_generation_policy_package(
+    cx_payload: dict[str, Any],
+    policy_package: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        **cx_payload,
+        "generation_policy_package": policy_package,
+        "client_package_hash": policy_package["client_package_hash"],
+        "metadata": {
+            **cx_payload["metadata"],
+            "policy_snapshot_hash": policy_package["policy_snapshot_hash"],
+            "client_package_hash": policy_package["client_package_hash"],
+            "prompt_binding_key": policy_package["prompt_contract_ref"][
+                "prompt_binding_key"
+            ],
+            "prompt_version": policy_package["prompt_contract_ref"][
+                "prompt_version"
             ],
         },
     }
@@ -1885,6 +2095,15 @@ def _persist_failed_chat_attempt(
         )
     except WorkspaceChatOrchestrationError:
         pass
+
+
+def _policy_error_to_chat(exc: Any) -> ChatInteractionError:
+    return ChatInteractionError(
+        status_code=getattr(exc, "status_code", 503),
+        error_code=exc.error_code,
+        detail=exc.detail,
+        retryable=bool(getattr(exc, "retryable", False)),
+    )
 
 
 def _chat_problem_response(

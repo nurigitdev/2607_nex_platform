@@ -259,3 +259,43 @@ def test_package_hash_changes_with_owner_and_defaults_to_all_evidence() -> None:
 
     assert first["selected_evidence_ids"] == ["evidence-1", "evidence-2"]
     assert first["client_package_hash"] != second["client_package_hash"]
+
+
+def test_prompt_render_event_is_bound_and_mismatches_fail_closed() -> None:
+    source = {"user_message": "hello"}
+    policy, binding = resolved(source)
+    event = {
+        "prompt_render_event_id": "render-1028",
+        "prompt_binding_id": binding["prompt_binding_id"],
+        "prompt_template_version_id": binding["prompt_template_version_id"],
+        "rendered_prompt_hash": binding["content_sha256"],
+        "user_prompt_hash": __import__("hashlib").sha256(b"hello").hexdigest(),
+    }
+    package = build_generation_policy_package(
+        source,
+        runtime_policy=policy,
+        prompt_binding=binding,
+        prompt_render_event=event,
+    )
+    assert package["prompt_contract_ref"]["render_event_ref"][
+        "prompt_render_event_id"
+    ] == "render-1028"
+
+    for changed, error_code in (
+        (
+            {**event, "prompt_binding_id": "other"},
+            "ae.generation_policy_render_event_mismatch",
+        ),
+        (
+            {**event, "user_prompt_hash": "a" * 64},
+            "ae.generation_policy_user_prompt_hash_mismatch",
+        ),
+    ):
+        with pytest.raises(GenerationPolicyPackageError) as raised:
+            build_generation_policy_package(
+                source,
+                runtime_policy=policy,
+                prompt_binding=binding,
+                prompt_render_event=changed,
+            )
+        assert raised.value.error_code == error_code

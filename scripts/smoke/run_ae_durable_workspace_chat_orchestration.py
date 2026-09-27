@@ -43,6 +43,27 @@ class CountingCxClient:
         }
 
 
+class DeterministicRetrievalClient:
+    def create_retrieval_context(self, payload, *, request_id, trace_id):
+        return {
+            "retrieval_package_id": "retrieval-1018",
+            "package_hash": "b" * 64,
+            "status": "READY",
+            "purpose": payload["purpose"],
+            "evidence_items": [
+                {
+                    "evidence_id": "evidence-1018",
+                    "citation_label": "[1]",
+                    "text": "deterministic private evidence",
+                    "quality_flags": [],
+                }
+            ],
+            "score_summary": {"best_score": 0.9, "confidence_bucket": "HIGH"},
+            "warnings": [],
+            "no_answer_reason": None,
+        }
+
+
 def run_durable_workspace_chat_orchestration_smoke() -> dict[str, Any]:
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
     workspace_store = WorkspaceStateStore()
@@ -59,7 +80,12 @@ def run_durable_workspace_chat_orchestration_smoke() -> dict[str, Any]:
     app.state.ae_workspace_store = workspace_store
     chat_store = ChatInteractionStore()
     cx_client = CountingCxClient()
-    register_chat_routes(app, store=chat_store, cx_client=cx_client)
+    register_chat_routes(
+        app,
+        store=chat_store,
+        cx_client=cx_client,
+        retrieval_client=DeterministicRetrievalClient(),
+    )
     client = TestClient(app)
     payload = {
         "interaction_id": "chat-interaction-1018",

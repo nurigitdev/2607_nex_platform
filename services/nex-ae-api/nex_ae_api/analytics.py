@@ -420,6 +420,11 @@ def record_chat_prompt_analytics(
     tenant_id, user_id = owner_scope_from_payload(source_payload)
     retrieval = chat_record.get("retrieval")
     generation = chat_record.get("generation")
+    generation_outcome = chat_record["status"]
+    if isinstance(generation, dict):
+        finish_reason = generation.get("finish_reason")
+        if isinstance(finish_reason, str) and finish_reason:
+            generation_outcome = finish_reason
     return analytics_store.record_prompt_analytics(
         user_message=source_payload["user_message"],
         tenant_id=tenant_id,
@@ -429,7 +434,7 @@ def record_chat_prompt_analytics(
         request_id=chat_record["request_id"],
         retrieval_used=retrieval_used,
         retrieval_outcome=retrieval["cx_status"] if retrieval else None,
-        generation_outcome=generation["finish_reason"] if generation else chat_record["status"],
+        generation_outcome=generation_outcome,
         locale=source_payload.get("locale") if isinstance(source_payload.get("locale"), str) else None,
     )
 

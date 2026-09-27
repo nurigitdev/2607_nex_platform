@@ -226,7 +226,12 @@ def build_test_client() -> tuple[TestClient, FakeCxClient, ChatInteractionStore]
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
     store = ChatInteractionStore()
     cx_client = FakeCxClient()
-    register_chat_routes(app, store=store, cx_client=cx_client)
+    register_chat_routes(
+        app,
+        store=store,
+        cx_client=cx_client,
+        retrieval_client=FakeRetrievalClient(),
+    )
     return TestClient(app), cx_client, store
 
 
@@ -448,9 +453,17 @@ def test_chat_interaction_endpoint_calls_cx_and_stores_record() -> None:
     assert payload["artifact_refs"] == []
     assert "Summarize the selected evidence." not in payload["user_message_hash"]
     assert store.get(payload["interaction_id"]) == payload
-    assert cx_client.calls[0]["payload"]["messages"][0]["content"] == (
-        "Summarize the selected evidence."
+    cx_payload = cx_client.calls[0]["payload"]
+    assert "User request:\nSummarize the selected evidence." in (
+        cx_payload["messages"][0]["content"]
     )
+    assert cx_payload["execution_mode"] == "DOCUMENT_SUMMARY"
+    assert cx_payload["generation_policy_package"]["privacy"][
+        "raw_evidence_included"
+    ] is False
+    assert payload["generation"]["policy"]["runtime_policy_snapshot"][
+        "policy_snapshot_hash"
+    ] == cx_payload["metadata"]["policy_snapshot_hash"]
 
 
 def test_chat_interaction_can_be_read_back() -> None:
@@ -556,7 +569,12 @@ def test_workspace_bound_chat_is_durable_and_retry_idempotent() -> None:
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
     chat_store = ChatInteractionStore()
     cx_client = FakeCxClient()
-    register_chat_routes(app, store=chat_store, cx_client=cx_client)
+    register_chat_routes(
+        app,
+        store=chat_store,
+        cx_client=cx_client,
+        retrieval_client=FakeRetrievalClient(),
+    )
     workspace_store = attach_workspace(app)
     client = TestClient(app)
     request_payload = {
@@ -909,7 +927,11 @@ def test_chat_routes_use_sqlalchemy_default_store_when_persistence_attached() ->
     session_factory = sqlite_chat_session_factory()
     app.state.nex_persistence = SimpleNamespace(api_session_factory=session_factory)
     cx_client = FakeCxClient()
-    register_chat_routes(app, cx_client=cx_client)
+    register_chat_routes(
+        app,
+        cx_client=cx_client,
+        retrieval_client=FakeRetrievalClient(),
+    )
     client = TestClient(app)
     interaction_id = "cccccccc-8f22-4f72-9b47-b481dc21bb21"
     chat_document_id = "dddddddd-147e-5e66-9bd8-4551a5807cf6"
@@ -922,6 +944,10 @@ def test_chat_routes_use_sqlalchemy_default_store_when_persistence_attached() ->
             "tenant_id": "tenant-a",
             "user_id": "user-a",
             "user_message": "Create a report artifact.",
+            "generation": {
+                "template_id": "report",
+                "template_version": "v1",
+            },
         },
         headers=auth_headers(),
     )
@@ -1125,7 +1151,7 @@ def test_chat_interaction_endpoint_rejects_bad_generation_object() -> None:
     )
 
     assert response.status_code == 400
-    assert response.json()["error_code"] == "ae.chat_request_invalid"
+    assert response.json()["error_code"] == "ae.runtime_policy_generation_invalid"
 
 
 def test_build_chat_interaction_record_maps_cx_metadata() -> None:
@@ -1772,7 +1798,9 @@ def test_chat_interaction_maps_quality_rejection_to_failed_record() -> None:
     assert response.status_code == 200
     assert payload["status"] == "FAILED"
     assert payload["cx_status"] == "FAILED"
-    assert payload["generation"] is None
+    assert payload["generation"]["policy"]["generation_policy_package"][
+        "client_package_hash"
+    ]
     assert payload["failure"]["error_code"] == "cx.retrieval_package_quality_blocked"
     assert payload["failure"]["failed_stage"] == "retrieval_package_quality"
     assert payload["failure"]["recommended_action"] == "show_error"
@@ -1853,7 +1881,7 @@ def test_chat_interaction_with_no_answer_skips_generation() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "NO_ANSWER"
-    assert payload["generation"] is None
+    assert payload["generation"]["policy"]["generation_policy_package"] is None
     assert cx_client.calls == []
     assert store.get(payload["interaction_id"]) == payload
 
