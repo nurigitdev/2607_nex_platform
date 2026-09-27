@@ -1109,6 +1109,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1003`](slices/1003_ae_capability_traceability_inventory.md) | `S101-002` Trace all eleven AE API/Web functional requirements to repository evidence. |
 | [`Slice 1004`](slices/1004_ae_persistence_gap_rebaseline.md) | `S101-003` Re-baseline PostgreSQL-ready, delegated, and in-memory AE persistence surfaces. |
 | [`Slice 1005`](slices/1005_ae_auth_ownership_privacy_audit.md) | `S101-004` Audit browser claim ownership, service-call authority, and privacy boundaries. |
+| [`Slice 1006`](slices/1006_ae_runtime_coupling_refactoring_checkpoint.md) | `S101-005` Measure AE runtime coupling and freeze the incremental P0-P3 refactoring order. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

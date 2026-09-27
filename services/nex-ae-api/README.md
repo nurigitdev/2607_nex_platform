@@ -1066,3 +1066,6 @@ Artifact library management:
   high-risk legacy boundaries. Workspace, chat, and artifact-file delivery
   still use service-claim-only authorization and must adopt browser claim owner
   enforcement before new browser-facing feature work.
+- Slice 1006 measures four oversized runtime modules and eight duplicated route
+  authorization helpers, then freezes an incremental P0-P3 refactoring order
+  while preserving public contracts and provider/storage Protocol boundaries.
