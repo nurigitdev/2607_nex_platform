@@ -1078,3 +1078,6 @@ Artifact library management:
 - Slice 1009 re-audits AE Web composition, localization, accessibility, and
   Playwright readiness. It preserves the browser harnesses and semantic baseline
   while deferring four measured hardening gaps to S102.
+- Slice 1010 applies and compares all AE migrations against the actual test
+  database, performs a synthetic domain upsert/select/rollback probe, and
+  requires an actual Playwright Chromium readiness result under a privacy runbook.

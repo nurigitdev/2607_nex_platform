@@ -1113,6 +1113,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1007`](slices/1007_ae_database_migration_drift_audit.md) | `S101-006` Audit AE SQL migration integrity, table traceability, and PostgreSQL identifier drift. |
 | [`Slice 1008`](slices/1008_ae_contract_api_drift_audit.md) | `S101-007` Compare AE runtime operations, OpenAPI coverage, and positive/negative contract fixtures. |
 | [`Slice 1009`](slices/1009_ae_web_runtime_i18n_accessibility_drift_audit.md) | `S101-008` Audit AE Web composition, localization, accessibility, and Playwright readiness. |
+| [`Slice 1010`](slices/1010_ae_current_state_postgresql_browser_reaudit.md) | `S101-009` Re-audit the actual AE test PostgreSQL catalog, domain rollback probe, and Playwright browser runtime. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
