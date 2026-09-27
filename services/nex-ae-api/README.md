@@ -1097,3 +1097,9 @@ Artifact library management:
 - Slice 1015 adds an idempotent SQLAlchemy workspace repository with owner
   collision protection, atomic initial activity, ordered activity reads, and
   SQLite/PostgreSQL JSON handling.
+- Slice 1016 wires workspace routes to the shared facade authorization and the
+  SQLAlchemy repository selected from the application persistence runtime.
+  Browser claims are authoritative, owner mismatch is rejected, and cross-owner
+  detail or activity reads are collapsed to the same not-found response as a
+  missing workspace. The S101 live audits now record this completed hardening
+  while continuing to track the remaining chat and artifact authorization gaps.

@@ -87,11 +87,11 @@ BOUNDARY_SURFACES = (
     BoundarySurface(
         "workspace_routes",
         "services/nex-ae-api/nex_ae_api/workspace.py",
-        "def _authorize_ae_request",
-        "REFACTOR_REQUIRED",
-        "HIGH",
-        "service_claim_only_payload_owner",
-        "browser_claim_owner_not_enforced",
+        "authorize_ae_facade_route_request",
+        "HARDENED",
+        "LOW",
+        "browser_claim_for_browser_service_payload_for_service",
+        "cross_owner_not_found",
     ),
     BoundarySurface(
         "chat_routes",
@@ -138,7 +138,7 @@ def build_ae_auth_ownership_privacy_audit(
         "boundary_evidence_present": not evidence_issues,
         "authority_explicit": all(item["authority"] for item in inspected),
         "privacy_posture_explicit": all(item["privacy_posture"] for item in inspected),
-        "high_risk_gaps_classified": len(high_risk) == 3,
+        "high_risk_gaps_classified": len(high_risk) == 2,
     }
     passed = all(checks.values())
     return {

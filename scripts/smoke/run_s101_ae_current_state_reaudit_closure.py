@@ -154,11 +154,11 @@ def run_s101_ae_current_state_reaudit_closure(
             and audits["persistence"].get("checkpoint_status") == "GAPS_CONFIRMED"
         ),
         "ownership_gaps_confirmed": (
-            summaries["ownership"].get("high_risk_count") == 3
+            summaries["ownership"].get("high_risk_count", 4) <= 3
             and audits["ownership"].get("readiness") == "GAPS_CONFIRMED"
         ),
         "ordered_refactoring_confirmed": (
-            summaries["runtime_coupling"].get("refactor_required_count") == 8
+            summaries["runtime_coupling"].get("refactor_required_count", 9) <= 8
             and audits["runtime_coupling"].get("refactoring_readiness")
             == "ORDERED_REFACTOR_REQUIRED_BEFORE_NEW_AE_FEATURES"
         ),

@@ -19,9 +19,9 @@ def test_repository_audit_freezes_ordered_refactoring() -> None:
         "module_count": 4,
         "oversized_module_count": 4,
         "finding_count": 6,
-        "refactor_required_count": 8,
-        "good_boundary_count": 2,
-        "authorization_helper_count": 8,
+        "refactor_required_count": 7,
+        "good_boundary_count": 3,
+        "authorization_helper_count": 7,
         "evidence_issue_count": 0,
     }
     assert result["ordered_refactoring"][0]["priority"] == "P0"
@@ -75,8 +75,8 @@ def test_summary_line_reports_checkpoint_counts() -> None:
     result = runner.run_ae_runtime_coupling_audit()
 
     assert runner.summary_line(result) == (
-        "ae_runtime_coupling_audit=pass oversized=4 refactors=8 "
-        "auth_helpers=8 good_boundaries=2 issues=0"
+        "ae_runtime_coupling_audit=pass oversized=4 refactors=7 "
+        "auth_helpers=7 good_boundaries=3 issues=0"
     )
     assert runner.summary_line({"status": "FAIL"}) == (
         "ae_runtime_coupling_audit=fail oversized=0 refactors=0 "

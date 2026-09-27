@@ -8,12 +8,20 @@ from uuid import NAMESPACE_URL, uuid5
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
-from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
-    problem_response,
-    request_id_from_headers,
-    trace_id_from_headers,
-    validate_authorization_header,
+from nex_runtime import problem_response, request_id_from_headers, trace_id_from_headers
+from nex_ae_api.route_auth import (
+    AeFacadeRouteAuthContext,
+    authorize_ae_facade_route_request,
+)
+from nex_ae_api.workspace_chat_auth import (
+    WorkspaceChatOwnerError,
+    browser_owner_scope,
+    owner_scoped_payload,
+    record_matches_owner,
+)
+from nex_ae_api.workspace_persistence import (
+    SqlAlchemyWorkspaceRepository,
+    WorkspaceRepositoryError,
 )
 
 
@@ -46,8 +54,7 @@ class WorkspaceStateStore:
             request_id=request_id,
             trace_id=trace_id,
         )
-        self.workspaces[workspace["workspace_id"]] = workspace
-        self.append_activity(
+        activity = build_workspace_activity(
             workspace_id=workspace["workspace_id"],
             activity_type="workspace.created",
             request_id=request_id,
@@ -58,6 +65,27 @@ class WorkspaceStateStore:
                 "owner_user_id": workspace["owner_user_id"],
             },
         )
+        return self.save_workspace(workspace, activity)
+
+    def save_workspace(
+        self,
+        workspace: dict[str, Any],
+        initial_activity: dict[str, Any],
+    ) -> dict[str, Any]:
+        existing = self.workspaces.get(workspace["workspace_id"])
+        if existing is not None:
+            if (
+                existing["tenant_id"],
+                existing["owner_user_id"],
+            ) != (workspace["tenant_id"], workspace["owner_user_id"]):
+                raise WorkspaceError(
+                    status_code=409,
+                    error_code="ae.workspace_owner_conflict",
+                    detail="Workspace identifier is already owned by another subject.",
+                )
+            return existing
+        self.workspaces[workspace["workspace_id"]] = workspace
+        self.append_activity_record(initial_activity)
         return workspace
 
     def get_workspace(self, workspace_id: str) -> dict[str, Any] | None:
@@ -80,25 +108,34 @@ class WorkspaceStateStore:
                 detail=f"Workspace was not found: {workspace_id}",
             )
 
-        created_at = _utc_now()
-        activity_id = str(
-            uuid5(
-                NAMESPACE_URL,
-                f"ae-workspace-activity:{workspace_id}:{activity_type}:{request_id}:{created_at}",
-            )
+        activity = build_workspace_activity(
+            workspace_id=workspace_id,
+            activity_type=activity_type,
+            request_id=request_id,
+            trace_id=trace_id,
+            summary=summary,
+            metadata=metadata,
         )
-        activity = {
-            "activity_schema_version": "ae_workspace_activity.v1",
-            "activity_id": activity_id,
-            "workspace_id": workspace_id,
-            "activity_type": activity_type,
-            "trace_id": trace_id,
-            "request_id": request_id,
-            "summary": summary,
-            "metadata": metadata or {},
-            "created_at": created_at,
+        return self.append_activity_record(activity)
+
+    def append_activity_record(self, activity: dict[str, Any]) -> dict[str, Any]:
+        workspace_id = activity["workspace_id"]
+        if workspace_id not in self.workspaces:
+            raise WorkspaceError(
+                status_code=404,
+                error_code="ae.workspace_not_found",
+                detail=f"Workspace was not found: {workspace_id}",
+            )
+        existing = self.activities_by_workspace.setdefault(workspace_id, [])
+        if any(item["activity_id"] == activity["activity_id"] for item in existing):
+            return activity
+        existing.append(activity)
+        workspace = self.workspaces[workspace_id]
+        workspace["activity_summary"] = {
+            "last_activity_type": activity["activity_type"],
+            "activity_count": len(existing),
         }
-        self.activities_by_workspace.setdefault(workspace_id, []).append(activity)
+        workspace["updated_at"] = activity["created_at"]
         return activity
 
     def list_activities(self, workspace_id: str) -> list[dict[str, Any]] | None:
@@ -110,12 +147,21 @@ class WorkspaceStateStore:
 DEFAULT_WORKSPACE_STORE = WorkspaceStateStore()
 
 
+def build_default_workspace_store(app: Any) -> Any:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is not None:
+        return SqlAlchemyWorkspaceRepository(session_factory)
+    return DEFAULT_WORKSPACE_STORE
+
+
 def register_workspace_routes(
     app: FastAPI,
     *,
-    store: WorkspaceStateStore | None = None,
+    store: Any | None = None,
 ) -> None:
-    workspace_store = store or DEFAULT_WORKSPACE_STORE
+    workspace_store = store or build_default_workspace_store(app)
+    app.state.ae_workspace_store = workspace_store
 
     @app.post("/api/v1/workspaces", response_model=None)
     def create_workspace(
@@ -123,19 +169,32 @@ def register_workspace_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
         request_id = request_id_from_headers(request)
         trace_id = payload.get("trace_id") or trace_id_from_headers(request)
         try:
-            return workspace_store.create_workspace(
-                payload=payload,
+            normalized_payload = _owner_scoped_workspace_payload(payload, auth_context)
+            workspace = build_workspace_state(
+                normalized_payload,
                 request_id=request_id,
                 trace_id=trace_id,
             )
-        except WorkspaceError as exc:
+            initial_activity = build_workspace_activity(
+                workspace_id=workspace["workspace_id"],
+                activity_type="workspace.created",
+                request_id=request_id,
+                trace_id=trace_id,
+                summary="Workspace created.",
+                metadata={
+                    "tenant_id": workspace["tenant_id"],
+                    "owner_user_id": workspace["owner_user_id"],
+                },
+            )
+            return workspace_store.save_workspace(workspace, initial_activity)
+        except (WorkspaceError, WorkspaceChatOwnerError, WorkspaceRepositoryError) as exc:
             return _workspace_problem_response(request, exc)
 
     @app.get("/api/v1/workspaces/{workspace_id}", response_model=None)
@@ -144,12 +203,15 @@ def register_workspace_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
-        workspace = workspace_store.get_workspace(workspace_id)
-        if workspace is None:
+        try:
+            workspace = workspace_store.get_workspace(workspace_id)
+        except WorkspaceRepositoryError as exc:
+            return _workspace_problem_response(request, exc)
+        if not _workspace_visible(workspace, auth_context):
             return _workspace_problem_response(
                 request,
                 WorkspaceError(
@@ -166,11 +228,19 @@ def register_workspace_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
-        activities = workspace_store.list_activities(workspace_id)
+        try:
+            workspace = workspace_store.get_workspace(workspace_id)
+            activities = (
+                workspace_store.list_activities(workspace_id)
+                if _workspace_visible(workspace, auth_context)
+                else None
+            )
+        except WorkspaceRepositoryError as exc:
+            return _workspace_problem_response(request, exc)
         if activities is None:
             return _workspace_problem_response(
                 request,
@@ -219,6 +289,36 @@ def build_workspace_state(
         "request_id": request_id,
         "created_at": now,
         "updated_at": now,
+    }
+
+
+def build_workspace_activity(
+    *,
+    workspace_id: str,
+    activity_type: str,
+    request_id: str,
+    trace_id: str,
+    summary: str,
+    metadata: dict[str, Any] | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    timestamp = created_at or _utc_now()
+    activity_id = str(
+        uuid5(
+            NAMESPACE_URL,
+            f"ae-workspace-activity:{workspace_id}:{activity_type}:{request_id}:{timestamp}",
+        )
+    )
+    return {
+        "activity_schema_version": "ae_workspace_activity.v1",
+        "activity_id": activity_id,
+        "workspace_id": workspace_id,
+        "activity_type": activity_type,
+        "trace_id": trace_id,
+        "request_id": request_id,
+        "summary": summary,
+        "metadata": metadata or {},
+        "created_at": timestamp,
     }
 
 
@@ -287,39 +387,50 @@ def runtime_defaults_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _authorize_ae_request(
-    request: Request,
-    authorization: str | None,
-) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-ae-api",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
+def _owner_scoped_workspace_payload(
+    payload: dict[str, Any],
+    auth_context: AeFacadeRouteAuthContext,
+) -> dict[str, Any]:
+    if auth_context.browser_context is not None:
+        return owner_scoped_payload(payload, auth_context)[0]
+    explicit_tenant = isinstance(payload.get("tenant_id"), str) and bool(
+        payload["tenant_id"].strip()
     )
-    if result.ok:
-        return None
+    explicit_owner = any(
+        isinstance(payload.get(key), str) and bool(payload[key].strip())
+        for key in ("owner_user_id", "user_id")
+    )
+    if isinstance(payload.get("ownership_ref"), dict) or (
+        explicit_tenant and explicit_owner
+    ):
+        return owner_scoped_payload(payload, auth_context)[0]
+    return dict(payload)
 
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "AE API requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
+
+def _workspace_visible(
+    workspace: dict[str, Any] | None,
+    auth_context: AeFacadeRouteAuthContext,
+) -> bool:
+    if workspace is None:
+        return False
+    scope = browser_owner_scope(auth_context)
+    return scope is None or record_matches_owner(workspace, scope)
 
 
 def _workspace_problem_response(
     request: Request,
-    exc: WorkspaceError,
+    exc: WorkspaceError | WorkspaceChatOwnerError | WorkspaceRepositoryError,
 ) -> JSONResponse:
+    status_code = getattr(exc, "status_code", None)
+    if status_code is None:
+        status_code = 503 if exc.retryable else 409
     return problem_response(
         request,
-        status_code=exc.status_code,
+        status_code=status_code,
         error_code=exc.error_code,
         title="Workspace request failed",
         detail=exc.detail,
-        retryable=exc.retryable,
+        retryable=getattr(exc, "retryable", False),
         type_uri="https://nex-platform.local/problems/workspace-request-failed",
     )
 

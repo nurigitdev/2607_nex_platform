@@ -11,7 +11,7 @@ from nex_ae_api.ownership_privacy_audit import (
 import run_ae_auth_ownership_privacy_audit as runner
 
 
-def test_repository_auth_ownership_privacy_audit_finds_known_gaps() -> None:
+def test_repository_auth_ownership_privacy_audit_tracks_remaining_gaps() -> None:
     result = build_ae_auth_ownership_privacy_audit()
 
     assert result["status"] == "PASS"
@@ -20,9 +20,9 @@ def test_repository_auth_ownership_privacy_audit_finds_known_gaps() -> None:
     assert result["issues"] == []
     assert result["summary"] == {
         "surface_count": 10,
-        "hardened_count": 7,
-        "refactor_count": 3,
-        "high_risk_count": 3,
+        "hardened_count": 8,
+        "refactor_count": 2,
+        "high_risk_count": 2,
         "evidence_issue_count": 0,
     }
     assert result["decision"]["new_table_required"] is False
@@ -38,7 +38,6 @@ def test_high_risk_refactors_are_exact_and_owner_related() -> None:
     }
 
     assert set(high_risk) == {
-        "workspace_routes",
         "chat_routes",
         "artifact_file_delivery_routes",
     }
@@ -91,10 +90,10 @@ def test_runner_summary_json_and_failure_paths(monkeypatch, capsys) -> None:
     passing = runner.run_ae_auth_ownership_privacy_audit()
 
     assert "audit=pass" in runner.summary_line(passing)
-    assert "high_risk=3" in runner.summary_line(passing)
+    assert "high_risk=2" in runner.summary_line(passing)
     monkeypatch.setattr(runner, "run_ae_auth_ownership_privacy_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0
-    assert "hardened=7" in capsys.readouterr().out
+    assert "hardened=8" in capsys.readouterr().out
     assert runner.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
 

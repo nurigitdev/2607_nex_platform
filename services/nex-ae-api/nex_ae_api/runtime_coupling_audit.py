@@ -56,11 +56,11 @@ MODULE_BUDGETS = (
 
 COUPLING_FINDINGS = (
     CouplingFinding(
-        "duplicated_route_authorization",
+        "workspace_facade_authorization",
         "services/nex-ae-api/nex_ae_api/workspace.py",
-        "def _authorize_ae_request",
-        "REFACTOR_REQUIRED",
-        "HIGH",
+        "authorize_ae_facade_route_request",
+        "GOOD_BOUNDARY",
+        "LOW",
     ),
     CouplingFinding(
         "import_time_application_composition",
@@ -133,11 +133,11 @@ def build_ae_runtime_coupling_audit(
         "all_large_modules_classified": all(
             item["over_budget"] for item in module_results
         ),
-        "duplicated_authorization_measured": helper_count >= 8,
+        "duplicated_authorization_measured": helper_count >= 7,
         "good_boundaries_preserved": sum(
             item["disposition"] == "GOOD_BOUNDARY" for item in finding_results
         )
-        == 2,
+        == 3,
         "evidence_present": not evidence_issues,
     }
     passed = all(checks.values())
@@ -175,7 +175,7 @@ def build_ae_runtime_coupling_audit(
         "ordered_refactoring": [
             {
                 "priority": "P0",
-                "action": "centralize workspace, chat, and artifact authorization",
+                "action": "centralize remaining chat and artifact authorization",
             },
             {
                 "priority": "P1",

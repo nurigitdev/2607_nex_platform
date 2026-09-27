@@ -1119,6 +1119,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1013`](slices/1013_ae_workspace_chat_owner_scope_contract.md) | `S102-002` Establish shared browser-claim and service-payload owner-scope enforcement for workspace and chat. |
 | [`Slice 1014`](slices/1014_ae_workspace_activity_persistence_schema.md) | `S102-003` Add owner-scoped workspace/activity tables and a legacy-safe chat workspace link. |
 | [`Slice 1015`](slices/1015_ae_workspace_sqlalchemy_repository.md) | `S102-004` Add restart-safe SQLAlchemy workspace and ordered activity persistence. |
+| [`Slice 1016`](slices/1016_ae_owner_scoped_workspace_api.md) | `S102-005` Wire claim-authoritative owner-scoped workspace APIs to durable production persistence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

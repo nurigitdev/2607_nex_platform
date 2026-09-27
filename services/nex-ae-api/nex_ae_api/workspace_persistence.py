@@ -28,6 +28,13 @@ class SqlAlchemyWorkspaceRepository:
         workspace: dict[str, Any],
         initial_activity: dict[str, Any],
     ) -> dict[str, Any]:
+        return self.save_workspace(workspace, initial_activity)
+
+    def save_workspace(
+        self,
+        workspace: dict[str, Any],
+        initial_activity: dict[str, Any],
+    ) -> dict[str, Any]:
         try:
             with self._session_factory() as session:
                 inserted = session.execute(
@@ -64,6 +71,12 @@ class SqlAlchemyWorkspaceRepository:
             raise _unavailable() from exc
 
     def append_activity(self, activity: dict[str, Any]) -> dict[str, Any] | None:
+        return self.append_activity_record(activity)
+
+    def append_activity_record(
+        self,
+        activity: dict[str, Any],
+    ) -> dict[str, Any] | None:
         try:
             with self._session_factory() as session:
                 if _load_workspace(session, activity["workspace_id"]) is None:
