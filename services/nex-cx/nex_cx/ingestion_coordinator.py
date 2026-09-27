@@ -127,8 +127,9 @@ def build_default_ingestion_step_handlers(
     mo_client: MoEmbeddingClient,
     embedding_alias: str,
     prompt_store: PromptRegistryStore | None = None,
+    mvp_embedding_handler: IngestionStepHandler | None = None,
 ) -> dict[str, IngestionStepHandler]:
-    return {
+    handlers: dict[str, IngestionStepHandler] = {
         "extraction": lambda run: _existing_or_execute(
             step_id="extraction",
             document_id=str(run["document_id"]),
@@ -204,6 +205,9 @@ def build_default_ingestion_step_handlers(
             ),
         ),
     }
+    if mvp_embedding_handler is not None:
+        handlers["embedding_index"] = mvp_embedding_handler
+    return handlers
 
 
 def execute_all_ingestion_checkpoints(

@@ -1098,6 +1098,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0992`](slices/0992_cx_mvp_integration_ae_handoff_boundary_audit.md) | `S100-001` CX MVP integration and AE handoff production-boundary audit. |
 | [`Slice 0993`](slices/0993_cx_mvp_lifecycle_contract.md) | `S100-002` Owner-safe metadata-only lifecycle contract from ingestion through AE handoff. |
 | [`Slice 0994`](slices/0994_cx_production_hybrid_retrieval_composition.md) | `S100-003` Permission-first production hybrid retrieval composition extracted from protected smoke code. |
+| [`Slice 0995`](slices/0995_cx_durable_ingestion_vector_publish.md) | `S100-004` Durable ingestion private chunk persistence and freshness-guarded pgvector publish checkpoint. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

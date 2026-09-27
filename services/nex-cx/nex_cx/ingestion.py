@@ -309,6 +309,9 @@ class ContentIngestionStore:
     def get_chunk_text(self, chunk_id: str) -> str | None:
         return self.chunk_texts.get(chunk_id)
 
+    def get_persisted_chunk_set(self, document_id: str) -> dict[str, Any] | None:
+        return self._find_persisted_chunk_set(document_id)
+
     def _persist_chunk_set_metadata(self, chunk_set: dict[str, Any]) -> None:
         document_id = str(chunk_set["document_id"])
         if "source_markdown_sha256" not in chunk_set:
