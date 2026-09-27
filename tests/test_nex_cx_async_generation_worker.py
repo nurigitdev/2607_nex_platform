@@ -20,6 +20,7 @@ from nex_cx.async_generation_worker import (
     AsyncGenerationWorkerHandler,
 )
 from nex_cx import async_generation_worker as worker_module
+from nex_cx.citation_repair import CitationRepairError
 from nex_cx.generation import GenerationFacadeError
 from nex_cx.generation_runtime import (
     GroundedGenerationRuntime,
@@ -181,6 +182,114 @@ def test_worker_maps_provider_output_validation_failure(tmp_path) -> None:
         clock=lambda: NOW,
     )
     assert result["retry_scheduled_count"] == 1
+
+
+def test_worker_completes_after_one_citation_repair(tmp_path, monkeypatch) -> None:
+    queue, _ = _stores()
+    runtime = _runtime(tmp_path)
+    admitted, request_store = _admit(tmp_path, runtime, queue)
+    job_id = admitted["job"]["job_id"]
+    generation_id = admitted["job"]["cx_generation_id"]
+    retrieval_package = {
+        "retrieval_package_id": "retrieval-0997",
+        "package_hash": "b" * 64,
+        "evidence_items": [
+            {"evidence_id": "evidence-1", "citation_label": "[1]"}
+        ],
+    }
+    envelope = {
+        "admission_id": next(iter(runtime.admission_repository.records)),
+        "request_id": "request-1",
+        "trace_id": "trace-1",
+        "source_payload": {"selected_evidence_ids": ["evidence-1"]},
+        "mo_payload": {
+            "client_request_id": generation_id,
+            "cx_generation_id": generation_id,
+            "alias": "general-llm-default",
+            "provider_capability": "generation",
+            "provider_prompt_package_hash": "a" * 64,
+            "messages": [{"role": "user", "content": "private evidence"}],
+            "prompt": None,
+            "response_format": {"type": "text"},
+            "metadata": {
+                "generation_request_hash": "c" * 64,
+                "retrieval_package_id": "retrieval-0997",
+                "retrieval_package_hash": "b" * 64,
+            },
+        },
+        "compatibility_rule": {
+            "compatibility_rule_id": "rule-0997",
+            "grounding_required": True,
+            "citation_policy": {"citations_required": True},
+        },
+        "retrieval_package": retrieval_package,
+    }
+    monkeypatch.setattr(
+        worker_module,
+        "load_generation_request_envelope",
+        lambda **kwargs: deepcopy(envelope),
+    )
+    client = MockGenerationClient()
+    responses = iter(
+        [
+            {
+                **client.create_generation(
+                    envelope["mo_payload"], request_id="request-1", trace_id="trace-1"
+                ),
+                "output": {"type": "text", "text": "Missing citation."},
+            },
+            {
+                **client.create_generation(
+                    envelope["mo_payload"], request_id="request-1", trace_id="trace-1"
+                ),
+                "output": {"type": "text", "text": "Repaired answer [1]."},
+            },
+        ]
+    )
+    client.calls.clear()
+    client.create_generation = lambda payload, **kwargs: (
+        client.calls.append(deepcopy(payload)) or next(responses)
+    )
+
+    result = AsyncGenerationWorkerHandler(
+        queue, runtime, request_store, client
+    )({"job_id": job_id}, type("Token", (), {"checkpoint": lambda self: None})())
+
+    assert result["citation_repair"]["attempt_count"] == 1
+    assert len(client.calls) == 2
+    assert runtime.execution_repository.records[generation_id]["status"] == "COMPLETED"
+    assert (
+        runtime.execution_repository.records[generation_id]["request_metadata"][
+            "provider_prompt_package_hash"
+        ]
+        == client.calls[1]["provider_prompt_package_hash"]
+    )
+
+
+def test_worker_maps_invalid_citation_repair_boundary(tmp_path, monkeypatch) -> None:
+    queue, _ = _stores()
+    runtime = _runtime(tmp_path)
+    admitted, request_store = _admit(tmp_path, runtime, queue)
+    monkeypatch.setattr(
+        worker_module,
+        "generate_with_bounded_citation_repair",
+        lambda **kwargs: (_ for _ in ()).throw(
+            CitationRepairError(
+                error_code="cx.citation_repair.invalid",
+                detail="repair boundary invalid",
+            )
+        ),
+    )
+
+    with pytest.raises(AsyncGenerationWorkerError) as raised:
+        AsyncGenerationWorkerHandler(
+            queue, runtime, request_store, MockGenerationClient()
+        )(
+            {"job_id": admitted["job"]["job_id"]},
+            type("Token", (), {"checkpoint": lambda self: None})(),
+        )
+
+    assert raised.value.error_code == "cx.citation_repair.invalid"
 
 
 def test_worker_rejects_missing_job_and_maps_queue_error(tmp_path) -> None:

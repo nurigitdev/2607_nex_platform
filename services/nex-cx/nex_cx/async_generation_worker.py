@@ -13,6 +13,10 @@ from nex_cx.async_generation_recovery import (
     finalize_async_generation_failure,
     should_finalize_generation_failure,
 )
+from nex_cx.citation_repair import (
+    CitationRepairError,
+    generate_with_bounded_citation_repair,
+)
 from nex_cx.drafts import build_structured_draft
 from nex_cx.generation import (
     GenerationFacadeError,
@@ -29,7 +33,6 @@ from nex_cx.generation_runtime import (
 )
 from nex_cx.grounded_output_validation import (
     GroundedOutputValidationError,
-    normalize_generation_provider_response,
 )
 from nex_cx.private_content import CxPrivateContentError, CxPrivateTextStore
 from nex_cx.worker_runtime import (
@@ -94,25 +97,25 @@ class AsyncGenerationWorkerHandler:
                     retryable=True,
                 )
             cancellation.checkpoint()
-            raw_response = self.generation_client.create_generation(
-                envelope["mo_payload"],
+            generation_result = generate_with_bounded_citation_repair(
+                generation_client=self.generation_client,
+                mo_payload=envelope["mo_payload"],
                 request_id=envelope["request_id"],
                 trace_id=envelope["trace_id"],
+                grounding_required=bool(
+                    envelope["compatibility_rule"].get("grounding_required")
+                ),
+                retrieval_package=envelope["retrieval_package"],
+                selected_evidence_ids=selected_evidence_ids_from_payload(
+                    envelope["source_payload"]
+                ),
+                cancellation_checkpoint=cancellation.checkpoint,
             )
-            cancellation.checkpoint()
             compatibility_rule = envelope["compatibility_rule"]
             retrieval_package = envelope["retrieval_package"]
             source_payload = envelope["source_payload"]
-            mo_response = normalize_generation_provider_response(
-                raw_response,
-                grounding_required=bool(
-                    compatibility_rule.get("grounding_required")
-                ),
-                retrieval_package=retrieval_package,
-                selected_evidence_ids=selected_evidence_ids_from_payload(
-                    source_payload
-                ),
-            )
+            mo_response = generation_result.mo_response
+            effective_mo_payload = generation_result.effective_mo_payload
             output_text = output_text_from_mo_response(mo_response)
             draft = build_structured_draft(
                 cx_generation_id=payload["cx_generation_id"],
@@ -127,7 +130,7 @@ class AsyncGenerationWorkerHandler:
             )
             record = build_generation_execution_record(
                 source_payload=source_payload,
-                mo_payload=envelope["mo_payload"],
+                mo_payload=effective_mo_payload,
                 mo_response=mo_response,
                 compatibility_rule=compatibility_rule,
                 retrieval_package=retrieval_package,
@@ -155,6 +158,7 @@ class AsyncGenerationWorkerHandler:
                 "output_sha256": stored["response_metadata"]["output_hash"],
                 "provider_called": True,
                 "private_output_included": False,
+                "citation_repair": generation_result.repair,
             }
         except CxWorkerCancellationRequested as exc:
             self._finalize_if_ready(
@@ -176,6 +180,10 @@ class AsyncGenerationWorkerHandler:
             )
             raise
         except GroundedOutputValidationError as exc:
+            mapped = _mapped_error(exc)
+            self._finalize_if_ready(normalized_job, envelope, context, mapped)
+            raise mapped from exc
+        except CitationRepairError as exc:
             mapped = _mapped_error(exc)
             self._finalize_if_ready(normalized_job, envelope, context, mapped)
             raise mapped from exc

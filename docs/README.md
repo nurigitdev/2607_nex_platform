@@ -1100,6 +1100,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0994`](slices/0994_cx_production_hybrid_retrieval_composition.md) | `S100-003` Permission-first production hybrid retrieval composition extracted from protected smoke code. |
 | [`Slice 0995`](slices/0995_cx_durable_ingestion_vector_publish.md) | `S100-004` Durable ingestion private chunk persistence and freshness-guarded pgvector publish checkpoint. |
 | [`Slice 0996`](slices/0996_cx_ae_generation_handoff_projection.md) | `S100-005` Owner-safe asynchronous generation job and durable result handoff projection for AE. |
+| [`Slice 0997`](slices/0997_cx_bounded_citation_repair.md) | `S100-006` One-attempt citation repair with immutable retrieval-package binding. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
