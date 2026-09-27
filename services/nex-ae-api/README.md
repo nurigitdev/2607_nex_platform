@@ -1117,3 +1117,7 @@ Artifact library management:
   adds strict pending interaction and workspace-activity schemas, and emits
   idempotent metadata-only chat state events without prompt, response, owner,
   provider, or retrieval identifier content.
+- Slice 1020 runs the protected workspace/chat smoke against the actual
+  `nex_ae_test` database. It confirms all 23 migrations, durable restart reads,
+  claim-scoped isolation, idempotent retry counts, two PostgreSQL operational
+  events, and zero remaining synthetic rows after cleanup.
