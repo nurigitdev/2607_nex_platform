@@ -1075,3 +1075,6 @@ Artifact library management:
 - Slice 1008 measures runtime/OpenAPI and fixture drift: 28 runtime operations
   are undocumented, three schemas lack negative fixtures, and the API version is
   stale. These become an S102 contract-hardening input.
+- Slice 1009 re-audits AE Web composition, localization, accessibility, and
+  Playwright readiness. It preserves the browser harnesses and semantic baseline
+  while deferring four measured hardening gaps to S102.
