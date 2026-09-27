@@ -66,7 +66,7 @@ def test_repository_postgres_reaudit_evaluation_passes() -> None:
     )
     assert all(result["checks"].values())
     assert result["summary"]["expected_migration_count"] == 23
-    assert result["summary"]["core_table_count"] == 15
+    assert result["summary"]["core_table_count"] == 17
     assert result["forbidden_private_columns"] == []
     assert result["privacy_policy"]["transaction"] == "rollback_required"
 

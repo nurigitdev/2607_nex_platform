@@ -20,6 +20,8 @@ CORE_AE_TABLES = frozenset(
         "ae_artifacts",
         "ae_artifact_files",
         "ae_chat_artifact_refs",
+        "ae_workspaces",
+        "ae_workspace_activities",
         "ae_artifact_retention_executions",
         "ae_artifact_retention_scheduler_leases",
         "ae_artifact_retention_scheduler_daemon_runs",
@@ -196,6 +198,7 @@ def _repository_source(root: Path) -> str:
         root
         / "services/nex-ae-api/nex_ae_api/artifact_retention_scheduler_daemon.py",
         root / "services/nex-ae-api/nex_ae_api/chat.py",
+        root / "services/nex-ae-api/nex_ae_api/workspace_persistence.py",
         root / "services/nex-ae-api/nex_ae_api/generation_feedback.py",
         root / "services/nex-ae-api/nex_ae_api/repaired_response_decisions.py",
         root / "services/nex-ae-api/nex_ae_api/repaired_responses.py",

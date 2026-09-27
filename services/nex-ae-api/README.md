@@ -1094,3 +1094,6 @@ Artifact library management:
 - Slice 1014 adds `ae_workspaces`, `ae_workspace_activities`, and the nullable
   `ae_chat_interactions.workspace_id` lineage column with short indexes and a
   metadata-only privacy boundary.
+- Slice 1015 adds an idempotent SQLAlchemy workspace repository with owner
+  collision protection, atomic initial activity, ordered activity reads, and
+  SQLite/PostgreSQL JSON handling.

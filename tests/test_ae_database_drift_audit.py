@@ -17,7 +17,7 @@ def test_repository_database_drift_audit_classifies_identifier_drift() -> None:
     assert all(result["checks"].values())
     assert result["issues"] == []
     assert result["summary"]["migration_count"] == 23
-    assert result["summary"]["core_table_count"] == 15
+    assert result["summary"]["core_table_count"] == 17
     assert result["summary"]["overlength_identifier_count"] > 0
     assert result["summary"]["drift_finding_count"] == 1
     assert result["database_readiness"] == (
