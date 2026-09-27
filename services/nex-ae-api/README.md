@@ -1051,3 +1051,7 @@ Artifact library management:
   read-model APIs, real test DB smoke evidence, AG read-only projections,
   diagnostics rollup linkage, and redaction posture. No new table is added; the
   short `ae_op_exec_worker_results` table remains the system-of-record table.
+- Slice 1002 starts S101 by freezing a combined `nex-ae-api` and `nex-ae-web`
+  current-state re-audit boundary. The audit covers all eleven AEAPI/AEWEB
+  functional requirements, requires actual `nex_ae_test` and deterministic
+  browser evidence before closure, and introduces no table or data mutation.
