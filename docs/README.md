@@ -1103,6 +1103,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 0997`](slices/0997_cx_bounded_citation_repair.md) | `S100-006` One-attempt citation repair with immutable retrieval-package binding. |
 | [`Slice 0998`](slices/0998_cx_production_runtime_composition.md) | `S100-007` PostgreSQL production composition for permission-hardened retrieval and durable vector indexing. |
 | [`Slice 0999`](slices/0999_cx_handoff_contract_openapi_observability.md) | `S100-008` Canonical AE handoff schema, CX OpenAPI 1.0.0, and metadata-only polling observability. |
+| [`Slice 1000`](slices/1000_cx_mvp_integration_live_postgres_smoke.md) | `S100-009` Actual CX test PostgreSQL and live DGX single-lineage MVP integration through restart-safe AE handoff. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

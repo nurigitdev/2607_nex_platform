@@ -15,12 +15,12 @@ def test_repository_s100_boundary_audit_passes() -> None:
     assert result["summary"] == {
         "foundation_count": 8,
         "gap_count": 8,
-        "open_gap_count": 1,
-        "resolved_gap_count": 7,
+        "open_gap_count": 0,
+        "resolved_gap_count": 8,
         "planned_slice_count": 10,
         "issue_count": 0,
     }
-    assert result["next_slice"] == "1000"
+    assert result["next_slice"] == "1001"
 
 
 def test_s100_boundary_freezes_storage_provider_and_repair_policy() -> None:
@@ -80,7 +80,7 @@ def test_s100_boundary_helpers_and_main_paths(monkeypatch, capsys) -> None:
     result = audit.run_cx_mvp_integration_ae_handoff_boundary_audit()
     assert audit.summary_line(result) == (
         "cx_mvp_integration_ae_handoff_boundary=pass foundations=8 gaps=8 "
-        "open=1 scope=cx_mvp_integration_and_ae_handoff_closure "
+        "open=0 scope=cx_mvp_integration_and_ae_handoff_closure "
         "live_required_slice=1000 issues=0"
     )
     assert audit._read_text(Path("missing-s100-boundary")) == ""
