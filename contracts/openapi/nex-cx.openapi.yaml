@@ -1842,6 +1842,35 @@ paths:
           description: The job is absent or not visible to the requesting owner.
         "503":
           description: Job persistence is unavailable.
+  /api/v1/generation-jobs/{job_id}/handoff:
+    parameters: *cxOwnerContextParameters
+    get:
+      operationId: getCxAsyncGenerationHandoff
+      tags:
+        - Generation
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Owner-safe asynchronous job and durable generation result handoff.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Detailed cx_generation_handoff.v1 schema is hardened in Slice 0999.
+        "401":
+          description: Service claim or owner context is missing or invalid.
+        "404":
+          description: The job is absent or not visible to the requesting owner.
+        "422":
+          description: Persisted job or handoff state is invalid.
+        "503":
+          description: Job, generation metadata, or private content persistence is unavailable.
   /api/v1/generation-jobs/{job_id}/cancel:
     parameters: *cxOwnerContextParameters
     post:

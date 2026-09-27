@@ -41,6 +41,11 @@ from nex_cx.generation import (
     validate_generation_request,
 )
 from nex_cx.generation_request_store import load_generation_request_envelope
+from nex_cx.generation_handoff import (
+    GenerationHandoffError,
+    build_generation_handoff,
+)
+from nex_cx.generation_read_model import GenerationReadModel
 from nex_cx.generation_runtime import GroundedGenerationRuntime
 from nex_cx.private_content import CxPrivateContentError, CxPrivateTextStore
 
@@ -52,6 +57,7 @@ def register_async_generation_operations_routes(
     runtime: GroundedGenerationRuntime | None,
     request_store: CxPrivateTextStore,
     retrieval_store: RetrievalPackageStore | None = None,
+    read_model: GenerationReadModel | None = None,
     event_emitter: OperationalEventEmitter | None = None,
 ) -> None:
     emitter = event_emitter or operational_event_emitter_from_app(
@@ -144,6 +150,31 @@ def register_async_generation_operations_routes(
                 return _not_found()
             return project_async_generation_job(job)
         except JobQueueError as exc:
+            return _exception_problem(exc)
+
+    @app.get("/api/v1/generation-jobs/{job_id}/handoff", response_model=None)
+    def get_async_generation_handoff(
+        job_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        cx_tenant_id: str | None = Header(default=None, alias=CX_TENANT_HEADER),
+        cx_subject_id: str | None = Header(default=None, alias=CX_SUBJECT_HEADER),
+    ):
+        context = authorize_cx_owner_request(
+            request, authorization, tenant_id=cx_tenant_id, subject_id=cx_subject_id
+        )
+        if isinstance(context, JSONResponse):
+            return context
+        try:
+            job = job_queue.get_job(job_id)
+            if job is None or not _visible(job, context.tenant_id, context.subject_id):
+                return _not_found()
+            return build_generation_handoff(
+                job,
+                read_model=read_model,
+                access_context=context,
+            )
+        except (JobQueueError, GenerationHandoffError) as exc:
             return _exception_problem(exc)
 
     @app.post("/api/v1/generation-jobs/{job_id}/cancel", response_model=None)

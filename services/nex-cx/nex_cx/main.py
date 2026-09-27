@@ -286,6 +286,7 @@ register_async_generation_operations_routes(
     runtime=CX_GENERATION_RUNTIME,
     request_store=CX_GENERATION_REQUEST_STORE,
     retrieval_store=DEFAULT_INGESTION_STORE,
+    read_model=CX_GENERATION_READ_MODEL,
 )
 register_remediation_execution_routes(
     app,
