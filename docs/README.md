@@ -1126,6 +1126,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1020`](slices/1020_ae_workspace_chat_postgresql_smoke.md) | `S102-009` Prove durable workspace/chat lifecycle, owner isolation, restart reads, events, and cleanup on actual `nex_ae_test`. |
 | [`Slice 1021`](slices/1021_s102_ae_durable_workspace_chat_closure.md) | `S102-010` Close durable AE workspace/chat orchestration with actual PostgreSQL evidence and Full Gate. |
 | [`Slice 1022`](slices/1022_ae_intent_template_policy_boundary_audit.md) | `S103-001` Freeze AE intent, template, prompt, compatibility, persistence, and runtime-policy ownership. |
+| [`Slice 1023`](slices/1023_ae_intent_execution_mode_contract.md) | `S103-002` Resolve canonical AE execution modes with explicit-mode precedence and deterministic fallback. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
