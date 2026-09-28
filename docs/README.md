@@ -1147,6 +1147,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1041`](slices/1041_s104_ae_cx_async_generation_closure.md) | `S104-010` Close AE-to-CX async generation integration with machine-checkable evidence and Full Gate. |
 | [`Slice 1042`](slices/1042_ae_generation_lifecycle_boundary_audit.md) | `S105-001` Freeze AE generation progress, cancellation, recovery, ownership, persistence, privacy, and quality boundaries. |
 | [`Slice 1043`](slices/1043_ae_generation_progress_contract.md) | `S105-002` Add deterministic privacy-safe AE generation progress and recovery-plan projections. |
+| [`Slice 1044`](slices/1044_ae_generation_lifecycle_orchestration.md) | `S105-003` Add route-independent owner-bound CX job and handoff lifecycle reconciliation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
