@@ -1138,6 +1138,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1032`](slices/1032_ae_cx_async_generation_boundary_audit.md) | `S104-001` Freeze AE-to-CX asynchronous generation ownership, compatibility, persistence, privacy, and quality boundaries. |
 | [`Slice 1033`](slices/1033_ae_async_generation_contract.md) | `S104-002` Add strict execution-strategy selection and privacy-safe AE asynchronous job projections. |
 | [`Slice 1034`](slices/1034_ae_cx_async_generation_client.md) | `S104-003` Add the owner-scoped AE HTTP client for CX async admission, polling, handoff, and cancellation. |
+| [`Slice 1035`](slices/1035_ae_async_chat_admission.md) | `S104-004` Wire explicit async chat admission to durable owner-safe AE interaction state. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

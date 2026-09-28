@@ -10,6 +10,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 import httpx
 from fastapi import FastAPI, Header, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -27,6 +28,17 @@ from nex_runtime.prompts import PromptRegistryError, render_prompt_from_binding
 from nex_ae_api.generation_policy import (
     GenerationPolicyPackageError,
     build_generation_policy_package,
+)
+from nex_ae_api.async_generation import (
+    ASYNCHRONOUS,
+    AeAsyncGenerationError,
+    build_async_generation_projection,
+    resolve_execution_strategy,
+)
+from nex_ae_api.cx_async_generation_client import (
+    CxAsyncGenerationClient,
+    CxAsyncGenerationClientError,
+    HttpCxAsyncGenerationClient,
 )
 from nex_ae_api.intent_policy import IntentPolicyError
 from nex_ae_api.prompt_persistence import PromptRepositoryError
@@ -339,11 +351,19 @@ def build_default_cx_retrieval_client() -> HttpCxRetrievalClient:
     )
 
 
+def build_default_cx_async_generation_client() -> HttpCxAsyncGenerationClient:
+    return HttpCxAsyncGenerationClient(
+        base_url=os.getenv("NEX_CX_BASE_URL", "http://127.0.0.1:8104"),
+        service_token=os.getenv("NEX_AE_TO_CX_SERVICE_TOKEN"),
+    )
+
+
 def register_chat_routes(
     app: FastAPI,
     *,
     store: Any | None = None,
     cx_client: CxGenerationClient | None = None,
+    cx_async_client: CxAsyncGenerationClient | None = None,
     retrieval_client: CxRetrievalClient | None = None,
     analytics_store: PromptAnalyticsStore | None = None,
     event_emitter: OperationalEventEmitter | None = None,
@@ -352,6 +372,7 @@ def register_chat_routes(
     chat_store = store or build_default_chat_store(app)
     app.state.ae_chat_store = chat_store
     client = cx_client or build_default_cx_client()
+    async_client = cx_async_client or build_default_cx_async_generation_client()
     retrieval = retrieval_client or build_default_cx_retrieval_client()
     prompts = (
         prompt_store
@@ -393,6 +414,7 @@ def register_chat_routes(
                 return existing
 
             runtime_policy = resolve_runtime_policy(payload)
+            execution_strategy = resolve_execution_strategy(payload)
             prompt_binding = resolve_safe_prompt_binding(
                 prompts,
                 binding_key=runtime_policy["prompt_contract_ref"][
@@ -493,6 +515,38 @@ def register_chat_routes(
                 cx_payload,
                 policy_package,
             )
+            if execution_strategy == ASYNCHRONOUS:
+                try:
+                    admission = async_client.admit_generation(
+                        cx_payload,
+                        request_id=request_id,
+                        trace_id=trace_id,
+                        idempotency_key=f"ae-chat:{binding.interaction_id}",
+                    )
+                    projection = build_async_generation_projection(admission)
+                except CxAsyncGenerationClientError as exc:
+                    raise ChatInteractionError(
+                        status_code=exc.status_code,
+                        error_code=exc.error_code,
+                        detail=exc.detail,
+                        retryable=exc.retryable,
+                    ) from exc
+                saved_async_record = chat_store.save(
+                    build_async_admitted_chat_interaction_record(
+                        pending_record=pending_record,
+                        retrieval_package=retrieval_package,
+                        runtime_policy=runtime_policy,
+                        prompt_binding=prompt_binding,
+                        prompt_render_event=prompt_render_event,
+                        policy_package=policy_package,
+                        projection=projection,
+                    )
+                )
+                observe_workspace_chat_state(emitter, saved_async_record)
+                return JSONResponse(
+                    status_code=202,
+                    content=jsonable_encoder(saved_async_record),
+                )
             try:
                 cx_record = client.create_generation(
                     cx_payload,
@@ -589,6 +643,7 @@ def register_chat_routes(
                 chat_error,
             )
         except (
+            AeAsyncGenerationError,
             IntentPolicyError,
             RuntimePolicyError,
             RuntimePolicyApiError,
@@ -941,6 +996,37 @@ def build_pending_chat_interaction_record(
         "artifact_refs": [],
         "created_at": now,
         "updated_at": now,
+    }
+
+
+def build_async_admitted_chat_interaction_record(
+    *,
+    pending_record: dict[str, Any],
+    retrieval_package: dict[str, Any] | None,
+    runtime_policy: dict[str, Any],
+    prompt_binding: dict[str, Any],
+    prompt_render_event: dict[str, Any],
+    policy_package: dict[str, Any],
+    projection: dict[str, Any],
+) -> dict[str, Any]:
+    policy_summary = build_policy_generation_summary(
+        runtime_policy=runtime_policy,
+        prompt_binding=prompt_binding,
+        prompt_render_event=prompt_render_event,
+        policy_package=policy_package,
+    )
+    lifecycle_status = projection["lifecycle_status"]
+    return {
+        **pending_record,
+        "status": "PENDING" if lifecycle_status == "PENDING" else "FAILED",
+        "cx_generation_id": projection["cx_generation_id"],
+        "cx_status": projection["cx_job_status"],
+        "generation": {
+            "policy": policy_summary,
+            "async_generation": projection,
+        },
+        "retrieval": retrieval_summary(retrieval_package),
+        "updated_at": _utc_now(),
     }
 
 
