@@ -6,7 +6,7 @@ from pathlib import Path
 import run_ae_generated_response_lineage_boundary_audit as audit
 
 
-def test_repository_boundary_audit_passes_with_eight_open_gaps() -> None:
+def test_repository_boundary_audit_tracks_slice_1063_progress() -> None:
     result = audit.run_ae_generated_response_lineage_boundary_audit()
 
     assert result["status"] == "PASS"
@@ -15,12 +15,12 @@ def test_repository_boundary_audit_passes_with_eight_open_gaps() -> None:
     assert result["summary"] == {
         "foundation_count": 7,
         "gap_count": 8,
-        "open_gap_count": 8,
-        "resolved_gap_count": 0,
+        "open_gap_count": 7,
+        "resolved_gap_count": 1,
         "planned_slice_count": 10,
         "issue_count": 0,
     }
-    assert result["next_slice"] == "1063"
+    assert result["next_slice"] == "1064"
     assert result["issues"] == []
 
 

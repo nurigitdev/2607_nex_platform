@@ -208,6 +208,10 @@ Artifact records:
   mock path can remain in memory, while `NEX_AE_ARTIFACT_STORAGE_ROOT` enables
   private local Markdown payload storage behind logical `ae://artifacts/...`
   refs. Local paths stay out of API records and evidence.
+- Slice 1063 adds a separate generated-response storage boundary. The default
+  remains in memory, while `NEX_AE_CHAT_RESPONSE_STORAGE_ROOT` enables private
+  local response content behind logical `ae://chat-responses/...` refs. Reads
+  verify UTF-8 size and SHA-256 integrity, and APIs never expose local paths.
 - Slice 0405 wires artifact routes to SQLAlchemy stores when
   `app.state.nex_persistence.api_session_factory` is attached. Explicit test
   stores still override defaults, and the public API shape is unchanged across
