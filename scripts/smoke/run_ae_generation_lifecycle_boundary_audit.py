@@ -101,7 +101,7 @@ GAP_RESOLUTION_PATHS = {
         "docs/slices/1045_ae_generation_progress_api.md"
     ),
     "cancel_race_convergence_missing": (
-        "docs/slices/1046_ae_generation_cancellation_convergence.md"
+        "docs/slices/1046_ae_generation_cancellation_race.md"
     ),
     "recovery_orchestration_missing": (
         "docs/slices/1047_ae_generation_recovery_orchestration.md"
@@ -110,10 +110,10 @@ GAP_RESOLUTION_PATHS = {
         "docs/slices/1048_ae_generation_lifecycle_observability.md"
     ),
     "contract_openapi_missing": (
-        "docs/slices/1049_ae_generation_lifecycle_contract_openapi.md"
+        "docs/slices/1049_ae_generation_lifecycle_contract_hardening.md"
     ),
     "postgres_evidence_missing": (
-        "docs/slices/1050_ae_generation_lifecycle_postgresql_smoke.md"
+        "docs/slices/1050_ae_generation_lifecycle_postgres_smoke.md"
     ),
 }
 

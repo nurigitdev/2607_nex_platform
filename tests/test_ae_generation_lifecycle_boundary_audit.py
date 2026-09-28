@@ -20,6 +20,9 @@ def test_repository_boundary_audit_passes() -> None:
         == 8
     )
     assert result["summary"]["planned_slice_count"] == 10
+    assert result["summary"]["resolved_gap_count"] == 8
+    assert result["summary"]["open_gap_count"] == 0
+    assert result["next_slice"] == "1051"
     assert result["issues"] == []
 
 

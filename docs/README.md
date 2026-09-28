@@ -1154,6 +1154,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1048`](slices/1048_ae_generation_lifecycle_observability.md) | `S105-007` Add metadata-only lifecycle events and bounded workspace activity. |
 | [`Slice 1049`](slices/1049_ae_generation_lifecycle_contract_hardening.md) | `S105-008` Publish canonical progress/recovery JSON Schema and OpenAPI contracts. |
 | [`Slice 1050`](slices/1050_ae_generation_lifecycle_postgres_smoke.md) | `S105-009` Prove lifecycle progress, race, recovery, and retry against actual AE/CX PostgreSQL. |
+| [`Slice 1051`](slices/1051_s105_ae_generation_lifecycle_closure.md) | `S105-010` Close AE generation lifecycle orchestration with actual PostgreSQL evidence and Full Gate. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
