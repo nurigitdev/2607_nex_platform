@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX AE API
-  version: 1.0.0
+  version: 1.1.0
 tags:
   - name: Platform
   - name: Auth
@@ -15,6 +15,7 @@ tags:
   - name: Retrieval
   - name: Analytics
   - name: Prompts
+  - name: Runtime Policy
 paths:
   /health:
     get:
@@ -761,6 +762,77 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: Recovery request was not found.
+  /api/v1/runtime-policies:
+    get:
+      operationId: listAeRuntimePolicies
+      tags:
+        - Runtime Policy
+      responses:
+        "200":
+          description: Safe active AE runtime-policy rule catalog.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeRuntimePolicyCatalog"
+        "401":
+          description: Service or browser claim is missing or invalid.
+  /api/v1/runtime-policies/resolve:
+    post:
+      operationId: resolveAeRuntimePolicy
+      tags:
+        - Runtime Policy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AeRuntimePolicyResolveRequest"
+      responses:
+        "200":
+          description: Exact safe runtime policy and active prompt-binding projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeRuntimePolicyResolution"
+        "400":
+          description: Runtime-policy request shape is invalid.
+        "401":
+          description: Service or browser claim is missing or invalid.
+        "404":
+          description: Active prompt binding was not found.
+        "409":
+          description: Policy or prompt binding is ambiguous, inactive, or version-mismatched.
+        "422":
+          description: Requested mode or provider-facing runtime field is forbidden.
+        "503":
+          description: Prompt registry is unavailable.
+  /api/v1/runtime-policies/prompt-bindings/{binding_key}:
+    get:
+      operationId: getAeRuntimePolicyPromptBinding
+      tags:
+        - Runtime Policy
+      parameters:
+        - name: binding_key
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Safe active prompt-binding projection without prompt content.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AePromptBindingProjection"
+        "401":
+          description: Service or browser claim is missing or invalid.
+        "404":
+          description: Active prompt binding was not found.
+        "409":
+          description: Prompt binding or bound version is inactive.
+        "503":
+          description: Prompt registry is unavailable.
   /api/v1/chat/interactions:
     post:
       operationId: createAeChatInteraction
@@ -1656,6 +1728,313 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AeWorkspaceActivity"
+    AeRuntimePolicyResolveRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - user_message
+      properties:
+        user_message:
+          type: string
+          minLength: 1
+          writeOnly: true
+        retrieval:
+          type: object
+          additionalProperties: false
+          properties:
+            enabled:
+              type: boolean
+        generation:
+          type: object
+          additionalProperties: false
+          description: >
+            AE policy selectors and bounded generation parameters only.
+            Provider endpoints, API keys, model paths, and vLLM options are forbidden.
+          properties:
+            execution_mode:
+              type: string
+              enum:
+                - GENERAL_ANSWER
+                - GROUNDED_ANSWER
+                - DOCUMENT_SUMMARY
+                - DOCUMENT_GENERATION
+            template_id:
+              type: string
+            template_version:
+              type: string
+            template_ref:
+              type: object
+              additionalProperties: false
+              properties:
+                template_id:
+                  type: string
+                template_version:
+                  type: string
+            prompt_binding_key:
+              type: string
+            prompt_version:
+              type: string
+            prompt_contract_ref:
+              type: object
+              additionalProperties: false
+              properties:
+                prompt_binding_key:
+                  type: string
+                prompt_version:
+                  type: string
+            output_contract_id:
+              type: string
+            artifact_intent:
+              type: string
+            output_contract:
+              type: object
+              additionalProperties: false
+              properties:
+                output_contract_id:
+                  type: string
+                artifact_intent:
+                  type: string
+            parameters:
+              type: object
+              additionalProperties: false
+              properties:
+                max_output_tokens:
+                  type: integer
+                  minimum: 128
+                  maximum: 8192
+                temperature:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+                streaming:
+                  type: boolean
+                timeout_ms:
+                  type: integer
+                  minimum: 1000
+                  maximum: 180000
+    AePromptBindingProjection:
+      type: object
+      additionalProperties: false
+      required:
+        - prompt_binding_projection_schema_version
+        - prompt_binding_id
+        - binding_key
+        - prompt_template_version_id
+        - service_id
+        - purpose
+        - status
+        - prompt_version
+        - role
+        - segment_order
+        - content_sha256
+        - model_capability
+        - content_included
+      properties:
+        prompt_binding_projection_schema_version:
+          const: ae_prompt_binding_projection.v1
+        prompt_binding_id:
+          type: string
+        binding_key:
+          type: string
+        prompt_template_version_id:
+          type: string
+        service_id:
+          const: nex-ae-api
+        purpose:
+          type: string
+        status:
+          const: ACTIVE
+        prompt_version:
+          type: string
+        role:
+          const: system
+        segment_order:
+          type: integer
+          minimum: 0
+        content_sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        model_capability:
+          const: generation
+        content_included:
+          const: false
+    AeRuntimePolicyRule:
+      type: object
+      additionalProperties: false
+      required:
+        - rule_schema_version
+        - rule_id
+        - rule_version
+        - rule_hash
+        - status
+        - execution_mode
+        - template_ref
+        - prompt_contract_ref
+        - output_contract
+        - generation_profile
+        - provider_capability
+        - generation_parameters
+        - quality_policy
+        - raw_prompt_included
+        - provider_runtime_included
+      properties:
+        rule_schema_version:
+          const: ae_runtime_policy_rule.v1
+        rule_id:
+          type: string
+        rule_version:
+          type: string
+        rule_hash:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        status:
+          const: ACTIVE
+        execution_mode:
+          type: string
+          enum:
+            - GENERAL_ANSWER
+            - GROUNDED_ANSWER
+            - DOCUMENT_SUMMARY
+            - DOCUMENT_GENERATION
+        template_ref:
+          type: object
+        prompt_contract_ref:
+          type: object
+        output_contract:
+          type: object
+        generation_profile:
+          type: string
+        provider_capability:
+          const: generation
+        generation_parameters:
+          type: object
+        quality_policy:
+          type: object
+        raw_prompt_included:
+          const: false
+        provider_runtime_included:
+          const: false
+    AeRuntimePolicyCatalog:
+      type: object
+      additionalProperties: false
+      required:
+        - runtime_policy_catalog_schema_version
+        - policies
+      properties:
+        runtime_policy_catalog_schema_version:
+          const: ae_runtime_policy_catalog.v1
+        policies:
+          type: array
+          items:
+            $ref: "#/components/schemas/AeRuntimePolicyRule"
+    AeRuntimePolicy:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/runtime_policy.v1.schema.json
+      additionalProperties: true
+      required:
+        - runtime_policy_schema_version
+        - intent_decision
+        - compatibility_rule
+        - prompt_contract_ref
+        - policy_snapshot_hash
+        - raw_prompt_included
+        - provider_runtime_included
+      properties:
+        runtime_policy_schema_version:
+          const: ae_runtime_policy.v1
+        intent_decision:
+          type: object
+          x-nex-canonical-json-schema: schemas/service/nex_ae_api/intent_decision.v1.schema.json
+        compatibility_rule:
+          type: object
+        prompt_contract_ref:
+          type: object
+        policy_snapshot_hash:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        raw_prompt_included:
+          const: false
+        provider_runtime_included:
+          const: false
+    AeRuntimePolicyResolution:
+      allOf:
+        - $ref: "#/components/schemas/AeRuntimePolicy"
+        - type: object
+          required:
+            - prompt_binding
+          properties:
+            prompt_binding:
+              $ref: "#/components/schemas/AePromptBindingProjection"
+    AeGenerationPolicyPackage:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/generation_policy_package.v1.schema.json
+      additionalProperties: true
+      required:
+        - generation_policy_package_schema_version
+        - execution_mode
+        - policy_snapshot_hash
+        - privacy
+        - client_package_hash
+      properties:
+        generation_policy_package_schema_version:
+          const: ae_generation_policy_package.v1
+        execution_mode:
+          type: string
+          enum:
+            - GENERAL_ANSWER
+            - GROUNDED_ANSWER
+            - DOCUMENT_SUMMARY
+            - DOCUMENT_GENERATION
+        policy_snapshot_hash:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        privacy:
+          type: object
+        client_package_hash:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+    AeChatRuntimePolicySummary:
+      type: object
+      additionalProperties: false
+      required:
+        - policy_summary_schema_version
+        - runtime_policy_snapshot
+        - prompt_binding
+        - prompt_render_event_ref
+        - generation_policy_package
+        - raw_prompt_included
+        - provider_runtime_included
+      properties:
+        policy_summary_schema_version:
+          const: ae_chat_runtime_policy_summary.v1
+        runtime_policy_snapshot:
+          $ref: "#/components/schemas/AeRuntimePolicy"
+        prompt_binding:
+          $ref: "#/components/schemas/AePromptBindingProjection"
+        prompt_render_event_ref:
+          type: object
+          additionalProperties: false
+          required:
+            - prompt_render_event_id
+            - rendered_prompt_hash
+            - user_prompt_hash
+          properties:
+            prompt_render_event_id:
+              type: string
+            rendered_prompt_hash:
+              type: string
+              pattern: "^[0-9a-f]{64}$"
+            user_prompt_hash:
+              type: string
+              pattern: "^[0-9a-f]{64}$"
+        generation_policy_package:
+          anyOf:
+            - $ref: "#/components/schemas/AeGenerationPolicyPackage"
+            - type: "null"
+        raw_prompt_included:
+          const: false
+        provider_runtime_included:
+          const: false
     AeChatInteractionRequest:
       type: object
       additionalProperties: true
@@ -1737,9 +2116,13 @@ components:
         cx_status:
           type: string
         generation:
-          type:
-            - object
-            - "null"
+          anyOf:
+            - type: object
+              additionalProperties: true
+              properties:
+                policy:
+                  $ref: "#/components/schemas/AeChatRuntimePolicySummary"
+            - type: "null"
         retrieval:
           type:
             - object

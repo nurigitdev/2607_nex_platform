@@ -1,0 +1,54 @@
+{
+  "runtime_policy_schema_version": "ae_runtime_policy.v1",
+  "intent_decision": {
+    "intent_decision_schema_version": "ae_intent_decision.v1",
+    "intent_label": "summarize_document",
+    "task_category": "document_summary",
+    "execution_mode": "DOCUMENT_SUMMARY",
+    "decision_source": "DETERMINISTIC_FALLBACK",
+    "confidence": 0.86,
+    "retrieval_required": true,
+    "template_required": false,
+    "matched_rule": "document_summary",
+    "raw_prompt_included": false,
+    "decision_hash": "3226502d98a040decea1d0fd4b458b6b0d6863accb7002302722600cf1c38be2"
+  },
+  "compatibility_rule": {
+    "rule_id": "ae.document_summary.v1",
+    "rule_version": "v1",
+    "rule_hash": "78b1ecb7527e7eb2fed953893d740b2060f9d6963c1745a9747705e2904b1f14"
+  },
+  "template_ref": {
+    "template_id": "summary",
+    "template_version": "v1"
+  },
+  "prompt_contract_ref": {
+    "prompt_binding_key": "ae.document_summary.default",
+    "prompt_version": "v1"
+  },
+  "output_contract": {
+    "output_contract_id": "document_summary_v1",
+    "output_contract_version": "v1",
+    "artifact_intent": "preview_only",
+    "preferred_export_format": "MD"
+  },
+  "generation_profile": "summary",
+  "provider_capability": "generation",
+  "generation_parameters": {
+    "max_output_tokens": 1024,
+    "temperature": 0.0,
+    "streaming": false,
+    "timeout_ms": 120000
+  },
+  "quality_policy": {
+    "policy_id": "quality.summary.v1",
+    "grounding_required": true,
+    "citation_required": true,
+    "low_confidence_behavior": "block",
+    "no_answer_behavior": "block_grounded_generation",
+    "untrusted_context_boundary": true
+  },
+  "raw_prompt_included": false,
+  "provider_runtime_included": false,
+  "policy_snapshot_hash": "e166cd7f88036584e839073ce10ab925adb585b66d0d59f335fdd07669dabb1d"
+}

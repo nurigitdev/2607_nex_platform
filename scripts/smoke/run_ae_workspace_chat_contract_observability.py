@@ -74,7 +74,9 @@ def run_workspace_chat_contract_observability_smoke() -> dict[str, Any]:
                 (ROOT / "contracts/examples/index.json").read_text(encoding="utf-8")
             )["examples"]
         ),
-        "openapi_promoted": openapi.get("info", {}).get("version") == "1.0.0",
+        "openapi_promoted": str(openapi.get("info", {}).get("version", "")).startswith(
+            "1."
+        ),
         "workspace_openapi_schema_present": "AeWorkspaceState" in schemas,
         "activity_openapi_schema_present": "AeWorkspaceActivity" in schemas,
         "chat_openapi_schema_present": "AeChatInteraction" in schemas,

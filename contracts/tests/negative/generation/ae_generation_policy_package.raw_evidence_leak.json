@@ -1,0 +1,76 @@
+{
+  "generation_policy_package_schema_version": "ae_generation_policy_package.v1",
+  "execution_mode": "DOCUMENT_SUMMARY",
+  "intent_decision_ref": {
+    "decision_hash": "3226502d98a040decea1d0fd4b458b6b0d6863accb7002302722600cf1c38be2",
+    "intent_label": "summarize_document",
+    "task_category": "document_summary",
+    "decision_source": "DETERMINISTIC_FALLBACK"
+  },
+  "ownership_ref": {
+    "tenant_ref": {
+      "type": "oa.tenant",
+      "id": "tenant-contract"
+    },
+    "owner_subject_ref": {
+      "type": "oa.user",
+      "id": "user-contract"
+    }
+  },
+  "template_ref": {
+    "template_id": "summary",
+    "template_version": "v1"
+  },
+  "prompt_contract_ref": {
+    "prompt_binding_key": "ae.document_summary.default",
+    "prompt_binding_id": "d23e0562-963c-57fb-acfb-1f50796e9d00",
+    "prompt_template_version_id": "37077565-f5f1-5ffc-987a-104b1a9c0a22",
+    "prompt_version": "v1",
+    "content_sha256": "ef273bf1a9eeb657c5f49d1146c162c065406c2335d626e58bfc4e897e6f2ed9",
+    "render_event_ref": {
+      "prompt_render_event_id": "31196c74-ab61-5b88-bc57-23286799c8de",
+      "rendered_prompt_hash": "ef273bf1a9eeb657c5f49d1146c162c065406c2335d626e58bfc4e897e6f2ed9",
+      "user_prompt_hash": "4109a7d9e6c2aa7e8584ee247417509a6e80d98f3cf95c4cadc26057d25f5ec0"
+    }
+  },
+  "output_contract": {
+    "output_contract_id": "document_summary_v1",
+    "output_contract_version": "v1",
+    "artifact_intent": "preview_only",
+    "preferred_export_format": "MD"
+  },
+  "generation_profile": "summary",
+  "provider_capability": "generation",
+  "generation_parameters": {
+    "max_output_tokens": 1024,
+    "temperature": 0.0,
+    "streaming": false,
+    "timeout_ms": 120000
+  },
+  "quality_policy": {
+    "policy_id": "quality.summary.v1",
+    "grounding_required": true,
+    "citation_required": true,
+    "low_confidence_behavior": "block",
+    "no_answer_behavior": "block_grounded_generation",
+    "untrusted_context_boundary": true
+  },
+  "retrieval_package_ref": {
+    "retrieval_package_id": "retrieval-contract",
+    "package_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "status": "READY"
+  },
+  "selected_evidence_ids": [
+    "evidence-contract"
+  ],
+  "user_message_hash": "4109a7d9e6c2aa7e8584ee247417509a6e80d98f3cf95c4cadc26057d25f5ec0",
+  "policy_snapshot_hash": "e166cd7f88036584e839073ce10ab925adb585b66d0d59f335fdd07669dabb1d",
+  "privacy": {
+    "raw_user_prompt_included": false,
+    "raw_evidence_included": false,
+    "provider_runtime_included": false,
+    "raw_token_included": false
+  },
+  "client_package_hash": "571fdc66f03b8ba35b466f7098dd7eb7c21b21e30c2b5be34c5b513127d7ce31",
+  "evidence_text": "private evidence content"
+}

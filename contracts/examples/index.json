@@ -281,6 +281,21 @@
       "schema": "schemas/generation/ag_generation_quality_feedback_rollup.v1.schema.json"
     },
     {
+      "name": "ae_intent_decision_document_summary",
+      "path": "examples/generation/ae_intent_decision.document_summary.json",
+      "schema": "schemas/service/nex_ae_api/intent_decision.v1.schema.json"
+    },
+    {
+      "name": "ae_runtime_policy_document_summary",
+      "path": "examples/generation/ae_runtime_policy.document_summary.json",
+      "schema": "schemas/service/nex_ae_api/runtime_policy.v1.schema.json"
+    },
+    {
+      "name": "ae_generation_policy_package_document_summary",
+      "path": "examples/generation/ae_generation_policy_package.document_summary.json",
+      "schema": "schemas/service/nex_ae_api/generation_policy_package.v1.schema.json"
+    },
+    {
       "name": "ae_chat_interaction_mock",
       "path": "examples/generation/ae_chat_interaction.mock_success.json",
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"

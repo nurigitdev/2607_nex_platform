@@ -1,0 +1,14 @@
+{
+  "intent_decision_schema_version": "ae_intent_decision.v1",
+  "intent_label": "summarize_document",
+  "task_category": "document_summary",
+  "execution_mode": "DOCUMENT_SUMMARY",
+  "decision_source": "DETERMINISTIC_FALLBACK",
+  "confidence": 0.86,
+  "retrieval_required": true,
+  "template_required": false,
+  "matched_rule": "document_summary",
+  "raw_prompt_included": false,
+  "decision_hash": "3226502d98a040decea1d0fd4b458b6b0d6863accb7002302722600cf1c38be2",
+  "raw_prompt": "private document content"
+}

@@ -226,6 +226,21 @@
       "schema": "schemas/generation/ag_generation_quality_feedback_rollup.v1.schema.json"
     },
     {
+      "name": "ae_intent_decision_raw_prompt_leak",
+      "path": "tests/negative/generation/ae_intent_decision.raw_prompt_leak.json",
+      "schema": "schemas/service/nex_ae_api/intent_decision.v1.schema.json"
+    },
+    {
+      "name": "ae_runtime_policy_provider_runtime_leak",
+      "path": "tests/negative/generation/ae_runtime_policy.provider_runtime_leak.json",
+      "schema": "schemas/service/nex_ae_api/runtime_policy.v1.schema.json"
+    },
+    {
+      "name": "ae_generation_policy_package_raw_evidence_leak",
+      "path": "tests/negative/generation/ae_generation_policy_package.raw_evidence_leak.json",
+      "schema": "schemas/service/nex_ae_api/generation_policy_package.v1.schema.json"
+    },
+    {
       "name": "ae_chat_interaction_raw_user_message_leak",
       "path": "tests/negative/generation/ae_chat_interaction.raw_user_message_leak.json",
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"

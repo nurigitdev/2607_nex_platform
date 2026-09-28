@@ -139,6 +139,21 @@
             },
             "grounded_response_quality": {
               "$ref": "#/$defs/groundedResponseQuality"
+            },
+            "policy": {
+              "$ref": "#/$defs/runtimePolicySummary"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "policy"
+          ],
+          "properties": {
+            "policy": {
+              "$ref": "#/$defs/runtimePolicySummary"
             }
           }
         },
@@ -241,6 +256,258 @@
     }
   },
   "$defs": {
+    "runtimePolicySummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_summary_schema_version",
+        "runtime_policy_snapshot",
+        "prompt_binding",
+        "prompt_render_event_ref",
+        "generation_policy_package",
+        "raw_prompt_included",
+        "provider_runtime_included"
+      ],
+      "properties": {
+        "policy_summary_schema_version": {
+          "const": "ae_chat_runtime_policy_summary.v1"
+        },
+        "runtime_policy_snapshot": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "runtime_policy_schema_version",
+            "intent_decision",
+            "compatibility_rule",
+            "prompt_contract_ref",
+            "policy_snapshot_hash",
+            "raw_prompt_included",
+            "provider_runtime_included"
+          ],
+          "properties": {
+            "runtime_policy_schema_version": {
+              "const": "ae_runtime_policy.v1"
+            },
+            "intent_decision": {
+              "type": "object"
+            },
+            "compatibility_rule": {
+              "type": "object"
+            },
+            "prompt_contract_ref": {
+              "type": "object"
+            },
+            "policy_snapshot_hash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "raw_prompt_included": {
+              "const": false
+            },
+            "provider_runtime_included": {
+              "const": false
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "raw_prompt"
+                ]
+              },
+              {
+                "required": [
+                  "api_key"
+                ]
+              },
+              {
+                "required": [
+                  "provider_url"
+                ]
+              }
+            ]
+          }
+        },
+        "prompt_binding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "prompt_binding_projection_schema_version",
+            "prompt_binding_id",
+            "binding_key",
+            "prompt_template_version_id",
+            "service_id",
+            "purpose",
+            "status",
+            "prompt_version",
+            "role",
+            "segment_order",
+            "content_sha256",
+            "model_capability",
+            "content_included"
+          ],
+          "properties": {
+            "prompt_binding_projection_schema_version": {
+              "const": "ae_prompt_binding_projection.v1"
+            },
+            "prompt_binding_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "binding_key": {
+              "type": "string",
+              "minLength": 1
+            },
+            "prompt_template_version_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "service_id": {
+              "const": "nex-ae-api"
+            },
+            "purpose": {
+              "type": "string",
+              "minLength": 1
+            },
+            "status": {
+              "const": "ACTIVE"
+            },
+            "prompt_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "role": {
+              "const": "system"
+            },
+            "segment_order": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "content_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "model_capability": {
+              "const": "generation"
+            },
+            "content_included": {
+              "const": false
+            }
+          }
+        },
+        "prompt_render_event_ref": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "prompt_render_event_id",
+            "rendered_prompt_hash",
+            "user_prompt_hash"
+          ],
+          "properties": {
+            "prompt_render_event_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rendered_prompt_hash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "user_prompt_hash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        "generation_policy_package": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "generation_policy_package_schema_version",
+                "prompt_contract_ref",
+                "user_message_hash",
+                "policy_snapshot_hash",
+                "privacy",
+                "client_package_hash"
+              ],
+              "properties": {
+                "generation_policy_package_schema_version": {
+                  "const": "ae_generation_policy_package.v1"
+                },
+                "prompt_contract_ref": {
+                  "type": "object"
+                },
+                "user_message_hash": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "policy_snapshot_hash": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "privacy": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "raw_user_prompt_included",
+                    "raw_evidence_included",
+                    "provider_runtime_included",
+                    "raw_token_included"
+                  ],
+                  "properties": {
+                    "raw_user_prompt_included": {
+                      "const": false
+                    },
+                    "raw_evidence_included": {
+                      "const": false
+                    },
+                    "provider_runtime_included": {
+                      "const": false
+                    },
+                    "raw_token_included": {
+                      "const": false
+                    }
+                  }
+                },
+                "client_package_hash": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              },
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "raw_prompt"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "evidence_text"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "api_key"
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "raw_prompt_included": {
+          "const": false
+        },
+        "provider_runtime_included": {
+          "const": false
+        }
+      }
+    },
     "renderFormat": {
       "type": "string",
       "enum": [

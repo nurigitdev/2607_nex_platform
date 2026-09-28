@@ -1,0 +1,296 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/runtime_policy.v1.schema.json",
+  "title": "NeX AE Runtime Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "runtime_policy_schema_version",
+    "intent_decision",
+    "compatibility_rule",
+    "template_ref",
+    "prompt_contract_ref",
+    "output_contract",
+    "generation_profile",
+    "provider_capability",
+    "generation_parameters",
+    "quality_policy",
+    "raw_prompt_included",
+    "provider_runtime_included",
+    "policy_snapshot_hash"
+  ],
+  "properties": {
+    "runtime_policy_schema_version": {
+      "const": "ae_runtime_policy.v1"
+    },
+    "intent_decision": {
+      "$ref": "#/$defs/intentDecision"
+    },
+    "compatibility_rule": {
+      "$ref": "#/$defs/compatibilityRule"
+    },
+    "template_ref": {
+      "$ref": "#/$defs/templateRef"
+    },
+    "prompt_contract_ref": {
+      "$ref": "#/$defs/promptContractRef"
+    },
+    "output_contract": {
+      "$ref": "#/$defs/outputContract"
+    },
+    "generation_profile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider_capability": {
+      "const": "generation"
+    },
+    "generation_parameters": {
+      "$ref": "#/$defs/generationParameters"
+    },
+    "quality_policy": {
+      "$ref": "#/$defs/qualityPolicy"
+    },
+    "raw_prompt_included": {
+      "const": false
+    },
+    "provider_runtime_included": {
+      "const": false
+    },
+    "policy_snapshot_hash": {
+      "$ref": "#/$defs/hash"
+    }
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "intentDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent_decision_schema_version",
+        "intent_label",
+        "task_category",
+        "execution_mode",
+        "decision_source",
+        "confidence",
+        "retrieval_required",
+        "template_required",
+        "matched_rule",
+        "raw_prompt_included",
+        "decision_hash"
+      ],
+      "properties": {
+        "intent_decision_schema_version": {
+          "const": "ae_intent_decision.v1"
+        },
+        "intent_label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task_category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "execution_mode": {
+          "type": "string",
+          "enum": [
+            "GENERAL_ANSWER",
+            "GROUNDED_ANSWER",
+            "DOCUMENT_SUMMARY",
+            "DOCUMENT_GENERATION"
+          ]
+        },
+        "decision_source": {
+          "type": "string",
+          "enum": [
+            "EXPLICIT",
+            "DETERMINISTIC_FALLBACK"
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "retrieval_required": {
+          "type": "boolean"
+        },
+        "template_required": {
+          "type": "boolean"
+        },
+        "matched_rule": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "raw_prompt_included": {
+          "const": false
+        },
+        "decision_hash": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "compatibilityRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule_id",
+        "rule_version",
+        "rule_hash"
+      ],
+      "properties": {
+        "rule_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rule_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rule_hash": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "templateRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "template_id",
+        "template_version"
+      ],
+      "properties": {
+        "template_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "template_version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "promptContractRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prompt_binding_key",
+        "prompt_version"
+      ],
+      "properties": {
+        "prompt_binding_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt_version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "outputContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "output_contract_id",
+        "output_contract_version",
+        "artifact_intent",
+        "preferred_export_format"
+      ],
+      "properties": {
+        "output_contract_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "output_contract_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact_intent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "preferred_export_format": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "generationParameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_output_tokens",
+        "temperature",
+        "streaming",
+        "timeout_ms"
+      ],
+      "properties": {
+        "max_output_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "streaming": {
+          "type": "boolean"
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 600000
+        }
+      }
+    },
+    "qualityPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_id",
+        "grounding_required",
+        "citation_required",
+        "low_confidence_behavior",
+        "no_answer_behavior",
+        "untrusted_context_boundary"
+      ],
+      "properties": {
+        "policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "grounding_required": {
+          "type": "boolean"
+        },
+        "citation_required": {
+          "type": "boolean"
+        },
+        "low_confidence_behavior": {
+          "type": "string",
+          "enum": [
+            "block",
+            "warn"
+          ]
+        },
+        "no_answer_behavior": {
+          "type": "string",
+          "enum": [
+            "block_grounded_generation",
+            "allow"
+          ]
+        },
+        "untrusted_context_boundary": {
+          "const": true
+        }
+      }
+    }
+  }
+}

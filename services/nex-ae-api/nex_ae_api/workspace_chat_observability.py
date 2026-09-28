@@ -11,7 +11,7 @@ from nex_runtime import (
 )
 
 
-WORKSPACE_CHAT_OBSERVABILITY_SCHEMA_VERSION = "ae_workspace_chat_observability.v1"
+WORKSPACE_CHAT_OBSERVABILITY_SCHEMA_VERSION = "ae_workspace_chat_observability.v2"
 WORKSPACE_CHAT_STATE_EVENT = "ae.workspace_chat.state_changed"
 
 
@@ -25,6 +25,13 @@ def observe_workspace_chat_state(
     trace_id = _optional(record.get("trace_id"))
     failure = _mapping(record.get("failure"))
     retrieval = _mapping(record.get("retrieval"))
+    generation = _mapping(record.get("generation"))
+    policy = _mapping(generation.get("policy"))
+    runtime_policy = _mapping(policy.get("runtime_policy_snapshot"))
+    intent = _mapping(runtime_policy.get("intent_decision"))
+    compatibility_rule = _mapping(runtime_policy.get("compatibility_rule"))
+    prompt_contract = _mapping(runtime_policy.get("prompt_contract_ref"))
+    policy_package = _mapping(policy.get("generation_policy_package"))
     artifacts = record.get("artifact_refs")
     artifact_count = len(artifacts) if isinstance(artifacts, list) else 0
     return emitter.safe_emit(
@@ -45,6 +52,24 @@ def observe_workspace_chat_state(
             "artifact_ref_count": artifact_count,
             "failure_code": _optional(failure.get("error_code")),
             "retryable": failure.get("retryable") is True,
+            "policy_available": bool(policy),
+            "execution_mode": _optional(intent.get("execution_mode")),
+            "compatibility_rule_id": _optional(
+                compatibility_rule.get("rule_id")
+            ),
+            "compatibility_rule_version": _optional(
+                compatibility_rule.get("rule_version")
+            ),
+            "policy_snapshot_hash": _optional(
+                runtime_policy.get("policy_snapshot_hash")
+            ),
+            "prompt_binding_key": _optional(
+                prompt_contract.get("prompt_binding_key")
+            ),
+            "prompt_version": _optional(prompt_contract.get("prompt_version")),
+            "generation_policy_package_hash": _optional(
+                policy_package.get("client_package_hash")
+            ),
             "prompt_content_included": False,
             "response_content_included": False,
             "owner_identity_included": False,
