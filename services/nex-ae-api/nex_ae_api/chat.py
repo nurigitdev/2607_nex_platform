@@ -42,6 +42,16 @@ from nex_ae_api.generation_recovery import (
     AeGenerationRecoveryError,
     prepare_generation_retry,
 )
+from nex_ae_api.generated_response_api import build_generated_response_owner_view
+from nex_ae_api.generated_response_lineage import (
+    AeGeneratedResponseLineageError,
+    generated_response_lineage_from_record,
+    generated_response_storage_metadata_from_lineage,
+)
+from nex_ae_api.generated_response_storage import (
+    GeneratedResponseStorageError,
+    build_default_generated_response_storage,
+)
 from nex_ae_api.async_generation import (
     ASYNCHRONOUS,
     AeAsyncGenerationError,
@@ -390,6 +400,7 @@ def register_chat_routes(
     analytics_store: PromptAnalyticsStore | None = None,
     event_emitter: OperationalEventEmitter | None = None,
     prompt_store: Any | None = None,
+    generated_response_storage: Any | None = None,
 ) -> None:
     chat_store = store or build_default_chat_store(app)
     app.state.ae_chat_store = chat_store
@@ -405,6 +416,10 @@ def register_chat_routes(
         app,
         service_id="nex-ae-api",
     )
+    response_storage = (
+        generated_response_storage or build_default_generated_response_storage()
+    )
+    app.state.ae_generated_response_storage = response_storage
 
     @app.post("/api/v1/chat/interactions", response_model=None)
     def create_chat_interaction(
@@ -859,6 +874,68 @@ def register_chat_routes(
             )
         except ChatInteractionError as exc:
             return _chat_problem_response(request, exc)
+
+    @app.get(
+        "/api/v1/chat/interactions/{interaction_id}/response",
+        response_model=None,
+    )
+    def get_chat_interaction_response(
+        interaction_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
+        try:
+            record = _get_visible_chat_record(
+                chat_store, interaction_id, auth_context
+            )
+            if record is None:
+                raise ChatInteractionError(
+                    status_code=404,
+                    error_code="ae.chat_interaction_not_found",
+                    detail=f"Chat interaction was not found: {interaction_id}",
+                )
+            lineage = generated_response_lineage_from_record(record)
+            if lineage is None:
+                raise ChatInteractionError(
+                    status_code=409,
+                    error_code="ae.generated_response_not_ready",
+                    detail="Generated response is not ready for this chat interaction.",
+                    retryable=True,
+                )
+            metadata = generated_response_storage_metadata_from_lineage(lineage)
+            content = response_storage.load(metadata)
+            if content is None:
+                raise ChatInteractionError(
+                    status_code=503,
+                    error_code="ae.generated_response_content_unavailable",
+                    detail="Generated response content is temporarily unavailable.",
+                    retryable=True,
+                )
+            return build_generated_response_owner_view(record, lineage, content)
+        except ChatInteractionError as exc:
+            return _chat_problem_response(request, exc)
+        except (AeGeneratedResponseLineageError, GeneratedResponseStorageError) as exc:
+            return _chat_problem_response(
+                request,
+                ChatInteractionError(
+                    status_code=503,
+                    error_code=exc.error_code,
+                    detail=exc.detail,
+                    retryable=exc.retryable,
+                ),
+            )
+        except ValueError:
+            return _chat_problem_response(
+                request,
+                ChatInteractionError(
+                    status_code=503,
+                    error_code="ae.generated_response_integrity_failed",
+                    detail="Generated response content integrity verification failed.",
+                ),
+            )
 
     @app.get(
         "/api/v1/chat/interactions/{interaction_id}/citation-quality",
