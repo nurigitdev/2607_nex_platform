@@ -14,7 +14,11 @@ def test_repository_boundary_audit_passes() -> None:
     assert all(result["checks"].values())
     assert result["summary"]["foundation_count"] == 6
     assert result["summary"]["gap_count"] == 8
-    assert result["summary"]["open_gap_count"] == 8
+    assert (
+        result["summary"]["open_gap_count"]
+        + result["summary"]["resolved_gap_count"]
+        == 8
+    )
     assert result["summary"]["planned_slice_count"] == 10
     assert result["issues"] == []
 

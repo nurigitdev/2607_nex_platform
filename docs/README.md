@@ -1136,6 +1136,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1030`](slices/1030_ae_runtime_policy_postgresql_smoke.md) | `S103-009` Prove prompt, policy, chat lineage, restart reads, events, and cleanup on actual `nex_ae_test`. |
 | [`Slice 1031`](slices/1031_s103_ae_runtime_policy_orchestration_closure.md) | `S103-010` Close exact-versioned AE runtime-policy orchestration with actual PostgreSQL evidence and Full Gate. |
 | [`Slice 1032`](slices/1032_ae_cx_async_generation_boundary_audit.md) | `S104-001` Freeze AE-to-CX asynchronous generation ownership, compatibility, persistence, privacy, and quality boundaries. |
+| [`Slice 1033`](slices/1033_ae_async_generation_contract.md) | `S104-002` Add strict execution-strategy selection and privacy-safe AE asynchronous job projections. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
