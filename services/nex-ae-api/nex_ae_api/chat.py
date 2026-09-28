@@ -61,6 +61,9 @@ from nex_ae_api.citation_quality_workflow import (
     build_grounded_response_quality_contract,
     validate_citation_quality_workflow,
 )
+from nex_ae_api.citation_quality_observability import (
+    observe_citation_quality_workflow,
+)
 from nex_ae_api.intent_policy import IntentPolicyError
 from nex_ae_api.prompt_persistence import PromptRepositoryError
 from nex_ae_api.prompts import DEFAULT_AE_PROMPT_STORE
@@ -810,6 +813,12 @@ def register_chat_routes(
                     citation_workflow=citation_workflow,
                 )
             )
+            _observe_citation_workflow_if_present(
+                emitter,
+                citation_workflow,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
             observe_workspace_chat_state(emitter, saved)
             append_persisted_workspace_chat_activity(
                 saved,
@@ -942,6 +951,12 @@ def register_chat_routes(
                         citation_workflow=lifecycle.get("citation_workflow"),
                     )
                 )
+                _observe_citation_workflow_if_present(
+                    emitter,
+                    lifecycle.get("citation_workflow"),
+                    request_id=request_id_from_headers(request),
+                    trace_id=trace_id_from_headers(request),
+                )
                 observe_workspace_chat_state(emitter, saved)
                 append_persisted_workspace_chat_activity(
                     saved,
@@ -1005,6 +1020,12 @@ def register_chat_routes(
                     cancellation["async_generation"],
                     citation_workflow=cancellation.get("citation_workflow"),
                 )
+            )
+            _observe_citation_workflow_if_present(
+                emitter,
+                cancellation.get("citation_workflow"),
+                request_id=request_id,
+                trace_id=trace_id,
             )
             observe_workspace_chat_state(emitter, saved)
             append_persisted_workspace_chat_activity(
@@ -1086,6 +1107,12 @@ def register_chat_routes(
                         lifecycle["async_generation"],
                         citation_workflow=lifecycle.get("citation_workflow"),
                     )
+                )
+                _observe_citation_workflow_if_present(
+                    emitter,
+                    lifecycle.get("citation_workflow"),
+                    request_id=request_id_from_headers(request),
+                    trace_id=trace_id_from_headers(request),
                 )
                 observe_workspace_chat_state(emitter, saved)
                 append_persisted_workspace_chat_activity(
@@ -1564,6 +1591,23 @@ def _citation_workflow_from_record(
             detail="Persisted citation quality workflow lineage is inconsistent.",
         )
     return validated
+
+
+def _observe_citation_workflow_if_present(
+    emitter: OperationalEventEmitter,
+    workflow: Mapping[str, Any] | None,
+    *,
+    request_id: str | None,
+    trace_id: str | None,
+) -> None:
+    if workflow is None:
+        return
+    observe_citation_quality_workflow(
+        emitter,
+        workflow,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
 
 
 def _required_visible_async_record(

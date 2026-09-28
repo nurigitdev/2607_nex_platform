@@ -14,7 +14,13 @@ from nex_ae_api.chat import (
 )
 from nex_ae_api.prompts import seed_ae_prompt_registry
 from nex_ae_api.workspace import WorkspaceStateStore
-from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
+from nex_runtime import (
+    SERVICE_SPECS,
+    InMemoryOperationalEventStore,
+    OperationalEventEmitter,
+    build_service_app,
+    issue_mock_service_token,
+)
 from nex_runtime.prompts import PromptRegistryStore
 
 
@@ -142,7 +148,7 @@ def _headers() -> dict[str, str]:
     }
 
 
-def _client(store=None, asynchronous=None):
+def _client(store=None, asynchronous=None, event_emitter=None):
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
     prompts = PromptRegistryStore()
     seed_ae_prompt_registry(prompts)
@@ -155,6 +161,7 @@ def _client(store=None, asynchronous=None):
         cx_async_client=asynchronous,
         retrieval_client=RetrievalClient(),
         prompt_store=prompts,
+        event_emitter=event_emitter,
     )
     return TestClient(app), store, asynchronous
 
@@ -250,6 +257,29 @@ def test_ready_citation_workflow_survives_sql_restart_without_second_cx_call() -
     loaded = restarted_store.get("durable-citation-1")
     assert loaded["generation"]["citation_workflow"] == citation.json()
     assert "Owner result [1]." not in str(loaded)
+
+
+def test_ready_refresh_emits_metadata_only_citation_workflow_event() -> None:
+    event_store = InMemoryOperationalEventStore()
+    emitter = OperationalEventEmitter(service_id="nex-ae-api", store=event_store)
+    client, _, asynchronous = _client(event_emitter=emitter)
+    _admit(client, "observed-citation-1")
+    asynchronous.job_status = "SUCCEEDED"
+    asynchronous.handoff_status = "READY"
+
+    response = client.post(
+        "/api/v1/chat/interactions/observed-citation-1/refresh",
+        headers=_headers(),
+    )
+
+    events = event_store.list_events(
+        event_type="ae.citation_quality.workflow_observed"
+    )
+    assert response.status_code == 200
+    assert len(events) == 1
+    assert events[0]["details"]["outcome"] == "BOUNDED_REPAIR_SUCCEEDED"
+    assert events[0]["details"]["response_content_included"] is False
+    assert "Owner result [1]." not in str(events)
 
 
 def test_blocked_refresh_persists_safe_failure() -> None:
