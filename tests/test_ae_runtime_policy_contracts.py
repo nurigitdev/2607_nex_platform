@@ -13,6 +13,9 @@ from nex_ae_api.prompts import seed_ae_prompt_registry
 from nex_ae_api.runtime_policy import resolve_runtime_policy
 from nex_ae_api.runtime_policy_api import resolve_safe_prompt_binding
 from nex_runtime.prompts import PromptRegistryStore, render_prompt_from_binding
+from run_ae_runtime_policy_contract_observability import (
+    run_ae_runtime_policy_contract_observability,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -161,3 +164,14 @@ def test_openapi_exposes_runtime_policy_contracts() -> None:
     assert spec["components"]["schemas"]["AeGenerationPolicyPackage"][
         "x-nex-canonical-json-schema"
     ].endswith("generation_policy_package.v1.schema.json")
+
+
+def test_runtime_policy_observability_allows_additive_contract_growth() -> None:
+    result = run_ae_runtime_policy_contract_observability()
+
+    assert result["status"] == "PASS"
+    assert all(result["checks"].values())
+    assert result["contract_counts"]["schemas"] >= 96
+    assert result["contract_counts"]["examples"] >= 150
+    assert result["contract_counts"]["negative_examples"] >= 113
+    assert result["contract_counts"]["openapi"] >= 7

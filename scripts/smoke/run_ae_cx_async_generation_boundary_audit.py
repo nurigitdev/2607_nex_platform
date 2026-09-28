@@ -115,7 +115,7 @@ GAP_RESOLUTION_PATHS = {
         "docs/slices/1038_ae_async_chat_observability.md"
     ),
     "contract_openapi_missing": (
-        "docs/slices/1039_ae_async_generation_contract_openapi.md"
+        "docs/slices/1039_ae_async_chat_contract_openapi.md"
     ),
     "postgres_evidence_missing": (
         "docs/slices/1040_ae_cx_async_generation_postgresql_smoke.md"

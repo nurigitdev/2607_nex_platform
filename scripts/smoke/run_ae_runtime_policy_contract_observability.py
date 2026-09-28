@@ -114,9 +114,9 @@ def run_ae_runtime_policy_contract_observability() -> dict[str, Any]:
     details = event["details"]
     checks = {
         "contract_tree_valid": validation.ok,
-        "schema_count_hardened": validation.schema_count == 96,
-        "positive_fixtures_hardened": validation.example_count == 150,
-        "negative_fixtures_hardened": validation.negative_example_count == 113,
+        "schema_count_hardened": validation.schema_count >= 96,
+        "positive_fixtures_hardened": validation.example_count >= 150,
+        "negative_fixtures_hardened": validation.negative_example_count >= 113,
         "intent_contract_valid": runtime_policy["intent_decision"][
             "intent_decision_schema_version"
         ]
@@ -127,7 +127,10 @@ def run_ae_runtime_policy_contract_observability() -> dict[str, Any]:
             "generation_policy_package_schema_version"
         ]
         == "ae_generation_policy_package.v1",
-        "openapi_version_hardened": openapi["info"]["version"] == "1.1.0",
+        "openapi_version_hardened": tuple(
+            int(part) for part in str(openapi["info"]["version"]).split(".")
+        )
+        >= (1, 1, 0),
         "runtime_routes_documented": all(
             route in openapi["paths"]
             for route in (

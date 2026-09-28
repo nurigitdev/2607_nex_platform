@@ -113,7 +113,7 @@ TOKEN_CHECKS = (
     (
         "metadata_only_observability",
         "services/nex-ae-api/nex_ae_api/workspace_chat_observability.py",
-        '"ae_workspace_chat_observability.v2"',
+        '"ae_workspace_chat_observability.v3"',
     ),
     (
         "protected_postgres_target",
