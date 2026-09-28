@@ -14,11 +14,20 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
+)
+from nex_ae_api.route_auth import (
+    AeFacadeRouteAuthContext,
+    authorize_ae_facade_route_request,
+)
+from nex_ae_api.workspace_chat_auth import (
+    WorkspaceChatOwnerError,
+    WorkspaceChatOwnerScope,
+    browser_owner_scope,
+    owner_scoped_payload,
+    record_matches_owner,
 )
 
 
@@ -94,11 +103,42 @@ class RepairedResponseHandoffStore:
     def get(self, repaired_response_handoff_id: str) -> dict[str, Any] | None:
         return self.records.get(repaired_response_handoff_id)
 
+    def get_for_owner(
+        self,
+        repaired_response_handoff_id: str,
+        *,
+        tenant_id: str,
+        owner_user_id: str,
+    ) -> dict[str, Any] | None:
+        record = self.get(repaired_response_handoff_id)
+        if record is None:
+            return None
+        if (
+            record.get("tenant_id") != tenant_id
+            or record.get("owner_user_id") != owner_user_id
+        ):
+            return None
+        return record
+
     def list_for_interaction(self, interaction_id: str) -> list[dict[str, Any]]:
         return [
             self.records[handoff_id]
             for handoff_id in self.handoff_ids_by_interaction.get(interaction_id, [])
             if handoff_id in self.records
+        ]
+
+    def list_for_interaction_owner(
+        self,
+        interaction_id: str,
+        *,
+        tenant_id: str,
+        owner_user_id: str,
+    ) -> list[dict[str, Any]]:
+        return [
+            record
+            for record in self.list_for_interaction(interaction_id)
+            if record.get("tenant_id") == tenant_id
+            and record.get("owner_user_id") == owner_user_id
         ]
 
 
@@ -125,21 +165,39 @@ class SqlAlchemyRepairedResponseHandoffStore:
             ) from exc
 
     def get(self, repaired_response_handoff_id: str) -> dict[str, Any] | None:
+        return self._get(
+            "repaired_response_handoff_id = :repaired_response_handoff_id",
+            {"repaired_response_handoff_id": repaired_response_handoff_id},
+        )
+
+    def get_for_owner(
+        self,
+        repaired_response_handoff_id: str,
+        *,
+        tenant_id: str,
+        owner_user_id: str,
+    ) -> dict[str, Any] | None:
+        return self._get(
+            "repaired_response_handoff_id = :repaired_response_handoff_id "
+            "AND tenant_id = :tenant_id AND owner_user_id = :owner_user_id",
+            {
+                "repaired_response_handoff_id": repaired_response_handoff_id,
+                "tenant_id": tenant_id,
+                "owner_user_id": owner_user_id,
+            },
+        )
+
+    def _get(
+        self,
+        where_clause: str,
+        params: dict[str, Any],
+    ) -> dict[str, Any] | None:
         try:
             with self._session_factory() as session:
                 row = (
                     session.execute(
-                        text(
-                            _handoff_select_sql(
-                                "repaired_response_handoff_id = "
-                                ":repaired_response_handoff_id"
-                            )
-                        ),
-                        {
-                            "repaired_response_handoff_id": (
-                                repaired_response_handoff_id
-                            )
-                        },
+                        text(_handoff_select_sql(where_clause)),
+                        params,
                     )
                     .mappings()
                     .first()
@@ -154,18 +212,41 @@ class SqlAlchemyRepairedResponseHandoffStore:
             ) from exc
 
     def list_for_interaction(self, interaction_id: str) -> list[dict[str, Any]]:
+        return self._list(
+            "interaction_id = :interaction_id "
+            "ORDER BY created_at DESC, repaired_response_handoff_id ASC",
+            {"interaction_id": interaction_id},
+        )
+
+    def list_for_interaction_owner(
+        self,
+        interaction_id: str,
+        *,
+        tenant_id: str,
+        owner_user_id: str,
+    ) -> list[dict[str, Any]]:
+        return self._list(
+            "interaction_id = :interaction_id AND tenant_id = :tenant_id "
+            "AND owner_user_id = :owner_user_id "
+            "ORDER BY created_at DESC, repaired_response_handoff_id ASC",
+            {
+                "interaction_id": interaction_id,
+                "tenant_id": tenant_id,
+                "owner_user_id": owner_user_id,
+            },
+        )
+
+    def _list(
+        self,
+        where_clause: str,
+        params: dict[str, Any],
+    ) -> list[dict[str, Any]]:
         try:
             with self._session_factory() as session:
                 rows = (
                     session.execute(
-                        text(
-                            _handoff_select_sql(
-                                "interaction_id = :interaction_id "
-                                "ORDER BY created_at DESC, "
-                                "repaired_response_handoff_id ASC"
-                            )
-                        ),
-                        {"interaction_id": interaction_id},
+                        text(_handoff_select_sql(where_clause)),
+                        params,
                     )
                     .mappings()
                     .all()
@@ -259,15 +340,18 @@ def register_repaired_response_handoff_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = _authorize_ae_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
         request_id = request_id_from_headers(request)
         trace_id = payload.get("trace_id") or trace_id_from_headers(request)
         try:
+            scoped_payload = _owner_scoped_repaired_response_payload(
+                payload, auth_context
+            )
             source_payload = repaired_response_payload_with_path_interaction_id(
-                payload,
+                scoped_payload,
                 interaction_id,
             )
             source_package = build_repaired_response_source_package(
@@ -284,7 +368,11 @@ def register_repaired_response_handoff_routes(
                 handoff_request_id=optional_text(payload.get("handoff_request_id")),
             )
             return handoff_store.save(handoff)
-        except (RepairedResponseHandoffError, CxRepairedResponseSourceClientError) as exc:
+        except (
+            RepairedResponseHandoffError,
+            CxRepairedResponseSourceClientError,
+            WorkspaceChatOwnerError,
+        ) as exc:
             return _handoff_problem_response(request, exc)
 
     @app.get(
@@ -297,16 +385,20 @@ def register_repaired_response_handoff_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = _authorize_ae_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
         try:
             return build_repaired_response_review_collection(
-                handoff_store.list_for_interaction(interaction_id),
+                _list_handoffs_for_auth(
+                    handoff_store,
+                    interaction_id=interaction_id,
+                    auth_context=auth_context,
+                ),
                 interaction_id=interaction_id,
             )
-        except RepairedResponseReviewProjectionError as exc:
+        except (RepairedResponseReviewProjectionError, RepairedResponseHandoffError) as exc:
             return _handoff_problem_response(
                 request,
                 RepairedResponseHandoffError(
@@ -327,11 +419,15 @@ def register_repaired_response_handoff_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = _authorize_ae_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
-        record = handoff_store.get(repaired_response_handoff_id)
+        record = _get_handoff_for_auth(
+            handoff_store,
+            repaired_response_handoff_id=repaired_response_handoff_id,
+            auth_context=auth_context,
+        )
         if record is None or record["interaction_id"] != interaction_id:
             return _handoff_problem_response(
                 request,
@@ -357,11 +453,15 @@ def register_repaired_response_handoff_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = _authorize_ae_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
-        record = handoff_store.get(repaired_response_handoff_id)
+        record = _get_handoff_for_auth(
+            handoff_store,
+            repaired_response_handoff_id=repaired_response_handoff_id,
+            auth_context=auth_context,
+        )
         if record is None or record["interaction_id"] != interaction_id:
             return _handoff_problem_response(
                 request,
@@ -1048,22 +1148,79 @@ def _non_negative_int(value: Any) -> int:
 def _authorize_ae_request(
     request: Request,
     authorization: str | None,
-) -> JSONResponse | None:
-    validation = validate_authorization_header(
-        authorization,
-        expected_audience="nex-ae-api",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if validation.ok:
-        return None
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=validation.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=validation.detail or "AE API requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
+) -> AeFacadeRouteAuthContext | JSONResponse:
+    return authorize_ae_facade_route_request(request, authorization)
+
+
+def _owner_scoped_repaired_response_payload(
+    payload: Mapping[str, Any],
+    auth_context: AeFacadeRouteAuthContext,
+) -> dict[str, Any]:
+    if auth_context.browser_context is None:
+        return dict(payload)
+    return owner_scoped_payload(payload, auth_context)[0]
+
+
+def _get_handoff_for_auth(
+    store: Any,
+    *,
+    repaired_response_handoff_id: str,
+    auth_context: AeFacadeRouteAuthContext,
+) -> dict[str, Any] | None:
+    scope = browser_owner_scope(auth_context)
+    if scope is None:
+        return store.get(repaired_response_handoff_id)
+    get_for_owner = getattr(store, "get_for_owner", None)
+    if callable(get_for_owner):
+        return get_for_owner(
+            repaired_response_handoff_id,
+            tenant_id=scope.tenant_id,
+            owner_user_id=scope.owner_user_id,
+        )
+    record = store.get(repaired_response_handoff_id)
+    return record if record is not None and record_matches_owner(record, scope) else None
+
+
+def _list_handoffs_for_auth(
+    store: Any,
+    *,
+    interaction_id: str,
+    auth_context: AeFacadeRouteAuthContext,
+) -> list[dict[str, Any]]:
+    scope = browser_owner_scope(auth_context)
+    if scope is None:
+        return store.list_for_interaction(interaction_id)
+    list_for_owner = getattr(store, "list_for_interaction_owner", None)
+    if callable(list_for_owner):
+        return list_for_owner(
+            interaction_id,
+            tenant_id=scope.tenant_id,
+            owner_user_id=scope.owner_user_id,
+        )
+    return [
+        record
+        for record in store.list_for_interaction(interaction_id)
+        if record_matches_owner(record, scope)
+    ]
+
+
+def handoff_record_for_scope(
+    store: Any,
+    *,
+    repaired_response_handoff_id: str,
+    scope: WorkspaceChatOwnerScope | None,
+) -> dict[str, Any] | None:
+    if scope is None:
+        return store.get(repaired_response_handoff_id)
+    get_for_owner = getattr(store, "get_for_owner", None)
+    if callable(get_for_owner):
+        return get_for_owner(
+            repaired_response_handoff_id,
+            tenant_id=scope.tenant_id,
+            owner_user_id=scope.owner_user_id,
+        )
+    record = store.get(repaired_response_handoff_id)
+    return record if record is not None and record_matches_owner(record, scope) else None
 
 
 def _handoff_problem_response(request: Request, exc: Any) -> JSONResponse:

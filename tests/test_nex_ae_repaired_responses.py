@@ -62,7 +62,13 @@ from nex_ae_api.repaired_response_review import (
     find_sensitive_repaired_response_review_projection_keys,
     validate_repaired_response_review_projection,
 )
-from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
+from nex_ae_api.workspace_chat_auth import WorkspaceChatOwnerScope
+from nex_runtime import (
+    SERVICE_SPECS,
+    build_service_app,
+    issue_mock_service_token,
+    issue_mock_user_token,
+)
 
 
 ROOT = Path(__file__).parents[1]
@@ -321,6 +327,15 @@ class FakeCxRepairedResponseSourceClient:
 
 def auth_headers() -> dict[str, str]:
     issued = issue_mock_service_token(service_id="nex-ag", audience="nex-ae-api")
+    return {
+        "Authorization": f"Bearer {issued.access_token}",
+        "X-Request-ID": REQUEST_ID,
+        "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
+    }
+
+
+def user_headers(tenant_id: str, user_id: str) -> dict[str, str]:
+    issued = issue_mock_user_token(tenant_id=tenant_id, user_id=user_id)
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": REQUEST_ID,
@@ -1787,6 +1802,233 @@ def test_repaired_response_decision_helpers_reject_invalid_inputs() -> None:
         {"usage": {"input_tokens": 1, "output_tokens": 2, "total_tokens": 3}}
     )
     assert str(sensitive_error.value) == sensitive_error.value.detail
+
+
+def test_handoff_stores_filter_exact_tenant_and_owner_scope() -> None:
+    record = build_handoff()
+    memory = RepairedResponseHandoffStore()
+    memory.save(record)
+    sql = SqlAlchemyRepairedResponseHandoffStore(sqlite_handoff_session_factory())
+    sql.save(record)
+
+    for store in (memory, sql):
+        assert store.get_for_owner(
+            record["repaired_response_handoff_id"],
+            tenant_id="tenant-001",
+            owner_user_id="user-001",
+        ) == record
+        assert store.get_for_owner(
+            record["repaired_response_handoff_id"],
+            tenant_id="tenant-001",
+            owner_user_id="user-other",
+        ) is None
+        assert store.list_for_interaction_owner(
+            record["interaction_id"],
+            tenant_id="tenant-001",
+            owner_user_id="user-001",
+        ) == [record]
+        assert store.list_for_interaction_owner(
+            record["interaction_id"],
+            tenant_id="tenant-other",
+            owner_user_id="user-001",
+        ) == []
+
+
+def test_handoff_browser_routes_hide_cross_owner_records_before_projection() -> None:
+    store = RepairedResponseHandoffStore()
+    handoff = store.save(build_handoff())
+    client, _store, _cx_client = build_handoff_test_client(store=store)
+    collection_path = (
+        f"/api/v1/chat/interactions/{handoff['interaction_id']}/"
+        "repaired-response-handoffs/review"
+    )
+    detail_path = (
+        f"/api/v1/chat/interactions/{handoff['interaction_id']}/"
+        f"repaired-response-handoffs/{handoff['repaired_response_handoff_id']}"
+    )
+
+    owner_collection = client.get(
+        collection_path, headers=user_headers("tenant-001", "user-001")
+    )
+    hidden_collection = client.get(
+        collection_path, headers=user_headers("tenant-001", "user-other")
+    )
+    owner_detail = client.get(
+        detail_path, headers=user_headers("tenant-001", "user-001")
+    )
+    hidden_detail = client.get(
+        detail_path, headers=user_headers("tenant-001", "user-other")
+    )
+
+    assert owner_collection.status_code == 200
+    assert owner_collection.json()["item_count"] == 1
+    assert hidden_collection.status_code == 200
+    assert hidden_collection.json()["item_count"] == 0
+    assert owner_detail.status_code == 200
+    assert hidden_detail.status_code == 404
+
+
+def test_handoff_browser_create_rejects_payload_owner_mismatch_before_cx() -> None:
+    client, store, cx_client = build_handoff_test_client()
+
+    response = client.post(
+        "/api/v1/chat/interactions/interaction-001/repaired-response-handoffs",
+        json=source_payload(),
+        headers=user_headers("tenant-001", "user-other"),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error_code"] == "ae.browser_owner_scope_mismatch"
+    assert store.records == {}
+    assert cx_client.calls == []
+
+
+def test_decision_stores_filter_exact_tenant_and_owner_scope() -> None:
+    decision = build_decision()
+    memory = RepairedResponseDecisionStore()
+    memory.save(decision)
+    sql = SqlAlchemyRepairedResponseDecisionStore(sqlite_decision_session_factory())
+    sql.save(decision)
+
+    for store in (memory, sql):
+        assert store.get_for_owner(
+            decision["repaired_response_decision_id"],
+            tenant_id="tenant-001",
+            owner_user_id="user-001",
+        ) == decision
+        assert store.get_for_owner(
+            decision["repaired_response_decision_id"],
+            tenant_id="tenant-001",
+            owner_user_id="user-other",
+        ) is None
+        assert store.list_for_handoff_owner(
+            decision["repaired_response_handoff_id"],
+            tenant_id="tenant-001",
+            owner_user_id="user-001",
+        ) == [decision]
+        assert store.list_for_handoff_owner(
+            decision["repaired_response_handoff_id"],
+            tenant_id="tenant-other",
+            owner_user_id="user-001",
+        ) == []
+
+
+def test_decision_browser_routes_enforce_owner_and_claim_actor() -> None:
+    client, handoff, _handoff_store, decision_store = build_decision_test_client()
+    path = (
+        f"/api/v1/chat/interactions/{handoff['interaction_id']}/"
+        f"repaired-response-handoffs/{handoff['repaired_response_handoff_id']}/"
+        "decisions"
+    )
+    payload = decision_payload(
+        actor_claims_ref={
+            "actor_type": "user",
+            "actor_id": "spoofed-user",
+            "tenant_id": "tenant-001",
+        }
+    )
+
+    hidden = client.get(
+        path, headers=user_headers("tenant-001", "user-other")
+    )
+    created = client.post(
+        path,
+        json=payload,
+        headers=user_headers("tenant-001", "user-001"),
+    )
+    cross_create = client.post(
+        path,
+        json=decision_payload(decision_request_id="cross-owner-request"),
+        headers=user_headers("tenant-001", "user-other"),
+    )
+
+    assert hidden.status_code == 404
+    assert created.status_code == 202
+    assert created.json()["actor_claims_ref"] == {
+        "actor_type": "user",
+        "actor_id": "user-001",
+        "tenant_id": "tenant-001",
+    }
+    assert cross_create.status_code == 404
+    assert len(decision_store.records) == 1
+
+
+def test_owner_scope_helpers_cover_legacy_store_fallbacks() -> None:
+    handoff = build_handoff()
+    decision = build_decision(handoff=handoff)
+    scope = WorkspaceChatOwnerScope(
+        tenant_id="tenant-001",
+        owner_user_id="user-001",
+        authority="test",
+    )
+    other_scope = WorkspaceChatOwnerScope(
+        tenant_id="tenant-001",
+        owner_user_id="user-other",
+        authority="test",
+    )
+    legacy_handoffs = SimpleNamespace(
+        get=lambda handoff_id: (
+            handoff if handoff_id == handoff["repaired_response_handoff_id"] else None
+        ),
+        list_for_interaction=lambda interaction_id: (
+            [handoff] if interaction_id == handoff["interaction_id"] else []
+        ),
+    )
+    browser_auth = SimpleNamespace(
+        browser_context=SimpleNamespace(tenant_id="tenant-001", user_id="user-001")
+    )
+
+    assert repaired_module._get_handoff_for_auth(
+        legacy_handoffs,
+        repaired_response_handoff_id=handoff["repaired_response_handoff_id"],
+        auth_context=browser_auth,
+    ) == handoff
+    assert repaired_module._list_handoffs_for_auth(
+        legacy_handoffs,
+        interaction_id=handoff["interaction_id"],
+        auth_context=browser_auth,
+    ) == [handoff]
+    assert repaired_module.handoff_record_for_scope(
+        legacy_handoffs,
+        repaired_response_handoff_id=handoff["repaired_response_handoff_id"],
+        scope=other_scope,
+    ) is None
+
+    legacy_decisions = SimpleNamespace(
+        get=lambda decision_id: (
+            decision
+            if decision_id == decision["repaired_response_decision_id"]
+            else None
+        ),
+        list_for_handoff=lambda handoff_id: (
+            [decision]
+            if handoff_id == decision["repaired_response_handoff_id"]
+            else []
+        ),
+    )
+    assert decision_module._list_decisions_for_owner(
+        legacy_decisions,
+        repaired_response_handoff_id=handoff["repaired_response_handoff_id"],
+        scope=scope,
+    ) == [decision]
+    assert decision_module._get_decision_for_owner(
+        legacy_decisions,
+        repaired_response_decision_id=decision["repaired_response_decision_id"],
+        scope=other_scope,
+    ) is None
+    assert decision_module._get_decision_for_owner(
+        legacy_decisions,
+        repaired_response_decision_id=decision["repaired_response_decision_id"],
+        scope=scope,
+    ) == decision
+    assert decision_module._get_decision_for_owner(
+        legacy_decisions,
+        repaired_response_decision_id="missing",
+        scope=scope,
+    ) is None
+    assert RepairedResponseHandoffStore().get_for_owner(
+        "missing", tenant_id="tenant-001", owner_user_id="user-001"
+    ) is None
 
 
 def test_repaired_response_decision_storage_helpers_and_migration() -> None:
