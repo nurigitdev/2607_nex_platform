@@ -210,8 +210,12 @@ Artifact records:
   refs. Local paths stay out of API records and evidence.
 - Slice 1063 adds a separate generated-response storage boundary. The default
   remains in memory, while `NEX_AE_CHAT_RESPONSE_STORAGE_ROOT` enables private
-  local response content behind logical `ae://chat-responses/...` refs. Reads
+  local storage with integrity-checked atomic files.
+  Response content stays behind logical `ae://chat-responses/...` refs. Reads
   verify UTF-8 size and SHA-256 integrity, and APIs never expose local paths.
+- Slice 1064 adds canonical generated-response lineage under
+  `generation.generated_response`. Raw content and logical storage references
+  remain outside the persisted chat interaction JSON.
 - Slice 0405 wires artifact routes to SQLAlchemy stores when
   `app.state.nex_persistence.api_session_factory` is attached. Explicit test
   stores still override defaults, and the public API shape is unchanged across
