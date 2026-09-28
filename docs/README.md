@@ -1133,6 +1133,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1027`](slices/1027_ae_generation_policy_package.md) | `S103-006` Compose deterministic owner-bound policy packages without raw prompt/evidence/provider runtime data. |
 | [`Slice 1028`](slices/1028_ae_chat_runtime_policy_orchestration.md) | `S103-007` Wire exact policy, prompt render lineage, CX package, and durable chat policy snapshots. |
 | [`Slice 1029`](slices/1029_ae_runtime_policy_contract_openapi_observability.md) | `S103-008` Freeze strict policy contracts, AE OpenAPI 1.1, privacy fixtures, and metadata-only policy observability. |
+| [`Slice 1030`](slices/1030_ae_runtime_policy_postgresql_smoke.md) | `S103-009` Prove prompt, policy, chat lineage, restart reads, events, and cleanup on actual `nex_ae_test`. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

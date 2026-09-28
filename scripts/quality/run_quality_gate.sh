@@ -397,6 +397,15 @@ node apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_workspace_chat_contract_observability.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_workspace_chat_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s102_ae_durable_workspace_chat_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_intent_template_policy_boundary_audit.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_intent_execution_mode_contract.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_prompt_registry_sqlite.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_runtime_policy_resolver.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_runtime_policy_api.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_generation_policy_package.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_chat_runtime_policy.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_runtime_policy_contract_observability.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_runtime_policy_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary
