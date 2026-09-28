@@ -355,8 +355,10 @@ Document detail:
 Grounded generation validation:
 
 - `GENERAL_ANSWER` generation can run without retrieval.
-- `GROUNDED_ANSWER`, `DOCUMENT_SUMMARY`, and `REPORT_GENERATION` require an
-  active compatibility rule and a matching `READY` retrieval package reference.
+- `GROUNDED_ANSWER`, `DOCUMENT_SUMMARY`, canonical `DOCUMENT_GENERATION`, and
+  legacy `REPORT_GENERATION` require an active compatibility rule and a matching
+  `READY` retrieval package reference. The compatibility catalog retains four
+  legacy combinations and adds the six exact S103 AE policy combinations.
 - Structured drafts expose output hashes, short previews, citation validation,
   and retrieval lineage without exposing full model output text.
 - Generation progress events expose ordered, redacted polling timelines for AE

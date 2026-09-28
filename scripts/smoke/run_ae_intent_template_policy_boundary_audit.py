@@ -103,10 +103,10 @@ GAP_RESOLUTION_PATHS = {
         "docs/slices/1025_ae_runtime_compatibility_policy_resolver.md"
     ),
     "policy_api_missing": (
-        "docs/slices/1026_ae_runtime_policy_api_checkpoint.md"
+        "docs/slices/1026_ae_runtime_policy_inspection_api.md"
     ),
     "generation_policy_package_missing": (
-        "docs/slices/1027_ae_generation_policy_package_composer.md"
+        "docs/slices/1027_ae_generation_policy_package.md"
     ),
     "chat_policy_wiring_missing": (
         "docs/slices/1028_ae_chat_runtime_policy_orchestration.md"
@@ -220,8 +220,8 @@ def run_ae_intent_template_policy_boundary_audit(
             "1023_intent_execution_mode_contract",
             "1024_prompt_template_postgresql_adapter",
             "1025_runtime_compatibility_policy_resolver",
-            "1026_runtime_policy_api_checkpoint",
-            "1027_generation_policy_package_composer",
+            "1026_runtime_policy_inspection_api",
+            "1027_generation_policy_package",
             "1028_chat_runtime_policy_orchestration",
             "1029_contract_openapi_observability",
             "1030_actual_postgresql_smoke",

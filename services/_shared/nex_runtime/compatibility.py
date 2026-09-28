@@ -102,6 +102,95 @@ DEFAULT_GENERATION_COMPATIBILITY_RULES: tuple[dict[str, Any], ...] = (
             "owner": "ae-cx-contract",
         },
     },
+    {
+        "compatibility_rule_schema_version": "generation_compatibility_rule.v1",
+        "compatibility_rule_id": "compat-ae-general-answer-v1",
+        "status": "ACTIVE",
+        "execution_mode": "GENERAL_ANSWER",
+        "template_id": "none",
+        "prompt_binding_id": "ae.general_answer.default",
+        "output_contract_id": "text_answer_v1",
+        "provider_capability": "generation",
+        "generation_profile": "general-answer",
+        "grounding_required": False,
+        "allowed_artifact_intents": ["preview_only", "answer_export"],
+        "citation_policy": {
+            "citations_required": False,
+            "source_trace_required": False,
+        },
+        "metadata": {
+            "slice": "1031",
+            "owner": "ae-runtime-policy-orchestration",
+        },
+    },
+    {
+        "compatibility_rule_schema_version": "generation_compatibility_rule.v1",
+        "compatibility_rule_id": "compat-ae-grounded-answer-v1",
+        "status": "ACTIVE",
+        "execution_mode": "GROUNDED_ANSWER",
+        "template_id": "none",
+        "prompt_binding_id": "ae.grounded_chat.default",
+        "output_contract_id": "grounded_answer_v1",
+        "provider_capability": "generation",
+        "generation_profile": "grounded-answer",
+        "grounding_required": True,
+        "allowed_artifact_intents": ["preview_only", "answer_export"],
+        "citation_policy": {
+            "citations_required": True,
+            "source_trace_required": True,
+        },
+        "metadata": {
+            "slice": "1031",
+            "owner": "ae-runtime-policy-orchestration",
+        },
+    },
+    {
+        "compatibility_rule_schema_version": "generation_compatibility_rule.v1",
+        "compatibility_rule_id": "compat-ae-document-summary-v1",
+        "status": "ACTIVE",
+        "execution_mode": "DOCUMENT_SUMMARY",
+        "template_id": "summary",
+        "prompt_binding_id": "ae.document_summary.default",
+        "output_contract_id": "document_summary_v1",
+        "provider_capability": "generation",
+        "generation_profile": "summary",
+        "grounding_required": True,
+        "allowed_artifact_intents": ["preview_only", "create_artifact"],
+        "citation_policy": {
+            "citations_required": True,
+            "source_trace_required": True,
+        },
+        "metadata": {
+            "slice": "1031",
+            "owner": "ae-runtime-policy-orchestration",
+        },
+    },
+    *(
+        {
+            "compatibility_rule_schema_version": "generation_compatibility_rule.v1",
+            "compatibility_rule_id": (
+                f"compat-ae-document-generation-{template_id}-v1"
+            ),
+            "status": "ACTIVE",
+            "execution_mode": "DOCUMENT_GENERATION",
+            "template_id": template_id,
+            "prompt_binding_id": "ae.document_generation.default",
+            "output_contract_id": "structured_document_v1",
+            "provider_capability": "generation",
+            "generation_profile": "general-document",
+            "grounding_required": True,
+            "allowed_artifact_intents": ["preview_only", "create_artifact"],
+            "citation_policy": {
+                "citations_required": True,
+                "source_trace_required": True,
+            },
+            "metadata": {
+                "slice": "1031",
+                "owner": "ae-runtime-policy-orchestration",
+            },
+        }
+        for template_id in ("report", "proposal", "memo")
+    ),
 )
 
 

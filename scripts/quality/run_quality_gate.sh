@@ -406,6 +406,7 @@ node apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_chat_runtime_policy.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_runtime_policy_contract_observability.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_runtime_policy_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s103_ae_runtime_policy_orchestration_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary

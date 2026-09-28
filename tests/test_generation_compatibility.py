@@ -75,6 +75,68 @@ def test_select_generation_compatibility_rule_matches_active_rule() -> None:
     assert rule["grounding_required"] is True
 
 
+@pytest.mark.parametrize(
+    ("payload", "expected_rule_id"),
+    (
+        (
+            {
+                "execution_mode": "GENERAL_ANSWER",
+                "template_id": "none",
+                "prompt_binding_id": "ae.general_answer.default",
+                "output_contract_id": "text_answer_v1",
+                "provider_capability": "generation",
+                "generation_profile": "general-answer",
+            },
+            "compat-ae-general-answer-v1",
+        ),
+        (
+            {
+                "execution_mode": "GROUNDED_ANSWER",
+                "template_id": "none",
+                "prompt_binding_id": "ae.grounded_chat.default",
+                "output_contract_id": "grounded_answer_v1",
+                "provider_capability": "generation",
+                "generation_profile": "grounded-answer",
+            },
+            "compat-ae-grounded-answer-v1",
+        ),
+        (
+            {
+                "execution_mode": "DOCUMENT_SUMMARY",
+                "template_id": "summary",
+                "prompt_binding_id": "ae.document_summary.default",
+                "output_contract_id": "document_summary_v1",
+                "provider_capability": "generation",
+                "generation_profile": "summary",
+            },
+            "compat-ae-document-summary-v1",
+        ),
+        *(
+            (
+                {
+                    "execution_mode": "DOCUMENT_GENERATION",
+                    "template_id": template_id,
+                    "prompt_binding_id": "ae.document_generation.default",
+                    "output_contract_id": "structured_document_v1",
+                    "provider_capability": "generation",
+                    "generation_profile": "general-document",
+                },
+                f"compat-ae-document-generation-{template_id}-v1",
+            )
+            for template_id in ("report", "proposal", "memo")
+        ),
+    ),
+)
+def test_select_generation_compatibility_rule_accepts_s103_canonical_policy(
+    payload: dict[str, str],
+    expected_rule_id: str,
+) -> None:
+    rule = select_generation_compatibility_rule(payload)
+
+    assert rule["compatibility_rule_id"] == expected_rule_id
+    assert rule["metadata"]["slice"] == "1031"
+
+
 def test_select_generation_compatibility_rule_skips_inactive_and_reports_mismatch() -> None:
     inactive_rule = {
         **DEFAULT_GENERATION_COMPATIBILITY_RULES[0],
@@ -120,7 +182,7 @@ def test_generation_compatibility_routes_require_auth_and_list_rules() -> None:
 
     assert unauthorized.status_code == 401
     assert response.status_code == 200
-    assert len(response.json()["rules"]) == 4
+    assert len(response.json()["rules"]) == 10
     assert response.json()["rules"][0]["compatibility_rule_schema_version"] == (
         "generation_compatibility_rule.v1"
     )
