@@ -271,6 +271,21 @@
       "schema": "schemas/service/nex_ae_api/async_chat_refresh.v1.schema.json"
     },
     {
+      "name": "ae_citation_quality_workflow_raw_output_leak",
+      "path": "tests/negative/generation/ae_citation_quality_workflow.raw_output_leak.json",
+      "schema": "schemas/service/nex_ae_api/citation_quality_workflow.v1.schema.json"
+    },
+    {
+      "name": "ae_citation_quality_workflow_inconsistent_action",
+      "path": "tests/negative/generation/ae_citation_quality_workflow.inconsistent_action.json",
+      "schema": "schemas/service/nex_ae_api/citation_quality_workflow.v1.schema.json"
+    },
+    {
+      "name": "ae_citation_quality_workflow_owner_scope_disabled",
+      "path": "tests/negative/generation/ae_citation_quality_workflow.owner_scope_disabled.json",
+      "schema": "schemas/service/nex_ae_api/citation_quality_workflow.v1.schema.json"
+    },
+    {
       "name": "ae_chat_interaction_async_provider_leak",
       "path": "tests/negative/generation/ae_chat_interaction.async_provider_leak.json",
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"

@@ -15,12 +15,12 @@ def test_repository_boundary_audit_passes() -> None:
     assert result["summary"] == {
         "foundation_count": 8,
         "gap_count": 8,
-        "open_gap_count": 2,
-        "resolved_gap_count": 6,
+        "open_gap_count": 1,
+        "resolved_gap_count": 7,
         "planned_slice_count": 10,
         "issue_count": 0,
     }
-    assert result["next_slice"] == "1059"
+    assert result["next_slice"] == "1060"
     assert result["issues"] == []
 
 

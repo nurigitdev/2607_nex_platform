@@ -1162,6 +1162,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1056`](slices/1056_ae_repaired_response_owner_scope_hardening.md) | `S106-005` Enforce exact tenant/owner scope for repaired-response handoff, review, and decision routes. |
 | [`Slice 1057`](slices/1057_ae_async_citation_workflow_integration.md) | `S106-006` Persist READY async citation workflow metadata and prefer the durable AE projection on reads. |
 | [`Slice 1058`](slices/1058_ae_citation_repair_workflow_observability.md) | `S106-007` Emit deterministic metadata-only citation workflow operational evidence. |
+| [`Slice 1059`](slices/1059_ae_citation_repair_contract_hardening.md) | `S106-008` Freeze citation workflow JSON Schema, examples, negative fixtures, and AE OpenAPI 1.4.0. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

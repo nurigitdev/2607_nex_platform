@@ -341,6 +341,21 @@
       "schema": "schemas/service/nex_ae_api/async_chat_refresh.v1.schema.json"
     },
     {
+      "name": "ae_citation_quality_workflow_validated",
+      "path": "examples/generation/ae_citation_quality_workflow.validated.json",
+      "schema": "schemas/service/nex_ae_api/citation_quality_workflow.v1.schema.json"
+    },
+    {
+      "name": "ae_citation_quality_workflow_repaired",
+      "path": "examples/generation/ae_citation_quality_workflow.repaired.json",
+      "schema": "schemas/service/nex_ae_api/citation_quality_workflow.v1.schema.json"
+    },
+    {
+      "name": "ae_citation_quality_workflow_attention_required",
+      "path": "examples/generation/ae_citation_quality_workflow.attention_required.json",
+      "schema": "schemas/service/nex_ae_api/citation_quality_workflow.v1.schema.json"
+    },
+    {
       "name": "ae_prompt_analytics_mock",
       "path": "examples/generation/ae_prompt_analytics.mock_success.json",
       "schema": "schemas/service/nex_ae_api/prompt_analytics.v1.schema.json"

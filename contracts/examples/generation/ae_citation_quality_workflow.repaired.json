@@ -1,0 +1,44 @@
+{
+  "workflow_schema_version": "ae_citation_quality_workflow.v1",
+  "interaction_id": "interaction-citation-repaired-001",
+  "cx_generation_id": "cx-generation-citation-repaired-001",
+  "workflow_status": "REPAIRED",
+  "next_action": "PRESENT_REPAIRED_RESPONSE",
+  "quality": {
+    "contract_schema_version": "ae_chat_grounded_response_quality.v1",
+    "source_audit_schema_version": "cx_grounded_response_citation_quality_audit.v1",
+    "boundary_status": "PASS",
+    "citation_status": "VALIDATED",
+    "issue_count": 0,
+    "recommended_action": "proceed",
+    "grounding_required": true,
+    "retrieval_package_id": "retrieval-package-002",
+    "retrieval_package_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "structured_draft_id": "structured-draft-002",
+    "raw_output_included": false,
+    "evidence_text_included": false,
+    "prompt_text_included": false,
+    "provider_detail_included": false
+  },
+  "repair": {
+    "source_projection_present": true,
+    "repair_schema_version": "cx_citation_repair.v1",
+    "mode": "BOUNDED_INLINE",
+    "status": "SUCCEEDED",
+    "attempted": true,
+    "attempt_count": 1,
+    "max_attempts": 1,
+    "trigger_error_code": "cx.citation_required_missing",
+    "same_retrieval_package": true,
+    "original_provider_prompt_package_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "effective_provider_prompt_package_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "invalid_output_included": false
+  },
+  "operator_remediation": {
+    "mode": "SEPARATE_HANDOFF",
+    "required": false,
+    "handoff_included": false
+  },
+  "owner_scope_enforced": true,
+  "content_included": false
+}

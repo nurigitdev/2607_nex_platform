@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/citation_quality_workflow.v1.schema.json",
+  "title": "NeX AE Citation Quality Workflow",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "workflow_schema_version",
+    "interaction_id",
+    "cx_generation_id",
+    "workflow_status",
+    "next_action",
+    "quality",
+    "repair",
+    "operator_remediation",
+    "owner_scope_enforced",
+    "content_included"
+  ],
+  "properties": {
+    "workflow_schema_version": {"const": "ae_citation_quality_workflow.v1"},
+    "interaction_id": {"type": "string", "minLength": 1},
+    "cx_generation_id": {"type": "string", "minLength": 1},
+    "workflow_status": {
+      "enum": ["NOT_REQUIRED", "VALIDATED", "REPAIRED", "ATTENTION_REQUIRED"]
+    },
+    "next_action": {
+      "enum": [
+        "PRESENT_RESPONSE",
+        "PRESENT_REPAIRED_RESPONSE",
+        "RETRY_OR_REVIEW_GENERATION"
+      ]
+    },
+    "quality": {"$ref": "#/$defs/quality"},
+    "repair": {"$ref": "#/$defs/repair"},
+    "operator_remediation": {"$ref": "#/$defs/operatorRemediation"},
+    "owner_scope_enforced": {"const": true},
+    "content_included": {"const": false}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"workflow_status": {"const": "NOT_REQUIRED"}}},
+      "then": {
+        "properties": {
+          "next_action": {"const": "PRESENT_RESPONSE"},
+          "quality": {"properties": {"grounding_required": {"const": false}}},
+          "repair": {
+            "properties": {
+              "attempted": {"const": false},
+              "status": {"const": "NOT_ATTEMPTED"}
+            }
+          },
+          "operator_remediation": {"properties": {"required": {"const": false}}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"workflow_status": {"const": "VALIDATED"}}},
+      "then": {
+        "properties": {
+          "next_action": {"const": "PRESENT_RESPONSE"},
+          "quality": {
+            "properties": {
+              "grounding_required": {"const": true},
+              "boundary_status": {"const": "PASS"}
+            }
+          },
+          "repair": {
+            "properties": {
+              "attempted": {"const": false},
+              "status": {"const": "NOT_ATTEMPTED"}
+            }
+          },
+          "operator_remediation": {"properties": {"required": {"const": false}}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"workflow_status": {"const": "REPAIRED"}}},
+      "then": {
+        "properties": {
+          "next_action": {"const": "PRESENT_REPAIRED_RESPONSE"},
+          "quality": {
+            "properties": {
+              "grounding_required": {"const": true},
+              "boundary_status": {"const": "PASS"}
+            }
+          },
+          "repair": {
+            "properties": {
+              "attempted": {"const": true},
+              "status": {"const": "SUCCEEDED"}
+            }
+          },
+          "operator_remediation": {"properties": {"required": {"const": false}}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"workflow_status": {"const": "ATTENTION_REQUIRED"}}},
+      "then": {
+        "properties": {
+          "next_action": {"const": "RETRY_OR_REVIEW_GENERATION"},
+          "quality": {
+            "properties": {
+              "grounding_required": {"const": true},
+              "boundary_status": {"enum": ["WARN", "FAIL", "NOT_REQUIRED", "UNKNOWN"]}
+            }
+          },
+          "operator_remediation": {"properties": {"required": {"const": true}}}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "nullableText": {"type": ["string", "null"], "minLength": 1},
+    "nullableSha256": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_schema_version",
+        "source_audit_schema_version",
+        "boundary_status",
+        "citation_status",
+        "issue_count",
+        "recommended_action",
+        "grounding_required",
+        "retrieval_package_id",
+        "retrieval_package_hash",
+        "structured_draft_id",
+        "raw_output_included",
+        "evidence_text_included",
+        "prompt_text_included",
+        "provider_detail_included"
+      ],
+      "properties": {
+        "contract_schema_version": {"const": "ae_chat_grounded_response_quality.v1"},
+        "source_audit_schema_version": {"$ref": "#/$defs/nullableText"},
+        "boundary_status": {"enum": ["PASS", "WARN", "FAIL", "NOT_REQUIRED", "UNKNOWN"]},
+        "citation_status": {"enum": ["VALIDATED", "INVALID", "NOT_REQUIRED", "UNKNOWN"]},
+        "issue_count": {"type": "integer", "minimum": 0},
+        "recommended_action": {"enum": ["proceed", "proceed_with_caveat", "show_error"]},
+        "grounding_required": {"type": "boolean"},
+        "retrieval_package_id": {"$ref": "#/$defs/nullableText"},
+        "retrieval_package_hash": {"$ref": "#/$defs/nullableSha256"},
+        "structured_draft_id": {"$ref": "#/$defs/nullableText"},
+        "raw_output_included": {"const": false},
+        "evidence_text_included": {"const": false},
+        "prompt_text_included": {"const": false},
+        "provider_detail_included": {"const": false}
+      }
+    },
+    "repair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_projection_present",
+        "repair_schema_version",
+        "mode",
+        "status",
+        "attempted",
+        "attempt_count",
+        "max_attempts",
+        "trigger_error_code",
+        "same_retrieval_package",
+        "original_provider_prompt_package_hash",
+        "effective_provider_prompt_package_hash",
+        "invalid_output_included"
+      ],
+      "properties": {
+        "source_projection_present": {"type": "boolean"},
+        "repair_schema_version": {"enum": ["cx_citation_repair.v1", null]},
+        "mode": {"enum": ["NONE", "BOUNDED_INLINE"]},
+        "status": {"enum": ["NOT_ATTEMPTED", "SUCCEEDED", "ATTENTION_REQUIRED"]},
+        "attempted": {"type": "boolean"},
+        "attempt_count": {"type": "integer", "minimum": 0, "maximum": 1},
+        "max_attempts": {"const": 1},
+        "trigger_error_code": {
+          "enum": [
+            "cx.citation_required_missing",
+            "cx.citation_validation_failed",
+            null
+          ]
+        },
+        "same_retrieval_package": {"type": ["boolean", "null"]},
+        "original_provider_prompt_package_hash": {"$ref": "#/$defs/nullableSha256"},
+        "effective_provider_prompt_package_hash": {"$ref": "#/$defs/nullableSha256"},
+        "invalid_output_included": {"const": false}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"source_projection_present": {"const": false}}},
+          "then": {
+            "properties": {
+              "repair_schema_version": {"const": null},
+              "mode": {"const": "NONE"},
+              "status": {"const": "NOT_ATTEMPTED"},
+              "attempted": {"const": false},
+              "attempt_count": {"const": 0},
+              "trigger_error_code": {"const": null},
+              "same_retrieval_package": {"const": null},
+              "original_provider_prompt_package_hash": {"const": null},
+              "effective_provider_prompt_package_hash": {"const": null}
+            }
+          },
+          "else": {
+            "properties": {
+              "repair_schema_version": {"const": "cx_citation_repair.v1"},
+              "mode": {"const": "BOUNDED_INLINE"},
+              "same_retrieval_package": {"const": true},
+              "original_provider_prompt_package_hash": {"type": "string"},
+              "effective_provider_prompt_package_hash": {"type": "string"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"attempted": {"const": true}}},
+          "then": {
+            "properties": {
+              "attempt_count": {"const": 1},
+              "trigger_error_code": {
+                "enum": ["cx.citation_required_missing", "cx.citation_validation_failed"]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "attempt_count": {"const": 0},
+              "trigger_error_code": {"const": null},
+              "status": {"const": "NOT_ATTEMPTED"}
+            }
+          }
+        }
+      ]
+    },
+    "operatorRemediation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "required", "handoff_included"],
+      "properties": {
+        "mode": {"const": "SEPARATE_HANDOFF"},
+        "required": {"type": "boolean"},
+        "handoff_included": {"const": false}
+      }
+    }
+  }
+}

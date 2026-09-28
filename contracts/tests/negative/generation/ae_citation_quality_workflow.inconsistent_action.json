@@ -1,0 +1,44 @@
+{
+  "workflow_schema_version": "ae_citation_quality_workflow.v1",
+  "interaction_id": "interaction-citation-negative-002",
+  "cx_generation_id": "cx-generation-citation-negative-002",
+  "workflow_status": "REPAIRED",
+  "next_action": "PRESENT_RESPONSE",
+  "quality": {
+    "contract_schema_version": "ae_chat_grounded_response_quality.v1",
+    "source_audit_schema_version": null,
+    "boundary_status": "PASS",
+    "citation_status": "VALIDATED",
+    "issue_count": 0,
+    "recommended_action": "proceed",
+    "grounding_required": true,
+    "retrieval_package_id": null,
+    "retrieval_package_hash": null,
+    "structured_draft_id": null,
+    "raw_output_included": false,
+    "evidence_text_included": false,
+    "prompt_text_included": false,
+    "provider_detail_included": false
+  },
+  "repair": {
+    "source_projection_present": true,
+    "repair_schema_version": "cx_citation_repair.v1",
+    "mode": "BOUNDED_INLINE",
+    "status": "SUCCEEDED",
+    "attempted": true,
+    "attempt_count": 1,
+    "max_attempts": 1,
+    "trigger_error_code": "cx.citation_required_missing",
+    "same_retrieval_package": true,
+    "original_provider_prompt_package_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "effective_provider_prompt_package_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "invalid_output_included": false
+  },
+  "operator_remediation": {
+    "mode": "SEPARATE_HANDOFF",
+    "required": false,
+    "handoff_included": false
+  },
+  "owner_scope_enforced": true,
+  "content_included": false
+}

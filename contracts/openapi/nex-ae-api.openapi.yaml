@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX AE API
-  version: 1.3.0
+  version: 1.4.0
 tags:
   - name: Platform
   - name: Auth
@@ -887,6 +887,34 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: AE chat interaction was not found.
+  /api/v1/chat/interactions/{interaction_id}/citation-quality:
+    get:
+      operationId: getAeChatInteractionCitationQuality
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Owner-scoped privacy-safe citation quality and bounded repair workflow.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeCitationQualityWorkflow"
+        "401":
+          description: Service or browser claim is missing or invalid.
+        "404":
+          description: AE chat interaction was not found for the owner.
+        "409":
+          description: Citation quality metadata is not ready.
+        "422":
+          description: Persisted or CX citation quality lineage is inconsistent.
+        "503":
+          description: CX asynchronous generation is unavailable.
   /api/v1/chat/interactions/{interaction_id}/progress:
     get:
       operationId: getAeAsyncChatInteractionProgress
@@ -1864,6 +1892,148 @@ components:
           type: boolean
         input_hash_required:
           type: boolean
+    AeCitationQualityWorkflow:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/citation_quality_workflow.v1.schema.json
+      additionalProperties: false
+      required:
+        - workflow_schema_version
+        - interaction_id
+        - cx_generation_id
+        - workflow_status
+        - next_action
+        - quality
+        - repair
+        - operator_remediation
+        - owner_scope_enforced
+        - content_included
+      properties:
+        workflow_schema_version:
+          const: ae_citation_quality_workflow.v1
+        interaction_id:
+          type: string
+        cx_generation_id:
+          type: string
+        workflow_status:
+          type: string
+          enum:
+            - NOT_REQUIRED
+            - VALIDATED
+            - REPAIRED
+            - ATTENTION_REQUIRED
+        next_action:
+          type: string
+          enum:
+            - PRESENT_RESPONSE
+            - PRESENT_REPAIRED_RESPONSE
+            - RETRY_OR_REVIEW_GENERATION
+        quality:
+          type: object
+          additionalProperties: false
+          required:
+            - contract_schema_version
+            - boundary_status
+            - citation_status
+            - issue_count
+            - recommended_action
+            - grounding_required
+            - raw_output_included
+            - evidence_text_included
+            - prompt_text_included
+            - provider_detail_included
+          properties:
+            contract_schema_version:
+              const: ae_chat_grounded_response_quality.v1
+            source_audit_schema_version:
+              type: [string, "null"]
+            boundary_status:
+              type: string
+            citation_status:
+              type: string
+            issue_count:
+              type: integer
+              minimum: 0
+            recommended_action:
+              type: string
+            grounding_required:
+              type: boolean
+            retrieval_package_id:
+              type: [string, "null"]
+            retrieval_package_hash:
+              type: [string, "null"]
+            structured_draft_id:
+              type: [string, "null"]
+            raw_output_included:
+              const: false
+            evidence_text_included:
+              const: false
+            prompt_text_included:
+              const: false
+            provider_detail_included:
+              const: false
+        repair:
+          type: object
+          additionalProperties: false
+          required:
+            - source_projection_present
+            - repair_schema_version
+            - mode
+            - status
+            - attempted
+            - attempt_count
+            - max_attempts
+            - trigger_error_code
+            - same_retrieval_package
+            - original_provider_prompt_package_hash
+            - effective_provider_prompt_package_hash
+            - invalid_output_included
+          properties:
+            source_projection_present:
+              type: boolean
+            repair_schema_version:
+              type: [string, "null"]
+            mode:
+              type: string
+              enum: [NONE, BOUNDED_INLINE]
+            status:
+              type: string
+              enum: [NOT_ATTEMPTED, SUCCEEDED, ATTENTION_REQUIRED]
+            attempted:
+              type: boolean
+            attempt_count:
+              type: integer
+              minimum: 0
+              maximum: 1
+            max_attempts:
+              const: 1
+            trigger_error_code:
+              type: [string, "null"]
+            same_retrieval_package:
+              type: [boolean, "null"]
+            original_provider_prompt_package_hash:
+              type: [string, "null"]
+            effective_provider_prompt_package_hash:
+              type: [string, "null"]
+            invalid_output_included:
+              const: false
+        operator_remediation:
+          type: object
+          additionalProperties: false
+          required:
+            - mode
+            - required
+            - handoff_included
+          properties:
+            mode:
+              const: SEPARATE_HANDOFF
+            required:
+              type: boolean
+            handoff_included:
+              const: false
+        owner_scope_enforced:
+          const: true
+        content_included:
+          const: false
     AeGenerationProgress:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_ae_api/generation_progress.v1.schema.json
@@ -2576,6 +2746,8 @@ components:
                   $ref: "#/components/schemas/AeChatRuntimePolicySummary"
                 async_generation:
                   $ref: "#/components/schemas/AeAsyncGeneration"
+                citation_workflow:
+                  $ref: "#/components/schemas/AeCitationQualityWorkflow"
                 retry_lineage:
                   $ref: "#/components/schemas/AeAsyncRetryLineage"
             - type: "null"
