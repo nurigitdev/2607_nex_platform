@@ -23,6 +23,9 @@ from nex_ae_api.generation_progress import (
 AE_GENERATION_LIFECYCLE_ORCHESTRATION_SCHEMA_VERSION = (
     "ae_generation_lifecycle_orchestration.v1"
 )
+AE_GENERATION_CANCELLATION_ORCHESTRATION_SCHEMA_VERSION = (
+    "ae_generation_cancellation_orchestration.v1"
+)
 _TERMINAL_LIFECYCLES = frozenset({"COMPLETED", "BLOCKED"})
 _TERMINAL_CX_JOB_STATUSES = frozenset({"SUCCEEDED", "FAILED", "CANCELLED"})
 
@@ -98,6 +101,74 @@ def orchestrate_generation_lifecycle(
         ) from exc
 
 
+def orchestrate_generation_cancellation(
+    record: Mapping[str, Any],
+    *,
+    client: CxAsyncGenerationClient,
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    interaction_id, tenant_id, owner_user_id, current = _record_context(record)
+    if current["cx_job_status"] == "CANCELLED":
+        return _cancellation_result(
+            interaction_id=interaction_id,
+            previous=current,
+            refreshed=current,
+            outcome="ALREADY_CANCELLED",
+            source="AE_TERMINAL_CACHE",
+        )
+    if current["lifecycle_status"] in _TERMINAL_LIFECYCLES:
+        raise AeGenerationLifecycleError(
+            error_code="ae.async_generation.not_cancellable",
+            detail="Terminal asynchronous generation cannot be cancelled.",
+            status_code=409,
+        )
+    normalized_request_id = _required_text(request_id, "request_id")
+    normalized_trace_id = _required_text(trace_id, "trace_id")
+    try:
+        cancelled = client.cancel_job(
+            current["job_id"],
+            tenant_id=tenant_id,
+            subject_id=owner_user_id,
+            request_id=normalized_request_id,
+            trace_id=normalized_trace_id,
+        )
+    except CxAsyncGenerationClientError as exc:
+        if exc.status_code != 409 or exc.error_code != "job.transition_invalid":
+            raise _client_error(exc) from exc
+        reconciled = orchestrate_generation_lifecycle(
+            record,
+            client=client,
+            request_id=normalized_request_id,
+            trace_id=normalized_trace_id,
+            force_refresh=True,
+        )
+        if reconciled["progress"]["terminal"] is not True:
+            raise _client_error(exc) from exc
+        return {
+            **reconciled,
+            "cancellation_orchestration_schema_version": (
+                AE_GENERATION_CANCELLATION_ORCHESTRATION_SCHEMA_VERSION
+            ),
+            "outcome": "TERMINAL_STATE_WON",
+        }
+    try:
+        refreshed = refresh_async_generation_job_projection(current, cancelled)
+        return _cancellation_result(
+            interaction_id=interaction_id,
+            previous=current,
+            refreshed=refreshed,
+            outcome="CANCELLED",
+            source="CX_CANCEL",
+        )
+    except (AeAsyncGenerationError, AeGenerationProgressError) as exc:
+        raise AeGenerationLifecycleError(
+            error_code="ae.async_generation.contract_invalid",
+            detail="Generation cancellation state is inconsistent.",
+            status_code=422,
+        ) from exc
+
+
 def _record_context(
     record: Mapping[str, Any],
 ) -> tuple[str, str, str, dict[str, Any]]:
@@ -146,6 +217,28 @@ def _result(
     }
 
 
+def _cancellation_result(
+    *,
+    interaction_id: str,
+    previous: Mapping[str, Any],
+    refreshed: Mapping[str, Any],
+    outcome: str,
+    source: str,
+) -> dict[str, Any]:
+    return {
+        **_result(
+            interaction_id=interaction_id,
+            previous=previous,
+            refreshed=refreshed,
+            source=source,
+        ),
+        "cancellation_orchestration_schema_version": (
+            AE_GENERATION_CANCELLATION_ORCHESTRATION_SCHEMA_VERSION
+        ),
+        "outcome": outcome,
+    }
+
+
 def _required_text(value: object, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise _invalid(f"{field_name} must be a non-empty string.")
@@ -157,4 +250,13 @@ def _invalid(detail: str) -> AeGenerationLifecycleError:
         error_code="ae.generation_lifecycle.request_invalid",
         detail=detail,
         status_code=400,
+    )
+
+
+def _client_error(exc: CxAsyncGenerationClientError) -> AeGenerationLifecycleError:
+    return AeGenerationLifecycleError(
+        error_code=exc.error_code,
+        detail=exc.detail,
+        status_code=exc.status_code,
+        retryable=exc.retryable,
     )

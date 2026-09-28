@@ -31,6 +31,7 @@ from nex_ae_api.generation_policy import (
 )
 from nex_ae_api.generation_lifecycle import (
     AeGenerationLifecycleError,
+    orchestrate_generation_cancellation,
     orchestrate_generation_lifecycle,
 )
 from nex_ae_api.async_generation import (
@@ -892,31 +893,19 @@ def register_chat_routes(
             record = _required_visible_async_record(
                 chat_store, interaction_id, auth_context
             )
-            projection = _async_projection_from_record(record)
-            if projection["lifecycle_status"] == "COMPLETED":
-                raise ChatInteractionError(
-                    409,
-                    "ae.async_generation.not_cancellable",
-                    "Completed asynchronous generation cannot be cancelled.",
-                )
-            if projection["cx_job_status"] == "CANCELLED":
-                return record
-            if projection["lifecycle_status"] == "BLOCKED":
-                raise ChatInteractionError(
-                    409,
-                    "ae.async_generation.not_cancellable",
-                    "Blocked asynchronous generation cannot be cancelled.",
-                )
-            job = async_client.cancel_job(
-                projection["job_id"],
-                tenant_id=record["tenant_id"],
-                subject_id=record["owner_user_id"],
+            cancellation = orchestrate_generation_cancellation(
+                record,
+                client=async_client,
                 request_id=request_id,
                 trace_id=trace_id,
             )
-            refreshed = refresh_async_generation_job_projection(projection, job)
+            if cancellation["changed"] is not True:
+                return record
             saved = chat_store.save(
-                refresh_async_chat_interaction_record(record, refreshed)
+                refresh_async_chat_interaction_record(
+                    record,
+                    cancellation["async_generation"],
+                )
             )
             observe_workspace_chat_state(emitter, saved)
             append_persisted_workspace_chat_activity(
@@ -924,12 +913,16 @@ def register_chat_routes(
                 workspace_store=getattr(
                     request.app.state, "ae_workspace_store", None
                 ),
-                activity_type="chat.async.cancelled",
+                activity_type=(
+                    "chat.async.cancelled"
+                    if cancellation["outcome"] == "CANCELLED"
+                    else "chat.async.cancel_reconciled"
+                ),
                 request_id=request_id,
                 trace_id=trace_id,
             )
             return saved
-        except CxAsyncGenerationClientError as exc:
+        except AeGenerationLifecycleError as exc:
             return _chat_problem_response(
                 request,
                 ChatInteractionError(
