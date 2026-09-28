@@ -1165,6 +1165,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1059`](slices/1059_ae_citation_repair_contract_hardening.md) | `S106-008` Freeze citation workflow JSON Schema, examples, negative fixtures, and AE OpenAPI 1.4.0. |
 | [`Slice 1060`](slices/1060_ae_citation_repair_postgres_smoke.md) | `S106-009` Prove bounded citation repair, durable workflow handoff, privacy, restart reads, and cleanup on actual AE/CX test PostgreSQL. |
 | [`Slice 1061`](slices/1061_s106_ae_citation_repair_workflow_closure.md) | `S106-010` Close AE citation-quality and repair workflow hardening with actual PostgreSQL evidence and Full Gate. |
+| [`Slice 1062`](slices/1062_ae_generated_response_lineage_boundary_audit.md) | `S107-001` Freeze AE generated-response ownership, private storage, chat lineage, owner scope, privacy, and quality boundaries. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
