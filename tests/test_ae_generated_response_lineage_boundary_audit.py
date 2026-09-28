@@ -6,7 +6,7 @@ from pathlib import Path
 import run_ae_generated_response_lineage_boundary_audit as audit
 
 
-def test_repository_boundary_audit_tracks_slice_1066_progress() -> None:
+def test_repository_boundary_audit_tracks_slice_1067_progress() -> None:
     result = audit.run_ae_generated_response_lineage_boundary_audit()
 
     assert result["status"] == "PASS"
@@ -15,12 +15,12 @@ def test_repository_boundary_audit_tracks_slice_1066_progress() -> None:
     assert result["summary"] == {
         "foundation_count": 7,
         "gap_count": 8,
-        "open_gap_count": 4,
-        "resolved_gap_count": 4,
+        "open_gap_count": 3,
+        "resolved_gap_count": 5,
         "planned_slice_count": 10,
         "issue_count": 0,
     }
-    assert result["next_slice"] == "1067"
+    assert result["next_slice"] == "1068"
     assert result["issues"] == []
 
 
@@ -67,7 +67,7 @@ def test_gap_progression_and_helpers(tmp_path: Path) -> None:
             + item.token,
             encoding="utf-8",
         )
-    for path in list(audit.GAP_RESOLUTION_PATHS.values())[:4]:
+    for path in list(audit.GAP_RESOLUTION_PATHS.values())[:5]:
         target = tmp_path / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("ready", encoding="utf-8")
@@ -75,8 +75,8 @@ def test_gap_progression_and_helpers(tmp_path: Path) -> None:
     result = audit.run_ae_generated_response_lineage_boundary_audit(tmp_path)
 
     assert result["status"] == "PASS"
-    assert result["summary"]["resolved_gap_count"] == 4
-    assert result["next_slice"] == "1067"
+    assert result["summary"]["resolved_gap_count"] == 5
+    assert result["next_slice"] == "1068"
     assert audit._read_text(tmp_path / "missing") == ""
     assert audit._group_present(result["required_tokens"], "cx_private_handoff")
     assert not audit._group_present(result["required_tokens"], "missing")

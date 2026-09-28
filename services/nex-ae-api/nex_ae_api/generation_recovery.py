@@ -6,6 +6,10 @@ from typing import Any, Mapping
 
 from nex_ae_api.async_generation import ASYNCHRONOUS, AeAsyncGenerationError
 from nex_ae_api.generation_progress import build_generation_recovery_plan
+from nex_ae_api.generated_response_lineage import (
+    AeGeneratedResponseLineageError,
+    generated_response_lineage_from_record,
+)
 
 
 AE_GENERATION_RETRY_ORCHESTRATION_SCHEMA_VERSION = (
@@ -79,13 +83,7 @@ def prepare_generation_retry(
         **deepcopy(dict(requested_generation)),
         "execution_strategy": ASYNCHRONOUS,
     }
-    lineage = {
-        "retry_lineage_schema_version": "ae_async_generation_retry_lineage.v1",
-        "parent_interaction_id": parent_interaction_id,
-        "parent_job_id": projection["job_id"],
-        "parent_cx_generation_id": projection["cx_generation_id"],
-        "raw_input_included": False,
-    }
+    lineage = build_generation_retry_lineage(parent, projection)
     return {
         "retry_orchestration_schema_version": (
             AE_GENERATION_RETRY_ORCHESTRATION_SCHEMA_VERSION
@@ -94,6 +92,33 @@ def prepare_generation_retry(
         "lineage": lineage,
         "recovery": recovery,
         "owner_scope_enforced": True,
+        "raw_input_included": False,
+    }
+
+
+def build_generation_retry_lineage(
+    parent: Mapping[str, Any],
+    projection: Mapping[str, Any],
+) -> dict[str, Any]:
+    parent_interaction_id = _required_text(
+        parent.get("interaction_id"), "parent.interaction_id"
+    )
+    parent_job_id = _required_text(projection.get("job_id"), "parent.job_id")
+    parent_generation_id = _required_text(
+        projection.get("cx_generation_id"), "parent.cx_generation_id"
+    )
+    try:
+        parent_response = generated_response_lineage_from_record(parent)
+    except AeGeneratedResponseLineageError as exc:
+        raise _invalid("Parent interaction has invalid response lineage.") from exc
+    return {
+        "retry_lineage_schema_version": "ae_async_generation_retry_lineage.v1",
+        "parent_interaction_id": parent_interaction_id,
+        "parent_job_id": parent_job_id,
+        "parent_cx_generation_id": parent_generation_id,
+        "parent_response_id": (
+            parent_response["response_id"] if parent_response is not None else None
+        ),
         "raw_input_included": False,
     }
 

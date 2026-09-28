@@ -222,6 +222,9 @@ Artifact records:
 - Slice 1066 makes READY asynchronous handoff content durable in private
   storage and chat lineage, with deterministic replay and compensating cleanup
   when a new payload is followed by a failed chat-record write.
+- Slice 1067 propagates retry parent-response IDs when available, records
+  response-less failed parents truthfully as null, and keeps bounded citation
+  repair on the same CX generation and deterministic response identity.
 - Slice 0405 wires artifact routes to SQLAlchemy stores when
   `app.state.nex_persistence.api_session_factory` is attached. Explicit test
   stores still override defaults, and the public API shape is unchanged across

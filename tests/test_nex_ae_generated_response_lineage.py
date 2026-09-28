@@ -219,10 +219,10 @@ def test_prepare_rejects_integrity_and_retry_parent_errors() -> None:
     with pytest.raises(AeGeneratedResponseLineageError, match="integrity"):
         prepare_generated_response(sample_record(), bad_hash, sample_workflow())
 
-    with pytest.raises(AeGeneratedResponseLineageError, match="parent_response_id"):
-        prepare_generated_response(
-            sample_record(retry=True), sample_refresh(), sample_workflow()
-        )
+    retry_without_parent_response = prepare_generated_response(
+        sample_record(retry=True), sample_refresh(), sample_workflow()
+    )
+    assert retry_without_parent_response["lineage"]["parent_response_id"] is None
     with pytest.raises(AeGeneratedResponseLineageError, match="cannot have"):
         prepare_generated_response(
             sample_record(),
@@ -318,12 +318,12 @@ def test_lineage_validator_rejects_shape_parent_repair_and_conflict_drift() -> N
         validate_generated_response_lineage(
             {**lineage, "parent_response_id": "parent"}
         )
-    with pytest.raises(AeGeneratedResponseLineageError, match="incomplete"):
+    with pytest.raises(AeGeneratedResponseLineageError, match="interaction"):
         validate_generated_response_lineage(
             {
                 **lineage,
                 "lineage_type": "RETRY_CHILD",
-                "parent_interaction_id": "parent",
+                "parent_interaction_id": None,
             }
         )
     with pytest.raises(AeGeneratedResponseLineageError, match="repair"):
@@ -346,6 +346,15 @@ def test_lineage_validator_accepts_nullable_retrieval_hash() -> None:
     assert validate_generated_response_lineage(lineage)[
         "retrieval_package_hash"
     ] is None
+
+
+def test_bounded_repair_keeps_same_generation_response_identity() -> None:
+    validated = sample_bundle()["lineage"]
+    repaired = sample_bundle(repaired=True)["lineage"]
+
+    assert repaired["cx_generation_id"] == validated["cx_generation_id"]
+    assert repaired["response_id"] == validated["response_id"]
+    assert repaired["bounded_repair_applied"] is True
 
 
 def test_attach_rejects_missing_generation_and_cross_chat_lineage() -> None:

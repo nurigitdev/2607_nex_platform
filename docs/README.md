@@ -1170,6 +1170,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1064`](slices/1064_ae_generated_response_lineage_projection.md) | `S107-003` Persist canonical response/chat lineage without raw content or storage references in PostgreSQL. |
 | [`Slice 1065`](slices/1065_ae_generated_response_api.md) | `S107-004` Expose integrity-checked generated response content through an exact-owner AE API. |
 | [`Slice 1066`](slices/1066_ae_async_response_handoff_integration.md) | `S107-005` Persist READY async content and chat lineage with replay and compensation safeguards. |
+| [`Slice 1067`](slices/1067_ae_generated_response_retry_repair_lineage.md) | `S107-006` Link retry parent responses when present and keep bounded repair on the same generation identity. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -234,6 +234,7 @@ def test_retry_requires_matching_input_and_new_interaction_then_preserves_lineag
         "parent_interaction_id": "parent-1",
         "parent_job_id": "job-1",
         "parent_cx_generation_id": "cx-1",
+        "parent_response_id": None,
         "raw_input_included": False,
     }
     assert store.get("retry-1")["generation"]["retry_lineage"] == lineage

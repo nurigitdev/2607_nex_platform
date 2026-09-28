@@ -10,8 +10,11 @@ from nex_ae_api.chat import ChatInteractionStore, register_chat_routes, sha256_t
 from nex_ae_api.generation_recovery import (
     AE_GENERATION_RETRY_ORCHESTRATION_SCHEMA_VERSION,
     AeGenerationRecoveryError,
+    build_generation_retry_lineage,
     prepare_generation_retry,
 )
+from nex_ae_api.generated_response_lineage import attach_generated_response_lineage
+from test_nex_ae_generated_response_lineage import sample_bundle, sample_record
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_user_token
 
 
@@ -81,9 +84,41 @@ def test_prepare_retry_returns_forced_async_child_and_lineage() -> None:
         "execution_strategy": "ASYNCHRONOUS",
     }
     assert result["lineage"]["parent_interaction_id"] == "parent-recovery"
+    assert result["lineage"]["parent_response_id"] is None
     assert result["recovery"]["action"] == "RETRY_AS_CHILD"
     assert result["raw_input_included"] is False
     assert payload["generation"] == {"temperature": 0.1}
+
+
+def test_retry_lineage_links_existing_parent_response_when_available() -> None:
+    parent = attach_generated_response_lineage(
+        sample_record(), sample_bundle()["lineage"]
+    )
+
+    lineage = build_generation_retry_lineage(
+        parent,
+        {"job_id": "parent-job", "cx_generation_id": "parent-generation"},
+    )
+
+    assert lineage["parent_interaction_id"] == parent["interaction_id"]
+    assert lineage["parent_response_id"] == (
+        parent["generation"]["generated_response"]["response_id"]
+    )
+
+
+def test_retry_lineage_rejects_invalid_parent_response_and_projection() -> None:
+    parent = attach_generated_response_lineage(
+        sample_record(), sample_bundle()["lineage"]
+    )
+    parent["generation"]["generated_response"]["interaction_id"] = "different"
+
+    with pytest.raises(AeGenerationRecoveryError, match="response lineage"):
+        build_generation_retry_lineage(
+            parent,
+            {"job_id": "parent-job", "cx_generation_id": "parent-generation"},
+        )
+    with pytest.raises(AeGenerationRecoveryError, match="parent.job_id"):
+        build_generation_retry_lineage(sample_record(), {"cx_generation_id": "cx"})
 
 
 @pytest.mark.parametrize(

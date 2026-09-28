@@ -40,6 +40,7 @@ from nex_ae_api.generation_lifecycle_observability import (
 from nex_ae_api.generation_progress import build_generation_progress_projection
 from nex_ae_api.generation_recovery import (
     AeGenerationRecoveryError,
+    build_generation_retry_lineage,
     prepare_generation_retry,
 )
 from nex_ae_api.generated_response_api import build_generated_response_owner_view
@@ -1737,13 +1738,11 @@ def _attach_async_retry_lineage(
     generation = record.get("generation")
     if not isinstance(generation, dict) or "async_generation" not in generation:
         return response
-    resolved_lineage = dict(lineage) if lineage is not None else {
-        "retry_lineage_schema_version": "ae_async_generation_retry_lineage.v1",
-        "parent_interaction_id": parent["interaction_id"],
-        "parent_job_id": projection["job_id"],
-        "parent_cx_generation_id": projection["cx_generation_id"],
-        "raw_input_included": False,
-    }
+    resolved_lineage = (
+        dict(lineage)
+        if lineage is not None
+        else build_generation_retry_lineage(parent, projection)
+    )
     saved = chat_store.save(
         {**record, "generation": {**generation, "retry_lineage": resolved_lineage}}
     )

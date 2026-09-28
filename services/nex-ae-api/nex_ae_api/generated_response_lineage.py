@@ -124,7 +124,7 @@ def prepare_generated_response(
             retry_lineage.get("parent_interaction_id"),
             "parent_interaction_id",
         )
-        normalized_parent_response_id = _required_text(
+        normalized_parent_response_id = _nullable_text(
             parent_response_id or retry_lineage.get("parent_response_id"),
             "parent_response_id",
         )
@@ -223,8 +223,8 @@ def validate_generated_response_lineage(value: object) -> dict[str, Any]:
     if lineage["lineage_type"] == "ORIGINAL":
         if parent_interaction_id is not None or parent_response_id is not None:
             raise _invalid("Original generated response has parent lineage.")
-    elif parent_interaction_id is None or parent_response_id is None:
-        raise _invalid("Retry generated response parent lineage is incomplete.")
+    elif parent_interaction_id is None:
+        raise _invalid("Retry generated response parent interaction is missing.")
     lineage["parent_interaction_id"] = parent_interaction_id
     lineage["parent_response_id"] = parent_response_id
     if lineage["owner_scope_enforced"] is not True:

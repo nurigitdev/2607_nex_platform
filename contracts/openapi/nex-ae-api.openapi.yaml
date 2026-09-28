@@ -2229,6 +2229,10 @@ components:
           type: string
         parent_cx_generation_id:
           type: string
+        parent_response_id:
+          type:
+            - string
+            - "null"
         raw_input_included:
           const: false
     AeAsyncChatRefresh:
