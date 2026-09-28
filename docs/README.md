@@ -1140,6 +1140,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1034`](slices/1034_ae_cx_async_generation_client.md) | `S104-003` Add the owner-scoped AE HTTP client for CX async admission, polling, handoff, and cancellation. |
 | [`Slice 1035`](slices/1035_ae_async_chat_admission.md) | `S104-004` Wire explicit async chat admission to durable owner-safe AE interaction state. |
 | [`Slice 1036`](slices/1036_ae_async_chat_polling_api.md) | `S104-005` Add explicit owner-scoped async refresh with transient verified content and durable state convergence. |
+| [`Slice 1037`](slices/1037_ae_async_chat_cancel_retry.md) | `S104-006` Add owner-scoped async cancellation and hash-bound retry with safe parent lineage. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

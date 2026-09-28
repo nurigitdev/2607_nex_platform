@@ -12,6 +12,7 @@ from nex_ae_api.async_generation import (
     AeAsyncGenerationError,
     build_async_generation_projection,
     refresh_async_generation_projection,
+    refresh_async_generation_job_projection,
     resolve_execution_strategy,
     validate_async_generation_projection,
 )
@@ -340,6 +341,37 @@ def test_refresh_rejects_inconsistent_job_and_handoff_status() -> None:
     }
     with pytest.raises(AeAsyncGenerationError):
         refresh_async_generation_projection(current, handoff)
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        ("RUNNING", "PENDING"),
+        ("CANCELLED", "BLOCKED"),
+        ("FAILED", "BLOCKED"),
+    ],
+)
+def test_refresh_job_projection_maps_owner_safe_state(status: str, expected: str) -> None:
+    current = build_async_generation_projection(_admission())
+    job = _job(status)
+    if status in {"CANCELLED", "FAILED"}:
+        job["error"] = {
+            "error_code": "cx.terminal",
+            "retryable": status == "FAILED",
+            "dead_lettered": False,
+        }
+    refreshed = refresh_async_generation_job_projection(current, job)
+    assert refreshed["lifecycle_status"] == expected
+    assert refreshed["cx_job_status"] == status
+    assert refreshed["handoff_status"] is None
+
+
+def test_refresh_job_projection_rejects_lineage_mismatch() -> None:
+    current = build_async_generation_projection(_admission())
+    job = _job()
+    job["cx_generation_id"] = "other"
+    with pytest.raises(AeAsyncGenerationError):
+        refresh_async_generation_job_projection(current, job)
 
 
 def test_error_string_is_detail() -> None:

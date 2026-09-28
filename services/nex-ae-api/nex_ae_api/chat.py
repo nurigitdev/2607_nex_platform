@@ -34,6 +34,7 @@ from nex_ae_api.async_generation import (
     AeAsyncGenerationError,
     build_async_generation_projection,
     refresh_async_generation_projection,
+    refresh_async_generation_job_projection,
     resolve_execution_strategy,
 )
 from nex_ae_api.cx_async_generation_client import (
@@ -798,6 +799,137 @@ def register_chat_routes(
             return _chat_problem_response(request, exc)
 
     @app.post(
+        "/api/v1/chat/interactions/{interaction_id}/cancel",
+        response_model=None,
+    )
+    def cancel_chat_interaction(
+        interaction_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            record = _required_visible_async_record(
+                chat_store, interaction_id, auth_context
+            )
+            projection = _async_projection_from_record(record)
+            if projection["lifecycle_status"] == "COMPLETED":
+                raise ChatInteractionError(
+                    409,
+                    "ae.async_generation.not_cancellable",
+                    "Completed asynchronous generation cannot be cancelled.",
+                )
+            if projection["cx_job_status"] == "CANCELLED":
+                return record
+            if projection["lifecycle_status"] == "BLOCKED":
+                raise ChatInteractionError(
+                    409,
+                    "ae.async_generation.not_cancellable",
+                    "Blocked asynchronous generation cannot be cancelled.",
+                )
+            job = async_client.cancel_job(
+                projection["job_id"],
+                tenant_id=record["tenant_id"],
+                subject_id=record["owner_user_id"],
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            refreshed = refresh_async_generation_job_projection(projection, job)
+            saved = chat_store.save(
+                refresh_async_chat_interaction_record(record, refreshed)
+            )
+            observe_workspace_chat_state(emitter, saved)
+            return saved
+        except CxAsyncGenerationClientError as exc:
+            return _chat_problem_response(
+                request,
+                ChatInteractionError(
+                    exc.status_code,
+                    exc.error_code,
+                    exc.detail,
+                    exc.retryable,
+                ),
+            )
+        except AeAsyncGenerationError as exc:
+            return _chat_problem_response(request, _policy_error_to_chat(exc))
+        except ChatInteractionError as exc:
+            return _chat_problem_response(request, exc)
+
+    @app.post(
+        "/api/v1/chat/interactions/{interaction_id}/retry",
+        response_model=None,
+    )
+    def retry_chat_interaction(
+        interaction_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
+        try:
+            parent = _required_visible_async_record(
+                chat_store, interaction_id, auth_context
+            )
+            projection = _async_projection_from_record(parent)
+            if (
+                projection["lifecycle_status"] != "BLOCKED"
+                or projection["retryable"] is not True
+            ):
+                raise ChatInteractionError(
+                    409,
+                    "ae.async_generation.not_retryable",
+                    "Asynchronous generation is not retryable.",
+                )
+            retry_interaction_id = _optional_text(payload.get("interaction_id"))
+            if retry_interaction_id is None or retry_interaction_id == interaction_id:
+                raise ChatInteractionError(
+                    400,
+                    "ae.async_generation.retry_interaction_id_invalid",
+                    "Retry requires a new interaction_id.",
+                )
+            if sha256_text(user_message_from_payload(payload)) != parent[
+                "user_message_hash"
+            ]:
+                raise ChatInteractionError(
+                    409,
+                    "ae.async_generation.retry_input_mismatch",
+                    "Retry input does not match the original interaction.",
+                )
+            generation = payload.get("generation", {})
+            if not isinstance(generation, dict):
+                raise ChatInteractionError(
+                    400,
+                    "ae.async_generation.retry_request_invalid",
+                    "generation must be an object when supplied.",
+                )
+            retry_payload = {
+                **payload,
+                "generation": {
+                    **generation,
+                    "execution_strategy": ASYNCHRONOUS,
+                },
+            }
+            response = create_chat_interaction(
+                retry_payload,
+                request,
+                authorization,
+            )
+            return _attach_async_retry_lineage(
+                response,
+                chat_store=chat_store,
+                parent=parent,
+                projection=projection,
+            )
+        except ChatInteractionError as exc:
+            return _chat_problem_response(request, exc)
+
+    @app.post(
         "/api/v1/chat/interactions/{interaction_id}/artifact-links",
         response_model=None,
     )
@@ -1146,6 +1278,57 @@ def _async_projection_from_record(record: Mapping[str, Any]) -> dict[str, Any]:
             "Chat interaction is not bound to asynchronous generation.",
         )
     return dict(projection)
+
+
+def _required_visible_async_record(
+    store: Any,
+    interaction_id: str,
+    auth_context: AeFacadeRouteAuthContext,
+) -> dict[str, Any]:
+    record = _get_visible_chat_record(store, interaction_id, auth_context)
+    if record is None:
+        raise ChatInteractionError(
+            404,
+            "ae.chat_interaction_not_found",
+            f"Chat interaction was not found: {interaction_id}",
+        )
+    _async_projection_from_record(record)
+    return record
+
+
+def _attach_async_retry_lineage(
+    response: object,
+    *,
+    chat_store: Any,
+    parent: Mapping[str, Any],
+    projection: Mapping[str, Any],
+) -> object:
+    if isinstance(response, JSONResponse):
+        if response.status_code >= 400:
+            return response
+        record = json.loads(bytes(response.body).decode("utf-8"))
+        response_status = response.status_code
+    elif isinstance(response, dict):
+        record = dict(response)
+        response_status = 200
+    else:
+        return response
+    generation = record.get("generation")
+    if not isinstance(generation, dict) or "async_generation" not in generation:
+        return response
+    lineage = {
+        "retry_lineage_schema_version": "ae_async_generation_retry_lineage.v1",
+        "parent_interaction_id": parent["interaction_id"],
+        "parent_job_id": projection["job_id"],
+        "parent_cx_generation_id": projection["cx_generation_id"],
+        "raw_input_included": False,
+    }
+    saved = chat_store.save(
+        {**record, "generation": {**generation, "retry_lineage": lineage}}
+    )
+    if response_status == 200:
+        return saved
+    return JSONResponse(status_code=response_status, content=jsonable_encoder(saved))
 
 
 def build_failed_chat_interaction_record(

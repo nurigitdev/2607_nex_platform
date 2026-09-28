@@ -183,6 +183,34 @@ def refresh_async_generation_projection(
     return refreshed, _build_refresh_result(normalized)
 
 
+def refresh_async_generation_job_projection(
+    current: Mapping[str, Any],
+    job: Mapping[str, Any],
+) -> dict[str, Any]:
+    projection = validate_async_generation_projection(current)
+    normalized_job = _validate_cx_job_projection(job)
+    if (
+        normalized_job["job_id"] != projection["job_id"]
+        or normalized_job["cx_generation_id"] != projection["cx_generation_id"]
+    ):
+        raise _invalid_contract("CX async job lineage is inconsistent.")
+    lifecycle_status, next_action = _ae_state(normalized_job["status"], None)
+    return validate_async_generation_projection(
+        {
+            **projection,
+            "lifecycle_status": lifecycle_status,
+            "cx_job_status": normalized_job["status"],
+            "attempt_count": normalized_job["attempt_count"],
+            "max_attempts": normalized_job["max_attempts"],
+            "retryable": normalized_job["retryable"],
+            "handoff_status": None,
+            "next_action": next_action,
+            "error": normalized_job["error"],
+            "links": normalized_job["links"],
+        }
+    )
+
+
 def _validate_cx_job_projection(value: Mapping[str, Any]) -> dict[str, Any]:
     required = {
         "job_id",
