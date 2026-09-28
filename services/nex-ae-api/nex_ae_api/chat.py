@@ -29,6 +29,10 @@ from nex_ae_api.generation_policy import (
     GenerationPolicyPackageError,
     build_generation_policy_package,
 )
+from nex_ae_api.generation_lifecycle import (
+    AeGenerationLifecycleError,
+    orchestrate_generation_lifecycle,
+)
 from nex_ae_api.async_generation import (
     ASYNCHRONOUS,
     AeAsyncGenerationError,
@@ -814,6 +818,50 @@ def register_chat_routes(
         except AeAsyncGenerationError as exc:
             return _chat_problem_response(request, _policy_error_to_chat(exc))
         except WorkspaceChatOrchestrationError as exc:
+            return _chat_problem_response(
+                request,
+                ChatInteractionError(
+                    exc.status_code,
+                    exc.error_code,
+                    exc.detail,
+                    exc.retryable,
+                ),
+            )
+        except ChatInteractionError as exc:
+            return _chat_problem_response(request, exc)
+
+    @app.get(
+        "/api/v1/chat/interactions/{interaction_id}/progress",
+        response_model=None,
+    )
+    def get_chat_interaction_progress(
+        interaction_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
+        try:
+            record = _required_visible_async_record(
+                chat_store, interaction_id, auth_context
+            )
+            lifecycle = orchestrate_generation_lifecycle(
+                record,
+                client=async_client,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+            )
+            if lifecycle["changed"]:
+                saved = chat_store.save(
+                    refresh_async_chat_interaction_record(
+                        record,
+                        lifecycle["async_generation"],
+                    )
+                )
+                observe_workspace_chat_state(emitter, saved)
+            return lifecycle["progress"]
+        except AeGenerationLifecycleError as exc:
             return _chat_problem_response(
                 request,
                 ChatInteractionError(
