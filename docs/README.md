@@ -1151,6 +1151,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1045`](slices/1045_ae_generation_progress_api.md) | `S105-004` Expose owner-scoped privacy-safe asynchronous generation progress polling. |
 | [`Slice 1046`](slices/1046_ae_generation_cancellation_race.md) | `S105-005` Converge cancellation races on the canonical terminal CX lifecycle state. |
 | [`Slice 1047`](slices/1047_ae_generation_recovery_orchestration.md) | `S105-006` Expose recovery plans and require lineage-preserving child retry admission. |
+| [`Slice 1048`](slices/1048_ae_generation_lifecycle_observability.md) | `S105-007` Add metadata-only lifecycle events and bounded workspace activity. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

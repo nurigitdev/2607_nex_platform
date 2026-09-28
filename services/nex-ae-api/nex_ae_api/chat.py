@@ -34,6 +34,10 @@ from nex_ae_api.generation_lifecycle import (
     orchestrate_generation_cancellation,
     orchestrate_generation_lifecycle,
 )
+from nex_ae_api.generation_lifecycle_observability import (
+    observe_generation_lifecycle_action,
+)
+from nex_ae_api.generation_progress import build_generation_progress_projection
 from nex_ae_api.generation_recovery import (
     AeGenerationRecoveryError,
     prepare_generation_retry,
@@ -865,6 +869,22 @@ def register_chat_routes(
                     )
                 )
                 observe_workspace_chat_state(emitter, saved)
+                append_persisted_workspace_chat_activity(
+                    saved,
+                    workspace_store=getattr(
+                        request.app.state, "ae_workspace_store", None
+                    ),
+                    activity_type="chat.async.progressed",
+                    request_id=request_id_from_headers(request),
+                    trace_id=trace_id_from_headers(request),
+                )
+            observe_generation_lifecycle_action(
+                emitter,
+                action="PROGRESS_OBSERVED",
+                progress=lifecycle["progress"],
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+            )
             return lifecycle["progress"]
         except AeGenerationLifecycleError as exc:
             return _chat_problem_response(
@@ -925,6 +945,17 @@ def register_chat_routes(
                 request_id=request_id,
                 trace_id=trace_id,
             )
+            observe_generation_lifecycle_action(
+                emitter,
+                action=(
+                    "CANCELLATION_ACCEPTED"
+                    if cancellation["outcome"] == "CANCELLED"
+                    else "CANCELLATION_RECONCILED"
+                ),
+                progress=cancellation["progress"],
+                request_id=request_id,
+                trace_id=trace_id,
+            )
             return saved
         except AeGenerationLifecycleError as exc:
             return _chat_problem_response(
@@ -981,6 +1012,22 @@ def register_chat_routes(
                     )
                 )
                 observe_workspace_chat_state(emitter, saved)
+                append_persisted_workspace_chat_activity(
+                    saved,
+                    workspace_store=getattr(
+                        request.app.state, "ae_workspace_store", None
+                    ),
+                    activity_type="chat.async.recovery_planned",
+                    request_id=request_id_from_headers(request),
+                    trace_id=trace_id_from_headers(request),
+                )
+            observe_generation_lifecycle_action(
+                emitter,
+                action="RECOVERY_PLANNED",
+                progress=lifecycle["progress"],
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+            )
             return lifecycle["progress"]["recovery"]
         except AeGenerationLifecycleError as exc:
             return _chat_problem_response(
@@ -1445,6 +1492,16 @@ def _attach_async_retry_lineage(
     )
     if event_emitter is not None:
         observe_workspace_chat_state(event_emitter, saved)
+        observe_generation_lifecycle_action(
+            event_emitter,
+            action="RETRY_ADMITTED",
+            progress=build_generation_progress_projection(
+                interaction_id=str(saved["interaction_id"]),
+                async_generation=generation["async_generation"],
+            ),
+            request_id=_optional_text(saved.get("request_id")),
+            trace_id=_optional_text(saved.get("trace_id")),
+        )
     if response_status == 200:
         return saved
     return JSONResponse(status_code=response_status, content=jsonable_encoder(saved))
