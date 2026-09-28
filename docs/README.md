@@ -1157,6 +1157,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1051`](slices/1051_s105_ae_generation_lifecycle_closure.md) | `S105-010` Close AE generation lifecycle orchestration with actual PostgreSQL evidence and Full Gate. |
 | [`Slice 1052`](slices/1052_ae_citation_repair_workflow_boundary_audit.md) | `S106-001` Freeze AE citation-quality and repair workflow ownership, persistence, privacy, and quality boundaries. |
 | [`Slice 1053`](slices/1053_cx_citation_repair_metadata_persistence.md) | `S106-002` Persist a validated privacy-safe CX bounded citation repair projection for AE consumption. |
+| [`Slice 1054`](slices/1054_ae_citation_quality_workflow_projection.md) | `S106-003` Project CX citation quality and bounded repair into a canonical privacy-safe AE workflow. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
