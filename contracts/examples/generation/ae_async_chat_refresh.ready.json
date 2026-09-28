@@ -1,0 +1,24 @@
+{
+  "refresh_schema_version": "ae_async_chat_refresh.v1",
+  "interaction": {
+    "interaction_schema_version": "ae_chat_interaction.v1",
+    "interaction_id": "interaction-async-contract-001",
+    "status": "COMPLETED",
+    "generation": {
+      "async_generation": {
+        "lifecycle_status": "COMPLETED"
+      }
+    }
+  },
+  "result": {
+    "refresh_schema_version": "ae_async_generation_refresh.v1",
+    "handoff_status": "READY",
+    "cx_generation_id": "cx-generation-async-contract-001",
+    "content": "Owner result [1].",
+    "content_type": "text/plain; charset=utf-8",
+    "content_sha256": "1a0de4172a5580522db1c229db511fbf3cd5ef0b7025b68baafa40217715f85c",
+    "size_bytes": 17,
+    "owner_scope_enforced": true
+  },
+  "content_persisted_by_ae": false
+}

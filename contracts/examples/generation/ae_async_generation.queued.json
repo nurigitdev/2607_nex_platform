@@ -1,0 +1,21 @@
+{
+  "async_generation_schema_version": "ae_async_generation.v1",
+  "execution_strategy": "ASYNCHRONOUS",
+  "lifecycle_status": "PENDING",
+  "admission_status": "ENQUEUED",
+  "job_id": "job-async-contract-001",
+  "cx_generation_id": "cx-generation-async-contract-001",
+  "cx_job_status": "QUEUED",
+  "attempt_count": 0,
+  "max_attempts": 3,
+  "retryable": true,
+  "handoff_status": null,
+  "next_action": "POLL_GENERATION_HANDOFF",
+  "error": null,
+  "links": {
+    "generation": "/api/v1/generations/cx-generation-async-contract-001",
+    "async_job": "/api/v1/generation-jobs/job-async-contract-001"
+  },
+  "owner_scope_enforced": true,
+  "content_included": false
+}

@@ -149,7 +149,7 @@ def test_openapi_exposes_runtime_policy_contracts() -> None:
         )
     )
 
-    assert spec["info"]["version"] == "1.1.0"
+    assert spec["info"]["version"] == "1.2.0"
     assert {
         "/api/v1/runtime-policies",
         "/api/v1/runtime-policies/resolve",

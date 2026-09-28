@@ -96,11 +96,33 @@
         "NO_ANSWER",
         "LOW_CONFIDENCE",
         "PARTIAL",
-        "FAILED"
+        "FAILED",
+        "QUEUED",
+        "RUNNING",
+        "SUCCEEDED",
+        "CANCELLED"
       ]
     },
     "generation": {
       "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "async_generation"
+          ],
+          "properties": {
+            "policy": {
+              "$ref": "#/$defs/runtimePolicySummary"
+            },
+            "async_generation": {
+              "$ref": "#/$defs/asyncGeneration"
+            },
+            "retry_lineage": {
+              "$ref": "#/$defs/asyncRetryLineage"
+            }
+          }
+        },
         {
           "type": "object",
           "additionalProperties": false,
@@ -169,6 +191,9 @@
         },
         {
           "$ref": "#/$defs/chatExecutionFailure"
+        },
+        {
+          "type": "null"
         }
       ]
     },
@@ -256,6 +281,123 @@
     }
   },
   "$defs": {
+    "asyncGeneration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "async_generation_schema_version",
+        "execution_strategy",
+        "lifecycle_status",
+        "admission_status",
+        "job_id",
+        "cx_generation_id",
+        "cx_job_status",
+        "attempt_count",
+        "max_attempts",
+        "retryable",
+        "handoff_status",
+        "next_action",
+        "error",
+        "links",
+        "owner_scope_enforced",
+        "content_included"
+      ],
+      "properties": {
+        "async_generation_schema_version": {
+          "const": "ae_async_generation.v1"
+        },
+        "execution_strategy": {
+          "const": "ASYNCHRONOUS"
+        },
+        "lifecycle_status": {
+          "enum": ["PENDING", "COMPLETED", "BLOCKED"]
+        },
+        "admission_status": {
+          "enum": ["ENQUEUED", "JOINED", "REPLAYED"]
+        },
+        "job_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cx_generation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cx_job_status": {
+          "enum": ["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"]
+        },
+        "attempt_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "handoff_status": {
+          "enum": ["PENDING", "READY", "BLOCKED", null]
+        },
+        "next_action": {
+          "enum": [
+            "POLL_GENERATION_HANDOFF",
+            "PRESENT_GENERATION_TO_OWNER",
+            "RETRY_OR_REVIEW_GENERATION"
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["error_code", "retryable", "dead_lettered"],
+              "properties": {
+                "error_code": {"type": "string", "minLength": 1},
+                "retryable": {"type": "boolean"},
+                "dead_lettered": {"type": "boolean"}
+              }
+            },
+            {"type": "null"}
+          ]
+        },
+        "links": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "generation": {"type": "string", "pattern": "^/api/v1/"},
+            "async_job": {"type": "string", "pattern": "^/api/v1/"}
+          }
+        },
+        "owner_scope_enforced": {
+          "const": true
+        },
+        "content_included": {
+          "const": false
+        }
+      }
+    },
+    "asyncRetryLineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "retry_lineage_schema_version",
+        "parent_interaction_id",
+        "parent_job_id",
+        "parent_cx_generation_id",
+        "raw_input_included"
+      ],
+      "properties": {
+        "retry_lineage_schema_version": {
+          "const": "ae_async_generation_retry_lineage.v1"
+        },
+        "parent_interaction_id": {"type": "string", "minLength": 1},
+        "parent_job_id": {"type": "string", "minLength": 1},
+        "parent_cx_generation_id": {"type": "string", "minLength": 1},
+        "raw_input_included": {"const": false}
+      }
+    },
     "runtimePolicySummary": {
       "type": "object",
       "additionalProperties": false,

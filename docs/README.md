@@ -1142,6 +1142,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1036`](slices/1036_ae_async_chat_polling_api.md) | `S104-005` Add explicit owner-scoped async refresh with transient verified content and durable state convergence. |
 | [`Slice 1037`](slices/1037_ae_async_chat_cancel_retry.md) | `S104-006` Add owner-scoped async cancellation and hash-bound retry with safe parent lineage. |
 | [`Slice 1038`](slices/1038_ae_async_chat_observability.md) | `S104-007` Add metadata-only async lifecycle observability and workspace activity history. |
+| [`Slice 1039`](slices/1039_ae_async_chat_contract_openapi.md) | `S104-008` Freeze async lifecycle JSON Schemas, privacy fixtures, and AE OpenAPI 1.2. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

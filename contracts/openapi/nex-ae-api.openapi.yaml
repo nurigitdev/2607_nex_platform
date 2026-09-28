@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX AE API
-  version: 1.1.0
+  version: 1.2.0
 tags:
   - name: Platform
   - name: Auth
@@ -851,6 +851,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AeChatInteraction"
+        "202":
+          description: Asynchronous CX generation durably admitted and represented by an owner-safe AE interaction projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeChatInteraction"
         "400":
           description: Chat interaction request is invalid.
         "401":
@@ -881,6 +887,98 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: AE chat interaction was not found.
+  /api/v1/chat/interactions/{interaction_id}/refresh:
+    post:
+      operationId: refreshAeAsyncChatInteraction
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Owner-scoped async lifecycle refresh with transient verified content when ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeAsyncChatRefresh"
+        "401":
+          description: Service or browser claim is missing or invalid.
+        "404":
+          description: AE chat interaction was not found for the owner.
+        "409":
+          description: Interaction is not asynchronous or CX lineage is inconsistent.
+        "503":
+          description: CX async generation or AE workspace activity persistence is unavailable.
+  /api/v1/chat/interactions/{interaction_id}/cancel:
+    post:
+      operationId: cancelAeAsyncChatInteraction
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Owner-scoped asynchronous generation cancellation projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeChatInteraction"
+        "401":
+          description: Service or browser claim is missing or invalid.
+        "404":
+          description: AE chat interaction was not found for the owner.
+        "409":
+          description: Interaction cannot be cancelled in its current state.
+        "503":
+          description: CX async generation or AE workspace activity persistence is unavailable.
+  /api/v1/chat/interactions/{interaction_id}/retry:
+    post:
+      operationId: retryAeAsyncChatInteraction
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AeChatInteractionRequest"
+      responses:
+        "200":
+          description: Existing idempotent async retry interaction returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeChatInteraction"
+        "202":
+          description: New hash-bound async retry interaction admitted with safe parent lineage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeChatInteraction"
+        "400":
+          description: Retry request or new interaction identifier is invalid.
+        "401":
+          description: Service or browser claim is missing or invalid.
+        "404":
+          description: Parent interaction was not found for the owner.
+        "409":
+          description: Parent is not retryable or submitted input hash does not match.
+        "503":
+          description: CX async generation is unavailable.
   /api/v1/chat/interactions/{interaction_id}/repaired-response-handoffs:
     post:
       operationId: createAeRepairedResponseHandoff
@@ -1673,6 +1771,169 @@ components:
         updated_at:
           type: string
           format: date-time
+    AeAsyncGeneration:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/async_generation.v1.schema.json
+      additionalProperties: false
+      required:
+        - async_generation_schema_version
+        - execution_strategy
+        - lifecycle_status
+        - admission_status
+        - job_id
+        - cx_generation_id
+        - cx_job_status
+        - attempt_count
+        - max_attempts
+        - retryable
+        - handoff_status
+        - next_action
+        - error
+        - links
+        - owner_scope_enforced
+        - content_included
+      properties:
+        async_generation_schema_version:
+          const: ae_async_generation.v1
+        execution_strategy:
+          const: ASYNCHRONOUS
+        lifecycle_status:
+          type: string
+          enum:
+            - PENDING
+            - COMPLETED
+            - BLOCKED
+        admission_status:
+          type: string
+          enum:
+            - ENQUEUED
+            - JOINED
+            - REPLAYED
+        job_id:
+          type: string
+        cx_generation_id:
+          type: string
+        cx_job_status:
+          type: string
+          enum:
+            - QUEUED
+            - RUNNING
+            - SUCCEEDED
+            - FAILED
+            - CANCELLED
+        attempt_count:
+          type: integer
+          minimum: 0
+        max_attempts:
+          type: integer
+          minimum: 1
+        retryable:
+          type: boolean
+        handoff_status:
+          type:
+            - string
+            - "null"
+          enum:
+            - PENDING
+            - READY
+            - BLOCKED
+            - null
+        next_action:
+          type: string
+        error:
+          type:
+            - object
+            - "null"
+        links:
+          type: object
+          additionalProperties: false
+          properties:
+            generation:
+              type: string
+            async_job:
+              type: string
+        owner_scope_enforced:
+          const: true
+        content_included:
+          const: false
+    AeAsyncRetryLineage:
+      type: object
+      additionalProperties: false
+      required:
+        - retry_lineage_schema_version
+        - parent_interaction_id
+        - parent_job_id
+        - parent_cx_generation_id
+        - raw_input_included
+      properties:
+        retry_lineage_schema_version:
+          const: ae_async_generation_retry_lineage.v1
+        parent_interaction_id:
+          type: string
+        parent_job_id:
+          type: string
+        parent_cx_generation_id:
+          type: string
+        raw_input_included:
+          const: false
+    AeAsyncChatRefresh:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/async_chat_refresh.v1.schema.json
+      additionalProperties: false
+      required:
+        - refresh_schema_version
+        - interaction
+        - result
+        - content_persisted_by_ae
+      properties:
+        refresh_schema_version:
+          const: ae_async_chat_refresh.v1
+        interaction:
+          $ref: "#/components/schemas/AeChatInteraction"
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - refresh_schema_version
+            - handoff_status
+            - cx_generation_id
+            - content
+            - content_type
+            - content_sha256
+            - size_bytes
+            - owner_scope_enforced
+          properties:
+            refresh_schema_version:
+              const: ae_async_generation_refresh.v1
+            handoff_status:
+              type: string
+              enum:
+                - PENDING
+                - READY
+                - BLOCKED
+            cx_generation_id:
+              type: string
+            content:
+              type:
+                - string
+                - "null"
+              readOnly: true
+            content_type:
+              type:
+                - string
+                - "null"
+            content_sha256:
+              type:
+                - string
+                - "null"
+            size_bytes:
+              type:
+                - integer
+                - "null"
+            owner_scope_enforced:
+              const: true
+        content_persisted_by_ae:
+          const: false
     AeWorkspaceActivity:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_ae_api/workspace_activity.v1.schema.json
@@ -2055,6 +2316,12 @@ components:
           type: object
         generation:
           type: object
+          properties:
+            execution_strategy:
+              type: string
+              enum:
+                - SYNCHRONOUS
+                - ASYNCHRONOUS
     AeChatInteraction:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_ae_api/chat_interaction.v1.schema.json
@@ -2122,6 +2389,10 @@ components:
               properties:
                 policy:
                   $ref: "#/components/schemas/AeChatRuntimePolicySummary"
+                async_generation:
+                  $ref: "#/components/schemas/AeAsyncGeneration"
+                retry_lineage:
+                  $ref: "#/components/schemas/AeAsyncRetryLineage"
             - type: "null"
         retrieval:
           type:

@@ -326,6 +326,21 @@
       "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
     },
     {
+      "name": "ae_async_generation_queued",
+      "path": "examples/generation/ae_async_generation.queued.json",
+      "schema": "schemas/service/nex_ae_api/async_generation.v1.schema.json"
+    },
+    {
+      "name": "ae_chat_interaction_async_pending",
+      "path": "examples/generation/ae_chat_interaction.async_pending.json",
+      "schema": "schemas/service/nex_ae_api/chat_interaction.v1.schema.json"
+    },
+    {
+      "name": "ae_async_chat_refresh_ready",
+      "path": "examples/generation/ae_async_chat_refresh.ready.json",
+      "schema": "schemas/service/nex_ae_api/async_chat_refresh.v1.schema.json"
+    },
+    {
       "name": "ae_prompt_analytics_mock",
       "path": "examples/generation/ae_prompt_analytics.mock_success.json",
       "schema": "schemas/service/nex_ae_api/prompt_analytics.v1.schema.json"

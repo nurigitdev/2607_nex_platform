@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/async_chat_refresh.v1.schema.json",
+  "title": "NeX AE Asynchronous Chat Refresh",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "refresh_schema_version",
+    "interaction",
+    "result",
+    "content_persisted_by_ae"
+  ],
+  "properties": {
+    "refresh_schema_version": {
+      "const": "ae_async_chat_refresh.v1"
+    },
+    "interaction": {
+      "type": "object",
+      "required": [
+        "interaction_schema_version",
+        "interaction_id",
+        "status",
+        "generation"
+      ],
+      "properties": {
+        "interaction_schema_version": {
+          "const": "ae_chat_interaction.v1"
+        },
+        "interaction_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": ["PENDING", "COMPLETED", "FAILED"]
+        },
+        "generation": {
+          "type": "object",
+          "required": ["async_generation"]
+        }
+      }
+    },
+    "result": {
+      "$ref": "#/$defs/refreshResult"
+    },
+    "content_persisted_by_ae": {
+      "const": false
+    }
+  },
+  "$defs": {
+    "refreshResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "refresh_schema_version",
+        "handoff_status",
+        "cx_generation_id",
+        "content",
+        "content_type",
+        "content_sha256",
+        "size_bytes",
+        "owner_scope_enforced"
+      ],
+      "properties": {
+        "refresh_schema_version": {
+          "const": "ae_async_generation_refresh.v1"
+        },
+        "handoff_status": {
+          "enum": ["PENDING", "READY", "BLOCKED"]
+        },
+        "cx_generation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content": {
+          "type": ["string", "null"]
+        },
+        "content_type": {
+          "type": ["string", "null"]
+        },
+        "content_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "size_bytes": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "owner_scope_enforced": {
+          "const": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "handoff_status": {
+                "const": "READY"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "content": {"type": "string"},
+              "content_type": {"type": "string"},
+              "content_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "size_bytes": {"type": "integer", "minimum": 0}
+            }
+          },
+          "else": {
+            "properties": {
+              "content": {"type": "null"},
+              "content_type": {"type": "null"},
+              "content_sha256": {"type": "null"},
+              "size_bytes": {"type": "null"}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

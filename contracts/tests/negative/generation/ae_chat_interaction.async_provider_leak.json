@@ -1,0 +1,41 @@
+{
+  "interaction_schema_version": "ae_chat_interaction.v1",
+  "interaction_id": "interaction-async-leak",
+  "workspace_id": null,
+  "chat_document_id": "chat-async-leak",
+  "tenant_id": "tenant-a",
+  "user_id": "user-a",
+  "owner_user_id": "user-a",
+  "status": "PENDING",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "request_id": "request-async-leak",
+  "user_message_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "user_message_preview": "Private question.",
+  "cx_generation_id": "cx-private-leak",
+  "cx_status": "QUEUED",
+  "generation": {
+    "async_generation": {
+      "async_generation_schema_version": "ae_async_generation.v1",
+      "execution_strategy": "ASYNCHRONOUS",
+      "lifecycle_status": "PENDING",
+      "admission_status": "ENQUEUED",
+      "job_id": "job-private-leak",
+      "cx_generation_id": "cx-private-leak",
+      "cx_job_status": "QUEUED",
+      "attempt_count": 0,
+      "max_attempts": 3,
+      "retryable": true,
+      "handoff_status": null,
+      "next_action": "POLL_GENERATION_HANDOFF",
+      "error": null,
+      "links": {},
+      "owner_scope_enforced": true,
+      "content_included": false,
+      "provider_url": "http://private-provider"
+    }
+  },
+  "retrieval": null,
+  "artifact_refs": [],
+  "created_at": "2026-09-28T00:00:00Z",
+  "updated_at": "2026-09-28T00:00:00Z"
+}

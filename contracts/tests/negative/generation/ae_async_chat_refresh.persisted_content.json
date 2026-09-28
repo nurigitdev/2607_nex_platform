@@ -1,0 +1,24 @@
+{
+  "refresh_schema_version": "ae_async_chat_refresh.v1",
+  "interaction": {
+    "interaction_schema_version": "ae_chat_interaction.v1",
+    "interaction_id": "interaction-private-leak",
+    "status": "COMPLETED",
+    "generation": {
+      "async_generation": {
+        "lifecycle_status": "COMPLETED"
+      }
+    }
+  },
+  "result": {
+    "refresh_schema_version": "ae_async_generation_refresh.v1",
+    "handoff_status": "READY",
+    "cx_generation_id": "cx-private-leak",
+    "content": "private generated content",
+    "content_type": "text/plain",
+    "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "size_bytes": 25,
+    "owner_scope_enforced": true
+  },
+  "content_persisted_by_ae": true
+}
