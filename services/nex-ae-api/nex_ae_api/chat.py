@@ -34,6 +34,10 @@ from nex_ae_api.generation_lifecycle import (
     orchestrate_generation_cancellation,
     orchestrate_generation_lifecycle,
 )
+from nex_ae_api.generation_recovery import (
+    AeGenerationRecoveryError,
+    prepare_generation_retry,
+)
 from nex_ae_api.async_generation import (
     ASYNCHRONOUS,
     AeAsyncGenerationError,
@@ -947,6 +951,50 @@ def register_chat_routes(
         except ChatInteractionError as exc:
             return _chat_problem_response(request, exc)
 
+    @app.get(
+        "/api/v1/chat/interactions/{interaction_id}/recovery",
+        response_model=None,
+    )
+    def get_chat_interaction_recovery(
+        interaction_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
+        try:
+            record = _required_visible_async_record(
+                chat_store, interaction_id, auth_context
+            )
+            lifecycle = orchestrate_generation_lifecycle(
+                record,
+                client=async_client,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+            )
+            if lifecycle["changed"]:
+                saved = chat_store.save(
+                    refresh_async_chat_interaction_record(
+                        record,
+                        lifecycle["async_generation"],
+                    )
+                )
+                observe_workspace_chat_state(emitter, saved)
+            return lifecycle["progress"]["recovery"]
+        except AeGenerationLifecycleError as exc:
+            return _chat_problem_response(
+                request,
+                ChatInteractionError(
+                    exc.status_code,
+                    exc.error_code,
+                    exc.detail,
+                    exc.retryable,
+                ),
+            )
+        except ChatInteractionError as exc:
+            return _chat_problem_response(request, exc)
+
     @app.post(
         "/api/v1/chat/interactions/{interaction_id}/retry",
         response_model=None,
@@ -965,46 +1013,13 @@ def register_chat_routes(
                 chat_store, interaction_id, auth_context
             )
             projection = _async_projection_from_record(parent)
-            if (
-                projection["lifecycle_status"] != "BLOCKED"
-                or projection["retryable"] is not True
-            ):
-                raise ChatInteractionError(
-                    409,
-                    "ae.async_generation.not_retryable",
-                    "Asynchronous generation is not retryable.",
-                )
-            retry_interaction_id = _optional_text(payload.get("interaction_id"))
-            if retry_interaction_id is None or retry_interaction_id == interaction_id:
-                raise ChatInteractionError(
-                    400,
-                    "ae.async_generation.retry_interaction_id_invalid",
-                    "Retry requires a new interaction_id.",
-                )
-            if sha256_text(user_message_from_payload(payload)) != parent[
-                "user_message_hash"
-            ]:
-                raise ChatInteractionError(
-                    409,
-                    "ae.async_generation.retry_input_mismatch",
-                    "Retry input does not match the original interaction.",
-                )
-            generation = payload.get("generation", {})
-            if not isinstance(generation, dict):
-                raise ChatInteractionError(
-                    400,
-                    "ae.async_generation.retry_request_invalid",
-                    "generation must be an object when supplied.",
-                )
-            retry_payload = {
-                **payload,
-                "generation": {
-                    **generation,
-                    "execution_strategy": ASYNCHRONOUS,
-                },
-            }
+            recovery = prepare_generation_retry(
+                parent,
+                payload,
+                submitted_input_hash=sha256_text(user_message_from_payload(payload)),
+            )
             response = create_chat_interaction(
-                retry_payload,
+                recovery["retry_payload"],
                 request,
                 authorization,
             )
@@ -1013,7 +1028,18 @@ def register_chat_routes(
                 chat_store=chat_store,
                 parent=parent,
                 projection=projection,
+                lineage=recovery["lineage"],
                 event_emitter=emitter,
+            )
+        except AeGenerationRecoveryError as exc:
+            return _chat_problem_response(
+                request,
+                ChatInteractionError(
+                    exc.status_code,
+                    exc.error_code,
+                    exc.detail,
+                    exc.retryable,
+                ),
             )
         except ChatInteractionError as exc:
             return _chat_problem_response(request, exc)
@@ -1391,6 +1417,7 @@ def _attach_async_retry_lineage(
     chat_store: Any,
     parent: Mapping[str, Any],
     projection: Mapping[str, Any],
+    lineage: Mapping[str, Any] | None = None,
     event_emitter: OperationalEventEmitter | None = None,
 ) -> object:
     if isinstance(response, JSONResponse):
@@ -1406,7 +1433,7 @@ def _attach_async_retry_lineage(
     generation = record.get("generation")
     if not isinstance(generation, dict) or "async_generation" not in generation:
         return response
-    lineage = {
+    resolved_lineage = dict(lineage) if lineage is not None else {
         "retry_lineage_schema_version": "ae_async_generation_retry_lineage.v1",
         "parent_interaction_id": parent["interaction_id"],
         "parent_job_id": projection["job_id"],
@@ -1414,7 +1441,7 @@ def _attach_async_retry_lineage(
         "raw_input_included": False,
     }
     saved = chat_store.save(
-        {**record, "generation": {**generation, "retry_lineage": lineage}}
+        {**record, "generation": {**generation, "retry_lineage": resolved_lineage}}
     )
     if event_emitter is not None:
         observe_workspace_chat_state(event_emitter, saved)
