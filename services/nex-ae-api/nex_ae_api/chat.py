@@ -54,6 +54,9 @@ from nex_ae_api.generated_response_storage import (
     GeneratedResponseStorageError,
     build_default_generated_response_storage,
 )
+from nex_ae_api.generated_response_observability import (
+    observe_generated_response_persisted,
+)
 from nex_ae_api.async_generation import (
     ASYNCHRONOUS,
     AeAsyncGenerationError,
@@ -845,6 +848,15 @@ def register_chat_routes(
                 request_id=request_id,
                 trace_id=trace_id,
             )
+            if content_persisted:
+                response_lineage = generated_response_lineage_from_record(saved)
+                if response_lineage is not None:
+                    observe_generated_response_persisted(
+                        emitter,
+                        response_lineage,
+                        request_id=request_id,
+                        trace_id=trace_id,
+                    )
             observe_workspace_chat_state(emitter, saved)
             append_persisted_workspace_chat_activity(
                 saved,

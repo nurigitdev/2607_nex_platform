@@ -195,6 +195,34 @@ def append_persisted_workspace_chat_activity(
     async_generation = (
         async_generation if isinstance(async_generation, dict) else {}
     )
+    generated_response = generation.get("generated_response")
+    generated_response = (
+        generated_response if isinstance(generated_response, dict) else {}
+    )
+    response_metadata = {}
+    if generated_response:
+        response_metadata = {
+            "generated_response_available": (
+                generated_response.get("content_available") is True
+            ),
+            "generated_response_lineage_type": generated_response.get(
+                "lineage_type"
+            ),
+            "generated_response_size_bytes": generated_response.get(
+                "size_bytes"
+            ),
+            "generated_response_citation_status": generated_response.get(
+                "citation_workflow_status"
+            ),
+            "generated_response_bounded_repair": (
+                generated_response.get("bounded_repair_applied") is True
+            ),
+            "generated_response_parent_linked": (
+                generated_response.get("parent_response_id") is not None
+            ),
+            "generated_response_content_included": False,
+            "generated_response_storage_ref_included": False,
+        }
     activity = build_workspace_activity(
         workspace_id=workspace_id,
         activity_type=activity_type,
@@ -211,6 +239,7 @@ def append_persisted_workspace_chat_activity(
             "attempt_count": async_generation.get("attempt_count"),
             "retryable": async_generation.get("retryable") is True,
             "private_content_included": False,
+            **response_metadata,
         },
     )
     try:

@@ -302,6 +302,56 @@ def test_persisted_async_activity_projects_only_safe_runtime_metadata() -> None:
     ) is None
 
 
+def test_persisted_async_activity_projects_safe_generated_response_metadata() -> None:
+    store = workspace_store()
+    record = {
+        "interaction_id": "interaction-response",
+        "workspace_id": WORKSPACE_ID,
+        "status": "COMPLETED",
+        "cx_status": "SUCCEEDED",
+        "generation": {
+            "async_generation": {
+                "lifecycle_status": "COMPLETED",
+                "cx_job_status": "SUCCEEDED",
+                "handoff_status": "READY",
+                "attempt_count": 1,
+                "retryable": False,
+            },
+            "generated_response": {
+                "lineage_type": "RETRY_CHILD",
+                "content_available": True,
+                "size_bytes": 42,
+                "citation_workflow_status": "REPAIRED",
+                "bounded_repair_applied": True,
+                "parent_response_id": "private-parent-response",
+                "content": "do not persist",
+                "storage_ref": "ae://chat-responses/private",
+            },
+        },
+    }
+
+    activity = append_persisted_workspace_chat_activity(
+        record,
+        workspace_store=store,
+        activity_type="chat.async.refreshed",
+        request_id="request-response",
+        trace_id=TRACE_ID,
+    )
+
+    metadata = activity["metadata"]
+    assert metadata["generated_response_available"] is True
+    assert metadata["generated_response_lineage_type"] == "RETRY_CHILD"
+    assert metadata["generated_response_size_bytes"] == 42
+    assert metadata["generated_response_citation_status"] == "REPAIRED"
+    assert metadata["generated_response_bounded_repair"] is True
+    assert metadata["generated_response_parent_linked"] is True
+    assert metadata["generated_response_content_included"] is False
+    assert metadata["generated_response_storage_ref_included"] is False
+    assert "do not persist" not in str(activity)
+    assert "private-parent-response" not in str(activity)
+    assert "ae://chat-responses/private" not in str(activity)
+
+
 def test_persisted_async_activity_normalizes_store_failures() -> None:
     record = {
         "interaction_id": "interaction-async",

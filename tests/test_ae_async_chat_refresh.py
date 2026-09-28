@@ -316,11 +316,19 @@ def test_ready_refresh_emits_metadata_only_citation_workflow_event() -> None:
     events = event_store.list_events(
         event_type="ae.citation_quality.workflow_observed"
     )
+    response_events = event_store.list_events(
+        event_type="ae.generated_response.persisted"
+    )
     assert response.status_code == 200
     assert len(events) == 1
     assert events[0]["details"]["outcome"] == "BOUNDED_REPAIR_SUCCEEDED"
     assert events[0]["details"]["response_content_included"] is False
     assert "Owner result [1]." not in str(events)
+    assert len(response_events) == 1
+    assert response_events[0]["details"]["content_available"] is True
+    assert response_events[0]["details"]["bounded_repair_applied"] is True
+    assert response_events[0]["details"]["response_content_included"] is False
+    assert "Owner result [1]." not in str(response_events)
 
 
 class FailingResponseStorage(InMemoryGeneratedResponseStorage):
