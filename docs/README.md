@@ -1145,6 +1145,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1039`](slices/1039_ae_async_chat_contract_openapi.md) | `S104-008` Freeze async lifecycle JSON Schemas, privacy fixtures, and AE OpenAPI 1.2. |
 | [`Slice 1040`](slices/1040_ae_cx_async_generation_postgresql_smoke.md) | `S104-009` Prove the AE-to-CX async lifecycle on actual AE/CX test PostgreSQL databases with zero probe residue. |
 | [`Slice 1041`](slices/1041_s104_ae_cx_async_generation_closure.md) | `S104-010` Close AE-to-CX async generation integration with machine-checkable evidence and Full Gate. |
+| [`Slice 1042`](slices/1042_ae_generation_lifecycle_boundary_audit.md) | `S105-001` Freeze AE generation progress, cancellation, recovery, ownership, persistence, privacy, and quality boundaries. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
