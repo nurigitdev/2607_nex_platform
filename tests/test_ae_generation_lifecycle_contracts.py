@@ -159,7 +159,7 @@ def test_openapi_exposes_canonical_progress_and_recovery_routes() -> None:
         )
     )
 
-    assert spec["info"]["version"] == "1.4.0"
+    assert spec["info"]["version"] == "1.5.0"
     paths = spec["paths"]
     assert paths["/api/v1/chat/interactions/{interaction_id}/progress"]["get"][
         "responses"

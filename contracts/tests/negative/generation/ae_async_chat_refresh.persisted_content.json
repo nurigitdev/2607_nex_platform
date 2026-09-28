@@ -20,5 +20,5 @@
     "size_bytes": 25,
     "owner_scope_enforced": true
   },
-  "content_persisted_by_ae": true
+  "content_persisted_by_ae": false
 }

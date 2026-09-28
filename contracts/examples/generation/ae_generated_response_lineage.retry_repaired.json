@@ -1,0 +1,23 @@
+{
+  "lineage_schema_version": "ae_generated_response_lineage.v1",
+  "response_id": "response-retry-001",
+  "lineage_type": "RETRY_CHILD",
+  "interaction_id": "interaction-retry-001",
+  "chat_document_id": "chat-document-001",
+  "cx_generation_id": "cx-generation-retry-001",
+  "cx_job_id": "cx-job-retry-001",
+  "content_type": "text/markdown; charset=utf-8",
+  "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "size_bytes": 128,
+  "content_available": true,
+  "retrieval_package_id": "retrieval-package-001",
+  "retrieval_package_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "structured_draft_id": "structured-draft-001",
+  "citation_workflow_status": "REPAIRED",
+  "bounded_repair_applied": true,
+  "parent_interaction_id": "interaction-parent-001",
+  "parent_response_id": "response-parent-001",
+  "owner_scope_enforced": true,
+  "raw_content_included": false,
+  "storage_ref_included": false
+}

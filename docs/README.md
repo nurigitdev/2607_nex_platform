@@ -1172,6 +1172,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1066`](slices/1066_ae_async_response_handoff_integration.md) | `S107-005` Persist READY async content and chat lineage with replay and compensation safeguards. |
 | [`Slice 1067`](slices/1067_ae_generated_response_retry_repair_lineage.md) | `S107-006` Link retry parent responses when present and keep bounded repair on the same generation identity. |
 | [`Slice 1068`](slices/1068_ae_generated_response_observability.md) | `S107-007` Emit metadata-only response persistence events and safe workspace activity. |
+| [`Slice 1069`](slices/1069_ae_generated_response_contract_hardening.md) | `S107-008` Freeze generated-response lineage, owner content, durable READY, and AE OpenAPI 1.5 contracts. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

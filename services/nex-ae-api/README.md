@@ -1144,3 +1144,7 @@ Artifact library management:
 - Slice 1021 closes S102 with all eight boundary gaps resolved, eight runtime
   components closed, twelve contract/observability checks, thirteen actual
   PostgreSQL checks, and Full Gate registration for every S102 smoke runner.
+- Slice 1069 publishes strict generated-response lineage and owner-response
+  schemas, rejects raw-content and storage-ref leaks, requires durable AE
+  persistence for READY refreshes, and exposes the exact-owner response route
+  through AE OpenAPI `1.5.0`.

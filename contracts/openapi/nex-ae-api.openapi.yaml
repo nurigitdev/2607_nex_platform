@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX AE API
-  version: 1.4.0
+  version: 1.5.0
 tags:
   - name: Platform
   - name: Auth
@@ -887,6 +887,32 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: AE chat interaction was not found.
+  /api/v1/chat/interactions/{interaction_id}/response:
+    get:
+      operationId: getAeGeneratedResponse
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Owner-scoped generated response with verified private content and public lineage metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeGeneratedResponse"
+        "401":
+          description: Service or browser claim is missing or invalid.
+        "404":
+          description: AE chat interaction was not found for the owner.
+        "409":
+          description: Generated response lineage is not ready.
+        "503":
+          description: Private response storage is unavailable or failed integrity verification.
   /api/v1/chat/interactions/{interaction_id}/citation-quality:
     get:
       operationId: getAeChatInteractionCitationQuality
@@ -2235,6 +2261,124 @@ components:
             - "null"
         raw_input_included:
           const: false
+    AeGeneratedResponseLineage:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/generated_response_lineage.v1.schema.json
+      additionalProperties: false
+      required:
+        - lineage_schema_version
+        - response_id
+        - lineage_type
+        - interaction_id
+        - chat_document_id
+        - cx_generation_id
+        - cx_job_id
+        - content_type
+        - content_sha256
+        - size_bytes
+        - content_available
+        - retrieval_package_id
+        - retrieval_package_hash
+        - structured_draft_id
+        - citation_workflow_status
+        - bounded_repair_applied
+        - parent_interaction_id
+        - parent_response_id
+        - owner_scope_enforced
+        - raw_content_included
+        - storage_ref_included
+      properties:
+        lineage_schema_version:
+          const: ae_generated_response_lineage.v1
+        response_id:
+          type: string
+        lineage_type:
+          type: string
+          enum: [ORIGINAL, RETRY_CHILD]
+        interaction_id:
+          type: string
+        chat_document_id:
+          type: string
+        cx_generation_id:
+          type: string
+        cx_job_id:
+          type: string
+        content_type:
+          type: string
+          pattern: ^text/
+        content_sha256:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+        size_bytes:
+          type: integer
+          minimum: 0
+        content_available:
+          const: true
+        retrieval_package_id:
+          type: [string, "null"]
+        retrieval_package_hash:
+          type: [string, "null"]
+          pattern: ^[0-9a-f]{64}$
+        structured_draft_id:
+          type: [string, "null"]
+        citation_workflow_status:
+          type: string
+          enum: [NOT_REQUIRED, VALIDATED, REPAIRED, ATTENTION_REQUIRED]
+        bounded_repair_applied:
+          type: boolean
+        parent_interaction_id:
+          type: [string, "null"]
+        parent_response_id:
+          type: [string, "null"]
+        owner_scope_enforced:
+          const: true
+        raw_content_included:
+          const: false
+        storage_ref_included:
+          const: false
+    AeGeneratedResponse:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/generated_response.v1.schema.json
+      additionalProperties: false
+      required:
+        - response_schema_version
+        - interaction_id
+        - chat_document_id
+        - response_id
+        - cx_generation_id
+        - content_type
+        - content
+        - content_sha256
+        - size_bytes
+        - lineage
+        - owner_scope_enforced
+      properties:
+        response_schema_version:
+          const: ae_generated_response.v1
+        interaction_id:
+          type: string
+        chat_document_id:
+          type: string
+        response_id:
+          type: string
+        cx_generation_id:
+          type: string
+        content_type:
+          type: string
+          pattern: ^text/
+        content:
+          type: string
+          readOnly: true
+        content_sha256:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+        size_bytes:
+          type: integer
+          minimum: 0
+        lineage:
+          $ref: "#/components/schemas/AeGeneratedResponseLineage"
+        owner_scope_enforced:
+          const: true
     AeAsyncChatRefresh:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_ae_api/async_chat_refresh.v1.schema.json
@@ -2292,7 +2436,7 @@ components:
             owner_scope_enforced:
               const: true
         content_persisted_by_ae:
-          const: false
+          type: boolean
     AeWorkspaceActivity:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_ae_api/workspace_activity.v1.schema.json
@@ -2754,6 +2898,8 @@ components:
                   $ref: "#/components/schemas/AeCitationQualityWorkflow"
                 retry_lineage:
                   $ref: "#/components/schemas/AeAsyncRetryLineage"
+                generated_response:
+                  $ref: "#/components/schemas/AeGeneratedResponseLineage"
             - type: "null"
         retrieval:
           type:

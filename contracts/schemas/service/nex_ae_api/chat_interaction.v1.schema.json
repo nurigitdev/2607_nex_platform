@@ -123,6 +123,9 @@
             },
             "retry_lineage": {
               "$ref": "#/$defs/asyncRetryLineage"
+            },
+            "generated_response": {
+              "$ref": "#/$defs/generatedResponseLineage"
             }
           }
         },
@@ -526,6 +529,84 @@
         },
         "raw_input_included": {"const": false}
       }
+    },
+    "generatedResponseLineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lineage_schema_version",
+        "response_id",
+        "lineage_type",
+        "interaction_id",
+        "chat_document_id",
+        "cx_generation_id",
+        "cx_job_id",
+        "content_type",
+        "content_sha256",
+        "size_bytes",
+        "content_available",
+        "retrieval_package_id",
+        "retrieval_package_hash",
+        "structured_draft_id",
+        "citation_workflow_status",
+        "bounded_repair_applied",
+        "parent_interaction_id",
+        "parent_response_id",
+        "owner_scope_enforced",
+        "raw_content_included",
+        "storage_ref_included"
+      ],
+      "properties": {
+        "lineage_schema_version": {"const": "ae_generated_response_lineage.v1"},
+        "response_id": {"type": "string", "minLength": 1},
+        "lineage_type": {"enum": ["ORIGINAL", "RETRY_CHILD"]},
+        "interaction_id": {"type": "string", "minLength": 1},
+        "chat_document_id": {"type": "string", "minLength": 1},
+        "cx_generation_id": {"type": "string", "minLength": 1},
+        "cx_job_id": {"type": "string", "minLength": 1},
+        "content_type": {"type": "string", "pattern": "^text/", "maxLength": 120},
+        "content_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "size_bytes": {"type": "integer", "minimum": 0},
+        "content_available": {"const": true},
+        "retrieval_package_id": {"type": ["string", "null"], "minLength": 1},
+        "retrieval_package_hash": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "structured_draft_id": {"type": ["string", "null"], "minLength": 1},
+        "citation_workflow_status": {
+          "enum": ["NOT_REQUIRED", "VALIDATED", "REPAIRED", "ATTENTION_REQUIRED"]
+        },
+        "bounded_repair_applied": {"type": "boolean"},
+        "parent_interaction_id": {"type": ["string", "null"], "minLength": 1},
+        "parent_response_id": {"type": ["string", "null"], "minLength": 1},
+        "owner_scope_enforced": {"const": true},
+        "raw_content_included": {"const": false},
+        "storage_ref_included": {"const": false}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"lineage_type": {"const": "ORIGINAL"}}},
+          "then": {
+            "properties": {
+              "parent_interaction_id": {"const": null},
+              "parent_response_id": {"const": null}
+            }
+          },
+          "else": {
+            "properties": {
+              "parent_interaction_id": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"citation_workflow_status": {"const": "REPAIRED"}}
+          },
+          "then": {"properties": {"bounded_repair_applied": {"const": true}}},
+          "else": {"properties": {"bounded_repair_applied": {"const": false}}}
+        }
+      ]
     },
     "runtimePolicySummary": {
       "type": "object",

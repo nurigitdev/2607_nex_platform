@@ -94,7 +94,7 @@ def test_async_contracts_reject_inconsistent_state_and_private_fields() -> None:
             Draft202012Validator(_json(schema_path)).validate(_json(fixture_path))
 
 
-def test_refresh_contract_allows_transient_ready_content_but_not_ae_persistence() -> None:
+def test_refresh_contract_requires_ready_content_to_be_persisted_by_ae() -> None:
     schema = _json(
         "contracts/schemas/service/nex_ae_api/async_chat_refresh.v1.schema.json"
     )
@@ -121,7 +121,7 @@ def test_openapi_exposes_async_chat_lifecycle_contracts() -> None:
     paths = spec["paths"]
     schemas = spec["components"]["schemas"]
 
-    assert spec["info"]["version"] == "1.4.0"
+    assert spec["info"]["version"] == "1.5.0"
     assert "202" in paths["/api/v1/chat/interactions"]["post"]["responses"]
     assert {
         "/api/v1/chat/interactions/{interaction_id}/refresh",
@@ -136,4 +136,12 @@ def test_openapi_exposes_async_chat_lifecycle_contracts() -> None:
     )
     assert schemas["AeAsyncChatRefresh"]["properties"][
         "content_persisted_by_ae"
-    ]["const"] is False
+    ]["type"] == "boolean"
+    assert (
+        paths["/api/v1/chat/interactions/{interaction_id}/response"]["get"]
+        ["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+        == "#/components/schemas/AeGeneratedResponse"
+    )
+    assert schemas["AeGeneratedResponse"]["x-nex-canonical-json-schema"].endswith(
+        "generated_response.v1.schema.json"
+    )

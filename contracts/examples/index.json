@@ -794,6 +794,16 @@
       "name": "ae_generation_recovery_plan_retry",
       "path": "examples/generation/ae_generation_recovery_plan.retry.json",
       "schema": "schemas/service/nex_ae_api/generation_recovery_plan.v1.schema.json"
+    },
+    {
+      "name": "ae_generated_response_lineage_retry_repaired",
+      "path": "examples/generation/ae_generated_response_lineage.retry_repaired.json",
+      "schema": "schemas/service/nex_ae_api/generated_response_lineage.v1.schema.json"
+    },
+    {
+      "name": "ae_generated_response_owner",
+      "path": "examples/generation/ae_generated_response.owner.json",
+      "schema": "schemas/service/nex_ae_api/generated_response.v1.schema.json"
     }
   ]
 }

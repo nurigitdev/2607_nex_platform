@@ -57,9 +57,9 @@ EVIDENCE_TOKENS = (
         '"content": content["content"] if content is not None else None',
     ),
     EvidenceToken(
-        "ae_not_persisted",
+        "ae_ready_persisted",
         "contracts/examples/generation/ae_async_chat_refresh.ready.json",
-        '"content_persisted_by_ae": false',
+        '"content_persisted_by_ae": true',
     ),
     EvidenceToken(
         "ae_chat_metadata_store",
@@ -163,9 +163,9 @@ def run_ae_generated_response_lineage_boundary_audit(
             _group_present(tokens, group)
             for group in ("cx_private_handoff", "cx_owner_scope")
         ),
-        "ae_transient_content_drift_confirmed": all(
+        "ae_durable_ready_contract_confirmed": all(
             _group_present(tokens, group)
-            for group in ("ae_transient_content", "ae_not_persisted")
+            for group in ("ae_transient_content", "ae_ready_persisted")
         ),
         "ae_chat_metadata_store_reusable": all(
             _group_present(tokens, group)

@@ -609,6 +609,16 @@
       "name": "ae_generation_recovery_plan_retry_without_lineage",
       "path": "tests/negative/generation/ae_generation_recovery_plan.retry_without_lineage.json",
       "schema": "schemas/service/nex_ae_api/generation_recovery_plan.v1.schema.json"
+    },
+    {
+      "name": "ae_generated_response_lineage_raw_content_leak",
+      "path": "tests/negative/generation/ae_generated_response_lineage.raw_content_leak.json",
+      "schema": "schemas/service/nex_ae_api/generated_response_lineage.v1.schema.json"
+    },
+    {
+      "name": "ae_generated_response_storage_ref_leak",
+      "path": "tests/negative/generation/ae_generated_response.storage_ref_leak.json",
+      "schema": "schemas/service/nex_ae_api/generated_response.v1.schema.json"
     }
   ]
 }

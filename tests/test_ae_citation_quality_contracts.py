@@ -120,7 +120,7 @@ def test_openapi_exposes_owner_scoped_citation_quality_contract() -> None:
     ]["get"]
     schema = spec["components"]["schemas"]["AeCitationQualityWorkflow"]
 
-    assert spec["info"]["version"] == "1.4.0"
+    assert spec["info"]["version"] == "1.5.0"
     assert path["operationId"] == "getAeChatInteractionCitationQuality"
     assert path["responses"]["200"]["content"]["application/json"]["schema"][
         "$ref"

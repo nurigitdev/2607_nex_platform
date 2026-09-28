@@ -43,9 +43,26 @@
       "$ref": "#/$defs/refreshResult"
     },
     "content_persisted_by_ae": {
-      "const": false
+      "type": "boolean"
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "result": {
+            "properties": {"handoff_status": {"const": "READY"}}
+          }
+        }
+      },
+      "then": {
+        "properties": {"content_persisted_by_ae": {"const": true}}
+      },
+      "else": {
+        "properties": {"content_persisted_by_ae": {"const": false}}
+      }
+    }
+  ],
   "$defs": {
     "refreshResult": {
       "type": "object",
