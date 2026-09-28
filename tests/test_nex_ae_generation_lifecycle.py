@@ -149,6 +149,8 @@ def test_orchestration_converges_success_through_handoff_without_content() -> No
     assert result["changed"] is True
     assert result["async_generation"]["lifecycle_status"] == "COMPLETED"
     assert result["progress"]["progress_percent"] == 100
+    assert result["citation_workflow"]["workflow_status"] == "NOT_REQUIRED"
+    assert result["citation_workflow"]["content_included"] is False
     assert result["content_included"] is False
     assert "private generated answer" not in json.dumps(result)
     assert [call[0] for call in client.calls] == ["job", "handoff"]

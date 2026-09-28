@@ -14,6 +14,10 @@ from nex_ae_api.cx_async_generation_client import (
     CxAsyncGenerationClient,
     CxAsyncGenerationClientError,
 )
+from nex_ae_api.citation_quality_workflow import (
+    AeCitationQualityWorkflowError,
+    build_citation_quality_workflow_from_handoff,
+)
 from nex_ae_api.generation_progress import (
     AeGenerationProgressError,
     build_generation_progress_projection,
@@ -67,6 +71,7 @@ def orchestrate_generation_lifecycle(
         )
         refreshed = refresh_async_generation_job_projection(current, job)
         source = "CX_JOB"
+        citation_workflow = None
         if refreshed["cx_job_status"] in _TERMINAL_CX_JOB_STATUSES:
             handoff = client.get_handoff(
                 refreshed["job_id"],
@@ -78,12 +83,20 @@ def orchestrate_generation_lifecycle(
             refreshed, _transient_content = refresh_async_generation_projection(
                 refreshed, handoff
             )
+            if handoff.get("handoff_status") == "READY":
+                citation_workflow = build_citation_quality_workflow_from_handoff(
+                    handoff,
+                    interaction_id=interaction_id,
+                    expected_job_id=refreshed["job_id"],
+                    expected_cx_generation_id=refreshed["cx_generation_id"],
+                )
             source = "CX_HANDOFF"
         return _result(
             interaction_id=interaction_id,
             previous=current,
             refreshed=refreshed,
             source=source,
+            citation_workflow=citation_workflow,
         )
     except CxAsyncGenerationClientError as exc:
         raise AeGenerationLifecycleError(
@@ -92,7 +105,11 @@ def orchestrate_generation_lifecycle(
             status_code=exc.status_code,
             retryable=exc.retryable,
         ) from exc
-    except (AeAsyncGenerationError, AeGenerationProgressError) as exc:
+    except (
+        AeAsyncGenerationError,
+        AeCitationQualityWorkflowError,
+        AeGenerationProgressError,
+    ) as exc:
         raise AeGenerationLifecycleError(
             error_code="ae.generation_lifecycle.contract_invalid",
             detail="Generation lifecycle state is inconsistent.",
@@ -198,6 +215,7 @@ def _result(
     previous: Mapping[str, Any],
     refreshed: Mapping[str, Any],
     source: str,
+    citation_workflow: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     progress = build_generation_progress_projection(
         interaction_id=interaction_id,
@@ -212,6 +230,11 @@ def _result(
         "changed": dict(previous) != dict(refreshed),
         "async_generation": deepcopy(dict(refreshed)),
         "progress": progress,
+        "citation_workflow": (
+            deepcopy(dict(citation_workflow))
+            if citation_workflow is not None
+            else None
+        ),
         "owner_scope_enforced": True,
         "content_included": False,
     }

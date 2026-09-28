@@ -59,6 +59,7 @@ from nex_ae_api.citation_quality_workflow import (
     AeCitationQualityWorkflowError,
     build_citation_quality_workflow_from_handoff,
     build_grounded_response_quality_contract,
+    validate_citation_quality_workflow,
 )
 from nex_ae_api.intent_policy import IntentPolicyError
 from nex_ae_api.prompt_persistence import PromptRepositoryError
@@ -797,8 +798,17 @@ def register_chat_routes(
             refreshed, transient_result = refresh_async_generation_projection(
                 projection, handoff
             )
+            citation_workflow = _citation_workflow_from_ready_handoff(
+                handoff,
+                interaction_id=interaction_id,
+                projection=projection,
+            )
             saved = chat_store.save(
-                refresh_async_chat_interaction_record(record, refreshed)
+                refresh_async_chat_interaction_record(
+                    record,
+                    refreshed,
+                    citation_workflow=citation_workflow,
+                )
             )
             observe_workspace_chat_state(emitter, saved)
             append_persisted_workspace_chat_activity(
@@ -860,6 +870,12 @@ def register_chat_routes(
                 chat_store, interaction_id, auth_context
             )
             projection = _async_projection_from_record(record)
+            persisted_workflow = _citation_workflow_from_record(
+                record,
+                projection=projection,
+            )
+            if persisted_workflow is not None:
+                return persisted_workflow
             handoff = async_client.get_handoff(
                 projection["job_id"],
                 tenant_id=record["tenant_id"],
@@ -923,6 +939,7 @@ def register_chat_routes(
                     refresh_async_chat_interaction_record(
                         record,
                         lifecycle["async_generation"],
+                        citation_workflow=lifecycle.get("citation_workflow"),
                     )
                 )
                 observe_workspace_chat_state(emitter, saved)
@@ -986,6 +1003,7 @@ def register_chat_routes(
                 refresh_async_chat_interaction_record(
                     record,
                     cancellation["async_generation"],
+                    citation_workflow=cancellation.get("citation_workflow"),
                 )
             )
             observe_workspace_chat_state(emitter, saved)
@@ -1066,6 +1084,7 @@ def register_chat_routes(
                     refresh_async_chat_interaction_record(
                         record,
                         lifecycle["async_generation"],
+                        citation_workflow=lifecycle.get("citation_workflow"),
                     )
                 )
                 observe_workspace_chat_state(emitter, saved)
@@ -1445,6 +1464,8 @@ def build_async_admitted_chat_interaction_record(
 def refresh_async_chat_interaction_record(
     record: dict[str, Any],
     projection: dict[str, Any],
+    *,
+    citation_workflow: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     generation = record.get("generation")
     if not isinstance(generation, dict):
@@ -1454,6 +1475,11 @@ def refresh_async_chat_interaction_record(
             "Chat interaction has no asynchronous generation metadata.",
         )
     lifecycle_status = projection["lifecycle_status"]
+    refreshed_generation = {**generation, "async_generation": projection}
+    if citation_workflow is not None:
+        refreshed_generation["citation_workflow"] = (
+            validate_citation_quality_workflow(citation_workflow)
+        )
     return {
         **record,
         "status": {
@@ -1463,7 +1489,7 @@ def refresh_async_chat_interaction_record(
         }[lifecycle_status],
         "cx_generation_id": projection["cx_generation_id"],
         "cx_status": projection["cx_job_status"],
-        "generation": {**generation, "async_generation": projection},
+        "generation": refreshed_generation,
         "failure": (
             {
                 "failure_schema_version": "ae_chat_execution_failure.v1",
@@ -1497,6 +1523,47 @@ def _async_projection_from_record(record: Mapping[str, Any]) -> dict[str, Any]:
             "Chat interaction is not bound to asynchronous generation.",
         )
     return dict(projection)
+
+
+def _citation_workflow_from_ready_handoff(
+    handoff: Mapping[str, Any],
+    *,
+    interaction_id: str,
+    projection: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    if handoff.get("handoff_status") != "READY":
+        return None
+    return build_citation_quality_workflow_from_handoff(
+        handoff,
+        interaction_id=interaction_id,
+        expected_job_id=str(projection["job_id"]),
+        expected_cx_generation_id=str(projection["cx_generation_id"]),
+    )
+
+
+def _citation_workflow_from_record(
+    record: Mapping[str, Any],
+    *,
+    projection: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    generation = record.get("generation")
+    workflow = (
+        generation.get("citation_workflow")
+        if isinstance(generation, Mapping)
+        else None
+    )
+    if workflow is None:
+        return None
+    validated = validate_citation_quality_workflow(workflow)
+    if (
+        validated["interaction_id"] != record.get("interaction_id")
+        or validated["cx_generation_id"] != projection.get("cx_generation_id")
+    ):
+        raise AeCitationQualityWorkflowError(
+            error_code="ae.citation_quality_workflow.invalid",
+            detail="Persisted citation quality workflow lineage is inconsistent.",
+        )
+    return validated
 
 
 def _required_visible_async_record(

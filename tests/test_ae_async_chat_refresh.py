@@ -3,8 +3,15 @@ from __future__ import annotations
 import hashlib
 
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from nex_ae_api.chat import ChatInteractionStore, register_chat_routes
+from nex_ae_api.chat import (
+    ChatInteractionStore,
+    SqlAlchemyChatInteractionStore,
+    register_chat_routes,
+)
 from nex_ae_api.prompts import seed_ae_prompt_registry
 from nex_ae_api.workspace import WorkspaceStateStore
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
@@ -49,6 +56,29 @@ class AsyncLifecycleClient:
             generation = {
                 "cx_generation_id": "cx-refresh-1",
                 "status": "COMPLETED",
+                "request_metadata": {
+                    "grounding_required": True,
+                    "retrieval_package_id": "retrieval-refresh-1",
+                    "retrieval_package_hash": "a" * 64,
+                    "structured_draft_id": "draft-refresh-1",
+                    "draft_validation_status": "VALIDATED",
+                    "grounded_response_quality_audit_schema_version": (
+                        "cx_grounded_response_citation_quality_audit.v1"
+                    ),
+                    "grounded_response_quality_status": "PASS",
+                    "grounded_response_quality_issue_count": 0,
+                    "citation_repair": {
+                        "repair_schema_version": "cx_citation_repair.v1",
+                        "attempted": True,
+                        "attempt_count": 1,
+                        "max_attempts": 1,
+                        "trigger_error_code": "cx.citation_required_missing",
+                        "same_retrieval_package": True,
+                        "original_provider_prompt_package_hash": "b" * 64,
+                        "effective_provider_prompt_package_hash": "c" * 64,
+                        "invalid_output_included": False,
+                    },
+                },
             }
             content = {
                 "cx_generation_id": "cx-refresh-1",
@@ -112,12 +142,12 @@ def _headers() -> dict[str, str]:
     }
 
 
-def _client():
+def _client(store=None, asynchronous=None):
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
     prompts = PromptRegistryStore()
     seed_ae_prompt_registry(prompts)
-    store = ChatInteractionStore()
-    asynchronous = AsyncLifecycleClient()
+    store = store or ChatInteractionStore()
+    asynchronous = asynchronous or AsyncLifecycleClient()
     register_chat_routes(
         app,
         store=store,
@@ -182,8 +212,44 @@ def test_ready_refresh_returns_transient_content_but_persists_only_projection() 
     ).hexdigest()
     persisted = store.get("ready-1")
     assert persisted["generation"]["async_generation"]["handoff_status"] == "READY"
+    assert persisted["generation"]["citation_workflow"]["workflow_status"] == (
+        "REPAIRED"
+    )
+    assert persisted["generation"]["citation_workflow"]["content_included"] is False
     assert "Owner result [1]." not in str(persisted)
     assert persisted["failure"] is None
+
+
+def test_ready_citation_workflow_survives_sql_restart_without_second_cx_call() -> None:
+    factory = _sqlite_chat_session_factory()
+    first_store = SqlAlchemyChatInteractionStore(factory)
+    asynchronous = AsyncLifecycleClient()
+    client, _, _ = _client(store=first_store, asynchronous=asynchronous)
+    _admit(client, "durable-citation-1")
+    asynchronous.job_status = "SUCCEEDED"
+    asynchronous.handoff_status = "READY"
+
+    refreshed = client.post(
+        "/api/v1/chat/interactions/durable-citation-1/refresh",
+        headers=_headers(),
+    )
+    restarted_store = SqlAlchemyChatInteractionStore(factory)
+    restarted_client, _, _ = _client(
+        store=restarted_store,
+        asynchronous=asynchronous,
+    )
+    citation = restarted_client.get(
+        "/api/v1/chat/interactions/durable-citation-1/citation-quality",
+        headers=_headers(),
+    )
+
+    assert refreshed.status_code == 200
+    assert citation.status_code == 200
+    assert citation.json()["workflow_status"] == "REPAIRED"
+    assert len(asynchronous.handoff_calls) == 1
+    loaded = restarted_store.get("durable-citation-1")
+    assert loaded["generation"]["citation_workflow"] == citation.json()
+    assert "Owner result [1]." not in str(loaded)
 
 
 def test_blocked_refresh_persists_safe_failure() -> None:
@@ -290,3 +356,45 @@ def test_refresh_rejects_tampered_ready_content_without_mutating_record() -> Non
     assert response.status_code == 422
     assert response.json()["error_code"] == "ae.async_generation.contract_invalid"
     assert store.get("tampered-1")["status"] == "PENDING"
+
+
+def _sqlite_chat_session_factory():
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        future=True,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    with engine.begin() as connection:
+        connection.execute(text("""
+            CREATE TABLE ae_chat_interactions (
+                chat_interaction_id TEXT PRIMARY KEY,
+                interaction_schema_version TEXT NOT NULL,
+                workspace_id TEXT, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL,
+                chat_document_id TEXT NOT NULL, status TEXT NOT NULL,
+                trace_id TEXT NOT NULL, request_id TEXT NOT NULL,
+                user_message_hash TEXT NOT NULL, user_message_preview TEXT NOT NULL,
+                cx_retrieval_package_id TEXT, cx_retrieval_package_hash TEXT,
+                cx_generation_id TEXT, cx_generation_status TEXT,
+                retrieval_summary TEXT NOT NULL, generation_summary TEXT NOT NULL,
+                failure_summary TEXT NOT NULL, created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """))
+        connection.execute(text("""
+            CREATE TABLE ae_chat_artifact_refs (
+                chat_artifact_ref_id TEXT PRIMARY KEY,
+                chat_interaction_id TEXT NOT NULL, chat_document_id TEXT NOT NULL,
+                tenant_id TEXT NOT NULL, user_id TEXT NOT NULL,
+                artifact_id TEXT NOT NULL, artifact_version_id TEXT NOT NULL,
+                display_title TEXT NOT NULL, artifact_type TEXT NOT NULL,
+                artifact_status TEXT NOT NULL, primary_format TEXT NOT NULL,
+                available_formats TEXT NOT NULL, preview_route TEXT,
+                download_routes TEXT NOT NULL, source_generation_id TEXT NOT NULL,
+                source_content_hash TEXT NOT NULL, quality_summary TEXT NOT NULL,
+                actions TEXT NOT NULL, created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE (chat_interaction_id, artifact_id, artifact_version_id)
+            )
+        """))
+    return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)

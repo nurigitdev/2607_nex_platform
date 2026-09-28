@@ -1160,6 +1160,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1054`](slices/1054_ae_citation_quality_workflow_projection.md) | `S106-003` Project CX citation quality and bounded repair into a canonical privacy-safe AE workflow. |
 | [`Slice 1055`](slices/1055_ae_citation_quality_api.md) | `S106-004` Expose the citation-quality workflow through an authenticated exact-owner AE API. |
 | [`Slice 1056`](slices/1056_ae_repaired_response_owner_scope_hardening.md) | `S106-005` Enforce exact tenant/owner scope for repaired-response handoff, review, and decision routes. |
+| [`Slice 1057`](slices/1057_ae_async_citation_workflow_integration.md) | `S106-006` Persist READY async citation workflow metadata and prefer the durable AE projection on reads. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

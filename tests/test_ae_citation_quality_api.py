@@ -193,3 +193,33 @@ def test_citation_quality_route_rejects_handoff_lineage_drift() -> None:
 
     assert response.status_code == 422
     assert response.json()["error_code"] == "ae.citation_quality_workflow.invalid"
+
+
+def test_citation_quality_route_prefers_valid_persisted_workflow() -> None:
+    client, handoff_client = _client()
+    live = client.get(_path(), headers=_headers("tenant-a", "user-a"))
+    assert live.status_code == 200
+    record = client.app.state.ae_chat_store.get("interaction-citation-001")
+    record["generation"]["citation_workflow"] = live.json()
+    handoff_client.fail = True
+
+    persisted = client.get(_path(), headers=_headers("tenant-a", "user-a"))
+
+    assert persisted.status_code == 200
+    assert persisted.json() == live.json()
+    assert len(handoff_client.calls) == 1
+
+
+def test_citation_quality_route_rejects_persisted_lineage_drift() -> None:
+    client, handoff_client = _client()
+    live = client.get(_path(), headers=_headers("tenant-a", "user-a"))
+    workflow = live.json()
+    workflow["interaction_id"] = "interaction-other"
+    record = client.app.state.ae_chat_store.get("interaction-citation-001")
+    record["generation"]["citation_workflow"] = workflow
+
+    response = client.get(_path(), headers=_headers("tenant-a", "user-a"))
+
+    assert response.status_code == 422
+    assert response.json()["error_code"] == "ae.citation_quality_workflow.invalid"
+    assert len(handoff_client.calls) == 1
