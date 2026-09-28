@@ -579,6 +579,21 @@
       "name": "cx_generation_handoff_owner_scope_disabled",
       "path": "tests/negative/generation/cx_generation_handoff.owner_scope_disabled.json",
       "schema": "schemas/generation/cx_generation_handoff.v1.schema.json"
+    },
+    {
+      "name": "ae_generation_progress_content_leak",
+      "path": "tests/negative/generation/ae_generation_progress.content_leak.json",
+      "schema": "schemas/service/nex_ae_api/generation_progress.v1.schema.json"
+    },
+    {
+      "name": "ae_generation_progress_completed_wrong_percent",
+      "path": "tests/negative/generation/ae_generation_progress.completed_wrong_percent.json",
+      "schema": "schemas/service/nex_ae_api/generation_progress.v1.schema.json"
+    },
+    {
+      "name": "ae_generation_recovery_plan_retry_without_lineage",
+      "path": "tests/negative/generation/ae_generation_recovery_plan.retry_without_lineage.json",
+      "schema": "schemas/service/nex_ae_api/generation_recovery_plan.v1.schema.json"
     }
   ]
 }

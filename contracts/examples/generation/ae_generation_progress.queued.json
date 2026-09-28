@@ -1,0 +1,39 @@
+{
+  "progress_schema_version": "ae_generation_progress.v1",
+  "interaction_id": "interaction-progress-queued",
+  "job_id": "job-progress-queued",
+  "cx_generation_id": "generation-progress-queued",
+  "cx_job_status": "QUEUED",
+  "lifecycle_status": "PENDING",
+  "event_type": "generation.request.accepted",
+  "job_status": "QUEUED",
+  "current_stage": "MO_ADMISSION_WAITING",
+  "progress_mode": "INDETERMINATE",
+  "progress_percent": null,
+  "message_key": "generation.progress.queued",
+  "attempt_count": 0,
+  "max_attempts": 3,
+  "retryable": true,
+  "cancellable": true,
+  "terminal": false,
+  "next_action": "POLL_GENERATION_HANDOFF",
+  "next_poll_after_seconds": 2,
+  "handoff_status": null,
+  "error": null,
+  "links": {
+    "generation": "/api/v1/generations/generation-progress-queued",
+    "async_job": "/api/v1/generation-jobs/job-progress-queued"
+  },
+  "recovery": {
+    "recovery_plan_schema_version": "ae_generation_recovery_plan.v1",
+    "action": "WAIT",
+    "eligible": false,
+    "reason_code": "GENERATION_IN_PROGRESS",
+    "new_interaction_required": false,
+    "parent_lineage_required": false,
+    "input_hash_required": false
+  },
+  "owner_scope_enforced": true,
+  "content_included": false,
+  "raw_failure_detail_included": false
+}

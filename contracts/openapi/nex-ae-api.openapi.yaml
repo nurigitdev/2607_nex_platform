@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX AE API
-  version: 1.2.0
+  version: 1.3.0
 tags:
   - name: Platform
   - name: Auth
@@ -887,6 +887,62 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: AE chat interaction was not found.
+  /api/v1/chat/interactions/{interaction_id}/progress:
+    get:
+      operationId: getAeAsyncChatInteractionProgress
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Owner-scoped privacy-safe asynchronous generation progress.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeGenerationProgress"
+        "401":
+          description: Service or browser claim is missing or invalid.
+        "404":
+          description: AE chat interaction was not found for the owner.
+        "409":
+          description: Interaction is not asynchronous.
+        "422":
+          description: CX lifecycle lineage or progress projection is inconsistent.
+        "503":
+          description: CX asynchronous generation is unavailable.
+  /api/v1/chat/interactions/{interaction_id}/recovery:
+    get:
+      operationId: getAeAsyncChatInteractionRecovery
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Owner-scoped read-only asynchronous generation recovery plan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeGenerationRecoveryPlan"
+        "401":
+          description: Service or browser claim is missing or invalid.
+        "404":
+          description: AE chat interaction was not found for the owner.
+        "409":
+          description: Interaction is not asynchronous.
+        "422":
+          description: CX lifecycle lineage or recovery projection is inconsistent.
+        "503":
+          description: CX asynchronous generation is unavailable.
   /api/v1/chat/interactions/{interaction_id}/refresh:
     post:
       operationId: refreshAeAsyncChatInteraction
@@ -1771,6 +1827,135 @@ components:
         updated_at:
           type: string
           format: date-time
+    AeGenerationRecoveryPlan:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/generation_recovery_plan.v1.schema.json
+      additionalProperties: false
+      required:
+        - recovery_plan_schema_version
+        - action
+        - eligible
+        - reason_code
+        - new_interaction_required
+        - parent_lineage_required
+        - input_hash_required
+      properties:
+        recovery_plan_schema_version:
+          const: ae_generation_recovery_plan.v1
+        action:
+          type: string
+          enum:
+            - WAIT
+            - NONE
+            - RETRY_AS_CHILD
+            - REVIEW_REQUIRED
+        eligible:
+          type: boolean
+        reason_code:
+          type: string
+          enum:
+            - GENERATION_IN_PROGRESS
+            - GENERATION_COMPLETED
+            - RETRYABLE_TERMINAL_STATE
+            - NON_RETRYABLE_TERMINAL_STATE
+        new_interaction_required:
+          type: boolean
+        parent_lineage_required:
+          type: boolean
+        input_hash_required:
+          type: boolean
+    AeGenerationProgress:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/generation_progress.v1.schema.json
+      additionalProperties: false
+      required:
+        - progress_schema_version
+        - interaction_id
+        - job_id
+        - cx_generation_id
+        - cx_job_status
+        - lifecycle_status
+        - event_type
+        - job_status
+        - current_stage
+        - progress_mode
+        - progress_percent
+        - message_key
+        - attempt_count
+        - max_attempts
+        - retryable
+        - cancellable
+        - terminal
+        - next_action
+        - next_poll_after_seconds
+        - handoff_status
+        - error
+        - links
+        - recovery
+        - owner_scope_enforced
+        - content_included
+        - raw_failure_detail_included
+      properties:
+        progress_schema_version:
+          const: ae_generation_progress.v1
+        interaction_id:
+          type: string
+        job_id:
+          type: string
+        cx_generation_id:
+          type: string
+        cx_job_status:
+          type: string
+          enum: [QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLED]
+        lifecycle_status:
+          type: string
+          enum: [PENDING, COMPLETED, BLOCKED]
+        event_type:
+          type: string
+        job_status:
+          type: string
+        current_stage:
+          type: string
+        progress_mode:
+          type: string
+          enum: [DETERMINATE, INDETERMINATE]
+        progress_percent:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 100
+        message_key:
+          type: string
+        attempt_count:
+          type: integer
+          minimum: 0
+        max_attempts:
+          type: integer
+          minimum: 1
+        retryable:
+          type: boolean
+        cancellable:
+          type: boolean
+        terminal:
+          type: boolean
+        next_action:
+          type: string
+        next_poll_after_seconds:
+          type: [integer, "null"]
+          minimum: 1
+        handoff_status:
+          type: [string, "null"]
+        error:
+          type: [object, "null"]
+        links:
+          type: object
+        recovery:
+          $ref: "#/components/schemas/AeGenerationRecoveryPlan"
+        owner_scope_enforced:
+          const: true
+        content_included:
+          const: false
+        raw_failure_detail_included:
+          const: false
     AeAsyncGeneration:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_ae_api/async_generation.v1.schema.json

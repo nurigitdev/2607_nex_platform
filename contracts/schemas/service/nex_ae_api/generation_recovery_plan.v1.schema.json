@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/generation_recovery_plan.v1.schema.json",
+  "title": "NeX AE Generation Recovery Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "recovery_plan_schema_version",
+    "action",
+    "eligible",
+    "reason_code",
+    "new_interaction_required",
+    "parent_lineage_required",
+    "input_hash_required"
+  ],
+  "properties": {
+    "recovery_plan_schema_version": {"const": "ae_generation_recovery_plan.v1"},
+    "action": {"enum": ["WAIT", "NONE", "RETRY_AS_CHILD", "REVIEW_REQUIRED"]},
+    "eligible": {"type": "boolean"},
+    "reason_code": {
+      "enum": [
+        "GENERATION_IN_PROGRESS",
+        "GENERATION_COMPLETED",
+        "RETRYABLE_TERMINAL_STATE",
+        "NON_RETRYABLE_TERMINAL_STATE"
+      ]
+    },
+    "new_interaction_required": {"type": "boolean"},
+    "parent_lineage_required": {"type": "boolean"},
+    "input_hash_required": {"type": "boolean"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"action": {"const": "RETRY_AS_CHILD"}}},
+      "then": {
+        "properties": {
+          "eligible": {"const": true},
+          "reason_code": {"const": "RETRYABLE_TERMINAL_STATE"},
+          "new_interaction_required": {"const": true},
+          "parent_lineage_required": {"const": true},
+          "input_hash_required": {"const": true}
+        }
+      },
+      "else": {
+        "properties": {
+          "eligible": {"const": false},
+          "new_interaction_required": {"const": false},
+          "parent_lineage_required": {"const": false},
+          "input_hash_required": {"const": false}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"action": {"const": "WAIT"}}},
+      "then": {"properties": {"reason_code": {"const": "GENERATION_IN_PROGRESS"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "NONE"}}},
+      "then": {"properties": {"reason_code": {"const": "GENERATION_COMPLETED"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "REVIEW_REQUIRED"}}},
+      "then": {"properties": {"reason_code": {"const": "NON_RETRYABLE_TERMINAL_STATE"}}}
+    }
+  ]
+}

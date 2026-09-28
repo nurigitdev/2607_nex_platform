@@ -764,6 +764,21 @@
       "name": "cx_generation_handoff_ready",
       "path": "examples/generation/cx_generation_handoff.ready.json",
       "schema": "schemas/generation/cx_generation_handoff.v1.schema.json"
+    },
+    {
+      "name": "ae_generation_progress_queued",
+      "path": "examples/generation/ae_generation_progress.queued.json",
+      "schema": "schemas/service/nex_ae_api/generation_progress.v1.schema.json"
+    },
+    {
+      "name": "ae_generation_progress_completed",
+      "path": "examples/generation/ae_generation_progress.completed.json",
+      "schema": "schemas/service/nex_ae_api/generation_progress.v1.schema.json"
+    },
+    {
+      "name": "ae_generation_recovery_plan_retry",
+      "path": "examples/generation/ae_generation_recovery_plan.retry.json",
+      "schema": "schemas/service/nex_ae_api/generation_recovery_plan.v1.schema.json"
     }
   ]
 }

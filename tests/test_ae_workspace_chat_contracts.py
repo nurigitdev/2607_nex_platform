@@ -46,7 +46,7 @@ def test_openapi_exposes_canonical_workspace_chat_contracts() -> None:
     )
     schemas = spec["components"]["schemas"]
 
-    assert spec["info"]["version"] == "1.2.0"
+    assert spec["info"]["version"] == "1.3.0"
     assert schemas["AeWorkspaceState"]["x-nex-canonical-json-schema"].endswith(
         "workspace_state.v1.schema.json"
     )

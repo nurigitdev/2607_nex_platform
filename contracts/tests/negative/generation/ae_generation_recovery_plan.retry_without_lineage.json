@@ -1,0 +1,9 @@
+{
+  "recovery_plan_schema_version": "ae_generation_recovery_plan.v1",
+  "action": "RETRY_AS_CHILD",
+  "eligible": true,
+  "reason_code": "RETRYABLE_TERMINAL_STATE",
+  "new_interaction_required": true,
+  "parent_lineage_required": false,
+  "input_hash_required": true
+}

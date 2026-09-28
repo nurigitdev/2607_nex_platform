@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/generation_progress.v1.schema.json",
+  "title": "NeX AE Generation Progress",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "progress_schema_version",
+    "interaction_id",
+    "job_id",
+    "cx_generation_id",
+    "cx_job_status",
+    "lifecycle_status",
+    "event_type",
+    "job_status",
+    "current_stage",
+    "progress_mode",
+    "progress_percent",
+    "message_key",
+    "attempt_count",
+    "max_attempts",
+    "retryable",
+    "cancellable",
+    "terminal",
+    "next_action",
+    "next_poll_after_seconds",
+    "handoff_status",
+    "error",
+    "links",
+    "recovery",
+    "owner_scope_enforced",
+    "content_included",
+    "raw_failure_detail_included"
+  ],
+  "properties": {
+    "progress_schema_version": {"const": "ae_generation_progress.v1"},
+    "interaction_id": {"type": "string", "minLength": 1},
+    "job_id": {"type": "string", "minLength": 1},
+    "cx_generation_id": {"type": "string", "minLength": 1},
+    "cx_job_status": {"enum": ["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"]},
+    "lifecycle_status": {"enum": ["PENDING", "COMPLETED", "BLOCKED"]},
+    "event_type": {
+      "enum": [
+        "generation.request.accepted",
+        "generation.provider.admitted",
+        "generation.provider.completed",
+        "generation.completed",
+        "generation.failed",
+        "generation.cancelled"
+      ]
+    },
+    "job_status": {"enum": ["QUEUED", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"]},
+    "current_stage": {"enum": ["MO_ADMISSION_WAITING", "GENERATING", "FINALIZING", "COMPLETED", "GENERATION_FAILED", "CANCELLED"]},
+    "progress_mode": {"enum": ["DETERMINATE", "INDETERMINATE"]},
+    "progress_percent": {"type": ["integer", "null"], "minimum": 0, "maximum": 100},
+    "message_key": {
+      "enum": [
+        "generation.progress.queued",
+        "generation.progress.generating",
+        "generation.progress.finalizing",
+        "generation.progress.completed",
+        "generation.progress.failed",
+        "generation.progress.cancelled"
+      ]
+    },
+    "attempt_count": {"type": "integer", "minimum": 0},
+    "max_attempts": {"type": "integer", "minimum": 1},
+    "retryable": {"type": "boolean"},
+    "cancellable": {"type": "boolean"},
+    "terminal": {"type": "boolean"},
+    "next_action": {"enum": ["POLL_GENERATION_HANDOFF", "PRESENT_GENERATION_TO_OWNER", "RETRY_OR_REVIEW_GENERATION"]},
+    "next_poll_after_seconds": {"type": ["integer", "null"], "minimum": 1},
+    "handoff_status": {"enum": ["PENDING", "READY", "BLOCKED", null]},
+    "error": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["error_code", "retryable", "dead_lettered"],
+          "properties": {
+            "error_code": {"type": "string", "minLength": 1},
+            "retryable": {"type": "boolean"},
+            "dead_lettered": {"type": "boolean"}
+          }
+        },
+        {"type": "null"}
+      ]
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "generation": {"type": "string", "pattern": "^/api/v1/"},
+        "async_job": {"type": "string", "pattern": "^/api/v1/"}
+      }
+    },
+    "recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recovery_plan_schema_version",
+        "action",
+        "eligible",
+        "reason_code",
+        "new_interaction_required",
+        "parent_lineage_required",
+        "input_hash_required"
+      ],
+      "properties": {
+        "recovery_plan_schema_version": {"const": "ae_generation_recovery_plan.v1"},
+        "action": {"enum": ["WAIT", "NONE", "RETRY_AS_CHILD", "REVIEW_REQUIRED"]},
+        "eligible": {"type": "boolean"},
+        "reason_code": {"type": "string", "minLength": 1},
+        "new_interaction_required": {"type": "boolean"},
+        "parent_lineage_required": {"type": "boolean"},
+        "input_hash_required": {"type": "boolean"}
+      }
+    },
+    "owner_scope_enforced": {"const": true},
+    "content_included": {"const": false},
+    "raw_failure_detail_included": {"const": false}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"lifecycle_status": {"const": "COMPLETED"}}},
+      "then": {
+        "properties": {
+          "cx_job_status": {"const": "SUCCEEDED"},
+          "event_type": {"const": "generation.completed"},
+          "job_status": {"const": "COMPLETED"},
+          "current_stage": {"const": "COMPLETED"},
+          "progress_mode": {"const": "DETERMINATE"},
+          "progress_percent": {"const": 100},
+          "cancellable": {"const": false},
+          "terminal": {"const": true},
+          "next_poll_after_seconds": {"const": null},
+          "handoff_status": {"const": "READY"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"lifecycle_status": {"const": "PENDING"}}},
+      "then": {
+        "properties": {
+          "cx_job_status": {"enum": ["QUEUED", "RUNNING", "SUCCEEDED"]},
+          "progress_mode": {"const": "INDETERMINATE"},
+          "progress_percent": {"const": null},
+          "terminal": {"const": false},
+          "next_poll_after_seconds": {"const": 2}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"lifecycle_status": {"const": "BLOCKED"}}},
+      "then": {
+        "properties": {
+          "cx_job_status": {"enum": ["FAILED", "CANCELLED"]},
+          "progress_mode": {"const": "INDETERMINATE"},
+          "progress_percent": {"const": null},
+          "cancellable": {"const": false},
+          "terminal": {"const": true},
+          "next_poll_after_seconds": {"const": null}
+        }
+      }
+    }
+  ],
+  "not": {
+    "anyOf": [
+      {"required": ["content"]},
+      {"required": ["prompt"]},
+      {"required": ["raw_error_detail"]},
+      {"required": ["provider_url"]},
+      {"required": ["api_key"]}
+    ]
+  }
+}

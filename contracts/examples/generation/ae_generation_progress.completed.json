@@ -1,0 +1,39 @@
+{
+  "progress_schema_version": "ae_generation_progress.v1",
+  "interaction_id": "interaction-progress-completed",
+  "job_id": "job-progress-completed",
+  "cx_generation_id": "generation-progress-completed",
+  "cx_job_status": "SUCCEEDED",
+  "lifecycle_status": "COMPLETED",
+  "event_type": "generation.completed",
+  "job_status": "COMPLETED",
+  "current_stage": "COMPLETED",
+  "progress_mode": "DETERMINATE",
+  "progress_percent": 100,
+  "message_key": "generation.progress.completed",
+  "attempt_count": 1,
+  "max_attempts": 3,
+  "retryable": false,
+  "cancellable": false,
+  "terminal": true,
+  "next_action": "PRESENT_GENERATION_TO_OWNER",
+  "next_poll_after_seconds": null,
+  "handoff_status": "READY",
+  "error": null,
+  "links": {
+    "generation": "/api/v1/generations/generation-progress-completed",
+    "async_job": "/api/v1/generation-jobs/job-progress-completed"
+  },
+  "recovery": {
+    "recovery_plan_schema_version": "ae_generation_recovery_plan.v1",
+    "action": "NONE",
+    "eligible": false,
+    "reason_code": "GENERATION_COMPLETED",
+    "new_interaction_required": false,
+    "parent_lineage_required": false,
+    "input_hash_required": false
+  },
+  "owner_scope_enforced": true,
+  "content_included": false,
+  "raw_failure_detail_included": false
+}
