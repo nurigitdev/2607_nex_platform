@@ -81,6 +81,7 @@ class AeCitationQualityWorkflowError(ValueError):
     error_code: str
     detail: str
     status_code: int = 422
+    retryable: bool = False
 
     def __str__(self) -> str:
         return self.detail
@@ -167,6 +168,57 @@ def build_citation_quality_workflow(
             "owner_scope_enforced": True,
             "content_included": False,
         }
+    )
+
+
+def build_citation_quality_workflow_from_handoff(
+    handoff: Mapping[str, Any],
+    *,
+    interaction_id: str,
+    expected_job_id: str,
+    expected_cx_generation_id: str,
+) -> dict[str, Any]:
+    if not isinstance(handoff, Mapping):
+        raise _invalid("CX generation handoff must be an object.")
+    expected_fields = {
+        "handoff_schema_version",
+        "handoff_status",
+        "next_action",
+        "job",
+        "generation",
+        "content",
+        "owner_scope_enforced",
+    }
+    if set(handoff) != expected_fields:
+        raise _invalid("CX generation handoff has an invalid shape.")
+    if handoff["handoff_schema_version"] != "cx_generation_handoff.v1":
+        raise _invalid("CX generation handoff schema version is invalid.")
+    if handoff["owner_scope_enforced"] is not True:
+        raise _invalid("CX generation handoff owner scope is not enforced.")
+    if handoff["handoff_status"] != "READY":
+        raise _not_ready("CX citation quality metadata is not ready.")
+    if handoff["next_action"] != "PRESENT_GENERATION_TO_OWNER":
+        raise _invalid("CX generation handoff next action is inconsistent.")
+    job = handoff["job"]
+    generation = handoff["generation"]
+    if not isinstance(job, Mapping) or not isinstance(generation, Mapping):
+        raise _invalid("CX generation handoff metadata is incomplete.")
+    job_id = _required_text(expected_job_id, "expected_job_id")
+    generation_id = _required_text(
+        expected_cx_generation_id, "expected_cx_generation_id"
+    )
+    if (
+        job.get("job_id") != job_id
+        or job.get("cx_generation_id") != generation_id
+        or job.get("status") != "SUCCEEDED"
+        or generation.get("cx_generation_id") != generation_id
+        or generation.get("status") != "COMPLETED"
+    ):
+        raise _invalid("CX generation handoff lineage is inconsistent.")
+    return build_citation_quality_workflow(
+        generation,
+        interaction_id=interaction_id,
+        cx_generation_id=generation_id,
     )
 
 
@@ -449,4 +501,13 @@ def _invalid(detail: str) -> AeCitationQualityWorkflowError:
     return AeCitationQualityWorkflowError(
         error_code="ae.citation_quality_workflow.invalid",
         detail=detail,
+    )
+
+
+def _not_ready(detail: str) -> AeCitationQualityWorkflowError:
+    return AeCitationQualityWorkflowError(
+        error_code="ae.citation_quality_workflow.not_ready",
+        detail=detail,
+        status_code=409,
+        retryable=True,
     )

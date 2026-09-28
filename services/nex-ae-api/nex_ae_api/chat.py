@@ -56,6 +56,8 @@ from nex_ae_api.cx_async_generation_client import (
     HttpCxAsyncGenerationClient,
 )
 from nex_ae_api.citation_quality_workflow import (
+    AeCitationQualityWorkflowError,
+    build_citation_quality_workflow_from_handoff,
     build_grounded_response_quality_contract,
 )
 from nex_ae_api.intent_policy import IntentPolicyError
@@ -827,6 +829,61 @@ def register_chat_routes(
         except AeAsyncGenerationError as exc:
             return _chat_problem_response(request, _policy_error_to_chat(exc))
         except WorkspaceChatOrchestrationError as exc:
+            return _chat_problem_response(
+                request,
+                ChatInteractionError(
+                    exc.status_code,
+                    exc.error_code,
+                    exc.detail,
+                    exc.retryable,
+                ),
+            )
+        except ChatInteractionError as exc:
+            return _chat_problem_response(request, exc)
+
+    @app.get(
+        "/api/v1/chat/interactions/{interaction_id}/citation-quality",
+        response_model=None,
+    )
+    def get_chat_interaction_citation_quality(
+        interaction_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            record = _required_visible_async_record(
+                chat_store, interaction_id, auth_context
+            )
+            projection = _async_projection_from_record(record)
+            handoff = async_client.get_handoff(
+                projection["job_id"],
+                tenant_id=record["tenant_id"],
+                subject_id=record["owner_user_id"],
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            return build_citation_quality_workflow_from_handoff(
+                handoff,
+                interaction_id=interaction_id,
+                expected_job_id=projection["job_id"],
+                expected_cx_generation_id=projection["cx_generation_id"],
+            )
+        except CxAsyncGenerationClientError as exc:
+            return _chat_problem_response(
+                request,
+                ChatInteractionError(
+                    exc.status_code,
+                    exc.error_code,
+                    exc.detail,
+                    exc.retryable,
+                ),
+            )
+        except AeCitationQualityWorkflowError as exc:
             return _chat_problem_response(
                 request,
                 ChatInteractionError(

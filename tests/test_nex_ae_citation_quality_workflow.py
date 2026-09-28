@@ -5,6 +5,7 @@ import pytest
 from nex_ae_api.citation_quality_workflow import (
     AeCitationQualityWorkflowError,
     build_citation_quality_workflow,
+    build_citation_quality_workflow_from_handoff,
     build_grounded_response_quality_contract,
     validate_citation_quality_workflow,
 )
@@ -33,6 +34,7 @@ def cx_generation_record(
     }
     return {
         "cx_generation_id": "cx-generation-001",
+        "status": "COMPLETED",
         "request_metadata": {
             "grounding_required": grounding_required,
             "retrieval_package_id": "retrieval-001" if grounding_required else None,
@@ -56,6 +58,22 @@ def workflow(**kwargs) -> dict:
         cx_generation_record(**kwargs),
         interaction_id="interaction-001",
     )
+
+
+def ready_handoff() -> dict:
+    return {
+        "handoff_schema_version": "cx_generation_handoff.v1",
+        "handoff_status": "READY",
+        "next_action": "PRESENT_GENERATION_TO_OWNER",
+        "job": {
+            "job_id": "job-001",
+            "cx_generation_id": "cx-generation-001",
+            "status": "SUCCEEDED",
+        },
+        "generation": cx_generation_record(),
+        "content": {"private": "ignored"},
+        "owner_scope_enforced": True,
+    }
 
 
 def test_workflow_projects_validated_generation_without_private_content() -> None:
@@ -258,3 +276,66 @@ def test_workflow_rejects_nonmapping_cx_repair_and_exposes_stable_error() -> Non
 
     assert captured.value.error_code == "ae.citation_quality_workflow.invalid"
     assert str(captured.value) == captured.value.detail
+
+
+def test_workflow_builds_from_ready_owner_scoped_handoff() -> None:
+    projection = build_citation_quality_workflow_from_handoff(
+        ready_handoff(),
+        interaction_id="interaction-001",
+        expected_job_id="job-001",
+        expected_cx_generation_id="cx-generation-001",
+    )
+
+    assert projection["workflow_status"] == "VALIDATED"
+    assert projection["cx_generation_id"] == "cx-generation-001"
+    assert "ignored" not in str(projection)
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "error_code"),
+    [
+        (("extra",), True, "ae.citation_quality_workflow.invalid"),
+        (("handoff_schema_version",), "old", "ae.citation_quality_workflow.invalid"),
+        (("owner_scope_enforced",), False, "ae.citation_quality_workflow.invalid"),
+        (("handoff_status",), "PENDING", "ae.citation_quality_workflow.not_ready"),
+        (("next_action",), "POLL_GENERATION_JOB", "ae.citation_quality_workflow.invalid"),
+        (("job",), None, "ae.citation_quality_workflow.invalid"),
+        (("job", "job_id"), "wrong", "ae.citation_quality_workflow.invalid"),
+    ],
+)
+def test_handoff_workflow_rejects_invalid_contracts(
+    path: tuple[str, ...], value: object, error_code: str
+) -> None:
+    candidate = deepcopy(ready_handoff())
+    target = candidate
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+
+    with pytest.raises(AeCitationQualityWorkflowError) as captured:
+        build_citation_quality_workflow_from_handoff(
+            candidate,
+            interaction_id="interaction-001",
+            expected_job_id="job-001",
+            expected_cx_generation_id="cx-generation-001",
+        )
+
+    assert captured.value.error_code == error_code
+    assert captured.value.retryable is (error_code.endswith("not_ready"))
+
+
+def test_handoff_workflow_rejects_nonmapping_and_invalid_expected_ids() -> None:
+    with pytest.raises(AeCitationQualityWorkflowError):
+        build_citation_quality_workflow_from_handoff(
+            [],
+            interaction_id="interaction",
+            expected_job_id="job",
+            expected_cx_generation_id="generation",
+        )
+    with pytest.raises(AeCitationQualityWorkflowError):
+        build_citation_quality_workflow_from_handoff(
+            ready_handoff(),
+            interaction_id="interaction",
+            expected_job_id=" ",
+            expected_cx_generation_id="cx-generation-001",
+        )
