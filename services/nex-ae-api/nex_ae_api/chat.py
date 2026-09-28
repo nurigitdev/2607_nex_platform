@@ -43,6 +43,7 @@ from nex_ae_api.generation_recovery import (
     prepare_generation_retry,
 )
 from nex_ae_api.generated_response_api import build_generated_response_owner_view
+from nex_ae_api.generated_response_handoff import persist_ready_generated_response
 from nex_ae_api.generated_response_lineage import (
     AeGeneratedResponseLineageError,
     generated_response_lineage_from_record,
@@ -821,13 +822,22 @@ def register_chat_routes(
                 interaction_id=interaction_id,
                 projection=projection,
             )
-            saved = chat_store.save(
-                refresh_async_chat_interaction_record(
-                    record,
-                    refreshed,
-                    citation_workflow=citation_workflow,
-                )
+            refreshed_record = refresh_async_chat_interaction_record(
+                record,
+                refreshed,
+                citation_workflow=citation_workflow,
             )
+            content_persisted = transient_result["handoff_status"] == "READY"
+            if content_persisted:
+                saved = persist_ready_generated_response(
+                    refreshed_record,
+                    transient_result,
+                    citation_workflow,
+                    storage=response_storage,
+                    save_record=chat_store.save,
+                )
+            else:
+                saved = chat_store.save(refreshed_record)
             _observe_citation_workflow_if_present(
                 emitter,
                 citation_workflow,
@@ -848,7 +858,7 @@ def register_chat_routes(
                 "refresh_schema_version": "ae_async_chat_refresh.v1",
                 "interaction": saved,
                 "result": transient_result,
-                "content_persisted_by_ae": False,
+                "content_persisted_by_ae": content_persisted,
             }
         except CxAsyncGenerationClientError as exc:
             return _chat_problem_response(
@@ -861,6 +871,8 @@ def register_chat_routes(
                 ),
             )
         except AeAsyncGenerationError as exc:
+            return _chat_problem_response(request, _policy_error_to_chat(exc))
+        except (AeGeneratedResponseLineageError, GeneratedResponseStorageError) as exc:
             return _chat_problem_response(request, _policy_error_to_chat(exc))
         except WorkspaceChatOrchestrationError as exc:
             return _chat_problem_response(

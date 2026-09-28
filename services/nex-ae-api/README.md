@@ -219,6 +219,9 @@ Artifact records:
 - Slice 1065 adds an authenticated exact-owner generated-response read route.
   Private content is integrity checked before return, while missing, tampered,
   cross-owner, and storage-failure paths fail closed.
+- Slice 1066 makes READY asynchronous handoff content durable in private
+  storage and chat lineage, with deterministic replay and compensating cleanup
+  when a new payload is followed by a failed chat-record write.
 - Slice 0405 wires artifact routes to SQLAlchemy stores when
   `app.state.nex_persistence.api_session_factory` is attached. Explicit test
   stores still override defaults, and the public API shape is unchanged across

@@ -12,6 +12,8 @@ from nex_ae_api.chat import (
     SqlAlchemyChatInteractionStore,
     register_chat_routes,
 )
+from nex_ae_api.generated_response_storage import InMemoryGeneratedResponseStorage
+from nex_ae_api.generated_response_storage import GeneratedResponseStorageError
 from nex_ae_api.prompts import seed_ae_prompt_registry
 from nex_ae_api.workspace import WorkspaceStateStore
 from nex_runtime import (
@@ -148,7 +150,12 @@ def _headers() -> dict[str, str]:
     }
 
 
-def _client(store=None, asynchronous=None, event_emitter=None):
+def _client(
+    store=None,
+    asynchronous=None,
+    event_emitter=None,
+    response_storage=None,
+):
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
     prompts = PromptRegistryStore()
     seed_ae_prompt_registry(prompts)
@@ -162,6 +169,7 @@ def _client(store=None, asynchronous=None, event_emitter=None):
         retrieval_client=RetrievalClient(),
         prompt_store=prompts,
         event_emitter=event_emitter,
+        generated_response_storage=response_storage,
     )
     return TestClient(app), store, asynchronous
 
@@ -200,7 +208,7 @@ def test_pending_refresh_updates_attempts_without_exposing_content() -> None:
     assert asynchronous.handoff_calls[0]["subject_id"] == "local-user"
 
 
-def test_ready_refresh_returns_transient_content_but_persists_only_projection() -> None:
+def test_ready_refresh_persists_private_content_and_safe_projection() -> None:
     client, store, asynchronous = _client()
     _admit(client, "ready-1")
     asynchronous.job_status = "SUCCEEDED"
@@ -217,21 +225,46 @@ def test_ready_refresh_returns_transient_content_but_persists_only_projection() 
     assert body["result"]["content_sha256"] == hashlib.sha256(
         b"Owner result [1]."
     ).hexdigest()
+    assert body["content_persisted_by_ae"] is True
     persisted = store.get("ready-1")
     assert persisted["generation"]["async_generation"]["handoff_status"] == "READY"
     assert persisted["generation"]["citation_workflow"]["workflow_status"] == (
         "REPAIRED"
     )
     assert persisted["generation"]["citation_workflow"]["content_included"] is False
+    assert persisted["generation"]["generated_response"]["content_available"] is True
+    assert persisted["generation"]["generated_response"][
+        "storage_ref_included"
+    ] is False
     assert "Owner result [1]." not in str(persisted)
+    assert "ae://chat-responses/" not in str(persisted)
     assert persisted["failure"] is None
+
+    owner_response = client.get(
+        "/api/v1/chat/interactions/ready-1/response", headers=_headers()
+    )
+    assert owner_response.status_code == 200
+    assert owner_response.json()["content"] == "Owner result [1]."
+
+    repeated = client.post(
+        "/api/v1/chat/interactions/ready-1/refresh", headers=_headers()
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["interaction"]["generation"]["generated_response"][
+        "response_id"
+    ] == persisted["generation"]["generated_response"]["response_id"]
 
 
 def test_ready_citation_workflow_survives_sql_restart_without_second_cx_call() -> None:
     factory = _sqlite_chat_session_factory()
     first_store = SqlAlchemyChatInteractionStore(factory)
     asynchronous = AsyncLifecycleClient()
-    client, _, _ = _client(store=first_store, asynchronous=asynchronous)
+    response_storage = InMemoryGeneratedResponseStorage()
+    client, _, _ = _client(
+        store=first_store,
+        asynchronous=asynchronous,
+        response_storage=response_storage,
+    )
     _admit(client, "durable-citation-1")
     asynchronous.job_status = "SUCCEEDED"
     asynchronous.handoff_status = "READY"
@@ -244,18 +277,26 @@ def test_ready_citation_workflow_survives_sql_restart_without_second_cx_call() -
     restarted_client, _, _ = _client(
         store=restarted_store,
         asynchronous=asynchronous,
+        response_storage=response_storage,
     )
     citation = restarted_client.get(
         "/api/v1/chat/interactions/durable-citation-1/citation-quality",
         headers=_headers(),
     )
+    owner_response = restarted_client.get(
+        "/api/v1/chat/interactions/durable-citation-1/response",
+        headers=_headers(),
+    )
 
     assert refreshed.status_code == 200
     assert citation.status_code == 200
+    assert owner_response.status_code == 200
+    assert owner_response.json()["content"] == "Owner result [1]."
     assert citation.json()["workflow_status"] == "REPAIRED"
     assert len(asynchronous.handoff_calls) == 1
     loaded = restarted_store.get("durable-citation-1")
     assert loaded["generation"]["citation_workflow"] == citation.json()
+    assert loaded["generation"]["generated_response"]["content_available"] is True
     assert "Owner result [1]." not in str(loaded)
 
 
@@ -280,6 +321,36 @@ def test_ready_refresh_emits_metadata_only_citation_workflow_event() -> None:
     assert events[0]["details"]["outcome"] == "BOUNDED_REPAIR_SUCCEEDED"
     assert events[0]["details"]["response_content_included"] is False
     assert "Owner result [1]." not in str(events)
+
+
+class FailingResponseStorage(InMemoryGeneratedResponseStorage):
+    def save(self, payload):
+        raise GeneratedResponseStorageError(
+            error_code="ae.generated_response_storage_unavailable",
+            detail="AE generated response storage is unavailable.",
+            retryable=True,
+        )
+
+
+def test_ready_refresh_fails_closed_when_private_storage_is_unavailable() -> None:
+    client, store, asynchronous = _client(
+        response_storage=FailingResponseStorage()
+    )
+    _admit(client, "storage-failure-1")
+    asynchronous.job_status = "SUCCEEDED"
+    asynchronous.handoff_status = "READY"
+
+    response = client.post(
+        "/api/v1/chat/interactions/storage-failure-1/refresh", headers=_headers()
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == (
+        "ae.generated_response_storage_unavailable"
+    )
+    persisted = store.get("storage-failure-1")
+    assert persisted["status"] == "PENDING"
+    assert "generated_response" not in persisted["generation"]
 
 
 def test_blocked_refresh_persists_safe_failure() -> None:
