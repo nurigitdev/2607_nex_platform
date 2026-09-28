@@ -264,6 +264,9 @@ def test_worker_completes_after_one_citation_repair(tmp_path, monkeypatch) -> No
         ]
         == client.calls[1]["provider_prompt_package_hash"]
     )
+    assert runtime.execution_repository.records[generation_id]["request_metadata"][
+        "citation_repair"
+    ] == result["citation_repair"]
 
 
 def test_worker_maps_invalid_citation_repair_boundary(tmp_path, monkeypatch) -> None:

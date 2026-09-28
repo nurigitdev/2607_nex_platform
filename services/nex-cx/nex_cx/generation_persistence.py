@@ -6,6 +6,7 @@ import re
 from typing import Any
 from uuid import UUID
 
+from nex_cx.citation_repair import validate_citation_repair_projection
 from nex_cx.owner_lineage import CxOwnerLineage, attach_owner_lineage
 
 
@@ -29,6 +30,7 @@ _REQUEST_METADATA_FIELDS = frozenset(
         "grounded_response_quality_audit_schema_version",
         "grounded_response_quality_status",
         "grounded_response_quality_issue_count",
+        "citation_repair",
     }
 )
 _RESPONSE_METADATA_FIELDS = frozenset(
@@ -124,9 +126,8 @@ def build_generation_persistence_record(
         field_name="status",
         choices={"COMPLETED", "FAILED"},
     )
-    request_metadata = _safe_mapping(
-        execution_record.get("request_metadata"),
-        allowed_fields=_REQUEST_METADATA_FIELDS,
+    request_metadata = _safe_request_metadata(
+        execution_record.get("request_metadata")
     )
     retrieval_package_id = _optional_uuid(
         request_metadata.pop("retrieval_package_id", None),
@@ -205,6 +206,14 @@ def build_generation_persistence_record(
             detail="Generation persistence records cannot contain private payload fields.",
         )
     return record
+
+
+def _safe_request_metadata(value: object) -> dict[str, Any]:
+    repair = value.get("citation_repair") if isinstance(value, Mapping) else None
+    metadata = _safe_mapping(value, allowed_fields=_REQUEST_METADATA_FIELDS)
+    if repair is not None:
+        metadata["citation_repair"] = validate_citation_repair_projection(repair)
+    return metadata
 
 
 def generation_persistence_has_private_payload(value: object) -> bool:

@@ -30,6 +30,7 @@ from nex_runtime import (
     trace_id_from_headers,
 )
 from nex_cx.access_context import CxAccessContext
+from nex_cx.citation_repair import validate_citation_repair_projection
 from nex_cx.api_ownership import owner_scoped_record, record_visible_to_owner
 from nex_cx.authorization import (
     CX_SUBJECT_HEADER,
@@ -756,6 +757,7 @@ def build_generation_execution_record(
     structured_draft: dict[str, Any] | None = None,
     request_id: str,
     trace_id: str,
+    citation_repair: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = _utc_now()
     output = mo_response.get("output", {})
@@ -806,6 +808,15 @@ def build_generation_execution_record(
             "grounded_response_quality_issue_count": len(quality_audit["issues"])
             if quality_audit
             else None,
+            **(
+                {
+                    "citation_repair": validate_citation_repair_projection(
+                        citation_repair
+                    )
+                }
+                if citation_repair is not None
+                else {}
+            ),
         },
         "response_metadata": {
             "finish_reason": mo_response.get("finish_reason"),

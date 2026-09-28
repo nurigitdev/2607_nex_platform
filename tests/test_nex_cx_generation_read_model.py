@@ -12,6 +12,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from nex_cx.access_context import CxAccessContext
+from nex_cx.citation_repair import CitationRepairError
 from nex_cx.generation import GenerationExecutionStore, register_generation_routes
 from nex_cx.generation_private_output import persist_generation_output
 from nex_cx.generation_read_model import (
@@ -67,6 +68,17 @@ def _record(**overrides: Any) -> dict[str, Any]:
             "source_has_prompt": False,
             "grounding_required": True,
             "selected_evidence_count": 1,
+            "citation_repair": {
+                "repair_schema_version": "cx_citation_repair.v1",
+                "attempted": True,
+                "attempt_count": 1,
+                "max_attempts": 1,
+                "trigger_error_code": "cx.citation_required_missing",
+                "same_retrieval_package": True,
+                "original_provider_prompt_package_hash": "c" * 64,
+                "effective_provider_prompt_package_hash": "d" * 64,
+                "invalid_output_included": False,
+            },
         },
         "response_metadata": {
             "finish_reason": "STOP",
@@ -175,6 +187,7 @@ def test_restart_safe_read_model_redacts_storage_and_reloads_verified_content(
     assert OUTPUT_TEXT not in serialized
     assert "output_storage_uri" not in serialized
     assert "output_storage_backend" not in serialized
+    assert metadata["request_metadata"]["citation_repair"]["attempted"] is True
     assert content == {
         "content_schema_version": CX_GENERATION_CONTENT_SCHEMA_VERSION,
         "cx_generation_id": "cx-generation-0967",
@@ -287,6 +300,22 @@ def test_read_model_projection_allowlists_nested_metadata() -> None:
     assert empty_metadata["response_metadata"] == {}
     assert empty_metadata["mo_runtime_metadata"] == {}
     assert empty_metadata["usage"] == {}
+
+
+def test_read_model_rejects_unsafe_citation_repair_metadata() -> None:
+    with pytest.raises(CitationRepairError):
+        project_generation_read_model(
+            {
+                **_record(),
+                "request_metadata": {
+                    "citation_repair": {
+                        **_record()["request_metadata"]["citation_repair"],
+                        "invalid_output_included": True,
+                    }
+                },
+                "private_output_metadata": None,
+            }
+        )
 
 
 def test_read_model_reports_missing_and_corrupt_private_payload(

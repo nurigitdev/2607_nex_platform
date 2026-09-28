@@ -226,7 +226,7 @@ def _repair_projection(
     original_hash: str,
     effective_hash: str,
 ) -> dict[str, Any]:
-    return {
+    return validate_citation_repair_projection({
         "repair_schema_version": CX_CITATION_REPAIR_SCHEMA_VERSION,
         "attempted": attempted,
         "attempt_count": 1 if attempted else 0,
@@ -236,7 +236,52 @@ def _repair_projection(
         "original_provider_prompt_package_hash": original_hash,
         "effective_provider_prompt_package_hash": effective_hash,
         "invalid_output_included": False,
+    })
+
+
+def validate_citation_repair_projection(value: object) -> dict[str, Any]:
+    fields = {
+        "repair_schema_version",
+        "attempted",
+        "attempt_count",
+        "max_attempts",
+        "trigger_error_code",
+        "same_retrieval_package",
+        "original_provider_prompt_package_hash",
+        "effective_provider_prompt_package_hash",
+        "invalid_output_included",
     }
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise _invalid("Citation repair projection has an invalid shape.")
+    projection = deepcopy(dict(value))
+    if projection["repair_schema_version"] != CX_CITATION_REPAIR_SCHEMA_VERSION:
+        raise _invalid("Citation repair projection schema version is invalid.")
+    attempted = projection["attempted"]
+    attempt_count = projection["attempt_count"]
+    if not isinstance(attempted, bool) or (
+        isinstance(attempt_count, bool)
+        or not isinstance(attempt_count, int)
+        or attempt_count != (1 if attempted else 0)
+    ):
+        raise _invalid("Citation repair attempt metadata is inconsistent.")
+    if projection["max_attempts"] != MAX_CITATION_REPAIR_ATTEMPTS:
+        raise _invalid("Citation repair maximum attempts is invalid.")
+    trigger = projection["trigger_error_code"]
+    if (attempted and trigger not in _REPAIRABLE_ERROR_CODES) or (
+        not attempted and trigger is not None
+    ):
+        raise _invalid("Citation repair trigger metadata is inconsistent.")
+    original_hash = _sha256(projection["original_provider_prompt_package_hash"])
+    effective_hash = _sha256(projection["effective_provider_prompt_package_hash"])
+    if not attempted and original_hash != effective_hash:
+        raise _invalid("Unattempted citation repair changed the prompt hash.")
+    if projection["same_retrieval_package"] is not True:
+        raise _invalid("Citation repair must reuse the retrieval package.")
+    if projection["invalid_output_included"] is not False:
+        raise _invalid("Citation repair metadata must exclude invalid output.")
+    projection["original_provider_prompt_package_hash"] = original_hash
+    projection["effective_provider_prompt_package_hash"] = effective_hash
+    return projection
 
 
 def _required_text(value: object, field: str) -> str:

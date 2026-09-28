@@ -9,6 +9,7 @@ from nex_cx.citation_repair import (
     CitationRepairError,
     build_citation_repair_payload,
     generate_with_bounded_citation_repair,
+    validate_citation_repair_projection,
 )
 from nex_cx.grounded_output_validation import GroundedOutputValidationError
 
@@ -151,6 +152,34 @@ def test_non_citation_validation_failure_is_not_repaired() -> None:
 
     assert raised.value.error_code == "cx.provider_output_invalid"
     assert len(client.calls) == 1
+
+
+def test_citation_repair_projection_validation_fails_closed() -> None:
+    valid = _generate(SequenceClient(_response("Grounded answer [1].")), []).repair
+    assert validate_citation_repair_projection(valid) == valid
+
+    mutations = (
+        {**valid, "unexpected": True},
+        {**valid, "repair_schema_version": "wrong"},
+        {**valid, "attempted": True},
+        {**valid, "max_attempts": 2},
+        {**valid, "trigger_error_code": "cx.citation_required_missing"},
+        {**valid, "effective_provider_prompt_package_hash": "b" * 64},
+        {**valid, "same_retrieval_package": False},
+        {**valid, "invalid_output_included": True},
+    )
+    for mutation in mutations:
+        with pytest.raises(CitationRepairError):
+            validate_citation_repair_projection(mutation)
+
+    repaired = _generate(
+        SequenceClient(
+            _response("Missing citation."),
+            _response("Grounded answer [1]."),
+        ),
+        [],
+    ).repair
+    assert validate_citation_repair_projection(repaired)["attempted"] is True
 
 
 @pytest.mark.parametrize(

@@ -137,6 +137,7 @@ class AsyncGenerationWorkerHandler:
                 structured_draft=draft,
                 request_id=envelope["request_id"],
                 trace_id=envelope["trace_id"],
+                citation_repair=generation_result.repair,
             )
             stored = self.runtime.persist_completed(
                 admission=GroundedGenerationAdmission(

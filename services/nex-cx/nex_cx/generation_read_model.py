@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from nex_cx.access_context import CxAccessContext
+from nex_cx.citation_repair import validate_citation_repair_projection
 from nex_cx.generation_private_output import load_generation_output
 from nex_cx.generation_repository import (
     GenerationRuntimeRepository,
@@ -58,6 +59,7 @@ _REQUEST_METADATA_FIELDS = frozenset(
         "grounded_response_quality_audit_schema_version",
         "grounded_response_quality_status",
         "grounded_response_quality_issue_count",
+        "citation_repair",
     }
 )
 _RESPONSE_METADATA_FIELDS = frozenset({"finish_reason", "output_hash"})
@@ -196,9 +198,8 @@ def project_generation_read_model(record: Mapping[str, Any]) -> dict[str, Any]:
         for key in _READ_MODEL_FIELDS
         if key in record
     }
-    projection["request_metadata"] = _safe_metadata(
-        record.get("request_metadata"),
-        allowed_fields=_REQUEST_METADATA_FIELDS,
+    projection["request_metadata"] = _safe_request_metadata(
+        record.get("request_metadata")
     )
     projection["response_metadata"] = _safe_metadata(
         record.get("response_metadata"),
@@ -251,3 +252,11 @@ def _safe_metadata(
         for key, item in value.items()
         if key in allowed_fields
     }
+
+
+def _safe_request_metadata(value: object) -> dict[str, Any]:
+    metadata = _safe_metadata(value, allowed_fields=_REQUEST_METADATA_FIELDS)
+    repair = metadata.get("citation_repair")
+    if repair is not None:
+        metadata["citation_repair"] = validate_citation_repair_projection(repair)
+    return metadata
