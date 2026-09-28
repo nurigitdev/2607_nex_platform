@@ -1143,6 +1143,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1037`](slices/1037_ae_async_chat_cancel_retry.md) | `S104-006` Add owner-scoped async cancellation and hash-bound retry with safe parent lineage. |
 | [`Slice 1038`](slices/1038_ae_async_chat_observability.md) | `S104-007` Add metadata-only async lifecycle observability and workspace activity history. |
 | [`Slice 1039`](slices/1039_ae_async_chat_contract_openapi.md) | `S104-008` Freeze async lifecycle JSON Schemas, privacy fixtures, and AE OpenAPI 1.2. |
+| [`Slice 1040`](slices/1040_ae_cx_async_generation_postgresql_smoke.md) | `S104-009` Prove the AE-to-CX async lifecycle on actual AE/CX test PostgreSQL databases with zero probe residue. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
