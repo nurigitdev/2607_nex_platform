@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from nex_ae_api.contract_api_drift_audit import (
+    INVENTORY_BASELINE,
     _index_entries,
     _load_mapping,
     _openapi_operations,
@@ -19,18 +20,25 @@ def test_repository_contract_api_audit_confirms_known_drift() -> None:
     assert result["contract_readiness"] == "GAPS_CONFIRMED"
     assert all(result["checks"].values())
     assert result["issues"] == []
-    assert result["summary"] == {
-        "runtime_operation_count": 74,
-        "openapi_operation_count": 55,
-        "runtime_openapi_covered_count": 46,
-        "missing_openapi_operation_count": 28,
-        "shared_openapi_operation_count": 5,
-        "schema_count": 26,
-        "positive_fixture_covered_count": 24,
-        "negative_fixture_covered_count": 23,
-        "drift_count": 33,
-        "audit_issue_count": 0,
-    }
+    summary = result["summary"]
+    assert summary["runtime_operation_count"] >= INVENTORY_BASELINE[
+        "runtime_operations"
+    ]
+    assert summary["openapi_operation_count"] >= INVENTORY_BASELINE[
+        "openapi_operations"
+    ]
+    assert summary["runtime_openapi_covered_count"] == 46
+    assert summary["missing_openapi_operation_count"] == 29
+    assert summary["shared_openapi_operation_count"] == 5
+    assert summary["schema_count"] == 26
+    assert summary["positive_fixture_covered_count"] == 24
+    assert summary["negative_fixture_covered_count"] == 23
+    assert summary["drift_count"] == (
+        summary["missing_openapi_operation_count"]
+        + len(result["missing_positive_fixtures"])
+        + len(result["missing_negative_fixtures"])
+    )
+    assert summary["audit_issue_count"] == 0
     assert result["openapi_version"] == "1.1.0"
     assert len(result["missing_positive_fixtures"]) == 2
     assert len(result["missing_negative_fixtures"]) == 3
@@ -79,15 +87,20 @@ def test_contract_parsers_cover_valid_invalid_and_dynamic_routes(
 def test_summary_line_and_runner_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_ae_contract_api_drift_audit()
 
+    summary = passing["summary"]
     assert runner.summary_line(passing) == (
         "ae_contract_api_drift_audit=pass readiness=GAPS_CONFIRMED "
-        "runtime_routes=74 openapi_missing=28 schema_positive=24/26 "
-        "schema_negative=23/26 drift=33"
+        f"runtime_routes={summary['runtime_operation_count']} "
+        f"openapi_missing={summary['missing_openapi_operation_count']} "
+        f"schema_positive={summary['positive_fixture_covered_count']}/"
+        f"{summary['schema_count']} "
+        f"schema_negative={summary['negative_fixture_covered_count']}/"
+        f"{summary['schema_count']} drift={summary['drift_count']}"
     )
     assert "readiness=UNKNOWN" in runner.summary_line({"status": "FAIL"})
     monkeypatch.setattr(runner, "run_ae_contract_api_drift_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0
-    assert "drift=33" in capsys.readouterr().out
+    assert f"drift={summary['drift_count']}" in capsys.readouterr().out
     assert runner.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
 

@@ -5,7 +5,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
 import httpx
@@ -33,6 +33,7 @@ from nex_ae_api.async_generation import (
     ASYNCHRONOUS,
     AeAsyncGenerationError,
     build_async_generation_projection,
+    refresh_async_generation_projection,
     resolve_execution_strategy,
 )
 from nex_ae_api.cx_async_generation_client import (
@@ -737,6 +738,66 @@ def register_chat_routes(
         return record
 
     @app.post(
+        "/api/v1/chat/interactions/{interaction_id}/refresh",
+        response_model=None,
+    )
+    def refresh_chat_interaction(
+        interaction_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
+        request_id = request_id_from_headers(request)
+        trace_id = trace_id_from_headers(request)
+        try:
+            record = _get_visible_chat_record(
+                chat_store, interaction_id, auth_context
+            )
+            if record is None:
+                raise ChatInteractionError(
+                    status_code=404,
+                    error_code="ae.chat_interaction_not_found",
+                    detail=f"Chat interaction was not found: {interaction_id}",
+                )
+            projection = _async_projection_from_record(record)
+            handoff = async_client.get_handoff(
+                projection["job_id"],
+                tenant_id=record["tenant_id"],
+                subject_id=record["owner_user_id"],
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            refreshed, transient_result = refresh_async_generation_projection(
+                projection, handoff
+            )
+            saved = chat_store.save(
+                refresh_async_chat_interaction_record(record, refreshed)
+            )
+            observe_workspace_chat_state(emitter, saved)
+            return {
+                "refresh_schema_version": "ae_async_chat_refresh.v1",
+                "interaction": saved,
+                "result": transient_result,
+                "content_persisted_by_ae": False,
+            }
+        except CxAsyncGenerationClientError as exc:
+            return _chat_problem_response(
+                request,
+                ChatInteractionError(
+                    exc.status_code,
+                    exc.error_code,
+                    exc.detail,
+                    exc.retryable,
+                ),
+            )
+        except AeAsyncGenerationError as exc:
+            return _chat_problem_response(request, _policy_error_to_chat(exc))
+        except ChatInteractionError as exc:
+            return _chat_problem_response(request, exc)
+
+    @app.post(
         "/api/v1/chat/interactions/{interaction_id}/artifact-links",
         response_model=None,
     )
@@ -1028,6 +1089,63 @@ def build_async_admitted_chat_interaction_record(
         "retrieval": retrieval_summary(retrieval_package),
         "updated_at": _utc_now(),
     }
+
+
+def refresh_async_chat_interaction_record(
+    record: dict[str, Any],
+    projection: dict[str, Any],
+) -> dict[str, Any]:
+    generation = record.get("generation")
+    if not isinstance(generation, dict):
+        raise ChatInteractionError(
+            409,
+            "ae.async_generation.interaction_invalid",
+            "Chat interaction has no asynchronous generation metadata.",
+        )
+    lifecycle_status = projection["lifecycle_status"]
+    return {
+        **record,
+        "status": {
+            "PENDING": "PENDING",
+            "COMPLETED": "COMPLETED",
+            "BLOCKED": "FAILED",
+        }[lifecycle_status],
+        "cx_generation_id": projection["cx_generation_id"],
+        "cx_status": projection["cx_job_status"],
+        "generation": {**generation, "async_generation": projection},
+        "failure": (
+            {
+                "failure_schema_version": "ae_chat_execution_failure.v1",
+                "error_code": (
+                    projection["error"]["error_code"]
+                    if projection["error"] is not None
+                    else "cx.async_generation.blocked"
+                ),
+                "failed_stage": "cx_async_generation",
+                "retryable": projection["retryable"],
+                "raw_error_detail_included": False,
+            }
+            if lifecycle_status == "BLOCKED"
+            else None
+        ),
+        "updated_at": _utc_now(),
+    }
+
+
+def _async_projection_from_record(record: Mapping[str, Any]) -> dict[str, Any]:
+    generation = record.get("generation")
+    projection = (
+        generation.get("async_generation")
+        if isinstance(generation, Mapping)
+        else None
+    )
+    if not isinstance(projection, Mapping):
+        raise ChatInteractionError(
+            409,
+            "ae.async_generation.interaction_invalid",
+            "Chat interaction is not bound to asynchronous generation.",
+        )
+    return dict(projection)
 
 
 def build_failed_chat_interaction_record(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 
 import pytest
 
@@ -10,6 +11,7 @@ from nex_ae_api.async_generation import (
     SYNCHRONOUS,
     AeAsyncGenerationError,
     build_async_generation_projection,
+    refresh_async_generation_projection,
     resolve_execution_strategy,
     validate_async_generation_projection,
 )
@@ -37,6 +39,47 @@ def _job(status: str = "QUEUED") -> dict:
 
 def _admission(status: str = "QUEUED") -> dict:
     return {"admission_status": "ENQUEUED", "job": _job(status), "generation": None}
+
+
+def _handoff(status: str = "PENDING") -> dict:
+    job_status = {"PENDING": "RUNNING", "READY": "SUCCEEDED", "BLOCKED": "FAILED"}[
+        status
+    ]
+    job = _job(job_status)
+    job["attempt_count"] = 1
+    if status == "BLOCKED":
+        job["error"] = {
+            "error_code": "cx.failed",
+            "retryable": True,
+            "dead_lettered": False,
+        }
+    generation = None
+    content = None
+    if status == "READY":
+        text = "Owner answer."
+        encoded = text.encode()
+        generation = {"cx_generation_id": "generation-1", "status": "COMPLETED"}
+        content = {
+            "cx_generation_id": "generation-1",
+            "content_type": "text/plain",
+            "content": text,
+            "content_sha256": hashlib.sha256(encoded).hexdigest(),
+            "size_bytes": len(encoded),
+            "owner_scope_enforced": True,
+        }
+    return {
+        "handoff_schema_version": "cx_generation_handoff.v1",
+        "handoff_status": status,
+        "next_action": {
+            "PENDING": "POLL_GENERATION_JOB",
+            "READY": "PRESENT_GENERATION_TO_OWNER",
+            "BLOCKED": "RETRY_OR_REPAIR_GENERATION",
+        }[status],
+        "job": job,
+        "generation": generation,
+        "content": content,
+        "owner_scope_enforced": True,
+    }
 
 
 @pytest.mark.parametrize(
@@ -190,6 +233,113 @@ def test_validate_projection_returns_detached_copy() -> None:
 
     normalized["links"]["generation"] = "/api/v1/changed"
     assert projection["links"]["generation"] != normalized["links"]["generation"]
+
+
+@pytest.mark.parametrize(
+    ("handoff_status", "lifecycle", "action", "has_content"),
+    [
+        ("PENDING", "PENDING", "POLL_GENERATION_HANDOFF", False),
+        ("READY", "COMPLETED", "PRESENT_GENERATION_TO_OWNER", True),
+        ("BLOCKED", "BLOCKED", "RETRY_OR_REVIEW_GENERATION", False),
+    ],
+)
+def test_refresh_projection_maps_valid_handoff(
+    handoff_status: str, lifecycle: str, action: str, has_content: bool
+) -> None:
+    current = build_async_generation_projection(_admission())
+
+    projection, result = refresh_async_generation_projection(
+        current, _handoff(handoff_status)
+    )
+
+    assert projection["lifecycle_status"] == lifecycle
+    assert projection["next_action"] == action
+    assert projection["handoff_status"] == handoff_status
+    assert result["handoff_status"] == handoff_status
+    assert (result["content"] is not None) is has_content
+    assert "content" not in projection
+
+
+def test_refresh_projection_rejects_lineage_mismatch() -> None:
+    current = build_async_generation_projection(_admission())
+    handoff = _handoff()
+    handoff["job"]["job_id"] = "other-job"
+
+    with pytest.raises(AeAsyncGenerationError):
+        refresh_async_generation_projection(current, handoff)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda value: value.update(extra=True),
+        lambda value: value.update(handoff_schema_version="old"),
+        lambda value: value.update(handoff_status="UNKNOWN"),
+        lambda value: value.update(next_action="UNKNOWN"),
+        lambda value: value.update(owner_scope_enforced=False),
+        lambda value: value.update(job=[]),
+        lambda value: value.update(content={"content": "leak"}),
+    ],
+)
+def test_refresh_projection_rejects_invalid_handoff_shape(mutation) -> None:
+    current = build_async_generation_projection(_admission())
+    handoff = _handoff()
+    mutation(handoff)
+
+    with pytest.raises(AeAsyncGenerationError):
+        refresh_async_generation_projection(current, handoff)
+
+
+def test_refresh_projection_rejects_non_mapping_handoff() -> None:
+    current = build_async_generation_projection(_admission())
+    with pytest.raises(AeAsyncGenerationError):
+        refresh_async_generation_projection(current, [])  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda value: value.update(generation=None),
+        lambda value: value["generation"].update(cx_generation_id="other"),
+        lambda value: value["generation"].update(status="RUNNING"),
+        lambda value: value.update(content=None),
+        lambda value: value["content"].update(cx_generation_id="other"),
+        lambda value: value["content"].update(owner_scope_enforced=False),
+        lambda value: value["content"].update(content=1),
+        lambda value: value["content"].update(content_type=""),
+        lambda value: value["content"].update(content_sha256="bad"),
+        lambda value: value["content"].update(size_bytes=True),
+        lambda value: value["content"].update(size_bytes=-1),
+        lambda value: value["content"].update(size_bytes=999),
+    ],
+)
+def test_refresh_projection_rejects_invalid_ready_payload(mutation) -> None:
+    current = build_async_generation_projection(_admission())
+    handoff = _handoff("READY")
+    mutation(handoff)
+
+    with pytest.raises(AeAsyncGenerationError):
+        refresh_async_generation_projection(current, handoff)
+
+
+def test_projection_rejects_unknown_handoff_status() -> None:
+    projection = build_async_generation_projection(_admission())
+    projection["handoff_status"] = "UNKNOWN"
+    with pytest.raises(AeAsyncGenerationError):
+        validate_async_generation_projection(projection)
+
+
+def test_refresh_rejects_inconsistent_job_and_handoff_status() -> None:
+    current = build_async_generation_projection(_admission())
+    handoff = _handoff("PENDING")
+    handoff["job"]["status"] = "FAILED"
+    handoff["job"]["error"] = {
+        "error_code": "cx.failed",
+        "retryable": True,
+        "dead_lettered": False,
+    }
+    with pytest.raises(AeAsyncGenerationError):
+        refresh_async_generation_projection(current, handoff)
 
 
 def test_error_string_is_detail() -> None:

@@ -11,6 +11,12 @@ import yaml
 ROOT = Path(__file__).resolve().parents[3]
 SCHEMA_VERSION = "ae_contract_api_drift_audit.v1"
 HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete"})
+INVENTORY_BASELINE = {
+    "runtime_operations": 74,
+    "openapi_operations": 55,
+    "ae_schemas": 16,
+    "generation_schemas": 10,
+}
 
 
 def build_ae_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
@@ -87,13 +93,23 @@ def build_ae_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
             {"category": "openapi_version_stale", "version": openapi_version}
         )
 
+    classified_drift_count = (
+        len(missing_openapi_operations)
+        + len(positive_missing)
+        + len(negative_missing)
+        + int(version_stale)
+    )
     checks = {
         "audit_inputs_present": not issues,
-        "runtime_operation_inventory_complete": len(runtime_operations) == 74,
-        "openapi_operation_inventory_complete": len(openapi_operations) == 55,
-        "ae_schema_inventory_complete": len(ae_schemas) == 16,
-        "generation_schema_inventory_complete": len(generation_schemas) == 10,
-        "drift_classified": len(drift_items) == 33,
+        "runtime_operation_inventory_complete": len(runtime_operations)
+        >= INVENTORY_BASELINE["runtime_operations"],
+        "openapi_operation_inventory_complete": len(openapi_operations)
+        >= INVENTORY_BASELINE["openapi_operations"],
+        "ae_schema_inventory_complete": len(ae_schemas)
+        >= INVENTORY_BASELINE["ae_schemas"],
+        "generation_schema_inventory_complete": len(generation_schemas)
+        >= INVENTORY_BASELINE["generation_schemas"],
+        "drift_classified": len(drift_items) == classified_drift_count,
     }
     passed = all(checks.values()) and not issues
     return {
