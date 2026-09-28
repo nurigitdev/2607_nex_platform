@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from nex_ae_api.chat import ChatInteractionStore, register_chat_routes
 from nex_ae_api.prompts import seed_ae_prompt_registry
+from nex_ae_api.workspace import WorkspaceStateStore
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
 from nex_runtime.prompts import PromptRegistryStore
 
@@ -201,6 +202,48 @@ def test_blocked_refresh_persists_safe_failure() -> None:
     assert failure["error_code"] == "cx.async_generation.failed"
     assert failure["retryable"] is True
     assert failure["raw_error_detail_included"] is False
+
+
+def test_workspace_async_admission_and_refresh_append_safe_activity() -> None:
+    client, _, asynchronous = _client()
+    workspace_store = WorkspaceStateStore()
+    workspace = workspace_store.create_workspace(
+        payload={
+            "workspace_id": "workspace-async-refresh",
+            "tenant_id": "local-tenant",
+            "owner_user_id": "local-user",
+        },
+        request_id="request-workspace",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    )
+    client.app.state.ae_workspace_store = workspace_store
+    admitted = client.post(
+        "/api/v1/chat/interactions",
+        json={
+            "interaction_id": "workspace-async-1",
+            "workspace_id": workspace["workspace_id"],
+            "user_message": "private workspace question",
+            "generation": {"execution_strategy": "ASYNCHRONOUS"},
+        },
+        headers=_headers(),
+    )
+    asynchronous.job_status = "RUNNING"
+    refreshed = client.post(
+        "/api/v1/chat/interactions/workspace-async-1/refresh",
+        headers=_headers(),
+    )
+
+    assert admitted.status_code == 202
+    assert refreshed.status_code == 200
+    activities = workspace_store.list_activities(workspace["workspace_id"])
+    assert [activity["activity_type"] for activity in activities] == [
+        "workspace.created",
+        "chat.interaction.started",
+        "chat.async.admitted",
+        "chat.async.refreshed",
+    ]
+    assert activities[-1]["metadata"]["async_job_status"] == "RUNNING"
+    assert "private workspace question" not in str(activities)
 
 
 def test_refresh_rejects_missing_and_synchronous_interactions() -> None:

@@ -7,6 +7,7 @@ from nex_ae_api.workspace import WorkspaceStateStore
 from nex_ae_api.workspace_chat_orchestration import (
     WorkspaceChatOrchestrationError,
     append_workspace_chat_activity,
+    append_persisted_workspace_chat_activity,
     bind_workspace_chat_request,
     idempotent_chat_record,
 )
@@ -250,3 +251,95 @@ def test_activity_append_is_metadata_only_and_handles_legacy_and_missing() -> No
             trace_id=TRACE_ID,
         )
     assert exc.value.error_code == "ae.workspace_not_found"
+
+
+def test_persisted_async_activity_projects_only_safe_runtime_metadata() -> None:
+    store = workspace_store()
+    record = {
+        "interaction_id": "interaction-async",
+        "workspace_id": WORKSPACE_ID,
+        "status": "PENDING",
+        "cx_status": "RUNNING",
+        "generation": {
+            "async_generation": {
+                "lifecycle_status": "PENDING",
+                "cx_job_status": "RUNNING",
+                "handoff_status": None,
+                "attempt_count": 1,
+                "retryable": True,
+                "private_content": "do not persist",
+            },
+            "private_response": "do not persist",
+        },
+    }
+
+    activity = append_persisted_workspace_chat_activity(
+        record,
+        workspace_store=store,
+        activity_type="chat.async.refreshed",
+        request_id="request-async",
+        trace_id=TRACE_ID,
+    )
+
+    assert activity["metadata"] == {
+        "interaction_id": "interaction-async",
+        "status": "PENDING",
+        "cx_status": "RUNNING",
+        "async_lifecycle_status": "PENDING",
+        "async_job_status": "RUNNING",
+        "handoff_status": None,
+        "attempt_count": 1,
+        "retryable": True,
+        "private_content_included": False,
+    }
+    assert "do not persist" not in str(activity)
+    assert append_persisted_workspace_chat_activity(
+        {**record, "workspace_id": None},
+        workspace_store=None,
+        activity_type="chat.async.refreshed",
+        request_id="request-unbound",
+        trace_id=TRACE_ID,
+    ) is None
+
+
+def test_persisted_async_activity_normalizes_store_failures() -> None:
+    record = {
+        "interaction_id": "interaction-async",
+        "workspace_id": WORKSPACE_ID,
+        "status": "FAILED",
+    }
+    with pytest.raises(WorkspaceChatOrchestrationError) as unavailable:
+        append_persisted_workspace_chat_activity(
+            record,
+            workspace_store=None,
+            activity_type="chat.async.cancelled",
+            request_id="request-none",
+            trace_id=TRACE_ID,
+        )
+    assert unavailable.value.status_code == 503
+
+    class RepositoryFailure:
+        def append_activity_record(self, activity):
+            raise WorkspaceRepositoryError("ae.workspace_conflict", "Conflict.")
+
+    with pytest.raises(WorkspaceChatOrchestrationError) as repository:
+        append_persisted_workspace_chat_activity(
+            record,
+            workspace_store=RepositoryFailure(),
+            activity_type="chat.async.cancelled",
+            request_id="request-repository",
+            trace_id=TRACE_ID,
+        )
+    assert repository.value.status_code == 409
+
+    empty_store = workspace_store()
+    empty_store.workspaces.clear()
+    with pytest.raises(WorkspaceChatOrchestrationError) as missing:
+        append_persisted_workspace_chat_activity(
+            record,
+            workspace_store=empty_store,
+            activity_type="chat.async.cancelled",
+            request_id="request-missing",
+            trace_id=TRACE_ID,
+        )
+    assert missing.value.status_code == 404

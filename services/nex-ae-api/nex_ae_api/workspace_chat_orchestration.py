@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
-from nex_ae_api.workspace import build_workspace_activity
+from nex_ae_api.workspace import WorkspaceError, build_workspace_activity
 from nex_ae_api.workspace_persistence import WorkspaceRepositoryError
 
 
@@ -167,6 +167,73 @@ def append_workspace_chat_activity(
             404,
             "ae.workspace_not_found",
             f"Workspace was not found: {binding.workspace['workspace_id']}",
+        )
+    return saved
+
+
+def append_persisted_workspace_chat_activity(
+    record: dict[str, Any],
+    *,
+    workspace_store: Any | None,
+    activity_type: str,
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any] | None:
+    workspace_id = _optional_text(record.get("workspace_id"))
+    if workspace_id is None:
+        return None
+    if workspace_store is None:
+        raise WorkspaceChatOrchestrationError(
+            503,
+            "ae.workspace_store_unavailable",
+            "AE workspace store is unavailable for workspace activity.",
+            True,
+        )
+    generation = record.get("generation")
+    generation = generation if isinstance(generation, dict) else {}
+    async_generation = generation.get("async_generation")
+    async_generation = (
+        async_generation if isinstance(async_generation, dict) else {}
+    )
+    activity = build_workspace_activity(
+        workspace_id=workspace_id,
+        activity_type=activity_type,
+        request_id=request_id,
+        trace_id=trace_id,
+        summary=f"Asynchronous chat interaction {record.get('status', 'updated').lower()}.",
+        metadata={
+            "interaction_id": record.get("interaction_id"),
+            "status": record.get("status"),
+            "cx_status": record.get("cx_status"),
+            "async_lifecycle_status": async_generation.get("lifecycle_status"),
+            "async_job_status": async_generation.get("cx_job_status"),
+            "handoff_status": async_generation.get("handoff_status"),
+            "attempt_count": async_generation.get("attempt_count"),
+            "retryable": async_generation.get("retryable") is True,
+            "private_content_included": False,
+        },
+    )
+    try:
+        saved = workspace_store.append_activity_record(activity)
+    except WorkspaceRepositoryError as exc:
+        raise WorkspaceChatOrchestrationError(
+            503 if exc.retryable else 409,
+            exc.error_code,
+            exc.detail,
+            exc.retryable,
+        ) from exc
+    except WorkspaceError as exc:
+        raise WorkspaceChatOrchestrationError(
+            exc.status_code,
+            exc.error_code,
+            exc.detail,
+            exc.retryable,
+        ) from exc
+    if saved is None:
+        raise WorkspaceChatOrchestrationError(
+            404,
+            "ae.workspace_not_found",
+            f"Workspace was not found: {workspace_id}",
         )
     return saved
 

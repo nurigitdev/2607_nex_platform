@@ -11,7 +11,7 @@ from nex_runtime import (
 )
 
 
-WORKSPACE_CHAT_OBSERVABILITY_SCHEMA_VERSION = "ae_workspace_chat_observability.v2"
+WORKSPACE_CHAT_OBSERVABILITY_SCHEMA_VERSION = "ae_workspace_chat_observability.v3"
 WORKSPACE_CHAT_STATE_EVENT = "ae.workspace_chat.state_changed"
 
 
@@ -26,6 +26,8 @@ def observe_workspace_chat_state(
     failure = _mapping(record.get("failure"))
     retrieval = _mapping(record.get("retrieval"))
     generation = _mapping(record.get("generation"))
+    async_generation = _mapping(generation.get("async_generation"))
+    retry_lineage = _mapping(generation.get("retry_lineage"))
     policy = _mapping(generation.get("policy"))
     runtime_policy = _mapping(policy.get("runtime_policy_snapshot"))
     intent = _mapping(runtime_policy.get("intent_decision"))
@@ -70,6 +72,32 @@ def observe_workspace_chat_state(
             "generation_policy_package_hash": _optional(
                 policy_package.get("client_package_hash")
             ),
+            "execution_strategy": _optional(
+                async_generation.get("execution_strategy")
+            ),
+            "async_lifecycle_status": _optional(
+                async_generation.get("lifecycle_status")
+            ),
+            "async_admission_status": _optional(
+                async_generation.get("admission_status")
+            ),
+            "async_job_status": _optional(
+                async_generation.get("cx_job_status")
+            ),
+            "handoff_status": _optional(
+                async_generation.get("handoff_status")
+            ),
+            "attempt_count": _optional_int(
+                async_generation.get("attempt_count")
+            ),
+            "max_attempts": _optional_int(
+                async_generation.get("max_attempts")
+            ),
+            "async_retryable": async_generation.get("retryable") is True,
+            "async_error_code": _optional(
+                _mapping(async_generation.get("error")).get("error_code")
+            ),
+            "retry_lineage_present": bool(retry_lineage),
             "prompt_content_included": False,
             "response_content_included": False,
             "owner_identity_included": False,
@@ -78,7 +106,12 @@ def observe_workspace_chat_state(
         event_id=str(
             uuid5(
                 NAMESPACE_URL,
-                f"ae-workspace-chat-state:{interaction_id}:{status}",
+                "ae-workspace-chat-state:"
+                f"{interaction_id}:{status}:"
+                f"{_optional(async_generation.get('cx_job_status'))}:"
+                f"{_optional(async_generation.get('handoff_status'))}:"
+                f"{_optional_int(async_generation.get('attempt_count'))}:"
+                f"{bool(retry_lineage)}",
             )
         ),
     )
@@ -100,3 +133,7 @@ def _optional(value: object) -> str | None:
         return None
     normalized = value.strip()
     return normalized or None
+
+
+def _optional_int(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None

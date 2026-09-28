@@ -77,6 +77,7 @@ from nex_ae_api.workspace_chat_orchestration import (
     WorkspaceChatBinding,
     WorkspaceChatOrchestrationError,
     append_workspace_chat_activity,
+    append_persisted_workspace_chat_activity,
     bind_workspace_chat_request,
     idempotent_chat_record,
 )
@@ -545,6 +546,14 @@ def register_chat_routes(
                     )
                 )
                 observe_workspace_chat_state(emitter, saved_async_record)
+                append_workspace_chat_activity(
+                    binding,
+                    workspace_store=workspace_store,
+                    activity_type="chat.async.admitted",
+                    status=saved_async_record["status"],
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
                 return JSONResponse(
                     status_code=202,
                     content=jsonable_encoder(saved_async_record),
@@ -777,6 +786,15 @@ def register_chat_routes(
                 refresh_async_chat_interaction_record(record, refreshed)
             )
             observe_workspace_chat_state(emitter, saved)
+            append_persisted_workspace_chat_activity(
+                saved,
+                workspace_store=getattr(
+                    request.app.state, "ae_workspace_store", None
+                ),
+                activity_type="chat.async.refreshed",
+                request_id=request_id,
+                trace_id=trace_id,
+            )
             return {
                 "refresh_schema_version": "ae_async_chat_refresh.v1",
                 "interaction": saved,
@@ -795,6 +813,16 @@ def register_chat_routes(
             )
         except AeAsyncGenerationError as exc:
             return _chat_problem_response(request, _policy_error_to_chat(exc))
+        except WorkspaceChatOrchestrationError as exc:
+            return _chat_problem_response(
+                request,
+                ChatInteractionError(
+                    exc.status_code,
+                    exc.error_code,
+                    exc.detail,
+                    exc.retryable,
+                ),
+            )
         except ChatInteractionError as exc:
             return _chat_problem_response(request, exc)
 
@@ -843,6 +871,15 @@ def register_chat_routes(
                 refresh_async_chat_interaction_record(record, refreshed)
             )
             observe_workspace_chat_state(emitter, saved)
+            append_persisted_workspace_chat_activity(
+                saved,
+                workspace_store=getattr(
+                    request.app.state, "ae_workspace_store", None
+                ),
+                activity_type="chat.async.cancelled",
+                request_id=request_id,
+                trace_id=trace_id,
+            )
             return saved
         except CxAsyncGenerationClientError as exc:
             return _chat_problem_response(
@@ -856,6 +893,16 @@ def register_chat_routes(
             )
         except AeAsyncGenerationError as exc:
             return _chat_problem_response(request, _policy_error_to_chat(exc))
+        except WorkspaceChatOrchestrationError as exc:
+            return _chat_problem_response(
+                request,
+                ChatInteractionError(
+                    exc.status_code,
+                    exc.error_code,
+                    exc.detail,
+                    exc.retryable,
+                ),
+            )
         except ChatInteractionError as exc:
             return _chat_problem_response(request, exc)
 
@@ -925,6 +972,7 @@ def register_chat_routes(
                 chat_store=chat_store,
                 parent=parent,
                 projection=projection,
+                event_emitter=emitter,
             )
         except ChatInteractionError as exc:
             return _chat_problem_response(request, exc)
@@ -1302,6 +1350,7 @@ def _attach_async_retry_lineage(
     chat_store: Any,
     parent: Mapping[str, Any],
     projection: Mapping[str, Any],
+    event_emitter: OperationalEventEmitter | None = None,
 ) -> object:
     if isinstance(response, JSONResponse):
         if response.status_code >= 400:
@@ -1326,6 +1375,8 @@ def _attach_async_retry_lineage(
     saved = chat_store.save(
         {**record, "generation": {**generation, "retry_lineage": lineage}}
     )
+    if event_emitter is not None:
+        observe_workspace_chat_state(event_emitter, saved)
     if response_status == 200:
         return saved
     return JSONResponse(status_code=response_status, content=jsonable_encoder(saved))

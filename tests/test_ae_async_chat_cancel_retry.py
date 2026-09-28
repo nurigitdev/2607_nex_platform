@@ -12,6 +12,7 @@ from nex_ae_api.chat import (
 )
 from nex_ae_api.cx_async_generation_client import CxAsyncGenerationClientError
 from nex_ae_api.prompts import seed_ae_prompt_registry
+from nex_ae_api.workspace import WorkspaceStateStore
 from nex_runtime import (
     SERVICE_SPECS,
     build_service_app,
@@ -156,6 +157,39 @@ def test_cancel_is_hidden_from_another_owner() -> None:
     assert response.status_code == 404
     assert response.json()["error_code"] == "ae.chat_interaction_not_found"
     assert asynchronous.cancellations == []
+
+
+def test_workspace_async_cancel_appends_safe_activity() -> None:
+    client, _, _ = _client()
+    workspace_store = WorkspaceStateStore()
+    workspace = workspace_store.create_workspace(
+        payload={
+            "workspace_id": "workspace-async-cancel",
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+        },
+        request_id="request-workspace",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    )
+    client.app.state.ae_workspace_store = workspace_store
+    request_payload = {
+        **_payload("workspace-cancel-1"),
+        "workspace_id": workspace["workspace_id"],
+    }
+    admitted = client.post(
+        "/api/v1/chat/interactions", json=request_payload, headers=_headers()
+    )
+    cancelled = client.post(
+        "/api/v1/chat/interactions/workspace-cancel-1/cancel",
+        headers=_headers(),
+    )
+
+    assert admitted.status_code == 202
+    assert cancelled.status_code == 200
+    activities = workspace_store.list_activities(workspace["workspace_id"])
+    assert activities[-1]["activity_type"] == "chat.async.cancelled"
+    assert activities[-1]["metadata"]["async_job_status"] == "CANCELLED"
+    assert "same private question" not in str(activities)
 
 
 def test_retry_requires_matching_input_and_new_interaction_then_preserves_lineage() -> None:
