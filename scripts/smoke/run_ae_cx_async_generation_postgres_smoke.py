@@ -28,6 +28,13 @@ for path in (
     sys.path.insert(0, str(path))
 
 from nex_ae_api.chat import SqlAlchemyChatInteractionStore, register_chat_routes  # noqa: E402
+from nex_ae_api.generated_response_lineage import (  # noqa: E402
+    generated_response_lineage_from_record,
+    generated_response_storage_metadata_from_lineage,
+)
+from nex_ae_api.generated_response_storage import (  # noqa: E402
+    LocalGeneratedResponseStorage,
+)
 from nex_ae_api.cx_async_generation_client import (  # noqa: E402
     CxAsyncGenerationClientError,
 )
@@ -213,6 +220,8 @@ def _execute_postgres_smoke(  # pragma: no cover - protected PostgreSQL evidence
     with tempfile.TemporaryDirectory(prefix="nex-cx-s104-") as temp_dir:
         request_store = FileSystemCxPrivateTextStore(Path(temp_dir) / "requests")
         output_store = FileSystemCxPrivateTextStore(Path(temp_dir) / "outputs")
+        response_storage_root = Path(temp_dir) / "ae-responses"
+        response_storage = LocalGeneratedResponseStorage(response_storage_root)
         generation_repository = SqlAlchemyGenerationRuntimeRepository(
             cx_runtime.api_session_factory,
             source_kind="s104-postgres",
@@ -255,6 +264,7 @@ def _execute_postgres_smoke(  # pragma: no cover - protected PostgreSQL evidence
                         service_id="nex-ae-api",
                         store=ae_event_store,
                     ),
+                    generated_response_storage=response_storage,
                 )
                 with TestClient(ae_app) as ae_client:
                     headers = _ae_headers(
@@ -296,6 +306,19 @@ def _execute_postgres_smoke(  # pragma: no cover - protected PostgreSQL evidence
                         headers=headers,
                     )
                     refresh_body = refresh.json()
+                    owner_response = ae_client.get(
+                        f"/api/v1/chat/interactions/{interaction_id}/response",
+                        headers=headers,
+                    )
+                    other_response = ae_client.get(
+                        f"/api/v1/chat/interactions/{interaction_id}/response",
+                        headers=_ae_headers(
+                            tenant_id,
+                            other_owner_id,
+                            trace_id=trace_id,
+                            request_id=request_id,
+                        ),
+                    )
                     other_ae = ae_client.get(
                         f"/api/v1/chat/interactions/{interaction_id}",
                         headers=_ae_headers(
@@ -388,12 +411,33 @@ def _execute_postgres_smoke(  # pragma: no cover - protected PostgreSQL evidence
                 restarted_job = SqlAlchemyJobQueue(
                     build_session_factory(cx_restart_engine)
                 ).get_job(str(job_id))
+                restarted_lineage = (
+                    generated_response_lineage_from_record(restarted_chat)
+                    if restarted_chat is not None
+                    else None
+                )
+                restarted_content = (
+                    LocalGeneratedResponseStorage(response_storage_root).load(
+                        generated_response_storage_metadata_from_lineage(
+                            restarted_lineage
+                        )
+                    )
+                    if restarted_lineage is not None
+                    else None
+                )
             finally:
                 ae_restart_engine.dispose()
                 cx_restart_engine.dispose()
 
             persisted_summary = json.dumps(
                 generation_summary, ensure_ascii=False, sort_keys=True
+            )
+            owner_response_body = owner_response.json()
+            response_files = list(response_storage_root.rglob("*.txt"))
+            persisted_lineage = (
+                restarted_chat.get("generation", {}).get("generated_response", {})
+                if restarted_chat is not None
+                else {}
             )
             checks.update(
                 {
@@ -411,16 +455,28 @@ def _execute_postgres_smoke(  # pragma: no cover - protected PostgreSQL evidence
                     "ae_refresh_completed": refresh.status_code == 200
                     and completed.get("status") == "COMPLETED"
                     and result.get("handoff_status") == "READY",
-                    "content_transient_and_verified": result.get("content")
-                    == PRIVATE_OUTPUT
-                    and refresh_body.get("content_persisted_by_ae") is False
-                    and PRIVATE_OUTPUT not in persisted_summary,
+                    "content_persisted_privately_and_verified": (
+                        result.get("content") == PRIVATE_OUTPUT
+                        and refresh_body.get("content_persisted_by_ae") is True
+                        and owner_response.status_code == 200
+                        and owner_response_body.get("content") == PRIVATE_OUTPUT
+                        and len(response_files) == 1
+                        and response_files[0].stat().st_mode & 0o777 == 0o600
+                    ),
+                    "response_metadata_only_in_postgres": (
+                        PRIVATE_OUTPUT not in persisted_summary
+                        and "ae://chat-responses/" not in persisted_summary
+                        and persisted_lineage.get("raw_content_included") is False
+                        and persisted_lineage.get("storage_ref_included") is False
+                    ),
                     "ae_restart_read": restarted_chat is not None
-                    and restarted_chat.get("status") == "COMPLETED",
+                    and restarted_chat.get("status") == "COMPLETED"
+                    and restarted_content == PRIVATE_OUTPUT,
                     "cx_restart_read": restarted_job is not None
                     and restarted_job.get("status") == "SUCCEEDED",
                     "owner_isolation_enforced": other_ae.status_code == 404
-                    and other_cx.status_code == 404,
+                    and other_cx.status_code == 404
+                    and other_response.status_code == 404,
                     "ae_events_persisted": row_counts["ae_events"] >= 3,
                 }
             )

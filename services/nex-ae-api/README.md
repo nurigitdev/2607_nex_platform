@@ -1148,3 +1148,7 @@ Artifact library management:
   schemas, rejects raw-content and storage-ref leaks, requires durable AE
   persistence for READY refreshes, and exposes the exact-owner response route
   through AE OpenAPI `1.5.0`.
+- Slice 1070 runs the complete asynchronous handoff against actual
+  `nex_ae_test` and `nex_cx_test`, persists private content to a mode-`0600`
+  local file, verifies restart recovery and exact-owner reads, and removes all
+  scoped database rows after the probe.
