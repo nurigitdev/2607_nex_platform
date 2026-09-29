@@ -67,6 +67,9 @@ Model profile defaults:
   The snapshot is in-memory, process-local, and read-only. It reports configured
   capability rows plus success/failure counters and last safe failure metadata;
   it does not expose provider URLs, API keys, or raw provider payloads.
+- Public provider-profile responses expose model identity, precision, runtime
+  engine, selection, and status only. Internal model roots, model paths, and
+  health environment names remain private to MO runtime composition.
 - Direct vLLM HTTP APIs do not expose loaded parameter dtype. BF16 evidence for
   embedding/reranker providers must be collected by inspecting vLLM launch args
   or logs and confirming `--dtype bfloat16`.

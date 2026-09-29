@@ -23,14 +23,6 @@ class DriftProbe:
 
 DRIFT_PROBES = (
     DriftProbe(
-        "embedding_model_name_case",
-        "services/nex-mo/nex_mo/providers.py",
-        'model_name="Qwen3-embedding-4B"',
-        "MEDIUM",
-        "canonical_model_identity",
-        "1106",
-    ),
-    DriftProbe(
         "embedding_live_mock_alias",
         "services/nex-mo/nex_mo/providers.py",
         'alias="mock-embedding-default"',
@@ -53,14 +45,6 @@ DRIFT_PROBES = (
         "LOW",
         "deprecated_configuration_surface",
         "S112",
-    ),
-    DriftProbe(
-        "internal_model_path_projection",
-        "services/nex-mo/nex_mo/providers.py",
-        '"model_path": self.model_path',
-        "HIGH",
-        "route_privacy",
-        "1106",
     ),
     DriftProbe(
         "provider_mode_not_validated",
@@ -104,7 +88,7 @@ def build_mo_catalog_config_drift_audit(
         },
     }
     checks = {
-        "drift_inventory_complete": len(findings) == 6,
+        "drift_inventory_complete": len(findings) == 4,
         "drift_evidence_present": not evidence_issues,
         "required_capabilities_selected": set(current_defaults["selected_profiles"])
         == {"embedding", "reranking", "generation"},
@@ -137,16 +121,6 @@ def build_mo_catalog_config_drift_audit(
         "current_defaults": current_defaults,
         "findings": findings,
         "ordered_remediation": [
-            {
-                "priority": "P0",
-                "action": "remove model_path from public provider profile projection",
-                "slice": "1106",
-            },
-            {
-                "priority": "P1",
-                "action": "canonicalize Qwen3-Embedding-4B identity",
-                "slice": "1106",
-            },
             {
                 "priority": "P1",
                 "action": "separate stable capability aliases from mock deployment names",

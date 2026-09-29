@@ -54,7 +54,7 @@ def test_dgx_preflight_passes_when_expected_models_are_observed() -> None:
     assert [check["status"] for check in evidence["checks"]] == ["PASS", "PASS", "PASS"]
     assert [call["method"] for call in calls] == ["POST", "POST", "GET"]
     assert calls[0]["json"] == {
-        "model": "Qwen3-embedding-4B",
+        "model": "Qwen3-Embedding-4B",
         "input": ["nex live provider preflight"],
     }
     assert calls[1]["json"] == {

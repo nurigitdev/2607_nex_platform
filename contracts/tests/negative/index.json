@@ -66,6 +66,11 @@
       "schema": "schemas/service/nex_mo/model_profile.v1.schema.json"
     },
     {
+      "name": "mo_model_profile_model_path_leak",
+      "path": "tests/negative/generation/mo_model_profile.model_path_leak.json",
+      "schema": "schemas/service/nex_mo/model_profile.v1.schema.json"
+    },
+    {
       "name": "mo_compatible_embedding_request_raw_model_path",
       "path": "tests/negative/provider/mo_compatible_embedding_request.raw_model_path.json",
       "schema": "schemas/service/nex_mo/compatible_embedding_request.v1.schema.json"

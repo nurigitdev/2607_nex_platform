@@ -103,7 +103,7 @@ class ModelProfile:
     live_health_env: str | None = None
 
     def to_wire(self) -> dict[str, Any]:
-        payload: dict[str, Any] = {
+        return {
             "profile_name": self.profile_name,
             "provider_capability": self.provider_capability,
             "alias": self.alias,
@@ -111,15 +111,11 @@ class ModelProfile:
             "model_name": self.model_name,
             "precision": self.precision,
             "runtime_engine": self.runtime_engine,
-            "model_path": self.model_path,
             "selected": self.selected,
             "status": self.status,
             "candidate_role": self.candidate_role,
             "selection_reason": self.selection_reason,
         }
-        if self.live_health_env is not None:
-            payload["live_health_env"] = self.live_health_env
-        return payload
 
 
 @dataclass(frozen=True)
@@ -188,7 +184,7 @@ def build_model_profile_catalog(environ: dict[str, str] | None = None) -> tuple[
             provider_capability="embedding",
             alias="mock-embedding-default",
             provider_mode=provider_mode,
-            model_name="Qwen3-embedding-4B",
+            model_name="Qwen3-Embedding-4B",
             precision="BF16",
             runtime_engine=live_runtime_engine,
             model_path=env.get(
@@ -604,7 +600,6 @@ def register_mock_provider_routes(app: FastAPI) -> None:
             "meta": {
                 "count": len(profiles),
                 "provider_mode": os.getenv("NEX_MO_PROVIDER_MODE", DEFAULT_PROVIDER_MODE),
-                "model_root": os.getenv("NEX_MO_MODEL_ROOT", DEFAULT_MODEL_ROOT),
             },
         }
 

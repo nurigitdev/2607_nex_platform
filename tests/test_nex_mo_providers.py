@@ -64,6 +64,7 @@ def test_model_profile_catalog_uses_qwen_defaults() -> None:
         "qwen3_6_27b_nvfp4",
         "k_ai_generation_candidate",
     ]
+    assert profiles[0].model_name == "Qwen3-Embedding-4B"
     assert profiles[0].model_path == "/data/nex-platform/models/qwen3-embedding-4b-bf16"
     assert profiles[1].model_name == "Qwen3-Reranker-4B"
     assert profiles[1].precision == "BF16"
@@ -140,7 +141,7 @@ def test_model_profile_to_wire_has_no_secret_fields() -> None:
         provider_capability="embedding",
         alias="mock-embedding-default",
         provider_mode="mock",
-        model_name="Qwen3-embedding-4B",
+        model_name="Qwen3-Embedding-4B",
         precision="BF16",
         runtime_engine="local_mock",
         model_path="/data/nex-platform/models/qwen3-embedding-4b-bf16",
@@ -151,8 +152,8 @@ def test_model_profile_to_wire_has_no_secret_fields() -> None:
         live_health_env="NEX_MO_LIVE_EMBEDDING_HEALTH_URL",
     ).to_wire()
 
-    assert payload["model_path"].endswith("qwen3-embedding-4b-bf16")
-    assert payload["live_health_env"] == "NEX_MO_LIVE_EMBEDDING_HEALTH_URL"
+    assert "model_path" not in payload
+    assert "live_health_env" not in payload
     assert "api_key" not in payload
     assert "provider_url" not in payload
 
@@ -235,6 +236,9 @@ def test_provider_profiles_endpoint_lists_selected_profiles() -> None:
     assert payload["meta"]["provider_mode"] == "mock"
     assert payload["data"][0]["profile_name"] == "qwen3_embedding_4b_bf16"
     assert payload["data"][0]["selected"] is True
+    assert "model_root" not in payload["meta"]
+    assert all("model_path" not in item for item in payload["data"])
+    assert all("live_health_env" not in item for item in payload["data"])
 
 
 def test_provider_profiles_endpoint_filters_by_capability() -> None:

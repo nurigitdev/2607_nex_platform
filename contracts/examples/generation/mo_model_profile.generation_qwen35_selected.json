@@ -6,10 +6,8 @@
   "model_name": "Qwen3.5-4B",
   "precision": "BF16",
   "runtime_engine": "vllm",
-  "model_path": "/data/nex-platform/models/qwen3.5-4b-bf16",
   "selected": true,
   "status": "CONFIGURED",
   "candidate_role": "primary",
-  "selection_reason": "Current DGX-Spark vLLM generation target.",
-  "live_health_env": "NEX_MO_LIVE_VLLM_MODELS_URL"
+  "selection_reason": "Current DGX-Spark vLLM generation target."
 }
