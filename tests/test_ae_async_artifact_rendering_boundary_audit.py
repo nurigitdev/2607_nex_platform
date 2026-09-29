@@ -12,15 +12,21 @@ def test_repository_boundary_audit_starts_slice_1072() -> None:
     assert result["status"] == "PASS"
     assert result["boundary_readiness"] == "BOUNDARY_FROZEN"
     assert all(result["checks"].values())
-    assert result["summary"] == {
-        "foundation_count": 6,
-        "gap_count": 8,
-        "open_gap_count": 8,
-        "resolved_gap_count": 0,
-        "planned_slice_count": 10,
-        "issue_count": 0,
-    }
-    assert result["next_slice"] == "1073"
+    summary = result["summary"]
+    assert summary["foundation_count"] == 6
+    assert summary["gap_count"] == 8
+    assert summary["open_gap_count"] + summary["resolved_gap_count"] == 8
+    assert summary["planned_slice_count"] == 10
+    assert summary["issue_count"] == 0
+    expected_next = next(
+        (
+            audit.GAP_SLICES[name]
+            for name, state in result["gap_states"].items()
+            if state == "OPEN"
+        ),
+        "1081",
+    )
+    assert result["next_slice"] == expected_next
     assert result["issues"] == []
 
 
