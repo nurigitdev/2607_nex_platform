@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX AE API
-  version: 1.6.0
+  version: 1.7.0
 tags:
   - name: Platform
   - name: Auth
@@ -16,6 +16,7 @@ tags:
   - name: Analytics
   - name: Prompts
   - name: Runtime Policy
+  - name: Operations
 paths:
   /health:
     get:
@@ -1936,6 +1937,22 @@ paths:
           description: Proposed automation recommendations for the user.
         "401":
           description: Service claim is missing or invalid.
+  /admin/v1/operations/mvp-acceptance:
+    get:
+      operationId: getAeMvpAcceptanceOperationsProjection
+      tags:
+        - Operations
+      responses:
+        "200":
+          description: Server-selected AE service MVP acceptance projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeMvpAcceptanceOperationsProjection"
+        "401":
+          description: Service or user claim is missing or invalid.
+        "403":
+          description: User claim does not include the admin role.
 components:
   parameters:
     AeAsyncRenderJobId:
@@ -1945,6 +1962,148 @@ components:
       schema:
         type: string
   schemas:
+    AeMvpAcceptanceGateResult:
+      type: object
+      additionalProperties: false
+      required:
+        - gate_id
+        - severity
+        - status
+        - reason_codes
+      properties:
+        gate_id:
+          type: string
+          enum:
+            - ae_requirement_closures
+            - contract_validation
+            - unit_regression
+            - statement_coverage
+            - branch_coverage
+            - postgres_smoke
+            - live_grounded_generation
+            - privacy_failure_runbooks
+            - operations_handoff
+        severity:
+          const: BLOCKING
+        status:
+          type: string
+          enum:
+            - PASS
+            - BLOCKED
+        reason_codes:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+    AeMvpAcceptanceBlocker:
+      type: object
+      additionalProperties: false
+      required:
+        - gate_id
+        - reason_codes
+      properties:
+        gate_id:
+          type: string
+        reason_codes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+    AeMvpAcceptanceOperationsProjection:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/mvp_acceptance.v1.schema.json
+      additionalProperties: false
+      required:
+        - report_schema_version
+        - acceptance_id
+        - service_id
+        - web_service_id
+        - acceptance_scope
+        - evaluated_at
+        - status
+        - operations_status
+        - gates
+        - blockers
+        - summary
+        - advisory_deferrals
+        - raw_evidence_included
+        - request_trace_id
+        - evidence_source_status
+        - server_selected
+      properties:
+        report_schema_version:
+          const: ae_mvp_acceptance_report.v1
+        acceptance_id:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        service_id:
+          const: nex-ae-api
+        web_service_id:
+          const: nex-ae-web
+        acceptance_scope:
+          const: nex_ae_service_mvp
+        evaluated_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum:
+            - ACCEPTED
+            - BLOCKED
+        operations_status:
+          type: string
+          enum:
+            - READY_FOR_OPERATIONS
+            - BLOCKED
+        gates:
+          type: array
+          minItems: 9
+          maxItems: 9
+          items:
+            $ref: "#/components/schemas/AeMvpAcceptanceGateResult"
+        blockers:
+          type: array
+          maxItems: 9
+          items:
+            $ref: "#/components/schemas/AeMvpAcceptanceBlocker"
+        summary:
+          type: object
+          additionalProperties: false
+          required:
+            - gate_count
+            - passed_gate_count
+            - blocked_gate_count
+          properties:
+            gate_count:
+              const: 9
+            passed_gate_count:
+              type: integer
+              minimum: 0
+              maximum: 9
+            blocked_gate_count:
+              type: integer
+              minimum: 0
+              maximum: 9
+        advisory_deferrals:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+        raw_evidence_included:
+          const: false
+        request_trace_id:
+          type:
+            - string
+            - "null"
+          pattern: "^[0-9a-f]{32}$"
+        evidence_source_status:
+          type: string
+          enum:
+            - COLLECTED
+            - UNAVAILABLE
+        server_selected:
+          const: true
     AeWorkspaceCreateRequest:
       type: object
       additionalProperties: false

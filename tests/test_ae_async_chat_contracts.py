@@ -121,7 +121,7 @@ def test_openapi_exposes_async_chat_lifecycle_contracts() -> None:
     paths = spec["paths"]
     schemas = spec["components"]["schemas"]
 
-    assert spec["info"]["version"] == "1.6.0"
+    assert spec["info"]["version"] == "1.7.0"
     assert "202" in paths["/api/v1/chat/interactions"]["post"]["responses"]
     assert {
         "/api/v1/chat/interactions/{interaction_id}/refresh",

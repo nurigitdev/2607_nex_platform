@@ -217,7 +217,7 @@ def test_openapi_exposes_async_artifact_render_lifecycle_contracts() -> None:
     paths = spec["paths"]
     schemas = spec["components"]["schemas"]
 
-    assert spec["info"]["version"] == "1.6.0"
+    assert spec["info"]["version"] == "1.7.0"
     assert paths["/api/v1/artifacts/{artifact_id}/async-render-jobs"]["post"][
         "operationId"
     ] == "createAeAsyncArtifactRenderJob"

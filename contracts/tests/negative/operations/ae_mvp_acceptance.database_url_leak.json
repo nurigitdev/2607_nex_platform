@@ -1,0 +1,29 @@
+{
+  "report_schema_version": "ae_mvp_acceptance_report.v1",
+  "acceptance_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "service_id": "nex-ae-api",
+  "web_service_id": "nex-ae-web",
+  "acceptance_scope": "nex_ae_service_mvp",
+  "evaluated_at": "2026-09-29T06:00:00Z",
+  "status": "BLOCKED",
+  "operations_status": "BLOCKED",
+  "gates": [
+    {"gate_id": "ae_requirement_closures", "severity": "BLOCKING", "status": "BLOCKED", "reason_codes": ["evidence_missing"]},
+    {"gate_id": "contract_validation", "severity": "BLOCKING", "status": "BLOCKED", "reason_codes": ["evidence_missing"]},
+    {"gate_id": "unit_regression", "severity": "BLOCKING", "status": "BLOCKED", "reason_codes": ["evidence_missing"]},
+    {"gate_id": "statement_coverage", "severity": "BLOCKING", "status": "BLOCKED", "reason_codes": ["evidence_missing"]},
+    {"gate_id": "branch_coverage", "severity": "BLOCKING", "status": "BLOCKED", "reason_codes": ["evidence_missing"]},
+    {"gate_id": "postgres_smoke", "severity": "BLOCKING", "status": "BLOCKED", "reason_codes": ["evidence_missing"]},
+    {"gate_id": "live_grounded_generation", "severity": "BLOCKING", "status": "BLOCKED", "reason_codes": ["evidence_missing"]},
+    {"gate_id": "privacy_failure_runbooks", "severity": "BLOCKING", "status": "BLOCKED", "reason_codes": ["evidence_missing"]},
+    {"gate_id": "operations_handoff", "severity": "BLOCKING", "status": "BLOCKED", "reason_codes": ["evidence_missing"]}
+  ],
+  "blockers": [],
+  "summary": {"gate_count": 9, "passed_gate_count": 0, "blocked_gate_count": 9},
+  "advisory_deferrals": [],
+  "raw_evidence_included": false,
+  "request_trace_id": null,
+  "evidence_source_status": "UNAVAILABLE",
+  "server_selected": true,
+  "database_url": "postgresql://private"
+}
