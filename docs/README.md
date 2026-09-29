@@ -1203,6 +1203,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1097`](slices/1097_ae_mvp_acceptance_contract_hardening.md) | `S110-006` Freeze strict AE MVP acceptance JSON Schema, privacy fixtures, and OpenAPI 1.7.0. |
 | [`Slice 1098`](slices/1098_ae_mvp_operations_handoff.md) | `S110-007` Seal and bind a redacted AE-to-AG operations handoff without direct AE database access. |
 | [`Slice 1099`](slices/1099_ae_mvp_acceptance_postgres_live_smoke.md) | `S110-008` Prove AE MVP PostgreSQL cleanup, live DGX generation, verified browser response, and sealed operations handoff evidence. |
+| [`Slice 1100`](slices/1100_ae_mvp_acceptance_privacy_runbooks.md) | `S110-009` Verify privacy-safe failure runbooks and fail-closed acceptance mutations. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
