@@ -422,6 +422,7 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_ae_web_grounded_generation_boundary_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_grounded_generation_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s109_ae_web_grounded_generation_experience_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_mvp_acceptance_postgres_live_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary
