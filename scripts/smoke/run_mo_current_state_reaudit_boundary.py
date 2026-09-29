@@ -83,7 +83,7 @@ TOKEN_REQUIREMENTS = (
     ),
     TokenRequirement(
         "remote_telemetry",
-        "services/nex-mo/nex_mo/remote_provider.py",
+        "services/nex-mo/nex_mo/provider_telemetry.py",
         "class RemoteProviderTelemetryBucket",
     ),
     TokenRequirement(

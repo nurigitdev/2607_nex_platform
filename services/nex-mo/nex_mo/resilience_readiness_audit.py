@@ -41,14 +41,14 @@ CONTROL_PROBES = (
     ),
     ControlProbe(
         "latency_and_failure_telemetry",
-        "services/nex-mo/nex_mo/remote_provider.py",
+        "services/nex-mo/nex_mo/provider_telemetry.py",
         "class RemoteProviderTelemetryBucket",
         "IMPLEMENTED",
     ),
     ControlProbe(
         "telemetry_concurrency_lock",
-        "services/nex-mo/nex_mo/remote_provider.py",
-        "_TELEMETRY_LOCK = Lock()",
+        "services/nex-mo/nex_mo/provider_telemetry.py",
+        "_TELEMETRY_LOCK = DEFAULT_TELEMETRY_STORE._lock",
         "IMPLEMENTED",
     ),
     ControlProbe(
@@ -59,8 +59,8 @@ CONTROL_PROBES = (
     ),
     ControlProbe(
         "process_local_telemetry",
-        "services/nex-mo/nex_mo/remote_provider.py",
-        "_TELEMETRY_BUCKETS: dict[str, RemoteProviderTelemetryBucket] = {}",
+        "services/nex-mo/nex_mo/provider_telemetry.py",
+        "_TELEMETRY_BUCKETS = DEFAULT_TELEMETRY_STORE._buckets",
         "GAP",
     ),
     ControlProbe(

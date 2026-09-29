@@ -48,7 +48,7 @@ REFACTORING_BOUNDARIES = (
     ),
     RefactoringBoundary(
         "runtime_telemetry",
-        "services/nex-mo/nex_mo/remote_provider.py",
+        "services/nex-mo/nex_mo/provider_telemetry.py",
         "class RemoteProviderTelemetryBucket",
         "nex_mo.provider_telemetry",
         "1117",

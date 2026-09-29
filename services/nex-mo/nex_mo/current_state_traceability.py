@@ -61,7 +61,11 @@ CAPABILITY_SPECS = (
         "provider-aware readiness is not yet composed into /ready",
         (
             EvidenceRef("requirement", "docs/30_service_specific_requirement_partition.md", "MO-FR-003"),
-            EvidenceRef("implementation", "services/nex-mo/nex_mo/remote_provider.py", "class RemoteProviderTelemetryBucket"),
+            EvidenceRef(
+                "implementation",
+                "services/nex-mo/nex_mo/provider_telemetry.py",
+                "class RemoteProviderTelemetryBucket",
+            ),
             EvidenceRef("implementation", "services/nex-mo/nex_mo/providers.py", '"/api/v1/provider-telemetry"'),
             EvidenceRef("test", "tests/test_nex_mo_providers.py", "test_provider_telemetry_endpoint"),
             EvidenceRef("operations", "services/nex-mo/README.md", "GET /api/v1/provider-telemetry"),

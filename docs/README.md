@@ -1220,6 +1220,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1114`](slices/1114_mo_provider_catalog_configuration_extraction.md) | `S112-003` Extract model catalog and environment resolution while preserving compatibility imports. |
 | [`Slice 1115`](slices/1115_mo_provider_response_normalization_extraction.md) | `S112-004` Separate provider response normalization from remote HTTP execution with compatibility exports. |
 | [`Slice 1116`](slices/1116_mo_provider_http_transport_extraction.md) | `S112-005` Extract injectable single-attempt HTTP transport and failure classification, then run the Checkpoint Gate. |
+| [`Slice 1117`](slices/1117_mo_provider_telemetry_adapter_extraction.md) | `S112-006` Move provider telemetry behind an explicit store boundary while preserving process-local behavior. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

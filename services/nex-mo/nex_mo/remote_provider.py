@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from threading import Lock
-from time import perf_counter
 from typing import Any
 
 import httpx
@@ -15,6 +11,12 @@ from nex_mo.provider_normalization import (
     normalize_remote_embedding_response,
     normalize_remote_generation_response,
     normalize_remote_rerank_response,
+)
+from nex_mo.provider_telemetry import (
+    RemoteProviderTelemetryBucket,
+    list_provider_telemetry,
+    recorded_provider_call as _recorded_remote_provider_call,
+    reset_provider_telemetry as reset_remote_provider_telemetry,
 )
 from nex_mo.provider_transport import (
     HttpRequester,
@@ -188,109 +190,6 @@ class RemoteProviderPreflightError(Exception):
     def __init__(self, failure_code: str) -> None:
         super().__init__(failure_code)
         self.failure_code = failure_code
-
-
-@dataclass
-class RemoteProviderTelemetryBucket:
-    capability: str
-    endpoint_env: str
-    configured: bool
-    request_shape: str
-    model_name: str
-    model_revision: str
-    deployment_id: str
-    authorization_env: str | None
-    authorization_configured: bool
-    request_count: int = 0
-    success_count: int = 0
-    failure_count: int = 0
-    retryable_failure_count: int = 0
-    degraded_count: int = 0
-    last_outcome: str | None = None
-    last_observed_at: str | None = None
-    last_latency_ms: int | None = None
-    last_status_code: int | None = None
-    last_error_code: str | None = None
-    last_failure_kind: str | None = None
-    last_upstream_status_code: int | None = None
-
-    @classmethod
-    def from_config(
-        cls,
-        config: RemoteProviderExecutionConfig,
-    ) -> RemoteProviderTelemetryBucket:
-        return cls(
-            capability=config.capability,
-            endpoint_env=config.endpoint_env,
-            configured=config.configured,
-            request_shape=config.request_shape,
-            model_name=config.model_name,
-            model_revision=config.model_revision,
-            deployment_id=config.deployment_id,
-            authorization_env=config.api_key_env,
-            authorization_configured=bool(config.api_key),
-        )
-
-    def record_success(self, *, latency_ms: int, observed_at: str) -> None:
-        self.request_count += 1
-        self.success_count += 1
-        self.last_outcome = "success"
-        self.last_observed_at = observed_at
-        self.last_latency_ms = latency_ms
-        self.last_status_code = 200
-        self.last_error_code = None
-        self.last_failure_kind = None
-        self.last_upstream_status_code = None
-
-    def record_failure(
-        self,
-        *,
-        route_error: ProviderRouteError,
-        latency_ms: int,
-        observed_at: str,
-    ) -> None:
-        self.request_count += 1
-        self.failure_count += 1
-        if route_error.retryable:
-            self.retryable_failure_count += 1
-        if route_error.degraded:
-            self.degraded_count += 1
-        self.last_outcome = "failure"
-        self.last_observed_at = observed_at
-        self.last_latency_ms = latency_ms
-        self.last_status_code = route_error.status_code
-        self.last_error_code = route_error.error_code
-        self.last_failure_kind = route_error.failure_kind or "provider_route_error"
-        self.last_upstream_status_code = route_error.upstream_status_code
-
-    def to_wire(self) -> dict[str, Any]:
-        return {
-            "capability": self.capability,
-            "endpoint_env": self.endpoint_env,
-            "configured": self.configured,
-            "request_shape": self.request_shape,
-            "model_name": self.model_name,
-            "model_revision": self.model_revision,
-            "deployment_id": self.deployment_id,
-            "authorization_env": self.authorization_env,
-            "authorization_configured": self.authorization_configured,
-            "request_count": self.request_count,
-            "success_count": self.success_count,
-            "failure_count": self.failure_count,
-            "retryable_failure_count": self.retryable_failure_count,
-            "degraded_count": self.degraded_count,
-            "last_outcome": self.last_outcome,
-            "last_observed_at": self.last_observed_at,
-            "last_latency_ms": self.last_latency_ms,
-            "last_status_code": self.last_status_code,
-            "last_error_code": self.last_error_code,
-            "last_failure_kind": self.last_failure_kind,
-            "last_upstream_status_code": self.last_upstream_status_code,
-        }
-
-
-_TELEMETRY_LOCK = Lock()
-_TELEMETRY_BUCKETS: dict[str, RemoteProviderTelemetryBucket] = {}
 
 
 def build_remote_provider_preflight_configs(
@@ -512,30 +411,7 @@ def list_remote_provider_telemetry(
         build_remote_reranker_execution_config(environ),
         build_remote_generation_execution_config(environ),
     ]
-    configured_buckets = {
-        _telemetry_key(config): RemoteProviderTelemetryBucket.from_config(config)
-        for config in configs
-    }
-    with _TELEMETRY_LOCK:
-        buckets = {
-            **configured_buckets,
-            **_TELEMETRY_BUCKETS,
-        }
-        wire_items = [bucket.to_wire() for bucket in buckets.values()]
-
-    if capability is not None:
-        wire_items = [
-            item for item in wire_items if item["capability"] == capability
-        ]
-    return sorted(
-        wire_items,
-        key=lambda item: (str(item["capability"]), str(item["deployment_id"])),
-    )
-
-
-def reset_remote_provider_telemetry() -> None:
-    with _TELEMETRY_LOCK:
-        _TELEMETRY_BUCKETS.clear()
+    return list_provider_telemetry(configs, capability=capability)
 
 
 def execute_remote_embedding_request(
@@ -680,74 +556,6 @@ def validate_preflight_response(
     if config.request_shape == OPENAI_MODELS_SHAPE:
         return _validate_openai_models_response(config.expected_models, payload)
     raise RemoteProviderPreflightError("unsupported_request_shape")
-
-
-def _recorded_remote_provider_call(
-    config: RemoteProviderExecutionConfig,
-    operation: Callable[[], dict[str, Any]],
-) -> dict[str, Any]:
-    started_at = perf_counter()
-    try:
-        result = operation()
-    except ProviderRouteError as exc:
-        _record_remote_provider_failure(
-            config,
-            route_error=exc,
-            latency_ms=_elapsed_ms(started_at),
-        )
-        raise
-    _record_remote_provider_success(config, latency_ms=_elapsed_ms(started_at))
-    return result
-
-
-def _record_remote_provider_success(
-    config: RemoteProviderExecutionConfig,
-    *,
-    latency_ms: int,
-) -> None:
-    with _TELEMETRY_LOCK:
-        _telemetry_bucket(config).record_success(
-            latency_ms=latency_ms,
-            observed_at=_utc_now(),
-        )
-
-
-def _record_remote_provider_failure(
-    config: RemoteProviderExecutionConfig,
-    *,
-    route_error: ProviderRouteError,
-    latency_ms: int,
-) -> None:
-    with _TELEMETRY_LOCK:
-        _telemetry_bucket(config).record_failure(
-            route_error=route_error,
-            latency_ms=latency_ms,
-            observed_at=_utc_now(),
-        )
-
-
-def _telemetry_bucket(
-    config: RemoteProviderExecutionConfig,
-) -> RemoteProviderTelemetryBucket:
-    key = _telemetry_key(config)
-    if key not in _TELEMETRY_BUCKETS:
-        _TELEMETRY_BUCKETS[key] = RemoteProviderTelemetryBucket.from_config(config)
-    return _TELEMETRY_BUCKETS[key]
-
-
-def _telemetry_key(config: RemoteProviderExecutionConfig) -> str:
-    return "|".join(
-        (
-            config.capability,
-            config.request_shape,
-            config.deployment_id,
-            config.model_revision,
-        )
-    )
-
-
-def _elapsed_ms(started_at: float) -> int:
-    return max(0, int(round((perf_counter() - started_at) * 1000)))
 
 
 def expected_models_from_env(
@@ -1330,11 +1138,3 @@ def _failure_code(exc: Exception) -> str:
     if isinstance(exc, httpx.TimeoutException):
         return "timeout"
     return exc.__class__.__name__
-
-
-def _stable_json(payload: dict[str, Any]) -> str:
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
-
-
-def _utc_now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")

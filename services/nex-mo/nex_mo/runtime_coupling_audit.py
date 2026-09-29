@@ -44,6 +44,7 @@ MODULE_BUDGETS = (
         "P1",
         (
             "services/nex-mo/nex_mo/provider_normalization.py",
+            "services/nex-mo/nex_mo/provider_telemetry.py",
             "services/nex-mo/nex_mo/provider_transport.py",
         ),
     ),
@@ -66,8 +67,8 @@ COUPLING_FINDINGS = (
     ),
     CouplingFinding(
         "process_local_telemetry_state",
-        "services/nex-mo/nex_mo/remote_provider.py",
-        "_TELEMETRY_BUCKETS: dict[str, RemoteProviderTelemetryBucket] = {}",
+        "services/nex-mo/nex_mo/provider_telemetry.py",
+        "_TELEMETRY_BUCKETS = DEFAULT_TELEMETRY_STORE._buckets",
         "REFACTOR_REQUIRED",
         "MEDIUM",
     ),
