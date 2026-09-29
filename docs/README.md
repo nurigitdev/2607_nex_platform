@@ -1212,6 +1212,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1106`](slices/1106_mo_route_privacy_refactoring_checkpoint.md) | `S111-005` Remove internal paths and environment names from public MO profiles while retaining runtime configuration. |
 | [`Slice 1107`](slices/1107_mo_model_precision_resource_safety_audit.md) | `S111-006` Separate declared BF16 safety from required DGX loaded-dtype and GPU resource evidence. |
 | [`Slice 1108`](slices/1108_mo_contract_api_drift_audit.md) | `S111-007` Quantify runtime/OpenAPI, request/response schema, security, and negative-fixture drift. |
+| [`Slice 1109`](slices/1109_mo_resilience_telemetry_readiness_audit.md) | `S111-008` Separate implemented timeout/failure telemetry controls from five runtime operations gaps. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
