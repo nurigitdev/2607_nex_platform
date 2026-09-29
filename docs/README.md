@@ -1201,6 +1201,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1095`](slices/1095_ae_mvp_acceptance_evaluator.md) | `S110-004` Evaluate fresh server-derived AE acceptance evidence deterministically and fail closed. |
 | [`Slice 1096`](slices/1096_ae_mvp_acceptance_api.md) | `S110-005` Expose a server-selected, admin-protected, read-only AE MVP acceptance operations API. |
 | [`Slice 1097`](slices/1097_ae_mvp_acceptance_contract_hardening.md) | `S110-006` Freeze strict AE MVP acceptance JSON Schema, privacy fixtures, and OpenAPI 1.7.0. |
+| [`Slice 1098`](slices/1098_ae_mvp_operations_handoff.md) | `S110-007` Seal and bind a redacted AE-to-AG operations handoff without direct AE database access. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
