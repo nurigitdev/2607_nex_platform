@@ -1213,6 +1213,8 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1107`](slices/1107_mo_model_precision_resource_safety_audit.md) | `S111-006` Separate declared BF16 safety from required DGX loaded-dtype and GPU resource evidence. |
 | [`Slice 1108`](slices/1108_mo_contract_api_drift_audit.md) | `S111-007` Quantify runtime/OpenAPI, request/response schema, security, and negative-fixture drift. |
 | [`Slice 1109`](slices/1109_mo_resilience_telemetry_readiness_audit.md) | `S111-008` Separate implemented timeout/failure telemetry controls from five runtime operations gaps. |
+| [`Slice 1110`](slices/1110_mo_protected_dgx_live_reaudit.md) | `S111-009` Prove canonical provider requests, model identity, explicit BF16 process dtype, and protected evidence redaction on DGX. |
+| [`Slice 1111`](slices/1111_s111_mo_current_state_reaudit_closure.md) | `S111-010` Close the MO re-audit with quantified gaps and an ordered S112 runtime-hardening handoff. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

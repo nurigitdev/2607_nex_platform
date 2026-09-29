@@ -49,6 +49,7 @@ mkdir -p "$REPORT_DIR"
 "$PYTHON_BIN" scripts/smoke/run_ag_service_log_retention_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/check_local_live_provider_config.py --summary
 "$PYTHON_BIN" scripts/smoke/run_protected_remote_provider_live_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_dgx_process_dtype_probe.py --summary
 "$PYTHON_BIN" scripts/smoke/run_protected_live_rag_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_protected_live_rag_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_protected_live_rag_score_sample_smoke.py --summary
@@ -433,6 +434,7 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_mo_precision_resource_safety_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_mo_contract_api_drift_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_mo_resilience_telemetry_readiness_audit.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s111_mo_current_state_reaudit_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary

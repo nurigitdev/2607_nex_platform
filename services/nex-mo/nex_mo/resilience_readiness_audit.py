@@ -108,6 +108,7 @@ def build_mo_resilience_telemetry_readiness_audit(
         detail="private payload omitted",
     )
     telemetry = list_remote_provider_telemetry(environ={})
+    telemetry_capabilities = {item["capability"] for item in telemetry}
     serialized_telemetry = json.dumps(telemetry, sort_keys=True)
     decisions = (timeout, throttled, unavailable, invalid_request, malformed)
     checks = {
@@ -120,9 +121,7 @@ def build_mo_resilience_telemetry_readiness_audit(
         "invalid_request_is_not_retryable": (
             invalid_request.retryable is False and invalid_request.degraded is False
         ),
-        "telemetry_capabilities_complete": {
-            item["capability"] for item in telemetry
-        }
+        "telemetry_capabilities_complete": telemetry_capabilities
         == {"embedding", "reranking", "generation"},
         "telemetry_is_privacy_safe": all(
             token not in serialized_telemetry
@@ -174,7 +173,7 @@ def build_mo_resilience_telemetry_readiness_audit(
                 item["status"] == "GAP" for item in controls
             ),
             "failure_decision_count": len(decisions),
-            "telemetry_capability_count": len(telemetry),
+            "telemetry_capability_count": len(telemetry_capabilities),
             "runtime_gap_count": len(runtime_gaps),
             "evidence_issue_count": len(evidence_issues),
         },

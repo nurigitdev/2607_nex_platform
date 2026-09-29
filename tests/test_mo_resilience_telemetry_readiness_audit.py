@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import nex_mo.resilience_readiness_audit as audit
 from nex_mo.resilience_readiness_audit import (
     CONTROL_PROBES,
     ControlProbe,
@@ -67,6 +68,26 @@ def test_probe_inspection_covers_present_and_missing(tmp_path: Path) -> None:
         ControlProbe("missing", "probe.py", "absent", "GAP"),
     )["evidence_present"] is False
     assert len(CONTROL_PROBES) == 7
+
+
+def test_audit_counts_unique_capabilities_when_prior_buckets_remain(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        audit,
+        "list_remote_provider_telemetry",
+        lambda environ: [
+            {"capability": "embedding", "deployment_id": "current"},
+            {"capability": "embedding", "deployment_id": "prior"},
+            {"capability": "reranking", "deployment_id": "current"},
+            {"capability": "generation", "deployment_id": "current"},
+        ],
+    )
+
+    result = build_mo_resilience_telemetry_readiness_audit()
+
+    assert result["status"] == "PASS"
+    assert result["summary"]["telemetry_capability_count"] == 3
 
 
 def test_runner_summary_json_and_failure_paths(monkeypatch, capsys) -> None:
