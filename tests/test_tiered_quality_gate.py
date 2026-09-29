@@ -13,6 +13,8 @@ def _minimal_root(tmp_path: Path) -> Path:
         "tests/test_nex_cx_alpha.py",
         "tests/test_cx_beta.py",
         "tests/test_focused.py",
+        "tests/test_nex_ae_web_static.py",
+        "tests/test_ae_web_runtime_audit.py",
         "tests/test_s97_example_closure.py",
         "scripts/smoke/run_current_smoke.py",
         "services/nex-cx/nex_cx/module.py",
@@ -80,6 +82,28 @@ def test_checkpoint_plan_excludes_historical_closures_and_keeps_full_sources(
     assert "--cov=providers" in pytest_command
     assert "--cov=extra" in pytest_command
     assert plan.commands[-1][-1] == "--summary"
+
+
+def test_ae_web_slice_profile_selects_browser_regression_without_python_service(
+    tmp_path: Path,
+) -> None:
+    root = _minimal_root(tmp_path)
+
+    plan = gate.build_slice_plan(
+        root=root,
+        python_bin="python-test",
+        service="nex-ae-web",
+        coverage_targets=["scripts/smoke/extra.py"],
+    )
+
+    pytest_command = plan.commands[0]
+    assert plan.test_count == 2
+    assert "tests/test_nex_ae_web_static.py" in pytest_command
+    assert "tests/test_ae_web_runtime_audit.py" in pytest_command
+    assert "--cov=extra" in pytest_command
+    assert not any(
+        item.startswith("--cov=services/nex-ae-api") for item in pytest_command
+    )
 
 
 @pytest.mark.parametrize(
@@ -191,9 +215,7 @@ def test_execute_plan_stops_on_failure_and_writes_safe_evidence(
     assert result["exit_code"] == 7
     assert result["duration_seconds"] == 2.5
     persisted = json.loads(
-        (tmp_path / "reports/quality/slice-latest.json").read_text(
-            encoding="utf-8"
-        )
+        (tmp_path / "reports/quality/slice-latest.json").read_text(encoding="utf-8")
     )
     assert persisted == result
     assert "PRIVATE" not in str(persisted)
@@ -225,12 +247,16 @@ def test_execute_plan_success_and_helpers(tmp_path: Path) -> None:
     assert gate._format_threshold(95.0) == "95"
     assert gate._format_threshold(94.5) == "94.5"
     assert gate._plan_payload(plan)["commands"] == [["first"], ["second"]]
-    assert gate._coverage_source_argument(
-        "services/nex-cx/nex_cx/generation.py"
-    ) == "nex_cx.generation"
-    assert gate._coverage_source_argument(
-        "providers/nex-compatible-provider/nex_compatible_provider/app.py"
-    ) == "nex_compatible_provider.app"
+    assert (
+        gate._coverage_source_argument("services/nex-cx/nex_cx/generation.py")
+        == "nex_cx.generation"
+    )
+    assert (
+        gate._coverage_source_argument(
+            "providers/nex-compatible-provider/nex_compatible_provider/app.py"
+        )
+        == "nex_compatible_provider.app"
+    )
     assert gate._coverage_source_argument("services/nex-cx/nex_cx") == (
         "services/nex-cx/nex_cx"
     )
@@ -247,9 +273,7 @@ def test_subprocess_adapter_returns_child_exit_code(
         returncode = 6
 
     def fake_run(command, *, cwd, env, check):
-        observed.update(
-            {"command": command, "cwd": cwd, "env": env, "check": check}
-        )
+        observed.update({"command": command, "cwd": cwd, "env": env, "check": check})
         return Completed()
 
     monkeypatch.setattr(gate.subprocess, "run", fake_run)
@@ -312,9 +336,9 @@ def test_original_full_gate_remains_the_independent_fallback() -> None:
     slice_wrapper = (root / "scripts/quality/run_slice_gate.sh").read_text(
         encoding="utf-8"
     )
-    checkpoint_wrapper = (
-        root / "scripts/quality/run_checkpoint_gate.sh"
-    ).read_text(encoding="utf-8")
+    checkpoint_wrapper = (root / "scripts/quality/run_checkpoint_gate.sh").read_text(
+        encoding="utf-8"
+    )
 
     assert "--cov=services" in full_gate
     assert "--cov=scripts" in full_gate

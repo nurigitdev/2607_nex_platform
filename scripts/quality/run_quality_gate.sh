@@ -417,6 +417,7 @@ node apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary
 "$PYTHON_BIN" scripts/smoke/run_s107_ae_generated_response_lineage_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_async_artifact_render_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s108_ae_async_artifact_rendering_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_web_grounded_generation_boundary_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary

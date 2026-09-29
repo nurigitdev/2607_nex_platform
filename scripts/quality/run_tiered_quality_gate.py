@@ -12,7 +12,6 @@ import sys
 import time
 from typing import Callable, Mapping, Sequence
 
-
 ROOT = Path(__file__).resolve().parents[2]
 FULL_GATE_PATH = "scripts/quality/run_quality_gate.sh"
 DEFAULT_STATEMENT_MIN = 95.0
@@ -40,6 +39,10 @@ SERVICE_PROFILES = {
         test_patterns=("test_nex_ae_*.py", "test_ae_*.py"),
         coverage_targets=("services/nex-ae-api/nex_ae_api",),
     ),
+    "nex-ae-web": ServiceProfile(
+        test_patterns=("test_nex_ae_web_*.py", "test_ae_web_*.py"),
+        coverage_targets=(),
+    ),
     "nex-cx": ServiceProfile(
         test_patterns=("test_nex_cx_*.py", "test_cx_*.py"),
         coverage_targets=("services/nex-cx/nex_cx",),
@@ -62,9 +65,7 @@ SERVICE_PROFILES = {
             "test_compatible_provider_*.py",
             "test_nex_compatible_provider_*.py",
         ),
-        coverage_targets=(
-            "providers/nex-compatible-provider/nex_compatible_provider",
-        ),
+        coverage_targets=("providers/nex-compatible-provider/nex_compatible_provider",),
     ),
 }
 
@@ -369,16 +370,12 @@ def _format_threshold(value: float) -> str:
     return f"{value:g}"
 
 
-def _run_command(
-    command: Sequence[str], root: Path, environ: Mapping[str, str]
-) -> int:
+def _run_command(command: Sequence[str], root: Path, environ: Mapping[str, str]) -> int:
     completed = subprocess.run(command, cwd=root, env=dict(environ), check=False)
     return int(completed.returncode)
 
 
-def _write_evidence(
-    root: Path, tier: str, evidence: Mapping[str, object]
-) -> None:
+def _write_evidence(root: Path, tier: str, evidence: Mapping[str, object]) -> None:
     path = root / "reports" / "quality" / f"{tier}-latest.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -437,8 +434,7 @@ def main(argv: list[str] | None = None) -> int:
                 statement_min=args.statement_min,
                 branch_min=args.branch_min,
                 report_path=(
-                    args.report_path
-                    or "reports/quality/checkpoint.coverage.json"
+                    args.report_path or "reports/quality/checkpoint.coverage.json"
                 ),
             )
     except ValueError as exc:
