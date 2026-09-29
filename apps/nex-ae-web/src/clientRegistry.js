@@ -15,6 +15,10 @@ import {
   createMockGenerationFeedbackClient
 } from "./generationFeedback.js";
 import {
+  createFetchGroundedGenerationClient,
+  createMockGroundedGenerationClient
+} from "./groundedGenerationClient.js";
+import {
   createFetchRepairedResponseReviewClient,
   createMockRepairedResponseReviewClient
 } from "./repairedResponseReviewClient.js";
@@ -67,6 +71,9 @@ export function createAeWebClients({
           generationFeedbackClient: createMockGenerationFeedbackClient({
             responseFactory: responseFactories.generationFeedback
           }),
+          groundedGenerationClient: createMockGroundedGenerationClient({
+            responseFactories: responseFactories.groundedGeneration || {}
+          }),
           repairedResponseReviewClient: createMockRepairedResponseReviewClient({
             projections: responseFactories.repairedResponseReviewProjections || [],
             responseFactory: responseFactories.repairedResponseReview
@@ -82,6 +89,8 @@ export function createAeWebClients({
           retrievalClient: createFetchRetrievalClient(commonFetchOptions),
           generationFeedbackClient:
             createFetchGenerationFeedbackClient(commonFetchOptions),
+          groundedGenerationClient:
+            createFetchGroundedGenerationClient(commonFetchOptions),
           repairedResponseReviewClient:
             createFetchRepairedResponseReviewClient(commonFetchOptions),
           repairedResponseDecisionClient:
@@ -118,6 +127,7 @@ export function buildClientRegistrySummary(registry) {
       document_detail: registry.documentDetailClient.clientMode,
       upload: registry.uploadClient.clientMode,
       retrieval: registry.retrievalClient.clientMode,
+      grounded_generation: registry.groundedGenerationClient.clientMode,
       generation_feedback: registry.generationFeedbackClient.clientMode,
       repaired_response_review: registry.repairedResponseReviewClient.clientMode,
       repaired_response_decision: registry.repairedResponseDecisionClient.clientMode
@@ -153,6 +163,7 @@ function isRegistry(value) {
     value.documentDetailClient &&
     value.uploadClient &&
     value.retrievalClient &&
+    value.groundedGenerationClient &&
     value.generationFeedbackClient &&
     value.repairedResponseReviewClient &&
     value.repairedResponseDecisionClient

@@ -215,6 +215,7 @@ describe("AE Web runtime diagnostics", () => {
     assert.equal(diagnostics.repaired_response_actionable_count, 2);
     assert.equal(diagnostics.repaired_response_failed_count, 1);
     assert.equal(diagnostics.registry.clients.upload, "mock");
+    assert.equal(diagnostics.registry.clients.grounded_generation, "mock");
     assert.equal(diagnostics.auth_boundary.owner_scope_source, "mock-local");
     assert.equal(diagnostics.session_bootstrap.active_client_mode, "mock");
     assert.equal(diagnostics.session_route_guard.guard_status, "mock_preview");
@@ -243,6 +244,7 @@ describe("AE Web runtime diagnostics", () => {
     assert.equal(diagnostics.client_mode, "fetch");
     assert.equal(diagnostics.ae_base_url, "/ae-api");
     assert.equal(diagnostics.fetch_clients_enabled, true);
+    assert.equal(diagnostics.registry.clients.grounded_generation, "fetch");
     assert.equal(diagnostics.operation_count, 0);
     assert.equal(diagnostics.route_guard_status, "unknown");
     assert.equal(diagnostics.metadata.liveNetworkUsed, false);

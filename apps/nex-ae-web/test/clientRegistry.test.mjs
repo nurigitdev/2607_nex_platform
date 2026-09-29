@@ -41,11 +41,13 @@ describe("AE Web client registry", () => {
     assert.equal(registry.documentDetailClient.clientMode, "mock");
     assert.equal(registry.uploadClient.clientMode, "mock");
     assert.equal(registry.retrievalClient.clientMode, "mock");
+    assert.equal(registry.groundedGenerationClient.clientMode, "mock");
     assert.equal(registry.generationFeedbackClient.clientMode, "mock");
     assert.equal(registry.repairedResponseReviewClient.clientMode, "mock");
     assert.equal(registry.repairedResponseDecisionClient.clientMode, "mock");
     assert.equal(summary.clients.artifact, "mock");
     assert.equal(summary.clients.document_detail, "mock");
+    assert.equal(summary.clients.grounded_generation, "mock");
     assert.equal(summary.clients.generation_feedback, "mock");
     assert.equal(summary.clients.repaired_response_review, "mock");
     assert.equal(summary.clients.repaired_response_decision, "mock");
@@ -243,6 +245,7 @@ describe("AE Web client registry", () => {
 
     assert.equal(registry.clientMode, "fetch");
     assert.equal(registry.baseUrl, "https://ae.local");
+    assert.equal(registry.groundedGenerationClient.clientMode, "fetch");
     assert.equal(calls[0].url, "https://ae.local/api/v1/artifacts/artifact-001");
     assert.equal(
       calls[1].url,
@@ -265,6 +268,7 @@ describe("AE Web client registry", () => {
     assert.equal(summary.clients.artifact, "fetch");
     assert.equal(summary.clients.upload, "fetch");
     assert.equal(summary.clients.retrieval, "fetch");
+    assert.equal(summary.clients.grounded_generation, "fetch");
     assert.equal(summary.clients.generation_feedback, "fetch");
     assert.equal(summary.clients.repaired_response_review, "fetch");
     assert.equal(summary.clients.repaired_response_decision, "fetch");

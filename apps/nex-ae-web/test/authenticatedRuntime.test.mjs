@@ -116,6 +116,7 @@ describe("AE Web authenticated runtime composition", () => {
     assert.equal(summary.auth_boundary.owner_scope_source, "mock-local");
     assert.equal(summary.fetch_mode_allowed, false);
     assert.equal(summary.registry.clients.document_detail, "mock");
+    assert.equal(summary.registry.clients.grounded_generation, "mock");
     assert.doesNotMatch(
       JSON.stringify(summary),
       /service_token|api_key|database_url|provider_url|\/data\/nex-platform/
@@ -143,6 +144,7 @@ describe("AE Web authenticated runtime composition", () => {
     assert.equal(summary.session_state.status, "authenticated");
     assert.equal(summary.session_client.client_mode, "fetch");
     assert.equal(summary.registry.clients.document_detail, "fetch");
+    assert.equal(summary.registry.clients.grounded_generation, "fetch");
     assert.equal(session.status, "authenticated");
     assert.equal(detail.documentId, "doc-001");
     assert.deepEqual(
