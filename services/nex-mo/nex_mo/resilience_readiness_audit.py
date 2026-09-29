@@ -35,7 +35,7 @@ CONTROL_PROBES = (
     ),
     ControlProbe(
         "failure_taxonomy",
-        "services/nex-mo/nex_mo/remote_provider.py",
+        "services/nex-mo/nex_mo/provider_transport.py",
         "def classify_remote_provider_exception",
         "IMPLEMENTED",
     ),

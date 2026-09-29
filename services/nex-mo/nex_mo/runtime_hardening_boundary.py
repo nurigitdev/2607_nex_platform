@@ -41,8 +41,8 @@ REFACTORING_BOUNDARIES = (
     ),
     RefactoringBoundary(
         "http_transport",
-        "services/nex-mo/nex_mo/remote_provider.py",
-        "def _execute_remote_json_request",
+        "services/nex-mo/nex_mo/provider_transport.py",
+        "def execute_remote_json_request",
         "nex_mo.provider_transport",
         "1116",
     ),

@@ -42,6 +42,10 @@ MODULE_BUDGETS = (
         "services/nex-mo/nex_mo/remote_provider.py",
         1_200,
         "P1",
+        (
+            "services/nex-mo/nex_mo/provider_normalization.py",
+            "services/nex-mo/nex_mo/provider_transport.py",
+        ),
     ),
 )
 
@@ -83,7 +87,7 @@ COUPLING_FINDINGS = (
     ),
     CouplingFinding(
         "central_failure_taxonomy",
-        "services/nex-mo/nex_mo/remote_provider.py",
+        "services/nex-mo/nex_mo/provider_transport.py",
         "def classify_remote_provider_exception",
         "GOOD_BOUNDARY",
         "LOW",
