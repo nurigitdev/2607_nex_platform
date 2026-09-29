@@ -913,5 +913,17 @@ Slice 0441 starts S45:
   state, UX wiring, and Playwright/PostgreSQL evidence remain connected to the
   AE-owned lifecycle API and AG's read-only lifecycle projection.
 
+Slice 1090 adds protected grounded-generation browser evidence:
+
+- Safe document and workspace bootstraps bind the browser to persisted smoke
+  identities without exposing database or provider configuration.
+- Browser-generated UUID interaction IDs replace local demo identifiers.
+- The opt-in Playwright/PostgreSQL smoke verifies login, admission, progress,
+  refresh, owner-verified response, and citation quality through same-origin AE
+  API routes while the CX worker uses the live embedding, reranking, and
+  generation providers.
+- The default test path remains deterministic and network-free; protected live
+  execution requires explicit activation and test database targets.
+
 The browser shell is static and mock-first. Backend service calls are limited to
 authenticated fetch-mode clients and readiness checks.

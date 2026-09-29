@@ -81,6 +81,7 @@ import {
 import {
   documentDetailRoute
 } from "./documentDetailClient.js";
+import { loadDocumentBootstrap } from "./documentBootstrap.js";
 import {
   buildDocumentScope,
   buildRetrievalRequest,
@@ -94,6 +95,7 @@ import {
   buildRuntimeDiagnostics,
   buildRuntimeDiagnosticsSummary
 } from "./runtimeDiagnostics.js";
+import { createInteractionId } from "./runtimeIdentifiers.js";
 import {
   buildSessionRouteGuard,
   buildSessionRouteGuardSummary,
@@ -159,6 +161,7 @@ import {
   buildUploadHandoffPayload,
   buildUploadSurfaceDraftFromFileMetadata
 } from "./uploadSurface.js";
+import { loadWorkspaceBootstrap } from "./workspaceBootstrap.js";
 
 const services = [
   ["nex-oa", 8101],
@@ -191,14 +194,17 @@ const defaultUploadFileMetadata = buildUploadFileMetadata({
   sourceSha256: "d12261539d27dcab69f873a5e1a30587919b8ce4802782151f1bc2ba5390b610"
 });
 
+const documentBootstrap = loadDocumentBootstrap();
+const workspaceBootstrap = loadWorkspaceBootstrap();
+
 const workspaceState = {
-  workspaceId: "workspace-local",
-  chatDocumentId: "chat-doc-local",
+  workspaceId: workspaceBootstrap?.workspaceId || "workspace-local",
+  chatDocumentId: workspaceBootstrap?.chatDocumentId || "chat-doc-local",
   interactionId: "interaction-local",
   cxGenerationId: "cx-gen-local",
   retrievalPackageId: "cx-ret-local",
   artifactHandoffId: "handoff-local",
-  selectedDocumentId: "doc-001",
+  selectedDocumentId: documentBootstrap?.documents[0]?.documentId || "doc-001",
   sessionBootstrap: null,
   authenticatedRuntime: null,
   runtimeConfig: null,
@@ -262,7 +268,7 @@ const workspaceState = {
     },
     actions: ["preview", "view_sources", "view_lineage", "download_md"]
   },
-  documents: [
+  documents: documentBootstrap?.documents || [
     {
       documentId: "doc-001",
       filename: "29_mvp_srs.md",
@@ -2353,11 +2359,7 @@ function generationLifecycleFeedback(state) {
 }
 
 function nextGenerationInteractionId() {
-  workspaceState.interactionSequence += 1;
-  return `interaction-web-${String(workspaceState.interactionSequence).padStart(
-    4,
-    "0"
-  )}`;
+  return createInteractionId();
 }
 
 async function submitArtifactPreviewAction(target) {

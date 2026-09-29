@@ -828,6 +828,17 @@ def _cleanup(
                 ),
                 {"identifier": retrieval_package_id},
             )
+        if document_id is not None:
+            connection.execute(
+                text(
+                    "DELETE FROM cx_retrieval_packages "
+                    "WHERE retrieval_package_id IN ("
+                    "SELECT retrieval_package_id "
+                    "FROM cx_retrieval_evidence_items "
+                    "WHERE content_object_id = :identifier)"
+                ),
+                {"identifier": document_id},
+            )
         if vector_index_id is not None:
             connection.execute(
                 text("DELETE FROM cx_vectors WHERE vector_index_id = :identifier"),

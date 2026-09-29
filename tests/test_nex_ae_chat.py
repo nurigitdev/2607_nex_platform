@@ -414,6 +414,7 @@ def test_build_cx_generation_payload_uses_user_message_hash() -> None:
 
     assert payload["alias"] == "general-llm-default"
     assert payload["messages"] == [{"role": "user", "content": "summarize this document"}]
+    assert payload["reasoning_mode"] == "disabled"
     assert len(payload["metadata"]["user_message_hash"]) == 64
 
 

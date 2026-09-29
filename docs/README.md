@@ -1193,6 +1193,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1087`](slices/1087_ae_web_generation_recovery_ux.md) | `S109-006` Add race-safe cancel, recovery inspection, and retry controls to AE Web. |
 | [`Slice 1088`](slices/1088_ae_web_verified_grounded_response.md) | `S109-007` Gate generated-answer presentation and artifact handoff on AE retrieval, owner, citation, and repair projections. |
 | [`Slice 1089`](slices/1089_ae_web_grounded_generation_experience_hardening.md) | `S109-008` Harden grounded-generation diagnostics, accessibility, browser contracts, and Full Gate coverage. |
+| [`Slice 1090`](slices/1090_ae_web_grounded_generation_playwright_postgres_smoke.md) | `S109-009` Prove the authenticated AE Web grounded-generation lifecycle on actual AE/CX PostgreSQL and all live DGX providers. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

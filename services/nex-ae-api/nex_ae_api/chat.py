@@ -1451,6 +1451,7 @@ def build_cx_generation_payload(
         "temperature": resolved_parameters.get(
             "temperature", generation.get("temperature", 0.0)
         ),
+        "reasoning_mode": generation.get("reasoning_mode", "disabled"),
         "metadata": {
             "ae_interaction_id": interaction_id,
             "chat_document_id": chat_document_id,

@@ -37,7 +37,8 @@ export function buildGroundedGenerationRequest({
     user_message: requiredText(userMessage, "userMessage"),
     generation: {
       execution_strategy: "ASYNCHRONOUS",
-      execution_mode: grounded ? "GROUNDED_ANSWER" : "GENERAL_ANSWER"
+      execution_mode: grounded ? "GROUNDED_ANSWER" : "GENERAL_ANSWER",
+      reasoning_mode: "disabled"
     },
     retrieval: {
       enabled: Boolean(grounded),

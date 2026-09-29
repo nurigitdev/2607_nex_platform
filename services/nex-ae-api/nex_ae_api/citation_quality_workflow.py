@@ -118,6 +118,7 @@ def build_grounded_response_quality_contract(
         "grounding_required": grounding_required,
         "retrieval_package_id": _optional_text(
             request_metadata.get("retrieval_package_id")
+            or cx_record.get("retrieval_package_id")
         ),
         "retrieval_package_hash": _optional_sha256(
             request_metadata.get("retrieval_package_hash")

@@ -172,6 +172,17 @@ def test_quality_contract_preserves_sparse_legacy_mapping() -> None:
     assert not_required["citation_status"] == "NOT_REQUIRED"
 
 
+def test_quality_contract_reads_promoted_persisted_retrieval_package_id() -> None:
+    record = cx_generation_record()
+    retrieval_package_id = record["request_metadata"].pop("retrieval_package_id")
+    record["retrieval_package_id"] = retrieval_package_id
+
+    quality = build_grounded_response_quality_contract(record)
+
+    assert quality["retrieval_package_id"] == "retrieval-001"
+    assert quality["retrieval_package_hash"] == "c" * 64
+
+
 @pytest.mark.parametrize(
     ("path", "value"),
     [

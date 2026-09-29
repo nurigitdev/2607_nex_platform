@@ -20,8 +20,8 @@ def test_repository_web_runtime_audit_classifies_current_gaps() -> None:
     assert result["summary"]["source_file_count"] >= 43
     assert result["summary"]["test_file_count"] >= 55
     assert result["summary"]["main_js_line_count"] >= 3_220
-    assert result["summary"]["playwright_script_count"] == 6
-    assert result["summary"]["playwright_test_count"] == 6
+    assert result["summary"]["playwright_script_count"] == 7
+    assert result["summary"]["playwright_test_count"] == 7
     assert result["summary"]["accessibility_script_count"] == 1
     assert result["summary"]["localization_file_count"] == 0
     assert result["summary"]["hardcoded_korean_line_count"] > 0
@@ -61,7 +61,7 @@ def test_summary_line_and_runner_main_paths(monkeypatch, capsys) -> None:
     assert runner.summary_line(passing) == (
         "ae_web_runtime_audit=pass readiness=GAPS_CONFIRMED "
         f"source={summary['source_file_count']} tests={summary['test_file_count']} "
-        f"main_lines={summary['main_js_line_count']} playwright=6/6 "
+        f"main_lines={summary['main_js_line_count']} playwright=7/7 "
         "refactors=4 issues=0"
     )
     assert "readiness=UNKNOWN" in runner.summary_line({"status": "FAIL"})

@@ -77,7 +77,8 @@ def build_ae_web_runtime_audit(root: Path = ROOT) -> dict[str, Any]:
         "source_inventory_complete": len(source_files) >= 42,
         "test_inventory_complete": len(test_files) >= 54,
         "playwright_inventory_complete": (
-            len(playwright_scripts) == 6 and len(playwright_tests) == 6
+            len(playwright_scripts) >= 6
+            and len(playwright_scripts) == len(playwright_tests)
         ),
         "accessibility_inventory_classified": (
             len(accessibility_scripts) == 1 and len(accessibility_tests) == 1
