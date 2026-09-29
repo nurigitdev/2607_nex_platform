@@ -130,6 +130,9 @@ def test_protected_remote_provider_live_smoke_executes_three_providers_and_redac
         assert kwargs["json"]["messages"] == [
             {"role": "user", "content": smoke.GENERATION_PROMPT}
         ]
+        assert kwargs["json"]["chat_template_kwargs"] == {
+            "enable_thinking": False,
+        }
         return httpx.Response(
             200,
             json={
@@ -267,6 +270,76 @@ def test_protected_remote_provider_live_smoke_reports_assertion_failure(monkeypa
     assert evidence["issues"] == [
         {"stage": "assertions", "error_code": "AssertionError"}
     ]
+
+
+def test_protected_remote_provider_check_helpers_reject_missing_observations(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        smoke.remote_provider,
+        "execute_remote_embedding_request",
+        lambda *args, **kwargs: {"data": []},
+    )
+    with pytest.raises(AssertionError, match="embedding response"):
+        smoke.run_embedding_check(live_env(), requester=None)
+
+    monkeypatch.setattr(
+        smoke.remote_provider,
+        "execute_remote_rerank_request",
+        lambda *args, **kwargs: {"results": []},
+    )
+    with pytest.raises(AssertionError, match="no results"):
+        smoke.run_reranker_check(live_env(), requester=None)
+
+    monkeypatch.setattr(
+        smoke.remote_provider,
+        "execute_remote_rerank_request",
+        lambda *args, **kwargs: {"results": [{"score": 0.1}]},
+    )
+    with pytest.raises(AssertionError, match="index missing"):
+        smoke.run_reranker_check(live_env(), requester=None)
+
+    monkeypatch.setattr(
+        smoke.remote_provider,
+        "execute_remote_generation_request",
+        lambda *args, **kwargs: {"output": {"text": ""}},
+    )
+    with pytest.raises(AssertionError, match="output text missing"):
+        smoke.run_generation_check(live_env(), requester=None)
+
+
+def test_protected_remote_provider_evidence_assertion_detects_mismatch() -> None:
+    evidence = {
+        "providers": {
+            "embedding": {
+                "observed": {"embedding_count": 2, "embedding_dimensions": 4}
+            },
+            "reranking": {"observed": {"result_count": 1}},
+            "generation": {"observed": {"output_length": 2}},
+        },
+        "telemetry": [
+            {"capability": "embedding", "success_count": 1},
+            {"capability": "reranking", "success_count": 1},
+            {"capability": "generation", "success_count": 0},
+        ],
+    }
+
+    with pytest.raises(AssertionError, match="evidence mismatch"):
+        smoke.assert_provider_evidence(evidence)
+
+
+def test_protected_remote_provider_safe_issue_omits_absent_optional_fields() -> None:
+    issue = smoke.safe_issue(
+        "generation",
+        smoke.ProviderRouteError(
+            status_code=400,
+            error_code="mo.request_invalid",
+            detail="safe detail",
+        ),
+    )
+
+    assert "failure_kind" not in issue
+    assert "upstream_status_code" not in issue
 
 
 def test_protected_remote_provider_live_smoke_summary_lines() -> None:

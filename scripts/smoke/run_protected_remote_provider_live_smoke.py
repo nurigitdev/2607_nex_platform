@@ -307,6 +307,7 @@ def run_generation_check(
             "prompt": GENERATION_PROMPT,
             "temperature": 0.0,
             "max_output_tokens": 32,
+            "reasoning_mode": "disabled",
         },
         request_id=REQUEST_ID,
         trace_id=TRACE_ID,
@@ -573,5 +574,5 @@ def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
