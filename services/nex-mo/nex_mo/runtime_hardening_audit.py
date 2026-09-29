@@ -33,7 +33,7 @@ MODULE_RULES = (
     ModuleRule(
         "provider_projection",
         "services/nex-mo/nex_mo/provider_projection.py",
-        100,
+        180,
         ("import httpx", "sqlalchemy"),
     ),
     ModuleRule(

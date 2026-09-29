@@ -1226,6 +1226,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1120`](slices/1120_mo_provider_operations_compatibility_evidence.md) | `S112-009` Compose protected profile, provider-request, BF16, and architecture compatibility evidence. |
 | [`Slice 1121`](slices/1121_s112_mo_provider_runtime_operations_closure.md) | `S112-010` Close MO provider runtime hardening and hand off provider-aware readiness to S113. |
 | [`Slice 1122`](slices/1122_mo_provider_readiness_route_health_boundary.md) | `S113-001` Freeze provider-aware readiness, route-health, cache, privacy, and persistence boundaries. |
+| [`Slice 1123`](slices/1123_mo_provider_readiness_domain_projection.md) | `S113-002` Add immutable route-health and readiness models with privacy-safe projections. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
