@@ -427,6 +427,7 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_s110_ae_mvp_acceptance_operations_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_mo_current_state_reaudit_boundary.py --summary
 "$PYTHON_BIN" scripts/smoke/run_mo_capability_traceability_inventory.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_catalog_config_drift_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary
