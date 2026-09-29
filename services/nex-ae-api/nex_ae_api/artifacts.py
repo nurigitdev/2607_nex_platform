@@ -57,6 +57,10 @@ from nex_ae_api.async_artifact_rendering import (
     get_async_artifact_render_projection,
     validate_async_artifact_response_lineage,
 )
+from nex_ae_api.async_artifact_render_recovery import (
+    inspect_async_artifact_render_recovery,
+    reconcile_async_artifact_render,
+)
 from nex_ae_api.route_auth import (
     AeFacadeRouteAuthContext,
     authorize_ae_facade_route_request,
@@ -4069,6 +4073,84 @@ def register_artifact_handoff_routes(
                     status_code=404,
                 )
             return cancel_async_artifact_render(
+                render_job_id=render_job_id,
+                artifact_store=artifact_record_store,
+                job_queue=artifact_retention_job_queue,
+            )
+        except AeAsyncArtifactRenderError as exc:
+            return _async_artifact_render_problem_response(request, exc)
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.get(
+        "/api/v1/async-artifact-render-jobs/{render_job_id}/recovery",
+        response_model=None,
+    )
+    def get_async_artifact_render_recovery(
+        render_job_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
+        try:
+            render_job = artifact_record_store.get_render_job(render_job_id)
+            record = (
+                _visible_artifact_record(
+                    artifact_record_store,
+                    render_job["artifact_id"],
+                    auth_context,
+                )
+                if render_job is not None
+                else None
+            )
+            if record is None:
+                raise AeAsyncArtifactRenderError(
+                    error_code="ae.async_artifact_render.not_found",
+                    detail="Asynchronous artifact render job was not found.",
+                    status_code=404,
+                )
+            return inspect_async_artifact_render_recovery(
+                render_job_id=render_job_id,
+                artifact_store=artifact_record_store,
+                job_queue=artifact_retention_job_queue,
+            )
+        except AeAsyncArtifactRenderError as exc:
+            return _async_artifact_render_problem_response(request, exc)
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.post(
+        "/api/v1/async-artifact-render-jobs/{render_job_id}/reconcile",
+        response_model=None,
+    )
+    def reconcile_async_artifact_render_job(
+        render_job_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
+        try:
+            render_job = artifact_record_store.get_render_job(render_job_id)
+            record = (
+                _visible_artifact_record(
+                    artifact_record_store,
+                    render_job["artifact_id"],
+                    auth_context,
+                )
+                if render_job is not None
+                else None
+            )
+            if record is None:
+                raise AeAsyncArtifactRenderError(
+                    error_code="ae.async_artifact_render.not_found",
+                    detail="Asynchronous artifact render job was not found.",
+                    status_code=404,
+                )
+            return reconcile_async_artifact_render(
                 render_job_id=render_job_id,
                 artifact_store=artifact_record_store,
                 job_queue=artifact_retention_job_queue,

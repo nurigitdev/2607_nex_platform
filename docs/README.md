@@ -1181,6 +1181,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1075`](slices/1075_ae_async_artifact_render_api.md) | `S108-004` Expose exact-owner async render admission, status, and idempotent cancellation APIs. |
 | [`Slice 1076`](slices/1076_ae_async_artifact_render_worker.md) | `S108-005` Execute owner-bound asynchronous artifact rendering with cancellation, retry, and idempotent publication. |
 | [`Slice 1077`](slices/1077_ae_async_artifact_response_lineage.md) | `S108-006` Bind asynchronous artifact admissions to durable owner-scoped S107 generated-response lineage. |
+| [`Slice 1078`](slices/1078_ae_async_artifact_render_recovery.md) | `S108-007` Inspect and reconcile restart/retry state drift without exposing or reconstructing rendered content. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
