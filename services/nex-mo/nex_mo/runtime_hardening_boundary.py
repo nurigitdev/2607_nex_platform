@@ -34,7 +34,7 @@ REFACTORING_BOUNDARIES = (
     ),
     RefactoringBoundary(
         "response_normalization",
-        "services/nex-mo/nex_mo/remote_provider.py",
+        "services/nex-mo/nex_mo/provider_normalization.py",
         "def normalize_remote_generation_response",
         "nex_mo.provider_normalization",
         "1115",
