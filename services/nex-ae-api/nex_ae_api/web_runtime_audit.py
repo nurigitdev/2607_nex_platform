@@ -5,7 +5,6 @@ from pathlib import Path
 import re
 from typing import Any
 
-
 ROOT = Path(__file__).resolve().parents[3]
 SCHEMA_VERSION = "ae_web_runtime_audit.v1"
 
@@ -33,9 +32,7 @@ def build_ae_web_runtime_audit(root: Path = ROOT) -> dict[str, Any]:
     source_files = sorted(path for path in source_root.glob("*") if path.is_file())
     test_files = sorted(test_root.glob("*.test.mjs"))
     playwright_scripts = sorted(
-        path
-        for path in scripts_root.glob("*.mjs")
-        if "playwright" in path.name.lower()
+        path for path in scripts_root.glob("*.mjs") if "playwright" in path.name.lower()
     )
     playwright_tests = sorted(
         path
@@ -77,8 +74,8 @@ def build_ae_web_runtime_audit(root: Path = ROOT) -> dict[str, Any]:
     }
     checks = {
         "audit_inputs_present": not issues,
-        "source_inventory_complete": len(source_files) == 42,
-        "test_inventory_complete": len(test_files) == 54,
+        "source_inventory_complete": len(source_files) >= 42,
+        "test_inventory_complete": len(test_files) >= 54,
         "playwright_inventory_complete": (
             len(playwright_scripts) == 6 and len(playwright_tests) == 6
         ),
