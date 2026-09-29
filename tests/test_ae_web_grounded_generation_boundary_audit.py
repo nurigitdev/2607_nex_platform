@@ -15,13 +15,13 @@ def test_repository_boundary_audit_passes() -> None:
     assert result["summary"] == {
         "foundation_count": 6,
         "gap_count": 8,
-        "open_gap_count": 7,
-        "resolved_gap_count": 1,
+        "open_gap_count": 6,
+        "resolved_gap_count": 2,
         "drift_count": 3,
         "planned_slice_count": 10,
         "issue_count": 0,
     }
-    assert result["next_slice"] == "1084"
+    assert result["next_slice"] == "1085"
 
 
 def test_boundary_decision_freezes_browser_and_service_ownership() -> None:
@@ -99,7 +99,7 @@ def test_helpers_summary_and_main(monkeypatch, tmp_path: Path, capsys) -> None:
     passing = audit.run_ae_web_grounded_generation_boundary_audit()
     assert audit.summary_line(passing) == (
         "ae_web_grounded_generation_boundary=pass foundations=6 gaps=8 "
-        "open=7 drifts=3 issues=0 next=1084"
+        "open=6 drifts=3 issues=0 next=1085"
     )
     assert "next=unknown" in audit.summary_line({"status": "FAIL"})
 

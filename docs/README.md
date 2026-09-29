@@ -1187,6 +1187,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1081`](slices/1081_s108_ae_async_artifact_rendering_closure.md) | `S108-010` Close AE asynchronous artifact rendering integration with machine-checkable evidence and Full Gate. |
 | [`Slice 1082`](slices/1082_ae_web_grounded_generation_boundary_audit.md) | `S109-001` Freeze AE Web grounded-generation browser, orchestration, lifecycle, privacy, and quality boundaries. |
 | [`Slice 1083`](slices/1083_ae_web_grounded_generation_client.md) | `S109-002` Add the same-origin AE grounded-generation lifecycle browser client. |
+| [`Slice 1084`](slices/1084_ae_web_generation_lifecycle_state.md) | `S109-003` Add deterministic async generation lifecycle state and presentation read models. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
