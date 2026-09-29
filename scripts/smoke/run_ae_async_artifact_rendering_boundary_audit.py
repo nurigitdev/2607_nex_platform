@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_VERSION = "ae_async_artifact_rendering_boundary_audit.v1"
 
@@ -96,14 +95,10 @@ GAP_RESOLUTION_PATHS = {
     "durable_admission_missing": (
         "docs/slices/1074_ae_async_artifact_render_admission.md"
     ),
-    "owner_scoped_api_missing": (
-        "docs/slices/1075_ae_async_artifact_render_api.md"
-    ),
-    "render_worker_missing": (
-        "docs/slices/1076_ae_async_artifact_render_worker.md"
-    ),
+    "owner_scoped_api_missing": ("docs/slices/1075_ae_async_artifact_render_api.md"),
+    "render_worker_missing": ("docs/slices/1076_ae_async_artifact_render_worker.md"),
     "chat_response_lineage_missing": (
-        "docs/slices/1077_ae_async_artifact_chat_lineage.md"
+        "docs/slices/1077_ae_async_artifact_response_lineage.md"
     ),
     "recovery_observability_missing": (
         "docs/slices/1078_ae_async_artifact_render_recovery.md"
@@ -117,8 +112,7 @@ GAP_RESOLUTION_PATHS = {
 }
 
 GAP_SLICES = {
-    name: f"{1073 + index:04d}"
-    for index, name in enumerate(GAP_RESOLUTION_PATHS)
+    name: f"{1073 + index:04d}" for index, name in enumerate(GAP_RESOLUTION_PATHS)
 }
 
 
@@ -126,8 +120,7 @@ def run_ae_async_artifact_rendering_boundary_audit(
     root: Path = ROOT,
 ) -> dict[str, Any]:
     paths = [
-        {"path": path, "present": (root / path).is_file()}
-        for path in REQUIRED_PATHS
+        {"path": path, "present": (root / path).is_file()} for path in REQUIRED_PATHS
     ]
     tokens = [
         {
