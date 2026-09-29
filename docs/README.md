@@ -1175,6 +1175,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1069`](slices/1069_ae_generated_response_contract_hardening.md) | `S107-008` Freeze generated-response lineage, owner content, durable READY, and AE OpenAPI 1.5 contracts. |
 | [`Slice 1070`](slices/1070_ae_generated_response_postgres_smoke.md) | `S107-009` Prove durable private response handoff, restart reads, owner isolation, and cleanup on actual AE/CX test PostgreSQL. |
 | [`Slice 1071`](slices/1071_s107_ae_generated_response_lineage_closure.md) | `S107-010` Close generated-response and chat-lineage integration with actual PostgreSQL evidence and Full Gate. |
+| [`Slice 1072`](slices/1072_ae_async_artifact_rendering_boundary_audit.md) | `S108-001` Freeze AE asynchronous artifact rendering ownership, durable queue, private storage, lineage, and compatibility boundaries. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
