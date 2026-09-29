@@ -1152,3 +1152,6 @@ Artifact library management:
   `nex_ae_test` and `nex_cx_test`, persists private content to a mode-`0600`
   local file, verifies restart recovery and exact-owner reads, and removes all
   scoped database rows after the probe.
+- Slice 1071 closes S107 by checking all response storage, lineage, owner API,
+  retry/repair, observability, contract, and actual PostgreSQL evidence through
+  a machine-readable closure registered in the Full Gate.
