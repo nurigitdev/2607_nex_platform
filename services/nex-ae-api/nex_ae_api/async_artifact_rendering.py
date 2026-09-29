@@ -105,6 +105,12 @@ class ArtifactRenderAdmissionStore(Protocol):
     ) -> dict[str, Any]:
         ...
 
+    def save_render_job_state(
+        self,
+        render_job: dict[str, Any],
+    ) -> dict[str, Any]:
+        ...
+
 
 def deterministic_async_render_job_id(
     artifact_id: str,
@@ -289,22 +295,22 @@ def validate_async_artifact_render_queue_job(
     render_request = validate_async_artifact_render_request(
         payload["render_request"]
     )
-    expected = (
+    supplied_request = (
         validate_async_artifact_render_request(request)
         if request is not None
         else render_request
     )
-    if render_request != expected:
+    if not _requests_share_idempotent_identity(render_request, supplied_request):
         raise _invalid("Async artifact render queue request binding is inconsistent.")
     if (
-        job["job_id"] != expected["render_job_id"]
-        or job["idempotency_key"] != expected["render_job_id"]
+        job["job_id"] != render_request["render_job_id"]
+        or job["idempotency_key"] != render_request["render_job_id"]
         or job["subject_ref"]
-        != {"type": "artifact", "id": expected["artifact_id"]}
-        or job["trace_id"] != expected["trace_id"]
-        or job["request_id"] != expected["request_id"]
-        or job["max_attempts"] != expected["max_attempts"]
-        or job["links"] != expected["links"]
+        != {"type": "artifact", "id": render_request["artifact_id"]}
+        or job["trace_id"] != render_request["trace_id"]
+        or job["request_id"] != render_request["request_id"]
+        or job["max_attempts"] != render_request["max_attempts"]
+        or job["links"] != render_request["links"]
     ):
         raise _invalid("Async artifact render queue lineage is inconsistent.")
     return job
@@ -394,6 +400,93 @@ def validate_async_artifact_render_admission(value: object) -> dict[str, Any]:
     if admission["content_included"] is not False:
         raise _invalid("Async artifact render admission must not include content.")
     return admission
+
+
+def get_async_artifact_render_projection(
+    *,
+    render_job_id: str,
+    artifact_store: ArtifactRenderAdmissionStore,
+    job_queue: JobQueue,
+) -> dict[str, Any]:
+    normalized_id = _required_text(render_job_id, "render_job_id")
+    render_job = artifact_store.get_render_job(normalized_id)
+    if render_job is None:
+        raise AeAsyncArtifactRenderError(
+            error_code="ae.async_artifact_render.not_found",
+            detail="Asynchronous artifact render job was not found.",
+            status_code=404,
+        )
+    queue_job = job_queue.get_job(normalized_id)
+    if queue_job is None:
+        raise AeAsyncArtifactRenderError(
+            error_code="ae.async_artifact_render.queue_state_missing",
+            detail="Artifact render queue state is temporarily unavailable.",
+            status_code=503,
+            retryable=True,
+        )
+    return build_async_artifact_render_projection(
+        render_job=render_job,
+        queue_job=queue_job,
+    )
+
+
+def cancel_async_artifact_render(
+    *,
+    render_job_id: str,
+    artifact_store: ArtifactRenderAdmissionStore,
+    job_queue: JobQueue,
+    cancelled_at: str | None = None,
+) -> dict[str, Any]:
+    normalized_id = _required_text(render_job_id, "render_job_id")
+    render_job = artifact_store.get_render_job(normalized_id)
+    if render_job is None:
+        raise AeAsyncArtifactRenderError(
+            error_code="ae.async_artifact_render.not_found",
+            detail="Asynchronous artifact render job was not found.",
+            status_code=404,
+        )
+    queue_job = job_queue.get_job(normalized_id)
+    if queue_job is None:
+        raise AeAsyncArtifactRenderError(
+            error_code="ae.async_artifact_render.queue_state_missing",
+            detail="Artifact render queue state is temporarily unavailable.",
+            status_code=503,
+            retryable=True,
+        )
+    queue_job = validate_async_artifact_render_queue_job(queue_job)
+    if queue_job["status"] in {"SUCCEEDED", "FAILED"}:
+        raise AeAsyncArtifactRenderError(
+            error_code="ae.async_artifact_render.terminal",
+            detail="Terminal artifact render jobs cannot be cancelled.",
+            status_code=409,
+        )
+    observed_at = cancelled_at or _utc_now()
+    if queue_job["status"] != "CANCELLED":
+        try:
+            queue_job = job_queue.cancel_job(normalized_id, updated_at=observed_at)
+        except JobQueueError as exc:
+            raise AeAsyncArtifactRenderError(
+                error_code="ae.async_artifact_render.cancel_failed",
+                detail="Artifact render cancellation could not be persisted.",
+                status_code=exc.status_code,
+                retryable=exc.status_code >= 500,
+            ) from exc
+    if render_job.get("job_status") != "CANCELLED":
+        render_job = artifact_store.save_render_job_state(
+            {
+                **dict(render_job),
+                "job_status": "CANCELLED",
+                "current_stage": "CANCELLED",
+                "retryable": False,
+                "failure_code": None,
+                "completed_at": observed_at,
+                "updated_at": observed_at,
+            }
+        )
+    return build_async_artifact_render_projection(
+        render_job=render_job,
+        queue_job=queue_job,
+    )
 
 
 def build_async_artifact_render_projection(
@@ -528,6 +621,27 @@ def _validate_request_artifact_binding(
     )
     if rebuilt != request:
         raise _invalid("Async artifact render request no longer matches the artifact.")
+
+
+def _requests_share_idempotent_identity(
+    stored: Mapping[str, Any],
+    supplied: Mapping[str, Any],
+) -> bool:
+    immutable_fields = (
+        "render_job_id",
+        "artifact_id",
+        "render_request_id",
+        "target_formats",
+        "owner_scope",
+        "workspace_id",
+        "interaction_id",
+        "response_id",
+        "source_ref",
+        "max_attempts",
+        "links",
+        "content_included",
+    )
+    return all(stored[field] == supplied[field] for field in immutable_fields)
 
 
 def _validate_target_formats(value: object) -> list[str]:

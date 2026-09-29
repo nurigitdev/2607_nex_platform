@@ -1178,6 +1178,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1072`](slices/1072_ae_async_artifact_rendering_boundary_audit.md) | `S108-001` Freeze AE asynchronous artifact rendering ownership, durable queue, private storage, lineage, and compatibility boundaries. |
 | [`Slice 1073`](slices/1073_ae_async_artifact_render_contract.md) | `S108-002` Define deterministic owner-bound async render requests and strict queue/render lifecycle projections. |
 | [`Slice 1074`](slices/1074_ae_async_artifact_render_admission.md) | `S108-003` Persist idempotent render metadata and durable content-free queue admission with replay recovery. |
+| [`Slice 1075`](slices/1075_ae_async_artifact_render_api.md) | `S108-004` Expose exact-owner async render admission, status, and idempotent cancellation APIs. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -185,6 +185,7 @@ from nex_runtime import (
     WorkerHeartbeatEmitter,
     build_service_app,
     issue_mock_service_token,
+    issue_mock_user_token,
 )
 
 
@@ -235,6 +236,15 @@ def auth_headers() -> dict[str, str]:
         "X-Request-ID": REQUEST_ID,
         "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
         "Idempotency-Key": "artifact-request-001",
+    }
+
+
+def user_headers(tenant_id: str, user_id: str) -> dict[str, str]:
+    issued = issue_mock_user_token(tenant_id=tenant_id, user_id=user_id)
+    return {
+        "Authorization": f"Bearer {issued.access_token}",
+        "X-Request-ID": REQUEST_ID,
+        "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
     }
 
 
@@ -7772,6 +7782,120 @@ def test_markdown_render_route_updates_artifact_and_preserves_private_content() 
     assert download.json()["content_hash"] == artifact_file["file_hash"]
 
 
+def test_async_render_routes_enforce_owner_scope_and_cancel() -> None:
+    queue = InMemoryJobQueue()
+    client, handoff_store, artifact_store, _ = build_client_with_artifact_store(
+        job_queue=queue
+    )
+    handoff = handoff_store.save(sample_handoff_record())
+    created = client.post(
+        "/api/v1/artifacts",
+        json={"artifact_handoff_id": handoff["artifact_handoff_id"]},
+        headers={**auth_headers(), "Idempotency-Key": "artifact-async-create-001"},
+    )
+    artifact_id = created.json()["artifact_id"]
+    admitted = client.post(
+        f"/api/v1/artifacts/{artifact_id}/async-render-jobs",
+        json={"target_formats": ["MD", "PDF"], "response_id": "response-001"},
+        headers={**auth_headers(), "Idempotency-Key": "async-render-request-001"},
+    )
+    job_id = admitted.json()["render"]["render_job_id"]
+    owner = user_headers("tenant-001", "user-001")
+    other_owner = user_headers("tenant-001", "user-002")
+
+    owner_status = client.get(
+        f"/api/v1/async-artifact-render-jobs/{job_id}", headers=owner
+    )
+    hidden_status = client.get(
+        f"/api/v1/async-artifact-render-jobs/{job_id}", headers=other_owner
+    )
+    hidden_cancel = client.post(
+        f"/api/v1/async-artifact-render-jobs/{job_id}/cancel",
+        headers=other_owner,
+    )
+    cancelled = client.post(
+        f"/api/v1/async-artifact-render-jobs/{job_id}/cancel", headers=owner
+    )
+    repeated = client.post(
+        f"/api/v1/artifacts/{artifact_id}/async-render-jobs",
+        json={"target_formats": ["MD", "PDF"], "response_id": "response-001"},
+        headers={**auth_headers(), "Idempotency-Key": "async-render-request-001"},
+    )
+
+    assert created.status_code == 200
+    assert admitted.status_code == 202
+    assert admitted.json()["admission_status"] == "ENQUEUED"
+    assert admitted.json()["render"]["rendered_content_included"] is False
+    assert owner_status.status_code == 200
+    assert owner_status.json()["lifecycle_status"] == "PENDING"
+    assert hidden_status.status_code == 404
+    assert hidden_cancel.status_code == 404
+    assert cancelled.status_code == 200
+    assert cancelled.json()["lifecycle_status"] == "CANCELLED"
+    assert repeated.status_code == 202
+    assert repeated.json()["admission_status"] == "JOINED"
+    assert repeated.json()["render"]["lifecycle_status"] == "CANCELLED"
+    assert artifact_store.get_render_job(job_id)["job_status"] == "CANCELLED"
+
+
+def test_async_render_routes_fail_closed_for_invalid_requests_and_state() -> None:
+    queue = InMemoryJobQueue()
+    client, handoff_store, _, _ = build_client_with_artifact_store(job_queue=queue)
+    handoff = handoff_store.save(sample_handoff_record())
+    created = client.post(
+        "/api/v1/artifacts",
+        json={"artifact_handoff_id": handoff["artifact_handoff_id"]},
+        headers={**auth_headers(), "Idempotency-Key": "artifact-async-errors"},
+    )
+    artifact_id = created.json()["artifact_id"]
+
+    unauthorized = client.post(
+        f"/api/v1/artifacts/{artifact_id}/async-render-jobs", json={}
+    )
+    unauthorized_status = client.get(
+        "/api/v1/async-artifact-render-jobs/missing"
+    )
+    unauthorized_cancel = client.post(
+        "/api/v1/async-artifact-render-jobs/missing/cancel"
+    )
+    missing_artifact = client.post(
+        "/api/v1/artifacts/missing/async-render-jobs",
+        json={},
+        headers={**auth_headers(), "Idempotency-Key": "missing-artifact"},
+    )
+    missing_request = client.post(
+        f"/api/v1/artifacts/{artifact_id}/async-render-jobs",
+        json={},
+        headers={key: value for key, value in auth_headers().items() if key != "Idempotency-Key"},
+    )
+    invalid_format = client.post(
+        f"/api/v1/artifacts/{artifact_id}/async-render-jobs",
+        json={"target_formats": ["TXT"]},
+        headers={**auth_headers(), "Idempotency-Key": "invalid-format"},
+    )
+    invalid_attempts = client.post(
+        f"/api/v1/artifacts/{artifact_id}/async-render-jobs",
+        json={"max_attempts": 9},
+        headers={**auth_headers(), "Idempotency-Key": "invalid-attempts"},
+    )
+    missing_status = client.get(
+        "/api/v1/async-artifact-render-jobs/missing", headers=auth_headers()
+    )
+    missing_cancel = client.post(
+        "/api/v1/async-artifact-render-jobs/missing/cancel", headers=auth_headers()
+    )
+
+    assert unauthorized.status_code == 401
+    assert unauthorized_status.status_code == 401
+    assert unauthorized_cancel.status_code == 401
+    assert missing_artifact.status_code == 404
+    assert missing_request.status_code == 422
+    assert invalid_format.status_code == 422
+    assert invalid_attempts.status_code == 422
+    assert missing_status.status_code == 404
+    assert missing_cancel.status_code == 404
+
+
 def test_html_preview_render_route_updates_artifact_and_private_storage() -> None:
     client, handoff_store, artifact_store, _ = build_client_with_artifact_store()
     handoff = handoff_store.save(sample_handoff_record())
@@ -8293,10 +8417,25 @@ def test_sqlalchemy_artifact_record_store_admits_initial_render_with_sqlite() ->
     assert loaded["artifact_status"] == "RENDERING"
     assert loaded["render_jobs"] == [repeated]
 
+    cancelled = store.save_render_job_state(
+        {
+            **repeated,
+            "job_status": "CANCELLED",
+            "current_stage": "CANCELLED",
+            "retryable": False,
+            "completed_at": "2026-09-29T02:05:00Z",
+            "updated_at": "2026-09-29T02:05:00Z",
+        }
+    )
+    assert cancelled["job_status"] == "CANCELLED"
+    assert store.get(created["artifact_id"])["render_jobs"] == [cancelled]
+
     missing = {**render_job, "render_job_id": "missing-job", "artifact_id": "missing"}
     with pytest.raises(ArtifactHandoffError) as exc_info:
         store.save_initial_render_job(missing)
     assert exc_info.value.status_code == 404
+    with pytest.raises(ArtifactHandoffError):
+        store.save_render_job_state(missing)
 
 
 def test_sqlalchemy_artifact_record_store_lists_owner_scoped_collection_with_sqlite() -> None:

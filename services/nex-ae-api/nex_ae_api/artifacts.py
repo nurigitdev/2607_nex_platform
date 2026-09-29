@@ -49,6 +49,18 @@ from nex_runtime import (
     worker_heartbeat_store_from_app,
 )
 from nex_ae_api.cx_owner_context import cx_owner_headers, cx_owner_scope_from_payload
+from nex_ae_api.async_artifact_rendering import (
+    AeAsyncArtifactRenderError,
+    admit_async_artifact_render,
+    build_async_artifact_render_request,
+    cancel_async_artifact_render,
+    get_async_artifact_render_projection,
+)
+from nex_ae_api.route_auth import (
+    AeFacadeRouteAuthContext,
+    authorize_ae_facade_route_request,
+)
+from nex_ae_api.workspace_chat_auth import browser_owner_scope
 
 
 DEFAULT_TENANT_ID = "local-tenant"
@@ -765,6 +777,27 @@ class ArtifactRecordStore:
         self.save(record)
         return stored_job
 
+    def save_render_job_state(
+        self,
+        render_job: dict[str, Any],
+    ) -> dict[str, Any]:
+        record = self.get(render_job["artifact_id"])
+        if record is None or self.get_render_job(render_job["render_job_id"]) is None:
+            raise ArtifactHandoffError(
+                status_code=404,
+                error_code="ae.render_job_not_found",
+                detail=f"Artifact render job was not found: {render_job['render_job_id']}",
+            )
+        stored_job = deepcopy(render_job)
+        record["render_jobs"] = [
+            stored_job if item["render_job_id"] == stored_job["render_job_id"] else item
+            for item in record["render_jobs"]
+        ]
+        record["updated_at"] = stored_job.get("updated_at") or record["updated_at"]
+        self.render_jobs[stored_job["render_job_id"]] = stored_job
+        self.save(record)
+        return stored_job
+
     def get_rendered_markdown(self, artifact_version_id: str) -> str | None:
         return self.rendered_markdown.get(artifact_version_id)
 
@@ -1473,6 +1506,27 @@ class SqlAlchemyArtifactRecordStore:
         record["updated_at"] = stored_job["updated_at"]
         self.save(record)
         return stored_job
+
+    def save_render_job_state(
+        self,
+        render_job: dict[str, Any],
+    ) -> dict[str, Any]:
+        record = self.get(render_job["artifact_id"])
+        existing = self.get_render_job(render_job["render_job_id"])
+        if record is None or existing is None:
+            raise ArtifactHandoffError(
+                status_code=404,
+                error_code="ae.render_job_not_found",
+                detail=f"Artifact render job was not found: {render_job['render_job_id']}",
+            )
+        stored_job = deepcopy(render_job)
+        record["render_jobs"] = [
+            stored_job if item["render_job_id"] == stored_job["render_job_id"] else item
+            for item in record["render_jobs"]
+        ]
+        record["updated_at"] = stored_job.get("updated_at") or record["updated_at"]
+        self.save(record)
+        return self.get_render_job(stored_job["render_job_id"]) or stored_job
 
     def get_rendered_markdown(self, artifact_version_id: str) -> str | None:
         artifact_file = self._get_markdown_file_for_version(artifact_version_id)
@@ -3849,6 +3903,135 @@ def register_artifact_handoff_routes(
                 ),
             )
         return render_job
+
+    @app.post(
+        "/api/v1/artifacts/{artifact_id}/async-render-jobs",
+        response_model=None,
+        status_code=202,
+    )
+    def create_async_artifact_render_job(
+        artifact_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ):
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
+        try:
+            record = _visible_artifact_record(
+                artifact_record_store,
+                artifact_id,
+                auth_context,
+            )
+            if record is None:
+                raise AeAsyncArtifactRenderError(
+                    error_code="ae.async_artifact_render.artifact_not_found",
+                    detail="Artifact was not found for asynchronous rendering.",
+                    status_code=404,
+                )
+            render_request_id = idempotency_key or required_string(
+                payload,
+                "render_request_id",
+                "ae.render_request_id_required",
+            )
+            render_request = build_async_artifact_render_request(
+                artifact_record=record,
+                render_request_id=render_request_id,
+                target_formats=render_target_formats_from_payload(payload, record),
+                request_id=request_id_from_headers(request),
+                trace_id=payload.get("trace_id") or trace_id_from_headers(request),
+                response_id=payload.get("response_id"),
+                max_attempts=payload.get("max_attempts", 3),
+            )
+            return admit_async_artifact_render(
+                request=render_request,
+                artifact_store=artifact_record_store,
+                job_queue=artifact_retention_job_queue,
+            )
+        except AeAsyncArtifactRenderError as exc:
+            return _async_artifact_render_problem_response(request, exc)
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.get(
+        "/api/v1/async-artifact-render-jobs/{render_job_id}",
+        response_model=None,
+    )
+    def get_async_artifact_render_job(
+        render_job_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
+        try:
+            render_job = artifact_record_store.get_render_job(render_job_id)
+            record = (
+                _visible_artifact_record(
+                    artifact_record_store,
+                    render_job["artifact_id"],
+                    auth_context,
+                )
+                if render_job is not None
+                else None
+            )
+            if record is None:
+                raise AeAsyncArtifactRenderError(
+                    error_code="ae.async_artifact_render.not_found",
+                    detail="Asynchronous artifact render job was not found.",
+                    status_code=404,
+                )
+            return get_async_artifact_render_projection(
+                render_job_id=render_job_id,
+                artifact_store=artifact_record_store,
+                job_queue=artifact_retention_job_queue,
+            )
+        except AeAsyncArtifactRenderError as exc:
+            return _async_artifact_render_problem_response(request, exc)
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.post(
+        "/api/v1/async-artifact-render-jobs/{render_job_id}/cancel",
+        response_model=None,
+    )
+    def cancel_async_artifact_render_job(
+        render_job_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
+        try:
+            render_job = artifact_record_store.get_render_job(render_job_id)
+            record = (
+                _visible_artifact_record(
+                    artifact_record_store,
+                    render_job["artifact_id"],
+                    auth_context,
+                )
+                if render_job is not None
+                else None
+            )
+            if record is None:
+                raise AeAsyncArtifactRenderError(
+                    error_code="ae.async_artifact_render.not_found",
+                    detail="Asynchronous artifact render job was not found.",
+                    status_code=404,
+                )
+            return cancel_async_artifact_render(
+                render_job_id=render_job_id,
+                artifact_store=artifact_record_store,
+                job_queue=artifact_retention_job_queue,
+            )
+        except AeAsyncArtifactRenderError as exc:
+            return _async_artifact_render_problem_response(request, exc)
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
 
     @app.get("/api/v1/artifact-files/{artifact_file_id}", response_model=None)
     def get_artifact_file(
@@ -11059,6 +11242,41 @@ def _authorize_ae_request(
         title="Authentication failed",
         detail=result.detail or "AE API requires a valid service claim.",
         type_uri="https://nex-platform.local/problems/authentication-failed",
+    )
+
+
+def _visible_artifact_record(
+    artifact_store: Any,
+    artifact_id: str,
+    auth_context: AeFacadeRouteAuthContext,
+) -> dict[str, Any] | None:
+    record = artifact_store.get(artifact_id)
+    scope = browser_owner_scope(auth_context)
+    if record is None or scope is None:
+        return record
+    owner_ref = record.get("owner_actor_ref")
+    if not isinstance(owner_ref, Mapping):
+        return None
+    if (
+        owner_ref.get("tenant_id") != scope.tenant_id
+        or owner_ref.get("actor_id") != scope.owner_user_id
+    ):
+        return None
+    return record
+
+
+def _async_artifact_render_problem_response(
+    request: Request,
+    exc: AeAsyncArtifactRenderError,
+) -> JSONResponse:
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="Asynchronous artifact rendering failed",
+        detail=exc.detail,
+        retryable=exc.retryable,
+        type_uri="https://nex-platform.local/problems/async-artifact-rendering-failed",
     )
 
 
