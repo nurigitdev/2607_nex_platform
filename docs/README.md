@@ -1223,6 +1223,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1117`](slices/1117_mo_provider_telemetry_adapter_extraction.md) | `S112-006` Move provider telemetry behind an explicit store boundary while preserving process-local behavior. |
 | [`Slice 1118`](slices/1118_mo_provider_registry_composition_decoupling.md) | `S112-007` Extract neutral route contracts and remove remote-runtime dependency on provider API composition. |
 | [`Slice 1119`](slices/1119_mo_runtime_decomposition_architecture_guard.md) | `S112-008` Enforce module budgets, dependency direction, compatibility exports, and persistence status. |
+| [`Slice 1120`](slices/1120_mo_provider_operations_compatibility_evidence.md) | `S112-009` Compose protected profile, provider-request, BF16, and architecture compatibility evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
