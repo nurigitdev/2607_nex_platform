@@ -1,0 +1,29 @@
+{
+  "render_request_schema_version": "ae_async_artifact_render_request.v1",
+  "render_job_id": "22270fd2-2abb-53f3-9e06-e9804ebfe357",
+  "artifact_id": "artifact-1",
+  "render_request_id": "render-request-1",
+  "target_formats": ["MD", "PDF"],
+  "owner_scope": {
+    "tenant_id": "tenant-1",
+    "owner_user_id": "owner-1"
+  },
+  "workspace_id": "workspace-1",
+  "interaction_id": "interaction-1",
+  "response_id": "response-1",
+  "source_ref": {
+    "cx_generation_id": "generation-1",
+    "structured_draft_id": "draft-1",
+    "structured_draft_content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "citation_claims_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "request_id": "request-1",
+  "trace_id": "trace-1",
+  "max_attempts": 3,
+  "requested_at": "2026-09-29T08:00:00Z",
+  "links": {
+    "artifact": "/api/v1/artifacts/artifact-1",
+    "render_job": "/api/v1/artifact-render-jobs/22270fd2-2abb-53f3-9e06-e9804ebfe357"
+  },
+  "content_included": false
+}

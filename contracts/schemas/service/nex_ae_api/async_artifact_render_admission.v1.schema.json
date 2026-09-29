@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/async_artifact_render_admission.v1.schema.json",
+  "title": "NeX AE Asynchronous Artifact Render Admission",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "render_admission_schema_version",
+    "admission_status",
+    "render",
+    "owner_scope_enforced",
+    "content_included"
+  ],
+  "properties": {
+    "render_admission_schema_version": {
+      "const": "ae_async_artifact_render_admission.v1"
+    },
+    "admission_status": {"enum": ["ENQUEUED", "JOINED", "RECOVERED"]},
+    "render": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "render_projection_schema_version",
+        "render_job_id",
+        "artifact_id",
+        "lifecycle_status",
+        "render_job_status",
+        "queue_job_status",
+        "current_stage",
+        "progress_percent",
+        "attempt_count",
+        "max_attempts",
+        "retryable",
+        "failure",
+        "links",
+        "owner_scope_enforced",
+        "rendered_content_included"
+      ],
+      "properties": {
+        "render_projection_schema_version": {
+          "const": "ae_async_artifact_render_projection.v1"
+        },
+        "render_job_id": {"type": "string", "minLength": 1},
+        "artifact_id": {"type": "string", "minLength": 1},
+        "lifecycle_status": {
+          "enum": ["PENDING", "RUNNING", "READY", "BLOCKED", "CANCELLED"]
+        },
+        "render_job_status": {
+          "enum": ["QUEUED", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"]
+        },
+        "queue_job_status": {
+          "enum": ["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"]
+        },
+        "current_stage": {"type": "string", "minLength": 1},
+        "progress_percent": {"type": "integer", "minimum": 0, "maximum": 100},
+        "attempt_count": {"type": "integer", "minimum": 0},
+        "max_attempts": {"type": "integer", "minimum": 1},
+        "retryable": {"type": "boolean"},
+        "failure": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["error_code", "retryable", "dead_lettered"],
+              "properties": {
+                "error_code": {"type": "string", "minLength": 1},
+                "retryable": {"type": "boolean"},
+                "dead_lettered": {"type": "boolean"}
+              }
+            },
+            {"type": "null"}
+          ]
+        },
+        "links": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["artifact", "render_job"],
+          "properties": {
+            "artifact": {"type": "string", "pattern": "^/api/v1/"},
+            "render_job": {"type": "string", "pattern": "^/api/v1/"}
+          }
+        },
+        "owner_scope_enforced": {"const": true},
+        "rendered_content_included": {"const": false}
+      }
+    },
+    "owner_scope_enforced": {"const": true},
+    "content_included": {"const": false}
+  }
+}

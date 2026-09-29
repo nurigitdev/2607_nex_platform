@@ -804,6 +804,31 @@
       "name": "ae_generated_response_owner",
       "path": "examples/generation/ae_generated_response.owner.json",
       "schema": "schemas/service/nex_ae_api/generated_response.v1.schema.json"
+    },
+    {
+      "name": "ae_async_artifact_render_request_queued",
+      "path": "examples/generation/ae_async_artifact_render_request.queued.json",
+      "schema": "schemas/service/nex_ae_api/async_artifact_render_request.v1.schema.json"
+    },
+    {
+      "name": "ae_async_artifact_render_projection_queued",
+      "path": "examples/generation/ae_async_artifact_render_projection.queued.json",
+      "schema": "schemas/service/nex_ae_api/async_artifact_render_projection.v1.schema.json"
+    },
+    {
+      "name": "ae_async_artifact_render_admission_enqueued",
+      "path": "examples/generation/ae_async_artifact_render_admission.enqueued.json",
+      "schema": "schemas/service/nex_ae_api/async_artifact_render_admission.v1.schema.json"
+    },
+    {
+      "name": "ae_async_artifact_render_recovery_retry_scheduled",
+      "path": "examples/generation/ae_async_artifact_render_recovery.retry_scheduled.json",
+      "schema": "schemas/service/nex_ae_api/async_artifact_render_recovery.v1.schema.json"
+    },
+    {
+      "name": "ae_async_artifact_render_reconciliation_retry_reset",
+      "path": "examples/generation/ae_async_artifact_render_reconciliation.retry_reset.json",
+      "schema": "schemas/service/nex_ae_api/async_artifact_render_reconciliation.v1.schema.json"
     }
   ]
 }

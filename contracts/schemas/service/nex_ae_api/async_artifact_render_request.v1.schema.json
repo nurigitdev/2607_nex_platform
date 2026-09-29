@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/async_artifact_render_request.v1.schema.json",
+  "title": "NeX AE Asynchronous Artifact Render Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "render_request_schema_version",
+    "render_job_id",
+    "artifact_id",
+    "render_request_id",
+    "target_formats",
+    "owner_scope",
+    "workspace_id",
+    "interaction_id",
+    "response_id",
+    "source_ref",
+    "request_id",
+    "trace_id",
+    "max_attempts",
+    "requested_at",
+    "links",
+    "content_included"
+  ],
+  "properties": {
+    "render_request_schema_version": {
+      "const": "ae_async_artifact_render_request.v1"
+    },
+    "render_job_id": {"type": "string", "minLength": 1},
+    "artifact_id": {"type": "string", "minLength": 1},
+    "render_request_id": {"type": "string", "minLength": 1},
+    "target_formats": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"enum": ["MD", "HTML_PREVIEW", "DOCX", "PDF"]}
+    },
+    "owner_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tenant_id", "owner_user_id"],
+      "properties": {
+        "tenant_id": {"type": "string", "minLength": 1},
+        "owner_user_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "workspace_id": {"type": "string", "minLength": 1},
+    "interaction_id": {"type": "string", "minLength": 1},
+    "response_id": {"type": ["string", "null"], "minLength": 1},
+    "source_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cx_generation_id",
+        "structured_draft_id",
+        "structured_draft_content_hash",
+        "citation_claims_hash"
+      ],
+      "properties": {
+        "cx_generation_id": {"type": "string", "minLength": 1},
+        "structured_draft_id": {"type": "string", "minLength": 1},
+        "structured_draft_content_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "citation_claims_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "request_id": {"type": "string", "minLength": 1},
+    "trace_id": {"type": "string", "minLength": 1},
+    "max_attempts": {"type": "integer", "minimum": 1, "maximum": 5},
+    "requested_at": {"type": "string", "minLength": 1},
+    "links": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact", "render_job"],
+      "properties": {
+        "artifact": {"type": "string", "pattern": "^/api/v1/"},
+        "render_job": {"type": "string", "pattern": "^/api/v1/"}
+      }
+    },
+    "content_included": {"const": false}
+  },
+  "not": {
+    "anyOf": [
+      {"required": ["content"]},
+      {"required": ["raw_text"]},
+      {"required": ["rendered_payloads"]},
+      {"required": ["storage_ref"]}
+    ]
+  }
+}

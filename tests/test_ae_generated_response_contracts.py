@@ -145,7 +145,7 @@ def test_openapi_exposes_owner_response_and_metadata_only_lineage() -> None:
         "/api/v1/chat/interactions/{interaction_id}/response"
     ]["get"]
 
-    assert spec["info"]["version"] == "1.5.0"
+    assert spec["info"]["version"] == "1.6.0"
     assert operation["operationId"] == "getAeGeneratedResponse"
     assert (
         operation["responses"]["200"]["content"]["application/json"]["schema"]

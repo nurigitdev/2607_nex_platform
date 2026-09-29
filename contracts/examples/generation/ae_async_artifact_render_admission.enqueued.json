@@ -1,0 +1,26 @@
+{
+  "render_admission_schema_version": "ae_async_artifact_render_admission.v1",
+  "admission_status": "ENQUEUED",
+  "render": {
+    "render_projection_schema_version": "ae_async_artifact_render_projection.v1",
+    "render_job_id": "22270fd2-2abb-53f3-9e06-e9804ebfe357",
+    "artifact_id": "artifact-1",
+    "lifecycle_status": "PENDING",
+    "render_job_status": "QUEUED",
+    "queue_job_status": "QUEUED",
+    "current_stage": "QUEUED",
+    "progress_percent": 0,
+    "attempt_count": 0,
+    "max_attempts": 3,
+    "retryable": true,
+    "failure": null,
+    "links": {
+      "artifact": "/api/v1/artifacts/artifact-1",
+      "render_job": "/api/v1/artifact-render-jobs/22270fd2-2abb-53f3-9e06-e9804ebfe357"
+    },
+    "owner_scope_enforced": true,
+    "rendered_content_included": false
+  },
+  "owner_scope_enforced": true,
+  "content_included": false
+}

@@ -619,6 +619,31 @@
       "name": "ae_generated_response_storage_ref_leak",
       "path": "tests/negative/generation/ae_generated_response.storage_ref_leak.json",
       "schema": "schemas/service/nex_ae_api/generated_response.v1.schema.json"
+    },
+    {
+      "name": "ae_async_artifact_render_request_raw_content_leak",
+      "path": "tests/negative/generation/ae_async_artifact_render_request.raw_content_leak.json",
+      "schema": "schemas/service/nex_ae_api/async_artifact_render_request.v1.schema.json"
+    },
+    {
+      "name": "ae_async_artifact_render_projection_content_flag_true",
+      "path": "tests/negative/generation/ae_async_artifact_render_projection.content_flag_true.json",
+      "schema": "schemas/service/nex_ae_api/async_artifact_render_projection.v1.schema.json"
+    },
+    {
+      "name": "ae_async_artifact_render_admission_storage_ref_leak",
+      "path": "tests/negative/generation/ae_async_artifact_render_admission.storage_ref_leak.json",
+      "schema": "schemas/service/nex_ae_api/async_artifact_render_admission.v1.schema.json"
+    },
+    {
+      "name": "ae_async_artifact_render_recovery_raw_error_detail",
+      "path": "tests/negative/generation/ae_async_artifact_render_recovery.raw_error_detail.json",
+      "schema": "schemas/service/nex_ae_api/async_artifact_render_recovery.v1.schema.json"
+    },
+    {
+      "name": "ae_async_artifact_render_reconciliation_content_leak",
+      "path": "tests/negative/generation/ae_async_artifact_render_reconciliation.content_leak.json",
+      "schema": "schemas/service/nex_ae_api/async_artifact_render_reconciliation.v1.schema.json"
     }
   ]
 }

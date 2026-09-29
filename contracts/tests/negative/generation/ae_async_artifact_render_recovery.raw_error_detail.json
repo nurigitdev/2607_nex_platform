@@ -1,0 +1,20 @@
+{
+  "recovery_schema_version": "ae_async_artifact_render_recovery.v1",
+  "render_job_id": "22270fd2-2abb-53f3-9e06-e9804ebfe357",
+  "artifact_id": "artifact-1",
+  "recovery_status": "RETRY_SCHEDULED",
+  "action": "WAIT_FOR_RETRY",
+  "reason_code": "bounded_retry_scheduled",
+  "render_job_status": "QUEUED",
+  "queue_job_status": "QUEUED",
+  "attempt_count": 1,
+  "max_attempts": 3,
+  "attempts_remaining": 2,
+  "next_retry_at": "2026-09-29T08:00:30Z",
+  "failure_code": "ae.render_dependency_unavailable",
+  "dead_lettered": false,
+  "mutation_required": false,
+  "owner_scope_enforced": true,
+  "content_included": false,
+  "raw_error_detail": "connection failed at private host"
+}
