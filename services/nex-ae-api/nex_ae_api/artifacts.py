@@ -55,6 +55,7 @@ from nex_ae_api.async_artifact_rendering import (
     build_async_artifact_render_request,
     cancel_async_artifact_render,
     get_async_artifact_render_projection,
+    validate_async_artifact_response_lineage,
 )
 from nex_ae_api.route_auth import (
     AeFacadeRouteAuthContext,
@@ -3963,13 +3964,30 @@ def register_artifact_handoff_routes(
                 "render_request_id",
                 "ae.render_request_id_required",
             )
+            response_id = payload.get("response_id")
+            if response_id is not None:
+                lineage_store = getattr(request.app.state, "ae_chat_store", None)
+                if lineage_store is None:
+                    raise AeAsyncArtifactRenderError(
+                        error_code=(
+                            "ae.async_artifact_render.response_lineage_unavailable"
+                        ),
+                        detail="Generated response lineage is temporarily unavailable.",
+                        status_code=503,
+                        retryable=True,
+                    )
+                validate_async_artifact_response_lineage(
+                    artifact_record=record,
+                    response_id=response_id,
+                    lineage_store=lineage_store,
+                )
             render_request = build_async_artifact_render_request(
                 artifact_record=record,
                 render_request_id=render_request_id,
                 target_formats=render_target_formats_from_payload(payload, record),
                 request_id=request_id_from_headers(request),
                 trace_id=payload.get("trace_id") or trace_id_from_headers(request),
-                response_id=payload.get("response_id"),
+                response_id=response_id,
                 max_attempts=payload.get("max_attempts", 3),
             )
             return admit_async_artifact_render(

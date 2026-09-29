@@ -14,6 +14,10 @@ from nex_runtime import (
     build_subject_ref,
     validate_common_job,
 )
+from nex_ae_api.generated_response_lineage import (
+    AeGeneratedResponseLineageError,
+    generated_response_lineage_from_record,
+)
 
 
 AE_ASYNC_ARTIFACT_RENDER_REQUEST_SCHEMA_VERSION = (
@@ -24,6 +28,9 @@ AE_ASYNC_ARTIFACT_RENDER_PROJECTION_SCHEMA_VERSION = (
 )
 AE_ASYNC_ARTIFACT_RENDER_ADMISSION_SCHEMA_VERSION = (
     "ae_async_artifact_render_admission.v1"
+)
+AE_ASYNC_ARTIFACT_RESPONSE_BINDING_SCHEMA_VERSION = (
+    "ae_async_artifact_response_binding.v1"
 )
 ASYNC_ARTIFACT_RENDER_JOB_TYPE = "ae.artifact.render"
 ASYNC_RENDER_ADMISSION_STATUSES = frozenset({"ENQUEUED", "JOINED", "RECOVERED"})
@@ -110,6 +117,100 @@ class ArtifactRenderAdmissionStore(Protocol):
         render_job: dict[str, Any],
     ) -> dict[str, Any]:
         ...
+
+
+class GeneratedResponseLineageStore(Protocol):
+    def get_for_owner(
+        self,
+        interaction_id: str,
+        *,
+        tenant_id: str,
+        owner_user_id: str,
+    ) -> dict[str, Any] | None:
+        ...
+
+
+def validate_async_artifact_response_lineage(
+    *,
+    artifact_record: Mapping[str, Any],
+    response_id: str,
+    lineage_store: GeneratedResponseLineageStore,
+) -> dict[str, Any]:
+    artifact = _required_mapping(artifact_record, "artifact_record")
+    normalized_response_id = _required_text(response_id, "response_id")
+    owner_ref = _required_mapping(artifact.get("owner_actor_ref"), "owner_actor_ref")
+    workspace_ref = _required_mapping(artifact.get("workspace_ref"), "workspace_ref")
+    tenant_id = _required_text(owner_ref.get("tenant_id"), "tenant_id")
+    owner_user_id = _required_text(owner_ref.get("actor_id"), "owner_user_id")
+    interaction_id = _required_text(
+        artifact.get("interaction_id"), "interaction_id"
+    )
+    try:
+        record = lineage_store.get_for_owner(
+            interaction_id,
+            tenant_id=tenant_id,
+            owner_user_id=owner_user_id,
+        )
+    except Exception as exc:
+        raise AeAsyncArtifactRenderError(
+            error_code="ae.async_artifact_render.response_lineage_unavailable",
+            detail="Generated response lineage is temporarily unavailable.",
+            status_code=503,
+            retryable=True,
+        ) from exc
+    if record is None:
+        raise AeAsyncArtifactRenderError(
+            error_code="ae.async_artifact_render.response_not_found",
+            detail="Generated response was not found for asynchronous rendering.",
+            status_code=404,
+        )
+    try:
+        lineage = generated_response_lineage_from_record(record)
+    except AeGeneratedResponseLineageError as exc:
+        raise AeAsyncArtifactRenderError(
+            error_code="ae.async_artifact_render.response_lineage_invalid",
+            detail="Generated response lineage is invalid.",
+            status_code=503,
+        ) from exc
+    if lineage is None:
+        raise AeAsyncArtifactRenderError(
+            error_code="ae.async_artifact_render.response_not_ready",
+            detail="Generated response is not ready for asynchronous rendering.",
+            status_code=409,
+            retryable=True,
+        )
+    source_refs = artifact.get("source_refs")
+    if not isinstance(source_refs, list) or not source_refs:
+        raise _invalid("Artifact source_refs must contain a source reference.")
+    source_ref = _required_mapping(source_refs[0], "source_ref")
+    if (
+        lineage["response_id"] != normalized_response_id
+        or record.get("workspace_id")
+        != _required_text(workspace_ref.get("workspace_id"), "workspace_id")
+        or lineage["chat_document_id"] != artifact.get("chat_document_id")
+        or lineage["cx_generation_id"] != source_ref.get("cx_generation_id")
+        or lineage["structured_draft_id"]
+        != source_ref.get("structured_draft_id")
+    ):
+        raise AeAsyncArtifactRenderError(
+            error_code="ae.async_artifact_render.response_lineage_mismatch",
+            detail="Generated response does not match the artifact lineage.",
+            status_code=409,
+        )
+    return {
+        "response_binding_schema_version": (
+            AE_ASYNC_ARTIFACT_RESPONSE_BINDING_SCHEMA_VERSION
+        ),
+        "response_id": lineage["response_id"],
+        "interaction_id": lineage["interaction_id"],
+        "chat_document_id": lineage["chat_document_id"],
+        "cx_generation_id": lineage["cx_generation_id"],
+        "structured_draft_id": lineage["structured_draft_id"],
+        "lineage_type": lineage["lineage_type"],
+        "citation_workflow_status": lineage["citation_workflow_status"],
+        "owner_scope_enforced": True,
+        "content_included": False,
+    }
 
 
 def deterministic_async_render_job_id(

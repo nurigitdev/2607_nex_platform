@@ -7796,7 +7796,7 @@ def test_async_render_routes_enforce_owner_scope_and_cancel() -> None:
     artifact_id = created.json()["artifact_id"]
     admitted = client.post(
         f"/api/v1/artifacts/{artifact_id}/async-render-jobs",
-        json={"target_formats": ["MD", "PDF"], "response_id": "response-001"},
+        json={"target_formats": ["MD", "PDF"]},
         headers={**auth_headers(), "Idempotency-Key": "async-render-request-001"},
     )
     job_id = admitted.json()["render"]["render_job_id"]
@@ -7818,7 +7818,7 @@ def test_async_render_routes_enforce_owner_scope_and_cancel() -> None:
     )
     repeated = client.post(
         f"/api/v1/artifacts/{artifact_id}/async-render-jobs",
-        json={"target_formats": ["MD", "PDF"], "response_id": "response-001"},
+        json={"target_formats": ["MD", "PDF"]},
         headers={**auth_headers(), "Idempotency-Key": "async-render-request-001"},
     )
 

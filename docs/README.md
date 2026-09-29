@@ -1180,6 +1180,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1074`](slices/1074_ae_async_artifact_render_admission.md) | `S108-003` Persist idempotent render metadata and durable content-free queue admission with replay recovery. |
 | [`Slice 1075`](slices/1075_ae_async_artifact_render_api.md) | `S108-004` Expose exact-owner async render admission, status, and idempotent cancellation APIs. |
 | [`Slice 1076`](slices/1076_ae_async_artifact_render_worker.md) | `S108-005` Execute owner-bound asynchronous artifact rendering with cancellation, retry, and idempotent publication. |
+| [`Slice 1077`](slices/1077_ae_async_artifact_response_lineage.md) | `S108-006` Bind asynchronous artifact admissions to durable owner-scoped S107 generated-response lineage. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
