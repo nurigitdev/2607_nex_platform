@@ -17,6 +17,7 @@ from nex_ae_api.auth_sessions import register_auth_session_routes
 from nex_ae_api.chat import register_chat_routes
 from nex_ae_api.documents import register_document_library_routes
 from nex_ae_api.generation_feedback import register_generation_feedback_routes
+from nex_ae_api.mvp_acceptance_api import register_ae_mvp_acceptance_routes
 from nex_ae_api.prompts import build_default_ae_prompt_store
 from nex_ae_api.recovery_requests import register_generation_recovery_request_routes
 from nex_ae_api.repaired_response_decisions import (
@@ -67,3 +68,4 @@ register_prompt_registry_routes(
     expected_audience="nex-ae-api",
 )
 register_runtime_policy_routes(app, store=AE_PROMPT_STORE)
+register_ae_mvp_acceptance_routes(app)

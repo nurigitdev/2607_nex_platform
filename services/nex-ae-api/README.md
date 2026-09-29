@@ -1155,3 +1155,7 @@ Artifact library management:
 - Slice 1071 closes S107 by checking all response storage, lineage, owner API,
   retry/repair, observability, contract, and actual PostgreSQL evidence through
   a machine-readable closure registered in the Full Gate.
+- Slice 1096 exposes `GET /admin/v1/operations/mvp-acceptance` as a read-only,
+  server-selected acceptance projection. Service principals and admin users may
+  read normalized gate states; viewer users, posted evidence, and raw runtime
+  material are rejected.

@@ -1199,6 +1199,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1093`](slices/1093_ae_mvp_acceptance_policy.md) | `S110-002` Define validated AE MVP blocking gates, evidence freshness, regression, coverage, database, provider, and browser policy. |
 | [`Slice 1094`](slices/1094_ae_mvp_evidence_inventory.md) | `S110-003` Inventory S101-S109 closure runners and documents with strict identity and freshness rules. |
 | [`Slice 1095`](slices/1095_ae_mvp_acceptance_evaluator.md) | `S110-004` Evaluate fresh server-derived AE acceptance evidence deterministically and fail closed. |
+| [`Slice 1096`](slices/1096_ae_mvp_acceptance_api.md) | `S110-005` Expose a server-selected, admin-protected, read-only AE MVP acceptance operations API. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
