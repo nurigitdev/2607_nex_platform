@@ -7,11 +7,13 @@ import {
   applyCitationQuality,
   applyGenerationAdmission,
   applyGenerationProgress,
+  applyGenerationRecovery,
   applyGenerationRefresh,
   applyVerifiedGeneratedResponse,
   buildGenerationLifecycleReadModel,
   buildGenerationLifecycleSummary,
   createGenerationLifecycleState,
+  markGenerationActionFailure,
   markGenerationActionRunning,
   markGenerationAdmissionRunning,
   markGenerationLifecycleFailure
@@ -147,6 +149,34 @@ test("keeps action and failure state free of raw exception details", async () =>
   assert.equal(buildGenerationLifecycleReadModel(failed).controls.retryEnabled, true);
 });
 
+test("applies recovery eligibility and preserves lifecycle on action failure", async () => {
+  const state = await activeState();
+  const failed = markGenerationLifecycleFailure(state, {
+    status: "HTTP_503",
+    retryable: true
+  });
+  const inspecting = markGenerationActionRunning(failed, "recovery");
+  const recovered = applyGenerationRecovery(inspecting, {
+    groundedGenerationClientSchemaVersion:
+      "ae_web_grounded_generation_client.v1",
+    action: "RETRY",
+    eligible: true,
+    reasonCode: "PROVIDER_UNAVAILABLE",
+    newInteractionRequired: true
+  });
+  const actionFailed = markGenerationActionFailure(
+    markGenerationActionRunning(recovered, "retry"),
+    { status: "HTTP_409", message: "private detail" }
+  );
+
+  assert.equal(recovered.recovery.action, "RETRY");
+  assert.equal(recovered.retryable, true);
+  assert.equal(actionFailed.phase, "failed");
+  assert.equal(actionFailed.activeAction, null);
+  assert.equal(actionFailed.errorStatus, "HTTP_409");
+  assert.equal(JSON.stringify(actionFailed).includes("private detail"), false);
+});
+
 test("rejects invalid transitions, lineage, progress, and owner scope", async () => {
   const initial = createGenerationLifecycleState();
   const state = await activeState();
@@ -182,6 +212,16 @@ test("rejects invalid transitions, lineage, progress, and owner scope", async ()
   assert.throws(
     () => markGenerationActionRunning(state, "delete"),
     error => error.status === "GENERATION_ACTION_UNSUPPORTED"
+  );
+  assert.throws(
+    () =>
+      applyGenerationRecovery(initial, {
+        groundedGenerationClientSchemaVersion:
+          "ae_web_grounded_generation_client.v1",
+        action: "RETRY",
+        eligible: true
+      }),
+    error => error.status === "GENERATION_RECOVERY_INTERACTION_REQUIRED"
   );
   assert.throws(
     () => buildGenerationLifecycleSummary({}),

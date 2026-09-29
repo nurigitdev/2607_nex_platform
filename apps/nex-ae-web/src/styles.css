@@ -731,6 +731,32 @@ h2 {
   gap: 8px;
 }
 
+.generation-action-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  margin-top: 10px;
+}
+
+.generation-action-row button {
+  min-width: 72px;
+  padding: 0 12px;
+}
+
+.generation-action-row button:disabled {
+  border-color: var(--nex-border);
+  background: var(--nex-surface-muted);
+  color: var(--nex-muted);
+  cursor: not-allowed;
+}
+
+.generation-action-row span {
+  min-width: 0;
+  color: var(--nex-muted);
+  font-size: 13px;
+}
+
 input,
 select {
   min-height: 42px;
@@ -1141,6 +1167,15 @@ code {
 
   .composer-row {
     grid-template-columns: 1fr;
+  }
+
+  .generation-action-row {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .generation-action-row span {
+    flex-basis: 100%;
   }
 
   .message {

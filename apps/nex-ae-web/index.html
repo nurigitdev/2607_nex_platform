@@ -96,6 +96,23 @@
                   </select>
                   <button type="submit">전송</button>
                 </div>
+                <div
+                  class="generation-action-row"
+                  aria-label="생성 작업 제어"
+                >
+                  <button id="generation-cancel-button" type="button" disabled>
+                    취소
+                  </button>
+                  <button id="generation-recovery-button" type="button" disabled>
+                    복구 확인
+                  </button>
+                  <button id="generation-retry-button" type="button" disabled>
+                    재시도
+                  </button>
+                  <span id="generation-action-feedback" role="status" aria-live="polite">
+                    생성 작업 없음
+                  </span>
+                </div>
               </form>
             </section>
 

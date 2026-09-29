@@ -122,6 +122,12 @@ import {
   runGroundedGenerationWorkflow
 } from "./groundedGenerationWorkflow.js";
 import {
+  cancelGroundedGeneration,
+  inspectGroundedGenerationRecovery,
+  retryGroundedGeneration
+} from "./groundedGenerationRecovery.js";
+import { buildGenerationLifecycleReadModel } from "./generationLifecycleState.js";
+import {
   buildGenerationFeedbackRequest,
   buildGenerationFeedbackSurfaceSummary,
   createGenerationFeedbackSurfaceState
@@ -216,6 +222,9 @@ const workspaceState = {
   groundedGenerationClient: null,
   generationLifecycle: null,
   generationWorkflow: null,
+  lastGenerationRequest: null,
+  generationAbortController: null,
+  generationRunSequence: 0,
   interactionSequence: 0,
   generationFeedbackClient: null,
   repairedResponseDecisionClient: null,
@@ -394,6 +403,14 @@ const retrievalScopeStatus = document.querySelector("#retrieval-scope-status");
 const retrievalFeedback = document.querySelector("#retrieval-feedback");
 const retrievalQualityWarnings = document.querySelector("#retrieval-quality-warnings");
 const groundedResponseQuality = document.querySelector("#grounded-response-quality");
+const generationCancelButton = document.querySelector("#generation-cancel-button");
+const generationRecoveryButton = document.querySelector(
+  "#generation-recovery-button"
+);
+const generationRetryButton = document.querySelector("#generation-retry-button");
+const generationActionFeedback = document.querySelector(
+  "#generation-action-feedback"
+);
 const retrievalRetryButton = document.querySelector("#retrieval-retry-button");
 const retrievalScopeSummary = document.querySelector("#retrieval-scope-summary");
 const retrievalClientSummary = document.querySelector("#retrieval-client-summary");
@@ -458,6 +475,18 @@ documentDetailRetryButton.addEventListener("click", () => {
 
 retrievalRetryButton.addEventListener("click", () => {
   void retryLastRetrievalRequest();
+});
+
+generationCancelButton.addEventListener("click", () => {
+  void cancelActiveGeneration();
+});
+
+generationRecoveryButton.addEventListener("click", () => {
+  void inspectGenerationRecovery();
+});
+
+generationRetryButton.addEventListener("click", () => {
+  void retryLastGeneration();
 });
 
 artifactLibraryRefreshButton.addEventListener("click", () => {
@@ -569,6 +598,7 @@ function renderWorkspace() {
   renderUploadSurface();
   renderDocuments();
   renderRetrievalScope();
+  renderGenerationLifecycleControls();
   void renderDocumentDetail();
   renderTimeline();
   renderArtifactLibraryPanelSurface();
@@ -1952,10 +1982,7 @@ async function appendPromptInteraction() {
     grounded
   });
   const retrievalResult = await submitRetrievalRequest(retrievalRequest);
-  workspaceState.interactionSequence += 1;
-  const requestedInteractionId = `interaction-web-${String(
-    workspaceState.interactionSequence
-  ).padStart(4, "0")}`;
+  const requestedInteractionId = nextGenerationInteractionId();
   const generationRequest = buildGroundedGenerationRequest({
     interactionId: requestedInteractionId,
     workspaceId: workspaceState.workspaceId,
@@ -1976,13 +2003,20 @@ async function appendPromptInteraction() {
       route: "/api/v1/chat/interactions"
     }
   );
+  workspaceState.lastGenerationRequest = generationRequest;
+  workspaceState.generationAbortController?.abort();
+  workspaceState.generationAbortController = new AbortController();
+  const runSequence = ++workspaceState.generationRunSequence;
   const generationWorkflow = await runGroundedGenerationWorkflow({
     client: workspaceState.groundedGenerationClient,
     request: generationRequest,
     onState: state => {
       workspaceState.generationLifecycle = state;
-    }
+      renderGenerationLifecycleControls();
+    },
+    signal: workspaceState.generationAbortController.signal
   });
+  if (runSequence !== workspaceState.generationRunSequence) return;
   workspaceState.generationWorkflow = generationWorkflow;
   workspaceState.generationLifecycle = generationWorkflow.state;
   workspaceState.interactionId =
@@ -2109,6 +2143,181 @@ async function appendPromptInteraction() {
     void refreshArtifactLibraryPanel();
     void refreshArtifactVersionPanel();
   }
+}
+
+async function cancelActiveGeneration() {
+  if (!workspaceState.generationLifecycle) return;
+  workspaceState.generationRunSequence += 1;
+  workspaceState.generationAbortController?.abort();
+  try {
+    const result = await cancelGroundedGeneration({
+      client: workspaceState.groundedGenerationClient,
+      state: workspaceState.generationLifecycle,
+      onState: state => {
+        workspaceState.generationLifecycle = state;
+        renderGenerationLifecycleControls();
+      }
+    });
+    workspaceState.generationLifecycle = result.state;
+    workspaceState.progressEvents.push([
+      "generation.cancelled",
+      result.state.currentStage,
+      result.state.lifecycleStatus
+    ]);
+    workspaceState.operations.generation = markOperationSucceeded(
+      workspaceState.operations.generation,
+      { status: "CANCELLED", resultStatus: "CANCELLED" }
+    );
+  } catch (error) {
+    workspaceState.operations.generation = markOperationFailed(
+      workspaceState.operations.generation,
+      { error, retryable: true }
+    );
+  }
+  renderWorkspace();
+}
+
+async function inspectGenerationRecovery() {
+  if (!workspaceState.generationLifecycle) return;
+  try {
+    const result = await inspectGroundedGenerationRecovery({
+      client: workspaceState.groundedGenerationClient,
+      state: workspaceState.generationLifecycle,
+      onState: state => {
+        workspaceState.generationLifecycle = state;
+        renderGenerationLifecycleControls();
+      }
+    });
+    workspaceState.generationLifecycle = result.state;
+  } catch (error) {
+    workspaceState.operations.generation = markOperationFailed(
+      workspaceState.operations.generation,
+      { error, retryable: true }
+    );
+  }
+  renderWorkspace();
+}
+
+async function retryLastGeneration() {
+  const parentState = workspaceState.generationLifecycle;
+  const previousRequest = workspaceState.lastGenerationRequest;
+  if (!parentState || !previousRequest) return;
+  const retryRequest = {
+    ...previousRequest,
+    interaction_id: nextGenerationInteractionId()
+  };
+  workspaceState.generationAbortController?.abort();
+  workspaceState.generationAbortController = new AbortController();
+  const runSequence = ++workspaceState.generationRunSequence;
+  workspaceState.operations.generation = markOperationRunning(
+    workspaceState.operations.generation,
+    {
+      clientMode: workspaceState.groundedGenerationClient.clientMode,
+      route: `/api/v1/chat/interactions/${encodeURIComponent(
+        parentState.interactionId
+      )}/retry`
+    }
+  );
+  try {
+    const result = await retryGroundedGeneration({
+      client: workspaceState.groundedGenerationClient,
+      state: parentState,
+      request: retryRequest,
+      onState: state => {
+        if (runSequence !== workspaceState.generationRunSequence) return;
+        workspaceState.generationLifecycle = state;
+        renderGenerationLifecycleControls();
+      },
+      signal: workspaceState.generationAbortController.signal
+    });
+    if (runSequence !== workspaceState.generationRunSequence) return;
+    workspaceState.lastGenerationRequest = retryRequest;
+    workspaceState.generationWorkflow = result;
+    workspaceState.generationLifecycle = result.state;
+    workspaceState.interactionId = result.state.interactionId;
+    workspaceState.cxGenerationId =
+      result.admission?.cxGenerationId || workspaceState.cxGenerationId;
+    workspaceState.progressEvents = result.events.map(event => [
+      event.eventType,
+      event.stage,
+      event.status
+    ]);
+    workspaceState.operations.generation =
+      result.status === "COMPLETED"
+        ? markOperationSucceeded(workspaceState.operations.generation, {
+            status: "COMPLETED",
+            resultStatus: "COMPLETED"
+          })
+        : markOperationFailed(workspaceState.operations.generation, {
+            errorStatus: result.state.errorStatus || "GENERATION_RETRY_FAILED",
+            retryable: result.state.retryable
+          });
+    if (result.state.response?.content) {
+      workspaceState.messages.push({
+        role: "assistant",
+        label: "assistant",
+        text: result.state.response.content,
+        artifactRefs: [],
+        retrievalScope: workspaceState.documentScope,
+        retrievalResult: workspaceState.lastRetrievalResult,
+        groundedResponseQuality: buildGroundedResponseQualitySurface({
+          generation: {
+            grounded_response_quality: result.state.citationQuality?.quality
+          }
+        }),
+        generationFeedback: createGenerationFeedbackSurfaceState({
+          interactionId: workspaceState.interactionId,
+          chatDocumentId: workspaceState.chatDocumentId,
+          cxGenerationId: workspaceState.cxGenerationId,
+          clientMode: workspaceState.generationFeedbackClient.clientMode
+        }),
+        repairedResponseReview: null
+      });
+    }
+  } catch (error) {
+    if (runSequence !== workspaceState.generationRunSequence) return;
+    workspaceState.operations.generation = markOperationFailed(
+      workspaceState.operations.generation,
+      { error, retryable: true }
+    );
+  }
+  renderWorkspace();
+}
+
+function renderGenerationLifecycleControls() {
+  const state = workspaceState.generationLifecycle;
+  if (!state) {
+    generationCancelButton.disabled = true;
+    generationRecoveryButton.disabled = true;
+    generationRetryButton.disabled = true;
+    generationActionFeedback.textContent = "생성 작업 없음";
+    return;
+  }
+  const readModel = buildGenerationLifecycleReadModel(state);
+  generationCancelButton.disabled = !readModel.controls.cancelEnabled;
+  generationRecoveryButton.disabled =
+    !state.interactionId || !state.terminal || readModel.controls.busy;
+  generationRetryButton.disabled = !readModel.controls.retryEnabled;
+  generationActionFeedback.textContent = generationLifecycleFeedback(state);
+}
+
+function generationLifecycleFeedback(state) {
+  if (state.activeAction) return `${state.activeAction} 처리 중`;
+  if (state.errorStatus) return `작업 오류: ${state.errorStatus}`;
+  if (state.recovery) {
+    return state.recovery.eligible
+      ? `복구 가능: ${state.recovery.action}`
+      : `복구 대기: ${state.recovery.reasonCode}`;
+  }
+  return `상태: ${state.lifecycleStatus}`;
+}
+
+function nextGenerationInteractionId() {
+  workspaceState.interactionSequence += 1;
+  return `interaction-web-${String(workspaceState.interactionSequence).padStart(
+    4,
+    "0"
+  )}`;
 }
 
 async function submitArtifactPreviewAction(target) {

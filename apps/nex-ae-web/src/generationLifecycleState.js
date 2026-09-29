@@ -223,12 +223,48 @@ export function applyCitationQuality(state, workflow) {
 
 export function markGenerationActionRunning(state, action) {
   const current = assertLifecycleState(state);
-  if (!["cancel", "retry", "refresh", "load-response", "load-quality"].includes(action)) {
+  if (
+    ![
+      "cancel",
+      "retry",
+      "recovery",
+      "refresh",
+      "load-response",
+      "load-quality"
+    ].includes(action)
+  ) {
     throw new GenerationLifecycleStateError("Generation action is unsupported.", {
       status: "GENERATION_ACTION_UNSUPPORTED"
     });
   }
   return { ...current, activeAction: action, errorStatus: null };
+}
+
+export function applyGenerationRecovery(state, recovery) {
+  const current = assertLifecycleState(state);
+  assertClientResult(recovery, "GENERATION_RECOVERY_INVALID");
+  if (!current.interactionId) {
+    throw new GenerationLifecycleStateError("Recovery requires an interaction.", {
+      status: "GENERATION_RECOVERY_INTERACTION_REQUIRED"
+    });
+  }
+  const normalized = normalizeRecovery(recovery);
+  return {
+    ...current,
+    recovery: normalized,
+    retryable: Boolean(normalized?.eligible && normalized.action === "RETRY"),
+    activeAction: null,
+    errorStatus: null
+  };
+}
+
+export function markGenerationActionFailure(state, error) {
+  const current = assertLifecycleState(state);
+  return {
+    ...current,
+    activeAction: null,
+    errorStatus: normalizeErrorStatus(error?.status)
+  };
 }
 
 export function markGenerationLifecycleFailure(state, error) {

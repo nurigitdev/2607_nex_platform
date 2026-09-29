@@ -1190,6 +1190,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1084`](slices/1084_ae_web_generation_lifecycle_state.md) | `S109-003` Add deterministic async generation lifecycle state and presentation read models. |
 | [`Slice 1085`](slices/1085_ae_web_generation_runtime_composition.md) | `S109-004` Compose the grounded-generation client into authenticated mock and fetch runtimes. |
 | [`Slice 1086`](slices/1086_ae_web_generation_progress_wiring.md) | `S109-005` Wire async chat admission, bounded progress, verified response, and citation gating into AE Web. |
+| [`Slice 1087`](slices/1087_ae_web_generation_recovery_ux.md) | `S109-006` Add race-safe cancel, recovery inspection, and retry controls to AE Web. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

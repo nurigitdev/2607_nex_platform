@@ -103,6 +103,7 @@ export async function runGroundedGenerationWorkflow({
       assertNotAborted(signal);
       const delay = state.nextPollAfterSeconds ?? 2;
       if (client.clientMode !== "mock") await wait(delay);
+      assertNotAborted(signal);
       const progress = await client.getProgress(state.interactionId);
       pollCount += 1;
       state = applyGenerationProgress(state, progress);

@@ -134,6 +134,31 @@ test("handles an aborted workflow without issuing client requests", async () => 
   assert.equal(result.state.errorStatus, "GENERATION_WORKFLOW_ABORTED");
 });
 
+test("stops before polling when cancellation arrives during the wait", async () => {
+  let progressCalls = 0;
+  const mockClient = createMockGroundedGenerationClient({
+    responseFactories: {
+      getProgress: () => {
+        progressCalls += 1;
+      }
+    }
+  });
+  const client = { ...mockClient, clientMode: "fetch" };
+  const signal = { aborted: false };
+  const result = await runGroundedGenerationWorkflow({
+    client,
+    request: request(),
+    signal,
+    wait: async () => {
+      signal.aborted = true;
+    }
+  });
+
+  assert.equal(progressCalls, 0);
+  assert.equal(result.status, "FAILED");
+  assert.equal(result.state.errorStatus, "GENERATION_WORKFLOW_ABORTED");
+});
+
 test("rejects invalid request, client, scope, and poll limits", async () => {
   assert.throws(
     () => request({ interactionId: " " }),
