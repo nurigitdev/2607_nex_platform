@@ -3,6 +3,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
+import nex_mo.remote_provider as remote_provider
 from nex_mo.remote_provider import (
     DEFAULT_REMOTE_EMBEDDING_TIMEOUT_SECONDS,
     DEFAULT_REMOTE_GENERATION_TIMEOUT_SECONDS,
@@ -37,6 +38,114 @@ def clear_remote_provider_telemetry():
     reset_remote_provider_telemetry()
     yield
     reset_remote_provider_telemetry()
+
+
+def test_remote_provider_validation_edge_branches(monkeypatch) -> None:
+    preflight = RemoteProviderPreflightConfig(
+        capability="embedding",
+        endpoint_env="EMBED_URL",
+        url="",
+        method="GET",
+        request_shape="nex_pcx_embeddings_v1",
+        expected_models=(),
+    )
+    execution = remote_provider.RemoteProviderExecutionConfig(
+        capability="embedding",
+        endpoint_env="EMBED_URL",
+        url="",
+        method="GET",
+        request_shape="nex_pcx_embeddings_v1",
+        model_name="model",
+        model_revision="revision",
+        deployment_id="deployment",
+    )
+
+    assert preflight.headers() == {"Accept": "application/json"}
+    assert "request_options" not in preflight.to_safe_summary()
+    assert execution.headers() == {"Accept": "application/json"}
+    assert "request_options" not in execution.to_safe_summary()
+
+    assert remote_provider._extract_model_ids(None) == ()
+    assert remote_provider._extract_model_ids({"data": "bad"}) == ()
+    assert remote_provider._extract_model_ids(
+        {"data": ["one", {"id": "two"}, {"id": 3}, None]}
+    ) == ("one", "two")
+    assert remote_provider._int_env({"VALUE": "3"}, "VALUE", 1) == 3
+    assert remote_provider._float_env({"VALUE": "2.5"}, "VALUE", 1.0) == 2.5
+    assert remote_provider._bool_env({"VALUE": "yes"}, "VALUE", False) is True
+    assert remote_provider._bool_env({"VALUE": "off"}, "VALUE", True) is False
+    with pytest.raises(ValueError, match="boolean"):
+        remote_provider._bool_env({"VALUE": "maybe"}, "VALUE", True)
+
+    unsupported_embedding = remote_provider.RemoteProviderExecutionConfig(
+        capability="embedding",
+        endpoint_env="EMBED_URL",
+        url="",
+        method="POST",
+        request_shape="unsupported",
+        model_name="model",
+        model_revision="revision",
+        deployment_id="deployment",
+    )
+    with pytest.raises(remote_provider.ProviderRouteError):
+        remote_provider._remote_embedding_request_payload(
+            unsupported_embedding, ["text"]
+        )
+    reranker = remote_provider.RemoteProviderExecutionConfig(
+        capability="reranking",
+        endpoint_env="RERANK_URL",
+        url="",
+        method="POST",
+        request_shape="unsupported",
+        model_name="model",
+        model_revision="revision",
+        deployment_id="deployment",
+    )
+    with pytest.raises(remote_provider.ProviderRouteError):
+        remote_provider._remote_rerank_request_payload(
+            reranker, "query", ["document"], 1
+        )
+
+    with pytest.raises(remote_provider.ProviderRouteError):
+        remote_provider._string_field({}, "required")
+    with pytest.raises(remote_provider.ProviderRouteError):
+        remote_provider._string_list_field({"values": [""]}, "values")
+    with pytest.raises(remote_provider.ProviderRouteError):
+        remote_provider._bool_field({"enabled": "yes"}, "enabled", False)
+    with pytest.raises(remote_provider.ProviderRouteError):
+        remote_provider._chat_messages_from_payload({})
+    with pytest.raises(remote_provider.ProviderRouteError):
+        remote_provider._finish_reason_from_choice(None)
+    assert remote_provider._finish_reason_from_choice(
+        {"finish_reason": ""}
+    ) == "UNKNOWN"
+
+    with pytest.raises(ValueError, match="capability"):
+        remote_provider._timeout_env_for_capability("unknown")
+    with pytest.raises(ValueError, match="capability"):
+        remote_provider._default_timeout_for_capability("unknown")
+    assert remote_provider._vllm_models_url(
+        {"NEX_MO_VLLM_MODELS_URL": "http://models"}
+    ) == "http://models"
+    assert remote_provider._failure_code(
+        httpx.ReadTimeout("timed out")
+    ) == "timeout"
+
+    monkeypatch.setattr(
+        remote_provider,
+        "build_model_profile_catalog",
+        lambda _env: (
+            type(
+                "Profile",
+                (),
+                {
+                    "provider_capability": "embedding",
+                    "selected": False,
+                },
+            )(),
+        ),
+    )
+    assert remote_provider._selected_profile({}, "embedding").selected is False
 
 
 def test_remote_provider_configs_use_current_env_contract() -> None:
