@@ -35,6 +35,7 @@ MODULE_BUDGETS = (
         (
             "services/nex-mo/nex_mo/provider_catalog.py",
             "services/nex-mo/nex_mo/provider_projection.py",
+            "services/nex-mo/nex_mo/provider_registry.py",
         ),
     ),
     ModuleBudget(
@@ -61,7 +62,7 @@ COUPLING_FINDINGS = (
     CouplingFinding(
         "remote_static_provider_import",
         "services/nex-mo/nex_mo/remote_provider.py",
-        "from nex_mo.providers import (",
+        "from nex_mo.provider_registry import (",
         "REFACTOR_REQUIRED",
         "MEDIUM",
     ),
@@ -74,7 +75,7 @@ COUPLING_FINDINGS = (
     ),
     CouplingFinding(
         "immutable_provider_route_value",
-        "services/nex-mo/nex_mo/providers.py",
+        "services/nex-mo/nex_mo/provider_registry.py",
         "class ProviderRoute:",
         "GOOD_BOUNDARY",
         "LOW",

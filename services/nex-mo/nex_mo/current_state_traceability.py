@@ -34,8 +34,16 @@ CAPABILITY_SPECS = (
         None,
         (
             EvidenceRef("requirement", "docs/30_service_specific_requirement_partition.md", "MO-FR-001"),
-            EvidenceRef("implementation", "services/nex-mo/nex_mo/providers.py", "def resolve_provider_route"),
-            EvidenceRef("implementation", "services/nex-mo/nex_mo/providers.py", "def list_provider_routes"),
+            EvidenceRef(
+                "implementation",
+                "services/nex-mo/nex_mo/provider_registry.py",
+                "def resolve_provider_route",
+            ),
+            EvidenceRef(
+                "implementation",
+                "services/nex-mo/nex_mo/provider_registry.py",
+                "def list_provider_routes",
+            ),
             EvidenceRef("test", "tests/test_nex_mo_providers.py", "test_provider_registry_contains_required_mock_capabilities"),
             EvidenceRef("operations", "services/nex-mo/README.md", "GET /api/v1/provider-routes"),
         ),

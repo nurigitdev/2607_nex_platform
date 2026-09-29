@@ -68,7 +68,7 @@ TOKEN_REQUIREMENTS = (
     ),
     TokenRequirement(
         "provider_registry",
-        "services/nex-mo/nex_mo/providers.py",
+        "services/nex-mo/nex_mo/provider_registry.py",
         "class ProviderRoute",
     ),
     TokenRequirement(

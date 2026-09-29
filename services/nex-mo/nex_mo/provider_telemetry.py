@@ -6,7 +6,7 @@ from threading import Lock
 from time import perf_counter
 from typing import Any, Callable, Protocol, Sequence
 
-from nex_mo.providers import ProviderRouteError
+from nex_mo.provider_registry import ProviderRouteError
 
 
 class ProviderExecutionConfigView(Protocol):

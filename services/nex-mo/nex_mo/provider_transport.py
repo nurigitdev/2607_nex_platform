@@ -5,7 +5,7 @@ from typing import Any, Callable, Protocol
 
 import httpx
 
-from nex_mo.providers import ProviderRouteError
+from nex_mo.provider_registry import ProviderRouteError
 
 
 class RemoteRequestConfigView(Protocol):

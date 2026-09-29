@@ -20,8 +20,8 @@ class RefactoringBoundary:
 REFACTORING_BOUNDARIES = (
     RefactoringBoundary(
         "public_projection",
-        "services/nex-mo/nex_mo/providers.py",
-        "def to_wire(self) -> dict[str, Any]:",
+        "services/nex-mo/nex_mo/provider_projection.py",
+        "def project_provider_route",
         "nex_mo.provider_projection",
         "1113",
     ),

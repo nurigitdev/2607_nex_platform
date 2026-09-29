@@ -26,10 +26,12 @@ from nex_mo.provider_transport import (
     execute_remote_json_request as _execute_remote_json_request,
     remote_provider_response_invalid_decision,
 )
-from nex_mo.providers import (
+from nex_mo.provider_catalog import (
     DEFAULT_GENERATION_PROFILE,
-    ProviderRouteError,
     build_model_profile_catalog,
+)
+from nex_mo.provider_registry import (
+    ProviderRouteError,
     resolve_provider_route,
 )
 

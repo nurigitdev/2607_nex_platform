@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
-from nex_mo.providers import ProviderRouteError
+from nex_mo.provider_registry import ProviderRouteError
 
 
 class ExecutionConfigView(Protocol):
