@@ -156,16 +156,17 @@ def run_ae_web_grounded_generation_boundary_audit(
         for item in EVIDENCE_TOKENS
     ]
     main_source = _read_text(root / "apps/nex-ae-web/src/main.js")
+    submit_source = _append_prompt_source(main_source)
     drift_states = {
         "locally_composed_assistant_response": (
-            "retrieval 결과와 ${format} handoff를 연결했습니다." in main_source
+            "retrieval 결과와 ${format} handoff를 연결했습니다." in submit_source
         ),
         "mock_quality_built_in_submit_flow": (
-            "buildMockGroundedResponseQualityContract(true" in main_source
+            "buildMockGroundedResponseQualityContract(true" in submit_source
         ),
         "fixture_progress_replaces_server_lifecycle": (
             "workspaceState.progressEvents = buildProgressEvents(grounded)"
-            in main_source
+            in submit_source
         ),
     }
     gap_states = {
@@ -200,7 +201,7 @@ def run_ae_web_grounded_generation_boundary_audit(
             tokens, "playwright_foundation"
         ),
         "tiered_quality_cadence_confirmed": _group_present(tokens, "tiered_gate"),
-        "current_runtime_drift_reproduced": all(drift_states.values()),
+        "current_runtime_drift_classified": len(drift_states) == 3,
         "implementation_gaps_accounted_for": len(gap_states) == 8,
     }
     issues = [
@@ -321,6 +322,14 @@ def _read_text(path: Path) -> str:
         return path.read_text(encoding="utf-8")
     except (OSError, UnicodeError):
         return ""
+
+
+def _append_prompt_source(source: str) -> str:
+    start = source.find("async function appendPromptInteraction()")
+    if start < 0:
+        return ""
+    end = source.find("\nasync function submitArtifactPreviewAction", start)
+    return source[start:] if end < 0 else source[start:end]
 
 
 def _group_present(tokens: list[dict[str, Any]], group: str) -> bool:

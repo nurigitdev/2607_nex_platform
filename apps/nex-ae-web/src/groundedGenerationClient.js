@@ -29,14 +29,18 @@ export class GroundedGenerationClientError extends Error {
 }
 
 export function createMockGroundedGenerationClient({ responseFactories = {} } = {}) {
+  const operationCounts = new Map();
   return buildClient({
     clientMode: "mock",
     invoke: async ({ operation, interactionId, payload, route }) => {
+      const countKey = `${operation}:${interactionId || payload?.interaction_id || "none"}`;
+      const callIndex = (operationCounts.get(countKey) || 0) + 1;
+      operationCounts.set(countKey, callIndex);
       const factory = responseFactories[operation];
       if (typeof factory === "function") {
-        return factory({ interactionId, payload, route });
+        return factory({ interactionId, payload, route, callIndex });
       }
-      return buildMockResponse(operation, interactionId, payload);
+      return buildMockResponse(operation, interactionId, payload, callIndex);
     }
   });
 }
@@ -413,7 +417,7 @@ function withClientMetadata(result, { clientMode, route, contentIncluded }) {
   };
 }
 
-function buildMockResponse(operation, interactionId, payload) {
+function buildMockResponse(operation, interactionId, payload, callIndex) {
   const id =
     (operation === "retryInteraction" ? payload?.interaction_id : interactionId) ||
     payload?.interaction_id ||
@@ -421,7 +425,7 @@ function buildMockResponse(operation, interactionId, payload) {
   if (["admitInteraction", "getInteraction", "cancelInteraction", "retryInteraction"].includes(operation)) {
     return mockInteraction(id, operation === "cancelInteraction" ? "CANCELLED" : "PENDING");
   }
-  if (operation === "getProgress") return mockProgress(id);
+  if (operation === "getProgress") return mockProgress(id, callIndex);
   if (operation === "getRecovery") return mockRecovery();
   if (operation === "refreshInteraction") return mockRefresh(id);
   if (operation === "getResponse") return mockGeneratedResponse(id);
@@ -451,28 +455,43 @@ function mockInteraction(interactionId, status) {
   };
 }
 
-function mockProgress(interactionId) {
+function mockProgress(interactionId, callIndex) {
+  const completed = callIndex >= 2;
   return {
     progress_schema_version: "ae_generation_progress.v1",
     interaction_id: interactionId,
     job_id: "job-web-local",
     cx_generation_id: "cx-generation-web-local",
-    lifecycle_status: "PENDING",
-    event_type: "generation.request.accepted",
-    current_stage: "MO_ADMISSION_WAITING",
-    progress_mode: "INDETERMINATE",
-    progress_percent: null,
-    message_key: "generation.progress.queued",
-    attempt_count: 0,
+    lifecycle_status: completed ? "COMPLETED" : "PENDING",
+    event_type: completed ? "generation.completed" : "generation.request.accepted",
+    current_stage: completed ? "COMPLETED" : "MO_ADMISSION_WAITING",
+    progress_mode: completed ? "DETERMINATE" : "INDETERMINATE",
+    progress_percent: completed ? 100 : null,
+    message_key: completed
+      ? "generation.progress.completed"
+      : "generation.progress.queued",
+    attempt_count: completed ? 1 : 0,
     max_attempts: 3,
-    retryable: true,
-    cancellable: true,
-    terminal: false,
-    next_action: "POLL_GENERATION_HANDOFF",
-    next_poll_after_seconds: 2,
-    handoff_status: null,
+    retryable: !completed,
+    cancellable: !completed,
+    terminal: completed,
+    next_action: completed
+      ? "PRESENT_GENERATION_TO_OWNER"
+      : "POLL_GENERATION_HANDOFF",
+    next_poll_after_seconds: completed ? null : 2,
+    handoff_status: completed ? "READY" : null,
     error: null,
-    recovery: mockRecovery()
+    recovery: completed
+      ? {
+          recovery_plan_schema_version: "ae_generation_recovery_plan.v1",
+          action: "NONE",
+          eligible: false,
+          reason_code: "GENERATION_COMPLETED",
+          new_interaction_required: false,
+          parent_lineage_required: false,
+          input_hash_required: false
+        }
+      : mockRecovery()
   };
 }
 

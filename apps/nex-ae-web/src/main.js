@@ -118,6 +118,10 @@ import {
   buildGroundedResponseQualitySummary
 } from "./groundedResponseQuality.js";
 import {
+  buildGroundedGenerationRequest,
+  runGroundedGenerationWorkflow
+} from "./groundedGenerationWorkflow.js";
+import {
   buildGenerationFeedbackRequest,
   buildGenerationFeedbackSurfaceSummary,
   createGenerationFeedbackSurfaceState
@@ -209,6 +213,10 @@ const workspaceState = {
   artifactLibraryPanel: createArtifactLibraryPanelState(),
   artifactLibraryFilterMode: "all",
   artifactVersionPanel: createArtifactVersionPanelState(),
+  groundedGenerationClient: null,
+  generationLifecycle: null,
+  generationWorkflow: null,
+  interactionSequence: 0,
   generationFeedbackClient: null,
   repairedResponseDecisionClient: null,
   uploadSubmission: null,
@@ -629,6 +637,8 @@ function applySessionBootstrap(sessionBootstrap) {
   workspaceState.artifactClient = workspaceState.clientRegistry.artifactClient;
   workspaceState.uploadClient = workspaceState.clientRegistry.uploadClient;
   workspaceState.retrievalClient = workspaceState.clientRegistry.retrievalClient;
+  workspaceState.groundedGenerationClient =
+    workspaceState.clientRegistry.groundedGenerationClient;
   workspaceState.generationFeedbackClient =
     workspaceState.clientRegistry.generationFeedbackClient;
   workspaceState.repairedResponseReviewClient =
@@ -885,6 +895,13 @@ function initializeOperationStates() {
       status: "READY_FOR_PROMPT",
       clientMode: workspaceState.retrievalClient.clientMode,
       route: workspaceState.documentScope.route
+    }),
+    generation: createOperationState({
+      operationId: "grounded_generation",
+      label: "Grounded generation",
+      status: "READY_FOR_PROMPT",
+      clientMode: workspaceState.groundedGenerationClient.clientMode,
+      route: "/api/v1/chat/interactions"
     }),
     generationFeedback: createOperationState({
       operationId: "generation_feedback",
@@ -1935,22 +1952,101 @@ async function appendPromptInteraction() {
     grounded
   });
   const retrievalResult = await submitRetrievalRequest(retrievalRequest);
-  const artifactRef = buildMockArtifactRef(format, grounded);
-  syncMockArtifactClientFromArtifactRef();
-  const artifactExport = await submitArtifactExportRequest(format, artifactRef);
-  const visibleArtifactRef = artifactExport?.artifactRef || artifactRef;
+  workspaceState.interactionSequence += 1;
+  const requestedInteractionId = `interaction-web-${String(
+    workspaceState.interactionSequence
+  ).padStart(4, "0")}`;
+  const generationRequest = buildGroundedGenerationRequest({
+    interactionId: requestedInteractionId,
+    workspaceId: workspaceState.workspaceId,
+    chatDocumentId: workspaceState.chatDocumentId,
+    userMessage: prompt,
+    documentScope: workspaceState.documentScope,
+    grounded
+  });
   workspaceState.messages.push({
     role: "user",
     label: "사용자",
     text: prompt
   });
+  workspaceState.operations.generation = markOperationRunning(
+    workspaceState.operations.generation,
+    {
+      clientMode: workspaceState.groundedGenerationClient.clientMode,
+      route: "/api/v1/chat/interactions"
+    }
+  );
+  const generationWorkflow = await runGroundedGenerationWorkflow({
+    client: workspaceState.groundedGenerationClient,
+    request: generationRequest,
+    onState: state => {
+      workspaceState.generationLifecycle = state;
+    }
+  });
+  workspaceState.generationWorkflow = generationWorkflow;
+  workspaceState.generationLifecycle = generationWorkflow.state;
+  workspaceState.interactionId =
+    generationWorkflow.state.interactionId || requestedInteractionId;
+  workspaceState.cxGenerationId =
+    generationWorkflow.admission?.cxGenerationId || workspaceState.cxGenerationId;
+  workspaceState.progressEvents = generationWorkflow.events.map(event => [
+    event.eventType,
+    event.stage,
+    event.status
+  ]);
+
+  if (generationWorkflow.status === "COMPLETED") {
+    workspaceState.operations.generation = markOperationSucceeded(
+      workspaceState.operations.generation,
+      { status: "COMPLETED", resultStatus: "COMPLETED" }
+    );
+  } else if (generationWorkflow.status === "ACTIVE") {
+    workspaceState.operations.generation = markOperationRunning(
+      workspaceState.operations.generation,
+      { status: "POLL_LIMIT_REACHED" }
+    );
+  } else {
+    workspaceState.operations.generation = markOperationFailed(
+      workspaceState.operations.generation,
+      {
+        errorStatus:
+          generationWorkflow.state.errorStatus || "GENERATION_UNAVAILABLE",
+        retryable: generationWorkflow.state.retryable
+      }
+    );
+  }
+
+  const artifactHandoffAllowed =
+    generationWorkflow.readModel.presentation.artifactHandoffAllowed;
+  let artifactExport = null;
+  let visibleArtifactRef = null;
+  if (
+    artifactHandoffAllowed &&
+    workspaceState.clientRegistry.clientMode === "mock"
+  ) {
+    const artifactRef = buildMockArtifactRef(format, grounded);
+    syncMockArtifactClientFromArtifactRef();
+    artifactExport = await submitArtifactExportRequest(format, artifactRef);
+    visibleArtifactRef = artifactExport?.artifactRef || artifactRef;
+  }
+  const qualityContract = generationWorkflow.state.citationQuality?.quality || {
+    contract_schema_version: "ae_chat_grounded_response_quality.v1",
+    boundary_status: generationWorkflow.status === "FAILED" ? "FAIL" : "UNKNOWN",
+    citation_status: "UNKNOWN",
+    issue_count: generationWorkflow.status === "FAILED" ? 1 : 0,
+    recommended_action:
+      generationWorkflow.status === "FAILED" ? "show_error" : "proceed_with_caveat",
+    grounding_required: grounded
+  };
   workspaceState.messages.push({
     role: "assistant",
     label: "assistant",
-    text: grounded
-      ? `${documentScopeLabel(workspaceState.documentScope)} 범위로 ${retrievalResult.cxStatus} retrieval 결과와 ${format} handoff를 연결했습니다.`
-      : `${format} 생성 요청을 일반 답변 흐름으로 연결했습니다.`,
-    artifactRefs: [visibleArtifactRef],
+    text:
+      generationWorkflow.state.response?.content ||
+      (generationWorkflow.status === "ACTIVE"
+        ? "생성 작업이 계속 진행 중입니다."
+        : "생성 요청을 완료하지 못했습니다."),
+    artifactRefs: visibleArtifactRef ? [visibleArtifactRef] : [],
     retrievalScope: grounded ? workspaceState.documentScope : null,
     retrievalResult: grounded ? retrievalResult : null,
     retrievalQualityWarning: grounded
@@ -1958,19 +2054,7 @@ async function appendPromptInteraction() {
       : null,
     groundedResponseQuality: buildGroundedResponseQualitySurface({
       generation: {
-        grounded_response_quality: grounded
-          ? buildMockGroundedResponseQualityContract(true, {
-              boundary_status:
-                retrievalResult.cxStatus === "READY" ? "PASS" : "UNKNOWN",
-              citation_status:
-                retrievalResult.cxStatus === "READY" ? "VALIDATED" : "UNKNOWN",
-              issue_count: retrievalResult.cxStatus === "READY" ? 0 : 1,
-              recommended_action:
-                retrievalResult.cxStatus === "READY"
-                  ? "proceed"
-                  : "proceed_with_caveat"
-            })
-          : buildMockGroundedResponseQualityContract(false)
+        grounded_response_quality: qualityContract
       }
     }),
     generationFeedback: createGenerationFeedbackSurfaceState({
@@ -1979,63 +2063,52 @@ async function appendPromptInteraction() {
       cxGenerationId: workspaceState.cxGenerationId,
       clientMode: workspaceState.generationFeedbackClient.clientMode
     }),
-    repairedResponseReview: grounded
-      ? withRepairedResponseDecisionState(
-          buildRepairedResponseReviewSurfaceFromProjection(
-            buildMockRepairedResponseReviewProjection({
-              interactionId: workspaceState.interactionId,
-              chatDocumentId: workspaceState.chatDocumentId,
-              originalGenerationId: workspaceState.cxGenerationId,
-              repairedGenerationId: `${workspaceState.cxGenerationId}-repair`,
-              retrievalPackageId:
-                retrievalResult.cxRetrievalPackageId || workspaceState.retrievalPackageId,
-              clientMode: workspaceState.repairedResponseReviewClient.clientMode
-            }),
-            {
-              clientMode: workspaceState.repairedResponseReviewClient.clientMode
-            }
-          )
-        )
-      : null
+    repairedResponseReview: null
   });
   workspaceState.lastRetrievalRequest = retrievalRequest;
   workspaceState.lastRetrievalResult = retrievalResult;
-  workspaceState.artifact.targetFormats = [format];
-  workspaceState.artifact.handoffStatus = "READY";
-  workspaceState.artifact.citationStatus = grounded ? "VALIDATED" : "NOT_REQUIRED";
-  workspaceState.artifact.currentVersionId = workspaceState.artifactRef.artifactVersionId;
-  workspaceState.artifact.previewRoute = workspaceState.artifactRef.previewRoute;
-  workspaceState.artifact.downloadRoutes = workspaceState.artifactRef.downloadRoutes;
-  workspaceState.selectedArtifactDownloadFormat = format;
-  workspaceState.artifactPreviewPanel = createArtifactPreviewPanelState({
-    clientMode: workspaceState.artifactClient.clientMode
-  });
-  workspaceState.artifactDownloadSaveResult = null;
-  resetArtifactLifecycleActionState();
-  refreshArtifactExportResult({
-    exportSurface: artifactExport?.exportSurface || null
-  });
-  workspaceState.operations.artifactPreview = createOperationState({
-    operationId: "artifact_preview",
-    label: "Artifact preview/download",
-    status: "READY",
-    clientMode: workspaceState.artifactClient.clientMode,
-    route: workspaceState.artifact.previewRoute
-  });
-  workspaceState.artifactVersionPanel = createArtifactVersionPanelState({
-    clientMode: workspaceState.artifactClient.clientMode
-  });
-  workspaceState.operations.artifactVersions = createOperationState({
-    operationId: "artifact_versions",
-    label: "Artifact versions/files",
-    status: "READY",
-    clientMode: workspaceState.artifactClient.clientMode,
-    route: artifactVersionsRoute(workspaceState.artifactRef.artifactId)
-  });
-  workspaceState.progressEvents = buildProgressEvents(grounded);
+  workspaceState.artifact.handoffStatus = artifactHandoffAllowed
+    ? "READY"
+    : "BLOCKED";
+  workspaceState.artifact.citationStatus =
+    qualityContract.citation_status || "UNKNOWN";
+  if (visibleArtifactRef) {
+    workspaceState.artifact.targetFormats = [format];
+    workspaceState.artifact.currentVersionId = workspaceState.artifactRef.artifactVersionId;
+    workspaceState.artifact.previewRoute = workspaceState.artifactRef.previewRoute;
+    workspaceState.artifact.downloadRoutes = workspaceState.artifactRef.downloadRoutes;
+    workspaceState.selectedArtifactDownloadFormat = format;
+    workspaceState.artifactPreviewPanel = createArtifactPreviewPanelState({
+      clientMode: workspaceState.artifactClient.clientMode
+    });
+    workspaceState.artifactDownloadSaveResult = null;
+    resetArtifactLifecycleActionState();
+    refreshArtifactExportResult({
+      exportSurface: artifactExport?.exportSurface || null
+    });
+    workspaceState.operations.artifactPreview = createOperationState({
+      operationId: "artifact_preview",
+      label: "Artifact preview/download",
+      status: "READY",
+      clientMode: workspaceState.artifactClient.clientMode,
+      route: workspaceState.artifact.previewRoute
+    });
+    workspaceState.artifactVersionPanel = createArtifactVersionPanelState({
+      clientMode: workspaceState.artifactClient.clientMode
+    });
+    workspaceState.operations.artifactVersions = createOperationState({
+      operationId: "artifact_versions",
+      label: "Artifact versions/files",
+      status: "READY",
+      clientMode: workspaceState.artifactClient.clientMode,
+      route: artifactVersionsRoute(workspaceState.artifactRef.artifactId)
+    });
+  }
   renderWorkspace();
-  void refreshArtifactLibraryPanel();
-  void refreshArtifactVersionPanel();
+  if (visibleArtifactRef) {
+    void refreshArtifactLibraryPanel();
+    void refreshArtifactVersionPanel();
+  }
 }
 
 async function submitArtifactPreviewAction(target) {

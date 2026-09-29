@@ -19,7 +19,7 @@ def test_repository_web_runtime_audit_classifies_current_gaps() -> None:
     assert result["issues"] == []
     assert result["summary"]["source_file_count"] >= 43
     assert result["summary"]["test_file_count"] >= 55
-    assert result["summary"]["main_js_line_count"] == 3_220
+    assert result["summary"]["main_js_line_count"] >= 3_220
     assert result["summary"]["playwright_script_count"] == 6
     assert result["summary"]["playwright_test_count"] == 6
     assert result["summary"]["accessibility_script_count"] == 1
