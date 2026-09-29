@@ -1211,6 +1211,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1105`](slices/1105_mo_remote_transport_runtime_coupling_audit.md) | `S111-004` Classify oversized MO modules, bidirectional runtime coupling, and boundaries to preserve. |
 | [`Slice 1106`](slices/1106_mo_route_privacy_refactoring_checkpoint.md) | `S111-005` Remove internal paths and environment names from public MO profiles while retaining runtime configuration. |
 | [`Slice 1107`](slices/1107_mo_model_precision_resource_safety_audit.md) | `S111-006` Separate declared BF16 safety from required DGX loaded-dtype and GPU resource evidence. |
+| [`Slice 1108`](slices/1108_mo_contract_api_drift_audit.md) | `S111-007` Quantify runtime/OpenAPI, request/response schema, security, and negative-fixture drift. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
