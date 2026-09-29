@@ -73,7 +73,7 @@ TOKEN_REQUIREMENTS = (
     ),
     TokenRequirement(
         "provider_profiles",
-        "services/nex-mo/nex_mo/providers.py",
+        "services/nex-mo/nex_mo/provider_catalog.py",
         "class ModelProfile",
     ),
     TokenRequirement(

@@ -74,7 +74,11 @@ CAPABILITY_SPECS = (
         None,
         (
             EvidenceRef("requirement", "docs/30_service_specific_requirement_partition.md", "MO-FR-004"),
-            EvidenceRef("implementation", "services/nex-mo/nex_mo/providers.py", 'DEFAULT_PROVIDER_MODE = "mock"'),
+            EvidenceRef(
+                "implementation",
+                "services/nex-mo/nex_mo/provider_catalog.py",
+                'DEFAULT_PROVIDER_MODE = "mock"',
+            ),
             EvidenceRef("implementation", "scripts/smoke/run_protected_remote_provider_live_smoke.py"),
             EvidenceRef("test", "tests/test_protected_remote_provider_live_smoke.py"),
             EvidenceRef("operations", "services/nex-mo/README.md", "NEX_PROTECTED_REMOTE_PROVIDER_LIVE_SMOKE=1"),

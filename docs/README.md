@@ -1217,6 +1217,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1111`](slices/1111_s111_mo_current_state_reaudit_closure.md) | `S111-010` Close the MO re-audit with quantified gaps and an ordered S112 runtime-hardening handoff. |
 | [`Slice 1112`](slices/1112_mo_runtime_hardening_boundary.md) | `S112-001` Freeze behavior-preserving runtime extraction and hybrid persistence boundaries before implementation. |
 | [`Slice 1113`](slices/1113_mo_provider_public_projection_extraction.md) | `S112-002` Extract explicit privacy-safe provider route and model-profile public projections. |
+| [`Slice 1114`](slices/1114_mo_provider_catalog_configuration_extraction.md) | `S112-003` Extract model catalog and environment resolution while preserving compatibility imports. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

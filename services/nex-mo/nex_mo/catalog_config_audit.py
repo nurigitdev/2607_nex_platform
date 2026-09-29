@@ -24,7 +24,7 @@ class DriftProbe:
 DRIFT_PROBES = (
     DriftProbe(
         "embedding_live_mock_alias",
-        "services/nex-mo/nex_mo/providers.py",
+        "services/nex-mo/nex_mo/provider_catalog.py",
         'alias="mock-embedding-default"',
         "MEDIUM",
         "live_profile_naming",
@@ -32,7 +32,7 @@ DRIFT_PROBES = (
     ),
     DriftProbe(
         "reranker_live_mock_alias",
-        "services/nex-mo/nex_mo/providers.py",
+        "services/nex-mo/nex_mo/provider_catalog.py",
         'alias="mock-reranker-default"',
         "MEDIUM",
         "live_profile_naming",
@@ -40,7 +40,7 @@ DRIFT_PROBES = (
     ),
     DriftProbe(
         "legacy_health_env_projection",
-        "services/nex-mo/nex_mo/providers.py",
+        "services/nex-mo/nex_mo/provider_catalog.py",
         'live_health_env="NEX_MO_LIVE_EMBEDDING_HEALTH_URL"',
         "LOW",
         "deprecated_configuration_surface",
@@ -48,7 +48,7 @@ DRIFT_PROBES = (
     ),
     DriftProbe(
         "provider_mode_not_validated",
-        "services/nex-mo/nex_mo/providers.py",
+        "services/nex-mo/nex_mo/provider_catalog.py",
         'env.get("NEX_MO_PROVIDER_MODE", DEFAULT_PROVIDER_MODE)',
         "MEDIUM",
         "configuration_validation",

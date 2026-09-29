@@ -14,6 +14,7 @@ class ModuleBudget:
     path: str
     refactor_threshold: int
     priority: str
+    supporting_paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,10 @@ MODULE_BUDGETS = (
         "services/nex-mo/nex_mo/providers.py",
         700,
         "P1",
+        (
+            "services/nex-mo/nex_mo/provider_catalog.py",
+            "services/nex-mo/nex_mo/provider_projection.py",
+        ),
     ),
     ModuleBudget(
         "remote_transport_normalization_telemetry_runtime",
@@ -201,8 +206,14 @@ def build_mo_runtime_coupling_audit(
 
 def _inspect_module(root: Path, budget: ModuleBudget) -> dict[str, Any]:
     path = root / budget.path
-    present = path.is_file()
-    line_count = len(path.read_text(encoding="utf-8").splitlines()) if present else 0
+    supporting = [root / item for item in budget.supporting_paths]
+    present = path.is_file() and all(item.is_file() for item in supporting)
+    paths = [path, *supporting]
+    line_count = sum(
+        len(item.read_text(encoding="utf-8").splitlines())
+        for item in paths
+        if item.is_file()
+    )
     return {
         "module_id": budget.module_id,
         "path": budget.path,
@@ -210,6 +221,7 @@ def _inspect_module(root: Path, budget: ModuleBudget) -> dict[str, Any]:
         "refactor_threshold": budget.refactor_threshold,
         "over_budget": present and line_count >= budget.refactor_threshold,
         "priority": budget.priority,
+        "supporting_paths": list(budget.supporting_paths),
         "evidence_present": present,
     }
 

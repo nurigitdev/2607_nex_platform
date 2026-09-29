@@ -20,17 +20,17 @@ class EvidenceProbe:
 EVIDENCE_PROBES = (
     EvidenceProbe(
         "embedding_bf16_catalog",
-        "services/nex-mo/nex_mo/providers.py",
+        "services/nex-mo/nex_mo/provider_catalog.py",
         'model_name="Qwen3-Embedding-4B"',
     ),
     EvidenceProbe(
         "reranker_bf16_catalog",
-        "services/nex-mo/nex_mo/providers.py",
+        "services/nex-mo/nex_mo/provider_catalog.py",
         'model_name="Qwen3-Reranker-4B"',
     ),
     EvidenceProbe(
         "generation_bf16_catalog",
-        "services/nex-mo/nex_mo/providers.py",
+        "services/nex-mo/nex_mo/provider_catalog.py",
         '"model_name": "Qwen3.5-4B"',
     ),
     EvidenceProbe(
