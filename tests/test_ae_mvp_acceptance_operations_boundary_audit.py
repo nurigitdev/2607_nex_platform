@@ -8,6 +8,18 @@ import run_ae_mvp_acceptance_operations_boundary_audit as audit
 
 def test_repository_boundary_audit_passes() -> None:
     result = audit.run_ae_mvp_acceptance_operations_boundary_audit()
+    resolved = sum(
+        (audit.ROOT / path).is_file()
+        for path in audit.GAP_RESOLUTION_PATHS.values()
+    )
+    expected_next = next(
+        (
+            audit.GAP_SLICES[name]
+            for name, path in audit.GAP_RESOLUTION_PATHS.items()
+            if not (audit.ROOT / path).is_file()
+        ),
+        "1101",
+    )
 
     assert result["status"] == "PASS", result
     assert result["boundary_readiness"] == "BOUNDARY_FROZEN"
@@ -16,12 +28,12 @@ def test_repository_boundary_audit_passes() -> None:
         "foundation_count": 7,
         "closure_count": 9,
         "gap_count": 8,
-        "open_gap_count": 8,
-        "resolved_gap_count": 0,
+        "open_gap_count": 8 - resolved,
+        "resolved_gap_count": resolved,
         "planned_slice_count": 10,
         "issue_count": 0,
     }
-    assert result["next_slice"] == "1093"
+    assert result["next_slice"] == expected_next
 
 
 def test_boundary_decision_is_fail_closed_and_operations_scoped() -> None:
@@ -92,9 +104,10 @@ def test_helpers_summary_and_main(monkeypatch, tmp_path: Path, capsys) -> None:
     assert audit._group_present([], "missing") is False
 
     passing = audit.run_ae_mvp_acceptance_operations_boundary_audit()
+    summary = passing["summary"]
     assert audit.summary_line(passing) == (
         "ae_mvp_acceptance_operations_boundary=pass closures=9 gaps=8 "
-        "open=8 issues=0 next=1093"
+        f"open={summary['open_gap_count']} issues=0 next={passing['next_slice']}"
     )
     assert "next=unknown" in audit.summary_line({"status": "FAIL"})
 
