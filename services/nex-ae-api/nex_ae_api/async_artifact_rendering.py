@@ -4,8 +4,16 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import re
-from typing import Any, Mapping
+from typing import Any, Mapping, Protocol
 from uuid import NAMESPACE_URL, uuid5
+
+from nex_runtime import (
+    JobQueue,
+    JobQueueError,
+    build_common_job,
+    build_subject_ref,
+    validate_common_job,
+)
 
 
 AE_ASYNC_ARTIFACT_RENDER_REQUEST_SCHEMA_VERSION = (
@@ -14,7 +22,11 @@ AE_ASYNC_ARTIFACT_RENDER_REQUEST_SCHEMA_VERSION = (
 AE_ASYNC_ARTIFACT_RENDER_PROJECTION_SCHEMA_VERSION = (
     "ae_async_artifact_render_projection.v1"
 )
+AE_ASYNC_ARTIFACT_RENDER_ADMISSION_SCHEMA_VERSION = (
+    "ae_async_artifact_render_admission.v1"
+)
 ASYNC_ARTIFACT_RENDER_JOB_TYPE = "ae.artifact.render"
+ASYNC_RENDER_ADMISSION_STATUSES = frozenset({"ENQUEUED", "JOINED", "RECOVERED"})
 RENDER_JOB_STATUSES = frozenset(
     {"QUEUED", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"}
 )
@@ -78,6 +90,20 @@ class AeAsyncArtifactRenderError(ValueError):
 
     def __str__(self) -> str:
         return self.detail
+
+
+class ArtifactRenderAdmissionStore(Protocol):
+    def get(self, artifact_id: str) -> dict[str, Any] | None:
+        ...
+
+    def get_render_job(self, render_job_id: str) -> dict[str, Any] | None:
+        ...
+
+    def save_initial_render_job(
+        self,
+        render_job: dict[str, Any],
+    ) -> dict[str, Any]:
+        ...
 
 
 def deterministic_async_render_job_id(
@@ -225,6 +251,151 @@ def build_initial_render_job(request: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def build_async_artifact_render_queue_job(
+    request: Mapping[str, Any],
+) -> dict[str, Any]:
+    normalized = validate_async_artifact_render_request(request)
+    job = build_common_job(
+        job_id=normalized["render_job_id"],
+        job_type=ASYNC_ARTIFACT_RENDER_JOB_TYPE,
+        trace_id=normalized["trace_id"],
+        request_id=normalized["request_id"],
+        subject_ref=build_subject_ref("artifact", normalized["artifact_id"]),
+        idempotency_key=normalized["render_job_id"],
+        created_at=normalized["requested_at"],
+        max_attempts=normalized["max_attempts"],
+        retryable=True,
+        links=deepcopy(normalized["links"]),
+    )
+    job["payload"] = {"render_request": normalized}
+    return validate_async_artifact_render_queue_job(job, normalized)
+
+
+def validate_async_artifact_render_queue_job(
+    value: object,
+    request: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise _invalid("Async artifact render queue job must be an object.")
+    try:
+        job = validate_common_job(deepcopy(dict(value)))
+    except JobQueueError as exc:
+        raise _invalid("Async artifact render queue job is invalid.") from exc
+    if job["job_type"] != ASYNC_ARTIFACT_RENDER_JOB_TYPE:
+        raise _invalid("Async artifact render queue job type is invalid.")
+    payload = job.get("payload")
+    if not isinstance(payload, Mapping) or set(payload) != {"render_request"}:
+        raise _invalid("Async artifact render queue payload is invalid.")
+    render_request = validate_async_artifact_render_request(
+        payload["render_request"]
+    )
+    expected = (
+        validate_async_artifact_render_request(request)
+        if request is not None
+        else render_request
+    )
+    if render_request != expected:
+        raise _invalid("Async artifact render queue request binding is inconsistent.")
+    if (
+        job["job_id"] != expected["render_job_id"]
+        or job["idempotency_key"] != expected["render_job_id"]
+        or job["subject_ref"]
+        != {"type": "artifact", "id": expected["artifact_id"]}
+        or job["trace_id"] != expected["trace_id"]
+        or job["request_id"] != expected["request_id"]
+        or job["max_attempts"] != expected["max_attempts"]
+        or job["links"] != expected["links"]
+    ):
+        raise _invalid("Async artifact render queue lineage is inconsistent.")
+    return job
+
+
+def admit_async_artifact_render(
+    *,
+    request: Mapping[str, Any],
+    artifact_store: ArtifactRenderAdmissionStore,
+    job_queue: JobQueue,
+) -> dict[str, Any]:
+    normalized = validate_async_artifact_render_request(request)
+    artifact = artifact_store.get(normalized["artifact_id"])
+    if artifact is None:
+        raise AeAsyncArtifactRenderError(
+            error_code="ae.async_artifact_render.artifact_not_found",
+            detail="Artifact was not found for asynchronous rendering.",
+            status_code=404,
+        )
+    _validate_request_artifact_binding(normalized, artifact)
+    render_job = artifact_store.get_render_job(normalized["render_job_id"])
+    render_job_existed = render_job is not None
+    if render_job is None:
+        render_job = artifact_store.save_initial_render_job(
+            build_initial_render_job(normalized)
+        )
+    queue_job = job_queue.get_job(normalized["render_job_id"])
+    queue_job_existed = queue_job is not None
+    if queue_job is None:
+        try:
+            queue_job = job_queue.enqueue(
+                build_async_artifact_render_queue_job(normalized)
+            )
+        except JobQueueError as exc:
+            raise AeAsyncArtifactRenderError(
+                error_code="ae.async_artifact_render.queue_unavailable",
+                detail="Artifact render queue is unavailable.",
+                status_code=503 if exc.status_code >= 500 else exc.status_code,
+                retryable=True,
+            ) from exc
+    queue_job = validate_async_artifact_render_queue_job(queue_job, normalized)
+    admission_status = (
+        "JOINED"
+        if queue_job_existed
+        else "RECOVERED"
+        if render_job_existed
+        else "ENQUEUED"
+    )
+    return validate_async_artifact_render_admission(
+        {
+            "render_admission_schema_version": (
+                AE_ASYNC_ARTIFACT_RENDER_ADMISSION_SCHEMA_VERSION
+            ),
+            "admission_status": admission_status,
+            "render": build_async_artifact_render_projection(
+                render_job=render_job,
+                queue_job=queue_job,
+            ),
+            "owner_scope_enforced": True,
+            "content_included": False,
+        }
+    )
+
+
+def validate_async_artifact_render_admission(value: object) -> dict[str, Any]:
+    fields = {
+        "render_admission_schema_version",
+        "admission_status",
+        "render",
+        "owner_scope_enforced",
+        "content_included",
+    }
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise _invalid("Async artifact render admission has an invalid shape.")
+    admission = deepcopy(dict(value))
+    if admission["render_admission_schema_version"] != (
+        AE_ASYNC_ARTIFACT_RENDER_ADMISSION_SCHEMA_VERSION
+    ):
+        raise _invalid("Async artifact render admission schema version is invalid.")
+    if admission["admission_status"] not in ASYNC_RENDER_ADMISSION_STATUSES:
+        raise _invalid("Async artifact render admission status is invalid.")
+    admission["render"] = validate_async_artifact_render_projection(
+        admission["render"]
+    )
+    if admission["owner_scope_enforced"] is not True:
+        raise _invalid("Async artifact render admission must enforce owner scope.")
+    if admission["content_included"] is not False:
+        raise _invalid("Async artifact render admission must not include content.")
+    return admission
+
+
 def build_async_artifact_render_projection(
     *,
     render_job: Mapping[str, Any],
@@ -339,6 +510,24 @@ def _states_for_queue_status(queue_status: str) -> tuple[str, str]:
         "FAILED": ("FAILED", "BLOCKED"),
         "CANCELLED": ("CANCELLED", "CANCELLED"),
     }[queue_status]
+
+
+def _validate_request_artifact_binding(
+    request: Mapping[str, Any],
+    artifact_record: Mapping[str, Any],
+) -> None:
+    rebuilt = build_async_artifact_render_request(
+        artifact_record=artifact_record,
+        render_request_id=str(request["render_request_id"]),
+        target_formats=list(request["target_formats"]),
+        request_id=str(request["request_id"]),
+        trace_id=str(request["trace_id"]),
+        response_id=request["response_id"],
+        max_attempts=int(request["max_attempts"]),
+        requested_at=str(request["requested_at"]),
+    )
+    if rebuilt != request:
+        raise _invalid("Async artifact render request no longer matches the artifact.")
 
 
 def _validate_target_formats(value: object) -> list[str]:

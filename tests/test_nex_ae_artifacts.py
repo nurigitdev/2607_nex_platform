@@ -28,6 +28,10 @@ from nex_ae_api.artifact_retention_scheduler_daemon import (
     SqlAlchemyArtifactRetentionSchedulerDaemonRunStore,
     run_artifact_retention_scheduler_daemon_cli_execution,
 )
+from nex_ae_api.async_artifact_rendering import (
+    build_async_artifact_render_request,
+    build_initial_render_job,
+)
 from nex_ae_api.artifacts import (
     ArtifactHandoffError,
     ArtifactHandoffStore,
@@ -8251,6 +8255,48 @@ def test_sqlalchemy_artifact_record_store_round_trips_render_metadata_with_sqlit
     assert "/data/nex-platform" not in str(updated)
     assert store.delete(created["artifact_id"]) == 1
     assert store.get(created["artifact_id"]) is None
+
+
+def test_sqlalchemy_artifact_record_store_admits_initial_render_with_sqlite() -> None:
+    session_factory = sqlite_artifact_session_factory()
+    handoff = sample_handoff_record()
+    SqlAlchemyArtifactHandoffStore(session_factory).save(handoff)
+    store = SqlAlchemyArtifactRecordStore(session_factory)
+    artifact_record = build_artifact_record_from_handoff(
+        source_payload={"artifact_request_id": "artifact-async-create-001"},
+        handoff_record=handoff,
+        artifact_request_id=None,
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+    )
+    created = store.create(artifact_record)
+    request = build_async_artifact_render_request(
+        artifact_record=created,
+        render_request_id="async-render-request-001",
+        target_formats=["MD"],
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        requested_at="2026-09-29T02:00:00Z",
+    )
+    render_job = build_initial_render_job(request)
+
+    saved = store.save_initial_render_job(render_job)
+    repeated = store.save_initial_render_job(deepcopy(render_job))
+    loaded = store.get(created["artifact_id"])
+
+    assert repeated["render_job_id"] == saved["render_job_id"]
+    assert repeated["job_status"] == "QUEUED"
+    assert repeated["started_at"] is None
+    assert repeated["completed_at"] is None
+    assert store.get_render_job(render_job["render_job_id"]) == repeated
+    assert loaded is not None
+    assert loaded["artifact_status"] == "RENDERING"
+    assert loaded["render_jobs"] == [repeated]
+
+    missing = {**render_job, "render_job_id": "missing-job", "artifact_id": "missing"}
+    with pytest.raises(ArtifactHandoffError) as exc_info:
+        store.save_initial_render_job(missing)
+    assert exc_info.value.status_code == 404
 
 
 def test_sqlalchemy_artifact_record_store_lists_owner_scoped_collection_with_sqlite() -> None:

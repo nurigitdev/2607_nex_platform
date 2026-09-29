@@ -743,6 +743,28 @@ class ArtifactRecordStore:
     def get_render_job(self, render_job_id: str) -> dict[str, Any] | None:
         return self.render_jobs.get(render_job_id)
 
+    def save_initial_render_job(
+        self,
+        render_job: dict[str, Any],
+    ) -> dict[str, Any]:
+        existing = self.get_render_job(render_job["render_job_id"])
+        if existing is not None:
+            return existing
+        record = self.get(render_job["artifact_id"])
+        if record is None:
+            raise ArtifactHandoffError(
+                status_code=404,
+                error_code="ae.artifact_not_found",
+                detail=f"Artifact was not found: {render_job['artifact_id']}",
+            )
+        stored_job = deepcopy(render_job)
+        record["render_jobs"].append(stored_job)
+        record["artifact_status"] = "RENDERING"
+        record["updated_at"] = stored_job["updated_at"]
+        self.render_jobs[stored_job["render_job_id"]] = stored_job
+        self.save(record)
+        return stored_job
+
     def get_rendered_markdown(self, artifact_version_id: str) -> str | None:
         return self.rendered_markdown.get(artifact_version_id)
 
@@ -1430,6 +1452,27 @@ class SqlAlchemyArtifactRecordStore:
                 detail="AE artifact store is unavailable.",
                 retryable=True,
             ) from exc
+
+    def save_initial_render_job(
+        self,
+        render_job: dict[str, Any],
+    ) -> dict[str, Any]:
+        existing = self.get_render_job(render_job["render_job_id"])
+        if existing is not None:
+            return existing
+        record = self.get(render_job["artifact_id"])
+        if record is None:
+            raise ArtifactHandoffError(
+                status_code=404,
+                error_code="ae.artifact_not_found",
+                detail=f"Artifact was not found: {render_job['artifact_id']}",
+            )
+        stored_job = deepcopy(render_job)
+        record["render_jobs"].append(stored_job)
+        record["artifact_status"] = "RENDERING"
+        record["updated_at"] = stored_job["updated_at"]
+        self.save(record)
+        return stored_job
 
     def get_rendered_markdown(self, artifact_version_id: str) -> str | None:
         artifact_file = self._get_markdown_file_for_version(artifact_version_id)
@@ -12239,8 +12282,8 @@ def _artifact_render_job_from_row(row: Any) -> dict[str, Any]:
         "progress_percent": data["progress_percent"],
         "retryable": bool(data["retryable"]),
         "failure_code": data["failure_code"],
-        "started_at": _datetime_value(data["started_at"]),
-        "completed_at": _datetime_value(data["completed_at"]),
+        "started_at": _nullable_datetime_value(data["started_at"]),
+        "completed_at": _nullable_datetime_value(data["completed_at"]),
     }
 
 
