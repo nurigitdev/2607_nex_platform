@@ -1183,6 +1183,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1077`](slices/1077_ae_async_artifact_response_lineage.md) | `S108-006` Bind asynchronous artifact admissions to durable owner-scoped S107 generated-response lineage. |
 | [`Slice 1078`](slices/1078_ae_async_artifact_render_recovery.md) | `S108-007` Inspect and reconcile restart/retry state drift without exposing or reconstructing rendered content. |
 | [`Slice 1079`](slices/1079_ae_async_artifact_render_contract_hardening.md) | `S108-008` Freeze async artifact render JSON Schemas, fixtures, and AE OpenAPI 1.6 lifecycle routes. |
+| [`Slice 1080`](slices/1080_ae_async_artifact_render_postgres_smoke.md) | `S108-009` Prove durable async rendering, restart recovery, private storage, bounded retry, owner isolation, and cleanup on actual AE test PostgreSQL. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
