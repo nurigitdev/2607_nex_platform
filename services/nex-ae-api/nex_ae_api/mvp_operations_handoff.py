@@ -28,6 +28,10 @@ REQUIRED_ASSET_PATHS = (
     "docs/slices/1095_ae_mvp_acceptance_evaluator.md",
     "docs/slices/1096_ae_mvp_acceptance_api.md",
     "docs/slices/1097_ae_mvp_acceptance_contract_hardening.md",
+    "docs/slices/1098_ae_mvp_operations_handoff.md",
+    "docs/slices/1099_ae_mvp_acceptance_postgres_live_smoke.md",
+    "docs/slices/1100_ae_mvp_acceptance_operator_runbook.md",
+    "docs/slices/1101_s110_ae_mvp_acceptance_operations_closure.md",
 )
 
 
