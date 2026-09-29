@@ -12,6 +12,7 @@ from uuid import NAMESPACE_URL, uuid5
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
+from nex_mo.provider_projection import project_model_profile, project_provider_route
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
     problem_response,
@@ -69,21 +70,7 @@ class ProviderRoute:
     embedding_dimensions: int | None = None
 
     def to_wire(self) -> dict[str, Any]:
-        payload: dict[str, Any] = {
-            "alias": self.alias,
-            "provider_capability": self.provider_capability,
-            "provider_type": self.provider_type,
-            "model_revision": self.model_revision,
-            "deployment_id": self.deployment_id,
-            "route_id": self.route_id,
-            "supports_response_formats": list(self.supports_response_formats),
-            "max_input_tokens": self.max_input_tokens,
-            "max_output_tokens": self.max_output_tokens,
-            "status": self.status,
-        }
-        if self.embedding_dimensions is not None:
-            payload["embedding_dimensions"] = self.embedding_dimensions
-        return payload
+        return project_provider_route(self)
 
 
 @dataclass(frozen=True)
@@ -103,19 +90,7 @@ class ModelProfile:
     live_health_env: str | None = None
 
     def to_wire(self) -> dict[str, Any]:
-        return {
-            "profile_name": self.profile_name,
-            "provider_capability": self.provider_capability,
-            "alias": self.alias,
-            "provider_mode": self.provider_mode,
-            "model_name": self.model_name,
-            "precision": self.precision,
-            "runtime_engine": self.runtime_engine,
-            "selected": self.selected,
-            "status": self.status,
-            "candidate_role": self.candidate_role,
-            "selection_reason": self.selection_reason,
-        }
+        return project_model_profile(self)
 
 
 @dataclass(frozen=True)

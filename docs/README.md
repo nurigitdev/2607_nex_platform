@@ -1216,6 +1216,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1110`](slices/1110_mo_protected_dgx_live_reaudit.md) | `S111-009` Prove canonical provider requests, model identity, explicit BF16 process dtype, and protected evidence redaction on DGX. |
 | [`Slice 1111`](slices/1111_s111_mo_current_state_reaudit_closure.md) | `S111-010` Close the MO re-audit with quantified gaps and an ordered S112 runtime-hardening handoff. |
 | [`Slice 1112`](slices/1112_mo_runtime_hardening_boundary.md) | `S112-001` Freeze behavior-preserving runtime extraction and hybrid persistence boundaries before implementation. |
+| [`Slice 1113`](slices/1113_mo_provider_public_projection_extraction.md) | `S112-002` Extract explicit privacy-safe provider route and model-profile public projections. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
