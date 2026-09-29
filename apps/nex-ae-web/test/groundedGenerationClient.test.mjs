@@ -23,7 +23,13 @@ function response(payload, { ok = true, status = 200, jsonError = false } = {}) 
 
 test("mock client exposes the complete owner-safe lifecycle", async () => {
   const client = createMockGroundedGenerationClient();
-  const admitted = await client.admitInteraction({ interaction_id: "interaction-1" });
+  const admitted = await client.admitInteraction({
+    interaction_id: "interaction-1",
+    retrieval: {
+      enabled: true,
+      document_scope: { document_ids: ["doc-1"] }
+    }
+  });
   const loaded = await client.getInteraction("interaction-1");
   const progress = await client.getProgress("interaction-1");
   const refreshed = await client.refreshInteraction("interaction-1");
@@ -37,6 +43,8 @@ test("mock client exposes the complete owner-safe lifecycle", async () => {
 
   assert.equal(client.clientMode, "mock");
   assert.equal(admitted.interactionId, "interaction-1");
+  assert.equal(admitted.retrieval.cx_status, "READY");
+  assert.equal(admitted.retrieval.evidence_count, 1);
   assert.equal(loaded.metadata.contentIncluded, false);
   assert.equal(progress.nextPollAfterSeconds, 2);
   assert.equal(refreshed.content, "Grounded mock response [1].");

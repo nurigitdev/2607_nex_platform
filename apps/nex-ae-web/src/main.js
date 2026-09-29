@@ -126,6 +126,10 @@ import {
   inspectGroundedGenerationRecovery,
   retryGroundedGeneration
 } from "./groundedGenerationRecovery.js";
+import {
+  buildGroundedGenerationPresentation,
+  buildGroundedGenerationPresentationFailure
+} from "./groundedGenerationPresentation.js";
 import { buildGenerationLifecycleReadModel } from "./generationLifecycleState.js";
 import {
   buildGenerationFeedbackRequest,
@@ -1981,7 +1985,6 @@ async function appendPromptInteraction() {
     documentScope: workspaceState.documentScope,
     grounded
   });
-  const retrievalResult = await submitRetrievalRequest(retrievalRequest);
   const requestedInteractionId = nextGenerationInteractionId();
   const generationRequest = buildGroundedGenerationRequest({
     interactionId: requestedInteractionId,
@@ -2028,8 +2031,39 @@ async function appendPromptInteraction() {
     event.stage,
     event.status
   ]);
+  let presentationError = null;
+  let generationPresentation;
+  try {
+    generationPresentation = await buildGroundedGenerationPresentation({
+      workflow: generationWorkflow,
+      repairedResponseReviewClient:
+        workspaceState.repairedResponseReviewClient
+    });
+  } catch (error) {
+    presentationError = error;
+    generationPresentation = buildGroundedGenerationPresentationFailure(
+      generationWorkflow,
+      error
+    );
+  }
+  const retrievalResult = generationPresentation.retrievalResult;
+  workspaceState.operations.retrieval =
+    grounded && !retrievalResult
+      ? markOperationFailed(workspaceState.operations.retrieval, {
+          error: presentationError,
+          errorStatus: "GENERATION_RETRIEVAL_PROJECTION_REQUIRED",
+          retryable: false
+        })
+      : markOperationSucceeded(workspaceState.operations.retrieval, {
+          status: retrievalResult?.cxStatus || "NOT_REQUESTED",
+          resultStatus: retrievalResult?.status || "SKIPPED",
+          clientMode: workspaceState.groundedGenerationClient.clientMode,
+          route:
+            generationWorkflow.admission?.route ||
+            "/api/v1/chat/interactions"
+        });
 
-  if (generationWorkflow.status === "COMPLETED") {
+  if (generationWorkflow.status === "COMPLETED" && !presentationError) {
     workspaceState.operations.generation = markOperationSucceeded(
       workspaceState.operations.generation,
       { status: "COMPLETED", resultStatus: "COMPLETED" }
@@ -2044,14 +2078,17 @@ async function appendPromptInteraction() {
       workspaceState.operations.generation,
       {
         errorStatus:
-          generationWorkflow.state.errorStatus || "GENERATION_UNAVAILABLE",
-        retryable: generationWorkflow.state.retryable
+          presentationError?.status ||
+          generationWorkflow.state.errorStatus ||
+          "GENERATION_UNAVAILABLE",
+        retryable: presentationError
+          ? false
+          : generationWorkflow.state.retryable
       }
     );
   }
 
-  const artifactHandoffAllowed =
-    generationWorkflow.readModel.presentation.artifactHandoffAllowed;
+  const artifactHandoffAllowed = generationPresentation.artifactHandoffAllowed;
   let artifactExport = null;
   let visibleArtifactRef = null;
   if (
@@ -2063,41 +2100,25 @@ async function appendPromptInteraction() {
     artifactExport = await submitArtifactExportRequest(format, artifactRef);
     visibleArtifactRef = artifactExport?.artifactRef || artifactRef;
   }
-  const qualityContract = generationWorkflow.state.citationQuality?.quality || {
-    contract_schema_version: "ae_chat_grounded_response_quality.v1",
-    boundary_status: generationWorkflow.status === "FAILED" ? "FAIL" : "UNKNOWN",
-    citation_status: "UNKNOWN",
-    issue_count: generationWorkflow.status === "FAILED" ? 1 : 0,
-    recommended_action:
-      generationWorkflow.status === "FAILED" ? "show_error" : "proceed_with_caveat",
-    grounding_required: grounded
-  };
+  const qualityContract = generationWorkflow.state.citationQuality?.quality || {};
   workspaceState.messages.push({
     role: "assistant",
     label: "assistant",
-    text:
-      generationWorkflow.state.response?.content ||
-      (generationWorkflow.status === "ACTIVE"
-        ? "생성 작업이 계속 진행 중입니다."
-        : "생성 요청을 완료하지 못했습니다."),
+    text: generationPresentation.assistantText,
     artifactRefs: visibleArtifactRef ? [visibleArtifactRef] : [],
     retrievalScope: grounded ? workspaceState.documentScope : null,
     retrievalResult: grounded ? retrievalResult : null,
     retrievalQualityWarning: grounded
-      ? buildRetrievalQualityWarningSurface(retrievalResult)
+      ? generationPresentation.retrievalQualityWarning
       : null,
-    groundedResponseQuality: buildGroundedResponseQualitySurface({
-      generation: {
-        grounded_response_quality: qualityContract
-      }
-    }),
+    groundedResponseQuality: generationPresentation.groundedResponseQuality,
     generationFeedback: createGenerationFeedbackSurfaceState({
       interactionId: workspaceState.interactionId,
       chatDocumentId: workspaceState.chatDocumentId,
       cxGenerationId: workspaceState.cxGenerationId,
       clientMode: workspaceState.generationFeedbackClient.clientMode
     }),
-    repairedResponseReview: null
+    repairedResponseReview: generationPresentation.repairedResponseReview
   });
   workspaceState.lastRetrievalRequest = retrievalRequest;
   workspaceState.lastRetrievalResult = retrievalResult;
@@ -2242,38 +2263,54 @@ async function retryLastGeneration() {
       event.stage,
       event.status
     ]);
+    let presentationError = null;
+    let presentation;
+    try {
+      presentation = await buildGroundedGenerationPresentation({
+        workflow: result,
+        repairedResponseReviewClient:
+          workspaceState.repairedResponseReviewClient
+      });
+    } catch (error) {
+      presentationError = error;
+      presentation = buildGroundedGenerationPresentationFailure(result, error);
+    }
+    workspaceState.lastRetrievalResult = presentation.retrievalResult;
     workspaceState.operations.generation =
-      result.status === "COMPLETED"
+      result.status === "COMPLETED" && !presentationError
         ? markOperationSucceeded(workspaceState.operations.generation, {
             status: "COMPLETED",
             resultStatus: "COMPLETED"
           })
         : markOperationFailed(workspaceState.operations.generation, {
-            errorStatus: result.state.errorStatus || "GENERATION_RETRY_FAILED",
-            retryable: result.state.retryable
+            errorStatus:
+              presentationError?.status ||
+              result.state.errorStatus ||
+              "GENERATION_RETRY_FAILED",
+            retryable: presentationError ? false : result.state.retryable
           });
-    if (result.state.response?.content) {
-      workspaceState.messages.push({
-        role: "assistant",
-        label: "assistant",
-        text: result.state.response.content,
-        artifactRefs: [],
-        retrievalScope: workspaceState.documentScope,
-        retrievalResult: workspaceState.lastRetrievalResult,
-        groundedResponseQuality: buildGroundedResponseQualitySurface({
-          generation: {
-            grounded_response_quality: result.state.citationQuality?.quality
-          }
-        }),
-        generationFeedback: createGenerationFeedbackSurfaceState({
-          interactionId: workspaceState.interactionId,
-          chatDocumentId: workspaceState.chatDocumentId,
-          cxGenerationId: workspaceState.cxGenerationId,
-          clientMode: workspaceState.generationFeedbackClient.clientMode
-        }),
-        repairedResponseReview: null
-      });
-    }
+    workspaceState.messages.push({
+      role: "assistant",
+      label: "assistant",
+      text: presentation.assistantText,
+      artifactRefs: [],
+      retrievalScope: workspaceState.documentScope,
+      retrievalResult: presentation.retrievalResult,
+      retrievalQualityWarning: presentation.retrievalQualityWarning,
+      groundedResponseQuality: presentation.groundedResponseQuality,
+      generationFeedback: createGenerationFeedbackSurfaceState({
+        interactionId: workspaceState.interactionId,
+        chatDocumentId: workspaceState.chatDocumentId,
+        cxGenerationId: workspaceState.cxGenerationId,
+        clientMode: workspaceState.generationFeedbackClient.clientMode
+      }),
+      repairedResponseReview: presentation.repairedResponseReview
+    });
+    workspaceState.artifact.handoffStatus = presentation.artifactHandoffAllowed
+      ? "READY"
+      : "BLOCKED";
+    workspaceState.artifact.citationStatus =
+      result.state.citationQuality?.quality?.citation_status || "UNKNOWN";
   } catch (error) {
     if (runSequence !== workspaceState.generationRunSequence) return;
     workspaceState.operations.generation = markOperationFailed(

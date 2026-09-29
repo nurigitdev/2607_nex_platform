@@ -138,13 +138,15 @@ export async function runGroundedGenerationWorkflow({
     state,
     readModel,
     admission,
+    groundingRequested: request.retrieval?.enabled === true,
     pollCount,
     pollLimitReached: state.phase === "active" && pollCount === maxPolls,
     events,
     summary: buildGroundedGenerationWorkflowSummary({
       state,
       pollCount,
-      maxPolls
+      maxPolls,
+      groundingRequested: request.retrieval?.enabled === true
     })
   };
 }
@@ -152,7 +154,8 @@ export async function runGroundedGenerationWorkflow({
 export function buildGroundedGenerationWorkflowSummary({
   state,
   pollCount,
-  maxPolls
+  maxPolls,
+  groundingRequested = false
 }) {
   const lifecycle = buildGenerationLifecycleSummary(state);
   return {
@@ -161,6 +164,7 @@ export function buildGroundedGenerationWorkflowSummary({
     poll_count: pollCount,
     max_polls: maxPolls,
     poll_limit_reached: lifecycle.terminal === false && pollCount === maxPolls,
+    grounding_requested: Boolean(groundingRequested),
     metadata: {
       rawPromptIncluded: false,
       generatedContentIncluded: false,

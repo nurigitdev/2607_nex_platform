@@ -194,6 +194,11 @@ export function buildInteractionResult(
       cxGenerationId: stringOrNull(record.cx_generation_id),
       cxStatus: record.cx_status || "UNKNOWN",
       asyncGeneration,
+      retrieval: objectOrNull(record.retrieval),
+      groundedResponseQuality: objectOrNull(
+        record.generation?.grounded_response_quality
+      ),
+      citationWorkflow: objectOrNull(record.generation?.citation_workflow),
       artifactRefs: Array.isArray(record.artifact_refs) ? record.artifact_refs : [],
       retryable: Boolean(asyncGeneration?.retryable),
       terminal: ["COMPLETED", "FAILED", "CANCELLED"].includes(record.status)
@@ -423,7 +428,11 @@ function buildMockResponse(operation, interactionId, payload, callIndex) {
     payload?.interaction_id ||
     "interaction-web-local-001";
   if (["admitInteraction", "getInteraction", "cancelInteraction", "retryInteraction"].includes(operation)) {
-    return mockInteraction(id, operation === "cancelInteraction" ? "CANCELLED" : "PENDING");
+    return mockInteraction(
+      id,
+      operation === "cancelInteraction" ? "CANCELLED" : "PENDING",
+      payload
+    );
   }
   if (operation === "getProgress") return mockProgress(id, callIndex);
   if (operation === "getRecovery") return mockRecovery();
@@ -435,7 +444,8 @@ function buildMockResponse(operation, interactionId, payload, callIndex) {
   });
 }
 
-function mockInteraction(interactionId, status) {
+function mockInteraction(interactionId, status, payload = null) {
+  const grounded = payload?.retrieval?.enabled === true;
   return {
     interaction_schema_version: "ae_chat_interaction.v1",
     interaction_id: interactionId,
@@ -451,6 +461,29 @@ function mockInteraction(interactionId, status) {
         cancellable: status === "PENDING"
       }
     },
+    retrieval: grounded
+      ? {
+          cx_retrieval_package_id: "cx-ret-web-local",
+          cx_package_hash: "d".repeat(64),
+          cx_status: "READY",
+          evidence_count: Math.max(
+            1,
+            payload?.retrieval?.document_scope?.document_ids?.length || 0
+          ),
+          best_score: 0.91,
+          confidence_bucket: "HIGH",
+          no_answer_reason: null,
+          warnings: [],
+          quality_warnings: {
+            contract_schema_version: "ae_chat_retrieval_quality_warning.v1",
+            boundary_status: "PASS",
+            warning_kinds: [],
+            warning_count: 0,
+            quality_flag_count: 0,
+            recommended_action: "proceed"
+          }
+        }
+      : null,
     artifact_refs: []
   };
 }
