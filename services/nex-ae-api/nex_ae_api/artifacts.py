@@ -426,6 +426,17 @@ class ArtifactHandoffStore:
         return self.records.get(artifact_handoff_id)
 
 
+def _upsert_records_by_id(
+    existing: list[dict[str, Any]],
+    additions: list[dict[str, Any]],
+    id_field: str,
+) -> list[dict[str, Any]]:
+    additions_by_id = {item[id_field]: item for item in additions}
+    merged = [additions_by_id.pop(item[id_field], item) for item in existing]
+    merged.extend(additions_by_id.values())
+    return merged
+
+
 @dataclass
 class ArtifactRecordStore:
     records: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -842,10 +853,18 @@ class ArtifactRecordStore:
     ) -> dict[str, Any]:
         record = self.records[artifact_id]
         payloads = rendered_payloads or {"MD": markdown.encode("utf-8")}
-        record["versions"].append(artifact_version)
-        record["render_jobs"].append(render_job)
-        record["files"].extend(artifact_files)
-        record["links"].extend(artifact_links)
+        record["versions"] = _upsert_records_by_id(
+            record["versions"], [artifact_version], "artifact_version_id"
+        )
+        record["render_jobs"] = _upsert_records_by_id(
+            record["render_jobs"], [render_job], "render_job_id"
+        )
+        record["files"] = _upsert_records_by_id(
+            record["files"], artifact_files, "artifact_file_id"
+        )
+        record["links"] = _upsert_records_by_id(
+            record["links"], artifact_links, "artifact_link_id"
+        )
         record["artifact_status"] = "READY"
         record["current_version_id"] = artifact_version["artifact_version_id"]
         record["updated_at"] = render_job["completed_at"]
@@ -1610,10 +1629,18 @@ class SqlAlchemyArtifactRecordStore:
                 error_code="ae.artifact_not_found",
                 detail=f"Artifact was not found: {artifact_id}",
             )
-        record["versions"].append(artifact_version)
-        record["render_jobs"].append(render_job)
-        record["files"].extend(artifact_files)
-        record["links"].extend(artifact_links)
+        record["versions"] = _upsert_records_by_id(
+            record["versions"], [artifact_version], "artifact_version_id"
+        )
+        record["render_jobs"] = _upsert_records_by_id(
+            record["render_jobs"], [render_job], "render_job_id"
+        )
+        record["files"] = _upsert_records_by_id(
+            record["files"], artifact_files, "artifact_file_id"
+        )
+        record["links"] = _upsert_records_by_id(
+            record["links"], artifact_links, "artifact_link_id"
+        )
         record["artifact_status"] = "READY"
         record["current_version_id"] = artifact_version["artifact_version_id"]
         record["updated_at"] = render_job["completed_at"]

@@ -330,7 +330,7 @@ def admit_async_artifact_render(
             detail="Artifact was not found for asynchronous rendering.",
             status_code=404,
         )
-    _validate_request_artifact_binding(normalized, artifact)
+    validate_async_artifact_render_artifact_binding(normalized, artifact)
     render_job = artifact_store.get_render_job(normalized["render_job_id"])
     render_job_existed = render_job is not None
     if render_job is None:
@@ -514,8 +514,19 @@ def build_async_artifact_render_projection(
     retryable = render.get("retryable")
     if not isinstance(retryable, bool):
         raise _invalid("Artifact render retryable flag is invalid.")
-    failure = _safe_failure(queue.get("error"), render.get("failure_code"))
-    if render_status != "FAILED" and failure is not None:
+    queue_error = queue.get("error")
+    validated_failure = _safe_failure(
+        queue_error,
+        render.get("failure_code") if render_status == "FAILED" else None,
+    )
+    if (
+        render_status != "FAILED"
+        and queue_error is not None
+        and (not isinstance(queue_error, Mapping) or "detail" not in queue_error)
+    ):
+        raise _invalid("Non-terminal artifact render queue failure is invalid.")
+    failure = validated_failure if render_status == "FAILED" else None
+    if render_status != "FAILED" and render.get("failure_code") is not None:
         raise _invalid("Only failed artifact render jobs may expose a failure.")
     return validate_async_artifact_render_projection(
         {
@@ -605,7 +616,7 @@ def _states_for_queue_status(queue_status: str) -> tuple[str, str]:
     }[queue_status]
 
 
-def _validate_request_artifact_binding(
+def validate_async_artifact_render_artifact_binding(
     request: Mapping[str, Any],
     artifact_record: Mapping[str, Any],
 ) -> None:
@@ -747,8 +758,8 @@ def _safe_failure(value: object, failure_code: object) -> dict[str, Any] | None:
         return None
     if not isinstance(value, Mapping):
         raise _invalid("Async artifact render failure is invalid.")
-    allowed = {"error_code", "retryable", "dead_lettered"}
-    if set(value) != allowed:
+    required = {"error_code", "retryable", "dead_lettered"}
+    if not required.issubset(value) or set(value) - required not in (set(), {"detail"}):
         raise _invalid("Async artifact render failure has an invalid shape.")
     error_code = _required_text(value.get("error_code"), "failure.error_code")
     if failure_code is not None and failure_code != error_code:
