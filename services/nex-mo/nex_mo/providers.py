@@ -37,6 +37,7 @@ from nex_runtime import (
     validate_authorization_header,
 )
 
+
 def build_model_profile_catalog(
     environ: dict[str, str] | None = None,
 ) -> tuple[ModelProfile, ...]:
