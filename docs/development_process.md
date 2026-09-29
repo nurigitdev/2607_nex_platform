@@ -1,6 +1,6 @@
 # NeX-Platform Development Process
 
-Status: Tiered regression baseline for Slice 0971.
+Status: Tiered regression baseline hardened through Slice 1089.
 
 This process applies to implementation slices after the Slice 0000
 documentation baseline. It keeps feature work small, regression-tested, and
@@ -46,6 +46,11 @@ collects the `tests` directory only once; non-closure focused tests are already
 part of that collection, while closure tests remain Full Gate evidence. Both
 accelerated tiers run contract validation and fail immediately when any
 command fails.
+
+The Full Gate also runs the complete `nex-ae-web` Node regression and its
+grounded-generation accessibility/diagnostics contract smoke. This keeps Web
+runtime behavior inside the closure gate even though JavaScript coverage is not
+collected by the Python coverage report.
 
 Coverage thresholds:
 

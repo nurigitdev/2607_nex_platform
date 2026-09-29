@@ -35,6 +35,14 @@ import {
 import {
   createRepairedResponseDecisionState
 } from "../src/repairedResponseDecisionState.js";
+import {
+  createGenerationLifecycleState,
+  markGenerationLifecycleFailure
+} from "../src/generationLifecycleState.js";
+import {
+  AE_WEB_GROUNDED_GENERATION_PRESENTATION_SCHEMA_VERSION
+} from "../src/groundedGenerationPresentation.js";
+import { buildGroundedResponseQualitySurface } from "../src/groundedResponseQuality.js";
 
 function runtimeConfig({ mode = "mock" } = {}) {
   return normalizeRuntimeConfig({
@@ -162,6 +170,30 @@ function repairedReviewSurface({ status = "READY_FOR_DECISION" } = {}) {
   };
 }
 
+function generationPresentation() {
+  return {
+    presentationSchemaVersion:
+      AE_WEB_GROUNDED_GENERATION_PRESENTATION_SCHEMA_VERSION,
+    displayMode: "QUALITY_ATTENTION_REQUIRED",
+    lifecycleStatus: "FAILED",
+    citationWorkflowStatus: "ATTENTION_REQUIRED",
+    nextAction: "RETRY_OR_REVIEW_GENERATION",
+    artifactHandoffAllowed: false,
+    retrievalResult: null,
+    repairedResponseReview: null,
+    groundedResponseQuality: buildGroundedResponseQualitySurface({}),
+    metadata: {
+      ownerVerifiedResponse: false,
+      rawPromptIncluded: false,
+      rawSourceIncluded: false,
+      browserServiceTokenIncluded: false,
+      providerUrlIncluded: false,
+      databaseUrlIncluded: false,
+      storageRefIncluded: false
+    }
+  };
+}
+
 describe("AE Web runtime diagnostics", () => {
   it("summarizes mock runtime, registry, and operations safely", () => {
     const bootstrap = composeAuthenticatedSessionRuntime({
@@ -194,7 +226,12 @@ describe("AE Web runtime diagnostics", () => {
       repairedResponseReviewReadModel: buildRepairedResponseReviewReadModel([
         repairedReviewSurface(),
         repairedReviewSurface({ status: "FAILED" })
-      ])
+      ]),
+      generationLifecycle: markGenerationLifecycleFailure(
+        createGenerationLifecycleState(),
+        { status: "QUALITY_ATTENTION_REQUIRED", retryable: true }
+      ),
+      generationPresentation: generationPresentation()
     });
     const summary = buildRuntimeDiagnosticsSummary(diagnostics);
 
@@ -214,6 +251,16 @@ describe("AE Web runtime diagnostics", () => {
     assert.equal(diagnostics.repaired_response_review_count, 2);
     assert.equal(diagnostics.repaired_response_actionable_count, 2);
     assert.equal(diagnostics.repaired_response_failed_count, 1);
+    assert.equal(diagnostics.generation_phase, "failed");
+    assert.equal(
+      diagnostics.generation_display_mode,
+      "QUALITY_ATTENTION_REQUIRED"
+    );
+    assert.equal(
+      diagnostics.generation_next_action,
+      "RETRY_OR_REVIEW_GENERATION"
+    );
+    assert.equal(diagnostics.generation_artifact_handoff_allowed, false);
     assert.equal(diagnostics.registry.clients.upload, "mock");
     assert.equal(diagnostics.registry.clients.grounded_generation, "mock");
     assert.equal(diagnostics.auth_boundary.owner_scope_source, "mock-local");
@@ -223,6 +270,8 @@ describe("AE Web runtime diagnostics", () => {
     assert.equal(summary.repaired_response_review_count, 2);
     assert.equal(summary.repaired_response_actionable_count, 2);
     assert.equal(summary.repaired_response_failed_count, 1);
+    assert.equal(summary.generation_phase, "failed");
+    assert.equal(summary.generation_display_mode, "QUALITY_ATTENTION_REQUIRED");
     assert.equal(summary.session_state, "anonymous");
     assert.equal(summary.session_bootstrap_phase, "ready");
     assert.equal(summary.route_guard_status, "mock_preview");

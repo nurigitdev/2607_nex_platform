@@ -226,6 +226,7 @@ const workspaceState = {
   groundedGenerationClient: null,
   generationLifecycle: null,
   generationWorkflow: null,
+  generationPresentation: null,
   lastGenerationRequest: null,
   generationAbortController: null,
   generationRunSequence: 0,
@@ -2046,6 +2047,7 @@ async function appendPromptInteraction() {
       error
     );
   }
+  workspaceState.generationPresentation = generationPresentation;
   const retrievalResult = generationPresentation.retrievalResult;
   workspaceState.operations.retrieval =
     grounded && !retrievalResult
@@ -2275,6 +2277,7 @@ async function retryLastGeneration() {
       presentationError = error;
       presentation = buildGroundedGenerationPresentationFailure(result, error);
     }
+    workspaceState.generationPresentation = presentation;
     workspaceState.lastRetrievalResult = presentation.retrievalResult;
     workspaceState.operations.generation =
       result.status === "COMPLETED" && !presentationError
@@ -3041,7 +3044,9 @@ function renderRuntimeDiagnostics() {
     sessionRouteGuard: workspaceState.sessionRouteGuard,
     operations: workspaceState.operations,
     repairedResponseReviewReadModel:
-      buildWorkspaceRepairedResponseReviewReadModel()
+      buildWorkspaceRepairedResponseReviewReadModel(),
+    generationLifecycle: workspaceState.generationLifecycle,
+    generationPresentation: workspaceState.generationPresentation
   });
   const summary = buildRuntimeDiagnosticsSummary(diagnostics);
   const diagnosticsStatus =
@@ -3081,6 +3086,10 @@ function renderRuntimeDiagnostics() {
     <div>
       <dt>operations</dt>
       <dd>${escapeHtml(summary.operation_count)} total · ${escapeHtml(summary.failed_operation_count)} failed · ${escapeHtml(summary.retryable_operation_count)} retryable</dd>
+    </div>
+    <div>
+      <dt>generation</dt>
+      <dd>${escapeHtml(summary.generation_phase)} · ${escapeHtml(summary.generation_display_mode)} · ${escapeHtml(summary.generation_next_action)}</dd>
     </div>
     <div>
       <dt>repairs</dt>

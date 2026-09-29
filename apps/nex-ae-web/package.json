@@ -15,6 +15,7 @@
     "smoke:artifact-playwright": "node scripts/runArtifactPlaywrightSmoke.mjs --summary",
     "smoke:credential-login-harness": "node scripts/runCredentialLoginBrowserHarnessSmoke.mjs --summary",
     "smoke:credential-login-playwright": "node scripts/runCredentialLoginPlaywrightSmoke.mjs --summary",
+    "smoke:grounded-generation-experience": "node scripts/runGroundedGenerationExperienceSmoke.mjs --summary",
     "smoke:playwright-readiness": "node scripts/runCredentialLoginPlaywrightReadiness.mjs --summary",
     "test": "node --test test/*.test.mjs"
   },

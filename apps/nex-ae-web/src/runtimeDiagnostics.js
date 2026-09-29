@@ -22,6 +22,8 @@ import {
 import {
   buildRepairedResponseReviewReadModelSummary
 } from "./repairedResponseReviewReadModel.js";
+import { buildGenerationLifecycleSummary } from "./generationLifecycleState.js";
+import { buildGroundedGenerationPresentationSummary } from "./groundedGenerationPresentation.js";
 
 export const AE_WEB_RUNTIME_DIAGNOSTICS_SCHEMA_VERSION =
   "ae_web_runtime_diagnostics.v1";
@@ -42,7 +44,9 @@ export function buildRuntimeDiagnostics({
   authBoundary = null,
   clientRegistry,
   operations = {},
-  repairedResponseReviewReadModel = null
+  repairedResponseReviewReadModel = null,
+  generationLifecycle = null,
+  generationPresentation = null
 } = {}) {
   const runtime = buildRuntimeConfigSummary(runtimeConfig);
   const session = sessionState ? buildSessionStateSummary(sessionState) : null;
@@ -57,6 +61,12 @@ export function buildRuntimeDiagnostics({
   const operationSummaries = summarizeOperations(operations);
   const repairedReviewSummary = repairedResponseReviewReadModel
     ? buildRepairedResponseReviewReadModelSummary(repairedResponseReviewReadModel)
+    : null;
+  const generationLifecycleSummary = generationLifecycle
+    ? buildGenerationLifecycleSummary(generationLifecycle)
+    : null;
+  const generationPresentationSummary = generationPresentation
+    ? buildGroundedGenerationPresentationSummary(generationPresentation)
     : null;
 
   return {
@@ -76,6 +86,16 @@ export function buildRuntimeDiagnostics({
     registry,
     operations: operationSummaries,
     repaired_response_reviews: repairedReviewSummary,
+    generation_lifecycle: generationLifecycleSummary,
+    generation_presentation: generationPresentationSummary,
+    generation_phase: generationLifecycleSummary?.phase || "idle",
+    generation_display_mode:
+      generationPresentationSummary?.display_mode || "NONE",
+    generation_next_action:
+      generationPresentationSummary?.next_action || "NONE",
+    generation_artifact_handoff_allowed: Boolean(
+      generationPresentationSummary?.artifact_handoff_allowed
+    ),
     repaired_response_review_count: repairedReviewSummary?.total_count || 0,
     repaired_response_actionable_count:
       repairedReviewSummary?.actionable_count || 0,
@@ -129,6 +149,11 @@ export function buildRuntimeDiagnosticsSummary(diagnostics) {
     repaired_response_actionable_count:
       diagnostics.repaired_response_actionable_count,
     repaired_response_failed_count: diagnostics.repaired_response_failed_count,
+    generation_phase: diagnostics.generation_phase,
+    generation_display_mode: diagnostics.generation_display_mode,
+    generation_next_action: diagnostics.generation_next_action,
+    generation_artifact_handoff_allowed:
+      diagnostics.generation_artifact_handoff_allowed,
     metadata: diagnostics.metadata
   };
 }
