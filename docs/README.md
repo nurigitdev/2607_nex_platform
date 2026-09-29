@@ -1206,6 +1206,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1100`](slices/1100_ae_mvp_acceptance_operator_runbook.md) | `S110-009` Verify privacy-safe failure runbooks and fail-closed acceptance mutations. |
 | [`Slice 1101`](slices/1101_s110_ae_mvp_acceptance_operations_closure.md) | `S110-010` Close the AE service MVP with nine accepted gates, Full Gate evidence, and a bound AG operations handoff. |
 | [`Slice 1102`](slices/1102_mo_current_state_reaudit_boundary.md) | `S111-001` Freeze the MO provider, runtime, privacy, contract, telemetry, and protected-live re-audit boundary. |
+| [`Slice 1103`](slices/1103_mo_capability_traceability_inventory.md) | `S111-002` Trace all five MO requirements and distinguish implemented capabilities from explicit partial gaps. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
