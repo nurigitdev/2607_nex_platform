@@ -1195,6 +1195,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1089`](slices/1089_ae_web_grounded_generation_experience_hardening.md) | `S109-008` Harden grounded-generation diagnostics, accessibility, browser contracts, and Full Gate coverage. |
 | [`Slice 1090`](slices/1090_ae_web_grounded_generation_playwright_postgres_smoke.md) | `S109-009` Prove the authenticated AE Web grounded-generation lifecycle on actual AE/CX PostgreSQL and all live DGX providers. |
 | [`Slice 1091`](slices/1091_s109_ae_web_grounded_generation_experience_closure.md) | `S109-010` Close the privacy-safe AE Web grounded-generation experience with actual PostgreSQL, Playwright, live-provider, and Full Gate evidence. |
+| [`Slice 1092`](slices/1092_ae_mvp_acceptance_operations_boundary_audit.md) | `S110-001` Freeze the AE service MVP acceptance, blocking evidence, operations, privacy, and production-deferral boundaries. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
