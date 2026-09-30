@@ -108,6 +108,54 @@ class SqlAlchemyCatalogLifecycleRepository:
             )
         return persisted
 
+    def update_catalog_state(
+        self,
+        catalog_id: str,
+        *,
+        expected_revision: int,
+        target_state: str,
+        updated_at: str,
+    ) -> ModelCatalogEntry:
+        if target_state not in CATALOG_STATES:
+            raise CatalogLifecycleRepositoryError(
+                "mo.catalog_state_invalid",
+                "unsupported target catalog state",
+            )
+        with self._write_session() as session:
+            result = session.execute(
+                text(
+                    "UPDATE mo_model_catalog "
+                    "SET catalog_state = :target_state, "
+                    "revision = revision + 1, updated_at = :updated_at "
+                    "WHERE catalog_id = :catalog_id AND revision = :expected_revision"
+                ),
+                {
+                    "catalog_id": catalog_id,
+                    "expected_revision": expected_revision,
+                    "target_state": target_state,
+                    "updated_at": updated_at,
+                },
+            )
+            updated = int(result.rowcount or 0)
+        if updated == 0:
+            existing = self.get_catalog_entry(catalog_id)
+            if existing is None:
+                raise CatalogLifecycleRepositoryError(
+                    "mo.catalog_not_found",
+                    "catalog entry was not found",
+                )
+            raise CatalogLifecycleRepositoryError(
+                "mo.catalog_revision_conflict",
+                "catalog revision does not match expected revision",
+            )
+        persisted = self.get_catalog_entry(catalog_id)
+        if persisted is None:
+            raise CatalogLifecycleRepositoryError(
+                "mo.catalog_write_failed",
+                "catalog transition did not return a durable record",
+            )
+        return persisted
+
     def get_alias_binding(self, binding_id: str) -> AliasBinding | None:
         try:
             with self._session_factory() as session:
