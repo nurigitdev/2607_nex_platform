@@ -19,7 +19,7 @@ def test_repository_contract_api_closure_boundary_is_frozen() -> None:
     assert result["summary"] == {
         "drift_class_count": 6,
         "baseline_drift_count": 28,
-        "current_drift_count": 25,
+        "current_drift_count": 8,
         "target_drift_count": 0,
         "baseline_issue_count": 0,
     }
@@ -83,7 +83,7 @@ def test_boundary_runner_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_mo_contract_api_closure_boundary()
     assert runner.summary_line(passing) == (
         "mo_contract_api_closure_boundary=pass classes=6 "
-        "drift=28->25->0 issues=0 next=1133"
+        "drift=28->8->0 issues=0 next=1133"
     )
 
     monkeypatch.setattr(
@@ -92,7 +92,7 @@ def test_boundary_runner_summary_and_main_paths(monkeypatch, capsys) -> None:
         lambda: passing,
     )
     assert runner.main(["--summary"]) == 0
-    assert "drift=28->25->0" in capsys.readouterr().out
+    assert "drift=28->8->0" in capsys.readouterr().out
     assert runner.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
 

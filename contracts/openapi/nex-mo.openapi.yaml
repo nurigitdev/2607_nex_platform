@@ -50,9 +50,22 @@ paths:
       operationId: listMoProviderRoutes
       tags:
         - Provider Routes
+      security:
+        - serviceBearer: []
+      parameters:
+        - name: capability
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [embedding, reranking, generation]
       responses:
         "200":
           description: Provider routes and aliases.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderRouteList"
         "401":
           description: Service claim is missing or invalid.
   /api/v1/provider-profiles:
@@ -60,6 +73,8 @@ paths:
       operationId: listMoProviderProfiles
       tags:
         - Provider Profiles
+      security:
+        - serviceBearer: []
       parameters:
         - name: capability
           in: query
@@ -73,6 +88,10 @@ paths:
       responses:
         "200":
           description: MO model profiles by capability, including selected defaults and generation candidates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelProfileList"
         "401":
           description: Service claim is missing or invalid.
   /api/v1/provider-route-health:
@@ -91,14 +110,49 @@ paths:
                 $ref: "#/components/schemas/ProviderReadiness"
         "401":
           description: Service claim is missing or invalid.
-  /api/v1/embeddings:
-    post:
-      operationId: createMoMockEmbeddings
+  /api/v1/provider-telemetry:
+    get:
+      operationId: getMoProviderTelemetry
       tags:
         - Providers
+      security:
+        - serviceBearer: []
+      parameters:
+        - name: capability
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [embedding, reranking, generation]
       responses:
         "200":
-          description: Deterministic mock embeddings.
+          description: Privacy-safe process-local provider execution telemetry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderTelemetrySnapshot"
+        "401":
+          description: Service claim is missing or invalid.
+  /api/v1/embeddings:
+    post:
+      operationId: createMoEmbeddings
+      tags:
+        - Providers
+      security:
+        - serviceBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbeddingRequest"
+      responses:
+        "200":
+          description: Normalized embedding vectors from the selected provider route.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbeddingResponse"
         "401":
           description: Service claim is missing or invalid.
         "404":
@@ -107,12 +161,24 @@ paths:
           description: Provider route cannot satisfy the request.
   /api/v1/rerank:
     post:
-      operationId: createMoMockRerank
+      operationId: createMoRerank
       tags:
         - Providers
+      security:
+        - serviceBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RerankRequest"
       responses:
         "200":
-          description: Deterministic mock reranking scores.
+          description: Normalized reranking scores from the selected provider route.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RerankResponse"
         "401":
           description: Service claim is missing or invalid.
         "404":
@@ -121,12 +187,24 @@ paths:
           description: Provider route cannot satisfy the request.
   /api/v1/generations:
     post:
-      operationId: createMoMockGeneration
+      operationId: createMoGeneration
       tags:
         - Providers
+      security:
+        - serviceBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerationRequest"
       responses:
         "200":
-          description: Deterministic mock generation response.
+          description: Normalized generation response from the selected provider route.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerationResponse"
         "401":
           description: Service claim is missing or invalid.
         "404":
@@ -140,6 +218,216 @@ components:
       scheme: bearer
       bearerFormat: NeX service claim
   schemas:
+    ProviderRouteList:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/provider_route_list.v1.schema.json
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+        meta:
+          type: object
+          required: [count, profile]
+          properties:
+            count:
+              type: integer
+              minimum: 0
+            profile:
+              type: string
+    ModelProfileList:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/model_profile_list.v1.schema.json
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+        meta:
+          type: object
+          required: [count, provider_mode]
+          properties:
+            count:
+              type: integer
+              minimum: 0
+            provider_mode:
+              type: string
+              enum: [mock, live]
+    ProviderTelemetrySnapshot:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/provider_telemetry_snapshot.v1.schema.json
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+        meta:
+          type: object
+          required: [count, provider_mode, schema_version]
+          properties:
+            count:
+              type: integer
+              minimum: 0
+            provider_mode:
+              type: string
+              enum: [mock, live]
+            schema_version:
+              type: string
+              const: mo_provider_telemetry_snapshot.v1
+    EmbeddingRequest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/embedding_request.v1.schema.json
+      additionalProperties: false
+      required: [inputs]
+      properties:
+        alias:
+          type: string
+        inputs:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+    EmbeddingResponse:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/embedding_response.v1.schema.json
+      additionalProperties: false
+      required: [object, alias, model_revision, deployment_id, data, usage]
+      properties:
+        object:
+          const: list
+        alias:
+          type: string
+        model_revision:
+          type: string
+        deployment_id:
+          type: string
+        data:
+          type: array
+          minItems: 1
+          items:
+            type: object
+        usage:
+          type: object
+    RerankRequest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/rerank_request.v1.schema.json
+      additionalProperties: false
+      required: [query, documents]
+      properties:
+        alias:
+          type: string
+        query:
+          type: string
+          minLength: 1
+        documents:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+        top_n:
+          type: integer
+          minimum: 1
+    RerankResponse:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/rerank_response.v1.schema.json
+      additionalProperties: false
+      required: [alias, model_revision, deployment_id, results, usage]
+      properties:
+        alias:
+          type: string
+        model_revision:
+          type: string
+        deployment_id:
+          type: string
+        results:
+          type: array
+          minItems: 1
+          items:
+            type: object
+        usage:
+          type: object
+    GenerationRequest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/generation_request.v1.schema.json
+      additionalProperties: false
+      properties:
+        alias:
+          type: string
+        provider_capability:
+          type: string
+          const: generation
+        prompt:
+          type: [string, "null"]
+        messages:
+          type: [array, "null"]
+          items:
+            type: object
+        response_format:
+          type: object
+        reasoning_mode:
+          type: string
+          enum: [provider_default, enabled, disabled]
+        max_output_tokens:
+          type: integer
+          minimum: 1
+        temperature:
+          type: number
+        stream:
+          type: boolean
+        metadata:
+          type: object
+      oneOf:
+        - required: [prompt]
+        - required: [messages]
+    GenerationResponse:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/generation_response.v1.schema.json
+      additionalProperties: false
+      required:
+        - mo_generation_id
+        - alias
+        - model_revision
+        - deployment_id
+        - provider_type
+        - output
+        - finish_reason
+        - usage
+        - runtime_metadata
+        - created_at
+        - updated_at
+      properties:
+        mo_generation_id:
+          type: string
+        alias:
+          type: string
+        model_revision:
+          type: string
+        deployment_id:
+          type: string
+        provider_type:
+          type: string
+        output:
+          type: object
+        finish_reason:
+          type: string
+        usage:
+          type: object
+        runtime_metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
     ProviderReadiness:
       type: object
       additionalProperties: false

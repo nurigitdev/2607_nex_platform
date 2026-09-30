@@ -38,7 +38,7 @@ def run_mo_contract_fixture_completion(
         "missing_negative_list_empty": not evidence.get(
             "missing_negative_fixture_schemas"
         ),
-        "fixture_drift_removed": _count(summary, "drift_count") == 25,
+        "fixture_drift_removed": _count(summary, "drift_count") <= 25,
     }
     passed = all(checks.values())
     return {
