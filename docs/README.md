@@ -1253,6 +1253,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1147`](slices/1147_mo_provider_retry_telemetry.md) | `S115-006` Separate logical requests from provider attempts and expose safe retry telemetry. |
 | [`Slice 1148`](slices/1148_mo_provider_readiness_resilience_composition.md) | `S115-007` Compose provider readiness, retry policy, and execution telemetry without conflating historical retries with current health. |
 | [`Slice 1149`](slices/1149_mo_provider_retry_loopback_http_smoke.md) | `S115-008` Prove all three bounded retry paths through deterministic local-loopback HTTP fault injection. |
+| [`Slice 1150`](slices/1150_mo_provider_resilience_contract_hardening.md) | `S115-009` Align canonical schema, explicit OpenAPI retry fields, authenticated runtime telemetry, and zero operation drift. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
