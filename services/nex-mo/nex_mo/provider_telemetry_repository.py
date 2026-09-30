@@ -111,10 +111,10 @@ def _mutation_params(mutation: ProviderTelemetryMutation) -> dict[str, Any]:
     params = mutation.to_params()
     params["telemetry_key"] = mutation.identity.storage_key()
     params["last_observed_at"] = (
-        mutation.observed_at if mutation.request_increment else None
+        params["observed_at"] if mutation.request_increment else None
     )
     params["last_retry_at"] = (
-        mutation.observed_at if mutation.retry_increment else None
+        params["observed_at"] if mutation.retry_increment else None
     )
     return params
 
@@ -207,44 +207,78 @@ ON CONFLICT (telemetry_key) DO UPDATE SET
     attempt_count = mo_provider_telemetry.attempt_count + excluded.attempt_count,
     retry_count = mo_provider_telemetry.retry_count + excluded.retry_count,
     last_outcome = CASE
-        WHEN excluded.request_count > 0 THEN excluded.last_outcome
+        WHEN excluded.request_count > 0
+         AND (mo_provider_telemetry.last_observed_at IS NULL
+              OR excluded.last_observed_at >= mo_provider_telemetry.last_observed_at)
+        THEN excluded.last_outcome
         ELSE mo_provider_telemetry.last_outcome
     END,
     last_observed_at = CASE
-        WHEN excluded.request_count > 0 THEN excluded.last_observed_at
+        WHEN excluded.request_count > 0
+         AND (mo_provider_telemetry.last_observed_at IS NULL
+              OR excluded.last_observed_at >= mo_provider_telemetry.last_observed_at)
+        THEN excluded.last_observed_at
         ELSE mo_provider_telemetry.last_observed_at
     END,
     last_latency_ms = CASE
-        WHEN excluded.request_count > 0 THEN excluded.last_latency_ms
+        WHEN excluded.request_count > 0
+         AND (mo_provider_telemetry.last_observed_at IS NULL
+              OR excluded.last_observed_at >= mo_provider_telemetry.last_observed_at)
+        THEN excluded.last_latency_ms
         ELSE mo_provider_telemetry.last_latency_ms
     END,
     last_status_code = CASE
-        WHEN excluded.request_count > 0 THEN excluded.last_status_code
+        WHEN excluded.request_count > 0
+         AND (mo_provider_telemetry.last_observed_at IS NULL
+              OR excluded.last_observed_at >= mo_provider_telemetry.last_observed_at)
+        THEN excluded.last_status_code
         ELSE mo_provider_telemetry.last_status_code
     END,
     last_error_code = CASE
-        WHEN excluded.request_count > 0 THEN excluded.last_error_code
+        WHEN excluded.request_count > 0
+         AND (mo_provider_telemetry.last_observed_at IS NULL
+              OR excluded.last_observed_at >= mo_provider_telemetry.last_observed_at)
+        THEN excluded.last_error_code
         ELSE mo_provider_telemetry.last_error_code
     END,
     last_failure_kind = CASE
-        WHEN excluded.request_count > 0 THEN excluded.last_failure_kind
+        WHEN excluded.request_count > 0
+         AND (mo_provider_telemetry.last_observed_at IS NULL
+              OR excluded.last_observed_at >= mo_provider_telemetry.last_observed_at)
+        THEN excluded.last_failure_kind
         ELSE mo_provider_telemetry.last_failure_kind
     END,
     last_upstream_status_code = CASE
-        WHEN excluded.request_count > 0 THEN excluded.last_upstream_status_code
+        WHEN excluded.request_count > 0
+         AND (mo_provider_telemetry.last_observed_at IS NULL
+              OR excluded.last_observed_at >= mo_provider_telemetry.last_observed_at)
+        THEN excluded.last_upstream_status_code
         ELSE mo_provider_telemetry.last_upstream_status_code
     END,
     last_retry_at = CASE
-        WHEN excluded.retry_count > 0 THEN excluded.last_retry_at
+        WHEN excluded.retry_count > 0
+         AND (mo_provider_telemetry.last_retry_at IS NULL
+              OR excluded.last_retry_at >= mo_provider_telemetry.last_retry_at)
+        THEN excluded.last_retry_at
         ELSE mo_provider_telemetry.last_retry_at
     END,
     last_retry_delay_ms = CASE
-        WHEN excluded.retry_count > 0 THEN excluded.last_retry_delay_ms
+        WHEN excluded.retry_count > 0
+         AND (mo_provider_telemetry.last_retry_at IS NULL
+              OR excluded.last_retry_at >= mo_provider_telemetry.last_retry_at)
+        THEN excluded.last_retry_delay_ms
         ELSE mo_provider_telemetry.last_retry_delay_ms
     END,
     last_retry_failure_kind = CASE
-        WHEN excluded.retry_count > 0 THEN excluded.last_retry_failure_kind
+        WHEN excluded.retry_count > 0
+         AND (mo_provider_telemetry.last_retry_at IS NULL
+              OR excluded.last_retry_at >= mo_provider_telemetry.last_retry_at)
+        THEN excluded.last_retry_failure_kind
         ELSE mo_provider_telemetry.last_retry_failure_kind
     END,
-    updated_at = excluded.updated_at
+    updated_at = CASE
+        WHEN excluded.updated_at >= mo_provider_telemetry.updated_at
+        THEN excluded.updated_at
+        ELSE mo_provider_telemetry.updated_at
+    END
 """

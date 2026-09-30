@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -56,8 +57,12 @@ CREATE TABLE mo_provider_telemetry (
 
 @pytest.fixture
 def session_factory(tmp_path: Path) -> sessionmaker[Session]:
-    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'telemetry.db'}")
+    engine = create_engine(
+        f"sqlite+pysqlite:///{tmp_path / 'telemetry.db'}",
+        connect_args={"check_same_thread": False, "timeout": 30},
+    )
     with engine.begin() as connection:
+        connection.execute(text("PRAGMA journal_mode=WAL"))
         connection.execute(text(SQLITE_SCHEMA))
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
@@ -108,14 +113,19 @@ def _failure(identity: ProviderTelemetryIdentity) -> ProviderTelemetryMutation:
     )
 
 
-def _retry(identity: ProviderTelemetryIdentity) -> ProviderTelemetryMutation:
+def _retry(
+    identity: ProviderTelemetryIdentity,
+    *,
+    observed_at: str = "2026-09-30T01:00:01Z",
+    delay_ms: int = 250,
+) -> ProviderTelemetryMutation:
     return ProviderTelemetryMutation(
         identity=identity,
         mutation_kind="retry",
-        observed_at="2026-09-30T01:00:01Z",
+        observed_at=observed_at,
         attempt_increment=1,
         retry_increment=1,
-        last_retry_delay_ms=250,
+        last_retry_delay_ms=delay_ms,
         last_retry_failure_kind="upstream_5xx",
     )
 
@@ -159,6 +169,64 @@ def test_success_clears_prior_failure_diagnostics(
     assert current.last_error_code is None
     assert current.last_failure_kind is None
     assert current.last_upstream_status_code is None
+
+
+def test_older_final_and_retry_events_do_not_regress_last_diagnostics(
+    session_factory: sessionmaker[Session],
+) -> None:
+    repository = SqlAlchemyDurableProviderTelemetryRepository(session_factory)
+    identity = _identity()
+    newest_final = repository.apply(_failure(identity))
+    repository.apply(_success(identity, observed_at="2026-09-30T00:59:00+00:00"))
+    repository.apply(
+        _retry(
+            identity,
+            observed_at="2026-09-30T01:00:05Z",
+            delay_ms=500,
+        )
+    )
+    current = repository.apply(
+        _retry(
+            identity,
+            observed_at="2026-09-30T01:00:04Z",
+            delay_ms=100,
+        )
+    )
+
+    assert newest_final.last_observed_at == "2026-09-30T01:00:02Z"
+    assert current.request_count == 2
+    assert current.success_count == 1
+    assert current.failure_count == 1
+    assert current.last_outcome == "failure"
+    assert current.last_observed_at == "2026-09-30T01:00:02Z"
+    assert current.last_error_code == "mo.remote_embedding.http_error"
+    assert current.last_retry_at == "2026-09-30T01:00:05Z"
+    assert current.last_retry_delay_ms == 500
+
+
+def test_concurrent_atomic_updates_do_not_lose_counts(
+    session_factory: sessionmaker[Session],
+) -> None:
+    repository = SqlAlchemyDurableProviderTelemetryRepository(session_factory)
+    identity = _identity()
+
+    def apply(index: int) -> None:
+        repository.apply(
+            _success(
+                identity,
+                observed_at=f"2026-09-30T01:00:{index:02d}Z",
+            )
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(apply, range(40)))
+
+    restarted = SqlAlchemyDurableProviderTelemetryRepository(session_factory)
+    record = restarted.list_records()[0]
+    assert record.request_count == 40
+    assert record.success_count == 40
+    assert record.attempt_count == 40
+    assert record.last_observed_at == "2026-09-30T01:00:39Z"
 
 
 def test_new_repository_instance_reads_same_durable_rows(

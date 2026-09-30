@@ -122,6 +122,19 @@ def test_mutations_project_atomic_counter_deltas() -> None:
     }
 
 
+def test_mutation_parameters_canonicalize_timestamp_to_utc_z() -> None:
+    mutation = ProviderTelemetryMutation(
+        identity=_identity(),
+        mutation_kind="success",
+        observed_at="2026-09-30T10:00:00+09:00",
+        request_increment=1,
+        success_increment=1,
+        attempt_increment=1,
+    )
+
+    assert mutation.to_params()["observed_at"] == "2026-09-30T01:00:00Z"
+
+
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [

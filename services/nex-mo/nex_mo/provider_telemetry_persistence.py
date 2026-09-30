@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any, Mapping, Protocol, Sequence
 
@@ -155,7 +155,7 @@ class ProviderTelemetryMutation:
             **self.identity.to_params(),
             **self.counter_increments(),
             "mutation_kind": self.mutation_kind,
-            "observed_at": self.observed_at,
+            "observed_at": _canonical_timestamp(self.observed_at, "observed_at"),
             "last_outcome": self.last_outcome,
             "last_latency_ms": self.last_latency_ms,
             "last_status_code": self.last_status_code,
@@ -326,6 +326,15 @@ def _optional_timestamp(value: object) -> str | None:
     resolved = str(value)
     _timestamp(resolved, "persisted timestamp")
     return resolved
+
+
+def _canonical_timestamp(value: object, field_name: str) -> str:
+    return (
+        _timestamp(value, field_name)
+        .astimezone(UTC)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
 
 def _optional_string(value: object) -> str | None:
