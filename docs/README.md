@@ -1242,6 +1242,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1136`](slices/1136_mo_job_control_openapi_alignment.md) | `S114-005` Align four shared MO job-control operations and run the fifth-Slice Checkpoint Gate. |
 | [`Slice 1137`](slices/1137_mo_service_log_retention_openapi_alignment.md) | `S114-006` Align three shared MO service-log retention operations and reduce drift to the root route only. |
 | [`Slice 1138`](slices/1138_mo_runtime_openapi_parity_guard.md) | `S114-007` Close root-route drift and enforce exact runtime/OpenAPI, security, operation ID, canonical-schema, and fixture parity. |
+| [`Slice 1139`](slices/1139_mo_deterministic_contract_http_smoke.md) | `S114-008` Exercise all protected and provider API contracts through an isolated in-memory mock HTTP runtime. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
