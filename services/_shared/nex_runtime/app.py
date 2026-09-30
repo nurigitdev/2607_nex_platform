@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Callable, Mapping, Sequence
 
 from fastapi import FastAPI, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,6 +27,9 @@ class ServiceSpec:
     display_name: str
     database_env: str
     default_port: int
+
+
+ReadinessCheck = Callable[[], Mapping[str, Any]]
 
 
 SERVICE_SPECS: dict[str, ServiceSpec] = {
@@ -68,7 +71,11 @@ SERVICE_SPECS: dict[str, ServiceSpec] = {
 }
 
 
-def build_service_app(spec: ServiceSpec) -> FastAPI:
+def build_service_app(
+    spec: ServiceSpec,
+    *,
+    readiness_checks: Sequence[ReadinessCheck] = (),
+) -> FastAPI:
     version = os.getenv("NEX_VERSION", "0.0.0-slice0001")
     profile = os.getenv("NEX_PROFILE", "local_mock")
     started_at = _utc_now()
@@ -105,8 +112,14 @@ def build_service_app(spec: ServiceSpec) -> FastAPI:
 
     @app.get("/ready")
     def ready(response: Response) -> dict[str, Any]:
-        check = check_database_readiness(spec.database_env)
-        readiness_status = "READY" if check["ok"] else "NOT_READY"
+        checks = [check_database_readiness(spec.database_env)]
+        checks.extend(
+            _run_readiness_check(check, index=index)
+            for index, check in enumerate(readiness_checks, start=1)
+        )
+        readiness_status = (
+            "READY" if all(check.get("ok") is True for check in checks) else "NOT_READY"
+        )
         if readiness_status != "READY":
             response.status_code = 503
 
@@ -115,7 +128,7 @@ def build_service_app(spec: ServiceSpec) -> FastAPI:
             "readiness_status": readiness_status,
             "profile": profile,
             "checked_at": _utc_now(),
-            "checks": [check],
+            "checks": checks,
         }
 
     @app.get("/version")
@@ -153,6 +166,33 @@ def build_service_app(spec: ServiceSpec) -> FastAPI:
         _register_oa_mock_auth_routes(app)
 
     return app
+
+
+def _run_readiness_check(
+    check: ReadinessCheck,
+    *,
+    index: int,
+) -> dict[str, Any]:
+    try:
+        result = check()
+    except Exception:
+        return _failed_readiness_check(index)
+    if not isinstance(result, Mapping):
+        return _failed_readiness_check(index)
+    payload = dict(result)
+    if not isinstance(payload.get("name"), str) or not payload.get("name"):
+        return _failed_readiness_check(index)
+    if not isinstance(payload.get("ok"), bool):
+        return _failed_readiness_check(index)
+    return payload
+
+
+def _failed_readiness_check(index: int) -> dict[str, Any]:
+    return {
+        "name": f"additional_readiness_{index}",
+        "ok": False,
+        "error_code": "READINESS_CHECK_FAILED",
+    }
 
 
 def _register_oa_mock_auth_routes(app: FastAPI) -> None:

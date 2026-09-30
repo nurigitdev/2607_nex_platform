@@ -6,10 +6,16 @@ from nex_runtime import (
     register_service_log_retention_routes,
 )
 from nex_mo.providers import register_mock_provider_routes
+from nex_mo.provider_readiness_service import ProviderReadinessService
 
 
 SERVICE_SPEC = SERVICE_SPECS["nex-mo"]
-app = build_service_app(SERVICE_SPEC)
+PROVIDER_READINESS = ProviderReadinessService()
+app = build_service_app(
+    SERVICE_SPEC,
+    readiness_checks=(PROVIDER_READINESS.check,),
+)
+app.state.provider_readiness_service = PROVIDER_READINESS
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
 register_service_job_control_routes(
     app,

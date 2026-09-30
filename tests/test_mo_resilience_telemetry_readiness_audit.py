@@ -20,15 +20,14 @@ def test_repository_resilience_and_readiness_gaps_are_classified() -> None:
     assert all(result["checks"].values())
     assert result["issues"] == []
     assert result["summary"] == {
-        "implemented_control_count": 5,
-        "classified_control_gap_count": 2,
+        "implemented_control_count": 6,
+        "classified_control_gap_count": 1,
         "failure_decision_count": 5,
         "telemetry_capability_count": 3,
-        "runtime_gap_count": 5,
+        "runtime_gap_count": 4,
         "evidence_issue_count": 0,
     }
     assert [item["risk"] for item in result["runtime_gaps"]] == [
-        "HIGH",
         "MEDIUM",
         "MEDIUM",
         "MEDIUM",
@@ -94,7 +93,7 @@ def test_runner_summary_json_and_failure_paths(monkeypatch, capsys) -> None:
     passing = runner.run_mo_resilience_telemetry_readiness_audit()
 
     assert "readiness_audit=pass" in runner.summary_line(passing)
-    assert "runtime_gaps=5" in runner.summary_line(passing)
+    assert "runtime_gaps=4" in runner.summary_line(passing)
     monkeypatch.setattr(
         runner,
         "run_mo_resilience_telemetry_readiness_audit",

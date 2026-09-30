@@ -64,10 +64,10 @@ CONTROL_PROBES = (
         "GAP",
     ),
     ControlProbe(
-        "generic_service_readiness",
-        "services/_shared/nex_runtime/app.py",
-        "check = check_database_readiness(spec.database_env)",
-        "GAP",
+        "provider_aware_service_readiness",
+        "services/nex-mo/nex_mo/main.py",
+        "readiness_checks=(PROVIDER_READINESS.check,)",
+        "IMPLEMENTED",
     ),
 )
 
@@ -130,11 +130,6 @@ def build_mo_resilience_telemetry_readiness_audit(
         "known_runtime_gaps_classified": True,
     }
     runtime_gaps = [
-        {
-            "gap_id": "provider_aware_readiness_missing",
-            "risk": "HIGH",
-            "target": "S112",
-        },
         {
             "gap_id": "bounded_retry_execution_missing",
             "risk": "MEDIUM",
