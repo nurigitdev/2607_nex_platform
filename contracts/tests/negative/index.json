@@ -86,6 +86,51 @@
       "schema": "schemas/service/nex_mo/compatible_provider_health.v1.schema.json"
     },
     {
+      "name": "mo_provider_route_list_secret_endpoint",
+      "path": "tests/negative/provider/mo_provider_route_list.secret_endpoint.json",
+      "schema": "schemas/service/nex_mo/provider_route_list.v1.schema.json"
+    },
+    {
+      "name": "mo_model_profile_list_model_path",
+      "path": "tests/negative/provider/mo_model_profile_list.model_path.json",
+      "schema": "schemas/service/nex_mo/model_profile_list.v1.schema.json"
+    },
+    {
+      "name": "mo_provider_telemetry_snapshot_api_key",
+      "path": "tests/negative/provider/mo_provider_telemetry_snapshot.api_key.json",
+      "schema": "schemas/service/nex_mo/provider_telemetry_snapshot.v1.schema.json"
+    },
+    {
+      "name": "mo_embedding_request_empty_inputs",
+      "path": "tests/negative/provider/mo_embedding_request.empty_inputs.json",
+      "schema": "schemas/service/nex_mo/embedding_request.v1.schema.json"
+    },
+    {
+      "name": "mo_embedding_response_raw_endpoint",
+      "path": "tests/negative/provider/mo_embedding_response.raw_endpoint.json",
+      "schema": "schemas/service/nex_mo/embedding_response.v1.schema.json"
+    },
+    {
+      "name": "mo_rerank_request_missing_query",
+      "path": "tests/negative/provider/mo_rerank_request.missing_query.json",
+      "schema": "schemas/service/nex_mo/rerank_request.v1.schema.json"
+    },
+    {
+      "name": "mo_rerank_response_raw_payload",
+      "path": "tests/negative/provider/mo_rerank_response.raw_payload.json",
+      "schema": "schemas/service/nex_mo/rerank_response.v1.schema.json"
+    },
+    {
+      "name": "mo_generation_request_provider_endpoint",
+      "path": "tests/negative/provider/mo_generation_request.provider_endpoint.json",
+      "schema": "schemas/service/nex_mo/generation_request.v1.schema.json"
+    },
+    {
+      "name": "mo_generation_response_api_key",
+      "path": "tests/negative/provider/mo_generation_response.api_key.json",
+      "schema": "schemas/service/nex_mo/generation_response.v1.schema.json"
+    },
+    {
       "name": "cx_generation_execution_record_raw_prompt_leak",
       "path": "tests/negative/generation/cx_generation_execution_record.raw_prompt_leak.json",
       "schema": "schemas/generation/cx_generation_execution_record.v1.schema.json"

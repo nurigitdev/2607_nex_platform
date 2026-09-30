@@ -1,0 +1,6 @@
+{
+  "alias": "mock-reranker-default",
+  "query": "contract drift",
+  "documents": ["OpenAPI parity", "unrelated text"],
+  "top_n": 1
+}

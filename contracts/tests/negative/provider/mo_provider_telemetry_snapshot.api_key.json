@@ -1,0 +1,9 @@
+{
+  "data": [],
+  "meta": {
+    "count": 0,
+    "provider_mode": "mock",
+    "schema_version": "mo_provider_telemetry_snapshot.v1"
+  },
+  "api_key": "private-value"
+}

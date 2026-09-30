@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_mo/model_profile_list.v1.schema.json",
+  "title": "NeX MO Model Profile List",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["data", "meta"],
+  "properties": {
+    "data": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "profile_name", "provider_capability", "alias", "provider_mode",
+          "model_name", "precision", "runtime_engine", "selected", "status",
+          "candidate_role", "selection_reason"
+        ],
+        "properties": {
+          "profile_name": {"type": "string", "minLength": 1},
+          "provider_capability": {"enum": ["embedding", "reranking", "generation"]},
+          "alias": {"type": "string", "minLength": 1},
+          "provider_mode": {"enum": ["mock", "live"]},
+          "model_name": {"type": "string", "minLength": 1},
+          "precision": {"enum": ["BF16", "NVFP4"]},
+          "runtime_engine": {"enum": ["local_mock", "remote_http", "vllm"]},
+          "selected": {"type": "boolean"},
+          "status": {"enum": ["READY", "CONFIGURED", "UNAVAILABLE", "PLANNED"]},
+          "candidate_role": {"enum": ["primary", "candidate", "planned", "custom"]},
+          "selection_reason": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "provider_mode"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "provider_mode": {"enum": ["mock", "live"]}
+      }
+    }
+  }
+}

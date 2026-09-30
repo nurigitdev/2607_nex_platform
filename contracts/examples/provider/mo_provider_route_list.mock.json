@@ -1,0 +1,17 @@
+{
+  "data": [
+    {
+      "alias": "general-llm-default",
+      "provider_capability": "generation",
+      "provider_type": "mock",
+      "model_revision": "mock-general-llm-v1",
+      "deployment_id": "local-mock-generation",
+      "route_id": "mo-route-generation-default",
+      "supports_response_formats": ["text", "json_object"],
+      "max_input_tokens": 32768,
+      "max_output_tokens": 4096,
+      "status": "READY"
+    }
+  ],
+  "meta": {"count": 1, "profile": "local_mock"}
+}

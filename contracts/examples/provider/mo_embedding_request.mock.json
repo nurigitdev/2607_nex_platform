@@ -1,0 +1,4 @@
+{
+  "alias": "mock-embedding-default",
+  "inputs": ["contract drift evidence"]
+}

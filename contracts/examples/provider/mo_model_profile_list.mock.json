@@ -1,0 +1,18 @@
+{
+  "data": [
+    {
+      "profile_name": "qwen3_5_4b_bf16",
+      "provider_capability": "generation",
+      "alias": "general-llm-default",
+      "provider_mode": "mock",
+      "model_name": "Qwen3.5-4B",
+      "precision": "BF16",
+      "runtime_engine": "local_mock",
+      "selected": true,
+      "status": "READY",
+      "candidate_role": "primary",
+      "selection_reason": "selected_generation_profile"
+    }
+  ],
+  "meta": {"count": 1, "provider_mode": "mock"}
+}

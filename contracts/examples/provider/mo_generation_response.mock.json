@@ -1,0 +1,22 @@
+{
+  "mo_generation_id": "mo-generation-s114-001",
+  "alias": "general-llm-default",
+  "model_revision": "mock-general-llm-v1",
+  "deployment_id": "local-mock-generation",
+  "provider_type": "mock",
+  "output": {"type": "text", "text": "Contract evidence is complete."},
+  "finish_reason": "STOP",
+  "usage": {"input_tokens": 5, "output_tokens": 4, "total_tokens": 9},
+  "runtime_metadata": {
+    "request_id": "request-s114-001",
+    "trace_id": "trace-s114-001",
+    "queue_ms": 0,
+    "provider_ms": 12,
+    "total_ms": 12,
+    "route_id": "mo-route-generation-default",
+    "admission_decision": "ACCEPTED",
+    "provider_request_id": "provider-s114-001"
+  },
+  "created_at": "2026-09-30T00:00:00Z",
+  "updated_at": "2026-09-30T00:00:00Z"
+}

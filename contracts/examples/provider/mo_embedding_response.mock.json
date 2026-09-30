@@ -1,0 +1,10 @@
+{
+  "object": "list",
+  "alias": "mock-embedding-default",
+  "model_revision": "mock-embedding-v1",
+  "deployment_id": "local-mock-embedding",
+  "data": [
+    {"object": "embedding", "index": 0, "embedding": [0.1, 0.2]}
+  ],
+  "usage": {"input_tokens": 3, "output_tokens": 0, "total_tokens": 3}
+}

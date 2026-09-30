@@ -1,0 +1,9 @@
+{
+  "alias": "mock-reranker-default",
+  "model_revision": "mock-reranker-v1",
+  "deployment_id": "local-mock-reranker",
+  "results": [
+    {"index": 0, "score": 0.9, "document": "OpenAPI parity"}
+  ],
+  "usage": {"input_tokens": 5, "output_tokens": 0, "total_tokens": 5}
+}

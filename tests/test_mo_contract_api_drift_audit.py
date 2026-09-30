@@ -29,9 +29,9 @@ def test_repository_contract_and_api_drift_is_quantified() -> None:
         "missing_request_body_count": 3,
         "missing_success_schema_count": 5,
         "missing_security_count": 5,
-        "schema_count": 8,
-        "positive_fixture_covered_count": 8,
-        "negative_fixture_covered_count": 5,
+        "schema_count": 17,
+        "positive_fixture_covered_count": 17,
+        "negative_fixture_covered_count": 14,
         "drift_count": 28,
     }
     assert "GET /api/v1/provider-telemetry" in result["missing_openapi_operations"]
@@ -84,7 +84,7 @@ def test_runner_summary_json_and_failure_paths(monkeypatch, capsys) -> None:
     assert "operations=10/19" in runner.summary_line(passing)
     monkeypatch.setattr(runner, "run_mo_contract_api_drift_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0
-    assert "negative=5/8" in capsys.readouterr().out
+    assert "negative=14/17" in capsys.readouterr().out
     assert runner.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
 

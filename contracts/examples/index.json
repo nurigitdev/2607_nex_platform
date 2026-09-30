@@ -116,6 +116,51 @@
       "schema": "schemas/service/nex_mo/provider_readiness.v1.schema.json"
     },
     {
+      "name": "mo_provider_route_list_mock",
+      "path": "examples/provider/mo_provider_route_list.mock.json",
+      "schema": "schemas/service/nex_mo/provider_route_list.v1.schema.json"
+    },
+    {
+      "name": "mo_model_profile_list_mock",
+      "path": "examples/provider/mo_model_profile_list.mock.json",
+      "schema": "schemas/service/nex_mo/model_profile_list.v1.schema.json"
+    },
+    {
+      "name": "mo_provider_telemetry_snapshot_mock",
+      "path": "examples/provider/mo_provider_telemetry_snapshot.mock.json",
+      "schema": "schemas/service/nex_mo/provider_telemetry_snapshot.v1.schema.json"
+    },
+    {
+      "name": "mo_embedding_request_mock",
+      "path": "examples/provider/mo_embedding_request.mock.json",
+      "schema": "schemas/service/nex_mo/embedding_request.v1.schema.json"
+    },
+    {
+      "name": "mo_embedding_response_mock",
+      "path": "examples/provider/mo_embedding_response.mock.json",
+      "schema": "schemas/service/nex_mo/embedding_response.v1.schema.json"
+    },
+    {
+      "name": "mo_rerank_request_mock",
+      "path": "examples/provider/mo_rerank_request.mock.json",
+      "schema": "schemas/service/nex_mo/rerank_request.v1.schema.json"
+    },
+    {
+      "name": "mo_rerank_response_mock",
+      "path": "examples/provider/mo_rerank_response.mock.json",
+      "schema": "schemas/service/nex_mo/rerank_response.v1.schema.json"
+    },
+    {
+      "name": "mo_generation_request_mock",
+      "path": "examples/provider/mo_generation_request.mock.json",
+      "schema": "schemas/service/nex_mo/generation_request.v1.schema.json"
+    },
+    {
+      "name": "mo_generation_response_mock",
+      "path": "examples/provider/mo_generation_response.mock.json",
+      "schema": "schemas/service/nex_mo/generation_response.v1.schema.json"
+    },
+    {
       "name": "cx_generation_execution_record_mock",
       "path": "examples/generation/cx_generation_execution_record.mock_success.json",
       "schema": "schemas/generation/cx_generation_execution_record.v1.schema.json"

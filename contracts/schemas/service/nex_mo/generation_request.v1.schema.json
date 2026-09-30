@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_mo/generation_request.v1.schema.json",
+  "title": "NeX MO Generation Request",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "request_schema_version": {"const": "cx_mo_generation_request.v1"},
+    "client_request_id": {"type": "string", "minLength": 1},
+    "trace_id": {"type": "string", "minLength": 1},
+    "cx_generation_id": {"type": "string", "minLength": 1},
+    "provider_prompt_package_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "alias": {"type": "string", "minLength": 1},
+    "provider_capability": {"const": "generation"},
+    "workload_class": {"type": "string", "minLength": 1},
+    "generation_profile": {"type": "string", "minLength": 1},
+    "messages": {
+      "type": ["array", "null"], "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["role", "content"],
+        "properties": {
+          "role": {"type": "string", "minLength": 1},
+          "content": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "prompt": {"type": ["string", "null"], "minLength": 1},
+    "response_format": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type"],
+      "properties": {"type": {"enum": ["text", "json_object"]}}
+    },
+    "reasoning_mode": {"enum": ["provider_default", "enabled", "disabled"]},
+    "max_output_tokens": {"type": "integer", "minimum": 1},
+    "temperature": {"type": "number"},
+    "stream": {"type": "boolean"},
+    "timeout_ms": {"type": "integer", "minimum": 1},
+    "seed": {"type": "integer"},
+    "metadata": {"type": "object"}
+  },
+  "oneOf": [
+    {"required": ["prompt"], "properties": {"prompt": {"type": "string", "minLength": 1}}},
+    {"required": ["messages"], "properties": {"messages": {"type": "array", "minItems": 1}}}
+  ],
+  "not": {
+    "anyOf": [
+      {"required": ["provider_url"]},
+      {"required": ["provider_endpoint"]},
+      {"required": ["model_path"]},
+      {"required": ["api_key"]}
+    ]
+  }
+}

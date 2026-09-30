@@ -1,0 +1,20 @@
+{
+  "request_schema_version": "cx_mo_generation_request.v1",
+  "client_request_id": "client-s114-001",
+  "trace_id": "trace-s114-001",
+  "cx_generation_id": "cx-generation-s114-001",
+  "provider_prompt_package_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "alias": "general-llm-default",
+  "provider_capability": "generation",
+  "workload_class": "LLM_INTERACTIVE",
+  "generation_profile": "general-answer",
+  "messages": [{"role": "user", "content": "Summarize the contract evidence."}],
+  "prompt": null,
+  "response_format": {"type": "text"},
+  "reasoning_mode": "disabled",
+  "max_output_tokens": 256,
+  "temperature": 0.0,
+  "stream": false,
+  "timeout_ms": 30000,
+  "metadata": {"generation_request_hash": "safe-reference"}
+}

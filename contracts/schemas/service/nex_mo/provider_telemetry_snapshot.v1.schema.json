@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_mo/provider_telemetry_snapshot.v1.schema.json",
+  "title": "NeX MO Provider Telemetry Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["data", "meta"],
+  "properties": {
+    "data": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "capability", "endpoint_env", "configured", "request_shape",
+          "model_name", "model_revision", "deployment_id", "authorization_env",
+          "authorization_configured", "request_count", "success_count",
+          "failure_count", "retryable_failure_count", "degraded_count",
+          "last_outcome", "last_observed_at", "last_latency_ms",
+          "last_status_code", "last_error_code", "last_failure_kind",
+          "last_upstream_status_code"
+        ],
+        "properties": {
+          "capability": {"enum": ["embedding", "reranking", "generation"]},
+          "endpoint_env": {"type": "string", "minLength": 1},
+          "configured": {"type": "boolean"},
+          "request_shape": {"type": "string", "minLength": 1},
+          "model_name": {"type": "string", "minLength": 1},
+          "model_revision": {"type": "string", "minLength": 1},
+          "deployment_id": {"type": "string", "minLength": 1},
+          "authorization_env": {"type": ["string", "null"], "minLength": 1},
+          "authorization_configured": {"type": "boolean"},
+          "request_count": {"type": "integer", "minimum": 0},
+          "success_count": {"type": "integer", "minimum": 0},
+          "failure_count": {"type": "integer", "minimum": 0},
+          "retryable_failure_count": {"type": "integer", "minimum": 0},
+          "degraded_count": {"type": "integer", "minimum": 0},
+          "last_outcome": {"type": ["string", "null"], "enum": ["success", "failure", null]},
+          "last_observed_at": {"type": ["string", "null"], "format": "date-time"},
+          "last_latency_ms": {"type": ["integer", "null"], "minimum": 0},
+          "last_status_code": {"type": ["integer", "null"], "minimum": 100, "maximum": 599},
+          "last_error_code": {"type": ["string", "null"], "minLength": 1},
+          "last_failure_kind": {"type": ["string", "null"], "minLength": 1},
+          "last_upstream_status_code": {"type": ["integer", "null"], "minimum": 100, "maximum": 599}
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "provider_mode", "schema_version"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "provider_mode": {"enum": ["mock", "live"]},
+        "schema_version": {"const": "mo_provider_telemetry_snapshot.v1"}
+      }
+    }
+  }
+}

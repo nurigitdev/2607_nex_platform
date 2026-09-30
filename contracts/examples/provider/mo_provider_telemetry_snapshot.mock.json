@@ -1,0 +1,32 @@
+{
+  "data": [
+    {
+      "capability": "generation",
+      "endpoint_env": "NEX_MO_VLLM_URL",
+      "configured": false,
+      "request_shape": "openai_chat_completions",
+      "model_name": "Qwen3.5-4B",
+      "model_revision": "Qwen3.5-4B",
+      "deployment_id": "remote-generation-vllm",
+      "authorization_env": "NEX_MO_VLLM_API_KEY",
+      "authorization_configured": false,
+      "request_count": 0,
+      "success_count": 0,
+      "failure_count": 0,
+      "retryable_failure_count": 0,
+      "degraded_count": 0,
+      "last_outcome": null,
+      "last_observed_at": null,
+      "last_latency_ms": null,
+      "last_status_code": null,
+      "last_error_code": null,
+      "last_failure_kind": null,
+      "last_upstream_status_code": null
+    }
+  ],
+  "meta": {
+    "count": 1,
+    "provider_mode": "mock",
+    "schema_version": "mo_provider_telemetry_snapshot.v1"
+  }
+}
