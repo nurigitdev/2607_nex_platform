@@ -485,6 +485,16 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_mo_provider_telemetry_durability_contract.py --summary
 "$PYTHON_BIN" scripts/smoke/run_mo_provider_telemetry_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s116_mo_durable_provider_telemetry_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_runtime_observability_boundary.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_runtime_observability_domain.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_runtime_observation_plan.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_runtime_observation_collector.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_runtime_observability_service.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_runtime_observability_api.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_runtime_observability_policy.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_runtime_observability_contract.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_runtime_observability_live_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s117_mo_gpu_model_runtime_observability_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary

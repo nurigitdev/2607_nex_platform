@@ -49,8 +49,8 @@ RUNTIME_OBSERVABILITY_BOUNDARIES = (
     ),
     RuntimeObservabilityBoundary(
         "protected_live_evidence",
-        "docs/slices/1110_mo_protected_dgx_live_reaudit.md",
-        "Explicit BF16 process dtype",
+        "docs/slices/1170_mo_runtime_observability_dgx_live_evidence.md",
+        "Private-value redaction | `PASS`",
         "1170",
     ),
 )
