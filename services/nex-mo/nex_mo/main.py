@@ -8,6 +8,8 @@ from nex_runtime import (
 from nex_mo.providers import register_mock_provider_routes
 from nex_mo.provider_readiness_api import register_provider_readiness_routes
 from nex_mo.provider_readiness_service import ProviderReadinessService
+from nex_mo.provider_telemetry_runtime import build_provider_telemetry_store
+from nex_mo.remote_provider import configure_remote_provider_telemetry_store
 
 
 SERVICE_SPEC = SERVICE_SPECS["nex-mo"]
@@ -18,6 +20,9 @@ app = build_service_app(
 )
 app.state.provider_readiness_service = PROVIDER_READINESS
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
+PROVIDER_TELEMETRY_STORE = build_provider_telemetry_store(SERVICE_PERSISTENCE)
+configure_remote_provider_telemetry_store(PROVIDER_TELEMETRY_STORE)
+app.state.provider_telemetry_store = PROVIDER_TELEMETRY_STORE
 register_service_job_control_routes(
     app,
     service_id=SERVICE_SPEC.service_id,

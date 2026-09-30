@@ -14,10 +14,14 @@ from nex_mo.provider_normalization import (
 )
 from nex_mo.provider_telemetry import (
     RemoteProviderTelemetryBucket,
-    list_provider_telemetry,
-    record_provider_retry,
-    recorded_provider_call as _recorded_remote_provider_call,
-    reset_provider_telemetry as reset_remote_provider_telemetry,
+)
+from nex_mo.provider_telemetry_runtime import (
+    configure_remote_provider_telemetry_store,
+    current_remote_provider_telemetry_store,
+    list_remote_provider_telemetry_configs,
+    record_remote_provider_retry as record_provider_retry,
+    recorded_remote_provider_call as _recorded_remote_provider_call,
+    reset_remote_provider_telemetry,
 )
 from nex_mo.provider_retry import build_provider_retry_policy
 from nex_mo.provider_retry_transport import execute_remote_json_request_with_retry
@@ -415,7 +419,10 @@ def list_remote_provider_telemetry(
         build_remote_reranker_execution_config(environ),
         build_remote_generation_execution_config(environ),
     ]
-    return list_provider_telemetry(configs, capability=capability)
+    return list_remote_provider_telemetry_configs(
+        configs,
+        capability=capability,
+    )
 
 
 def execute_remote_embedding_request(
