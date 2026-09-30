@@ -6,6 +6,7 @@ from typing import Any, Callable, Protocol
 import httpx
 
 from nex_mo.provider_registry import ProviderRouteError
+from nex_mo.provider_retry_after import parse_retry_after_seconds
 
 
 class RemoteRequestConfigView(Protocol):
@@ -28,6 +29,7 @@ class RemoteProviderFailureDecision:
     retryable: bool
     degraded: bool
     upstream_status_code: int | None = None
+    retry_after_seconds: float | None = None
 
     def to_route_error(self) -> ProviderRouteError:
         return ProviderRouteError(
@@ -38,6 +40,7 @@ class RemoteProviderFailureDecision:
             degraded=self.degraded,
             failure_kind=self.failure_kind,
             upstream_status_code=self.upstream_status_code,
+            retry_after_seconds=self.retry_after_seconds,
         )
 
     def to_safe_summary(self) -> dict[str, Any]:
@@ -50,6 +53,8 @@ class RemoteProviderFailureDecision:
         }
         if self.upstream_status_code is not None:
             payload["upstream_status_code"] = self.upstream_status_code
+        if self.retry_after_seconds is not None:
+            payload["retry_after_seconds"] = self.retry_after_seconds
         return payload
 
 
@@ -84,6 +89,9 @@ def execute_remote_json_request(
         raise classify_remote_provider_http_status(
             response.status_code,
             error_code_prefix=error_code_prefix,
+            retry_after_seconds=parse_retry_after_seconds(
+                response.headers.get("Retry-After")
+            ),
         ).to_route_error()
     try:
         return response.json()
@@ -159,6 +167,7 @@ def classify_remote_provider_http_status(
     status_code: int,
     *,
     error_code_prefix: str,
+    retry_after_seconds: float | None = None,
 ) -> RemoteProviderFailureDecision:
     if status_code == 429:
         return RemoteProviderFailureDecision(
@@ -169,6 +178,7 @@ def classify_remote_provider_http_status(
             retryable=True,
             degraded=True,
             upstream_status_code=status_code,
+            retry_after_seconds=retry_after_seconds,
         )
     if status_code >= 500:
         return RemoteProviderFailureDecision(
@@ -179,6 +189,7 @@ def classify_remote_provider_http_status(
             retryable=True,
             degraded=True,
             upstream_status_code=status_code,
+            retry_after_seconds=retry_after_seconds,
         )
     return RemoteProviderFailureDecision(
         failure_kind="upstream_4xx",

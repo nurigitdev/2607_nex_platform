@@ -33,6 +33,7 @@ class ProviderRouteError(Exception):
     degraded: bool = False
     failure_kind: str | None = None
     upstream_status_code: int | None = None
+    retry_after_seconds: float | None = None
 
 
 DEFAULT_PROVIDER_ROUTES: tuple[ProviderRoute, ...] = (
