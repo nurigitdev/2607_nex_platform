@@ -1271,6 +1271,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1165`](slices/1165_mo_gpu_model_runtime_collector_normalization.md) | `S117-004` Correlate fixed DGX process/GPU evidence and normalize privacy-safe runtime observations. |
 | [`Slice 1166`](slices/1166_mo_runtime_observability_ttl_service.md) | `S117-005` Compose a single-flight TTL runtime observation service with invalidation and stale fallback. |
 | [`Slice 1167`](slices/1167_mo_authenticated_runtime_observability_api.md) | `S117-006` Add the authenticated runtime observability route foundation and bounded force-refresh control. |
+| [`Slice 1168`](slices/1168_mo_runtime_observability_status_policy.md) | `S117-007` Harden runtime status precedence and validated GPU memory/temperature warning thresholds. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -12,6 +12,7 @@ from nex_mo.runtime_observability_plan import (
     RuntimeObservationPlan,
     build_runtime_observation_plan,
 )
+from nex_mo.runtime_observability_policy import runtime_observation_thresholds
 
 
 RUNTIME_OBSERVATION_TTL_ENV = "NEX_MO_RUNTIME_OBSERVABILITY_TTL_SECONDS"
@@ -47,7 +48,12 @@ class RuntimeObservabilityService:
                 env = dict(os.environ if self._environ is None else self._environ)
                 ttl_seconds = runtime_observation_ttl_seconds(env)
                 plan = build_runtime_observation_plan(env)
-                identity = _private_plan_identity(plan)
+                thresholds = runtime_observation_thresholds(env)
+                identity = (
+                    _private_plan_identity(plan),
+                    thresholds.gpu_memory_warn_percent,
+                    thresholds.gpu_temperature_warn_c,
+                )
                 if identity != self._configuration_identity:
                     self._store.clear()
                     self._configuration_identity = identity
@@ -56,6 +62,7 @@ class RuntimeObservabilityService:
                         plan,
                         observed_at=observed_at_text,
                         ttl_seconds=ttl_seconds,
+                        thresholds=thresholds,
                     ),
                     now=observed_at,
                     force_refresh=force_refresh,

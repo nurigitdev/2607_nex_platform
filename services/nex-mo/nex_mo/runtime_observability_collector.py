@@ -9,9 +9,12 @@ from nex_mo.runtime_observability import (
     ModelRuntimeSnapshot,
     build_mock_model_runtime_snapshot,
     build_model_runtime_snapshot,
-    normalize_dtype,
 )
 from nex_mo.runtime_observability_plan import RuntimeObservationPlan
+from nex_mo.runtime_observability_policy import (
+    RuntimeObservationThresholds,
+    classify_runtime_observation,
+)
 
 
 RAW_SCHEMA_VERSION = "mo_runtime_observability_collector.raw.v1"
@@ -222,6 +225,7 @@ def collect_runtime_observations(
     command_runner: CommandRunner = subprocess.run,
     observed_at: str | None = None,
     ttl_seconds: int = 30,
+    thresholds: RuntimeObservationThresholds | None = None,
 ) -> ModelRuntimeSnapshot:
     if plan.mode == "mock":
         return build_mock_model_runtime_snapshot(
@@ -266,6 +270,7 @@ def collect_runtime_observations(
             payload,
             plan,
             ttl_seconds=ttl_seconds,
+            thresholds=thresholds,
         )
     except (TypeError, ValueError) as exc:
         raise RuntimeObservationCollectionError("collector_payload_invalid") from exc
@@ -276,6 +281,7 @@ def normalize_runtime_observation_payload(
     plan: RuntimeObservationPlan,
     *,
     ttl_seconds: int,
+    thresholds: RuntimeObservationThresholds | None = None,
 ) -> ModelRuntimeSnapshot:
     if not isinstance(payload, Mapping) or payload.get("schema_version") != RAW_SCHEMA_VERSION:
         raise ValueError("unsupported collector payload")
@@ -295,6 +301,7 @@ def normalize_runtime_observation_payload(
             matches=by_capability.get(target.provider_capability, []),
             nvidia_available=nvidia_status == "available",
             observed_at=observed_at,
+            thresholds=thresholds or RuntimeObservationThresholds(),
         )
         for target in plan.targets
     ]
@@ -313,6 +320,7 @@ def _normalize_model_observation(
     matches: list[Mapping[str, Any]],
     nvidia_available: bool,
     observed_at: str,
+    thresholds: RuntimeObservationThresholds,
 ) -> ModelRuntimeObservation:
     if len(matches) != 1:
         process_count = 0 if not matches else sum(
@@ -331,14 +339,6 @@ def _normalize_model_observation(
 
     item = matches[0]
     process_count = _integer(item.get("process_count"), default=-1)
-    loaded_dtype = normalize_dtype(str(item.get("loaded_dtype") or "unknown"))
-    if loaded_dtype == "unknown":
-        precision_status = "UNVERIFIED"
-    elif loaded_dtype == target.requested_dtype:
-        precision_status = "MATCH"
-    else:
-        precision_status = "MISMATCH"
-
     gpu_count = _integer(item.get("gpu_count"), default=0)
     metrics = {
         "gpu_memory_used_mib": _optional_integer(item.get("gpu_memory_used_mib")),
@@ -347,35 +347,31 @@ def _normalize_model_observation(
         "gpu_temperature_c": _optional_float(item.get("gpu_temperature_c")),
     }
     expected_model_seen = item.get("expected_model_seen") is True
-    if process_count == 0:
-        status, failure_code = "UNAVAILABLE", "model_runtime_process_missing"
-    elif process_count != 1:
-        status, failure_code = "DEGRADED", "model_runtime_process_ambiguous"
-    elif not expected_model_seen:
-        status, failure_code = "DEGRADED", "model_runtime_identity_mismatch"
-    elif precision_status == "MISMATCH":
-        status, failure_code = "DEGRADED", "model_runtime_precision_mismatch"
-    elif precision_status == "UNVERIFIED":
-        status, failure_code = "UNKNOWN", "model_runtime_precision_unverified"
-    elif not nvidia_available or gpu_count == 0:
-        status, failure_code = "UNKNOWN", "gpu_runtime_evidence_missing"
-    else:
-        status, failure_code = "HEALTHY", None
+    decision = classify_runtime_observation(
+        process_count=process_count,
+        expected_model_seen=expected_model_seen,
+        requested_dtype=target.requested_dtype,
+        loaded_dtype=str(item.get("loaded_dtype") or "unknown"),
+        nvidia_available=nvidia_available,
+        gpu_count=gpu_count,
+        thresholds=thresholds,
+        **metrics,
+    )
 
     return ModelRuntimeObservation(
         provider_capability=target.provider_capability,
         alias=target.alias,
         deployment_id=target.deployment_id,
         model_revision=target.model_revision,
-        runtime_status=status,
-        precision_status=precision_status,
+        runtime_status=decision.runtime_status,
+        precision_status=decision.precision_status,
         requested_dtype=target.requested_dtype,
-        loaded_dtype=loaded_dtype,
+        loaded_dtype=decision.loaded_dtype,
         process_count=max(process_count, 0),
         gpu_count=max(gpu_count, 0),
         source="protected_ssh",
         observed_at=observed_at,
-        failure_code=failure_code,
+        failure_code=decision.failure_code,
         **metrics,
     )
 
