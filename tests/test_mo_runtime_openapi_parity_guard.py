@@ -11,12 +11,12 @@ def test_repository_mo_runtime_openapi_parity_is_hardened() -> None:
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
     assert result["summary"] == {
-        "runtime_operation_count": 19,
-        "openapi_operation_count": 19,
-        "operation_id_count": 19,
-        "protected_operation_count": 15,
-        "secured_operation_count": 15,
-        "canonical_component_count": 10,
+        "runtime_operation_count": 20,
+        "openapi_operation_count": 20,
+        "operation_id_count": 20,
+        "protected_operation_count": 16,
+        "secured_operation_count": 16,
+        "canonical_component_count": 11,
         "drift_count": 0,
     }
     assert result["missing_openapi_operations"] == []
@@ -71,8 +71,8 @@ def test_parity_helpers_fail_closed_for_invalid_inputs(tmp_path: Path) -> None:
 def test_parity_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_mo_runtime_openapi_parity_guard()
     assert runner.summary_line(passing) == (
-        "mo_runtime_openapi_parity_guard=pass operations=19/19 "
-        "secured=15/15 canonical=10 drift=0 next=1139"
+        "mo_runtime_openapi_parity_guard=pass operations=20/20 "
+        "secured=16/16 canonical=11 drift=0 next=1139"
     )
 
     monkeypatch.setattr(
@@ -81,7 +81,7 @@ def test_parity_summary_and_main_paths(monkeypatch, capsys) -> None:
         lambda: passing,
     )
     assert runner.main(["--summary"]) == 0
-    assert "operations=19/19" in capsys.readouterr().out
+    assert "operations=20/20" in capsys.readouterr().out
     assert runner.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
 

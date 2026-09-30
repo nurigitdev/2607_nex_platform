@@ -1,0 +1,22 @@
+{
+  "runtime_observability_schema_version": "mo_runtime_observability.v1",
+  "observation_mode": "live",
+  "runtime_status": "UNKNOWN",
+  "observed_at": "2026-09-30T00:00:00Z",
+  "expires_at": "2026-09-30T00:00:00Z",
+  "cache_status": "MISS",
+  "required_capabilities": ["embedding", "reranking", "generation"],
+  "summary": {
+    "required_count": 3,
+    "model_count": 0,
+    "status_counts": {
+      "HEALTHY": 0,
+      "DEGRADED": 0,
+      "UNAVAILABLE": 0,
+      "UNKNOWN": 0
+    }
+  },
+  "models": [],
+  "failure_code": "runtime_observation_failed",
+  "ssh_target": "operator@private-dgx.local"
+}

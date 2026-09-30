@@ -29,7 +29,7 @@ def run_mo_contract_fixture_completion(
     negative_count = _count(summary, "negative_fixture_covered_count")
     checks = {
         "drift_audit_passed": evidence.get("status") == "PASS",
-        "mo_schema_inventory_complete": schema_count == 17,
+        "mo_schema_inventory_complete": schema_count == 18,
         "positive_fixture_coverage_complete": positive_count == schema_count,
         "negative_fixture_coverage_complete": negative_count == schema_count,
         "missing_positive_list_empty": not evidence.get(

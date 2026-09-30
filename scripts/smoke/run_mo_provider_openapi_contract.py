@@ -24,6 +24,7 @@ PROVIDER_PATHS = (
     "/api/v1/provider-profiles",
     "/api/v1/provider-route-health",
     "/api/v1/provider-telemetry",
+    "/api/v1/model-runtime-observability",
     "/api/v1/embeddings",
     "/api/v1/rerank",
     "/api/v1/generations",
@@ -42,6 +43,7 @@ CANONICAL_COMPONENTS = {
     "ProviderRouteList": "schemas/service/nex_mo/provider_route_list.v1.schema.json",
     "ModelProfileList": "schemas/service/nex_mo/model_profile_list.v1.schema.json",
     "ProviderTelemetrySnapshot": "schemas/service/nex_mo/provider_telemetry_snapshot.v1.schema.json",
+    "RuntimeObservability": "schemas/service/nex_mo/runtime_observability.v1.schema.json",
     "EmbeddingRequest": "schemas/service/nex_mo/embedding_request.v1.schema.json",
     "EmbeddingResponse": "schemas/service/nex_mo/embedding_response.v1.schema.json",
     "RerankRequest": "schemas/service/nex_mo/rerank_request.v1.schema.json",
@@ -93,7 +95,7 @@ def run_mo_provider_openapi_contract(
     summary = _mapping(drift.get("summary"))
     checks = {
         "openapi_document_present": bool(payload),
-        "seven_provider_paths_documented": len(path_results) == 7,
+        "eight_provider_paths_documented": len(path_results) == 8,
         "provider_security_complete": all(item["security"] for item in path_results),
         "provider_success_schemas_complete": all(
             item["success_schema"] for item in path_results

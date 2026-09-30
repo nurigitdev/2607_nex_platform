@@ -32,6 +32,7 @@ PROTECTED_REQUESTS = (
     ("GET", "/api/v1/provider-profiles"),
     ("GET", "/api/v1/provider-route-health"),
     ("GET", "/api/v1/provider-telemetry"),
+    ("GET", "/api/v1/model-runtime-observability"),
     ("POST", "/api/v1/embeddings"),
     ("POST", "/api/v1/rerank"),
     ("POST", "/api/v1/generations"),
@@ -58,6 +59,13 @@ PROVIDER_REQUESTS = (
         "/api/v1/provider-telemetry",
         None,
         "provider_telemetry_snapshot",
+    ),
+    (
+        "runtime_observability",
+        "GET",
+        "/api/v1/model-runtime-observability",
+        None,
+        "runtime_observability",
     ),
     (
         "embedding",
@@ -146,9 +154,9 @@ def run_mo_contract_http_smoke(
         "root_response_schema_valid": observed.get("root_status") == 200
         and observed.get("root_schema_valid") is True,
         "service_claim_authenticated": observed.get("service_claim_status") == 200,
-        "all_protected_routes_reject_missing_auth": len(auth_statuses) == 15
+        "all_protected_routes_reject_missing_auth": len(auth_statuses) == 16
         and all(status == 401 for status in auth_statuses),
-        "all_provider_success_shapes_valid": len(provider_results) == 7
+        "all_provider_success_shapes_valid": len(provider_results) == 8
         and all(
             item.get("status") == 200 and item.get("schema_valid") is True
             for item in provider_results
@@ -248,6 +256,8 @@ def _build_isolated_app() -> tuple[Any, Any]:
     from nex_mo.provider_readiness_api import register_provider_readiness_routes
     from nex_mo.provider_readiness_service import ProviderReadinessService
     from nex_mo.providers import register_mock_provider_routes
+    from nex_mo.runtime_observability_api import register_runtime_observability_routes
+    from nex_mo.runtime_observability_service import RuntimeObservabilityService
     from nex_runtime import (
         SERVICE_SPECS,
         build_service_app,
@@ -279,6 +289,10 @@ def _build_isolated_app() -> tuple[Any, Any]:
     register_provider_readiness_routes(
         app,
         service=ProviderReadinessService(environ={"NEX_MO_PROVIDER_MODE": "mock"}),
+    )
+    register_runtime_observability_routes(
+        app,
+        service=RuntimeObservabilityService(environ={}),
     )
     return app, runtime
 

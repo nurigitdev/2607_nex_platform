@@ -69,6 +69,15 @@ Model profile defaults:
   The read-only snapshot reports active capability rows plus success/failure,
   attempt/retry counters, and last safe diagnostics. It does not expose provider
   URLs, API keys, raw payloads, database URLs, or exception details.
+- Current model/GPU diagnostics are available at authenticated
+  `GET /api/v1/model-runtime-observability`. The default mode is deterministic
+  mock; protected DGX collection requires
+  `NEX_MO_RUNTIME_OBSERVABILITY_MODE=live` and a validated
+  `NEX_MO_DGX_SSH_TARGET`. Snapshots use a 30-second process-local TTL and are
+  not persisted to PostgreSQL. `force_refresh=true` bypasses only the cache.
+- GPU warning defaults are 90% model memory share and 85 C. Override them with
+  `NEX_MO_GPU_MEMORY_WARN_PERCENT` and `NEX_MO_GPU_TEMPERATURE_WARN_C`.
+  High compute utilization alone is not a degraded condition.
 - Public provider-profile responses expose model identity, precision, runtime
   engine, selection, and status only. Internal model roots, model paths, and
   health environment names remain private to MO runtime composition.
@@ -92,7 +101,9 @@ Current endpoints:
 - `GET /internal/v1/auth/service-claim`
 - `GET /api/v1/provider-routes`
 - `GET /api/v1/provider-profiles`
+- `GET /api/v1/provider-route-health`
 - `GET /api/v1/provider-telemetry`
+- `GET /api/v1/model-runtime-observability`
 - `POST /api/v1/embeddings`
 - `POST /api/v1/rerank`
 - `POST /api/v1/generations`

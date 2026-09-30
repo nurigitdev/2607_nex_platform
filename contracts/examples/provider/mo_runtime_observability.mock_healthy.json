@@ -1,0 +1,82 @@
+{
+  "runtime_observability_schema_version": "mo_runtime_observability.v1",
+  "observation_mode": "mock",
+  "runtime_status": "HEALTHY",
+  "observed_at": "2026-09-30T00:00:00Z",
+  "expires_at": "2026-09-30T00:00:30Z",
+  "cache_status": "FRESH",
+  "required_capabilities": ["embedding", "reranking", "generation"],
+  "summary": {
+    "required_count": 3,
+    "model_count": 3,
+    "status_counts": {
+      "HEALTHY": 3,
+      "DEGRADED": 0,
+      "UNAVAILABLE": 0,
+      "UNKNOWN": 0
+    }
+  },
+  "models": [
+    {
+      "model_runtime_observation_schema_version": "mo_model_runtime_observation.v1",
+      "provider_capability": "embedding",
+      "alias": "mock-embedding-default",
+      "deployment_id": "mock-embedding-local",
+      "model_revision": "Qwen3-Embedding-4B",
+      "runtime_status": "HEALTHY",
+      "precision_status": "MATCH",
+      "requested_dtype": "bfloat16",
+      "loaded_dtype": "bfloat16",
+      "process_count": 0,
+      "gpu_count": 0,
+      "gpu_memory_used_mib": null,
+      "gpu_memory_total_mib": null,
+      "gpu_utilization_percent": null,
+      "gpu_temperature_c": null,
+      "source": "mock_fixture",
+      "observed_at": "2026-09-30T00:00:00Z",
+      "failure_code": null
+    },
+    {
+      "model_runtime_observation_schema_version": "mo_model_runtime_observation.v1",
+      "provider_capability": "reranking",
+      "alias": "mock-reranker-default",
+      "deployment_id": "mock-reranker-local",
+      "model_revision": "Qwen3-Reranker-4B",
+      "runtime_status": "HEALTHY",
+      "precision_status": "MATCH",
+      "requested_dtype": "bfloat16",
+      "loaded_dtype": "bfloat16",
+      "process_count": 0,
+      "gpu_count": 0,
+      "gpu_memory_used_mib": null,
+      "gpu_memory_total_mib": null,
+      "gpu_utilization_percent": null,
+      "gpu_temperature_c": null,
+      "source": "mock_fixture",
+      "observed_at": "2026-09-30T00:00:00Z",
+      "failure_code": null
+    },
+    {
+      "model_runtime_observation_schema_version": "mo_model_runtime_observation.v1",
+      "provider_capability": "generation",
+      "alias": "general-llm-default",
+      "deployment_id": "mock-generation-local",
+      "model_revision": "Qwen3.5-4B",
+      "runtime_status": "HEALTHY",
+      "precision_status": "MATCH",
+      "requested_dtype": "bfloat16",
+      "loaded_dtype": "bfloat16",
+      "process_count": 0,
+      "gpu_count": 0,
+      "gpu_memory_used_mib": null,
+      "gpu_memory_total_mib": null,
+      "gpu_utilization_percent": null,
+      "gpu_temperature_c": null,
+      "source": "mock_fixture",
+      "observed_at": "2026-09-30T00:00:00Z",
+      "failure_code": null
+    }
+  ],
+  "failure_code": null
+}

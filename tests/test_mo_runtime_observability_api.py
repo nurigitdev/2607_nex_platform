@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from nex_mo.runtime_observability_api import register_runtime_observability_routes
+from nex_mo.main import RUNTIME_OBSERVABILITY, app as main_app
 from nex_mo.runtime_observability_service import RuntimeObservabilityService
 from nex_runtime import issue_mock_service_token
 import run_mo_runtime_observability_api as runner
@@ -98,6 +99,20 @@ def test_runtime_observability_api_is_not_registered_as_readiness() -> None:
     paths = {route.path for route in app.routes}
     assert "/api/v1/model-runtime-observability" in paths
     assert "/ready" not in paths
+
+
+def test_main_app_registers_one_runtime_observability_service(monkeypatch) -> None:
+    monkeypatch.setenv("NEX_MO_RUNTIME_OBSERVABILITY_MODE", "mock")
+    RUNTIME_OBSERVABILITY.clear()
+
+    response = TestClient(main_app).get(
+        "/api/v1/model-runtime-observability",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["runtime_status"] == "HEALTHY"
+    assert main_app.state.runtime_observability_service is RUNTIME_OBSERVABILITY
 
 
 def test_api_runner_summary_json_and_failure_paths(monkeypatch, capsys) -> None:

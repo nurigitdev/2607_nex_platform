@@ -10,15 +10,19 @@ from nex_mo.provider_readiness_api import register_provider_readiness_routes
 from nex_mo.provider_readiness_service import ProviderReadinessService
 from nex_mo.provider_telemetry_runtime import build_provider_telemetry_store
 from nex_mo.remote_provider import configure_remote_provider_telemetry_store
+from nex_mo.runtime_observability_api import register_runtime_observability_routes
+from nex_mo.runtime_observability_service import RuntimeObservabilityService
 
 
 SERVICE_SPEC = SERVICE_SPECS["nex-mo"]
 PROVIDER_READINESS = ProviderReadinessService()
+RUNTIME_OBSERVABILITY = RuntimeObservabilityService()
 app = build_service_app(
     SERVICE_SPEC,
     readiness_checks=(PROVIDER_READINESS.check,),
 )
 app.state.provider_readiness_service = PROVIDER_READINESS
+app.state.runtime_observability_service = RUNTIME_OBSERVABILITY
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
 PROVIDER_TELEMETRY_STORE = build_provider_telemetry_store(SERVICE_PERSISTENCE)
 configure_remote_provider_telemetry_store(PROVIDER_TELEMETRY_STORE)
@@ -35,3 +39,4 @@ register_service_log_retention_routes(
 )
 register_mock_provider_routes(app)
 register_provider_readiness_routes(app, service=PROVIDER_READINESS)
+register_runtime_observability_routes(app, service=RUNTIME_OBSERVABILITY)

@@ -178,15 +178,15 @@ def run_s114_mo_contract_api_drift_closure(root: Path = ROOT) -> dict[str, Any]:
         "runtime_openapi_parity_closed": parity_summary.get(
             "runtime_operation_count"
         )
-        == 19
-        and parity_summary.get("openapi_operation_count") == 19
+        == 20
+        and parity_summary.get("openapi_operation_count") == 20
         and parity_summary.get("drift_count") == 0,
         "security_and_http_contract_closed": parity_summary.get(
             "secured_operation_count"
         )
-        == 15
-        and http_summary.get("unauthorized_rejection_count") == 15
-        and http_summary.get("provider_success_count") == 7
+        == 16
+        and http_summary.get("unauthorized_rejection_count") == 16
+        and http_summary.get("provider_success_count") == 8
         and http_summary.get("matched_error_count") == 6,
         "protected_postgres_evidence_complete": components[
             "postgres_and_quality_evidence"
@@ -252,10 +252,10 @@ def _closure_decision() -> dict[str, Any]:
     return {
         "feature_scope": "mo_contract_and_api_drift_closure",
         "drift": {"baseline": 28, "current": 0},
-        "runtime_operation_count": 19,
-        "protected_operation_count": 15,
-        "mo_schema_count": 17,
-        "canonical_component_count": 10,
+        "runtime_operation_count": 20,
+        "protected_operation_count": 16,
+        "mo_schema_count": 18,
+        "canonical_component_count": 11,
         "test_database_target": "nex_mo_user@nex_mo_test",
         "test_database_migration_count": 7,
         "protected_postgres_check_count": 12,

@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_mo/runtime_observability.v1.schema.json",
+  "title": "NeX MO Runtime Observability",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "runtime_observability_schema_version",
+    "observation_mode",
+    "runtime_status",
+    "observed_at",
+    "expires_at",
+    "cache_status",
+    "required_capabilities",
+    "summary",
+    "models",
+    "failure_code"
+  ],
+  "properties": {
+    "runtime_observability_schema_version": {
+      "const": "mo_runtime_observability.v1"
+    },
+    "observation_mode": {
+      "type": "string",
+      "enum": ["mock", "live", "unknown"]
+    },
+    "runtime_status": {
+      "$ref": "#/$defs/runtimeStatus"
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cache_status": {
+      "type": "string",
+      "enum": ["MISS", "FRESH", "REFRESHED", "STALE"]
+    },
+    "required_capabilities": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        {"const": "embedding"},
+        {"const": "reranking"},
+        {"const": "generation"}
+      ],
+      "items": false
+    },
+    "summary": {
+      "$ref": "#/$defs/runtimeSummary"
+    },
+    "models": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "$ref": "#/$defs/modelRuntimeObservation"
+      }
+    },
+    "failure_code": {
+      "type": ["string", "null"],
+      "pattern": "^[a-z][a-z0-9_]*$"
+    }
+  },
+  "$defs": {
+    "runtimeStatus": {
+      "type": "string",
+      "enum": ["HEALTHY", "DEGRADED", "UNAVAILABLE", "UNKNOWN"]
+    },
+    "runtimeSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_count", "model_count", "status_counts"],
+      "properties": {
+        "required_count": {"const": 3},
+        "model_count": {"type": "integer", "minimum": 0, "maximum": 3},
+        "status_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["HEALTHY", "DEGRADED", "UNAVAILABLE", "UNKNOWN"],
+          "properties": {
+            "HEALTHY": {"type": "integer", "minimum": 0, "maximum": 3},
+            "DEGRADED": {"type": "integer", "minimum": 0, "maximum": 3},
+            "UNAVAILABLE": {"type": "integer", "minimum": 0, "maximum": 3},
+            "UNKNOWN": {"type": "integer", "minimum": 0, "maximum": 3}
+          }
+        }
+      }
+    },
+    "modelRuntimeObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model_runtime_observation_schema_version",
+        "provider_capability",
+        "alias",
+        "deployment_id",
+        "model_revision",
+        "runtime_status",
+        "precision_status",
+        "requested_dtype",
+        "loaded_dtype",
+        "process_count",
+        "gpu_count",
+        "gpu_memory_used_mib",
+        "gpu_memory_total_mib",
+        "gpu_utilization_percent",
+        "gpu_temperature_c",
+        "source",
+        "observed_at",
+        "failure_code"
+      ],
+      "properties": {
+        "model_runtime_observation_schema_version": {
+          "const": "mo_model_runtime_observation.v1"
+        },
+        "provider_capability": {
+          "type": "string",
+          "enum": ["embedding", "reranking", "generation"]
+        },
+        "alias": {"type": "string", "minLength": 1},
+        "deployment_id": {"type": "string", "minLength": 1},
+        "model_revision": {"type": "string", "minLength": 1},
+        "runtime_status": {"$ref": "#/$defs/runtimeStatus"},
+        "precision_status": {
+          "type": "string",
+          "enum": ["MATCH", "MISMATCH", "UNVERIFIED"]
+        },
+        "requested_dtype": {"$ref": "#/$defs/dtype"},
+        "loaded_dtype": {"$ref": "#/$defs/dtype"},
+        "process_count": {"type": "integer", "minimum": 0},
+        "gpu_count": {"type": "integer", "minimum": 0},
+        "gpu_memory_used_mib": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "gpu_memory_total_mib": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "gpu_utilization_percent": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "gpu_temperature_c": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 150
+        },
+        "source": {
+          "type": "string",
+          "enum": ["mock_fixture", "protected_ssh"]
+        },
+        "observed_at": {"type": "string", "format": "date-time"},
+        "failure_code": {
+          "type": ["string", "null"],
+          "pattern": "^[a-z][a-z0-9_]*$"
+        }
+      }
+    },
+    "dtype": {
+      "type": "string",
+      "enum": ["bfloat16", "float16", "float32", "nvfp4", "auto", "unknown"]
+    }
+  }
+}

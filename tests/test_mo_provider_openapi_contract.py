@@ -11,8 +11,8 @@ def test_repository_provider_openapi_contract_is_hardened() -> None:
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
     assert result["summary"] == {
-        "provider_path_count": 7,
-        "canonical_component_count": 9,
+        "provider_path_count": 8,
+        "canonical_component_count": 10,
         "closed_provider_drift_count": 17,
         "remaining_drift_count": 0,
     }
@@ -51,7 +51,7 @@ def test_provider_openapi_helpers_cover_invalid_inputs(tmp_path: Path) -> None:
 def test_provider_openapi_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_mo_provider_openapi_contract()
     assert runner.summary_line(passing) == (
-        "mo_provider_openapi_contract=pass paths=7 components=9 "
+        "mo_provider_openapi_contract=pass paths=8 components=10 "
         "closed=17 remaining=0 next=1136"
     )
 

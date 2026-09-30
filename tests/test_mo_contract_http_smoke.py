@@ -12,10 +12,10 @@ def test_repository_mo_contract_http_smoke_is_deterministic() -> None:
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
     assert result["summary"] == {
-        "protected_operation_count": 15,
-        "unauthorized_rejection_count": 15,
-        "provider_success_count": 7,
-        "provider_contract_count": 7,
+        "protected_operation_count": 16,
+        "unauthorized_rejection_count": 16,
+        "provider_success_count": 8,
+        "provider_contract_count": 8,
         "error_case_count": 6,
         "matched_error_count": 6,
         "external_request_count": 0,
@@ -67,13 +67,13 @@ def test_contract_http_helpers_fail_closed_and_restore_environment(
 def test_contract_http_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_mo_contract_http_smoke()
     assert runner.summary_line(passing) == (
-        "mo_contract_http_smoke=pass auth=15/15 providers=7/7 "
+        "mo_contract_http_smoke=pass auth=16/16 providers=8/8 "
         "errors=6/6 external=0 next=1140"
     )
 
     monkeypatch.setattr(runner, "run_mo_contract_http_smoke", lambda: passing)
     assert runner.main(["--summary"]) == 0
-    assert "providers=7/7" in capsys.readouterr().out
+    assert "providers=8/8" in capsys.readouterr().out
     assert runner.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
 

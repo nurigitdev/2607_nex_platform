@@ -366,6 +366,29 @@ paths:
           description: Service claim is missing or invalid.
         "503":
           description: Durable provider telemetry is temporarily unavailable.
+  /api/v1/model-runtime-observability:
+    get:
+      operationId: getMoModelRuntimeObservability
+      tags:
+        - Provider Operations
+      security:
+        - serviceBearer: []
+      parameters:
+        - name: force_refresh
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Privacy-safe current model process and GPU resource observation snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeObservability"
+        "401":
+          description: Service claim is missing or invalid.
   /api/v1/embeddings:
     post:
       operationId: createMoEmbeddings
@@ -1070,6 +1093,64 @@ components:
             - string
             - "null"
         error_code:
+          type:
+            - string
+            - "null"
+    RuntimeObservability:
+      type: object
+      additionalProperties: false
+      x-nex-canonical-json-schema: schemas/service/nex_mo/runtime_observability.v1.schema.json
+      required:
+        - runtime_observability_schema_version
+        - observation_mode
+        - runtime_status
+        - observed_at
+        - expires_at
+        - cache_status
+        - required_capabilities
+        - summary
+        - models
+        - failure_code
+      properties:
+        runtime_observability_schema_version:
+          type: string
+          const: mo_runtime_observability.v1
+        observation_mode:
+          type: string
+          enum: [mock, live, unknown]
+        runtime_status:
+          type: string
+          enum: [HEALTHY, DEGRADED, UNAVAILABLE, UNKNOWN]
+        observed_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        cache_status:
+          type: string
+          enum: [MISS, FRESH, REFRESHED, STALE]
+        required_capabilities:
+          type: array
+          items:
+            type: string
+            enum: [embedding, reranking, generation]
+        summary:
+          type: object
+          additionalProperties: false
+          required: [required_count, model_count, status_counts]
+          properties:
+            required_count:
+              type: integer
+            model_count:
+              type: integer
+            status_counts:
+              type: object
+        models:
+          type: array
+          items:
+            type: object
+        failure_code:
           type:
             - string
             - "null"
