@@ -280,9 +280,25 @@ def register_mock_provider_routes(app: FastAPI) -> None:
         if auth_problem is not None:
             return auth_problem
 
+        from nex_mo.provider_telemetry_repository import (
+            ProviderTelemetryRepositoryError,
+        )
         from nex_mo.remote_provider import list_remote_provider_telemetry
 
-        telemetry = list_remote_provider_telemetry(capability=capability)
+        try:
+            telemetry = list_remote_provider_telemetry(capability=capability)
+        except ProviderTelemetryRepositoryError:
+            return problem_response(
+                request,
+                status_code=503,
+                error_code="MO_PROVIDER_TELEMETRY_UNAVAILABLE",
+                title="Provider telemetry unavailable",
+                detail="Durable provider telemetry is temporarily unavailable.",
+                type_uri=(
+                    "https://nex-platform.local/problems/"
+                    "provider-telemetry-unavailable"
+                ),
+            )
         return {
             "data": telemetry,
             "meta": {
