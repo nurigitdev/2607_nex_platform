@@ -1258,6 +1258,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1152`](slices/1152_mo_provider_telemetry_persistence_boundary.md) | `S116-001` Freeze restart-safe aggregate telemetry, atomic persistence, privacy, compatibility, and PostgreSQL evidence boundaries. |
 | [`Slice 1153`](slices/1153_mo_provider_telemetry_persistence_contract.md) | `S116-002` Define durable telemetry identity, atomic mutation, aggregate invariant, and repository contracts. |
 | [`Slice 1154`](slices/1154_mo_provider_telemetry_repository.md) | `S116-003` Add the compact MO telemetry migration and portable atomic SQLAlchemy repository. |
+| [`Slice 1155`](slices/1155_mo_provider_telemetry_store_adapter.md) | `S116-004` Bridge provider execution telemetry to durable atomic mutations while preserving the 26-field wire shape. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
