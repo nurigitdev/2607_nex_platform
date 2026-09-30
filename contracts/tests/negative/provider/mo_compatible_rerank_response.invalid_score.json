@@ -1,0 +1,6 @@
+{
+  "model": "Qwen3-Reranker-4B",
+  "results": [
+    {"index": 0, "score": "high"}
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "model": "Qwen3-Reranker-4B",
+  "query": "contract drift",
+  "documents": []
+}

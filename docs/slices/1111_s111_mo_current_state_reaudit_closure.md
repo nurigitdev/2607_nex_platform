@@ -67,3 +67,7 @@ Maintenance note: S113 implemented provider-aware service readiness, reducing
 the live resilience audit from the original five-gap baseline to four. The
 historical S111 closure accepts monotonic reduction from that baseline while
 continuing to require every remaining gap to be explicitly classified.
+
+S114 maintenance note: contract drift is also expected to decrease from the
+original 28-gap baseline. The S111 closure therefore accepts a classified
+`GAPS_CONFIRMED` or fully `HARDENED` result at or below that baseline.

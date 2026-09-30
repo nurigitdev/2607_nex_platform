@@ -86,6 +86,21 @@
       "schema": "schemas/service/nex_mo/compatible_provider_health.v1.schema.json"
     },
     {
+      "name": "mo_compatible_embedding_response_missing_usage",
+      "path": "tests/negative/provider/mo_compatible_embedding_response.missing_usage.json",
+      "schema": "schemas/service/nex_mo/compatible_embedding_response.v1.schema.json"
+    },
+    {
+      "name": "mo_compatible_rerank_request_empty_documents",
+      "path": "tests/negative/provider/mo_compatible_rerank_request.empty_documents.json",
+      "schema": "schemas/service/nex_mo/compatible_rerank_request.v1.schema.json"
+    },
+    {
+      "name": "mo_compatible_rerank_response_invalid_score",
+      "path": "tests/negative/provider/mo_compatible_rerank_response.invalid_score.json",
+      "schema": "schemas/service/nex_mo/compatible_rerank_response.v1.schema.json"
+    },
+    {
       "name": "mo_provider_route_list_secret_endpoint",
       "path": "tests/negative/provider/mo_provider_route_list.secret_endpoint.json",
       "schema": "schemas/service/nex_mo/provider_route_list.v1.schema.json"

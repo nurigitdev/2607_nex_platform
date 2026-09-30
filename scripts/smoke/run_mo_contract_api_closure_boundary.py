@@ -28,6 +28,7 @@ def summary_line(evidence: Mapping[str, Any]) -> str:
         f"{str(evidence.get('status') or 'FAIL').lower()} "
         f"classes={summary.get('drift_class_count', 0)} "
         f"drift={summary.get('baseline_drift_count', 0)}->"
+        f"{summary.get('current_drift_count', 0)}->"
         f"{summary.get('target_drift_count', 0)} "
         f"issues={summary.get('baseline_issue_count', 0)} "
         f"next={evidence.get('next_slice') or 'blocked'}"

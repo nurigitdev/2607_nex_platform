@@ -186,8 +186,9 @@ def run_s111_mo_current_state_reaudit_closure(
             == "ORDERED_REFACTOR_REQUIRED_BEFORE_NEW_MO_FEATURES"
         ),
         "contract_drift_quantified": (
-            summaries["contract"].get("drift_count") == 28
-            and audits["contract"].get("contract_readiness") == "GAPS_CONFIRMED"
+            0 <= int(summaries["contract"].get("drift_count") or 0) <= 28
+            and audits["contract"].get("contract_readiness")
+            in {"GAPS_CONFIRMED", "HARDENED"}
         ),
         "runtime_gaps_quantified": (
             0 < int(summaries["resilience"].get("runtime_gap_count") or 0) <= 5

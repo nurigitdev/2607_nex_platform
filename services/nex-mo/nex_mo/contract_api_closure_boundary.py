@@ -100,19 +100,19 @@ def build_mo_contract_api_closure_boundary(
     }
     issues = [
         {
-            "category": "contract_drift_baseline_mismatch",
+            "category": "contract_drift_baseline_regression",
             "drift_class": drift_class,
-            "expected": count,
+            "baseline": count,
             "observed": observed.get(drift_class, 0),
         }
         for drift_class, count in expected.items()
-        if observed.get(drift_class) != count
+        if observed.get(drift_class, 0) > count
     ]
     checks = {
         "baseline_audit_passed": audit.get("status") == "PASS",
         "six_drift_classes_frozen": len(boundaries) == 6,
-        "baseline_categories_match": not issues,
-        "baseline_total_matches": sum(observed.values())
+        "drift_is_monotonic": not issues,
+        "baseline_total_frozen": sum(expected.values())
         == CONTRACT_CLOSURE_POLICY["baseline_drift_count"],
         "slice_order_bounded": all(
             "1133" <= item.target_slice.split("-", 1)[0] <= "1137"
@@ -136,7 +136,8 @@ def build_mo_contract_api_closure_boundary(
         "checks": checks,
         "summary": {
             "drift_class_count": len(boundaries),
-            "baseline_drift_count": sum(observed.values()),
+            "baseline_drift_count": sum(expected.values()),
+            "current_drift_count": sum(observed.values()),
             "target_drift_count": CONTRACT_CLOSURE_POLICY["target_drift_count"],
             "baseline_issue_count": len(issues),
         },

@@ -19,10 +19,11 @@ def test_repository_contract_api_closure_boundary_is_frozen() -> None:
     assert result["summary"] == {
         "drift_class_count": 6,
         "baseline_drift_count": 28,
+        "current_drift_count": 25,
         "target_drift_count": 0,
         "baseline_issue_count": 0,
     }
-    assert result["baseline"]["expected"] == result["baseline"]["observed"]
+    assert result["baseline"]["observed"]["missing_negative_fixtures"] == 0
     assert result["next_slice"] == "1133"
 
 
@@ -59,13 +60,13 @@ def test_boundary_fails_closed_for_baseline_and_inventory_drift() -> None:
     assert result["status"] == "FAIL"
     assert result["checks"]["baseline_audit_passed"] is False
     assert result["checks"]["six_drift_classes_frozen"] is False
-    assert result["checks"]["baseline_categories_match"] is False
+    assert result["checks"]["drift_is_monotonic"] is False
     assert result["checks"]["slice_order_bounded"] is False
     assert result["issues"] == [
         {
-            "category": "contract_drift_baseline_mismatch",
+            "category": "contract_drift_baseline_regression",
             "drift_class": "missing_openapi_operations",
-            "expected": 8,
+            "baseline": 8,
             "observed": 9,
         }
     ]
@@ -82,7 +83,7 @@ def test_boundary_runner_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_mo_contract_api_closure_boundary()
     assert runner.summary_line(passing) == (
         "mo_contract_api_closure_boundary=pass classes=6 "
-        "drift=28->0 issues=0 next=1133"
+        "drift=28->25->0 issues=0 next=1133"
     )
 
     monkeypatch.setattr(
@@ -91,7 +92,7 @@ def test_boundary_runner_summary_and_main_paths(monkeypatch, capsys) -> None:
         lambda: passing,
     )
     assert runner.main(["--summary"]) == 0
-    assert "drift=28->0" in capsys.readouterr().out
+    assert "drift=28->25->0" in capsys.readouterr().out
     assert runner.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
 

@@ -71,10 +71,10 @@ def build_mo_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
     checks = {
         "openapi_document_readable": bool(document),
         "runtime_operation_inventory_complete": len(runtime_operations) == 19,
-        "openapi_drift_classified": len(missing_openapi) == 9 and not extra_openapi,
+        "openapi_has_no_unknown_operations": not extra_openapi,
         "business_path_inventory_complete": len(BUSINESS_PATHS) == 7,
         "schema_positive_fixtures_complete": not missing_positive,
-        "schema_negative_gaps_classified": len(missing_negative) == 3,
+        "schema_negative_fixtures_complete": not missing_negative,
     }
     drift_count = (
         len(missing_openapi)
@@ -91,7 +91,11 @@ def build_mo_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
         "requirement": "S111",
         "status": "PASS" if passed else "FAIL",
         "failure_code": None if passed else "mo_contract_api_drift_audit_failed",
-        "contract_readiness": "GAPS_CONFIRMED" if passed else "BLOCKED",
+        "contract_readiness": (
+            "HARDENED" if passed and drift_count == 0 else "GAPS_CONFIRMED"
+            if passed
+            else "BLOCKED"
+        ),
         "checks": checks,
         "summary": {
             "runtime_operation_count": len(runtime_operations),

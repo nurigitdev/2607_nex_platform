@@ -1,0 +1,7 @@
+{
+  "object": "list",
+  "model": "Qwen3-Embedding-4B",
+  "data": [
+    {"object": "embedding", "embedding": [0.1, 0.2], "index": 0}
+  ]
+}
