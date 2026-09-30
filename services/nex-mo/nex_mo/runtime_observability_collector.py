@@ -100,6 +100,17 @@ def number(value, cast):
         return None
 
 
+def unified_memory_total_mib():
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as stream:
+            for line in stream:
+                if line.startswith("MemTotal:"):
+                    return int(line.split()[1]) // 1024
+    except (FileNotFoundError, PermissionError, ValueError, IndexError):
+        return None
+    return None
+
+
 gpu_rows = csv_rows([
     "nvidia-smi",
     "--query-gpu=uuid,index,memory.total,memory.used,utilization.gpu,temperature.gpu",
@@ -113,17 +124,16 @@ app_rows = csv_rows([
 nvidia_status = "available" if gpu_rows is not None and app_rows is not None else "unavailable"
 
 gpus = {}
+unified_total = unified_memory_total_mib()
 for row in gpu_rows or []:
     if len(row) != 6:
         continue
-    total = number(row[2], int)
-    used = number(row[3], int)
+    total = number(row[2], int) or unified_total
     utilization = number(row[4], float)
     temperature = number(row[5], float)
-    if None not in (total, used, utilization, temperature):
+    if None not in (total, utilization, temperature):
         gpus[row[0]] = {
             "total": total,
-            "used": used,
             "utilization": utilization,
             "temperature": temperature,
         }

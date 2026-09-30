@@ -1273,6 +1273,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1167`](slices/1167_mo_authenticated_runtime_observability_api.md) | `S117-006` Add the authenticated runtime observability route foundation and bounded force-refresh control. |
 | [`Slice 1168`](slices/1168_mo_runtime_observability_status_policy.md) | `S117-007` Harden runtime status precedence and validated GPU memory/temperature warning thresholds. |
 | [`Slice 1169`](slices/1169_mo_runtime_observability_contract_hardening.md) | `S117-008` Align authenticated runtime API, canonical schema, fixtures, OpenAPI, privacy, operations, and parity. |
+| [`Slice 1170`](slices/1170_mo_runtime_observability_dgx_live_evidence.md) | `S117-009` Prove protected DGX process, precision, GPU metric, policy, and evidence-redaction behavior. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

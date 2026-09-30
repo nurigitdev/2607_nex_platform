@@ -7,6 +7,7 @@ import pytest
 
 from nex_mo.runtime_observability_collector import (
     RAW_SCHEMA_VERSION,
+    REMOTE_COLLECTOR,
     RuntimeObservationCollectionError,
     collect_runtime_observations,
     normalize_runtime_observation_payload,
@@ -81,6 +82,13 @@ def test_live_collector_executes_fixed_ssh_shape_and_projects_safe_snapshot() ->
     assert wire["summary"]["status_counts"]["HEALTHY"] == 3
     for private in ("operator@dgx.local", "process_id", "gpu_uuid", "model_path"):
         assert private not in serialized
+
+
+def test_remote_collector_supports_dgx_spark_unified_memory() -> None:
+    compile(REMOTE_COLLECTOR.replace("__TARGETS_JSON__", "'[]'"), "<collector>", "exec")
+
+    assert 'open("/proc/meminfo"' in REMOTE_COLLECTOR
+    assert "total = number(row[2], int) or unified_total" in REMOTE_COLLECTOR
 
 
 def test_mock_collection_never_calls_command_runner() -> None:

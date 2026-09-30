@@ -78,6 +78,9 @@ Model profile defaults:
 - GPU warning defaults are 90% model memory share and 85 C. Override them with
   `NEX_MO_GPU_MEMORY_WARN_PERCENT` and `NEX_MO_GPU_TEMPERATURE_WARN_C`.
   High compute utilization alone is not a degraded condition.
+- On DGX Spark unified-memory systems where `nvidia-smi` reports GPU capacity
+  as `[N/A]`, the collector uses `/proc/meminfo` for the shared capacity while
+  retaining NVIDIA compute-app allocation, utilization, and temperature data.
 - Public provider-profile responses expose model identity, precision, runtime
   engine, selection, and status only. Internal model roots, model paths, and
   health environment names remain private to MO runtime composition.
@@ -132,6 +135,7 @@ NEX_MO_LIVE_PREFLIGHT=1 ./.venv/bin/python scripts/smoke/run_dgx_live_provider_p
 NEX_MO_LIVE_PREFLIGHT=1 ./.venv/bin/python scripts/smoke/run_dgx_live_provider_preflight.py --evidence-output reports/live/dgx-provider-preflight.json --summary
 NEX_PROTECTED_REMOTE_PROVIDER_LIVE_SMOKE=1 ./.venv/bin/python scripts/smoke/run_protected_remote_provider_live_smoke.py --summary
 NEX_PROTECTED_REMOTE_PROVIDER_LIVE_SMOKE=1 ./.venv/bin/python scripts/smoke/run_protected_remote_provider_live_smoke.py --evidence-output reports/live/protected-remote-provider-live-smoke.json --summary
+NEX_MO_RUNTIME_OBSERVABILITY_LIVE_SMOKE=1 NEX_MO_DGX_SSH_TARGET='<configured-target>' ./.venv/bin/python scripts/smoke/run_mo_runtime_observability_live_smoke.py --output /tmp/nex-mo-runtime-observability-live.json --summary
 NEX_COMPAT_LIVE_SMOKE=1 ./.venv/bin/python scripts/smoke/run_compatible_provider_live_smoke.py --summary
 NEX_COMPAT_LIVE_SMOKE=1 ./.venv/bin/python scripts/smoke/run_compatible_provider_live_smoke.py --evidence-output reports/live/compatible-vllm-provider-smoke.json --summary
 ```
