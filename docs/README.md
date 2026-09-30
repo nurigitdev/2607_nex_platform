@@ -1275,6 +1275,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1169`](slices/1169_mo_runtime_observability_contract_hardening.md) | `S117-008` Align authenticated runtime API, canonical schema, fixtures, OpenAPI, privacy, operations, and parity. |
 | [`Slice 1170`](slices/1170_mo_runtime_observability_dgx_live_evidence.md) | `S117-009` Prove protected DGX process, precision, GPU metric, policy, and evidence-redaction behavior. |
 | [`Slice 1171`](slices/1171_s117_mo_gpu_model_runtime_observability_closure.md) | `S117-010` Close MO GPU/model runtime observability with protected DGX, traceability, privacy, and Full Gate evidence. |
+| [`Slice 1172`](slices/1172_mo_catalog_alias_lifecycle_boundary.md) | `S118-001` Freeze durable model catalog, atomic alias lifecycle, privacy, concurrency, and compatibility boundaries. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
