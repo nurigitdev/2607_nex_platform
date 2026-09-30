@@ -5,6 +5,7 @@ info:
 tags:
   - name: Platform
   - name: Internal Job Control
+  - name: Internal Service Logs
   - name: Provider Profiles
   - name: Provider Routes
   - name: Provider Readiness
@@ -156,6 +157,111 @@ paths:
           description: Job cannot be replayed from its current status.
         "422":
           description: Replay payload is invalid.
+  /internal/v1/service-logs/retention/purge:
+    post:
+      operationId: purgeMoServiceLogRetention
+      tags:
+        - Internal Service Logs
+      security:
+        - serviceBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceLogRetentionPurgeRequest"
+      responses:
+        "200":
+          description: MO service-log retention dry-run or bounded purge result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceLogRetentionExecution"
+        "401":
+          description: Service claim is missing or invalid.
+        "409":
+          description: Idempotency key conflicts with an existing execution.
+        "422":
+          description: Retention purge payload is invalid.
+        "503":
+          description: Service-log store is unavailable.
+  /internal/v1/service-logs/retention/history:
+    get:
+      operationId: listMoServiceLogRetentionHistory
+      tags:
+        - Internal Service Logs
+      security:
+        - serviceBearer: []
+      parameters:
+        - name: mode
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [DRY_RUN, EXECUTE]
+        - name: execution_status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [PLANNED, SUCCEEDED, BLOCKED, FAILED]
+        - name: trace_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: request_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: idempotency_key
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 50
+      responses:
+        "200":
+          description: Filtered MO service-log retention execution history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceLogRetentionHistoryList"
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Retention history filters are invalid.
+        "503":
+          description: Service-log store is unavailable.
+  /internal/v1/service-logs/retention/history/{execution_id}:
+    get:
+      operationId: getMoServiceLogRetentionHistory
+      tags:
+        - Internal Service Logs
+      security:
+        - serviceBearer: []
+      parameters:
+        - $ref: "#/components/parameters/ExecutionId"
+      responses:
+        "200":
+          description: One MO service-log retention history entry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceLogRetentionHistoryEntry"
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Retention history entry was not found.
+        "503":
+          description: Service-log store is unavailable.
   /api/v1/provider-routes:
     get:
       operationId: listMoProviderRoutes
@@ -331,12 +437,124 @@ components:
       schema:
         type: string
         minLength: 1
+    ExecutionId:
+      name: execution_id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
   securitySchemes:
     serviceBearer:
       type: http
       scheme: bearer
       bearerFormat: NeX service claim
   schemas:
+    ServiceLogRetentionPurgeRequest:
+      type: object
+      additionalProperties: false
+      required: [retention_cutoff]
+      properties:
+        retention_cutoff:
+          type: string
+          format: date-time
+        retention_days:
+          type: integer
+          minimum: 7
+          maximum: 365
+        checked_at:
+          type: string
+          format: date-time
+        dry_run:
+          type: boolean
+          default: true
+        delete_enabled:
+          type: boolean
+          default: false
+        max_delete_count:
+          type: integer
+          minimum: 1
+          maximum: 500
+        requested_by:
+          type: object
+        idempotency_key:
+          type: string
+          minLength: 1
+    ServiceLogRetentionExecution:
+      type: object
+      x-nex-canonical-json-schema: schemas/common/service_log_retention_execution.v1.schema.json
+      additionalProperties: true
+      required:
+        - retention_execution_schema_version
+        - execution_id
+        - service_id
+        - mode
+        - execution_status
+      properties:
+        retention_execution_schema_version:
+          const: service_log_retention_execution.v1
+        execution_id:
+          type: string
+        service_id:
+          type: string
+          const: nex-mo
+        mode:
+          type: string
+          enum: [DRY_RUN, EXECUTE]
+        execution_status:
+          type: string
+          enum: [PLANNED, SUCCEEDED, BLOCKED, FAILED]
+    ServiceLogRetentionHistoryEntry:
+      type: object
+      x-nex-canonical-json-schema: schemas/common/service_log_retention_history_entry.v1.schema.json
+      additionalProperties: true
+      required:
+        - retention_history_schema_version
+        - execution_id
+        - service_id
+        - mode
+        - execution_status
+      properties:
+        retention_history_schema_version:
+          const: service_log_retention_history_entry.v1
+        execution_id:
+          type: string
+        service_id:
+          type: string
+          const: nex-mo
+        mode:
+          type: string
+          enum: [DRY_RUN, EXECUTE]
+        execution_status:
+          type: string
+          enum: [PLANNED, SUCCEEDED, BLOCKED, FAILED]
+    ServiceLogRetentionHistoryList:
+      type: object
+      additionalProperties: false
+      required:
+        - retention_history_list_schema_version
+        - service_id
+        - filters
+        - limit
+        - items
+        - summary
+      properties:
+        retention_history_list_schema_version:
+          const: service_log_retention_history_list.v1
+        service_id:
+          type: string
+          const: nex-mo
+        filters:
+          type: object
+        limit:
+          type: integer
+          minimum: 1
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceLogRetentionHistoryEntry"
+        summary:
+          type: object
     JobCancelRequest:
       type: object
       additionalProperties: false

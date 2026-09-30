@@ -23,8 +23,8 @@ def test_repository_contract_and_api_drift_is_quantified() -> None:
     assert all(result["checks"].values())
     assert result["summary"] == {
         "runtime_operation_count": 19,
-        "openapi_operation_count": 15,
-        "missing_openapi_operation_count": 4,
+        "openapi_operation_count": 18,
+        "missing_openapi_operation_count": 1,
         "stale_mock_operation_count": 0,
         "missing_request_body_count": 0,
         "missing_success_schema_count": 0,
@@ -32,7 +32,7 @@ def test_repository_contract_and_api_drift_is_quantified() -> None:
         "schema_count": 17,
         "positive_fixture_covered_count": 17,
         "negative_fixture_covered_count": 17,
-        "drift_count": 4,
+        "drift_count": 1,
     }
     assert "GET /api/v1/provider-telemetry" not in result["missing_openapi_operations"]
     assert result["extra_openapi_operations"] == []
@@ -82,7 +82,7 @@ def test_runner_summary_json_and_failure_paths(monkeypatch, capsys) -> None:
     passing = runner.run_mo_contract_api_drift_audit()
 
     assert "drift_audit=pass" in runner.summary_line(passing)
-    assert "operations=15/19" in runner.summary_line(passing)
+    assert "operations=18/19" in runner.summary_line(passing)
     monkeypatch.setattr(runner, "run_mo_contract_api_drift_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0
     assert "negative=17/17" in capsys.readouterr().out
