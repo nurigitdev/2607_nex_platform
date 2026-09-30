@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping, Protocol
+import random
+import time
+from typing import Callable, Generic, Mapping, Protocol, TypeVar
+
+from nex_mo.provider_registry import ProviderRouteError
 
 
 DEFAULT_MAX_ATTEMPTS = {
@@ -29,6 +33,7 @@ GENERATION_AMBIGUOUS_FAILURE_KINDS = frozenset(
         "malformed_response",
     }
 )
+T = TypeVar("T")
 
 
 class RetryableFailureView(Protocol):
@@ -81,6 +86,33 @@ class ProviderRetryDecision:
             "attempt_number": self.attempt_number,
             "max_attempts": self.max_attempts,
         }
+
+
+@dataclass(frozen=True)
+class ProviderRetryEvent:
+    capability: str
+    attempt_number: int
+    next_attempt_number: int
+    delay_seconds: float
+    failure_kind: str
+    reason: str
+
+    def to_safe_summary(self) -> dict[str, object]:
+        return {
+            "capability": self.capability,
+            "attempt_number": self.attempt_number,
+            "next_attempt_number": self.next_attempt_number,
+            "delay_seconds": self.delay_seconds,
+            "failure_kind": self.failure_kind,
+            "reason": self.reason,
+        }
+
+
+@dataclass(frozen=True)
+class ProviderRetryExecution(Generic[T]):
+    value: T
+    attempt_count: int
+    retry_count: int
 
 
 def build_provider_retry_policy(
@@ -147,6 +179,71 @@ def decide_provider_retry(
         attempt_number=attempt_number,
         max_attempts=policy.max_attempts,
     )
+
+
+def execute_with_provider_retry(
+    operation: Callable[[], T],
+    *,
+    policy: ProviderRetryPolicy,
+    sleeper: Callable[[float], None] = time.sleep,
+    jitter: Callable[[], float] = random.random,
+    on_retry: Callable[[ProviderRetryEvent], None] | None = None,
+) -> ProviderRetryExecution[T]:
+    attempt_number = 1
+    while True:
+        try:
+            return ProviderRetryExecution(
+                value=operation(),
+                attempt_count=attempt_number,
+                retry_count=attempt_number - 1,
+            )
+        except ProviderRouteError as exc:
+            decision = decide_provider_retry(
+                policy,
+                exc,
+                attempt_number=attempt_number,
+            )
+            if not decision.retry:
+                raise
+            delay_seconds = compute_retry_delay(
+                policy,
+                attempt_number=attempt_number,
+                retry_after_seconds=getattr(exc, "retry_after_seconds", None),
+                jitter=jitter,
+            )
+            event = ProviderRetryEvent(
+                capability=policy.capability,
+                attempt_number=attempt_number,
+                next_attempt_number=attempt_number + 1,
+                delay_seconds=delay_seconds,
+                failure_kind=exc.failure_kind or "provider_route_error",
+                reason=decision.reason,
+            )
+            if on_retry is not None:
+                on_retry(event)
+            sleeper(delay_seconds)
+            attempt_number += 1
+
+
+def compute_retry_delay(
+    policy: ProviderRetryPolicy,
+    *,
+    attempt_number: int,
+    retry_after_seconds: float | None = None,
+    jitter: Callable[[], float] = random.random,
+) -> float:
+    if attempt_number < 1:
+        raise ValueError("attempt_number must be positive.")
+    if retry_after_seconds is not None and retry_after_seconds >= 0:
+        return min(retry_after_seconds, policy.retry_after_max_seconds)
+    jitter_value = float(jitter())
+    if jitter_value < 0 or jitter_value > 1:
+        raise ValueError("jitter must return a value between 0 and 1.")
+    exponential_cap = min(
+        policy.max_delay_seconds,
+        policy.base_delay_seconds * (2 ** (attempt_number - 1)),
+    )
+    return exponential_cap * jitter_value
 
 
 def _bounded_int(
