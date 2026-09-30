@@ -1255,6 +1255,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1149`](slices/1149_mo_provider_retry_loopback_http_smoke.md) | `S115-008` Prove all three bounded retry paths through deterministic local-loopback HTTP fault injection. |
 | [`Slice 1150`](slices/1150_mo_provider_resilience_contract_hardening.md) | `S115-009` Align canonical schema, explicit OpenAPI retry fields, authenticated runtime telemetry, and zero operation drift. |
 | [`Slice 1151`](slices/1151_s115_mo_provider_resilience_retry_closure.md) | `S115-010` Close bounded provider retry hardening with deterministic HTTP, contract, privacy, deferral, and Full Gate evidence. |
+| [`Slice 1152`](slices/1152_mo_provider_telemetry_persistence_boundary.md) | `S116-001` Freeze restart-safe aggregate telemetry, atomic persistence, privacy, compatibility, and PostgreSQL evidence boundaries. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
