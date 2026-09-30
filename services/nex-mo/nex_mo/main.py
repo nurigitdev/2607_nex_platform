@@ -6,6 +6,7 @@ from nex_runtime import (
     register_service_log_retention_routes,
 )
 from nex_mo.providers import register_mock_provider_routes
+from nex_mo.catalog_lifecycle_api import register_catalog_lifecycle_routes
 from nex_mo.catalog_route_source import CatalogProviderRouteSource
 from nex_mo.catalog_lifecycle_runtime import build_catalog_lifecycle_service
 from nex_mo.provider_readiness_api import register_provider_readiness_routes
@@ -44,5 +45,6 @@ register_service_log_retention_routes(
     store=SERVICE_PERSISTENCE.service_log_store,
 )
 register_mock_provider_routes(app)
+register_catalog_lifecycle_routes(app, service=CATALOG_LIFECYCLE)
 register_provider_readiness_routes(app, service=PROVIDER_READINESS)
 register_runtime_observability_routes(app, service=RUNTIME_OBSERVABILITY)

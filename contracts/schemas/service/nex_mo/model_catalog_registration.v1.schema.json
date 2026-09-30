@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_mo/model_catalog_registration.v1.schema.json",
+  "title": "NeX MO Model Catalog Registration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "provider_capability", "model_name", "model_revision", "deployment_id",
+    "runtime_profile", "precision", "provider_type", "supports_response_formats",
+    "max_input_tokens", "max_output_tokens"
+  ],
+  "properties": {
+    "provider_capability": {"enum": ["embedding", "reranking", "generation"]},
+    "model_name": {"type": "string", "minLength": 1},
+    "model_revision": {"type": "string", "minLength": 1},
+    "deployment_id": {"type": "string", "minLength": 1},
+    "runtime_profile": {"type": "string", "minLength": 1},
+    "precision": {"type": "string", "minLength": 1},
+    "provider_type": {"type": "string", "minLength": 1},
+    "supports_response_formats": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "max_input_tokens": {"type": "integer", "minimum": 1},
+    "max_output_tokens": {"type": "integer", "minimum": 0},
+    "embedding_dimensions": {"type": ["integer", "null"], "minimum": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"provider_capability": {"const": "embedding"}}},
+      "then": {"required": ["embedding_dimensions"]},
+      "else": {"properties": {"embedding_dimensions": {"type": "null"}}}
+    }
+  ]
+}

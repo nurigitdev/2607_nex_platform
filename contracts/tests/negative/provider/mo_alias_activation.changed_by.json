@@ -1,0 +1,8 @@
+{
+  "alias": "general-llm-default",
+  "provider_capability": "generation",
+  "catalog_id": "catalog:generation-v2",
+  "expected_binding_revision": 1,
+  "change_reason": "Promote candidate",
+  "changed_by": "spoofed-operator"
+}

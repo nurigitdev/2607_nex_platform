@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_mo/model_catalog_transition.v1.schema.json",
+  "title": "NeX MO Model Catalog Transition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["expected_revision", "target_state"],
+  "properties": {
+    "expected_revision": {"type": "integer", "minimum": 1},
+    "target_state": {"enum": ["ACTIVE", "RETIRED"]}
+  }
+}

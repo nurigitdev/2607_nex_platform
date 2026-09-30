@@ -247,7 +247,8 @@ def test_main_app_registers_catalog_lifecycle_service() -> None:
         "/api/v1/model-catalog",
         headers=auth_headers(),
     )
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert len(response.json()["data"]) == 3
     assert main_app.state.catalog_lifecycle_service is CATALOG_LIFECYCLE
 
 

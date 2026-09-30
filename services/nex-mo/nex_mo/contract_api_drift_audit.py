@@ -18,11 +18,21 @@ BUSINESS_PATHS = (
     "/api/v1/embeddings",
     "/api/v1/rerank",
     "/api/v1/generations",
+    "/api/v1/model-catalog",
+    "/api/v1/model-catalog/{catalog_id}",
+    "/api/v1/model-catalog/{catalog_id}/transitions",
+    "/api/v1/provider-alias-bindings",
+    "/api/v1/provider-alias-bindings/activate",
+    "/api/v1/provider-alias-bindings/rollback",
 )
 POST_PROVIDER_PATHS = (
     "/api/v1/embeddings",
     "/api/v1/rerank",
     "/api/v1/generations",
+    "/api/v1/model-catalog",
+    "/api/v1/model-catalog/{catalog_id}/transitions",
+    "/api/v1/provider-alias-bindings/activate",
+    "/api/v1/provider-alias-bindings/rollback",
 )
 MO_SCHEMA_PREFIX = "schemas/service/nex_mo/"
 
@@ -71,10 +81,10 @@ def build_mo_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
     missing_negative = sorted(set(schemas) - negative_schemas)
     checks = {
         "openapi_document_readable": bool(document),
-        "runtime_operation_inventory_complete": len(runtime_operations) == 20,
+        "runtime_operation_inventory_complete": len(runtime_operations) == 27,
         "runtime_openapi_operations_match": not missing_openapi and not extra_openapi,
         "openapi_has_no_unknown_operations": not extra_openapi,
-        "business_path_inventory_complete": len(BUSINESS_PATHS) == 8,
+        "business_path_inventory_complete": len(BUSINESS_PATHS) == 14,
         "schema_positive_fixtures_complete": not missing_positive,
         "schema_negative_fixtures_complete": not missing_negative,
     }

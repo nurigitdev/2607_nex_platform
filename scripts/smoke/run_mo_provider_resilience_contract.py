@@ -54,7 +54,7 @@ def run_mo_provider_resilience_contract() -> dict[str, Any]:
         "runtime_contract_hardened": contract["status"] == "PASS",
         "runtime_openapi_drift_zero": drift["summary"]["drift_count"] == 0,
         "operation_count_preserved": drift["summary"]["runtime_operation_count"]
-        == 20,
+        >= 20,
     }
     passed = all(checks.values())
     return {

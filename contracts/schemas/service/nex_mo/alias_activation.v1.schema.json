@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_mo/alias_activation.v1.schema.json",
+  "title": "NeX MO Alias Activation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["alias", "provider_capability", "catalog_id", "expected_binding_revision", "change_reason"],
+  "properties": {
+    "alias": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$"},
+    "provider_capability": {"enum": ["embedding", "reranking", "generation"]},
+    "catalog_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$"},
+    "expected_binding_revision": {"type": "integer", "minimum": 0},
+    "change_reason": {"type": "string", "minLength": 1, "maxLength": 500}
+  }
+}

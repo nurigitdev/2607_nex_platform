@@ -889,6 +889,46 @@
       "name": "ae_async_artifact_render_reconciliation_retry_reset",
       "path": "examples/generation/ae_async_artifact_render_reconciliation.retry_reset.json",
       "schema": "schemas/service/nex_ae_api/async_artifact_render_reconciliation.v1.schema.json"
+    },
+    {
+      "name": "mo_model_catalog_entry_active",
+      "path": "examples/provider/mo_model_catalog_entry.active.json",
+      "schema": "schemas/service/nex_mo/model_catalog_entry.v1.schema.json"
+    },
+    {
+      "name": "mo_model_catalog_collection_active",
+      "path": "examples/provider/mo_model_catalog_collection.active.json",
+      "schema": "schemas/service/nex_mo/model_catalog_collection.v1.schema.json"
+    },
+    {
+      "name": "mo_model_catalog_registration_generation",
+      "path": "examples/provider/mo_model_catalog_registration.generation.json",
+      "schema": "schemas/service/nex_mo/model_catalog_registration.v1.schema.json"
+    },
+    {
+      "name": "mo_model_catalog_transition_activate",
+      "path": "examples/provider/mo_model_catalog_transition.activate.json",
+      "schema": "schemas/service/nex_mo/model_catalog_transition.v1.schema.json"
+    },
+    {
+      "name": "mo_alias_binding_active",
+      "path": "examples/provider/mo_alias_binding.active.json",
+      "schema": "schemas/service/nex_mo/alias_binding.v1.schema.json"
+    },
+    {
+      "name": "mo_alias_binding_collection_active",
+      "path": "examples/provider/mo_alias_binding_collection.active.json",
+      "schema": "schemas/service/nex_mo/alias_binding_collection.v1.schema.json"
+    },
+    {
+      "name": "mo_alias_activation_generation",
+      "path": "examples/provider/mo_alias_activation.generation.json",
+      "schema": "schemas/service/nex_mo/alias_activation.v1.schema.json"
+    },
+    {
+      "name": "mo_alias_rollback_generation",
+      "path": "examples/provider/mo_alias_rollback.generation.json",
+      "schema": "schemas/service/nex_mo/alias_rollback.v1.schema.json"
     }
   ]
 }

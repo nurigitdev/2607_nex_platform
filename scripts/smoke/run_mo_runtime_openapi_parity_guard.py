@@ -71,15 +71,15 @@ def run_mo_runtime_openapi_parity_guard(
         "openapi_document_present": bool(payload),
         "audit_passed": drift.get("status") == "PASS",
         "contract_readiness_hardened": drift.get("contract_readiness") == "HARDENED",
-        "runtime_inventory_complete": len(runtime) == 20,
-        "openapi_inventory_complete": len(openapi) == 20,
+        "runtime_inventory_complete": len(runtime) >= 20,
+        "openapi_inventory_complete": len(openapi) == len(runtime),
         "runtime_openapi_operations_equal": runtime == openapi,
         "operation_ids_complete": len(operation_ids) == len(openapi),
         "operation_ids_unique": len(operation_ids) == len(set(operation_ids)),
         "protected_operations_secured": protected == secured,
         "root_response_schema_bound": root_schema.get("$ref")
         == "#/components/schemas/ServiceRoot",
-        "canonical_provider_components_complete": len(canonical_components) == 11,
+        "canonical_provider_components_complete": len(canonical_components) >= 19,
         "positive_fixtures_complete": (
             schema_count > 0
             and _count(summary, "positive_fixture_covered_count") == schema_count

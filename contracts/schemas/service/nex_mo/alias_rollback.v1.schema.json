@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_mo/alias_rollback.v1.schema.json",
+  "title": "NeX MO Alias Rollback",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["alias", "provider_capability", "expected_binding_revision", "change_reason"],
+  "properties": {
+    "alias": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$"},
+    "provider_capability": {"enum": ["embedding", "reranking", "generation"]},
+    "expected_binding_revision": {"type": "integer", "minimum": 1},
+    "change_reason": {"type": "string", "minLength": 1, "maxLength": 500}
+  }
+}

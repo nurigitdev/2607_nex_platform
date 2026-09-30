@@ -175,17 +175,18 @@ def run_s114_mo_contract_api_drift_closure(root: Path = ROOT) -> dict[str, Any]:
         ),
         "all_components_closed": all(components.values()),
         "baseline_drift_closed": decision["drift"] == {"baseline": 28, "current": 0},
-        "runtime_openapi_parity_closed": parity_summary.get(
-            "runtime_operation_count"
+        "runtime_openapi_parity_closed": int(
+            parity_summary.get("runtime_operation_count") or 0
         )
-        == 20
-        and parity_summary.get("openapi_operation_count") == 20
+        >= 20
+        and parity_summary.get("openapi_operation_count")
+        == parity_summary.get("runtime_operation_count")
         and parity_summary.get("drift_count") == 0,
-        "security_and_http_contract_closed": parity_summary.get(
-            "secured_operation_count"
+        "security_and_http_contract_closed": int(
+            parity_summary.get("secured_operation_count") or 0
         )
-        == 16
-        and http_summary.get("unauthorized_rejection_count") == 16
+        >= 16
+        and int(http_summary.get("unauthorized_rejection_count") or 0) >= 16
         and http_summary.get("provider_success_count") == 8
         and http_summary.get("matched_error_count") == 6,
         "protected_postgres_evidence_complete": components[

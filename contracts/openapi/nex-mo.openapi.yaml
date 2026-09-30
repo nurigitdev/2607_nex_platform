@@ -10,6 +10,7 @@ tags:
   - name: Provider Routes
   - name: Provider Readiness
   - name: Providers
+  - name: Model Catalog
 paths:
   /:
     get:
@@ -467,6 +468,210 @@ paths:
           description: Provider alias was not found.
         "422":
           description: Provider route cannot satisfy the request.
+  /api/v1/model-catalog:
+    get:
+      operationId: listMoModelCatalog
+      tags: [Model Catalog]
+      security:
+        - serviceBearer: []
+      parameters:
+        - name: capability
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [embedding, reranking, generation]
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [DRAFT, ACTIVE, RETIRED]
+      responses:
+        "200":
+          description: Filtered model catalog entries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelCatalogCollection"
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Catalog filter is invalid.
+        "503":
+          description: Durable model catalog is temporarily unavailable.
+    post:
+      operationId: registerMoModelCatalogEntry
+      tags: [Model Catalog]
+      security:
+        - serviceBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelCatalogRegistration"
+      responses:
+        "201":
+          description: Draft model catalog entry was registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelCatalogEntry"
+        "401":
+          description: Service claim is missing or invalid.
+        "409":
+          description: Catalog identity conflicts with durable state.
+        "422":
+          description: Catalog registration payload is invalid.
+        "503":
+          description: Durable model catalog is temporarily unavailable.
+  /api/v1/model-catalog/{catalog_id}:
+    get:
+      operationId: getMoModelCatalogEntry
+      tags: [Model Catalog]
+      security:
+        - serviceBearer: []
+      parameters:
+        - $ref: "#/components/parameters/CatalogId"
+      responses:
+        "200":
+          description: One model catalog entry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelCatalogEntry"
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Catalog entry was not found.
+        "503":
+          description: Durable model catalog is temporarily unavailable.
+  /api/v1/model-catalog/{catalog_id}/transitions:
+    post:
+      operationId: transitionMoModelCatalogEntry
+      tags: [Model Catalog]
+      security:
+        - serviceBearer: []
+      parameters:
+        - $ref: "#/components/parameters/CatalogId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelCatalogTransition"
+      responses:
+        "200":
+          description: Model catalog state transition completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelCatalogEntry"
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Catalog entry was not found.
+        "409":
+          description: Revision or lifecycle transition conflicts with current state.
+        "422":
+          description: Catalog transition payload is invalid.
+        "503":
+          description: Durable model catalog is temporarily unavailable.
+  /api/v1/provider-alias-bindings:
+    get:
+      operationId: listMoProviderAliasBindings
+      tags: [Model Catalog]
+      security:
+        - serviceBearer: []
+      parameters:
+        - name: alias
+          in: query
+          required: false
+          schema: {type: string}
+        - name: capability
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [embedding, reranking, generation]
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ACTIVE, SUPERSEDED, ROLLED_BACK]
+      responses:
+        "200":
+          description: Filtered provider alias binding history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AliasBindingCollection"
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Alias binding filter is invalid.
+        "503":
+          description: Durable alias binding state is temporarily unavailable.
+  /api/v1/provider-alias-bindings/activate:
+    post:
+      operationId: activateMoProviderAlias
+      tags: [Model Catalog]
+      security:
+        - serviceBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AliasActivation"
+      responses:
+        "200":
+          description: Alias atomically activated for the selected catalog entry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AliasBinding"
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Catalog entry was not found.
+        "409":
+          description: Alias revision conflicts with current state.
+        "422":
+          description: Alias activation payload is invalid.
+        "503":
+          description: Durable alias binding state is temporarily unavailable.
+  /api/v1/provider-alias-bindings/rollback:
+    post:
+      operationId: rollbackMoProviderAlias
+      tags: [Model Catalog]
+      security:
+        - serviceBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AliasRollback"
+      responses:
+        "200":
+          description: Alias restored through append-only rollback lineage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AliasBinding"
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Active alias binding was not found.
+        "409":
+          description: Alias revision or rollback lineage conflicts with current state.
+        "422":
+          description: Alias rollback payload is invalid.
+        "503":
+          description: Durable alias binding state is temporarily unavailable.
 components:
   parameters:
     JobId:
@@ -483,6 +688,13 @@ components:
       schema:
         type: string
         minLength: 1
+    CatalogId:
+      name: catalog_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z0-9][a-z0-9._:-]{0,127}$"
   securitySchemes:
     serviceBearer:
       type: http
@@ -682,6 +894,150 @@ components:
           type: object
         replay:
           type: object
+    ModelCatalogEntry:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/model_catalog_entry.v1.schema.json
+      additionalProperties: false
+      required:
+        - catalog_entry_schema_version
+        - catalog_id
+        - provider_capability
+        - model_name
+        - model_revision
+        - deployment_id
+        - runtime_profile
+        - precision
+        - provider_type
+        - supports_response_formats
+        - max_input_tokens
+        - max_output_tokens
+        - embedding_dimensions
+        - catalog_state
+        - revision
+        - created_at
+        - updated_at
+      properties:
+        catalog_entry_schema_version: {const: mo_model_catalog_entry.v1}
+        catalog_id: {type: string}
+        provider_capability: {type: string, enum: [embedding, reranking, generation]}
+        model_name: {type: string}
+        model_revision: {type: string}
+        deployment_id: {type: string}
+        runtime_profile: {type: string}
+        precision: {type: string}
+        provider_type: {type: string}
+        supports_response_formats:
+          type: array
+          items: {type: string}
+        max_input_tokens: {type: integer, minimum: 1}
+        max_output_tokens: {type: integer, minimum: 0}
+        embedding_dimensions: {type: [integer, "null"], minimum: 1}
+        catalog_state: {type: string, enum: [DRAFT, ACTIVE, RETIRED]}
+        revision: {type: integer, minimum: 1}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    ModelCatalogCollection:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/model_catalog_collection.v1.schema.json
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelCatalogEntry"
+        meta:
+          type: object
+          additionalProperties: false
+          required: [schema_version, capability, state]
+          properties:
+            schema_version: {const: mo_model_catalog_collection.v1}
+            capability: {type: [string, "null"]}
+            state: {type: [string, "null"]}
+    ModelCatalogRegistration:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/model_catalog_registration.v1.schema.json
+      additionalProperties: false
+      required: [provider_capability, model_name, model_revision, deployment_id, runtime_profile, precision, provider_type, supports_response_formats, max_input_tokens, max_output_tokens]
+      properties:
+        provider_capability: {type: string, enum: [embedding, reranking, generation]}
+        model_name: {type: string, minLength: 1}
+        model_revision: {type: string, minLength: 1}
+        deployment_id: {type: string, minLength: 1}
+        runtime_profile: {type: string, minLength: 1}
+        precision: {type: string, minLength: 1}
+        provider_type: {type: string, minLength: 1}
+        supports_response_formats:
+          type: array
+          minItems: 1
+          items: {type: string, minLength: 1}
+        max_input_tokens: {type: integer, minimum: 1}
+        max_output_tokens: {type: integer, minimum: 0}
+        embedding_dimensions: {type: [integer, "null"], minimum: 1}
+    ModelCatalogTransition:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/model_catalog_transition.v1.schema.json
+      additionalProperties: false
+      required: [expected_revision, target_state]
+      properties:
+        expected_revision: {type: integer, minimum: 1}
+        target_state: {type: string, enum: [ACTIVE, RETIRED]}
+    AliasBinding:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/alias_binding.v1.schema.json
+      additionalProperties: false
+      required: [alias_binding_schema_version, binding_id, alias, provider_capability, catalog_id, binding_revision, binding_state, change_reason, previous_binding_id, created_at]
+      properties:
+        alias_binding_schema_version: {const: mo_alias_binding.v1}
+        binding_id: {type: string}
+        alias: {type: string}
+        provider_capability: {type: string, enum: [embedding, reranking, generation]}
+        catalog_id: {type: string}
+        binding_revision: {type: integer, minimum: 1}
+        binding_state: {type: string, enum: [ACTIVE, SUPERSEDED, ROLLED_BACK]}
+        change_reason: {type: string, minLength: 1, maxLength: 500}
+        previous_binding_id: {type: [string, "null"]}
+        created_at: {type: string, format: date-time}
+    AliasBindingCollection:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/alias_binding_collection.v1.schema.json
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AliasBinding"
+        meta:
+          type: object
+          additionalProperties: false
+          required: [schema_version, alias, capability, state]
+          properties:
+            schema_version: {const: mo_alias_binding_collection.v1}
+            alias: {type: [string, "null"]}
+            capability: {type: [string, "null"]}
+            state: {type: [string, "null"]}
+    AliasActivation:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/alias_activation.v1.schema.json
+      additionalProperties: false
+      required: [alias, provider_capability, catalog_id, expected_binding_revision, change_reason]
+      properties:
+        alias: {type: string, minLength: 1}
+        provider_capability: {type: string, enum: [embedding, reranking, generation]}
+        catalog_id: {type: string, minLength: 1}
+        expected_binding_revision: {type: integer, minimum: 0}
+        change_reason: {type: string, minLength: 1, maxLength: 500}
+    AliasRollback:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/alias_rollback.v1.schema.json
+      additionalProperties: false
+      required: [alias, provider_capability, expected_binding_revision, change_reason]
+      properties:
+        alias: {type: string, minLength: 1}
+        provider_capability: {type: string, enum: [embedding, reranking, generation]}
+        expected_binding_revision: {type: integer, minimum: 1}
+        change_reason: {type: string, minLength: 1, maxLength: 500}
     ProviderRouteList:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_mo/provider_route_list.v1.schema.json

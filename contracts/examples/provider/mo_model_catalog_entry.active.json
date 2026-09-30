@@ -1,0 +1,19 @@
+{
+  "catalog_entry_schema_version": "mo_model_catalog_entry.v1",
+  "catalog_id": "catalog:generation-v2",
+  "provider_capability": "generation",
+  "model_name": "Qwen generation candidate",
+  "model_revision": "qwen-generation-v2",
+  "deployment_id": "generation-deployment-v2",
+  "runtime_profile": "generation-default",
+  "precision": "BF16",
+  "provider_type": "openai-compatible",
+  "supports_response_formats": ["text", "json_object"],
+  "max_input_tokens": 16384,
+  "max_output_tokens": 2048,
+  "embedding_dimensions": null,
+  "catalog_state": "ACTIVE",
+  "revision": 2,
+  "created_at": "2026-10-01T05:00:00Z",
+  "updated_at": "2026-10-01T05:05:00Z"
+}

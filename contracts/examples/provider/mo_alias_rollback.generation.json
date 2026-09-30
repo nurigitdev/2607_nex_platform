@@ -1,0 +1,6 @@
+{
+  "alias": "general-llm-default",
+  "provider_capability": "generation",
+  "expected_binding_revision": 2,
+  "change_reason": "Restore previous validated model"
+}
