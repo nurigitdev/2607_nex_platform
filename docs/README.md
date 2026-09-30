@@ -1243,6 +1243,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1137`](slices/1137_mo_service_log_retention_openapi_alignment.md) | `S114-006` Align three shared MO service-log retention operations and reduce drift to the root route only. |
 | [`Slice 1138`](slices/1138_mo_runtime_openapi_parity_guard.md) | `S114-007` Close root-route drift and enforce exact runtime/OpenAPI, security, operation ID, canonical-schema, and fixture parity. |
 | [`Slice 1139`](slices/1139_mo_deterministic_contract_http_smoke.md) | `S114-008` Exercise all protected and provider API contracts through an isolated in-memory mock HTTP runtime. |
+| [`Slice 1140`](slices/1140_mo_contract_api_postgresql_smoke.md) | `S114-009` Apply MO migrations and prove contract APIs with real test-PostgreSQL write/read/update/cleanup evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

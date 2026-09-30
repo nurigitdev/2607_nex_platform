@@ -95,6 +95,18 @@ Current endpoints:
 - `POST /api/v1/rerank`
 - `POST /api/v1/generations`
 
+Protected contract/API PostgreSQL smoke:
+
+```bash
+NEX_MO_CONTRACT_API_POSTGRES_SMOKE=1 \
+NEX_MO_CONTRACT_API_POSTGRES_SMOKE_PROFILE=test \
+./.venv/bin/python scripts/smoke/run_mo_contract_api_postgres_smoke.py --summary
+```
+
+The runner accepts only `nex_mo_user@nex_mo_test`, applies current MO
+migrations, performs bounded job/log/retention write-read checks, and removes
+all temporary rows. It does not call DGX providers.
+
 Manual live preflight:
 
 ```bash
