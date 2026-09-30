@@ -14,7 +14,7 @@ def test_repository_provider_openapi_contract_is_hardened() -> None:
         "provider_path_count": 7,
         "canonical_component_count": 9,
         "closed_provider_drift_count": 17,
-        "remaining_drift_count": 1,
+        "remaining_drift_count": 0,
     }
     assert all(result["components"].values())
     assert result["next_slice"] == "1136"
@@ -52,7 +52,7 @@ def test_provider_openapi_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_mo_provider_openapi_contract()
     assert runner.summary_line(passing) == (
         "mo_provider_openapi_contract=pass paths=7 components=9 "
-        "closed=17 remaining=1 next=1136"
+        "closed=17 remaining=0 next=1136"
     )
 
     monkeypatch.setattr(runner, "run_mo_provider_openapi_contract", lambda: passing)

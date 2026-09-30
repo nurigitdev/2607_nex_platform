@@ -71,6 +71,7 @@ def build_mo_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
     checks = {
         "openapi_document_readable": bool(document),
         "runtime_operation_inventory_complete": len(runtime_operations) == 19,
+        "runtime_openapi_operations_match": not missing_openapi and not extra_openapi,
         "openapi_has_no_unknown_operations": not extra_openapi,
         "business_path_inventory_complete": len(BUSINESS_PATHS) == 7,
         "schema_positive_fixtures_complete": not missing_positive,
@@ -86,9 +87,9 @@ def build_mo_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
     )
     passed = all(checks.values())
     return {
-        "audit_schema_version": "mo_contract_api_drift_audit.v1",
-        "slice": "1108",
-        "requirement": "S111",
+        "audit_schema_version": "mo_contract_api_drift_audit.v2",
+        "slice": "1138",
+        "requirement": "S114",
         "status": "PASS" if passed else "FAIL",
         "failure_code": None if passed else "mo_contract_api_drift_audit_failed",
         "contract_readiness": (
@@ -120,23 +121,23 @@ def build_mo_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
         "missing_negative_fixture_schemas": missing_negative,
         "ordered_remediation": [
             {
-                "priority": "P0",
-                "action": "document provider telemetry and all protected provider request response schemas",
+                "priority": "CLOSED",
+                "action": "provider operations use canonical request and response schemas",
             },
             {
-                "priority": "P1",
-                "action": "align shared job and log-retention operations with MO OpenAPI",
+                "priority": "CLOSED",
+                "action": "shared job and log-retention operations match the MO runtime",
             },
             {
-                "priority": "P1",
-                "action": "replace mock-only operation names with mode-neutral contracts",
+                "priority": "CLOSED",
+                "action": "provider operation names and descriptions are mode-neutral",
             },
             {
-                "priority": "P2",
-                "action": "add missing negative fixtures for all MO schemas",
+                "priority": "CLOSED",
+                "action": "positive and negative fixtures cover every MO schema",
             },
         ],
-        "next_slice": "1109",
+        "next_slice": "1139",
     }
 
 

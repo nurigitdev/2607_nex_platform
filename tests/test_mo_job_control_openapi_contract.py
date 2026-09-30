@@ -13,7 +13,7 @@ def test_repository_mo_job_control_openapi_matches_runtime() -> None:
     assert result["summary"] == {
         "operation_count": 4,
         "documented_operation_count": 4,
-        "remaining_drift_count": 1,
+        "remaining_drift_count": 0,
     }
     assert result["next_slice"] == "1137"
 
@@ -50,7 +50,7 @@ def test_job_control_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_mo_job_control_openapi_contract()
     assert runner.summary_line(passing) == (
         "mo_job_control_openapi_contract=pass operations=4/4 "
-        "remaining=1 next=1137"
+        "remaining=0 next=1137"
     )
 
     monkeypatch.setattr(

@@ -19,7 +19,7 @@ def test_repository_s111_closure_passes_with_confirmed_gaps() -> None:
         "traceable_requirement_count": 5,
         "catalog_drift_count": 4,
         "required_refactoring_count": 5,
-        "contract_drift_count": 1,
+        "contract_drift_count": 0,
         "runtime_gap_count": 4,
         "live_evidence_count": 5,
         "missing_file_count": 0,
@@ -102,7 +102,7 @@ def test_closure_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = closure.run_s111_mo_current_state_reaudit_closure()
     assert closure.summary_line(passing) == (
         "s111_mo_current_state_reaudit_closure=pass audits=8/8 "
-        "live=5/5 refactors=5 contract_drift=1 next=S112"
+        "live=5/5 refactors=5 contract_drift=0 next=S112"
     )
     assert "next=blocked" in closure.summary_line({"status": "FAIL"})
 

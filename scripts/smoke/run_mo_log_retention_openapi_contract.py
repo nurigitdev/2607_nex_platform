@@ -98,8 +98,11 @@ def run_mo_log_retention_openapi_contract(
         "retention_operations_removed_from_drift": not (
             set(RETENTION_OPERATIONS) & missing
         ),
-        "only_root_operation_remains": missing == {"GET /"}
-        and _count(summary, "drift_count") == 1,
+        "root_operation_is_only_optional_remaining_drift": (
+            drift.get("status") == "PASS"
+            and missing <= {"GET /"}
+            and _count(summary, "drift_count") <= 1
+        ),
     }
     passed = all(checks.values())
     return {

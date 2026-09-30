@@ -11,6 +11,18 @@ tags:
   - name: Provider Readiness
   - name: Providers
 paths:
+  /:
+    get:
+      operationId: getMoServiceRoot
+      tags:
+        - Platform
+      responses:
+        "200":
+          description: MO service identity and platform links.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceRoot"
   /health:
     get:
       operationId: getMoHealth
@@ -42,6 +54,8 @@ paths:
       operationId: validateMoServiceClaim
       tags:
         - Platform
+      security:
+        - serviceBearer: []
       responses:
         "200":
           description: Service claim is valid for this service.
@@ -450,6 +464,34 @@ components:
       scheme: bearer
       bearerFormat: NeX service claim
   schemas:
+    ServiceRoot:
+      type: object
+      additionalProperties: false
+      required: [service_id, service_name, profile, links]
+      properties:
+        service_id:
+          type: string
+          const: nex-mo
+        service_name:
+          type: string
+          minLength: 1
+        profile:
+          type: string
+          minLength: 1
+        links:
+          type: object
+          additionalProperties: false
+          required: [health, ready, version]
+          properties:
+            health:
+              type: string
+              const: /health
+            ready:
+              type: string
+              const: /ready
+            version:
+              type: string
+              const: /version
     ServiceLogRetentionPurgeRequest:
       type: object
       additionalProperties: false

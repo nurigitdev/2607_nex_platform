@@ -14,7 +14,7 @@ def test_repository_mo_log_retention_openapi_matches_runtime() -> None:
         "operation_count": 3,
         "documented_operation_count": 3,
         "component_count": 4,
-        "remaining_drift_count": 1,
+        "remaining_drift_count": 0,
     }
     assert all(result["components"].values())
     assert result["next_slice"] == "1138"
@@ -32,7 +32,10 @@ def test_retention_contract_fails_closed_for_missing_operations(
 
     assert result["status"] == "FAIL"
     assert result["summary"]["documented_operation_count"] == 0
-    assert result["checks"]["only_root_operation_remains"] is False
+    assert (
+        result["checks"]["root_operation_is_only_optional_remaining_drift"]
+        is False
+    )
     assert result["next_slice"] == "blocked"
 
 
@@ -52,7 +55,7 @@ def test_retention_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_mo_log_retention_openapi_contract()
     assert runner.summary_line(passing) == (
         "mo_log_retention_openapi_contract=pass operations=3/3 "
-        "components=4 remaining=1 next=1138"
+        "components=4 remaining=0 next=1138"
     )
 
     monkeypatch.setattr(
