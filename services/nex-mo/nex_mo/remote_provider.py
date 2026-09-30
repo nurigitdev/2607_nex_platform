@@ -18,12 +18,13 @@ from nex_mo.provider_telemetry import (
     recorded_provider_call as _recorded_remote_provider_call,
     reset_provider_telemetry as reset_remote_provider_telemetry,
 )
+from nex_mo.provider_retry import build_provider_retry_policy
+from nex_mo.provider_retry_transport import execute_remote_json_request_with_retry
 from nex_mo.provider_transport import (
     HttpRequester,
     RemoteProviderFailureDecision,
     classify_remote_provider_exception,
     classify_remote_provider_http_status,
-    execute_remote_json_request as _execute_remote_json_request,
     remote_provider_response_invalid_decision,
 )
 from nex_mo.provider_catalog import (
@@ -435,11 +436,12 @@ def execute_remote_embedding_request(
         )
 
     def operation() -> dict[str, Any]:
-        response_payload = _execute_remote_json_request(
+        response_payload = _execute_remote_request_with_retry(
             config,
             json_payload=_remote_embedding_request_payload(config, inputs),
             requester=requester,
             error_code_prefix="mo.remote_embedding",
+            environ=environ,
         )
         return normalize_remote_embedding_response(
             provider_payload=response_payload,
@@ -482,7 +484,7 @@ def execute_remote_generation_request(
         )
 
     def operation() -> dict[str, Any]:
-        response_payload = _execute_remote_json_request(
+        response_payload = _execute_remote_request_with_retry(
             config,
             json_payload=_chat_completion_request_payload(
                 payload,
@@ -491,6 +493,7 @@ def execute_remote_generation_request(
             ),
             requester=requester,
             error_code_prefix="mo.remote_generation",
+            environ=environ,
         )
         return normalize_remote_generation_response(
             provider_payload=response_payload,
@@ -526,11 +529,12 @@ def execute_remote_rerank_request(
         )
 
     def operation() -> dict[str, Any]:
-        response_payload = _execute_remote_json_request(
+        response_payload = _execute_remote_request_with_retry(
             config,
             json_payload=_remote_rerank_request_payload(config, query, documents, top_n),
             requester=requester,
             error_code_prefix="mo.remote_reranker",
+            environ=environ,
         )
         return normalize_remote_rerank_response(
             provider_payload=response_payload,
@@ -558,6 +562,27 @@ def validate_preflight_response(
     if config.request_shape == OPENAI_MODELS_SHAPE:
         return _validate_openai_models_response(config.expected_models, payload)
     raise RemoteProviderPreflightError("unsupported_request_shape")
+
+
+def _execute_remote_request_with_retry(
+    config: RemoteProviderExecutionConfig,
+    *,
+    json_payload: dict[str, Any],
+    requester: HttpRequester | None,
+    error_code_prefix: str,
+    environ: dict[str, str] | None,
+) -> Any:
+    kwargs: dict[str, Any] = {}
+    if requester is not None:
+        kwargs["sleeper"] = lambda _: None
+    return execute_remote_json_request_with_retry(
+        config,
+        json_payload=json_payload,
+        requester=requester,
+        error_code_prefix=error_code_prefix,
+        retry_policy=build_provider_retry_policy(config.capability, environ),
+        **kwargs,
+    )
 
 
 def expected_models_from_env(

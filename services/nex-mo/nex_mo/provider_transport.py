@@ -90,7 +90,7 @@ def execute_remote_json_request(
             response.status_code,
             error_code_prefix=error_code_prefix,
             retry_after_seconds=parse_retry_after_seconds(
-                response.headers.get("Retry-After")
+                getattr(response, "headers", {}).get("Retry-After")
             ),
         ).to_route_error()
     try:
