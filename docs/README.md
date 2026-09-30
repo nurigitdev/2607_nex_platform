@@ -1256,6 +1256,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1150`](slices/1150_mo_provider_resilience_contract_hardening.md) | `S115-009` Align canonical schema, explicit OpenAPI retry fields, authenticated runtime telemetry, and zero operation drift. |
 | [`Slice 1151`](slices/1151_s115_mo_provider_resilience_retry_closure.md) | `S115-010` Close bounded provider retry hardening with deterministic HTTP, contract, privacy, deferral, and Full Gate evidence. |
 | [`Slice 1152`](slices/1152_mo_provider_telemetry_persistence_boundary.md) | `S116-001` Freeze restart-safe aggregate telemetry, atomic persistence, privacy, compatibility, and PostgreSQL evidence boundaries. |
+| [`Slice 1153`](slices/1153_mo_provider_telemetry_persistence_contract.md) | `S116-002` Define durable telemetry identity, atomic mutation, aggregate invariant, and repository contracts. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
