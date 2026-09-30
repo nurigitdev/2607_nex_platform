@@ -36,16 +36,24 @@ CAPABILITY_SPECS = (
             EvidenceRef("requirement", "docs/30_service_specific_requirement_partition.md", "MO-FR-001"),
             EvidenceRef(
                 "implementation",
-                "services/nex-mo/nex_mo/provider_registry.py",
-                "def resolve_provider_route",
+                "services/nex-mo/nex_mo/catalog_lifecycle_service.py",
+                "class CatalogLifecycleService",
             ),
             EvidenceRef(
                 "implementation",
-                "services/nex-mo/nex_mo/provider_registry.py",
-                "def list_provider_routes",
+                "services/nex-mo/nex_mo/catalog_route_source.py",
+                "class CatalogProviderRouteSource",
             ),
-            EvidenceRef("test", "tests/test_nex_mo_providers.py", "test_provider_registry_contains_required_mock_capabilities"),
-            EvidenceRef("operations", "services/nex-mo/README.md", "GET /api/v1/provider-routes"),
+            EvidenceRef(
+                "test",
+                "tests/test_mo_catalog_lifecycle_postgres_smoke.py",
+                "test_protected_catalog_postgres_smoke_uses_actual_nex_mo_test",
+            ),
+            EvidenceRef(
+                "operations",
+                "services/nex-mo/README.md",
+                "POST /api/v1/provider-alias-bindings/activate",
+            ),
         ),
     ),
     CapabilitySpec(

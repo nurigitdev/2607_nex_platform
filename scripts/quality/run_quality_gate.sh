@@ -495,6 +495,16 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_mo_runtime_observability_contract.py --summary
 "$PYTHON_BIN" scripts/smoke/run_mo_runtime_observability_live_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s117_mo_gpu_model_runtime_observability_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_catalog_lifecycle_boundary.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_catalog_lifecycle_domain.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_catalog_lifecycle_repository.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_catalog_lifecycle_service.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_alias_lifecycle.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_catalog_lifecycle_api.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_catalog_route_resolution.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_catalog_lifecycle_contracts.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_catalog_lifecycle_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s118_mo_catalog_alias_lifecycle_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary

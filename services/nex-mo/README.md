@@ -110,6 +110,32 @@ Current endpoints:
 - `POST /api/v1/embeddings`
 - `POST /api/v1/rerank`
 - `POST /api/v1/generations`
+- `GET /api/v1/model-catalog`
+- `POST /api/v1/model-catalog`
+- `GET /api/v1/model-catalog/{catalog_id}`
+- `POST /api/v1/model-catalog/{catalog_id}/transitions`
+- `GET /api/v1/provider-alias-bindings`
+- `POST /api/v1/provider-alias-bindings/activate`
+- `POST /api/v1/provider-alias-bindings/rollback`
+
+Model catalog and alias lifecycle operations require the NeX-MO service bearer
+claim. Catalog metadata and append-only alias history are persisted in
+`mo_model_catalog` and `mo_alias_bindings`; provider endpoints, API keys, model
+paths, and database URLs remain external runtime configuration. Alias mutations
+use expected revisions, and rollback appends a new binding instead of rewriting
+history.
+
+Protected catalog lifecycle PostgreSQL smoke:
+
+```bash
+NEX_MO_CATALOG_POSTGRES_SMOKE=1 \
+NEX_MO_CATALOG_POSTGRES_SMOKE_PROFILE=test \
+./.venv/bin/python scripts/smoke/run_mo_catalog_lifecycle_postgres_smoke.py --summary
+```
+
+The runner accepts only `nex_mo_user@nex_mo_test`, applies current migrations,
+proves activation, restart recovery, stale revision rejection, rollback, API
+privacy, and targeted cleanup. It does not call DGX providers.
 
 Protected contract/API PostgreSQL smoke:
 

@@ -1284,6 +1284,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1178`](slices/1178_mo_catalog_runtime_route_resolution.md) | `S118-007` Resolve provider execution routes from active durable aliases while preserving static bootstrap compatibility and fail-closed behavior. |
 | [`Slice 1179`](slices/1179_mo_catalog_lifecycle_contract_hardening.md) | `S118-008` Publish authenticated catalog lifecycle routes with canonical schemas, fixtures, OpenAPI parity, and privacy guards. |
 | [`Slice 1180`](slices/1180_mo_catalog_lifecycle_postgresql_smoke.md) | `S118-009` Prove migration, durable activation, restart recovery, rollback, API privacy, and cleanup on actual MO test PostgreSQL. |
+| [`Slice 1181`](slices/1181_s118_mo_catalog_alias_lifecycle_closure.md) | `S118-010` Close durable MO catalog and atomic alias lifecycle with PostgreSQL, parity, privacy, traceability, and Full Gate evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
