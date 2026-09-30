@@ -1268,6 +1268,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1162`](slices/1162_mo_gpu_model_runtime_observability_boundary.md) | `S117-001` Freeze GPU/model runtime observation ownership, collection, TTL, privacy, and persistence boundaries. |
 | [`Slice 1163`](slices/1163_mo_runtime_observation_domain_projection.md) | `S117-002` Define validated model/GPU observations and a privacy-safe aggregate runtime projection. |
 | [`Slice 1164`](slices/1164_mo_protected_runtime_collector_plan.md) | `S117-003` Build a fixed, private mock/live collector plan with validated DGX target and model-port mapping. |
+| [`Slice 1165`](slices/1165_mo_gpu_model_runtime_collector_normalization.md) | `S117-004` Correlate fixed DGX process/GPU evidence and normalize privacy-safe runtime observations. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
