@@ -1266,6 +1266,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1160`](slices/1160_mo_provider_telemetry_postgresql_smoke.md) | `S116-009` Prove restart-safe concurrent telemetry aggregation and authenticated reads on actual MO test PostgreSQL. |
 | [`Slice 1161`](slices/1161_s116_mo_durable_provider_telemetry_closure.md) | `S116-010` Close restart-safe durable provider telemetry with PostgreSQL, privacy, and Full Gate evidence. |
 | [`Slice 1162`](slices/1162_mo_gpu_model_runtime_observability_boundary.md) | `S117-001` Freeze GPU/model runtime observation ownership, collection, TTL, privacy, and persistence boundaries. |
+| [`Slice 1163`](slices/1163_mo_runtime_observation_domain_projection.md) | `S117-002` Define validated model/GPU observations and a privacy-safe aggregate runtime projection. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
