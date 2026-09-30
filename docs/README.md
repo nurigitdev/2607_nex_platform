@@ -1277,6 +1277,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1171`](slices/1171_s117_mo_gpu_model_runtime_observability_closure.md) | `S117-010` Close MO GPU/model runtime observability with protected DGX, traceability, privacy, and Full Gate evidence. |
 | [`Slice 1172`](slices/1172_mo_catalog_alias_lifecycle_boundary.md) | `S118-001` Freeze durable model catalog, atomic alias lifecycle, privacy, concurrency, and compatibility boundaries. |
 | [`Slice 1173`](slices/1173_mo_catalog_alias_domain_contracts.md) | `S118-002` Define immutable model catalog entries, revisioned alias bindings, lineage, validation, and privacy-safe projections. |
+| [`Slice 1174`](slices/1174_mo_catalog_alias_durable_repository.md) | `S118-003` Add short constrained PostgreSQL tables and a restart-safe SQLAlchemy catalog lifecycle repository. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
