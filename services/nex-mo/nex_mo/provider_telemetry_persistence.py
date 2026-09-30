@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from hashlib import sha256
 from typing import Any, Mapping, Protocol, Sequence
 
 from nex_mo.provider_telemetry import ProviderExecutionConfigView
@@ -64,6 +65,17 @@ class ProviderTelemetryIdentity:
             "deployment_id": self.deployment_id,
             "model_revision": self.model_revision,
         }
+
+    def storage_key(self) -> str:
+        canonical = "\x1f".join(
+            (
+                self.capability,
+                self.request_shape,
+                self.deployment_id,
+                self.model_revision,
+            )
+        )
+        return sha256(canonical.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
