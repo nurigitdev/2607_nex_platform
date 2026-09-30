@@ -30,3 +30,14 @@ def authorize_mo_service_request(
         detail=result.detail or "MO requires a valid service claim.",
         type_uri="https://nex-platform.local/problems/authentication-failed",
     )
+
+
+def authenticated_mo_service_actor(authorization: str | None) -> str:
+    result = validate_authorization_header(
+        authorization,
+        expected_audience="nex-mo",
+        required_scopes=[DEFAULT_SERVICE_SCOPE],
+    )
+    if not result.ok or result.claims is None:
+        raise ValueError("a validated MO service claim is required")
+    return result.claims.subject

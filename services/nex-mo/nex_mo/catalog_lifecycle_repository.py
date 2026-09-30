@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from dataclasses import replace
 import json
-from typing import Any, Sequence
+from threading import RLock
+from typing import Any, Protocol, Sequence
 
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -22,6 +24,279 @@ class CatalogLifecycleRepositoryError(RuntimeError):
         super().__init__(detail)
         self.error_code = error_code
         self.detail = detail
+
+
+class CatalogLifecycleRepository(Protocol):
+    def insert_catalog_entry(self, entry: ModelCatalogEntry) -> ModelCatalogEntry: ...
+    def get_catalog_entry(self, catalog_id: str) -> ModelCatalogEntry | None: ...
+    def list_catalog_entries(
+        self,
+        *,
+        capability: str | None = None,
+        state: str | None = None,
+    ) -> Sequence[ModelCatalogEntry]: ...
+    def update_catalog_state(
+        self,
+        catalog_id: str,
+        *,
+        expected_revision: int,
+        target_state: str,
+        updated_at: str,
+    ) -> ModelCatalogEntry: ...
+    def list_alias_bindings(
+        self,
+        *,
+        alias: str | None = None,
+        capability: str | None = None,
+        state: str | None = None,
+    ) -> Sequence[AliasBinding]: ...
+    def replace_active_alias(
+        self,
+        binding: AliasBinding,
+        *,
+        expected_binding_revision: int,
+        prior_state: str,
+    ) -> AliasBinding: ...
+    def bootstrap_if_empty(
+        self,
+        entries: Sequence[ModelCatalogEntry],
+        bindings: Sequence[AliasBinding],
+    ) -> bool: ...
+
+
+class InMemoryCatalogLifecycleRepository:
+    def __init__(self) -> None:
+        self._entries: dict[str, ModelCatalogEntry] = {}
+        self._bindings: dict[str, AliasBinding] = {}
+        self._lock = RLock()
+
+    def insert_catalog_entry(self, entry: ModelCatalogEntry) -> ModelCatalogEntry:
+        with self._lock:
+            if entry.catalog_id in self._entries or any(
+                (
+                    current.provider_capability,
+                    current.deployment_id,
+                    current.model_revision,
+                )
+                == (
+                    entry.provider_capability,
+                    entry.deployment_id,
+                    entry.model_revision,
+                )
+                for current in self._entries.values()
+            ):
+                raise CatalogLifecycleRepositoryError(
+                    "mo.catalog_conflict",
+                    "catalog entry conflicts with durable state",
+                )
+            self._entries[entry.catalog_id] = entry
+            return entry
+
+    def get_catalog_entry(self, catalog_id: str) -> ModelCatalogEntry | None:
+        with self._lock:
+            return self._entries.get(catalog_id)
+
+    def list_catalog_entries(
+        self,
+        *,
+        capability: str | None = None,
+        state: str | None = None,
+    ) -> list[ModelCatalogEntry]:
+        _validate_catalog_filters(capability, state)
+        with self._lock:
+            values = [
+                entry
+                for entry in self._entries.values()
+                if (capability is None or entry.provider_capability == capability)
+                and (state is None or entry.catalog_state == state)
+            ]
+        return sorted(
+            values,
+            key=lambda entry: (
+                entry.provider_capability,
+                entry.model_name,
+                entry.revision,
+            ),
+        )
+
+    def update_catalog_state(
+        self,
+        catalog_id: str,
+        *,
+        expected_revision: int,
+        target_state: str,
+        updated_at: str,
+    ) -> ModelCatalogEntry:
+        if target_state not in CATALOG_STATES:
+            raise CatalogLifecycleRepositoryError(
+                "mo.catalog_state_invalid",
+                "unsupported target catalog state",
+            )
+        with self._lock:
+            current = self._entries.get(catalog_id)
+            if current is None:
+                raise CatalogLifecycleRepositoryError(
+                    "mo.catalog_not_found",
+                    "catalog entry was not found",
+                )
+            if current.revision != expected_revision:
+                raise CatalogLifecycleRepositoryError(
+                    "mo.catalog_revision_conflict",
+                    "catalog revision does not match expected revision",
+                )
+            updated = replace(
+                current,
+                catalog_state=target_state,
+                revision=current.revision + 1,
+                updated_at=updated_at,
+            )
+            self._entries[catalog_id] = updated
+            return updated
+
+    def list_alias_bindings(
+        self,
+        *,
+        alias: str | None = None,
+        capability: str | None = None,
+        state: str | None = None,
+    ) -> list[AliasBinding]:
+        _validate_alias_filters(capability, state)
+        with self._lock:
+            values = [
+                binding
+                for binding in self._bindings.values()
+                if (alias is None or binding.alias == alias)
+                and (
+                    capability is None
+                    or binding.provider_capability == capability
+                )
+                and (state is None or binding.binding_state == state)
+            ]
+        return sorted(
+            values,
+            key=lambda binding: (
+                binding.alias,
+                binding.provider_capability,
+                binding.binding_revision,
+            ),
+        )
+
+    def replace_active_alias(
+        self,
+        binding: AliasBinding,
+        *,
+        expected_binding_revision: int,
+        prior_state: str,
+    ) -> AliasBinding:
+        if binding.binding_state != "ACTIVE" or prior_state not in {
+            "SUPERSEDED",
+            "ROLLED_BACK",
+        }:
+            raise CatalogLifecycleRepositoryError(
+                "mo.alias_state_invalid",
+                "alias replacement states are invalid",
+            )
+        with self._lock:
+            target = self._entries.get(binding.catalog_id)
+            if target is None:
+                raise CatalogLifecycleRepositoryError(
+                    "mo.alias_catalog_not_found",
+                    "alias target catalog entry was not found",
+                )
+            if target.catalog_state != "ACTIVE":
+                raise CatalogLifecycleRepositoryError(
+                    "mo.alias_catalog_inactive",
+                    "alias target catalog entry is not active",
+                )
+            if target.provider_capability != binding.provider_capability:
+                raise CatalogLifecycleRepositoryError(
+                    "mo.alias_capability_mismatch",
+                    "alias and target catalog capabilities do not match",
+                )
+            active = [
+                current
+                for current in self._bindings.values()
+                if current.alias == binding.alias
+                and current.provider_capability == binding.provider_capability
+                and current.binding_state == "ACTIVE"
+            ]
+            if len(active) > 1:
+                raise CatalogLifecycleRepositoryError(
+                    "mo.alias_integrity_invalid",
+                    "multiple active alias bindings were found",
+                )
+            current = active[0] if active else None
+            revision = 0 if current is None else current.binding_revision
+            previous_id = None if current is None else current.binding_id
+            if revision != expected_binding_revision:
+                raise CatalogLifecycleRepositoryError(
+                    "mo.alias_revision_conflict",
+                    "alias revision does not match expected revision",
+                )
+            if (
+                binding.binding_revision != expected_binding_revision + 1
+                or binding.previous_binding_id != previous_id
+            ):
+                raise CatalogLifecycleRepositoryError(
+                    "mo.alias_lineage_invalid",
+                    "alias replacement revision or lineage is invalid",
+                )
+            if binding.binding_id in self._bindings:
+                raise CatalogLifecycleRepositoryError(
+                    "mo.alias_revision_conflict",
+                    "alias binding identity already exists",
+                )
+            if current is not None:
+                self._bindings[current.binding_id] = replace(
+                    current,
+                    binding_state=prior_state,
+                )
+            self._bindings[binding.binding_id] = binding
+            return binding
+
+    def bootstrap_if_empty(
+        self,
+        entries: Sequence[ModelCatalogEntry],
+        bindings: Sequence[AliasBinding],
+    ) -> bool:
+        with self._lock:
+            if self._entries:
+                return False
+            self._entries = {entry.catalog_id: entry for entry in entries}
+            self._bindings = {binding.binding_id: binding for binding in bindings}
+            return True
+
+
+def _validate_catalog_filters(
+    capability: str | None,
+    state: str | None,
+) -> None:
+    if capability is not None and capability not in CATALOG_CAPABILITIES:
+        raise CatalogLifecycleRepositoryError(
+            "mo.catalog_filter_invalid",
+            "unsupported catalog capability filter",
+        )
+    if state is not None and state not in CATALOG_STATES:
+        raise CatalogLifecycleRepositoryError(
+            "mo.catalog_filter_invalid",
+            "unsupported catalog state filter",
+        )
+
+
+def _validate_alias_filters(
+    capability: str | None,
+    state: str | None,
+) -> None:
+    if capability is not None and capability not in CATALOG_CAPABILITIES:
+        raise CatalogLifecycleRepositoryError(
+            "mo.alias_filter_invalid",
+            "unsupported alias capability filter",
+        )
+    if state is not None and state not in ALIAS_BINDING_STATES:
+        raise CatalogLifecycleRepositoryError(
+            "mo.alias_filter_invalid",
+            "unsupported alias binding state filter",
+        )
 
 
 class SqlAlchemyCatalogLifecycleRepository:

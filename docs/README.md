@@ -1280,6 +1280,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1174`](slices/1174_mo_catalog_alias_durable_repository.md) | `S118-003` Add short constrained PostgreSQL tables and a restart-safe SQLAlchemy catalog lifecycle repository. |
 | [`Slice 1175`](slices/1175_mo_catalog_lifecycle_service.md) | `S118-004` Add revision-guarded catalog registration and lifecycle transitions without changing active aliases. |
 | [`Slice 1176`](slices/1176_mo_atomic_alias_activation_rollback.md) | `S118-005` Add atomic alias activation, optimistic revision guards, append-only rollback lineage, and Checkpoint Gate evidence. |
+| [`Slice 1177`](slices/1177_mo_authenticated_catalog_lifecycle_api.md) | `S118-006` Expose authenticated catalog and alias lifecycle APIs with server-derived audit identity and safe runtime wiring. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

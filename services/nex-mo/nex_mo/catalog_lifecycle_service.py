@@ -11,8 +11,8 @@ from nex_mo.catalog_lifecycle import (
     build_bootstrap_catalog,
 )
 from nex_mo.catalog_lifecycle_repository import (
+    CatalogLifecycleRepository,
     CatalogLifecycleRepositoryError,
-    SqlAlchemyCatalogLifecycleRepository,
 )
 
 
@@ -49,7 +49,7 @@ class RegisterCatalogEntry:
 class CatalogLifecycleService:
     def __init__(
         self,
-        repository: SqlAlchemyCatalogLifecycleRepository,
+        repository: CatalogLifecycleRepository,
         *,
         clock: Callable[[], str] | None = None,
         id_factory: Callable[[], str] | None = None,
@@ -374,7 +374,12 @@ def _map_repository_error(
         error.error_code,
         (503, "MO_CATALOG_PERSISTENCE_UNAVAILABLE"),
     )
-    return CatalogLifecycleServiceError(status_code, error_code, error.detail)
+    detail = (
+        error.detail
+        if error.error_code in mappings
+        else "Catalog lifecycle persistence is temporarily unavailable."
+    )
+    return CatalogLifecycleServiceError(status_code, error_code, detail)
 
 
 def _utc_now() -> str:
