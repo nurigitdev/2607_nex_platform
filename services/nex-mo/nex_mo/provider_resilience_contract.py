@@ -96,7 +96,7 @@ def build_mo_provider_resilience_contract(
             "keep the existing authenticated telemetry operation",
             "document every canonical retry field explicitly",
             "never expose endpoints credentials payloads or exception details",
-            "keep aggregate telemetry process-local until S116",
+            "keep memory mode process-local and use S116 durability in postgres mode",
         ],
         "next_slice": "1151" if passed else "blocked",
     }

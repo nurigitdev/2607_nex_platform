@@ -64,9 +64,11 @@ Model profile defaults:
   The older `NEX_MO_LIVE_TIMEOUT_SECONDS` remains a shared fallback when a
   capability-specific value is not set.
 - Provider runtime telemetry is available at `GET /api/v1/provider-telemetry`.
-  The snapshot is in-memory, process-local, and read-only. It reports configured
-  capability rows plus success/failure counters and last safe failure metadata;
-  it does not expose provider URLs, API keys, or raw provider payloads.
+  Memory persistence keeps deterministic process-local counters; PostgreSQL
+  persistence uses restart-safe atomic aggregates in `mo_provider_telemetry`.
+  The read-only snapshot reports active capability rows plus success/failure,
+  attempt/retry counters, and last safe diagnostics. It does not expose provider
+  URLs, API keys, raw payloads, database URLs, or exception details.
 - Public provider-profile responses expose model identity, precision, runtime
   engine, selection, and status only. Internal model roots, model paths, and
   health environment names remain private to MO runtime composition.

@@ -357,13 +357,15 @@ paths:
             enum: [embedding, reranking, generation]
       responses:
         "200":
-          description: Privacy-safe process-local provider execution and bounded-retry telemetry.
+          description: Privacy-safe restart-safe provider execution and bounded-retry aggregate telemetry.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProviderTelemetrySnapshot"
         "401":
           description: Service claim is missing or invalid.
+        "503":
+          description: Durable provider telemetry is temporarily unavailable.
   /api/v1/embeddings:
     post:
       operationId: createMoEmbeddings
