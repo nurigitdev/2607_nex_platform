@@ -1235,6 +1235,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1129`](slices/1129_mo_provider_route_health_api_contract.md) | `S113-008` Expose authenticated route health with canonical JSON Schema and OpenAPI coverage. |
 | [`Slice 1130`](slices/1130_mo_provider_readiness_live_postgresql_dgx_smoke.md) | `S113-009` Prove actual MO test PostgreSQL and all three live DGX routes with protected evidence. |
 | [`Slice 1131`](slices/1131_s113_mo_provider_readiness_closure.md) | `S113-010` Close provider-aware readiness with privacy, live-provider, contract, and Full Gate evidence. |
+| [`Slice 1132`](slices/1132_mo_contract_api_drift_closure_boundary.md) | `S114-001` Freeze the six MO contract/API drift classes, the `28 -> 0` target, and remediation guardrails. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
