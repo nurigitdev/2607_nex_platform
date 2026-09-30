@@ -20,7 +20,7 @@ def test_repository_s111_closure_passes_with_confirmed_gaps() -> None:
         "catalog_drift_count": 4,
         "required_refactoring_count": 5,
         "contract_drift_count": 28,
-        "runtime_gap_count": 5,
+        "runtime_gap_count": 4,
         "live_evidence_count": 5,
         "missing_file_count": 0,
         "missing_token_count": 0,

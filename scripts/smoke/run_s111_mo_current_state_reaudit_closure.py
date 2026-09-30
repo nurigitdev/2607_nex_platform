@@ -190,7 +190,7 @@ def run_s111_mo_current_state_reaudit_closure(
             and audits["contract"].get("contract_readiness") == "GAPS_CONFIRMED"
         ),
         "runtime_gaps_quantified": (
-            summaries["resilience"].get("runtime_gap_count") == 5
+            0 < int(summaries["resilience"].get("runtime_gap_count") or 0) <= 5
             and audits["resilience"].get("operations_readiness") == "GAPS_CONFIRMED"
         ),
         "database_boundary_preserved": (

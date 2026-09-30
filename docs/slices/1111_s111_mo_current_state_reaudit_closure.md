@@ -62,3 +62,8 @@ The first Full Gate exposed a test-order isolation issue: resilience readiness
 counted process-global telemetry buckets instead of distinct provider
 capabilities. The audit now counts unique capabilities, a duplicate-deployment
 regression case covers the behavior, and the complete Full Gate rerun passed.
+
+Maintenance note: S113 implemented provider-aware service readiness, reducing
+the live resilience audit from the original five-gap baseline to four. The
+historical S111 closure accepts monotonic reduction from that baseline while
+continuing to require every remaining gap to be explicitly classified.

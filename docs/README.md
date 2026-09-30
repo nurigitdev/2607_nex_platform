@@ -1227,6 +1227,14 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1121`](slices/1121_s112_mo_provider_runtime_operations_closure.md) | `S112-010` Close MO provider runtime hardening and hand off provider-aware readiness to S113. |
 | [`Slice 1122`](slices/1122_mo_provider_readiness_route_health_boundary.md) | `S113-001` Freeze provider-aware readiness, route-health, cache, privacy, and persistence boundaries. |
 | [`Slice 1123`](slices/1123_mo_provider_readiness_domain_projection.md) | `S113-002` Add immutable route-health and readiness models with privacy-safe projections. |
+| [`Slice 1124`](slices/1124_mo_provider_readiness_probe_plan.md) | `S113-003` Build capability-specific mock/live readiness probe plans without leaking runtime configuration. |
+| [`Slice 1125`](slices/1125_mo_provider_readiness_evaluator.md) | `S113-004` Evaluate active preflights into fail-closed provider route-health states. |
+| [`Slice 1126`](slices/1126_mo_provider_readiness_ttl_cache.md) | `S113-005` Add bounded single-flight TTL caching with stale evidence never satisfying readiness. |
+| [`Slice 1127`](slices/1127_mo_provider_readiness_composition.md) | `S113-006` Compose planning, evaluation, caching, invalidation, and safe provider readiness projection. |
+| [`Slice 1128`](slices/1128_mo_provider_ready_route_wiring.md) | `S113-007` Require both database and provider readiness on the MO `/ready` route. |
+| [`Slice 1129`](slices/1129_mo_provider_route_health_api_contract.md) | `S113-008` Expose authenticated route health with canonical JSON Schema and OpenAPI coverage. |
+| [`Slice 1130`](slices/1130_mo_provider_readiness_live_postgresql_dgx_smoke.md) | `S113-009` Prove actual MO test PostgreSQL and all three live DGX routes with protected evidence. |
+| [`Slice 1131`](slices/1131_s113_mo_provider_readiness_closure.md) | `S113-010` Close provider-aware readiness with privacy, live-provider, contract, and Full Gate evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

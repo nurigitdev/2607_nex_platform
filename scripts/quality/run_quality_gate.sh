@@ -445,6 +445,16 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_mo_runtime_hardening_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_mo_provider_operations_compatibility.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s112_mo_provider_runtime_operations_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_readiness_boundary.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_readiness_domain.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_readiness_plan.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_readiness_evaluator.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_readiness_cache.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_readiness_service.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_ready_route.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_route_health_api.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_readiness_live_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s113_mo_provider_readiness_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary
