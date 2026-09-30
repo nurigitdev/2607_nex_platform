@@ -219,6 +219,127 @@ class SqlAlchemyCatalogLifecycleRepository:
         except (SQLAlchemyError, ValueError, TypeError, KeyError) as exc:
             raise _unavailable() from exc
 
+    def replace_active_alias(
+        self,
+        binding: AliasBinding,
+        *,
+        expected_binding_revision: int,
+        prior_state: str,
+    ) -> AliasBinding:
+        if binding.binding_state != "ACTIVE":
+            raise CatalogLifecycleRepositoryError(
+                "mo.alias_state_invalid",
+                "replacement alias binding must be active",
+            )
+        if prior_state not in {"SUPERSEDED", "ROLLED_BACK"}:
+            raise CatalogLifecycleRepositoryError(
+                "mo.alias_state_invalid",
+                "prior alias state is invalid",
+            )
+        session = self._session_factory()
+        try:
+            try:
+                catalog_row = (
+                    session.execute(
+                        text(
+                            _SELECT_CATALOG_SQL
+                            + " WHERE catalog_id = :catalog_id"
+                        ),
+                        {"catalog_id": binding.catalog_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+                if catalog_row is None:
+                    raise CatalogLifecycleRepositoryError(
+                        "mo.alias_catalog_not_found",
+                        "alias target catalog entry was not found",
+                    )
+                target = _catalog_from_mapping(catalog_row)
+                if target.catalog_state != "ACTIVE":
+                    raise CatalogLifecycleRepositoryError(
+                        "mo.alias_catalog_inactive",
+                        "alias target catalog entry is not active",
+                    )
+                if target.provider_capability != binding.provider_capability:
+                    raise CatalogLifecycleRepositoryError(
+                        "mo.alias_capability_mismatch",
+                        "alias and target catalog capabilities do not match",
+                    )
+
+                current_row = (
+                    session.execute(
+                        text(
+                            _SELECT_BINDING_SQL
+                            + " WHERE alias = :alias AND capability = :capability"
+                            + " AND binding_state = 'ACTIVE'"
+                        ),
+                        {
+                            "alias": binding.alias,
+                            "capability": binding.provider_capability,
+                        },
+                    )
+                    .mappings()
+                    .first()
+                )
+                current = (
+                    None
+                    if current_row is None
+                    else _binding_from_mapping(current_row)
+                )
+                current_revision = 0 if current is None else current.binding_revision
+                if current_revision != expected_binding_revision:
+                    raise CatalogLifecycleRepositoryError(
+                        "mo.alias_revision_conflict",
+                        "alias revision does not match expected revision",
+                    )
+                expected_previous = None if current is None else current.binding_id
+                if (
+                    binding.binding_revision != expected_binding_revision + 1
+                    or binding.previous_binding_id != expected_previous
+                ):
+                    raise CatalogLifecycleRepositoryError(
+                        "mo.alias_lineage_invalid",
+                        "alias replacement revision or lineage is invalid",
+                    )
+                if current is not None:
+                    result = session.execute(
+                        text(
+                            "UPDATE mo_alias_bindings "
+                            "SET binding_state = :prior_state "
+                            "WHERE binding_id = :binding_id "
+                            "AND binding_revision = :expected_revision "
+                            "AND binding_state = 'ACTIVE'"
+                        ),
+                        {
+                            "prior_state": prior_state,
+                            "binding_id": current.binding_id,
+                            "expected_revision": expected_binding_revision,
+                        },
+                    )
+                    if int(result.rowcount or 0) != 1:
+                        raise CatalogLifecycleRepositoryError(
+                            "mo.alias_revision_conflict",
+                            "active alias changed during replacement",
+                        )
+                session.execute(text(_INSERT_BINDING_SQL), _binding_params(binding))
+                session.commit()
+                return binding
+            except Exception:
+                session.rollback()
+                raise
+        except CatalogLifecycleRepositoryError:
+            raise
+        except IntegrityError as exc:
+            raise CatalogLifecycleRepositoryError(
+                "mo.alias_revision_conflict",
+                "alias replacement conflicts with durable state",
+            ) from exc
+        except (SQLAlchemyError, ValueError, TypeError, KeyError) as exc:
+            raise _unavailable() from exc
+        finally:
+            session.close()
+
     def bootstrap_if_empty(
         self,
         entries: Sequence[ModelCatalogEntry],

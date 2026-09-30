@@ -173,11 +173,186 @@ class CatalogLifecycleService:
         except CatalogLifecycleRepositoryError as exc:
             raise _map_repository_error(exc) from exc
 
+    def activate_alias(
+        self,
+        *,
+        alias: str,
+        capability: str,
+        catalog_id: str,
+        expected_binding_revision: int,
+        change_reason: str,
+        changed_by: str,
+    ) -> AliasBinding:
+        target = self.get_catalog_entry(catalog_id)
+        if target.catalog_state != "ACTIVE":
+            raise CatalogLifecycleServiceError(
+                409,
+                "MO_ALIAS_CATALOG_INACTIVE",
+                "Alias target catalog entry is not active.",
+            )
+        if target.provider_capability != capability:
+            raise CatalogLifecycleServiceError(
+                422,
+                "MO_ALIAS_CAPABILITY_MISMATCH",
+                "Alias and target catalog capabilities do not match.",
+            )
+        current = self._active_binding(alias, capability)
+        current_revision = 0 if current is None else current.binding_revision
+        if current_revision != expected_binding_revision:
+            raise CatalogLifecycleServiceError(
+                409,
+                "MO_ALIAS_REVISION_CONFLICT",
+                "Alias revision does not match expected revision.",
+            )
+        if current is not None and current.catalog_id == catalog_id:
+            raise CatalogLifecycleServiceError(
+                409,
+                "MO_ALIAS_ALREADY_ACTIVE",
+                "Alias already targets this catalog entry.",
+            )
+        binding = self._new_binding(
+            alias=alias,
+            capability=capability,
+            catalog_id=catalog_id,
+            expected_binding_revision=expected_binding_revision,
+            change_reason=change_reason,
+            changed_by=changed_by,
+            current=current,
+        )
+        return self._replace_alias(
+            binding,
+            expected_binding_revision=expected_binding_revision,
+            prior_state="SUPERSEDED",
+        )
+
+    def rollback_alias(
+        self,
+        *,
+        alias: str,
+        capability: str,
+        expected_binding_revision: int,
+        change_reason: str,
+        changed_by: str,
+    ) -> AliasBinding:
+        current = self._active_binding(alias, capability)
+        if current is None:
+            raise CatalogLifecycleServiceError(
+                404,
+                "MO_ALIAS_NOT_FOUND",
+                "Active alias binding was not found.",
+            )
+        if current.binding_revision != expected_binding_revision:
+            raise CatalogLifecycleServiceError(
+                409,
+                "MO_ALIAS_REVISION_CONFLICT",
+                "Alias revision does not match expected revision.",
+            )
+        if current.previous_binding_id is None:
+            raise CatalogLifecycleServiceError(
+                409,
+                "MO_ALIAS_ROLLBACK_UNAVAILABLE",
+                "Alias has no previous binding to restore.",
+            )
+        history = self.list_alias_bindings(alias=alias, capability=capability)
+        prior = next(
+            (
+                binding
+                for binding in history
+                if binding.binding_id == current.previous_binding_id
+            ),
+            None,
+        )
+        if prior is None:
+            raise CatalogLifecycleServiceError(
+                409,
+                "MO_ALIAS_LINEAGE_INVALID",
+                "Previous alias binding was not found.",
+            )
+        target = self.get_catalog_entry(prior.catalog_id)
+        if target.catalog_state != "ACTIVE":
+            raise CatalogLifecycleServiceError(
+                409,
+                "MO_ALIAS_ROLLBACK_TARGET_INACTIVE",
+                "Previous alias target is not active.",
+            )
+        binding = self._new_binding(
+            alias=alias,
+            capability=capability,
+            catalog_id=prior.catalog_id,
+            expected_binding_revision=expected_binding_revision,
+            change_reason=change_reason,
+            changed_by=changed_by,
+            current=current,
+        )
+        return self._replace_alias(
+            binding,
+            expected_binding_revision=expected_binding_revision,
+            prior_state="ROLLED_BACK",
+        )
+
     def _has_active_binding(self, catalog_id: str) -> bool:
         return any(
             binding.catalog_id == catalog_id
             for binding in self.list_alias_bindings(state="ACTIVE")
         )
+
+    def _active_binding(
+        self,
+        alias: str,
+        capability: str,
+    ) -> AliasBinding | None:
+        bindings = self.list_alias_bindings(
+            alias=alias,
+            capability=capability,
+            state="ACTIVE",
+        )
+        if len(bindings) > 1:
+            raise CatalogLifecycleServiceError(
+                503,
+                "MO_ALIAS_INTEGRITY_INVALID",
+                "Multiple active alias bindings were found.",
+            )
+        return bindings[0] if bindings else None
+
+    def _new_binding(
+        self,
+        *,
+        alias: str,
+        capability: str,
+        catalog_id: str,
+        expected_binding_revision: int,
+        change_reason: str,
+        changed_by: str,
+        current: AliasBinding | None,
+    ) -> AliasBinding:
+        return AliasBinding(
+            binding_id=f"binding:{self._id_factory()}",
+            alias=alias,
+            provider_capability=capability,
+            catalog_id=catalog_id,
+            binding_revision=expected_binding_revision + 1,
+            binding_state="ACTIVE",
+            change_reason=change_reason,
+            changed_by=changed_by,
+            previous_binding_id=None if current is None else current.binding_id,
+            created_at=self._clock(),
+        )
+
+    def _replace_alias(
+        self,
+        binding: AliasBinding,
+        *,
+        expected_binding_revision: int,
+        prior_state: str,
+    ) -> AliasBinding:
+        try:
+            return self._repository.replace_active_alias(
+                binding,
+                expected_binding_revision=expected_binding_revision,
+                prior_state=prior_state,
+            )
+        except CatalogLifecycleRepositoryError as exc:
+            raise _map_repository_error(exc) from exc
 
 
 def _map_repository_error(
@@ -189,6 +364,11 @@ def _map_repository_error(
         "mo.catalog_conflict": (409, "MO_CATALOG_CONFLICT"),
         "mo.catalog_filter_invalid": (422, "MO_CATALOG_FILTER_INVALID"),
         "mo.alias_filter_invalid": (422, "MO_ALIAS_FILTER_INVALID"),
+        "mo.alias_catalog_not_found": (404, "MO_ALIAS_CATALOG_NOT_FOUND"),
+        "mo.alias_catalog_inactive": (409, "MO_ALIAS_CATALOG_INACTIVE"),
+        "mo.alias_capability_mismatch": (422, "MO_ALIAS_CAPABILITY_MISMATCH"),
+        "mo.alias_revision_conflict": (409, "MO_ALIAS_REVISION_CONFLICT"),
+        "mo.alias_lineage_invalid": (409, "MO_ALIAS_LINEAGE_INVALID"),
     }
     status_code, error_code = mappings.get(
         error.error_code,
