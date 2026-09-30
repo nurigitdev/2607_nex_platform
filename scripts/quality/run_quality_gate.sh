@@ -475,6 +475,16 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_mo_provider_retry_loopback_http_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_mo_provider_resilience_contract.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s115_mo_provider_resilience_retry_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_telemetry_persistence_boundary.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_telemetry_persistence_contract.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_telemetry_repository.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_telemetry_store.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_telemetry_runtime.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_telemetry_restart_concurrency.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_telemetry_durable_api.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_telemetry_durability_contract.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_provider_telemetry_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s116_mo_durable_provider_telemetry_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary
