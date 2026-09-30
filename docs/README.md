@@ -1250,6 +1250,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1144`](slices/1144_mo_bounded_retry_executor.md) | `S115-003` Add injectable bounded retry execution, backoff, and safe retry events. |
 | [`Slice 1145`](slices/1145_mo_provider_retry_transport_integration.md) | `S115-004` Integrate optional bounded retries and capped Retry-After with remote transport. |
 | [`Slice 1146`](slices/1146_mo_provider_retry_capability_wiring.md) | `S115-005` Activate capability retry policies and pass the fifth-Slice Checkpoint Gate. |
+| [`Slice 1147`](slices/1147_mo_provider_retry_telemetry.md) | `S115-006` Separate logical requests from provider attempts and expose safe retry telemetry. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

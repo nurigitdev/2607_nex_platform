@@ -16,9 +16,11 @@
           "model_name", "model_revision", "deployment_id", "authorization_env",
           "authorization_configured", "request_count", "success_count",
           "failure_count", "retryable_failure_count", "degraded_count",
+          "attempt_count", "retry_count",
           "last_outcome", "last_observed_at", "last_latency_ms",
           "last_status_code", "last_error_code", "last_failure_kind",
-          "last_upstream_status_code"
+          "last_upstream_status_code", "last_retry_at", "last_retry_delay_ms",
+          "last_retry_failure_kind"
         ],
         "properties": {
           "capability": {"enum": ["embedding", "reranking", "generation"]},
@@ -35,13 +37,18 @@
           "failure_count": {"type": "integer", "minimum": 0},
           "retryable_failure_count": {"type": "integer", "minimum": 0},
           "degraded_count": {"type": "integer", "minimum": 0},
+          "attempt_count": {"type": "integer", "minimum": 0},
+          "retry_count": {"type": "integer", "minimum": 0},
           "last_outcome": {"type": ["string", "null"], "enum": ["success", "failure", null]},
           "last_observed_at": {"type": ["string", "null"], "format": "date-time"},
           "last_latency_ms": {"type": ["integer", "null"], "minimum": 0},
           "last_status_code": {"type": ["integer", "null"], "minimum": 100, "maximum": 599},
           "last_error_code": {"type": ["string", "null"], "minLength": 1},
           "last_failure_kind": {"type": ["string", "null"], "minLength": 1},
-          "last_upstream_status_code": {"type": ["integer", "null"], "minimum": 100, "maximum": 599}
+          "last_upstream_status_code": {"type": ["integer", "null"], "minimum": 100, "maximum": 599},
+          "last_retry_at": {"type": ["string", "null"], "format": "date-time"},
+          "last_retry_delay_ms": {"type": ["integer", "null"], "minimum": 0},
+          "last_retry_failure_kind": {"type": ["string", "null"], "minLength": 1}
         }
       }
     },

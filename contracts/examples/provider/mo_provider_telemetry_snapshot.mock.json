@@ -15,13 +15,18 @@
       "failure_count": 0,
       "retryable_failure_count": 0,
       "degraded_count": 0,
+      "attempt_count": 0,
+      "retry_count": 0,
       "last_outcome": null,
       "last_observed_at": null,
       "last_latency_ms": null,
       "last_status_code": null,
       "last_error_code": null,
       "last_failure_kind": null,
-      "last_upstream_status_code": null
+      "last_upstream_status_code": null,
+      "last_retry_at": null,
+      "last_retry_delay_ms": null,
+      "last_retry_failure_kind": null
     }
   ],
   "meta": {

@@ -7,6 +7,7 @@ from time import perf_counter
 from typing import Any, Callable, Protocol, Sequence
 
 from nex_mo.provider_registry import ProviderRouteError
+from nex_mo.provider_retry import ProviderRetryEvent
 
 
 class ProviderExecutionConfigView(Protocol):
@@ -37,6 +38,8 @@ class RemoteProviderTelemetryBucket:
     failure_count: int = 0
     retryable_failure_count: int = 0
     degraded_count: int = 0
+    attempt_count: int = 0
+    retry_count: int = 0
     last_outcome: str | None = None
     last_observed_at: str | None = None
     last_latency_ms: int | None = None
@@ -44,6 +47,9 @@ class RemoteProviderTelemetryBucket:
     last_error_code: str | None = None
     last_failure_kind: str | None = None
     last_upstream_status_code: int | None = None
+    last_retry_at: str | None = None
+    last_retry_delay_ms: int | None = None
+    last_retry_failure_kind: str | None = None
 
     @classmethod
     def from_config(
@@ -64,6 +70,7 @@ class RemoteProviderTelemetryBucket:
 
     def record_success(self, *, latency_ms: int, observed_at: str) -> None:
         self.request_count += 1
+        self.attempt_count += 1
         self.success_count += 1
         self.last_outcome = "success"
         self.last_observed_at = observed_at
@@ -81,6 +88,7 @@ class RemoteProviderTelemetryBucket:
         observed_at: str,
     ) -> None:
         self.request_count += 1
+        self.attempt_count += 1
         self.failure_count += 1
         if route_error.retryable:
             self.retryable_failure_count += 1
@@ -93,6 +101,13 @@ class RemoteProviderTelemetryBucket:
         self.last_error_code = route_error.error_code
         self.last_failure_kind = route_error.failure_kind or "provider_route_error"
         self.last_upstream_status_code = route_error.upstream_status_code
+
+    def record_retry(self, *, event: ProviderRetryEvent, observed_at: str) -> None:
+        self.attempt_count += 1
+        self.retry_count += 1
+        self.last_retry_at = observed_at
+        self.last_retry_delay_ms = max(0, int(round(event.delay_seconds * 1000)))
+        self.last_retry_failure_kind = event.failure_kind
 
     def to_wire(self) -> dict[str, Any]:
         return {
@@ -110,6 +125,8 @@ class RemoteProviderTelemetryBucket:
             "failure_count": self.failure_count,
             "retryable_failure_count": self.retryable_failure_count,
             "degraded_count": self.degraded_count,
+            "attempt_count": self.attempt_count,
+            "retry_count": self.retry_count,
             "last_outcome": self.last_outcome,
             "last_observed_at": self.last_observed_at,
             "last_latency_ms": self.last_latency_ms,
@@ -117,6 +134,9 @@ class RemoteProviderTelemetryBucket:
             "last_error_code": self.last_error_code,
             "last_failure_kind": self.last_failure_kind,
             "last_upstream_status_code": self.last_upstream_status_code,
+            "last_retry_at": self.last_retry_at,
+            "last_retry_delay_ms": self.last_retry_delay_ms,
+            "last_retry_failure_kind": self.last_retry_failure_kind,
         }
 
 
@@ -144,6 +164,14 @@ class ProviderTelemetryStore(Protocol):
         *,
         route_error: ProviderRouteError,
         latency_ms: int,
+        observed_at: str,
+    ) -> None: ...
+
+    def record_retry(
+        self,
+        config: ProviderExecutionConfigView,
+        *,
+        event: ProviderRetryEvent,
         observed_at: str,
     ) -> None: ...
 
@@ -205,6 +233,16 @@ class InMemoryProviderTelemetryStore:
                 observed_at=observed_at,
             )
 
+    def record_retry(
+        self,
+        config: ProviderExecutionConfigView,
+        *,
+        event: ProviderRetryEvent,
+        observed_at: str,
+    ) -> None:
+        with self._lock:
+            self._bucket(config).record_retry(event=event, observed_at=observed_at)
+
     def _bucket(
         self,
         config: ProviderExecutionConfigView,
@@ -261,6 +299,17 @@ def reset_provider_telemetry(
     store: ProviderTelemetryStore = DEFAULT_TELEMETRY_STORE,
 ) -> None:
     store.reset()
+
+
+def record_provider_retry(
+    config: ProviderExecutionConfigView,
+    event: ProviderRetryEvent,
+    *,
+    store: ProviderTelemetryStore = DEFAULT_TELEMETRY_STORE,
+    observed_at: Callable[[], str] | None = None,
+) -> None:
+    now = observed_at or utc_now
+    store.record_retry(config, event=event, observed_at=now())
 
 
 def telemetry_key(config: ProviderExecutionConfigView) -> str:

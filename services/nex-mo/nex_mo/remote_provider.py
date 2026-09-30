@@ -15,6 +15,7 @@ from nex_mo.provider_normalization import (
 from nex_mo.provider_telemetry import (
     RemoteProviderTelemetryBucket,
     list_provider_telemetry,
+    record_provider_retry,
     recorded_provider_call as _recorded_remote_provider_call,
     reset_provider_telemetry as reset_remote_provider_telemetry,
 )
@@ -575,6 +576,7 @@ def _execute_remote_request_with_retry(
     kwargs: dict[str, Any] = {}
     if requester is not None:
         kwargs["sleeper"] = lambda _: None
+    kwargs["on_retry"] = lambda event: record_provider_retry(config, event)
     return execute_remote_json_request_with_retry(
         config,
         json_payload=json_payload,
