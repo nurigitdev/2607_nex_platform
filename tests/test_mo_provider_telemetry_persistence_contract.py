@@ -177,6 +177,19 @@ def test_record_mapping_round_trip_accepts_database_datetimes() -> None:
     assert "provider_endpoint" not in restored.to_mapping()
 
 
+def test_record_mapping_canonicalizes_database_timezone_to_utc_z() -> None:
+    source = _record().to_mapping()
+    source["last_observed_at"] = datetime.fromisoformat(
+        "2026-09-30T10:00:00+09:00"
+    )
+    source["last_retry_at"] = "2026-09-30T09:59:59+09:00"
+
+    restored = DurableProviderTelemetryRecord.from_mapping(source)
+
+    assert restored.last_observed_at == "2026-09-30T01:00:00Z"
+    assert restored.last_retry_at == "2026-09-30T00:59:59Z"
+
+
 def test_record_mapping_accepts_absent_optional_values() -> None:
     row = _record(last_observed_at=None, last_retry_at=None).to_mapping()
 

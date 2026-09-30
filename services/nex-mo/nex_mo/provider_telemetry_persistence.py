@@ -322,10 +322,10 @@ def _optional_timestamp(value: object) -> str | None:
             raise ProviderTelemetryPersistenceError(
                 "persisted timestamp must include a timezone"
             )
-        return value.isoformat().replace("+00:00", "Z")
-    resolved = str(value)
-    _timestamp(resolved, "persisted timestamp")
-    return resolved
+        parsed = value
+    else:
+        parsed = _timestamp(str(value), "persisted timestamp")
+    return parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _canonical_timestamp(value: object, field_name: str) -> str:

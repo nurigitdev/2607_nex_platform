@@ -1263,6 +1263,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1157`](slices/1157_mo_provider_telemetry_restart_concurrency.md) | `S116-006` Harden UTC ordering, concurrent atomic aggregation, restart recovery, and monotonic diagnostics. |
 | [`Slice 1158`](slices/1158_mo_provider_telemetry_durable_api.md) | `S116-007` Prove authenticated durable API recovery, v1 compatibility, privacy, and safe repository-failure handling. |
 | [`Slice 1159`](slices/1159_mo_provider_telemetry_durability_contract.md) | `S116-008` Align migration, repository, runtime, API, schema, OpenAPI, privacy, and operations durability contracts. |
+| [`Slice 1160`](slices/1160_mo_provider_telemetry_postgresql_smoke.md) | `S116-009` Prove restart-safe concurrent telemetry aggregation and authenticated reads on actual MO test PostgreSQL. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
