@@ -1246,6 +1246,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1140`](slices/1140_mo_contract_api_postgresql_smoke.md) | `S114-009` Apply MO migrations and prove contract APIs with real test-PostgreSQL write/read/update/cleanup evidence. |
 | [`Slice 1141`](slices/1141_s114_mo_contract_api_drift_closure.md) | `S114-010` Close MO contract/API drift at zero and register deterministic, PostgreSQL, and Full Gate evidence. |
 | [`Slice 1142`](slices/1142_mo_provider_resilience_retry_boundary.md) | `S115-001` Freeze bounded retry safety, capability attempt limits, and S116/S117 deferrals. |
+| [`Slice 1143`](slices/1143_mo_provider_retry_policy_failure_taxonomy.md) | `S115-002` Add capability retry policies and phase-specific timeout classification. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

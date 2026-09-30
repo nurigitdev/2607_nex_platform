@@ -42,7 +42,7 @@ def test_transport_success_and_default_requester(monkeypatch) -> None:
 @pytest.mark.parametrize(
     ("failure", "status_code", "kind"),
     [
-        (httpx.ReadTimeout("timeout"), 504, "timeout"),
+        (httpx.ReadTimeout("timeout"), 504, "read_timeout"),
         (httpx.ConnectError("unavailable"), 503, "connection_error"),
     ],
 )

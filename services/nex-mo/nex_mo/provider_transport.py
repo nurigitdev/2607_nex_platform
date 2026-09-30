@@ -99,20 +99,57 @@ def classify_remote_provider_exception(
     *,
     error_code_prefix: str,
 ) -> RemoteProviderFailureDecision:
+    if isinstance(exc, httpx.ConnectTimeout):
+        return _timeout_failure(
+            "connect_timeout",
+            "Remote provider connection timed out.",
+            error_code_prefix=error_code_prefix,
+        )
+    if isinstance(exc, httpx.ReadTimeout):
+        return _timeout_failure(
+            "read_timeout",
+            "Remote provider response timed out.",
+            error_code_prefix=error_code_prefix,
+        )
+    if isinstance(exc, httpx.WriteTimeout):
+        return _timeout_failure(
+            "write_timeout",
+            "Remote provider request write timed out.",
+            error_code_prefix=error_code_prefix,
+        )
+    if isinstance(exc, httpx.PoolTimeout):
+        return _timeout_failure(
+            "pool_timeout",
+            "Remote provider connection pool timed out.",
+            error_code_prefix=error_code_prefix,
+        )
     if isinstance(exc, httpx.TimeoutException):
-        return RemoteProviderFailureDecision(
-            failure_kind="timeout",
-            error_code=f"{error_code_prefix}_timeout",
-            status_code=504,
-            detail="Remote provider request timed out.",
-            retryable=True,
-            degraded=True,
+        return _timeout_failure(
+            "timeout",
+            "Remote provider request timed out.",
+            error_code_prefix=error_code_prefix,
         )
     return RemoteProviderFailureDecision(
         failure_kind="connection_error",
         error_code=f"{error_code_prefix}_unavailable",
         status_code=503,
         detail="Remote provider request failed before a valid response was received.",
+        retryable=True,
+        degraded=True,
+    )
+
+
+def _timeout_failure(
+    failure_kind: str,
+    detail: str,
+    *,
+    error_code_prefix: str,
+) -> RemoteProviderFailureDecision:
+    return RemoteProviderFailureDecision(
+        failure_kind=failure_kind,
+        error_code=f"{error_code_prefix}_timeout",
+        status_code=504,
+        detail=detail,
         retryable=True,
         degraded=True,
     )
