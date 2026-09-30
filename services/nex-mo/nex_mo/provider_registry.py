@@ -1,10 +1,9 @@
 from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import Any
+from threading import RLock
+from typing import Any, Callable, Sequence
 
 from nex_mo.provider_projection import project_provider_route
-
 
 @dataclass(frozen=True)
 class ProviderRoute:
@@ -23,7 +22,6 @@ class ProviderRoute:
     def to_wire(self) -> dict[str, Any]:
         return project_provider_route(self)
 
-
 @dataclass(frozen=True)
 class ProviderRouteError(Exception):
     status_code: int
@@ -34,7 +32,6 @@ class ProviderRouteError(Exception):
     failure_kind: str | None = None
     upstream_status_code: int | None = None
     retry_after_seconds: float | None = None
-
 
 DEFAULT_PROVIDER_ROUTES: tuple[ProviderRoute, ...] = (
     ProviderRoute(
@@ -73,22 +70,61 @@ DEFAULT_PROVIDER_ROUTES: tuple[ProviderRoute, ...] = (
     ),
 )
 
+ProviderRouteSource = Callable[[], Sequence[ProviderRoute]]
+_PROVIDER_ROUTE_SOURCE_LOCK = RLock()
+_provider_route_source: ProviderRouteSource = lambda: DEFAULT_PROVIDER_ROUTES
+
+def configure_provider_route_source(
+    source: ProviderRouteSource | None,
+) -> ProviderRouteSource:
+    global _provider_route_source
+    next_source = (lambda: DEFAULT_PROVIDER_ROUTES) if source is None else source
+    if not callable(next_source):
+        raise TypeError("provider route source must be callable")
+    with _PROVIDER_ROUTE_SOURCE_LOCK:
+        previous = _provider_route_source
+        _provider_route_source = next_source
+    return previous
+
+def _provider_route_snapshot(
+    routes: Sequence[ProviderRoute] | None,
+) -> tuple[ProviderRoute, ...]:
+    if routes is not None:
+        return tuple(routes)
+    with _PROVIDER_ROUTE_SOURCE_LOCK:
+        source = _provider_route_source
+    try:
+        return tuple(source())
+    except ProviderRouteError:
+        raise
+    except Exception as exc:
+        raise ProviderRouteError(
+            503,
+            "mo.catalog_runtime_unavailable",
+            "Provider catalog runtime is unavailable.",
+            retryable=True,
+            degraded=True,
+        ) from exc
+
 
 def list_provider_routes(
     capability: str | None = None,
-    routes: tuple[ProviderRoute, ...] = DEFAULT_PROVIDER_ROUTES,
+    routes: Sequence[ProviderRoute] | None = None,
 ) -> list[ProviderRoute]:
+    snapshot = _provider_route_snapshot(routes)
     if capability is None:
-        return list(routes)
-    return [route for route in routes if route.provider_capability == capability]
+        return list(snapshot)
+    return [route for route in snapshot if route.provider_capability == capability]
 
 
 def resolve_provider_route(
     alias: str,
     provider_capability: str,
-    routes: tuple[ProviderRoute, ...] = DEFAULT_PROVIDER_ROUTES,
+    routes: Sequence[ProviderRoute] | None = None,
 ) -> ProviderRoute:
-    matches = [route for route in routes if route.alias == alias]
+    matches = [
+        route for route in _provider_route_snapshot(routes) if route.alias == alias
+    ]
     if not matches:
         raise ProviderRouteError(
             404,

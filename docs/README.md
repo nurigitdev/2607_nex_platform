@@ -1281,6 +1281,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1175`](slices/1175_mo_catalog_lifecycle_service.md) | `S118-004` Add revision-guarded catalog registration and lifecycle transitions without changing active aliases. |
 | [`Slice 1176`](slices/1176_mo_atomic_alias_activation_rollback.md) | `S118-005` Add atomic alias activation, optimistic revision guards, append-only rollback lineage, and Checkpoint Gate evidence. |
 | [`Slice 1177`](slices/1177_mo_authenticated_catalog_lifecycle_api.md) | `S118-006` Expose authenticated catalog and alias lifecycle APIs with server-derived audit identity and safe runtime wiring. |
+| [`Slice 1178`](slices/1178_mo_catalog_runtime_route_resolution.md) | `S118-007` Resolve provider execution routes from active durable aliases while preserving static bootstrap compatibility and fail-closed behavior. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
