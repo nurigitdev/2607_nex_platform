@@ -6,6 +6,7 @@ from nex_runtime import (
     register_service_log_retention_routes,
 )
 from nex_mo.providers import register_mock_provider_routes
+from nex_mo.provider_readiness_api import register_provider_readiness_routes
 from nex_mo.provider_readiness_service import ProviderReadinessService
 
 
@@ -28,3 +29,4 @@ register_service_log_retention_routes(
     store=SERVICE_PERSISTENCE.service_log_store,
 )
 register_mock_provider_routes(app)
+register_provider_readiness_routes(app, service=PROVIDER_READINESS)

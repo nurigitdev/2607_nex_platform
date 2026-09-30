@@ -8,8 +8,8 @@ from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import FastAPI, Header, Request
-from fastapi.responses import JSONResponse
 
+from nex_mo.provider_auth import authorize_mo_service_request
 from nex_mo.provider_catalog import (
     DEFAULT_GENERATION_PROFILE,
     DEFAULT_MODEL_ROOT,
@@ -30,11 +30,9 @@ from nex_mo.provider_registry import (
     resolve_provider_route,
 )
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
 )
 
 
@@ -240,7 +238,7 @@ def register_mock_provider_routes(app: FastAPI) -> None:
         capability: str | None = None,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_mo_request(request, authorization)
+        auth_problem = authorize_mo_service_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -259,7 +257,7 @@ def register_mock_provider_routes(app: FastAPI) -> None:
         capability: str | None = None,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_mo_request(request, authorization)
+        auth_problem = authorize_mo_service_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -278,7 +276,7 @@ def register_mock_provider_routes(app: FastAPI) -> None:
         capability: str | None = None,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_mo_request(request, authorization)
+        auth_problem = authorize_mo_service_request(request, authorization)
         if auth_problem is not None:
             return auth_problem
 
@@ -340,7 +338,7 @@ def _handle_provider_request(
     authorization: str | None,
     factory,
 ):
-    auth_problem = _authorize_mo_request(request, authorization)
+    auth_problem = authorize_mo_service_request(request, authorization)
     if auth_problem is not None:
         return auth_problem
 
@@ -357,28 +355,6 @@ def _handle_provider_request(
             type_uri="https://nex-platform.local/problems/provider-route-rejected",
             details={"degraded": exc.degraded} if exc.degraded else None,
         )
-
-
-def _authorize_mo_request(
-    request: Request,
-    authorization: str | None,
-) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-mo",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if result.ok:
-        return None
-
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "MO requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
 
 
 def _string_field(

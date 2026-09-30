@@ -61,6 +61,11 @@
       "schema": "schemas/service/nex_mo/provider_route.v1.schema.json"
     },
     {
+      "name": "mo_provider_readiness_provider_endpoint_leak",
+      "path": "tests/negative/provider/mo_provider_readiness.provider_endpoint_leak.json",
+      "schema": "schemas/service/nex_mo/provider_readiness.v1.schema.json"
+    },
+    {
       "name": "mo_model_profile_api_key_leak",
       "path": "tests/negative/generation/mo_model_profile.api_key_leak.json",
       "schema": "schemas/service/nex_mo/model_profile.v1.schema.json"

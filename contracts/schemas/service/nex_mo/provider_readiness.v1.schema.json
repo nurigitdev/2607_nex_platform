@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_mo/provider_readiness.v1.schema.json",
+  "title": "NeX MO Provider Readiness",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "ok",
+    "provider_readiness_schema_version",
+    "provider_mode",
+    "readiness_status",
+    "checked_at",
+    "expires_at",
+    "cache_status",
+    "required_capabilities",
+    "summary",
+    "routes",
+    "failure_code",
+    "error_code"
+  ],
+  "properties": {
+    "name": {
+      "const": "provider_routes"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "provider_readiness_schema_version": {
+      "const": "mo_provider_readiness.v1"
+    },
+    "provider_mode": {
+      "type": "string",
+      "enum": [
+        "mock",
+        "live",
+        "unknown"
+      ]
+    },
+    "readiness_status": {
+      "type": "string",
+      "enum": [
+        "READY",
+        "NOT_READY"
+      ]
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cache_status": {
+      "type": "string",
+      "enum": [
+        "MISS",
+        "FRESH",
+        "REFRESHED",
+        "STALE"
+      ]
+    },
+    "required_capabilities": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        {
+          "const": "embedding"
+        },
+        {
+          "const": "reranking"
+        },
+        {
+          "const": "generation"
+        }
+      ],
+      "items": false
+    },
+    "summary": {
+      "$ref": "#/$defs/readinessSummary"
+    },
+    "routes": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "$ref": "#/$defs/routeHealth"
+      }
+    },
+    "failure_code": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "error_code": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[A-Z][A-Z0-9_]*$"
+    }
+  },
+  "$defs": {
+    "readinessSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_count",
+        "route_count",
+        "status_counts"
+      ],
+      "properties": {
+        "required_count": {
+          "const": 3
+        },
+        "route_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "status_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "READY",
+            "DEGRADED",
+            "UNAVAILABLE",
+            "UNKNOWN"
+          ],
+          "properties": {
+            "READY": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            },
+            "DEGRADED": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            },
+            "UNAVAILABLE": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            },
+            "UNKNOWN": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            }
+          }
+        }
+      }
+    },
+    "routeHealth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route_health_schema_version",
+        "provider_capability",
+        "alias",
+        "route_id",
+        "deployment_id",
+        "model_revision",
+        "status",
+        "source",
+        "ok",
+        "checked_at",
+        "latency_ms",
+        "failure_code",
+        "retryable",
+        "degraded"
+      ],
+      "properties": {
+        "route_health_schema_version": {
+          "const": "mo_provider_route_health.v1"
+        },
+        "provider_capability": {
+          "type": "string",
+          "enum": [
+            "embedding",
+            "reranking",
+            "generation"
+          ]
+        },
+        "alias": {
+          "type": "string",
+          "minLength": 1
+        },
+        "route_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deployment_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "READY",
+            "DEGRADED",
+            "UNAVAILABLE",
+            "UNKNOWN"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "mock_registry",
+            "active_preflight"
+          ]
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "checked_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "latency_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "failure_code": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "degraded": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

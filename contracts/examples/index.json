@@ -111,6 +111,11 @@
       "schema": "schemas/service/nex_mo/compatible_provider_health.v1.schema.json"
     },
     {
+      "name": "mo_provider_readiness_mock_ready",
+      "path": "examples/provider/mo_provider_readiness.mock_ready.json",
+      "schema": "schemas/service/nex_mo/provider_readiness.v1.schema.json"
+    },
+    {
       "name": "cx_generation_execution_record_mock",
       "path": "examples/generation/cx_generation_execution_record.mock_success.json",
       "schema": "schemas/generation/cx_generation_execution_record.v1.schema.json"

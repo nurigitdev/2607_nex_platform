@@ -12,6 +12,7 @@ HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete"})
 BUSINESS_PATHS = (
     "/api/v1/provider-routes",
     "/api/v1/provider-profiles",
+    "/api/v1/provider-route-health",
     "/api/v1/provider-telemetry",
     "/api/v1/embeddings",
     "/api/v1/rerank",
@@ -69,9 +70,9 @@ def build_mo_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
     missing_negative = sorted(set(schemas) - negative_schemas)
     checks = {
         "openapi_document_readable": bool(document),
-        "runtime_operation_inventory_complete": len(runtime_operations) == 18,
+        "runtime_operation_inventory_complete": len(runtime_operations) == 19,
         "openapi_drift_classified": len(missing_openapi) == 9 and not extra_openapi,
-        "business_path_inventory_complete": len(BUSINESS_PATHS) == 6,
+        "business_path_inventory_complete": len(BUSINESS_PATHS) == 7,
         "schema_positive_fixtures_complete": not missing_positive,
         "schema_negative_gaps_classified": len(missing_negative) == 3,
     }

@@ -6,6 +6,7 @@ tags:
   - name: Platform
   - name: Provider Profiles
   - name: Provider Routes
+  - name: Provider Readiness
   - name: Providers
 paths:
   /health:
@@ -74,6 +75,22 @@ paths:
           description: MO model profiles by capability, including selected defaults and generation candidates.
         "401":
           description: Service claim is missing or invalid.
+  /api/v1/provider-route-health:
+    get:
+      operationId: getMoProviderRouteHealth
+      tags:
+        - Provider Readiness
+      security:
+        - serviceBearer: []
+      responses:
+        "200":
+          description: Privacy-safe provider route health and aggregate readiness snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderReadiness"
+        "401":
+          description: Service claim is missing or invalid.
   /api/v1/embeddings:
     post:
       operationId: createMoMockEmbeddings
@@ -116,3 +133,171 @@ paths:
           description: Provider alias was not found.
         "422":
           description: Provider route cannot satisfy the request.
+components:
+  securitySchemes:
+    serviceBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: NeX service claim
+  schemas:
+    ProviderReadiness:
+      type: object
+      additionalProperties: false
+      x-nex-canonical-json-schema: schemas/service/nex_mo/provider_readiness.v1.schema.json
+      required:
+        - name
+        - ok
+        - provider_readiness_schema_version
+        - provider_mode
+        - readiness_status
+        - checked_at
+        - expires_at
+        - cache_status
+        - required_capabilities
+        - summary
+        - routes
+        - failure_code
+        - error_code
+      properties:
+        name:
+          type: string
+          const: provider_routes
+        ok:
+          type: boolean
+        provider_readiness_schema_version:
+          type: string
+          const: mo_provider_readiness.v1
+        provider_mode:
+          type: string
+          enum:
+            - mock
+            - live
+            - unknown
+        readiness_status:
+          type: string
+          enum:
+            - READY
+            - NOT_READY
+        checked_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        cache_status:
+          type: string
+          enum:
+            - MISS
+            - FRESH
+            - REFRESHED
+            - STALE
+        required_capabilities:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            type: string
+            enum:
+              - embedding
+              - reranking
+              - generation
+        summary:
+          type: object
+          additionalProperties: false
+          required:
+            - required_count
+            - route_count
+            - status_counts
+          properties:
+            required_count:
+              type: integer
+              const: 3
+            route_count:
+              type: integer
+              minimum: 0
+              maximum: 3
+            status_counts:
+              type: object
+              additionalProperties:
+                type: integer
+                minimum: 0
+                maximum: 3
+        routes:
+          type: array
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/ProviderRouteHealth"
+        failure_code:
+          type:
+            - string
+            - "null"
+        error_code:
+          type:
+            - string
+            - "null"
+    ProviderRouteHealth:
+      type: object
+      additionalProperties: false
+      required:
+        - route_health_schema_version
+        - provider_capability
+        - alias
+        - route_id
+        - deployment_id
+        - model_revision
+        - status
+        - source
+        - ok
+        - checked_at
+        - latency_ms
+        - failure_code
+        - retryable
+        - degraded
+      properties:
+        route_health_schema_version:
+          type: string
+          const: mo_provider_route_health.v1
+        provider_capability:
+          type: string
+          enum:
+            - embedding
+            - reranking
+            - generation
+        alias:
+          type: string
+        route_id:
+          type: string
+        deployment_id:
+          type: string
+        model_revision:
+          type: string
+        status:
+          type: string
+          enum:
+            - READY
+            - DEGRADED
+            - UNAVAILABLE
+            - UNKNOWN
+        source:
+          type: string
+          enum:
+            - mock_registry
+            - active_preflight
+        ok:
+          type: boolean
+        checked_at:
+          type: string
+          format: date-time
+        latency_ms:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        failure_code:
+          type:
+            - string
+            - "null"
+        retryable:
+          type: boolean
+        degraded:
+          type: boolean
