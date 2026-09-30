@@ -4,6 +4,7 @@ info:
   version: 0.0.0-slice0003
 tags:
   - name: Platform
+  - name: Internal Job Control
   - name: Provider Profiles
   - name: Provider Routes
   - name: Provider Readiness
@@ -45,6 +46,116 @@ paths:
           description: Service claim is valid for this service.
         "401":
           description: Service claim is missing or invalid.
+  /internal/v1/jobs/{job_id}:
+    get:
+      operationId: getMoServiceJob
+      tags:
+        - Internal Job Control
+      security:
+        - serviceBearer: []
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: Payload-redacted MO service-local job control projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobControlResponse"
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Job was not found.
+  /internal/v1/jobs/{job_id}/cancel:
+    post:
+      operationId: cancelMoServiceJob
+      tags:
+        - Internal Job Control
+      security:
+        - serviceBearer: []
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobCancelRequest"
+      responses:
+        "200":
+          description: Active MO job was cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobControlResponse"
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Job was not found.
+        "409":
+          description: Job cannot transition to cancelled.
+        "422":
+          description: Job control payload is invalid.
+  /internal/v1/jobs/{job_id}/retry:
+    post:
+      operationId: retryMoServiceJob
+      tags:
+        - Internal Job Control
+      security:
+        - serviceBearer: []
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobRetryRequest"
+      responses:
+        "200":
+          description: Running MO job was requeued or dead-lettered by retry policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobControlResponse"
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Job was not found.
+        "409":
+          description: Job cannot be retried from its current status.
+        "422":
+          description: Job control payload is invalid.
+  /internal/v1/jobs/{job_id}/replay:
+    post:
+      operationId: replayMoServiceJob
+      tags:
+        - Internal Job Control
+      security:
+        - serviceBearer: []
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobReplayRequest"
+      responses:
+        "200":
+          description: Dead-lettered MO job was replayed with explicit lineage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobControlResponse"
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Job was not found.
+        "409":
+          description: Job cannot be replayed from its current status.
+        "422":
+          description: Replay payload is invalid.
   /api/v1/provider-routes:
     get:
       operationId: listMoProviderRoutes
@@ -212,12 +323,80 @@ paths:
         "422":
           description: Provider route cannot satisfy the request.
 components:
+  parameters:
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
   securitySchemes:
     serviceBearer:
       type: http
       scheme: bearer
       bearerFormat: NeX service claim
   schemas:
+    JobCancelRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        observed_at:
+          type: string
+          format: date-time
+    JobRetryRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        error_code:
+          type: string
+          minLength: 1
+        detail:
+          type: string
+          minLength: 1
+        observed_at:
+          type: string
+          format: date-time
+    JobReplayRequest:
+      type: object
+      additionalProperties: false
+      required: [replay_job_id, idempotency_key, requested_by, reason]
+      properties:
+        replay_job_id:
+          type: string
+          minLength: 1
+        idempotency_key:
+          type: string
+          minLength: 1
+        requested_by:
+          type: string
+          minLength: 1
+        reason:
+          type: string
+          minLength: 1
+        observed_at:
+          type: string
+          format: date-time
+    JobControlResponse:
+      type: object
+      additionalProperties: true
+      required: [job_control_schema_version, service_id, action, job, controls]
+      properties:
+        job_control_schema_version:
+          type: string
+          const: service_job_control.v1
+        service_id:
+          type: string
+          const: nex-mo
+        action:
+          type: string
+          enum: [read, cancel, retry, replay]
+        job:
+          type: object
+        controls:
+          type: object
+        replay:
+          type: object
     ProviderRouteList:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_mo/provider_route_list.v1.schema.json

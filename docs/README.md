@@ -1239,6 +1239,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1133`](slices/1133_mo_canonical_api_contract_schemas.md) | `S114-002` Add canonical schemas and indexed fixtures for the actual MO provider API wire shapes. |
 | [`Slice 1134`](slices/1134_mo_contract_fixture_completion.md) | `S114-003` Complete positive/negative fixture coverage for every MO schema and reduce drift to 25. |
 | [`Slice 1135`](slices/1135_mo_provider_openapi_contract_hardening.md) | `S114-004` Align seven provider API operations with canonical schemas, security, and mode-neutral behavior. |
+| [`Slice 1136`](slices/1136_mo_job_control_openapi_alignment.md) | `S114-005` Align four shared MO job-control operations and run the fifth-Slice Checkpoint Gate. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -12,7 +12,7 @@ def test_repository_mo_contract_fixtures_are_complete() -> None:
         "schema_count": 17,
         "positive_fixture_count": 17,
         "negative_fixture_count": 17,
-        "remaining_drift_count": 8,
+        "remaining_drift_count": 4,
     }
     assert result["next_slice"] == "1135"
 
@@ -49,7 +49,7 @@ def test_fixture_completion_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_mo_contract_fixture_completion()
     assert runner.summary_line(passing) == (
         "mo_contract_fixture_completion=pass positive=17/17 "
-        "negative=17/17 drift=8 next=1135"
+        "negative=17/17 drift=4 next=1135"
     )
 
     monkeypatch.setattr(

@@ -114,7 +114,7 @@ def run_mo_provider_openapi_contract(
                 "missing_security_count",
             )
         ),
-        "remaining_drift_is_shared_routes": _count(summary, "drift_count") == 8,
+        "remaining_drift_is_shared_routes": _count(summary, "drift_count") <= 8,
     }
     passed = all(checks.values())
     return {
