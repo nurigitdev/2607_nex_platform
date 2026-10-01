@@ -428,8 +428,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: "#/components/schemas/MoMvpAcceptanceOperationsProjection"
         "401":
           description: Service or user claim is missing or invalid.
         "403":
@@ -1554,6 +1553,131 @@ components:
           type:
             - string
             - "null"
+    MoMvpAcceptanceGateResult:
+      type: object
+      additionalProperties: false
+      required: [gate_id, severity, status, reason_codes]
+      properties:
+        gate_id:
+          type: string
+          enum:
+            - mo_requirement_closures
+            - contract_validation
+            - unit_regression
+            - statement_coverage
+            - branch_coverage
+            - postgres_smoke
+            - live_provider_acceptance
+            - privacy_failure_runbooks
+            - oa_transition_handoff
+        severity:
+          const: BLOCKING
+        status:
+          type: string
+          enum: [PASS, BLOCKED]
+        reason_codes:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+    MoMvpAcceptanceBlocker:
+      type: object
+      additionalProperties: false
+      required: [gate_id, reason_codes]
+      properties:
+        gate_id:
+          type: string
+        reason_codes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+    MoMvpAcceptanceOperationsProjection:
+      type: object
+      additionalProperties: false
+      x-nex-canonical-json-schema: schemas/service/nex_mo/mvp_acceptance.v1.schema.json
+      required:
+        - report_schema_version
+        - acceptance_id
+        - service_id
+        - acceptance_scope
+        - transition_target
+        - evaluated_at
+        - status
+        - transition_status
+        - gates
+        - blockers
+        - summary
+        - advisory_deferrals
+        - raw_evidence_included
+        - request_trace_id
+        - evidence_source_status
+        - server_selected
+      properties:
+        report_schema_version:
+          const: mo_mvp_acceptance_report.v1
+        acceptance_id:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        service_id:
+          const: nex-mo
+        acceptance_scope:
+          const: nex_mo_service_mvp
+        transition_target:
+          const: nex-oa
+        evaluated_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [ACCEPTED, BLOCKED]
+        transition_status:
+          type: string
+          enum: [READY_FOR_OA, BLOCKED]
+        gates:
+          type: array
+          minItems: 9
+          maxItems: 9
+          items:
+            $ref: "#/components/schemas/MoMvpAcceptanceGateResult"
+        blockers:
+          type: array
+          maxItems: 9
+          items:
+            $ref: "#/components/schemas/MoMvpAcceptanceBlocker"
+        summary:
+          type: object
+          additionalProperties: false
+          required: [gate_count, passed_gate_count, blocked_gate_count]
+          properties:
+            gate_count:
+              const: 9
+            passed_gate_count:
+              type: integer
+              minimum: 0
+              maximum: 9
+            blocked_gate_count:
+              type: integer
+              minimum: 0
+              maximum: 9
+        advisory_deferrals:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+        raw_evidence_included:
+          const: false
+        request_trace_id:
+          type:
+            - string
+            - "null"
+          pattern: "^[0-9a-f]{32}$"
+        evidence_source_status:
+          type: string
+          enum: [COLLECTED, UNAVAILABLE]
+        server_selected:
+          const: true
     OperationsSnapshot:
       type: object
       additionalProperties: false

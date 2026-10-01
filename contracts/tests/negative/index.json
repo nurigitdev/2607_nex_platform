@@ -671,6 +671,16 @@
       "schema": "schemas/service/nex_ae_api/mvp_acceptance.v1.schema.json"
     },
     {
+      "name": "mo_mvp_acceptance_raw_evidence_leak",
+      "path": "tests/negative/operations/mo_mvp_acceptance.raw_evidence_leak.json",
+      "schema": "schemas/service/nex_mo/mvp_acceptance.v1.schema.json"
+    },
+    {
+      "name": "mo_mvp_acceptance_database_url_leak",
+      "path": "tests/negative/operations/mo_mvp_acceptance.database_url_leak.json",
+      "schema": "schemas/service/nex_mo/mvp_acceptance.v1.schema.json"
+    },
+    {
       "name": "cx_async_generation_job_raw_prompt_leak",
       "path": "tests/negative/generation/cx_async_generation_job.raw_prompt_leak.json",
       "schema": "schemas/generation/cx_async_generation_job.v1.schema.json"

@@ -1300,6 +1300,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1194`](slices/1194_mo_mvp_evidence_inventory.md) | `S120-003` Inventory S111-S119 closure runners and documents with strict identity and server-clock freshness rules. |
 | [`Slice 1195`](slices/1195_mo_mvp_acceptance_evaluator.md) | `S120-004` Evaluate fresh MO MVP evidence deterministically with fail-closed gate reason codes. |
 | [`Slice 1196`](slices/1196_mo_mvp_acceptance_api.md) | `S120-005` Expose a server-selected, admin/service-protected, read-only MO MVP acceptance API. |
+| [`Slice 1197`](slices/1197_mo_mvp_acceptance_contract_hardening.md) | `S120-006` Freeze the strict MO MVP acceptance schema, fixtures, OpenAPI response, and privacy boundary. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
