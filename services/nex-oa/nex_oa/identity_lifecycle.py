@@ -5,16 +5,22 @@ from dataclasses import dataclass
 import re
 from typing import Any
 
+from nex_oa.memberships import normalize_membership_status
 from nex_oa.subjects import normalize_registry_id, normalize_subject_status
 
 
 OA_IDENTITY_LIFECYCLE_SCHEMA_VERSION = "oa_identity_lifecycle.v1"
 OA_SUBJECT_LIFECYCLE_ENTITY = "SUBJECT"
+OA_MEMBERSHIP_LIFECYCLE_ENTITY = "MEMBERSHIP"
 
 _SUBJECT_TRANSITIONS = {
     "ACTIVE": frozenset(("DISABLED", "DELETED")),
     "DISABLED": frozenset(("ACTIVE", "DELETED")),
     "DELETED": frozenset(),
+}
+_MEMBERSHIP_TRANSITIONS = {
+    "ACTIVE": frozenset(("DISABLED",)),
+    "DISABLED": frozenset(("ACTIVE",)),
 }
 _REASON_CODE_PATTERN = re.compile(r"^[a-z][a-z0-9_.-]{1,63}$")
 
@@ -75,6 +81,52 @@ def plan_subject_status_transition(
     }
 
 
+def plan_membership_status_transition(
+    membership: Mapping[str, Any],
+    *,
+    target_status: object,
+    expected_revision: object,
+    reason_code: object | None = None,
+) -> dict[str, Any]:
+    record = _membership_record(membership)
+    tenant_id, subject_id = _membership_ids(record)
+    current_status = normalize_membership_status(record.get("status"))
+    normalized_target = normalize_membership_status(target_status)
+    current_revision = normalize_lifecycle_revision(record.get("revision", 1))
+    normalized_expected = normalize_lifecycle_revision(expected_revision)
+    if normalized_expected != current_revision:
+        raise OaIdentityLifecycleError(
+            status_code=409,
+            error_code="oa.lifecycle_revision_conflict",
+            detail="expected_revision does not match the current membership revision.",
+        )
+    changed = normalized_target != current_status
+    if changed and normalized_target not in _MEMBERSHIP_TRANSITIONS[current_status]:
+        raise OaIdentityLifecycleError(
+            status_code=409,
+            error_code="oa.membership_transition_invalid",
+            detail=(
+                "membership status cannot transition from "
+                f"{current_status} to {normalized_target}."
+            ),
+        )
+    normalized_reason = normalize_lifecycle_reason(reason_code, required=changed)
+    return {
+        "lifecycle_schema_version": OA_IDENTITY_LIFECYCLE_SCHEMA_VERSION,
+        "entity_type": OA_MEMBERSHIP_LIFECYCLE_ENTITY,
+        "tenant_id": tenant_id,
+        "subject_id": subject_id,
+        "previous_status": current_status,
+        "target_status": normalized_target,
+        "expected_revision": normalized_expected,
+        "next_revision": current_revision + 1 if changed else current_revision,
+        "changed": changed,
+        "reason_code": normalized_reason,
+        "revoke_active_sessions": changed and normalized_target == "DISABLED",
+        "restore_prior_sessions": False,
+    }
+
+
 def normalize_lifecycle_revision(value: object) -> int:
     if isinstance(value, bool):
         raise _revision_error()
@@ -113,6 +165,30 @@ def _subject_record(subject: Mapping[str, Any]) -> Mapping[str, Any]:
             detail="subject must be an object.",
         )
     return nested
+
+
+def _membership_record(membership: Mapping[str, Any]) -> Mapping[str, Any]:
+    nested = membership.get("membership")
+    if nested is None:
+        return membership
+    if not isinstance(nested, Mapping):
+        raise OaIdentityLifecycleError(
+            status_code=400,
+            error_code="oa.membership_record_invalid",
+            detail="membership must be an object.",
+        )
+    return nested
+
+
+def _membership_ids(record: Mapping[str, Any]) -> tuple[str, str]:
+    tenant_ref = record.get("tenant_ref")
+    subject_ref = record.get("subject_ref")
+    tenant_id = tenant_ref.get("id") if isinstance(tenant_ref, Mapping) else record.get("tenant_id")
+    subject_id = subject_ref.get("id") if isinstance(subject_ref, Mapping) else record.get("subject_id")
+    return (
+        normalize_registry_id(tenant_id, field_name="tenant_id"),
+        normalize_registry_id(subject_id, field_name="subject_id"),
+    )
 
 
 def _revision_error() -> OaIdentityLifecycleError:
