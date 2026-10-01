@@ -1302,6 +1302,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1196`](slices/1196_mo_mvp_acceptance_api.md) | `S120-005` Expose a server-selected, admin/service-protected, read-only MO MVP acceptance API. |
 | [`Slice 1197`](slices/1197_mo_mvp_acceptance_contract_hardening.md) | `S120-006` Freeze the strict MO MVP acceptance schema, fixtures, OpenAPI response, and privacy boundary. |
 | [`Slice 1198`](slices/1198_mo_mvp_oa_transition_handoff.md) | `S120-007` Seal and bind a privacy-safe MO-to-OA transition manifest with explicit ownership and trust boundaries. |
+| [`Slice 1199`](slices/1199_mo_mvp_acceptance_postgres_live_smoke.md) | `S120-008` Produce normalized acceptance evidence from actual MO test PostgreSQL, DGX providers, SSH runtime, and OA handoff. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
