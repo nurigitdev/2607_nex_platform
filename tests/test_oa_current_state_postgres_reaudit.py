@@ -75,7 +75,7 @@ def test_repository_postgres_reaudit_evaluation_passes() -> None:
         "ACTUAL_TEST_DATABASE_IDENTITY_FLOW_VERIFIED"
     )
     assert all(result["checks"].values())
-    assert result["summary"]["expected_migration_count"] == 12
+    assert result["summary"]["expected_migration_count"] == 13
     assert result["summary"]["core_table_count"] == 5
     assert result["summary"]["workflow_check_count"] == 5
     assert result["forbidden_private_columns"] == []
@@ -151,7 +151,7 @@ def test_expected_state_and_identifier_helpers_fail_closed_without_inputs(
 ) -> None:
     expected = expected_oa_postgres_state()
 
-    assert len(expected["migration_versions"]) == 12
+    assert len(expected["migration_versions"]) == 13
     assert expected["indexes"]
     assert expected["constraints"]
     assert _named_identifiers(
@@ -229,7 +229,7 @@ def test_database_snapshot_and_cleanup_residue_read_actual_shapes() -> None:
     )
 
     assert snapshot["database"] == "nex_oa_test"
-    assert len(snapshot["migration_versions"]) == 12
+    assert len(snapshot["migration_versions"]) == 13
     assert residue == {key: 0 for key in EXPECTED_RESIDUE_KEYS}
     assert connection.rollbacks == 2
 
@@ -304,7 +304,7 @@ def test_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = evaluate_oa_postgres_reaudit(_snapshot(), _migration(), _workflow())
 
     assert "postgres_reaudit=pass" in runner.summary_line(passing)
-    assert "migrations=12/12" in runner.summary_line(passing)
+    assert "migrations=13/13" in runner.summary_line(passing)
     assert "database=not-run" in runner.summary_line({"status": "SKIPPED"})
 
     monkeypatch.setattr(runner, "load_env_file", lambda _path: None)

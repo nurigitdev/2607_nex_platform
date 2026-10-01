@@ -548,6 +548,7 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_oa_credential_session_security_boundary.py --summary
 "$PYTHON_BIN" scripts/smoke/run_oa_argon2_adaptive_rehash.py --summary
 "$PYTHON_BIN" scripts/smoke/run_oa_atomic_login_lockout.py --summary
+"$PYTHON_BIN" scripts/smoke/run_oa_security_persistence_migration.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary

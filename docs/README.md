@@ -1328,6 +1328,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1222`](slices/1222_oa_credential_session_security_boundary.md) | `S123-001` Freeze Argon2id compatibility, lockout, session expiry, rotation, evidence, and deferred trust boundaries. |
 | [`Slice 1223`](slices/1223_oa_argon2id_adaptive_rehash.md) | `S123-002` Make Argon2id the default while preserving PBKDF2 verification and successful-login adaptive rehash. |
 | [`Slice 1224`](slices/1224_oa_atomic_failed_login_lockout.md) | `S123-003` Add enumeration-safe atomic failed-login counters, timed lockout, and success reset semantics. |
+| [`Slice 1225`](slices/1225_oa_security_persistence_migration.md) | `S123-004` Add Argon2id-compatible credential constraints, idle-session columns, and the short privacy-safe auth-event table. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
