@@ -20,6 +20,7 @@ from nex_oa.identity_lifecycle_repository import (  # noqa: E402
     InMemoryOaIdentityLifecycleRepository,
 )
 from nex_oa.memberships import InMemoryOaTenantMembershipRegistry  # noqa: E402
+from nex_oa.sessions import InMemoryOaSessionRegistry  # noqa: E402
 from nex_oa.subjects import InMemoryOaSubjectRegistry  # noqa: E402
 
 
@@ -29,7 +30,18 @@ def run_oa_identity_lifecycle_repository(root: Path = ROOT) -> dict[str, Any]:
     snapshot = memberships.ensure_membership(
         {"tenant_id": "tenant-1215", "subject_id": "employee-1215"}
     )
-    repository = InMemoryOaIdentityLifecycleRepository(subjects, memberships)
+    sessions = InMemoryOaSessionRegistry(memberships)
+    sessions.sessions["session-1215"] = {
+        "session_id": "session-1215",
+        "status": "ACTIVE",
+        "tenant_ref": {"id": "tenant-1215"},
+        "subject_ref": {"id": "employee-1215"},
+        "revoked_at": None,
+        "updated_at": "2026-01-01T00:00:00Z",
+    }
+    repository = InMemoryOaIdentityLifecycleRepository(
+        subjects, memberships, session_registry=sessions
+    )
     context = {
         "actor_ref_type": "nex.service",
         "actor_ref_id": "nex-ag",
@@ -65,6 +77,8 @@ def run_oa_identity_lifecycle_repository(root: Path = ROOT) -> dict[str, Any]:
         "append_only_events_recorded": len(events) == 2,
         "short_event_table_present": "oa_id_lifecycle_events" in migration_source,
         "migration_registered": "1215_oa_identity_lifecycle" in migration_source,
+        "active_session_revoked": subject_result["revoked_session_count"] == 1
+        and sessions.sessions["session-1215"]["status"] == "REVOKED",
     }
     passed = all(checks.values())
     return {

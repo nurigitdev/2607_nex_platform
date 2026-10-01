@@ -13,6 +13,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from nex_oa.identity_lifecycle import OaIdentityLifecycleError
 from nex_oa.memberships import InMemoryOaTenantMembershipRegistry
+from nex_oa.sessions import (
+    InMemoryOaSessionRegistry,
+    build_revoked_session_record,
+)
 from nex_oa.subjects import InMemoryOaSubjectRegistry, normalize_registry_id
 from nex_runtime import PERSISTENCE_MODE_POSTGRES, ServicePersistenceRuntime
 
@@ -38,6 +42,7 @@ class OaIdentityLifecycleRepository(Protocol):
 class InMemoryOaIdentityLifecycleRepository:
     subject_registry: InMemoryOaSubjectRegistry
     membership_registry: InMemoryOaTenantMembershipRegistry
+    session_registry: InMemoryOaSessionRegistry | None = None
     events: list[dict[str, Any]] = field(default_factory=list)
 
     def transition_subject(
@@ -67,13 +72,34 @@ class InMemoryOaIdentityLifecycleRepository:
             raise _not_found(str(plan["entity_type"]))
         _guard_record(record, plan)
         event = None
+        revoked_session_count = 0
         if bool(plan["changed"]):
+            event = _build_event(plan, context=context)
             record["status"] = str(plan["target_status"])
             record["revision"] = int(plan["next_revision"])
             record["updated_at"] = _utc_now()
-            event = _build_event(plan, context=context)
+            revoked_session_count = self._revoke_matching_sessions(plan)
             self.events.append(deepcopy(event))
-        return _transition_result(plan, event=event)
+        return _transition_result(
+            plan, event=event, revoked_session_count=revoked_session_count
+        )
+
+    def _revoke_matching_sessions(self, plan: Mapping[str, Any]) -> int:
+        if self.session_registry is None or not _requires_session_revocation(plan):
+            return 0
+        revoked = 0
+        for session_id, record in tuple(self.session_registry.sessions.items()):
+            tenant_ref = record.get("tenant_ref") or {}
+            subject_ref = record.get("subject_ref") or {}
+            if (
+                record.get("status") == "ACTIVE"
+                and tenant_ref.get("id") == plan["tenant_id"]
+                and subject_ref.get("id") == plan["subject_id"]
+            ):
+                updated, _, _ = build_revoked_session_record(record)
+                self.session_registry.sessions[session_id] = deepcopy(updated)
+                revoked += 1
+        return revoked
 
     def list_events(
         self, *, tenant_id: str, subject_id: str, limit: int = 100
@@ -117,11 +143,15 @@ class SqlAlchemyOaIdentityLifecycleRepository:
         session = self._session_factory()
         try:
             try:
-                event = self._apply_transition(
+                event, revoked_session_count = self._apply_transition(
                     session, plan=plan, context=context, table=table
                 )
                 session.commit()
-                return _transition_result(plan, event=event)
+                return _transition_result(
+                    plan,
+                    event=event,
+                    revoked_session_count=revoked_session_count,
+                )
             except Exception:
                 session.rollback()
                 raise
@@ -139,13 +169,13 @@ class SqlAlchemyOaIdentityLifecycleRepository:
         plan: Mapping[str, Any],
         context: Mapping[str, Any],
         table: str,
-    ) -> dict[str, Any] | None:
+    ) -> tuple[dict[str, Any] | None, int]:
         if not bool(plan["changed"]):
             row = _select_state(session, table=table, plan=plan)
             if row is None:
                 raise _not_found(str(plan["entity_type"]))
             _guard_record(row, plan)
-            return None
+            return None, 0
         result = session.execute(
             text(
                 f"""
@@ -165,6 +195,7 @@ class SqlAlchemyOaIdentityLifecycleRepository:
         if result.rowcount != 1:
             raise _revision_conflict()
         event = _build_event(plan, context=context)
+        revoked_session_count = _revoke_sql_sessions(session, plan=plan)
         session.execute(
             text(
                 """
@@ -183,7 +214,7 @@ class SqlAlchemyOaIdentityLifecycleRepository:
             ),
             event,
         )
-        return event
+        return event, revoked_session_count
 
     def list_events(
         self, *, tenant_id: str, subject_id: str, limit: int = 100
@@ -223,6 +254,7 @@ def build_identity_lifecycle_repository_for_runtime(
     *,
     subject_registry: InMemoryOaSubjectRegistry,
     membership_registry: InMemoryOaTenantMembershipRegistry,
+    session_registry: InMemoryOaSessionRegistry | None = None,
 ) -> OaIdentityLifecycleRepository:
     if (
         runtime.mode == PERSISTENCE_MODE_POSTGRES
@@ -232,6 +264,7 @@ def build_identity_lifecycle_repository_for_runtime(
     return InMemoryOaIdentityLifecycleRepository(
         subject_registry=subject_registry,
         membership_registry=membership_registry,
+        session_registry=session_registry,
     )
 
 
@@ -286,7 +319,10 @@ def _build_event(
 
 
 def _transition_result(
-    plan: Mapping[str, Any], *, event: Mapping[str, Any] | None
+    plan: Mapping[str, Any],
+    *,
+    event: Mapping[str, Any] | None,
+    revoked_session_count: int,
 ) -> dict[str, Any]:
     return {
         "lifecycle_schema_version": str(plan["lifecycle_schema_version"]),
@@ -296,8 +332,45 @@ def _transition_result(
         "status": str(plan["target_status"]),
         "revision": int(plan["next_revision"]),
         "changed": bool(plan["changed"]),
+        "revoked_session_count": revoked_session_count,
         "event": _wire_event(event) if event is not None else None,
     }
+
+
+def _requires_session_revocation(plan: Mapping[str, Any]) -> bool:
+    if not bool(plan["changed"]):
+        return False
+    if plan["entity_type"] == "SUBJECT":
+        return plan["target_status"] in {"DISABLED", "DELETED"}
+    return (
+        plan["entity_type"] == "MEMBERSHIP"
+        and plan["target_status"] == "DISABLED"
+    )
+
+
+def _revoke_sql_sessions(session: Session, *, plan: Mapping[str, Any]) -> int:
+    if not _requires_session_revocation(plan):
+        return 0
+    now = _utc_now()
+    result = session.execute(
+        text(
+            """
+            UPDATE oa_user_sessions
+            SET status = 'REVOKED', revoked_at = :revoked_at, updated_at = :updated_at
+            WHERE tenant_id = :tenant_id
+              AND subject_id = :subject_id
+              AND subject_ref_type = 'oa.user'
+              AND status = 'ACTIVE'
+            """
+        ),
+        {
+            "tenant_id": str(plan["tenant_id"]),
+            "subject_id": str(plan["subject_id"]),
+            "revoked_at": now,
+            "updated_at": now,
+        },
+    )
+    return int(result.rowcount or 0)
 
 
 def _wire_event(event: Mapping[str, Any]) -> dict[str, Any]:

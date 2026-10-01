@@ -16,6 +16,7 @@ from nex_oa.identity_lifecycle_repository import (
     SqlAlchemyOaIdentityLifecycleRepository,
     _context_text,
     _event_limit,
+    _requires_session_revocation,
     _timestamp_to_wire,
     build_identity_lifecycle_repository_for_runtime,
 )
@@ -23,6 +24,7 @@ from nex_oa.memberships import (
     InMemoryOaTenantMembershipRegistry,
     SqlAlchemyOaTenantMembershipRegistry,
 )
+from nex_oa.sessions import InMemoryOaSessionRegistry
 from nex_oa.subjects import InMemoryOaSubjectRegistry, SqlAlchemyOaSubjectRegistry
 from nex_runtime import build_engine, build_session_factory
 
@@ -84,6 +86,13 @@ def _sqlite_repositories():
                 reason_code TEXT NOT NULL, actor_ref_type TEXT NOT NULL,
                 actor_ref_id TEXT NOT NULL, request_id TEXT NOT NULL,
                 trace_id TEXT NOT NULL, occurred_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE oa_user_sessions (
+                session_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL,
+                subject_ref_type TEXT NOT NULL, subject_id TEXT NOT NULL,
+                status TEXT NOT NULL, revoked_at TEXT, updated_at TEXT NOT NULL
             )
             """,
         ):
@@ -150,6 +159,60 @@ def test_in_memory_idempotency_missing_and_conflict_paths() -> None:
     assert not_found.value.status_code == 404
 
 
+def test_in_memory_subject_disable_revokes_only_matching_active_sessions() -> None:
+    subjects, memberships, repository, snapshot = _memory_repositories()
+    sessions = InMemoryOaSessionRegistry(memberships)
+    sessions.sessions = {
+        "matching": {
+            "session_id": "matching",
+            "status": "ACTIVE",
+            "tenant_ref": {"id": "tenant-a"},
+            "subject_ref": {"id": "employee-a"},
+            "revoked_at": None,
+            "updated_at": "2026-01-01T00:00:00Z",
+        },
+        "other": {
+            "session_id": "other",
+            "status": "ACTIVE",
+            "tenant_ref": {"id": "tenant-a"},
+            "subject_ref": {"id": "employee-b"},
+            "revoked_at": None,
+            "updated_at": "2026-01-01T00:00:00Z",
+        },
+        "expired": {
+            "session_id": "expired",
+            "status": "EXPIRED",
+            "tenant_ref": {"id": "tenant-a"},
+            "subject_ref": {"id": "employee-a"},
+            "revoked_at": None,
+            "updated_at": "2026-01-01T00:00:00Z",
+        },
+        "other-tenant": {
+            "session_id": "other-tenant",
+            "status": "ACTIVE",
+            "tenant_ref": {"id": "tenant-b"},
+            "subject_ref": {"id": "employee-a"},
+            "revoked_at": None,
+            "updated_at": "2026-01-01T00:00:00Z",
+        },
+    }
+    repository.session_registry = sessions
+    plan = plan_subject_status_transition(
+        snapshot["subject_registry_snapshot"],
+        target_status="DISABLED",
+        expected_revision=1,
+        reason_code="admin.disable",
+    )
+
+    result = repository.transition_subject(plan, context=CONTEXT)
+
+    assert result["revoked_session_count"] == 1
+    assert sessions.sessions["matching"]["status"] == "REVOKED"
+    assert sessions.sessions["other"]["status"] == "ACTIVE"
+    assert sessions.sessions["expired"]["status"] == "EXPIRED"
+    assert sessions.sessions["other-tenant"]["status"] == "ACTIVE"
+
+
 def test_sql_repository_persists_both_transitions_and_history() -> None:
     engine, subjects, memberships, repository, snapshot = _sqlite_repositories()
     subject_plan = plan_subject_status_transition(
@@ -181,6 +244,86 @@ def test_sql_repository_persists_both_transitions_and_history() -> None:
         assert connection.execute(
             text("SELECT count(*) FROM oa_id_lifecycle_events")
         ).scalar_one() == 2
+    engine.dispose()
+
+
+def test_sql_membership_disable_revokes_sessions_in_same_transaction() -> None:
+    engine, _, memberships, repository, snapshot = _sqlite_repositories()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO oa_user_sessions (
+                    session_id, tenant_id, subject_ref_type, subject_id,
+                    status, revoked_at, updated_at
+                ) VALUES
+                    ('active', 'tenant-sql', 'oa.user', 'employee-sql', 'ACTIVE', NULL, '2026-01-01T00:00:00Z'),
+                    ('other', 'tenant-sql', 'oa.user', 'other', 'ACTIVE', NULL, '2026-01-01T00:00:00Z')
+                """
+            )
+        )
+    plan = plan_membership_status_transition(
+        snapshot,
+        target_status="DISABLED",
+        expected_revision=1,
+        reason_code="admin.disable",
+    )
+
+    result = repository.transition_membership(plan, context=CONTEXT)
+
+    assert result["revoked_session_count"] == 1
+    with engine.connect() as connection:
+        rows = dict(
+            connection.execute(
+                text("SELECT session_id, status FROM oa_user_sessions")
+            ).all()
+        )
+    assert rows == {"active": "REVOKED", "other": "ACTIVE"}
+    assert memberships.get_membership(
+        tenant_id="tenant-sql", subject_id="employee-sql"
+    )["membership"]["status"] == "DISABLED"
+    enable_plan = plan_membership_status_transition(
+        memberships.get_membership(
+            tenant_id="tenant-sql", subject_id="employee-sql"
+        ),
+        target_status="ACTIVE",
+        expected_revision=2,
+        reason_code="admin.enable",
+    )
+    enabled = repository.transition_membership(enable_plan, context=CONTEXT)
+    assert enabled["revoked_session_count"] == 0
+    engine.dispose()
+
+
+def test_sql_invalid_context_rolls_back_state_and_session_changes() -> None:
+    engine, subjects, _, repository, snapshot = _sqlite_repositories()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO oa_user_sessions (
+                    session_id, tenant_id, subject_ref_type, subject_id,
+                    status, revoked_at, updated_at
+                ) VALUES ('active', 'tenant-sql', 'oa.user', 'employee-sql', 'ACTIVE', NULL, '2026-01-01T00:00:00Z')
+                """
+            )
+        )
+    plan = plan_subject_status_transition(
+        snapshot["subject_registry_snapshot"],
+        target_status="DISABLED",
+        expected_revision=1,
+        reason_code="admin.disable",
+    )
+    with pytest.raises(OaIdentityLifecycleError):
+        repository.transition_subject(plan, context={})
+
+    assert subjects.get_subject(
+        tenant_id="tenant-sql", subject_id="employee-sql"
+    )["subject"]["status"] == "ACTIVE"
+    with engine.connect() as connection:
+        assert connection.execute(
+            text("SELECT status FROM oa_user_sessions WHERE session_id='active'")
+        ).scalar_one() == "ACTIVE"
     engine.dispose()
 
 
@@ -252,6 +395,16 @@ def test_builder_and_validation_helpers_cover_edges() -> None:
     assert _timestamp_to_wire(datetime(2026, 1, 1)) == "2026-01-01T00:00:00Z"
     assert _timestamp_to_wire(datetime(2026, 1, 1, tzinfo=UTC)).endswith("Z")
     assert _timestamp_to_wire("wire") == "wire"
+    assert _requires_session_revocation({"changed": False}) is False
+    assert _requires_session_revocation(
+        {"changed": True, "entity_type": "SUBJECT", "target_status": "ACTIVE"}
+    ) is False
+    assert _requires_session_revocation(
+        {"changed": True, "entity_type": "SUBJECT", "target_status": "DELETED"}
+    ) is True
+    assert _requires_session_revocation(
+        {"changed": True, "entity_type": "MEMBERSHIP", "target_status": "ACTIVE"}
+    ) is False
 
 
 def test_migration_uses_short_valid_identifiers() -> None:
