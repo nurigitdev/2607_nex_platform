@@ -1330,6 +1330,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1224`](slices/1224_oa_atomic_failed_login_lockout.md) | `S123-003` Add enumeration-safe atomic failed-login counters, timed lockout, and success reset semantics. |
 | [`Slice 1225`](slices/1225_oa_security_persistence_migration.md) | `S123-004` Add Argon2id-compatible credential constraints, idle-session columns, and the short privacy-safe auth-event table. |
 | [`Slice 1226`](slices/1226_oa_secure_session_lifecycle.md) | `S123-005` Add random opaque session handles, sliding idle expiry, persisted expiry, and the Checkpoint Gate. |
+| [`Slice 1227`](slices/1227_oa_password_rotation_session_revocation.md) | `S123-006` Add scoped password change/reset with atomic credential rotation and active-session revocation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

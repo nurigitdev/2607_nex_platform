@@ -21,6 +21,10 @@ from nex_oa.credentials import (
     build_credential_registry_for_runtime,
     register_local_credential_routes,
 )
+from nex_oa.credential_security import (
+    build_credential_security_repository_for_runtime,
+    register_credential_security_routes,
+)
 from nex_oa.memberships import (
     build_tenant_membership_registry_for_runtime,
     register_identity_membership_routes,
@@ -52,6 +56,11 @@ USER_SESSION_REGISTRY = build_oa_session_registry_for_runtime(
     SERVICE_PERSISTENCE,
     membership_registry=TENANT_MEMBERSHIP_REGISTRY,
 )
+CREDENTIAL_SECURITY_REPOSITORY = build_credential_security_repository_for_runtime(
+    SERVICE_PERSISTENCE,
+    credential_registry=LOCAL_CREDENTIAL_REGISTRY,
+    session_registry=USER_SESSION_REGISTRY,
+)
 USER_LOGIN_SERVICE = OaUserLoginService(
     credential_registry=LOCAL_CREDENTIAL_REGISTRY,
     session_registry=USER_SESSION_REGISTRY,
@@ -80,6 +89,7 @@ register_service_log_retention_routes(
 register_subject_registry_routes(app, registry=SUBJECT_REGISTRY)
 register_identity_auth_boundary_routes(app)
 register_local_credential_routes(app, registry=LOCAL_CREDENTIAL_REGISTRY)
+register_credential_security_routes(app, repository=CREDENTIAL_SECURITY_REPOSITORY)
 register_identity_membership_routes(app, registry=TENANT_MEMBERSHIP_REGISTRY)
 register_identity_lifecycle_routes(app, service=IDENTITY_LIFECYCLE_SERVICE)
 register_user_session_routes(app, registry=USER_SESSION_REGISTRY)

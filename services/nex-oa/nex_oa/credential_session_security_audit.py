@@ -67,6 +67,9 @@ def build_oa_credential_session_security_audit(
     credential_source = _read_text(root / "services/nex-oa/nex_oa/credentials.py")
     session_source = _read_text(root / "services/nex-oa/nex_oa/sessions.py")
     login_source = _read_text(root / "services/nex-oa/nex_oa/user_login.py")
+    security_source = _read_text(
+        root / "services/nex-oa/nex_oa/credential_security.py"
+    )
 
     observations = {
         "pbkdf2_salted_hashing_present": all(
@@ -95,8 +98,9 @@ def build_oa_credential_session_security_audit(
             "failed_attempt_count = failed_attempt_count + 1" in credential_source
         ),
         "credential_rotation_present": (
-            "def change_password(" in credential_source
-            or "def rotate_credential(" in credential_source
+            "def change_password(" in security_source
+            and "def reset_password(" in security_source
+            and "session_revocation_atomic" in security_source
         ),
         "adaptive_rehash_present": (
             "argon2" in credential_source.lower()
@@ -127,8 +131,8 @@ def build_oa_credential_session_security_audit(
         ),
         _control(
             "credential_change_reset_rotation",
-            "GAP",
-            "operator ensure is idempotent and no password change or reset transition exists",
+            "IMPLEMENTED",
+            None,
         ),
         _control(
             "opaque_session_identifier_entropy",
@@ -151,12 +155,9 @@ def build_oa_credential_session_security_audit(
             "session_introspection_revocation_present",
         )
     )
-    gaps_observed = all(
-        observations[name] is False
-        for name in (
-            "credential_rotation_present",
-            "auth_event_emission_present",
-        )
+    gaps_observed = (
+        observations["credential_rotation_present"] is True
+        and observations["auth_event_emission_present"] is False
     )
     checks = {
         "required_evidence_present": all(item["present"] for item in evidence),

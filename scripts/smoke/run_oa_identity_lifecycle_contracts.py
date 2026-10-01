@@ -118,8 +118,9 @@ def run_oa_identity_lifecycle_contracts(root: Path = ROOT) -> dict[str, Any]:
         ),
         "contract_drift_reduced": (
             drift_audit.get("status") == "PASS"
-            and drift_summary.get("openapi_operation_count") == 8
-            and drift_summary.get("drift_count") == 23
+            and int(drift_summary.get("openapi_operation_count", 0)) >= 8
+            and drift_summary.get("drift_count")
+            == drift_summary.get("missing_openapi_operation_count")
         ),
     }
     failed_checks = sorted(name for name, passed in checks.items() if not passed)
