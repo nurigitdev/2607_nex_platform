@@ -1308,6 +1308,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1202`](slices/1202_oa_current_state_reaudit_boundary.md) | `S121-001` Freeze OA current-state re-audit, PostgreSQL evidence, privacy, refactoring, and quality-cadence boundaries. |
 | [`Slice 1203`](slices/1203_oa_capability_traceability_inventory.md) | `S121-002` Trace OA-FR-001 through OA-FR-005 across requirement, implementation, test, and operations evidence. |
 | [`Slice 1204`](slices/1204_oa_persistence_migration_drift_audit.md) | `S121-003` Audit OA migration ordering, ledger, transactions, core-table references, and PostgreSQL identifier safety. |
+| [`Slice 1205`](slices/1205_oa_identity_membership_lifecycle_audit.md) | `S121-004` Quantify stable identity, membership lifecycle, deprovisioning, group-model, bootstrap-policy, and stale-projection gaps. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
