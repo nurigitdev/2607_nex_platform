@@ -11,6 +11,7 @@ from nex_mo.catalog_route_source import CatalogProviderRouteSource
 from nex_mo.catalog_lifecycle_runtime import build_catalog_lifecycle_service
 from nex_mo.operations_api import register_operations_routes
 from nex_mo.operations_service import MOOperationsService
+from nex_mo.mvp_acceptance_api import register_mo_mvp_acceptance_routes
 from nex_mo.provider_readiness_api import register_provider_readiness_routes
 from nex_mo.provider_readiness_service import ProviderReadinessService
 from nex_mo.provider_telemetry_runtime import build_provider_telemetry_store
@@ -61,3 +62,4 @@ register_catalog_lifecycle_routes(app, service=CATALOG_LIFECYCLE)
 register_provider_readiness_routes(app, service=PROVIDER_READINESS)
 register_runtime_observability_routes(app, service=RUNTIME_OBSERVABILITY)
 register_operations_routes(app, service=MO_OPERATIONS)
+register_mo_mvp_acceptance_routes(app)

@@ -235,8 +235,8 @@ def run_s119_mo_operations_integration_acceptance_closure(
         "runtime_openapi_parity_closed": summaries["parity"].get(
             "runtime_operation_count"
         )
-        == 28
-        and summaries["parity"].get("openapi_operation_count") == 28
+        == 29
+        and summaries["parity"].get("openapi_operation_count") == 29
         and summaries["parity"].get("drift_count") == 0,
         "protected_postgres_closed": evidence["protected_postgres"]["status"]
         == "PASS",

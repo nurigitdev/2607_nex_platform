@@ -16,6 +16,7 @@ BUSINESS_PATHS = (
     "/api/v1/provider-telemetry",
     "/api/v1/model-runtime-observability",
     "/api/v1/operations-snapshot",
+    "/admin/v1/operations/mvp-acceptance",
     "/api/v1/embeddings",
     "/api/v1/rerank",
     "/api/v1/generations",
@@ -82,10 +83,10 @@ def build_mo_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
     missing_negative = sorted(set(schemas) - negative_schemas)
     checks = {
         "openapi_document_readable": bool(document),
-        "runtime_operation_inventory_complete": len(runtime_operations) == 28,
+        "runtime_operation_inventory_complete": len(runtime_operations) == 29,
         "runtime_openapi_operations_match": not missing_openapi and not extra_openapi,
         "openapi_has_no_unknown_operations": not extra_openapi,
-        "business_path_inventory_complete": len(BUSINESS_PATHS) == 15,
+        "business_path_inventory_complete": len(BUSINESS_PATHS) == 16,
         "schema_positive_fixtures_complete": not missing_positive,
         "schema_negative_fixtures_complete": not missing_negative,
     }

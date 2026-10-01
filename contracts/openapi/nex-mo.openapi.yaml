@@ -415,6 +415,25 @@ paths:
           description: Service claim is missing or invalid.
         "503":
           description: Integrated operations snapshot is temporarily unavailable.
+  /admin/v1/operations/mvp-acceptance:
+    get:
+      operationId: getMoMvpAcceptance
+      tags:
+        - Provider Operations
+      security:
+        - serviceBearer: []
+      responses:
+        "200":
+          description: Server-selected privacy-safe MO service MVP acceptance projection.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          description: Service or user claim is missing or invalid.
+        "403":
+          description: Authenticated user does not have the admin role.
   /api/v1/embeddings:
     post:
       operationId: createMoEmbeddings

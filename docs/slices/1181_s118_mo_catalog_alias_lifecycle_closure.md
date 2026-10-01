@@ -48,7 +48,7 @@ operations, 13 PostgreSQL checks, no missing evidence, and readiness for S119.
   alias writes, fresh-session reload, optimistic conflict rejection, rollback,
   authenticated API projection, redaction, and zero-residue cleanup.
 - The S118 closure runner passed with `evidence=9/9`, `components=5/5`,
-  `catalog=3/3`, current runtime `operations=28`, and `postgres=13`.
+  `catalog=3/3`, current runtime `operations=29`, and `postgres=13`.
 - The repository Full Gate collected `9,518` Python tests and completed with
   exit code `0`. Aggregate source coverage was statement `98.71%` and branch
   `97.03%`, above the required `95%` and `85%` thresholds.
