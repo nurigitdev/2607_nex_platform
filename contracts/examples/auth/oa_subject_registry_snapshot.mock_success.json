@@ -38,6 +38,7 @@
     },
     "display_name": "Local User",
     "status": "ACTIVE",
+    "revision": 1,
     "metadata": {
       "registry_mode": "local_mock"
     },

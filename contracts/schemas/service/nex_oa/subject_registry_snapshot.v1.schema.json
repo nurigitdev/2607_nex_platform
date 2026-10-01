@@ -211,6 +211,7 @@
         "subject_ref",
         "display_name",
         "status",
+        "revision",
         "metadata",
         "created_at",
         "updated_at"
@@ -233,6 +234,10 @@
         },
         "status": {
           "$ref": "#/$defs/status"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
         },
         "metadata": {
           "type": "object"

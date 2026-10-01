@@ -246,6 +246,7 @@ class SqlAlchemyOaTenantMembershipRegistry:
                     subject_id,
                     membership_schema_version,
                     status,
+                    revision,
                     roles,
                     scopes,
                     metadata,
@@ -258,6 +259,7 @@ class SqlAlchemyOaTenantMembershipRegistry:
                     :subject_id,
                     :membership_schema_version,
                     :status,
+                    :revision,
                     {roles_expression},
                     {scopes_expression},
                     {metadata_expression},
@@ -272,6 +274,7 @@ class SqlAlchemyOaTenantMembershipRegistry:
                 "subject_id": record["subject_ref"]["id"],
                 "membership_schema_version": record["membership_schema_version"],
                 "status": record["status"],
+                "revision": record["revision"],
                 "roles": _json_dumps(record["roles"]),
                 "scopes": _json_dumps(record["scopes"]),
                 "metadata": _json_dumps(record["metadata"]),
@@ -296,6 +299,7 @@ class SqlAlchemyOaTenantMembershipRegistry:
                     subject_id,
                     membership_schema_version,
                     status,
+                    revision,
                     roles,
                     scopes,
                     metadata,
@@ -417,6 +421,7 @@ def build_membership_record(
         "status": normalize_membership_status(
             payload.get("membership_status", payload.get("status", "ACTIVE"))
         ),
+        "revision": 1,
         "roles": list(
             _string_list(
                 payload.get("roles"),
@@ -528,6 +533,7 @@ def _membership_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
             "id": str(row["subject_id"]),
         },
         "status": str(row["status"]),
+        "revision": int(row.get("revision", 1)),
         "roles": _json_loads(row["roles"], default=[]),
         "scopes": _json_loads(row["scopes"], default=[]),
         "metadata": _json_loads(row["metadata"], default={}),

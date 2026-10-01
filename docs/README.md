@@ -1318,6 +1318,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1212`](slices/1212_oa_identity_membership_lifecycle_boundary.md) | `S122-001` Freeze direct subject and membership states, revision, session-cascade, authorization, persistence, and evidence boundaries. |
 | [`Slice 1213`](slices/1213_oa_subject_lifecycle_domain.md) | `S122-002` Define revision-guarded, reasoned, idempotent subject state transitions with terminal deletion. |
 | [`Slice 1214`](slices/1214_oa_membership_lifecycle_domain.md) | `S122-003` Define revision-guarded membership transitions and one-way session invalidation semantics. |
+| [`Slice 1215`](slices/1215_oa_durable_identity_lifecycle_repository.md) | `S122-004` Persist optimistic identity revisions and append-only lifecycle events through memory and SQLAlchemy adapters. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

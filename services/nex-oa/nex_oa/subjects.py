@@ -293,6 +293,7 @@ class SqlAlchemyOaSubjectRegistry:
                     subject_ref_type,
                     display_name,
                     status,
+                    revision,
                     metadata,
                     created_at,
                     updated_at
@@ -303,6 +304,7 @@ class SqlAlchemyOaSubjectRegistry:
                     :subject_ref_type,
                     :display_name,
                     :status,
+                    :revision,
                     {metadata_expression},
                     :created_at,
                     :updated_at
@@ -315,6 +317,7 @@ class SqlAlchemyOaSubjectRegistry:
                 "subject_ref_type": record["subject_ref"]["type"],
                 "display_name": record["display_name"],
                 "status": record["status"],
+                "revision": record["revision"],
                 "metadata": _json_dumps(record["metadata"]),
                 "created_at": record["created_at"],
                 "updated_at": record["updated_at"],
@@ -363,6 +366,7 @@ class SqlAlchemyOaSubjectRegistry:
                     subject_ref_type,
                     display_name,
                     status,
+                    revision,
                     metadata,
                     created_at,
                     updated_at
@@ -539,6 +543,7 @@ def build_subject_record(
         "subject_ref": {"type": OA_USER_REF_TYPE, "id": subject_id},
         "display_name": display_name,
         "status": normalize_subject_status(payload.get("subject_status", "ACTIVE")),
+        "revision": 1,
         "metadata": _metadata_from_payload(payload.get("subject_metadata", {})),
         "created_at": now,
         "updated_at": now,
@@ -769,6 +774,7 @@ def _subject_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
         },
         "display_name": str(row["display_name"]),
         "status": str(row["status"]),
+        "revision": int(row.get("revision", 1)),
         "metadata": _json_loads(row["metadata"], default={}),
         "created_at": _timestamp_to_wire(row["created_at"]),
         "updated_at": _timestamp_to_wire(row["updated_at"]),

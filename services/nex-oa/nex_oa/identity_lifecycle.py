@@ -43,10 +43,7 @@ def plan_subject_status_transition(
     reason_code: object | None = None,
 ) -> dict[str, Any]:
     record = _subject_record(subject)
-    tenant_id = normalize_registry_id(record.get("tenant_id"), field_name="tenant_id")
-    subject_id = normalize_registry_id(
-        record.get("subject_id"), field_name="subject_id"
-    )
+    tenant_id, subject_id = _subject_ids(record)
     current_status = normalize_subject_status(record.get("status"))
     normalized_target = normalize_subject_status(target_status)
     current_revision = normalize_lifecycle_revision(record.get("revision", 1))
@@ -178,6 +175,17 @@ def _membership_record(membership: Mapping[str, Any]) -> Mapping[str, Any]:
             detail="membership must be an object.",
         )
     return nested
+
+
+def _subject_ids(record: Mapping[str, Any]) -> tuple[str, str]:
+    tenant_ref = record.get("tenant_ref")
+    tenant_id = (
+        tenant_ref.get("id") if isinstance(tenant_ref, Mapping) else record.get("tenant_id")
+    )
+    return (
+        normalize_registry_id(tenant_id, field_name="tenant_id"),
+        normalize_registry_id(record.get("subject_id"), field_name="subject_id"),
+    )
 
 
 def _membership_ids(record: Mapping[str, Any]) -> tuple[str, str]:
