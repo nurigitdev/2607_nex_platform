@@ -1307,6 +1307,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1201`](slices/1201_s120_mo_mvp_acceptance_oa_transition_closure.md) | `S120-010` Close the MO service MVP with nine accepted gates, Full Gate evidence, and a bound OA transition handoff. |
 | [`Slice 1202`](slices/1202_oa_current_state_reaudit_boundary.md) | `S121-001` Freeze OA current-state re-audit, PostgreSQL evidence, privacy, refactoring, and quality-cadence boundaries. |
 | [`Slice 1203`](slices/1203_oa_capability_traceability_inventory.md) | `S121-002` Trace OA-FR-001 through OA-FR-005 across requirement, implementation, test, and operations evidence. |
+| [`Slice 1204`](slices/1204_oa_persistence_migration_drift_audit.md) | `S121-003` Audit OA migration ordering, ledger, transactions, core-table references, and PostgreSQL identifier safety. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
