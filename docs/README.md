@@ -1322,6 +1322,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1216`](slices/1216_oa_subject_lifecycle_service_api.md) | `S122-005` Add the dedicated-scope subject lifecycle service/API and complete the fifth-Slice Checkpoint Gate. |
 | [`Slice 1217`](slices/1217_oa_membership_lifecycle_service_api.md) | `S122-006` Add the dedicated-scope membership lifecycle service/API with revision and invalidation intent. |
 | [`Slice 1218`](slices/1218_oa_deprovision_session_revocation_cascade.md) | `S122-007` Atomically revoke matching active sessions during subject or membership deprovisioning. |
+| [`Slice 1219`](slices/1219_oa_identity_lifecycle_contract_audit_privacy.md) | `S122-008` Publish strict lifecycle schemas and protected OpenAPI routes, rebaseline audits, and enforce privacy fixtures. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

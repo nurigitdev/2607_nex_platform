@@ -1,9 +1,11 @@
 openapi: 3.1.0
 info:
   title: NeX OA API
-  version: 0.0.0-slice0003
+  version: 0.0.0-slice1219
 tags:
   - name: Platform
+  - name: Auth
+  - name: Identity Lifecycle
 paths:
   /health:
     get:
@@ -59,3 +61,203 @@ paths:
       responses:
         "200":
           description: Mock service token introspection result.
+  /internal/v1/identity/tenants/{tenant_id}/subjects/{subject_id}/lifecycle:
+    patch:
+      operationId: transitionOaSubjectLifecycle
+      tags:
+        - Identity Lifecycle
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes:
+        - service:call
+        - identity:lifecycle:write
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdentityLifecycleTransition"
+      responses:
+        "200":
+          description: Subject lifecycle transition result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubjectLifecycleResponse"
+        "400":
+          description: Lifecycle payload is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Required lifecycle scope is missing.
+        "404":
+          description: Subject lifecycle target was not found.
+        "409":
+          description: Revision or lifecycle transition conflicts with current state.
+  /internal/v1/identity/tenants/{tenant_id}/memberships/{subject_id}/lifecycle:
+    patch:
+      operationId: transitionOaMembershipLifecycle
+      tags:
+        - Identity Lifecycle
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes:
+        - service:call
+        - identity:lifecycle:write
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdentityLifecycleTransition"
+      responses:
+        "200":
+          description: Membership lifecycle transition result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipLifecycleResponse"
+        "400":
+          description: Lifecycle payload is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Required lifecycle scope is missing.
+        "404":
+          description: Membership lifecycle target was not found.
+        "409":
+          description: Revision or lifecycle transition conflicts with current state.
+components:
+  parameters:
+    TenantId:
+      name: tenant_id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+    SubjectId:
+      name: subject_id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+  securitySchemes:
+    serviceBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: NeX service claim
+  schemas:
+    IdentityLifecycleTransition:
+      type: object
+      additionalProperties: false
+      required:
+        - target_status
+        - expected_revision
+      properties:
+        target_status:
+          type: string
+          enum: [ACTIVE, DISABLED, DELETED]
+        expected_revision:
+          type: integer
+          minimum: 1
+        reason_code:
+          type: string
+          pattern: "^[a-z][a-z0-9_.-]{1,63}$"
+    SubjectLifecycleResponse:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/subject_lifecycle_response.v1.schema.json
+      additionalProperties: false
+      required:
+        - response_schema_version
+        - lifecycle_schema_version
+        - entity_type
+        - tenant_id
+        - subject_id
+        - status
+        - revision
+        - changed
+        - revoked_session_count
+        - event
+        - request_id
+        - trace_id
+      properties:
+        response_schema_version:
+          const: oa_subject_lifecycle_response.v1
+        lifecycle_schema_version:
+          const: oa_identity_lifecycle.v1
+        entity_type:
+          const: SUBJECT
+        tenant_id:
+          type: string
+        subject_id:
+          type: string
+        status:
+          enum: [ACTIVE, DISABLED, DELETED]
+        revision:
+          type: integer
+          minimum: 1
+        changed:
+          type: boolean
+        revoked_session_count:
+          type: integer
+          minimum: 0
+        event:
+          type: [object, "null"]
+        request_id:
+          type: string
+        trace_id:
+          type: string
+    MembershipLifecycleResponse:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/membership_lifecycle_response.v1.schema.json
+      additionalProperties: false
+      required:
+        - response_schema_version
+        - lifecycle_schema_version
+        - entity_type
+        - tenant_id
+        - subject_id
+        - status
+        - revision
+        - changed
+        - revoked_session_count
+        - event
+        - request_id
+        - trace_id
+      properties:
+        response_schema_version:
+          const: oa_membership_lifecycle_response.v1
+        lifecycle_schema_version:
+          const: oa_identity_lifecycle.v1
+        entity_type:
+          const: MEMBERSHIP
+        tenant_id:
+          type: string
+        subject_id:
+          type: string
+        status:
+          enum: [ACTIVE, DISABLED]
+        revision:
+          type: integer
+          minimum: 1
+        changed:
+          type: boolean
+        revoked_session_count:
+          type: integer
+          minimum: 0
+        event:
+          type: [object, "null"]
+        request_id:
+          type: string
+        trace_id:
+          type: string

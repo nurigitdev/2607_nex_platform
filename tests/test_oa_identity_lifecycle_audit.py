@@ -21,14 +21,15 @@ def test_repository_identity_lifecycle_audit_quantifies_current_gaps() -> None:
     assert result["issues"] == []
     assert result["summary"] == {
         "control_count": 8,
-        "implemented_count": 4,
-        "gap_count": 4,
+        "implemented_count": 6,
+        "gap_count": 2,
         "stale_projection_count": 0,
         "evidence_issue_count": 0,
     }
     assert result["decision"]["new_table_required_now"] is False
     assert result["decision"]["stale_projection_refactor_target_slice"] == "1209"
     assert result["decision"]["stale_projection_refactor_status"] == "REPAIRED"
+    assert result["decision"]["direct_lifecycle_hardening_status"] == "HARDENED"
 
 
 def test_audit_exposes_lifecycle_and_projection_observations() -> None:
@@ -53,10 +54,11 @@ def test_audit_fails_closed_when_repository_evidence_is_missing(
     assert result["status"] == "FAIL"
     assert result["lifecycle_readiness"] == "BLOCKED"
     assert result["checks"]["required_evidence_present"] is False
-    assert result["checks"]["current_lifecycle_gaps_observed"] is True
-    assert len(result["issues"]) == 7
+    assert result["checks"]["current_lifecycle_classification_observed"] is False
+    assert len(result["issues"]) == 11
     assert {item["category"] for item in result["issues"]} == {
-        "evidence_missing"
+        "evidence_missing",
+        "lifecycle_classification_drift",
     }
 
 
@@ -79,6 +81,18 @@ def test_audit_reports_classification_drift(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     sessions.write_text("def revoke_sessions_for_subject(): pass\n", encoding="utf-8")
+    (subject.parent / "identity_lifecycle_service.py").write_text(
+        "def transition_subject(): pass\n"
+        "def transition_membership(): pass\n"
+        'subject_path = "/subjects/{subject_id}/lifecycle"\n'
+        'membership_path = "/memberships/{subject_id}/lifecycle"\n',
+        encoding="utf-8",
+    )
+    (subject.parent / "identity_lifecycle_repository.py").write_text(
+        "def _revoke_sql_sessions(): pass\n"
+        "table = 'oa_user_sessions'\n",
+        encoding="utf-8",
+    )
     migration = tmp_path / "database/nex-oa/migrations/0001.sql"
     migration.parent.mkdir(parents=True)
     migration.write_text("CREATE TABLE oa_groups ();\n", encoding="utf-8")
@@ -86,7 +100,7 @@ def test_audit_reports_classification_drift(tmp_path: Path) -> None:
     result = build_oa_identity_lifecycle_audit(tmp_path)
 
     assert result["status"] == "FAIL"
-    assert result["checks"]["current_lifecycle_gaps_observed"] is False
+    assert result["checks"]["current_lifecycle_classification_observed"] is False
     assert result["issues"][-1] == {"category": "lifecycle_classification_drift"}
 
 
@@ -110,7 +124,7 @@ def test_runner_summary_json_and_failure_paths(monkeypatch, capsys) -> None:
 
     assert "lifecycle_audit=pass" in runner.summary_line(passing)
     assert "controls=8" in runner.summary_line(passing)
-    assert "gaps=4" in runner.summary_line(passing)
+    assert "gaps=2" in runner.summary_line(passing)
     monkeypatch.setattr(runner, "run_oa_identity_lifecycle_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0
     assert "stale=0" in capsys.readouterr().out

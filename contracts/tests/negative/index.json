@@ -56,6 +56,21 @@
       "schema": "schemas/service/nex_oa/browser_session.v1.schema.json"
     },
     {
+      "name": "oa_subject_registry_snapshot_password_hash_leak",
+      "path": "tests/negative/auth/oa_subject_registry_snapshot.password_hash_leak.json",
+      "schema": "schemas/service/nex_oa/subject_registry_snapshot.v1.schema.json"
+    },
+    {
+      "name": "oa_subject_lifecycle_response_password_leak",
+      "path": "tests/negative/auth/oa_subject_lifecycle_response.password_leak.json",
+      "schema": "schemas/service/nex_oa/subject_lifecycle_response.v1.schema.json"
+    },
+    {
+      "name": "oa_membership_lifecycle_response_token_leak",
+      "path": "tests/negative/auth/oa_membership_lifecycle_response.token_leak.json",
+      "schema": "schemas/service/nex_oa/membership_lifecycle_response.v1.schema.json"
+    },
+    {
       "name": "mo_provider_route_secret_endpoint_leak",
       "path": "tests/negative/generation/mo_provider_route.secret_endpoint_leak.json",
       "schema": "schemas/service/nex_mo/provider_route.v1.schema.json"

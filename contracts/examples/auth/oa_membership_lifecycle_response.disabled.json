@@ -1,0 +1,30 @@
+{
+  "response_schema_version": "oa_membership_lifecycle_response.v1",
+  "lifecycle_schema_version": "oa_identity_lifecycle.v1",
+  "entity_type": "MEMBERSHIP",
+  "tenant_id": "tenant-1219",
+  "subject_id": "employee-1219",
+  "status": "DISABLED",
+  "revision": 2,
+  "changed": true,
+  "revoked_session_count": 1,
+  "event": {
+    "event_schema_version": "oa_identity_lifecycle_event.v1",
+    "event_id": "event-membership-1219",
+    "tenant_id": "tenant-1219",
+    "subject_id": "employee-1219",
+    "entity_type": "MEMBERSHIP",
+    "previous_status": "ACTIVE",
+    "target_status": "DISABLED",
+    "previous_revision": 1,
+    "next_revision": 2,
+    "reason_code": "admin.membership-disable",
+    "actor_ref_type": "nex.service",
+    "actor_ref_id": "nex-ag",
+    "request_id": "request-1219-membership",
+    "trace_id": "fedcba0987654321fedcba0987654321",
+    "occurred_at": "2026-10-01T00:00:00Z"
+  },
+  "request_id": "request-1219-membership",
+  "trace_id": "fedcba0987654321fedcba0987654321"
+}

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/membership_lifecycle_response.v1.schema.json",
+  "title": "NeX OA Membership Lifecycle Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "response_schema_version",
+    "lifecycle_schema_version",
+    "entity_type",
+    "tenant_id",
+    "subject_id",
+    "status",
+    "revision",
+    "changed",
+    "revoked_session_count",
+    "event",
+    "request_id",
+    "trace_id"
+  ],
+  "properties": {
+    "response_schema_version": {"const": "oa_membership_lifecycle_response.v1"},
+    "lifecycle_schema_version": {"const": "oa_identity_lifecycle.v1"},
+    "entity_type": {"const": "MEMBERSHIP"},
+    "tenant_id": {"$ref": "#/$defs/identifier"},
+    "subject_id": {"$ref": "#/$defs/identifier"},
+    "status": {"enum": ["ACTIVE", "DISABLED"]},
+    "revision": {"type": "integer", "minimum": 1},
+    "changed": {"type": "boolean"},
+    "revoked_session_count": {"type": "integer", "minimum": 0},
+    "event": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/lifecycle_event"}
+      ]
+    },
+    "request_id": {"$ref": "#/$defs/identifier"},
+    "trace_id": {"$ref": "#/$defs/identifier"}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "minLength": 1, "maxLength": 128},
+    "lifecycle_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_schema_version",
+        "event_id",
+        "tenant_id",
+        "subject_id",
+        "entity_type",
+        "previous_status",
+        "target_status",
+        "previous_revision",
+        "next_revision",
+        "reason_code",
+        "actor_ref_type",
+        "actor_ref_id",
+        "request_id",
+        "trace_id",
+        "occurred_at"
+      ],
+      "properties": {
+        "event_schema_version": {"const": "oa_identity_lifecycle_event.v1"},
+        "event_id": {"$ref": "#/$defs/identifier"},
+        "tenant_id": {"$ref": "#/$defs/identifier"},
+        "subject_id": {"$ref": "#/$defs/identifier"},
+        "entity_type": {"const": "MEMBERSHIP"},
+        "previous_status": {"enum": ["ACTIVE", "DISABLED"]},
+        "target_status": {"enum": ["ACTIVE", "DISABLED"]},
+        "previous_revision": {"type": "integer", "minimum": 1},
+        "next_revision": {"type": "integer", "minimum": 2},
+        "reason_code": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]{1,63}$"
+        },
+        "actor_ref_type": {"const": "nex.service"},
+        "actor_ref_id": {"$ref": "#/$defs/identifier"},
+        "request_id": {"$ref": "#/$defs/identifier"},
+        "trace_id": {"$ref": "#/$defs/identifier"},
+        "occurred_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

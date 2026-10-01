@@ -19,9 +19,9 @@ def test_repository_s121_closure_passes_with_confirmed_gaps() -> None:
         "audit_count": 8,
         "passed_audit_count": 8,
         "traceable_requirement_count": 5,
-        "lifecycle_gap_count": 4,
+        "lifecycle_gap_count": 2,
         "security_gap_count": 5,
-        "contract_drift_count": 25,
+        "contract_drift_count": 23,
         "trust_refactor_count": 4,
         "repaired_surface_count": 5,
         "missing_file_count": 0,
@@ -107,7 +107,7 @@ def test_summary_and_main_paths(monkeypatch, capsys) -> None:
 
     assert closure.summary_line(passing) == (
         "s121_oa_current_state_reaudit_closure=pass audits=8/8 "
-        "lifecycle_gaps=4 security_gaps=5 contract_drift=25 next=S122"
+        "lifecycle_gaps=2 security_gaps=5 contract_drift=23 next=S122"
     )
     assert "next=blocked" in closure.summary_line({"status": "FAIL"})
 

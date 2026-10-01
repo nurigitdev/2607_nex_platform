@@ -52,6 +52,21 @@ REQUIRED_EVIDENCE = (
         "database/nex-oa/migrations/0242_oa_tenant_membership_foundation.sql",
         "CREATE TABLE IF NOT EXISTS oa_tenant_memberships",
     ),
+    RequiredEvidence(
+        "lifecycle_service",
+        "services/nex-oa/nex_oa/identity_lifecycle_service.py",
+        "OA_IDENTITY_LIFECYCLE_WRITE_SCOPE",
+    ),
+    RequiredEvidence(
+        "lifecycle_repository",
+        "services/nex-oa/nex_oa/identity_lifecycle_repository.py",
+        "def _revoke_sql_sessions(",
+    ),
+    RequiredEvidence(
+        "lifecycle_migration",
+        "database/nex-oa/migrations/1215_oa_identity_lifecycle.sql",
+        "CREATE TABLE IF NOT EXISTS oa_id_lifecycle_events",
+    ),
 )
 
 
@@ -59,19 +74,29 @@ def build_oa_identity_lifecycle_audit(root: Path = ROOT) -> dict[str, Any]:
     evidence = [_inspect_evidence(root, item) for item in REQUIRED_EVIDENCE]
     subject_source = _read_text(root / "services/nex-oa/nex_oa/subjects.py")
     membership_source = _read_text(root / "services/nex-oa/nex_oa/memberships.py")
-    session_source = _read_text(root / "services/nex-oa/nex_oa/sessions.py")
+    lifecycle_service_source = _read_text(
+        root / "services/nex-oa/nex_oa/identity_lifecycle_service.py"
+    )
+    lifecycle_repository_source = _read_text(
+        root / "services/nex-oa/nex_oa/identity_lifecycle_repository.py"
+    )
     migration_source = "\n".join(
         _read_text(path)
         for path in sorted((root / "database/nex-oa/migrations").glob("*.sql"))
     )
 
     observations = {
-        "subject_transition_api_present": "def update_subject_status(" in subject_source,
+        "subject_transition_api_present": (
+            "def transition_subject(" in lifecycle_service_source
+            and "/subjects/{subject_id}/lifecycle" in lifecycle_service_source
+        ),
         "membership_transition_api_present": (
-            "def update_membership_status(" in membership_source
+            "def transition_membership(" in lifecycle_service_source
+            and "/memberships/{subject_id}/lifecycle" in lifecycle_service_source
         ),
         "deprovision_session_cascade_present": (
-            "def revoke_sessions_for_subject(" in session_source
+            "def _revoke_sql_sessions(" in lifecycle_repository_source
+            and "oa_user_sessions" in lifecycle_repository_source
         ),
         "group_registry_present": (
             "oa_groups" in migration_source and "class OaGroup" in subject_source
@@ -98,13 +123,23 @@ def build_oa_identity_lifecycle_audit(root: Path = ROOT) -> dict[str, Any]:
         _control("membership_role_scope_session_gate", "IMPLEMENTED", None),
         _control(
             "subject_membership_status_transitions",
-            "GAP",
-            "status values exist but no explicit transition API or optimistic update policy exists",
+            "IMPLEMENTED"
+            if observations["subject_transition_api_present"]
+            and observations["membership_transition_api_present"]
+            else "GAP",
+            None
+            if observations["subject_transition_api_present"]
+            and observations["membership_transition_api_present"]
+            else "explicit revision-guarded subject and membership transition APIs are incomplete",
         ),
         _control(
             "deprovision_session_revocation_cascade",
-            "GAP",
-            "session issuance checks active membership but later deprovisioning does not revoke existing sessions",
+            "IMPLEMENTED"
+            if observations["deprovision_session_cascade_present"]
+            else "GAP",
+            None
+            if observations["deprovision_session_cascade_present"]
+            else "deprovisioning does not atomically revoke existing active sessions",
         ),
         _control(
             "group_identity_lifecycle",
@@ -124,10 +159,10 @@ def build_oa_identity_lifecycle_audit(root: Path = ROOT) -> dict[str, Any]:
             "ensure routes use the generic service-call scope without a dedicated bootstrap/admin policy",
         ),
     ]
-    expected_gaps_observed = (
-        observations["subject_transition_api_present"] is False
-        and observations["membership_transition_api_present"] is False
-        and observations["deprovision_session_cascade_present"] is False
+    expected_classification_observed = (
+        observations["subject_transition_api_present"] is True
+        and observations["membership_transition_api_present"] is True
+        and observations["deprovision_session_cascade_present"] is True
         and observations["group_registry_present"] is False
         and observations["admin_bootstrap_scope_present"] is False
     )
@@ -138,7 +173,7 @@ def build_oa_identity_lifecycle_audit(root: Path = ROOT) -> dict[str, Any]:
             item["status"] == "IMPLEMENTED" or bool(item["gap"])
             for item in controls
         ),
-        "current_lifecycle_gaps_observed": expected_gaps_observed,
+        "current_lifecycle_classification_observed": expected_classification_observed,
     }
     issues = [
         {
@@ -149,7 +184,7 @@ def build_oa_identity_lifecycle_audit(root: Path = ROOT) -> dict[str, Any]:
         for item in evidence
         if not item["present"]
     ]
-    if not expected_gaps_observed:
+    if not expected_classification_observed:
         issues.append({"category": "lifecycle_classification_drift"})
     passed = all(checks.values()) and not issues
     return {
@@ -178,6 +213,9 @@ def build_oa_identity_lifecycle_audit(root: Path = ROOT) -> dict[str, Any]:
             "stale_projection_refactor_target_slice": "1209",
             "stale_projection_refactor_status": (
                 "REPAIRED" if projection_current else "PENDING"
+            ),
+            "direct_lifecycle_hardening_status": (
+                "HARDENED" if expected_classification_observed else "INCOMPLETE"
             ),
             "new_table_required_now": False,
         },

@@ -66,6 +66,16 @@
       "schema": "schemas/service/nex_oa/browser_session.v1.schema.json"
     },
     {
+      "name": "oa_subject_lifecycle_response_disabled",
+      "path": "examples/auth/oa_subject_lifecycle_response.disabled.json",
+      "schema": "schemas/service/nex_oa/subject_lifecycle_response.v1.schema.json"
+    },
+    {
+      "name": "oa_membership_lifecycle_response_disabled",
+      "path": "examples/auth/oa_membership_lifecycle_response.disabled.json",
+      "schema": "schemas/service/nex_oa/membership_lifecycle_response.v1.schema.json"
+    },
+    {
       "name": "mo_provider_route_generation",
       "path": "examples/generation/mo_provider_route.general_llm_default.json",
       "schema": "schemas/service/nex_mo/provider_route.v1.schema.json"

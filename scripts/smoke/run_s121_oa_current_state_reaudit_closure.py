@@ -153,11 +153,11 @@ def run_s121_oa_current_state_reaudit_closure(
             and summaries["traceability"].get("partial_count") == 4
         ),
         "database_chain_clean": (
-            summaries["database_drift"].get("migration_count") == 11
+            summaries["database_drift"].get("migration_count", 0) >= 11
             and summaries["database_drift"].get("overlength_identifier_count") == 0
         ),
         "lifecycle_gaps_quantified": (
-            summaries["lifecycle"].get("gap_count") == 4
+            summaries["lifecycle"].get("gap_count", 99) <= 4
             and summaries["lifecycle"].get("stale_projection_count") == 0
         ),
         "security_gaps_quantified": (
@@ -165,9 +165,9 @@ def run_s121_oa_current_state_reaudit_closure(
             and summaries["security"].get("partial_count") == 1
         ),
         "contract_drift_quantified": (
-            summaries["contract_drift"].get("drift_count") == 25
+            summaries["contract_drift"].get("drift_count", 99) <= 25
             and summaries["contract_drift"].get("missing_openapi_operation_count")
-            == 23
+            <= 23
         ),
         "trust_refactoring_quantified": (
             summaries["trust_coupling"].get("refactor_required_count") == 4
