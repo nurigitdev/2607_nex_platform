@@ -1316,6 +1316,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1210`](slices/1210_oa_current_state_postgresql_reaudit.md) | `S121-009` Re-audit migrations, catalog state, identity login/session behavior, and cleanup against the actual `nex_oa_test` database. |
 | [`Slice 1211`](slices/1211_s121_oa_current_state_reaudit_closure.md) | `S121-010` Close the OA current-state re-audit with quantified gaps, actual PostgreSQL evidence, and an ordered S122 security handoff. |
 | [`Slice 1212`](slices/1212_oa_identity_membership_lifecycle_boundary.md) | `S122-001` Freeze direct subject and membership states, revision, session-cascade, authorization, persistence, and evidence boundaries. |
+| [`Slice 1213`](slices/1213_oa_subject_lifecycle_domain.md) | `S122-002` Define revision-guarded, reasoned, idempotent subject state transitions with terminal deletion. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
