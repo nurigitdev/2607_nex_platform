@@ -1325,6 +1325,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1219`](slices/1219_oa_identity_lifecycle_contract_audit_privacy.md) | `S122-008` Publish strict lifecycle schemas and protected OpenAPI routes, rebaseline audits, and enforce privacy fixtures. |
 | [`Slice 1220`](slices/1220_oa_identity_lifecycle_postgresql_smoke.md) | `S122-009` Prove lifecycle migration, protected transitions, session revocation, lineage, and cleanup on actual `nex_oa_test`. |
 | [`Slice 1221`](slices/1221_s122_oa_identity_membership_lifecycle_closure.md) | `S122-010` Close durable direct OA identity and membership lifecycle with PostgreSQL, contracts, privacy, and Full Gate evidence. |
+| [`Slice 1222`](slices/1222_oa_credential_session_security_boundary.md) | `S123-001` Freeze Argon2id compatibility, lockout, session expiry, rotation, evidence, and deferred trust boundaries. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
