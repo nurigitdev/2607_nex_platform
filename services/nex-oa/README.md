@@ -173,3 +173,14 @@ Slice 0254 OA user login PostgreSQL smoke:
   `NEX_OA_USER_LOGIN_POSTGRES_SMOKE=1` for write execution.
 - Evidence includes only redacted DB URLs and safe count/status observations;
   raw passwords, password hashes, access tokens, and cookie values are excluded.
+
+Slice 1230 OA credential/session security PostgreSQL smoke:
+
+- `scripts/smoke/run_oa_credential_security_postgres_smoke.py` applies current
+  OA migrations and exercises atomic five-attempt lockout, timed recovery,
+  PBKDF2-to-Argon2id adaptive rehash, random idle-bound sessions, password
+  reset/change revocation, and privacy-safe auth-event reads.
+- The write workflow accepts only `nex_oa_user@.../nex_oa_test` and remains
+  disabled unless `NEX_OA_CREDENTIAL_SECURITY_POSTGRES_SMOKE=1` is set.
+- Evidence exposes only safe counts and states. Cleanup verifies zero residue
+  across auth events, sessions, credentials, memberships, subjects, and tenant.

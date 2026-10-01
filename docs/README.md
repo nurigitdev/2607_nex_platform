@@ -1333,6 +1333,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1227`](slices/1227_oa_password_rotation_session_revocation.md) | `S123-006` Add scoped password change/reset with atomic credential rotation and active-session revocation. |
 | [`Slice 1228`](slices/1228_oa_auth_security_event_persistence.md) | `S123-007` Persist privacy-safe login, credential, and session security events with scoped tenant reads. |
 | [`Slice 1229`](slices/1229_oa_credential_security_contract_hardening.md) | `S123-008` Publish strict credential/auth-event schemas, protected OpenAPI routes, privacy fixtures, and parity evidence. |
+| [`Slice 1230`](slices/1230_oa_credential_security_postgresql_smoke.md) | `S123-009` Prove lockout, adaptive rehash, session rotation, auth-event persistence, privacy, and cleanup on actual `nex_oa_test`. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
