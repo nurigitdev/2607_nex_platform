@@ -75,6 +75,11 @@ Model profile defaults:
   `NEX_MO_RUNTIME_OBSERVABILITY_MODE=live` and a validated
   `NEX_MO_DGX_SSH_TARGET`. Snapshots use a 30-second process-local TTL and are
   not persisted to PostgreSQL. `force_refresh=true` bypasses only the cache.
+- The authenticated `GET /api/v1/operations-snapshot` projection joins active
+  catalog aliases, route readiness, restart-safe provider telemetry, and current
+  model runtime observations. `force_refresh=true` refreshes only bounded
+  readiness and runtime probes; output excludes credentials, endpoints,
+  database URLs, SSH targets, and raw process details.
 - GPU warning defaults are 90% model memory share and 85 C. Override them with
   `NEX_MO_GPU_MEMORY_WARN_PERCENT` and `NEX_MO_GPU_TEMPERATURE_WARN_C`.
   High compute utilization alone is not a degraded condition.
@@ -107,6 +112,7 @@ Current endpoints:
 - `GET /api/v1/provider-route-health`
 - `GET /api/v1/provider-telemetry`
 - `GET /api/v1/model-runtime-observability`
+- `GET /api/v1/operations-snapshot`
 - `POST /api/v1/embeddings`
 - `POST /api/v1/rerank`
 - `POST /api/v1/generations`

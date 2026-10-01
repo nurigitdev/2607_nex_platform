@@ -121,6 +121,11 @@
       "schema": "schemas/service/nex_mo/runtime_observability.v1.schema.json"
     },
     {
+      "name": "mo_operations_snapshot_api_key_leak",
+      "path": "tests/negative/provider/mo_operations_snapshot.api_key_leak.json",
+      "schema": "schemas/service/nex_mo/operations_snapshot.v1.schema.json"
+    },
+    {
       "name": "mo_embedding_request_empty_inputs",
       "path": "tests/negative/provider/mo_embedding_request.empty_inputs.json",
       "schema": "schemas/service/nex_mo/embedding_request.v1.schema.json"

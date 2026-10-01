@@ -66,8 +66,8 @@ def test_catalog_lifecycle_openapi_and_runtime_inventory_are_aligned() -> None:
 
     drift = build_mo_contract_api_drift_audit(ROOT)
     assert drift["status"] == "PASS"
-    assert drift["summary"]["runtime_operation_count"] == 27
-    assert drift["summary"]["openapi_operation_count"] == 27
+    assert drift["summary"]["runtime_operation_count"] == 28
+    assert drift["summary"]["openapi_operation_count"] == 28
     assert drift["summary"]["drift_count"] == 0
 
 

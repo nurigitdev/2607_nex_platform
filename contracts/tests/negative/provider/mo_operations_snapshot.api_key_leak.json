@@ -1,0 +1,21 @@
+{
+  "operations_schema_version": "mo_operations_snapshot.v1",
+  "provider_mode": "live",
+  "operations_status": "UNKNOWN",
+  "generated_at": "2026-10-01T00:00:00Z",
+  "acceptance_status": "NOT_RUN",
+  "failure_code": "operations_status_unknown",
+  "sources": [
+    {"source": "catalog", "status": "READY", "fresh": true, "observed_at": "2026-10-01T00:00:00Z", "failure_code": null},
+    {"source": "readiness", "status": "UNKNOWN", "fresh": false, "observed_at": "2026-10-01T00:00:00Z", "failure_code": "provider_route_not_ready"},
+    {"source": "telemetry", "status": "UNKNOWN", "fresh": false, "observed_at": "2026-10-01T00:00:00Z", "failure_code": "provider_telemetry_incomplete"},
+    {"source": "runtime", "status": "UNKNOWN", "fresh": false, "observed_at": "2026-10-01T00:00:00Z", "failure_code": "runtime_observation_incomplete"}
+  ],
+  "capabilities": [],
+  "summary": {
+    "source_count": 4,
+    "capability_count": 0,
+    "capability_status_counts": {"READY": 0, "UNKNOWN": 0, "DEGRADED": 0, "UNAVAILABLE": 0}
+  },
+  "api_key": "must-not-be-exposed"
+}

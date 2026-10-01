@@ -136,6 +136,11 @@
       "schema": "schemas/service/nex_mo/runtime_observability.v1.schema.json"
     },
     {
+      "name": "mo_operations_snapshot_mock_ready",
+      "path": "examples/provider/mo_operations_snapshot.mock_ready.json",
+      "schema": "schemas/service/nex_mo/operations_snapshot.v1.schema.json"
+    },
+    {
       "name": "mo_embedding_request_mock",
       "path": "examples/provider/mo_embedding_request.mock.json",
       "schema": "schemas/service/nex_mo/embedding_request.v1.schema.json"

@@ -1,0 +1,77 @@
+{
+  "operations_schema_version": "mo_operations_snapshot.v1",
+  "provider_mode": "mock",
+  "operations_status": "READY",
+  "generated_at": "2026-10-01T00:00:00Z",
+  "acceptance_status": "NOT_RUN",
+  "failure_code": null,
+  "sources": [
+    {"source": "catalog", "status": "READY", "fresh": true, "observed_at": "2026-10-01T00:00:00Z", "failure_code": null},
+    {"source": "readiness", "status": "READY", "fresh": true, "observed_at": "2026-10-01T00:00:00Z", "failure_code": null},
+    {"source": "telemetry", "status": "READY", "fresh": true, "observed_at": "2026-10-01T00:00:00Z", "failure_code": null},
+    {"source": "runtime", "status": "READY", "fresh": true, "observed_at": "2026-10-01T00:00:00Z", "failure_code": null}
+  ],
+  "capabilities": [
+    {
+      "provider_capability": "embedding",
+      "alias": "embedding-default",
+      "catalog_id": "qwen3-embedding-4b",
+      "model_revision": "Qwen3-Embedding-4B",
+      "deployment_id": "vllm-embedding-http",
+      "catalog_status": "READY",
+      "route_status": "READY",
+      "telemetry_status": "READY",
+      "runtime_status": "READY",
+      "operations_status": "READY",
+      "request_count": 3,
+      "success_count": 3,
+      "failure_count": 0,
+      "last_latency_ms": 24,
+      "failure_code": null
+    },
+    {
+      "provider_capability": "reranking",
+      "alias": "reranker-default",
+      "catalog_id": "qwen3-reranker-4b",
+      "model_revision": "Qwen3-Reranker-4B",
+      "deployment_id": "vllm-reranker-http",
+      "catalog_status": "READY",
+      "route_status": "READY",
+      "telemetry_status": "READY",
+      "runtime_status": "READY",
+      "operations_status": "READY",
+      "request_count": 2,
+      "success_count": 2,
+      "failure_count": 0,
+      "last_latency_ms": 31,
+      "failure_code": null
+    },
+    {
+      "provider_capability": "generation",
+      "alias": "general-llm-default",
+      "catalog_id": "qwen3.5-4b",
+      "model_revision": "Qwen3.5-4B",
+      "deployment_id": "vllm-generation-http",
+      "catalog_status": "READY",
+      "route_status": "READY",
+      "telemetry_status": "READY",
+      "runtime_status": "READY",
+      "operations_status": "READY",
+      "request_count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "last_latency_ms": 98,
+      "failure_code": null
+    }
+  ],
+  "summary": {
+    "source_count": 4,
+    "capability_count": 3,
+    "capability_status_counts": {
+      "READY": 3,
+      "UNKNOWN": 0,
+      "DEGRADED": 0,
+      "UNAVAILABLE": 0
+    }
+  }
+}

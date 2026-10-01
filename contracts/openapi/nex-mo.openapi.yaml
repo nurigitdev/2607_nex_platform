@@ -390,6 +390,31 @@ paths:
                 $ref: "#/components/schemas/RuntimeObservability"
         "401":
           description: Service claim is missing or invalid.
+  /api/v1/operations-snapshot:
+    get:
+      operationId: getMoOperationsSnapshot
+      tags:
+        - Provider Operations
+      security:
+        - serviceBearer: []
+      parameters:
+        - name: force_refresh
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Privacy-safe integrated catalog, readiness, telemetry, and runtime operations snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationsSnapshot"
+        "401":
+          description: Service claim is missing or invalid.
+        "503":
+          description: Integrated operations snapshot is temporarily unavailable.
   /api/v1/embeddings:
     post:
       operationId: createMoEmbeddings
@@ -1510,6 +1535,53 @@ components:
           type:
             - string
             - "null"
+    OperationsSnapshot:
+      type: object
+      additionalProperties: false
+      x-nex-canonical-json-schema: schemas/service/nex_mo/operations_snapshot.v1.schema.json
+      required:
+        - operations_schema_version
+        - provider_mode
+        - operations_status
+        - generated_at
+        - acceptance_status
+        - failure_code
+        - sources
+        - capabilities
+        - summary
+      properties:
+        operations_schema_version:
+          type: string
+          const: mo_operations_snapshot.v1
+        provider_mode:
+          type: string
+          enum: [mock, live, unknown]
+        operations_status:
+          type: string
+          enum: [READY, UNKNOWN, DEGRADED, UNAVAILABLE]
+        generated_at:
+          type: string
+          format: date-time
+        acceptance_status:
+          type: string
+          enum: [NOT_RUN, PASS, FAIL]
+        failure_code:
+          type:
+            - string
+            - "null"
+        sources:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            type: object
+        capabilities:
+          type: array
+          maxItems: 3
+          items:
+            type: object
+        summary:
+          type: object
     ProviderRouteHealth:
       type: object
       additionalProperties: false

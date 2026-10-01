@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_mo/operations_snapshot.v1.schema.json",
+  "title": "NeX MO Operations Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "operations_schema_version",
+    "provider_mode",
+    "operations_status",
+    "generated_at",
+    "acceptance_status",
+    "failure_code",
+    "sources",
+    "capabilities",
+    "summary"
+  ],
+  "properties": {
+    "operations_schema_version": {
+      "const": "mo_operations_snapshot.v1"
+    },
+    "provider_mode": {
+      "type": "string",
+      "enum": ["mock", "live", "unknown"]
+    },
+    "operations_status": {
+      "$ref": "#/$defs/operationsStatus"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "acceptance_status": {
+      "type": "string",
+      "enum": ["NOT_RUN", "PASS", "FAIL"]
+    },
+    "failure_code": {
+      "$ref": "#/$defs/failureCode"
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "$ref": "#/$defs/sourceAssessment"
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "$ref": "#/$defs/capabilityStatus"
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/operationsSummary"
+    }
+  },
+  "$defs": {
+    "operationsStatus": {
+      "type": "string",
+      "enum": ["READY", "UNKNOWN", "DEGRADED", "UNAVAILABLE"]
+    },
+    "failureCode": {
+      "type": ["string", "null"],
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "sourceAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "status", "fresh", "observed_at", "failure_code"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["catalog", "readiness", "telemetry", "runtime"]
+        },
+        "status": {
+          "$ref": "#/$defs/operationsStatus"
+        },
+        "fresh": {
+          "type": "boolean"
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "failure_code": {
+          "$ref": "#/$defs/failureCode"
+        }
+      }
+    },
+    "capabilityStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_capability",
+        "alias",
+        "catalog_id",
+        "model_revision",
+        "deployment_id",
+        "catalog_status",
+        "route_status",
+        "telemetry_status",
+        "runtime_status",
+        "operations_status",
+        "request_count",
+        "success_count",
+        "failure_count",
+        "last_latency_ms",
+        "failure_code"
+      ],
+      "properties": {
+        "provider_capability": {
+          "type": "string",
+          "enum": ["embedding", "reranking", "generation"]
+        },
+        "alias": {"type": "string", "minLength": 1},
+        "catalog_id": {"type": "string", "minLength": 1},
+        "model_revision": {"type": "string", "minLength": 1},
+        "deployment_id": {"type": "string", "minLength": 1},
+        "catalog_status": {"$ref": "#/$defs/operationsStatus"},
+        "route_status": {"$ref": "#/$defs/operationsStatus"},
+        "telemetry_status": {"$ref": "#/$defs/operationsStatus"},
+        "runtime_status": {"$ref": "#/$defs/operationsStatus"},
+        "operations_status": {"$ref": "#/$defs/operationsStatus"},
+        "request_count": {"type": "integer", "minimum": 0},
+        "success_count": {"type": "integer", "minimum": 0},
+        "failure_count": {"type": "integer", "minimum": 0},
+        "last_latency_ms": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "failure_code": {"$ref": "#/$defs/failureCode"}
+      }
+    },
+    "operationsSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_count", "capability_count", "capability_status_counts"],
+      "properties": {
+        "source_count": {"const": 4},
+        "capability_count": {"type": "integer", "minimum": 0, "maximum": 3},
+        "capability_status_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["READY", "UNKNOWN", "DEGRADED", "UNAVAILABLE"],
+          "properties": {
+            "READY": {"type": "integer", "minimum": 0, "maximum": 3},
+            "UNKNOWN": {"type": "integer", "minimum": 0, "maximum": 3},
+            "DEGRADED": {"type": "integer", "minimum": 0, "maximum": 3},
+            "UNAVAILABLE": {"type": "integer", "minimum": 0, "maximum": 3}
+          }
+        }
+      }
+    }
+  }
+}
