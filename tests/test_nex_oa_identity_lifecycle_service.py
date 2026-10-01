@@ -26,7 +26,7 @@ def _service_and_client():
     subjects.ensure_subject({"tenant_id": "tenant-a", "subject_id": "employee-a"})
     memberships = InMemoryOaTenantMembershipRegistry(subject_registry=subjects)
     repository = InMemoryOaIdentityLifecycleRepository(subjects, memberships)
-    service = OaIdentityLifecycleService(subjects, repository)
+    service = OaIdentityLifecycleService(subjects, memberships, repository)
     app = build_service_app(SERVICE_SPECS["nex-oa"])
     register_identity_lifecycle_routes(app, service=service)
     return service, repository, TestClient(app)
@@ -91,8 +91,10 @@ def test_service_maps_subject_registry_failure() -> None:
                 detail="subject registry unavailable",
             )
 
-    _, repository, _ = _service_and_client()
-    service = OaIdentityLifecycleService(FailingRegistry(), repository)
+    base_service, repository, _ = _service_and_client()
+    service = OaIdentityLifecycleService(
+        FailingRegistry(), base_service.membership_registry, repository
+    )
 
     with pytest.raises(OaIdentityLifecycleError) as caught:
         service.transition_subject(
@@ -127,6 +129,79 @@ def test_subject_lifecycle_route_enforces_dedicated_scope_and_conflict() -> None
     stale = client.patch(path, json=payload, headers=_headers())
     assert stale.status_code == 409
     assert stale.json()["error_code"] == "oa.lifecycle_revision_conflict"
+
+
+def test_membership_service_and_route_transition() -> None:
+    service, repository, client = _service_and_client()
+    service.membership_registry.ensure_membership(
+        {"tenant_id": "tenant-a", "subject_id": "employee-a"}
+    )
+    path = "/internal/v1/identity/tenants/tenant-a/memberships/employee-a/lifecycle"
+    response = client.patch(
+        path,
+        json={
+            "target_status": "DISABLED",
+            "expected_revision": 1,
+            "reason_code": "admin.membership-disable",
+        },
+        headers=_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["response_schema_version"] == (
+        "oa_membership_lifecycle_response.v1"
+    )
+    assert response.json()["status"] == "DISABLED"
+    assert repository.events[-1]["entity_type"] == "MEMBERSHIP"
+
+
+def test_membership_route_auth_missing_and_stale_paths() -> None:
+    service, _, client = _service_and_client()
+    service.membership_registry.ensure_membership(
+        {"tenant_id": "tenant-a", "subject_id": "employee-a"}
+    )
+    path = "/internal/v1/identity/tenants/tenant-a/memberships/employee-a/lifecycle"
+    payload = {
+        "target_status": "DISABLED",
+        "expected_revision": 1,
+        "reason_code": "admin.disable",
+    }
+    assert client.patch(path, json=payload).status_code == 401
+    assert client.patch(
+        path, json=payload, headers=_headers(lifecycle_scope=False)
+    ).status_code == 403
+    assert client.patch(path, json=payload, headers=_headers()).status_code == 200
+    assert client.patch(path, json=payload, headers=_headers()).status_code == 409
+    assert client.patch(
+        "/internal/v1/identity/tenants/tenant-a/memberships/missing/lifecycle",
+        json={"target_status": "ACTIVE", "expected_revision": 1},
+        headers=_headers(),
+    ).status_code == 404
+
+
+def test_membership_service_maps_registry_failure() -> None:
+    class FailingMembershipRegistry:
+        def get_membership(self, **_kwargs):
+            from nex_oa.memberships import OaMembershipError
+
+            raise OaMembershipError(
+                status_code=503,
+                error_code="oa.membership_unavailable",
+                detail="membership unavailable",
+            )
+
+    service, repository, _ = _service_and_client()
+    failing = OaIdentityLifecycleService(
+        service.subject_registry, FailingMembershipRegistry(), repository
+    )
+    with pytest.raises(OaIdentityLifecycleError) as caught:
+        failing.transition_membership(
+            tenant_id="tenant-a",
+            subject_id="employee-a",
+            payload={"target_status": "ACTIVE", "expected_revision": 1},
+            context={},
+        )
+    assert caught.value.status_code == 503
 
 
 def test_route_rejects_missing_subject_and_unsafe_payload() -> None:

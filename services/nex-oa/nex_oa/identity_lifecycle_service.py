@@ -9,9 +9,11 @@ from fastapi.responses import JSONResponse
 
 from nex_oa.identity_lifecycle import (
     OaIdentityLifecycleError,
+    plan_membership_status_transition,
     plan_subject_status_transition,
 )
 from nex_oa.identity_lifecycle_repository import OaIdentityLifecycleRepository
+from nex_oa.memberships import OaMembershipError, OaTenantMembershipRegistry
 from nex_oa.subjects import OaSubjectRegistry, SubjectRegistryError
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
@@ -24,6 +26,9 @@ from nex_runtime import (
 
 OA_IDENTITY_LIFECYCLE_WRITE_SCOPE = "identity:lifecycle:write"
 OA_SUBJECT_LIFECYCLE_RESPONSE_SCHEMA_VERSION = "oa_subject_lifecycle_response.v1"
+OA_MEMBERSHIP_LIFECYCLE_RESPONSE_SCHEMA_VERSION = (
+    "oa_membership_lifecycle_response.v1"
+)
 _SUBJECT_TRANSITION_FIELDS = frozenset(
     ("target_status", "expected_revision", "reason_code")
 )
@@ -32,6 +37,7 @@ _SUBJECT_TRANSITION_FIELDS = frozenset(
 @dataclass
 class OaIdentityLifecycleService:
     subject_registry: OaSubjectRegistry
+    membership_registry: OaTenantMembershipRegistry
     repository: OaIdentityLifecycleRepository
 
     def transition_subject(
@@ -71,6 +77,43 @@ class OaIdentityLifecycleService:
             **result,
         }
 
+    def transition_membership(
+        self,
+        *,
+        tenant_id: str,
+        subject_id: str,
+        payload: Mapping[str, Any],
+        context: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        request = _normalize_subject_transition_payload(payload)
+        try:
+            snapshot = self.membership_registry.get_membership(
+                tenant_id=tenant_id, subject_id=subject_id
+            )
+        except OaMembershipError as exc:
+            raise OaIdentityLifecycleError(
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                detail=exc.detail,
+            ) from exc
+        if snapshot is None:
+            raise OaIdentityLifecycleError(
+                status_code=404,
+                error_code="oa.lifecycle_target_not_found",
+                detail="membership lifecycle target was not found.",
+            )
+        plan = plan_membership_status_transition(
+            snapshot,
+            target_status=request["target_status"],
+            expected_revision=request["expected_revision"],
+            reason_code=request.get("reason_code"),
+        )
+        result = self.repository.transition_membership(plan, context=context)
+        return {
+            "response_schema_version": OA_MEMBERSHIP_LIFECYCLE_RESPONSE_SCHEMA_VERSION,
+            **result,
+        }
+
 
 def register_identity_lifecycle_routes(
     app: FastAPI, *, service: OaIdentityLifecycleService
@@ -98,6 +141,42 @@ def register_identity_lifecycle_routes(
         }
         try:
             response = service.transition_subject(
+                tenant_id=tenant_id,
+                subject_id=subject_id,
+                payload=payload,
+                context=context,
+            )
+        except OaIdentityLifecycleError as exc:
+            return _lifecycle_problem_response(request, exc)
+        return {
+            **response,
+            "request_id": context["request_id"],
+            "trace_id": context["trace_id"],
+        }
+
+    @app.patch(
+        "/internal/v1/identity/tenants/{tenant_id}/memberships/{subject_id}/lifecycle",
+        response_model=None,
+    )
+    def transition_membership_lifecycle(
+        tenant_id: str,
+        subject_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        claims, auth_problem = _authorize_lifecycle_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        assert claims is not None
+        context = {
+            "actor_ref_type": "nex.service",
+            "actor_ref_id": claims.service_id,
+            "request_id": request_id_from_headers(request),
+            "trace_id": trace_id_from_headers(request),
+        }
+        try:
+            response = service.transition_membership(
                 tenant_id=tenant_id,
                 subject_id=subject_id,
                 payload=payload,

@@ -63,6 +63,7 @@ IDENTITY_LIFECYCLE_REPOSITORY = build_identity_lifecycle_repository_for_runtime(
 )
 IDENTITY_LIFECYCLE_SERVICE = OaIdentityLifecycleService(
     subject_registry=SUBJECT_REGISTRY,
+    membership_registry=TENANT_MEMBERSHIP_REGISTRY,
     repository=IDENTITY_LIFECYCLE_REPOSITORY,
 )
 register_service_job_control_routes(

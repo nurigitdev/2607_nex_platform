@@ -1320,6 +1320,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1214`](slices/1214_oa_membership_lifecycle_domain.md) | `S122-003` Define revision-guarded membership transitions and one-way session invalidation semantics. |
 | [`Slice 1215`](slices/1215_oa_durable_identity_lifecycle_repository.md) | `S122-004` Persist optimistic identity revisions and append-only lifecycle events through memory and SQLAlchemy adapters. |
 | [`Slice 1216`](slices/1216_oa_subject_lifecycle_service_api.md) | `S122-005` Add the dedicated-scope subject lifecycle service/API and complete the fifth-Slice Checkpoint Gate. |
+| [`Slice 1217`](slices/1217_oa_membership_lifecycle_service_api.md) | `S122-006` Add the dedicated-scope membership lifecycle service/API with revision and invalidation intent. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
