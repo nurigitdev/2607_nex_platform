@@ -1288,6 +1288,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1182`](slices/1182_mo_operations_integration_boundary.md) | `S119-001` Freeze MO operations source composition, status, persistence, privacy, and protected live acceptance boundaries. |
 | [`Slice 1183`](slices/1183_mo_operations_snapshot_domain.md) | `S119-002` Define immutable source and capability operations projections with fail-closed status precedence. |
 | [`Slice 1184`](slices/1184_mo_operations_integration_service.md) | `S119-003` Compose catalog, readiness, durable telemetry, and runtime facts into a privacy-safe operational snapshot. |
+| [`Slice 1185`](slices/1185_mo_authenticated_operations_api.md) | `S119-004` Add the service-authenticated operations snapshot API foundation with bounded refresh and safe failure handling. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
