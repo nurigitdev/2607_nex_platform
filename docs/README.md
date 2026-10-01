@@ -1323,6 +1323,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1217`](slices/1217_oa_membership_lifecycle_service_api.md) | `S122-006` Add the dedicated-scope membership lifecycle service/API with revision and invalidation intent. |
 | [`Slice 1218`](slices/1218_oa_deprovision_session_revocation_cascade.md) | `S122-007` Atomically revoke matching active sessions during subject or membership deprovisioning. |
 | [`Slice 1219`](slices/1219_oa_identity_lifecycle_contract_audit_privacy.md) | `S122-008` Publish strict lifecycle schemas and protected OpenAPI routes, rebaseline audits, and enforce privacy fixtures. |
+| [`Slice 1220`](slices/1220_oa_identity_lifecycle_postgresql_smoke.md) | `S122-009` Prove lifecycle migration, protected transitions, session revocation, lineage, and cleanup on actual `nex_oa_test`. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
