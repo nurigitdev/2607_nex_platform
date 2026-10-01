@@ -568,7 +568,7 @@ def build_session_issue_response(
         "credential_delivery": {
             "raw_token_included": False,
             "cookie_set_by_oa": False,
-            "ae_facade_delegation": "deferred",
+            "ae_facade_delegation": "implemented",
         },
         "metadata": {
             "session_persisted": True,

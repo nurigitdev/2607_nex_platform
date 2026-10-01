@@ -110,9 +110,17 @@ def build_oa_trust_coupling_audit(root: Path = ROOT) -> dict[str, Any]:
         ),
         _control(
             "cross_service_error_privacy",
-            "REFACTOR_REQUIRED",
+            (
+                "REFACTOR_REQUIRED"
+                if observations["resolver_transport_detail_exposure_present"]
+                else "HARDENED"
+            ),
             "MEDIUM",
-            "subject resolver transport exceptions may expose endpoint details",
+            (
+                "subject resolver transport exceptions may expose endpoint details"
+                if observations["resolver_transport_detail_exposure_present"]
+                else None
+            ),
         ),
         _control(
             "cross_service_resilience_policy",
@@ -138,7 +146,7 @@ def build_oa_trust_coupling_audit(root: Path = ROOT) -> dict[str, Any]:
     coupling_gaps_observed = (
         observations["mock_service_token_fallback_present"]
         and observations["generic_service_scope_used_for_internal_routes"]
-        and observations["resolver_transport_detail_exposure_present"]
+        and observations["resolver_transport_detail_exposure_present"] is False
         and observations["cross_service_retry_policy_present"] is False
         and observations["browser_cookie_secure_by_default"] is False
         and observations["oa_auth_mode_default_by_default"] is False
@@ -149,7 +157,7 @@ def build_oa_trust_coupling_audit(root: Path = ROOT) -> dict[str, Any]:
         "explicit_boundaries_observed": explicit_boundaries_observed,
         "current_coupling_gaps_observed": coupling_gaps_observed,
         "refactor_controls_have_reasons": all(
-            item["status"] == "EXPLICIT" or bool(item["reason"])
+            item["status"] in {"EXPLICIT", "HARDENED"} or bool(item["reason"])
             for item in controls
         ),
     }
@@ -183,6 +191,9 @@ def build_oa_trust_coupling_audit(root: Path = ROOT) -> dict[str, Any]:
             ),
             "refactor_required_count": sum(
                 item["status"] == "REFACTOR_REQUIRED" for item in controls
+            ),
+            "hardened_count": sum(
+                item["status"] == "HARDENED" for item in controls
             ),
             "high_risk_count": sum(item["risk"] == "HIGH" for item in controls),
             "evidence_issue_count": len(issues),

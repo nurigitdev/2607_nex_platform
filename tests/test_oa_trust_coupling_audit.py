@@ -24,7 +24,8 @@ def test_repository_trust_coupling_audit_orders_refactoring() -> None:
     assert result["summary"] == {
         "control_count": 8,
         "explicit_boundary_count": 3,
-        "refactor_required_count": 5,
+        "refactor_required_count": 4,
+        "hardened_count": 1,
         "high_risk_count": 2,
         "evidence_issue_count": 0,
     }
@@ -40,7 +41,7 @@ def test_trust_observations_separate_boundaries_from_risks() -> None:
     assert observations["claim_authoritative_owner_scope_present"] is True
     assert observations["mock_service_token_fallback_present"] is True
     assert observations["generic_service_scope_used_for_internal_routes"] is True
-    assert observations["resolver_transport_detail_exposure_present"] is True
+    assert observations["resolver_transport_detail_exposure_present"] is False
     assert observations["cross_service_retry_policy_present"] is False
     assert observations["browser_cookie_secure_by_default"] is False
     assert observations["oa_auth_mode_default_by_default"] is False
@@ -80,7 +81,8 @@ def test_runner_summary_json_and_failure_paths(monkeypatch, capsys) -> None:
 
     assert "coupling_audit=pass" in runner.summary_line(passing)
     assert "explicit=3" in runner.summary_line(passing)
-    assert "refactor=5" in runner.summary_line(passing)
+    assert "refactor=4" in runner.summary_line(passing)
+    assert "hardened=1" in runner.summary_line(passing)
     monkeypatch.setattr(runner, "run_oa_trust_coupling_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0
     assert "high_risk=2" in capsys.readouterr().out

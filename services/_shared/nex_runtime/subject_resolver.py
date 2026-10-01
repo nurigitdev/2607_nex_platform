@@ -199,7 +199,7 @@ class HttpSubjectRegistryResolver:
             raise SubjectRegistryResolverError(
                 status_code=503,
                 error_code="oa.subject_resolver_unavailable",
-                detail=str(exc),
+                detail="Subject registry endpoint is unavailable.",
                 retryable=True,
             ) from exc
 

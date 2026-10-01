@@ -572,7 +572,7 @@ def build_credential_snapshot(
         "capabilities": dict(OA_CREDENTIAL_CAPABILITIES),
         "deferred": list(OA_CREDENTIAL_DEFERRED),
         "private_payload_policy": _private_payload_policy(),
-        "next_slice": "0253_oa_user_login_api_foundation",
+        "next_slice": "1212_oa_identity_trust_hardening_boundary",
     }
 
 

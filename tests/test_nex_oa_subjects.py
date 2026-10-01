@@ -139,9 +139,9 @@ def test_subject_registry_snapshot_matches_contract_schema() -> None:
         "user_id": "user-a",
     }
     assert snapshot["capabilities"]["stable_subject_registry"] is True
-    assert snapshot["capabilities"]["password_login"] is False
+    assert snapshot["capabilities"]["password_login"] is True
     assert (
-        "0201_cx_owner_scoped_document_library_projection"
+        "1212_oa_identity_trust_hardening_boundary"
         == snapshot["next_slice"]
     )
 

@@ -1312,6 +1312,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1206`](slices/1206_oa_credential_session_security_audit.md) | `S121-005` Audit password/session strengths and lockout, rotation, entropy, rehash, and auth-event gaps; run the Checkpoint Gate. |
 | [`Slice 1207`](slices/1207_oa_contract_api_drift_audit.md) | `S121-006` Quantify OA runtime/OpenAPI operation, schema-fixture, security, and version drift. |
 | [`Slice 1208`](slices/1208_oa_cross_service_trust_coupling_audit.md) | `S121-007` Audit AE/CX HTTP adapters, claim authority, service-token fallback, route scopes, privacy, resilience, and production defaults. |
+| [`Slice 1209`](slices/1209_oa_projection_privacy_refactoring_checkpoint.md) | `S121-008` Repair stale OA capability projections and sanitize subject-resolver transport failures without changing routes or persistence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -12,23 +12,22 @@ ROOT = Path(__file__).resolve().parents[2]
 OA_PATH = ROOT / "services" / "nex-oa"
 sys.path.insert(0, str(OA_PATH))
 
-from nex_oa.trust_coupling_audit import build_oa_trust_coupling_audit  # noqa: E402
+from nex_oa.projection_privacy_checkpoint import (  # noqa: E402
+    build_oa_projection_privacy_checkpoint,
+)
 
 
-def run_oa_trust_coupling_audit(root: Path = ROOT) -> dict[str, Any]:
-    return build_oa_trust_coupling_audit(root)
+def run_oa_projection_privacy_checkpoint(root: Path = ROOT) -> dict[str, Any]:
+    return build_oa_projection_privacy_checkpoint(root)
 
 
 def summary_line(evidence: Mapping[str, Any]) -> str:
     summary = evidence.get("summary") or {}
     return (
-        "oa_trust_coupling_audit="
+        "oa_projection_privacy_checkpoint="
         f"{str(evidence.get('status') or 'FAIL').lower()} "
-        f"controls={summary.get('control_count', 0)} "
-        f"explicit={summary.get('explicit_boundary_count', 0)} "
-        f"refactor={summary.get('refactor_required_count', 0)} "
-        f"hardened={summary.get('hardened_count', 0)} "
-        f"high_risk={summary.get('high_risk_count', 0)} "
+        f"repairs={summary.get('repair_count', 0)} "
+        f"stale={summary.get('forbidden_stale_count', 0)} "
         f"issues={summary.get('evidence_issue_count', 0)}"
     )
 
@@ -37,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--summary", action="store_true")
     args = parser.parse_args(argv)
-    evidence = run_oa_trust_coupling_audit()
+    evidence = run_oa_projection_privacy_checkpoint()
     print(
         summary_line(evidence)
         if args.summary

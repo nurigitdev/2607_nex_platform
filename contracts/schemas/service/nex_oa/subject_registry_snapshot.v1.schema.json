@@ -87,7 +87,7 @@
           "const": true
         },
         "password_login": {
-          "const": false
+          "const": true
         },
         "external_identity_provider_mapping": {
           "const": false
@@ -113,7 +113,7 @@
       "minLength": 1
     },
     "next_slice": {
-      "const": "0201_cx_owner_scoped_document_library_projection"
+      "const": "1212_oa_identity_trust_hardening_boundary"
     },
     "trace_id": {
       "type": "string",

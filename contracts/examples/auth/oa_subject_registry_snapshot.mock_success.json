@@ -51,19 +51,18 @@
   },
   "capabilities": {
     "stable_subject_registry": true,
-    "password_login": false,
+    "password_login": true,
     "external_identity_provider_mapping": false,
     "role_management": false,
     "full_user_profile": false
   },
   "deferred": [
-    "password_login",
     "external_identity_provider_mapping",
     "role_management",
     "full_user_profile"
   ],
   "private_payload_policy": "Store stable tenant/user subject refs, display names, status, and safe metadata only. Do not store passwords, tokens, raw identity profiles, email addresses, phone numbers, or other identity secrets.",
-  "next_slice": "0201_cx_owner_scoped_document_library_projection",
+  "next_slice": "1212_oa_identity_trust_hardening_boundary",
   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
   "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
 }

@@ -42,13 +42,11 @@ DEFAULT_MEMBERSHIP_ROLES = ("employee",)
 DEFAULT_MEMBERSHIP_SCOPES = (DEFAULT_USER_SCOPE,)
 OA_MEMBERSHIP_CAPABILITIES = {
     "stable_tenant_membership": True,
-    "oa_session_issuance": False,
-    "password_login": False,
+    "oa_session_issuance": True,
+    "password_login": True,
     "external_identity_provider": False,
 }
 OA_MEMBERSHIP_DEFERRED = [
-    "oa_session_issuance",
-    "password_verification",
     "oidc_or_sso_provider_integration",
     "refresh_token_rotation",
 ]
@@ -474,7 +472,7 @@ def build_membership_snapshot(
         "capabilities": dict(OA_MEMBERSHIP_CAPABILITIES),
         "deferred": list(OA_MEMBERSHIP_DEFERRED),
         "private_payload_policy": _private_payload_policy(),
-        "next_slice": "0243_oa_session_issuance_api_foundation",
+        "next_slice": "1212_oa_identity_trust_hardening_boundary",
     }
 
 

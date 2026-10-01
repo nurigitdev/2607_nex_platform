@@ -271,6 +271,8 @@ def test_http_subject_resolver_maps_problem_and_transport_errors(
 
     assert unavailable.value.status_code == 503
     assert unavailable.value.retryable is True
+    assert unavailable.value.detail == "Subject registry endpoint is unavailable."
+    assert "offline" not in unavailable.value.detail
 
 
 @pytest.mark.parametrize(

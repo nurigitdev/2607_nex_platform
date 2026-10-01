@@ -158,8 +158,9 @@ def test_membership_record_and_snapshot_are_safe() -> None:
     assert snapshot["membership"]["roles"] == ["employee", "reviewer"]
     assert snapshot["membership"]["scopes"] == ["workspace:use", "documents:read"]
     assert snapshot["capabilities"]["stable_tenant_membership"] is True
-    assert snapshot["capabilities"]["oa_session_issuance"] is False
-    assert snapshot["next_slice"] == "0243_oa_session_issuance_api_foundation"
+    assert snapshot["capabilities"]["oa_session_issuance"] is True
+    assert snapshot["capabilities"]["password_login"] is True
+    assert snapshot["next_slice"] == "1212_oa_identity_trust_hardening_boundary"
     assert "secret-value" not in serialized
     assert "raw_token" not in serialized
 

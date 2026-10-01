@@ -37,13 +37,12 @@ DEFAULT_SUBJECT_DISPLAY_NAME = "Local User"
 OA_SUBJECT_STATUSES = ("ACTIVE", "DISABLED", "DELETED")
 OA_SUBJECT_REGISTRY_CAPABILITIES = {
     "stable_subject_registry": True,
-    "password_login": False,
+    "password_login": True,
     "external_identity_provider_mapping": False,
     "role_management": False,
     "full_user_profile": False,
 }
 OA_SUBJECT_REGISTRY_DEFERRED = [
-    "password_login",
     "external_identity_provider_mapping",
     "role_management",
     "full_user_profile",
@@ -457,7 +456,7 @@ def register_subject_registry_routes(
                 "capabilities": dict(OA_SUBJECT_REGISTRY_CAPABILITIES),
                 "deferred": list(OA_SUBJECT_REGISTRY_DEFERRED),
                 "private_payload_policy": _private_payload_policy(),
-                "next_slice": "0201_cx_owner_scoped_document_library_projection",
+                "next_slice": "1212_oa_identity_trust_hardening_boundary",
             },
             request,
         )
@@ -578,7 +577,7 @@ def build_subject_registry_snapshot(
         "capabilities": dict(OA_SUBJECT_REGISTRY_CAPABILITIES),
         "deferred": list(OA_SUBJECT_REGISTRY_DEFERRED),
         "private_payload_policy": _private_payload_policy(),
-        "next_slice": "0201_cx_owner_scoped_document_library_projection",
+        "next_slice": "1212_oa_identity_trust_hardening_boundary",
     }
 
 

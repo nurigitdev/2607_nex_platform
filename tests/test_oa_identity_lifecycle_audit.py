@@ -21,23 +21,24 @@ def test_repository_identity_lifecycle_audit_quantifies_current_gaps() -> None:
     assert result["issues"] == []
     assert result["summary"] == {
         "control_count": 8,
-        "implemented_count": 3,
-        "gap_count": 5,
-        "stale_projection_count": 1,
+        "implemented_count": 4,
+        "gap_count": 4,
+        "stale_projection_count": 0,
         "evidence_issue_count": 0,
     }
     assert result["decision"]["new_table_required_now"] is False
     assert result["decision"]["stale_projection_refactor_target_slice"] == "1209"
+    assert result["decision"]["stale_projection_refactor_status"] == "REPAIRED"
 
 
 def test_audit_exposes_lifecycle_and_projection_observations() -> None:
     result = build_oa_identity_lifecycle_audit()
 
-    assert set(result["observations"].values()) == {False}
+    assert set(result["observations"].values()) == {False, True}
     controls = {item["control_id"]: item for item in result["controls"]}
     assert controls["stable_subject_refs"]["status"] == "IMPLEMENTED"
     assert controls["group_identity_lifecycle"]["status"] == "GAP"
-    assert controls["capability_projection_freshness"]["status"] == "STALE"
+    assert controls["capability_projection_freshness"]["status"] == "IMPLEMENTED"
     assert all(
         item["status"] == "IMPLEMENTED" or item["gap"]
         for item in controls.values()
@@ -109,10 +110,10 @@ def test_runner_summary_json_and_failure_paths(monkeypatch, capsys) -> None:
 
     assert "lifecycle_audit=pass" in runner.summary_line(passing)
     assert "controls=8" in runner.summary_line(passing)
-    assert "gaps=5" in runner.summary_line(passing)
+    assert "gaps=4" in runner.summary_line(passing)
     monkeypatch.setattr(runner, "run_oa_identity_lifecycle_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0
-    assert "stale=1" in capsys.readouterr().out
+    assert "stale=0" in capsys.readouterr().out
     assert runner.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
 

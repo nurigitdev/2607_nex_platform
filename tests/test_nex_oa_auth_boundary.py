@@ -38,9 +38,10 @@ def test_identity_auth_boundary_report_freezes_authority_split() -> None:
     assert report["boundary_schema_version"] == OA_IDENTITY_AUTH_BOUNDARY_SCHEMA_VERSION
     assert report["service_id"] == "nex-oa"
     assert report["current_state"]["stable_subject_registry"] is True
-    assert report["current_state"]["oa_backed_session_issuance"] is False
+    assert report["current_state"]["oa_backed_session_issuance"] is True
+    assert report["current_state"]["password_login"] is True
     assert report["target_state"]["ae_session_facade_delegates_to_oa"] is True
-    assert "future_user_session_issuance" in report["service_boundaries"]["nex-oa"]["owns"]
+    assert "user_session_issuance" in report["service_boundaries"]["nex-oa"]["owns"]
     assert "durable_identity_authority" in report["service_boundaries"]["nex-ae-api"][
         "does_not_own"
     ]
@@ -48,6 +49,7 @@ def test_identity_auth_boundary_report_freezes_authority_split() -> None:
         "0242",
         "0243",
         "0244",
+        "0254",
     ]
     assert report["metadata"] == {
         "raw_tokens_included": False,

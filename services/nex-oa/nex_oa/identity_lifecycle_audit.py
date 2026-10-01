@@ -88,6 +88,10 @@ def build_oa_identity_lifecycle_audit(root: Path = ROOT) -> dict[str, Any]:
             or "identity:bootstrap" in membership_source
         ),
     }
+    projection_current = (
+        observations["subject_capability_projection_current"]
+        and observations["membership_capability_projection_current"]
+    )
     controls = [
         _control("stable_subject_refs", "IMPLEMENTED", None),
         _control("tenant_scoped_identity_storage", "IMPLEMENTED", None),
@@ -109,8 +113,10 @@ def build_oa_identity_lifecycle_audit(root: Path = ROOT) -> dict[str, Any]:
         ),
         _control(
             "capability_projection_freshness",
-            "STALE",
-            "subject and membership snapshots still report implemented login/session capabilities as deferred",
+            "IMPLEMENTED" if projection_current else "STALE",
+            None
+            if projection_current
+            else "subject and membership snapshots still report implemented login/session capabilities as deferred",
         ),
         _control(
             "admin_bootstrap_authorization",
@@ -123,8 +129,6 @@ def build_oa_identity_lifecycle_audit(root: Path = ROOT) -> dict[str, Any]:
         and observations["membership_transition_api_present"] is False
         and observations["deprovision_session_cascade_present"] is False
         and observations["group_registry_present"] is False
-        and observations["subject_capability_projection_current"] is False
-        and observations["membership_capability_projection_current"] is False
         and observations["admin_bootstrap_scope_present"] is False
     )
     checks = {
@@ -172,6 +176,9 @@ def build_oa_identity_lifecycle_audit(root: Path = ROOT) -> dict[str, Any]:
             "group_model_deferred_to_targeted_hardening": True,
             "lifecycle_transition_design_required_before_new_mutation_routes": True,
             "stale_projection_refactor_target_slice": "1209",
+            "stale_projection_refactor_status": (
+                "REPAIRED" if projection_current else "PENDING"
+            ),
             "new_table_required_now": False,
         },
         "observations": observations,
