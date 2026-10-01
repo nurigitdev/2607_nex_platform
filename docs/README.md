@@ -1295,6 +1295,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1189`](slices/1189_mo_operations_postgres_smoke.md) | `S119-008` Prove restart-safe integrated operations behavior against the actual NeX-MO test database. |
 | [`Slice 1190`](slices/1190_mo_operations_protected_live_acceptance.md) | `S119-009` Execute protected live acceptance against PostgreSQL, three DGX providers, and SSH runtime observation. |
 | [`Slice 1191`](slices/1191_s119_mo_operations_integration_acceptance_closure.md) | `S119-010` Close MO operations integration and protected live acceptance with traceability and Full Gate evidence. |
+| [`Slice 1192`](slices/1192_mo_mvp_acceptance_oa_transition_boundary_audit.md) | `S120-001` Freeze MO service MVP acceptance, protected evidence, privacy, and OA transition boundaries. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
