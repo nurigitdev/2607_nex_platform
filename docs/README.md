@@ -1305,6 +1305,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1199`](slices/1199_mo_mvp_acceptance_postgres_live_smoke.md) | `S120-008` Produce normalized acceptance evidence from actual MO test PostgreSQL, DGX providers, SSH runtime, and OA handoff. |
 | [`Slice 1200`](slices/1200_mo_mvp_acceptance_operator_runbook.md) | `S120-009` Make MO acceptance privacy, failure containment, recovery, verification, and OA handoff procedures executable. |
 | [`Slice 1201`](slices/1201_s120_mo_mvp_acceptance_oa_transition_closure.md) | `S120-010` Close the MO service MVP with nine accepted gates, Full Gate evidence, and a bound OA transition handoff. |
+| [`Slice 1202`](slices/1202_oa_current_state_reaudit_boundary.md) | `S121-001` Freeze OA current-state re-audit, PostgreSQL evidence, privacy, refactoring, and quality-cadence boundaries. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
