@@ -515,6 +515,7 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_mo_operations_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_mo_operations_live_acceptance.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s119_mo_operations_integration_acceptance_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_mo_mvp_acceptance_privacy_runbook_evidence.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary
