@@ -8,6 +8,11 @@ from typing import Any, Protocol
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
+from nex_oa.auth_events import (
+    OaAuthEventRepository,
+    auth_event_target,
+    record_auth_event_safely,
+)
 from nex_oa.credentials import OaCredentialError, OaCredentialRegistry
 from nex_oa.sessions import OaSessionError
 from nex_oa.subjects import (
@@ -97,6 +102,7 @@ def register_user_login_routes(
     app: FastAPI,
     *,
     service: OaUserLoginService,
+    auth_event_repository: OaAuthEventRepository | None = None,
 ) -> None:
     @app.post("/internal/v1/auth/user-login", response_model=None)
     def login_user(
@@ -110,7 +116,30 @@ def register_user_login_routes(
         try:
             login_response = service.login(payload)
         except OaUserLoginError as exc:
+            record_auth_event_safely(
+                auth_event_repository,
+                event_type="LOGIN_FAILED",
+                outcome="BLOCKED" if exc.status_code in {401, 403} else "FAILED",
+                request=request,
+                authorization=authorization,
+                tenant_id=payload.get("tenant_id"),
+                details={"error_code": exc.error_code},
+            )
             return _user_login_problem_response(request, exc)
+        target = auth_event_target(login_response)
+        record_auth_event_safely(
+            auth_event_repository,
+            event_type="LOGIN_SUCCEEDED",
+            outcome="SUCCEEDED",
+            request=request,
+            authorization=authorization,
+            **target,
+            details={
+                "credential_status": login_response.get("metadata", {}).get(
+                    "credential_status"
+                )
+            },
+        )
         return _attach_request_context(login_response, request)
 
 

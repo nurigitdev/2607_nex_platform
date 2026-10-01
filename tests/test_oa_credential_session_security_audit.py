@@ -16,14 +16,14 @@ def test_repository_security_audit_quantifies_strengths_and_gaps() -> None:
     result = build_oa_credential_session_security_audit()
 
     assert result["status"] == "PASS"
-    assert result["security_readiness"] == "GAPS_CONFIRMED"
+    assert result["security_readiness"] == "HARDENED"
     assert all(result["checks"].values())
     assert result["issues"] == []
     assert result["summary"] == {
         "control_count": 8,
-        "implemented_count": 7,
+        "implemented_count": 8,
         "partial_count": 0,
-        "gap_count": 1,
+        "gap_count": 0,
         "evidence_issue_count": 0,
     }
     assert result["decision"]["raw_credentials_or_session_ids_in_evidence"] is False
@@ -43,7 +43,7 @@ def test_security_observations_distinguish_strengths_from_gaps() -> None:
         )
     )
     assert observations["credential_rotation_present"] is True
-    assert observations["auth_event_emission_present"] is False
+    assert observations["auth_event_emission_present"] is True
     assert observations["failed_attempt_mutation_present"] is True
     assert observations["random_session_identifier_present"] is True
     assert observations["adaptive_rehash_present"] is True
@@ -56,7 +56,7 @@ def test_security_audit_fails_closed_without_repository(tmp_path: Path) -> None:
     assert result["security_readiness"] == "BLOCKED"
     assert result["checks"]["required_evidence_present"] is False
     assert result["checks"]["implemented_security_strengths_observed"] is False
-    assert result["checks"]["security_gaps_observed"] is False
+    assert result["checks"]["security_classification_current"] is False
     assert result["issues"][-1] == {"category": "security_classification_drift"}
 
 
@@ -86,7 +86,7 @@ def test_security_audit_reports_gap_classification_drift(tmp_path: Path) -> None
     result = build_oa_credential_session_security_audit(tmp_path)
 
     assert result["status"] == "FAIL"
-    assert result["checks"]["security_gaps_observed"] is False
+    assert result["checks"]["security_classification_current"] is False
     assert result["issues"][-1] == {"category": "security_classification_drift"}
 
 
@@ -106,7 +106,7 @@ def test_runner_summary_json_and_failure_paths(monkeypatch, capsys) -> None:
 
     assert "security_audit=pass" in runner.summary_line(passing)
     assert "controls=8" in runner.summary_line(passing)
-    assert "gaps=1" in runner.summary_line(passing)
+    assert "gaps=0" in runner.summary_line(passing)
     monkeypatch.setattr(
         runner,
         "run_oa_credential_session_security_audit",

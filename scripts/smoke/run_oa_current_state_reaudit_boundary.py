@@ -63,7 +63,7 @@ TOKEN_REQUIREMENTS = (
     TokenRequirement(
         "oa_app",
         "services/nex-oa/nex_oa/main.py",
-        "register_user_login_routes(app, service=USER_LOGIN_SERVICE)",
+        "register_user_login_routes(",
     ),
     TokenRequirement(
         "subject_registry",

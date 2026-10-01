@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[3]
 SCHEMA_VERSION = "oa_contract_api_drift_audit.v1"
 HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete"})
 INVENTORY_BASELINE = {
-    "runtime_operations": 33,
+    "runtime_operations": 34,
     "openapi_operations": 8,
     "oa_schemas": 4,
 }

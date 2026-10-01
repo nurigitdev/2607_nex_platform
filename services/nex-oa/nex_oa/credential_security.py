@@ -12,6 +12,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_oa.auth_events import (
+    OaAuthEventRepository,
+    auth_event_target,
+    record_auth_event_safely,
+)
 from nex_oa.credentials import (
     LOCKOUT_DURATION_SECONDS,
     MAX_PASSWORD_LENGTH,
@@ -368,7 +373,10 @@ def build_credential_security_repository_for_runtime(
 
 
 def register_credential_security_routes(
-    app: FastAPI, *, repository: OaCredentialSecurityRepository
+    app: FastAPI,
+    *,
+    repository: OaCredentialSecurityRepository,
+    auth_event_repository: OaAuthEventRepository | None = None,
 ) -> None:
     @app.post("/internal/v1/auth/local-credentials/change-password", response_model=None)
     def change_password(
@@ -382,7 +390,30 @@ def register_credential_security_routes(
         try:
             response = repository.change_password(payload)
         except OaCredentialSecurityError as exc:
+            record_auth_event_safely(
+                auth_event_repository,
+                event_type="PASSWORD_CHANGED",
+                outcome=_failure_outcome(exc.status_code),
+                request=request,
+                authorization=authorization,
+                tenant_id=payload.get("tenant_id"),
+                details={"error_code": exc.error_code},
+            )
             return _problem(request, exc)
+        target = auth_event_target(response)
+        record_auth_event_safely(
+            auth_event_repository,
+            event_type="PASSWORD_CHANGED",
+            outcome="SUCCEEDED",
+            request=request,
+            authorization=authorization,
+            **target,
+            details={
+                "credential_status": response["credential_status"],
+                "operation": response["operation"],
+                "revoked_session_count": response["revoked_session_count"],
+            },
+        )
         return _with_context(response, request)
 
     @app.post("/internal/v1/auth/local-credentials/reset-password", response_model=None)
@@ -397,7 +428,30 @@ def register_credential_security_routes(
         try:
             response = repository.reset_password(payload)
         except OaCredentialSecurityError as exc:
+            record_auth_event_safely(
+                auth_event_repository,
+                event_type="PASSWORD_RESET",
+                outcome=_failure_outcome(exc.status_code),
+                request=request,
+                authorization=authorization,
+                tenant_id=payload.get("tenant_id"),
+                details={"error_code": exc.error_code},
+            )
             return _problem(request, exc)
+        target = auth_event_target(response)
+        record_auth_event_safely(
+            auth_event_repository,
+            event_type="PASSWORD_RESET",
+            outcome="SUCCEEDED",
+            request=request,
+            authorization=authorization,
+            **target,
+            details={
+                "credential_status": response["credential_status"],
+                "operation": response["operation"],
+                "revoked_session_count": response["revoked_session_count"],
+            },
+        )
         return _with_context(response, request)
 
 
@@ -579,6 +633,10 @@ def _problem(request: Request, exc: OaCredentialSecurityError) -> JSONResponse:
         retryable=exc.retryable,
         type_uri="https://nex-platform.local/problems/oa-credential-security-failed",
     )
+
+
+def _failure_outcome(status_code: int) -> str:
+    return "BLOCKED" if status_code in {401, 403, 409} else "FAILED"
 
 
 def _with_context(payload: dict[str, Any], request: Request) -> dict[str, Any]:

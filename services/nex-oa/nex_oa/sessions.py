@@ -14,6 +14,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_oa.auth_events import (
+    OaAuthEventRepository,
+    auth_event_target,
+    record_auth_event_safely,
+)
 from nex_oa.memberships import (
     OA_TENANT_MEMBERSHIP_SNAPSHOT_SCHEMA_VERSION,
     OaMembershipError,
@@ -427,6 +432,7 @@ def register_user_session_routes(
     app: FastAPI,
     *,
     registry: InMemoryOaSessionRegistry | SqlAlchemyOaSessionRegistry,
+    auth_event_repository: OaAuthEventRepository | None = None,
 ) -> None:
     @app.post("/internal/v1/auth/user-sessions/issue", response_model=None)
     def issue_user_session(
@@ -440,7 +446,23 @@ def register_user_session_routes(
         try:
             response = registry.issue_session(payload)
         except OaSessionError as exc:
+            _record_session_failure(
+                auth_event_repository,
+                event_type="SESSION_ISSUED",
+                exc=exc,
+                payload=payload,
+                request=request,
+                authorization=authorization,
+            )
             return _session_problem_response(request, exc)
+        _record_session_result(
+            auth_event_repository,
+            event_type="SESSION_ISSUED",
+            response=response,
+            request=request,
+            authorization=authorization,
+            details={},
+        )
         return _attach_request_context(response, request)
 
     @app.post("/internal/v1/auth/user-sessions/introspect", response_model=None)
@@ -455,7 +477,27 @@ def register_user_session_routes(
         try:
             response = registry.introspect_session(payload)
         except OaSessionError as exc:
+            _record_session_failure(
+                auth_event_repository,
+                event_type="SESSION_INTROSPECTED",
+                exc=exc,
+                payload={},
+                request=request,
+                authorization=authorization,
+            )
             return _session_problem_response(request, exc)
+        _record_session_result(
+            auth_event_repository,
+            event_type="SESSION_INTROSPECTED",
+            response=response,
+            request=request,
+            authorization=authorization,
+            details={
+                "active": response.get("active"),
+                "inactive_reason": response.get("inactive_reason"),
+            },
+            outcome="SUCCEEDED" if response.get("active") else "BLOCKED",
+        )
         return _attach_request_context(response, request)
 
     @app.post(
@@ -473,7 +515,28 @@ def register_user_session_routes(
         try:
             response = registry.revoke_session(session_id)
         except OaSessionError as exc:
+            _record_session_failure(
+                auth_event_repository,
+                event_type="SESSION_REVOKED",
+                exc=exc,
+                payload={},
+                request=request,
+                authorization=authorization,
+            )
             return _session_problem_response(request, exc)
+        _record_session_result(
+            auth_event_repository,
+            event_type="SESSION_REVOKED",
+            response=response,
+            request=request,
+            authorization=authorization,
+            details={
+                "revoked": response.get("revoked"),
+                "already_revoked": response.get("already_revoked"),
+                "inactive_reason": response.get("inactive_reason"),
+            },
+            outcome="SUCCEEDED" if response.get("revoked") else "BLOCKED",
+        )
         return _attach_request_context(response, request)
 
     @app.get("/internal/v1/auth/user-sessions/{session_id}", response_model=None)
@@ -499,6 +562,49 @@ def register_user_session_routes(
                 ),
             )
         return _attach_request_context(response, request)
+
+
+def _record_session_result(
+    repository: OaAuthEventRepository | None,
+    *,
+    event_type: str,
+    response: Mapping[str, Any],
+    request: Request,
+    authorization: str | None,
+    details: Mapping[str, Any],
+    outcome: str = "SUCCEEDED",
+) -> None:
+    target = auth_event_target(response)
+    record_auth_event_safely(
+        repository,
+        event_type=event_type,
+        outcome=outcome,
+        request=request,
+        authorization=authorization,
+        **target,
+        details=details,
+    )
+
+
+def _record_session_failure(
+    repository: OaAuthEventRepository | None,
+    *,
+    event_type: str,
+    exc: OaSessionError,
+    payload: Mapping[str, Any],
+    request: Request,
+    authorization: str | None,
+) -> None:
+    record_auth_event_safely(
+        repository,
+        event_type=event_type,
+        outcome="BLOCKED" if exc.status_code in {401, 403, 404} else "FAILED",
+        request=request,
+        authorization=authorization,
+        tenant_id=payload.get("tenant_id"),
+        subject_id=payload.get("subject_id"),
+        details={"error_code": exc.error_code},
+    )
 
 
 def normalize_session_issue_request(payload: Mapping[str, Any]) -> dict[str, Any]:

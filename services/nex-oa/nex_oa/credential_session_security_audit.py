@@ -70,6 +70,7 @@ def build_oa_credential_session_security_audit(
     security_source = _read_text(
         root / "services/nex-oa/nex_oa/credential_security.py"
     )
+    auth_event_source = _read_text(root / "services/nex-oa/nex_oa/auth_events.py")
 
     observations = {
         "pbkdf2_salted_hashing_present": all(
@@ -110,9 +111,10 @@ def build_oa_credential_session_security_audit(
             "uuid4(" in session_source or "token_urlsafe(" in session_source
         ),
         "auth_event_emission_present": (
-            "OperationalEventEmitter" in credential_source
-            or "OperationalEventEmitter" in session_source
-            or "OperationalEventEmitter" in login_source
+            "record_auth_event_safely" in security_source
+            and "record_auth_event_safely" in session_source
+            and "record_auth_event_safely" in login_source
+            and "class SqlAlchemyOaAuthEventRepository" in auth_event_source
         ),
     }
     controls = [
@@ -141,8 +143,8 @@ def build_oa_credential_session_security_audit(
         ),
         _control(
             "authentication_security_audit_events",
-            "GAP",
-            "login issue introspection and revocation paths do not emit auth-specific operational events",
+            "IMPLEMENTED",
+            None,
         ),
     ]
     strengths_observed = all(
@@ -155,15 +157,15 @@ def build_oa_credential_session_security_audit(
             "session_introspection_revocation_present",
         )
     )
-    gaps_observed = (
+    classification_current = (
         observations["credential_rotation_present"] is True
-        and observations["auth_event_emission_present"] is False
+        and observations["auth_event_emission_present"] is True
     )
     checks = {
         "required_evidence_present": all(item["present"] for item in evidence),
         "security_control_inventory_complete": len(controls) == 8,
         "implemented_security_strengths_observed": strengths_observed,
-        "security_gaps_observed": gaps_observed,
+        "security_classification_current": classification_current,
         "non_implemented_controls_have_explicit_gaps": all(
             item["status"] == "IMPLEMENTED" or bool(item["gap"])
             for item in controls
@@ -178,7 +180,7 @@ def build_oa_credential_session_security_audit(
         for item in evidence
         if not item["present"]
     ]
-    if not strengths_observed or not gaps_observed:
+    if not strengths_observed or not classification_current:
         issues.append({"category": "security_classification_drift"})
     passed = all(checks.values()) and not issues
     return {
@@ -189,7 +191,7 @@ def build_oa_credential_session_security_audit(
         "failure_code": (
             None if passed else "oa_credential_session_security_audit_failed"
         ),
-        "security_readiness": "GAPS_CONFIRMED" if passed else "BLOCKED",
+        "security_readiness": "HARDENED" if passed else "BLOCKED",
         "summary": {
             "control_count": len(controls),
             "implemented_count": sum(
@@ -201,7 +203,7 @@ def build_oa_credential_session_security_audit(
         },
         "decision": {
             "current_login_compatibility_preserved": True,
-            "security_gaps_require_targeted_hardening": True,
+            "security_gaps_require_targeted_hardening": False,
             "raw_credentials_or_session_ids_in_evidence": False,
             "new_table_required_now": False,
         },

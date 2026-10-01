@@ -6,6 +6,10 @@ from nex_runtime import (
     register_service_log_retention_routes,
 )
 from nex_oa.auth_boundary import register_identity_auth_boundary_routes
+from nex_oa.auth_events import (
+    build_auth_event_repository_for_runtime,
+    register_auth_event_routes,
+)
 from nex_oa.bootstrap_login_boundary import register_user_bootstrap_login_boundary_routes
 from nex_oa.credential_delivery import (
     register_session_credential_delivery_boundary_routes,
@@ -43,6 +47,7 @@ from nex_oa.user_login import OaUserLoginService, register_user_login_routes
 SERVICE_SPEC = SERVICE_SPECS["nex-oa"]
 app = build_service_app(SERVICE_SPEC)
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
+AUTH_EVENT_REPOSITORY = build_auth_event_repository_for_runtime(SERVICE_PERSISTENCE)
 SUBJECT_REGISTRY = build_subject_registry_for_runtime(SERVICE_PERSISTENCE)
 TENANT_MEMBERSHIP_REGISTRY = build_tenant_membership_registry_for_runtime(
     SERVICE_PERSISTENCE,
@@ -89,10 +94,23 @@ register_service_log_retention_routes(
 register_subject_registry_routes(app, registry=SUBJECT_REGISTRY)
 register_identity_auth_boundary_routes(app)
 register_local_credential_routes(app, registry=LOCAL_CREDENTIAL_REGISTRY)
-register_credential_security_routes(app, repository=CREDENTIAL_SECURITY_REPOSITORY)
+register_credential_security_routes(
+    app,
+    repository=CREDENTIAL_SECURITY_REPOSITORY,
+    auth_event_repository=AUTH_EVENT_REPOSITORY,
+)
 register_identity_membership_routes(app, registry=TENANT_MEMBERSHIP_REGISTRY)
 register_identity_lifecycle_routes(app, service=IDENTITY_LIFECYCLE_SERVICE)
-register_user_session_routes(app, registry=USER_SESSION_REGISTRY)
-register_user_login_routes(app, service=USER_LOGIN_SERVICE)
+register_user_session_routes(
+    app,
+    registry=USER_SESSION_REGISTRY,
+    auth_event_repository=AUTH_EVENT_REPOSITORY,
+)
+register_user_login_routes(
+    app,
+    service=USER_LOGIN_SERVICE,
+    auth_event_repository=AUTH_EVENT_REPOSITORY,
+)
+register_auth_event_routes(app, repository=AUTH_EVENT_REPOSITORY)
 register_session_credential_delivery_boundary_routes(app)
 register_user_bootstrap_login_boundary_routes(app)
