@@ -8,6 +8,18 @@ import run_mo_mvp_acceptance_oa_transition_boundary_audit as audit
 
 def test_repository_boundary_is_frozen() -> None:
     result = audit.run_mo_mvp_acceptance_oa_transition_boundary_audit()
+    resolved = sum(
+        (audit.ROOT / path).is_file()
+        for path in audit.GAP_RESOLUTION_PATHS.values()
+    )
+    expected_next = next(
+        (
+            audit.GAP_SLICES[name]
+            for name, path in audit.GAP_RESOLUTION_PATHS.items()
+            if not (audit.ROOT / path).is_file()
+        ),
+        "1201",
+    )
 
     assert result["status"] == "PASS"
     assert result["boundary_readiness"] == "BOUNDARY_FROZEN"
@@ -15,13 +27,13 @@ def test_repository_boundary_is_frozen() -> None:
         "foundation_count": 7,
         "closure_count": 9,
         "gap_count": 8,
-        "open_gap_count": 8,
-        "resolved_gap_count": 0,
+        "open_gap_count": 8 - resolved,
+        "resolved_gap_count": resolved,
         "planned_slice_count": 10,
         "issue_count": 0,
     }
     assert all(result["checks"].values())
-    assert result["next_slice"] == "1193"
+    assert result["next_slice"] == expected_next
 
 
 def test_boundary_decision_freezes_live_database_and_quality_scope() -> None:
@@ -80,9 +92,11 @@ def test_resolved_gap_sequence_advances_to_first_open_slice(tmp_path: Path) -> N
 
 def test_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = audit.run_mo_mvp_acceptance_oa_transition_boundary_audit()
+    summary = passing["summary"]
     assert audit.summary_line(passing) == (
         "mo_mvp_acceptance_oa_transition_boundary=pass closures=9 "
-        "gaps=8 open=8 issues=0 next=1193"
+        f"gaps=8 open={summary['open_gap_count']} issues=0 "
+        f"next={passing['next_slice']}"
     )
     failing = {"status": "FAIL", "summary": {}, "next_slice": "1193"}
     assert "boundary=fail" in audit.summary_line(failing)
