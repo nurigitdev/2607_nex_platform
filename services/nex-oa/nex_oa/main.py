@@ -10,6 +10,13 @@ from nex_oa.bootstrap_login_boundary import register_user_bootstrap_login_bounda
 from nex_oa.credential_delivery import (
     register_session_credential_delivery_boundary_routes,
 )
+from nex_oa.identity_lifecycle_repository import (
+    build_identity_lifecycle_repository_for_runtime,
+)
+from nex_oa.identity_lifecycle_service import (
+    OaIdentityLifecycleService,
+    register_identity_lifecycle_routes,
+)
 from nex_oa.credentials import (
     build_credential_registry_for_runtime,
     register_local_credential_routes,
@@ -49,6 +56,15 @@ USER_LOGIN_SERVICE = OaUserLoginService(
     credential_registry=LOCAL_CREDENTIAL_REGISTRY,
     session_registry=USER_SESSION_REGISTRY,
 )
+IDENTITY_LIFECYCLE_REPOSITORY = build_identity_lifecycle_repository_for_runtime(
+    SERVICE_PERSISTENCE,
+    subject_registry=SUBJECT_REGISTRY,
+    membership_registry=TENANT_MEMBERSHIP_REGISTRY,
+)
+IDENTITY_LIFECYCLE_SERVICE = OaIdentityLifecycleService(
+    subject_registry=SUBJECT_REGISTRY,
+    repository=IDENTITY_LIFECYCLE_REPOSITORY,
+)
 register_service_job_control_routes(
     app,
     service_id=SERVICE_SPEC.service_id,
@@ -63,6 +79,7 @@ register_subject_registry_routes(app, registry=SUBJECT_REGISTRY)
 register_identity_auth_boundary_routes(app)
 register_local_credential_routes(app, registry=LOCAL_CREDENTIAL_REGISTRY)
 register_identity_membership_routes(app, registry=TENANT_MEMBERSHIP_REGISTRY)
+register_identity_lifecycle_routes(app, service=IDENTITY_LIFECYCLE_SERVICE)
 register_user_session_routes(app, registry=USER_SESSION_REGISTRY)
 register_user_login_routes(app, service=USER_LOGIN_SERVICE)
 register_session_credential_delivery_boundary_routes(app)
