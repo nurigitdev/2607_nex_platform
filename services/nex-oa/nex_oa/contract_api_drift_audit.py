@@ -13,8 +13,8 @@ SCHEMA_VERSION = "oa_contract_api_drift_audit.v1"
 HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete"})
 INVENTORY_BASELINE = {
     "runtime_operations": 34,
-    "openapi_operations": 8,
-    "oa_schemas": 4,
+    "openapi_operations": 11,
+    "oa_schemas": 6,
 }
 
 
@@ -158,7 +158,7 @@ def build_oa_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
         "checks": checks,
         "issues": issues,
         "hardening_handoff": {
-            "target_requirement": "S122",
+            "target_requirement": "S123",
             "canonical_schema_required_per_wire_shape": True,
             "security_required_for_internal_routes": True,
             "runtime_openapi_parity_required": True,

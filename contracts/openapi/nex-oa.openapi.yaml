@@ -1,11 +1,12 @@
 openapi: 3.1.0
 info:
   title: NeX OA API
-  version: 0.0.0-slice1219
+  version: 0.0.0-slice1229
 tags:
   - name: Platform
   - name: Auth
   - name: Identity Lifecycle
+  - name: Credential Security
 paths:
   /health:
     get:
@@ -133,6 +134,127 @@ paths:
           description: Membership lifecycle target was not found.
         "409":
           description: Revision or lifecycle transition conflicts with current state.
+  /internal/v1/auth/local-credentials/change-password:
+    post:
+      operationId: changeOaLocalCredentialPassword
+      tags:
+        - Credential Security
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes:
+        - service:call
+        - credential:security:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CredentialPasswordChange"
+      responses:
+        "200":
+          description: Password changed and active sessions revoked atomically.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialRotationResponse"
+        "400":
+          description: Password change payload is invalid.
+        "401":
+          description: Service claim or current password is invalid.
+        "403":
+          description: Required credential security scope is missing.
+        "409":
+          description: Credential state or password reuse conflicts with the request.
+        "503":
+          description: Credential security persistence is unavailable.
+  /internal/v1/auth/local-credentials/reset-password:
+    post:
+      operationId: resetOaLocalCredentialPassword
+      tags:
+        - Credential Security
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes:
+        - service:call
+        - credential:security:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CredentialPasswordReset"
+      responses:
+        "200":
+          description: Temporary password set and active sessions revoked atomically.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialRotationResponse"
+        "400":
+          description: Password reset payload is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Required credential security scope is missing.
+        "404":
+          description: Credential target was not found.
+        "409":
+          description: Disabled credential requires an identity lifecycle transition.
+        "503":
+          description: Credential security persistence is unavailable.
+  /internal/v1/auth/security-events:
+    get:
+      operationId: listOaAuthenticationSecurityEvents
+      tags:
+        - Credential Security
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes:
+        - service:call
+        - credential:security:read
+      parameters:
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+        - name: subject_id
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+        - name: event_type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AuthEventType"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+      responses:
+        "200":
+          description: Tenant-bounded authentication security events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthEventListResponse"
+        "400":
+          description: Event query is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Required credential security scope is missing.
+        "503":
+          description: Authentication event persistence is unavailable.
 components:
   parameters:
     TenantId:
@@ -157,6 +279,139 @@ components:
       scheme: bearer
       bearerFormat: NeX service claim
   schemas:
+    CredentialPasswordChange:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, employee_id, current_password, new_password]
+      properties:
+        tenant_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        employee_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        current_password:
+          type: string
+          minLength: 8
+          maxLength: 256
+          writeOnly: true
+        new_password:
+          type: string
+          minLength: 8
+          maxLength: 256
+          writeOnly: true
+    CredentialPasswordReset:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, employee_id, temporary_password, reason_code]
+      properties:
+        tenant_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        employee_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        temporary_password:
+          type: string
+          minLength: 8
+          maxLength: 256
+          writeOnly: true
+        reason_code:
+          type: string
+          pattern: "^[a-z][a-z0-9_.-]{1,127}$"
+    CredentialRotationResponse:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/credential_rotation.v1.schema.json
+      additionalProperties: false
+      required:
+        - credential_rotation_schema_version
+        - service_id
+        - operation
+        - tenant_ref
+        - subject_ref
+        - credential_id
+        - credential_status
+        - password_changed_at
+        - revoked_session_count
+        - reason_code
+        - metadata
+        - request_id
+        - trace_id
+      properties:
+        credential_rotation_schema_version:
+          const: oa_credential_rotation.v1
+        service_id:
+          const: nex-oa
+        operation:
+          enum: [PASSWORD_CHANGED, PASSWORD_RESET]
+        tenant_ref:
+          type: object
+        subject_ref:
+          type: object
+        credential_id:
+          type: string
+        credential_status:
+          enum: [ACTIVE, PASSWORD_RESET_REQUIRED]
+        password_changed_at:
+          type: string
+          format: date-time
+        revoked_session_count:
+          type: integer
+          minimum: 0
+        reason_code:
+          type: string
+        metadata:
+          type: object
+        request_id:
+          type: string
+        trace_id:
+          type: string
+    AuthEventType:
+      type: string
+      enum:
+        - LOGIN_SUCCEEDED
+        - LOGIN_FAILED
+        - PASSWORD_CHANGED
+        - PASSWORD_RESET
+        - SESSION_ISSUED
+        - SESSION_INTROSPECTED
+        - SESSION_REVOKED
+    AuthEventListResponse:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/auth_event_list.v1.schema.json
+      additionalProperties: false
+      required:
+        - auth_event_list_schema_version
+        - service_id
+        - tenant_ref
+        - events
+        - count
+        - request_id
+        - trace_id
+      properties:
+        auth_event_list_schema_version:
+          const: oa_auth_event_list.v1
+        service_id:
+          const: nex-oa
+        tenant_ref:
+          type: object
+        events:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+        count:
+          type: integer
+          minimum: 0
+          maximum: 200
+        request_id:
+          type: string
+        trace_id:
+          type: string
     IdentityLifecycleTransition:
       type: object
       additionalProperties: false

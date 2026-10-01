@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/auth_event_list.v1.schema.json",
+  "title": "NeX OA Authentication Event List",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "auth_event_list_schema_version",
+    "service_id",
+    "tenant_ref",
+    "events",
+    "count",
+    "request_id",
+    "trace_id"
+  ],
+  "properties": {
+    "auth_event_list_schema_version": {"const": "oa_auth_event_list.v1"},
+    "service_id": {"const": "nex-oa"},
+    "tenant_ref": {"$ref": "#/$defs/tenant_ref"},
+    "events": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {"$ref": "#/$defs/auth_event"}
+    },
+    "count": {"type": "integer", "minimum": 0, "maximum": 200},
+    "request_id": {"$ref": "#/$defs/identifier"},
+    "trace_id": {"$ref": "#/$defs/identifier"}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "minLength": 1, "maxLength": 256},
+    "tenant_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"const": "oa.tenant"},
+        "id": {"$ref": "#/$defs/identifier"}
+      }
+    },
+    "subject_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"const": "oa.user"},
+        "id": {"$ref": "#/$defs/identifier"}
+      }
+    },
+    "details": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "active": {"type": ["boolean", "null"]},
+        "already_revoked": {"type": ["boolean", "null"]},
+        "credential_status": {"type": ["string", "null"], "maxLength": 64},
+        "error_code": {"type": ["string", "null"], "maxLength": 128},
+        "inactive_reason": {"type": ["string", "null"], "maxLength": 64},
+        "operation": {"type": ["string", "null"], "maxLength": 64},
+        "revoked": {"type": ["boolean", "null"]},
+        "revoked_session_count": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "auth_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_schema_version",
+        "event_id",
+        "event_type",
+        "outcome",
+        "tenant_ref",
+        "subject_ref",
+        "credential_id",
+        "actor_ref",
+        "request_id",
+        "trace_id",
+        "details",
+        "occurred_at"
+      ],
+      "properties": {
+        "event_schema_version": {"const": "oa_auth_event.v1"},
+        "event_id": {"$ref": "#/$defs/identifier"},
+        "event_type": {
+          "enum": [
+            "LOGIN_SUCCEEDED",
+            "LOGIN_FAILED",
+            "PASSWORD_CHANGED",
+            "PASSWORD_RESET",
+            "SESSION_ISSUED",
+            "SESSION_INTROSPECTED",
+            "SESSION_REVOKED"
+          ]
+        },
+        "outcome": {"enum": ["SUCCEEDED", "FAILED", "BLOCKED"]},
+        "tenant_ref": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/tenant_ref"}]
+        },
+        "subject_ref": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/subject_ref"}]
+        },
+        "credential_id": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/identifier"}]
+        },
+        "actor_ref": {
+          "type": "string",
+          "pattern": "^nex\\.service:[A-Za-z0-9._:-]+$",
+          "maxLength": 256
+        },
+        "request_id": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/identifier"}]
+        },
+        "trace_id": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/identifier"}]
+        },
+        "details": {"$ref": "#/$defs/details"},
+        "occurred_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

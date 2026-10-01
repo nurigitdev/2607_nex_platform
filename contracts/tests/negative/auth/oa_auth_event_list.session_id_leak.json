@@ -1,0 +1,25 @@
+{
+  "auth_event_list_schema_version": "oa_auth_event_list.v1",
+  "service_id": "nex-oa",
+  "tenant_ref": {"type": "oa.tenant", "id": "tenant-1229"},
+  "events": [
+    {
+      "event_schema_version": "oa_auth_event.v1",
+      "event_id": "event-1229",
+      "event_type": "SESSION_REVOKED",
+      "outcome": "SUCCEEDED",
+      "tenant_ref": {"type": "oa.tenant", "id": "tenant-1229"},
+      "subject_ref": {"type": "oa.user", "id": "user-1229"},
+      "credential_id": null,
+      "actor_ref": "nex.service:nex-ae-api",
+      "request_id": "request-1229-session",
+      "trace_id": "1234567890abcdef1234567890abcdef",
+      "details": {"revoked": true},
+      "occurred_at": "2026-10-01T00:00:00Z",
+      "session_id": "private-session-id"
+    }
+  ],
+  "count": 1,
+  "request_id": "request-1229-list",
+  "trace_id": "1234567890abcdef1234567890abcdef"
+}

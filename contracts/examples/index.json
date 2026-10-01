@@ -76,6 +76,16 @@
       "schema": "schemas/service/nex_oa/membership_lifecycle_response.v1.schema.json"
     },
     {
+      "name": "oa_credential_rotation_password_changed",
+      "path": "examples/auth/oa_credential_rotation.password_changed.json",
+      "schema": "schemas/service/nex_oa/credential_rotation.v1.schema.json"
+    },
+    {
+      "name": "oa_auth_event_list_login",
+      "path": "examples/auth/oa_auth_event_list.login.json",
+      "schema": "schemas/service/nex_oa/auth_event_list.v1.schema.json"
+    },
+    {
       "name": "mo_provider_route_generation",
       "path": "examples/generation/mo_provider_route.general_llm_default.json",
       "schema": "schemas/service/nex_mo/provider_route.v1.schema.json"
