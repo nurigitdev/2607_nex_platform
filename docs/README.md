@@ -1291,6 +1291,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1185`](slices/1185_mo_authenticated_operations_api.md) | `S119-004` Add the service-authenticated operations snapshot API foundation with bounded refresh and safe failure handling. |
 | [`Slice 1186`](slices/1186_mo_operations_acceptance_admission.md) | `S119-005` Add fail-closed PostgreSQL/DGX acceptance admission and complete the fifth-Slice Checkpoint Gate. |
 | [`Slice 1187`](slices/1187_mo_operations_contract_hardening.md) | `S119-006` Register the authenticated MO operations snapshot and harden canonical contracts, OpenAPI parity, and privacy. |
+| [`Slice 1188`](slices/1188_mo_operations_integrated_acceptance.md) | `S119-007` Exercise the authenticated operations projection through deterministic production in-memory components. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
