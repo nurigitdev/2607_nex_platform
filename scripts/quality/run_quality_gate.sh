@@ -530,6 +530,7 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_oa_database_drift_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_oa_identity_lifecycle_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_oa_credential_session_security_audit.py --summary
+"$PYTHON_BIN" scripts/smoke/run_oa_contract_api_drift_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary

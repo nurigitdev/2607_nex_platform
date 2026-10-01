@@ -1310,6 +1310,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1204`](slices/1204_oa_persistence_migration_drift_audit.md) | `S121-003` Audit OA migration ordering, ledger, transactions, core-table references, and PostgreSQL identifier safety. |
 | [`Slice 1205`](slices/1205_oa_identity_membership_lifecycle_audit.md) | `S121-004` Quantify stable identity, membership lifecycle, deprovisioning, group-model, bootstrap-policy, and stale-projection gaps. |
 | [`Slice 1206`](slices/1206_oa_credential_session_security_audit.md) | `S121-005` Audit password/session strengths and lockout, rotation, entropy, rehash, and auth-event gaps; run the Checkpoint Gate. |
+| [`Slice 1207`](slices/1207_oa_contract_api_drift_audit.md) | `S121-006` Quantify OA runtime/OpenAPI operation, schema-fixture, security, and version drift. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

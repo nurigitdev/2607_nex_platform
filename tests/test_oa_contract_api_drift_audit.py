@@ -1,0 +1,109 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from nex_oa.contract_api_drift_audit import (
+    INVENTORY_BASELINE,
+    _index_entries,
+    _load_mapping,
+    _openapi_operations,
+    _runtime_operations,
+    build_oa_contract_api_drift_audit,
+)
+import run_oa_contract_api_drift_audit as runner
+
+
+def test_repository_contract_api_audit_confirms_known_drift() -> None:
+    result = build_oa_contract_api_drift_audit()
+
+    assert result["status"] == "PASS"
+    assert result["contract_readiness"] == "GAPS_CONFIRMED"
+    assert all(result["checks"].values())
+    assert result["issues"] == []
+    assert result["summary"] == {
+        "runtime_operation_count": 29,
+        "openapi_operation_count": 6,
+        "runtime_openapi_covered_count": 6,
+        "missing_openapi_operation_count": 23,
+        "undocumented_openapi_operation_count": 0,
+        "schema_count": 2,
+        "positive_fixture_covered_count": 2,
+        "negative_fixture_covered_count": 1,
+        "drift_count": 25,
+        "audit_issue_count": 0,
+    }
+    assert result["openapi_version"] == "0.0.0-slice0003"
+    assert result["hardening_handoff"]["target_requirement"] == "S122"
+
+
+def test_inventory_baseline_matches_repository_minimum() -> None:
+    assert INVENTORY_BASELINE == {
+        "runtime_operations": 29,
+        "openapi_operations": 6,
+        "oa_schemas": 2,
+    }
+
+
+def test_contract_api_audit_fails_closed_without_inputs(tmp_path: Path) -> None:
+    result = build_oa_contract_api_drift_audit(tmp_path)
+
+    assert result["status"] == "FAIL"
+    assert result["contract_readiness"] == "BLOCKED"
+    assert result["summary"]["audit_issue_count"] == 4
+    assert result["checks"]["audit_inputs_present"] is False
+
+
+def test_contract_parsers_cover_valid_invalid_and_dynamic_routes(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    (source_root / "valid.py").write_text(
+        '@app.get("/items")\ndef items():\n    pass\n'
+        '@app.get(prefix + "/dynamic")\ndef dynamic():\n    pass\n',
+        encoding="utf-8",
+    )
+    invalid = tmp_path / "invalid.py"
+    invalid.write_text("def broken(:\n", encoding="utf-8")
+    assert _runtime_operations((source_root, invalid)) == {("GET", "/items")}
+    assert _runtime_operations((tmp_path / "missing.py",)) == set()
+
+    yaml_path = tmp_path / "openapi.yaml"
+    yaml_path.write_text("paths:\n  /x:\n    get: {}\n    parameters: []\n", encoding="utf-8")
+    loaded = _load_mapping(yaml_path)
+    assert _openapi_operations(loaded) == {("GET", "/x")}
+    assert _openapi_operations({"paths": {1: {"get": {}}}}) == set()
+    yaml_path.write_text("paths: [\n", encoding="utf-8")
+    assert _load_mapping(yaml_path) == {}
+    assert _load_mapping(tmp_path / "missing.yaml") == {}
+
+    index_path = tmp_path / "index.json"
+    index_path.write_text('{"examples":[{"schema":"a"},"bad"]}', encoding="utf-8")
+    assert _index_entries(index_path, "examples") == [{"schema": "a"}]
+    index_path.write_text("{bad", encoding="utf-8")
+    assert _index_entries(index_path, "examples") == []
+    assert _index_entries(tmp_path / "missing.json", "examples") == []
+
+
+def test_summary_line_and_runner_main_paths(monkeypatch, capsys) -> None:
+    passing = runner.run_oa_contract_api_drift_audit()
+
+    summary = passing["summary"]
+    assert "contract_api_drift_audit=pass" in runner.summary_line(passing)
+    assert "runtime_routes=29" in runner.summary_line(passing)
+    assert "drift=25" in runner.summary_line(passing)
+    monkeypatch.setattr(runner, "run_oa_contract_api_drift_audit", lambda: passing)
+    assert runner.main(["--summary"]) == 0
+    assert f"openapi_missing={summary['missing_openapi_operation_count']}" in (
+        capsys.readouterr().out
+    )
+    assert runner.main([]) == 0
+    assert '"status": "PASS"' in capsys.readouterr().out
+
+    monkeypatch.setattr(
+        runner,
+        "run_oa_contract_api_drift_audit",
+        lambda: {"status": "FAIL", "summary": {}},
+    )
+    assert runner.main([]) == 1
+    assert '"status": "FAIL"' in capsys.readouterr().out
