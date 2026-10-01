@@ -132,8 +132,8 @@ def build_oa_credential_session_security_audit(
         ),
         _control(
             "opaque_session_identifier_entropy",
-            "GAP",
-            "session ids are deterministic UUID5 values derived from user and timestamp claims",
+            "IMPLEMENTED",
+            None,
         ),
         _control(
             "authentication_security_audit_events",
@@ -155,7 +155,6 @@ def build_oa_credential_session_security_audit(
         observations[name] is False
         for name in (
             "credential_rotation_present",
-            "random_session_identifier_present",
             "auth_event_emission_present",
         )
     )

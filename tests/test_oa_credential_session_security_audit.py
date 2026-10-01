@@ -21,9 +21,9 @@ def test_repository_security_audit_quantifies_strengths_and_gaps() -> None:
     assert result["issues"] == []
     assert result["summary"] == {
         "control_count": 8,
-        "implemented_count": 5,
+        "implemented_count": 6,
         "partial_count": 0,
-        "gap_count": 3,
+        "gap_count": 2,
         "evidence_issue_count": 0,
     }
     assert result["decision"]["raw_credentials_or_session_ids_in_evidence"] is False
@@ -46,11 +46,11 @@ def test_security_observations_distinguish_strengths_from_gaps() -> None:
         observations[name] is False
         for name in (
             "credential_rotation_present",
-            "random_session_identifier_present",
             "auth_event_emission_present",
         )
     )
     assert observations["failed_attempt_mutation_present"] is True
+    assert observations["random_session_identifier_present"] is True
     assert observations["adaptive_rehash_present"] is True
 
 
@@ -105,7 +105,7 @@ def test_runner_summary_json_and_failure_paths(monkeypatch, capsys) -> None:
 
     assert "security_audit=pass" in runner.summary_line(passing)
     assert "controls=8" in runner.summary_line(passing)
-    assert "gaps=3" in runner.summary_line(passing)
+    assert "gaps=2" in runner.summary_line(passing)
     monkeypatch.setattr(
         runner,
         "run_oa_credential_session_security_audit",

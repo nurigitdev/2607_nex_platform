@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
+from secrets import token_urlsafe
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
@@ -50,6 +50,8 @@ OA_BROWSER_SESSION_SCHEMA_VERSION = "oa_browser_session.v1"
 OA_SESSION_STATUSES = ("ACTIVE", "EXPIRED", "REVOKED")
 DEFAULT_SESSION_TTL_SECONDS = 3600
 MAX_SESSION_TTL_SECONDS = 86400
+DEFAULT_SESSION_IDLE_TTL_SECONDS = 1800
+SESSION_ID_ENTROPY_BYTES = 32
 SESSION_ISSUE_FIELDS = frozenset(
     {
         "tenant_id",
@@ -112,6 +114,9 @@ class InMemoryOaSessionRegistry:
     def introspect_session(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         introspection_request = normalize_session_introspection_request(payload)
         record = self.sessions.get(introspection_request["session_id"])
+        if record is not None:
+            record = refresh_session_for_introspection(record)
+            self.sessions[introspection_request["session_id"]] = deepcopy(record)
         return build_session_introspection_response(record)
 
     def revoke_session(self, session_id: str) -> dict[str, Any]:
@@ -174,11 +179,12 @@ class SqlAlchemyOaSessionRegistry:
     def introspect_session(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         introspection_request = normalize_session_introspection_request(payload)
         try:
-            with self._session_factory() as session:
-                record = self._select_session(
+            record = self._run_in_transaction(
+                lambda session: self._introspect_and_touch(
                     session,
                     introspection_request["session_id"],
                 )
+            )
         except SQLAlchemyError as exc:
             raise _session_unavailable() from exc
         return build_session_introspection_response(record)
@@ -231,6 +237,8 @@ class SqlAlchemyOaSessionRegistry:
                     issued_at,
                     expires_at,
                     auth_time,
+                    last_seen_at,
+                    idle_expires_at,
                     revoked_at,
                     metadata,
                     created_at,
@@ -251,6 +259,8 @@ class SqlAlchemyOaSessionRegistry:
                     :issued_at,
                     :expires_at,
                     :auth_time,
+                    :last_seen_at,
+                    :idle_expires_at,
                     :revoked_at,
                     {metadata_expression},
                     :created_at,
@@ -273,6 +283,8 @@ class SqlAlchemyOaSessionRegistry:
                 "issued_at": record["issued_at"],
                 "expires_at": record["expires_at"],
                 "auth_time": record["auth_time"],
+                "last_seen_at": record["last_seen_at"],
+                "idle_expires_at": record["idle_expires_at"],
                 "revoked_at": record["revoked_at"],
                 "metadata": _json_dumps(record["metadata"]),
                 "created_at": record["created_at"],
@@ -306,6 +318,8 @@ class SqlAlchemyOaSessionRegistry:
                     issued_at,
                     expires_at,
                     auth_time,
+                    last_seen_at,
+                    idle_expires_at,
                     revoked_at,
                     metadata,
                     created_at,
@@ -319,6 +333,38 @@ class SqlAlchemyOaSessionRegistry:
         if row is None:
             return None
         return _session_from_row(row)
+
+    def _introspect_and_touch(
+        self,
+        session: Session,
+        session_id: str,
+    ) -> dict[str, Any] | None:
+        record = self._select_session(session, session_id)
+        if record is None:
+            return None
+        refreshed = refresh_session_for_introspection(record)
+        if refreshed != record:
+            session.execute(
+                text(
+                    """
+                    UPDATE oa_user_sessions
+                    SET
+                        status = :status,
+                        last_seen_at = :last_seen_at,
+                        idle_expires_at = :idle_expires_at,
+                        updated_at = :updated_at
+                    WHERE session_id = :session_id
+                    """
+                ),
+                {
+                    "session_id": session_id,
+                    "status": refreshed["status"],
+                    "last_seen_at": refreshed["last_seen_at"],
+                    "idle_expires_at": refreshed["idle_expires_at"],
+                    "updated_at": refreshed["updated_at"],
+                },
+            )
+        return refreshed
 
     def _revoke_session(self, session: Session, session_id: str) -> dict[str, Any]:
         record = self._select_session(session, session_id)
@@ -500,6 +546,12 @@ def build_session_record(
 ) -> dict[str, Any]:
     normalized_status = normalize_session_status(status)
     now = _utc_now()
+    issued_at = _wire_timestamp_to_utc(claims.issued_at)
+    expires_at = _wire_timestamp_to_utc(claims.expires_at)
+    idle_expires_at = min(
+        expires_at,
+        issued_at + timedelta(seconds=DEFAULT_SESSION_IDLE_TTL_SECONDS),
+    )
     return {
         "session_schema_version": OA_USER_SESSION_SCHEMA_VERSION,
         "session_id": stable_session_id(claims),
@@ -514,6 +566,8 @@ def build_session_record(
         "issued_at": claims.issued_at,
         "expires_at": claims.expires_at,
         "auth_time": claims.issued_at,
+        "last_seen_at": claims.issued_at,
+        "idle_expires_at": idle_expires_at.isoformat().replace("+00:00", "Z"),
         "revoked_at": None,
         "metadata": safe_session_metadata(),
         "created_at": now,
@@ -610,7 +664,7 @@ def build_session_introspection_response(
 ) -> dict[str, Any]:
     session = build_browser_session_snapshot(record) if record is not None else None
     inactive_reason = (
-        _inactive_reason_for_session_snapshot(session) if session is not None else "not_found"
+        _inactive_reason_for_session_record(record) if record is not None else "not_found"
     )
     return {
         "session_introspection_schema_version": (
@@ -680,21 +734,8 @@ def normalize_session_status(value: object) -> str:
 
 
 def stable_session_id(claims: UserClaims) -> str:
-    return str(
-        uuid5(
-            NAMESPACE_URL,
-            "|".join(
-                [
-                    "nex-platform",
-                    "oa-browser-session",
-                    claims.tenant_id,
-                    claims.user_id,
-                    claims.issued_at,
-                    claims.expires_at,
-                ]
-            ),
-        )
-    )
+    del claims
+    return token_urlsafe(SESSION_ID_ENTROPY_BYTES)
 
 
 def safe_session_metadata() -> dict[str, bool]:
@@ -707,7 +748,7 @@ def safe_session_metadata() -> dict[str, bool]:
     }
 
 
-def _inactive_reason_for_session_snapshot(
+def _inactive_reason_for_session_record(
     session: Mapping[str, Any],
 ) -> str | None:
     status = normalize_session_status(session.get("status"))
@@ -718,6 +759,60 @@ def _inactive_reason_for_session_snapshot(
     expires_at = _wire_timestamp_to_utc(session.get("expires_at"))
     if expires_at <= datetime.now(UTC):
         return "expired"
+    idle_expires_at = _wire_timestamp_to_utc(
+        session.get("idle_expires_at", session.get("expires_at"))
+    )
+    if idle_expires_at <= datetime.now(UTC):
+        return "idle_expired"
+    return None
+
+
+def refresh_session_for_introspection(
+    record: Mapping[str, Any],
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    current = (now or datetime.now(UTC)).astimezone(UTC)
+    reason = _inactive_reason_for_session_record_at(record, now=current)
+    if reason in {"expired", "idle_expired"} and record.get("status") == "ACTIVE":
+        wire_now = current.isoformat().replace("+00:00", "Z")
+        return {
+            **deepcopy(dict(record)),
+            "status": "EXPIRED",
+            "updated_at": wire_now,
+        }
+    if reason is not None:
+        return deepcopy(dict(record))
+    expires_at = _wire_timestamp_to_utc(record.get("expires_at"))
+    idle_expires_at = min(
+        expires_at,
+        current + timedelta(seconds=DEFAULT_SESSION_IDLE_TTL_SECONDS),
+    )
+    wire_now = current.isoformat().replace("+00:00", "Z")
+    return {
+        **deepcopy(dict(record)),
+        "last_seen_at": wire_now,
+        "idle_expires_at": idle_expires_at.isoformat().replace("+00:00", "Z"),
+        "updated_at": wire_now,
+    }
+
+
+def _inactive_reason_for_session_record_at(
+    session: Mapping[str, Any],
+    *,
+    now: datetime,
+) -> str | None:
+    status = normalize_session_status(session.get("status"))
+    if status == "REVOKED":
+        return "revoked"
+    if status == "EXPIRED":
+        return "expired"
+    if _wire_timestamp_to_utc(session.get("expires_at")) <= now:
+        return "expired"
+    if _wire_timestamp_to_utc(
+        session.get("idle_expires_at", session.get("expires_at"))
+    ) <= now:
+        return "idle_expired"
     return None
 
 
@@ -813,6 +908,8 @@ def _session_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
         "issued_at": _timestamp_to_wire(row["issued_at"]),
         "expires_at": _timestamp_to_wire(row["expires_at"]),
         "auth_time": _timestamp_to_wire(row["auth_time"]),
+        "last_seen_at": _timestamp_to_wire(row["last_seen_at"]),
+        "idle_expires_at": _timestamp_to_wire(row["idle_expires_at"]),
         "revoked_at": (
             _timestamp_to_wire(row["revoked_at"])
             if row.get("revoked_at") is not None

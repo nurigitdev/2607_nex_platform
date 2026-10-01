@@ -172,6 +172,8 @@ def sqlite_oa_auth_smoke_tables(*, ae_database_url: str, oa_database_url: str) -
                     issued_at TEXT NOT NULL,
                     expires_at TEXT NOT NULL,
                     auth_time TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL,
+                    idle_expires_at TEXT NOT NULL,
                     revoked_at TEXT,
                     metadata TEXT NOT NULL DEFAULT '{}',
                     created_at TEXT NOT NULL,

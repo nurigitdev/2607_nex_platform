@@ -36,6 +36,7 @@ from nex_oa.sessions import (
     register_user_session_routes,
     safe_session_metadata,
     stable_session_id,
+    refresh_session_for_introspection,
     _json_loads,
     _json_sql_expression,
     _session_from_row,
@@ -183,6 +184,8 @@ def sqlite_session_registry() -> tuple[SqlAlchemyOaSessionRegistry, object]:
                     issued_at TEXT NOT NULL,
                     expires_at TEXT NOT NULL,
                     auth_time TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL,
+                    idle_expires_at TEXT NOT NULL,
                     revoked_at TEXT,
                     metadata TEXT NOT NULL DEFAULT '{}',
                     created_at TEXT NOT NULL,
@@ -621,7 +624,8 @@ def test_session_record_helpers_are_deterministic_and_validate_shape() -> None:
     snapshot = build_browser_session_snapshot(record)
 
     assert record["session_schema_version"] == OA_USER_SESSION_SCHEMA_VERSION
-    assert record["session_id"] == stable_session_id(issued.claims)
+    assert len(record["session_id"]) >= 43
+    assert record["session_id"] != stable_session_id(issued.claims)
     assert snapshot["metadata"] == safe_session_metadata()
     assert build_session_introspection_response(record)["active"] is True
 
@@ -787,6 +791,8 @@ def test_session_json_timestamp_and_factory_helpers_cover_storage_variants() -> 
         "issued_at": datetime(2026, 8, 12, 1, 2, 3),
         "expires_at": datetime(2026, 8, 12, 2, 2, 3, tzinfo=UTC),
         "auth_time": "2026-08-12T01:02:03Z",
+        "last_seen_at": "2026-08-12T01:02:03Z",
+        "idle_expires_at": "2026-08-12T01:32:03Z",
         "revoked_at": None,
         "metadata": {"safe": True},
         "created_at": "2026-08-12T01:02:03Z",
@@ -815,6 +821,37 @@ def test_session_json_timestamp_and_factory_helpers_cover_storage_variants() -> 
 
     assert isinstance(memory, InMemoryOaSessionRegistry)
     assert isinstance(postgres, SqlAlchemyOaSessionRegistry)
+
+
+def test_session_idle_refresh_is_sliding_but_never_extends_absolute_expiry() -> None:
+    issued = issue_mock_user_token(
+        tenant_id="tenant-a",
+        user_id="user-a",
+        issued_at=datetime(2026, 8, 12, 12, 0, tzinfo=UTC),
+        ttl_seconds=3600,
+    )
+    record = build_session_record(issued.claims)
+    first_refresh = refresh_session_for_introspection(
+        record,
+        now=datetime(2026, 8, 12, 12, 20, tzinfo=UTC),
+    )
+    refreshed = refresh_session_for_introspection(
+        first_refresh,
+        now=datetime(2026, 8, 12, 12, 45, tzinfo=UTC),
+    )
+    assert refreshed["last_seen_at"] == "2026-08-12T12:45:00Z"
+    assert refreshed["idle_expires_at"] == record["expires_at"]
+
+    idle_expired = {
+        **record,
+        "idle_expires_at": "2026-08-12T12:10:00Z",
+    }
+    expired = refresh_session_for_introspection(
+        idle_expired,
+        now=datetime(2026, 8, 12, 12, 11, tzinfo=UTC),
+    )
+    assert expired["status"] == "EXPIRED"
+    assert build_session_introspection_response(expired)["inactive_reason"] == "expired"
 
 
 def test_nex_oa_entrypoint_registers_session_routes() -> None:

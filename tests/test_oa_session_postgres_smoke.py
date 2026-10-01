@@ -83,6 +83,8 @@ def sqlite_oa_session_smoke_tables(database_url: str) -> None:
                     issued_at TEXT NOT NULL,
                     expires_at TEXT NOT NULL,
                     auth_time TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL,
+                    idle_expires_at TEXT NOT NULL,
                     revoked_at TEXT,
                     metadata TEXT NOT NULL DEFAULT '{}',
                     created_at TEXT NOT NULL,
