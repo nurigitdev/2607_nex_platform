@@ -1297,6 +1297,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1191`](slices/1191_s119_mo_operations_integration_acceptance_closure.md) | `S119-010` Close MO operations integration and protected live acceptance with traceability and Full Gate evidence. |
 | [`Slice 1192`](slices/1192_mo_mvp_acceptance_oa_transition_boundary_audit.md) | `S120-001` Freeze MO service MVP acceptance, protected evidence, privacy, and OA transition boundaries. |
 | [`Slice 1193`](slices/1193_mo_mvp_acceptance_policy.md) | `S120-002` Define validated MO MVP blocking gates, freshness, regression, coverage, PostgreSQL, live-provider, and OA handoff policy. |
+| [`Slice 1194`](slices/1194_mo_mvp_evidence_inventory.md) | `S120-003` Inventory S111-S119 closure runners and documents with strict identity and server-clock freshness rules. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
