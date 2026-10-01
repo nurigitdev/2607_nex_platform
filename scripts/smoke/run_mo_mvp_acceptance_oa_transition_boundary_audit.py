@@ -80,7 +80,7 @@ GAP_RESOLUTION_PATHS = {
     "acceptance_evaluator_missing": "docs/slices/1195_mo_mvp_acceptance_evaluator.md",
     "protected_operations_api_missing": "docs/slices/1196_mo_mvp_acceptance_api.md",
     "acceptance_contract_missing": "docs/slices/1197_mo_mvp_acceptance_contract_hardening.md",
-    "oa_transition_handoff_missing": "docs/slices/1198_mo_oa_transition_handoff.md",
+    "oa_transition_handoff_missing": "docs/slices/1198_mo_mvp_oa_transition_handoff.md",
     "protected_acceptance_smoke_missing": "docs/slices/1199_mo_mvp_acceptance_postgres_live_smoke.md",
     "operator_runbook_missing": "docs/slices/1200_mo_mvp_acceptance_operator_runbook.md",
 }
