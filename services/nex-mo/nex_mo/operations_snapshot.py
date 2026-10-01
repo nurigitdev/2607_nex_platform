@@ -115,8 +115,8 @@ class MOOperationsSnapshot:
     failure_code: str | None = None
 
     def __post_init__(self) -> None:
-        if self.provider_mode not in {"mock", "live"}:
-            raise ValueError("provider_mode must be mock or live")
+        if self.provider_mode not in {"mock", "live", "unknown"}:
+            raise ValueError("provider_mode must be mock, live, or unknown")
         _validate_status(self.operations_status)
         _parse_timestamp(self.generated_at)
         if self.acceptance_status not in ACCEPTANCE_STATUSES:
