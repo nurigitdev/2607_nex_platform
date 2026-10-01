@@ -161,8 +161,14 @@ def run_s121_oa_current_state_reaudit_closure(
             and summaries["lifecycle"].get("stale_projection_count") == 0
         ),
         "security_gaps_quantified": (
-            summaries["security"].get("gap_count") == 5
-            and summaries["security"].get("partial_count") == 1
+            summaries["security"].get("control_count") == 8
+            and summaries["security"].get("gap_count", 99) <= 5
+            and summaries["security"].get("partial_count", 99) <= 1
+            and sum(
+                int(summaries["security"].get(name) or 0)
+                for name in ("implemented_count", "partial_count", "gap_count")
+            )
+            == summaries["security"].get("control_count")
         ),
         "contract_drift_quantified": (
             summaries["contract_drift"].get("drift_count", 99) <= 25
