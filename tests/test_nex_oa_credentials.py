@@ -31,7 +31,9 @@ from nex_oa.credentials import (
     _credential_from_row,
     _json_loads,
     _json_sql_expression,
+    _lockout_expired,
     _timestamp_to_wire,
+    _wire_timestamp_to_utc,
 )
 from nex_oa.subjects import SubjectRegistryError
 from nex_runtime import (
@@ -431,7 +433,7 @@ def test_credential_record_can_accept_prehashed_password_and_locked_status() -> 
                 "password": "Nuri1004!",
             }
         )
-    assert inactive.value.error_code == "oa.credential_not_active"
+    assert inactive.value.error_code == "oa.credential_not_verified"
 
 
 def test_local_credential_routes_require_service_claim_and_hide_hash() -> None:
@@ -759,6 +761,93 @@ def test_credential_helpers_normalize_json_and_timestamps() -> None:
     assert _timestamp_to_wire(datetime(2026, 8, 12, 1, 2, 3)) == (
         "2026-08-12T01:02:03Z"
     )
+
+
+def test_sqlalchemy_login_failures_commit_lockout_and_expired_lock_recovers() -> None:
+    registry, engine = sqlite_credential_registry()
+    payload = {
+        "tenant_id": "tenant-sql",
+        "employee_id": "EMP-LOCKOUT",
+        "subject_id": "user-lockout",
+        "password": "Nuri1004!",
+    }
+    registry.ensure_credential(payload)
+
+    for _ in range(5):
+        with pytest.raises(OaCredentialError) as failed:
+            registry.verify_credential({**payload, "password": "Wrong1004!"})
+        assert failed.value.error_code == "oa.credential_not_verified"
+
+    with engine.connect() as connection:
+        locked = connection.execute(
+            text(
+                "SELECT status, failed_attempt_count, locked_at "
+                "FROM oa_local_credentials WHERE normalized_employee_id = 'emp-lockout'"
+            )
+        ).mappings().one()
+    assert locked["status"] == "LOCKED"
+    assert locked["failed_attempt_count"] == 5
+    with pytest.raises(OaCredentialError) as still_locked:
+        registry.verify_credential(payload)
+    assert still_locked.value.error_code == "oa.credential_not_verified"
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE oa_local_credentials SET locked_at = :locked_at "
+                "WHERE normalized_employee_id = 'emp-lockout'"
+            ),
+            {"locked_at": "2020-01-01T00:00:00Z"},
+        )
+    registry.verify_credential(payload)
+    with engine.connect() as connection:
+        recovered = connection.execute(
+            text(
+                "SELECT status, failed_attempt_count, locked_at "
+                "FROM oa_local_credentials WHERE normalized_employee_id = 'emp-lockout'"
+            )
+        ).mappings().one()
+    assert recovered["status"] == "ACTIVE"
+    assert recovered["failed_attempt_count"] == 0
+    assert recovered["locked_at"] is None
+
+
+def test_sqlalchemy_successful_login_rehashes_legacy_pbkdf2() -> None:
+    registry, engine = sqlite_credential_registry()
+    registry.ensure_credential(
+        {
+            "tenant_id": "tenant-sql",
+            "employee_id": "EMP-LEGACY",
+            "subject_id": "user-legacy",
+            "password_hash": hash_password(
+                "Nuri1004!", salt=b"1234567890123456", iterations=10
+            ),
+        }
+    )
+    registry.verify_credential(
+        {
+            "tenant_id": "tenant-sql",
+            "employee_id": "EMP-LEGACY",
+            "password": "Nuri1004!",
+        }
+    )
+    with engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT password_hash, password_hash_algorithm "
+                "FROM oa_local_credentials WHERE normalized_employee_id = 'emp-legacy'"
+            )
+        ).mappings().one()
+    assert row["password_hash_algorithm"] == ARGON2ID_PASSWORD_HASH_ALGORITHM
+    assert row["password_hash"].startswith("$argon2id$")
+
+
+def test_lockout_timestamp_helpers_fail_closed_and_normalize_naive_values() -> None:
+    assert _lockout_expired(None) is False
+    assert _lockout_expired("not-a-time") is False
+    assert _wire_timestamp_to_utc(datetime(2020, 1, 1)).tzinfo == UTC
+    with pytest.raises(TypeError):
+        _wire_timestamp_to_utc(123)
     assert _timestamp_to_wire(datetime(2026, 8, 12, 1, 2, 3, tzinfo=UTC)) == (
         "2026-08-12T01:02:03Z"
     )

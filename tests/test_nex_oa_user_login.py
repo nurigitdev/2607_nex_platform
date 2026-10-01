@@ -179,7 +179,7 @@ def test_user_login_rejects_bad_secret_inactive_credential_and_missing_membershi
                 "password": "Nuri1004!",
             },
             401,
-            "oa.credential_not_active",
+                "oa.credential_not_verified",
         ),
         (
             {

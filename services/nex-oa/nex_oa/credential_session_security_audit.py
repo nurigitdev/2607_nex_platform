@@ -122,8 +122,8 @@ def build_oa_credential_session_security_audit(
         ),
         _control(
             "failed_login_counter_and_lockout",
-            "GAP",
-            "schema fields exist but failed verification does not atomically increment or lock credentials",
+            "IMPLEMENTED",
+            None,
         ),
         _control(
             "credential_change_reset_rotation",
@@ -154,7 +154,6 @@ def build_oa_credential_session_security_audit(
     gaps_observed = all(
         observations[name] is False
         for name in (
-            "failed_attempt_mutation_present",
             "credential_rotation_present",
             "random_session_identifier_present",
             "auth_event_emission_present",

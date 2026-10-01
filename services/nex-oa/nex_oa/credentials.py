@@ -9,7 +9,7 @@ import re
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
@@ -52,6 +52,8 @@ DEFAULT_PBKDF2_ITERATIONS = 210_000
 SALT_BYTES = 16
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 256
+MAX_FAILED_LOGIN_ATTEMPTS = 5
+LOCKOUT_DURATION_SECONDS = 900
 OA_CREDENTIAL_STATUSES = (
     "ACTIVE",
     "PASSWORD_RESET_REQUIRED",
@@ -164,9 +166,17 @@ class InMemoryOaCredentialRegistry:
 
     def verify_credential(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         record = self._private_credential(payload)
-        _verify_active_credential(record)
+        prepared = _prepare_credential_for_verification(record)
+        if prepared != record:
+            record.update(prepared)
         password = _required_password(payload.get("password"))
-        verify_password(password, password_hash=str(record["password_hash"]))
+        try:
+            verify_password(password, password_hash=str(record["password_hash"]))
+        except OaCredentialError as exc:
+            if exc.error_code == "oa.credential_not_verified":
+                record.update(build_failed_login_state(record))
+            raise
+        record.update(build_successful_login_state(record))
         if password_hash_needs_rehash(str(record["password_hash"])):
             record["password_hash"] = hash_password(password)
             record["password_hash_algorithm"] = password_hash_algorithm(
@@ -263,19 +273,27 @@ class SqlAlchemyOaCredentialRegistry:
         tenant_id = _tenant_id_from_payload(payload)
         employee_id = employee_id_from_payload(payload)
         password = _required_password(payload.get("password"))
+        session = self._session_factory()
         try:
-            record = self._run_in_transaction(
-                lambda session: self._verify_and_rehash(
+            try:
+                record, verification_error = self._verify_and_rehash(
                     session,
                     tenant_id=tenant_id,
                     normalized_employee_id=employee_id,
                     password=password,
                 )
-            )
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
         except SQLAlchemyError as exc:
             raise _credential_unavailable() from exc
+        finally:
+            session.close()
         if record is None:
             raise _credential_not_verified()
+        if verification_error is not None:
+            raise verification_error
         subject_snapshot = _get_subject_snapshot(
             self._subject_registry,
             tenant_id=tenant_id,
@@ -295,18 +313,36 @@ class SqlAlchemyOaCredentialRegistry:
         tenant_id: str,
         normalized_employee_id: str,
         password: str,
-    ) -> dict[str, Any] | None:
+    ) -> tuple[dict[str, Any] | None, OaCredentialError | None]:
         record = self._select_credential(
             session,
             tenant_id=tenant_id,
             normalized_employee_id=normalized_employee_id,
+            for_update=True,
         )
         if record is None:
-            return None
-        _verify_active_credential(record)
-        verify_password(password, password_hash=str(record["password_hash"]))
+            return None, None
+        try:
+            prepared = _prepare_credential_for_verification(record)
+        except OaCredentialError as exc:
+            return record, exc
+        if prepared != record:
+            self._update_login_security_state(session, prepared)
+            record = prepared
+        try:
+            verify_password(password, password_hash=str(record["password_hash"]))
+        except OaCredentialError as exc:
+            if exc.error_code != "oa.credential_not_verified":
+                raise
+            failed = build_failed_login_state(record)
+            self._record_failed_login(session, record)
+            return failed, exc
+        successful = build_successful_login_state(record)
+        if successful != record:
+            self._update_login_security_state(session, successful)
+            record = successful
         if not password_hash_needs_rehash(str(record["password_hash"])):
-            return record
+            return record, None
         new_hash = hash_password(password)
         now = _utc_now()
         session.execute(
@@ -332,7 +368,65 @@ class SqlAlchemyOaCredentialRegistry:
             "password_hash": new_hash,
             "password_hash_algorithm": password_hash_algorithm(new_hash),
             "updated_at": now,
-        }
+        }, None
+
+    def _record_failed_login(
+        self,
+        session: Session,
+        record: Mapping[str, Any],
+    ) -> None:
+        now = _utc_now()
+        session.execute(
+            text(
+                """
+                UPDATE oa_local_credentials
+                SET
+                    failed_attempt_count = failed_attempt_count + 1,
+                    status = CASE
+                        WHEN failed_attempt_count + 1 >= :threshold THEN 'LOCKED'
+                        ELSE status
+                    END,
+                    locked_at = CASE
+                        WHEN failed_attempt_count + 1 >= :threshold THEN :locked_at
+                        ELSE locked_at
+                    END,
+                    updated_at = :updated_at
+                WHERE credential_id = :credential_id
+                """
+            ),
+            {
+                "credential_id": record["credential_id"],
+                "threshold": MAX_FAILED_LOGIN_ATTEMPTS,
+                "locked_at": now,
+                "updated_at": now,
+            },
+        )
+
+    def _update_login_security_state(
+        self,
+        session: Session,
+        record: Mapping[str, Any],
+    ) -> None:
+        session.execute(
+            text(
+                """
+                UPDATE oa_local_credentials
+                SET
+                    status = :status,
+                    failed_attempt_count = :failed_attempt_count,
+                    locked_at = :locked_at,
+                    updated_at = :updated_at
+                WHERE credential_id = :credential_id
+                """
+            ),
+            {
+                "credential_id": record["credential_id"],
+                "status": record["status"],
+                "failed_attempt_count": record["failed_attempt_count"],
+                "locked_at": record["locked_at"],
+                "updated_at": record["updated_at"],
+            },
+        )
 
     def _run_in_transaction(self, operation: Any) -> Any:
         session = self._session_factory()
@@ -441,10 +535,16 @@ class SqlAlchemyOaCredentialRegistry:
         *,
         tenant_id: str,
         normalized_employee_id: str,
+        for_update: bool = False,
     ) -> dict[str, Any] | None:
+        lock_clause = (
+            " FOR UPDATE"
+            if for_update and session.get_bind().dialect.name == "postgresql"
+            else ""
+        )
         row = session.execute(
             text(
-                """
+                f"""
                 SELECT
                     credential_id,
                     credential_schema_version,
@@ -464,7 +564,7 @@ class SqlAlchemyOaCredentialRegistry:
                     updated_at
                 FROM oa_local_credentials
                 WHERE tenant_id = :tenant_id
-                  AND normalized_employee_id = :normalized_employee_id
+                  AND normalized_employee_id = :normalized_employee_id{lock_clause}
                 """
             ),
             {
@@ -723,6 +823,31 @@ def password_hash_needs_rehash(password_hash: str) -> bool:
     )
 
 
+def build_failed_login_state(record: Mapping[str, Any]) -> dict[str, Any]:
+    failed_attempt_count = int(record.get("failed_attempt_count", 0)) + 1
+    locked = failed_attempt_count >= MAX_FAILED_LOGIN_ATTEMPTS
+    now = _utc_now()
+    return {
+        **deepcopy(dict(record)),
+        "status": "LOCKED" if locked else str(record.get("status", "ACTIVE")),
+        "failed_attempt_count": failed_attempt_count,
+        "locked_at": now if locked else record.get("locked_at"),
+        "updated_at": now,
+    }
+
+
+def build_successful_login_state(record: Mapping[str, Any]) -> dict[str, Any]:
+    if int(record.get("failed_attempt_count", 0)) == 0 and record.get("locked_at") is None:
+        return deepcopy(dict(record))
+    return {
+        **deepcopy(dict(record)),
+        "status": "ACTIVE",
+        "failed_attempt_count": 0,
+        "locked_at": None,
+        "updated_at": _utc_now(),
+    }
+
+
 def normalize_credential_status(value: object) -> str:
     status = _non_empty_text(value, field_name="credential_status").upper()
     if status not in OA_CREDENTIAL_STATUSES:
@@ -974,13 +1099,35 @@ def _normalize_tenant_id(value: object) -> str:
         raise _credential_error_from_subject_error(exc) from exc
 
 
-def _verify_active_credential(record: Mapping[str, Any]) -> None:
-    if record.get("status") != "ACTIVE":
-        raise OaCredentialError(
-            status_code=401,
-            error_code="oa.credential_not_active",
-            detail="Credential is not active.",
-        )
+def _prepare_credential_for_verification(record: Mapping[str, Any]) -> dict[str, Any]:
+    status = str(record.get("status"))
+    if status == "LOCKED" and _lockout_expired(record.get("locked_at")):
+        return build_successful_login_state(record)
+    if status != "ACTIVE":
+        raise _credential_not_verified()
+    return deepcopy(dict(record))
+
+
+def _lockout_expired(locked_at: object) -> bool:
+    if locked_at is None:
+        return False
+    try:
+        locked = _wire_timestamp_to_utc(locked_at)
+    except (TypeError, ValueError):
+        return False
+    return datetime.now(UTC) >= locked + timedelta(seconds=LOCKOUT_DURATION_SECONDS)
+
+
+def _wire_timestamp_to_utc(value: object) -> datetime:
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    else:
+        raise TypeError("timestamp must be datetime or string")
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _metadata_from_payload(value: object) -> dict[str, Any]:
