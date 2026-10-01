@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from nex_oa.credentials import (
+    ARGON2ID_PASSWORD_HASH_ALGORITHM,
     DEFAULT_PBKDF2_ITERATIONS,
     InMemoryOaCredentialRegistry,
     OA_LOCAL_CREDENTIAL_SCHEMA_VERSION,
@@ -200,7 +201,7 @@ def test_inmemory_credential_registry_seeds_employee_credential_and_verifies() -
     )
     assert snapshot["credential"]["employee_id"] == "EMP-001"
     assert snapshot["credential"]["normalized_employee_id"] == "emp-001"
-    assert snapshot["credential"]["hash_algorithm"] == PASSWORD_HASH_ALGORITHM
+    assert snapshot["credential"]["hash_algorithm"] == ARGON2ID_PASSWORD_HASH_ALGORITHM
     assert "password_hash" not in snapshot["credential"]
     assert duplicate["credential"]["credential_id"] == snapshot["credential"][
         "credential_id"
@@ -376,7 +377,7 @@ def test_credential_registry_rejects_invalid_payloads_and_statuses() -> None:
 
 def test_password_hash_parser_rejects_unsupported_and_malformed_hashes() -> None:
     valid_hash = hash_password("Nuri1004!", salt=b"1234567890123456", iterations=10)
-    unsupported_hash = valid_hash.replace(PASSWORD_HASH_ALGORITHM, "argon2id.v1", 1)
+    unsupported_hash = valid_hash.replace(PASSWORD_HASH_ALGORITHM, "scrypt.v1", 1)
 
     with pytest.raises(OaCredentialError) as unsupported_verify:
         verify_password("Nuri1004!", password_hash=unsupported_hash)
@@ -539,8 +540,8 @@ def test_sqlalchemy_credential_registry_persists_hash_without_raw_password() -> 
             [dict(item) for item in connection.execute(text("SELECT * FROM oa_local_credentials")).mappings()],
             default=str,
         )
-    assert row["password_hash_algorithm"] == PASSWORD_HASH_ALGORITHM
-    assert row["password_hash"].startswith(f"{PASSWORD_HASH_ALGORITHM}$")
+    assert row["password_hash_algorithm"] == ARGON2ID_PASSWORD_HASH_ALGORITHM
+    assert row["password_hash"].startswith("$argon2id$")
     assert "Nuri1004!" not in table_dump
 
 

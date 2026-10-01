@@ -13,6 +13,9 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+from argon2.low_level import Type
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -43,6 +46,8 @@ from nex_runtime import (
 OA_LOCAL_CREDENTIAL_SCHEMA_VERSION = "oa_local_credential.v1"
 OA_LOCAL_CREDENTIAL_SNAPSHOT_SCHEMA_VERSION = "oa_local_credential_snapshot.v1"
 PASSWORD_HASH_ALGORITHM = "pbkdf2_sha256.v1"
+ARGON2ID_PASSWORD_HASH_ALGORITHM = "argon2id.v1"
+DEFAULT_PASSWORD_HASH_ALGORITHM = ARGON2ID_PASSWORD_HASH_ALGORITHM
 DEFAULT_PBKDF2_ITERATIONS = 210_000
 SALT_BYTES = 16
 MIN_PASSWORD_LENGTH = 8
@@ -61,7 +66,6 @@ OA_CREDENTIAL_CAPABILITIES = {
     "external_identity_provider": False,
 }
 OA_CREDENTIAL_DEFERRED = [
-    "argon2id_dependency_integration",
     "self_service_signup",
     "password_change_ui",
     "password_reset_email",
@@ -69,6 +73,15 @@ OA_CREDENTIAL_DEFERRED = [
     "oidc_saml_sso",
     "hr_roster_sync",
 ]
+
+_ARGON2_PASSWORD_HASHER = PasswordHasher(
+    time_cost=2,
+    memory_cost=19_456,
+    parallelism=1,
+    hash_len=32,
+    salt_len=SALT_BYTES,
+    type=Type.ID,
+)
 
 _EMPLOYEE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _PRIVATE_CREDENTIAL_KEY_PARTS = (
@@ -152,10 +165,14 @@ class InMemoryOaCredentialRegistry:
     def verify_credential(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         record = self._private_credential(payload)
         _verify_active_credential(record)
-        verify_password(
-            _required_password(payload.get("password")),
-            password_hash=str(record["password_hash"]),
-        )
+        password = _required_password(payload.get("password"))
+        verify_password(password, password_hash=str(record["password_hash"]))
+        if password_hash_needs_rehash(str(record["password_hash"])):
+            record["password_hash"] = hash_password(password)
+            record["password_hash_algorithm"] = password_hash_algorithm(
+                str(record["password_hash"])
+            )
+            record["updated_at"] = _utc_now()
         subject_snapshot = _get_subject_snapshot(
             self.subject_registry,
             tenant_id=str(record["tenant_ref"]["id"]),
@@ -245,22 +262,20 @@ class SqlAlchemyOaCredentialRegistry:
     def verify_credential(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         tenant_id = _tenant_id_from_payload(payload)
         employee_id = employee_id_from_payload(payload)
+        password = _required_password(payload.get("password"))
         try:
-            with self._session_factory() as session:
-                record = self._select_credential(
+            record = self._run_in_transaction(
+                lambda session: self._verify_and_rehash(
                     session,
                     tenant_id=tenant_id,
                     normalized_employee_id=employee_id,
+                    password=password,
                 )
+            )
         except SQLAlchemyError as exc:
             raise _credential_unavailable() from exc
         if record is None:
             raise _credential_not_verified()
-        _verify_active_credential(record)
-        verify_password(
-            _required_password(payload.get("password")),
-            password_hash=str(record["password_hash"]),
-        )
         subject_snapshot = _get_subject_snapshot(
             self._subject_registry,
             tenant_id=tenant_id,
@@ -272,6 +287,52 @@ class SqlAlchemyOaCredentialRegistry:
             credential=record,
             subject_snapshot=subject_snapshot,
         )
+
+    def _verify_and_rehash(
+        self,
+        session: Session,
+        *,
+        tenant_id: str,
+        normalized_employee_id: str,
+        password: str,
+    ) -> dict[str, Any] | None:
+        record = self._select_credential(
+            session,
+            tenant_id=tenant_id,
+            normalized_employee_id=normalized_employee_id,
+        )
+        if record is None:
+            return None
+        _verify_active_credential(record)
+        verify_password(password, password_hash=str(record["password_hash"]))
+        if not password_hash_needs_rehash(str(record["password_hash"])):
+            return record
+        new_hash = hash_password(password)
+        now = _utc_now()
+        session.execute(
+            text(
+                """
+                UPDATE oa_local_credentials
+                SET
+                    password_hash = :password_hash,
+                    password_hash_algorithm = :password_hash_algorithm,
+                    updated_at = :updated_at
+                WHERE credential_id = :credential_id
+                """
+            ),
+            {
+                "credential_id": record["credential_id"],
+                "password_hash": new_hash,
+                "password_hash_algorithm": password_hash_algorithm(new_hash),
+                "updated_at": now,
+            },
+        )
+        return {
+            **record,
+            "password_hash": new_hash,
+            "password_hash_algorithm": password_hash_algorithm(new_hash),
+            "updated_at": now,
+        }
 
     def _run_in_transaction(self, operation: Any) -> Any:
         session = self._session_factory()
@@ -580,10 +641,15 @@ def hash_password(
     password: str,
     *,
     salt: bytes | None = None,
-    iterations: int = DEFAULT_PBKDF2_ITERATIONS,
+    iterations: int | None = None,
 ) -> str:
     normalized_password = _required_password(password)
-    if iterations <= 0:
+    if salt is None and iterations is None:
+        return _ARGON2_PASSWORD_HASHER.hash(normalized_password)
+    pbkdf2_iterations = (
+        DEFAULT_PBKDF2_ITERATIONS if iterations is None else iterations
+    )
+    if pbkdf2_iterations <= 0:
         raise OaCredentialError(
             status_code=500,
             error_code="oa.password_hash_config_invalid",
@@ -594,12 +660,12 @@ def hash_password(
         "sha256",
         normalized_password.encode("utf-8"),
         salt_bytes,
-        iterations,
+        pbkdf2_iterations,
     )
     return "$".join(
         [
             PASSWORD_HASH_ALGORITHM,
-            str(iterations),
+            str(pbkdf2_iterations),
             _b64encode(salt_bytes),
             _b64encode(digest),
         ]
@@ -608,6 +674,14 @@ def hash_password(
 
 def verify_password(password: str, *, password_hash: str) -> bool:
     normalized_password = _required_password(password)
+    algorithm = password_hash_algorithm(password_hash)
+    if algorithm == ARGON2ID_PASSWORD_HASH_ALGORITHM:
+        try:
+            return bool(_ARGON2_PASSWORD_HASHER.verify(password_hash, normalized_password))
+        except VerifyMismatchError as exc:
+            raise _credential_not_verified() from exc
+        except (InvalidHashError, VerificationError) as exc:
+            raise _password_hash_invalid() from exc
     algorithm, iterations, salt, digest = _parse_password_hash(password_hash)
     if algorithm != PASSWORD_HASH_ALGORITHM:
         raise OaCredentialError(
@@ -627,7 +701,26 @@ def verify_password(password: str, *, password_hash: str) -> bool:
 
 
 def password_hash_algorithm(password_hash: str) -> str:
+    if isinstance(password_hash, str) and password_hash.startswith("$argon2id$"):
+        try:
+            _ARGON2_PASSWORD_HASHER.check_needs_rehash(password_hash)
+        except (InvalidHashError, VerificationError) as exc:
+            raise _password_hash_invalid() from exc
+        return ARGON2ID_PASSWORD_HASH_ALGORITHM
     return _parse_password_hash(password_hash)[0]
+
+
+def password_hash_needs_rehash(password_hash: str) -> bool:
+    algorithm = password_hash_algorithm(password_hash)
+    if algorithm == PASSWORD_HASH_ALGORITHM:
+        return True
+    if algorithm == ARGON2ID_PASSWORD_HASH_ALGORITHM:
+        return _ARGON2_PASSWORD_HASHER.check_needs_rehash(password_hash)
+    raise OaCredentialError(
+        status_code=500,
+        error_code="oa.password_hash_algorithm_unsupported",
+        detail="Password hash algorithm is unsupported.",
+    )
 
 
 def normalize_credential_status(value: object) -> str:
@@ -708,7 +801,10 @@ def _password_hash_from_payload(payload: Mapping[str, Any]) -> str:
         return hash_password(_required_password(password))
     if isinstance(password_hash, str) and password_hash.strip():
         algorithm = password_hash_algorithm(password_hash.strip())
-        if algorithm != PASSWORD_HASH_ALGORITHM:
+        if algorithm not in (
+            PASSWORD_HASH_ALGORITHM,
+            ARGON2ID_PASSWORD_HASH_ALGORITHM,
+        ):
             raise OaCredentialError(
                 status_code=400,
                 error_code="oa.password_hash_algorithm_unsupported",
@@ -768,6 +864,14 @@ def _parse_password_hash(password_hash: str) -> tuple[str, int, bytes, bytes]:
             detail="password_hash format is invalid.",
         )
     return algorithm, iterations, salt, digest
+
+
+def _password_hash_invalid() -> OaCredentialError:
+    return OaCredentialError(
+        status_code=400,
+        error_code="oa.password_hash_invalid",
+        detail="password_hash format is invalid.",
+    )
 
 
 def _credential_from_row(row: Mapping[str, Any]) -> dict[str, Any]:

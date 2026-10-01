@@ -271,7 +271,7 @@ def _execute_oa_user_login_postgres_smoke(
                 db_observations["credential_subject_id"] == subject_id
             ),
             "credential_hash_algorithm_recorded": (
-                db_observations["hash_algorithm"] == "pbkdf2_sha256.v1"
+                db_observations["hash_algorithm"] == "argon2id.v1"
             ),
             "raw_password_not_stored": (
                 db_observations["raw_password_match_count"] == 0

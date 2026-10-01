@@ -117,8 +117,8 @@ def build_oa_credential_session_security_audit(
         _control("bounded_session_introspection_revocation", "IMPLEMENTED", None),
         _control(
             "adaptive_password_hash_upgrade",
-            "PARTIAL",
-            "PBKDF2 is supported but Argon2id migration and login-time rehash are absent",
+            "IMPLEMENTED",
+            None,
         ),
         _control(
             "failed_login_counter_and_lockout",
@@ -156,7 +156,6 @@ def build_oa_credential_session_security_audit(
         for name in (
             "failed_attempt_mutation_present",
             "credential_rotation_present",
-            "adaptive_rehash_present",
             "random_session_identifier_present",
             "auth_event_emission_present",
         )

@@ -21,9 +21,9 @@ def test_repository_security_audit_quantifies_strengths_and_gaps() -> None:
     assert result["issues"] == []
     assert result["summary"] == {
         "control_count": 8,
-        "implemented_count": 3,
-        "partial_count": 1,
-        "gap_count": 5,
+        "implemented_count": 4,
+        "partial_count": 0,
+        "gap_count": 4,
         "evidence_issue_count": 0,
     }
     assert result["decision"]["raw_credentials_or_session_ids_in_evidence"] is False
@@ -47,11 +47,11 @@ def test_security_observations_distinguish_strengths_from_gaps() -> None:
         for name in (
             "failed_attempt_mutation_present",
             "credential_rotation_present",
-            "adaptive_rehash_present",
             "random_session_identifier_present",
             "auth_event_emission_present",
         )
     )
+    assert observations["adaptive_rehash_present"] is True
 
 
 def test_security_audit_fails_closed_without_repository(tmp_path: Path) -> None:
@@ -105,14 +105,14 @@ def test_runner_summary_json_and_failure_paths(monkeypatch, capsys) -> None:
 
     assert "security_audit=pass" in runner.summary_line(passing)
     assert "controls=8" in runner.summary_line(passing)
-    assert "gaps=5" in runner.summary_line(passing)
+    assert "gaps=4" in runner.summary_line(passing)
     monkeypatch.setattr(
         runner,
         "run_oa_credential_session_security_audit",
         lambda: passing,
     )
     assert runner.main(["--summary"]) == 0
-    assert "partial=1" in capsys.readouterr().out
+    assert "partial=0" in capsys.readouterr().out
     assert runner.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
 

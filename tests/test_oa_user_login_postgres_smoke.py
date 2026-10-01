@@ -296,7 +296,7 @@ def test_oa_user_login_postgres_smoke_executes_with_sqlite_fixture(tmp_path) -> 
     assert evidence["checks"]["db_session_revoked"] is True
     assert evidence["checks"]["raw_payload_absent"] is True
     assert evidence["db_observations"]["credential_count"] == 1
-    assert evidence["db_observations"]["hash_algorithm"] == "pbkdf2_sha256.v1"
+    assert evidence["db_observations"]["hash_algorithm"] == "argon2id.v1"
     assert evidence["db_observations"]["raw_password_match_count"] == 0
     assert evidence["db_observations"]["membership_count"] == 1
     assert evidence["db_observations"]["session_count"] == 1
