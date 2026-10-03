@@ -104,6 +104,42 @@ def test_in_memory_repository_rejects_missing_duplicate_and_active_limit() -> No
     assert absent.value.status_code == 404
 
 
+def test_in_memory_rotation_guards_are_atomic() -> None:
+    repository = InMemoryOaServicePrincipalRepository()
+    repository.save_principal(_principal())
+    old = {
+        "credential_id": "cred-1",
+        "principal_id": "ae-runtime",
+        "status": "ROTATING",
+        "grace_until": 1_500,
+        "previous_revision": 1,
+        "revision": 2,
+    }
+    new = _credential("cred-2", issued_at=1_100, expires_at=5_000)
+    with pytest.raises(OaServicePrincipalError):
+        repository.rotate_credential(old, new)
+
+    repository.create_credential(_credential("cred-1", expires_at=5_000))
+    repository.rotate_credential(old, new)
+    with pytest.raises(OaServicePrincipalError, match="already exists"):
+        repository.rotate_credential(
+            {**old, "previous_revision": 2, "revision": 3}, new
+        )
+    with pytest.raises(OaServicePrincipalError, match="changed"):
+        repository.rotate_credential(
+            {**old, "previous_revision": 99, "revision": 100},
+            _credential("cred-3", issued_at=1_200, expires_at=5_000),
+        )
+
+    repository.credentials["cred-2"]["credential_id"] = "cred-2"
+    with pytest.raises(OaServicePrincipalError) as limit:
+        repository.rotate_credential(
+            {**old, "credential_id": "cred-1", "previous_revision": 2, "revision": 3},
+            _credential("cred-3", issued_at=1_200, expires_at=5_000),
+        )
+    assert limit.value.error_code == "oa.service_credential_active_limit"
+
+
 def _sqlite_repository() -> tuple[SqlAlchemyOaServicePrincipalRepository, sessionmaker]:
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
@@ -162,6 +198,54 @@ def test_sqlalchemy_repository_guards_missing_limit_and_stale_writes() -> None:
         repository.save_credential(
             {"credential_id": "missing", "status": "REVOKED", "revision": 2, "previous_revision": 1}
         )
+
+
+def test_sqlalchemy_rotation_is_atomic_and_guarded() -> None:
+    repository, factory = _sqlite_repository()
+    repository.save_principal(_principal())
+    repository.create_credential(_credential("cred-1", expires_at=5_000))
+    old = {
+        "credential_id": "cred-1",
+        "principal_id": "ae-runtime",
+        "status": "ROTATING",
+        "grace_until": 1_500,
+        "previous_revision": 1,
+        "revision": 2,
+    }
+    new = _credential("cred-2", issued_at=1_100, expires_at=5_000)
+
+    previous, created = repository.rotate_credential(old, new)
+
+    assert previous["status"] == "ROTATING"
+    assert created["credential_id"] == "cred-2"
+    assert repository.get_credential("cred-1")["revision"] == 2
+    assert repository.get_credential("cred-2") is not None
+
+    with pytest.raises(OaServicePrincipalError) as limit:
+        repository.rotate_credential(
+            {**old, "previous_revision": 2, "revision": 3},
+            _credential("cred-3", issued_at=1_200, expires_at=5_000),
+        )
+    assert limit.value.error_code == "oa.service_credential_active_limit"
+
+    with factory.begin() as connection:
+        connection.execute(
+            text("UPDATE oa_service_creds SET status = 'REVOKED' WHERE credential_id = 'cred-2'")
+        )
+    with pytest.raises(OaServicePrincipalError, match="changed"):
+        repository.rotate_credential(
+            {**old, "previous_revision": 99, "revision": 100},
+            _credential("cred-3", issued_at=1_200, expires_at=5_000),
+        )
+
+    with factory.begin() as connection:
+        connection.execute(text("DROP TABLE oa_service_creds"))
+    with pytest.raises(OaServicePrincipalError) as unavailable:
+        repository.rotate_credential(
+            {**old, "previous_revision": 2, "revision": 3},
+            _credential("cred-3", issued_at=1_200, expires_at=5_000),
+        )
+    assert unavailable.value.status_code == 503
 
 
 def test_sqlalchemy_repository_maps_integrity_and_database_errors(monkeypatch) -> None:

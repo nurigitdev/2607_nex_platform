@@ -27,6 +27,11 @@ class OaServicePrincipalRepository(Protocol):
         self, *, service_id: str | None = None
     ) -> list[dict[str, Any]]: ...
     def create_credential(self, record: Mapping[str, Any]) -> dict[str, Any]: ...
+    def rotate_credential(
+        self,
+        previous_record: Mapping[str, Any],
+        new_record: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]: ...
     def save_credential(self, record: Mapping[str, Any]) -> dict[str, Any]: ...
     def get_credential(self, credential_id: str) -> dict[str, Any] | None: ...
     def list_credentials(self, *, principal_id: str) -> list[dict[str, Any]]: ...
@@ -88,6 +93,34 @@ class InMemoryOaServicePrincipalRepository:
             raise _revision_conflict("credential")
         current.update(deepcopy(dict(record)))
         return deepcopy(current)
+
+    def rotate_credential(
+        self,
+        previous_record: Mapping[str, Any],
+        new_record: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        old_id = normalize_credential_id(previous_record.get("credential_id"))
+        new_id = normalize_credential_id(new_record.get("credential_id"))
+        current = self.credentials.get(old_id)
+        if current is None:
+            raise _not_found("credential")
+        if new_id in self.credentials:
+            raise _conflict("credential already exists")
+        if int(current["revision"]) != int(
+            previous_record.get("previous_revision") or 0
+        ):
+            raise _revision_conflict("credential")
+        principal_id = normalize_service_principal_id(new_record.get("principal_id"))
+        if self.active_credential_count(
+            principal_id=principal_id,
+            at_epoch=int(new_record["issued_at"]),
+        ) >= MAX_SIMULTANEOUS_ACTIVE_CREDENTIALS:
+            raise _active_limit()
+        updated = {**current, **deepcopy(dict(previous_record))}
+        created = deepcopy(dict(new_record))
+        self.credentials[old_id] = updated
+        self.credentials[new_id] = created
+        return deepcopy(updated), deepcopy(created)
 
     def get_credential(self, credential_id: str) -> dict[str, Any] | None:
         record = self.credentials.get(normalize_credential_id(credential_id))
@@ -212,17 +245,7 @@ class SqlAlchemyOaServicePrincipalRepository:
             ).scalar_one()
             if int(count) >= MAX_SIMULTANEOUS_ACTIVE_CREDENTIALS:
                 raise _active_limit()
-            session.execute(
-                text(
-                    "INSERT INTO oa_service_creds ("
-                    "credential_id, credential_schema_version, principal_id, secret_hash, "
-                    "secret_hint, status, issued_at, expires_at, grace_until, revision"
-                    ") VALUES ("
-                    ":credential_id, :credential_schema_version, :principal_id, :secret_hash, "
-                    ":secret_hint, :status, :issued_at, :expires_at, :grace_until, :revision)"
-                ),
-                params,
-            )
+            _insert_credential(session, params)
             session.commit()
             return deepcopy(dict(record))
         except OaServicePrincipalError:
@@ -266,6 +289,66 @@ class SqlAlchemyOaServicePrincipalRepository:
             session.rollback()
             raise
         except SQLAlchemyError as exc:
+            session.rollback()
+            raise _unavailable() from exc
+        finally:
+            session.close()
+
+    def rotate_credential(
+        self,
+        previous_record: Mapping[str, Any],
+        new_record: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        old_id = normalize_credential_id(previous_record.get("credential_id"))
+        old_revision = int(previous_record.get("previous_revision") or 0)
+        new_params = _credential_params(new_record)
+        session = self._session_factory()
+        try:
+            session.execute(
+                text(
+                    "SELECT principal_id FROM oa_service_principals "
+                    "WHERE principal_id = :principal_id" + _principal_lock_suffix(session)
+                ),
+                {"principal_id": new_params["principal_id"]},
+            ).one()
+            count = session.execute(
+                text(
+                    "SELECT COUNT(*) FROM oa_service_creds "
+                    "WHERE principal_id = :principal_id "
+                    "AND status IN ('ACTIVE', 'ROTATING') AND expires_at > :issued_at"
+                ),
+                {
+                    "principal_id": new_params["principal_id"],
+                    "issued_at": new_params["issued_at"],
+                },
+            ).scalar_one()
+            if int(count) >= MAX_SIMULTANEOUS_ACTIVE_CREDENTIALS:
+                raise _active_limit()
+            updated = session.execute(
+                text(
+                    "UPDATE oa_service_creds SET status = :status, "
+                    "grace_until = :grace_until, revision = :revision, "
+                    "updated_at = :updated_at WHERE credential_id = :credential_id "
+                    "AND revision = :previous_revision"
+                ),
+                {
+                    "credential_id": old_id,
+                    "status": previous_record["status"],
+                    "grace_until": _timestamp(previous_record.get("grace_until")),
+                    "revision": int(previous_record["revision"]),
+                    "previous_revision": old_revision,
+                    "updated_at": _utc_now(),
+                },
+            )
+            if updated.rowcount != 1:
+                raise _revision_conflict("credential")
+            _insert_credential(session, new_params)
+            session.commit()
+            return deepcopy(dict(previous_record)), deepcopy(dict(new_record))
+        except OaServicePrincipalError:
+            session.rollback()
+            raise
+        except (IntegrityError, SQLAlchemyError) as exc:
             session.rollback()
             raise _unavailable() from exc
         finally:
@@ -374,6 +457,20 @@ def _credential_params(record: Mapping[str, Any]) -> dict[str, Any]:
         "grace_until": _timestamp(record.get("grace_until")),
         "revision": int(record["revision"]),
     }
+
+
+def _insert_credential(session: Session, params: Mapping[str, Any]) -> None:
+    session.execute(
+        text(
+            "INSERT INTO oa_service_creds ("
+            "credential_id, credential_schema_version, principal_id, secret_hash, "
+            "secret_hint, status, issued_at, expires_at, grace_until, revision"
+            ") VALUES ("
+            ":credential_id, :credential_schema_version, :principal_id, :secret_hash, "
+            ":secret_hint, :status, :issued_at, :expires_at, :grace_until, :revision)"
+        ),
+        dict(params),
+    )
 
 
 def _decode_row(
