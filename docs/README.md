@@ -1345,6 +1345,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1239`](slices/1239_oa_authorization_contract_privacy_hardening.md) | `S124-008` Publish strict authorization schemas, fixtures, scoped OpenAPI operations, runtime parity, and privacy evidence. |
 | [`Slice 1240`](slices/1240_oa_authorization_postgresql_smoke.md) | `S124-009` Prove migration, protected authorization flows, session invalidation, restart reads, lineage, and cleanup on actual `nex_oa_test`. |
 | [`Slice 1241`](slices/1241_s124_oa_group_role_authorization_closure.md) | `S124-010` Close OA group/role authorization with PostgreSQL, session invalidation, contracts, privacy, traceability, and Full Gate evidence. |
+| [`Slice 1242`](slices/1242_oa_production_trust_boundary.md) | `S125-001` Freeze opaque browser sessions, signed service/delegated-user token targets, production mock prohibition, evidence, and deferred boundaries. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
