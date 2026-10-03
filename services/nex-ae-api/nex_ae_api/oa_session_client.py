@@ -8,7 +8,7 @@ from urllib.parse import quote
 
 import httpx
 
-from nex_runtime import issue_mock_service_token
+from nex_ae_api.service_auth import resolve_ae_outbound_service_token
 
 
 AE_OA_SESSION_CLIENT_SCHEMA_VERSION = "ae_oa_session_client.v1"
@@ -149,10 +149,9 @@ class HttpOaUserSessionClient:
         failure_namespace: str = "session",
         failure_label: str = "OA user-session",
     ) -> dict[str, Any]:
-        token = self.service_token or issue_mock_service_token(
-            service_id="nex-ae-api",
-            audience="nex-oa",
-        ).access_token
+        token = resolve_ae_outbound_service_token(
+            self.service_token, audience="nex-oa"
+        )
         try:
             response = self.requester(
                 method,

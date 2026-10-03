@@ -92,6 +92,7 @@ def build_service_app(
         version=version,
         description=f"Slice 0001 service shell for {spec.service_id}.",
     )
+    app.state.service_token_admission = service_token_admission
     _configure_cors(app)
 
     @app.get("/")

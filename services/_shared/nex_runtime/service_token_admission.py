@@ -404,6 +404,55 @@ def service_token_admission_problem_response(
     )
 
 
+def admit_service_token_from_request(
+    request: Request,
+    authorization: object,
+    *,
+    expected_audience: str,
+    required_scopes: Sequence[str],
+    route_class: str = "READ",
+) -> AdmittedServiceClaims | JSONResponse:
+    runtime = getattr(request.app.state, "service_token_admission", None)
+    if runtime is not None:
+        if not isinstance(runtime, ServiceTokenAdmissionRuntime):
+            return service_token_admission_problem_response(
+                request,
+                ServiceTokenAdmissionError(
+                    503,
+                    "nex.service_token_admission_unavailable",
+                    "service-token admission runtime is unavailable",
+                    retryable=True,
+                ),
+            )
+        try:
+            return runtime.admit(
+                authorization,
+                required_scopes=required_scopes,
+                route_class=route_class,
+            )
+        except ServiceTokenAdmissionError as exc:
+            return service_token_admission_problem_response(request, exc)
+    result = validate_authorization_header(
+        authorization if isinstance(authorization, str) else None,
+        expected_audience=expected_audience,
+        required_scopes=tuple(required_scopes),
+    )
+    if result.ok and result.claims is not None:
+        return _mock_projection(
+            result.claims,
+            route_class=_route_class(route_class),
+            profile="TEST_MOCK",
+        )
+    return service_token_admission_problem_response(
+        request,
+        ServiceTokenAdmissionError(
+            401,
+            result.error_code or "SERVICE_CLAIM_INVALID",
+            result.detail or "Service claim validation failed.",
+        ),
+    )
+
+
 def _validate_introspection_binding(
     result: Mapping[str, Any], claims: VerifiedServiceTokenClaims
 ) -> None:

@@ -7,13 +7,13 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
+    AdmittedServiceClaims,
     DEFAULT_SERVICE_SCOPE,
     DEFAULT_USER_SCOPE,
-    ServiceClaims,
+    admit_service_token_from_request,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
 )
 from nex_ae_api.auth_guard import (
     BrowserAuthError,
@@ -36,7 +36,7 @@ AE_FACADE_ROUTE_AUTH_MODE_BROWSER_USER = "browser_user"
 @dataclass(frozen=True)
 class AeFacadeRouteAuthContext:
     auth_mode: str
-    service_claims: ServiceClaims | None = None
+    service_claims: AdmittedServiceClaims | None = None
     browser_context: BrowserUserAuthContext | None = None
 
     @property
@@ -84,16 +84,19 @@ def authorize_ae_facade_route_request(
     oa_session_client: OaUserSessionClient | None = None,
     session_mode: str | None = None,
 ) -> AeFacadeRouteAuthContext | JSONResponse:
-    service_result = validate_authorization_header(
+    service_result = admit_service_token_from_request(
+        request,
         authorization,
         expected_audience="nex-ae-api",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
+        required_scopes=(DEFAULT_SERVICE_SCOPE,),
     )
-    if service_result.ok and service_result.claims is not None:
+    if isinstance(service_result, AdmittedServiceClaims):
         return AeFacadeRouteAuthContext(
             auth_mode=AE_FACADE_ROUTE_AUTH_MODE_SERVICE,
-            service_claims=service_result.claims,
+            service_claims=service_result,
         )
+    if _looks_like_service_authorization(authorization):
+        return service_result
 
     user_result = validate_browser_session_credentials(
         authorization=authorization,
@@ -128,12 +131,14 @@ def authorize_ae_facade_route_request(
             retryable=user_result.retryable,
         )
 
-    return _facade_auth_problem_response(
-        request,
-        status_code=401,
-        error_code=service_result.error_code or "AE_ROUTE_AUTH_INVALID",
-        detail=service_result.detail or "AE API requires a valid service or user claim.",
-    )
+    return service_result
+
+
+def _looks_like_service_authorization(authorization: str | None) -> bool:
+    if not authorization or not authorization.startswith("Bearer "):
+        return False
+    token = authorization[7:]
+    return token.startswith("nex-mock-service.") or token.count(".") == 2
 
 
 def _facade_auth_problem_response(

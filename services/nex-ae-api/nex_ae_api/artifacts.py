@@ -25,6 +25,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from nex_runtime import (
+    AdmittedServiceClaims,
     DEFAULT_SERVICE_SCOPE,
     InMemoryJobQueue,
     InMemoryWorkerHeartbeatStore,
@@ -36,16 +37,15 @@ from nex_runtime import (
     WorkerHeartbeatEmitter,
     WorkerJobExecution,
     WorkerRunnerConfig,
+    admit_service_token_from_request,
     build_common_job,
     build_subject_ref,
-    issue_mock_service_token,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
     run_worker_batch,
     run_worker_once,
     validate_common_job,
-    validate_authorization_header,
     worker_heartbeat_store_from_app,
 )
 from nex_ae_api.cx_owner_context import cx_owner_headers, cx_owner_scope_from_payload
@@ -65,6 +65,7 @@ from nex_ae_api.route_auth import (
     AeFacadeRouteAuthContext,
     authorize_ae_facade_route_request,
 )
+from nex_ae_api.service_auth import resolve_ae_outbound_service_token
 from nex_ae_api.workspace_chat_auth import browser_owner_scope
 
 
@@ -393,10 +394,9 @@ class HttpCxArtifactSourceClient:
         tenant_id: str,
         owner_user_id: str,
     ) -> dict[str, Any]:
-        token = self.service_token or issue_mock_service_token(
-            service_id="nex-ae-api",
-            audience="nex-cx",
-        ).access_token
+        token = resolve_ae_outbound_service_token(
+            self.service_token, audience="nex-cx"
+        )
         response = httpx.get(
             f"{self.base_url}{path}",
             headers={
@@ -11354,22 +11354,15 @@ def _authorize_ae_request(
     request: Request,
     authorization: str | None,
 ) -> JSONResponse | None:
-    result = validate_authorization_header(
+    result = admit_service_token_from_request(
+        request,
         authorization,
         expected_audience="nex-ae-api",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
+        required_scopes=(DEFAULT_SERVICE_SCOPE,),
     )
-    if result.ok:
+    if isinstance(result, AdmittedServiceClaims):
         return None
-
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "AE API requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
+    return result
 
 
 def _visible_artifact_record(

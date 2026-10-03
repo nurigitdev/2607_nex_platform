@@ -5,6 +5,7 @@ from typing import Any, Mapping, Sequence
 
 import httpx
 import pytest
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from nex_oa.token_signing import InMemoryOaRsaSigningProvider, encode_signed_jwt
@@ -500,6 +501,45 @@ def test_fastapi_service_claim_route_uses_injected_admission_runtime() -> None:
     assert accepted.json()["claims"]["token_kind"] == "MOCK"
     assert rejected.status_code == 401
     assert rejected.json()["error_code"] == "nex.authorization_missing"
+
+
+def test_request_helper_rejects_invalid_app_runtime() -> None:
+    from nex_runtime import admit_service_token_from_request
+
+    app = FastAPI()
+    app.state.service_token_admission = object()
+
+    @app.get("/guard")
+    def guard(request: Request):
+        return admit_service_token_from_request(
+            request,
+            "Bearer value",
+            expected_audience="nex-cx",
+            required_scopes=(),
+        )
+
+    response = TestClient(app).get("/guard")
+    assert response.status_code == 503
+    assert response.json()["error_code"] == "nex.service_token_admission_unavailable"
+
+
+def test_request_helper_fallback_rejects_invalid_mock_token() -> None:
+    from nex_runtime import admit_service_token_from_request
+
+    app = FastAPI()
+
+    @app.get("/guard")
+    def guard(request: Request):
+        return admit_service_token_from_request(
+            request,
+            None,
+            expected_audience="nex-cx",
+            required_scopes=("service:call",),
+        )
+
+    response = TestClient(app).get("/guard")
+    assert response.status_code == 401
+    assert response.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
 
 
 def test_admitted_claim_projection_omits_optional_signed_fields() -> None:

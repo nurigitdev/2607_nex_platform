@@ -6,8 +6,12 @@ from typing import Any
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
-from nex_runtime.auth import DEFAULT_SERVICE_SCOPE, validate_authorization_header
+from nex_runtime.auth import DEFAULT_SERVICE_SCOPE
 from nex_runtime.problem import problem_response
+from nex_runtime.service_token_admission import (
+    AdmittedServiceClaims,
+    admit_service_token_from_request,
+)
 
 
 @dataclass(frozen=True)
@@ -326,19 +330,12 @@ def _authorize_request(
     *,
     expected_audience: str,
 ) -> JSONResponse | None:
-    result = validate_authorization_header(
+    result = admit_service_token_from_request(
+        request,
         authorization,
         expected_audience=expected_audience,
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
+        required_scopes=(DEFAULT_SERVICE_SCOPE,),
     )
-    if result.ok:
+    if isinstance(result, AdmittedServiceClaims):
         return None
-
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or f"{expected_audience} requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
+    return result

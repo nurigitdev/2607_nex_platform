@@ -10,7 +10,6 @@ from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
-    issue_mock_service_token,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
@@ -18,6 +17,7 @@ from nex_runtime import (
 from nex_ae_api.auth_guard import BrowserUserAuthContext
 from nex_ae_api.cx_owner_context import cx_owner_headers
 from nex_ae_api.route_auth import authorize_ae_facade_route_request
+from nex_ae_api.service_auth import resolve_ae_outbound_service_token
 from nex_ae_api.uploads import DEFAULT_UPLOAD_HANDOFF_STORE, UploadHandoffStore
 
 
@@ -135,10 +135,9 @@ class HttpCxDocumentLibraryClient:
         tenant_id: str,
         owner_user_id: str,
     ) -> dict[str, Any] | None:
-        token = self.service_token or issue_mock_service_token(
-            service_id="nex-ae-api",
-            audience="nex-cx",
-        ).access_token
+        token = resolve_ae_outbound_service_token(
+            self.service_token, audience="nex-cx"
+        )
         response = httpx.get(
             f"{self.base_url}{path}",
             headers={

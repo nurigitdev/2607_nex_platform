@@ -13,11 +13,12 @@ from nex_ae_api.mvp_acceptance import (
 )
 from nex_ae_api.mvp_acceptance_evaluation import evaluate_ae_mvp_acceptance
 from nex_runtime import (
+    AdmittedServiceClaims,
     DEFAULT_SERVICE_SCOPE,
     DEFAULT_USER_SCOPE,
+    admit_service_token_from_request,
     problem_response,
     trace_id_from_headers,
-    validate_authorization_header,
     validate_user_authorization_header,
 )
 
@@ -90,12 +91,13 @@ def _authorize_request(
     request: Request,
     authorization: str | None,
 ) -> JSONResponse | None:
-    service_result = validate_authorization_header(
+    service_result = admit_service_token_from_request(
+        request,
         authorization,
         expected_audience="nex-ae-api",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
+        required_scopes=(DEFAULT_SERVICE_SCOPE,),
     )
-    if service_result.ok:
+    if isinstance(service_result, AdmittedServiceClaims):
         return None
     user_result = validate_user_authorization_header(
         authorization,
@@ -114,14 +116,7 @@ def _authorize_request(
             detail="AE MVP acceptance routes require an admin user role.",
             type_uri="https://nex-platform.local/problems/authorization-failed",
         )
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=service_result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=service_result.detail or "AE requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
+    return service_result
 
 
 def _timestamp(value: datetime) -> str:

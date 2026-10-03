@@ -227,7 +227,7 @@ REQUIRED_SOURCE_TOKENS = (
         "auth_redaction_boundary",
         AE_ARTIFACTS,
         "authorize_request",
-        "validate_authorization_header",
+        "admit_service_token_from_request",
         "Artifact routes require AE service/browser auth checks.",
     ),
     TokenRequirement(

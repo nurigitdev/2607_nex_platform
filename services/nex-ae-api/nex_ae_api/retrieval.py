@@ -13,7 +13,6 @@ from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
-    issue_mock_service_token,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
@@ -21,6 +20,7 @@ from nex_runtime import (
 from nex_ae_api.auth_guard import BrowserUserAuthContext
 from nex_ae_api.cx_owner_context import cx_owner_headers, cx_owner_scope_from_payload
 from nex_ae_api.route_auth import authorize_ae_facade_route_request
+from nex_ae_api.service_auth import resolve_ae_outbound_service_token
 
 
 class CxRetrievalClient(Protocol):
@@ -47,10 +47,9 @@ class HttpCxRetrievalClient:
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
-        token = self.service_token or issue_mock_service_token(
-            service_id="nex-ae-api",
-            audience="nex-cx",
-        ).access_token
+        token = resolve_ae_outbound_service_token(
+            self.service_token, audience="nex-cx"
+        )
         response = httpx.post(
             f"{self.base_url}/api/v1/retrieval/context",
             json=payload,

@@ -65,7 +65,7 @@ COUPLING_FINDINGS = (
     CouplingFinding(
         "import_time_application_composition",
         "services/nex-ae-api/nex_ae_api/main.py",
-        "app = build_service_app(SERVICE_SPEC)",
+        "app = build_service_app(",
         "REFACTOR_REQUIRED",
         "HIGH",
     ),

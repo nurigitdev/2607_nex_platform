@@ -18,13 +18,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from nex_runtime import (
     OperationalEventEmitter,
-    issue_mock_service_token,
     operational_event_emitter_from_app,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
 )
 from nex_runtime.prompts import PromptRegistryError, render_prompt_from_binding
+from nex_ae_api.service_auth import resolve_ae_outbound_service_token
 from nex_ae_api.generation_policy import (
     GenerationPolicyPackageError,
     build_generation_policy_package,
@@ -170,10 +170,9 @@ class HttpCxGenerationClient:
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
-        token = self.service_token or issue_mock_service_token(
-            service_id="nex-ae-api",
-            audience="nex-cx",
-        ).access_token
+        token = resolve_ae_outbound_service_token(
+            self.service_token, audience="nex-cx"
+        )
         response = httpx.post(
             f"{self.base_url}/api/v1/generations",
             json=payload,

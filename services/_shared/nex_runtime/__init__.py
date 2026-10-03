@@ -224,6 +224,7 @@ from .service_token_admission import (
     ServiceTokenAdmissionError,
     ServiceTokenAdmissionRuntime,
     TokenIntrospector,
+    admit_service_token_from_request,
     build_service_token_admission_runtime,
     service_token_admission_problem_response,
 )
@@ -380,6 +381,7 @@ __all__ = [
     "TOKEN_ROLLOUT_PROFILES",
     "TOKEN_ROUTE_CLASSES",
     "TokenIntrospector",
+    "admit_service_token_from_request",
     "build_service_token_admission_runtime",
     "service_token_admission_problem_response",
     "SignedServiceTokenVerifier",

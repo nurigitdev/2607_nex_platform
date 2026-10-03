@@ -17,12 +17,12 @@ from nex_runtime import (
     SubjectRegistryResolver,
     SubjectRegistryResolverError,
     build_default_subject_registry_resolver,
-    issue_mock_service_token,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
 )
 from nex_ae_api.cx_owner_context import cx_owner_headers, cx_owner_scope_from_payload
+from nex_ae_api.service_auth import resolve_ae_outbound_service_token
 
 if TYPE_CHECKING:
     from nex_ae_api.auth_guard import BrowserUserAuthContext
@@ -76,10 +76,9 @@ class HttpCxUploadClient:
         request_payload = {**payload, "trace_id": payload.get("trace_id", trace_id)}
         if "ownership_ref" not in request_payload:
             request_payload = build_cx_upload_payload(request_payload, trace_id=trace_id)
-        token = self.service_token or issue_mock_service_token(
-            service_id="nex-ae-api",
-            audience="nex-cx",
-        ).access_token
+        token = resolve_ae_outbound_service_token(
+            self.service_token, audience="nex-cx"
+        )
         response = httpx.post(
             f"{self.base_url}/api/v1/documents/uploads",
             json=request_payload,

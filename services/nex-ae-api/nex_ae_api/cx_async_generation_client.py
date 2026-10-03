@@ -6,8 +6,8 @@ from urllib.parse import quote
 
 import httpx
 
-from nex_runtime import issue_mock_service_token
 from nex_ae_api.cx_owner_context import cx_owner_headers, cx_owner_scope_from_payload
+from nex_ae_api.service_auth import resolve_ae_outbound_service_token
 
 
 class CxAsyncGenerationClient(Protocol):
@@ -181,10 +181,9 @@ class HttpCxAsyncGenerationClient:
         request_id: str,
         trace_id: str,
     ) -> dict[str, str]:
-        token = self.service_token or issue_mock_service_token(
-            service_id="nex-ae-api",
-            audience="nex-cx",
-        ).access_token
+        token = resolve_ae_outbound_service_token(
+            self.service_token, audience="nex-cx"
+        )
         return {
             "Authorization": f"Bearer {token}",
             "X-Request-ID": _required_text(request_id, "request_id"),

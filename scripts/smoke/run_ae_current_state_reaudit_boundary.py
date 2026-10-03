@@ -69,7 +69,7 @@ TOKEN_REQUIREMENTS = (
     TokenRequirement(
         "ae_app",
         "services/nex-ae-api/nex_ae_api/main.py",
-        "app = build_service_app(SERVICE_SPEC)",
+        "service_token_admission=SERVICE_TOKEN_ADMISSION",
     ),
     TokenRequirement(
         "workspace",

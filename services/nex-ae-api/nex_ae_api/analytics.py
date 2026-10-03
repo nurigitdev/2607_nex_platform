@@ -10,11 +10,12 @@ from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
+    AdmittedServiceClaims,
     DEFAULT_SERVICE_SCOPE,
+    admit_service_token_from_request,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
 )
 
 
@@ -447,22 +448,15 @@ def _authorize_ae_request(
     request: Request,
     authorization: str | None,
 ) -> JSONResponse | None:
-    result = validate_authorization_header(
+    result = admit_service_token_from_request(
+        request,
         authorization,
         expected_audience="nex-ae-api",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
+        required_scopes=(DEFAULT_SERVICE_SCOPE,),
     )
-    if result.ok:
+    if isinstance(result, AdmittedServiceClaims):
         return None
-
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail="AE API requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
+    return result
 
 
 def _analytics_problem_response(

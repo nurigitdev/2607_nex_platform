@@ -2,6 +2,7 @@ from nex_runtime import (
     SERVICE_SPECS,
     attach_service_persistence_runtime,
     build_service_app,
+    build_service_token_admission_runtime,
     register_service_job_control_routes,
     register_service_log_retention_routes,
 )
@@ -31,7 +32,13 @@ from nex_ae_api.workspace import register_workspace_routes
 
 
 SERVICE_SPEC = SERVICE_SPECS["nex-ae-api"]
-app = build_service_app(SERVICE_SPEC)
+SERVICE_TOKEN_ADMISSION = build_service_token_admission_runtime(
+    expected_audience=SERVICE_SPEC.service_id
+)
+app = build_service_app(
+    SERVICE_SPEC,
+    service_token_admission=SERVICE_TOKEN_ADMISSION,
+)
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
 AE_PROMPT_STORE = build_default_ae_prompt_store(app)
 register_service_job_control_routes(

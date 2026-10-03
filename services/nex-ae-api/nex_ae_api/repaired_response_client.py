@@ -8,8 +8,8 @@ from urllib.parse import quote
 
 import httpx
 
-from nex_runtime import issue_mock_service_token
 from nex_ae_api.cx_owner_context import cx_owner_headers
+from nex_ae_api.service_auth import resolve_ae_outbound_service_token
 from nex_ae_api.repaired_responses import (
     CX_GENERATION_EXECUTION_RECORD_SCHEMA_VERSION,
     CX_REMEDIATION_EXECUTION_DETAIL_SCHEMA_VERSION,
@@ -197,10 +197,9 @@ class HttpCxRepairedResponseSourceClient:
         failure_namespace: str,
         failure_label: str,
     ) -> dict[str, Any]:
-        token = self.service_token or issue_mock_service_token(
-            service_id="nex-ae-api",
-            audience="nex-cx",
-        ).access_token
+        token = resolve_ae_outbound_service_token(
+            self.service_token, audience="nex-cx"
+        )
         headers = {
             "Authorization": f"Bearer {token}",
             "X-Request-ID": request_id,

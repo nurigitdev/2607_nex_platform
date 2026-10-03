@@ -14,11 +14,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from nex_runtime import (
+    AdmittedServiceClaims,
     DEFAULT_SERVICE_SCOPE,
+    admit_service_token_from_request,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
 )
 from nex_ae_api.generation_feedback_boundary import (
     ALLOWED_FEEDBACK_REASONS,
@@ -600,21 +601,15 @@ def _authorize_ae_request(
     request: Request,
     authorization: str | None,
 ) -> JSONResponse | None:
-    validation = validate_authorization_header(
+    validation = admit_service_token_from_request(
+        request,
         authorization,
         expected_audience="nex-ae-api",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
+        required_scopes=(DEFAULT_SERVICE_SCOPE,),
     )
-    if validation.ok:
+    if isinstance(validation, AdmittedServiceClaims):
         return None
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=validation.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=validation.detail or "AE API requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
+    return validation
 
 
 def _feedback_problem_response(
