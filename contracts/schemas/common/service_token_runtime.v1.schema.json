@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/service_token_runtime.v1.schema.json",
+  "title": "Service token runtime projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "runtime_schema_version",
+    "service_id",
+    "expected_audience",
+    "rollout_profile",
+    "signed_verification_enabled",
+    "introspection_enabled",
+    "sensitive_route_introspection_required",
+    "introspection_route_classes",
+    "legacy_mock_callers",
+    "legacy_mock_caller_count",
+    "compatibility_deadline_epoch",
+    "compatibility_status",
+    "jwks_cache",
+    "admission_counts"
+  ],
+  "properties": {
+    "runtime_schema_version": {"const": "service_token_runtime.v1"},
+    "service_id": {"$ref": "#/$defs/service_id"},
+    "expected_audience": {"$ref": "#/$defs/service_id"},
+    "rollout_profile": {"enum": ["TEST_MOCK", "DUAL_READ", "SIGNED_ONLY"]},
+    "signed_verification_enabled": {"type": "boolean"},
+    "introspection_enabled": {"type": "boolean"},
+    "sensitive_route_introspection_required": {"const": true},
+    "introspection_route_classes": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "uniqueItems": true,
+      "items": {"enum": ["WRITE", "ADMIN", "CREDENTIAL", "KEY_MANAGEMENT"]}
+    },
+    "legacy_mock_callers": {
+      "type": "array",
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/service_id"}
+    },
+    "legacy_mock_caller_count": {"type": "integer", "minimum": 0, "maximum": 5},
+    "compatibility_deadline_epoch": {"type": ["integer", "null"], "minimum": 1},
+    "compatibility_status": {"enum": ["NOT_APPLICABLE", "ACTIVE", "EXPIRED"]},
+    "jwks_cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "status", "key_count", "refreshed_at_epoch", "ttl_seconds", "max_keys"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "status": {"enum": ["DISABLED", "EMPTY", "POPULATED"]},
+        "key_count": {"type": "integer", "minimum": 0, "maximum": 16},
+        "refreshed_at_epoch": {"type": ["integer", "null"], "minimum": 0},
+        "ttl_seconds": {"type": ["integer", "null"], "minimum": 1, "maximum": 900},
+        "max_keys": {"type": ["integer", "null"], "minimum": 1, "maximum": 16}
+      }
+    },
+    "admission_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accepted_mock", "accepted_signed", "rejected", "introspected"],
+      "properties": {
+        "accepted_mock": {"type": "integer", "minimum": 0},
+        "accepted_signed": {"type": "integer", "minimum": 0},
+        "rejected": {"type": "integer", "minimum": 0},
+        "introspected": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "$defs": {
+    "service_id": {
+      "enum": ["nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo"]
+    }
+  }
+}

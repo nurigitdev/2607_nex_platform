@@ -56,6 +56,11 @@
       "schema": "schemas/common/service_claims.v1.schema.json"
     },
     {
+      "name": "service_token_runtime_signed_only",
+      "path": "examples/auth/service_token_runtime.signed_only.json",
+      "schema": "schemas/common/service_token_runtime.v1.schema.json"
+    },
+    {
       "name": "oa_trust_threat_evidence_pass",
       "path": "examples/auth/oa_trust_threat_evidence.pass.json",
       "schema": "schemas/service/nex_oa/trust_threat_evidence.v1.schema.json"

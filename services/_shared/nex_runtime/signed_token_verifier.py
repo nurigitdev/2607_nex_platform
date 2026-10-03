@@ -126,6 +126,16 @@ class BoundedJwksCache:
     def key_count(self) -> int:
         return len(self._keys)
 
+    def public_snapshot(self) -> dict[str, int | None | str | bool]:
+        return {
+            "enabled": True,
+            "status": "POPULATED" if self._keys else "EMPTY",
+            "key_count": len(self._keys),
+            "refreshed_at_epoch": self._refreshed_at,
+            "ttl_seconds": self._ttl_seconds,
+            "max_keys": self._max_keys,
+        }
+
     def key_for(self, key_id: object, *, now_epoch: int | None = None) -> rsa.RSAPublicKey:
         kid = _nonempty_string(key_id, "kid")
         now = self._now(now_epoch)
@@ -182,6 +192,9 @@ class SignedServiceTokenVerifier:
         if not callable(clock):
             raise TypeError("token verifier clock must be callable")
         self._clock = clock
+
+    def jwks_cache_snapshot(self) -> dict[str, int | None | str | bool]:
+        return self._cache.public_snapshot()
 
     def verify_authorization_header(
         self,

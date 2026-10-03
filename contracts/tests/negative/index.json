@@ -51,6 +51,11 @@
       "schema": "schemas/common/service_claims.v1.schema.json"
     },
     {
+      "name": "service_token_runtime_raw_token",
+      "path": "tests/negative/auth/service_token_runtime.raw_token.json",
+      "schema": "schemas/common/service_token_runtime.v1.schema.json"
+    },
+    {
       "name": "oa_trust_threat_evidence_raw_token",
       "path": "tests/negative/auth/oa_trust_threat_evidence.raw_token.json",
       "schema": "schemas/service/nex_oa/trust_threat_evidence.v1.schema.json"

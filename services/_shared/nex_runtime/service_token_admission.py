@@ -5,6 +5,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from time import time
+from threading import Lock
 from typing import Any, Protocol
 
 import httpx
@@ -211,6 +212,13 @@ class ServiceTokenAdmissionRuntime:
         self.legacy_mock_callers = callers
         self.compatibility_deadline_epoch = compatibility_deadline_epoch
         self._clock = clock
+        self._counts = {
+            "accepted_mock": 0,
+            "accepted_signed": 0,
+            "rejected": 0,
+            "introspected": 0,
+        }
+        self._counts_lock = Lock()
 
     def admit(
         self,
@@ -220,25 +228,78 @@ class ServiceTokenAdmissionRuntime:
         route_class: str = "READ",
         now_epoch: int | None = None,
     ) -> AdmittedServiceClaims:
-        route = _route_class(route_class)
-        scopes = _scope_sequence(required_scopes)
-        token = _bearer_token(authorization)
-        now = self._now(now_epoch)
-        is_mock = token.startswith(MOCK_SERVICE_TOKEN_PREFIX)
-        if is_mock:
-            return self._admit_mock(
-                authorization,
-                required_scopes=scopes,
-                route_class=route,
-                now_epoch=now,
-            )
-        return self._admit_signed(
-            authorization,
-            token=token,
-            required_scopes=scopes,
-            route_class=route,
-            now_epoch=now,
+        try:
+            route = _route_class(route_class)
+            scopes = _scope_sequence(required_scopes)
+            token = _bearer_token(authorization)
+            now = self._now(now_epoch)
+            if token.startswith(MOCK_SERVICE_TOKEN_PREFIX):
+                admitted = self._admit_mock(
+                    authorization,
+                    required_scopes=scopes,
+                    route_class=route,
+                    now_epoch=now,
+                )
+            else:
+                admitted = self._admit_signed(
+                    authorization,
+                    token=token,
+                    required_scopes=scopes,
+                    route_class=route,
+                    now_epoch=now,
+                )
+        except ServiceTokenAdmissionError:
+            self._increment("rejected")
+            raise
+        self._increment(
+            "accepted_mock" if admitted.token_kind == "MOCK" else "accepted_signed"
         )
+        if admitted.introspection_status == "ACTIVE":
+            self._increment("introspected")
+        return admitted
+
+    def public_snapshot(self) -> dict[str, Any]:
+        now = self._now(None)
+        if self.rollout_profile != "DUAL_READ":
+            compatibility_status = "NOT_APPLICABLE"
+        else:
+            assert self.compatibility_deadline_epoch is not None
+            compatibility_status = (
+                "ACTIVE" if now <= self.compatibility_deadline_epoch else "EXPIRED"
+            )
+        if self.signed_verifier is None:
+            jwks_cache = {
+                "enabled": False,
+                "status": "DISABLED",
+                "key_count": 0,
+                "refreshed_at_epoch": None,
+                "ttl_seconds": None,
+                "max_keys": None,
+            }
+        else:
+            jwks_cache = self.signed_verifier.jwks_cache_snapshot()
+        with self._counts_lock:
+            counts = dict(self._counts)
+        return {
+            "runtime_schema_version": "service_token_runtime.v1",
+            "service_id": self.expected_audience,
+            "expected_audience": self.expected_audience,
+            "rollout_profile": self.rollout_profile,
+            "signed_verification_enabled": self.signed_verifier is not None,
+            "introspection_enabled": self.introspector is not None,
+            "sensitive_route_introspection_required": True,
+            "introspection_route_classes": sorted(INTROSPECTION_ROUTE_CLASSES),
+            "legacy_mock_callers": list(self.legacy_mock_callers),
+            "legacy_mock_caller_count": len(self.legacy_mock_callers),
+            "compatibility_deadline_epoch": self.compatibility_deadline_epoch,
+            "compatibility_status": compatibility_status,
+            "jwks_cache": jwks_cache,
+            "admission_counts": counts,
+        }
+
+    def _increment(self, name: str) -> None:
+        with self._counts_lock:
+            self._counts[name] += 1
 
     def _admit_mock(
         self,

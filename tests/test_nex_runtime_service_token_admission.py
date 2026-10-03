@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import json
 from typing import Any, Mapping, Sequence
 
 import httpx
@@ -556,3 +557,98 @@ def test_admitted_claim_projection_omits_optional_signed_fields() -> None:
     )
     assert "credential_id" not in claims.to_wire()
     assert str(ServiceTokenAdmissionError(401, "code", "detail")) == "detail"
+
+
+def test_runtime_snapshot_counts_admission_without_exposing_secrets(
+    signing_runtime: dict[str, Any],
+) -> None:
+    introspector = RecordingIntrospector(_introspection())
+    runtime = ServiceTokenAdmissionRuntime(
+        expected_audience="nex-cx",
+        rollout_profile="SIGNED_ONLY",
+        signed_verifier=_verifier(signing_runtime),
+        introspector=introspector,
+        clock=lambda: 600,
+    )
+    token = _token(signing_runtime)
+
+    runtime.admit(f"Bearer {token}", route_class="READ")
+    runtime.admit(f"Bearer {token}", route_class="ADMIN")
+    with pytest.raises(ServiceTokenAdmissionError):
+        runtime.admit(None)
+    snapshot = runtime.public_snapshot()
+    serialized = json.dumps(snapshot, sort_keys=True)
+
+    assert snapshot["rollout_profile"] == "SIGNED_ONLY"
+    assert snapshot["compatibility_status"] == "NOT_APPLICABLE"
+    assert snapshot["jwks_cache"]["status"] == "POPULATED"
+    assert snapshot["jwks_cache"]["key_count"] == 1
+    assert snapshot["admission_counts"] == {
+        "accepted_mock": 0,
+        "accepted_signed": 2,
+        "rejected": 1,
+        "introspected": 1,
+    }
+    assert token not in serialized
+    assert "cred-ae-runtime" not in serialized
+    assert KEY_ID not in serialized
+
+
+def test_runtime_snapshot_reports_mock_and_dual_compatibility_states(
+    signing_runtime: dict[str, Any],
+) -> None:
+    mock_runtime = ServiceTokenAdmissionRuntime(
+        expected_audience="nex-ag",
+        rollout_profile="TEST_MOCK",
+        clock=lambda: 600,
+    )
+    mock = issue_mock_service_token(service_id="nex-oa", audience="nex-ag")
+    mock_runtime.admit(f"Bearer {mock.access_token}")
+    mock_snapshot = mock_runtime.public_snapshot()
+
+    dual_runtime = ServiceTokenAdmissionRuntime(
+        expected_audience="nex-cx",
+        rollout_profile="DUAL_READ",
+        signed_verifier=_verifier(signing_runtime),
+        legacy_mock_callers=("nex-ae-api",),
+        compatibility_deadline_epoch=599,
+        clock=lambda: 600,
+    )
+    dual_snapshot = dual_runtime.public_snapshot()
+
+    assert mock_snapshot["jwks_cache"]["status"] == "DISABLED"
+    assert mock_snapshot["admission_counts"]["accepted_mock"] == 1
+    assert dual_snapshot["compatibility_status"] == "EXPIRED"
+    assert dual_snapshot["legacy_mock_callers"] == ["nex-ae-api"]
+
+
+def test_protected_runtime_route_uses_same_admission_and_safe_projection() -> None:
+    runtime = ServiceTokenAdmissionRuntime(
+        expected_audience="nex-ag",
+        rollout_profile="TEST_MOCK",
+        clock=lambda: 600,
+    )
+    client = TestClient(
+        build_service_app(
+            SERVICE_SPECS["nex-ag"],
+            service_token_admission=runtime,
+        )
+    )
+    token = issue_mock_service_token(service_id="nex-oa", audience="nex-ag")
+
+    missing = client.get("/internal/v1/auth/service-token-runtime")
+    accepted = client.get(
+        "/internal/v1/auth/service-token-runtime",
+        headers={"Authorization": f"Bearer {token.access_token}"},
+    )
+
+    assert missing.status_code == 401
+    assert accepted.status_code == 200
+    assert accepted.json()["service_id"] == "nex-ag"
+    assert accepted.json()["admission_counts"] == {
+        "accepted_mock": 1,
+        "accepted_signed": 0,
+        "rejected": 1,
+        "introspected": 0,
+    }
+    assert token.access_token not in accepted.text

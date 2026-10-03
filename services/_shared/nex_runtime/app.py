@@ -184,6 +184,23 @@ def build_service_app(
             "claims": result.claims.to_wire(),
         }
 
+    if service_token_admission is not None:
+
+        @app.get("/internal/v1/auth/service-token-runtime", response_model=None)
+        def service_token_runtime(
+            request: Request,
+            authorization: str | None = Header(default=None),
+        ) -> dict[str, Any] | JSONResponse:
+            try:
+                service_token_admission.admit(
+                    authorization,
+                    required_scopes=(DEFAULT_SERVICE_SCOPE,),
+                    route_class="READ",
+                )
+            except ServiceTokenAdmissionError as exc:
+                return service_token_admission_problem_response(request, exc)
+            return service_token_admission.public_snapshot()
+
     if spec.service_id == "nex-oa" and include_oa_mock_auth_routes:
         _register_oa_mock_auth_routes(app)
 

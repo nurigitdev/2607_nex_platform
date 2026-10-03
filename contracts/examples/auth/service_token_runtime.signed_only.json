@@ -1,0 +1,28 @@
+{
+  "runtime_schema_version": "service_token_runtime.v1",
+  "service_id": "nex-cx",
+  "expected_audience": "nex-cx",
+  "rollout_profile": "SIGNED_ONLY",
+  "signed_verification_enabled": true,
+  "introspection_enabled": true,
+  "sensitive_route_introspection_required": true,
+  "introspection_route_classes": ["ADMIN", "CREDENTIAL", "KEY_MANAGEMENT", "WRITE"],
+  "legacy_mock_callers": [],
+  "legacy_mock_caller_count": 0,
+  "compatibility_deadline_epoch": null,
+  "compatibility_status": "NOT_APPLICABLE",
+  "jwks_cache": {
+    "enabled": true,
+    "status": "POPULATED",
+    "key_count": 2,
+    "refreshed_at_epoch": 1790985600,
+    "ttl_seconds": 300,
+    "max_keys": 16
+  },
+  "admission_counts": {
+    "accepted_mock": 0,
+    "accepted_signed": 42,
+    "rejected": 3,
+    "introspected": 7
+  }
+}
