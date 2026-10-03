@@ -1383,6 +1383,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1277`](slices/1277_mo_signed_token_verification_adoption.md) | `S128-006` Adopt shared signed-token admission across MO provider and operations APIs while preserving admin-user access. |
 | [`Slice 1278`](slices/1278_ag_signed_token_verification_adoption.md) | `S128-007` Adopt shared signed-token admission and profile-driven outbound credentials across AG while preserving admin-user access. |
 | [`Slice 1279`](slices/1279_service_token_rollout_observability_contracts_privacy.md) | `S128-008` Add protected rollout counters, redacted JWKS cache state, strict contracts, and privacy evidence. |
+| [`Slice 1280`](slices/1280_platform_signed_token_postgres_loopback_smoke.md) | `S128-009` Prove OA-issued signed-token adoption across AE, CX, MO, and AG using actual `nex_oa_test` lifecycle state. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
