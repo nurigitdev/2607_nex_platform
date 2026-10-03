@@ -20,6 +20,7 @@ from nex_oa.authorization import (
     plan_role_upsert,
 )
 from nex_oa.subjects import SubjectRegistryError, normalize_registry_id
+from nex_oa.sessions import InMemoryOaSessionRegistry, build_revoked_session_record
 from nex_runtime import PERSISTENCE_MODE_POSTGRES, ServicePersistenceRuntime
 
 
@@ -128,6 +129,7 @@ class InMemoryOaAuthorizationRepository:
     group_members: dict[tuple[str, str, str], dict[str, Any]] = field(default_factory=dict)
     group_roles: dict[tuple[str, str, str], dict[str, Any]] = field(default_factory=dict)
     events: list[dict[str, Any]] = field(default_factory=list)
+    session_registry: InMemoryOaSessionRegistry | None = None
 
     def upsert_role(
         self, payload: Mapping[str, Any], *, context: Mapping[str, Any]
@@ -173,10 +175,21 @@ class InMemoryOaAuthorizationRepository:
         key = _payload_key(config, payload)
         current = store.get(key)
         planned = config.planner(payload, current=current)
+        affected_subject_ids = self._affected_subject_ids(entity_type, planned)
         event = _build_event(config, planned, context=context)
         store[key] = deepcopy(planned)
+        revoked_session_count = self._revoke_sessions(
+            tenant_id=str(planned["tenant_id"]),
+            subject_ids=affected_subject_ids,
+        )
+        event["details"]["revoked_session_count"] = revoked_session_count
         self.events.append(deepcopy(event))
-        return _result(planned, event)
+        return _result(
+            planned,
+            event,
+            revoked_session_count=revoked_session_count,
+            affected_subject_ids=affected_subject_ids,
+        )
 
     def _store(self, entity_type: str) -> dict[Any, dict[str, Any]]:
         return {
@@ -185,6 +198,55 @@ class InMemoryOaAuthorizationRepository:
             "GROUP_MEMBER": self.group_members,
             "GROUP_ROLE": self.group_roles,
         }[entity_type]
+
+    def _affected_subject_ids(
+        self, entity_type: str, record: Mapping[str, Any]
+    ) -> tuple[str, ...]:
+        tenant_id = str(record["tenant_id"])
+        if entity_type == "GROUP_MEMBER":
+            return (str(record["subject_id"]),)
+        group_ids: set[str]
+        if entity_type in {"GROUP", "GROUP_ROLE"}:
+            group_ids = {str(record["group_id"])}
+        elif entity_type == "ROLE":
+            role_id = str(record["role_id"])
+            group_ids = {
+                str(item["group_id"])
+                for item in self.group_roles.values()
+                if item["tenant_id"] == tenant_id and item["role_id"] == role_id
+            }
+        else:
+            group_ids = set()
+        return tuple(
+            sorted(
+                {
+                    str(item["subject_id"])
+                    for item in self.group_members.values()
+                    if item["tenant_id"] == tenant_id
+                    and item["group_id"] in group_ids
+                }
+            )
+        )
+
+    def _revoke_sessions(
+        self, *, tenant_id: str, subject_ids: tuple[str, ...]
+    ) -> int:
+        if self.session_registry is None or not subject_ids:
+            return 0
+        revoked = 0
+        subject_set = set(subject_ids)
+        for session_id, record in tuple(self.session_registry.sessions.items()):
+            tenant_ref = record.get("tenant_ref") or {}
+            subject_ref = record.get("subject_ref") or {}
+            if (
+                record.get("status") == "ACTIVE"
+                and tenant_ref.get("id") == tenant_id
+                and subject_ref.get("id") in subject_set
+            ):
+                updated, _, _ = build_revoked_session_record(record)
+                self.session_registry.sessions[session_id] = deepcopy(updated)
+                revoked += 1
+        return revoked
 
     def authorization_inputs(
         self, *, tenant_id: str, subject_id: str
@@ -249,14 +311,30 @@ class SqlAlchemyOaAuthorizationRepository:
             try:
                 current = _select_record(session, config=config, payload=payload)
                 planned = config.planner(payload, current=current)
+                affected_subject_ids = _select_affected_subject_ids(
+                    session,
+                    entity_type=entity_type,
+                    record=planned,
+                )
                 if current is None:
                     _insert_record(session, config=config, record=planned)
                 else:
                     _update_record(session, config=config, record=planned)
                 event = _build_event(config, planned, context=context)
+                revoked_session_count = _revoke_sql_sessions(
+                    session,
+                    tenant_id=str(planned["tenant_id"]),
+                    subject_ids=affected_subject_ids,
+                )
+                event["details"]["revoked_session_count"] = revoked_session_count
                 _insert_event(session, event)
                 session.commit()
-                return _result(planned, event)
+                return _result(
+                    planned,
+                    event,
+                    revoked_session_count=revoked_session_count,
+                    affected_subject_ids=affected_subject_ids,
+                )
             except Exception:
                 session.rollback()
                 raise
@@ -327,6 +405,16 @@ def build_authorization_repository_for_runtime(
     if runtime.mode == PERSISTENCE_MODE_POSTGRES and runtime.api_session_factory is not None:
         return SqlAlchemyOaAuthorizationRepository(runtime.api_session_factory)
     return InMemoryOaAuthorizationRepository()
+
+
+def bind_authorization_session_registry(
+    repository: OaAuthorizationRepository,
+    session_registry: object,
+) -> None:
+    if isinstance(repository, InMemoryOaAuthorizationRepository) and isinstance(
+        session_registry, InMemoryOaSessionRegistry
+    ):
+        repository.session_registry = session_registry
 
 
 def _payload_key(config: _EntityConfig, payload: Mapping[str, Any]) -> tuple[str, ...]:
@@ -438,8 +526,81 @@ def _build_event(
     }
 
 
-def _result(record: Mapping[str, Any], event: Mapping[str, Any]) -> dict[str, Any]:
-    return {"record": deepcopy(dict(record)), "event": _wire_event(event)}
+def _select_affected_subject_ids(
+    session: Session,
+    *,
+    entity_type: str,
+    record: Mapping[str, Any],
+) -> tuple[str, ...]:
+    if entity_type == "GROUP_MEMBER":
+        return (str(record["subject_id"]),)
+    params = {"tenant_id": record["tenant_id"]}
+    if entity_type in {"GROUP", "GROUP_ROLE"}:
+        params["group_id"] = record["group_id"]
+        sql = (
+            "SELECT DISTINCT subject_id FROM oa_group_members "
+            "WHERE tenant_id = :tenant_id AND group_id = :group_id"
+        )
+    elif entity_type == "ROLE":
+        params["role_id"] = record["role_id"]
+        sql = (
+            "SELECT DISTINCT gm.subject_id FROM oa_group_members gm "
+            "JOIN oa_group_roles gr ON gr.tenant_id = gm.tenant_id "
+            "AND gr.group_id = gm.group_id "
+            "WHERE gm.tenant_id = :tenant_id AND gr.role_id = :role_id"
+        )
+    else:
+        return ()
+    return tuple(
+        sorted(
+            str(row["subject_id"])
+            for row in session.execute(text(sql), params).mappings()
+        )
+    )
+
+
+def _revoke_sql_sessions(
+    session: Session,
+    *,
+    tenant_id: str,
+    subject_ids: tuple[str, ...],
+) -> int:
+    if not subject_ids:
+        return 0
+    now = _utc_now()
+    revoked = 0
+    for subject_id in subject_ids:
+        result = session.execute(
+            text(
+                "UPDATE oa_user_sessions SET status = 'REVOKED', "
+                "revoked_at = :revoked_at, updated_at = :updated_at "
+                "WHERE tenant_id = :tenant_id AND subject_id = :subject_id "
+                "AND status = 'ACTIVE'"
+            ),
+            {
+                "tenant_id": tenant_id,
+                "subject_id": subject_id,
+                "revoked_at": now,
+                "updated_at": now,
+            },
+        )
+        revoked += int(result.rowcount or 0)
+    return revoked
+
+
+def _result(
+    record: Mapping[str, Any],
+    event: Mapping[str, Any],
+    *,
+    revoked_session_count: int,
+    affected_subject_ids: tuple[str, ...],
+) -> dict[str, Any]:
+    return {
+        "record": deepcopy(dict(record)),
+        "event": _wire_event(event),
+        "affected_subject_ids": list(affected_subject_ids),
+        "revoked_session_count": revoked_session_count,
+    }
 
 
 def _wire_event(event: Mapping[str, Any]) -> dict[str, Any]:

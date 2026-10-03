@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: NeX OA API
-  version: 0.0.0-slice1229
+  version: 0.0.0-slice1237
 tags:
   - name: Platform
   - name: Auth
   - name: Identity Lifecycle
   - name: Credential Security
+  - name: Authorization
 paths:
   /health:
     get:
@@ -62,6 +63,193 @@ paths:
       responses:
         "200":
           description: Mock service token introspection result.
+  /internal/v1/auth/tenants/{tenant_id}/roles/{role_id}:
+    put:
+      operationId: upsertOaAuthorizationRole
+      tags:
+        - Authorization
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes:
+        - service:call
+        - authorization:admin
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/RoleId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Role definition was created or updated.
+        "400":
+          description: Authorization payload is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Authorization administration scope is missing.
+        "409":
+          description: Authorization revision or reference conflicts.
+        "503":
+          description: Authorization persistence is unavailable.
+  /internal/v1/auth/tenants/{tenant_id}/groups/{group_id}:
+    put:
+      operationId: upsertOaAuthorizationGroup
+      tags:
+        - Authorization
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes:
+        - service:call
+        - authorization:admin
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Group definition was created or updated.
+        "400":
+          description: Authorization payload is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Authorization administration scope is missing.
+        "409":
+          description: Authorization revision or reference conflicts.
+        "503":
+          description: Authorization persistence is unavailable.
+  /internal/v1/auth/tenants/{tenant_id}/groups/{group_id}/members/{subject_id}:
+    put:
+      operationId: upsertOaAuthorizationGroupMember
+      tags:
+        - Authorization
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes:
+        - service:call
+        - authorization:admin
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/SubjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Group membership was created or updated.
+        "400":
+          description: Authorization payload is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Authorization administration scope is missing.
+        "409":
+          description: Authorization revision or reference conflicts.
+        "503":
+          description: Authorization persistence is unavailable.
+  /internal/v1/auth/tenants/{tenant_id}/groups/{group_id}/roles/{role_id}:
+    put:
+      operationId: upsertOaAuthorizationGroupRole
+      tags:
+        - Authorization
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes:
+        - service:call
+        - authorization:admin
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/RoleId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Group role assignment was created or updated.
+        "400":
+          description: Authorization payload is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Authorization administration scope is missing.
+        "409":
+          description: Authorization revision or reference conflicts.
+        "503":
+          description: Authorization persistence is unavailable.
+  /internal/v1/auth/tenants/{tenant_id}/subjects/{subject_id}/authorization:
+    get:
+      operationId: getOaEffectiveAuthorization
+      tags:
+        - Authorization
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes:
+        - service:call
+        - authorization:read
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SubjectId"
+      responses:
+        "200":
+          description: Effective direct and group authorization grants.
+        "400":
+          description: Authorization reference is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Authorization read scope is missing.
+        "404":
+          description: Membership was not found.
+        "503":
+          description: Authorization persistence is unavailable.
+  /internal/v1/auth/tenants/{tenant_id}/authorization-events:
+    get:
+      operationId: listOaAuthorizationEvents
+      tags:
+        - Authorization
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes:
+        - service:call
+        - authorization:read
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: Tenant-scoped privacy-safe authorization events.
+        "400":
+          description: Authorization event query is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Authorization read scope is missing.
+        "503":
+          description: Authorization persistence is unavailable.
   /internal/v1/identity/tenants/{tenant_id}/subjects/{subject_id}/lifecycle:
     patch:
       operationId: transitionOaSubjectLifecycle
@@ -273,6 +461,20 @@ components:
         type: string
         minLength: 1
         maxLength: 128
+    GroupId:
+      name: group_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z][a-z0-9._-]{1,63}$"
+    RoleId:
+      name: role_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z][a-z0-9._-]{1,63}$"
   securitySchemes:
     serviceBearer:
       type: http

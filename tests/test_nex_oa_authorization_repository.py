@@ -10,8 +10,11 @@ from nex_oa.authorization import OaAuthorizationError
 from nex_oa.authorization_repository import (
     InMemoryOaAuthorizationRepository,
     SqlAlchemyOaAuthorizationRepository,
+    bind_authorization_session_registry,
     build_authorization_repository_for_runtime,
 )
+from nex_oa.memberships import InMemoryOaTenantMembershipRegistry
+from nex_oa.sessions import InMemoryOaSessionRegistry
 import nex_oa.authorization_repository as repository_module
 from nex_runtime import PERSISTENCE_MODE_POSTGRES
 
@@ -96,6 +99,7 @@ def _sqlite_repository() -> tuple[SqlAlchemyOaAuthorizationRepository, sessionma
         connection.execute(text("CREATE TABLE oa_groups (tenant_id TEXT, group_id TEXT, group_schema_version TEXT, display_name TEXT, description TEXT, status TEXT, revision INTEGER, metadata TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (tenant_id, group_id), FOREIGN KEY (tenant_id) REFERENCES oa_tenants(tenant_id))"))
         connection.execute(text("CREATE TABLE oa_group_members (tenant_id TEXT, group_id TEXT, subject_ref_type TEXT, subject_id TEXT, status TEXT, revision INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (tenant_id, group_id, subject_id))"))
         connection.execute(text("CREATE TABLE oa_group_roles (tenant_id TEXT, group_id TEXT, role_id TEXT, status TEXT, revision INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (tenant_id, group_id, role_id))"))
+        connection.execute(text("CREATE TABLE oa_user_sessions (session_id TEXT PRIMARY KEY, tenant_id TEXT, subject_id TEXT, status TEXT, revoked_at TEXT, updated_at TEXT)"))
         connection.execute(text("CREATE TABLE oa_authz_events (event_id TEXT PRIMARY KEY, event_schema_version TEXT, tenant_id TEXT, event_type TEXT, entity_type TEXT, entity_id TEXT, subject_id TEXT, previous_revision INTEGER, next_revision INTEGER, actor_ref TEXT, request_id TEXT, trace_id TEXT, details TEXT, occurred_at TEXT)"))
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     return SqlAlchemyOaAuthorizationRepository(factory), factory
@@ -111,7 +115,10 @@ def test_sqlalchemy_repository_round_trip_and_restart() -> None:
     assert snapshot["roles"][0]["scopes"] == ["doc:read"]
     assert snapshot["groups"][0]["metadata"] == {}
     assert len(events) == 4
-    assert events[0]["details"] == {"status": "ACTIVE"}
+    assert events[0]["details"] == {
+        "status": "ACTIVE",
+        "revoked_session_count": 0,
+    }
 
     updated = restarted.upsert_group(
         {"tenant_id": "tenant-a", "group_id": "engineering", "display_name": "Engineering Team", "expected_revision": 1},
@@ -120,11 +127,84 @@ def test_sqlalchemy_repository_round_trip_and_restart() -> None:
     assert updated["record"]["revision"] == 2
 
 
+def test_sqlalchemy_repository_revokes_sessions_atomically(monkeypatch) -> None:
+    repository, factory = _sqlite_repository()
+    _populate(repository)
+    with factory.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO oa_user_sessions "
+                "(session_id, tenant_id, subject_id, status) "
+                "VALUES ('session-a', 'tenant-a', 'user-a', 'ACTIVE')"
+            )
+        )
+
+    updated = repository.upsert_role(
+        {
+            "tenant_id": "tenant-a",
+            "role_id": "editor",
+            "scopes": ["doc:read", "doc:write"],
+            "expected_revision": 1,
+        },
+        context=CONTEXT,
+    )
+    assert updated["affected_subject_ids"] == ["user-a"]
+    assert updated["revoked_session_count"] == 1
+    with factory() as session:
+        assert session.execute(
+            text("SELECT status FROM oa_user_sessions WHERE session_id = 'session-a'")
+        ).scalar_one() == "REVOKED"
+
+    with factory.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE oa_user_sessions SET status = 'ACTIVE', revoked_at = NULL "
+                "WHERE session_id = 'session-a'"
+            )
+        )
+    monkeypatch.setattr(
+        repository_module,
+        "_insert_event",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(SQLAlchemyError("event")),
+    )
+    with pytest.raises(OaAuthorizationError) as unavailable:
+        repository.upsert_role(
+            {
+                "tenant_id": "tenant-a",
+                "role_id": "editor",
+                "scopes": ["doc:read"],
+                "expected_revision": 2,
+            },
+            context=CONTEXT,
+        )
+    assert unavailable.value.status_code == 503
+    with factory() as session:
+        assert session.execute(
+            text("SELECT status FROM oa_user_sessions WHERE session_id = 'session-a'")
+        ).scalar_one() == "ACTIVE"
+
+
 def test_sqlalchemy_repository_maps_validation_and_write_errors(monkeypatch) -> None:
     repository, factory = _sqlite_repository()
     with pytest.raises(OaAuthorizationError) as missing:
         repository.authorization_inputs(tenant_id="", subject_id="user-a")
     assert missing.value.status_code == 400
+
+    repository.upsert_role(
+        {"tenant_id": "tenant-a", "role_id": "editor", "scopes": ["doc:read"]},
+        context=CONTEXT,
+    )
+    with pytest.raises(OaAuthorizationError) as stale:
+        repository.upsert_role(
+            {
+                "tenant_id": "tenant-a",
+                "role_id": "editor",
+                "scopes": ["doc:write"],
+                "expected_revision": 0,
+            },
+            context=CONTEXT,
+        )
+    assert stale.value.status_code == 409
 
     monkeypatch.setattr(
         repository_module,
@@ -135,7 +215,11 @@ def test_sqlalchemy_repository_maps_validation_and_write_errors(monkeypatch) -> 
     )
     with pytest.raises(OaAuthorizationError) as integrity:
         repository.upsert_role(
-            {"tenant_id": "tenant-a", "role_id": "editor", "scopes": ["doc:read"]},
+            {
+                "tenant_id": "tenant-a",
+                "role_id": "editor-integrity",
+                "scopes": ["doc:read"],
+            },
             context=CONTEXT,
         )
     assert integrity.value.status_code == 409
@@ -147,7 +231,11 @@ def test_sqlalchemy_repository_maps_validation_and_write_errors(monkeypatch) -> 
     )
     with pytest.raises(OaAuthorizationError) as unavailable:
         repository.upsert_role(
-            {"tenant_id": "tenant-a", "role_id": "editor", "scopes": ["doc:read"]},
+            {
+                "tenant_id": "tenant-a",
+                "role_id": "editor-unavailable",
+                "scopes": ["doc:read"],
+            },
             context=CONTEXT,
         )
     assert unavailable.value.status_code == 503
@@ -227,3 +315,21 @@ def test_runtime_builder_selects_memory_and_postgres() -> None:
     Runtime.mode = PERSISTENCE_MODE_POSTGRES
     Runtime.api_session_factory = factory
     assert isinstance(build_authorization_repository_for_runtime(Runtime()), SqlAlchemyOaAuthorizationRepository)  # type: ignore[arg-type]
+
+
+def test_unknown_entity_and_incompatible_session_binding_are_safe() -> None:
+    repository = InMemoryOaAuthorizationRepository()
+    assert repository._affected_subject_ids(
+        "UNKNOWN", {"tenant_id": "tenant-a"}
+    ) == ()
+    assert repository_module._select_affected_subject_ids(
+        None,  # type: ignore[arg-type]
+        entity_type="UNKNOWN",
+        record={"tenant_id": "tenant-a"},
+    ) == ()
+
+    bind_authorization_session_registry(repository, object())
+    assert repository.session_registry is None
+    sessions = InMemoryOaSessionRegistry(InMemoryOaTenantMembershipRegistry())
+    bind_authorization_session_registry(repository, sessions)
+    assert repository.session_registry is sessions

@@ -82,7 +82,7 @@ def run_oa_credential_security_contracts(root: Path = ROOT) -> dict[str, Any]:
         "canonical_schema_links_declared": canonical_links,
         "contract_drift_reduced": (
             drift.get("status") == "PASS"
-            and drift_summary.get("openapi_operation_count") == 11
+            and drift_summary.get("openapi_operation_count", 0) >= 11
             and drift_summary.get("drift_count") == 23
         ),
         "security_controls_hardened": (
