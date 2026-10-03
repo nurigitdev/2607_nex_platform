@@ -900,6 +900,26 @@
       "name": "oa_token_revocation_jti",
       "path": "tests/negative/auth/oa_token_revocation.jti.json",
       "schema": "schemas/service/nex_oa/token_revocation.v1.schema.json"
+    },
+    {
+      "name": "oa_federated_login_request_password",
+      "path": "tests/negative/auth/oa_federated_login_request.password.json",
+      "schema": "schemas/service/nex_oa/federated_login_request.v1.schema.json"
+    },
+    {
+      "name": "oa_federated_login_response_external_subject",
+      "path": "tests/negative/auth/oa_federated_login_response.external_subject.json",
+      "schema": "schemas/service/nex_oa/federated_login_response.v1.schema.json"
+    },
+    {
+      "name": "ag_federated_operator_context_id_token",
+      "path": "tests/negative/operations/ag_federated_operator_context.id_token.json",
+      "schema": "schemas/service/nex_ag/federated_operator_context.v1.schema.json"
+    },
+    {
+      "name": "ag_federated_auth_runtime_subject",
+      "path": "tests/negative/operations/ag_federated_auth_runtime.subject.json",
+      "schema": "schemas/service/nex_ag/federated_auth_runtime.v1.schema.json"
     }
   ]
 }

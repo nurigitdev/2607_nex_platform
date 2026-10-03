@@ -18,6 +18,7 @@ from nex_runtime import (
 )
 from nex_ag.federated_operator_authorization import (
     authorize_ag_federated_operator_context,
+    federated_authorization_telemetry_from_request,
     federated_operator_context_header,
 )
 
@@ -84,6 +85,7 @@ def authorize_ag_service_or_admin_request(
                 encoded_context=encoded_context,
                 admin_error_code=admin_error_code,
                 admin_error_detail=admin_error_detail,
+                telemetry=federated_authorization_telemetry_from_request(request),
             )
         return None
     if _looks_like_service_authorization(authorization):

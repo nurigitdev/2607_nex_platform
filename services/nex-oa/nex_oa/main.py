@@ -38,6 +38,15 @@ from nex_oa.credential_security import (
     build_credential_security_repository_for_runtime,
     register_credential_security_routes,
 )
+from nex_oa.federated_identity_repository import (
+    build_federated_identity_repository_for_runtime,
+)
+from nex_oa.federated_login import (
+    CachingOidcVerifierProvider,
+    HttpOidcDocumentSource,
+    OaFederatedLoginService,
+    register_federated_login_routes,
+)
 from nex_oa.memberships import (
     build_tenant_membership_registry_for_runtime,
     register_identity_membership_routes,
@@ -103,6 +112,14 @@ CREDENTIAL_SECURITY_REPOSITORY = build_credential_security_repository_for_runtim
 USER_LOGIN_SERVICE = OaUserLoginService(
     credential_registry=LOCAL_CREDENTIAL_REGISTRY,
     session_registry=USER_SESSION_REGISTRY,
+)
+FEDERATED_IDENTITY_REPOSITORY = build_federated_identity_repository_for_runtime(
+    SERVICE_PERSISTENCE
+)
+FEDERATED_LOGIN_SERVICE = OaFederatedLoginService(
+    repository=FEDERATED_IDENTITY_REPOSITORY,
+    session_issuer=USER_SESSION_REGISTRY,
+    verifier_provider=CachingOidcVerifierProvider(HttpOidcDocumentSource()),
 )
 IDENTITY_LIFECYCLE_REPOSITORY = build_identity_lifecycle_repository_for_runtime(
     SERVICE_PERSISTENCE,
@@ -183,6 +200,11 @@ register_user_session_routes(
 register_user_login_routes(
     app,
     service=USER_LOGIN_SERVICE,
+    auth_event_repository=AUTH_EVENT_REPOSITORY,
+)
+register_federated_login_routes(
+    app,
+    service=FEDERATED_LOGIN_SERVICE,
     auth_event_repository=AUTH_EVENT_REPOSITORY,
 )
 register_auth_event_routes(app, repository=AUTH_EVENT_REPOSITORY)

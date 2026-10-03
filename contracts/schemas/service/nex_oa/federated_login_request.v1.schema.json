@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/federated_login_request.v1.schema.json",
+  "title": "NeX OA Federated Login Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["provider_id", "id_token", "nonce"],
+  "properties": {
+    "provider_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9._-]{1,63}$"
+    },
+    "id_token": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16384,
+      "writeOnly": true
+    },
+    "nonce": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "writeOnly": true
+    },
+    "requested_scopes": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "ttl_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 86400
+    }
+  }
+}

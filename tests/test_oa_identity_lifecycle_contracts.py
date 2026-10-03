@@ -123,7 +123,7 @@ def test_repository_contract_smoke_passes_with_reduced_known_drift() -> None:
         "documented_operation_count": 2,
         "lifecycle_implemented_count": 8,
         "remaining_lifecycle_gap_count": 0,
-        "remaining_contract_drift_count": 23,
+        "remaining_contract_drift_count": 22,
         "issue_count": 0,
     }
 
@@ -172,7 +172,7 @@ def test_safe_audit_summary_and_main_paths(monkeypatch, capsys) -> None:
 
     passing = contracts.run_oa_identity_lifecycle_contracts()
     assert "contracts=pass" in contracts.summary_line(passing)
-    assert "contract_drift=23" in contracts.summary_line(passing)
+    assert "contract_drift=22" in contracts.summary_line(passing)
     monkeypatch.setattr(
         contracts,
         "run_oa_identity_lifecycle_contracts",

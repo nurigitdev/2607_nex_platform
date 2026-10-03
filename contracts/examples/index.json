@@ -1049,6 +1049,26 @@
       "name": "oa_token_revocation_operator",
       "path": "examples/auth/oa_token_revocation.operator.json",
       "schema": "schemas/service/nex_oa/token_revocation.v1.schema.json"
+    },
+    {
+      "name": "oa_federated_login_request_oidc",
+      "path": "examples/auth/oa_federated_login_request.oidc.json",
+      "schema": "schemas/service/nex_oa/federated_login_request.v1.schema.json"
+    },
+    {
+      "name": "oa_federated_login_response_active",
+      "path": "examples/auth/oa_federated_login_response.active.json",
+      "schema": "schemas/service/nex_oa/federated_login_response.v1.schema.json"
+    },
+    {
+      "name": "ag_federated_operator_context_admin",
+      "path": "examples/operations/ag_federated_operator_context.admin.json",
+      "schema": "schemas/service/nex_ag/federated_operator_context.v1.schema.json"
+    },
+    {
+      "name": "ag_federated_auth_runtime_ready",
+      "path": "examples/operations/ag_federated_auth_runtime.ready.json",
+      "schema": "schemas/service/nex_ag/federated_auth_runtime.v1.schema.json"
     }
   ]
 }

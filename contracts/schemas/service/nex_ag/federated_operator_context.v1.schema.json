@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ag/federated_operator_context.v1.schema.json",
+  "title": "NeX AG Federated Operator Context",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tenant_id", "subject_id", "roles", "scopes", "auth_method", "session_id_digest"],
+  "properties": {
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "subject_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "roles": {"$ref": "#/$defs/string_list"},
+    "scopes": {"$ref": "#/$defs/string_list"},
+    "auth_method": {"const": "federated_oidc"},
+    "session_id_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "$defs": {
+    "string_list": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 128}
+    }
+  }
+}

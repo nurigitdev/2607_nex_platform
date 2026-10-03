@@ -1,0 +1,57 @@
+{
+  "login_response_schema_version": "oa_federated_login_response.v1",
+  "session_issue_schema_version": "oa_session_issue.v1",
+  "service_id": "nex-oa",
+  "session": {
+    "browser_session_schema_version": "oa_browser_session.v1",
+    "session_id": "opaque-browser-session",
+    "status": "ACTIVE",
+    "issuer": "nex-oa",
+    "audience": "nex-ae-api",
+    "token_use": "user",
+    "tenant_ref": {"type": "oa.tenant", "id": "company"},
+    "subject_ref": {"type": "oa.user", "id": "employee-1001"},
+    "scopes": ["workspace:use"],
+    "roles": ["admin"],
+    "issued_at": "2026-10-04T01:00:00Z",
+    "expires_at": "2026-10-04T02:00:00Z",
+    "auth_time": "2026-10-04T01:00:00Z",
+    "metadata": {
+      "raw_token_included": false,
+      "service_token_included": false,
+      "password_included": false,
+      "browser_payload_owner_authoritative": false,
+      "claim_owner_authoritative": true
+    }
+  },
+  "tenant_ref": {"type": "oa.tenant", "id": "company"},
+  "subject_ref": {"type": "oa.user", "id": "employee-1001"},
+  "membership_snapshot_schema_version": "oa_tenant_membership_snapshot.v1",
+  "credential_delivery": {
+    "raw_token_included": false,
+    "cookie_set_by_oa": false,
+    "ae_facade_delegation": "implemented"
+  },
+  "metadata": {
+    "session_persisted": true,
+    "raw_token_stored": false,
+    "password_verified": false,
+    "external_identity_provider_used": false,
+    "auth_method": "federated_oidc",
+    "provider_id": "company-oidc",
+    "identity_link_verified": true,
+    "raw_id_token_included": false,
+    "raw_external_subject_included": false,
+    "external_profile_included": false
+  },
+  "operator_context": {
+    "tenant_id": "company",
+    "subject_id": "employee-1001",
+    "roles": ["admin"],
+    "scopes": ["workspace:use"],
+    "auth_method": "federated_oidc",
+    "session_id_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "request_id": "request-1289",
+  "trace_id": "0123456789abcdef0123456789abcdef"
+}

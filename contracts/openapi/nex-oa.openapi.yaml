@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX OA API
-  version: 0.0.0-slice1269
+  version: 0.0.0-slice1289
 tags:
   - name: Platform
   - name: Auth
@@ -47,6 +47,30 @@ paths:
           description: Service claim is valid for this service.
         "401":
           description: Service claim is missing or invalid.
+  /internal/v1/auth/federated-login:
+    post:
+      operationId: createOaFederatedLogin
+      tags: [Auth]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FederatedLoginRequest"
+      responses:
+        "200":
+          description: OIDC identity was linked to an active OA session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FederatedLoginResponse"
+        "400": {description: Federated login payload is invalid.}
+        "401": {description: OIDC provider or token verification failed.}
+        "403": {description: External identity is not linked to an active OA subject.}
+        "503": {description: OIDC trust documents or OA persistence are unavailable.}
   /api/v1/auth/service-token:
     post:
       operationId: exchangeOaClientCredentialToken
@@ -868,6 +892,12 @@ components:
     OaServiceId:
       type: string
       enum: [nex-oa, nex-ag, nex-ae-api, nex-cx, nex-mo]
+    FederatedLoginRequest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/federated_login_request.v1.schema.json
+    FederatedLoginResponse:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/federated_login_response.v1.schema.json
     ServiceTokenExchangeRequest:
       type: object
       additionalProperties: false

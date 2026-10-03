@@ -607,6 +607,7 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_oa_federated_login_orchestration.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_federated_operator_context.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_federated_authorization_hardening.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s129_contract_runtime_privacy.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary

@@ -1,0 +1,7 @@
+{
+  "provider_id": "company-oidc",
+  "id_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbXBhbnkta2V5IiwidHlwIjoiSldUIn0.eyJpc3MiOiJodHRwczovL2lkLmV4YW1wbGUudGVzdCIsInN1YiI6Im9wYXF1ZSJ9.c2lnbmF0dXJl",
+  "nonce": "browser-nonce-1289",
+  "requested_scopes": ["workspace:use"],
+  "ttl_seconds": 600
+}

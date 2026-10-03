@@ -12,6 +12,10 @@ from nex_ag.audit_retention_operations import (
     register_ag_audit_retention_routes,
 )
 from nex_ag.generation_audit import register_generation_audit_routes
+from nex_ag.federated_operator_operations import (
+    attach_ag_federated_authorization_telemetry,
+    register_ag_federated_operator_runtime_routes,
+)
 from nex_ag.mvp_acceptance_api import register_ag_mvp_acceptance_routes
 from nex_ag.generation_quality_disposition import (
     register_generation_quality_disposition_routes,
@@ -74,6 +78,7 @@ app = build_service_app(
     service_token_admission=SERVICE_TOKEN_ADMISSION,
 )
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
+FEDERATED_AUTHORIZATION_TELEMETRY = attach_ag_federated_authorization_telemetry(app)
 register_service_job_control_routes(
     app,
     service_id=SERVICE_SPEC.service_id,
@@ -113,6 +118,10 @@ AUDIT_RETENTION_STORES = build_ag_audit_retention_runtime_stores(
     SERVICE_PERSISTENCE
 )
 register_readiness_routes(app)
+register_ag_federated_operator_runtime_routes(
+    app,
+    telemetry=FEDERATED_AUTHORIZATION_TELEMETRY,
+)
 register_generation_audit_routes(app)
 register_generation_quality_disposition_routes(
     app,

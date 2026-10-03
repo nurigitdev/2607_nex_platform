@@ -1,0 +1,12 @@
+{
+  "login_response_schema_version": "oa_federated_login_response.v1",
+  "operator_context": {
+    "tenant_id": "company",
+    "subject_id": "employee-1001",
+    "roles": ["admin"],
+    "scopes": ["workspace:use"],
+    "auth_method": "federated_oidc",
+    "session_id_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "external_subject": "private"
+  }
+}

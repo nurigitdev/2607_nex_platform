@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX AG API
-  version: 0.0.0-slice0003
+  version: 0.0.0-slice1289
 tags:
   - name: Platform
   - name: Readiness
@@ -44,6 +44,23 @@ paths:
           description: Service claim is valid for this service.
         "401":
           description: Service claim is missing or invalid.
+  /admin/v1/auth/federated-operator-runtime:
+    get:
+      operationId: getAgFederatedOperatorRuntime
+      tags: [Operations]
+      security:
+        - serviceBearer: []
+      parameters:
+        - $ref: "#/components/parameters/federatedOperatorContext"
+      responses:
+        "200":
+          description: Privacy-safe federated operator authorization counters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgFederatedAuthRuntime"
+        "401": {description: Service or administrator authentication failed.}
+        "403": {description: Administrator role or federated context authorization failed.}
   /admin/v1/readiness/services:
     get:
       operationId: getAgReadinessProjection
@@ -3349,6 +3366,16 @@ paths:
           description: Service claim is missing or invalid.
 components:
   parameters:
+    federatedOperatorContext:
+      name: X-NEX-Federated-Operator-Context
+      in: header
+      required: false
+      description: Bounded base64url OA-normalized operator context accepted only from nex-ae-api.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 4096
+        pattern: "^[A-Za-z0-9_-]+$"
     serviceId:
       name: service_id
       in: query
@@ -3393,7 +3420,18 @@ components:
         type: integer
         minimum: 1
         maximum: 500
+  securitySchemes:
+    serviceBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: NeX service claim or OA administrator access
   schemas:
+    AgFederatedOperatorContext:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ag/federated_operator_context.v1.schema.json
+    AgFederatedAuthRuntime:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ag/federated_auth_runtime.v1.schema.json
     ServiceId:
       type: string
       enum:

@@ -324,11 +324,11 @@ def run_oa_service_principal_contracts(root: Path = ROOT) -> dict[str, Any]:
         "contract_inventory_complete": (
             drift.get("status") == "PASS"
             and drift_summary.get("runtime_operation_count") == 53
-            and drift_summary.get("openapi_operation_count") == 30
-            and drift_summary.get("schema_count") == 23
-            and drift_summary.get("positive_fixture_covered_count") == 23
-            and drift_summary.get("negative_fixture_covered_count") == 23
-            and drift_summary.get("drift_count") == 23
+            and drift_summary.get("openapi_operation_count") == 31
+            and drift_summary.get("schema_count") == 25
+            and drift_summary.get("positive_fixture_covered_count") == 25
+            and drift_summary.get("negative_fixture_covered_count") == 25
+            and drift_summary.get("drift_count") == 22
         ),
     }
     status = "PASS" if all(checks.values()) and not issues else "FAIL"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from threading import Lock
 from typing import Any
 
 from fastapi import Request
@@ -19,7 +20,17 @@ from nex_runtime import AdmittedServiceClaims, DEFAULT_USER_SCOPE, problem_respo
 AG_FEDERATED_AUTHORIZATION_AUDIT_STATE_KEY = (
     "ag_federated_operator_authorization_audit"
 )
+AG_FEDERATED_AUTHORIZATION_TELEMETRY_STATE_KEY = (
+    "ag_federated_operator_authorization_telemetry"
+)
 AG_FEDERATED_OPERATOR_CALLER = "nex-ae-api"
+_TELEMETRY_KEYS = (
+    "authorized",
+    "denied_caller",
+    "denied_context",
+    "denied_scope",
+    "denied_role",
+)
 
 
 @dataclass(frozen=True)
@@ -40,6 +51,33 @@ class AgFederatedAuthorizationAudit:
         return asdict(self)
 
 
+class AgFederatedAuthorizationTelemetry:
+    def __init__(self) -> None:
+        self._counts = {name: 0 for name in _TELEMETRY_KEYS}
+        self._lock = Lock()
+
+    def record(self, outcome: str) -> None:
+        if outcome not in self._counts:
+            raise ValueError("unsupported federated authorization outcome")
+        with self._lock:
+            self._counts[outcome] += 1
+
+    def public_snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            counts = dict(self._counts)
+        return {
+            "runtime_schema_version": "ag_federated_auth_runtime.v1",
+            "service_id": "nex-ag",
+            "context_source": "oa_normalized_via_nex_ae_api",
+            "required_role": "admin",
+            "required_scope": DEFAULT_USER_SCOPE,
+            "counts": counts,
+            "raw_context_included": False,
+            "subject_identifiers_included": False,
+            "external_identity_included": False,
+        }
+
+
 def authorize_ag_federated_operator_context(
     request: Request,
     *,
@@ -47,6 +85,7 @@ def authorize_ag_federated_operator_context(
     encoded_context: object,
     admin_error_code: str,
     admin_error_detail: str,
+    telemetry: AgFederatedAuthorizationTelemetry | None = None,
 ) -> JSONResponse | None:
     if service_claims.service_id != AG_FEDERATED_OPERATOR_CALLER:
         _record_audit(
@@ -55,6 +94,7 @@ def authorize_ag_federated_operator_context(
             reason_code="AG_FEDERATED_OPERATOR_CALLER_FORBIDDEN",
             caller_service_id=service_claims.service_id,
         )
+        _record_telemetry(telemetry, "denied_caller")
         return _problem(
             request,
             status_code=403,
@@ -70,6 +110,7 @@ def authorize_ag_federated_operator_context(
             reason_code="AG_FEDERATED_OPERATOR_CONTEXT_INVALID",
             caller_service_id=service_claims.service_id,
         )
+        _record_telemetry(telemetry, "denied_context")
         return _problem(
             request,
             status_code=401,
@@ -84,6 +125,7 @@ def authorize_ag_federated_operator_context(
             outcome="DENIED",
             reason_code="AG_FEDERATED_OPERATOR_SCOPE_REQUIRED",
         )
+        _record_telemetry(telemetry, "denied_scope")
         return _problem(
             request,
             status_code=403,
@@ -98,6 +140,7 @@ def authorize_ag_federated_operator_context(
             outcome="DENIED",
             reason_code=admin_error_code,
         )
+        _record_telemetry(telemetry, "denied_role")
         return _problem(
             request,
             status_code=403,
@@ -112,6 +155,7 @@ def authorize_ag_federated_operator_context(
         outcome="AUTHORIZED",
         reason_code="AG_FEDERATED_OPERATOR_AUTHORIZED",
     )
+    _record_telemetry(telemetry, "authorized")
     return None
 
 
@@ -128,6 +172,17 @@ def ag_federated_authorization_audit_from_request(
 
 def federated_operator_context_header(request: Request) -> str | None:
     return request.headers.get(AG_FEDERATED_OPERATOR_CONTEXT_HEADER)
+
+
+def federated_authorization_telemetry_from_request(
+    request: Request,
+) -> AgFederatedAuthorizationTelemetry | None:
+    telemetry = getattr(
+        request.app.state,
+        AG_FEDERATED_AUTHORIZATION_TELEMETRY_STATE_KEY,
+        None,
+    )
+    return telemetry if isinstance(telemetry, AgFederatedAuthorizationTelemetry) else None
 
 
 def _record_context_audit(
@@ -174,6 +229,14 @@ def _record_audit(
             session_id_digest=session_id_digest,
         ),
     )
+
+
+def _record_telemetry(
+    telemetry: AgFederatedAuthorizationTelemetry | None,
+    outcome: str,
+) -> None:
+    if telemetry is not None:
+        telemetry.record(outcome)
 
 
 def _problem(

@@ -1,0 +1,19 @@
+{
+  "runtime_schema_version": "ag_federated_auth_runtime.v1",
+  "service_id": "nex-ag",
+  "context_source": "oa_normalized_via_nex_ae_api",
+  "required_role": "admin",
+  "required_scope": "workspace:use",
+  "counts": {
+    "authorized": 4,
+    "denied_caller": 1,
+    "denied_context": 1,
+    "denied_scope": 1,
+    "denied_role": 1
+  },
+  "raw_context_included": false,
+  "subject_identifiers_included": false,
+  "external_identity_included": false,
+  "trace_id": "0123456789abcdef0123456789abcdef",
+  "subject_id": "employee-1001"
+}

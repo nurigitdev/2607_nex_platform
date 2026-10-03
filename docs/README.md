@@ -1392,6 +1392,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1286`](slices/1286_oa_federated_login_session_orchestration.md) | `S129-005` Resolve verified OIDC links into existing OA sessions and complete the fifth-Slice Checkpoint Gate. |
 | [`Slice 1287`](slices/1287_ag_federated_operator_context_adoption.md) | `S129-006` Project OA session identity into a strict privacy-safe AG federated operator context. |
 | [`Slice 1288`](slices/1288_ag_federated_authorization_audit_hardening.md) | `S129-007` Bind AG federated context to the AE service caller, admin authorization, and redacted audit evidence. |
+| [`Slice 1289`](slices/1289_s129_contract_runtime_privacy_hardening.md) | `S129-008` Wire OA/AG runtimes and publish strict federation contracts, aggregate telemetry, and privacy evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

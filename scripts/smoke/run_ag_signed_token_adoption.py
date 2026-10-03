@@ -38,6 +38,7 @@ OUTBOUND_CLIENT_MODULES = {
 DUAL_ADMIN_MODULES = {
     "audit_evidence_api.py",
     "audit_retention_operations.py",
+    "federated_operator_operations.py",
     "mvp_acceptance_api.py",
     "operator_reviews.py",
 }

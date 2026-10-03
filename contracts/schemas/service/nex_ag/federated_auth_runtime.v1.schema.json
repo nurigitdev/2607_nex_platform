@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ag/federated_auth_runtime.v1.schema.json",
+  "title": "NeX AG Federated Authorization Runtime",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "runtime_schema_version",
+    "service_id",
+    "context_source",
+    "required_role",
+    "required_scope",
+    "counts",
+    "raw_context_included",
+    "subject_identifiers_included",
+    "external_identity_included",
+    "trace_id"
+  ],
+  "properties": {
+    "runtime_schema_version": {"const": "ag_federated_auth_runtime.v1"},
+    "service_id": {"const": "nex-ag"},
+    "context_source": {"const": "oa_normalized_via_nex_ae_api"},
+    "required_role": {"const": "admin"},
+    "required_scope": {"const": "workspace:use"},
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authorized", "denied_caller", "denied_context", "denied_scope", "denied_role"],
+      "properties": {
+        "authorized": {"type": "integer", "minimum": 0},
+        "denied_caller": {"type": "integer", "minimum": 0},
+        "denied_context": {"type": "integer", "minimum": 0},
+        "denied_scope": {"type": "integer", "minimum": 0},
+        "denied_role": {"type": "integer", "minimum": 0}
+      }
+    },
+    "raw_context_included": {"const": false},
+    "subject_identifiers_included": {"const": false},
+    "external_identity_included": {"const": false},
+    "trace_id": {"type": ["string", "null"], "pattern": "^[0-9a-f]{32}$"}
+  }
+}
