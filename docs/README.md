@@ -1354,6 +1354,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1248`](slices/1248_oa_token_rollout_plan.md) | `S125-007` Freeze forward-only test-mock, controlled dual-read, signed-only profiles and ordered cross-service admission controls. |
 | [`Slice 1249`](slices/1249_oa_trust_threat_contracts.md) | `S125-008` Register the eight-threat matrix, privacy-safe evidence schema, canonical fixture, and raw-token negative contract. |
 | [`Slice 1250`](slices/1250_oa_trust_postgres_baseline.md) | `S125-009` Prove migrations, opaque-session lifecycle, privacy, no premature trust tables, and zero residue on actual `nex_oa_test`. |
+| [`Slice 1251`](slices/1251_s125_oa_production_trust_closure.md) | `S125-010` Close the production-trust policy, preserve honest implementation-pending runtime status, and bind the S126 handoff. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

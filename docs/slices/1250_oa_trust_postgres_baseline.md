@@ -30,3 +30,14 @@ NEX_OA_TEST_DATABASE_URL='postgresql+psycopg://nex_oa_user:***@127.0.0.1:5432/ne
 
 The password is supplied only through the local environment and is redacted
 from committed evidence and output.
+
+## Observed Evidence
+
+- Database/role: `nex_oa_test` / `nex_oa_user`
+- PostgreSQL migration ledger: `14/14`
+- Cleanup residue: `0`
+- Protected test: `25 passed`, no skip
+- Slice Gate: `549 passed, 3 skipped`
+- Statement coverage: `98.88%`
+- Branch coverage: `97.95%` with the enforced `94%` minimum
+- Slice 1250 modules: statement `100%`, branch `100%`
