@@ -1,13 +1,14 @@
 openapi: 3.1.0
 info:
   title: NeX OA API
-  version: 0.0.0-slice1239
+  version: 0.0.0-slice1259
 tags:
   - name: Platform
   - name: Auth
   - name: Identity Lifecycle
   - name: Credential Security
   - name: Authorization
+  - name: Service Principals
 paths:
   /health:
     get:
@@ -521,6 +522,227 @@ paths:
           description: Required credential security scope is missing.
         "503":
           description: Authentication event persistence is unavailable.
+  /internal/v1/service-principals:
+    post:
+      operationId: upsertOaServicePrincipal
+      tags: [Service Principals]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call, service-principal:admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServicePrincipalUpsert"
+      responses:
+        "200":
+          description: Service principal created or updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServicePrincipalResponse"
+        "400": {description: Service principal payload is invalid.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Service principal administration scope is missing.}
+        "409": {description: Service principal revision conflicts.}
+        "503": {description: Service principal persistence is unavailable.}
+    get:
+      operationId: listOaServicePrincipals
+      tags: [Service Principals]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call, service-principal:read]
+      parameters:
+        - name: service_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/OaServiceId"
+      responses:
+        "200":
+          description: Privacy-safe service principal list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServicePrincipalList"
+        "400": {description: Service principal query is invalid.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Service principal read scope is missing.}
+        "503": {description: Service principal persistence is unavailable.}
+  /internal/v1/service-principals/{principal_id}:
+    get:
+      operationId: getOaServicePrincipal
+      tags: [Service Principals]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call, service-principal:read]
+      parameters:
+        - $ref: "#/components/parameters/PrincipalId"
+      responses:
+        "200":
+          description: Privacy-safe service principal detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServicePrincipalResponse"
+        "400": {description: Service principal identifier is invalid.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Service principal read scope is missing.}
+        "404": {description: Service principal was not found.}
+        "503": {description: Service principal persistence is unavailable.}
+  /internal/v1/service-principals/{principal_id}/status:
+    patch:
+      operationId: transitionOaServicePrincipalStatus
+      tags: [Service Principals]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call, service-principal:admin]
+      parameters:
+        - $ref: "#/components/parameters/PrincipalId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServicePrincipalStatusTransition"
+      responses:
+        "200":
+          description: Service principal status transitioned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServicePrincipalResponse"
+        "400": {description: Status transition payload is invalid.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Service principal administration scope is missing.}
+        "404": {description: Service principal was not found.}
+        "409": {description: Service principal revision conflicts.}
+        "503": {description: Service principal persistence is unavailable.}
+  /internal/v1/service-principals/{principal_id}/credentials:
+    post:
+      operationId: issueOaServiceCredential
+      tags: [Service Principals]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call, service-principal:admin]
+      parameters:
+        - $ref: "#/components/parameters/PrincipalId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceCredentialIssueRequest"
+      responses:
+        "200":
+          description: Credential issued with a one-time client secret.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceCredentialIssueResponse"
+        "400": {description: Credential issue payload is invalid.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Service principal administration scope is missing.}
+        "404": {description: Service principal was not found.}
+        "409": {description: Active credential limit or principal status conflicts.}
+        "503": {description: Service credential persistence is unavailable.}
+    get:
+      operationId: listOaServiceCredentials
+      tags: [Service Principals]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call, service-principal:read]
+      parameters:
+        - $ref: "#/components/parameters/PrincipalId"
+      responses:
+        "200":
+          description: Privacy-safe service credential list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceCredentialList"
+        "400": {description: Service principal identifier is invalid.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Service principal read scope is missing.}
+        "503": {description: Service credential persistence is unavailable.}
+  /internal/v1/service-credentials/{credential_id}:
+    get:
+      operationId: getOaServiceCredential
+      tags: [Service Principals]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call, service-principal:read]
+      parameters:
+        - $ref: "#/components/parameters/CredentialId"
+      responses:
+        "200":
+          description: Privacy-safe service credential detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceCredentialResponse"
+        "400": {description: Credential identifier is invalid.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Service principal read scope is missing.}
+        "404": {description: Service credential was not found.}
+        "503": {description: Service credential persistence is unavailable.}
+  /internal/v1/service-credentials/{credential_id}/rotate:
+    post:
+      operationId: rotateOaServiceCredential
+      tags: [Service Principals]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call, service-principal:admin]
+      parameters:
+        - $ref: "#/components/parameters/CredentialId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceCredentialRotationRequest"
+      responses:
+        "200":
+          description: Credential rotated with a one-time replacement secret.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceCredentialRotationResponse"
+        "400": {description: Credential rotation payload is invalid.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Service principal administration scope is missing.}
+        "404": {description: Service credential was not found.}
+        "409": {description: Credential revision or active limit conflicts.}
+        "503": {description: Service credential persistence is unavailable.}
+  /internal/v1/service-credentials/{credential_id}/status:
+    patch:
+      operationId: transitionOaServiceCredentialStatus
+      tags: [Service Principals]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call, service-principal:admin]
+      parameters:
+        - $ref: "#/components/parameters/CredentialId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceCredentialStatusTransition"
+      responses:
+        "200":
+          description: Service credential status transitioned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceCredentialResponse"
+        "400": {description: Credential status payload is invalid.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Service principal administration scope is missing.}
+        "404": {description: Service credential was not found.}
+        "409": {description: Credential revision or status transition conflicts.}
+        "503": {description: Service credential persistence is unavailable.}
 components:
   parameters:
     TenantId:
@@ -553,12 +775,95 @@ components:
       schema:
         type: string
         pattern: "^[a-z][a-z0-9._-]{1,63}$"
+    PrincipalId:
+      name: principal_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z][a-z0-9._-]{1,63}$"
+    CredentialId:
+      name: credential_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z][a-z0-9._-]{1,63}$"
   securitySchemes:
     serviceBearer:
       type: http
       scheme: bearer
       bearerFormat: NeX service claim
   schemas:
+    OaServiceId:
+      type: string
+      enum: [nex-oa, nex-ag, nex-ae-api, nex-cx, nex-mo]
+    ServicePrincipalUpsert:
+      type: object
+      additionalProperties: false
+      required: [principal_id, service_id, display_name, allowed_audiences, allowed_scopes, expected_revision]
+      properties:
+        principal_id: {type: string, pattern: "^[a-z][a-z0-9._-]{1,63}$"}
+        service_id: {$ref: "#/components/schemas/OaServiceId"}
+        display_name: {type: string, minLength: 1, maxLength: 128}
+        status: {enum: [ACTIVE, DISABLED]}
+        allowed_audiences:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {$ref: "#/components/schemas/OaServiceId"}
+        allowed_scopes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string, pattern: "^[a-z][a-z0-9._-]{0,63}:[a-z][a-z0-9._-]{0,63}$"}
+        expected_revision: {type: integer, minimum: 0}
+    ServicePrincipalStatusTransition:
+      type: object
+      additionalProperties: false
+      required: [target_status, expected_revision]
+      properties:
+        target_status: {enum: [ACTIVE, DISABLED]}
+        expected_revision: {type: integer, minimum: 1}
+    ServiceCredentialIssueRequest:
+      type: object
+      additionalProperties: false
+      required: [lifetime_days]
+      properties:
+        lifetime_days: {type: integer, minimum: 1, maximum: 90}
+    ServiceCredentialRotationRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_revision, lifetime_days, grace_seconds]
+      properties:
+        expected_revision: {type: integer, minimum: 1}
+        lifetime_days: {type: integer, minimum: 1, maximum: 90}
+        grace_seconds: {type: integer, minimum: 1, maximum: 86400}
+    ServiceCredentialStatusTransition:
+      type: object
+      additionalProperties: false
+      required: [target_status, expected_revision]
+      properties:
+        target_status: {enum: [REVOKED, EXPIRED]}
+        expected_revision: {type: integer, minimum: 1}
+    ServicePrincipalResponse:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/service_principal_response.v1.schema.json
+    ServicePrincipalList:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/service_principal_list.v1.schema.json
+    ServiceCredentialResponse:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/service_credential_response.v1.schema.json
+    ServiceCredentialList:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/service_credential_list.v1.schema.json
+    ServiceCredentialIssueResponse:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/service_credential_issue.v1.schema.json
+    ServiceCredentialRotationResponse:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/service_credential_rotation.v1.schema.json
     AuthorizationRoleUpsert:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_oa/authorization_role_upsert.v1.schema.json

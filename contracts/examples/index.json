@@ -994,6 +994,36 @@
       "name": "mo_alias_rollback_generation",
       "path": "examples/provider/mo_alias_rollback.generation.json",
       "schema": "schemas/service/nex_mo/alias_rollback.v1.schema.json"
+    },
+    {
+      "name": "oa_service_principal_response_active",
+      "path": "examples/auth/oa_service_principal_response.active.json",
+      "schema": "schemas/service/nex_oa/service_principal_response.v1.schema.json"
+    },
+    {
+      "name": "oa_service_principal_list_active",
+      "path": "examples/auth/oa_service_principal_list.active.json",
+      "schema": "schemas/service/nex_oa/service_principal_list.v1.schema.json"
+    },
+    {
+      "name": "oa_service_credential_response_active",
+      "path": "examples/auth/oa_service_credential_response.active.json",
+      "schema": "schemas/service/nex_oa/service_credential_response.v1.schema.json"
+    },
+    {
+      "name": "oa_service_credential_list_active",
+      "path": "examples/auth/oa_service_credential_list.active.json",
+      "schema": "schemas/service/nex_oa/service_credential_list.v1.schema.json"
+    },
+    {
+      "name": "oa_service_credential_issue_once",
+      "path": "examples/auth/oa_service_credential_issue.once.json",
+      "schema": "schemas/service/nex_oa/service_credential_issue.v1.schema.json"
+    },
+    {
+      "name": "oa_service_credential_rotation_once",
+      "path": "examples/auth/oa_service_credential_rotation.once.json",
+      "schema": "schemas/service/nex_oa/service_credential_rotation.v1.schema.json"
     }
   ]
 }

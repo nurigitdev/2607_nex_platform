@@ -1,0 +1,22 @@
+{
+  "response_schema_version": "oa_service_principal_response.v1",
+  "principal": {
+    "principal_schema_version": "oa_service_principal.v1",
+    "principal_id": "ae-runtime",
+    "service_id": "nex-ae-api",
+    "display_name": "AE Runtime",
+    "status": "ACTIVE",
+    "allowed_audiences": ["nex-cx"],
+    "allowed_scopes": ["document:read"],
+    "revision": 1
+  },
+  "request_id": "request-1259",
+  "trace_id": "trace-1259",
+  "audit_event": {
+    "ok": true,
+    "event_id": "event-1259",
+    "service_id": "nex-oa",
+    "event_type": "SERVICE_PRINCIPAL_UPSERTED",
+    "severity": "INFO"
+  }
+}

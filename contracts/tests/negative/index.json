@@ -845,6 +845,36 @@
       "name": "mo_alias_rollback_zero_revision",
       "path": "tests/negative/provider/mo_alias_rollback.zero_revision.json",
       "schema": "schemas/service/nex_mo/alias_rollback.v1.schema.json"
+    },
+    {
+      "name": "oa_service_principal_response_secret_hash_leak",
+      "path": "tests/negative/auth/oa_service_principal_response.secret_hash_leak.json",
+      "schema": "schemas/service/nex_oa/service_principal_response.v1.schema.json"
+    },
+    {
+      "name": "oa_service_principal_list_client_secret_leak",
+      "path": "tests/negative/auth/oa_service_principal_list.client_secret_leak.json",
+      "schema": "schemas/service/nex_oa/service_principal_list.v1.schema.json"
+    },
+    {
+      "name": "oa_service_credential_response_secret_hash_leak",
+      "path": "tests/negative/auth/oa_service_credential_response.secret_hash_leak.json",
+      "schema": "schemas/service/nex_oa/service_credential_response.v1.schema.json"
+    },
+    {
+      "name": "oa_service_credential_list_client_secret_leak",
+      "path": "tests/negative/auth/oa_service_credential_list.client_secret_leak.json",
+      "schema": "schemas/service/nex_oa/service_credential_list.v1.schema.json"
+    },
+    {
+      "name": "oa_service_credential_issue_secret_hash_leak",
+      "path": "tests/negative/auth/oa_service_credential_issue.secret_hash_leak.json",
+      "schema": "schemas/service/nex_oa/service_credential_issue.v1.schema.json"
+    },
+    {
+      "name": "oa_service_credential_rotation_previous_secret_leak",
+      "path": "tests/negative/auth/oa_service_credential_rotation.previous_secret_leak.json",
+      "schema": "schemas/service/nex_oa/service_credential_rotation.v1.schema.json"
     }
   ]
 }
