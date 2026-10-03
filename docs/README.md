@@ -1365,6 +1365,16 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1259`](slices/1259_oa_service_principal_contract_schema_hardening.md) | `S126-008` Publish six canonical response contracts, privacy fixtures, and nine protected OpenAPI operations. |
 | [`Slice 1260`](slices/1260_oa_service_principal_postgresql_smoke.md) | `S126-009` Prove migration, issue, verification, rotation, revocation, restart reads, hashing, and cleanup on actual `nex_oa_test`. |
 | [`Slice 1261`](slices/1261_s126_oa_service_principal_lifecycle_closure.md) | `S126-010` Close the OA service-principal lifecycle and bind the S127 signed-token runtime handoff. |
+| [`Slice 1262`](slices/1262_oa_signed_token_lifecycle_boundary.md) | `S127-001` Freeze OA signed-token ownership, cryptographic, persistence, privacy, and test boundaries. |
+| [`Slice 1263`](slices/1263_oa_signed_token_domain_contracts.md) | `S127-002` Define revisioned signing-key states, public JWKS projection, and digest-only revocation records. |
+| [`Slice 1264`](slices/1264_oa_signed_token_persistence_migration.md) | `S127-003` Add short constrained OA signing-key and token-revocation tables. |
+| [`Slice 1265`](slices/1265_oa_signed_token_durable_repository.md) | `S127-004` Add memory and SQLAlchemy signing-key and revocation repositories. |
+| [`Slice 1266`](slices/1266_oa_signing_key_jwks_service.md) | `S127-005` Add signing-key transitions, JWKS publication, revocation orchestration, and the Checkpoint Gate. |
+| [`Slice 1267`](slices/1267_oa_client_credential_token_exchange.md) | `S127-006` Add allowlist-bound client-credential exchange and five-minute RS256 service tokens. |
+| [`Slice 1268`](slices/1268_oa_signed_token_validation_introspection.md) | `S127-007` Add strict signed-token validation, bounded introspection, and durable revocation checks. |
+| [`Slice 1269`](slices/1269_oa_signed_token_api_contracts.md) | `S127-008` Expose signed-token and JWKS APIs with canonical contracts and privacy fixtures. |
+| [`Slice 1270`](slices/1270_oa_signed_token_postgres_smoke.md) | `S127-009` Prove signed-token issuance, restart validation, revocation, privacy, and cleanup on actual `nex_oa_test`. |
+| [`Slice 1271`](slices/1271_s127_oa_signed_token_lifecycle_closure.md) | `S127-010` Close the OA signed-token lifecycle and bind the external-custody and consumer-rollout handoff. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

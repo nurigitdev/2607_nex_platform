@@ -27,3 +27,13 @@ NEX_OA_TEST_DATABASE_URL='postgresql+psycopg://.../nex_oa_test' \
   --coverage-target scripts/smoke/run_oa_signed_token_postgres_smoke.py \
   --smoke scripts/smoke/run_oa_signed_token_postgres_smoke.py
 ```
+
+## Observed Evidence
+
+- Actual database and role: `nex_oa_test` / `nex_oa_user`
+- Migration ledger: `16/16`
+- Protected test: `1 passed`
+- Slice Gate: `790 passed, 5 skipped`
+- Persisted signing keys and revocations: `1` / `1`
+- Private JWK members and raw-token matches: `0` / `0`
+- Cleanup residue: `0`

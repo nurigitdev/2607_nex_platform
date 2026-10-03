@@ -580,6 +580,16 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_oa_service_principal_contracts.py --summary
 "$PYTHON_BIN" scripts/smoke/run_oa_service_principal_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s126_oa_service_principal_lifecycle_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_oa_signed_token_lifecycle_boundary.py --summary
+"$PYTHON_BIN" scripts/smoke/run_oa_signed_token_domain.py --summary
+"$PYTHON_BIN" scripts/smoke/run_oa_signed_token_migration.py --summary
+"$PYTHON_BIN" scripts/smoke/run_oa_signed_token_repository.py --summary
+"$PYTHON_BIN" scripts/smoke/run_oa_signing_key_service.py --summary
+"$PYTHON_BIN" scripts/smoke/run_oa_token_exchange.py --summary
+"$PYTHON_BIN" scripts/smoke/run_oa_token_validation.py --summary
+"$PYTHON_BIN" scripts/smoke/run_oa_signed_token_api.py --summary
+"$PYTHON_BIN" scripts/smoke/run_oa_signed_token_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s127_oa_signed_token_lifecycle_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary
