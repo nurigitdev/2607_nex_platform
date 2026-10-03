@@ -1351,6 +1351,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1245`](slices/1245_oa_signing_key_policy.md) | `S125-004` Freeze RS256/RSA-3072, external private-key custody, safe metadata, one-way rotation, and overlap invariants. |
 | [`Slice 1246`](slices/1246_oa_token_validation_checkpoint.md) | `S125-005` Freeze local validation, bounded JWKS refresh, sensitive-route introspection, fail-closed status semantics, and the Checkpoint Gate. |
 | [`Slice 1247`](slices/1247_oa_service_principal_handoff.md) | `S125-006` Freeze service-principal allowlists, one-time Argon2id credentials, rotation limits, short table names, and the S126 handoff. |
+| [`Slice 1248`](slices/1248_oa_token_rollout_plan.md) | `S125-007` Freeze forward-only test-mock, controlled dual-read, signed-only profiles and ordered cross-service admission controls. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
