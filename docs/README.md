@@ -1335,6 +1335,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1229`](slices/1229_oa_credential_security_contract_hardening.md) | `S123-008` Publish strict credential/auth-event schemas, protected OpenAPI routes, privacy fixtures, and parity evidence. |
 | [`Slice 1230`](slices/1230_oa_credential_security_postgresql_smoke.md) | `S123-009` Prove lockout, adaptive rehash, session rotation, auth-event persistence, privacy, and cleanup on actual `nex_oa_test`. |
 | [`Slice 1231`](slices/1231_s123_oa_credential_session_security_closure.md) | `S123-010` Close OA credential/session security with PostgreSQL, contracts, privacy, traceability, and Full Gate evidence. |
+| [`Slice 1232`](slices/1232_oa_group_role_authorization_boundary.md) | `S124-001` Freeze tenant-scoped group/role grants, revision, session invalidation, admin scopes, persistence, and evidence boundaries. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
