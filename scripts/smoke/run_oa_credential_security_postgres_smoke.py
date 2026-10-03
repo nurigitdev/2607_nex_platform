@@ -53,6 +53,7 @@ from nex_oa.sessions import (  # noqa: E402
     register_user_session_routes,
 )
 from nex_oa.subjects import (  # noqa: E402
+    OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE,
     build_subject_registry_for_runtime,
     register_subject_registry_routes,
 )
@@ -548,6 +549,7 @@ def _service_headers() -> dict[str, str]:
         audience="nex-oa",
         scopes=[
             DEFAULT_SERVICE_SCOPE,
+            OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE,
             OA_CREDENTIAL_SECURITY_WRITE_SCOPE,
             OA_CREDENTIAL_SECURITY_READ_SCOPE,
         ],

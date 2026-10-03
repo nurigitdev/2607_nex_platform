@@ -121,8 +121,8 @@ def test_repository_contract_smoke_passes_with_reduced_known_drift() -> None:
         "positive_fixture_count": 2,
         "negative_fixture_count": 2,
         "documented_operation_count": 2,
-        "lifecycle_implemented_count": 6,
-        "remaining_lifecycle_gap_count": 2,
+        "lifecycle_implemented_count": 8,
+        "remaining_lifecycle_gap_count": 0,
         "remaining_contract_drift_count": 23,
         "issue_count": 0,
     }

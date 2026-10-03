@@ -1341,6 +1341,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1235`](slices/1235_oa_durable_authorization_repository.md) | `S124-004` Add transaction-safe memory and SQLAlchemy repositories with optimistic revisions, restart reads, and authorization events. |
 | [`Slice 1236`](slices/1236_oa_effective_authorization_session_integration.md) | `S124-005` Compose effective direct/group grants into session claims and complete the fifth-Slice Checkpoint Gate. |
 | [`Slice 1237`](slices/1237_oa_authorization_admin_service_api.md) | `S124-006` Add scoped group/role administration and reads with affected-session revocation in the authorization transaction. |
+| [`Slice 1238`](slices/1238_oa_authorization_scope_hardening.md) | `S124-007` Separate compatibility bootstrap writes, authorization administration, and authorization reads with explicit scopes. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

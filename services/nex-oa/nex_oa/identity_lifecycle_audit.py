@@ -80,6 +80,12 @@ def build_oa_identity_lifecycle_audit(root: Path = ROOT) -> dict[str, Any]:
     lifecycle_repository_source = _read_text(
         root / "services/nex-oa/nex_oa/identity_lifecycle_repository.py"
     )
+    authorization_source = _read_text(
+        root / "services/nex-oa/nex_oa/authorization.py"
+    )
+    identity_access_source = _read_text(
+        root / "services/nex-oa/nex_oa/identity_access.py"
+    )
     migration_source = "\n".join(
         _read_text(path)
         for path in sorted((root / "database/nex-oa/migrations").glob("*.sql"))
@@ -99,7 +105,9 @@ def build_oa_identity_lifecycle_audit(root: Path = ROOT) -> dict[str, Any]:
             and "oa_user_sessions" in lifecycle_repository_source
         ),
         "group_registry_present": (
-            "oa_groups" in migration_source and "class OaGroup" in subject_source
+            "oa_groups" in migration_source
+            and "def plan_group_upsert(" in authorization_source
+            and "def plan_group_member_upsert(" in authorization_source
         ),
         "subject_capability_projection_current": (
             '"password_login": True' in subject_source
@@ -109,8 +117,9 @@ def build_oa_identity_lifecycle_audit(root: Path = ROOT) -> dict[str, Any]:
             and '"password_login": True' in membership_source
         ),
         "admin_bootstrap_scope_present": (
-            "identity:bootstrap" in subject_source
-            or "identity:bootstrap" in membership_source
+            "identity:bootstrap:write" in identity_access_source
+            and "OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE" in subject_source
+            and "OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE" in membership_source
         ),
     }
     projection_current = (
@@ -143,8 +152,10 @@ def build_oa_identity_lifecycle_audit(root: Path = ROOT) -> dict[str, Any]:
         ),
         _control(
             "group_identity_lifecycle",
-            "GAP",
-            "roles and scopes exist but no group registry or membership relation exists",
+            "IMPLEMENTED" if observations["group_registry_present"] else "GAP",
+            None
+            if observations["group_registry_present"]
+            else "roles and scopes exist but no group registry or membership relation exists",
         ),
         _control(
             "capability_projection_freshness",
@@ -155,16 +166,20 @@ def build_oa_identity_lifecycle_audit(root: Path = ROOT) -> dict[str, Any]:
         ),
         _control(
             "admin_bootstrap_authorization",
-            "GAP",
-            "ensure routes use the generic service-call scope without a dedicated bootstrap/admin policy",
+            "IMPLEMENTED"
+            if observations["admin_bootstrap_scope_present"]
+            else "GAP",
+            None
+            if observations["admin_bootstrap_scope_present"]
+            else "ensure routes use the generic service-call scope without a dedicated bootstrap/admin policy",
         ),
     ]
     expected_classification_observed = (
         observations["subject_transition_api_present"] is True
         and observations["membership_transition_api_present"] is True
         and observations["deprovision_session_cascade_present"] is True
-        and observations["group_registry_present"] is False
-        and observations["admin_bootstrap_scope_present"] is False
+        and observations["group_registry_present"] is True
+        and observations["admin_bootstrap_scope_present"] is True
     )
     checks = {
         "required_evidence_present": all(item["present"] for item in evidence),
@@ -193,7 +208,7 @@ def build_oa_identity_lifecycle_audit(root: Path = ROOT) -> dict[str, Any]:
         "requirement": "S121",
         "status": "PASS" if passed else "FAIL",
         "failure_code": None if passed else "oa_identity_lifecycle_audit_failed",
-        "lifecycle_readiness": "GAPS_CONFIRMED" if passed else "BLOCKED",
+        "lifecycle_readiness": "HARDENED" if passed else "BLOCKED",
         "summary": {
             "control_count": len(controls),
             "implemented_count": sum(
@@ -207,9 +222,9 @@ def build_oa_identity_lifecycle_audit(root: Path = ROOT) -> dict[str, Any]:
         },
         "decision": {
             "stable_oa_subject_refs_remain_authoritative": True,
-            "roles_and_scopes_remain_membership_attributes": True,
-            "group_model_deferred_to_targeted_hardening": True,
-            "lifecycle_transition_design_required_before_new_mutation_routes": True,
+            "roles_and_scopes_remain_membership_attributes": False,
+            "group_model_deferred_to_targeted_hardening": False,
+            "lifecycle_transition_design_required_before_new_mutation_routes": False,
             "stale_projection_refactor_target_slice": "1209",
             "stale_projection_refactor_status": (
                 "REPAIRED" if projection_current else "PENDING"

@@ -30,10 +30,12 @@ from nex_oa.sessions import (  # noqa: E402
     register_user_session_routes,
 )
 from nex_oa.subjects import (  # noqa: E402
+    OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE,
     build_subject_registry_for_runtime,
     register_subject_registry_routes,
 )
 from nex_runtime import (  # noqa: E402
+    DEFAULT_SERVICE_SCOPE,
     SERVICE_SPECS,
     attach_service_persistence_runtime,
     build_engine,
@@ -379,7 +381,11 @@ def _delete_smoke_rows(
 
 
 def _service_headers(*, trace_id: str, request_id: str) -> dict[str, str]:
-    issued = issue_mock_service_token(service_id="nex-ae-api", audience="nex-oa")
+    issued = issue_mock_service_token(
+        service_id="nex-ae-api",
+        audience="nex-oa",
+        scopes=[DEFAULT_SERVICE_SCOPE, OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE],
+    )
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",

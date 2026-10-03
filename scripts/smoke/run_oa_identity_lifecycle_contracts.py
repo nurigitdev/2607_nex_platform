@@ -113,8 +113,8 @@ def run_oa_identity_lifecycle_contracts(root: Path = ROOT) -> dict[str, Any]:
         "canonical_schema_links_declared": _canonical_links_present(openapi),
         "lifecycle_audit_rebaselined": (
             lifecycle_audit.get("status") == "PASS"
-            and lifecycle_summary.get("implemented_count") == 6
-            and lifecycle_summary.get("gap_count") == 2
+            and lifecycle_summary.get("implemented_count") == 8
+            and lifecycle_summary.get("gap_count") == 0
         ),
         "contract_drift_reduced": (
             drift_audit.get("status") == "PASS"

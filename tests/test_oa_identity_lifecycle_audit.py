@@ -16,13 +16,13 @@ def test_repository_identity_lifecycle_audit_quantifies_current_gaps() -> None:
     result = build_oa_identity_lifecycle_audit()
 
     assert result["status"] == "PASS"
-    assert result["lifecycle_readiness"] == "GAPS_CONFIRMED"
+    assert result["lifecycle_readiness"] == "HARDENED"
     assert all(result["checks"].values())
     assert result["issues"] == []
     assert result["summary"] == {
         "control_count": 8,
-        "implemented_count": 6,
-        "gap_count": 2,
+        "implemented_count": 8,
+        "gap_count": 0,
         "stale_projection_count": 0,
         "evidence_issue_count": 0,
     }
@@ -35,10 +35,11 @@ def test_repository_identity_lifecycle_audit_quantifies_current_gaps() -> None:
 def test_audit_exposes_lifecycle_and_projection_observations() -> None:
     result = build_oa_identity_lifecycle_audit()
 
-    assert set(result["observations"].values()) == {False, True}
+    assert set(result["observations"].values()) == {True}
     controls = {item["control_id"]: item for item in result["controls"]}
     assert controls["stable_subject_refs"]["status"] == "IMPLEMENTED"
-    assert controls["group_identity_lifecycle"]["status"] == "GAP"
+    assert controls["group_identity_lifecycle"]["status"] == "IMPLEMENTED"
+    assert controls["admin_bootstrap_authorization"]["status"] == "IMPLEMENTED"
     assert controls["capability_projection_freshness"]["status"] == "IMPLEMENTED"
     assert all(
         item["status"] == "IMPLEMENTED" or item["gap"]
@@ -71,7 +72,7 @@ def test_audit_reports_classification_drift(tmp_path: Path) -> None:
         "def update_subject_status(): pass\n"
         "class OaGroup: pass\n"
         "password_login = True\n"
-        "identity:bootstrap\n",
+        "",
         encoding="utf-8",
     )
     membership.write_text(
@@ -124,7 +125,7 @@ def test_runner_summary_json_and_failure_paths(monkeypatch, capsys) -> None:
 
     assert "lifecycle_audit=pass" in runner.summary_line(passing)
     assert "controls=8" in runner.summary_line(passing)
-    assert "gaps=2" in runner.summary_line(passing)
+    assert "gaps=0" in runner.summary_line(passing)
     monkeypatch.setattr(runner, "run_oa_identity_lifecycle_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0
     assert "stale=0" in capsys.readouterr().out

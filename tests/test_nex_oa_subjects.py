@@ -13,6 +13,7 @@ from nex_oa.subjects import (
     DEFAULT_SUBJECT_ID,
     DEFAULT_TENANT_ID,
     InMemoryOaSubjectRegistry,
+    OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE,
     OA_SUBJECT_REGISTRY_SNAPSHOT_SCHEMA_VERSION,
     OA_TENANT_REF_TYPE,
     OA_USER_REF_TYPE,
@@ -28,6 +29,7 @@ from nex_oa.subjects import (
     register_subject_registry_routes,
 )
 from nex_runtime import (
+    DEFAULT_SERVICE_SCOPE,
     PERSISTENCE_MODE_MEMORY,
     PERSISTENCE_MODE_POSTGRES,
     SERVICE_SPECS,
@@ -56,8 +58,13 @@ def subject_registry_schema() -> dict[str, object]:
     )
 
 
-def auth_headers() -> dict[str, str]:
-    issued = issue_mock_service_token(service_id="nex-cx", audience="nex-oa")
+def auth_headers(*, bootstrap_scope: bool = True) -> dict[str, str]:
+    scopes = [DEFAULT_SERVICE_SCOPE]
+    if bootstrap_scope:
+        scopes.append(OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE)
+    issued = issue_mock_service_token(
+        service_id="nex-cx", audience="nex-oa", scopes=scopes
+    )
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
@@ -209,6 +216,14 @@ def test_subject_registry_api_requires_service_claim() -> None:
     assert response.status_code == 401
     assert response.headers["content-type"].startswith("application/problem+json")
     assert response.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+
+    denied = build_test_client().post(
+        "/internal/v1/subject-registry/ensure",
+        headers=auth_headers(bootstrap_scope=False),
+        json={},
+    )
+    assert denied.status_code == 403
+    assert denied.json()["error_code"] == "TOKEN_SCOPE_MISSING"
 
 
 def test_subject_registry_api_ensures_and_reads_subject_snapshot() -> None:

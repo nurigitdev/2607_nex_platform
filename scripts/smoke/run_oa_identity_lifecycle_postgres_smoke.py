@@ -43,7 +43,10 @@ from nex_oa.sessions import (  # noqa: E402
     build_oa_session_registry_for_runtime,
     register_user_session_routes,
 )
-from nex_oa.subjects import build_subject_registry_for_runtime  # noqa: E402
+from nex_oa.subjects import (  # noqa: E402
+    OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE,
+    build_subject_registry_for_runtime,
+)
 from nex_runtime import (  # noqa: E402
     DEFAULT_SERVICE_SCOPE,
     SERVICE_SPECS,
@@ -405,7 +408,7 @@ def _cleanup_residue(engine: Any, *, tenant_id: str) -> dict[str, int]:
 
 
 def _service_headers(*, lifecycle: bool) -> dict[str, str]:
-    scopes = [DEFAULT_SERVICE_SCOPE]
+    scopes = [DEFAULT_SERVICE_SCOPE, OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE]
     if lifecycle:
         scopes.append(OA_IDENTITY_LIFECYCLE_WRITE_SCOPE)
     token = issue_mock_service_token(

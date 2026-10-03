@@ -15,14 +15,16 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_oa.identity_access import (
+    OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE,
+    authorize_identity_request,
+)
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
     PERSISTENCE_MODE_POSTGRES,
     ServicePersistenceRuntime,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
 )
 
 
@@ -414,7 +416,11 @@ def register_subject_registry_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_oa_request(request, authorization)
+        auth_problem = _authorize_oa_request(
+            request,
+            authorization,
+            required_scope=OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE,
+        )
         if auth_problem is not None:
             return auth_problem
 
@@ -705,22 +711,13 @@ def _attach_request_context(payload: dict[str, Any], request: Request) -> dict[s
 def _authorize_oa_request(
     request: Request,
     authorization: str | None,
+    *,
+    required_scope: str | None = None,
 ) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-oa",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if result.ok:
-        return None
-
-    return problem_response(
+    return authorize_identity_request(
         request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "OA requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
+        authorization,
+        required_scope=required_scope,
     )
 
 

@@ -27,11 +27,13 @@ from nex_oa.memberships import (
 )
 from nex_oa.subjects import (
     InMemoryOaSubjectRegistry,
+    OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE,
     build_subject_registry_snapshot,
     build_subject_record,
     build_tenant_record,
 )
 from nex_runtime import (
+    DEFAULT_SERVICE_SCOPE,
     PERSISTENCE_MODE_MEMORY,
     PERSISTENCE_MODE_POSTGRES,
     SERVICE_SPECS,
@@ -46,8 +48,15 @@ TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
 
 
-def auth_headers(*, audience: str = "nex-oa") -> dict[str, str]:
-    issued = issue_mock_service_token(service_id="nex-ae-api", audience=audience)
+def auth_headers(
+    *, audience: str = "nex-oa", bootstrap_scope: bool = True
+) -> dict[str, str]:
+    scopes = [DEFAULT_SERVICE_SCOPE]
+    if bootstrap_scope:
+        scopes.append(OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE)
+    issued = issue_mock_service_token(
+        service_id="nex-ae-api", audience=audience, scopes=scopes
+    )
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
@@ -261,6 +270,11 @@ def test_membership_api_requires_service_claim_and_supports_readback() -> None:
         headers=auth_headers(audience="nex-cx"),
         json={},
     )
+    missing_scope = client.post(
+        "/internal/v1/identity/memberships/ensure",
+        headers=auth_headers(bootstrap_scope=False),
+        json={},
+    )
     invalid = client.post(
         "/internal/v1/identity/memberships/ensure",
         headers=auth_headers(),
@@ -293,6 +307,8 @@ def test_membership_api_requires_service_claim_and_supports_readback() -> None:
     )
 
     assert missing_auth.status_code == 401
+    assert missing_scope.status_code == 403
+    assert missing_scope.json()["error_code"] == "TOKEN_SCOPE_MISSING"
     assert missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
     assert wrong_audience.status_code == 401
     assert wrong_audience.json()["error_code"] == "TOKEN_AUDIENCE_INVALID"

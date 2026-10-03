@@ -53,11 +53,13 @@ from nex_oa.sessions import (  # noqa: E402
     register_user_session_routes,
 )
 from nex_oa.subjects import (  # noqa: E402
+    OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE,
     build_subject_registry_for_runtime,
     register_subject_registry_routes,
 )
 from nex_oa.user_login import OaUserLoginService, register_user_login_routes  # noqa: E402
 from nex_runtime import (  # noqa: E402
+    DEFAULT_SERVICE_SCOPE,
     DEFAULT_USER_SCOPE,
     SERVICE_SPECS,
     attach_service_persistence_runtime,
@@ -817,7 +819,11 @@ def _delete_oa_smoke_rows(
 
 
 def _service_headers(*, trace_id: str, request_id: str) -> dict[str, str]:
-    issued = issue_mock_service_token(service_id=AE_SERVICE_ID, audience=OA_SERVICE_ID)
+    issued = issue_mock_service_token(
+        service_id=AE_SERVICE_ID,
+        audience=OA_SERVICE_ID,
+        scopes=[DEFAULT_SERVICE_SCOPE, OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE],
+    )
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
