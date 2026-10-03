@@ -1387,6 +1387,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1281`](slices/1281_s128_platform_signed_token_adoption_closure.md) | `S128-010` Close platform `service_access` signed-token adoption and preserve explicit production activation and S129 scope boundaries. |
 | [`Slice 1282`](slices/1282_oa_federated_auth_ag_boundary.md) | `S129-001` Freeze OIDC-first federation ownership, exact subject linking, OA session authority, and AG normalized-context boundaries. |
 | [`Slice 1283`](slices/1283_oa_federated_identity_domain.md) | `S129-002` Add privacy-safe OIDC provider and exact external-subject digest linking domain contracts. |
+| [`Slice 1284`](slices/1284_oa_federated_identity_persistence.md) | `S129-003` Add short constrained federation tables and memory/SQLAlchemy identity-link repositories. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

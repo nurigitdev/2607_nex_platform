@@ -26,6 +26,8 @@ CORE_OA_TABLES = frozenset(
         "oa_service_creds",
         "oa_signing_keys",
         "oa_token_revocations",
+        "oa_fed_providers",
+        "oa_fed_identities",
     }
 )
 
@@ -192,6 +194,7 @@ def _repository_source(root: Path) -> str:
         root / "services/nex-oa/nex_oa/authorization.py",
         root / "services/nex-oa/nex_oa/service_principal_repository.py",
         root / "services/nex-oa/nex_oa/signed_token_repository.py",
+        root / "services/nex-oa/nex_oa/federated_identity_repository.py",
     )
     return "\n".join(
         path.read_text(encoding="utf-8") for path in paths if path.is_file()
