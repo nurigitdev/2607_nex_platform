@@ -273,6 +273,35 @@ class OaServicePrincipalService:
             "credential_revision": int(credential["revision"]),
         }
 
+    def resolve_token_credential(
+        self,
+        credential_id: str,
+        *,
+        now_epoch: int | None = None,
+    ) -> dict[str, Any]:
+        now = _now_epoch() if now_epoch is None else now_epoch
+        credential = self.repository.get_credential(credential_id)
+        if credential is None or credential["status"] not in {"ACTIVE", "ROTATING"}:
+            raise _credential_rejected()
+        if int(credential["expires_at"]) <= now:
+            raise _credential_rejected()
+        if credential["status"] == "ROTATING" and (
+            credential.get("grace_until") is None
+            or int(credential["grace_until"]) < now
+        ):
+            raise _credential_rejected()
+        principal = self.repository.get_principal(str(credential["principal_id"]))
+        if principal is None or principal["status"] != "ACTIVE":
+            raise _credential_rejected()
+        return {
+            "principal_id": str(principal["principal_id"]),
+            "credential_id": str(credential["credential_id"]),
+            "service_id": str(principal["service_id"]),
+            "allowed_audiences": tuple(principal["allowed_audiences"]),
+            "allowed_scopes": tuple(principal["allowed_scopes"]),
+            "credential_revision": int(credential["revision"]),
+        }
+
 
 def _principal_response(record: Mapping[str, Any]) -> dict[str, Any]:
     return {
