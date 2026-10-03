@@ -1,0 +1,22 @@
+{
+  "trust_threat_evidence_schema_version": "oa_trust_threat_evidence.v1",
+  "policy_version": "s125.v1",
+  "evaluated_at": "2026-10-03T12:00:00Z",
+  "result": "PASS",
+  "implementation_requirement": "S126",
+  "threats": {},
+  "privacy": {
+    "raw_token_included": true,
+    "private_key_included": false,
+    "credential_secret_included": false,
+    "session_handle_included": false,
+    "allowed_identifiers": ["service_id"],
+    "access_token": "Bearer test-only-raw-token"
+  },
+  "summary": {
+    "threat_count": 0,
+    "critical_count": 0,
+    "high_count": 0,
+    "privacy_violation_count": 1
+  }
+}

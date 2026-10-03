@@ -56,6 +56,11 @@
       "schema": "schemas/common/service_claims.v1.schema.json"
     },
     {
+      "name": "oa_trust_threat_evidence_pass",
+      "path": "examples/auth/oa_trust_threat_evidence.pass.json",
+      "schema": "schemas/service/nex_oa/trust_threat_evidence.v1.schema.json"
+    },
+    {
       "name": "oa_subject_registry_snapshot_mock",
       "path": "examples/auth/oa_subject_registry_snapshot.mock_success.json",
       "schema": "schemas/service/nex_oa/subject_registry_snapshot.v1.schema.json"

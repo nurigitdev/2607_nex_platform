@@ -26,9 +26,9 @@ def test_repository_contract_api_audit_confirms_known_drift() -> None:
         "runtime_openapi_covered_count": 19,
         "missing_openapi_operation_count": 21,
         "undocumented_openapi_operation_count": 0,
-        "schema_count": 12,
-        "positive_fixture_covered_count": 12,
-        "negative_fixture_covered_count": 12,
+        "schema_count": 13,
+        "positive_fixture_covered_count": 13,
+        "negative_fixture_covered_count": 13,
         "drift_count": 21,
         "audit_issue_count": 0,
     }

@@ -1,0 +1,78 @@
+{
+  "trust_threat_evidence_schema_version": "oa_trust_threat_evidence.v1",
+  "policy_version": "s125.v1",
+  "evaluated_at": "2026-10-03T12:00:00Z",
+  "result": "PASS",
+  "implementation_requirement": "S126",
+  "threats": {
+    "algorithm_confusion": {
+      "severity": "CRITICAL",
+      "preventive_controls": ["rs256_only_allowlist", "at_jwt_type_required", "alg_none_forbidden"],
+      "detection_signals": ["token_algorithm_rejected_count"],
+      "failure_behavior": "reject_401",
+      "residual_risk": "LOW"
+    },
+    "kid_injection": {
+      "severity": "HIGH",
+      "preventive_controls": ["opaque_kid_lookup", "one_bounded_jwks_refresh", "no_locator_from_kid"],
+      "detection_signals": ["unknown_kid_count", "jwks_refresh_failure_count"],
+      "failure_behavior": "reject_401",
+      "residual_risk": "LOW"
+    },
+    "audience_confusion": {
+      "severity": "HIGH",
+      "preventive_controls": ["single_exact_service_audience", "issuer_audience_binding"],
+      "detection_signals": ["audience_mismatch_count"],
+      "failure_behavior": "reject_401",
+      "residual_risk": "LOW"
+    },
+    "token_replay": {
+      "severity": "HIGH",
+      "preventive_controls": ["five_minute_ttl", "unique_jti", "sensitive_route_introspection"],
+      "detection_signals": ["replayed_jti_count", "revoked_jti_count"],
+      "failure_behavior": "reject_401",
+      "residual_risk": "MEDIUM"
+    },
+    "stale_authorization": {
+      "severity": "HIGH",
+      "preventive_controls": ["authorization_revision_claim", "sensitive_route_introspection"],
+      "detection_signals": ["authorization_revision_mismatch_count"],
+      "failure_behavior": "deny_403",
+      "residual_risk": "LOW"
+    },
+    "key_or_credential_disclosure": {
+      "severity": "CRITICAL",
+      "preventive_controls": ["external_private_key_custody", "argon2id_credential_hash", "one_time_secret"],
+      "detection_signals": ["credential_rotation_event", "emergency_key_revocation_event"],
+      "failure_behavior": "security_incident_and_revoke",
+      "residual_risk": "MEDIUM"
+    },
+    "trust_dependency_outage": {
+      "severity": "HIGH",
+      "preventive_controls": ["bounded_jwks_refresh", "bounded_introspection_timeout", "no_fail_open"],
+      "detection_signals": ["jwks_unavailable_count", "introspection_unavailable_count"],
+      "failure_behavior": "dependency_503",
+      "residual_risk": "LOW"
+    },
+    "raw_token_logging": {
+      "severity": "HIGH",
+      "preventive_controls": ["structured_allowlist_logging", "token_fingerprint_only", "secret_scanner"],
+      "detection_signals": ["privacy_contract_rejection_count"],
+      "failure_behavior": "security_incident_and_revoke",
+      "residual_risk": "LOW"
+    }
+  },
+  "privacy": {
+    "raw_token_included": false,
+    "private_key_included": false,
+    "credential_secret_included": false,
+    "session_handle_included": false,
+    "allowed_identifiers": ["service_id", "key_id", "token_fingerprint", "reason_code", "aggregate_count"]
+  },
+  "summary": {
+    "threat_count": 8,
+    "critical_count": 2,
+    "high_count": 6,
+    "privacy_violation_count": 0
+  }
+}

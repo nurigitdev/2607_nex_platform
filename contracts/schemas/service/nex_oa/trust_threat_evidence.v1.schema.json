@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/trust_threat_evidence.v1.schema.json",
+  "title": "NeX OA Production Trust Threat Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "trust_threat_evidence_schema_version",
+    "policy_version",
+    "evaluated_at",
+    "result",
+    "implementation_requirement",
+    "threats",
+    "privacy",
+    "summary"
+  ],
+  "properties": {
+    "trust_threat_evidence_schema_version": {"const": "oa_trust_threat_evidence.v1"},
+    "policy_version": {"const": "s125.v1"},
+    "evaluated_at": {"type": "string", "format": "date-time"},
+    "result": {"const": "PASS"},
+    "implementation_requirement": {"const": "S126"},
+    "threats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm_confusion",
+        "kid_injection",
+        "audience_confusion",
+        "token_replay",
+        "stale_authorization",
+        "key_or_credential_disclosure",
+        "trust_dependency_outage",
+        "raw_token_logging"
+      ],
+      "properties": {
+        "algorithm_confusion": {"$ref": "#/$defs/threat"},
+        "kid_injection": {"$ref": "#/$defs/threat"},
+        "audience_confusion": {"$ref": "#/$defs/threat"},
+        "token_replay": {"$ref": "#/$defs/threat"},
+        "stale_authorization": {"$ref": "#/$defs/threat"},
+        "key_or_credential_disclosure": {"$ref": "#/$defs/threat"},
+        "trust_dependency_outage": {"$ref": "#/$defs/threat"},
+        "raw_token_logging": {"$ref": "#/$defs/threat"}
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_token_included",
+        "private_key_included",
+        "credential_secret_included",
+        "session_handle_included",
+        "allowed_identifiers"
+      ],
+      "properties": {
+        "raw_token_included": {"const": false},
+        "private_key_included": {"const": false},
+        "credential_secret_included": {"const": false},
+        "session_handle_included": {"const": false},
+        "allowed_identifiers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "service_id",
+              "key_id",
+              "token_fingerprint",
+              "reason_code",
+              "aggregate_count"
+            ]
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["threat_count", "critical_count", "high_count", "privacy_violation_count"],
+      "properties": {
+        "threat_count": {"const": 8},
+        "critical_count": {"const": 2},
+        "high_count": {"const": 6},
+        "privacy_violation_count": {"const": 0}
+      }
+    }
+  },
+  "$defs": {
+    "threat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "severity",
+        "preventive_controls",
+        "detection_signals",
+        "failure_behavior",
+        "residual_risk"
+      ],
+      "properties": {
+        "severity": {"enum": ["HIGH", "CRITICAL"]},
+        "preventive_controls": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 96}
+        },
+        "detection_signals": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 96}
+        },
+        "failure_behavior": {
+          "enum": ["reject_401", "deny_403", "dependency_503", "security_incident_and_revoke"]
+        },
+        "residual_risk": {"enum": ["LOW", "MEDIUM"]}
+      }
+    }
+  }
+}
