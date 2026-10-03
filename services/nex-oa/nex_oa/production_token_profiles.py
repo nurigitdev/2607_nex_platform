@@ -58,7 +58,7 @@ _SERVICE_ACCESS = ProductionTokenProfile(
     maximum_clock_skew_seconds=MAX_CLOCK_SKEW_SECONDS,
     required_headers=COMMON_REQUIRED_HEADERS,
     required_claims=COMMON_REQUIRED_CLAIMS,
-    profile_claims=("service_id", "credential_revision"),
+    profile_claims=("service_id", "credential_id", "credential_revision"),
     forbidden_claims=(
         *SENSITIVE_FORBIDDEN_CLAIMS,
         "tenant_id",
@@ -207,7 +207,7 @@ def _validate_profile_claims(
     errors: list[str],
 ) -> None:
     if profile.name == "service_access":
-        _validate_string_claims(claims, ("service_id",), errors)
+        _validate_string_claims(claims, ("service_id", "credential_id"), errors)
         service_id = claims.get("service_id")
         if _nonempty_string(service_id) and service_id not in TOKEN_AUDIENCES:
             errors.append("claim_service_id_invalid")

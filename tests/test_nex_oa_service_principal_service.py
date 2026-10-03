@@ -105,3 +105,70 @@ def test_main_wires_service_principal_runtime_without_routes_yet() -> None:
     from nex_oa.main import SERVICE_PRINCIPAL_REPOSITORY, SERVICE_PRINCIPAL_SERVICE
 
     assert SERVICE_PRINCIPAL_SERVICE.repository is SERVICE_PRINCIPAL_REPOSITORY
+
+
+def test_service_authenticates_client_credential_with_safe_context() -> None:
+    service = OaServicePrincipalService(InMemoryOaServicePrincipalRepository())
+    service.upsert_principal(_payload())
+    issued = service.issue_credential(
+        "ae-runtime",
+        lifetime_days=1,
+        now_epoch=100,
+        credential_id="cred-runtime",
+        client_secret="runtime-secret",
+    )
+
+    result = service.authenticate_client_credential(
+        "cred-runtime",
+        "runtime-secret",
+        now_epoch=200,
+    )
+
+    assert result == {
+        "principal_id": "ae-runtime",
+        "credential_id": "cred-runtime",
+        "service_id": "nex-ae-api",
+        "allowed_audiences": ("nex-cx", "nex-oa"),
+        "allowed_scopes": ("document:read", "generation:create"),
+        "credential_revision": 1,
+    }
+    assert "client_secret" not in result
+    assert "secret_hash" not in result
+    assert issued["credential"]["revision"] == 1
+
+
+def test_disabled_principal_and_disappearing_records_fail_authentication() -> None:
+    repository = InMemoryOaServicePrincipalRepository()
+    service = OaServicePrincipalService(repository)
+    service.upsert_principal(_payload())
+    service.issue_credential(
+        "ae-runtime",
+        lifetime_days=1,
+        now_epoch=100,
+        credential_id="cred-runtime",
+        client_secret="runtime-secret",
+    )
+    service.set_principal_status(
+        "ae-runtime", target_status="DISABLED", expected_revision=1
+    )
+    with pytest.raises(OaServicePrincipalError) as disabled:
+        service.verify_client_secret(
+            "cred-runtime", "runtime-secret", now_epoch=200
+        )
+    assert disabled.value.error_code == "oa.service_credential_rejected"
+
+    service.set_principal_status(
+        "ae-runtime", target_status="ACTIVE", expected_revision=2
+    )
+    original = service.verify_client_secret
+
+    def verify_then_remove(*args: object, **kwargs: object) -> dict[str, str]:
+        identity = original(*args, **kwargs)
+        repository.credentials.clear()
+        return identity
+
+    service.verify_client_secret = verify_then_remove  # type: ignore[method-assign]
+    with pytest.raises(OaServicePrincipalError, match="rejected"):
+        service.authenticate_client_credential(
+            "cred-runtime", "runtime-secret", now_epoch=200
+        )

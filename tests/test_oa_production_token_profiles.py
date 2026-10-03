@@ -29,6 +29,7 @@ def _service_claims(**changes: object) -> dict[str, object]:
         "token_use": "service_access",
         "scope": "service:call document:read",
         "service_id": "nex-ae-api",
+        "credential_id": "cred-ae-runtime",
         "credential_revision": 1,
     } | changes
 
@@ -64,6 +65,7 @@ def test_production_token_profiles_freeze_canonical_contract() -> None:
     assert delegated.maximum_clock_skew_seconds == MAX_CLOCK_SKEW_SECONDS == 30
     assert service.required_headers == ("alg", "typ", "kid")
     assert "credential_revision" in service.profile_claims
+    assert "credential_id" in service.profile_claims
     assert "authorization_revision" in delegated.profile_claims
     assert "roles" in delegated.forbidden_claims
     assert service.to_wire()["subject_kind"] == "service_principal"
@@ -106,6 +108,7 @@ def test_unknown_profile_and_required_fields_fail_closed() -> None:
         "header_missing:kid",
     )
     assert "claim_missing:credential_revision" in errors
+    assert "claim_missing:credential_id" in errors
 
 
 @pytest.mark.parametrize(
@@ -160,6 +163,7 @@ def test_common_claim_failures_are_explicit(
     [
         ({"service_id": ""}, "claim_invalid:service_id"),
         ({"service_id": "unknown"}, "claim_service_id_invalid"),
+        ({"credential_id": ""}, "claim_invalid:credential_id"),
         ({"sub": "service:nex-cx"}, "claim_service_subject_invalid"),
         ({"credential_revision": 0}, "claim_credential_revision_invalid"),
         ({"credential_revision": True}, "claim_credential_revision_invalid"),

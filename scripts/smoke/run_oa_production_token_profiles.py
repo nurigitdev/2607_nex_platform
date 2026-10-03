@@ -34,6 +34,7 @@ def run_oa_production_token_profiles() -> dict[str, Any]:
         "jti": "jti-service",
         "token_use": "service_access",
         "service_id": "nex-ae-api",
+        "credential_id": "cred-ae-runtime",
         "credential_revision": 1,
     }
     delegated_claims = common | {

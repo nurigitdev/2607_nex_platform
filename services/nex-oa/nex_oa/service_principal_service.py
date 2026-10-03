@@ -241,9 +241,36 @@ class OaServicePrincipalService:
             raise _credential_rejected() from exc
         if not verified:
             raise _credential_rejected()
+        principal = self.repository.get_principal(str(record["principal_id"]))
+        if principal is None or principal["status"] != "ACTIVE":
+            raise _credential_rejected()
         return {
             "principal_id": str(record["principal_id"]),
             "credential_id": str(record["credential_id"]),
+        }
+
+    def authenticate_client_credential(
+        self,
+        credential_id: str,
+        client_secret: object,
+        *,
+        now_epoch: int | None = None,
+    ) -> dict[str, Any]:
+        identity = self.verify_client_secret(
+            credential_id,
+            client_secret,
+            now_epoch=now_epoch,
+        )
+        credential = self.repository.get_credential(identity["credential_id"])
+        principal = self.repository.get_principal(identity["principal_id"])
+        if credential is None or principal is None:
+            raise _credential_rejected()
+        return {
+            **identity,
+            "service_id": str(principal["service_id"]),
+            "allowed_audiences": tuple(principal["allowed_audiences"]),
+            "allowed_scopes": tuple(principal["allowed_scopes"]),
+            "credential_revision": int(credential["revision"]),
         }
 
 
