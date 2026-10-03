@@ -6,7 +6,7 @@ from pathlib import Path
 import run_s121_oa_current_state_reaudit_closure as closure
 
 
-def test_repository_s121_closure_passes_with_confirmed_gaps() -> None:
+def test_repository_s121_closure_accepts_monotonic_hardening() -> None:
     result = closure.run_s121_oa_current_state_reaudit_closure()
 
     assert result["status"] == "PASS"
@@ -19,9 +19,9 @@ def test_repository_s121_closure_passes_with_confirmed_gaps() -> None:
         "audit_count": 8,
         "passed_audit_count": 8,
         "traceable_requirement_count": 5,
-        "lifecycle_gap_count": 2,
+        "lifecycle_gap_count": 0,
         "security_gap_count": 0,
-        "contract_drift_count": 23,
+        "contract_drift_count": 21,
         "trust_refactor_count": 4,
         "repaired_surface_count": 5,
         "missing_file_count": 0,
@@ -107,7 +107,7 @@ def test_summary_and_main_paths(monkeypatch, capsys) -> None:
 
     assert closure.summary_line(passing) == (
         "s121_oa_current_state_reaudit_closure=pass audits=8/8 "
-        "lifecycle_gaps=2 security_gaps=0 contract_drift=23 next=S122"
+        "lifecycle_gaps=0 security_gaps=0 contract_drift=21 next=S122"
     )
     assert "next=blocked" in closure.summary_line({"status": "FAIL"})
 

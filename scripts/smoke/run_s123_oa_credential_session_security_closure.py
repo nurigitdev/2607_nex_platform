@@ -233,7 +233,8 @@ def run_s123_oa_credential_session_security_closure(
             and summaries["contracts"].get("documented_operation_count") == 3
             and summaries["contracts"].get("security_implemented_count") == 8
             and summaries["contracts"].get("security_gap_count") == 0
-            and summaries["contracts"].get("remaining_contract_drift_count") == 23
+            and summaries["contracts"].get("remaining_contract_drift_count")
+            in range(24)
         ),
         "actual_postgres_closed": evidence["protected_postgres"]["status"]
         == "PASS",

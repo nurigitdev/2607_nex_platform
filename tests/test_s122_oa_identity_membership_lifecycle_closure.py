@@ -99,6 +99,21 @@ def test_closure_fails_for_evidence_failure_and_identity_drift(monkeypatch) -> N
     assert drifted["checks"]["evidence_identity_complete"] is False
 
 
+def test_closure_rejects_contract_drift_regression(monkeypatch) -> None:
+    original = closure.run_contracts
+
+    def regressed(root):
+        evidence = original(root)
+        evidence["summary"]["remaining_contract_drift_count"] = 24
+        return evidence
+
+    monkeypatch.setattr(closure, "run_contracts", regressed)
+    result = closure.run_s122_oa_identity_membership_lifecycle_closure()
+
+    assert result["status"] == "FAIL"
+    assert result["checks"]["contract_privacy_closed"] is False
+
+
 def test_closure_helpers_fail_closed(tmp_path: Path) -> None:
     assert closure._safe_evidence(
         lambda: (_ for _ in ()).throw(RuntimeError("private"))

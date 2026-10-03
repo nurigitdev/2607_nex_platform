@@ -221,9 +221,14 @@ def run_s122_oa_identity_membership_lifecycle_closure(
         "contract_privacy_closed": (
             summaries["contracts"].get("schema_count") == 2
             and summaries["contracts"].get("documented_operation_count") == 2
-            and summaries["contracts"].get("lifecycle_implemented_count") == 6
-            and summaries["contracts"].get("remaining_lifecycle_gap_count") == 2
-            and summaries["contracts"].get("remaining_contract_drift_count") == 23
+            and int(
+                summaries["contracts"].get("lifecycle_implemented_count") or 0
+            )
+            >= 6
+            and summaries["contracts"].get("remaining_lifecycle_gap_count")
+            in range(3)
+            and summaries["contracts"].get("remaining_contract_drift_count")
+            in range(24)
         ),
         "actual_postgres_closed": evidence["protected_postgres"]["status"]
         == "PASS",
