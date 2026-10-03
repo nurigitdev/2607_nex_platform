@@ -24,7 +24,7 @@ def test_repository_s118_closure_passes() -> None:
         "closed_component_count": 5,
         "catalog_entry_count": 3,
         "active_binding_count": 3,
-        "runtime_operation_count": 29,
+        "runtime_operation_count": 30,
         "postgres_check_count": 13,
         "missing_file_count": 0,
         "missing_token_count": 0,
@@ -103,7 +103,7 @@ def test_s118_closure_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = closure.run_s118_mo_catalog_alias_lifecycle_closure()
     assert closure.summary_line(passing) == (
         "s118_mo_catalog_alias_lifecycle_closure=pass evidence=9/9 "
-        "components=5/5 catalog=3/3 operations=29 postgres=13 next=S119"
+        "components=5/5 catalog=3/3 operations=30 postgres=13 next=S119"
     )
     assert "next=blocked" in closure.summary_line({"status": "FAIL"})
 

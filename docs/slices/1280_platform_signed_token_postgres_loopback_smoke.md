@@ -20,6 +20,19 @@ Prove that OA-issued RS256 service tokens persisted through the actual
 
 DGX model providers are unrelated and are not required.
 
+## Observed evidence
+
+- Actual database/role: `nex_oa_test` / `nex_oa_user`
+- Migrations: `16/16`
+- Consumers: `4/4`
+- Issued RS256 tokens: `4`
+- Mock-token rejection: `4/4`
+- Cleanup residue: `0`
+- Slice Gate: `811 passed, 6 skipped`
+- Statement coverage: `99.09%`
+- Branch coverage: `98.18%`
+- Target statement/branch coverage: `100%` / `100%`
+
 ## Verification
 
 ```bash

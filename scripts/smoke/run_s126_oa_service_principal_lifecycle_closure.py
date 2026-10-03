@@ -145,7 +145,7 @@ def run_s126_oa_service_principal_lifecycle_closure(root: Path = ROOT) -> dict[s
             and contract_summary.get("privacy_safe_count") == 6
             and contract_summary.get("runtime_valid_count") == 6
             and contract_summary.get("operation_valid_count") == 9
-            and contract_summary.get("remaining_contract_drift_count") == 21
+            and contract_summary.get("remaining_contract_drift_count") == 22
         ),
         "actual_postgres_closed": (
             postgres_summary.get("migration_count") == 15

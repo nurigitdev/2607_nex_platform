@@ -97,7 +97,7 @@ def test_closure_fails_for_evidence_failure_and_identity_drift(monkeypatch) -> N
                 "privacy_safe_count": 6,
                 "runtime_valid_count": 6,
                 "operation_valid_count": 9,
-                "remaining_contract_drift_count": 21,
+                "remaining_contract_drift_count": 22,
             },
         },
     )

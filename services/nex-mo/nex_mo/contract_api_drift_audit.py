@@ -83,7 +83,7 @@ def build_mo_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
     missing_negative = sorted(set(schemas) - negative_schemas)
     checks = {
         "openapi_document_readable": bool(document),
-        "runtime_operation_inventory_complete": len(runtime_operations) == 29,
+        "runtime_operation_inventory_complete": len(runtime_operations) == 30,
         "runtime_openapi_operations_match": not missing_openapi and not extra_openapi,
         "openapi_has_no_unknown_operations": not extra_openapi,
         "business_path_inventory_complete": len(BUSINESS_PATHS) == 16,

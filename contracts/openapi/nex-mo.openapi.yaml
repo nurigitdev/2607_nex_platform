@@ -62,6 +62,22 @@ paths:
           description: Service claim is valid for this service.
         "401":
           description: Service claim is missing or invalid.
+  /internal/v1/auth/service-token-runtime:
+    get:
+      operationId: getMoServiceTokenRuntime
+      tags:
+        - Platform
+      security:
+        - serviceBearer: []
+      responses:
+        "200":
+          description: Redacted signed-token admission and JWKS cache state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceTokenRuntime"
+        "401":
+          description: Service claim is missing or invalid.
   /internal/v1/jobs/{job_id}:
     get:
       operationId: getMoServiceJob
@@ -772,6 +788,110 @@ components:
             version:
               type: string
               const: /version
+    ServiceTokenRuntime:
+      type: object
+      additionalProperties: false
+      x-nex-canonical-json-schema: schemas/common/service_token_runtime.v1.schema.json
+      required:
+        - runtime_schema_version
+        - service_id
+        - expected_audience
+        - rollout_profile
+        - signed_verification_enabled
+        - introspection_enabled
+        - sensitive_route_introspection_required
+        - introspection_route_classes
+        - legacy_mock_callers
+        - legacy_mock_caller_count
+        - compatibility_deadline_epoch
+        - compatibility_status
+        - jwks_cache
+        - admission_counts
+      properties:
+        runtime_schema_version:
+          const: service_token_runtime.v1
+        service_id:
+          type: string
+          enum: [nex-oa, nex-ag, nex-ae-api, nex-cx, nex-mo]
+        expected_audience:
+          type: string
+          enum: [nex-oa, nex-ag, nex-ae-api, nex-cx, nex-mo]
+        rollout_profile:
+          type: string
+          enum: [TEST_MOCK, DUAL_READ, SIGNED_ONLY]
+        signed_verification_enabled:
+          type: boolean
+        introspection_enabled:
+          type: boolean
+        sensitive_route_introspection_required:
+          const: true
+        introspection_route_classes:
+          type: array
+          minItems: 4
+          maxItems: 4
+          uniqueItems: true
+          items:
+            type: string
+            enum: [WRITE, ADMIN, CREDENTIAL, KEY_MANAGEMENT]
+        legacy_mock_callers:
+          type: array
+          maxItems: 5
+          uniqueItems: true
+          items:
+            type: string
+            enum: [nex-oa, nex-ag, nex-ae-api, nex-cx, nex-mo]
+        legacy_mock_caller_count:
+          type: integer
+          minimum: 0
+          maximum: 5
+        compatibility_deadline_epoch:
+          type: [integer, "null"]
+          minimum: 1
+        compatibility_status:
+          type: string
+          enum: [NOT_APPLICABLE, ACTIVE, EXPIRED]
+        jwks_cache:
+          type: object
+          additionalProperties: false
+          required: [enabled, status, key_count, refreshed_at_epoch, ttl_seconds, max_keys]
+          properties:
+            enabled:
+              type: boolean
+            status:
+              type: string
+              enum: [DISABLED, EMPTY, POPULATED]
+            key_count:
+              type: integer
+              minimum: 0
+              maximum: 16
+            refreshed_at_epoch:
+              type: [integer, "null"]
+              minimum: 0
+            ttl_seconds:
+              type: [integer, "null"]
+              minimum: 1
+              maximum: 900
+            max_keys:
+              type: [integer, "null"]
+              minimum: 1
+              maximum: 16
+        admission_counts:
+          type: object
+          additionalProperties: false
+          required: [accepted_mock, accepted_signed, rejected, introspected]
+          properties:
+            accepted_mock:
+              type: integer
+              minimum: 0
+            accepted_signed:
+              type: integer
+              minimum: 0
+            rejected:
+              type: integer
+              minimum: 0
+            introspected:
+              type: integer
+              minimum: 0
     ServiceLogRetentionPurgeRequest:
       type: object
       additionalProperties: false
