@@ -46,6 +46,10 @@ from nex_oa.sessions import (
     build_oa_session_registry_for_runtime,
     register_user_session_routes,
 )
+from nex_oa.service_principal_repository import (
+    build_service_principal_repository_for_runtime,
+)
+from nex_oa.service_principal_service import OaServicePrincipalService
 from nex_oa.subjects import (
     build_subject_registry_for_runtime,
     register_subject_registry_routes,
@@ -102,6 +106,12 @@ IDENTITY_LIFECYCLE_SERVICE = OaIdentityLifecycleService(
     subject_registry=SUBJECT_REGISTRY,
     membership_registry=TENANT_MEMBERSHIP_REGISTRY,
     repository=IDENTITY_LIFECYCLE_REPOSITORY,
+)
+SERVICE_PRINCIPAL_REPOSITORY = build_service_principal_repository_for_runtime(
+    SERVICE_PERSISTENCE
+)
+SERVICE_PRINCIPAL_SERVICE = OaServicePrincipalService(
+    repository=SERVICE_PRINCIPAL_REPOSITORY
 )
 register_service_job_control_routes(
     app,
