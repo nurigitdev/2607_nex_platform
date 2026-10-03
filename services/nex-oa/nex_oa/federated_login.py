@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
+from hashlib import sha256
 import json
 from typing import Any, Protocol
 
@@ -207,7 +208,38 @@ def build_federated_login_response(
         "raw_external_subject_included": False,
         "external_profile_included": False,
     }
+    response["operator_context"] = build_federated_operator_context(session)
     return response
+
+
+def build_federated_operator_context(
+    session_issue: Mapping[str, Any],
+) -> dict[str, Any]:
+    session = session_issue.get("session")
+    snapshot = session if isinstance(session, Mapping) else session_issue
+    tenant_id = _context_ref_id(
+        snapshot.get("tenant_ref", session_issue.get("tenant_ref")),
+        fallback=snapshot.get("tenant_id", session_issue.get("tenant_id")),
+        field="tenant_id",
+    )
+    subject_id = _context_ref_id(
+        snapshot.get("subject_ref", session_issue.get("subject_ref")),
+        fallback=snapshot.get("subject_id", session_issue.get("subject_id")),
+        field="subject_id",
+    )
+    roles = _context_string_list(snapshot.get("roles"), field="roles")
+    scopes = _context_string_list(snapshot.get("scopes"), field="scopes")
+    session_id = _context_text(snapshot.get("session_id"), field="session_id")
+    return {
+        "tenant_id": tenant_id,
+        "subject_id": subject_id,
+        "roles": roles,
+        "scopes": scopes,
+        "auth_method": "federated_oidc",
+        "session_id_digest": sha256(
+            f"nex-oa-session:{session_id}".encode("utf-8")
+        ).hexdigest(),
+    }
 
 
 def register_federated_login_routes(
@@ -291,6 +323,43 @@ def _safe_provider_id(value: object) -> str | None:
     if not isinstance(value, str) or not value or len(value) > 64:
         return None
     return value
+
+
+def _context_ref_id(value: object, *, fallback: object, field: str) -> str:
+    candidate = value.get("id") if isinstance(value, Mapping) else fallback
+    return _context_text(candidate, field=field)
+
+
+def _context_text(value: object, *, field: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or value != value.strip()
+        or len(value) > 128
+    ):
+        raise OaFederationError(
+            503,
+            "oa.federated_session_projection_invalid",
+            f"Federated session {field} projection is invalid.",
+        )
+    return value
+
+
+def _context_string_list(value: object, *, field: str) -> list[str]:
+    if not isinstance(value, (list, tuple)) or len(value) > 32:
+        raise OaFederationError(
+            503,
+            "oa.federated_session_projection_invalid",
+            f"Federated session {field} projection is invalid.",
+        )
+    normalized = [_context_text(item, field=field) for item in value]
+    if len(normalized) != len(set(normalized)):
+        raise OaFederationError(
+            503,
+            "oa.federated_session_projection_invalid",
+            f"Federated session {field} projection is invalid.",
+        )
+    return normalized
 
 
 def _unavailable(detail: str) -> OaFederationError:

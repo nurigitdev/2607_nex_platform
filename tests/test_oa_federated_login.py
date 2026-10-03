@@ -109,7 +109,17 @@ def test_request_normalization_rejects_invalid_input(payload) -> None:
 
 
 def test_response_handles_non_mapping_metadata() -> None:
-    response = build_federated_login_response({"session_id": "x", "metadata": []}, provider_id="p")
+    response = build_federated_login_response(
+        {
+            "session_id": "x",
+            "tenant_id": "company",
+            "subject_id": "employee-1001",
+            "roles": ["admin"],
+            "scopes": ["workspace:use"],
+            "metadata": [],
+        },
+        provider_id="p",
+    )
     assert response["metadata"]["provider_id"] == "p"
 
 
