@@ -14,6 +14,13 @@ OA_GROUP_SCHEMA_VERSION = "oa_group.v1"
 OA_GROUP_MEMBER_SCHEMA_VERSION = "oa_group_member.v1"
 OA_GROUP_ROLE_SCHEMA_VERSION = "oa_group_role.v1"
 OA_AUTHORIZATION_STATUSES = ("ACTIVE", "DISABLED")
+OA_AUTHORIZATION_TABLES = (
+    "oa_roles",
+    "oa_groups",
+    "oa_group_members",
+    "oa_group_roles",
+    "oa_authz_events",
+)
 
 _AUTHZ_ID_PATTERN = re.compile(r"^[a-z][a-z0-9._-]{1,63}$")
 _SCOPE_PATTERN = re.compile(r"^[a-z][a-z0-9._-]{0,63}:[a-z][a-z0-9._-]{0,63}$")

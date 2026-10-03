@@ -16,8 +16,8 @@ def test_repository_database_drift_audit_is_statically_clean() -> None:
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
     assert result["issues"] == []
-    assert result["summary"]["migration_count"] == 13
-    assert result["summary"]["core_table_count"] == 5
+    assert result["summary"]["migration_count"] == 14
+    assert result["summary"]["core_table_count"] == 10
     assert result["summary"]["overlength_identifier_count"] == 0
     assert result["database_readiness"] == (
         "STATIC_CHAIN_CLEAN_RUNTIME_DATABASE_PENDING"
@@ -79,7 +79,7 @@ def test_summary_line_and_runner_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_oa_database_drift_audit()
 
     assert "database_drift_audit=pass" in runner.summary_line(passing)
-    assert "migrations=13" in runner.summary_line(passing)
+    assert "migrations=14" in runner.summary_line(passing)
     assert "alembic=NOT_CONFIGURED" in runner.summary_line(passing)
     monkeypatch.setattr(runner, "run_oa_database_drift_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0

@@ -17,6 +17,11 @@ CORE_OA_TABLES = frozenset(
         "oa_tenant_memberships",
         "oa_user_sessions",
         "oa_local_credentials",
+        "oa_roles",
+        "oa_groups",
+        "oa_group_members",
+        "oa_group_roles",
+        "oa_authz_events",
     }
 )
 
@@ -180,6 +185,7 @@ def _repository_source(root: Path) -> str:
         root / "services/nex-oa/nex_oa/memberships.py",
         root / "services/nex-oa/nex_oa/sessions.py",
         root / "services/nex-oa/nex_oa/credentials.py",
+        root / "services/nex-oa/nex_oa/authorization.py",
     )
     return "\n".join(
         path.read_text(encoding="utf-8") for path in paths if path.is_file()
