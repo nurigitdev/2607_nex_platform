@@ -42,7 +42,6 @@ from nex_ag.retrieval_threshold_decisions import (
     summarize_retrieval_threshold_decisions,
 )
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
     build_engine,
     build_session_factory,
     database_pool_settings,
@@ -50,8 +49,8 @@ from nex_runtime import (
     redact_database_url,
     required_database_url,
     trace_id_from_headers,
-    validate_authorization_header,
 )
+from nex_ag.service_auth import authorize_ag_service_request
 from nex_runtime.retrieval_policies import (
     RetrievalPolicyError,
     list_retrieval_policy_records,
@@ -1347,21 +1346,7 @@ def _authorize_ag_request(
     request: Request,
     authorization: str | None,
 ) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-ag",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if result.ok:
-        return None
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "AG requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
+    return authorize_ag_service_request(request, authorization)
 
 
 def _retrieval_policy_problem_response(

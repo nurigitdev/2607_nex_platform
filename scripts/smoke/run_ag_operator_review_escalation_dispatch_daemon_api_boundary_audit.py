@@ -146,7 +146,7 @@ TOKEN_REQUIREMENTS = (
         "operations_api_boundary",
         "services/nex-ag/nex_ag/operations.py",
         "authorization_helper_available",
-        "validate_authorization_header",
+        "authorize_ag_service_request",
         "Protected routes should reuse runtime auth validation.",
     ),
     TokenRequirement(
@@ -266,7 +266,7 @@ def run_ag_operator_review_escalation_dispatch_daemon_api_boundary_audit(
                 "bounded_batch_limit",
                 "dry_run_policy_respected",
             ],
-            "auth_boundary": "reuse_nex_runtime_validate_authorization_header",
+            "auth_boundary": "reuse_shared_signed_token_admission",
             "real_external_endpoint_delivery": "deferred_until_full_system",
         },
         "api_surface_contract": {

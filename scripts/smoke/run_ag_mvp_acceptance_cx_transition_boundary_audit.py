@@ -65,7 +65,7 @@ TOKEN_REQUIREMENTS = (
     TokenRequirement(
         "ag_app",
         "services/nex-ag/nex_ag/main.py",
-        "app = build_service_app(SERVICE_SPEC)",
+        "service_token_admission=SERVICE_TOKEN_ADMISSION",
     ),
     TokenRequirement(
         "readiness",

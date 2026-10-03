@@ -15,7 +15,6 @@ from nex_runtime import (
     AG_JOB_CONTROL_EVENT_FAILED,
     AG_JOB_CONTROL_EVENT_SUCCEEDED,
     DEFAULT_WORKER_STALE_AFTER_SECONDS,
-    DEFAULT_SERVICE_SCOPE,
     DEFAULT_OPERATIONAL_EVENT_TAXONOMY,
     DEFAULT_SERVICE_LOG_LIMIT,
     DEFAULT_SERVICE_LOG_RETENTION_HISTORY_LIMIT,
@@ -70,9 +69,9 @@ from nex_runtime import (
     summarize_service_logs,
     summarize_worker_heartbeats,
     trace_id_from_headers,
-    validate_authorization_header,
     worker_heartbeat_is_stale,
 )
+from nex_ag.service_auth import authorize_ag_service_request
 from nex_ag.job_control import (
     AgJobControlClient,
     AgJobControlError,
@@ -7002,22 +7001,7 @@ def _authorize_ag_request(
     request: Request,
     authorization: str | None,
 ) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-ag",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if result.ok:
-        return None
-
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "AG requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
+    return authorize_ag_service_request(request, authorization)
 
 
 def _validate_job_operation_filters(

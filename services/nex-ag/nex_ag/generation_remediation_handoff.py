@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from nex_runtime import issue_mock_service_token
+from nex_ag.service_auth import resolve_ag_outbound_service_token
 
 
 CX_REMEDIATION_EXECUTION_REQUEST_SCHEMA_VERSION = (
@@ -149,10 +149,10 @@ class HttpCxRemediationExecutionClient:
         trace_id = required_text(payload, "trace_id")
         request_id = required_text(payload, "request_id")
         parent_generation_id = required_text(payload, "parent_cx_generation_id")
-        token = self.service_token or issue_mock_service_token(
-            service_id="nex-ag",
+        token = resolve_ag_outbound_service_token(
+            self.service_token,
             audience="nex-cx",
-        ).access_token
+        )
         try:
             response = self.requester(
                 "POST",
@@ -219,10 +219,10 @@ class HttpCxRemediationExecutionClient:
             "remediation_action_id",
         )
         selected_request_id = request_id or f"ag-cx-remediation-status:{action_id}"
-        token = self.service_token or issue_mock_service_token(
-            service_id="nex-ag",
+        token = resolve_ag_outbound_service_token(
+            self.service_token,
             audience="nex-cx",
-        ).access_token
+        )
         headers = {
             "Authorization": f"Bearer {token}",
             "X-Request-ID": selected_request_id,

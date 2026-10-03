@@ -23,7 +23,7 @@ def test_ag_dispatch_daemon_api_boundary_passes_repo() -> None:
     assert boundary["allowed_actions"] == ["tick_plan", "tick_once"]
     assert boundary["tick_plan_mutates"] is False
     assert boundary["mutation_allowed_without_confirm"] is False
-    assert boundary["auth_boundary"] == "reuse_nex_runtime_validate_authorization_header"
+    assert boundary["auth_boundary"] == "reuse_shared_signed_token_admission"
     assert boundary["real_external_endpoint_delivery"] == "deferred_until_full_system"
     assert evidence["api_surface_contract"]["tick_plan_route"] == {
         "path": "/admin/v1/operator-review/dispatch-daemon/tick-plan",

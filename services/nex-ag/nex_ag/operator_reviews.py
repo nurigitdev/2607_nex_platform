@@ -14,8 +14,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
-    DEFAULT_USER_SCOPE,
     InMemoryOperationalEventStore,
     OperationalEventEmitter,
     OperationalEventEmitResult,
@@ -23,9 +21,8 @@ from nex_runtime import (
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
-    validate_user_authorization_header,
 )
+from nex_ag.service_auth import authorize_ag_service_or_admin_request
 
 
 OPERATOR_REVIEW_NOTE_SCHEMA_VERSION = "ag_operator_review_note.v1"
@@ -1991,39 +1988,13 @@ def _authorize_ag_operator_review_request(
     request: Request,
     authorization: str | None,
 ) -> JSONResponse | None:
-    service_result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-ag",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if service_result.ok:
-        return None
-
-    user_result = validate_user_authorization_header(
-        authorization,
-        expected_audience="nex-ag",
-        required_scopes=[DEFAULT_USER_SCOPE],
-    )
-    if user_result.ok:
-        roles = set(user_result.claims.roles if user_result.claims else ())
-        if "admin" in roles:
-            return None
-        return problem_response(
-            request,
-            status_code=403,
-            error_code="AG_OPERATOR_REVIEW_ADMIN_ROLE_REQUIRED",
-            title="Authorization failed",
-            detail="AG operator review note routes require an admin user role.",
-            type_uri="https://nex-platform.local/problems/authorization-failed",
-        )
-
-    return problem_response(
+    return authorize_ag_service_or_admin_request(
         request,
-        status_code=401,
-        error_code=service_result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=service_result.detail or "AG requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
+        authorization,
+        admin_error_code="AG_OPERATOR_REVIEW_ADMIN_ROLE_REQUIRED",
+        admin_error_detail=(
+            "AG operator review note routes require an admin user role."
+        ),
     )
 
 

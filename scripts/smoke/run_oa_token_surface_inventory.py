@@ -39,7 +39,6 @@ EXPECTED_CALLER_COVERAGE = {
     "issue_mock_user_token": {"nex-oa", "nex-ae-api"},
     "validate_authorization_header": {
         "nex-oa",
-        "nex-ag",
         "shared",
     },
     "validate_user_authorization_header": {
@@ -100,7 +99,7 @@ def build_oa_token_surface_inventory(root: Path = ROOT) -> dict[str, Any]:
         "silent_mock_fallbacks_observed": set(
             symbols["issue_mock_service_token"]["fallback_services"]
         )
-        == {"shared", "nex-ag"},
+        == {"shared"},
         "all_runtime_services_classified": all(
             service_profiles[service]["migration_role"] != "unclassified"
             for service in RUNTIME_SERVICES

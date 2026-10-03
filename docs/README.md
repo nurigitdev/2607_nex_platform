@@ -1381,6 +1381,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1275`](slices/1275_ae_signed_token_verification_adoption.md) | `S128-004` Adopt shared signed-token admission across AE inbound guards and remove silent outbound mock fallback. |
 | [`Slice 1276`](slices/1276_cx_signed_token_verification_adoption.md) | `S128-005` Adopt shared signed-token admission at the CX access-context boundary and fail closed for unsigned CX-to-MO calls. |
 | [`Slice 1277`](slices/1277_mo_signed_token_verification_adoption.md) | `S128-006` Adopt shared signed-token admission across MO provider and operations APIs while preserving admin-user access. |
+| [`Slice 1278`](slices/1278_ag_signed_token_verification_adoption.md) | `S128-007` Adopt shared signed-token admission and profile-driven outbound credentials across AG while preserving admin-user access. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -11,14 +11,15 @@ from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
-    issue_mock_service_token,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
 )
 from nex_ag.operations import build_generation_quality_issue_detail_projection
+from nex_ag.service_auth import (
+    authorize_ag_service_request,
+    resolve_ag_outbound_service_token,
+)
 
 SAFE_TIMELINE_FIELDS = {
     "event_id",
@@ -191,12 +192,9 @@ class HttpGenerationAuditSourceClient:
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
-        token = (
-            service_token
-            or issue_mock_service_token(
-                service_id="nex-ag",
-                audience=audience,
-            ).access_token
+        token = resolve_ag_outbound_service_token(
+            service_token,
+            audience=audience,
         )
         response = httpx.get(
             f"{base_url}{path}",
@@ -1002,22 +1000,7 @@ def _authorize_ag_request(
     request: Request,
     authorization: str | None,
 ) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-ag",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if result.ok:
-        return None
-
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "AG requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
+    return authorize_ag_service_request(request, authorization)
 
 
 def _audit_problem_response(

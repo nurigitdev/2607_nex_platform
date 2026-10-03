@@ -7,7 +7,8 @@ from typing import Any, Protocol
 
 import httpx
 
-from nex_runtime import SERVICE_SPECS, issue_mock_service_token
+from nex_runtime import SERVICE_SPECS
+from nex_ag.service_auth import resolve_ag_outbound_service_token
 
 
 AG_SERVICE_LOG_RETENTION_CLIENT_SCHEMA_VERSION = "ag_service_log_retention_client.v1"
@@ -98,10 +99,10 @@ class HttpAgServiceLogRetentionClient:
         json: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         base_url = self._base_url_for_service(service_id)
-        token = self.service_tokens.get(service_id) or issue_mock_service_token(
-            service_id="nex-ag",
+        token = resolve_ag_outbound_service_token(
+            self.service_tokens.get(service_id),
             audience=service_id,
-        ).access_token
+        )
         try:
             response = httpx.request(
                 method,
