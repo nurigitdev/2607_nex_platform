@@ -169,6 +169,7 @@ def test_jwks_token_introspection_and_revocation_routes() -> None:
     )
 
     assert active.json()["active"] is True
+    assert len(active.json()["token_id_digest"]) == 64
     assert revoked.status_code == 200
     assert "jti" not in revoked.json()
     assert inactive.json()["active"] is False

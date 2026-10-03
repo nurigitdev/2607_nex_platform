@@ -8,6 +8,7 @@
   "service_id": "nex-ae-api",
   "credential_id": "cred-ae-runtime",
   "credential_revision": 1,
+  "token_id_digest": "b9c0bf1a8513270d737adef6ba0c6a6f2ec59dcbd7684ab560e06370b038ee29",
   "iat": 1790985600,
   "exp": 1790985900,
   "request_id": "request-1269",

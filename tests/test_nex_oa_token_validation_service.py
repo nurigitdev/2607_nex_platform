@@ -120,6 +120,7 @@ def test_validate_and_introspect_active_token() -> None:
     assert claims["jti"] == "sat-validation"
     assert introspection["active"] is True
     assert introspection["credential_id"] == "cred-ae-runtime"
+    assert len(introspection["token_id_digest"]) == 64
     assert "jti" not in introspection
     assert "access_token" not in introspection
 

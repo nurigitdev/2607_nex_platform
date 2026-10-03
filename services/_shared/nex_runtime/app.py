@@ -18,6 +18,11 @@ from .auth import (
 )
 from .database import check_database_readiness
 from .problem import problem_response
+from .service_token_admission import (
+    ServiceTokenAdmissionRuntime,
+    ServiceTokenAdmissionError,
+    service_token_admission_problem_response,
+)
 
 
 @dataclass(frozen=True)
@@ -76,6 +81,7 @@ def build_service_app(
     *,
     readiness_checks: Sequence[ReadinessCheck] = (),
     include_oa_mock_auth_routes: bool = True,
+    service_token_admission: ServiceTokenAdmissionRuntime | None = None,
 ) -> FastAPI:
     version = os.getenv("NEX_VERSION", "0.0.0-slice0001")
     profile = os.getenv("NEX_PROFILE", "local_mock")
@@ -148,6 +154,20 @@ def build_service_app(
         request: Request,
         authorization: str | None = Header(default=None),
     ) -> dict[str, Any] | JSONResponse:
+        if service_token_admission is not None:
+            try:
+                claims = service_token_admission.admit(
+                    authorization,
+                    required_scopes=(DEFAULT_SERVICE_SCOPE,),
+                    route_class="READ",
+                )
+            except ServiceTokenAdmissionError as exc:
+                return service_token_admission_problem_response(request, exc)
+            return {
+                "service_id": spec.service_id,
+                "claim_status": "VALID",
+                "claims": claims.to_wire(),
+            }
         result = validate_authorization_header(
             authorization,
             expected_audience=spec.service_id,

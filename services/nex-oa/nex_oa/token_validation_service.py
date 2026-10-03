@@ -18,7 +18,7 @@ from nex_oa.production_token_profiles import (
 )
 from nex_oa.service_principal_service import OaServicePrincipalService
 from nex_oa.service_principals import OaServicePrincipalError
-from nex_oa.signed_tokens import OaSignedTokenError
+from nex_oa.signed_tokens import OaSignedTokenError, digest_token_jti
 from nex_oa.signing_key_policy import MINIMUM_RSA_MODULUS_BITS, PRIVATE_JWK_MEMBERS
 from nex_oa.signing_key_service import OaSigningKeyService
 
@@ -105,6 +105,7 @@ class OaSignedTokenValidationService:
             "service_id": claims["service_id"],
             "credential_id": claims["credential_id"],
             "credential_revision": claims["credential_revision"],
+            "token_id_digest": digest_token_jti(claims["jti"]),
             "iat": claims["iat"],
             "exp": claims["exp"],
         }
