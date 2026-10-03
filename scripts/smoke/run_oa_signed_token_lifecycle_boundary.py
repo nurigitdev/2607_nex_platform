@@ -35,8 +35,12 @@ def run_oa_signed_token_lifecycle_boundary(root: Path = ROOT) -> dict[str, Any]:
             tuple(DEFERRED_SIGNED_RUNTIME_TABLES) == SIGNED_RUNTIME_TABLES
         ),
         "table_names_short": max(map(len, SIGNED_RUNTIME_TABLES)) < 30,
-        "signed_runtime_not_preimplemented": all(
-            table not in migration_text for table in SIGNED_RUNTIME_TABLES
+        "signed_runtime_not_preimplemented": (
+            all(table not in migration_text for table in SIGNED_RUNTIME_TABLES)
+            or (
+                all(table in migration_text for table in SIGNED_RUNTIME_TABLES)
+                and "'1264_oa_signed_token_lifecycle'" in migration_text
+            )
         ),
         "private_key_database_storage_forbidden": (
             not boundary.private_key_database_storage_allowed

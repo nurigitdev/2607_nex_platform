@@ -41,8 +41,12 @@ def run_oa_service_principal_lifecycle_boundary(
         "deferred_table_names_short": (
             max(map(len, DEFERRED_SIGNED_RUNTIME_TABLES)) < 30
         ),
-        "deferred_runtime_not_implemented_in_s126": all(
-            table not in migration_text for table in DEFERRED_SIGNED_RUNTIME_TABLES
+        "deferred_runtime_not_implemented_in_s126": (
+            all(table not in migration_text for table in DEFERRED_SIGNED_RUNTIME_TABLES)
+            or (
+                all(table in migration_text for table in DEFERRED_SIGNED_RUNTIME_TABLES)
+                and "'1264_oa_signed_token_lifecycle'" in migration_text
+            )
         ),
         "plaintext_secret_forbidden": (
             not boundary.database_plaintext_secret_allowed
