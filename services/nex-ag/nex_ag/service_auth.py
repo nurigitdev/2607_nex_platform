@@ -16,6 +16,10 @@ from nex_runtime import (
     problem_response,
     validate_user_authorization_header,
 )
+from nex_ag.federated_operator_authorization import (
+    authorize_ag_federated_operator_context,
+    federated_operator_context_header,
+)
 
 
 AG_SERVICE_CLAIMS_STATE_KEY = "ag_service_claims"
@@ -63,14 +67,24 @@ def authorize_ag_service_or_admin_request(
     admin_error_code: str,
     admin_error_detail: str,
 ) -> JSONResponse | None:
+    encoded_context = federated_operator_context_header(request)
     service_result = admit_service_token_from_request(
         request,
         authorization,
         expected_audience="nex-ag",
         required_scopes=(DEFAULT_SERVICE_SCOPE,),
+        route_class="ADMIN" if encoded_context is not None else "READ",
     )
     if isinstance(service_result, AdmittedServiceClaims):
         setattr(request.state, AG_SERVICE_CLAIMS_STATE_KEY, service_result)
+        if encoded_context is not None:
+            return authorize_ag_federated_operator_context(
+                request,
+                service_claims=service_result,
+                encoded_context=encoded_context,
+                admin_error_code=admin_error_code,
+                admin_error_detail=admin_error_detail,
+            )
         return None
     if _looks_like_service_authorization(authorization):
         return service_result

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import base64
+import binascii
 from dataclasses import asdict, dataclass
+import json
 import re
 from typing import Any
 
@@ -9,6 +12,7 @@ from fastapi import Request
 
 
 AG_FEDERATED_OPERATOR_CONTEXT_STATE_KEY = "ag_federated_operator_context"
+AG_FEDERATED_OPERATOR_CONTEXT_HEADER = "X-NEX-Federated-Operator-Context"
 AG_FEDERATED_OPERATOR_CONTEXT_FIELDS = frozenset(
     {
         "tenant_id",
@@ -21,6 +25,8 @@ AG_FEDERATED_OPERATOR_CONTEXT_FIELDS = frozenset(
 )
 MAX_CONTEXT_ITEMS = 32
 MAX_CONTEXT_TEXT_LENGTH = 128
+MAX_CONTEXT_HEADER_BYTES = 4_096
+MAX_CONTEXT_JSON_BYTES = 2_048
 _DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _PRIVATE_KEY_PARTS = (
     "authorization",
@@ -105,6 +111,44 @@ def adopt_ag_federated_operator_context(
     context = build_ag_federated_operator_context(payload)
     setattr(request.state, AG_FEDERATED_OPERATOR_CONTEXT_STATE_KEY, context)
     return context
+
+
+def encode_ag_federated_operator_context_header(
+    payload: Mapping[str, Any],
+) -> str:
+    context = build_ag_federated_operator_context(payload)
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(
+            context.to_wire(), separators=(",", ":"), sort_keys=True
+        ).encode("utf-8")
+    ).decode("ascii")
+    return encoded.rstrip("=")
+
+
+def decode_ag_federated_operator_context_header(
+    value: object,
+) -> AgFederatedOperatorContext:
+    if (
+        not isinstance(value, str)
+        or not value
+        or value != value.strip()
+        or len(value) > MAX_CONTEXT_HEADER_BYTES
+        or re.fullmatch(r"[A-Za-z0-9_-]+", value) is None
+    ):
+        raise _invalid("Federated operator context header is invalid.")
+    try:
+        padding = "=" * (-len(value) % 4)
+        decoded = base64.b64decode(
+            value + padding,
+            altchars=b"-_",
+            validate=True,
+        )
+        if len(decoded) > MAX_CONTEXT_JSON_BYTES:
+            raise ValueError("decoded context is too large")
+        payload = json.loads(decoded.decode("utf-8"))
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise _invalid("Federated operator context header is invalid.") from exc
+    return build_ag_federated_operator_context(payload)
 
 
 def ag_federated_operator_context_from_request(
