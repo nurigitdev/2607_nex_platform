@@ -1376,6 +1376,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1270`](slices/1270_oa_signed_token_postgres_smoke.md) | `S127-009` Prove signed-token issuance, restart validation, revocation, privacy, and cleanup on actual `nex_oa_test`. |
 | [`Slice 1271`](slices/1271_s127_oa_signed_token_lifecycle_closure.md) | `S127-010` Close the OA signed-token lifecycle and bind the external-custody and consumer-rollout handoff. |
 | [`Slice 1272`](slices/1272_platform_signed_token_adoption_boundary.md) | `S128-001` Freeze shared signed-token verification ownership, forward-only consumer rollout, and deferred boundaries. |
+| [`Slice 1273`](slices/1273_shared_jwks_signed_token_verifier.md) | `S128-002` Add strict RS256 service-token verification, bounded JWKS caching, and privacy-safe verified claims. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
