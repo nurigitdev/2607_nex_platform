@@ -1,0 +1,8 @@
+{
+  "display_name": "Document Editor",
+  "description": "Can read and update tenant documents.",
+  "status": "ACTIVE",
+  "scopes": ["document:read", "document:write"],
+  "metadata": {"managed_by": "nex-ag"},
+  "expected_revision": 0
+}

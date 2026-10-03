@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/authorization_role_upsert.v1.schema.json",
+  "title": "NeX OA Authorization Role Upsert",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["scopes", "expected_revision"],
+  "properties": {
+    "display_name": {"type": "string", "minLength": 1, "maxLength": 128},
+    "description": {"type": ["string", "null"], "maxLength": 512},
+    "status": {"enum": ["ACTIVE", "DISABLED"], "default": "ACTIVE"},
+    "scopes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z][a-z0-9._-]{0,63}:[a-z][a-z0-9._-]{0,63}$"}
+    },
+    "metadata": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {"pattern": "^(?!.*(?:password|secret|token|credential|authorization|cookie)).+$"}
+    },
+    "expected_revision": {"type": "integer", "minimum": 0}
+  }
+}

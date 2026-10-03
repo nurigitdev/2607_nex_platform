@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/authorization_group_upsert.v1.schema.json",
+  "title": "NeX OA Authorization Group Upsert",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["expected_revision"],
+  "properties": {
+    "display_name": {"type": "string", "minLength": 1, "maxLength": 128},
+    "description": {"type": ["string", "null"], "maxLength": 512},
+    "status": {"enum": ["ACTIVE", "DISABLED"], "default": "ACTIVE"},
+    "metadata": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {"pattern": "^(?!.*(?:password|secret|token|credential|authorization|cookie)).+$"}
+    },
+    "expected_revision": {"type": "integer", "minimum": 0}
+  }
+}

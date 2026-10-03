@@ -1,0 +1,23 @@
+{
+  "response_schema_version": "oa_authz_read_response.v1",
+  "service_id": "nex-oa",
+  "authorization": {
+    "authorization_schema_version": "oa_effective_authorization.v1",
+    "tenant_id": "tenant-a",
+    "subject_id": "user-a",
+    "roles": ["editor", "employee"],
+    "scopes": ["document:read", "user:session"],
+    "group_ids": ["engineering"],
+    "unresolved_direct_roles": ["employee"],
+    "revision_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "source_counts": {
+      "direct_role_count": 1,
+      "direct_scope_count": 1,
+      "group_count": 1,
+      "group_role_count": 1,
+      "effective_scope_count": 2
+    }
+  },
+  "request_id": "request-1239",
+  "trace_id": "trace-1239"
+}

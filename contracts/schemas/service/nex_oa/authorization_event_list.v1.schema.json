@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/authorization_event_list.v1.schema.json",
+  "title": "NeX OA Authorization Event List",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_list_schema_version", "service_id", "tenant_id", "events", "count", "request_id", "trace_id"],
+  "properties": {
+    "event_list_schema_version": {"const": "oa_authz_event_list.v1"},
+    "service_id": {"const": "nex-oa"},
+    "tenant_id": {"$ref": "#/$defs/identifier"},
+    "events": {"type": "array", "maxItems": 500, "items": {"$ref": "#/$defs/event"}},
+    "count": {"type": "integer", "minimum": 0, "maximum": 500},
+    "request_id": {"$ref": "#/$defs/identifier"},
+    "trace_id": {"$ref": "#/$defs/identifier"}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "minLength": 1, "maxLength": 256},
+    "event": {
+      "type": "object", "additionalProperties": false,
+      "required": ["event_id", "event_schema_version", "tenant_id", "event_type", "entity_type", "entity_id", "subject_id", "previous_revision", "next_revision", "actor_ref", "request_id", "trace_id", "details", "occurred_at"],
+      "properties": {
+        "event_id": {"$ref": "#/$defs/identifier"},
+        "event_schema_version": {"const": "oa_authz_event.v1"},
+        "tenant_id": {"$ref": "#/$defs/identifier"},
+        "event_type": {"type": "string", "pattern": "^(ROLE|GROUP|GROUP_MEMBER|GROUP_ROLE)_UPSERTED$"},
+        "entity_type": {"enum": ["ROLE", "GROUP", "GROUP_MEMBER", "GROUP_ROLE"]},
+        "entity_id": {"$ref": "#/$defs/identifier"},
+        "subject_id": {"type": ["string", "null"], "maxLength": 256},
+        "previous_revision": {"type": "integer", "minimum": 0},
+        "next_revision": {"type": "integer", "minimum": 1},
+        "actor_ref": {"type": "string", "pattern": "^nex\\.service:[A-Za-z0-9._:-]+$"},
+        "request_id": {"$ref": "#/$defs/identifier"},
+        "trace_id": {"$ref": "#/$defs/identifier"},
+        "details": {
+          "type": "object", "additionalProperties": false,
+          "required": ["status", "revoked_session_count"],
+          "properties": {
+            "status": {"enum": ["ACTIVE", "DISABLED"]},
+            "revoked_session_count": {"type": "integer", "minimum": 0}
+          }
+        },
+        "occurred_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

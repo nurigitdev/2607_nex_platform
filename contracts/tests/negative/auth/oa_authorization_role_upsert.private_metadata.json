@@ -1,0 +1,5 @@
+{
+  "scopes": ["document:read"],
+  "metadata": {"api_token": "private-value"},
+  "expected_revision": 0
+}

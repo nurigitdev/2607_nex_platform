@@ -1,0 +1,11 @@
+{
+  "response_schema_version": "oa_authz_mutation_response.v1",
+  "service_id": "nex-oa",
+  "record": {},
+  "event": {},
+  "affected_subject_ids": [],
+  "revoked_session_count": 0,
+  "request_id": "request-1239",
+  "trace_id": "trace-1239",
+  "access_token": "private-value"
+}

@@ -1,0 +1,26 @@
+{
+  "event_list_schema_version": "oa_authz_event_list.v1",
+  "service_id": "nex-oa",
+  "tenant_id": "tenant-a",
+  "events": [
+    {
+      "event_id": "event-1239",
+      "event_schema_version": "oa_authz_event.v1",
+      "tenant_id": "tenant-a",
+      "event_type": "ROLE_UPSERTED",
+      "entity_type": "ROLE",
+      "entity_id": "editor",
+      "subject_id": null,
+      "previous_revision": 0,
+      "next_revision": 1,
+      "actor_ref": "nex.service:nex-ag",
+      "request_id": "request-1239",
+      "trace_id": "trace-1239",
+      "details": {"status": "ACTIVE", "revoked_session_count": 0},
+      "occurred_at": "2026-10-03T00:00:00Z"
+    }
+  ],
+  "count": 1,
+  "request_id": "request-1239",
+  "trace_id": "trace-1239"
+}

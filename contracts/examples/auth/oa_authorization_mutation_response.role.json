@@ -1,0 +1,37 @@
+{
+  "response_schema_version": "oa_authz_mutation_response.v1",
+  "service_id": "nex-oa",
+  "record": {
+    "authorization_schema_version": "oa_authorization.v1",
+    "role_schema_version": "oa_role.v1",
+    "tenant_id": "tenant-a",
+    "role_id": "editor",
+    "display_name": "Document Editor",
+    "description": "Can read documents.",
+    "status": "ACTIVE",
+    "scopes": ["document:read"],
+    "metadata": {"managed_by": "nex-ag"},
+    "previous_revision": 0,
+    "revision": 1
+  },
+  "event": {
+    "event_id": "event-1239",
+    "event_schema_version": "oa_authz_event.v1",
+    "tenant_id": "tenant-a",
+    "event_type": "ROLE_UPSERTED",
+    "entity_type": "ROLE",
+    "entity_id": "editor",
+    "subject_id": null,
+    "previous_revision": 0,
+    "next_revision": 1,
+    "actor_ref": "nex.service:nex-ag",
+    "request_id": "request-1239",
+    "trace_id": "trace-1239",
+    "details": {"status": "ACTIVE", "revoked_session_count": 0},
+    "occurred_at": "2026-10-03T00:00:00Z"
+  },
+  "affected_subject_ids": [],
+  "revoked_session_count": 0,
+  "request_id": "request-1239",
+  "trace_id": "trace-1239"
+}

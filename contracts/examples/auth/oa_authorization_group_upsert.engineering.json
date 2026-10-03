@@ -1,0 +1,7 @@
+{
+  "display_name": "Engineering",
+  "description": "Engineering organization group.",
+  "status": "ACTIVE",
+  "metadata": {"cost_center": "platform"},
+  "expected_revision": 0
+}

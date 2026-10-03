@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/effective_authorization_response.v1.schema.json",
+  "title": "NeX OA Effective Authorization Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["response_schema_version", "service_id", "authorization", "request_id", "trace_id"],
+  "properties": {
+    "response_schema_version": {"const": "oa_authz_read_response.v1"},
+    "service_id": {"const": "nex-oa"},
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authorization_schema_version", "tenant_id", "subject_id", "roles", "scopes", "group_ids", "unresolved_direct_roles", "revision_hash", "source_counts"],
+      "properties": {
+        "authorization_schema_version": {"const": "oa_effective_authorization.v1"},
+        "tenant_id": {"$ref": "#/$defs/identifier"},
+        "subject_id": {"$ref": "#/$defs/identifier"},
+        "roles": {"$ref": "#/$defs/string_set"},
+        "scopes": {"$ref": "#/$defs/string_set"},
+        "group_ids": {"$ref": "#/$defs/string_set"},
+        "unresolved_direct_roles": {"$ref": "#/$defs/string_set"},
+        "revision_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "source_counts": {
+          "type": "object", "additionalProperties": false,
+          "required": ["direct_role_count", "direct_scope_count", "group_count", "group_role_count", "effective_scope_count"],
+          "properties": {
+            "direct_role_count": {"type": "integer", "minimum": 0},
+            "direct_scope_count": {"type": "integer", "minimum": 0},
+            "group_count": {"type": "integer", "minimum": 0},
+            "group_role_count": {"type": "integer", "minimum": 0},
+            "effective_scope_count": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    },
+    "request_id": {"$ref": "#/$defs/identifier"},
+    "trace_id": {"$ref": "#/$defs/identifier"}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "minLength": 1, "maxLength": 256},
+    "string_set": {"type": "array", "maxItems": 1000, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}}
+  }
+}

@@ -81,6 +81,36 @@
       "schema": "schemas/service/nex_oa/auth_event_list.v1.schema.json"
     },
     {
+      "name": "oa_authorization_role_upsert_private_metadata",
+      "path": "tests/negative/auth/oa_authorization_role_upsert.private_metadata.json",
+      "schema": "schemas/service/nex_oa/authorization_role_upsert.v1.schema.json"
+    },
+    {
+      "name": "oa_authorization_group_upsert_password",
+      "path": "tests/negative/auth/oa_authorization_group_upsert.password.json",
+      "schema": "schemas/service/nex_oa/authorization_group_upsert.v1.schema.json"
+    },
+    {
+      "name": "oa_authorization_assignment_upsert_identity_override",
+      "path": "tests/negative/auth/oa_authorization_assignment_upsert.identity_override.json",
+      "schema": "schemas/service/nex_oa/authorization_assignment_upsert.v1.schema.json"
+    },
+    {
+      "name": "oa_authorization_mutation_response_token_leak",
+      "path": "tests/negative/auth/oa_authorization_mutation_response.token_leak.json",
+      "schema": "schemas/service/nex_oa/authorization_mutation_response.v1.schema.json"
+    },
+    {
+      "name": "oa_effective_authorization_response_password_leak",
+      "path": "tests/negative/auth/oa_effective_authorization_response.password_leak.json",
+      "schema": "schemas/service/nex_oa/effective_authorization_response.v1.schema.json"
+    },
+    {
+      "name": "oa_authorization_event_list_cookie_leak",
+      "path": "tests/negative/auth/oa_authorization_event_list.cookie_leak.json",
+      "schema": "schemas/service/nex_oa/authorization_event_list.v1.schema.json"
+    },
+    {
       "name": "mo_provider_route_secret_endpoint_leak",
       "path": "tests/negative/generation/mo_provider_route.secret_endpoint_leak.json",
       "schema": "schemas/service/nex_mo/provider_route.v1.schema.json"

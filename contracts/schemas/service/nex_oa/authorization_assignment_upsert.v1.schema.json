@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/authorization_assignment_upsert.v1.schema.json",
+  "title": "NeX OA Authorization Assignment Upsert",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["expected_revision"],
+  "properties": {
+    "status": {"enum": ["ACTIVE", "DISABLED"], "default": "ACTIVE"},
+    "expected_revision": {"type": "integer", "minimum": 0}
+  }
+}
