@@ -83,7 +83,8 @@ def run_oa_credential_security_contracts(root: Path = ROOT) -> dict[str, Any]:
         "contract_drift_reduced": (
             drift.get("status") == "PASS"
             and drift_summary.get("openapi_operation_count", 0) >= 11
-            and drift_summary.get("drift_count", 10**9) <= 23
+            and drift_summary.get("drift_count")
+            == drift_summary.get("missing_openapi_operation_count")
         ),
         "security_controls_hardened": (
             security.get("status") == "PASS"

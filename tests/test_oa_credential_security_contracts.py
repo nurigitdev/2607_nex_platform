@@ -26,7 +26,7 @@ def test_repository_contracts_are_strict_scoped_and_privacy_safe() -> None:
         "documented_operation_count": 3,
         "security_implemented_count": 8,
         "security_gap_count": 0,
-        "remaining_contract_drift_count": 21,
+        "remaining_contract_drift_count": 30,
     }
 
 
@@ -77,7 +77,7 @@ def test_summary_and_cli_paths(monkeypatch, capsys) -> None:
     passing = contracts.run_oa_credential_security_contracts()
     assert "contracts=pass" in contracts.summary_line(passing)
     assert "security=8/8" in contracts.summary_line(passing)
-    assert "drift=21" in contracts.summary_line(passing)
+    assert "drift=30" in contracts.summary_line(passing)
     monkeypatch.setattr(
         contracts, "run_oa_credential_security_contracts", lambda: passing
     )

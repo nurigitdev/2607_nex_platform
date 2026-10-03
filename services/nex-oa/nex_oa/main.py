@@ -49,7 +49,9 @@ from nex_oa.sessions import (
 from nex_oa.service_principal_repository import (
     build_service_principal_repository_for_runtime,
 )
+from nex_oa.service_principal_api import register_service_principal_routes
 from nex_oa.service_principal_service import OaServicePrincipalService
+from nex_runtime import operational_event_emitter_from_app
 from nex_oa.subjects import (
     build_subject_registry_for_runtime,
     register_subject_registry_routes,
@@ -113,6 +115,11 @@ SERVICE_PRINCIPAL_REPOSITORY = build_service_principal_repository_for_runtime(
 SERVICE_PRINCIPAL_SERVICE = OaServicePrincipalService(
     repository=SERVICE_PRINCIPAL_REPOSITORY
 )
+SERVICE_PRINCIPAL_AUDIT_EMITTER = operational_event_emitter_from_app(
+    app,
+    service_id="nex-oa",
+    store=SERVICE_PERSISTENCE.operational_event_store,
+)
 register_service_job_control_routes(
     app,
     service_id=SERVICE_SPEC.service_id,
@@ -134,6 +141,11 @@ register_credential_security_routes(
 register_identity_membership_routes(app, registry=TENANT_MEMBERSHIP_REGISTRY)
 register_authorization_routes(app, service=AUTHORIZATION_SERVICE)
 register_identity_lifecycle_routes(app, service=IDENTITY_LIFECYCLE_SERVICE)
+register_service_principal_routes(
+    app,
+    service=SERVICE_PRINCIPAL_SERVICE,
+    audit_emitter=SERVICE_PRINCIPAL_AUDIT_EMITTER,
+)
 register_user_session_routes(
     app,
     registry=USER_SESSION_REGISTRY,
