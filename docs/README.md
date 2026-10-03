@@ -1355,6 +1355,16 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1249`](slices/1249_oa_trust_threat_contracts.md) | `S125-008` Register the eight-threat matrix, privacy-safe evidence schema, canonical fixture, and raw-token negative contract. |
 | [`Slice 1250`](slices/1250_oa_trust_postgres_baseline.md) | `S125-009` Prove migrations, opaque-session lifecycle, privacy, no premature trust tables, and zero residue on actual `nex_oa_test`. |
 | [`Slice 1251`](slices/1251_s125_oa_production_trust_closure.md) | `S125-010` Close the production-trust policy, preserve honest implementation-pending runtime status, and bind the S126 handoff. |
+| [`Slice 1252`](slices/1252_oa_service_principal_lifecycle_boundary.md) | `S126-001` Freeze the OA-owned service-principal lifecycle and defer signed-token runtime tables to S127. |
+| [`Slice 1253`](slices/1253_oa_service_principal_domain_contracts.md) | `S126-002` Define revisioned principals, explicit audience/scope allowlists, and bounded credential lifecycle rules. |
+| [`Slice 1254`](slices/1254_oa_service_principal_persistence_migration.md) | `S126-003` Add short constrained OA service-principal and credential tables with Argon2id-only secret storage. |
+| [`Slice 1255`](slices/1255_oa_service_principal_durable_repository.md) | `S126-004` Add memory and SQLAlchemy lifecycle repositories with revisions, row locking, and active-credential limits. |
+| [`Slice 1256`](slices/1256_oa_service_principal_lifecycle_service.md) | `S126-005` Add service-principal lifecycle orchestration and complete the fifth-Slice Checkpoint Gate. |
+| [`Slice 1257`](slices/1257_oa_service_credential_lifecycle.md) | `S126-006` Add one-time credential issue, grace rotation, revocation, expiry, and internal verification. |
+| [`Slice 1258`](slices/1258_oa_service_principal_protected_api.md) | `S126-007` Expose read/admin scoped lifecycle APIs with privacy-safe operational audit evidence. |
+| [`Slice 1259`](slices/1259_oa_service_principal_contract_schema_hardening.md) | `S126-008` Publish six canonical response contracts, privacy fixtures, and nine protected OpenAPI operations. |
+| [`Slice 1260`](slices/1260_oa_service_principal_postgresql_smoke.md) | `S126-009` Prove migration, issue, verification, rotation, revocation, restart reads, hashing, and cleanup on actual `nex_oa_test`. |
+| [`Slice 1261`](slices/1261_s126_oa_service_principal_lifecycle_closure.md) | `S126-010` Close the OA service-principal lifecycle and bind the S127 signed-token runtime handoff. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

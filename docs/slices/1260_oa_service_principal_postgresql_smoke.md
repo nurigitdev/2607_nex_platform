@@ -26,3 +26,14 @@ NEX_OA_SERVICE_PRINCIPAL_POSTGRES_SMOKE=1 \
 NEX_OA_TEST_DATABASE_URL='<OA test database URL>' \
 ./.venv/bin/python scripts/smoke/run_oa_service_principal_postgres_smoke.py --summary
 ```
+
+## Observed evidence
+
+- Target: `nex_oa_test` / `nex_oa_user`
+- Migration ledger: `15/15`
+- Protected test: `22 passed`
+- Slice Gate: `654 passed, 4 skipped`
+- Coverage: statement `98.95%`, branch `97.86%`
+- New smoke evaluator and runner branch coverage: `100%`
+- Persisted credentials: `2`, Argon2id hashes: `2`, plaintext matches: `0`
+- Cleanup residue: `0`
