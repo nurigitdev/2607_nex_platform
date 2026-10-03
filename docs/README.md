@@ -1349,6 +1349,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1243`](slices/1243_oa_token_surface_inventory.md) | `S125-002` Inventory production mock-token definitions, callers, silent fallbacks, validators, service roles, and migration order. |
 | [`Slice 1244`](slices/1244_oa_production_token_profiles.md) | `S125-003` Freeze the signed service/delegated-user header, claim, TTL, skew, identity, revision, and privacy-safe token profiles. |
 | [`Slice 1245`](slices/1245_oa_signing_key_policy.md) | `S125-004` Freeze RS256/RSA-3072, external private-key custody, safe metadata, one-way rotation, and overlap invariants. |
+| [`Slice 1246`](slices/1246_oa_token_validation_checkpoint.md) | `S125-005` Freeze local validation, bounded JWKS refresh, sensitive-route introspection, fail-closed status semantics, and the Checkpoint Gate. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
