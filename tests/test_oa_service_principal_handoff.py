@@ -32,6 +32,19 @@ def test_handoff_detects_premature_schema_implementation(tmp_path: Path) -> None
     assert result["checks"]["no_s125_table_created"] is False
 
 
+def test_historical_migration_filter_excludes_later_numeric_slices(
+    tmp_path: Path,
+) -> None:
+    migrations = tmp_path / "database/nex-oa/migrations"
+    migrations.mkdir(parents=True)
+    before = migrations / "1247_before.sql"
+    after = migrations / "1254_after.sql"
+    before.write_text("SELECT 1;", encoding="utf-8")
+    after.write_text("SELECT 2;", encoding="utf-8")
+
+    assert handoff._historical_migrations(tmp_path) == (before,)
+
+
 def test_summary_and_main_cover_pass_and_failure(monkeypatch, capsys) -> None:
     passing = handoff.run_oa_service_principal_handoff()
     assert handoff.summary_line(passing) == (

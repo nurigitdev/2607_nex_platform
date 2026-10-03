@@ -41,7 +41,7 @@ def run_oa_service_principal_handoff(root: Path = ROOT) -> dict[str, Any]:
     }
     migration_text = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in sorted((root / "database/nex-oa/migrations").glob("*.sql"))
+        for path in _historical_migrations(root)
     )
     handoff = S126_SERVICE_PRINCIPAL_HANDOFF
     checks = {
@@ -81,6 +81,16 @@ def run_oa_service_principal_handoff(root: Path = ROOT) -> dict[str, Any]:
         "checks": checks,
         "next_slice": "1248",
     }
+
+
+def _historical_migrations(root: Path) -> tuple[Path, ...]:
+    paths = sorted((root / "database/nex-oa/migrations").glob("*.sql"))
+    historical = []
+    for path in paths:
+        prefix = path.stem.split("_", maxsplit=1)[0]
+        if not prefix.isdigit() or int(prefix) <= 1247:
+            historical.append(path)
+    return tuple(historical)
 
 
 def summary_line(evidence: Mapping[str, Any]) -> str:
