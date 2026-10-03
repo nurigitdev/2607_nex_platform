@@ -1347,6 +1347,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1241`](slices/1241_s124_oa_group_role_authorization_closure.md) | `S124-010` Close OA group/role authorization with PostgreSQL, session invalidation, contracts, privacy, traceability, and Full Gate evidence. |
 | [`Slice 1242`](slices/1242_oa_production_trust_boundary.md) | `S125-001` Freeze opaque browser sessions, signed service/delegated-user token targets, production mock prohibition, evidence, and deferred boundaries. |
 | [`Slice 1243`](slices/1243_oa_token_surface_inventory.md) | `S125-002` Inventory production mock-token definitions, callers, silent fallbacks, validators, service roles, and migration order. |
+| [`Slice 1244`](slices/1244_oa_production_token_profiles.md) | `S125-003` Freeze the signed service/delegated-user header, claim, TTL, skew, identity, revision, and privacy-safe token profiles. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
