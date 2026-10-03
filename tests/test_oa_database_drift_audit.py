@@ -17,7 +17,7 @@ def test_repository_database_drift_audit_is_statically_clean() -> None:
     assert all(result["checks"].values())
     assert result["issues"] == []
     assert result["summary"]["migration_count"] == 16
-    assert result["summary"]["core_table_count"] == 12
+    assert result["summary"]["core_table_count"] == 14
     assert result["summary"]["overlength_identifier_count"] == 0
     assert result["database_readiness"] == (
         "STATIC_CHAIN_CLEAN_RUNTIME_DATABASE_PENDING"

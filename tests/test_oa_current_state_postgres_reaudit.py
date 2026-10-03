@@ -76,7 +76,7 @@ def test_repository_postgres_reaudit_evaluation_passes() -> None:
     )
     assert all(result["checks"].values())
     assert result["summary"]["expected_migration_count"] == 16
-    assert result["summary"]["core_table_count"] == 12
+    assert result["summary"]["core_table_count"] == 14
     assert result["summary"]["workflow_check_count"] == 5
     assert result["forbidden_private_columns"] == []
     assert result["workflow_evidence"]["cleanup_residue"] == {
