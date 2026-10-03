@@ -1389,6 +1389,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1283`](slices/1283_oa_federated_identity_domain.md) | `S129-002` Add privacy-safe OIDC provider and exact external-subject digest linking domain contracts. |
 | [`Slice 1284`](slices/1284_oa_federated_identity_persistence.md) | `S129-003` Add short constrained federation tables and memory/SQLAlchemy identity-link repositories. |
 | [`Slice 1285`](slices/1285_oa_oidc_discovery_jwks_verifier.md) | `S129-004` Add bounded OIDC discovery/JWKS loading and strict privacy-safe RS256 ID-token verification. |
+| [`Slice 1286`](slices/1286_oa_federated_login_session_orchestration.md) | `S129-005` Resolve verified OIDC links into existing OA sessions and complete the fifth-Slice Checkpoint Gate. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

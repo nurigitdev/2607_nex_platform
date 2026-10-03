@@ -35,6 +35,8 @@ AUTH_EVENT_TYPES = frozenset(
     {
         "LOGIN_SUCCEEDED",
         "LOGIN_FAILED",
+        "FEDERATED_LOGIN_SUCCEEDED",
+        "FEDERATED_LOGIN_FAILED",
         "PASSWORD_CHANGED",
         "PASSWORD_RESET",
         "SESSION_ISSUED",
@@ -51,6 +53,8 @@ SAFE_DETAIL_FIELDS = frozenset(
         "error_code",
         "inactive_reason",
         "operation",
+        "auth_method",
+        "provider_id",
         "revoked",
         "revoked_session_count",
     }
@@ -274,8 +278,16 @@ def record_auth_event_safely(
 def auth_event_target(payload: Mapping[str, Any]) -> dict[str, str | None]:
     tenant_ref = payload.get("tenant_ref")
     subject_ref = payload.get("subject_ref")
-    tenant_id = tenant_ref.get("id") if isinstance(tenant_ref, Mapping) else None
-    subject_id = subject_ref.get("id") if isinstance(subject_ref, Mapping) else None
+    tenant_id = (
+        tenant_ref.get("id")
+        if isinstance(tenant_ref, Mapping)
+        else payload.get("tenant_id")
+    )
+    subject_id = (
+        subject_ref.get("id")
+        if isinstance(subject_ref, Mapping)
+        else payload.get("subject_id")
+    )
     credential_id = payload.get("credential_id")
     return {
         "tenant_id": str(tenant_id) if tenant_id else None,

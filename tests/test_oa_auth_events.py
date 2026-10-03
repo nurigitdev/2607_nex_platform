@@ -377,6 +377,13 @@ def test_helpers_factory_json_and_projection_edges() -> None:
         "subject_id": None,
         "credential_id": None,
     }
+    assert auth_event_target(
+        {"tenant_id": "tenant-a", "subject_id": "subject-a"}
+    ) == {
+        "tenant_id": "tenant-a",
+        "subject_id": "subject-a",
+        "credential_id": None,
+    }
     assert _json_loads({"active": True}) == {"active": True}
     assert _json_loads(None) == {}
     assert _json_loads("bad") == {}

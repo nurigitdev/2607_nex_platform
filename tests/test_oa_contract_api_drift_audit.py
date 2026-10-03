@@ -21,15 +21,15 @@ def test_repository_contract_api_audit_confirms_known_drift() -> None:
     assert all(result["checks"].values())
     assert result["issues"] == []
     assert result["summary"] == {
-        "runtime_operation_count": 52,
+        "runtime_operation_count": 53,
         "openapi_operation_count": 30,
         "runtime_openapi_covered_count": 30,
-        "missing_openapi_operation_count": 22,
+        "missing_openapi_operation_count": 23,
         "undocumented_openapi_operation_count": 0,
         "schema_count": 23,
         "positive_fixture_covered_count": 23,
         "negative_fixture_covered_count": 23,
-        "drift_count": 22,
+        "drift_count": 23,
         "audit_issue_count": 0,
     }
     assert result["openapi_version"] == "0.0.0-slice1269"
@@ -94,8 +94,8 @@ def test_summary_line_and_runner_main_paths(monkeypatch, capsys) -> None:
 
     summary = passing["summary"]
     assert "contract_api_drift_audit=pass" in runner.summary_line(passing)
-    assert "runtime_routes=52" in runner.summary_line(passing)
-    assert "drift=22" in runner.summary_line(passing)
+    assert "runtime_routes=53" in runner.summary_line(passing)
+    assert "drift=23" in runner.summary_line(passing)
     monkeypatch.setattr(runner, "run_oa_contract_api_drift_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0
     assert f"openapi_missing={summary['missing_openapi_operation_count']}" in (
