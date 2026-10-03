@@ -11,10 +11,13 @@ from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
-    issue_mock_service_token,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
+)
+from nex_cx.service_auth import (
+    CxOutboundServiceTokenError,
+    resolve_cx_outbound_service_token,
 )
 
 from nex_cx.api_ownership import document_visible_to_owner
@@ -54,10 +57,18 @@ class HttpMoEmbeddingClient:
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
-        token = self.service_token or issue_mock_service_token(
-            service_id="nex-cx",
-            audience="nex-mo",
-        ).access_token
+        try:
+            token = resolve_cx_outbound_service_token(
+                self.service_token,
+                audience="nex-mo",
+            )
+        except CxOutboundServiceTokenError as exc:
+            raise EmbeddingIndexError(
+                status_code=503,
+                error_code=exc.error_code,
+                detail=exc.detail,
+                retryable=False,
+            ) from exc
         response = httpx.post(
             f"{self.base_url}/api/v1/embeddings",
             json={"alias": alias, "inputs": inputs},

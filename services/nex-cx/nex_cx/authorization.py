@@ -1,16 +1,24 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-from nex_runtime import problem_response
+from nex_runtime import (
+    AdmittedServiceClaims,
+    DEFAULT_SERVICE_SCOPE,
+    ServiceClaims,
+    admit_service_token_from_request,
+    problem_response,
+)
 from nex_cx.access_context import (
     CX_ACCESS_CONTEXT_ALLOWED_CALLERS,
     CxAccessContext,
     CxAccessContextError,
     authenticate_cx_service_claim,
+    authorize_cx_service_claim,
     resolve_cx_access_context,
 )
 
@@ -29,10 +37,7 @@ def authorize_cx_request(
     now: datetime | None = None,
 ) -> JSONResponse | None:
     try:
-        claims = authenticate_cx_service_claim(
-            authorization=authorization,
-            now=now,
-        )
+        claims = _admit_cx_request_claim(request, authorization, now=now)
     except CxAccessContextError as exc:
         return _authorization_problem_response(request, exc)
 
@@ -50,6 +55,7 @@ def authorize_cx_owner_request(
     now: datetime | None = None,
 ) -> CxAccessContext | JSONResponse:
     try:
+        claims = _admit_cx_request_claim(request, authorization, now=now)
         context = resolve_cx_access_context(
             authorization=authorization,
             tenant_id=tenant_id,
@@ -57,6 +63,7 @@ def authorize_cx_owner_request(
             request_id=request.headers.get("X-Request-ID"),
             trace_id=_trace_id_from_request(request),
             now=now,
+            service_claims=claims,
         )
     except CxAccessContextError as exc:
         return _authorization_problem_response(request, exc)
@@ -65,6 +72,35 @@ def authorize_cx_owner_request(
     setattr(request.state, CX_CALLER_SCOPES_STATE_KEY, context.scopes)
     setattr(request.state, CX_ACCESS_CONTEXT_STATE_KEY, context)
     return context
+
+
+def _admit_cx_request_claim(
+    request: Request,
+    authorization: str | None,
+    *,
+    now: datetime | None,
+) -> ServiceClaims | AdmittedServiceClaims:
+    app = request.scope.get("app")
+    runtime = getattr(getattr(app, "state", None), "service_token_admission", None)
+    if runtime is None and now is not None:
+        return authenticate_cx_service_claim(
+            authorization=authorization,
+            now=now,
+        )
+    admitted = admit_service_token_from_request(
+        request,
+        authorization,
+        expected_audience="nex-cx",
+        required_scopes=(DEFAULT_SERVICE_SCOPE,),
+    )
+    if isinstance(admitted, JSONResponse):
+        payload = json.loads(admitted.body)
+        raise CxAccessContextError(
+            status_code=admitted.status_code,
+            error_code=payload.get("error_code", "SERVICE_CLAIM_INVALID"),
+            detail=payload.get("detail", "CX requires a valid service claim."),
+        )
+    return authorize_cx_service_claim(admitted)
 
 
 def _trace_id_from_request(request: Request) -> str | None:

@@ -1379,6 +1379,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1273`](slices/1273_shared_jwks_signed_token_verifier.md) | `S128-002` Add strict RS256 service-token verification, bounded JWKS caching, and privacy-safe verified claims. |
 | [`Slice 1274`](slices/1274_shared_fastapi_service_token_admission.md) | `S128-003` Add shared FastAPI admission, bounded OA auth clients, rollout profiles, and sensitive-route introspection binding. |
 | [`Slice 1275`](slices/1275_ae_signed_token_verification_adoption.md) | `S128-004` Adopt shared signed-token admission across AE inbound guards and remove silent outbound mock fallback. |
+| [`Slice 1276`](slices/1276_cx_signed_token_verification_adoption.md) | `S128-005` Adopt shared signed-token admission at the CX access-context boundary and fail closed for unsigned CX-to-MO calls. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

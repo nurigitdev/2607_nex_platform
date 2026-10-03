@@ -5,6 +5,7 @@ from nex_runtime import (
     SERVICE_SPECS,
     ServicePersistenceRuntime,
     attach_service_persistence_runtime,
+    build_service_token_admission_runtime,
     build_service_app,
     register_service_job_control_routes,
     register_service_log_retention_routes,
@@ -278,7 +279,13 @@ def build_cx_mvp_runtime_composition(
 
 
 SERVICE_SPEC = SERVICE_SPECS["nex-cx"]
-app = build_service_app(SERVICE_SPEC)
+SERVICE_TOKEN_ADMISSION = build_service_token_admission_runtime(
+    expected_audience=SERVICE_SPEC.service_id
+)
+app = build_service_app(
+    SERVICE_SPEC,
+    service_token_admission=SERVICE_TOKEN_ADMISSION,
+)
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
 CX_STORAGE_CONFIG = build_storage_config()
 CX_CONTENT_REPOSITORY = build_cx_content_repository(

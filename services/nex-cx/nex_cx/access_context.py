@@ -7,9 +7,11 @@ import re
 from typing import Any
 
 from nex_runtime import (
+    AdmittedServiceClaims,
     DEFAULT_SERVICE_SCOPE,
     ServiceClaims,
-    validate_authorization_header,
+    ServiceTokenAdmissionError,
+    admit_test_mock_service_token,
 )
 from nex_cx.source_ownership import (
     OA_TENANT_SUBJECT_TYPE,
@@ -78,11 +80,19 @@ def resolve_cx_access_context(
     trace_id: object,
     allowed_callers: Collection[str] = CX_ACCESS_CONTEXT_ALLOWED_CALLERS,
     now: datetime | None = None,
+    service_claims: ServiceClaims | AdmittedServiceClaims | None = None,
 ) -> CxAccessContext:
-    claims = authenticate_cx_service_claim(
-        authorization=authorization,
-        allowed_callers=allowed_callers,
-        now=now,
+    claims = (
+        authenticate_cx_service_claim(
+            authorization=authorization,
+            allowed_callers=allowed_callers,
+            now=now,
+        )
+        if service_claims is None
+        else authorize_cx_service_claim(
+            service_claims,
+            allowed_callers=allowed_callers,
+        )
     )
 
     return CxAccessContext(
@@ -100,28 +110,41 @@ def authenticate_cx_service_claim(
     authorization: str | None,
     allowed_callers: Collection[str] = CX_ACCESS_CONTEXT_ALLOWED_CALLERS,
     now: datetime | None = None,
-) -> ServiceClaims:
-    validation = validate_authorization_header(
-        authorization,
-        expected_audience="nex-cx",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-        now=now,
-    )
-    if not validation.ok or validation.claims is None:
+) -> AdmittedServiceClaims:
+    try:
+        claims = admit_test_mock_service_token(
+            authorization,
+            expected_audience="nex-cx",
+            required_scopes=(DEFAULT_SERVICE_SCOPE,),
+            now=now,
+        )
+    except ServiceTokenAdmissionError as exc:
+        legacy_code = exc.error_code.removeprefix("nex.mock_").upper()
         raise CxAccessContextError(
             status_code=401,
-            error_code=validation.error_code or "SERVICE_CLAIM_INVALID",
-            detail=validation.detail or "CX requires a valid service claim.",
-        )
+            error_code=legacy_code or "SERVICE_CLAIM_INVALID",
+            detail="CX requires a valid service claim.",
+        ) from exc
 
-    caller_service_id = validation.claims.service_id
+    return authorize_cx_service_claim(
+        claims,
+        allowed_callers=allowed_callers,
+    )
+
+
+def authorize_cx_service_claim(
+    claims: ServiceClaims | AdmittedServiceClaims,
+    *,
+    allowed_callers: Collection[str] = CX_ACCESS_CONTEXT_ALLOWED_CALLERS,
+) -> ServiceClaims | AdmittedServiceClaims:
+    caller_service_id = claims.service_id
     if caller_service_id not in allowed_callers:
         raise CxAccessContextError(
             status_code=403,
             error_code="CX_CALLER_SERVICE_FORBIDDEN",
             detail="The calling service is not allowed to assert CX ownership context.",
         )
-    return validation.claims
+    return claims
 
 
 def build_access_context_ownership_ref(

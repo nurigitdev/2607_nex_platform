@@ -78,7 +78,7 @@ def build_oa_trust_coupling_audit(root: Path = ROOT) -> dict[str, Any]:
         ),
         "mock_service_token_fallback_present": (
             "self.service_token or issue_mock_service_token(" in ae_client
-            and "self.service_token or issue_mock_service_token(" in resolver
+            or "self.service_token or issue_mock_service_token(" in resolver
         ),
         "generic_service_scope_used_for_internal_routes": (
             oa_source.count("required_scopes=[DEFAULT_SERVICE_SCOPE]") >= 7

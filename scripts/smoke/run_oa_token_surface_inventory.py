@@ -37,7 +37,12 @@ EXPECTED_CALLER_COVERAGE = {
         "nex-ag",
     },
     "issue_mock_user_token": {"nex-oa", "nex-ae-api"},
-    "validate_authorization_header": set(RUNTIME_SERVICES) | {"shared"},
+    "validate_authorization_header": {
+        "nex-oa",
+        "nex-ag",
+        "nex-mo",
+        "shared",
+    },
     "validate_user_authorization_header": {
         "nex-ae-api",
         "nex-ag",
@@ -93,17 +98,10 @@ def build_oa_token_surface_inventory(root: Path = ROOT) -> dict[str, Any]:
         "expected_runtime_callers_observed": all(
             not missing for missing in caller_coverage.values()
         ),
-        "silent_mock_fallbacks_observed": (
-            symbols["issue_mock_service_token"]["fallback_count"] >= 4
-            and {
-                "shared",
-                "nex-ae-api",
-                "nex-cx",
-                "nex-ag",
-            }.issubset(
-                symbols["issue_mock_service_token"]["fallback_services"]
-            )
-        ),
+        "silent_mock_fallbacks_observed": set(
+            symbols["issue_mock_service_token"]["fallback_services"]
+        )
+        == {"shared", "nex-ag"},
         "all_runtime_services_classified": all(
             service_profiles[service]["migration_role"] != "unclassified"
             for service in RUNTIME_SERVICES
@@ -288,6 +286,8 @@ def _service_profile(
         role = "issuer_session_owner_and_service_validator"
     elif fallback_count:
         role = "outbound_mock_fallback_and_token_consumer"
+    elif call_counts["issue_mock_service_token"]:
+        role = "profile_gated_mock_compatibility_and_signed_token_consumer"
     elif call_counts["validate_authorization_header"]:
         role = "token_consumer"
     elif service == "shared":

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from time import time
 from typing import Any, Protocol
 
@@ -251,18 +252,13 @@ class ServiceTokenAdmissionRuntime:
             raise _unauthorized(
                 "nex.mock_token_forbidden", "mock service tokens are not accepted"
             )
-        result = validate_authorization_header(
-            authorization if isinstance(authorization, str) else None,
+        admitted = admit_test_mock_service_token(
+            authorization,
             expected_audience=self.expected_audience,
             required_scopes=required_scopes,
+            route_class=route_class,
+            rollout_profile=self.rollout_profile,
         )
-        if not result.ok or result.claims is None:
-            status = 403 if result.error_code in {"TOKEN_AUDIENCE_INVALID", "TOKEN_SCOPE_MISSING"} else 401
-            raise ServiceTokenAdmissionError(
-                status,
-                f"nex.mock_{str(result.error_code or 'token_invalid').lower()}",
-                "mock service token validation failed",
-            )
         if self.rollout_profile == "DUAL_READ":
             assert self.compatibility_deadline_epoch is not None
             if now_epoch > self.compatibility_deadline_epoch:
@@ -270,15 +266,11 @@ class ServiceTokenAdmissionRuntime:
                     "nex.mock_compatibility_expired",
                     "mock service-token compatibility has expired",
                 )
-            if result.claims.service_id not in self.legacy_mock_callers:
+            if admitted.service_id not in self.legacy_mock_callers:
                 raise _forbidden(
                     "nex.mock_caller_forbidden", "mock service-token caller is forbidden"
                 )
-        return _mock_projection(
-            result.claims,
-            route_class=route_class,
-            profile=self.rollout_profile,
-        )
+        return admitted
 
     def _admit_signed(
         self,
@@ -450,6 +442,44 @@ def admit_service_token_from_request(
             result.error_code or "SERVICE_CLAIM_INVALID",
             result.detail or "Service claim validation failed.",
         ),
+    )
+
+
+def admit_test_mock_service_token(
+    authorization: object,
+    *,
+    expected_audience: str,
+    required_scopes: Sequence[str] = (),
+    route_class: str = "READ",
+    rollout_profile: str = "TEST_MOCK",
+    now: datetime | None = None,
+) -> AdmittedServiceClaims:
+    profile = str(rollout_profile).strip().upper()
+    if profile not in {"TEST_MOCK", "DUAL_READ"}:
+        raise ValueError("mock admission requires TEST_MOCK or DUAL_READ profile")
+    route = _route_class(route_class)
+    scopes = _scope_sequence(required_scopes)
+    result = validate_authorization_header(
+        authorization if isinstance(authorization, str) else None,
+        expected_audience=_nonempty_string(expected_audience, "expected audience"),
+        required_scopes=scopes,
+        now=now,
+    )
+    if not result.ok or result.claims is None:
+        status = (
+            403
+            if result.error_code in {"TOKEN_AUDIENCE_INVALID", "TOKEN_SCOPE_MISSING"}
+            else 401
+        )
+        raise ServiceTokenAdmissionError(
+            status,
+            f"nex.mock_{str(result.error_code or 'token_invalid').lower()}",
+            "mock service token validation failed",
+        )
+    return _mock_projection(
+        result.claims,
+        route_class=route,
+        profile=profile,
     )
 
 

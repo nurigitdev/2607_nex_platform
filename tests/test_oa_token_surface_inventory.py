@@ -43,11 +43,9 @@ def test_inventory_records_definition_calls_fallbacks_and_service_roles() -> Non
         for symbol in inventory.TRACKED_SYMBOLS
     )
     service_issue = symbols["issue_mock_service_token"]
-    assert service_issue["call_count"] >= service_issue["fallback_count"] >= 4
+    assert service_issue["call_count"] >= service_issue["fallback_count"] >= 2
     assert set(service_issue["fallback_services"]) == {
         "shared",
-        "nex-ae-api",
-        "nex-cx",
         "nex-ag",
     }
     assert result["service_profiles"]["nex-oa"]["migration_role"] == (
@@ -55,6 +53,12 @@ def test_inventory_records_definition_calls_fallbacks_and_service_roles() -> Non
     )
     assert result["service_profiles"]["nex-mo"]["migration_role"] == (
         "token_consumer"
+    )
+    assert result["service_profiles"]["nex-ae-api"]["migration_role"] == (
+        "profile_gated_mock_compatibility_and_signed_token_consumer"
+    )
+    assert result["service_profiles"]["nex-cx"]["migration_role"] == (
+        "profile_gated_mock_compatibility_and_signed_token_consumer"
     )
     assert result["service_profiles"]["shared"]["migration_role"] == (
         "outbound_mock_fallback_and_token_consumer"

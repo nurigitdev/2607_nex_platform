@@ -225,6 +225,7 @@ from .service_token_admission import (
     ServiceTokenAdmissionRuntime,
     TokenIntrospector,
     admit_service_token_from_request,
+    admit_test_mock_service_token,
     build_service_token_admission_runtime,
     service_token_admission_problem_response,
 )
