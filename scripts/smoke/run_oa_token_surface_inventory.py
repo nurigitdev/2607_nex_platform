@@ -70,6 +70,9 @@ def build_oa_token_surface_inventory(root: Path = ROOT) -> dict[str, Any]:
         for service in (*RUNTIME_SERVICES, "shared")
     }
     app_source = _read_text(root / "services/_shared/nex_runtime/app.py")
+    signed_api_source = _read_text(
+        root / "services/nex-oa/nex_oa/signed_token_api.py"
+    )
     openapi_source = _read_text(root / "contracts/openapi/nex-oa.openapi.yaml")
     evidence = _repository_evidence(root)
 
@@ -108,9 +111,12 @@ def build_oa_token_surface_inventory(root: Path = ROOT) -> dict[str, Any]:
         "mock_routes_and_contract_explicit": (
             '@app.post("/api/v1/auth/service-token"' in app_source
             and '@app.post("/api/v1/auth/introspect")' in app_source
-            and "operationId: createMockServiceToken" in openapi_source
-            and "operationId: introspectMockServiceToken" in openapi_source
-            and "Mock service token issued." in openapi_source
+            and "include_oa_mock_auth_routes" in app_source
+            and '@app.post("/api/v1/auth/service-token"' in signed_api_source
+            and '@app.post("/api/v1/auth/introspect"' in signed_api_source
+            and "operationId: exchangeOaClientCredentialToken" in openapi_source
+            and "operationId: introspectOaSignedServiceToken" in openapi_source
+            and "operationId: createMockServiceToken" not in openapi_source
         ),
         "repository_evidence_present": all(
             item["present"] for item in evidence

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX OA API
-  version: 0.0.0-slice1259
+  version: 0.0.0-slice1269
 tags:
   - name: Platform
   - name: Auth
@@ -9,6 +9,7 @@ tags:
   - name: Credential Security
   - name: Authorization
   - name: Service Principals
+  - name: Signed Tokens
 paths:
   /health:
     get:
@@ -48,22 +49,87 @@ paths:
           description: Service claim is missing or invalid.
   /api/v1/auth/service-token:
     post:
-      operationId: createMockServiceToken
-      tags:
-        - Auth
+      operationId: exchangeOaClientCredentialToken
+      tags: [Signed Tokens]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceTokenExchangeRequest"
       responses:
         "200":
-          description: Mock service token issued.
+          description: Five-minute RS256 service access token issued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedTokenResponse"
         "400":
           description: Service token request is invalid.
+        "401":
+          description: Client credential is invalid or inactive.
+        "403":
+          description: Requested audience or scope is not allowed.
+        "503":
+          description: Signing key or external custody is unavailable.
   /api/v1/auth/introspect:
     post:
-      operationId: introspectMockServiceToken
-      tags:
-        - Auth
+      operationId: introspectOaSignedServiceToken
+      tags: [Signed Tokens]
+      security:
+        - signedServiceBearer: []
+      x-nex-required-scopes: [token:introspect]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenIntrospectionRequest"
       responses:
         "200":
-          description: Mock service token introspection result.
+          description: Privacy-bounded signed-token introspection result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenIntrospectionResponse"
+        "400": {description: Introspection request is invalid.}
+        "401": {description: Caller token is missing or invalid.}
+        "403": {description: Caller lacks token introspection scope.}
+  /api/v1/auth/revoke:
+    post:
+      operationId: revokeOaSignedServiceToken
+      tags: [Signed Tokens]
+      security:
+        - signedServiceBearer: []
+      x-nex-required-scopes: [token:revoke]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRevocationRequest"
+      responses:
+        "200":
+          description: Token JTI digest was recorded as revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenRevocationResponse"
+        "400": {description: Revocation request is invalid.}
+        "401": {description: Caller or target token is invalid.}
+        "403": {description: Caller lacks token revocation scope.}
+        "409": {description: Token is expired or already revoked.}
+  /.well-known/jwks.json:
+    get:
+      operationId: getOaSigningJwks
+      tags: [Signed Tokens]
+      responses:
+        "200":
+          description: Current public RS256 verification keys.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedJwks"
   /internal/v1/auth/tenants/{tenant_id}/roles/{role_id}:
     put:
       operationId: upsertOaAuthorizationRole
@@ -794,10 +860,56 @@ components:
       type: http
       scheme: bearer
       bearerFormat: NeX service claim
+    signedServiceBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: RS256 at+jwt
   schemas:
     OaServiceId:
       type: string
       enum: [nex-oa, nex-ag, nex-ae-api, nex-cx, nex-mo]
+    ServiceTokenExchangeRequest:
+      type: object
+      additionalProperties: false
+      required: [grant_type, credential_id, client_secret, audience, scope]
+      properties:
+        grant_type: {const: client_credentials}
+        credential_id: {type: string, pattern: "^[a-z][a-z0-9._-]{1,63}$"}
+        client_secret: {type: string, minLength: 1, maxLength: 256, writeOnly: true}
+        audience: {$ref: "#/components/schemas/OaServiceId"}
+        scope: {type: string, minLength: 3, maxLength: 1024}
+    TokenIntrospectionRequest:
+      type: object
+      additionalProperties: false
+      required: [token, audience]
+      properties:
+        token: {type: string, minLength: 64, maxLength: 16384, writeOnly: true}
+        audience: {$ref: "#/components/schemas/OaServiceId"}
+        required_scopes:
+          type: array
+          maxItems: 128
+          uniqueItems: true
+          items: {type: string, pattern: "^[a-z][a-z0-9._-]*:[a-z][a-z0-9._-]*$"}
+    TokenRevocationRequest:
+      type: object
+      additionalProperties: false
+      required: [token, audience, reason_code]
+      properties:
+        token: {type: string, minLength: 64, maxLength: 16384, writeOnly: true}
+        audience: {$ref: "#/components/schemas/OaServiceId"}
+        reason_code: {enum: [CREDENTIAL_REVOKED, PRINCIPAL_DISABLED, KEY_COMPROMISE, OPERATOR]}
+    SignedJwks:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/signed_jwks.v1.schema.json
+    SignedTokenResponse:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/signed_token_response.v1.schema.json
+    TokenIntrospectionResponse:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/token_introspection.v1.schema.json
+    TokenRevocationResponse:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/token_revocation.v1.schema.json
     ServicePrincipalUpsert:
       type: object
       additionalProperties: false

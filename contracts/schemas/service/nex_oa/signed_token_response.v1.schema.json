@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/signed_token_response.v1.schema.json",
+  "title": "NeX OA Signed Service Access Token Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["response_schema_version", "access_token", "token_type", "expires_in", "scope", "request_id", "trace_id", "audit_event"],
+  "properties": {
+    "response_schema_version": {"const": "oa_token_response.v1"},
+    "access_token": {"type": "string", "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$", "minLength": 64},
+    "token_type": {"const": "Bearer"},
+    "expires_in": {"const": 300},
+    "scope": {"type": "string", "pattern": "^[a-z][a-z0-9._-]*:[a-z][a-z0-9._-]*( [a-z][a-z0-9._-]*:[a-z][a-z0-9._-]*)*$"},
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "trace_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "audit_event": {"$ref": "#/$defs/audit_event"}
+  },
+  "$defs": {
+    "audit_event": {
+      "type": "object", "additionalProperties": false, "required": ["ok"],
+      "properties": {
+        "ok": {"type": "boolean"}, "event_id": {"type": "string", "minLength": 1},
+        "service_id": {"const": "nex-oa"}, "event_type": {"type": "string", "minLength": 1},
+        "severity": {"enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]},
+        "error_code": {"type": "string", "minLength": 1}, "detail": {"type": "string", "minLength": 1},
+        "status_code": {"type": "integer", "minimum": 400, "maximum": 599}
+      }
+    }
+  }
+}

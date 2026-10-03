@@ -875,6 +875,26 @@
       "name": "oa_service_credential_rotation_previous_secret_leak",
       "path": "tests/negative/auth/oa_service_credential_rotation.previous_secret_leak.json",
       "schema": "schemas/service/nex_oa/service_credential_rotation.v1.schema.json"
+    },
+    {
+      "name": "oa_signed_jwks_private_key_ref",
+      "path": "tests/negative/auth/oa_signed_jwks.private_key_ref.json",
+      "schema": "schemas/service/nex_oa/signed_jwks.v1.schema.json"
+    },
+    {
+      "name": "oa_signed_token_response_client_secret",
+      "path": "tests/negative/auth/oa_signed_token_response.client_secret.json",
+      "schema": "schemas/service/nex_oa/signed_token_response.v1.schema.json"
+    },
+    {
+      "name": "oa_token_introspection_raw_token",
+      "path": "tests/negative/auth/oa_token_introspection.raw_token.json",
+      "schema": "schemas/service/nex_oa/token_introspection.v1.schema.json"
+    },
+    {
+      "name": "oa_token_revocation_jti",
+      "path": "tests/negative/auth/oa_token_revocation.jti.json",
+      "schema": "schemas/service/nex_oa/token_revocation.v1.schema.json"
     }
   ]
 }

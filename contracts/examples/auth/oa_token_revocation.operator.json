@@ -1,0 +1,13 @@
+{
+  "revocation_schema_version": "oa_token_revocation.v1",
+  "revocation_id": "rev-1269",
+  "subject_ref": "service:nex-ae-api",
+  "audience": "nex-cx",
+  "token_use": "service_access",
+  "reason_code": "OPERATOR",
+  "revoked_at": 1790985700,
+  "expires_at": 1790985900,
+  "request_id": "request-1269",
+  "trace_id": "trace-1269",
+  "audit_event": {"ok": true, "event_id": "event-1269-revoke", "service_id": "nex-oa", "event_type": "SERVICE_ACCESS_TOKEN_REVOKED", "severity": "INFO"}
+}

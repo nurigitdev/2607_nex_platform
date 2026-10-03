@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/signed_jwks.v1.schema.json",
+  "title": "NeX OA Public Signing JWKS",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["jwks_schema_version", "issuer", "keys", "key_count", "request_id", "trace_id"],
+  "properties": {
+    "jwks_schema_version": {"const": "oa_jwks.v1"},
+    "issuer": {"const": "urn:nex-platform:oa"},
+    "keys": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kty", "use", "alg", "kid", "n", "e"],
+        "properties": {
+          "kty": {"const": "RSA"},
+          "use": {"const": "sig"},
+          "alg": {"const": "RS256"},
+          "kid": {"type": "string", "pattern": "^[a-z][a-z0-9._-]{1,63}$"},
+          "n": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$", "minLength": 512},
+          "e": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$", "minLength": 1}
+        }
+      }
+    },
+    "key_count": {"type": "integer", "minimum": 0, "maximum": 16},
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "trace_id": {"type": "string", "minLength": 1, "maxLength": 256}
+  }
+}

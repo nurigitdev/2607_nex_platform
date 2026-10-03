@@ -1,0 +1,15 @@
+{
+  "introspection_schema_version": "oa_token_introspection.v1",
+  "active": true,
+  "token_use": "service_access",
+  "sub": "service:nex-ae-api",
+  "aud": "nex-cx",
+  "scope": "document:read generation:create",
+  "service_id": "nex-ae-api",
+  "credential_id": "cred-ae-runtime",
+  "credential_revision": 1,
+  "iat": 1790985600,
+  "exp": 1790985900,
+  "request_id": "request-1269",
+  "trace_id": "trace-1269"
+}

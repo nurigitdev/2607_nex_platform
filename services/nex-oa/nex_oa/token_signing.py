@@ -16,6 +16,15 @@ class OaRsaSigningProvider(Protocol):
     def sign_rs256(self, private_key_ref: str, signing_input: bytes) -> bytes: ...
 
 
+class UnavailableOaRsaSigningProvider:
+    def sign_rs256(self, private_key_ref: str, signing_input: bytes) -> bytes:
+        raise OaSignedTokenError(
+            "oa.signing_key_custody_unavailable",
+            "external private signing key custody is not configured",
+            503,
+        )
+
+
 class InMemoryOaRsaSigningProvider:
     """Test/development custody that never serializes private keys."""
 

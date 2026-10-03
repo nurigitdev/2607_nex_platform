@@ -241,3 +241,8 @@ Slice 0005 adds a mock-only OA service token path:
 - `POST /api/v1/auth/service-token` on `nex-oa`.
 - `POST /api/v1/auth/introspect` on `nex-oa`.
 - `GET /internal/v1/auth/service-claim` on every backend service.
+
+The OA runtime supersedes the first two mock endpoints in S127 with RS256
+client-credential exchange and signed introspection. The shared mock
+implementation remains an explicit regression-compatibility option while
+downstream service consumers migrate in later requirements.

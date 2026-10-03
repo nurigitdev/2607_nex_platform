@@ -75,6 +75,7 @@ def build_service_app(
     spec: ServiceSpec,
     *,
     readiness_checks: Sequence[ReadinessCheck] = (),
+    include_oa_mock_auth_routes: bool = True,
 ) -> FastAPI:
     version = os.getenv("NEX_VERSION", "0.0.0-slice0001")
     profile = os.getenv("NEX_PROFILE", "local_mock")
@@ -162,7 +163,7 @@ def build_service_app(
             "claims": result.claims.to_wire(),
         }
 
-    if spec.service_id == "nex-oa":
+    if spec.service_id == "nex-oa" and include_oa_mock_auth_routes:
         _register_oa_mock_auth_routes(app)
 
     return app

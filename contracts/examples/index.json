@@ -1024,6 +1024,26 @@
       "name": "oa_service_credential_rotation_once",
       "path": "examples/auth/oa_service_credential_rotation.once.json",
       "schema": "schemas/service/nex_oa/service_credential_rotation.v1.schema.json"
+    },
+    {
+      "name": "oa_signed_jwks_active",
+      "path": "examples/auth/oa_signed_jwks.active.json",
+      "schema": "schemas/service/nex_oa/signed_jwks.v1.schema.json"
+    },
+    {
+      "name": "oa_signed_token_response_issued",
+      "path": "examples/auth/oa_signed_token_response.issued.json",
+      "schema": "schemas/service/nex_oa/signed_token_response.v1.schema.json"
+    },
+    {
+      "name": "oa_token_introspection_active",
+      "path": "examples/auth/oa_token_introspection.active.json",
+      "schema": "schemas/service/nex_oa/token_introspection.v1.schema.json"
+    },
+    {
+      "name": "oa_token_revocation_operator",
+      "path": "examples/auth/oa_token_revocation.operator.json",
+      "schema": "schemas/service/nex_oa/token_revocation.v1.schema.json"
     }
   ]
 }

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/token_revocation.v1.schema.json",
+  "title": "NeX OA Signed Token Revocation Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["revocation_schema_version", "revocation_id", "subject_ref", "audience", "token_use", "reason_code", "revoked_at", "expires_at", "request_id", "trace_id", "audit_event"],
+  "properties": {
+    "revocation_schema_version": {"const": "oa_token_revocation.v1"},
+    "revocation_id": {"type": "string", "pattern": "^[a-z][a-z0-9._-]{1,63}$"},
+    "subject_ref": {"type": "string", "pattern": "^service:nex-(oa|ag|ae-api|cx|mo)$"},
+    "audience": {"enum": ["nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo"]},
+    "token_use": {"const": "service_access"},
+    "reason_code": {"enum": ["CREDENTIAL_REVOKED", "PRINCIPAL_DISABLED", "KEY_COMPROMISE", "OPERATOR"]},
+    "revoked_at": {"type": "integer", "minimum": 0},
+    "expires_at": {"type": "integer", "minimum": 1},
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "trace_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "audit_event": {"$ref": "#/$defs/audit_event"}
+  },
+  "$defs": {
+    "audit_event": {
+      "type": "object", "additionalProperties": false, "required": ["ok"],
+      "properties": {
+        "ok": {"type": "boolean"}, "event_id": {"type": "string", "minLength": 1},
+        "service_id": {"const": "nex-oa"}, "event_type": {"type": "string", "minLength": 1},
+        "severity": {"enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]},
+        "error_code": {"type": "string", "minLength": 1}, "detail": {"type": "string", "minLength": 1},
+        "status_code": {"type": "integer", "minimum": 400, "maximum": 599}
+      }
+    }
+  }
+}

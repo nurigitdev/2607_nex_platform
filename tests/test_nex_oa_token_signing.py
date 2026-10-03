@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from nex_oa.signed_tokens import OaSignedTokenError
 from nex_oa.token_signing import (
     InMemoryOaRsaSigningProvider,
+    UnavailableOaRsaSigningProvider,
     encode_signed_jwt,
     public_jwk_from_key,
 )
@@ -96,6 +97,13 @@ def test_encode_rejects_unserializable_claims_and_empty_signature() -> None:
 def test_generated_key_reference_fallback_is_bounded() -> None:
     provider = InMemoryOaRsaSigningProvider()
     assert provider.generate_key("/")["kid"] == "oa-generated-key"
+
+
+def test_unavailable_external_custody_fails_closed() -> None:
+    with pytest.raises(OaSignedTokenError) as exc:
+        UnavailableOaRsaSigningProvider().sign_rs256("kms://oa/key", b"payload")
+    assert exc.value.code == "oa.signing_key_custody_unavailable"
+    assert exc.value.status_code == 503
 
 
 def _decode(value: str) -> bytes:

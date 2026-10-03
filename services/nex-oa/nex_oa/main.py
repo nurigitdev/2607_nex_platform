@@ -53,6 +53,10 @@ from nex_oa.service_principal_api import register_service_principal_routes
 from nex_oa.service_principal_service import OaServicePrincipalService
 from nex_oa.signed_token_repository import build_signed_token_repository_for_runtime
 from nex_oa.signing_key_service import OaSigningKeyService
+from nex_oa.signed_token_api import register_signed_token_routes
+from nex_oa.token_exchange_service import OaClientCredentialTokenExchangeService
+from nex_oa.token_signing import UnavailableOaRsaSigningProvider
+from nex_oa.token_validation_service import OaSignedTokenValidationService
 from nex_runtime import operational_event_emitter_from_app
 from nex_oa.subjects import (
     build_subject_registry_for_runtime,
@@ -62,7 +66,7 @@ from nex_oa.user_login import OaUserLoginService, register_user_login_routes
 
 
 SERVICE_SPEC = SERVICE_SPECS["nex-oa"]
-app = build_service_app(SERVICE_SPEC)
+app = build_service_app(SERVICE_SPEC, include_oa_mock_auth_routes=False)
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
 AUTH_EVENT_REPOSITORY = build_auth_event_repository_for_runtime(SERVICE_PERSISTENCE)
 SUBJECT_REGISTRY = build_subject_registry_for_runtime(SERVICE_PERSISTENCE)
@@ -123,6 +127,16 @@ SIGNED_TOKEN_REPOSITORY = build_signed_token_repository_for_runtime(
 SIGNING_KEY_SERVICE = OaSigningKeyService(
     repository=SIGNED_TOKEN_REPOSITORY,
 )
+TOKEN_SIGNING_PROVIDER = UnavailableOaRsaSigningProvider()
+TOKEN_EXCHANGE_SERVICE = OaClientCredentialTokenExchangeService(
+    principal_service=SERVICE_PRINCIPAL_SERVICE,
+    signing_key_service=SIGNING_KEY_SERVICE,
+    signing_provider=TOKEN_SIGNING_PROVIDER,
+)
+TOKEN_VALIDATION_SERVICE = OaSignedTokenValidationService(
+    signing_key_service=SIGNING_KEY_SERVICE,
+    principal_service=SERVICE_PRINCIPAL_SERVICE,
+)
 SERVICE_PRINCIPAL_AUDIT_EMITTER = operational_event_emitter_from_app(
     app,
     service_id="nex-oa",
@@ -152,6 +166,13 @@ register_identity_lifecycle_routes(app, service=IDENTITY_LIFECYCLE_SERVICE)
 register_service_principal_routes(
     app,
     service=SERVICE_PRINCIPAL_SERVICE,
+    audit_emitter=SERVICE_PRINCIPAL_AUDIT_EMITTER,
+)
+register_signed_token_routes(
+    app,
+    token_exchange_service=TOKEN_EXCHANGE_SERVICE,
+    validation_service=TOKEN_VALIDATION_SERVICE,
+    signing_key_service=SIGNING_KEY_SERVICE,
     audit_emitter=SERVICE_PRINCIPAL_AUDIT_EMITTER,
 )
 register_user_session_routes(

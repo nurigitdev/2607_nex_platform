@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/token_introspection.v1.schema.json",
+  "title": "NeX OA Signed Token Introspection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["introspection_schema_version", "active", "request_id", "trace_id"],
+  "properties": {
+    "introspection_schema_version": {"const": "oa_token_introspection.v1"},
+    "active": {"type": "boolean"},
+    "reason_code": {"type": "string", "pattern": "^oa\\.[a-z0-9_.-]+$"},
+    "token_use": {"const": "service_access"},
+    "sub": {"type": "string", "pattern": "^service:nex-(oa|ag|ae-api|cx|mo)$"},
+    "aud": {"enum": ["nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo"]},
+    "scope": {"type": "string", "minLength": 3, "maxLength": 1024},
+    "service_id": {"enum": ["nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo"]},
+    "credential_id": {"type": "string", "pattern": "^[a-z][a-z0-9._-]{1,63}$"},
+    "credential_revision": {"type": "integer", "minimum": 1},
+    "iat": {"type": "integer", "minimum": 0},
+    "exp": {"type": "integer", "minimum": 1},
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "trace_id": {"type": "string", "minLength": 1, "maxLength": 256}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"active": {"const": true}}, "required": ["active"]},
+      "then": {"required": ["token_use", "sub", "aud", "scope", "service_id", "credential_id", "credential_revision", "iat", "exp"], "not": {"required": ["reason_code"]}},
+      "else": {"required": ["reason_code"], "not": {"anyOf": [{"required": ["sub"]}, {"required": ["credential_id"]}]}}
+    }
+  ]
+}

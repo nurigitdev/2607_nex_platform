@@ -1,0 +1,3 @@
+{
+  "introspection_schema_version": "oa_token_introspection.v1", "active": false, "reason_code": "oa.token_revoked", "access_token": "forbidden", "request_id": "request-1269", "trace_id": "trace-1269"
+}

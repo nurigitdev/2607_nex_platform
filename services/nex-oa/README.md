@@ -11,6 +11,8 @@ Current endpoints:
 - `GET /version`
 - `POST /api/v1/auth/service-token`
 - `POST /api/v1/auth/introspect`
+- `POST /api/v1/auth/revoke`
+- `GET /.well-known/jwks.json`
 - `GET /internal/v1/auth/service-claim`
 - `POST /internal/v1/subject-registry/ensure`
 - `GET /internal/v1/subject-registry/tenants/{tenant_id}`
@@ -27,6 +29,17 @@ Current endpoints:
 - `POST /internal/v1/auth/local-credentials/ensure`
 - `GET /internal/v1/auth/local-credentials/tenants/{tenant_id}/employee-ids/{employee_id}`
 - `POST /internal/v1/auth/user-login`
+
+S127 signed service-token runtime:
+
+- The OA composition root replaces its historical mock token routes with
+  five-minute RS256 `service_access` token exchange and validation.
+- Introspection and revocation require signed `nex-oa` bearer tokens with the
+  corresponding `token:introspect` or `token:revoke` scope.
+- JWKS publishes public verification material only. Production issuance stays
+  fail-closed until a KMS, Vault, or PKCS#11 signing provider is injected.
+- The shared mock route registration remains available only through the
+  explicit app-factory compatibility option used by legacy regression tests.
 
 Slice 0193 minimum subject registry:
 

@@ -1,0 +1,10 @@
+{
+  "response_schema_version": "oa_token_response.v1",
+  "access_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6Im9hLWtleS0yMDI2LTEwIiwidHlwIjoiYXQrand0In0.eyJhdWQiOiJuZXgtY3giLCJpc3MiOiJ1cm46bmV4LXBsYXRmb3JtOm9hIiwic3ViIjoic2VydmljZTpuZXgtYWUtYXBpIn0.c2lnbmF0dXJl",
+  "token_type": "Bearer",
+  "expires_in": 300,
+  "scope": "document:read generation:create",
+  "request_id": "request-1269",
+  "trace_id": "trace-1269",
+  "audit_event": {"ok": true, "event_id": "event-1269", "service_id": "nex-oa", "event_type": "SERVICE_ACCESS_TOKEN_ISSUED", "severity": "INFO"}
+}
