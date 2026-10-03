@@ -40,7 +40,6 @@ EXPECTED_CALLER_COVERAGE = {
     "validate_authorization_header": {
         "nex-oa",
         "nex-ag",
-        "nex-mo",
         "shared",
     },
     "validate_user_authorization_header": {
@@ -286,7 +285,11 @@ def _service_profile(
         role = "issuer_session_owner_and_service_validator"
     elif fallback_count:
         role = "outbound_mock_fallback_and_token_consumer"
-    elif call_counts["issue_mock_service_token"]:
+    elif call_counts["issue_mock_service_token"] or service in {
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+    }:
         role = "profile_gated_mock_compatibility_and_signed_token_consumer"
     elif call_counts["validate_authorization_header"]:
         role = "token_consumer"

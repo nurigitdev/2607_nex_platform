@@ -13,11 +13,12 @@ from nex_mo.mvp_acceptance import (
 )
 from nex_mo.mvp_acceptance_evaluation import evaluate_mo_mvp_acceptance
 from nex_runtime import (
+    AdmittedServiceClaims,
     DEFAULT_SERVICE_SCOPE,
     DEFAULT_USER_SCOPE,
+    admit_service_token_from_request,
     problem_response,
     trace_id_from_headers,
-    validate_authorization_header,
     validate_user_authorization_header,
 )
 
@@ -88,13 +89,16 @@ def _authorize_request(
     request: Request,
     authorization: str | None,
 ) -> JSONResponse | None:
-    service_result = validate_authorization_header(
+    service_result = admit_service_token_from_request(
+        request,
         authorization,
         expected_audience="nex-mo",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
+        required_scopes=(DEFAULT_SERVICE_SCOPE,),
     )
-    if service_result.ok:
+    if isinstance(service_result, AdmittedServiceClaims):
         return None
+    if _looks_like_service_authorization(authorization):
+        return service_result
     user_result = validate_user_authorization_header(
         authorization,
         expected_audience="nex-mo",
@@ -112,14 +116,14 @@ def _authorize_request(
             detail="MO MVP acceptance routes require an admin user role.",
             type_uri="https://nex-platform.local/problems/authorization-failed",
         )
-    return problem_response(
-        request,
-        status_code=401,
-        error_code=service_result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=service_result.detail or "MO requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
+    return service_result
+
+
+def _looks_like_service_authorization(authorization: str | None) -> bool:
+    if not authorization or not authorization.startswith("Bearer "):
+        return False
+    token = authorization[7:]
+    return token.startswith("nex-mock-service.") or token.count(".") == 2
 
 
 def _timestamp(value: datetime) -> str:

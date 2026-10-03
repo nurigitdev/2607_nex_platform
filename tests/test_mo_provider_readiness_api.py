@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
@@ -43,7 +42,7 @@ def test_route_health_api_requires_service_claim() -> None:
     response = TestClient(app).get("/api/v1/provider-route-health")
 
     assert response.status_code == 401
-    assert response.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert response.json()["error_code"] == "nex.authorization_missing"
 
 
 def test_route_health_api_returns_schema_valid_mock_snapshot(
@@ -134,16 +133,8 @@ def test_openapi_documents_authenticated_route_health_schema() -> None:
 
 
 def test_auth_fallback_omits_internal_validation_details(monkeypatch) -> None:
-    monkeypatch.setattr(
-        provider_auth,
-        "validate_authorization_header",
-        lambda *args, **kwargs: SimpleNamespace(
-            ok=False,
-            error_code=None,
-            detail=None,
-        ),
-    )
     isolated_app = FastAPI()
+    isolated_app.state.service_token_admission = object()
 
     @isolated_app.get("/test")
     def test_route(request: Request):
@@ -151,9 +142,9 @@ def test_auth_fallback_omits_internal_validation_details(monkeypatch) -> None:
 
     response = TestClient(isolated_app).get("/test")
 
-    assert response.status_code == 401
-    assert response.json()["error_code"] == "SERVICE_CLAIM_INVALID"
-    assert response.json()["detail"] == "MO requires a valid service claim."
+    assert response.status_code == 503
+    assert response.json()["error_code"] == "nex.service_token_admission_unavailable"
+    assert response.json()["detail"] == "service-token admission runtime is unavailable"
 
 
 def test_route_health_runner_summary_and_main_paths(monkeypatch, capsys) -> None:

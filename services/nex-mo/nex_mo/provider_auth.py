@@ -4,40 +4,52 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
+    AdmittedServiceClaims,
     DEFAULT_SERVICE_SCOPE,
-    problem_response,
-    validate_authorization_header,
+    ServiceTokenAdmissionError,
+    admit_service_token_from_request,
+    admit_test_mock_service_token,
 )
+
+
+MO_SERVICE_CLAIMS_STATE_KEY = "mo_service_claims"
 
 
 def authorize_mo_service_request(
     request: Request,
     authorization: str | None,
 ) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-mo",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if result.ok:
-        return None
-
-    return problem_response(
+    result = admit_service_token_from_request(
         request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "MO requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
-    )
-
-
-def authenticated_mo_service_actor(authorization: str | None) -> str:
-    result = validate_authorization_header(
         authorization,
         expected_audience="nex-mo",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
+        required_scopes=(DEFAULT_SERVICE_SCOPE,),
     )
-    if not result.ok or result.claims is None:
+    if isinstance(result, JSONResponse):
+        return result
+
+    setattr(request.state, MO_SERVICE_CLAIMS_STATE_KEY, result)
+    return None
+
+
+def authenticated_mo_service_actor(
+    request_or_authorization: Request | str | None,
+) -> str:
+    if isinstance(request_or_authorization, Request):
+        claims = getattr(
+            request_or_authorization.state,
+            MO_SERVICE_CLAIMS_STATE_KEY,
+            None,
+        )
+        if isinstance(claims, AdmittedServiceClaims):
+            return claims.subject
         raise ValueError("a validated MO service claim is required")
-    return result.claims.subject
+    try:
+        claims = admit_test_mock_service_token(
+            request_or_authorization,
+            expected_audience="nex-mo",
+            required_scopes=(DEFAULT_SERVICE_SCOPE,),
+        )
+    except ServiceTokenAdmissionError:
+        raise ValueError("a validated MO service claim is required")
+    return claims.subject

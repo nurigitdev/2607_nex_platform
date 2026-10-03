@@ -2,6 +2,7 @@ from nex_runtime import (
     SERVICE_SPECS,
     attach_service_persistence_runtime,
     build_service_app,
+    build_service_token_admission_runtime,
     register_service_job_control_routes,
     register_service_log_retention_routes,
 )
@@ -27,9 +28,13 @@ from nex_mo.runtime_observability_service import RuntimeObservabilityService
 SERVICE_SPEC = SERVICE_SPECS["nex-mo"]
 PROVIDER_READINESS = ProviderReadinessService()
 RUNTIME_OBSERVABILITY = RuntimeObservabilityService()
+SERVICE_TOKEN_ADMISSION = build_service_token_admission_runtime(
+    expected_audience=SERVICE_SPEC.service_id
+)
 app = build_service_app(
     SERVICE_SPEC,
     readiness_checks=(PROVIDER_READINESS.check,),
+    service_token_admission=SERVICE_TOKEN_ADMISSION,
 )
 app.state.provider_readiness_service = PROVIDER_READINESS
 app.state.runtime_observability_service = RUNTIME_OBSERVABILITY

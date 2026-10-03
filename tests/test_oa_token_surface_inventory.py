@@ -52,7 +52,7 @@ def test_inventory_records_definition_calls_fallbacks_and_service_roles() -> Non
         "issuer_session_owner_and_service_validator"
     )
     assert result["service_profiles"]["nex-mo"]["migration_role"] == (
-        "token_consumer"
+        "profile_gated_mock_compatibility_and_signed_token_consumer"
     )
     assert result["service_profiles"]["nex-ae-api"]["migration_role"] == (
         "profile_gated_mock_compatibility_and_signed_token_consumer"

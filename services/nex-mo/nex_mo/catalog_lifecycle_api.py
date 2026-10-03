@@ -138,7 +138,7 @@ def register_catalog_lifecycle_routes(
                     payload, "expected_binding_revision"
                 ),
                 change_reason=_string(payload, "change_reason"),
-                changed_by=authenticated_mo_service_actor(authorization),
+                changed_by=authenticated_mo_service_actor(request),
             ).to_wire(),
         )
 
@@ -158,7 +158,7 @@ def register_catalog_lifecycle_routes(
                     payload, "expected_binding_revision"
                 ),
                 change_reason=_string(payload, "change_reason"),
-                changed_by=authenticated_mo_service_actor(authorization),
+                changed_by=authenticated_mo_service_actor(request),
             ).to_wire(),
         )
 

@@ -224,7 +224,7 @@ def test_provider_profiles_endpoint_requires_service_claim() -> None:
     response = TestClient(app).get("/api/v1/provider-profiles")
 
     assert response.status_code == 401
-    assert response.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert response.json()["error_code"] == "nex.authorization_missing"
 
 
 def test_provider_profiles_endpoint_lists_selected_profiles() -> None:
@@ -278,7 +278,7 @@ def test_provider_telemetry_endpoint_requires_service_claim() -> None:
     response = TestClient(app).get("/api/v1/provider-telemetry")
 
     assert response.status_code == 401
-    assert response.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert response.json()["error_code"] == "nex.authorization_missing"
 
 
 def test_provider_telemetry_endpoint_returns_safe_runtime_snapshot(monkeypatch) -> None:
@@ -471,7 +471,7 @@ def test_embeddings_endpoint_requires_service_claim() -> None:
     response = TestClient(app).post("/api/v1/embeddings", json={"inputs": ["alpha"]})
 
     assert response.status_code == 401
-    assert response.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+    assert response.json()["error_code"] == "nex.authorization_missing"
 
 
 def test_embedding_request_rejects_empty_inputs() -> None:
