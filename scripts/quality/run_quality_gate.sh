@@ -559,6 +559,7 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_oa_group_role_authorization_domain.py --summary
 "$PYTHON_BIN" scripts/smoke/run_oa_authorization_persistence_migration.py --summary
 "$PYTHON_BIN" scripts/smoke/run_oa_authorization_repository.py --summary
+"$PYTHON_BIN" scripts/smoke/run_oa_effective_authorization_session.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_lifecycle_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_lifecycle_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s46_ae_artifact_lifecycle_management_closure.py --summary

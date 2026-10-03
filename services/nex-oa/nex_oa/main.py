@@ -10,6 +10,8 @@ from nex_oa.auth_events import (
     build_auth_event_repository_for_runtime,
     register_auth_event_routes,
 )
+from nex_oa.authorization_repository import build_authorization_repository_for_runtime
+from nex_oa.authorization_resolver import OaEffectiveAuthorizationResolver
 from nex_oa.bootstrap_login_boundary import register_user_bootstrap_login_boundary_routes
 from nex_oa.credential_delivery import (
     register_session_credential_delivery_boundary_routes,
@@ -57,9 +59,16 @@ LOCAL_CREDENTIAL_REGISTRY = build_credential_registry_for_runtime(
     SERVICE_PERSISTENCE,
     subject_registry=SUBJECT_REGISTRY,
 )
+AUTHORIZATION_REPOSITORY = build_authorization_repository_for_runtime(
+    SERVICE_PERSISTENCE
+)
+AUTHORIZATION_RESOLVER = OaEffectiveAuthorizationResolver(
+    repository=AUTHORIZATION_REPOSITORY
+)
 USER_SESSION_REGISTRY = build_oa_session_registry_for_runtime(
     SERVICE_PERSISTENCE,
     membership_registry=TENANT_MEMBERSHIP_REGISTRY,
+    authorization_resolver=AUTHORIZATION_RESOLVER,
 )
 CREDENTIAL_SECURITY_REPOSITORY = build_credential_security_repository_for_runtime(
     SERVICE_PERSISTENCE,

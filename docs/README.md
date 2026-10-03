@@ -1339,6 +1339,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1233`](slices/1233_oa_group_role_authorization_domain.md) | `S124-002` Define validated, tenant-scoped, revision-guarded role, group, member, and assignment domain records. |
 | [`Slice 1234`](slices/1234_oa_authorization_persistence_migration.md) | `S124-003` Add short constrained PostgreSQL tables for roles, groups, assignments, and privacy-safe authorization events. |
 | [`Slice 1235`](slices/1235_oa_durable_authorization_repository.md) | `S124-004` Add transaction-safe memory and SQLAlchemy repositories with optimistic revisions, restart reads, and authorization events. |
+| [`Slice 1236`](slices/1236_oa_effective_authorization_session_integration.md) | `S124-005` Compose effective direct/group grants into session claims and complete the fifth-Slice Checkpoint Gate. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

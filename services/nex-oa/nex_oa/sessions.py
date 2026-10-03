@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
@@ -91,9 +91,14 @@ class OaSessionError(Exception):
         return self.detail
 
 
+class OaSessionAuthorizationResolver(Protocol):
+    def resolve(self, membership: Mapping[str, Any]) -> Mapping[str, Any]: ...
+
+
 @dataclass
 class InMemoryOaSessionRegistry:
     membership_registry: OaTenantMembershipRegistry
+    authorization_resolver: OaSessionAuthorizationResolver | None = None
     sessions: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def issue_session(self, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -103,8 +108,17 @@ class InMemoryOaSessionRegistry:
             tenant_id=issue_request["tenant_id"],
             subject_id=issue_request["subject_id"],
         )
+        authorization = (
+            self.authorization_resolver.resolve(membership)
+            if self.authorization_resolver is not None
+            else None
+        )
         record = build_session_record(
-            _claims_for_membership(membership, issue_request),
+            _claims_for_membership(
+                membership,
+                issue_request,
+                authorization=authorization,
+            ),
         )
         self.sessions[record["session_id"]] = deepcopy(record)
         return build_session_issue_response(record, membership=membership)
@@ -148,9 +162,11 @@ class SqlAlchemyOaSessionRegistry:
         session_factory: sessionmaker[Session],
         *,
         membership_registry: OaTenantMembershipRegistry,
+        authorization_resolver: OaSessionAuthorizationResolver | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._membership_registry = membership_registry
+        self._authorization_resolver = authorization_resolver
 
     def issue_session(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         issue_request = normalize_session_issue_request(payload)
@@ -159,8 +175,17 @@ class SqlAlchemyOaSessionRegistry:
             tenant_id=issue_request["tenant_id"],
             subject_id=issue_request["subject_id"],
         )
+        authorization = (
+            self._authorization_resolver.resolve(membership)
+            if self._authorization_resolver is not None
+            else None
+        )
         record = build_session_record(
-            _claims_for_membership(membership, issue_request),
+            _claims_for_membership(
+                membership,
+                issue_request,
+                authorization=authorization,
+            ),
         )
         try:
             stored = self._run_in_transaction(
@@ -416,6 +441,7 @@ def build_oa_session_registry_for_runtime(
     runtime: ServicePersistenceRuntime,
     *,
     membership_registry: OaTenantMembershipRegistry,
+    authorization_resolver: OaSessionAuthorizationResolver | None = None,
 ) -> InMemoryOaSessionRegistry | SqlAlchemyOaSessionRegistry:
     if (
         runtime.mode == PERSISTENCE_MODE_POSTGRES
@@ -424,8 +450,12 @@ def build_oa_session_registry_for_runtime(
         return SqlAlchemyOaSessionRegistry(
             runtime.api_session_factory,
             membership_registry=membership_registry,
+            authorization_resolver=authorization_resolver,
         )
-    return InMemoryOaSessionRegistry(membership_registry=membership_registry)
+    return InMemoryOaSessionRegistry(
+        membership_registry=membership_registry,
+        authorization_resolver=authorization_resolver,
+    )
 
 
 def register_user_session_routes(
@@ -925,13 +955,21 @@ def _inactive_reason_for_session_record_at(
 def _claims_for_membership(
     membership: Mapping[str, Any],
     issue_request: Mapping[str, Any],
+    *,
+    authorization: Mapping[str, Any] | None = None,
 ) -> UserClaims:
     membership_record = _membership_record(membership)
+    grant_record = authorization or membership_record
     scopes = _effective_scopes(
-        tuple(_non_empty_string_list(membership_record.get("scopes"), field_name="scopes")),
+        tuple(
+            _non_empty_string_list(
+                grant_record.get("scopes"),
+                field_name="scopes",
+            )
+        ),
         issue_request.get("requested_scopes"),
     )
-    roles = tuple(_string_list(membership_record.get("roles"), field_name="roles"))
+    roles = tuple(_string_list(grant_record.get("roles"), field_name="roles"))
     issued = issue_mock_user_token(
         tenant_id=str(issue_request["tenant_id"]),
         user_id=str(issue_request["subject_id"]),
