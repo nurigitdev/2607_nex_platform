@@ -51,6 +51,8 @@ from nex_oa.service_principal_repository import (
 )
 from nex_oa.service_principal_api import register_service_principal_routes
 from nex_oa.service_principal_service import OaServicePrincipalService
+from nex_oa.signed_token_repository import build_signed_token_repository_for_runtime
+from nex_oa.signing_key_service import OaSigningKeyService
 from nex_runtime import operational_event_emitter_from_app
 from nex_oa.subjects import (
     build_subject_registry_for_runtime,
@@ -114,6 +116,12 @@ SERVICE_PRINCIPAL_REPOSITORY = build_service_principal_repository_for_runtime(
 )
 SERVICE_PRINCIPAL_SERVICE = OaServicePrincipalService(
     repository=SERVICE_PRINCIPAL_REPOSITORY
+)
+SIGNED_TOKEN_REPOSITORY = build_signed_token_repository_for_runtime(
+    SERVICE_PERSISTENCE
+)
+SIGNING_KEY_SERVICE = OaSigningKeyService(
+    repository=SIGNED_TOKEN_REPOSITORY,
 )
 SERVICE_PRINCIPAL_AUDIT_EMITTER = operational_event_emitter_from_app(
     app,
