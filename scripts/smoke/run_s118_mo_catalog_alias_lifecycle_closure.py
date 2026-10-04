@@ -236,7 +236,7 @@ def run_s118_mo_catalog_alias_lifecycle_closure(
         "contract_parity_privacy_closed": summaries["contract"].get(
             "runtime_operation_count"
         )
-        == 30
+        == 31
         and summaries["contract"].get("unauthorized_rejection_count") == 7
         and summaries["contract"].get("contract_drift_count") == 0
         and summaries["contract"].get("exposed_private_field_count") == 0,

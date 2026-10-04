@@ -176,8 +176,9 @@ def run_s121_oa_current_state_reaudit_closure(
             <= 23
         ),
         "trust_refactoring_quantified": (
-            summaries["trust_coupling"].get("refactor_required_count") == 4
-            and summaries["trust_coupling"].get("hardened_count") == 1
+            int(summaries["trust_coupling"].get("refactor_required_count") or 99)
+            <= 4
+            and int(summaries["trust_coupling"].get("hardened_count") or 0) >= 1
             and summaries["trust_coupling"].get("high_risk_count") == 2
         ),
         "projection_privacy_repaired": (

@@ -93,7 +93,11 @@ REQUIRED_FILES = (
 TOKEN_CHECKS = (
     ("full_gate_registered", QUALITY_GATE_PATH, "run_s127_oa_signed_token_lifecycle_closure.py"),
     ("closure_indexed", "docs/README.md", "1271_s127_oa_signed_token_lifecycle_closure.md"),
-    ("production_signer_fails_closed", "services/nex-oa/nex_oa/main.py", "UnavailableOaRsaSigningProvider"),
+    (
+        "production_signer_fails_closed",
+        "services/nex-oa/nex_oa/token_signing.py",
+        'NEX_OA_SIGNING_PROVIDER", "UNAVAILABLE"',
+    ),
     ("mock_auth_disabled", "services/nex-oa/nex_oa/main.py", "include_oa_mock_auth_routes=False"),
     ("postgres_identity", "docs/slices/1270_oa_signed_token_postgres_smoke.md", "`nex_oa_test` / `nex_oa_user`"),
     ("postgres_migrations", "docs/slices/1270_oa_signed_token_postgres_smoke.md", "Migration ledger: `16/16`"),

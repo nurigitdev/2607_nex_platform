@@ -24,7 +24,7 @@ def test_repository_s119_closure_passes() -> None:
         "closed_component_count": 5,
         "source_count": 4,
         "capability_count": 3,
-        "runtime_operation_count": 30,
+        "runtime_operation_count": 31,
         "contract_drift_count": 0,
         "postgres_check_count": 16,
         "live_check_count": 13,
@@ -117,7 +117,7 @@ def test_s119_closure_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = closure.run_s119_mo_operations_integration_acceptance_closure()
     assert closure.summary_line(passing) == (
         "s119_mo_operations_integration_acceptance_closure=pass "
-        "evidence=11/11 components=5/5 snapshot=4/3 operations=30 drift=0 "
+        "evidence=11/11 components=5/5 snapshot=4/3 operations=31 drift=0 "
         "postgres=16 live=13 next=S120"
     )
     assert "next=blocked" in closure.summary_line({"status": "FAIL"})

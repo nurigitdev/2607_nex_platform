@@ -20,7 +20,7 @@ def test_repository_contract_api_audit_confirms_known_drift() -> None:
     assert all(result["checks"].values())
     assert result["summary"] == {
         "runtime_operation_count": 40,
-        "openapi_operation_count": 61,
+        "openapi_operation_count": 62,
         "runtime_openapi_covered_count": 40,
         "missing_openapi_operation_count": 0,
         "shared_openapi_operation_count": 5,

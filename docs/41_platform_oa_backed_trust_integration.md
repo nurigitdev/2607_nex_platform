@@ -1,7 +1,7 @@
 # Platform OA-backed Trust Integration
 
-Status: S134 in progress; protected trust evidence and operations hardening
-passed through Slice 1340.
+Status: S134 complete; protected trust evidence, operations hardening, and the
+Full Gate passed through Slice 1341.
 
 This document is the canonical non-drift record for S134. It connects the
 restart-safe test topology proven by S133 to one OA-backed user and service
@@ -86,6 +86,24 @@ Slice 1340 owns contract, privacy, cleanup, and operator-runbook hardening and
 is complete. Slice 1341 owns final closure, the repository Full Gate, and the
 S135 handoff.
 
+## Slice 1341 Closure
+
+- Replayed five deterministic S134 evidence components and retained the actual
+  PostgreSQL smoke as protected opt-in evidence during ordinary regression.
+- Bound the actual five-database, two-generation result from Slice 1339 to the
+  contract, privacy, cleanup, and runbook checks from Slice 1340.
+- Verified five trust hops, four denial scenarios, two restart generations,
+  five isolated databases, and zero seeded-row or temporary-key residue.
+- Kept OA as the trust authority, service-local database ownership intact, and
+  remote model providers outside the S134 execution boundary.
+
+Completion signal: Met. OA-backed user login, opaque browser session handling,
+signed service trust, JWKS/introspection, revocation, authorization denial,
+restart, privacy, and cleanup are closed for the platform MVP trust path.
+
 ## S135 Handoff
 
-S135 inherits only validated OA session owner context and signed service identity. It owns authenticated document upload-to-index durability and must not reopen identity, signing, or cross-service trust ownership.
+S135 is the next active requirement. It inherits only validated OA session
+owner context and signed service identity. It owns authenticated document
+upload-to-index durability and must not reopen identity, signing, or
+cross-service trust ownership.

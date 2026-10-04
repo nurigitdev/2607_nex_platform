@@ -22,7 +22,7 @@ def test_service_principal_contract_evidence_passes() -> None:
         "privacy_safe_count": 6,
         "runtime_valid_count": 6,
         "operation_valid_count": 9,
-        "remaining_contract_drift_count": 22,
+        "remaining_contract_drift_count": 21,
     }
 
 
@@ -135,7 +135,7 @@ def test_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = contracts.run_oa_service_principal_contracts()
     assert contracts.summary_line(passing) == (
         "oa_service_principal_contracts=pass contracts=6/6 privacy=6/6 "
-        "runtime=6/6 operations=9/9 drift=22"
+        "runtime=6/6 operations=9/9 drift=21"
     )
     monkeypatch.setattr(contracts, "run_oa_service_principal_contracts", lambda: passing)
     assert contracts.main(["--summary"]) == 0

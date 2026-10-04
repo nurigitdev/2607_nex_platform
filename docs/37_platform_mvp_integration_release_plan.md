@@ -119,11 +119,12 @@ next active requirement and inherits this restart-safe test topology.
 | `1340` | Harden contracts, privacy, cleanup, and the operations runbook. |
 | `1341` | Close S134, publish the S135 handoff, and run Full Gate. |
 
-S134 completion signal: Ready for closure. Slice 1339 proved the actual
-five-database, two-generation loopback HTTP trust chain with zero seeded-row or
-temporary-key residue. Slice 1340 froze the signed-login and active-claim
-contracts, privacy rules, cleanup procedure, and operator runbook. The default
-signer remains fail-closed; Slice 1341 owns final closure and the Full Gate.
+S134 completion signal: Met. Slice 1339 proved the actual five-database,
+two-generation loopback HTTP trust chain with zero seeded-row or temporary-key
+residue. Slice 1340 froze the signed-login and active-claim contracts, privacy
+rules, cleanup procedure, and operator runbook. Slice 1341 closed the evidence
+and Full Gate while preserving the fail-closed default signer. S135 is the next
+active requirement.
 
 ## Protected Evidence Schedule
 

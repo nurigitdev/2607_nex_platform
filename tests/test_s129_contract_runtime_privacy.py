@@ -128,7 +128,7 @@ def test_contract_runtime_privacy_runner_and_cli(monkeypatch, capsys, tmp_path) 
     evidence = runner.run_s129_contract_runtime_privacy()
     assert evidence["status"] == "PASS"
     assert all(evidence["checks"].values())
-    assert evidence["oa_drift"]["drift_count"] == 22
+    assert evidence["oa_drift"]["drift_count"] == 21
     assert runner.summary_line(evidence).startswith(
         "s129_contract_runtime_privacy=pass checks=8/8"
     )

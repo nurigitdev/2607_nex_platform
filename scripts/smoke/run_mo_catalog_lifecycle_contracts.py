@@ -79,7 +79,7 @@ def run_mo_catalog_lifecycle_contracts() -> dict[str, Any]:
             response.status_code == 401 for response in unauthorized
         ),
         "runtime_openapi_parity_zero": drift["status"] == "PASS"
-        and drift["summary"]["runtime_operation_count"] == 30
+        and drift["summary"]["runtime_operation_count"] == 31
         and drift["summary"]["drift_count"] == 0,
         "private_fields_omitted": not forbidden,
     }

@@ -21,8 +21,8 @@ def test_repository_s121_closure_accepts_monotonic_hardening() -> None:
         "traceable_requirement_count": 5,
         "lifecycle_gap_count": 0,
         "security_gap_count": 0,
-        "contract_drift_count": 22,
-        "trust_refactor_count": 4,
+        "contract_drift_count": 21,
+        "trust_refactor_count": 2,
         "repaired_surface_count": 5,
         "missing_file_count": 0,
         "missing_token_count": 0,
@@ -107,7 +107,7 @@ def test_summary_and_main_paths(monkeypatch, capsys) -> None:
 
     assert closure.summary_line(passing) == (
         "s121_oa_current_state_reaudit_closure=pass audits=8/8 "
-        "lifecycle_gaps=0 security_gaps=0 contract_drift=22 next=S122"
+        "lifecycle_gaps=0 security_gaps=0 contract_drift=21 next=S122"
     )
     assert "next=blocked" in closure.summary_line({"status": "FAIL"})
 
