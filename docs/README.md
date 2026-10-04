@@ -1440,6 +1440,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1332`](slices/1332_platform_oa_backed_trust_boundary.md) | `S134-001` Freeze OA-backed user sessions, signed service trust, denial, restart, and S135 handoff boundaries. |
 | [`Slice 1333`](slices/1333_oa_signed_internal_admission.md) | `S134-002` Route OA credential login and user-session operations through signed service-token admission. |
 | [`Slice 1334`](slices/1334_oa_test_file_signing_custody.md) | `S134-003` Add explicit test-only, root-confined, permission-restricted OA PEM signing custody. |
+| [`Slice 1335`](slices/1335_ae_oa_signed_login_activation.md) | `S134-004` Activate OA-backed AE login and profile-aware secure cookie policy in protected profiles. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

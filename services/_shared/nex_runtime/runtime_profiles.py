@@ -14,6 +14,8 @@ PROFILE_MODE_ENV = {
     "trust": "NEX_SERVICE_TOKEN_ROLLOUT_PROFILE",
     "ag_projection": "NEX_AG_OPERATIONS_SOURCE_MODE",
 }
+AE_AUTH_SESSION_MODE_ENV = "NEX_AE_AUTH_SESSION_MODE"
+AE_SESSION_COOKIE_SECURE_ENV = "NEX_AE_SESSION_COOKIE_SECURE"
 DATABASE_ENV_NAMES = (
     "NEX_OA_DATABASE_URL",
     "NEX_AG_DATABASE_URL",
@@ -120,6 +122,10 @@ def runtime_profile_environment_overlay(profile: str) -> dict[str, str]:
             "TEST_MOCK" if modes.trust == "test_mock" else "SIGNED_ONLY"
         ),
         PROFILE_MODE_ENV["ag_projection"]: modes.ag_projection,
+        AE_AUTH_SESSION_MODE_ENV: "mock" if profile == "local_mock" else "oa",
+        AE_SESSION_COOKIE_SECURE_ENV: (
+            "true" if profile in {"local_live", "staging_live", "production"} else "false"
+        ),
     }
 
 
@@ -162,6 +168,10 @@ def _mode_conflicts(env: Mapping[str, str], modes: RuntimeModes) -> list[str]:
             "TEST_MOCK" if modes.trust == "test_mock" else "SIGNED_ONLY"
         ),
         PROFILE_MODE_ENV["ag_projection"]: modes.ag_projection,
+        AE_AUTH_SESSION_MODE_ENV: "mock" if modes.trust == "test_mock" else "oa",
+        AE_SESSION_COOKIE_SECURE_ENV: (
+            "true" if modes.provider == "live" else "false"
+        ),
     }
     errors = []
     for name, value in expected.items():

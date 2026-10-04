@@ -36,6 +36,7 @@ AE_AUTH_SESSION_FACADE_SCHEMA_VERSION = "ae_auth_session_facade.v1"
 OA_BROWSER_SESSION_SCHEMA_VERSION = "oa_browser_session.v1"
 SESSION_COOKIE_NAME = "nex_ae_user_session"
 AUTH_SESSION_MODE_ENV = "NEX_AE_AUTH_SESSION_MODE"
+SESSION_COOKIE_SECURE_ENV = "NEX_AE_SESSION_COOKIE_SECURE"
 AUTH_SESSION_MODE_MOCK = "mock"
 AUTH_SESSION_MODE_OA = "oa"
 AUTH_SESSION_MODES = frozenset({AUTH_SESSION_MODE_MOCK, AUTH_SESSION_MODE_OA})
@@ -94,6 +95,7 @@ def register_auth_session_routes(
     *,
     oa_session_client: OaUserSessionClient | None = None,
     session_mode: str | None = None,
+    cookie_secure: bool | str | None = None,
 ) -> None:
     resolved_session_mode = normalize_auth_session_mode(
         session_mode or os.getenv(AUTH_SESSION_MODE_ENV)
@@ -107,6 +109,7 @@ def register_auth_session_routes(
             else None
         )
     )
+    resolved_cookie_secure = resolve_session_cookie_secure(cookie_secure)
 
     @app.get("/api/v1/auth/session", response_model=None)
     def get_auth_session(
@@ -143,7 +146,7 @@ def register_auth_session_routes(
                 cookie_value,
                 httponly=True,
                 samesite="lax",
-                secure=False,
+                secure=resolved_cookie_secure,
                 max_age=login_request["ttl_seconds"],
                 path="/",
             )
@@ -553,6 +556,39 @@ def normalize_auth_session_mode(value: str | None) -> str:
             ),
         )
     return mode
+
+
+def resolve_session_cookie_secure(
+    value: bool | str | None = None,
+    *,
+    profile: str | None = None,
+) -> bool:
+    selected_profile = (profile or os.getenv("NEX_PROFILE") or "local_mock").strip().lower()
+    requires_secure = selected_profile in {"local_live", "staging_live", "production"}
+    raw_value: bool | str | None = value
+    if raw_value is None:
+        raw_value = os.getenv(SESSION_COOKIE_SECURE_ENV)
+    if raw_value is None or raw_value == "":
+        resolved = requires_secure
+    elif isinstance(raw_value, bool):
+        resolved = raw_value
+    elif isinstance(raw_value, str) and raw_value.strip().lower() in {"true", "1", "yes"}:
+        resolved = True
+    elif isinstance(raw_value, str) and raw_value.strip().lower() in {"false", "0", "no"}:
+        resolved = False
+    else:
+        raise BrowserSessionFacadeError(
+            status_code=500,
+            error_code="ae.auth_session_cookie_secure_invalid",
+            detail=f"{SESSION_COOKIE_SECURE_ENV} must be a boolean value.",
+        )
+    if requires_secure and not resolved:
+        raise BrowserSessionFacadeError(
+            status_code=500,
+            error_code="ae.auth_session_cookie_secure_required",
+            detail="Protected live profiles require Secure browser session cookies.",
+        )
+    return resolved
 
 
 def stable_session_id(claims: UserClaims) -> str:

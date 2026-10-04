@@ -64,6 +64,9 @@ def build_oa_trust_coupling_audit(root: Path = ROOT) -> dict[str, Any]:
         root / "services/nex-ae-api/nex_ae_api/auth_sessions.py"
     )
     ae_guard = _read_text(root / "services/nex-ae-api/nex_ae_api/auth_guard.py")
+    runtime_profiles = _read_text(
+        root / "services/_shared/nex_runtime/runtime_profiles.py"
+    )
     resolver = _read_text(root / "services/_shared/nex_runtime/subject_resolver.py")
     oa_source = "\n".join(
         _read_text(path)
@@ -96,9 +99,13 @@ def build_oa_trust_coupling_audit(root: Path = ROOT) -> dict[str, Any]:
         "cross_service_retry_policy_present": (
             "retry_policy" in ae_client and "retry_policy" in resolver
         ),
-        "browser_cookie_secure_by_default": "secure=True" in ae_sessions,
-        "oa_auth_mode_default_by_default": (
-            "value or AUTH_SESSION_MODE_OA" in ae_sessions
+        "browser_cookie_profile_aware": (
+            "resolve_session_cookie_secure" in ae_sessions
+            and "secure=resolved_cookie_secure" in ae_sessions
+        ),
+        "oa_auth_mode_profile_aware": (
+            'AE_AUTH_SESSION_MODE_ENV: "mock" if profile == "local_mock" else "oa"'
+            in runtime_profiles
         ),
     }
     controls = [
@@ -139,9 +146,9 @@ def build_oa_trust_coupling_audit(root: Path = ROOT) -> dict[str, Any]:
         ),
         _control(
             "production_browser_auth_defaults",
-            "REFACTOR_REQUIRED",
+            "HARDENED",
             "MEDIUM",
-            "AE defaults to mock auth mode and emits a non-secure session cookie",
+            None,
         ),
     ]
     explicit_boundaries_observed = all(
@@ -158,8 +165,8 @@ def build_oa_trust_coupling_audit(root: Path = ROOT) -> dict[str, Any]:
         and observations["signed_internal_admission_present"]
         and observations["resolver_transport_detail_exposure_present"] is False
         and observations["cross_service_retry_policy_present"] is False
-        and observations["browser_cookie_secure_by_default"] is False
-        and observations["oa_auth_mode_default_by_default"] is False
+        and observations["browser_cookie_profile_aware"]
+        and observations["oa_auth_mode_profile_aware"]
     )
     checks = {
         "required_evidence_present": all(item["present"] for item in evidence),

@@ -18,6 +18,7 @@ from nex_ae_api.auth_sessions import (
     build_browser_session_snapshot,
     normalize_credential_login_request,
     normalize_auth_session_mode,
+    resolve_session_cookie_secure,
     normalize_login_request_for_mode,
     normalize_login_request,
     register_auth_session_routes,
@@ -276,6 +277,34 @@ def test_auth_session_current_accepts_authorization_header_and_cookie() -> None:
         "type": "oa.user",
         "id": "user-cookie",
     }
+
+
+def test_session_cookie_security_is_profile_aware() -> None:
+    assert resolve_session_cookie_secure(profile="local_mock") is False
+    assert resolve_session_cookie_secure(profile="test") is False
+    assert resolve_session_cookie_secure(profile="production") is True
+    assert resolve_session_cookie_secure("yes", profile="test") is True
+    assert resolve_session_cookie_secure("no", profile="test") is False
+
+    with pytest.raises(BrowserSessionFacadeError) as required:
+        resolve_session_cookie_secure(False, profile="staging_live")
+    assert required.value.error_code == "ae.auth_session_cookie_secure_required"
+    with pytest.raises(BrowserSessionFacadeError) as invalid:
+        resolve_session_cookie_secure("sometimes", profile="test")
+    assert invalid.value.error_code == "ae.auth_session_cookie_secure_invalid"
+
+
+def test_login_can_emit_secure_profile_cookie() -> None:
+    app = FastAPI()
+    register_auth_session_routes(app, cookie_secure=True)
+
+    response = TestClient(app).post(
+        "/api/v1/auth/session/login",
+        json={"tenant_id": "tenant-a", "login_hint": "user-a"},
+    )
+
+    assert response.status_code == 200
+    assert "Secure" in response.headers["set-cookie"]
 
 
 def test_auth_session_current_rejects_missing_service_and_scope_failures() -> None:

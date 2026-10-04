@@ -43,6 +43,8 @@ def test_local_mock_is_default_and_requires_no_external_configuration() -> None:
         "NEX_MO_PROVIDER_MODE": "mock",
         "NEX_SERVICE_TOKEN_ROLLOUT_PROFILE": "TEST_MOCK",
         "NEX_AG_OPERATIONS_SOURCE_MODE": "memory",
+        "NEX_AE_AUTH_SESSION_MODE": "mock",
+        "NEX_AE_SESSION_COOKIE_SECURE": "false",
     }
 
 
@@ -97,6 +99,8 @@ def test_unknown_profile_is_rejected_by_resolver_and_overlay() -> None:
         ("NEX_MO_PROVIDER_MODE", "live"),
         ("NEX_SERVICE_TOKEN_ROLLOUT_PROFILE", "SIGNED_ONLY"),
         ("NEX_AG_OPERATIONS_SOURCE_MODE", "postgres"),
+        ("NEX_AE_AUTH_SESSION_MODE", "oa"),
+        ("NEX_AE_SESSION_COOKIE_SECURE", "true"),
     ],
 )
 def test_local_mock_rejects_mode_conflicts(name, value) -> None:
