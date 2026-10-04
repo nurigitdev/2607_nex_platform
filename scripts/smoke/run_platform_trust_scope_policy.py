@@ -22,17 +22,21 @@ from nex_runtime.platform_trust_scope_policy import (  # noqa: E402
 def run_platform_trust_scope_policy(root: Path = ROOT) -> dict[str, Any]:
     policy = platform_trust_scope_policy()
     issues = list(validate_platform_trust_scope_policy())
-    app_source = (root / "services/_shared/nex_runtime/app.py").read_text(
+    admission_source = (
+        root / "services/_shared/nex_runtime/service_token_admission.py"
+    ).read_text(
         encoding="utf-8"
     )
     checks = {
         "grant_policy_valid": not issues,
         "active_claim_route_registered": (
-            '"/internal/v1/auth/service-claim/active"' in app_source
+            '"/internal/v1/auth/service-claim/active"' in admission_source
         ),
-        "active_claim_route_is_sensitive": 'route_class="CREDENTIAL"' in app_source,
+        "active_claim_route_is_sensitive": (
+            'route_class="CREDENTIAL"' in admission_source
+        ),
         "active_claim_requires_service_scope": (
-            "required_scopes=(DEFAULT_SERVICE_SCOPE,)" in app_source
+            "required_scopes=(DEFAULT_SERVICE_SCOPE,)" in admission_source
         ),
         "raw_tokens_excluded": policy.get("raw_tokens_included") is False,
     }

@@ -1443,6 +1443,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1335`](slices/1335_ae_oa_signed_login_activation.md) | `S134-004` Activate OA-backed AE login and profile-aware secure cookie policy in protected profiles. |
 | [`Slice 1336`](slices/1336_platform_trust_evidence_checkpoint.md) | `S134-005` Freeze typed trust-chain, denial, restart, cleanup, and privacy evidence; run Checkpoint Gate. |
 | [`Slice 1337`](slices/1337_platform_trust_scope_propagation.md) | `S134-006` Freeze least-privilege grants and sensitive active-claim denial/introspection flows. |
+| [`Slice 1338`](slices/1338_platform_trust_restart_orchestration.md) | `S134-007` Attach OA-local trust admission and freeze JWKS/introspection/revocation restart orchestration. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

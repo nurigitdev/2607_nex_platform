@@ -72,6 +72,7 @@ from nex_oa.subjects import (
     register_subject_registry_routes,
 )
 from nex_oa.user_login import OaUserLoginService, register_user_login_routes
+from nex_oa.service_auth import build_oa_local_service_token_admission
 
 
 SERVICE_SPEC = SERVICE_SPECS["nex-oa"]
@@ -154,6 +155,11 @@ TOKEN_VALIDATION_SERVICE = OaSignedTokenValidationService(
     signing_key_service=SIGNING_KEY_SERVICE,
     principal_service=SERVICE_PRINCIPAL_SERVICE,
 )
+SERVICE_TOKEN_ADMISSION = build_oa_local_service_token_admission(
+    signing_key_service=SIGNING_KEY_SERVICE,
+    validation_service=TOKEN_VALIDATION_SERVICE,
+)
+app.state.service_token_admission = SERVICE_TOKEN_ADMISSION
 SERVICE_PRINCIPAL_AUDIT_EMITTER = operational_event_emitter_from_app(
     app,
     service_id="nex-oa",

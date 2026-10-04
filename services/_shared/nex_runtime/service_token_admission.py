@@ -9,10 +9,11 @@ from threading import Lock
 from typing import Any, Protocol
 
 import httpx
-from fastapi import Request
+from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
 from .auth import (
+    DEFAULT_SERVICE_SCOPE,
     MOCK_SERVICE_TOKEN_PREFIX,
     ServiceClaims,
     validate_authorization_header,
@@ -502,6 +503,54 @@ def admit_service_token_from_request(
             401,
             result.error_code or "SERVICE_CLAIM_INVALID",
             result.detail or "Service claim validation failed.",
+        ),
+    )
+
+
+def register_service_token_admission_routes(
+    app: FastAPI,
+    *,
+    spec: Any,
+) -> None:
+    if getattr(app.state, "service_token_admission_routes_registered", False):
+        return
+    app.state.service_token_admission_routes_registered = True
+
+    @app.post("/internal/v1/auth/service-claim/active", response_model=None)
+    def validate_active_service_claim(
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any] | JSONResponse:
+        runtime = _service_token_admission_from_app(request)
+        if isinstance(runtime, JSONResponse):
+            return runtime
+        try:
+            claims = runtime.admit(
+                authorization,
+                required_scopes=(DEFAULT_SERVICE_SCOPE,),
+                route_class="CREDENTIAL",
+            )
+        except ServiceTokenAdmissionError as exc:
+            return service_token_admission_problem_response(request, exc)
+        return {
+            "service_id": spec.service_id,
+            "claim_status": "ACTIVE",
+            "claims": claims.to_wire(),
+        }
+
+def _service_token_admission_from_app(
+    request: Request,
+) -> ServiceTokenAdmissionRuntime | JSONResponse:
+    runtime = getattr(request.app.state, "service_token_admission", None)
+    if isinstance(runtime, ServiceTokenAdmissionRuntime):
+        return runtime
+    return service_token_admission_problem_response(
+        request,
+        ServiceTokenAdmissionError(
+            503,
+            "nex.service_token_admission_unavailable",
+            "service-token admission runtime is unavailable",
+            retryable=True,
         ),
     )
 

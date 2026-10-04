@@ -21,6 +21,7 @@ from .problem import problem_response
 from .service_token_admission import (
     ServiceTokenAdmissionRuntime,
     ServiceTokenAdmissionError,
+    register_service_token_admission_routes,
     service_token_admission_problem_response,
 )
 
@@ -185,25 +186,7 @@ def build_service_app(
         }
 
     if service_token_admission is not None:
-
-        @app.post("/internal/v1/auth/service-claim/active", response_model=None)
-        def validate_active_service_claim(
-            request: Request,
-            authorization: str | None = Header(default=None),
-        ) -> dict[str, Any] | JSONResponse:
-            try:
-                claims = service_token_admission.admit(
-                    authorization,
-                    required_scopes=(DEFAULT_SERVICE_SCOPE,),
-                    route_class="CREDENTIAL",
-                )
-            except ServiceTokenAdmissionError as exc:
-                return service_token_admission_problem_response(request, exc)
-            return {
-                "service_id": spec.service_id,
-                "claim_status": "ACTIVE",
-                "claims": claims.to_wire(),
-            }
+        register_service_token_admission_routes(app, spec=spec)
 
         @app.get("/internal/v1/auth/service-token-runtime", response_model=None)
         def service_token_runtime(

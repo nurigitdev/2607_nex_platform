@@ -1,4 +1,8 @@
-from .app import SERVICE_SPECS, ServiceSpec, build_service_app
+from .app import (
+    SERVICE_SPECS,
+    ServiceSpec,
+    build_service_app,
+)
 from .auth import (
     DEFAULT_SERVICE_SCOPE,
     DEFAULT_USER_SCOPE,
@@ -77,6 +81,17 @@ from .platform_trust_scope_policy import (
     PlatformTrustGrant,
     platform_trust_scope_policy,
     validate_platform_trust_scope_policy,
+)
+from .platform_trust_restart_plan import (
+    PLATFORM_TRUST_RESTART_PLAN_SCHEMA_VERSION,
+    TRUST_PROCESS_START_ORDER,
+    TRUST_PROCESS_STOP_ORDER,
+    TRUST_RESTART_CHECKPOINTS,
+    TRUST_RESTART_PHASES,
+    PlatformTrustRestartPlan,
+    build_platform_trust_restart_plan,
+    evaluate_platform_trust_restart_checkpoints,
+    validate_platform_trust_restart_plan,
 )
 from .topology_graph import (
     DependencyProbeTarget,
@@ -352,6 +367,7 @@ from .service_token_admission import (
     admit_service_token_from_request,
     admit_test_mock_service_token,
     build_service_token_admission_runtime,
+    register_service_token_admission_routes,
     service_token_admission_problem_response,
 )
 from .signed_token_verifier import (
@@ -551,6 +567,9 @@ __all__ = [
     "evaluate_platform_trust_evidence",
     "platform_trust_scope_policy",
     "validate_platform_trust_scope_policy",
+    "build_platform_trust_restart_plan",
+    "evaluate_platform_trust_restart_checkpoints",
+    "validate_platform_trust_restart_plan",
     "build_common_job",
     "build_job_error",
     "build_operational_event",
@@ -603,6 +622,7 @@ __all__ = [
     "register_generation_recovery_policy_routes",
     "register_service_job_control_routes",
     "register_service_log_retention_routes",
+    "register_service_token_admission_routes",
     "run_worker_batch",
     "run_worker_once",
     "select_generation_recovery_policy",
@@ -632,6 +652,12 @@ __all__ = [
     "PLATFORM_TRUST_INTROSPECTION_SCOPE",
     "PLATFORM_TRUST_SCOPE_POLICY_SCHEMA_VERSION",
     "PlatformTrustGrant",
+    "PLATFORM_TRUST_RESTART_PLAN_SCHEMA_VERSION",
+    "TRUST_PROCESS_START_ORDER",
+    "TRUST_PROCESS_STOP_ORDER",
+    "TRUST_RESTART_CHECKPOINTS",
+    "TRUST_RESTART_PHASES",
+    "PlatformTrustRestartPlan",
     "PostgresRestartCoordinatorError",
     "PlatformPostgresRestorationStore",
     "PostgresRestorationBatchResult",
