@@ -1401,6 +1401,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1295`](slices/1295_oa_identity_session_authorization_restart_smoke.md) | `S130-004` Prove durable identity, credential, session, and effective authorization after an actual OA PostgreSQL runtime restart. |
 | [`Slice 1296`](slices/1296_oa_signing_key_rotation_restart_smoke.md) | `S130-005` Prove signing-key rotation, old/new JWKS overlap, one ACTIVE key, and old/new token validation after an OA PostgreSQL runtime restart. |
 | [`Slice 1297`](slices/1297_oa_revocation_introspection_restart_smoke.md) | `S130-006` Prove restart-safe digest-only service-token revocation and inactive introspection on actual OA PostgreSQL. |
+| [`Slice 1298`](slices/1298_oa_cross_service_signed_only_trust_smoke.md) | `S130-007` Prove AE, CX, MO, and AG SIGNED_ONLY sensitive-route introspection and post-revocation denial against actual OA PostgreSQL. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

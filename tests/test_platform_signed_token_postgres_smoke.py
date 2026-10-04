@@ -26,7 +26,7 @@ DATABASE_URL = (
 
 
 def _migration() -> dict:
-    planned = tuple(f"migration-{index}" for index in range(15)) + (
+    planned = tuple(f"migration-{index}" for index in range(16)) + (
         REQUIRED_MIGRATION,
     )
     return {"planned": planned, "applied": (), "skipped": planned}
@@ -90,7 +90,7 @@ def test_evaluator_accepts_actual_platform_loopback_evidence() -> None:
         "ACTUAL_TEST_DATABASE_PLATFORM_TOKEN_VERIFIED"
     )
     assert result["summary"] == {
-        "migration_count": 16,
+        "migration_count": 17,
         "consumer_count": 4,
         "passed_consumer_count": 4,
         "issued_token_count": 4,
@@ -213,7 +213,7 @@ def test_runner_migrates_executes_evaluates_and_redacts(monkeypatch) -> None:
     assert result["redacted_database_url"] == (
         "postgresql+psycopg://nex_oa_user:***@127.0.0.1:5432/nex_oa_test"
     )
-    assert result["migration"]["planned_count"] == 16
+    assert result["migration"]["planned_count"] == 17
     assert result["next_slice"] == "1281"
     assert "private" not in result["redacted_database_url"]
 
