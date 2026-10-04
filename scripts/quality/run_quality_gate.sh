@@ -633,3 +633,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_cx_mo_provider_path_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_ae_artifact_ag_audit_path_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_persistence_worker_process_audit.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_contract_trace_privacy_e2e_gap_audit.py --summary

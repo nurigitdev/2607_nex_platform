@@ -1414,6 +1414,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1307`](slices/1307_platform_cx_mo_provider_path_audit.md) | `S131-006` Audit CX-to-MO alias routing, provider-host ownership, and live timeout budgets. |
 | [`Slice 1308`](slices/1308_platform_ae_artifact_ag_audit_path_audit.md) | `S131-007` Audit AE lineage/artifact handoff to AG projections and expose the CX owner-context mismatch. |
 | [`Slice 1309`](slices/1309_platform_persistence_worker_process_audit.md) | `S131-008` Audit service-local persistence, jobs, worker runtimes, and the missing coordinated process/restart topology. |
+| [`Slice 1310`](slices/1310_platform_contract_trace_privacy_e2e_gap_audit.md) | `S131-009` Audit contract validation, trace propagation, privacy controls, and the missing named generation E2E suite. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
