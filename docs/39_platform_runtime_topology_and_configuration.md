@@ -89,7 +89,14 @@ S132 does not include:
 | `1315` | Complete | Dependency order and profile-aware probes validate. |
 | `1316` | Complete | Endpoints, retry-aware timeout budgets, canonical aliases, and Checkpoint Gate pass. |
 | `1317` | Complete | Six endpoints and thirteen API, Web, worker, and daemon processes materialize. |
-| `1318`-`1321` | Pending | AG API-only projection, orchestrator, local process smoke, and closure remain. |
+| `1318` | Complete | Managed profiles enforce memory/API projection; legacy direct DB adapters are unmanaged compatibility only. |
+| `1319`-`1321` | Pending | Orchestrator, local process smoke, and closure remain. |
+
+Protected `api` mode never falls back to in-memory projection stores. Until
+the service-specific API projection clients are completed, an unavailable
+projection remains explicitly unconfigured. This preserves fail-closed
+behavior while the four legacy PostgreSQL readers remain available only to
+unmanaged compatibility evidence. Their final removal is assigned to S138.
 
 Any S132 scope change must update this document and
 `37_platform_mvp_integration_release_plan.md` before implementation.

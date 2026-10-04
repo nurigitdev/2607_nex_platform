@@ -205,6 +205,11 @@ from .worker_runner import (
     run_worker_batch,
     run_worker_once,
 )
+from .ag_projection_policy import (
+    AgProjectionPolicy,
+    AgProjectionPolicyError,
+    resolve_ag_projection_policy,
+)
 from .persistence import (
     PERSISTENCE_MODE_MEMORY,
     PERSISTENCE_MODE_POSTGRES,
@@ -540,6 +545,9 @@ __all__ = [
     "summarize_operational_events",
     "summarize_service_logs",
     "summarize_worker_heartbeats",
+    "AgProjectionPolicy",
+    "AgProjectionPolicyError",
+    "resolve_ag_projection_policy",
     "trace_id_from_headers",
     "transition_common_job",
     "validate_authorization_header",

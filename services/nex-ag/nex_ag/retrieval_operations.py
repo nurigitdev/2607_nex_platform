@@ -330,6 +330,8 @@ def build_retrieval_package_operation_stores(
         return {
             RETRIEVAL_PACKAGE_SOURCE_SERVICE_ID: InMemoryRetrievalPackageOperationsStore()
         }
+    if selected_runtime.mode == "api":
+        return {}
 
     database_env = ag_operations_source_database_env(
         RETRIEVAL_PACKAGE_SOURCE_SERVICE_ID,

@@ -120,9 +120,13 @@ Job operations:
   active job and matching worker lifecycle operational events.
 - Jobs and events can now be supplied through a shared operations source
   registry. Default runtime registration is still mock-first.
-- Set `NEX_AG_OPERATIONS_SOURCE_MODE=postgres` to build a read-only registry
-  from selected service databases. `NEX_AG_OPERATIONS_SOURCE_PROFILE` chooses
-  `dev` or `test` database env names, and
+- Managed runtime profiles select `memory` for `local_mock` and `api` for every
+  protected profile. Protected AG startup rejects direct cross-service
+  PostgreSQL projection mode and never substitutes an in-memory source for an
+  unavailable API projection.
+- `NEX_AG_OPERATIONS_SOURCE_MODE=postgres` remains available only to unmanaged
+  historical compatibility evidence. `NEX_AG_OPERATIONS_SOURCE_PROFILE`
+  chooses `dev` or `test` database env names, and
   `NEX_AG_OPERATIONS_SOURCE_SERVICES` limits the observed service ids.
 - PostgreSQL operations sources are wrapped as read-only so AG can list jobs
   and events without enqueueing jobs or appending event rows into service-owned

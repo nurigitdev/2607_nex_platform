@@ -291,6 +291,8 @@ def build_cx_processing_run_operation_stores(
         return {
             CX_PROCESSING_RUN_SOURCE_SERVICE_ID: InMemoryCxProcessingRunOperationsStore()
         }
+    if selected_runtime.mode == "api":
+        return {}
 
     database_env = ag_operations_source_database_env(
         CX_PROCESSING_RUN_SOURCE_SERVICE_ID,

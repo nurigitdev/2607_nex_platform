@@ -167,6 +167,10 @@ from nex_ag.audit_evidence_operations import (
     build_audit_evidence_operations_projection,
 )
 from nex_runtime.retrieval_policies import list_retrieval_policy_records
+from nex_runtime.ag_projection_policy import (
+    AgProjectionPolicyError,
+    resolve_ag_projection_policy,
+)
 
 DEFAULT_OPERATIONAL_EVENT_STORE = InMemoryOperationalEventStore()
 DEFAULT_JOB_QUEUE_STORES = {
@@ -182,7 +186,7 @@ DEFAULT_WORKER_HEARTBEAT_STORES = {
 AG_OPERATIONS_SOURCE_MODE_ENV = "NEX_AG_OPERATIONS_SOURCE_MODE"
 AG_OPERATIONS_SOURCE_PROFILE_ENV = "NEX_AG_OPERATIONS_SOURCE_PROFILE"
 AG_OPERATIONS_SOURCE_SERVICES_ENV = "NEX_AG_OPERATIONS_SOURCE_SERVICES"
-AG_OPERATIONS_SOURCE_MODES = ("memory", "postgres")
+AG_OPERATIONS_SOURCE_MODES = ("memory", "api", "postgres")
 AG_OPERATIONS_SOURCE_PROFILES = ("dev", "test")
 AG_OPERATION_SORT_ORDERS = ("desc", "asc")
 AG_JOB_CONTROL_DISPATCH_SCHEMA_VERSION = "ag_job_control_dispatch.v1"
@@ -601,6 +605,10 @@ _AG_OPERATIONS_SOURCE_MODE_ALIASES = {
     "local_mock": "memory",
     "mock": "memory",
     "memory": "memory",
+    "api": "api",
+    "http": "api",
+    "service-api": "api",
+    "service_api": "api",
     "db": "postgres",
     "persistent": "postgres",
     "postgres": "postgres",
@@ -1128,13 +1136,17 @@ def build_ag_operations_source_runtime(
     resolved_mode = normalize_ag_operations_source_mode(
         mode or env.get(AG_OPERATIONS_SOURCE_MODE_ENV)
     )
+    try:
+        resolve_ag_projection_policy(resolved_mode, environ=env)
+    except AgProjectionPolicyError as exc:
+        raise OperationsSourceConfigError(str(exc)) from exc
     profile = normalize_ag_operations_source_profile(
         env.get(AG_OPERATIONS_SOURCE_PROFILE_ENV)
     )
     selected_service_ids = select_ag_operations_source_service_ids(
         env.get(AG_OPERATIONS_SOURCE_SERVICES_ENV)
     )
-    if resolved_mode == "memory":
+    if resolved_mode in ("memory", "api"):
         return AgOperationsSourceRuntime(
             mode=resolved_mode,
             profile=profile,

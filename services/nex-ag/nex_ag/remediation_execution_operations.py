@@ -244,6 +244,8 @@ def build_remediation_execution_operation_stores(
                 InMemoryRemediationExecutionOperationsStore()
             )
         }
+    if selected_runtime.mode == "api":
+        return {}
     env = environ or os.environ
     database_env = ag_operations_source_database_env(
         CX_REMEDIATION_EXECUTION_SOURCE_SERVICE_ID,
