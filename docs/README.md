@@ -1417,6 +1417,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1309`](slices/1309_platform_persistence_worker_process_audit.md) | `S131-008` Audit service-local persistence, jobs, worker runtimes, and the missing coordinated process/restart topology. |
 | [`Slice 1310`](slices/1310_platform_contract_trace_privacy_e2e_gap_audit.md) | `S131-009` Audit contract validation, trace propagation, privacy controls, and the missing named generation E2E suite. |
 | [`Slice 1311`](slices/1311_s131_platform_vertical_spine_reaudit_closure.md) | `S131-010` Close the vertical-spine re-audit, freeze the prioritized gap inventory, and hand off to S132. |
+| [`Slice 1312`](slices/1312_platform_runtime_topology_boundary.md) | `S132-001` Freeze the typed runtime topology, fail-closed profile, actual local process smoke, and S133 handoff boundaries. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

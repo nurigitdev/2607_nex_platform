@@ -64,6 +64,21 @@ TLS, secret injection, or enterprise IdP registration.
 | `1310` | Audit contracts, trace propagation, privacy, and GEN-E2E acceptance gaps. |
 | `1311` | Close S131, publish the prioritized refactoring inventory, and run Full Gate. |
 
+## S132 Slice Plan
+
+| Slice | Scope |
+| --- | --- |
+| `1312` | Freeze the S132 runtime-topology boundary, completion signal, and S133 handoff. |
+| `1313` | Define the typed platform runtime manifest domain and safe public projection. |
+| `1314` | Compose explicit runtime profiles and reject incomplete protected configuration. |
+| `1315` | Validate dependency ordering and profile-aware liveness/readiness probes. |
+| `1316` | Centralize service endpoints and enforce safe CX-to-MO timeout budgets; run Checkpoint Gate. |
+| `1317` | Materialize the five APIs, AE Web, required workers, and daemons as typed processes. |
+| `1318` | Require service-API projection mode in protected profiles and quarantine legacy AG database reads. |
+| `1319` | Add readiness-gated process orchestration and machine-readable runtime status. |
+| `1320` | Start and stop the complete `local_mock` topology in an actual protected process smoke. |
+| `1321` | Close S132, publish the S133 handoff, and run Full Gate. |
+
 ## Protected Evidence Schedule
 
 - `S131`: repository and deterministic regression evidence; no remote model
