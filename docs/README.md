@@ -1400,6 +1400,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1294`](slices/1294_oa_mvp_acceptance_policy_traceability.md) | `S130-003` Bind OA-FR-001 through OA-FR-005 to exact acceptance gates and current implementation/test evidence. |
 | [`Slice 1295`](slices/1295_oa_identity_session_authorization_restart_smoke.md) | `S130-004` Prove durable identity, credential, session, and effective authorization after an actual OA PostgreSQL runtime restart. |
 | [`Slice 1296`](slices/1296_oa_signing_key_rotation_restart_smoke.md) | `S130-005` Prove signing-key rotation, old/new JWKS overlap, one ACTIVE key, and old/new token validation after an OA PostgreSQL runtime restart. |
+| [`Slice 1297`](slices/1297_oa_revocation_introspection_restart_smoke.md) | `S130-006` Prove restart-safe digest-only service-token revocation and inactive introspection on actual OA PostgreSQL. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
