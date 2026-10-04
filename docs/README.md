@@ -1398,6 +1398,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1292`](slices/1292_oa_mvp_acceptance_platform_trust_boundary.md) | `S130-001` Freeze OA-FR-001 through OA-FR-005 MVP acceptance, restart, rotation, revocation, cross-service trust, and quality boundaries. |
 | [`Slice 1293`](slices/1293_oa_signed_token_failure_audit_hardening.md) | `S130-002` Persist privacy-safe signed-token validation and service-auth failure evidence for OA-FR-005. |
 | [`Slice 1294`](slices/1294_oa_mvp_acceptance_policy_traceability.md) | `S130-003` Bind OA-FR-001 through OA-FR-005 to exact acceptance gates and current implementation/test evidence. |
+| [`Slice 1295`](slices/1295_oa_identity_session_authorization_restart_smoke.md) | `S130-004` Prove durable identity, credential, session, and effective authorization after an actual OA PostgreSQL runtime restart. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
