@@ -42,6 +42,7 @@ documents and show the current build direction directly.
 | [35 Design System v0.1 Expansion](35_design_system_v0_1_expansion.md) | Defines MVP UI principles, tokens, layouts, components, status rules, i18n, and accessibility. |
 | [36 Roadmap + First Sprint Backlog](36_implementation_roadmap_first_sprint_backlog.md) | Converts the documentation set into the first implementation sequence. |
 | [37 Platform MVP Integration and Release Plan](37_platform_mvp_integration_release_plan.md) | Freezes S131-S140 vertical integration, protected evidence, and release-candidate scope. |
+| [38 Platform MVP Vertical-Spine Current-State Re-Audit](38_platform_mvp_vertical_spine_reaudit.md) | Records the S131 actual-state matrix, prioritized integration gaps, and S132 handoff. |
 
 Recommended first read:
 
@@ -1415,6 +1416,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1308`](slices/1308_platform_ae_artifact_ag_audit_path_audit.md) | `S131-007` Audit AE lineage/artifact handoff to AG projections and expose the CX owner-context mismatch. |
 | [`Slice 1309`](slices/1309_platform_persistence_worker_process_audit.md) | `S131-008` Audit service-local persistence, jobs, worker runtimes, and the missing coordinated process/restart topology. |
 | [`Slice 1310`](slices/1310_platform_contract_trace_privacy_e2e_gap_audit.md) | `S131-009` Audit contract validation, trace propagation, privacy controls, and the missing named generation E2E suite. |
+| [`Slice 1311`](slices/1311_s131_platform_vertical_spine_reaudit_closure.md) | `S131-010` Close the vertical-spine re-audit, freeze the prioritized gap inventory, and hand off to S132. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
