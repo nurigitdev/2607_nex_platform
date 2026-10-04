@@ -160,13 +160,34 @@ def register_upload_progress_routes(
     *,
     upload_store: UploadHandoffRepository | None = None,
     cx_client: CxUploadProgressClient | None = None,
+    oa_session_client: Any | None = None,
+    session_mode: str | None = None,
 ) -> None:
+    from nex_ae_api.auth_sessions import (
+        AUTH_SESSION_MODE_ENV,
+        AUTH_SESSION_MODE_OA,
+        normalize_auth_session_mode,
+    )
+    from nex_ae_api.oa_session_client import build_default_oa_user_session_client
+
     handoffs = upload_store or getattr(
         app.state,
         "ae_upload_handoff_store",
         DEFAULT_UPLOAD_HANDOFF_STORE,
     )
     client = cx_client or build_default_cx_upload_progress_client()
+    resolved_session_mode = normalize_auth_session_mode(
+        session_mode or os.getenv(AUTH_SESSION_MODE_ENV)
+    )
+    resolved_oa_session_client = (
+        oa_session_client
+        if oa_session_client is not None
+        else (
+            build_default_oa_user_session_client()
+            if resolved_session_mode == AUTH_SESSION_MODE_OA
+            else None
+        )
+    )
 
     @app.get(
         "/api/v1/uploads/{upload_handoff_id}/progress",
@@ -177,7 +198,12 @@ def register_upload_progress_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_context = authorize_ae_facade_route_request(request, authorization)
+        auth_context = authorize_ae_facade_route_request(
+            request,
+            authorization,
+            oa_session_client=resolved_oa_session_client,
+            session_mode=resolved_session_mode,
+        )
         if isinstance(auth_context, JSONResponse):
             return auth_context
         owner = auth_context.browser_context

@@ -64,7 +64,7 @@ from nex_cx.ingestion_worker import (
 from nex_cx.lexical_index import register_lexical_index_routes
 from nex_cx.mvp_runtime import CxMvpRuntimeComposition, build_cx_mvp_runtime
 from nex_cx.processing import register_processing_routes
-from nex_cx.prompts import DEFAULT_CX_PROMPT_STORE
+from nex_cx.prompts import build_default_cx_prompt_store
 from nex_cx.repository import CxContentRepository, SqlAlchemyCxContentRepository
 from nex_cx.retrieval import (
     DEFAULT_RERANKER_ALIAS,
@@ -274,7 +274,7 @@ def build_cx_mvp_runtime_composition(
         embedding_alias=embedding_alias,
         rerank_client=rerank_client,
         reranker_alias=reranker_alias,
-        prompt_store=DEFAULT_CX_PROMPT_STORE,
+        prompt_store=CX_PROMPT_STORE,
     )
 
 
@@ -287,6 +287,7 @@ app = build_service_app(
     service_token_admission=SERVICE_TOKEN_ADMISSION,
 )
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
+CX_PROMPT_STORE = build_default_cx_prompt_store(app)
 CX_STORAGE_CONFIG = build_storage_config()
 CX_CONTENT_REPOSITORY = build_cx_content_repository(
     SERVICE_PERSISTENCE,
@@ -445,7 +446,7 @@ register_processing_routes(
     app,
     store=DEFAULT_INGESTION_STORE,
     storage_config=CX_STORAGE_CONFIG,
-    prompt_store=DEFAULT_CX_PROMPT_STORE,
+    prompt_store=CX_PROMPT_STORE,
     job_queue=SERVICE_PERSISTENCE.job_queue,
     processing_run_repository=CX_PROCESSING_RUN_REPOSITORY,
 )
@@ -461,7 +462,7 @@ register_retrieval_routes(
 register_summary_routes(
     app,
     store=DEFAULT_INGESTION_STORE,
-    prompt_store=DEFAULT_CX_PROMPT_STORE,
+    prompt_store=CX_PROMPT_STORE,
     generation_client=CX_MO_GENERATION_CLIENT,
 )
 register_document_intelligence_routes(
@@ -481,6 +482,6 @@ register_summary_embedding_routes(
 )
 register_prompt_registry_routes(
     app,
-    store=DEFAULT_CX_PROMPT_STORE,
+    store=CX_PROMPT_STORE,
     expected_audience="nex-cx",
 )

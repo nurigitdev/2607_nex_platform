@@ -1455,6 +1455,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1347`](slices/1347_cx_mock_vector_publish_freshness.md) | `S135-006` Publish owner-scoped vectors through protected MO mock embedding and verify payload-backed READY freshness. |
 | [`Slice 1348`](slices/1348_ae_upload_ingestion_progress.md) | `S135-007` Expose authenticated owner-scoped ingestion, retry, failure, and vector-freshness progress. |
 | [`Slice 1349`](slices/1349_cx_ingestion_restart_cancellation.md) | `S135-008` Execute restart-aware durable CX ingestion work with checkpoint cancellation and pool cleanup. |
+| [`Slice 1350`](slices/1350_platform_authenticated_ingestion_postgres_smoke.md) | `S135-009` Prove the protected OA-to-AE-to-CX-to-MO upload, durable indexing, restart, owner denial, and residue-free PostgreSQL journey. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

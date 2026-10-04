@@ -58,6 +58,9 @@ API and worker restart without losing lineage or exposing private payloads.
    vector-readiness APIs and exposes only bounded operational metadata.
 6. No single protected test proves authenticated upload through index-ready
    completion, restart recovery, denial behavior, and residue-free cleanup.
+   **Closed in Slice 1350:** one opt-in subprocess smoke exercises OA login,
+   signed AE/CX/MO HTTP boundaries, the durable worker, restart, denials, and
+   residue-free cleanup against all five service test databases.
 
 ## Slice Sequence
 
@@ -104,6 +107,11 @@ API and worker restart without losing lineage or exposing private payloads.
 - Slice `1349`: the executable CX ingestion process loads its restart plan,
   recovers expired leases, claims durable work, and settles cancellation at
   checkpoint boundaries without leaving a step marked as running.
+- Slice `1350`: the protected subprocess smoke performs actual OA login, AE
+  upload, CX durable worker processing, MO mock embedding, restart-safe
+  progress readback, owner denial, and residue-free test PostgreSQL cleanup.
+  It also closes the OA-cookie progress admission gap and binds CX summary
+  prompts to the durable database registry instead of process-local UUIDs.
 
 ## Completion Signal
 

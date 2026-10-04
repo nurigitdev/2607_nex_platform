@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from nex_runtime.prompts import PromptRegistryStore, PromptSeed, seed_prompt_registry
 
 
@@ -34,6 +36,17 @@ def seed_cx_prompt_registry(
     store: PromptRegistryStore = DEFAULT_CX_PROMPT_STORE,
 ) -> list[dict[str, object]]:
     return seed_prompt_registry(store, CX_PROMPT_SEEDS)
+
+
+def build_default_cx_prompt_store(app: Any) -> Any:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is None:
+        return DEFAULT_CX_PROMPT_STORE
+
+    from nex_cx.prompt_persistence import SqlAlchemyCxPromptRegistryStore
+
+    return SqlAlchemyCxPromptRegistryStore(session_factory)
 
 
 seed_cx_prompt_registry()

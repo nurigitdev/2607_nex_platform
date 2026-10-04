@@ -212,6 +212,53 @@ def test_progress_route_requires_auth_and_hides_other_owner() -> None:
     assert cx_client.calls == []
 
 
+def test_progress_route_uses_oa_session_client_in_protected_mode() -> None:
+    class FakeOaSessionClient:
+        def introspect_session(
+            self, session_id: str, **kwargs: object
+        ) -> dict[str, Any]:
+            assert session_id == "oa-session-1348"
+            return {
+                "active": True,
+                "inactive_reason": None,
+                "session": {
+                    "browser_session_schema_version": "oa_browser_session.v1",
+                    "session_id": session_id,
+                    "status": "ACTIVE",
+                    "issuer": "nex-oa",
+                    "audience": "nex-ae-api",
+                    "token_use": "user",
+                    "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+                    "subject_ref": {"type": "oa.user", "id": "owner-a"},
+                    "scopes": ["workspace:use"],
+                    "roles": ["employee"],
+                    "issued_at": "2026-10-05T00:00:00Z",
+                    "expires_at": "2026-10-05T02:00:00Z",
+                    "auth_time": "2026-10-05T00:00:00Z",
+                },
+            }
+
+    app = build_service_app(SERVICE_SPECS["nex-ae-api"])
+    store = UploadHandoffStore()
+    store.save(_handoff())
+    cx_client = FakeCxProgressClient()
+    register_upload_progress_routes(
+        app,
+        upload_store=store,
+        cx_client=cx_client,
+        oa_session_client=FakeOaSessionClient(),
+        session_mode="oa",
+    )
+    client = TestClient(app)
+    client.cookies.set("nex_ae_user_session", "oa-session-1348")
+
+    response = client.get("/api/v1/uploads/handoff-1348/progress")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "INDEX_READY"
+    assert cx_client.calls[0] == "runs:document-1348:tenant-a:owner-a"
+
+
 def test_progress_projects_queued_waiting_failure_and_cancelled_states() -> None:
     queued = build_upload_progress_projection(
         handoff=_handoff(),
