@@ -1,6 +1,6 @@
 # Platform PostgreSQL Migration and Restart Orchestration
 
-Status: S133 scope frozen; implementation in progress.
+Status: S133 complete; S134 handoff frozen.
 
 This document is the canonical non-drift record for S133. It connects the
 typed S132 process topology to the five service-owned PostgreSQL test
@@ -100,6 +100,33 @@ S133 does not include:
 9. `1330`: actual protected five-database restart smoke.
 10. `1331`: S133 closure, S134 handoff, and Full Gate.
 
+## Implementation State
+
+| Slice | Status | Evidence |
+| --- | --- | --- |
+| `1322` | Complete | Five-database ownership, completion signal, and non-drift boundary are frozen. |
+| `1323` | Complete | Typed orchestration plan and privacy-safe per-service evidence validate. |
+| `1324` | Complete | Five test targets, role/database identity, and isolated child aliases fail closed. |
+| `1325` | Complete | All 89 migration heads, ledgers, identities, and readiness checks pass on actual test databases. |
+| `1326` | Complete | Ten distinct API/worker pools and sessions dispose cleanly and rebuild fresh. |
+| `1327` | Complete | Five APIs and seven background shells start against actual service-owned test databases. |
+| `1328` | Complete | Migration-gated startup, reverse shutdown, and one fresh restart generation pass. |
+| `1329` | Complete | Five durable sentinels restore and clean through 20 fresh PostgreSQL connections. |
+| `1330` | Complete | Thirteen processes restart across two generations with 10+10 pools and zero residue. |
+| `1331` | Complete | S133 acceptance, S134 handoff, and repository Full Gate pass. |
+
+## Completion
+
+Completion signal: Met.
+
+The protected restart smoke applied and verified all 89 migrations on the five
+service-owned test databases, started all thirteen processes, stopped them in
+reverse dependency order, disposed ten pools, rebuilt ten fresh pools, and
+started all thirteen processes again. Five committed sentinels were restored
+after restart and then removed; direct post-smoke counts were zero in every
+test database. No remote model provider was contacted and no business job was
+claimed.
+
 ## S134 Handoff
 
 S134 receives a restart-safe `test` topology whose PostgreSQL ownership,
@@ -107,6 +134,12 @@ migration heads, readiness, and pool lifecycle have been proven. S134 owns
 signed service-token activation and trust-chain restart evidence. It must not
 reopen database ownership or replace service-local persistence with a shared
 database.
+
+S134 is the next active requirement. It must replace the startup-only
+synthetic trust values with OA-issued user sessions and signed service tokens,
+exercise JWKS/introspection and scope enforcement across AE, CX, MO, and AG,
+and prove revocation and unauthorized denial across a restart. It inherits the
+S133 database and process orchestration unchanged.
 
 Any S133 scope change must update this document and
 `37_platform_mvp_integration_release_plan.md` before implementation.

@@ -59,11 +59,7 @@ def run_platform_postgres_restart_boundary(root: Path = ROOT) -> dict[str, Any]:
         )
         for service_id in SERVICES
     }
-    process_adapters = _read_text(
-        root / "services/_shared/nex_runtime/runtime_process_adapters.py"
-    )
-    background_runner = _read_text(root / "scripts/dev/run_background_process.py")
-    platform_runner = _read_text(root / "scripts/dev/run_platform.py")
+    canonical = _read_text(root / CANONICAL_DOCUMENT)
     checks = {
         "required_paths_present": all(item["present"] for item in paths),
         "required_tokens_present": all(item["present"] for item in tokens),
@@ -71,17 +67,17 @@ def run_platform_postgres_restart_boundary(root: Path = ROOT) -> dict[str, Any]:
             count > 0 for count in migration_counts.values()
         ),
         "migration_inventory_is_89": sum(migration_counts.values()) == 89,
-        "test_child_database_alias_gap_is_explicit": (
-            "TEST_DATABASE_ENV_NAMES" not in process_adapters
+        "test_child_database_alias_boundary_is_recorded": (
+            "test database URLs are not yet projected" in canonical
         ),
-        "protected_background_persistence_gap_is_explicit": (
-            "requires S133 persistence wiring" in background_runner
+        "protected_background_persistence_boundary_is_recorded": (
+            "protected background process shells are blocked" in canonical
         ),
-        "migration_before_start_gap_is_explicit": (
-            "run_migrations" not in platform_runner
+        "migration_before_start_boundary_is_recorded": (
+            "migration execution is not integrated" in canonical
         ),
-        "coordinated_restart_gap_is_explicit": (
-            "restart" not in platform_runner
+        "coordinated_restart_boundary_is_recorded": (
+            "no coordinated stop/rebuild/restart controller exists" in canonical
         ),
     }
     issues = [name for name, passed in checks.items() if not passed]

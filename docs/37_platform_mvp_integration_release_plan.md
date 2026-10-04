@@ -98,6 +98,12 @@ requirement and owns actual five-database migration and restart evidence.
 | `1330` | Execute the actual protected five-database migration/start/restart smoke. |
 | `1331` | Close S133, publish the S134 handoff, and run Full Gate. |
 
+S133 completion signal: Met. All five service-owned test databases reach their
+89 migration heads and recover committed state through a protected restart of
+the thirteen-process topology. The smoke rebuilds ten fresh pools, leaves zero
+S133 sentinel rows, and does not contact remote model providers. S134 is the
+next active requirement and inherits this restart-safe test topology.
+
 ## Protected Evidence Schedule
 
 - `S131`: repository and deterministic regression evidence; no remote model
