@@ -1434,6 +1434,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1326`](slices/1326_platform_postgres_pool_lifecycle.md) | `S133-005` Prove ten independent API/worker pools, sessions, disposal, and fresh lifecycle construction. |
 | [`Slice 1327`](slices/1327_platform_test_profile_startup.md) | `S133-006` Start five protected APIs and seven PostgreSQL-backed worker/daemon shells without claiming work. |
 | [`Slice 1328`](slices/1328_platform_postgres_restart_state_machine.md) | `S133-007` Coordinate migration-gated startup, reverse shutdown, and one fresh pool/process restart generation. |
+| [`Slice 1329`](slices/1329_platform_postgres_restoration.md) | `S133-008` Prove temporary state write, fresh-connection restoration, cleanup, and absence across five service test databases. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

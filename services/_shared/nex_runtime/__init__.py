@@ -251,6 +251,12 @@ from .postgres_restart_coordinator import (
     PlatformPostgresRestartCoordinator,
     PostgresRestartCoordinatorError,
 )
+from .postgres_restoration import (
+    PlatformPostgresRestorationStore,
+    PostgresRestorationBatchResult,
+    PostgresRestorationError,
+    PostgresRestorationSentinel,
+)
 from .runtime_process_adapters import (
     RuntimeProbeRequest,
     SubprocessRuntimeLauncher,
@@ -599,6 +605,10 @@ __all__ = [
     "RuntimeOrchestrator",
     "PlatformPostgresRestartCoordinator",
     "PostgresRestartCoordinatorError",
+    "PlatformPostgresRestorationStore",
+    "PostgresRestorationBatchResult",
+    "PostgresRestorationError",
+    "PostgresRestorationSentinel",
     "RuntimeProbeRequest",
     "SubprocessRuntimeLauncher",
     "build_runtime_process_environment",
