@@ -647,3 +647,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_s132_platform_runtime_topology_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_postgres_restart_boundary.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_postgres_restart_evidence.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_postgres_test_targets.py --summary

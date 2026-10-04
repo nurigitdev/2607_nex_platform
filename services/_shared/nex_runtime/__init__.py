@@ -230,6 +230,18 @@ from .postgres_orchestration import (
     validate_platform_postgres_restart_evidence,
     validate_postgres_orchestration_plan,
 )
+from .postgres_targets import (
+    CX_VECTOR_RUNTIME_DATABASE_ENV,
+    CX_VECTOR_TEST_DATABASE_ENV,
+    POSTGRES_TEST_TARGETS,
+    PostgresTargetConfigError,
+    PostgresTestTarget,
+    ResolvedPostgresTestTarget,
+    build_postgres_test_runtime_overlay,
+    postgres_test_targets_public_projection,
+    resolve_postgres_test_targets,
+    service_ids_for_test_database_environments,
+)
 from .runtime_process_adapters import (
     RuntimeProbeRequest,
     SubprocessRuntimeLauncher,

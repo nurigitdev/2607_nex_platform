@@ -9,6 +9,10 @@ from typing import Any, Protocol
 from urllib.request import urlopen
 
 from .runtime_profiles import runtime_profile_environment_overlay
+from .postgres_targets import (
+    build_postgres_test_runtime_overlay,
+    service_ids_for_test_database_environments,
+)
 from .service_endpoints import SERVICE_ENDPOINTS
 from .topology import PlatformRuntimeManifest, RuntimeProcess
 
@@ -80,6 +84,22 @@ def build_runtime_process_environment(
 ) -> dict[str, str]:
     environment = dict(os.environ if environ is None else environ)
     environment.update(runtime_profile_environment_overlay(manifest.profile))
+    if manifest.profile == "test":
+        database_environment_names = (
+            name
+            for process in manifest.processes
+            for name in process.environment_names
+        )
+        service_ids = service_ids_for_test_database_environments(
+            database_environment_names
+        )
+        if service_ids:
+            environment.update(
+                build_postgres_test_runtime_overlay(
+                    environment,
+                    service_ids=service_ids,
+                )
+            )
     endpoint_environment_names = {
         service_id: config[0] for service_id, config in SERVICE_ENDPOINTS.items()
     }
