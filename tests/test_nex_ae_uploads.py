@@ -188,6 +188,7 @@ def build_client(
     owner_resolver_mode: str | None = None,
     oa_session_client: object | None = None,
     session_mode: str | None = None,
+    runtime_profile: str | None = None,
 ) -> tuple[TestClient, UploadHandoffStore, FakeCxUploadClient | FailingCxUploadClient]:
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
     store = UploadHandoffStore()
@@ -200,6 +201,7 @@ def build_client(
         owner_resolver_mode=owner_resolver_mode,
         oa_session_client=oa_session_client,
         session_mode=session_mode,
+        runtime_profile=runtime_profile,
     )
     return TestClient(app), store, client
 
@@ -705,6 +707,53 @@ def test_multipart_upload_route_rejects_unauthorized_and_owner_mismatch_before_c
     assert mismatch.json()["error_code"] == "ae.browser_owner_scope_mismatch"
     assert unauthorized_cx.calls == []
     assert mismatch_cx.calls == []
+
+
+def test_protected_upload_routes_require_claim_or_explicit_service_owner_scope() -> None:
+    client, _, cx_client = build_client(runtime_profile="test")
+
+    missing_json = client.post(
+        "/api/v1/uploads",
+        json={"filename": "report.md", "content_text": "hello"},
+        headers=auth_headers(),
+    )
+    missing_multipart = client.post(
+        AE_MULTIPART_UPLOAD_ROUTE,
+        files={"file": ("source.bin", b"file bytes", "application/octet-stream")},
+        headers=auth_headers(),
+    )
+    explicit_service = client.post(
+        "/api/v1/uploads",
+        json={
+            "filename": "report.md",
+            "content_text": "hello",
+            "tenant_id": "tenant-a",
+            "owner_user_id": "user-a",
+        },
+        headers=auth_headers(),
+    )
+    claimed_browser = client.post(
+        "/api/v1/uploads",
+        json={"filename": "claim.md", "content_text": "claim-owned"},
+        headers=user_headers(),
+    )
+
+    assert missing_json.status_code == 403
+    assert missing_json.json()["error_code"] == "ae.upload_owner_scope_required"
+    assert missing_multipart.status_code == 403
+    assert missing_multipart.json()["error_code"] == "ae.upload_owner_scope_required"
+    assert explicit_service.status_code == 202
+    assert claimed_browser.status_code == 202
+    assert len(cx_client.calls) == 2
+    assert cx_client.calls[1]["payload"]["owner_user_id"] == "user-a"
+
+
+def test_upload_route_rejects_invalid_runtime_profile_at_registration() -> None:
+    with pytest.raises(UploadHandoffError) as exc:
+        build_client(runtime_profile="preview")
+
+    assert exc.value.status_code == 422
+    assert exc.value.error_code == "ae.upload_runtime_profile_invalid"
 
 
 def test_multipart_upload_route_rejects_hash_mismatch_before_cx_call() -> None:

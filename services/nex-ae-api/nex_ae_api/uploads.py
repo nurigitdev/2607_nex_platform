@@ -23,6 +23,11 @@ from nex_runtime import (
 )
 from nex_ae_api.cx_owner_context import cx_owner_headers, cx_owner_scope_from_payload
 from nex_ae_api.service_auth import resolve_ae_outbound_service_token
+from nex_ae_api.upload_owner_policy import (
+    UploadOwnerPolicyError,
+    enforce_upload_owner_policy,
+    normalize_upload_runtime_profile,
+)
 
 if TYPE_CHECKING:
     from nex_ae_api.auth_guard import BrowserUserAuthContext
@@ -158,6 +163,7 @@ def register_upload_routes(
     owner_resolver_mode: str | None = None,
     oa_session_client: OaUserSessionClient | None = None,
     session_mode: str | None = None,
+    runtime_profile: str | None = None,
 ) -> None:
     upload_store = store or DEFAULT_UPLOAD_HANDOFF_STORE
     client = cx_client or build_default_cx_upload_client()
@@ -169,6 +175,16 @@ def register_upload_routes(
         from nex_ae_api.auth_sessions import AUTH_SESSION_MODE_ENV
 
         resolved_session_mode = os.getenv(AUTH_SESSION_MODE_ENV)
+    try:
+        resolved_runtime_profile = normalize_upload_runtime_profile(
+            runtime_profile or os.getenv("NEX_PROFILE")
+        )
+    except UploadOwnerPolicyError as exc:
+        raise UploadHandoffError(
+            status_code=422,
+            error_code=exc.error_code,
+            detail=exc.detail,
+        ) from exc
     resolver = owner_resolver
     if resolver is None and resolver_mode != UPLOAD_OWNER_RESOLVER_DISABLED:
         resolver = build_default_subject_registry_resolver(
@@ -199,6 +215,7 @@ def register_upload_routes(
             source_payload = _browser_owner_scoped_payload(
                 payload,
                 auth_context.browser_context,
+                runtime_profile=resolved_runtime_profile,
             )
             cx_payload = build_cx_upload_payload(source_payload, trace_id=trace_id)
             resolve_upload_ownership(
@@ -277,6 +294,7 @@ def register_upload_routes(
             source_payload = _browser_owner_scoped_payload(
                 source_payload,
                 auth_context.browser_context,
+                runtime_profile=resolved_runtime_profile,
             )
             cx_payload = build_cx_upload_payload(source_payload, trace_id=trace_id)
             resolve_upload_ownership(
@@ -666,12 +684,26 @@ def ensure_upload_handoff_visible_to_browser(
 def _browser_owner_scoped_payload(
     payload: dict[str, Any],
     context: BrowserUserAuthContext | None,
+    *,
+    runtime_profile: str = "local_mock",
 ) -> dict[str, Any]:
-    if context is None:
-        return payload
-    from nex_ae_api.auth_guard import apply_claim_owner_scope
+    normalized = dict(payload)
+    if context is not None:
+        from nex_ae_api.auth_guard import apply_claim_owner_scope
 
-    return apply_claim_owner_scope(payload, context)
+        normalized = apply_claim_owner_scope(normalized, context)
+
+    try:
+        return enforce_upload_owner_policy(
+            normalized,
+            runtime_profile=runtime_profile,
+        )
+    except UploadOwnerPolicyError as exc:
+        raise UploadHandoffError(
+            status_code=403,
+            error_code=exc.error_code,
+            detail=exc.detail,
+        ) from exc
 
 
 def subject_ref_from_payload(

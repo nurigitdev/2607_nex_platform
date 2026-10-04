@@ -38,7 +38,8 @@ API and worker restart without losing lineage or exposing private payloads.
 1. AE upload handoff metadata uses a process-local in-memory store and is lost
    across restart.
 2. Legacy local owner defaults remain available outside authenticated request
-   handling and must fail closed in protected upload profiles.
+   handling. **Closed in Slice 1343:** protected upload profiles reject missing
+   scope and local placeholders while `local_mock` retains compatibility.
 3. CX durable jobs and runs survive restart, but ingestion step handlers depend
    on process-local upload state and require repository-backed hydration.
 4. The registered CX ingestion background process is a lifecycle shell and does
@@ -62,6 +63,14 @@ API and worker restart without losing lineage or exposing private payloads.
 | `1349` | Coordinate API/worker restart, recovery, cancellation safety, and cleanup. |
 | `1350` | Execute the actual protected PostgreSQL authenticated upload-to-index smoke. |
 | `1351` | Harden contracts, privacy, operations, close S135, and run Full Gate. |
+
+## Implementation Progress
+
+- Slice `1342`: boundary, six baseline gaps, quality cadence, and S136 handoff
+  frozen.
+- Slice `1343`: protected AE upload owner fallback closed for JSON and multipart
+  routes; OA browser claims remain authoritative and signed service callers
+  require explicit tenant and owner scope.
 
 ## Completion Signal
 

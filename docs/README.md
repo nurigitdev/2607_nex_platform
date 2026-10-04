@@ -1448,6 +1448,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1340`](slices/1340_platform_trust_contract_privacy_runbook.md) | `S134-009` Harden signed-login and active-claim contracts, privacy, cleanup, and the operator runbook. |
 | [`Slice 1341`](slices/1341_s134_platform_oa_backed_trust_closure.md) | `S134-010` Close OA-backed user and service trust, run Full Gate, and activate the S135 durable-ingestion handoff. |
 | [`Slice 1342`](slices/1342_platform_authenticated_document_ingestion_boundary.md) | `S135-001` Freeze the authenticated upload-to-index journey, six integration gaps, quality cadence, and S136 handoff. |
+| [`Slice 1343`](slices/1343_ae_protected_upload_owner_claims.md) | `S135-002` Reject protected-profile upload owner fallback while preserving OA claim authority and explicit signed-service scope. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
