@@ -1420,6 +1420,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1312`](slices/1312_platform_runtime_topology_boundary.md) | `S132-001` Freeze the typed runtime topology, fail-closed profile, actual local process smoke, and S133 handoff boundaries. |
 | [`Slice 1313`](slices/1313_platform_runtime_manifest_domain.md) | `S132-002` Add immutable runtime manifest types, structural validation, and privacy-safe projection. |
 | [`Slice 1314`](slices/1314_platform_runtime_profile_composition.md) | `S132-003` Materialize five runtime profiles and fail closed on incomplete protected configuration. |
+| [`Slice 1315`](slices/1315_platform_runtime_dependency_graph.md) | `S132-004` Add acyclic startup layers and profile-aware dependency probes. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

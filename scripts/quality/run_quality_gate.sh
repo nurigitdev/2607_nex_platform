@@ -638,3 +638,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_runtime_topology_boundary.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_runtime_manifest_domain.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_runtime_profile_composition.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_runtime_dependency_graph.py --summary

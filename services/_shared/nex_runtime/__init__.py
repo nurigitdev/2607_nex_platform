@@ -62,6 +62,13 @@ from .runtime_profiles import (
     runtime_profile_environment_overlay,
     runtime_profile_public_projection,
 )
+from .topology_graph import (
+    DependencyProbeTarget,
+    RuntimeDependencyError,
+    RuntimeStartupPlan,
+    build_runtime_startup_plan,
+    runtime_startup_plan_projection,
+)
 from .jobs import (
     ACTIVE_JOB_STATUSES,
     CANCELLED,
