@@ -18,7 +18,7 @@ from .auth import (
     ServiceClaims,
     validate_authorization_header,
 )
-from .problem import problem_response
+from .problem import problem_response, request_id_from_headers, trace_id_from_headers
 from .signed_token_verifier import (
     BoundedJwksCache,
     JwksSource,
@@ -138,9 +138,49 @@ class HttpOaTokenIntrospector(TokenIntrospector):
         expected_audience: str,
         required_scopes: Sequence[str],
     ) -> Mapping[str, Any]:
+        return self._introspect(
+            token,
+            expected_audience=expected_audience,
+            required_scopes=required_scopes,
+        )
+
+    def introspect_with_context(
+        self,
+        token: str,
+        *,
+        expected_audience: str,
+        required_scopes: Sequence[str],
+        request_id: str | None,
+        trace_id: str | None,
+    ) -> Mapping[str, Any]:
+        return self._introspect(
+            token,
+            expected_audience=expected_audience,
+            required_scopes=required_scopes,
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+
+    def _introspect(
+        self,
+        token: str,
+        *,
+        expected_audience: str,
+        required_scopes: Sequence[str],
+        request_id: str | None = None,
+        trace_id: str | None = None,
+    ) -> Mapping[str, Any]:
         target = _secret_token(token, "target token")
         audience = _nonempty_string(expected_audience, "expected audience")
         scopes = _scope_sequence(required_scopes)
+        headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {self.authorization_token}",
+        }
+        if request_id:
+            headers["X-Request-ID"] = request_id
+        if trace_id:
+            headers["traceparent"] = f"00-{trace_id}-00f067aa0ba902b7-01"
         try:
             response = self.requester(
                 "POST",
@@ -150,10 +190,7 @@ class HttpOaTokenIntrospector(TokenIntrospector):
                     "audience": audience,
                     "required_scopes": list(scopes),
                 },
-                headers={
-                    "Accept": "application/json",
-                    "Authorization": f"Bearer {self.authorization_token}",
-                },
+                headers=headers,
                 timeout=self.timeout_seconds,
             )
         except httpx.HTTPError as exc:
@@ -228,6 +265,8 @@ class ServiceTokenAdmissionRuntime:
         required_scopes: Sequence[str] = (),
         route_class: str = "READ",
         now_epoch: int | None = None,
+        request_id: str | None = None,
+        trace_id: str | None = None,
     ) -> AdmittedServiceClaims:
         try:
             route = _route_class(route_class)
@@ -248,6 +287,8 @@ class ServiceTokenAdmissionRuntime:
                     required_scopes=scopes,
                     route_class=route,
                     now_epoch=now,
+                    request_id=request_id,
+                    trace_id=trace_id,
                 )
         except ServiceTokenAdmissionError:
             self._increment("rejected")
@@ -342,6 +383,8 @@ class ServiceTokenAdmissionRuntime:
         required_scopes: tuple[str, ...],
         route_class: str,
         now_epoch: int,
+        request_id: str | None,
+        trace_id: str | None,
     ) -> AdmittedServiceClaims:
         if self.rollout_profile == "TEST_MOCK":
             raise _unauthorized(
@@ -372,11 +415,21 @@ class ServiceTokenAdmissionRuntime:
                     "OA token introspection is required",
                     retryable=True,
                 )
-            result = self.introspector.introspect(
-                token,
-                expected_audience=self.expected_audience,
-                required_scopes=required_scopes,
-            )
+            contextual = getattr(self.introspector, "introspect_with_context", None)
+            if callable(contextual):
+                result = contextual(
+                    token,
+                    expected_audience=self.expected_audience,
+                    required_scopes=required_scopes,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+            else:
+                result = self.introspector.introspect(
+                    token,
+                    expected_audience=self.expected_audience,
+                    required_scopes=required_scopes,
+                )
             _validate_introspection_binding(result, claims)
             introspection_status = "ACTIVE"
         return _signed_projection(claims, introspection_status=introspection_status)
@@ -483,6 +536,8 @@ def admit_service_token_from_request(
                 authorization,
                 required_scopes=required_scopes,
                 route_class=route_class,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
             )
         except ServiceTokenAdmissionError as exc:
             return service_token_admission_problem_response(request, exc)
@@ -529,6 +584,8 @@ def register_service_token_admission_routes(
                 authorization,
                 required_scopes=(DEFAULT_SERVICE_SCOPE,),
                 route_class="CREDENTIAL",
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
             )
         except ServiceTokenAdmissionError as exc:
             return service_token_admission_problem_response(request, exc)
@@ -536,6 +593,8 @@ def register_service_token_admission_routes(
             "service_id": spec.service_id,
             "claim_status": "ACTIVE",
             "claims": claims.to_wire(),
+            "request_id": request_id_from_headers(request),
+            "trace_id": trace_id_from_headers(request),
         }
 
 def _service_token_admission_from_app(

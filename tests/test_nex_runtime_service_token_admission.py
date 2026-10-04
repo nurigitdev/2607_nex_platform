@@ -120,6 +120,28 @@ class RecordingIntrospector:
         return self.result
 
 
+class ContextRecordingIntrospector(RecordingIntrospector):
+    def introspect_with_context(
+        self,
+        token: str,
+        *,
+        expected_audience: str,
+        required_scopes: Sequence[str],
+        request_id: str | None,
+        trace_id: str | None,
+    ) -> Mapping[str, Any]:
+        self.calls.append(
+            {
+                "token": token,
+                "expected_audience": expected_audience,
+                "required_scopes": tuple(required_scopes),
+                "request_id": request_id,
+                "trace_id": trace_id,
+            }
+        )
+        return self.result
+
+
 def test_test_mock_profile_accepts_only_mock_tokens(
     signing_runtime: dict[str, Any],
 ) -> None:
@@ -174,6 +196,39 @@ def test_signed_read_is_local_and_sensitive_route_is_introspected(
     assert sensitive.introspection_status == "ACTIVE"
     assert sensitive.token_id_digest == sha256(b"sat-admission").hexdigest()
     assert "jti" not in sensitive.to_wire()
+
+
+def test_sensitive_admission_propagates_context_to_capable_introspector(
+    signing_runtime: dict[str, Any],
+) -> None:
+    introspector = ContextRecordingIntrospector(_introspection())
+    runtime = ServiceTokenAdmissionRuntime(
+        expected_audience="nex-cx",
+        rollout_profile="SIGNED_ONLY",
+        signed_verifier=_verifier(signing_runtime),
+        introspector=introspector,
+        clock=lambda: 600,
+    )
+    token = _token(signing_runtime)
+
+    admitted = runtime.admit(
+        f"Bearer {token}",
+        required_scopes=("service:call",),
+        route_class="CREDENTIAL",
+        request_id="s134-request",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    )
+
+    assert admitted.introspection_status == "ACTIVE"
+    assert introspector.calls == [
+        {
+            "token": token,
+            "expected_audience": "nex-cx",
+            "required_scopes": ("service:call",),
+            "request_id": "s134-request",
+            "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        }
+    ]
 
 
 @pytest.mark.parametrize("route_class", ["WRITE", "ADMIN", "CREDENTIAL", "KEY_MANAGEMENT"])
@@ -391,6 +446,17 @@ def test_http_introspector_request_shape_and_failures() -> None:
     assert calls[0]["url"] == "http://oa.local/api/v1/auth/introspect"
     assert calls[0]["headers"]["Authorization"] == "Bearer caller-token"
     assert calls[0]["json"]["token"] == "target-token"
+    assert client.introspect_with_context(
+        "target-token",
+        expected_audience="nex-cx",
+        required_scopes=("service:call",),
+        request_id="s134-request",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    )["active"] is True
+    assert calls[1]["headers"]["X-Request-ID"] == "s134-request"
+    assert calls[1]["headers"]["traceparent"] == (
+        "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    )
 
     for requester, retryable in (
         (lambda *args, **kwargs: httpx.Response(401), False),
@@ -540,7 +606,11 @@ def test_active_service_claim_route_requires_signed_scope_and_introspection(
 
     response = client.post(
         "/internal/v1/auth/service-claim/active",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Request-ID": "s134-request",
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        },
     )
 
     assert response.status_code == 200
@@ -548,6 +618,8 @@ def test_active_service_claim_route_requires_signed_scope_and_introspection(
     assert response.json()["claims"]["audience"] == service_id
     assert response.json()["claims"]["service_id"] == caller_service_id
     assert response.json()["claims"]["introspection_status"] == "ACTIVE"
+    assert response.json()["request_id"] == "s134-request"
+    assert response.json()["trace_id"] == "4bf92f3577b34da6a3ce929d0e0e4736"
     assert introspection.calls == [
         {
             "token": token,
@@ -633,6 +705,40 @@ def test_request_helper_rejects_invalid_app_runtime() -> None:
     assert response.json()["error_code"] == "nex.service_token_admission_unavailable"
 
 
+def test_request_helper_uses_attached_runtime_and_propagates_context(
+    signing_runtime: dict[str, Any],
+) -> None:
+    from nex_runtime import admit_service_token_from_request
+
+    runtime = ServiceTokenAdmissionRuntime(
+        expected_audience="nex-cx",
+        rollout_profile="SIGNED_ONLY",
+        signed_verifier=_verifier(signing_runtime),
+        clock=lambda: 600,
+    )
+    app = FastAPI()
+    app.state.service_token_admission = runtime
+
+    @app.get("/guard")
+    def guard(request: Request):
+        return admit_service_token_from_request(
+            request,
+            f"Bearer {_token(signing_runtime)}",
+            expected_audience="nex-cx",
+            required_scopes=("service:call",),
+        )
+
+    response = TestClient(app).get(
+        "/guard",
+        headers={
+            "X-Request-ID": "s134-request",
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["token_kind"] == "SIGNED"
+
+
 def test_request_helper_fallback_rejects_invalid_mock_token() -> None:
     from nex_runtime import admit_service_token_from_request
 
@@ -650,6 +756,30 @@ def test_request_helper_fallback_rejects_invalid_mock_token() -> None:
     response = TestClient(app).get("/guard")
     assert response.status_code == 401
     assert response.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
+
+
+def test_request_helper_fallback_accepts_valid_mock_token() -> None:
+    from nex_runtime import admit_service_token_from_request
+
+    app = FastAPI()
+    token = issue_mock_service_token(
+        service_id="nex-ae-api",
+        audience="nex-cx",
+        scopes=("service:call",),
+    )
+
+    @app.get("/guard")
+    def guard(request: Request):
+        return admit_service_token_from_request(
+            request,
+            f"Bearer {token.access_token}",
+            expected_audience="nex-cx",
+            required_scopes=("service:call",),
+        )
+
+    response = TestClient(app).get("/guard")
+    assert response.status_code == 200
+    assert response.json()["token_kind"] == "MOCK"
 
 
 def test_admitted_claim_projection_omits_optional_signed_fields() -> None:

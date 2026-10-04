@@ -1,6 +1,6 @@
 # Platform OA-backed Trust Integration
 
-Status: S134 in progress; boundary frozen by Slice 1332.
+Status: S134 in progress; actual protected trust evidence passed in Slice 1339.
 
 This document is the canonical non-drift record for S134. It connects the
 restart-safe test topology proven by S133 to one OA-backed user and service
@@ -52,7 +52,21 @@ S134 must prove one actual loopback HTTP journey in which:
 
 S134 is complete only when an actual OA credential login and OA-issued signed service-token chain reaches AE, CX, MO, and AG, while revoked and unauthorized requests fail closed before and after restart. All five test databases and all temporary key files must be clean after the evidence run.
 
+## Slice 1339 Protected Evidence
+
+- All five service-owned test databases reached their 89 migration heads.
+- Five API processes completed two fresh startup generations over loopback HTTP.
+- The exact five trust hops and four fail-closed denial scenarios passed.
+- The OA user session, signing key, and revoked service-token decision survived
+  restart.
+- Correlated audit rows, seeded identity/trust rows, and temporary signing key
+  material were removed; post-run residue was zero.
+- Remote model providers were not contacted because they are outside S134.
+
+The integrated trust path is now proven. Slice 1340 owns contract, privacy,
+cleanup, and operator-runbook hardening; Slice 1341 owns final closure and the
+Full Gate.
+
 ## S135 Handoff
 
 S135 inherits only validated OA session owner context and signed service identity. It owns authenticated document upload-to-index durability and must not reopen identity, signing, or cross-service trust ownership.
-
