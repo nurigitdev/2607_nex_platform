@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -50,8 +50,11 @@ class MvpIngestionVectorIndexer:
     embedding_alias: str
     vector_repository: VectorIndexRepository
     vector_store: Any
+    runtime_hydrator: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None
 
     def __call__(self, run: Mapping[str, Any]) -> IngestionStepResult:
+        if self.runtime_hydrator is not None:
+            self.runtime_hydrator(run)
         context = _access_context(run)
         document_id = _required(run.get("document_id"), "document_id")
         public_chunk_set = self.store.get_chunk_set(document_id)

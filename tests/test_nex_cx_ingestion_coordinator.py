@@ -272,6 +272,26 @@ def test_default_handlers_reuse_all_materialized_outputs() -> None:
     )
 
 
+def test_default_handlers_hydrate_before_reading_materialized_outputs() -> None:
+    hydrated_steps = []
+    default_handlers = build_default_ingestion_step_handlers(
+        store=MaterializedStore(),
+        storage_config=object(),
+        mo_client=object(),
+        embedding_alias="embedding-main",
+        runtime_hydrator=lambda run: hydrated_steps.append(run["document_id"]) or {},
+    )
+    run = {
+        "document_id": "doc-1",
+        "job_id": "job-1",
+        "request_id": "request-1",
+        "trace_id": "trace-1",
+    }
+
+    assert all(handler(run).skipped for handler in default_handlers.values())
+    assert hydrated_steps == ["doc-1"] * len(INGESTION_PIPELINE_STEPS)
+
+
 def test_execute_all_returns_an_inactive_run_without_dispatch() -> None:
     repository = InMemoryIngestionRunRepository()
     queued = build_ingestion_run(

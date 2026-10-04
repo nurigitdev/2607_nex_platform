@@ -22,6 +22,7 @@ from nex_cx.ingestion_coordinator import (
     IngestionStepHandler,
     build_default_ingestion_step_handlers,
 )
+from nex_cx.ingestion_hydration import hydrate_ingestion_runtime
 from nex_cx.lexical_candidates import PostgresLexicalCandidateStore
 from nex_cx.mvp_ingestion_indexing import MvpIngestionVectorIndexer
 from nex_cx.pgvector_store import PgVectorCxVectorStore
@@ -306,6 +307,11 @@ def build_cx_mvp_runtime(
         rerank_client=rerank_client,
         reranker_alias=reranker_alias,
     )
+    runtime_hydrator = lambda run: hydrate_ingestion_runtime(
+        run,
+        store=store,
+        storage_config=storage_config,
+    )
     vector_indexer = MvpIngestionVectorIndexer(
         store=store,
         private_text_store=private_text_store,
@@ -313,6 +319,7 @@ def build_cx_mvp_runtime(
         embedding_alias=embedding_alias,
         vector_repository=vector_repository,
         vector_store=ingestion_vector_store,
+        runtime_hydrator=runtime_hydrator,
     )
     handlers = build_default_ingestion_step_handlers(
         store=store,
@@ -321,6 +328,7 @@ def build_cx_mvp_runtime(
         embedding_alias=embedding_alias,
         prompt_store=prompt_store,
         mvp_embedding_handler=vector_indexer,
+        runtime_hydrator=runtime_hydrator,
     )
     return CxMvpRuntimeComposition(
         source=source,

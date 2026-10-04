@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 import hashlib
 from pathlib import Path
 
@@ -133,6 +134,18 @@ def test_mvp_ingestion_persists_private_chunks_and_publishes_ready_index(tmp_pat
     assert result.skipped is False
     assert len(list((tmp_path / "private").rglob("*.utf8"))) == 2
     assert len(indexer.vector_store.bound.rows) == 2
+
+
+def test_mvp_ingestion_hydrates_runtime_before_chunk_reads(tmp_path) -> None:
+    hydrated = []
+    indexer = replace(
+        _indexer(tmp_path),
+        runtime_hydrator=lambda run: hydrated.append(run["document_id"]) or {},
+    )
+
+    indexer(_run())
+
+    assert hydrated == ["document-s100"]
 
 
 def test_mvp_ingestion_reuses_ready_index_idempotently(tmp_path) -> None:

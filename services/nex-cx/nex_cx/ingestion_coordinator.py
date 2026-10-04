@@ -51,6 +51,7 @@ class IngestionCheckpointExecutionError(Exception):
 
 
 IngestionStepHandler = Callable[[Mapping[str, Any]], IngestionStepResult]
+IngestionRuntimeHydrator = Callable[[Mapping[str, Any]], Mapping[str, Any]]
 
 
 def execute_ingestion_checkpoint(
@@ -128,6 +129,7 @@ def build_default_ingestion_step_handlers(
     embedding_alias: str,
     prompt_store: PromptRegistryStore | None = None,
     mvp_embedding_handler: IngestionStepHandler | None = None,
+    runtime_hydrator: IngestionRuntimeHydrator | None = None,
 ) -> dict[str, IngestionStepHandler]:
     handlers: dict[str, IngestionStepHandler] = {
         "extraction": lambda run: _existing_or_execute(
@@ -205,6 +207,11 @@ def build_default_ingestion_step_handlers(
             ),
         ),
     }
+    if runtime_hydrator is not None:
+        handlers = {
+            step_id: _with_runtime_hydration(handler, runtime_hydrator)
+            for step_id, handler in handlers.items()
+        }
     if mvp_embedding_handler is not None:
         handlers["embedding_index"] = mvp_embedding_handler
     return handlers
@@ -244,6 +251,17 @@ def _existing_or_execute(
         output_ref=_metadata_output_ref(step_id, document_id, output),
         skipped=existing is not None,
     )
+
+
+def _with_runtime_hydration(
+    handler: IngestionStepHandler,
+    hydrator: IngestionRuntimeHydrator,
+) -> IngestionStepHandler:
+    def hydrated(run: Mapping[str, Any]) -> IngestionStepResult:
+        hydrator(run)
+        return handler(run)
+
+    return hydrated
 
 
 def _metadata_output_ref(

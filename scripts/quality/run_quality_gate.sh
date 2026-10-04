@@ -665,3 +665,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_ae_protected_upload_owner_policy.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_upload_handoff_persistence.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_upload_admission_lineage.py --summary
+"$PYTHON_BIN" scripts/smoke/run_cx_ingestion_worker_hydration.py --summary

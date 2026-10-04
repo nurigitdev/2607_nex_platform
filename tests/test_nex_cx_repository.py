@@ -3490,6 +3490,12 @@ def test_content_ingestion_store_with_sqlalchemy_repository_persists_extraction_
     assert artifact["markdown_storage_uri"].startswith(
         "local://cx/extracted-markdown/"
     )
+    assert repository.find_latest_extraction_artifact(
+        content_object_id=refs["content_object_id"]
+    ) == artifact
+    assert repository.find_latest_extraction_artifact(
+        content_object_id="missing-document"
+    ) is None
     assert _sqlite_table_count(engine, "cx_extraction_artifacts") == 1
     assert "SECRET_SOURCE_FOR_EXTRACTION" not in _sqlite_table_dump(
         engine,
@@ -3555,6 +3561,12 @@ def test_content_ingestion_store_with_sqlalchemy_repository_persists_chunk_set_m
     assert persisted["chunks"][0]["text_sha256"] == public_chunk_set["chunks"][0][
         "text_sha256"
     ]
+    assert repository.find_latest_chunk_set(
+        content_object_id=refs["content_object_id"]
+    ) == persisted
+    assert repository.find_latest_chunk_set(
+        content_object_id="missing-document"
+    ) is None
     assert "SECRET_PRIVATE_CHUNK_SUFFIX" in store.get_chunk_text(
         public_chunk_set["chunks"][0]["chunk_id"]
     )

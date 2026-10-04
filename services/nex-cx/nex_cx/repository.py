@@ -88,6 +88,13 @@ class CxContentRepository(Protocol):
     ) -> dict[str, Any] | None:
         ...
 
+    def find_latest_extraction_artifact(
+        self,
+        *,
+        content_object_id: str,
+    ) -> dict[str, Any] | None:
+        ...
+
     def save_chunk_set(self, record: dict[str, Any]) -> dict[str, Any]:
         ...
 
@@ -101,6 +108,13 @@ class CxContentRepository(Protocol):
         extraction_artifact_id: str,
         chunk_policy_id: str,
         source_markdown_sha256: str,
+    ) -> dict[str, Any] | None:
+        ...
+
+    def find_latest_chunk_set(
+        self,
+        *,
+        content_object_id: str,
     ) -> dict[str, Any] | None:
         ...
 
@@ -384,6 +398,26 @@ class InMemoryCxContentRepository:
             return None
         return self.extraction_artifacts[extraction_artifact_id]
 
+    def find_latest_extraction_artifact(
+        self,
+        *,
+        content_object_id: str,
+    ) -> dict[str, Any] | None:
+        matches = [
+            record
+            for record in self.extraction_artifacts.values()
+            if record["content_object_id"] == content_object_id
+        ]
+        if not matches:
+            return None
+        return max(
+            matches,
+            key=lambda record: (
+                str(record.get("updated_at") or ""),
+                str(record["extraction_artifact_id"]),
+            ),
+        )
+
     def save_chunk_set(self, record: dict[str, Any]) -> dict[str, Any]:
         key = _chunk_set_unique_key(record)
         existing_id = self.chunk_set_ids_by_unique_key.get(key)
@@ -416,6 +450,26 @@ class InMemoryCxContentRepository:
         if chunk_set_id is None:
             return None
         return self.chunk_sets[chunk_set_id]
+
+    def find_latest_chunk_set(
+        self,
+        *,
+        content_object_id: str,
+    ) -> dict[str, Any] | None:
+        matches = [
+            record
+            for record in self.chunk_sets.values()
+            if record["content_object_id"] == content_object_id
+        ]
+        if not matches:
+            return None
+        return max(
+            matches,
+            key=lambda record: (
+                str(record.get("created_at") or ""),
+                str(record["chunk_set_id"]),
+            ),
+        )
 
     def save_lexical_index(self, record: dict[str, Any]) -> dict[str, Any]:
         key = _lexical_index_unique_key(record)
@@ -831,6 +885,20 @@ class SqlAlchemyCxContentRepository:
         except SQLAlchemyError as exc:
             raise _content_repository_unavailable() from exc
 
+    def find_latest_extraction_artifact(
+        self,
+        *,
+        content_object_id: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_latest_extraction_artifact(
+                    session,
+                    content_object_id=content_object_id,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
     def save_chunk_set(self, record: dict[str, Any]) -> dict[str, Any]:
         record_to_store = deepcopy(record)
         try:
@@ -873,6 +941,20 @@ class SqlAlchemyCxContentRepository:
                     extraction_artifact_id=extraction_artifact_id,
                     chunk_policy_id=chunk_policy_id,
                     source_markdown_sha256=source_markdown_sha256,
+                )
+        except SQLAlchemyError as exc:
+            raise _content_repository_unavailable() from exc
+
+    def find_latest_chunk_set(
+        self,
+        *,
+        content_object_id: str,
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return self._select_latest_chunk_set(
+                    session,
+                    content_object_id=content_object_id,
                 )
         except SQLAlchemyError as exc:
             raise _content_repository_unavailable() from exc
@@ -1608,6 +1690,26 @@ class SqlAlchemyCxContentRepository:
         ).mappings().first()
         return _extraction_artifact_from_row(row) if row is not None else None
 
+    def _select_latest_extraction_artifact(
+        self,
+        session: Session,
+        *,
+        content_object_id: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_EXTRACTION_ARTIFACT_SELECT_COLUMNS}
+                FROM cx_extraction_artifacts
+                WHERE content_object_id = :content_object_id
+                ORDER BY updated_at DESC, extraction_artifact_id DESC
+                LIMIT 1
+                """
+            ),
+            {"content_object_id": content_object_id},
+        ).mappings().first()
+        return _extraction_artifact_from_row(row) if row is not None else None
+
     def _select_chunk_set(
         self,
         session: Session,
@@ -1653,6 +1755,31 @@ class SqlAlchemyCxContentRepository:
                 "chunk_policy_id": chunk_policy_id,
                 "source_markdown_sha256": source_markdown_sha256,
             },
+        ).mappings().first()
+        if row is None:
+            return None
+        return _chunk_set_from_row(
+            row,
+            self._select_chunks(session, str(row["chunk_set_id"])),
+        )
+
+    def _select_latest_chunk_set(
+        self,
+        session: Session,
+        *,
+        content_object_id: str,
+    ) -> dict[str, Any] | None:
+        row = session.execute(
+            text(
+                f"""
+                SELECT {_CHUNK_SET_SELECT_COLUMNS}
+                FROM cx_chunk_sets
+                WHERE content_object_id = :content_object_id
+                ORDER BY created_at DESC, chunk_set_id DESC
+                LIMIT 1
+                """
+            ),
+            {"content_object_id": content_object_id},
         ).mappings().first()
         if row is None:
             return None

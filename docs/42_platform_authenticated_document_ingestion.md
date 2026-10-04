@@ -45,8 +45,9 @@ API and worker restart without losing lineage or exposing private payloads.
    on process-local upload state and require repository-backed hydration.
    **Partially closed in Slice 1345:** duplicate upload admission now restores
    the persisted upload identity and converges on one durable source/job/run
-   lineage after API restart or concurrent insert. Step-input hydration remains
-   assigned to Slice 1346.
+   lineage after API restart or concurrent insert. **Closed in Slice 1346:**
+   worker handlers reload content/source, extraction, chunk, private chunk text,
+   and BM25 state from repository metadata plus root-confined Markdown files.
 4. The registered CX ingestion background process is a lifecycle shell and does
    not yet claim or execute durable ingestion work.
 5. AE does not expose one owner-scoped, restart-safe upload-to-index progress
@@ -83,6 +84,10 @@ API and worker restart without losing lineage or exposing private payloads.
   `upload_id`, deterministically reuses the same job/run lineage after restart
   and concurrent insert, rebinds API state to the durable queue result, and
   fails closed when source lineage is incomplete. No new table is required.
+- Slice `1346`: PostgreSQL MVP handlers hydrate restart-safe extraction,
+  chunking, and lexical state before every checkpoint. Private chunk text is
+  reconstructed from Markdown offsets and verified SHA-256 values rather than
+  persisted in the database.
 
 ## Completion Signal
 
