@@ -504,6 +504,115 @@ def test_fastapi_service_claim_route_uses_injected_admission_runtime() -> None:
     assert rejected.json()["error_code"] == "nex.authorization_missing"
 
 
+@pytest.mark.parametrize(
+    ("service_id", "caller_service_id"),
+    [
+        ("nex-oa", "nex-ae-api"),
+        ("nex-cx", "nex-ae-api"),
+        ("nex-mo", "nex-cx"),
+        ("nex-ag", "nex-ae-api"),
+    ],
+)
+def test_active_service_claim_route_requires_signed_scope_and_introspection(
+    signing_runtime: dict[str, Any],
+    service_id: str,
+    caller_service_id: str,
+) -> None:
+    claims = {
+        "aud": service_id,
+        "sub": f"service:{caller_service_id}",
+        "service_id": caller_service_id,
+    }
+    introspection = RecordingIntrospector(_introspection(**claims))
+    runtime = ServiceTokenAdmissionRuntime(
+        expected_audience=service_id,
+        rollout_profile="SIGNED_ONLY",
+        signed_verifier=_verifier(signing_runtime),
+        introspector=introspection,
+        clock=lambda: 600,
+    )
+    client = TestClient(
+        build_service_app(
+            SERVICE_SPECS[service_id], service_token_admission=runtime
+        )
+    )
+    token = _token(signing_runtime, **claims)
+
+    response = client.post(
+        "/internal/v1/auth/service-claim/active",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["claim_status"] == "ACTIVE"
+    assert response.json()["claims"]["audience"] == service_id
+    assert response.json()["claims"]["service_id"] == caller_service_id
+    assert response.json()["claims"]["introspection_status"] == "ACTIVE"
+    assert introspection.calls == [
+        {
+            "token": token,
+            "expected_audience": service_id,
+            "required_scopes": ("service:call",),
+        }
+    ]
+
+
+def test_active_service_claim_route_fails_closed_before_or_without_introspection(
+    signing_runtime: dict[str, Any],
+) -> None:
+    introspection = RecordingIntrospector(_introspection())
+    runtime = ServiceTokenAdmissionRuntime(
+        expected_audience="nex-cx",
+        rollout_profile="SIGNED_ONLY",
+        signed_verifier=_verifier(signing_runtime),
+        introspector=introspection,
+        clock=lambda: 600,
+    )
+    client = TestClient(
+        build_service_app(
+            SERVICE_SPECS["nex-cx"], service_token_admission=runtime
+        )
+    )
+
+    wrong_audience = client.post(
+        "/internal/v1/auth/service-claim/active",
+        headers={
+            "Authorization": f"Bearer {_token(signing_runtime, aud='nex-mo')}"
+        },
+    )
+    missing_scope = client.post(
+        "/internal/v1/auth/service-claim/active",
+        headers={
+            "Authorization": (
+                f"Bearer {_token(signing_runtime, scope='token:introspect')}"
+            )
+        },
+    )
+
+    assert wrong_audience.status_code == 403
+    assert wrong_audience.json()["error_code"] == "nex.token_audience_forbidden"
+    assert missing_scope.status_code == 403
+    assert missing_scope.json()["error_code"] == "nex.token_scope_forbidden"
+    assert introspection.calls == []
+
+    no_introspection = ServiceTokenAdmissionRuntime(
+        expected_audience="nex-cx",
+        rollout_profile="SIGNED_ONLY",
+        signed_verifier=_verifier(signing_runtime),
+        clock=lambda: 600,
+    )
+    unavailable = TestClient(
+        build_service_app(
+            SERVICE_SPECS["nex-cx"], service_token_admission=no_introspection
+        )
+    ).post(
+        "/internal/v1/auth/service-claim/active",
+        headers={"Authorization": f"Bearer {_token(signing_runtime)}"},
+    )
+    assert unavailable.status_code == 503
+    assert unavailable.json()["error_code"] == "nex.token_introspection_unavailable"
+
+
 def test_request_helper_rejects_invalid_app_runtime() -> None:
     from nex_runtime import admit_service_token_from_request
 

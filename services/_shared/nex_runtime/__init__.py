@@ -69,6 +69,15 @@ from .platform_trust_evidence import (
     TRUST_EVIDENCE_SCHEMA_VERSION,
     evaluate_platform_trust_evidence,
 )
+from .platform_trust_scope_policy import (
+    ACTIVE_CLAIM_ROUTE_CLASS,
+    OA_INTROSPECTION_SCOPE as PLATFORM_TRUST_INTROSPECTION_SCOPE,
+    PLATFORM_TRUST_GRANTS,
+    PLATFORM_TRUST_SCOPE_POLICY_SCHEMA_VERSION,
+    PlatformTrustGrant,
+    platform_trust_scope_policy,
+    validate_platform_trust_scope_policy,
+)
 from .topology_graph import (
     DependencyProbeTarget,
     RuntimeDependencyError,
@@ -540,6 +549,8 @@ __all__ = [
     "attach_service_persistence_runtime",
     "build_engine",
     "evaluate_platform_trust_evidence",
+    "platform_trust_scope_policy",
+    "validate_platform_trust_scope_policy",
     "build_common_job",
     "build_job_error",
     "build_operational_event",
@@ -616,6 +627,11 @@ __all__ = [
     "PLATFORM_TRUST_REQUIRED_DENIALS",
     "PLATFORM_TRUST_REQUIRED_HOPS",
     "TRUST_EVIDENCE_SCHEMA_VERSION",
+    "ACTIVE_CLAIM_ROUTE_CLASS",
+    "PLATFORM_TRUST_GRANTS",
+    "PLATFORM_TRUST_INTROSPECTION_SCOPE",
+    "PLATFORM_TRUST_SCOPE_POLICY_SCHEMA_VERSION",
+    "PlatformTrustGrant",
     "PostgresRestartCoordinatorError",
     "PlatformPostgresRestorationStore",
     "PostgresRestorationBatchResult",
