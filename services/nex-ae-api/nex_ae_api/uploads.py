@@ -28,6 +28,7 @@ from nex_ae_api.upload_owner_policy import (
     enforce_upload_owner_policy,
     normalize_upload_runtime_profile,
 )
+from nex_ae_api.upload_handoff_persistence import UploadHandoffRepositoryError
 
 if TYPE_CHECKING:
     from nex_ae_api.auth_guard import BrowserUserAuthContext
@@ -62,6 +63,38 @@ class CxUploadClient(Protocol):
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
+        ...
+
+
+class UploadHandoffRepository(Protocol):
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+    def get(
+        self,
+        upload_handoff_id: str,
+        *,
+        tenant_id: str | None = None,
+        owner_user_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        ...
+
+    def get_by_document_id(
+        self,
+        document_id: str,
+        *,
+        tenant_id: str | None = None,
+        owner_user_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        ...
+
+    def list_by_workspace(
+        self,
+        workspace_id: str,
+        *,
+        tenant_id: str | None = None,
+        owner_user_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         ...
 
 
@@ -115,24 +148,45 @@ class UploadHandoffStore:
         self.records[record["upload_handoff_id"]] = record
         return record
 
-    def get(self, upload_handoff_id: str) -> dict[str, Any] | None:
-        return self.records.get(upload_handoff_id)
+    def get(
+        self,
+        upload_handoff_id: str,
+        *,
+        tenant_id: str | None = None,
+        owner_user_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        record = self.records.get(upload_handoff_id)
+        return record if _matches_owner(record, tenant_id, owner_user_id) else None
 
-    def get_by_document_id(self, document_id: str) -> dict[str, Any] | None:
+    def get_by_document_id(
+        self,
+        document_id: str,
+        *,
+        tenant_id: str | None = None,
+        owner_user_id: str | None = None,
+    ) -> dict[str, Any] | None:
         for record in self.records.values():
             document_ref = record.get("cx_document_ref")
             if (
                 isinstance(document_ref, dict)
                 and document_ref.get("document_id") == document_id
+                and _matches_owner(record, tenant_id, owner_user_id)
             ):
                 return record
         return None
 
-    def list_by_workspace(self, workspace_id: str) -> list[dict[str, Any]]:
+    def list_by_workspace(
+        self,
+        workspace_id: str,
+        *,
+        tenant_id: str | None = None,
+        owner_user_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         return [
             record
             for record in self.records.values()
             if record["workspace_id"] == workspace_id
+            and _matches_owner(record, tenant_id, owner_user_id)
         ]
 
 
@@ -147,6 +201,18 @@ class UploadHandoffError(Exception):
 DEFAULT_UPLOAD_HANDOFF_STORE = UploadHandoffStore()
 
 
+def build_default_upload_handoff_store(app: Any) -> UploadHandoffRepository:
+    persistence = getattr(app.state, "nex_persistence", None)
+    session_factory = getattr(persistence, "api_session_factory", None)
+    if session_factory is not None:
+        from nex_ae_api.upload_handoff_persistence import (
+            SqlAlchemyUploadHandoffStore,
+        )
+
+        return SqlAlchemyUploadHandoffStore(session_factory)
+    return DEFAULT_UPLOAD_HANDOFF_STORE
+
+
 def build_default_cx_upload_client() -> HttpCxUploadClient:
     return HttpCxUploadClient(
         base_url=os.getenv("NEX_CX_BASE_URL", "http://127.0.0.1:8104"),
@@ -157,7 +223,7 @@ def build_default_cx_upload_client() -> HttpCxUploadClient:
 def register_upload_routes(
     app: FastAPI,
     *,
-    store: UploadHandoffStore | None = None,
+    store: UploadHandoffRepository | None = None,
     cx_client: CxUploadClient | None = None,
     owner_resolver: SubjectRegistryResolver | None = None,
     owner_resolver_mode: str | None = None,
@@ -165,7 +231,8 @@ def register_upload_routes(
     session_mode: str | None = None,
     runtime_profile: str | None = None,
 ) -> None:
-    upload_store = store or DEFAULT_UPLOAD_HANDOFF_STORE
+    upload_store = store or build_default_upload_handoff_store(app)
+    app.state.ae_upload_handoff_store = upload_store
     client = cx_client or build_default_cx_upload_client()
     resolver_mode = normalize_upload_owner_resolver_mode(
         owner_resolver_mode or os.getenv(UPLOAD_OWNER_RESOLVER_MODE_ENV)
@@ -245,7 +312,7 @@ def register_upload_routes(
             )
         except BrowserAuthError as exc:
             return browser_auth_problem_response(request, exc)
-        except UploadHandoffError as exc:
+        except (UploadHandoffError, UploadHandoffRepositoryError) as exc:
             return _upload_problem_response(request, exc)
 
     @app.post(AE_MULTIPART_UPLOAD_ROUTE, response_model=None)
@@ -324,7 +391,7 @@ def register_upload_routes(
             )
         except BrowserAuthError as exc:
             return browser_auth_problem_response(request, exc)
-        except UploadHandoffError as exc:
+        except (UploadHandoffError, UploadHandoffRepositoryError) as exc:
             return _upload_problem_response(request, exc)
 
     @app.get("/api/v1/uploads/{upload_handoff_id}", response_model=None)
@@ -344,7 +411,15 @@ def register_upload_routes(
         if isinstance(auth_context, JSONResponse):
             return auth_context
 
-        record = upload_store.get(upload_handoff_id)
+        try:
+            owner = auth_context.browser_context
+            record = upload_store.get(
+                upload_handoff_id,
+                tenant_id=owner.tenant_id if owner is not None else None,
+                owner_user_id=owner.user_id if owner is not None else None,
+            )
+        except UploadHandoffRepositoryError as exc:
+            return _upload_problem_response(request, exc)
         if record is None:
             return _upload_problem_response(
                 request,
@@ -704,6 +779,23 @@ def _browser_owner_scoped_payload(
             error_code=exc.error_code,
             detail=exc.detail,
         ) from exc
+
+
+def _matches_owner(
+    record: dict[str, Any] | None,
+    tenant_id: str | None,
+    owner_user_id: str | None,
+) -> bool:
+    if record is None:
+        return False
+    if tenant_id is None and owner_user_id is None:
+        return True
+    if tenant_id is None or owner_user_id is None:
+        return False
+    return (
+        record.get("tenant_id") == tenant_id
+        and record.get("owner_user_id") == owner_user_id
+    )
 
 
 def subject_ref_from_payload(

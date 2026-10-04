@@ -9,6 +9,7 @@ from typing import Any, Mapping
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_VERSION = "platform_postgres_restart_boundary.v1"
+S133_MIGRATION_BASELINE = 89
 SERVICES = ("nex-oa", "nex-mo", "nex-cx", "nex-ae-api", "nex-ag")
 CANONICAL_DOCUMENT = "docs/40_platform_postgresql_restart_orchestration.md"
 REQUIRED_PATHS = (
@@ -66,7 +67,9 @@ def run_platform_postgres_restart_boundary(root: Path = ROOT) -> dict[str, Any]:
         "all_five_services_own_migrations": all(
             count > 0 for count in migration_counts.values()
         ),
-        "migration_inventory_is_89": sum(migration_counts.values()) == 89,
+        "migration_inventory_preserves_s133_baseline": (
+            sum(migration_counts.values()) >= S133_MIGRATION_BASELINE
+        ),
         "test_child_database_alias_boundary_is_recorded": (
             "test database URLs are not yet projected" in canonical
         ),

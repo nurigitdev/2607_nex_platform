@@ -18,7 +18,11 @@ from nex_ae_api.auth_guard import BrowserUserAuthContext
 from nex_ae_api.cx_owner_context import cx_owner_headers
 from nex_ae_api.route_auth import authorize_ae_facade_route_request
 from nex_ae_api.service_auth import resolve_ae_outbound_service_token
-from nex_ae_api.uploads import DEFAULT_UPLOAD_HANDOFF_STORE, UploadHandoffStore
+from nex_ae_api.upload_handoff_persistence import UploadHandoffRepositoryError
+from nex_ae_api.uploads import (
+    DEFAULT_UPLOAD_HANDOFF_STORE,
+    UploadHandoffRepository,
+)
 
 
 AE_DOCUMENT_DETAIL_PROJECTION_SCHEMA_VERSION = "ae_document_detail_projection.v1"
@@ -181,10 +185,15 @@ def build_default_cx_document_library_client() -> HttpCxDocumentLibraryClient:
 def register_document_library_routes(
     app: FastAPI,
     *,
-    upload_store: UploadHandoffStore | None = None,
+    upload_store: UploadHandoffRepository | None = None,
     cx_client: CxDocumentLibraryClient | None = None,
 ) -> None:
-    handoffs = upload_store or DEFAULT_UPLOAD_HANDOFF_STORE
+    handoffs = upload_store or getattr(
+        app.state,
+        "ae_upload_handoff_store",
+        DEFAULT_UPLOAD_HANDOFF_STORE,
+    )
+    app.state.ae_document_upload_handoff_store = handoffs
     client = cx_client or build_default_cx_document_library_client()
 
     @app.get("/api/v1/workspaces/{workspace_id}/documents", response_model=None)
@@ -208,11 +217,11 @@ def register_document_library_routes(
                     trace_id=trace_id,
                 )
                 for upload_handoff in visible_upload_handoffs(
-                    handoffs.list_by_workspace(workspace_id),
+                    _list_visible_handoffs(handoffs, workspace_id, auth_context.browser_context),
                     browser_context=auth_context.browser_context,
                 )
             ]
-        except DocumentLibraryError as exc:
+        except (DocumentLibraryError, UploadHandoffRepositoryError) as exc:
             return _document_problem_response(request, exc)
 
         return {
@@ -242,12 +251,12 @@ def register_document_library_routes(
                     trace_id=trace_id,
                 )
                 for upload_handoff in visible_upload_handoffs(
-                    handoffs.list_by_workspace(workspace_id),
+                    _list_visible_handoffs(handoffs, workspace_id, auth_context.browser_context),
                     browser_context=auth_context.browser_context,
                 )
             ]
             matches = search_summary_items(items, query=query)
-        except DocumentLibraryError as exc:
+        except (DocumentLibraryError, UploadHandoffRepositoryError) as exc:
             return _document_problem_response(request, exc)
 
         return {
@@ -266,7 +275,15 @@ def register_document_library_routes(
         if isinstance(auth_context, JSONResponse):
             return auth_context
 
-        upload_handoff = handoffs.get_by_document_id(document_id)
+        try:
+            owner = auth_context.browser_context
+            upload_handoff = handoffs.get_by_document_id(
+                document_id,
+                tenant_id=owner.tenant_id if owner is not None else None,
+                owner_user_id=owner.user_id if owner is not None else None,
+            )
+        except UploadHandoffRepositoryError as exc:
+            return _document_problem_response(request, exc)
         if upload_handoff is None:
             return _document_problem_response(
                 request,
@@ -366,6 +383,20 @@ def visible_upload_handoffs(
         for upload_handoff in upload_handoffs
         if handoff_matches_browser_context(upload_handoff, browser_context)
     ]
+
+
+def _list_visible_handoffs(
+    handoffs: UploadHandoffRepository,
+    workspace_id: str,
+    browser_context: BrowserUserAuthContext | None,
+) -> list[dict[str, Any]]:
+    if browser_context is None:
+        return handoffs.list_by_workspace(workspace_id)
+    return handoffs.list_by_workspace(
+        workspace_id,
+        tenant_id=browser_context.tenant_id,
+        owner_user_id=browser_context.user_id,
+    )
 
 
 def ensure_document_handoff_visible_to_browser(

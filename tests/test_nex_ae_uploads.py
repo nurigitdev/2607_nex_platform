@@ -644,8 +644,8 @@ def test_upload_routes_accept_browser_user_and_scope_payload_to_claims() -> None
     assert payload["ownership_ref"] == OWNER_REF
     assert store.get(payload["upload_handoff_id"]) == payload
     assert same_user_read.status_code == 200
-    assert other_user_read.status_code == 403
-    assert other_user_read.json()["error_code"] == "ae.browser_owner_scope_mismatch"
+    assert other_user_read.status_code == 404
+    assert other_user_read.json()["error_code"] == "ae.upload_handoff_not_found"
     assert isinstance(cx_client, FakeCxUploadClient)
     assert cx_client.calls[0]["payload"]["tenant_id"] == "tenant-a"
     assert cx_client.calls[0]["payload"]["owner_user_id"] == "user-a"

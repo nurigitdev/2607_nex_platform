@@ -654,8 +654,8 @@ def test_document_detail_route_accepts_browser_user_and_rejects_other_owner() ->
 
     assert allowed.status_code == 200
     assert allowed.json()["owner_user_id"] == "user-a"
-    assert forbidden.status_code == 403
-    assert forbidden.json()["error_code"] == "ae.browser_owner_scope_mismatch"
+    assert forbidden.status_code == 404
+    assert forbidden.json()["error_code"] == "ae.document_not_found"
     assert cx_client.calls == ["document:doc-001:tenant-a:user-a"]
 
 

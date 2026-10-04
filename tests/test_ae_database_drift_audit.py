@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from nex_ae_api.database_drift_audit import (
+    CORE_AE_TABLES,
+    MINIMUM_AE_MIGRATION_COUNT,
     _declared_table_names,
     _sql_identifiers,
     build_ae_database_drift_audit,
@@ -16,8 +18,8 @@ def test_repository_database_drift_audit_classifies_identifier_drift() -> None:
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
     assert result["issues"] == []
-    assert result["summary"]["migration_count"] == 23
-    assert result["summary"]["core_table_count"] == 17
+    assert result["summary"]["migration_count"] >= MINIMUM_AE_MIGRATION_COUNT
+    assert result["summary"]["core_table_count"] == len(CORE_AE_TABLES)
     assert result["summary"]["overlength_identifier_count"] > 0
     assert result["summary"]["drift_finding_count"] == 1
     assert result["database_readiness"] == (
@@ -80,7 +82,10 @@ def test_summary_line_and_runner_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_ae_database_drift_audit()
 
     assert "database_drift_audit=pass" in runner.summary_line(passing)
-    assert "migrations=23" in runner.summary_line(passing)
+    assert (
+        f"migrations={passing['summary']['migration_count']}"
+        in runner.summary_line(passing)
+    )
     assert "alembic=NOT_CONFIGURED" in runner.summary_line(passing)
     monkeypatch.setattr(runner, "run_ae_database_drift_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0

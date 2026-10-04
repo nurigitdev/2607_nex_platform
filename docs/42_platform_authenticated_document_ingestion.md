@@ -36,7 +36,8 @@ API and worker restart without losing lineage or exposing private payloads.
 ## Current Gaps
 
 1. AE upload handoff metadata uses a process-local in-memory store and is lost
-   across restart.
+   across restart. **Closed in Slice 1344:** protected persistence selects the
+   service-local SQLAlchemy store and owner-filtered indexed readback.
 2. Legacy local owner defaults remain available outside authenticated request
    handling. **Closed in Slice 1343:** protected upload profiles reject missing
    scope and local placeholders while `local_mock` retains compatibility.
@@ -71,6 +72,9 @@ API and worker restart without losing lineage or exposing private payloads.
 - Slice `1343`: protected AE upload owner fallback closed for JSON and multipart
   routes; OA browser claims remain authoritative and signed service callers
   require explicit tenant and owner scope.
+- Slice `1344`: AE upload handoff metadata persists through the service-local
+  SQLAlchemy runtime with owner-filtered readback and recursive private-payload
+  rejection; actual PostgreSQL journey evidence remains assigned to `1350`.
 
 ## Completion Signal
 
