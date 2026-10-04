@@ -54,13 +54,15 @@ isolated environment. No database URL crosses a service boundary.
 - Background process shells may validate protected persistence lifecycle, but
   S133 does not activate unrelated business work claiming.
 
-## Current Foundation and Gaps
+## Boundary-Time Foundation and Gaps
 
-The repository already has 89 service-owned migrations, an all-service test
-profile migration runner, service database readiness checks, separate API and
-worker pool settings, and the thirteen-process S132 topology.
+At the start of S133, the repository already had 89 service-owned migrations,
+an all-service test profile migration runner, service database readiness
+checks, separate API and worker pool settings, and the thirteen-process S132
+topology.
 
-S133 must close these current integration gaps:
+The following boundary-time gaps drive the Slice sequence and remain here as
+the non-drift checklist even after an individual gap is closed:
 
 1. test database URLs are not yet projected to the active service child
    database environment names;

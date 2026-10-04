@@ -247,6 +247,10 @@ from .postgres_pool_lifecycle import (
     PostgresPoolHandle,
     PostgresPoolLifecycleError,
 )
+from .postgres_restart_coordinator import (
+    PlatformPostgresRestartCoordinator,
+    PostgresRestartCoordinatorError,
+)
 from .runtime_process_adapters import (
     RuntimeProbeRequest,
     SubprocessRuntimeLauncher,
@@ -593,6 +597,8 @@ __all__ = [
     "resolve_ag_projection_policy",
     "RuntimeOrchestrationError",
     "RuntimeOrchestrator",
+    "PlatformPostgresRestartCoordinator",
+    "PostgresRestartCoordinatorError",
     "RuntimeProbeRequest",
     "SubprocessRuntimeLauncher",
     "build_runtime_process_environment",
