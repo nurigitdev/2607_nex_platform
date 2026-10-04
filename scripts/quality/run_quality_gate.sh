@@ -626,3 +626,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_cx_remediation_execution_read_model_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s130_oa_mvp_platform_trust_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_vertical_spine_reaudit_boundary.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_route_client_topology_inventory.py --summary
