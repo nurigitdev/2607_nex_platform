@@ -1403,6 +1403,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1297`](slices/1297_oa_revocation_introspection_restart_smoke.md) | `S130-006` Prove restart-safe digest-only service-token revocation and inactive introspection on actual OA PostgreSQL. |
 | [`Slice 1298`](slices/1298_oa_cross_service_signed_only_trust_smoke.md) | `S130-007` Prove AE, CX, MO, and AG SIGNED_ONLY sensitive-route introspection and post-revocation denial against actual OA PostgreSQL. |
 | [`Slice 1299`](slices/1299_oa_mvp_acceptance_contract_privacy_runbook.md) | `S130-008` Close OA trust contract, privacy, failure-audit, and operational runbook evidence without overclaiming production deployment. |
+| [`Slice 1300`](slices/1300_s130_oa_mvp_platform_trust_acceptance.md) | `S130-009` Re-execute all pre-Full-Gate OA MVP trust evidence, including four actual PostgreSQL workflows, and require an exact 7/8 acceptance state. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
