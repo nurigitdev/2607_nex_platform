@@ -51,7 +51,9 @@ API and worker restart without losing lineage or exposing private payloads.
 4. The registered CX ingestion background process is a lifecycle shell and does
    not yet claim or execute durable ingestion work.
 5. AE does not expose one owner-scoped, restart-safe upload-to-index progress
-   projection backed by CX ingestion and vector freshness state.
+   projection backed by CX ingestion and vector freshness state. **Closed in
+   Slice 1348:** AE joins its durable handoff to owner-scoped CX ingestion and
+   vector-readiness APIs and exposes only bounded operational metadata.
 6. No single protected test proves authenticated upload through index-ready
    completion, restart recovery, denial behavior, and residue-free cleanup.
 
@@ -93,6 +95,10 @@ API and worker restart without losing lineage or exposing private payloads.
   and verifies payload count and fingerprint freshness both after publish and
   before idempotent READY reuse. Missing or unverifiable payloads fail closed
   as retryable worker errors.
+- Slice `1348`: AE exposes an authenticated owner-scoped progress endpoint that
+  projects ingestion, retry, failure, cancellation, and vector freshness state.
+  Cross-owner reads are hidden and `INDEX_READY` requires retrieval-usable
+  payload-backed freshness.
 
 ## Completion Signal
 

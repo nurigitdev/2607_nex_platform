@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/upload_ingestion_progress.v1.schema.json",
+  "title": "NeX AE Upload Ingestion Progress",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "progress_schema_version",
+    "upload_handoff_id",
+    "workspace_id",
+    "document_id",
+    "status",
+    "progress_percent",
+    "ingestion",
+    "failure",
+    "retry",
+    "vector_index",
+    "links",
+    "metadata"
+  ],
+  "properties": {
+    "progress_schema_version": {"const": "ae_upload_ingestion_progress.v1"},
+    "upload_handoff_id": {"type": "string", "minLength": 1},
+    "workspace_id": {"type": "string", "minLength": 1},
+    "document_id": {"type": "string", "minLength": 1},
+    "status": {
+      "enum": [
+        "QUEUED",
+        "PROCESSING",
+        "WAITING_RETRY",
+        "FAILED",
+        "CANCELLED",
+        "INDEX_NOT_READY",
+        "INDEX_READY"
+      ]
+    },
+    "progress_percent": {"type": "integer", "minimum": 0, "maximum": 100},
+    "ingestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "available",
+        "run_id",
+        "status",
+        "current_step",
+        "step_total",
+        "step_completed",
+        "attempt_count",
+        "max_attempts",
+        "checkpoint_version",
+        "updated_at"
+      ],
+      "properties": {
+        "available": {"type": "boolean"},
+        "run_id": {"type": ["string", "null"]},
+        "status": {
+          "enum": ["QUEUED", "RUNNING", "WAITING_RETRY", "SUCCEEDED", "FAILED", "CANCELLED"]
+        },
+        "current_step": {"type": ["string", "null"]},
+        "step_total": {"type": "integer", "minimum": 0},
+        "step_completed": {"type": "integer", "minimum": 0},
+        "attempt_count": {"type": "integer", "minimum": 0},
+        "max_attempts": {"type": "integer", "minimum": 0},
+        "checkpoint_version": {"type": "integer", "minimum": 0},
+        "updated_at": {
+          "oneOf": [
+            {"type": "string", "format": "date-time"},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["present", "error_code", "failed_step", "retryable", "failed_at"],
+      "properties": {
+        "present": {"type": "boolean"},
+        "error_code": {"type": ["string", "null"]},
+        "failed_step": {"type": ["string", "null"]},
+        "retryable": {"type": "boolean"},
+        "failed_at": {
+          "oneOf": [
+            {"type": "string", "format": "date-time"},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "retry_at", "attempts_remaining"],
+      "properties": {
+        "available": {"type": "boolean"},
+        "retry_at": {
+          "oneOf": [
+            {"type": "string", "format": "date-time"},
+            {"type": "null"}
+          ]
+        },
+        "attempts_remaining": {"type": "integer", "minimum": 0}
+      }
+    },
+    "vector_index": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "available",
+        "vector_index_id",
+        "status",
+        "freshness_status",
+        "freshness_reason",
+        "retrieval_usable",
+        "rebuild_required",
+        "expected_vector_count",
+        "actual_vector_count"
+      ],
+      "properties": {
+        "available": {"type": "boolean"},
+        "vector_index_id": {"type": ["string", "null"]},
+        "status": {"enum": ["MISSING", "BUILDING", "READY", "STALE", "REBUILD_REQUIRED", "FAILED"]},
+        "freshness_status": {"enum": ["MISSING", "BUILDING", "READY", "STALE", "REBUILD_REQUIRED", "FAILED"]},
+        "freshness_reason": {"type": ["string", "null"]},
+        "retrieval_usable": {"type": "boolean"},
+        "rebuild_required": {"type": "boolean"},
+        "expected_vector_count": {"type": "integer", "minimum": 0},
+        "actual_vector_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["upload_handoff", "document", "progress"],
+      "properties": {
+        "upload_handoff": {"type": "string", "pattern": "^/api/v1/uploads/[^/]+$"},
+        "document": {"type": "string", "pattern": "^/api/v1/documents/[^/]+$"},
+        "progress": {"type": "string", "pattern": "^/api/v1/uploads/[^/]+/progress$"}
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner_scoped",
+        "raw_source_included",
+        "markdown_included",
+        "chunk_text_included",
+        "embedding_vector_included",
+        "provider_credentials_included"
+      ],
+      "properties": {
+        "owner_scoped": {"const": true},
+        "raw_source_included": {"const": false},
+        "markdown_included": {"const": false},
+        "chunk_text_included": {"const": false},
+        "embedding_vector_included": {"const": false},
+        "provider_credentials_included": {"const": false}
+      }
+    }
+  }
+}

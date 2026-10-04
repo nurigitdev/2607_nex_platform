@@ -28,6 +28,7 @@ from nex_ae_api.repaired_responses import register_repaired_response_handoff_rou
 from nex_ae_api.retrieval import register_retrieval_routes
 from nex_ae_api.runtime_policy_api import register_runtime_policy_routes
 from nex_ae_api.uploads import register_upload_routes
+from nex_ae_api.upload_progress import register_upload_progress_routes
 from nex_ae_api.workspace import register_workspace_routes
 
 
@@ -54,6 +55,7 @@ register_service_log_retention_routes(
 register_auth_session_routes(app)
 register_workspace_routes(app)
 register_upload_routes(app)
+register_upload_progress_routes(app)
 register_document_library_routes(app)
 register_artifact_handoff_routes(app)
 register_generation_compatibility_routes(app, expected_audience="nex-ae-api")

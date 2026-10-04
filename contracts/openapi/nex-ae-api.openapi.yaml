@@ -284,6 +284,33 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: Upload handoff was not found.
+  /api/v1/uploads/{upload_handoff_id}/progress:
+    get:
+      operationId: getAeOwnerScopedUploadIngestionProgress
+      tags:
+        - Uploads
+      parameters:
+        - name: upload_handoff_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Owner-scoped ingestion, failure, retry, and vector freshness projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeUploadIngestionProgress"
+        "401":
+          description: User or service claim is missing or invalid.
+        "404":
+          description: Upload handoff was not found or is not visible to the owner.
+        "502":
+          description: CX returned an invalid ingestion or vector-readiness projection.
+        "503":
+          description: AE handoff persistence or CX progress dependencies are unavailable.
   /api/v1/workspaces/{workspace_id}/documents:
     get:
       operationId: listAeWorkspaceDocuments
@@ -1985,6 +2012,39 @@ components:
       schema:
         type: string
   schemas:
+    AeUploadIngestionProgress:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/upload_ingestion_progress.v1.schema.json
+      additionalProperties: false
+      required:
+        - progress_schema_version
+        - upload_handoff_id
+        - workspace_id
+        - document_id
+        - status
+        - progress_percent
+        - ingestion
+        - failure
+        - retry
+        - vector_index
+        - links
+        - metadata
+      properties:
+        progress_schema_version:
+          const: ae_upload_ingestion_progress.v1
+        upload_handoff_id: {type: string}
+        workspace_id: {type: string}
+        document_id: {type: string}
+        status:
+          type: string
+          enum: [QUEUED, PROCESSING, WAITING_RETRY, FAILED, CANCELLED, INDEX_NOT_READY, INDEX_READY]
+        progress_percent: {type: integer, minimum: 0, maximum: 100}
+        ingestion: {type: object}
+        failure: {type: object}
+        retry: {type: object}
+        vector_index: {type: object}
+        links: {type: object}
+        metadata: {type: object}
     ActiveServiceClaim:
       type: object
       x-nex-canonical-json-schema: schemas/common/active_service_claim.v1.schema.json
