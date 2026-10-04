@@ -30,7 +30,7 @@ configuration and is never written to committed evidence without redaction.
 ## Verified evidence
 
 - Full Gate exit: `0`; pytest collected `10,886` tests and completed without a
-  failure (`10,875` passed, `11` protected tests skipped).
+  failure (`10,864` passed, `22` protected tests skipped).
 - Coverage: statement `98.37%` and branch `97.12%`, above the repository
   thresholds of `95%` and `94%`.
 - Contract validation: `156` schemas, `214` positive examples, `184` negative
