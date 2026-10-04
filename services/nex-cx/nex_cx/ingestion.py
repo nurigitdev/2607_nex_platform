@@ -176,8 +176,28 @@ class ContentIngestionStore:
             owner_user_id=owner_user_id,
             source_sha256=record["source_sha256"],
         )
-        if existing is not None and existing["content_object_id"] in self.documents:
-            existing_record = self.documents[existing["content_object_id"]]
+        if existing is not None:
+            existing_record = self.documents.get(existing["content_object_id"])
+            if existing_record is None:
+                source_file = self.content_repository.get_source_file(
+                    existing["source_file_id"]
+                )
+                if source_file is None:
+                    raise CxContentRepositoryError(
+                        error_code="cx.content_source_lineage_missing",
+                        detail="Persisted content source lineage is incomplete.",
+                        status_code=409,
+                    )
+                existing_record = restore_upload_registration_lineage(
+                    record,
+                    content_object=existing,
+                    source_file=source_file,
+                )
+                self._cache_upload_registration(
+                    existing_record,
+                    source_file_id=source_file["source_file_id"],
+                    content_object_id=existing["content_object_id"],
+                )
             self._capture_duplicate_source_content(
                 existing_record,
                 source_text=source_text,
@@ -198,12 +218,18 @@ class ContentIngestionStore:
                 source_file_id=source_file["source_file_id"],
             )
         )
-        self.document_content_refs[record["document_id"]] = {
-            "source_file_id": source_file["source_file_id"],
-            "content_object_id": content_object["content_object_id"],
-        }
-        self.documents[record["document_id"]] = record
-        self.jobs[record["extraction"]["job_id"]] = record["ingestion_job"]
+        duplicate = content_object["upload_id"] != record["upload_id"]
+        if duplicate:
+            record = restore_upload_registration_lineage(
+                record,
+                content_object=content_object,
+                source_file=source_file,
+            )
+        self._cache_upload_registration(
+            record,
+            source_file_id=source_file["source_file_id"],
+            content_object_id=content_object["content_object_id"],
+        )
         materialized_source = source_bytes
         if source_text is not None:
             materialized_source = source_text.encode("utf-8")
@@ -216,7 +242,51 @@ class ContentIngestionStore:
             self.source_bytes[record["upload_id"]] = materialized_source
             if source_text is not None:
                 self.source_texts[record["upload_id"]] = source_text
-        return record
+        return mark_upload_registration_duplicate(record) if duplicate else record
+
+    def bind_durable_ingestion_admission(
+        self,
+        record: dict[str, Any],
+        admission: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        job = admission.get("job")
+        if (
+            admission.get("document_id") != record["document_id"]
+            or admission.get("upload_id") != record["upload_id"]
+            or not isinstance(job, Mapping)
+            or job.get("job_id") != record["extraction"]["job_id"]
+        ):
+            raise IngestionError(
+                status_code=409,
+                error_code="cx.ingestion_admission.lineage_conflict",
+                detail="Durable ingestion admission lineage does not match the upload.",
+            )
+        canonical_job = dict(job)
+        bound = {
+            **record,
+            "ingestion_job": canonical_job,
+            "extraction": {
+                **record["extraction"],
+                "job_id": canonical_job["job_id"],
+            },
+        }
+        self.documents[bound["document_id"]] = bound
+        self.jobs[canonical_job["job_id"]] = canonical_job
+        return bound
+
+    def _cache_upload_registration(
+        self,
+        record: dict[str, Any],
+        *,
+        source_file_id: str,
+        content_object_id: str,
+    ) -> None:
+        self.document_content_refs[record["document_id"]] = {
+            "source_file_id": source_file_id,
+            "content_object_id": content_object_id,
+        }
+        self.documents[record["document_id"]] = record
+        self.jobs[record["extraction"]["job_id"]] = record["ingestion_job"]
 
     def _capture_duplicate_source_content(
         self,
@@ -835,22 +905,37 @@ def register_ingestion_routes(
 
         source_text, source_bytes = source_content_from_payload(payload)
         ownership = record["ownership"]
-        saved_record = ingestion_store.save_upload_registration(
-            record,
-            source_text=source_text,
-            source_bytes=source_bytes,
-            tenant_id=ownership["tenant_id"],
-            owner_user_id=ownership["owner_user_id"],
-        )
+        try:
+            saved_record = ingestion_store.save_upload_registration(
+                record,
+                source_text=source_text,
+                source_bytes=source_bytes,
+                tenant_id=ownership["tenant_id"],
+                owner_user_id=ownership["owner_user_id"],
+            )
+        except CxContentRepositoryError as exc:
+            return _ingestion_problem_response(
+                request,
+                IngestionError(
+                    status_code=exc.status_code,
+                    error_code=exc.error_code,
+                    detail=exc.detail,
+                    retryable=exc.status_code >= 500,
+                ),
+            )
         if job_queue is not None and ingestion_run_repository is not None:
             try:
-                admit_durable_ingestion(
+                admission = admit_durable_ingestion(
                     saved_record,
                     job_queue=job_queue,
                     run_repository=ingestion_run_repository,
                     policy=ingestion_policy,
                 )
-            except DurableIngestionAdmissionError as exc:
+                saved_record = ingestion_store.bind_durable_ingestion_admission(
+                    saved_record,
+                    admission,
+                )
+            except (DurableIngestionAdmissionError, IngestionError) as exc:
                 return _ingestion_problem_response(
                     request,
                     IngestionError(
@@ -1280,6 +1365,43 @@ def align_upload_registration_to_source_file(
     if source_file.get("source_storage_path"):
         storage["source_storage_path"] = source_file["source_storage_path"]
     return {**record, "storage": storage}
+
+
+def restore_upload_registration_lineage(
+    record: dict[str, Any],
+    *,
+    content_object: Mapping[str, Any],
+    source_file: Mapping[str, Any],
+) -> dict[str, Any]:
+    document_id = str(content_object["content_object_id"])
+    upload_id = str(content_object["upload_id"])
+    restored = align_upload_registration_to_source_file(record, dict(source_file))
+    job = build_ingestion_job(
+        document_id=document_id,
+        upload_id=upload_id,
+        request_id=record["request_id"],
+        trace_id=record["trace_id"],
+        created_at=str(content_object["created_at"]),
+    )
+    return {
+        **restored,
+        "document_id": document_id,
+        "upload_id": upload_id,
+        "filename": sanitize_filename(str(content_object["original_filename"])),
+        "original_filename": str(content_object["original_filename"]),
+        "content_type": str(content_object["content_type"]),
+        "size_bytes": int(content_object["size_bytes"]),
+        "source_sha256": str(content_object["source_sha256"]),
+        "retrieval_policy": dict(content_object["retrieval_policy"]),
+        "extraction": {
+            "status": "PENDING",
+            "job_id": job["job_id"],
+            "markdown_available": False,
+        },
+        "ingestion_job": job,
+        "created_at": str(content_object["created_at"]),
+        "updated_at": str(content_object["updated_at"]),
+    }
 
 
 def build_source_file_materialization_receipt(

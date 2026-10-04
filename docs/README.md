@@ -1450,6 +1450,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1342`](slices/1342_platform_authenticated_document_ingestion_boundary.md) | `S135-001` Freeze the authenticated upload-to-index journey, six integration gaps, quality cadence, and S136 handoff. |
 | [`Slice 1343`](slices/1343_ae_protected_upload_owner_claims.md) | `S135-002` Reject protected-profile upload owner fallback while preserving OA claim authority and explicit signed-service scope. |
 | [`Slice 1344`](slices/1344_ae_upload_handoff_persistence.md) | `S135-003` Persist metadata-only AE upload handoffs with indexed owner-scoped readback and restart-safe SQLAlchemy wiring. |
+| [`Slice 1345`](slices/1345_cx_upload_admission_lineage.md) | `S135-004` Restore restart-safe CX upload identity and converge duplicate admission on one durable source, job, and run lineage. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

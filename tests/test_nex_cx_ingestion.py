@@ -47,7 +47,7 @@ from nex_cx.ingestion import (
 )
 import nex_cx.ingestion as cx_ingestion
 from nex_cx.extractors import ExtractorOutput
-from nex_cx.repository import CxContentRepositoryError
+from nex_cx.repository import CxContentRepositoryError, InMemoryCxContentRepository
 from nex_runtime import (
     SERVICE_SPECS,
     SubjectRegistryResolverError,
@@ -1110,6 +1110,87 @@ def test_duplicate_upload_with_bytes_materializes_existing_metadata_only_source(
     assert Path(created["storage"]["source_storage_path"]).read_bytes() == source_bytes
     assert store.get_source_bytes(created["upload_id"]) == source_bytes
     assert source_file["checksum_verified_at"] is not None
+
+
+def test_restart_duplicate_rejects_incomplete_persisted_source_lineage(
+    tmp_path: Path,
+) -> None:
+    class MissingSourceRepository(InMemoryCxContentRepository):
+        def get_source_file(self, source_file_id: str):
+            return None
+
+    repository = MissingSourceRepository()
+    payload = {
+        "filename": "source.md",
+        "content_text": "restart source",
+        "tenant_id": "tenant-a",
+        "owner_user_id": "user-a",
+    }
+    first = build_upload_registration(
+        payload,
+        storage_config=storage_config(tmp_path),
+        request_id="request-a",
+        trace_id=TRACE_ID,
+    )
+    ContentIngestionStore(content_repository=repository).save_upload_registration(first)
+    duplicate = build_upload_registration(
+        payload,
+        storage_config=storage_config(tmp_path),
+        request_id="request-b",
+        trace_id="b" * 32,
+    )
+
+    with pytest.raises(CxContentRepositoryError) as exc:
+        ContentIngestionStore(content_repository=repository).save_upload_registration(
+            duplicate
+        )
+    assert exc.value.error_code == "cx.content_source_lineage_missing"
+    assert exc.value.status_code == 409
+
+
+def test_concurrent_content_insert_race_converges_on_persisted_upload_lineage(
+    tmp_path: Path,
+) -> None:
+    class RaceRepository(InMemoryCxContentRepository):
+        def find_active_content_object(self, **kwargs):
+            return None
+
+        def save_content_object(self, record):
+            existing = InMemoryCxContentRepository.find_active_content_object(
+                self,
+                tenant_id=record["tenant_id"],
+                owner_user_id=record["owner_user_id"],
+                source_sha256=record["source_sha256"],
+            )
+            return existing or super().save_content_object(record)
+
+    repository = RaceRepository()
+    payload = {
+        "filename": "source.md",
+        "content_text": "concurrent source",
+        "tenant_id": "tenant-a",
+        "owner_user_id": "user-a",
+    }
+    first = build_upload_registration(
+        payload,
+        storage_config=storage_config(tmp_path),
+        request_id="request-a",
+        trace_id=TRACE_ID,
+    )
+    duplicate_candidate = build_upload_registration(
+        payload,
+        storage_config=storage_config(tmp_path),
+        request_id="request-b",
+        trace_id="b" * 32,
+    )
+    ContentIngestionStore(content_repository=repository).save_upload_registration(first)
+    duplicate = ContentIngestionStore(
+        content_repository=repository
+    ).save_upload_registration(duplicate_candidate)
+
+    assert duplicate["dedupe"]["status"] == "ALREADY_EXISTS"
+    assert duplicate["upload_id"] == first["upload_id"]
+    assert duplicate["ingestion_job"]["job_id"] == first["ingestion_job"]["job_id"]
 
 
 @pytest.mark.parametrize(
