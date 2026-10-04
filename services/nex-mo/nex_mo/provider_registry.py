@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from threading import RLock
 from typing import Any, Callable, Sequence
 
+from nex_mo.provider_aliases import CANONICAL_PROVIDER_ALIAS_COMPATIBILITY
 from nex_mo.provider_projection import project_provider_route
 
 @dataclass(frozen=True)
@@ -74,9 +75,7 @@ ProviderRouteSource = Callable[[], Sequence[ProviderRoute]]
 _PROVIDER_ROUTE_SOURCE_LOCK = RLock()
 _provider_route_source: ProviderRouteSource = lambda: DEFAULT_PROVIDER_ROUTES
 
-def configure_provider_route_source(
-    source: ProviderRouteSource | None,
-) -> ProviderRouteSource:
+def configure_provider_route_source(source: ProviderRouteSource | None) -> ProviderRouteSource:
     global _provider_route_source
     next_source = (lambda: DEFAULT_PROVIDER_ROUTES) if source is None else source
     if not callable(next_source):
@@ -122,8 +121,9 @@ def resolve_provider_route(
     provider_capability: str,
     routes: Sequence[ProviderRoute] | None = None,
 ) -> ProviderRoute:
+    lookup_alias = CANONICAL_PROVIDER_ALIAS_COMPATIBILITY.get(alias, alias)
     matches = [
-        route for route in _provider_route_snapshot(routes) if route.alias == alias
+        route for route in _provider_route_snapshot(routes) if route.alias == lookup_alias
     ]
     if not matches:
         raise ProviderRouteError(

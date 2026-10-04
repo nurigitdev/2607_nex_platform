@@ -79,5 +79,16 @@ S132 does not include:
 9. `1320`: actual `local_mock` process smoke.
 10. `1321`: closure and Full Gate.
 
+## Implementation State
+
+| Slice | Status | Evidence |
+| --- | --- | --- |
+| `1312` | Complete | S132 boundary and non-drift guard are frozen. |
+| `1313` | Complete | Typed manifest validation and safe projection pass. |
+| `1314` | Complete | Five profiles compose; protected profiles fail closed. |
+| `1315` | Complete | Dependency order and profile-aware probes validate. |
+| `1316` | Complete | Endpoints, retry-aware timeout budgets, canonical aliases, and Checkpoint Gate pass. |
+| `1317`-`1321` | Pending | Process manifest, AG API-only projection, orchestrator, local process smoke, and closure remain. |
+
 Any S132 scope change must update this document and
 `37_platform_mvp_integration_release_plan.md` before implementation.

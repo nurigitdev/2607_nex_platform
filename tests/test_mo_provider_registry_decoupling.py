@@ -20,6 +20,12 @@ def test_registry_filters_and_resolves_routes() -> None:
         "general-llm-default",
         "generation",
     ).route_id == "route-general-llm-default"
+    assert provider_registry.resolve_provider_route(
+        "embedding-default", "embedding"
+    ).alias == "mock-embedding-default"
+    assert provider_registry.resolve_provider_route(
+        "reranker-default", "reranking"
+    ).alias == "mock-reranker-default"
 
 
 def test_registry_fails_closed_for_unknown_mismatched_and_unready_routes() -> None:

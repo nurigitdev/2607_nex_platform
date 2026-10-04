@@ -14,10 +14,13 @@ from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
 from nex_runtime import (
+    DEFAULT_CX_MO_TIMEOUT_SECONDS,
     OperationalEventEmitter,
     operational_event_emitter_from_app,
     problem_response,
     request_id_from_headers,
+    resolve_cx_mo_timeout_budget,
+    resolve_service_endpoint,
     trace_id_from_headers,
 )
 from nex_cx.service_auth import (
@@ -123,7 +126,7 @@ class MoRerankClient(Protocol):
 class HttpMoRerankClient:
     base_url: str = "http://127.0.0.1:8105"
     service_token: str | None = None
-    timeout_seconds: float = 5.0
+    timeout_seconds: float = DEFAULT_CX_MO_TIMEOUT_SECONDS["reranking"]
 
     def rerank_documents(
         self,
@@ -176,8 +179,11 @@ class HttpMoRerankClient:
 
 def build_default_mo_rerank_client() -> HttpMoRerankClient:
     return HttpMoRerankClient(
-        base_url=os.getenv("NEX_MO_BASE_URL", "http://127.0.0.1:8105"),
+        base_url=resolve_service_endpoint("nex-mo").base_url,
         service_token=os.getenv("NEX_CX_TO_MO_SERVICE_TOKEN"),
+        timeout_seconds=resolve_cx_mo_timeout_budget(
+            "reranking"
+        ).client_timeout_seconds,
     )
 
 

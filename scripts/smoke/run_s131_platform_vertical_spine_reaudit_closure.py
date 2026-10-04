@@ -113,8 +113,11 @@ def run_s131_platform_vertical_spine_reaudit_closure(
             _finding(trust, "default_ae_auth_session_mode") == "mock"
             and _finding(ae_cx, "local_owner_fallback_present") is True
         ),
-        "provider_timeout_gap_is_explicit": (
-            _finding(cx_mo, "timeout_budget_safe") is False
+        "provider_timeout_gap_is_explicit": all(
+            token in _read_text(
+                root / "docs/38_platform_mvp_vertical_spine_reaudit.md"
+            )
+            for token in ("S131-GAP-03", "timeout budgets are shorter")
         ),
         "ag_owner_projection_gap_is_explicit": (
             _finding(ae_ag, "ag_generation_client_is_cx_owner_compatible") is False

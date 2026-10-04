@@ -20,6 +20,7 @@ class ProviderClientEvidence:
     class_name: str
     mo_route: str
     alias: str
+    timeout_environment: str
 
 
 CLIENTS = (
@@ -29,6 +30,7 @@ CLIENTS = (
         "HttpMoEmbeddingClient",
         "/api/v1/embeddings",
         "mock-embedding-default",
+        "NEX_CX_MO_EMBEDDING_TIMEOUT_SECONDS",
     ),
     ProviderClientEvidence(
         "reranking",
@@ -36,6 +38,7 @@ CLIENTS = (
         "HttpMoRerankClient",
         "/api/v1/rerank",
         "mock-reranker-default",
+        "NEX_CX_MO_RERANKER_TIMEOUT_SECONDS",
     ),
     ProviderClientEvidence(
         "generation",
@@ -43,18 +46,38 @@ CLIENTS = (
         "HttpMoGenerationClient",
         "/api/v1/generations",
         "general-llm-default",
+        "NEX_CX_MO_GENERATION_TIMEOUT_SECONDS",
     ),
 )
 REMOTE_PROVIDER_ENV = re.compile(
     r"NEX_MO_(?:REMOTE_(?:EMBEDDING|RERANKER)_URL|"
     r"VLLM_(?:BASE_URL|CHAT_COMPLETIONS_URL|MODELS_URL))"
 )
+UPSTREAM_BUDGET_ENV = {
+    "embedding": (
+        "NEX_MO_REMOTE_EMBEDDING_TIMEOUT_SECONDS",
+        "NEX_MO_EMBEDDING_MAX_ATTEMPTS",
+    ),
+    "reranking": (
+        "NEX_MO_REMOTE_RERANKER_TIMEOUT_SECONDS",
+        "NEX_MO_RERANKER_MAX_ATTEMPTS",
+    ),
+    "generation": (
+        "NEX_MO_VLLM_TIMEOUT_SECONDS",
+        "NEX_MO_GENERATION_MAX_ATTEMPTS",
+    ),
+}
 
 
 def run_platform_cx_mo_provider_path_audit(root: Path = ROOT) -> dict[str, Any]:
+    env_example = _read_text(root / ".env.example")
     clients = []
     for item in CLIENTS:
         source = _read_text(root / item.relative_path)
+        uses_shared_timeout_policy = (
+            "resolve_cx_mo_timeout_budget" in source
+            and f'"{item.capability}"' in source
+        )
         clients.append(
             {
                 "capability": item.capability,
@@ -68,25 +91,45 @@ def run_platform_cx_mo_provider_path_audit(root: Path = ROOT) -> dict[str, Any]:
                 "service_token": 'audience="nex-mo"' in source,
                 "request_id": '"X-Request-ID"' in source,
                 "traceparent": '"traceparent"' in source,
-                "timeout_seconds": _client_timeout_seconds(source),
+                "uses_shared_timeout_policy": uses_shared_timeout_policy,
+                "timeout_seconds": (
+                    _env_number(env_example, item.timeout_environment)
+                    if uses_shared_timeout_policy
+                    else _client_timeout_seconds(source)
+                ),
             }
         )
     provider_api = _read_text(root / "services/nex-mo/nex_mo/providers.py")
     provider_registry = _read_text(
         root / "services/nex-mo/nex_mo/provider_registry.py"
     )
-    env_example = _read_text(root / ".env.example")
     cx_root = root / "services/nex-cx/nex_cx"
     direct_provider_references = _direct_provider_references(cx_root, root=root)
     upstream_timeouts = {
-        "embedding": _env_number(env_example, "NEX_MO_REMOTE_EMBEDDING_TIMEOUT_SECONDS"),
-        "reranking": _env_number(env_example, "NEX_MO_REMOTE_RERANKER_TIMEOUT_SECONDS"),
-        "generation": _env_number(env_example, "NEX_MO_VLLM_TIMEOUT_SECONDS"),
+        capability: _env_number(env_example, names[0])
+        for capability, names in UPSTREAM_BUDGET_ENV.items()
+    }
+    upstream_attempts = {
+        capability: _env_number(env_example, names[1])
+        for capability, names in UPSTREAM_BUDGET_ENV.items()
+    }
+    retry_after = _env_number(env_example, "NEX_MO_RETRY_AFTER_MAX_SECONDS")
+    safety_margin = _env_number(
+        env_example, "NEX_CX_MO_TIMEOUT_SAFETY_MARGIN_SECONDS"
+    )
+    minimum_timeouts = {
+        capability: _minimum_timeout(
+            upstream_timeouts[capability],
+            upstream_attempts[capability],
+            retry_after,
+            safety_margin,
+        )
+        for capability in UPSTREAM_BUDGET_ENV
     }
     timeout_budget_safe = all(
         isinstance(item["timeout_seconds"], (int, float))
-        and isinstance(upstream_timeouts[item["capability"]], (int, float))
-        and item["timeout_seconds"] > upstream_timeouts[item["capability"]]
+        and isinstance(minimum_timeouts[item["capability"]], (int, float))
+        and item["timeout_seconds"] >= minimum_timeouts[item["capability"]]
         for item in clients
     )
     checks = {
@@ -107,6 +150,10 @@ def run_platform_cx_mo_provider_path_audit(root: Path = ROOT) -> dict[str, Any]:
             item.alias in provider_registry for item in CLIENTS
         ),
         "provider_hosts_are_not_visible_to_cx": not direct_provider_references,
+        "cx_uses_shared_timeout_policy": all(
+            item["uses_shared_timeout_policy"] for item in clients
+        ),
+        "cx_timeout_budget_covers_mo_retries": timeout_budget_safe,
     }
     issues = [name for name, passed in checks.items() if not passed]
     profile_materialized = all(
@@ -136,6 +183,8 @@ def run_platform_cx_mo_provider_path_audit(root: Path = ROOT) -> dict[str, Any]:
                 item["capability"]: item["timeout_seconds"] for item in clients
             },
             "mo_upstream_timeout_seconds": upstream_timeouts,
+            "mo_upstream_max_attempts": upstream_attempts,
+            "minimum_cx_client_timeout_seconds": minimum_timeouts,
             "timeout_budget_safe": timeout_budget_safe,
             "mock_named_live_capability_alias_count": sum(
                 item.alias.startswith("mock-") for item in CLIENTS
@@ -146,8 +195,9 @@ def run_platform_cx_mo_provider_path_audit(root: Path = ROOT) -> dict[str, Any]:
             {
                 "priority": "P0",
                 "owner": "nex-cx/nex-mo",
-                "gap": "make CX-to-MO timeout budgets exceed MO upstream timeout and retry budgets per capability",
+                "gap": "keep CX-to-MO timeout budgets synchronized with MO retry policy",
                 "target_requirement": "S132",
+                "status": "RESOLVED",
             },
             {
                 "priority": "P1",
@@ -165,7 +215,8 @@ def run_platform_cx_mo_provider_path_audit(root: Path = ROOT) -> dict[str, Any]:
         "decision": {
             "mo_is_only_provider_host_owner": True,
             "cx_uses_mo_alias_contracts": True,
-            "current_timeout_budget_is_accepted_live_state": False,
+            "s131_timeout_gap_was_recorded": True,
+            "current_timeout_budget_is_accepted_live_state": timeout_budget_safe,
             "mutation_performed": False,
             "next_slice": "1308",
         },
@@ -175,6 +226,26 @@ def run_platform_cx_mo_provider_path_audit(root: Path = ROOT) -> dict[str, Any]:
 def _client_timeout_seconds(source: str) -> float | None:
     match = re.search(r"timeout_seconds:\s*float\s*=\s*([0-9]+(?:\.[0-9]+)?)", source)
     return float(match.group(1)) if match else None
+
+
+def _minimum_timeout(
+    upstream_timeout: float | None,
+    attempts: float | None,
+    retry_after: float | None,
+    safety_margin: float | None,
+) -> float | None:
+    if (
+        upstream_timeout is None
+        or attempts is None
+        or retry_after is None
+        or safety_margin is None
+    ):
+        return None
+    return (
+        upstream_timeout * attempts
+        + retry_after * max(0, attempts - 1)
+        + safety_margin
+    )
 
 
 def _env_number(source: str, name: str) -> float | None:

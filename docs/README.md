@@ -1421,6 +1421,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1313`](slices/1313_platform_runtime_manifest_domain.md) | `S132-002` Add immutable runtime manifest types, structural validation, and privacy-safe projection. |
 | [`Slice 1314`](slices/1314_platform_runtime_profile_composition.md) | `S132-003` Materialize five runtime profiles and fail closed on incomplete protected configuration. |
 | [`Slice 1315`](slices/1315_platform_runtime_dependency_graph.md) | `S132-004` Add acyclic startup layers and profile-aware dependency probes. |
+| [`Slice 1316`](slices/1316_platform_endpoint_timeout_policy.md) | `S132-005` Centralize service endpoints, close CX-to-MO timeout inversion, add canonical provider aliases, and run the Checkpoint Gate. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
