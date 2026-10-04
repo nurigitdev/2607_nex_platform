@@ -88,7 +88,8 @@ S132 does not include:
 | `1314` | Complete | Five profiles compose; protected profiles fail closed. |
 | `1315` | Complete | Dependency order and profile-aware probes validate. |
 | `1316` | Complete | Endpoints, retry-aware timeout budgets, canonical aliases, and Checkpoint Gate pass. |
-| `1317`-`1321` | Pending | Process manifest, AG API-only projection, orchestrator, local process smoke, and closure remain. |
+| `1317` | Complete | Six endpoints and thirteen API, Web, worker, and daemon processes materialize. |
+| `1318`-`1321` | Pending | AG API-only projection, orchestrator, local process smoke, and closure remain. |
 
 Any S132 scope change must update this document and
 `37_platform_mvp_integration_release_plan.md` before implementation.

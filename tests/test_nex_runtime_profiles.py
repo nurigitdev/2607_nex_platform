@@ -6,6 +6,7 @@ import nex_runtime.runtime_profiles as profiles
 from nex_runtime.runtime_profiles import (
     DATABASE_ENV_NAMES,
     LIVE_PROVIDER_ENV_NAMES,
+    SERVICE_ENDPOINT_ENV_NAMES,
     SIGNED_TRUST_ENV_NAMES,
     TEST_DATABASE_ENV_NAMES,
     RuntimeProfileError,
@@ -21,7 +22,7 @@ def complete_environment(profile: str) -> dict[str, str]:
     if profile == "local_mock":
         return env
     names = TEST_DATABASE_ENV_NAMES if profile == "test" else DATABASE_ENV_NAMES
-    for name in (*names, *SIGNED_TRUST_ENV_NAMES):
+    for name in (*names, *SERVICE_ENDPOINT_ENV_NAMES, *SIGNED_TRUST_ENV_NAMES):
         env[name] = "configured"
     if profile != "test":
         for name in LIVE_PROVIDER_ENV_NAMES:
@@ -125,6 +126,7 @@ def test_protected_profile_reports_all_missing_names_without_values() -> None:
 
     assert len(raised.value.errors) == (
         len(DATABASE_ENV_NAMES)
+        + len(SERVICE_ENDPOINT_ENV_NAMES)
         + len(SIGNED_TRUST_ENV_NAMES)
         + len(LIVE_PROVIDER_ENV_NAMES)
     )

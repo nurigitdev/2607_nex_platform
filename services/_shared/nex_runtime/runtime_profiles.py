@@ -26,7 +26,6 @@ TEST_DATABASE_ENV_NAMES = tuple(
     for name in DATABASE_ENV_NAMES
 )
 SIGNED_TRUST_ENV_NAMES = (
-    "NEX_OA_BASE_URL",
     "NEX_OA_INTROSPECTION_SERVICE_TOKEN",
     "NEX_AE_TO_OA_SERVICE_TOKEN",
     "NEX_AE_TO_CX_SERVICE_TOKEN",
@@ -35,6 +34,14 @@ SIGNED_TRUST_ENV_NAMES = (
     "NEX_AG_TO_AE_SERVICE_TOKEN",
     "NEX_AG_TO_CX_SERVICE_TOKEN",
     "NEX_AG_TO_MO_SERVICE_TOKEN",
+)
+SERVICE_ENDPOINT_ENV_NAMES = (
+    "NEX_OA_BASE_URL",
+    "NEX_AG_BASE_URL",
+    "NEX_AE_API_BASE_URL",
+    "NEX_CX_BASE_URL",
+    "NEX_MO_BASE_URL",
+    "NEX_AE_WEB_BASE_URL",
 )
 LIVE_PROVIDER_ENV_NAMES = (
     "NEX_MO_REMOTE_EMBEDDING_URL",
@@ -139,7 +146,12 @@ def _required_environment_names(profile: str) -> tuple[str, ...]:
         return ()
     database_names = TEST_DATABASE_ENV_NAMES if profile == "test" else DATABASE_ENV_NAMES
     provider_names = LIVE_PROVIDER_ENV_NAMES if PROFILE_MODES[profile].provider == "live" else ()
-    return (*database_names, *SIGNED_TRUST_ENV_NAMES, *provider_names)
+    return (
+        *database_names,
+        *SERVICE_ENDPOINT_ENV_NAMES,
+        *SIGNED_TRUST_ENV_NAMES,
+        *provider_names,
+    )
 
 
 def _mode_conflicts(env: Mapping[str, str], modes: RuntimeModes) -> list[str]:

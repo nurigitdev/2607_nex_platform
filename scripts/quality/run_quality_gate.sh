@@ -640,3 +640,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_runtime_profile_composition.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_runtime_dependency_graph.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_endpoint_timeout_policy.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_complete_process_manifest.py --summary
