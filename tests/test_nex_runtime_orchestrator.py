@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import nex_runtime.runtime_orchestrator as runtime
+import nex_runtime.runtime_process_adapters as runtime_adapters
 from nex_runtime.runtime_orchestrator import (
     RuntimeOrchestrationError,
     RuntimeOrchestrator,
@@ -16,6 +16,7 @@ from nex_runtime.runtime_orchestrator import (
 )
 from nex_runtime.topology import (
     PlatformRuntimeManifest,
+    RuntimeEndpoint,
     RuntimeModes,
     RuntimeProbe,
     RuntimeProcess,
@@ -162,6 +163,36 @@ def test_start_waits_for_probes_and_stop_reverses_start_order() -> None:
     assert launcher.log == ["terminate:worker", "terminate:child", "terminate:root"]
 
 
+def test_manifest_endpoints_are_projected_to_child_environment(monkeypatch) -> None:
+    monkeypatch.setenv("NEX_EXISTING_VALUE", "preserved")
+    selected = replace(
+        manifest(processes=(process("root"),)),
+        endpoints=(
+            RuntimeEndpoint("nex-oa", "http://127.0.0.1:19001"),
+            RuntimeEndpoint("nex-ae-web", "http://127.0.0.1:19002"),
+            RuntimeEndpoint("custom", "http://127.0.0.1:19003"),
+        ),
+    )
+    launcher = Launcher()
+    clock = Clock()
+    runner = RuntimeOrchestrator(
+        selected,
+        launcher=launcher,
+        probe=lambda request: True,
+        sleeper=clock.sleep,
+        clock=clock,
+    )
+
+    runner.start()
+
+    environment = launcher.environments[0]
+    assert environment["NEX_OA_BASE_URL"] == "http://127.0.0.1:19001"
+    assert environment["NEX_AE_WEB_BASE_URL"] == "http://127.0.0.1:19002"
+    assert environment["NEX_EXISTING_VALUE"] == "preserved"
+    assert "custom" not in str(environment)
+    runner.stop()
+
+
 def test_protected_profile_uses_readiness_probe() -> None:
     launcher = Launcher()
     requests = []
@@ -220,10 +251,31 @@ def test_missing_root_probe_and_invalid_orchestrator_state_fail_closed() -> None
     assert raised.value.failure_code == "runtime_process_probe_missing"
 
     successful = orchestrator(manifest(processes=(process("root"),)), Launcher())
+    with pytest.raises(RuntimeOrchestrationError, match="check_state_invalid"):
+        successful.check_running()
     successful.start()
+    assert successful.check_running()["state"] == "RUNNING"
     with pytest.raises(RuntimeOrchestrationError, match="start_state_invalid"):
         successful.start()
     successful.stop()
+
+
+def test_running_process_exit_triggers_reverse_cleanup() -> None:
+    launcher = Launcher()
+    runner = orchestrator(manifest(), launcher)
+    runner.start()
+    launcher.handles["child"].exit_code = 9
+
+    with pytest.raises(RuntimeOrchestrationError) as raised:
+        runner.check_running()
+
+    assert raised.value.failure_code == "runtime_process_exited_while_running"
+    child = next(
+        item for item in raised.value.status["processes"] if item["process_id"] == "child"
+    )
+    assert child["state"] == "FAILED"
+    assert child["exit_code"] == 9
+    assert launcher.log == ["terminate:worker", "terminate:root"]
 
 
 def test_shutdown_kills_process_that_does_not_terminate() -> None:
@@ -267,7 +319,7 @@ def test_subprocess_launcher_uses_no_shell_and_suppresses_child_output(monkeypat
     calls = []
     sentinel = SimpleNamespace()
     monkeypatch.setattr(
-        runtime.subprocess,
+        runtime_adapters.subprocess,
         "Popen",
         lambda *args, **kwargs: calls.append((args, kwargs)) or sentinel,
     )
@@ -280,5 +332,5 @@ def test_subprocess_launcher_uses_no_shell_and_suppresses_child_output(monkeypat
     assert result is sentinel
     assert calls[0][0] == (selected.command,)
     assert calls[0][1]["cwd"] == Path("/repo")
-    assert calls[0][1]["stdin"] is runtime.subprocess.DEVNULL
+    assert calls[0][1]["stdin"] is runtime_adapters.subprocess.DEVNULL
     assert "shell" not in calls[0][1]

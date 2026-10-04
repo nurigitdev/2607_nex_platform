@@ -40,17 +40,22 @@ cp .env.example .env.local
 Then fill `.env.local` with local-only database passwords. Do not commit
 `.env.local`.
 
-Run all backend service shells:
+Run the complete local mock topology:
 
 ```bash
-./.venv/bin/python scripts/dev/run_all_services.py
+./.venv/bin/python scripts/dev/run_platform.py --profile local_mock
 ```
 
-Run the AE web shell:
+This starts the five APIs, AE Web, five workers, and two daemons in dependency
+order and stops them in reverse order. Validate configuration without starting
+processes with:
 
 ```bash
-npm --prefix apps/nex-ae-web run dev
+./.venv/bin/python scripts/dev/run_platform.py --profile local_mock --check-config
 ```
+
+The former `scripts/dev/run_all_services.py` remains the five-backend rollback
+runner during S132 adoption.
 
 ## Service Ports
 

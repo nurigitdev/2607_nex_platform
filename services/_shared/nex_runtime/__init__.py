@@ -213,8 +213,11 @@ from .ag_projection_policy import (
 from .runtime_orchestrator import (
     RuntimeOrchestrationError,
     RuntimeOrchestrator,
+)
+from .runtime_process_adapters import (
     RuntimeProbeRequest,
     SubprocessRuntimeLauncher,
+    build_runtime_process_environment,
     probe_http_runtime_process,
 )
 from .persistence import (
@@ -559,6 +562,7 @@ __all__ = [
     "RuntimeOrchestrator",
     "RuntimeProbeRequest",
     "SubprocessRuntimeLauncher",
+    "build_runtime_process_environment",
     "probe_http_runtime_process",
     "trace_id_from_headers",
     "transition_common_job",

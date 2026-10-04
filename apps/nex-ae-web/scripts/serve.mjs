@@ -5,10 +5,25 @@ import { extname, join, normalize, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
-const port = Number(process.env.PORT || 5173);
-const host = process.env.HOST || "127.0.0.1";
-const aeApiProxyTarget = process.env.AE_API_PROXY_TARGET || "";
+const webBaseUrl = optionalHttpUrl(process.env.NEX_AE_WEB_BASE_URL);
+const port = Number(process.env.PORT || webBaseUrl?.port || defaultPort(webBaseUrl) || 5173);
+const host = process.env.HOST || webBaseUrl?.hostname || "127.0.0.1";
+const aeApiProxyTarget = process.env.AE_API_PROXY_TARGET || process.env.NEX_AE_API_BASE_URL || "";
 export const AE_API_PROXY_PREFIX = "/ae-api";
+
+function optionalHttpUrl(value) {
+  if (!value) return null;
+  const parsed = new URL(value);
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new Error("NEX_AE_WEB_BASE_URL must use http or https");
+  }
+  return parsed;
+}
+
+function defaultPort(url) {
+  if (!url) return null;
+  return url.protocol === "https:" ? 443 : 80;
+}
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",

@@ -2,46 +2,23 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-import os
-from pathlib import Path
 import subprocess
 import time
-from typing import Any, Protocol
-from urllib.request import urlopen
+from typing import Any
 
-from .runtime_profiles import runtime_profile_environment_overlay
+from .runtime_process_adapters import (
+    RuntimeProcessHandle,
+    RuntimeProcessLauncher,
+    RuntimeProbeRequest,
+    SubprocessRuntimeLauncher,
+    build_runtime_process_environment,
+    probe_http_runtime_process,
+)
 from .topology import PlatformRuntimeManifest, RuntimeProcess, validate_runtime_manifest
 from .topology_graph import RuntimeStartupPlan, build_runtime_startup_plan
 
 
 PROCESS_STATES = ("PENDING", "STARTING", "READY", "FAILED", "STOPPED")
-
-
-class RuntimeProcessHandle(Protocol):
-    def poll(self) -> int | None: ...
-
-    def terminate(self) -> None: ...
-
-    def wait(self, timeout: float | None = None) -> int: ...
-
-    def kill(self) -> None: ...
-
-
-class RuntimeProcessLauncher(Protocol):
-    def launch(
-        self,
-        process: RuntimeProcess,
-        *,
-        environment: Mapping[str, str],
-    ) -> RuntimeProcessHandle: ...
-
-
-@dataclass(frozen=True)
-class RuntimeProbeRequest:
-    process_id: str
-    mode: str
-    url: str
-    timeout_seconds: float
 
 
 @dataclass
@@ -61,39 +38,6 @@ class RuntimeOrchestrationError(RuntimeError):
         self.failure_code = failure_code
         self.status = dict(status)
         super().__init__(failure_code)
-
-
-@dataclass
-class SubprocessRuntimeLauncher:
-    root: Path
-
-    def launch(
-        self,
-        process: RuntimeProcess,
-        *,
-        environment: Mapping[str, str],
-    ) -> RuntimeProcessHandle:
-        return subprocess.Popen(
-            process.command,
-            cwd=self.root,
-            env=dict(environment),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-
-
-def probe_http_runtime_process(
-    request: RuntimeProbeRequest,
-    *,
-    opener: Callable[..., Any] = urlopen,
-) -> bool:
-    try:
-        with opener(request.url, timeout=request.timeout_seconds) as response:
-            status = int(getattr(response, "status", 0))
-            return 200 <= status < 400
-    except (OSError, TimeoutError, ValueError):
-        return False
 
 
 class RuntimeOrchestrator:
@@ -118,8 +62,9 @@ class RuntimeOrchestrator:
         self.sleeper = sleeper
         self.clock = clock
         self.poll_interval_seconds = poll_interval_seconds
-        self.environment = dict(os.environ if environ is None else environ)
-        self.environment.update(runtime_profile_environment_overlay(manifest.profile))
+        self.environment = build_runtime_process_environment(
+            manifest, environ=environ
+        )
         self._processes = {item.process_id: item for item in manifest.processes}
         self._states = {
             item.process_id: RuntimeProcessState(item.process_id, item.owner, item.kind)
@@ -156,6 +101,26 @@ class RuntimeOrchestrator:
         self._stop_handles(preserve_failed=self._state == "FAILED")
         if self._state != "FAILED":
             self._state = "STOPPED"
+        return self.public_status()
+
+    def check_running(self) -> dict[str, Any]:
+        if self._state != "RUNNING":
+            raise RuntimeOrchestrationError(
+                "runtime_orchestrator_check_state_invalid", self.public_status()
+            )
+        for process_id in self._started_process_ids:
+            exit_code = self._handles[process_id].poll()
+            if exit_code is None:
+                continue
+            state = self._states[process_id]
+            state.exit_code = exit_code
+            self._fail_process(process_id, "runtime_process_exited_while_running")
+            self._failure_code = "runtime_process_exited_while_running"
+            self._state = "FAILED"
+            self._stop_handles(preserve_failed=True)
+            raise RuntimeOrchestrationError(
+                self._failure_code, self.public_status()
+            )
         return self.public_status()
 
     def public_status(self) -> dict[str, Any]:

@@ -129,7 +129,11 @@ def _runtime_processes(
         dependencies=("nex-ae-api",),
         liveness_probe=RuntimeProbe("/"),
         readiness_probe=RuntimeProbe("/"),
-        environment_names=("NEX_PROFILE", "NEX_AE_API_BASE_URL"),
+        environment_names=(
+            "NEX_PROFILE",
+            "NEX_AE_API_BASE_URL",
+            "NEX_AE_WEB_BASE_URL",
+        ),
     )
     background = tuple(
         _background_process(

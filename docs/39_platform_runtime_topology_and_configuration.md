@@ -91,7 +91,8 @@ S132 does not include:
 | `1317` | Complete | Six endpoints and thirteen API, Web, worker, and daemon processes materialize. |
 | `1318` | Complete | Managed profiles enforce memory/API projection; legacy direct DB adapters are unmanaged compatibility only. |
 | `1319` | Complete | Layered start, profile-aware probe gates, reverse shutdown, failure cleanup, and safe status projection pass. |
-| `1320`-`1321` | Pending | Actual local process smoke and closure remain. |
+| `1320` | Complete | Actual five-API, AE Web, and seven-background-process local mock start/probe/stop smoke passes. |
+| `1321` | Pending | S132 closure and Full Gate remain. |
 
 Protected `api` mode never falls back to in-memory projection stores. Until
 the service-specific API projection clients are completed, an unavailable
@@ -104,6 +105,12 @@ attempt counts, normalized failure codes, and exit codes. It never projects
 commands, environment values, process IDs, or raw exception details. Startup
 failure terminates already-started processes in reverse order before returning
 the safe failed status.
+
+`scripts/dev/run_platform.py --profile local_mock` is the canonical complete
+local command. The former `run_all_services.py` remains available as a
+five-backend rollback command. The actual S132 process smoke uses dynamic
+loopback ports, probes all five API health endpoints and AE Web, verifies all
+thirteen processes remain alive, and then performs coordinated shutdown.
 
 Any S132 scope change must update this document and
 `37_platform_mvp_integration_release_plan.md` before implementation.
