@@ -629,3 +629,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_route_client_topology_inventory.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_runtime_profile_residue_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_oa_ae_trust_path_audit.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_ae_cx_integration_path_audit.py --summary
