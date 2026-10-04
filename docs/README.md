@@ -41,6 +41,7 @@ documents and show the current build direction directly.
 | [34 Testing Strategy v0.1 Detail](34_testing_strategy_v0_1_detail.md) | Defines quality gates, test layers, contract fixtures, mock E2E, UI evidence, and docs-only slice checks. |
 | [35 Design System v0.1 Expansion](35_design_system_v0_1_expansion.md) | Defines MVP UI principles, tokens, layouts, components, status rules, i18n, and accessibility. |
 | [36 Roadmap + First Sprint Backlog](36_implementation_roadmap_first_sprint_backlog.md) | Converts the documentation set into the first implementation sequence. |
+| [37 Platform MVP Integration and Release Plan](37_platform_mvp_integration_release_plan.md) | Freezes S131-S140 vertical integration, protected evidence, and release-candidate scope. |
 
 Recommended first read:
 
@@ -1405,6 +1406,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1299`](slices/1299_oa_mvp_acceptance_contract_privacy_runbook.md) | `S130-008` Close OA trust contract, privacy, failure-audit, and operational runbook evidence without overclaiming production deployment. |
 | [`Slice 1300`](slices/1300_s130_oa_mvp_platform_trust_acceptance.md) | `S130-009` Re-execute all pre-Full-Gate OA MVP trust evidence, including four actual PostgreSQL workflows, and require an exact 7/8 acceptance state. |
 | [`Slice 1301`](slices/1301_s130_oa_mvp_platform_trust_closure.md) | `S130-010` Complete OA-FR-001 through OA-FR-005 at 8/8 after the actual PostgreSQL integrated acceptance and repository Full Gate. |
+| [`Slice 1302`](slices/1302_platform_vertical_spine_reaudit_boundary.md) | `S131-001` Freeze S131-S140 and establish the OA-to-AG vertical-spine re-audit boundary. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -103,7 +103,6 @@ def run_s130_oa_mvp_platform_trust_closure(
         for name, path, token in TOKEN_CHECKS
     ]
     quality_text = _read_text(root / QUALITY_GATE_PATH)
-    final_command = _last_command(quality_text)
     integrated = _safe_acceptance(
         {
             **env,
@@ -130,8 +129,8 @@ def run_s130_oa_mvp_platform_trust_closure(
         "required_tokens_present": all(
             item["present"] for item in token_checks
         ),
-        "closure_is_final_quality_command": (
-            CLOSURE_RUNNER in final_command and "--summary" in final_command
+        "closure_registered_once_in_quality_gate": (
+            quality_text.count(CLOSURE_RUNNER) == 1
         ),
         "integrated_acceptance_passed": integrated.get("status") == "PASS",
         "actual_postgres_workflows_complete": (
