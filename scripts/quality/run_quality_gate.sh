@@ -668,3 +668,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_cx_ingestion_worker_hydration.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_mock_vector_publish_freshness.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_upload_ingestion_progress.py --summary
+"$PYTHON_BIN" scripts/smoke/run_cx_ingestion_restart_cancellation.py --summary

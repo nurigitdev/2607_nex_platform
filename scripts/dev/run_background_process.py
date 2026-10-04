@@ -155,16 +155,43 @@ def run_background_process_shell(
     should_stop: Callable[[], bool] | None = None,
     sleeper: Callable[[float], None] = time.sleep,
     out: TextIO | None = None,
+    enable_work_claiming: bool = False,
 ) -> int:
     stream = out or sys.stdout
-    resource = prepare_background_process(process_id, profile)
+    work_process = None
+    if enable_work_claiming and process_id == "nex-cx-ingestion-worker":
+        work_process = _build_ingestion_work_process(profile)
+        resource = BackgroundProcessResource(work_process.metadata())
+    else:
+        resource = prepare_background_process(process_id, profile)
     metadata = resource.metadata
     print(json.dumps({**metadata, "state": "STARTED"}, sort_keys=True), file=stream)
     try:
         stop = should_stop or (lambda: _STOP_REQUESTED)
+        if work_process is not None:
+            startup = work_process.startup()
+            print(
+                json.dumps(
+                    {"process_id": process_id, "state": "RECOVERED", **startup},
+                    sort_keys=True,
+                ),
+                file=stream,
+            )
         while not stop():
+            if work_process is not None:
+                result = work_process.run_once()
+                if result["status"] != "IDLE":
+                    print(
+                        json.dumps(
+                            {"process_id": process_id, "state": "WORK", **result},
+                            sort_keys=True,
+                        ),
+                        file=stream,
+                    )
             sleeper(poll_interval_seconds)
     finally:
+        if work_process is not None:
+            work_process.close()
         resource.close()
     print(
         json.dumps({**metadata, "state": "STOPPED"}, sort_keys=True),
@@ -192,6 +219,7 @@ def main(argv: Sequence[str] | None = None, out: TextIO | None = None) -> int:
             args.profile,
             poll_interval_seconds=args.poll_interval_seconds,
             out=out,
+            enable_work_claiming=True,
         )
     except ValueError as exc:
         print(json.dumps({"status": "BLOCKED", "detail": str(exc)}), file=out or sys.stdout)
@@ -203,6 +231,19 @@ def _configure_import_path(service_id: str) -> None:
         value = str(path)
         if value not in sys.path:
             sys.path.insert(0, value)
+
+
+def _build_ingestion_work_process(profile: str):
+    _configure_import_path("nex-cx")
+    from nex_cx.ingestion_worker_process import (
+        IngestionWorkerProcessError,
+        build_default_ingestion_worker_process,
+    )
+
+    try:
+        return build_default_ingestion_worker_process(profile)
+    except IngestionWorkerProcessError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def _handle_stop_signal(signum: int, frame: object) -> None:

@@ -49,7 +49,9 @@ API and worker restart without losing lineage or exposing private payloads.
    worker handlers reload content/source, extraction, chunk, private chunk text,
    and BM25 state from repository metadata plus root-confined Markdown files.
 4. The registered CX ingestion background process is a lifecycle shell and does
-   not yet claim or execute durable ingestion work.
+   not yet claim or execute durable ingestion work. **Closed in Slice 1349:**
+   the protected worker loads restart recovery state, claims durable ingestion
+   jobs, observes checkpoint cancellation, and disposes its database pools.
 5. AE does not expose one owner-scoped, restart-safe upload-to-index progress
    projection backed by CX ingestion and vector freshness state. **Closed in
    Slice 1348:** AE joins its durable handoff to owner-scoped CX ingestion and
@@ -99,6 +101,9 @@ API and worker restart without losing lineage or exposing private payloads.
   projects ingestion, retry, failure, cancellation, and vector freshness state.
   Cross-owner reads are hidden and `INDEX_READY` requires retrieval-usable
   payload-backed freshness.
+- Slice `1349`: the executable CX ingestion process loads its restart plan,
+  recovers expired leases, claims durable work, and settles cancellation at
+  checkpoint boundaries without leaving a step marked as running.
 
 ## Completion Signal
 

@@ -176,6 +176,10 @@ def test_cancel_active_run_releases_lease(start: str) -> None:
     assert cancelled["status"] == CANCELLED
     assert cancelled["lease_owner"] is None
     assert cancelled["completed_at"] == LATER
+    if start == RUNNING:
+        current = cancelled["step_states"][cancelled["current_step"]]
+        assert current["status"] == "PENDING"
+        assert current["started_at"] is None
 
 
 def test_transition_and_version_conflicts_fail_closed() -> None:

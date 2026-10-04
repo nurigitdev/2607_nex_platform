@@ -24,8 +24,11 @@ from nex_cx.ingestion_orchestration_repository import (
 from nex_cx.ingestion_worker import (
     CX_INGESTION_JOB_TYPE,
     IngestionWorkerError,
+    IngestionWorkerCancellationRequested,
     IngestionWorkerPolicy,
     _dependency_error,
+    _require_job_active,
+    _settle_worker_cancellation,
     _timestamp,
     execute_claimed_ingestion_job,
     recover_expired_ingestion_job,
@@ -172,6 +175,141 @@ def test_idle_worker_returns_metadata_only_result() -> None:
     assert result["status"] == "IDLE"
     assert result["job_id"] is None
     assert result["run_id"] is None
+
+
+def test_worker_cancellation_stops_at_next_checkpoint_and_settles_run() -> None:
+    queue, repository, _, _ = queue_and_repository()
+    handlers = successful_handlers()
+
+    def cancel_after_extraction(run):
+        queue.cancel_job("job-1", updated_at=NOW)
+        return IngestionStepResult(output_ref=f"cx.extraction:{run['document_id']}")
+
+    handlers["extraction"] = cancel_after_extraction
+    result = run_ingestion_worker_once(
+        job_queue=queue,
+        run_repository=repository,
+        step_handlers=handlers,
+        worker_id="worker-1",
+        clock=lambda: NOW,
+    )
+
+    saved = repository.find_by_job_id("job-1")
+    assert result["status"] == "CANCELLED"
+    assert result["job_status"] == "CANCELLED"
+    assert result["run_status"] == "CANCELLED"
+    assert result["error_code"] == "cx.ingestion_worker.cancellation_requested"
+    assert saved["step_states"]["extraction"]["status"] == "SUCCEEDED"
+    assert saved["step_states"]["chunking"]["status"] == "PENDING"
+
+
+def test_cancellation_checkpoint_failure_paths_are_normalized() -> None:
+    class ReadFailureQueue(InMemoryJobQueue):
+        def get_job(self, job_id):
+            raise JobQueueError("queue.offline", "private", 503)
+
+    with pytest.raises(IngestionWorkerError) as unavailable:
+        _require_job_active(ReadFailureQueue(), "job-1")
+    assert unavailable.value.error_code == "cx.ingestion_worker.cancellation_read_failed"
+
+    with pytest.raises(IngestionWorkerError) as missing:
+        _require_job_active(InMemoryJobQueue(), "job-1")
+    assert missing.value.error_code == "cx.ingestion_worker.job_not_found"
+
+    queue, _, _, _ = queue_and_repository()
+    with pytest.raises(IngestionWorkerError) as queued:
+        _require_job_active(queue, "job-1")
+    assert queued.value.error_code == "cx.ingestion_worker.job_not_running"
+
+    queue.claim_next_job("worker-1", updated_at=NOW)
+    queue.cancel_job("job-1", updated_at=NOW)
+    with pytest.raises(IngestionWorkerCancellationRequested):
+        _require_job_active(queue, "job-1")
+
+
+def test_cancellation_settlement_rejects_invalid_or_unavailable_state() -> None:
+    queue, repository, _, run = queue_and_repository()
+    claimed = claim_ingestion_run(
+        run,
+        worker_id="worker-1",
+        lease_expires_at="2026-09-21T00:02:00Z",
+        observed_at=NOW,
+    )
+    repository.save(claimed, expected_checkpoint_version=0)
+
+    with pytest.raises(IngestionWorkerError) as invalid:
+        _settle_worker_cancellation(
+            claimed,
+            job_queue=queue,
+            run_repository=repository,
+            worker_id="worker-1",
+            observed_at=NOW,
+        )
+    assert invalid.value.error_code == "cx.ingestion_worker.cancellation_state_invalid"
+
+    class ReadFailureQueue(InMemoryJobQueue):
+        def get_job(self, job_id):
+            raise JobQueueError("queue.offline", "private", 503)
+
+    with pytest.raises(IngestionWorkerError) as read_failed:
+        _settle_worker_cancellation(
+            claimed,
+            job_queue=ReadFailureQueue(),
+            run_repository=repository,
+            worker_id="worker-1",
+            observed_at=NOW,
+        )
+    assert read_failed.value.error_code == "cx.ingestion_worker.cancellation_read_failed"
+
+    queue.claim_next_job("worker-1", updated_at=NOW)
+    queue.cancel_job("job-1", updated_at=NOW)
+
+    class SaveFailureRepository(InMemoryIngestionRunRepository):
+        def save(self, run, *, expected_checkpoint_version):
+            raise IngestionRunRepositoryError("repo.offline", "private", 503)
+
+    with pytest.raises(IngestionWorkerError) as save_failed:
+        _settle_worker_cancellation(
+            claimed,
+            job_queue=queue,
+            run_repository=SaveFailureRepository(),
+            worker_id="worker-1",
+            observed_at=NOW,
+        )
+    assert save_failed.value.error_code == (
+        "cx.ingestion_worker.cancellation_persistence_failed"
+    )
+
+
+def test_worker_fails_closed_if_run_disappears_during_cancellation() -> None:
+    queue, repository, _, _ = queue_and_repository()
+
+    class VanishingRepository(InMemoryIngestionRunRepository):
+        def __init__(self, source):
+            super().__init__(source.records, source.run_ids_by_owner_key)
+            self.read_count = 0
+
+        def find_by_job_id(self, job_id):
+            self.read_count += 1
+            return super().find_by_job_id(job_id) if self.read_count == 1 else None
+
+    vanishing = VanishingRepository(repository)
+    handlers = successful_handlers()
+
+    def cancel_after_extraction(run):
+        queue.cancel_job("job-1", updated_at=NOW)
+        return IngestionStepResult(output_ref=f"cx.extraction:{run['document_id']}")
+
+    handlers["extraction"] = cancel_after_extraction
+    with pytest.raises(IngestionWorkerError) as lost:
+        run_ingestion_worker_once(
+            job_queue=queue,
+            run_repository=vanishing,
+            step_handlers=handlers,
+            worker_id="worker-1",
+            clock=lambda: NOW,
+        )
+    assert lost.value.error_code == "cx.ingestion_worker.run_lost"
 
 
 def test_missing_run_fails_claimed_job_without_retry() -> None:

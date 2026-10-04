@@ -52,6 +52,7 @@ class IngestionCheckpointExecutionError(Exception):
 
 IngestionStepHandler = Callable[[Mapping[str, Any]], IngestionStepResult]
 IngestionRuntimeHydrator = Callable[[Mapping[str, Any]], Mapping[str, Any]]
+IngestionCheckpointGuard = Callable[[Mapping[str, Any]], None]
 
 
 def execute_ingestion_checkpoint(
@@ -223,12 +224,15 @@ def execute_all_ingestion_checkpoints(
     run_repository: IngestionRunRepository,
     worker_id: str,
     step_handlers: Mapping[str, IngestionStepHandler],
+    checkpoint_guard: IngestionCheckpointGuard | None = None,
     observed_at: str | None = None,
 ) -> dict[str, Any]:
     current = validate_ingestion_run(run)
     for _ in INGESTION_PIPELINE_STEPS:
         if current["status"] != RUNNING:
             break
+        if checkpoint_guard is not None:
+            checkpoint_guard(current)
         current = execute_ingestion_checkpoint(
             current,
             run_repository=run_repository,

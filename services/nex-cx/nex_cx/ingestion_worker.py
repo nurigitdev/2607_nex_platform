@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from nex_runtime import (
+    CANCELLED as JOB_CANCELLED,
     RUNNING as JOB_RUNNING,
     JobQueue,
     JobQueueError,
@@ -25,6 +26,7 @@ from nex_cx.ingestion_orchestration import (
     QUEUED,
     RUNNING,
     WAITING_RETRY,
+    cancel_ingestion_run,
     claim_ingestion_run,
     fail_ingestion_step,
     requeue_ingestion_run,
@@ -81,6 +83,11 @@ class IngestionWorkerError(Exception):
 
     def __str__(self) -> str:
         return self.detail
+
+
+@dataclass(frozen=True)
+class IngestionWorkerCancellationRequested(Exception):
+    job_id: str
 
 
 def run_ingestion_worker_once(
@@ -153,11 +160,33 @@ def execute_claimed_ingestion_job(
             run_repository=run_repository,
             worker_id=worker_id,
             step_handlers=step_handlers,
+            checkpoint_guard=lambda _: _require_job_active(
+                job_queue,
+                str(normalized_job["job_id"]),
+            ),
             observed_at=observed,
         )
         completed_job = job_queue.complete_job(
             str(normalized_job["job_id"]),
             updated_at=observed,
+        )
+    except IngestionWorkerCancellationRequested:
+        current_run = _run_for_job(
+            run_repository,
+            str(normalized_job["job_id"]),
+        )
+        if current_run is None:
+            raise IngestionWorkerError(
+                error_code="cx.ingestion_worker.run_lost",
+                detail="The durable ingestion run disappeared during cancellation.",
+                status_code=503,
+            )
+        return _settle_worker_cancellation(
+            current_run,
+            job_queue=job_queue,
+            run_repository=run_repository,
+            worker_id=worker_id,
+            observed_at=observed,
         )
     except IngestionCheckpointExecutionError as exc:
         current_run = _run_for_job(
@@ -371,6 +400,69 @@ def _record_worker_failure(
         error_code=failure.error_code,
         failed_step=failure.failed_step,
         recovered=recovered,
+    )
+
+
+def _require_job_active(job_queue: JobQueue, job_id: str) -> None:
+    try:
+        job = job_queue.get_job(job_id)
+    except JobQueueError as exc:
+        raise _dependency_error("cancellation_read_failed", exc) from exc
+    if job is None:
+        raise IngestionWorkerError(
+            error_code="cx.ingestion_worker.job_not_found",
+            detail="The ingestion job disappeared at a cancellation checkpoint.",
+            status_code=404,
+            retryable=False,
+        )
+    if job["status"] == JOB_CANCELLED:
+        raise IngestionWorkerCancellationRequested(job_id)
+    if job["status"] != JOB_RUNNING:
+        raise IngestionWorkerError(
+            error_code="cx.ingestion_worker.job_not_running",
+            detail="The ingestion job is no longer running.",
+            status_code=409,
+            retryable=False,
+        )
+
+
+def _settle_worker_cancellation(
+    run: Mapping[str, Any],
+    *,
+    job_queue: JobQueue,
+    run_repository: IngestionRunRepository,
+    worker_id: str,
+    observed_at: str,
+) -> dict[str, Any]:
+    try:
+        job = job_queue.get_job(str(run["job_id"]))
+        if job is None or job["status"] != JOB_CANCELLED:
+            raise IngestionWorkerError(
+                error_code="cx.ingestion_worker.cancellation_state_invalid",
+                detail="The ingestion cancellation state is unavailable.",
+                status_code=409,
+                retryable=False,
+            )
+        cancelled_run = cancel_ingestion_run(
+            run,
+            observed_at=observed_at,
+            expected_checkpoint_version=int(run["checkpoint_version"]),
+        )
+        saved_run = run_repository.save(
+            cancelled_run,
+            expected_checkpoint_version=int(run["checkpoint_version"]),
+        )
+    except JobQueueError as exc:
+        raise _dependency_error("cancellation_read_failed", exc) from exc
+    except IngestionRunRepositoryError as exc:
+        raise _dependency_error("cancellation_persistence_failed", exc) from exc
+    return _worker_result(
+        worker_id=worker_id,
+        status="CANCELLED",
+        observed_at=observed_at,
+        job=job,
+        run=saved_run,
+        error_code="cx.ingestion_worker.cancellation_requested",
     )
 
 

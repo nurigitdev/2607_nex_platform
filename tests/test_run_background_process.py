@@ -150,8 +150,16 @@ def test_default_output_stop_signal_and_run_mode(monkeypatch, capsys) -> None:
 
     observed: list[tuple[str, str, float]] = []
 
-    def fake_shell(process_id, profile, *, poll_interval_seconds, out):
+    def fake_shell(
+        process_id,
+        profile,
+        *,
+        poll_interval_seconds,
+        out,
+        enable_work_claiming,
+    ):
         observed.append((process_id, profile, poll_interval_seconds))
+        assert enable_work_claiming is True
         return 0
 
     monkeypatch.setattr(runner, "run_background_process_shell", fake_shell)
@@ -211,3 +219,59 @@ def test_non_positive_poll_interval_is_rejected() -> None:
         out=output,
     ) == 2
     assert "poll interval must be positive" in output.getvalue()
+
+
+def test_ingestion_shell_executes_recovery_and_work_cycle(monkeypatch) -> None:
+    class WorkProcess:
+        def __init__(self):
+            self.results = iter(
+                (
+                    {"status": "SUCCEEDED", "job_id": "job-1349"},
+                    {"status": "IDLE", "job_id": None},
+                )
+            )
+            self.closed = False
+
+        def metadata(self):
+            return {
+                "process_id": "nex-cx-ingestion-worker",
+                "work_claiming_enabled": True,
+            }
+
+        def startup(self):
+            return {"recovered_lease_count": 1}
+
+        def run_once(self):
+            return next(self.results)
+
+        def close(self):
+            self.closed = True
+
+    process = WorkProcess()
+    monkeypatch.setattr(
+        runner,
+        "_build_ingestion_work_process",
+        lambda profile: process,
+    )
+    output = StringIO()
+    stops = iter((False, False, True))
+    sleeps: list[float] = []
+
+    assert runner.run_background_process_shell(
+        "nex-cx-ingestion-worker",
+        "test",
+        should_stop=lambda: next(stops),
+        sleeper=sleeps.append,
+        out=output,
+        enable_work_claiming=True,
+    ) == 0
+
+    states = [json.loads(line)["state"] for line in output.getvalue().splitlines()]
+    assert states == ["STARTED", "RECOVERED", "WORK", "STOPPED"]
+    assert sleeps == [0.25, 0.25]
+    assert process.closed is True
+
+
+def test_ingestion_work_process_builder_normalizes_profile_error() -> None:
+    with pytest.raises(ValueError, match="profile is not enabled"):
+        runner._build_ingestion_work_process("production")

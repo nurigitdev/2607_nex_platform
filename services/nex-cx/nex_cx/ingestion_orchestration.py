@@ -339,6 +339,13 @@ def cancel_ingestion_run(
     if cancelled["status"] in TERMINAL_INGESTION_RUN_STATUSES:
         raise _transition_error(cancelled["status"], CANCELLED)
     now = observed_at or _utc_now()
+    current_step = cancelled.get("current_step")
+    if current_step is not None:
+        step = cancelled["step_states"][current_step]
+        if step["status"] == STEP_RUNNING:
+            step["status"] = PENDING
+            step["attempt_count"] = max(0, step["attempt_count"] - 1)
+            step["started_at"] = None
     cancelled["status"] = CANCELLED
     cancelled["completed_at"] = now
     cancelled["retry_at"] = None
