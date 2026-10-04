@@ -653,3 +653,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_test_profile_startup.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_postgres_restart_state_machine.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_postgres_restoration.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_postgres_restart_smoke.py --summary
