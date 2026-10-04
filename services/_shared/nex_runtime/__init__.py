@@ -242,6 +242,11 @@ from .postgres_targets import (
     resolve_postgres_test_targets,
     service_ids_for_test_database_environments,
 )
+from .postgres_pool_lifecycle import (
+    PlatformPostgresPoolLifecycle,
+    PostgresPoolHandle,
+    PostgresPoolLifecycleError,
+)
 from .runtime_process_adapters import (
     RuntimeProbeRequest,
     SubprocessRuntimeLauncher,

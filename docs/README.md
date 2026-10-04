@@ -1431,6 +1431,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1323`](slices/1323_platform_postgres_restart_evidence.md) | `S133-002` Add typed, privacy-safe migration, startup, restart, and restoration evidence. |
 | [`Slice 1324`](slices/1324_platform_postgres_test_targets.md) | `S133-003` Validate five service-owned test DB targets and map protected child runtime aliases. |
 | [`Slice 1325`](slices/1325_platform_test_migration_readiness.md) | `S133-004` Gate startup on ordered migrations, ledger equality, identity, and readiness for all test DBs. |
+| [`Slice 1326`](slices/1326_platform_postgres_pool_lifecycle.md) | `S133-005` Prove ten independent API/worker pools, sessions, disposal, and fresh lifecycle construction. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
