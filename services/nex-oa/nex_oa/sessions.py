@@ -24,6 +24,7 @@ from nex_oa.memberships import (
     OaMembershipError,
     OaTenantMembershipRegistry,
 )
+from nex_oa.service_auth import authorize_oa_service_request
 from nex_oa.subjects import (
     DEFAULT_SUBJECT_ID,
     DEFAULT_TENANT_ID,
@@ -34,7 +35,6 @@ from nex_oa.subjects import (
     payload_has_private_identity_data,
 )
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
     DEFAULT_USER_SCOPE,
     PERSISTENCE_MODE_POSTGRES,
     ServicePersistenceRuntime,
@@ -43,7 +43,6 @@ from nex_runtime import (
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
 )
 
 
@@ -1226,21 +1225,10 @@ def _authorize_oa_session_request(
     request: Request,
     authorization: str | None,
 ) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-oa",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if result.ok:
-        return None
-
-    return problem_response(
+    return authorize_oa_service_request(
         request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "OA requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
+        authorization,
+        route_class="CREDENTIAL",
     )
 
 

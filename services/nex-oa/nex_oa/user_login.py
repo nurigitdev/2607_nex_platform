@@ -15,6 +15,7 @@ from nex_oa.auth_events import (
 )
 from nex_oa.credentials import OaCredentialError, OaCredentialRegistry
 from nex_oa.sessions import OaSessionError
+from nex_oa.service_auth import authorize_oa_service_request
 from nex_oa.subjects import (
     OA_TENANT_REF_TYPE,
     OA_USER_REF_TYPE,
@@ -22,11 +23,9 @@ from nex_oa.subjects import (
     normalize_registry_id,
 )
 from nex_runtime import (
-    DEFAULT_SERVICE_SCOPE,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
 )
 
 
@@ -310,21 +309,10 @@ def _authorize_user_login_request(
     request: Request,
     authorization: str | None,
 ) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-oa",
-        required_scopes=[DEFAULT_SERVICE_SCOPE],
-    )
-    if result.ok:
-        return None
-
-    return problem_response(
+    return authorize_oa_service_request(
         request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "OA requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
+        authorization,
+        route_class="CREDENTIAL",
     )
 
 

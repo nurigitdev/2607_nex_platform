@@ -47,6 +47,11 @@ REQUIRED_EVIDENCE = (
         "tests/test_nex_runtime_subject_resolver.py",
         "test_http_subject_resolver_verifies_tenant_owner_and_uploaded_by",
     ),
+    RequiredEvidence(
+        "oa_signed_internal_admission",
+        "services/nex-oa/nex_oa/service_auth.py",
+        "def authorize_oa_service_request",
+    ),
 )
 
 
@@ -83,6 +88,10 @@ def build_oa_trust_coupling_audit(root: Path = ROOT) -> dict[str, Any]:
         "generic_service_scope_used_for_internal_routes": (
             oa_source.count("required_scopes=[DEFAULT_SERVICE_SCOPE]") >= 7
         ),
+        "signed_internal_admission_present": (
+            "authorize_oa_service_request" in oa_source
+            and 'route_class="CREDENTIAL"' in oa_source
+        ),
         "resolver_transport_detail_exposure_present": "detail=str(exc)" in resolver,
         "cross_service_retry_policy_present": (
             "retry_policy" in ae_client and "retry_policy" in resolver
@@ -104,9 +113,9 @@ def build_oa_trust_coupling_audit(root: Path = ROOT) -> dict[str, Any]:
         ),
         _control(
             "route_specific_service_authorization",
-            "REFACTOR_REQUIRED",
+            "HARDENED",
             "HIGH",
-            "all OA internal operations accept the same generic service-call scope",
+            None,
         ),
         _control(
             "cross_service_error_privacy",
@@ -145,7 +154,8 @@ def build_oa_trust_coupling_audit(root: Path = ROOT) -> dict[str, Any]:
     )
     coupling_gaps_observed = (
         observations["mock_service_token_fallback_present"]
-        and observations["generic_service_scope_used_for_internal_routes"]
+        and observations["generic_service_scope_used_for_internal_routes"] is False
+        and observations["signed_internal_admission_present"]
         and observations["resolver_transport_detail_exposure_present"] is False
         and observations["cross_service_retry_policy_present"] is False
         and observations["browser_cookie_secure_by_default"] is False
