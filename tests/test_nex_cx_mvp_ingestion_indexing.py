@@ -16,6 +16,7 @@ from nex_cx.mvp_ingestion_indexing import (
 from nex_cx.private_content import build_private_payload_receipt
 from nex_cx.private_text_store import FileSystemCxPrivateTextStore
 from nex_cx.vector_index_repository import InMemoryVectorIndexRepository
+from nex_cx.vector_index_freshness import build_vector_payload_snapshot
 
 
 TEXTS = ["첫 번째 청크", "두 번째 청크"]
@@ -73,10 +74,11 @@ class FakeEmbeddingClient:
 class BoundVectorStore:
     def __init__(self):
         self.rows = {}
+        self.receipts = {}
 
     def put_vector(self, *, access_context, key, vector, expected_sha256):
         self.rows[key.content_id] = tuple(vector)
-        return build_private_payload_receipt(
+        receipt = build_private_payload_receipt(
             key=key,
             storage_backend="postgresql-pgvector-v1",
             storage_uri=f"cx-private://pgvector/{key.content_id}",
@@ -84,9 +86,25 @@ class BoundVectorStore:
             size_bytes=8,
             vector_dimension=len(vector),
         )
+        self.receipts[key.content_id] = receipt
+        return receipt
 
     def delete_vector(self, *, access_context, key):
+        self.receipts.pop(key.content_id, None)
         return self.rows.pop(key.content_id, None) is not None
+
+    def payload_snapshot(self, *, access_context):
+        return build_vector_payload_snapshot(
+            [
+                {
+                    "chunk_id": receipt.key.content_id,
+                    "embedding_sha256": receipt.sha256,
+                    "vector_dimension": receipt.vector_dimension,
+                    "storage_uri": receipt.storage_uri,
+                }
+                for receipt in self.receipts.values()
+            ]
+        )
 
 
 class FakeVectorStore:
@@ -159,6 +177,40 @@ def test_mvp_ingestion_reuses_ready_index_idempotently(tmp_path) -> None:
     assert replay.output_ref == first.output_ref
     assert replay.skipped is True
     assert client.calls == 2
+
+
+def test_mvp_ingestion_rejects_stale_ready_index_payload(tmp_path) -> None:
+    indexer = _indexer(tmp_path)
+    indexer(_run())
+    indexer.vector_store.bound.receipts.pop("chunk-0")
+
+    with pytest.raises(MvpIngestionIndexingError) as exc_info:
+        indexer(_run())
+
+    assert exc_info.value.error_code == "cx.mvp_ingestion.vector_index_not_fresh"
+    assert exc_info.value.retryable is True
+
+
+def test_mvp_ingestion_rejects_unverifiable_vector_freshness(tmp_path) -> None:
+    indexer = _indexer(tmp_path)
+
+    def unavailable(*, access_context):
+        from nex_cx.private_content import CxPrivateContentError
+
+        raise CxPrivateContentError(
+            status_code=503,
+            error_code="CX_VECTOR_STORAGE_UNAVAILABLE",
+            detail="unavailable",
+            retryable=True,
+        )
+
+    indexer.vector_store.bound.payload_snapshot = unavailable
+    with pytest.raises(MvpIngestionIndexingError) as exc_info:
+        indexer(_run())
+
+    assert exc_info.value.error_code == "cx.mvp_ingestion.vector_freshness_unavailable"
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.retryable is True
 
 
 def test_mvp_ingestion_handler_overrides_legacy_embedding_step(tmp_path) -> None:

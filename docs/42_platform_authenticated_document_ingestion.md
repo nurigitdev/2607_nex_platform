@@ -88,6 +88,11 @@ API and worker restart without losing lineage or exposing private payloads.
   chunking, and lexical state before every checkpoint. Private chunk text is
   reconstructed from Markdown offsets and verified SHA-256 values rather than
   persisted in the database.
+- Slice `1347`: the CX vector checkpoint calls the protected MO mock embedding
+  capability with service identity, publishes owner-scoped vector payloads,
+  and verifies payload count and fingerprint freshness both after publish and
+  before idempotent READY reuse. Missing or unverifiable payloads fail closed
+  as retryable worker errors.
 
 ## Completion Signal
 

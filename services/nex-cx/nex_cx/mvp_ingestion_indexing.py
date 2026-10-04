@@ -17,6 +17,10 @@ from nex_cx.vector_index_freshness import (
     build_source_snapshot,
     build_vector_index_manifest,
 )
+from nex_cx.vector_index_operations import (
+    VectorIndexOperationsError,
+    get_vector_index_readiness,
+)
 from nex_cx.vector_index_publish import publish_vector_index
 from nex_cx.vector_index_repository import VectorIndexRepository
 
@@ -129,6 +133,7 @@ class MvpIngestionVectorIndexer:
                     status_code=409,
                     retryable=True,
                 )
+            self._assert_fresh_index(context, existing)
             return IngestionStepResult(
                 output_ref=f"cx.vector_index:{existing['vector_index_id']}",
                 skipped=True,
@@ -144,9 +149,45 @@ class MvpIngestionVectorIndexer:
             repository=self.vector_repository,
             observed_at=_required(run.get("updated_at"), "updated_at"),
         )
+        self._assert_fresh_index(context, ready)
         return IngestionStepResult(
             output_ref=f"cx.vector_index:{ready['vector_index_id']}"
         )
+
+    def _assert_fresh_index(
+        self,
+        context: CxAccessContext,
+        manifest: Mapping[str, Any],
+    ) -> None:
+        try:
+            readiness = get_vector_index_readiness(
+                access_context=context,
+                vector_index_id=_required(
+                    manifest.get("vector_index_id"), "vector_index_id"
+                ),
+                repository=self.vector_repository,
+                vector_store=self.vector_store,
+            )
+        except VectorIndexOperationsError as exc:
+            raise MvpIngestionIndexingError(
+                error_code="cx.mvp_ingestion.vector_freshness_unavailable",
+                detail="Published vector index freshness could not be verified.",
+                status_code=exc.status_code,
+                retryable=True,
+            ) from exc
+        if not (
+            readiness["status"] == "READY"
+            and readiness["freshness_status"] == "READY"
+            and readiness["retrieval_usable"] is True
+            and readiness["expected_vector_count"]
+            == readiness["actual_vector_count"]
+        ):
+            raise MvpIngestionIndexingError(
+                error_code="cx.mvp_ingestion.vector_index_not_fresh",
+                detail="Published vector index did not pass freshness verification.",
+                status_code=409,
+                retryable=True,
+            )
 
     def _persist_private_chunk_texts(
         self,

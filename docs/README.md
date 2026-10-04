@@ -1452,6 +1452,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1344`](slices/1344_ae_upload_handoff_persistence.md) | `S135-003` Persist metadata-only AE upload handoffs with indexed owner-scoped readback and restart-safe SQLAlchemy wiring. |
 | [`Slice 1345`](slices/1345_cx_upload_admission_lineage.md) | `S135-004` Restore restart-safe CX upload identity and converge duplicate admission on one durable source, job, and run lineage. |
 | [`Slice 1346`](slices/1346_cx_ingestion_worker_hydration.md) | `S135-005` Hydrate restart-safe source, extraction, chunk, private text, and BM25 worker state with integrity and path guards. |
+| [`Slice 1347`](slices/1347_cx_mock_vector_publish_freshness.md) | `S135-006` Publish owner-scoped vectors through protected MO mock embedding and verify payload-backed READY freshness. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
