@@ -1428,6 +1428,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1320`](slices/1320_platform_local_mock_process_smoke.md) | `S132-009` Start, probe, monitor, and stop the complete thirteen-process local mock topology. |
 | [`Slice 1321`](slices/1321_s132_platform_runtime_topology_closure.md) | `S132-010` Close runtime topology hardening, freeze the S133 database handoff, and run Full Gate. |
 | [`Slice 1322`](slices/1322_platform_postgres_restart_boundary.md) | `S133-001` Freeze five-database migration, protected restart, durable reload, and S134 handoff boundaries. |
+| [`Slice 1323`](slices/1323_platform_postgres_restart_evidence.md) | `S133-002` Add typed, privacy-safe migration, startup, restart, and restoration evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

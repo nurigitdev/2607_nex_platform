@@ -214,6 +214,22 @@ from .runtime_orchestrator import (
     RuntimeOrchestrationError,
     RuntimeOrchestrator,
 )
+from .postgres_orchestration import (
+    POOL_WORKLOADS,
+    POSTGRES_EVIDENCE_STATUSES,
+    POSTGRES_ORCHESTRATION_PHASES,
+    POSTGRES_RUN_STATES,
+    POSTGRES_SERVICE_ORDER,
+    S133_POSTGRES_ORCHESTRATION_PLAN,
+    PlatformPostgresRestartEvidence,
+    PostgresOrchestrationEvidenceError,
+    PostgresOrchestrationPlan,
+    PostgresPhaseEvidence,
+    build_platform_postgres_restart_evidence,
+    build_postgres_phase_evidence,
+    validate_platform_postgres_restart_evidence,
+    validate_postgres_orchestration_plan,
+)
 from .runtime_process_adapters import (
     RuntimeProbeRequest,
     SubprocessRuntimeLauncher,
