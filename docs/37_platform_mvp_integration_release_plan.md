@@ -83,6 +83,21 @@ S132 completion signal: Met. All backend services start from one explicit
 local runtime profile with fail-closed configuration. S133 is the next active
 requirement and owns actual five-database migration and restart evidence.
 
+## S133 Slice Plan
+
+| Slice | Scope |
+| --- | --- |
+| `1322` | Freeze the S133 database orchestration boundary, completion signal, and S134 handoff. |
+| `1323` | Define typed migration, readiness, pool, restart, and restoration evidence. |
+| `1324` | Compose five service-owned test database targets and isolated child aliases. |
+| `1325` | Orchestrate idempotent migration heads and database readiness before startup. |
+| `1326` | Harden API/worker pool and session lifecycle; run Checkpoint Gate. |
+| `1327` | Start protected APIs, workers, and daemons against service-owned test databases. |
+| `1328` | Add coordinated shutdown and fresh-runtime restart orchestration. |
+| `1329` | Add durable five-database state restoration and residue-free cleanup evidence. |
+| `1330` | Execute the actual protected five-database migration/start/restart smoke. |
+| `1331` | Close S133, publish the S134 handoff, and run Full Gate. |
+
 ## Protected Evidence Schedule
 
 - `S131`: repository and deterministic regression evidence; no remote model
