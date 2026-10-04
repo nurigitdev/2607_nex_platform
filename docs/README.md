@@ -1456,6 +1456,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1348`](slices/1348_ae_upload_ingestion_progress.md) | `S135-007` Expose authenticated owner-scoped ingestion, retry, failure, and vector-freshness progress. |
 | [`Slice 1349`](slices/1349_cx_ingestion_restart_cancellation.md) | `S135-008` Execute restart-aware durable CX ingestion work with checkpoint cancellation and pool cleanup. |
 | [`Slice 1350`](slices/1350_platform_authenticated_ingestion_postgres_smoke.md) | `S135-009` Prove the protected OA-to-AE-to-CX-to-MO upload, durable indexing, restart, owner denial, and residue-free PostgreSQL journey. |
+| [`Slice 1351`](slices/1351_s135_authenticated_document_ingestion_closure.md) | `S135-010` Harden upload-progress contracts and operations, close S135, run Full Gate, and activate the S136 live retrieval handoff. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

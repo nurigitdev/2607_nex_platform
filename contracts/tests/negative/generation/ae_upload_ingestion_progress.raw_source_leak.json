@@ -1,0 +1,57 @@
+{
+  "progress_schema_version": "ae_upload_ingestion_progress.v1",
+  "upload_handoff_id": "upload-handoff-s135",
+  "workspace_id": "workspace-s135",
+  "document_id": "ef9069bc-4280-5f80-b670-ff93aa254f73",
+  "status": "INDEX_READY",
+  "progress_percent": 100,
+  "ingestion": {
+    "available": true,
+    "run_id": "run-s135",
+    "status": "SUCCEEDED",
+    "current_step": null,
+    "step_total": 4,
+    "step_completed": 4,
+    "attempt_count": 1,
+    "max_attempts": 4,
+    "checkpoint_version": 7,
+    "updated_at": "2026-10-05T01:01:00Z"
+  },
+  "failure": {
+    "present": false,
+    "error_code": null,
+    "failed_step": null,
+    "retryable": false,
+    "failed_at": null
+  },
+  "retry": {
+    "available": false,
+    "retry_at": null,
+    "attempts_remaining": 3
+  },
+  "vector_index": {
+    "available": true,
+    "vector_index_id": "11111111-1111-4111-8111-111111111111",
+    "status": "READY",
+    "freshness_status": "READY",
+    "freshness_reason": null,
+    "retrieval_usable": true,
+    "rebuild_required": false,
+    "expected_vector_count": 3,
+    "actual_vector_count": 3
+  },
+  "links": {
+    "upload_handoff": "/api/v1/uploads/upload-handoff-s135",
+    "document": "/api/v1/documents/ef9069bc-4280-5f80-b670-ff93aa254f73",
+    "progress": "/api/v1/uploads/upload-handoff-s135/progress"
+  },
+  "metadata": {
+    "owner_scoped": true,
+    "raw_source_included": false,
+    "markdown_included": false,
+    "chunk_text_included": false,
+    "embedding_vector_included": false,
+    "provider_credentials_included": false
+  },
+  "raw_source": "Private document content must never appear in progress evidence."
+}

@@ -1,6 +1,7 @@
 # Platform Authenticated Document Upload-to-Index Journey
 
-Status: Active canonical scope for S135.
+Status: S135 complete; protected upload-to-index evidence, operations
+hardening, and the Full Gate passed through Slice 1351.
 
 ## Required Outcome
 
@@ -112,6 +113,27 @@ API and worker restart without losing lineage or exposing private payloads.
   progress readback, owner denial, and residue-free test PostgreSQL cleanup.
   It also closes the OA-cookie progress admission gap and binds CX summary
   prompts to the durable database registry instead of process-local UUIDs.
+- Slice `1351`: the INDEX_READY progress contract now has indexed positive and
+  raw-source privacy-negative fixtures; the operator runbook freezes protected
+  execution, cleanup, fail-closed behavior, and the S136 provider boundary.
+
+## Slice 1351 Closure
+
+- Replayed eight deterministic S135 evidence components and retained the
+  actual PostgreSQL journey as an explicit protected opt-in component.
+- Bound the Slice 1350 five-database, two-generation result to owner-scoped
+  progress contracts, privacy rejection, failed-run cleanup, and operations.
+- Preserved OA as owner authority, AE as metadata-only handoff owner, and CX as
+  private source, ingestion lineage, lexical index, and vector index owner.
+- Kept remote model providers outside S135. The protected MO test capability
+  remains deterministic and does not require DGX connectivity.
+- Full Gate closed with `11,371` tests passed, statement coverage `98.05%`,
+  branch coverage `96.96%`, and all `15/15` S135 closure checks passed.
+
+Completion signal: Met. One OA-authenticated private document reached lexical-
+and vector-index-ready state over signed service HTTP and a durable worker,
+survived API restart with owner scope intact, exposed metadata-only progress,
+and left zero test database or storage residue.
 
 ## Completion Signal
 
@@ -123,7 +145,8 @@ evidence uses service test databases and the MO mock embedding capability.
 
 ## S136 Handoff
 
-S136 inherits only an index-ready, owner-scoped document and its durable
-freshness evidence. S136 owns live embedding/reranker execution and
-permission-filtered hybrid retrieval acceptance; it must not reopen upload,
-source materialization, ingestion durability, or ownership authority.
+S136 is the next active requirement. It inherits only an index-ready,
+owner-scoped document and its durable freshness evidence. S136 owns actual
+embedding and reranker providers plus permission-filtered hybrid retrieval
+acceptance; it must not reopen upload, source materialization, ingestion
+durability, or ownership authority.

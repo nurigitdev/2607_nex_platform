@@ -141,10 +141,12 @@ active requirement.
 | `1350` | Execute the actual protected PostgreSQL authenticated upload-to-index smoke. |
 | `1351` | Harden contracts and operations, close S135, and run Full Gate. |
 
-S135 completion signal: Active. One OA-authenticated private document must
-reach lexical- and vector-index-ready state through signed AE-to-CX HTTP and a
-durable worker, retain owner-scoped lineage across restart, expose safe
-progress, and leave no database or file residue after protected cleanup.
+S135 completion signal: Met. Slice 1350 proved an actual OA-authenticated
+private document reaching lexical- and vector-index-ready state through signed
+AE-to-CX HTTP and a durable worker, with owner-scoped restart readback and zero
+database or file residue. Slice 1351 froze the progress/privacy contracts,
+operator runbook, closure evidence, and Full Gate. S136 is the next active
+requirement and owns live permission-filtered hybrid retrieval integration.
 
 ## Protected Evidence Schedule
 

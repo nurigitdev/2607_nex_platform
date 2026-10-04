@@ -13,9 +13,9 @@ def test_repository_contract_trace_privacy_audit_exposes_named_e2e_gap() -> None
     assert all(result["checks"].values())
     assert result["issues"] == []
     assert result["contract_counts"] == {
-        "schemas": 158,
-        "examples": 216,
-        "negative_examples": 186,
+        "schemas": 159,
+        "examples": 217,
+        "negative_examples": 187,
         "openapi": 7,
     }
     assert result["findings"]["golden_scenario_contract_count"] == 10
@@ -71,9 +71,9 @@ def test_read_text_and_summary_branches(tmp_path: Path) -> None:
     passing = {
         "status": "PASS",
         "contract_counts": {
-            "schemas": 158,
-            "examples": 216,
-            "negative_examples": 186,
+            "schemas": 159,
+            "examples": 217,
+            "negative_examples": 187,
             "openapi": 7,
         },
         "findings": {
@@ -84,7 +84,7 @@ def test_read_text_and_summary_branches(tmp_path: Path) -> None:
     }
     assert audit.summary_line(passing) == (
         "platform_contract_trace_privacy_e2e_gap=pass "
-        "contracts=158/216/186/7 trace_clients=13 named_e2e=0/10 next=1311"
+        "contracts=159/217/187/7 trace_clients=13 named_e2e=0/10 next=1311"
     )
     assert audit.summary_line({"status": "FAIL", "issues": [1]}) == (
         "platform_contract_trace_privacy_e2e_gap=fail issues=1"

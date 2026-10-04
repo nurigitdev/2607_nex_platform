@@ -670,3 +670,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_ae_upload_ingestion_progress.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_ingestion_restart_cancellation.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_authenticated_ingestion_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s135_authenticated_document_ingestion_closure.py --summary
