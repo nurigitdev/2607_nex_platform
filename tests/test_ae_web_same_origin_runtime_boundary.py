@@ -79,6 +79,10 @@ def test_same_origin_boundary_redaction_output_and_helpers(
     assert smoke._relative(Path("/tmp/outside-0268.txt")) == Path("outside-0268.txt")
     assert smoke._relative_label(Path("/tmp/outside-0268.txt")) == "outside-0268.txt"
     assert smoke._source_defaults_proxy_disabled('process.env.AE_API_PROXY_TARGET || ""')
+    assert smoke._source_defaults_proxy_disabled(
+        "process.env.AE_API_PROXY_TARGET || "
+        'process.env.NEX_AE_API_BASE_URL || ""'
+    )
     assert not smoke._source_defaults_proxy_disabled("process.env.AE_API_PROXY_TARGET")
 
 

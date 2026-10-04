@@ -644,3 +644,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_ag_projection_policy.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_runtime_orchestrator.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_local_mock_process_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s132_platform_runtime_topology_closure.py --summary

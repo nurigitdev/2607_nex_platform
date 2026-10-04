@@ -38,6 +38,7 @@ REQUIRED_SERVE_TOKENS = (
     "AE_API_PROXY_PREFIX",
     "\"/ae-api\"",
     "AE_API_PROXY_TARGET",
+    "NEX_AE_API_BASE_URL",
     "createAeWebServer",
     "isProxyPath",
     "proxyApiRequest",
@@ -182,7 +183,14 @@ def _token_checks(text: str, tokens: tuple[str, ...]) -> list[dict[str, object]]
 
 
 def _source_defaults_proxy_disabled(serve_source: str) -> bool:
-    return 'process.env.AE_API_PROXY_TARGET || ""' in serve_source
+    supported_defaults = (
+        'process.env.AE_API_PROXY_TARGET || ""',
+        (
+            "process.env.AE_API_PROXY_TARGET || "
+            'process.env.NEX_AE_API_BASE_URL || ""'
+        ),
+    )
+    return any(value in serve_source for value in supported_defaults)
 
 
 def assert_same_origin_evidence_redacted(

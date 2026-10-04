@@ -1,6 +1,6 @@
 # Platform Runtime Topology and Configuration
 
-Status: S132 scope frozen; implementation in progress.
+Status: S132 complete; S133 handoff frozen.
 
 This document is the canonical non-drift record for S132. It translates the
 S131 re-audit into one explicit local runtime topology without changing service
@@ -92,7 +92,7 @@ S132 does not include:
 | `1318` | Complete | Managed profiles enforce memory/API projection; legacy direct DB adapters are unmanaged compatibility only. |
 | `1319` | Complete | Layered start, profile-aware probe gates, reverse shutdown, failure cleanup, and safe status projection pass. |
 | `1320` | Complete | Actual five-API, AE Web, and seven-background-process local mock start/probe/stop smoke passes. |
-| `1321` | Pending | S132 closure and Full Gate remain. |
+| `1321` | Complete | Nine component evidence runners, the completion signal, S133 handoff, and Full Gate pass. |
 
 Protected `api` mode never falls back to in-memory projection stores. Until
 the service-specific API projection clients are completed, an unavailable
@@ -111,6 +111,29 @@ local command. The former `run_all_services.py` remains available as a
 five-backend rollback command. The actual S132 process smoke uses dynamic
 loopback ports, probes all five API health endpoints and AE Web, verifies all
 thirteen processes remain alive, and then performs coordinated shutdown.
+
+## Completion
+
+Completion signal: Met.
+
+All backend services start from one explicit local runtime profile with
+fail-closed configuration. The actual evidence starts and stops all thirteen
+processes and probes five API health endpoints plus AE Web. It does not contact
+PostgreSQL or any remote model provider.
+
+## S133 Handoff
+
+S133 must apply and verify migration heads on all five service-owned test databases.
+It must compose service-local pools and sessions into protected readiness,
+start the API, worker, and daemon topology in the `test` profile, and prove
+coordinated restart and durable reload. AG must continue to use service APIs;
+direct cross-service database projection remains prohibited.
+
+No remote model provider is required for S133. Signed-trust closure, durable
+upload/index acceptance, live provider acceptance, the final AG projection,
+browser golden journeys, and release-candidate acceptance remain assigned to
+S134 through S140. The local mock command and `run_all_services.py` remain the
+fallback and rollback paths while S133 adds protected database orchestration.
 
 Any S132 scope change must update this document and
 `37_platform_mvp_integration_release_plan.md` before implementation.

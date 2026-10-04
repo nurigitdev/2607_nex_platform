@@ -1423,6 +1423,10 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1315`](slices/1315_platform_runtime_dependency_graph.md) | `S132-004` Add acyclic startup layers and profile-aware dependency probes. |
 | [`Slice 1316`](slices/1316_platform_endpoint_timeout_policy.md) | `S132-005` Centralize service endpoints, close CX-to-MO timeout inversion, add canonical provider aliases, and run the Checkpoint Gate. |
 | [`Slice 1317`](slices/1317_platform_complete_process_manifest.md) | `S132-006` Materialize six endpoints and thirteen API, Web, worker, and daemon process definitions with local lifecycle shells. |
+| [`Slice 1318`](slices/1318_platform_ag_api_projection_policy.md) | `S132-007` Enforce API-only AG projection in protected profiles and quarantine legacy database readers. |
+| [`Slice 1319`](slices/1319_platform_runtime_orchestrator.md) | `S132-008` Add readiness-gated orchestration, reverse cleanup, and privacy-safe runtime status. |
+| [`Slice 1320`](slices/1320_platform_local_mock_process_smoke.md) | `S132-009` Start, probe, monitor, and stop the complete thirteen-process local mock topology. |
+| [`Slice 1321`](slices/1321_s132_platform_runtime_topology_closure.md) | `S132-010` Close runtime topology hardening, freeze the S133 database handoff, and run Full Gate. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -79,6 +79,10 @@ TLS, secret injection, or enterprise IdP registration.
 | `1320` | Start and stop the complete `local_mock` topology in an actual protected process smoke. |
 | `1321` | Close S132, publish the S133 handoff, and run Full Gate. |
 
+S132 completion signal: Met. All backend services start from one explicit
+local runtime profile with fail-closed configuration. S133 is the next active
+requirement and owns actual five-database migration and restart evidence.
+
 ## Protected Evidence Schedule
 
 - `S131`: repository and deterministic regression evidence; no remote model

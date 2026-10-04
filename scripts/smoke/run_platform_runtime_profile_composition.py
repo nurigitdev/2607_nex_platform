@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "services" / "_shared"))
 from nex_runtime.runtime_profiles import (  # noqa: E402
     DATABASE_ENV_NAMES,
     LIVE_PROVIDER_ENV_NAMES,
+    SERVICE_ENDPOINT_ENV_NAMES,
     SIGNED_TRUST_ENV_NAMES,
     TEST_DATABASE_ENV_NAMES,
     RuntimeProfileError,
@@ -34,7 +35,12 @@ def run_platform_runtime_profile_composition() -> dict[str, Any]:
                 TEST_DATABASE_ENV_NAMES if profile == "test" else DATABASE_ENV_NAMES
             )
             provider_names = () if profile == "test" else LIVE_PROVIDER_ENV_NAMES
-            required_names = (*database_names, *SIGNED_TRUST_ENV_NAMES, *provider_names)
+            required_names = (
+                *database_names,
+                *SERVICE_ENDPOINT_ENV_NAMES,
+                *SIGNED_TRUST_ENV_NAMES,
+                *provider_names,
+            )
         for name in required_names:
             environment[name] = _synthetic_value(name)
         projections.append(

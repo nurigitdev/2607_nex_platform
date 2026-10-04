@@ -9,7 +9,7 @@ def test_profile_composition_evidence_passes() -> None:
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
     assert len(result["profiles"]) == 5
-    assert result["protected_failure_count"] == 20
+    assert result["protected_failure_count"] == 25
     assert result["decision"]["environment_values_projected"] is False
 
 
@@ -21,7 +21,7 @@ def test_synthetic_values_and_summary() -> None:
     passing = smoke.run_platform_runtime_profile_composition()
     assert smoke.summary_line(passing) == (
         "platform_runtime_profile_composition=pass profiles=5/5 "
-        "protected_failures=20 next=1315"
+        "protected_failures=25 next=1315"
     )
     assert smoke.summary_line({"status": "FAIL", "issues": [1]}) == (
         "platform_runtime_profile_composition=fail issues=1"
