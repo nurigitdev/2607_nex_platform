@@ -126,6 +126,26 @@ rules, cleanup procedure, and operator runbook. Slice 1341 closed the evidence
 and Full Gate while preserving the fail-closed default signer. S135 is the next
 active requirement.
 
+## S135 Slice Plan
+
+| Slice | Scope |
+| --- | --- |
+| `1342` | Freeze the S135 authenticated upload-to-index boundary and S136 handoff. |
+| `1343` | Fail closed on missing OA owner claims in protected AE upload profiles. |
+| `1344` | Persist AE upload handoff metadata and owner-scoped readback in PostgreSQL. |
+| `1345` | Harden CX upload idempotency and durable source, job, and run lineage. |
+| `1346` | Hydrate restart-safe extraction, chunking, and BM25 worker state; run Checkpoint Gate. |
+| `1347` | Publish a fresh owner-scoped vector index through MO mock embedding. |
+| `1348` | Expose AE owner-scoped ingestion progress, failure, retry, and freshness. |
+| `1349` | Coordinate restart recovery, cancellation safety, and cleanup. |
+| `1350` | Execute the actual protected PostgreSQL authenticated upload-to-index smoke. |
+| `1351` | Harden contracts and operations, close S135, and run Full Gate. |
+
+S135 completion signal: Active. One OA-authenticated private document must
+reach lexical- and vector-index-ready state through signed AE-to-CX HTTP and a
+durable worker, retain owner-scoped lineage across restart, expose safe
+progress, and leave no database or file residue after protected cleanup.
+
 ## Protected Evidence Schedule
 
 - `S131`: repository and deterministic regression evidence; no remote model

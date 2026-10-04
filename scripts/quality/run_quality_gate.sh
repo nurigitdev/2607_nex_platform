@@ -661,3 +661,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_trust_restart_plan.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_trust_operations_hardening.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s134_platform_oa_backed_trust_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_authenticated_document_ingestion_boundary.py --summary
