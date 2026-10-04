@@ -1408,6 +1408,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1301`](slices/1301_s130_oa_mvp_platform_trust_closure.md) | `S130-010` Complete OA-FR-001 through OA-FR-005 at 8/8 after the actual PostgreSQL integrated acceptance and repository Full Gate. |
 | [`Slice 1302`](slices/1302_platform_vertical_spine_reaudit_boundary.md) | `S131-001` Freeze S131-S140 and establish the OA-to-AG vertical-spine re-audit boundary. |
 | [`Slice 1303`](slices/1303_platform_route_client_topology_inventory.md) | `S131-002` Inventory cross-service HTTP clients and identify AG cross-database projection coupling. |
+| [`Slice 1304`](slices/1304_platform_runtime_profile_residue_audit.md) | `S131-003` Audit runtime profiles, mock-first defaults, startup gaps, and direct provider access ownership. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
