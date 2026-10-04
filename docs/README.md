@@ -1394,6 +1394,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1288`](slices/1288_ag_federated_authorization_audit_hardening.md) | `S129-007` Bind AG federated context to the AE service caller, admin authorization, and redacted audit evidence. |
 | [`Slice 1289`](slices/1289_s129_contract_runtime_privacy_hardening.md) | `S129-008` Wire OA/AG runtimes and publish strict federation contracts, aggregate telemetry, and privacy evidence. |
 | [`Slice 1290`](slices/1290_s129_oa_federated_postgresql_tls_loopback_smoke.md) | `S129-009` Prove protected OIDC TLS loopback login, durable OA persistence, restart reads, privacy, and cleanup on actual `nex_oa_test`. |
+| [`Slice 1291`](slices/1291_s129_federated_auth_ag_integration_closure.md) | `S129-010` Close OA federated authentication and AG normalized-context integration with explicit deployment boundaries and the Full Gate. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

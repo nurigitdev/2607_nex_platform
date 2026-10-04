@@ -25,3 +25,14 @@ NEX_OA_FEDERATED_POSTGRES_LOOPBACK_SMOKE=1 \
 
 The runner reads `NEX_OA_TEST_DATABASE_URL` from `.env.local` and refuses any
 database or role other than the dedicated OA test target.
+
+## Actual evidence
+
+- Database / role: `nex_oa_test` / `nex_oa_user`
+- Migration ledger: `17/17`
+- TLS discovery/JWKS requests: `2`
+- Persisted row classes: `4/4`
+- Cleanup residue: `0`
+- Slice Gate: `884 passed, 6 skipped`
+- Statement / branch coverage: `98.51%` / `98.03%`
+- Smoke runner statement / branch coverage: `100%` / `100%`
