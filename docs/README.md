@@ -1437,6 +1437,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1329`](slices/1329_platform_postgres_restoration.md) | `S133-008` Prove temporary state write, fresh-connection restoration, cleanup, and absence across five service test databases. |
 | [`Slice 1330`](slices/1330_platform_postgres_restart_smoke.md) | `S133-009` Restart two generations of the protected thirteen-process topology and restore state across all five test databases. |
 | [`Slice 1331`](slices/1331_s133_platform_postgres_restart_closure.md) | `S133-010` Close five-database restart acceptance, freeze the S134 trust handoff, and run Full Gate. |
+| [`Slice 1332`](slices/1332_platform_oa_backed_trust_boundary.md) | `S134-001` Freeze OA-backed user sessions, signed service trust, denial, restart, and S135 handoff boundaries. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

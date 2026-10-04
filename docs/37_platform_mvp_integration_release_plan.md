@@ -104,6 +104,24 @@ the thirteen-process topology. The smoke rebuilds ten fresh pools, leaves zero
 S133 sentinel rows, and does not contact remote model providers. S134 is the
 next active requirement and inherits this restart-safe test topology.
 
+## S134 Slice Plan
+
+| Slice | Scope |
+| --- | --- |
+| `1332` | Freeze the S134 OA-backed user/session and signed service trust boundary. |
+| `1333` | Adopt signed admission for OA internal user and session routes. |
+| `1334` | Add explicit test-profile file-backed OA signing custody. |
+| `1335` | Harden AE OA-backed signed login and downstream trust propagation. |
+| `1336` | Define typed trust-chain evidence and privacy rules; run Checkpoint Gate. |
+| `1337` | Integrate downstream signed scope and authorization denial flows. |
+| `1338` | Orchestrate JWKS, introspection, revocation, and restart behavior. |
+| `1339` | Execute the actual five-database loopback HTTP protected trust smoke. |
+| `1340` | Harden contracts, privacy, cleanup, and the operations runbook. |
+| `1341` | Close S134, publish the S135 handoff, and run Full Gate. |
+
+S134 completion signal: Pending. The default signer remains fail-closed while
+the explicit test-profile custody and integrated HTTP trust chain are built.
+
 ## Protected Evidence Schedule
 
 - `S131`: repository and deterministic regression evidence; no remote model
