@@ -45,6 +45,9 @@ def run_platform_oa_backed_trust_boundary(root: Path = ROOT) -> dict[str, Any]:
     sources = {
         "oa_user_login": _read_text(root / "services/nex-oa/nex_oa/user_login.py"),
         "oa_main": _read_text(root / "services/nex-oa/nex_oa/main.py"),
+        "oa_token_signing": _read_text(
+            root / "services/nex-oa/nex_oa/token_signing.py"
+        ),
         "ae_sessions": _read_text(root / "services/nex-ae-api/nex_ae_api/auth_sessions.py"),
         "ae_oa_client": _read_text(root / "services/nex-ae-api/nex_ae_api/oa_session_client.py"),
         "admission": _read_text(root / "services/_shared/nex_runtime/service_token_admission.py"),
@@ -59,7 +62,11 @@ def run_platform_oa_backed_trust_boundary(root: Path = ROOT) -> dict[str, Any]:
             "HttpOaJwksSource" in sources["admission"]
             and "HttpOaTokenIntrospector" in sources["admission"]
         ),
-        "default_signing_remains_fail_closed": "UnavailableOaRsaSigningProvider" in sources["oa_main"],
+        "default_signing_remains_fail_closed": (
+            "build_oa_signing_provider()" in sources["oa_main"]
+            and 'NEX_OA_SIGNING_PROVIDER", "UNAVAILABLE"'
+            in sources["oa_token_signing"]
+        ),
     }
     issues = sorted(name for name, passed in checks.items() if not passed)
     return {
@@ -125,4 +132,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
-

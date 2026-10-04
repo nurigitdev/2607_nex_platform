@@ -62,6 +62,13 @@ from .runtime_profiles import (
     runtime_profile_environment_overlay,
     runtime_profile_public_projection,
 )
+from .platform_trust_evidence import (
+    FORBIDDEN_KEY_PARTS as PLATFORM_TRUST_FORBIDDEN_KEY_PARTS,
+    REQUIRED_DENIALS as PLATFORM_TRUST_REQUIRED_DENIALS,
+    REQUIRED_HOPS as PLATFORM_TRUST_REQUIRED_HOPS,
+    TRUST_EVIDENCE_SCHEMA_VERSION,
+    evaluate_platform_trust_evidence,
+)
 from .topology_graph import (
     DependencyProbeTarget,
     RuntimeDependencyError,
@@ -532,6 +539,7 @@ __all__ = [
     "WorkerRunnerError",
     "attach_service_persistence_runtime",
     "build_engine",
+    "evaluate_platform_trust_evidence",
     "build_common_job",
     "build_job_error",
     "build_operational_event",
@@ -604,6 +612,10 @@ __all__ = [
     "RuntimeOrchestrationError",
     "RuntimeOrchestrator",
     "PlatformPostgresRestartCoordinator",
+    "PLATFORM_TRUST_FORBIDDEN_KEY_PARTS",
+    "PLATFORM_TRUST_REQUIRED_DENIALS",
+    "PLATFORM_TRUST_REQUIRED_HOPS",
+    "TRUST_EVIDENCE_SCHEMA_VERSION",
     "PostgresRestartCoordinatorError",
     "PlatformPostgresRestorationStore",
     "PostgresRestorationBatchResult",
