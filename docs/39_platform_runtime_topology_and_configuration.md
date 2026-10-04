@@ -90,13 +90,20 @@ S132 does not include:
 | `1316` | Complete | Endpoints, retry-aware timeout budgets, canonical aliases, and Checkpoint Gate pass. |
 | `1317` | Complete | Six endpoints and thirteen API, Web, worker, and daemon processes materialize. |
 | `1318` | Complete | Managed profiles enforce memory/API projection; legacy direct DB adapters are unmanaged compatibility only. |
-| `1319`-`1321` | Pending | Orchestrator, local process smoke, and closure remain. |
+| `1319` | Complete | Layered start, profile-aware probe gates, reverse shutdown, failure cleanup, and safe status projection pass. |
+| `1320`-`1321` | Pending | Actual local process smoke and closure remain. |
 
 Protected `api` mode never falls back to in-memory projection stores. Until
 the service-specific API projection clients are completed, an unavailable
 projection remains explicitly unconfigured. This preserves fail-closed
 behavior while the four legacy PostgreSQL readers remain available only to
 unmanaged compatibility evidence. Their final removal is assigned to S138.
+
+The canonical orchestrator exposes process identity, state, probe mode,
+attempt counts, normalized failure codes, and exit codes. It never projects
+commands, environment values, process IDs, or raw exception details. Startup
+failure terminates already-started processes in reverse order before returning
+the safe failed status.
 
 Any S132 scope change must update this document and
 `37_platform_mvp_integration_release_plan.md` before implementation.
