@@ -1,6 +1,7 @@
 # Platform OA-backed Trust Integration
 
-Status: S134 in progress; actual protected trust evidence passed in Slice 1339.
+Status: S134 in progress; protected trust evidence and operations hardening
+passed through Slice 1340.
 
 This document is the canonical non-drift record for S134. It connects the
 restart-safe test topology proven by S133 to one OA-backed user and service
@@ -66,6 +67,24 @@ S134 is complete only when an actual OA credential login and OA-issued signed se
 The integrated trust path is now proven. Slice 1340 owns contract, privacy,
 cleanup, and operator-runbook hardening; Slice 1341 owns final closure and the
 Full Gate.
+
+## Slice 1340 Operations Hardening
+
+- Published the signed OA user-login response and privacy-safe active service
+  claim schemas with indexed positive and negative fixtures.
+- Added the signed internal user-login route to OA OpenAPI and the sensitive
+  active-claim route to AE, CX, MO, and AG OpenAPI with exact route class,
+  scope, and fail-closed response contracts.
+- Added an operator runbook for protected execution, triage, cleanup,
+  rollback, secret handling, and the explicit remote-provider boundary.
+- Automated 11 contract, privacy, cleanup, documentation, and boundary checks;
+  all passed without embedding connection values or secret material.
+- Contract validation passed for 158 schemas, 216 examples, 186 negative
+  examples, and seven OpenAPI documents.
+
+Slice 1340 owns contract, privacy, cleanup, and operator-runbook hardening and
+is complete. Slice 1341 owns final closure, the repository Full Gate, and the
+S135 handoff.
 
 ## S135 Handoff
 

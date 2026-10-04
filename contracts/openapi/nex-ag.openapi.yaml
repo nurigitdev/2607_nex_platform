@@ -44,6 +44,24 @@ paths:
           description: Service claim is valid for this service.
         "401":
           description: Service claim is missing or invalid.
+  /internal/v1/auth/service-claim/active:
+    post:
+      operationId: validateAgActiveSignedServiceClaim
+      tags: [Platform]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-route-class: CREDENTIAL
+      responses:
+        "200":
+          description: Signed service claim is active after OA introspection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveServiceClaim"
+        "401": {description: "Signed claim is missing, invalid, expired, or inactive."}
+        "403": {description: "Audience or service-call scope is not allowed."}
+        "503": {description: "OA JWKS or introspection is unavailable."}
   /admin/v1/auth/federated-operator-runtime:
     get:
       operationId: getAgFederatedOperatorRuntime
@@ -3426,6 +3444,9 @@ components:
       scheme: bearer
       bearerFormat: NeX service claim or OA administrator access
   schemas:
+    ActiveServiceClaim:
+      type: object
+      x-nex-canonical-json-schema: schemas/common/active_service_claim.v1.schema.json
     AgFederatedOperatorContext:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_ag/federated_operator_context.v1.schema.json

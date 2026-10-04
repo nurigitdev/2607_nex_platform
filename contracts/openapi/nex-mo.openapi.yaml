@@ -62,6 +62,24 @@ paths:
           description: Service claim is valid for this service.
         "401":
           description: Service claim is missing or invalid.
+  /internal/v1/auth/service-claim/active:
+    post:
+      operationId: validateMoActiveSignedServiceClaim
+      tags: [Platform]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-route-class: CREDENTIAL
+      responses:
+        "200":
+          description: Signed service claim is active after OA introspection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveServiceClaim"
+        "401": {description: "Signed claim is missing, invalid, expired, or inactive."}
+        "403": {description: "Audience or service-call scope is not allowed."}
+        "503": {description: "OA JWKS or introspection is unavailable."}
   /internal/v1/auth/service-token-runtime:
     get:
       operationId: getMoServiceTokenRuntime
@@ -760,6 +778,9 @@ components:
       scheme: bearer
       bearerFormat: NeX service claim
   schemas:
+    ActiveServiceClaim:
+      type: object
+      x-nex-canonical-json-schema: schemas/common/active_service_claim.v1.schema.json
     ServiceRoot:
       type: object
       additionalProperties: false

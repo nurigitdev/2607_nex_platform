@@ -912,6 +912,16 @@
       "schema": "schemas/service/nex_oa/federated_login_response.v1.schema.json"
     },
     {
+      "name": "active_service_claim_raw_token",
+      "path": "tests/negative/auth/active_service_claim.raw_token.json",
+      "schema": "schemas/common/active_service_claim.v1.schema.json"
+    },
+    {
+      "name": "oa_user_login_response_password",
+      "path": "tests/negative/auth/oa_user_login_response.password.json",
+      "schema": "schemas/service/nex_oa/user_login_response.v1.schema.json"
+    },
+    {
       "name": "ag_federated_operator_context_id_token",
       "path": "tests/negative/operations/ag_federated_operator_context.id_token.json",
       "schema": "schemas/service/nex_ag/federated_operator_context.v1.schema.json"

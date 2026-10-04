@@ -1061,6 +1061,16 @@
       "schema": "schemas/service/nex_oa/federated_login_response.v1.schema.json"
     },
     {
+      "name": "active_service_claim_cx",
+      "path": "examples/auth/active_service_claim.cx.json",
+      "schema": "schemas/common/active_service_claim.v1.schema.json"
+    },
+    {
+      "name": "oa_user_login_response_active",
+      "path": "examples/auth/oa_user_login_response.active.json",
+      "schema": "schemas/service/nex_oa/user_login_response.v1.schema.json"
+    },
+    {
       "name": "ag_federated_operator_context_admin",
       "path": "examples/operations/ag_federated_operator_context.admin.json",
       "schema": "schemas/service/nex_ag/federated_operator_context.v1.schema.json"

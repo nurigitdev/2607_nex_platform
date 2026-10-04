@@ -1,6 +1,6 @@
 # Contract Package
 
-Status: Contract catalog through Slice 1029.
+Status: Contract catalog through Slice 1340.
 
 This directory is the canonical home for shared JSON Schemas, OpenAPI
 descriptions, contract examples, and negative fixtures.
@@ -56,8 +56,10 @@ reject them. The validation command fails if a negative fixture becomes valid.
 
 - Common envelopes: contract manifest, problem+json, trace refs, service claims,
   common job, worker heartbeat, and structured service log entry.
-- OA identity: subject registry snapshots and browser session snapshots for
-  user-token owner scope without raw token, password, or service-token leakage.
+- OA identity and platform trust: subject registry and browser session
+  snapshots, signed user-login response, and privacy-safe active service claims
+  for AE, CX, MO, and AG without raw token, password, session, client-secret,
+  or private-key leakage.
 - Generation: MO provider route, MO model profile, CX generation execution
   record, AE chat interaction.
 - Retrieval/content ingestion: CX upload registration, queued ingestion job,

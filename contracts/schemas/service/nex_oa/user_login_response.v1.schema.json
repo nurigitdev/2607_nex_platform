@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/user_login_response.v1.schema.json",
+  "title": "NeX OA User Login Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "login_response_schema_version",
+    "session_issue_schema_version",
+    "service_id",
+    "session",
+    "tenant_ref",
+    "subject_ref",
+    "membership_snapshot_schema_version",
+    "credential_delivery",
+    "metadata",
+    "request_id",
+    "trace_id"
+  ],
+  "properties": {
+    "login_response_schema_version": {"const": "oa_user_login_response.v1"},
+    "session_issue_schema_version": {"const": "oa_session_issue.v1"},
+    "service_id": {"const": "nex-oa"},
+    "session": {"$ref": "#/$defs/browser_session"},
+    "tenant_ref": {"$ref": "#/$defs/tenant_ref"},
+    "subject_ref": {"$ref": "#/$defs/subject_ref"},
+    "membership_snapshot_schema_version": {"type": ["string", "null"]},
+    "credential_delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw_token_included", "cookie_set_by_oa", "ae_facade_delegation"],
+      "properties": {
+        "raw_token_included": {"const": false},
+        "cookie_set_by_oa": {"const": false},
+        "ae_facade_delegation": {"const": "implemented"}
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_persisted",
+        "raw_token_stored",
+        "password_verified",
+        "external_identity_provider_used",
+        "credential_lookup",
+        "credential_status",
+        "credential_snapshot_included",
+        "hash_material_included",
+        "raw_password_included"
+      ],
+      "properties": {
+        "session_persisted": {"const": true},
+        "raw_token_stored": {"const": false},
+        "password_verified": {"const": true},
+        "external_identity_provider_used": {"type": "boolean"},
+        "credential_lookup": {"const": "employee_id"},
+        "credential_status": {"enum": ["ACTIVE", "ROTATING"]},
+        "credential_snapshot_included": {"const": false},
+        "hash_material_included": {"const": false},
+        "raw_password_included": {"const": false}
+      }
+    },
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "trace_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"}
+  },
+  "$defs": {
+    "browser_session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "browser_session_schema_version",
+        "session_id",
+        "status",
+        "issuer",
+        "audience",
+        "token_use",
+        "tenant_ref",
+        "subject_ref",
+        "scopes",
+        "roles",
+        "issued_at",
+        "expires_at",
+        "auth_time",
+        "metadata"
+      ],
+      "properties": {
+        "browser_session_schema_version": {"const": "oa_browser_session.v1"},
+        "session_id": {"type": "string", "minLength": 1},
+        "status": {"enum": ["ACTIVE", "EXPIRED", "REVOKED"]},
+        "issuer": {"const": "nex-oa"},
+        "audience": {"const": "nex-ae-api"},
+        "token_use": {"const": "user"},
+        "tenant_ref": {"$ref": "#/$defs/tenant_ref"},
+        "subject_ref": {"$ref": "#/$defs/subject_ref"},
+        "scopes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*(?::[a-z][a-z0-9_-]*)+$"}
+        },
+        "roles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 64}
+        },
+        "issued_at": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"},
+        "auth_time": {"type": "string", "format": "date-time"},
+        "metadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "raw_token_included",
+            "service_token_included",
+            "password_included",
+            "browser_payload_owner_authoritative",
+            "claim_owner_authoritative"
+          ],
+          "properties": {
+            "raw_token_included": {"const": false},
+            "service_token_included": {"const": false},
+            "password_included": {"const": false},
+            "browser_payload_owner_authoritative": {"const": false},
+            "claim_owner_authoritative": {"const": true}
+          }
+        }
+      }
+    },
+    "tenant_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"const": "oa.tenant"},
+        "id": {"type": "string", "minLength": 1, "maxLength": 128}
+      }
+    },
+    "subject_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"const": "oa.user"},
+        "id": {"type": "string", "minLength": 1, "maxLength": 128}
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "service_id": "nex-cx",
+  "claim_status": "ACTIVE",
+  "claims": {
+    "issuer": "urn:nex-platform:oa",
+    "subject": "service:nex-ae-api",
+    "audience": "nex-cx",
+    "service_id": "nex-ae-api",
+    "scopes": ["service:call"],
+    "token_use": "service_access",
+    "token_kind": "SIGNED",
+    "issued_at": 1791115200,
+    "expires_at": 1791115500,
+    "credential_id": "cred-ae-runtime",
+    "credential_revision": 1,
+    "key_id": "oa-signing-2026-10",
+    "token_id_digest": "b3e6f7c8a9d0e1f2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6",
+    "introspection_status": "ACTIVE",
+    "raw_token": "must-not-appear"
+  },
+  "request_id": "s134-negative-request",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
+}

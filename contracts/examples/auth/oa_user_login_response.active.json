@@ -1,0 +1,48 @@
+{
+  "login_response_schema_version": "oa_user_login_response.v1",
+  "session_issue_schema_version": "oa_session_issue.v1",
+  "service_id": "nex-oa",
+  "session": {
+    "browser_session_schema_version": "oa_browser_session.v1",
+    "session_id": "opaque-session-example",
+    "status": "ACTIVE",
+    "issuer": "nex-oa",
+    "audience": "nex-ae-api",
+    "token_use": "user",
+    "tenant_ref": {"type": "oa.tenant", "id": "tenant-example"},
+    "subject_ref": {"type": "oa.user", "id": "user-example"},
+    "scopes": ["workspace:use"],
+    "roles": ["employee"],
+    "issued_at": "2026-10-04T12:00:00Z",
+    "expires_at": "2026-10-04T12:20:00Z",
+    "auth_time": "2026-10-04T12:00:00Z",
+    "metadata": {
+      "raw_token_included": false,
+      "service_token_included": false,
+      "password_included": false,
+      "browser_payload_owner_authoritative": false,
+      "claim_owner_authoritative": true
+    }
+  },
+  "tenant_ref": {"type": "oa.tenant", "id": "tenant-example"},
+  "subject_ref": {"type": "oa.user", "id": "user-example"},
+  "membership_snapshot_schema_version": "oa_membership_snapshot.v1",
+  "credential_delivery": {
+    "raw_token_included": false,
+    "cookie_set_by_oa": false,
+    "ae_facade_delegation": "implemented"
+  },
+  "metadata": {
+    "session_persisted": true,
+    "raw_token_stored": false,
+    "password_verified": true,
+    "external_identity_provider_used": false,
+    "credential_lookup": "employee_id",
+    "credential_status": "ACTIVE",
+    "credential_snapshot_included": false,
+    "hash_material_included": false,
+    "raw_password_included": false
+  },
+  "request_id": "s134-example-login",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
+}

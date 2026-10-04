@@ -71,6 +71,32 @@ paths:
         "401": {description: OIDC provider or token verification failed.}
         "403": {description: External identity is not linked to an active OA subject.}
         "503": {description: OIDC trust documents or OA persistence are unavailable.}
+  /internal/v1/auth/user-login:
+    post:
+      operationId: createOaCredentialUserLogin
+      tags: [Auth]
+      security:
+        - signedServiceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-route-class: CREDENTIAL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OaUserLoginRequest"
+      responses:
+        "200":
+          description: Credential verification created an opaque OA browser session for AE.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OaUserLoginResponse"
+        "400": {description: Login payload is invalid.}
+        "401": {description: Service token or employee credential is invalid.}
+        "403": {description: Caller scope or requested user scope is not allowed.}
+        "404": {description: Active tenant membership was not found.}
+        "503": {description: OA trust or persistence runtime is unavailable.}
   /api/v1/auth/service-token:
     post:
       operationId: exchangeOaClientCredentialToken
@@ -898,6 +924,23 @@ components:
     FederatedLoginResponse:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_oa/federated_login_response.v1.schema.json
+    OaUserLoginRequest:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, employee_id, password]
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        employee_id: {type: string, minLength: 1, maxLength: 128}
+        password: {type: string, minLength: 1, maxLength: 1024, writeOnly: true}
+        requested_scopes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string, pattern: "^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$"}
+        ttl_seconds: {type: integer, minimum: 1, maximum: 86400}
+    OaUserLoginResponse:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/user_login_response.v1.schema.json
     ServiceTokenExchangeRequest:
       type: object
       additionalProperties: false

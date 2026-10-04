@@ -1445,6 +1445,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1337`](slices/1337_platform_trust_scope_propagation.md) | `S134-006` Freeze least-privilege grants and sensitive active-claim denial/introspection flows. |
 | [`Slice 1338`](slices/1338_platform_trust_restart_orchestration.md) | `S134-007` Attach OA-local trust admission and freeze JWKS/introspection/revocation restart orchestration. |
 | [`Slice 1339`](slices/1339_platform_oa_backed_trust_postgres_smoke.md) | `S134-008` Prove the actual five-database, two-generation OA-backed trust chain and residue-free cleanup. |
+| [`Slice 1340`](slices/1340_platform_trust_contract_privacy_runbook.md) | `S134-009` Harden signed-login and active-claim contracts, privacy, cleanup, and the operator runbook. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
