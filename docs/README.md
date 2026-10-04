@@ -1411,6 +1411,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1304`](slices/1304_platform_runtime_profile_residue_audit.md) | `S131-003` Audit runtime profiles, mock-first defaults, startup gaps, and direct provider access ownership. |
 | [`Slice 1305`](slices/1305_platform_oa_ae_trust_path_audit.md) | `S131-004` Audit OA-to-AE session, service identity, ownership, redaction, and activation boundaries. |
 | [`Slice 1306`](slices/1306_platform_ae_cx_integration_path_audit.md) | `S131-005` Audit AE-to-CX clients, owner/trace propagation, route coverage, and cross-database isolation. |
+| [`Slice 1307`](slices/1307_platform_cx_mo_provider_path_audit.md) | `S131-006` Audit CX-to-MO alias routing, provider-host ownership, and live timeout budgets. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
