@@ -1418,6 +1418,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1310`](slices/1310_platform_contract_trace_privacy_e2e_gap_audit.md) | `S131-009` Audit contract validation, trace propagation, privacy controls, and the missing named generation E2E suite. |
 | [`Slice 1311`](slices/1311_s131_platform_vertical_spine_reaudit_closure.md) | `S131-010` Close the vertical-spine re-audit, freeze the prioritized gap inventory, and hand off to S132. |
 | [`Slice 1312`](slices/1312_platform_runtime_topology_boundary.md) | `S132-001` Freeze the typed runtime topology, fail-closed profile, actual local process smoke, and S133 handoff boundaries. |
+| [`Slice 1313`](slices/1313_platform_runtime_manifest_domain.md) | `S132-002` Add immutable runtime manifest types, structural validation, and privacy-safe projection. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

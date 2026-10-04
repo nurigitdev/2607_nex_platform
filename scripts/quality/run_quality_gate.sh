@@ -636,3 +636,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_contract_trace_privacy_e2e_gap_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s131_platform_vertical_spine_reaudit_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_runtime_topology_boundary.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_runtime_manifest_domain.py --summary
