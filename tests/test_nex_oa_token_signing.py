@@ -2,14 +2,19 @@ from __future__ import annotations
 
 import base64
 import json
+from pathlib import Path
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from nex_oa.signed_tokens import OaSignedTokenError
 from nex_oa.token_signing import (
     InMemoryOaRsaSigningProvider,
+    TestFileOaRsaSigningProvider as FileSigningProvider,
     UnavailableOaRsaSigningProvider,
+    build_oa_signing_provider,
     encode_signed_jwt,
     public_jwk_from_key,
 )
@@ -104,6 +109,131 @@ def test_unavailable_external_custody_fails_closed() -> None:
         UnavailableOaRsaSigningProvider().sign_rs256("kms://oa/key", b"payload")
     assert exc.value.code == "oa.signing_key_custody_unavailable"
     assert exc.value.status_code == 503
+
+
+def _write_private_key(path: Path, key: object, *, mode: int = 0o600) -> str:
+    material = key.private_bytes(  # type: ignore[union-attr]
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    path.write_bytes(material)
+    path.chmod(mode)
+    return path.as_uri()
+
+
+def test_test_file_provider_signs_restricted_rsa_key(tmp_path: Path) -> None:
+    reference = _write_private_key(
+        tmp_path / "oa.pem",
+        rsa.generate_private_key(public_exponent=65537, key_size=3072),
+    )
+    provider = FileSigningProvider(tmp_path)
+
+    token = encode_signed_jwt(
+        headers={"alg": "RS256", "typ": "at+jwt", "kid": "test"},
+        claims={"sub": "service:nex-ae-api"},
+        private_key_ref=reference,
+        signing_provider=provider,
+    )
+
+    assert token.count(".") == 2
+
+
+def test_signing_provider_builder_is_explicit_and_test_only(tmp_path: Path) -> None:
+    assert isinstance(build_oa_signing_provider({}), UnavailableOaRsaSigningProvider)
+    provider = build_oa_signing_provider(
+        {
+            "NEX_PROFILE": "test",
+            "NEX_OA_SIGNING_PROVIDER": "test_file",
+            "NEX_OA_SIGNING_KEY_ROOT": str(tmp_path),
+        }
+    )
+    assert isinstance(provider, FileSigningProvider)
+
+    invalid = (
+        {"NEX_OA_SIGNING_PROVIDER": "unknown"},
+        {"NEX_OA_SIGNING_PROVIDER": "test_file", "NEX_PROFILE": "production"},
+        {"NEX_OA_SIGNING_PROVIDER": "test_file", "NEX_PROFILE": "test"},
+        {
+            "NEX_OA_SIGNING_PROVIDER": "test_file",
+            "NEX_PROFILE": "test",
+            "NEX_OA_SIGNING_KEY_ROOT": str(tmp_path / "missing"),
+        },
+    )
+    for environ in invalid:
+        with pytest.raises(OaSignedTokenError) as exc:
+            build_oa_signing_provider(environ)
+        assert exc.value.code == "oa.signing_key_custody_unavailable"
+
+
+def test_test_file_provider_rejects_unsafe_references_and_permissions(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "keys"
+    root.mkdir()
+    outside = tmp_path / "outside.pem"
+    outside_ref = _write_private_key(
+        outside,
+        rsa.generate_private_key(public_exponent=65537, key_size=3072),
+    )
+    broad = root / "broad.pem"
+    broad_ref = _write_private_key(
+        broad,
+        rsa.generate_private_key(public_exponent=65537, key_size=3072),
+        mode=0o644,
+    )
+    link = root / "link.pem"
+    link.symlink_to(outside)
+    provider = FileSigningProvider(root)
+
+    for reference in (
+        "",
+        "kms://oa/key",
+        "file://remote/key.pem",
+        "file:///missing.pem?secret=yes",
+        "relative.pem",
+        outside_ref,
+        broad_ref,
+        link.as_uri(),
+        root.as_uri(),
+        (root / "missing.pem").as_uri(),
+    ):
+        with pytest.raises(OaSignedTokenError):
+            provider.sign_rs256(reference, b"payload")
+    with pytest.raises(OaSignedTokenError, match="signing input"):
+        provider.sign_rs256(broad_ref, b"")
+
+
+@pytest.mark.parametrize("material_kind", ["invalid", "empty", "ec", "small", "large"])
+def test_test_file_provider_rejects_invalid_key_material(
+    tmp_path: Path,
+    material_kind: str,
+) -> None:
+    path = tmp_path / "key.pem"
+    if material_kind == "invalid":
+        path.write_bytes(b"not-a-key")
+    elif material_kind == "empty":
+        path.write_bytes(b"")
+    elif material_kind == "ec":
+        _write_private_key(path, ec.generate_private_key(ec.SECP256R1()))
+    elif material_kind == "small":
+        _write_private_key(
+            path, rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        )
+    else:
+        path.write_bytes(b"x" * 65_537)
+    path.chmod(0o600)
+    provider = FileSigningProvider(tmp_path)
+
+    with pytest.raises(OaSignedTokenError):
+        provider.sign_rs256(path.as_uri(), b"payload")
+
+
+def test_test_file_provider_rejects_non_directory_root(tmp_path: Path) -> None:
+    key = tmp_path / "root.pem"
+    key.write_text("not a directory", encoding="utf-8")
+    with pytest.raises(OaSignedTokenError, match="directory"):
+        FileSigningProvider(key)
 
 
 def _decode(value: str) -> bytes:

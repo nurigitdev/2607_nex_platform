@@ -64,7 +64,7 @@ from nex_oa.signed_token_repository import build_signed_token_repository_for_run
 from nex_oa.signing_key_service import OaSigningKeyService
 from nex_oa.signed_token_api import register_signed_token_routes
 from nex_oa.token_exchange_service import OaClientCredentialTokenExchangeService
-from nex_oa.token_signing import UnavailableOaRsaSigningProvider
+from nex_oa.token_signing import build_oa_signing_provider
 from nex_oa.token_validation_service import OaSignedTokenValidationService
 from nex_runtime import operational_event_emitter_from_app
 from nex_oa.subjects import (
@@ -144,7 +144,7 @@ SIGNED_TOKEN_REPOSITORY = build_signed_token_repository_for_runtime(
 SIGNING_KEY_SERVICE = OaSigningKeyService(
     repository=SIGNED_TOKEN_REPOSITORY,
 )
-TOKEN_SIGNING_PROVIDER = UnavailableOaRsaSigningProvider()
+TOKEN_SIGNING_PROVIDER = build_oa_signing_provider()
 TOKEN_EXCHANGE_SERVICE = OaClientCredentialTokenExchangeService(
     principal_service=SERVICE_PRINCIPAL_SERVICE,
     signing_key_service=SIGNING_KEY_SERVICE,

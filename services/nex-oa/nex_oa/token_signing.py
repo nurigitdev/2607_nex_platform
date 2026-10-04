@@ -3,8 +3,12 @@ from __future__ import annotations
 import base64
 from collections.abc import Mapping
 from json import dumps
+import os
+from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import unquote, urlsplit
 
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
@@ -23,6 +27,66 @@ class UnavailableOaRsaSigningProvider:
             "external private signing key custody is not configured",
             503,
         )
+
+
+class TestFileOaRsaSigningProvider:
+    """Explicit test-profile custody for permission-restricted PEM files."""
+
+    def __init__(self, allowed_root: str | Path) -> None:
+        try:
+            root = Path(allowed_root).expanduser().resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise _custody_error("test signing key root is unavailable") from exc
+        if not root.is_dir():
+            raise _custody_error("test signing key root must be a directory")
+        self._allowed_root = root
+
+    def sign_rs256(self, private_key_ref: str, signing_input: bytes) -> bytes:
+        if not isinstance(signing_input, bytes) or not signing_input:
+            raise _signing_error("signing input is required")
+        return self._load(private_key_ref).sign(
+            signing_input,
+            padding.PKCS1v15(),
+            hashes.SHA256(),
+        )
+
+    def _load(self, private_key_ref: str) -> rsa.RSAPrivateKey:
+        path = self._resolve_reference(private_key_ref)
+        try:
+            mode = path.stat().st_mode & 0o777
+            if mode & 0o077:
+                raise _custody_error("test signing key permissions are too broad")
+            material = path.read_bytes()
+            if not material or len(material) > 65_536:
+                raise _custody_error("test signing key material is invalid")
+            key = serialization.load_pem_private_key(material, password=None)
+        except OaSignedTokenError:
+            raise
+        except (OSError, ValueError, TypeError) as exc:
+            raise _custody_error("test signing key material is unavailable") from exc
+        if not isinstance(key, rsa.RSAPrivateKey):
+            raise _custody_error("test signing key must be RSA")
+        if key.key_size < MINIMUM_RSA_MODULUS_BITS:
+            raise _custody_error("test RSA signing key is too small")
+        return key
+
+    def _resolve_reference(self, private_key_ref: str) -> Path:
+        if not isinstance(private_key_ref, str) or not private_key_ref:
+            raise _custody_error("test signing key reference is required")
+        parsed = urlsplit(private_key_ref)
+        if parsed.scheme != "file" or parsed.netloc or parsed.query or parsed.fragment:
+            raise _custody_error("test signing key reference must be a local file URI")
+        candidate = Path(unquote(parsed.path))
+        if not candidate.is_absolute() or candidate.is_symlink():
+            raise _custody_error("test signing key reference is invalid")
+        try:
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(self._allowed_root)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise _custody_error("test signing key reference is outside the allowed root") from exc
+        if not resolved.is_file():
+            raise _custody_error("test signing key reference must identify a file")
+        return resolved
 
 
 class InMemoryOaRsaSigningProvider:
@@ -75,6 +139,23 @@ class InMemoryOaRsaSigningProvider:
                 "private signing key custody is unavailable",
                 503,
             ) from exc
+
+
+def build_oa_signing_provider(
+    environ: Mapping[str, str] | None = None,
+) -> OaRsaSigningProvider:
+    env = os.environ if environ is None else environ
+    provider = env.get("NEX_OA_SIGNING_PROVIDER", "UNAVAILABLE").strip().upper()
+    if provider == "UNAVAILABLE":
+        return UnavailableOaRsaSigningProvider()
+    if provider != "TEST_FILE":
+        raise _custody_error("OA signing provider is unsupported")
+    if env.get("NEX_PROFILE", "local_mock").strip().lower() != "test":
+        raise _custody_error("test file signing provider requires the test profile")
+    root = env.get("NEX_OA_SIGNING_KEY_ROOT", "").strip()
+    if not root:
+        raise _custody_error("test signing key root is required")
+    return TestFileOaRsaSigningProvider(root)
 
 
 def encode_signed_jwt(
@@ -138,3 +219,7 @@ def _key_id_from_reference(private_key_ref: str) -> str:
 
 def _signing_error(message: str) -> OaSignedTokenError:
     return OaSignedTokenError("oa.token_signing_invalid", message, 400)
+
+
+def _custody_error(message: str) -> OaSignedTokenError:
+    return OaSignedTokenError("oa.signing_key_custody_unavailable", message, 503)
