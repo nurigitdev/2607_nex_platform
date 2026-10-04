@@ -6,6 +6,10 @@ from typing import Any
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
+from nex_oa.auth_events import (
+    OaAuthEventRepository,
+    record_auth_event_safely,
+)
 from nex_oa.service_principals import OaServicePrincipalError
 from nex_oa.signed_tokens import OaSignedTokenError
 from nex_oa.signing_key_service import OaSigningKeyService
@@ -35,6 +39,7 @@ def register_signed_token_routes(
     validation_service: OaSignedTokenValidationService,
     signing_key_service: OaSigningKeyService,
     audit_emitter: OperationalEventEmitter,
+    auth_event_repository: OaAuthEventRepository | None = None,
 ) -> None:
     @app.get("/.well-known/jwks.json", response_model=None)
     def get_jwks(request: Request):
@@ -55,7 +60,18 @@ def register_signed_token_routes(
                 ),
             )
             result = token_exchange_service.exchange(body)
-        except (OaSignedTokenError, OaServicePrincipalError) as exc:
+        except OaServicePrincipalError as exc:
+            _record_auth_failure(
+                auth_event_repository,
+                request=request,
+                authorization=None,
+                event_type="SERVICE_AUTH_FAILED",
+                operation="service_token_exchange",
+                exc=exc,
+                credential_id=payload.get("credential_id"),
+            )
+            return _problem(request, exc)
+        except OaSignedTokenError as exc:
             return _problem(request, exc)
         return _with_audit(
             result,
@@ -77,6 +93,8 @@ def register_signed_token_routes(
             authorization,
             validation_service=validation_service,
             required_scope=OA_INTROSPECTION_SCOPE,
+            auth_event_repository=auth_event_repository,
+            operation="token_introspection_authorization",
         )
         if auth_problem is not None:
             return auth_problem
@@ -98,7 +116,27 @@ def register_signed_token_routes(
                 expected_audience=body["audience"],
                 required_scopes=required_scopes,
             )
+            if result.get("active") is False:
+                record_auth_event_safely(
+                    auth_event_repository,
+                    event_type="TOKEN_VALIDATION_FAILED",
+                    outcome="BLOCKED",
+                    request=request,
+                    authorization=authorization,
+                    details={
+                        "operation": "token_introspection",
+                        "error_code": result.get("reason_code"),
+                    },
+                )
         except (OaSignedTokenError, OaServicePrincipalError) as exc:
+            _record_auth_failure(
+                auth_event_repository,
+                request=request,
+                authorization=authorization,
+                event_type="TOKEN_VALIDATION_FAILED",
+                operation="token_introspection",
+                exc=exc,
+            )
             return _problem(request, exc)
         return _with_context(result, request)
 
@@ -113,6 +151,8 @@ def register_signed_token_routes(
             authorization,
             validation_service=validation_service,
             required_scope=OA_REVOCATION_SCOPE,
+            auth_event_repository=auth_event_repository,
+            operation="token_revocation_authorization",
         )
         if auth_problem is not None:
             return auth_problem
@@ -130,6 +170,14 @@ def register_signed_token_routes(
                 reason_code=body["reason_code"],
             )
         except (OaSignedTokenError, OaServicePrincipalError) as exc:
+            _record_auth_failure(
+                auth_event_repository,
+                request=request,
+                authorization=authorization,
+                event_type="TOKEN_VALIDATION_FAILED",
+                operation="token_revocation",
+                exc=exc,
+            )
             return _problem(request, exc)
         return _with_audit(
             result,
@@ -147,6 +195,8 @@ def _authorize(
     *,
     validation_service: OaSignedTokenValidationService,
     required_scope: str,
+    auth_event_repository: OaAuthEventRepository | None = None,
+    operation: str = "service_authorization",
 ) -> JSONResponse | None:
     try:
         token = _bearer_token(authorization)
@@ -156,8 +206,40 @@ def _authorize(
             required_scopes=(required_scope,),
         )
     except (OaSignedTokenError, OaServicePrincipalError) as exc:
+        _record_auth_failure(
+            auth_event_repository,
+            request=request,
+            authorization=authorization,
+            event_type="SERVICE_AUTH_FAILED",
+            operation=operation,
+            exc=exc,
+        )
         return _problem(request, exc)
     return None
+
+
+def _record_auth_failure(
+    repository: OaAuthEventRepository | None,
+    *,
+    request: Request,
+    authorization: str | None,
+    event_type: str,
+    operation: str,
+    exc: OaSignedTokenError | OaServicePrincipalError,
+    credential_id: object = None,
+) -> bool:
+    error_code = getattr(exc, "code", None) or getattr(
+        exc, "error_code", "oa.authentication_failed"
+    )
+    return record_auth_event_safely(
+        repository,
+        event_type=event_type,
+        outcome="BLOCKED",
+        request=request,
+        authorization=authorization,
+        credential_id=credential_id,
+        details={"operation": operation, "error_code": error_code},
+    )
 
 
 def _bearer_token(authorization: object) -> str:

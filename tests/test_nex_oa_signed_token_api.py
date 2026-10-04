@@ -5,6 +5,7 @@ from time import time
 from fastapi.testclient import TestClient
 import pytest
 
+from nex_oa.auth_events import InMemoryOaAuthEventRepository
 from nex_oa.production_token_profiles import PRODUCTION_TOKEN_ISSUER
 from nex_oa.service_principal_repository import InMemoryOaServicePrincipalRepository
 from nex_oa.service_principal_service import OaServicePrincipalService
@@ -87,6 +88,7 @@ def _runtime(*, emitter: OperationalEventEmitter | None = None) -> dict[str, obj
         principal_service=principals,
     )
     store = InMemoryOperationalEventStore()
+    auth_events = InMemoryOaAuthEventRepository()
     app = build_service_app(
         SERVICE_SPECS["nex-oa"], include_oa_mock_auth_routes=False
     )
@@ -97,6 +99,7 @@ def _runtime(*, emitter: OperationalEventEmitter | None = None) -> dict[str, obj
         signing_key_service=keys,
         audit_emitter=emitter
         or OperationalEventEmitter(service_id="nex-oa", store=store),
+        auth_event_repository=auth_events,
     )
     caller = exchange.exchange(
         {
@@ -115,6 +118,7 @@ def _runtime(*, emitter: OperationalEventEmitter | None = None) -> dict[str, obj
         "exchange": exchange,
         "validation": validation,
         "store": store,
+        "auth_events": auth_events,
         "caller": caller,
     }
 
@@ -196,6 +200,13 @@ def test_introspection_and_revocation_require_signed_scoped_bearer() -> None:
     )
     assert response.status_code == 403
     assert response.json()["error_code"] == "oa.token_scope_forbidden"
+    events = runtime["auth_events"].events  # type: ignore[union-attr]
+    assert [event["event_type"] for event in events] == [
+        "SERVICE_AUTH_FAILED",
+        "SERVICE_AUTH_FAILED",
+        "SERVICE_AUTH_FAILED",
+    ]
+    assert all(event["outcome"] == "BLOCKED" for event in events)
 
 
 @pytest.mark.parametrize(
@@ -225,6 +236,13 @@ def test_exchange_errors_and_unavailable_custody_are_problem_details() -> None:
     )
     assert rejected.status_code == 401
     assert rejected.json()["error_code"] == "oa.service_credential_rejected"
+    event = runtime["auth_events"].events[-1]  # type: ignore[union-attr]
+    assert event["event_type"] == "SERVICE_AUTH_FAILED"
+    assert event["credential_id"] == "cred-cx-runtime"
+    assert event["details"] == {
+        "operation": "service_token_exchange",
+        "error_code": "oa.service_credential_rejected",
+    }
 
     runtime["exchange"].signing_provider = UnavailableOaRsaSigningProvider()  # type: ignore[union-attr]
     unavailable = runtime["client"].post(  # type: ignore[union-attr]
@@ -232,6 +250,52 @@ def test_exchange_errors_and_unavailable_custody_are_problem_details() -> None:
     )
     assert unavailable.status_code == 503
     assert unavailable.json()["error_code"] == "oa.signing_key_custody_unavailable"
+    assert len(runtime["auth_events"].events) == 1  # type: ignore[union-attr]
+
+
+def test_inactive_and_invalid_target_tokens_emit_safe_validation_events() -> None:
+    runtime = _runtime()
+    client = runtime["client"]
+    token = runtime["exchange"].exchange(_token_request())["access_token"]  # type: ignore[union-attr]
+    runtime["keys"].revoke_token_claims(  # type: ignore[union-attr]
+        runtime["validation"].validate(token, expected_audience="nex-cx"),  # type: ignore[union-attr]
+        reason_code="OPERATOR",
+    )
+
+    inactive = client.post(  # type: ignore[union-attr]
+        "/api/v1/auth/introspect",
+        json={"token": token, "audience": "nex-cx"},
+        headers=_auth(runtime),
+    )
+    invalid = client.post(  # type: ignore[union-attr]
+        "/api/v1/auth/revoke",
+        json={
+            "token": "malformed.token.value",
+            "audience": "nex-cx",
+            "reason_code": "OPERATOR",
+        },
+        headers=_auth(runtime),
+    )
+
+    assert inactive.status_code == 200
+    assert inactive.json()["active"] is False
+    assert invalid.status_code == 401
+    events = runtime["auth_events"].events  # type: ignore[union-attr]
+    assert [event["event_type"] for event in events] == [
+        "TOKEN_VALIDATION_FAILED",
+        "TOKEN_VALIDATION_FAILED",
+    ]
+    assert events[0]["details"] == {
+        "operation": "token_introspection",
+        "error_code": "oa.token_revoked",
+    }
+    assert events[1]["details"] == {
+        "operation": "token_revocation",
+        "error_code": "oa.token_encoding_invalid",
+    }
+    serialized = str(events)
+    assert token not in serialized
+    assert "malformed.token.value" not in serialized
 
 
 def test_bad_bearer_and_audit_failure_paths() -> None:

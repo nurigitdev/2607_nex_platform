@@ -191,6 +191,7 @@ register_signed_token_routes(
     validation_service=TOKEN_VALIDATION_SERVICE,
     signing_key_service=SIGNING_KEY_SERVICE,
     audit_emitter=SERVICE_PRINCIPAL_AUDIT_EMITTER,
+    auth_event_repository=AUTH_EVENT_REPOSITORY,
 )
 register_user_session_routes(
     app,

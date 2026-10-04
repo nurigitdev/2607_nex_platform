@@ -1244,6 +1244,8 @@ components:
         - SESSION_ISSUED
         - SESSION_INTROSPECTED
         - SESSION_REVOKED
+        - TOKEN_VALIDATION_FAILED
+        - SERVICE_AUTH_FAILED
     AuthEventListResponse:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_oa/auth_event_list.v1.schema.json

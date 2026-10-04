@@ -88,7 +88,9 @@
             "PASSWORD_RESET",
             "SESSION_ISSUED",
             "SESSION_INTROSPECTED",
-            "SESSION_REVOKED"
+            "SESSION_REVOKED",
+            "TOKEN_VALIDATION_FAILED",
+            "SERVICE_AUTH_FAILED"
           ]
         },
         "outcome": {"enum": ["SUCCEEDED", "FAILED", "BLOCKED"]},
