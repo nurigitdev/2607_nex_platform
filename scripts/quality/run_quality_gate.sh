@@ -650,3 +650,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_postgres_test_targets.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_test_migration_readiness.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_postgres_pool_lifecycle.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_test_profile_startup.py --summary

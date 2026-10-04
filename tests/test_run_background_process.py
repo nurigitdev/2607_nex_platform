@@ -8,6 +8,17 @@ import pytest
 import run_background_process as runner
 
 
+class Engine:
+    def __init__(self, *, fail_dispose=False):
+        self.fail_dispose = fail_dispose
+        self.dispose_count = 0
+
+    def dispose(self):
+        self.dispose_count += 1
+        if self.fail_dispose:
+            raise RuntimeError("private")
+
+
 def test_all_background_modules_are_importable_in_local_mock() -> None:
     for process_id in runner.BACKGROUND_MODULES:
         metadata = runner.background_process_metadata(process_id, "local_mock")
@@ -51,6 +62,82 @@ def test_check_mode_and_fail_closed_paths() -> None:
     with pytest.raises(ValueError, match="unsupported background process"):
         runner.background_process_metadata("unknown", "local_mock")
 
+    with pytest.raises(ValueError, match="profile is not enabled"):
+        runner.background_process_metadata(
+            "nex-ag-dispatch-daemon", "production"
+        )
+
+
+def test_protected_metadata_uses_worker_pool_and_disposes() -> None:
+    engine = Engine()
+    metadata = runner.background_process_metadata(
+        "nex-cx-ingestion-worker",
+        "test",
+        environ={
+            "NEX_CX_DATABASE_URL": (
+                "postgresql://nex_cx_user:secret@localhost/nex_cx_test"
+            )
+        },
+        engine_factory=lambda *args, **kwargs: engine,
+        engine_checker=lambda value: value is engine,
+    )
+
+    assert metadata["persistence_mode"] == "postgres"
+    assert metadata["pool_workload"] == "worker"
+    assert metadata["database_env"] == "NEX_CX_DATABASE_URL"
+    assert metadata["work_claiming_enabled"] is False
+    assert engine.dispose_count == 1
+    assert "secret" not in str(metadata)
+
+
+@pytest.mark.parametrize("failure", ["build", "check"])
+def test_protected_persistence_failure_is_normalized(failure) -> None:
+    engine = Engine()
+
+    def build(*args, **kwargs):
+        if failure == "build":
+            raise RuntimeError("private")
+        return engine
+
+    with pytest.raises(ValueError, match="persistence unavailable"):
+        runner.prepare_background_process(
+            "nex-ag-dispatch-daemon",
+            "test",
+            environ={
+                "NEX_AG_DATABASE_URL": (
+                    "postgresql://nex_ag_user:secret@localhost/nex_ag_test"
+                )
+            },
+            engine_factory=build,
+            engine_checker=lambda value: failure != "check",
+        )
+    assert engine.dispose_count == (0 if failure == "build" else 1)
+
+
+def test_resource_close_is_idempotent_and_normalizes_failure() -> None:
+    resource = runner.BackgroundProcessResource({}, Engine())
+    resource.close()
+    resource.close()
+
+    failing = runner.BackgroundProcessResource({}, Engine(fail_dispose=True))
+    with pytest.raises(ValueError, match="disposal failed"):
+        failing.close()
+
+
+def test_failed_readiness_ignores_cleanup_dispose_error() -> None:
+    with pytest.raises(ValueError, match="persistence unavailable"):
+        runner.prepare_background_process(
+            "nex-cx-remediation-worker",
+            "test",
+            environ={
+                "NEX_CX_DATABASE_URL": (
+                    "postgresql://nex_cx_user:secret@localhost/nex_cx_test"
+                )
+            },
+            engine_factory=lambda *args, **kwargs: Engine(fail_dispose=True),
+            engine_checker=lambda engine: False,
+        )
+
 
 def test_default_output_stop_signal_and_run_mode(monkeypatch, capsys) -> None:
     runner._STOP_REQUESTED = False
@@ -72,6 +159,35 @@ def test_default_output_stop_signal_and_run_mode(monkeypatch, capsys) -> None:
         ["nex-cx-ingestion-worker", "--poll-interval-seconds", "0.5"]
     ) == 0
     assert observed == [("nex-cx-ingestion-worker", "local_mock", 0.5)]
+
+
+def test_shell_holds_and_disposes_protected_resource(monkeypatch) -> None:
+    engine = Engine()
+    resource = runner.BackgroundProcessResource(
+        {
+            "process_id": "worker",
+            "profile": "test",
+            "work_claiming_enabled": False,
+        },
+        engine,
+    )
+    monkeypatch.setattr(
+        runner, "prepare_background_process", lambda *args, **kwargs: resource
+    )
+    output = StringIO()
+
+    assert runner.run_background_process_shell(
+        "nex-cx-ingestion-worker",
+        "test",
+        should_stop=lambda: True,
+        out=output,
+    ) == 0
+
+    assert engine.dispose_count == 1
+    assert [json.loads(line)["state"] for line in output.getvalue().splitlines()] == [
+        "STARTED",
+        "STOPPED",
+    ]
 
 
 def test_import_path_configuration_adds_missing_paths(monkeypatch) -> None:
