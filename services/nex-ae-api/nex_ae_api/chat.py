@@ -838,6 +838,7 @@ def register_chat_routes(
                     citation_workflow,
                     storage=response_storage,
                     save_record=chat_store.save,
+                    cx_generation=handoff.get("generation"),
                 )
             else:
                 saved = chat_store.save(refreshed_record)

@@ -21,12 +21,14 @@ def persist_ready_generated_response(
     *,
     storage: GeneratedResponseStorage,
     save_record: Callable[[dict[str, Any]], dict[str, Any]],
+    cx_generation: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     existing = generated_response_lineage_from_record(record)
     bundle = prepare_generated_response(
         record,
         refresh_result,
         citation_workflow,
+        cx_generation=cx_generation,
     )
     lineage = bundle["lineage"]
     attached = attach_generated_response_lineage(record, lineage)

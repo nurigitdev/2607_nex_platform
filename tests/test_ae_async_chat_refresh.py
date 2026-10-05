@@ -65,6 +65,7 @@ class AsyncLifecycleClient:
                 "cx_generation_id": "cx-refresh-1",
                 "status": "COMPLETED",
                 "request_metadata": {
+                    "provider_prompt_package_hash": "c" * 64,
                     "grounding_required": True,
                     "retrieval_package_id": "retrieval-refresh-1",
                     "retrieval_package_hash": "a" * 64,
@@ -75,6 +76,7 @@ class AsyncLifecycleClient:
                     ),
                     "grounded_response_quality_status": "PASS",
                     "grounded_response_quality_issue_count": 0,
+                    "selected_evidence_count": 1,
                     "citation_repair": {
                         "repair_schema_version": "cx_citation_repair.v1",
                         "attempted": True,
@@ -85,6 +87,22 @@ class AsyncLifecycleClient:
                         "original_provider_prompt_package_hash": "b" * 64,
                         "effective_provider_prompt_package_hash": "c" * 64,
                         "invalid_output_included": False,
+                    },
+                    "grounding_lineage": {
+                        "lineage_schema_version": (
+                            "cx_grounded_generation_lineage.v1"
+                        ),
+                        "retrieval_package_id": "retrieval-refresh-1",
+                        "retrieval_package_hash": "a" * 64,
+                        "evidence_binding_hash": "d" * 64,
+                        "selected_evidence_count": 1,
+                        "citation_validation_status": "VALIDATED",
+                        "citation_repair_attempted": True,
+                        "citation_repair_attempt_count": 1,
+                        "original_provider_prompt_package_hash": "b" * 64,
+                        "effective_provider_prompt_package_hash": "c" * 64,
+                        "same_retrieval_package": True,
+                        "private_evidence_included": False,
                     },
                 },
             }
@@ -233,6 +251,9 @@ def test_ready_refresh_persists_private_content_and_safe_projection() -> None:
     )
     assert persisted["generation"]["citation_workflow"]["content_included"] is False
     assert persisted["generation"]["generated_response"]["content_available"] is True
+    assert persisted["generation"]["generated_response"]["cx_grounding_lineage"][
+        "evidence_binding_hash"
+    ] == "d" * 64
     assert persisted["generation"]["generated_response"][
         "storage_ref_included"
     ] is False
@@ -253,6 +274,33 @@ def test_ready_refresh_persists_private_content_and_safe_projection() -> None:
     assert repeated.json()["interaction"]["generation"]["generated_response"][
         "response_id"
     ] == persisted["generation"]["generated_response"]["response_id"]
+
+
+def test_ready_refresh_blocks_missing_cx_grounding_lineage_before_storage() -> None:
+    response_storage = InMemoryGeneratedResponseStorage()
+    client, store, asynchronous = _client(response_storage=response_storage)
+    _admit(client, "missing-lineage-1")
+    asynchronous.job_status = "SUCCEEDED"
+    asynchronous.handoff_status = "READY"
+    original = asynchronous.get_handoff
+
+    def incomplete_handoff(*args, **kwargs):
+        handoff = original(*args, **kwargs)
+        handoff["generation"]["request_metadata"].pop("grounding_lineage")
+        return handoff
+
+    asynchronous.get_handoff = incomplete_handoff
+    response = client.post(
+        "/api/v1/chat/interactions/missing-lineage-1/refresh",
+        headers=_headers(),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error_code"] == "ae.generated_response_lineage_invalid"
+    persisted = store.get("missing-lineage-1")
+    assert persisted["status"] == "PENDING"
+    assert "generated_response" not in persisted["generation"]
+    assert response_storage.payloads == {}
 
 
 def test_ready_citation_workflow_survives_sql_restart_without_second_cx_call() -> None:

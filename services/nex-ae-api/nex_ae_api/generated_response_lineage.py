@@ -23,7 +23,7 @@ _LINEAGE_TYPES = frozenset({"ORIGINAL", "RETRY_CHILD"})
 _WORKFLOW_STATUSES = frozenset(
     {"NOT_REQUIRED", "VALIDATED", "REPAIRED", "ATTENTION_REQUIRED"}
 )
-_LINEAGE_FIELDS = frozenset(
+_BASE_LINEAGE_FIELDS = frozenset(
     {
         "lineage_schema_version",
         "response_id",
@@ -48,6 +48,23 @@ _LINEAGE_FIELDS = frozenset(
         "storage_ref_included",
     }
 )
+_LINEAGE_FIELDS = _BASE_LINEAGE_FIELDS | {"cx_grounding_lineage"}
+_CX_GROUNDING_LINEAGE_FIELDS = frozenset(
+    {
+        "lineage_schema_version",
+        "retrieval_package_id",
+        "retrieval_package_hash",
+        "evidence_binding_hash",
+        "selected_evidence_count",
+        "citation_validation_status",
+        "citation_repair_attempted",
+        "citation_repair_attempt_count",
+        "original_provider_prompt_package_hash",
+        "effective_provider_prompt_package_hash",
+        "same_retrieval_package",
+        "private_evidence_included",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -66,6 +83,7 @@ def prepare_generated_response(
     refresh_result: Mapping[str, Any],
     citation_workflow: Mapping[str, Any],
     *,
+    cx_generation: Mapping[str, Any] | None = None,
     parent_response_id: str | None = None,
 ) -> dict[str, Any]:
     interaction_id = _required_text(record.get("interaction_id"), "interaction_id")
@@ -89,6 +107,11 @@ def prepare_generated_response(
     workflow = _validated_workflow(
         citation_workflow,
         interaction_id=interaction_id,
+        cx_generation_id=cx_generation_id,
+    )
+    cx_grounding_lineage = _grounding_lineage_from_cx_generation(
+        cx_generation,
+        workflow=workflow,
         cx_generation_id=cx_generation_id,
     )
     response_id = str(
@@ -152,6 +175,7 @@ def prepare_generated_response(
                 workflow["workflow_status"] == "REPAIRED"
                 and workflow["repair"]["attempted"] is True
             ),
+            "cx_grounding_lineage": cx_grounding_lineage,
             "parent_interaction_id": parent_interaction_id,
             "parent_response_id": normalized_parent_response_id,
             "owner_scope_enforced": True,
@@ -164,9 +188,13 @@ def prepare_generated_response(
 
 
 def validate_generated_response_lineage(value: object) -> dict[str, Any]:
-    if not isinstance(value, Mapping) or set(value) != _LINEAGE_FIELDS:
+    if not isinstance(value, Mapping) or set(value) not in {
+        _BASE_LINEAGE_FIELDS,
+        _LINEAGE_FIELDS,
+    }:
         raise _invalid("Generated response lineage has an invalid shape.")
     lineage = deepcopy(dict(value))
+    lineage.setdefault("cx_grounding_lineage", None)
     if lineage["lineage_schema_version"] != (
         AE_GENERATED_RESPONSE_LINEAGE_SCHEMA_VERSION
     ):
@@ -214,6 +242,10 @@ def validate_generated_response_lineage(value: object) -> dict[str, Any]:
         lineage["citation_workflow_status"] == "REPAIRED"
     ):
         raise _invalid("Generated response repair lineage is inconsistent.")
+    lineage["cx_grounding_lineage"] = _validate_cx_grounding_lineage(
+        lineage["cx_grounding_lineage"]
+    )
+    _validate_persisted_grounding_lineage(lineage)
     parent_interaction_id = _nullable_text(
         lineage["parent_interaction_id"], "parent_interaction_id"
     )
@@ -371,6 +403,134 @@ def _validate_retrieval_lineage(
         raise _invalid("Generated response retrieval package ID is inconsistent.")
     if expected_hash is not None and expected_hash != lineage["retrieval_package_hash"]:
         raise _invalid("Generated response retrieval package hash is inconsistent.")
+
+
+def _grounding_lineage_from_cx_generation(
+    cx_generation: Mapping[str, Any] | None,
+    *,
+    workflow: Mapping[str, Any],
+    cx_generation_id: str,
+) -> dict[str, Any] | None:
+    quality = workflow["quality"]
+    if quality["grounding_required"] is False:
+        return None
+    if (
+        workflow["workflow_status"] not in {"VALIDATED", "REPAIRED"}
+        or quality["boundary_status"] != "PASS"
+        or quality["citation_status"] != "VALIDATED"
+        or quality["issue_count"] != 0
+    ):
+        raise _invalid("Grounded response citation workflow is incomplete.")
+    if not isinstance(cx_generation, Mapping):
+        raise _invalid("CX grounded generation metadata is missing.")
+    if cx_generation.get("cx_generation_id") != cx_generation_id:
+        raise _invalid("CX grounded generation identity is inconsistent.")
+    request_metadata = cx_generation.get("request_metadata")
+    if not isinstance(request_metadata, Mapping):
+        raise _invalid("CX grounded generation request metadata is missing.")
+    lineage = _validate_cx_grounding_lineage(
+        request_metadata.get("grounding_lineage")
+    )
+    if lineage is None:
+        raise _invalid("CX grounded generation lineage is missing.")
+    if (
+        lineage["retrieval_package_id"] != quality["retrieval_package_id"]
+        or lineage["retrieval_package_hash"] != quality["retrieval_package_hash"]
+        or request_metadata.get("retrieval_package_id")
+        != lineage["retrieval_package_id"]
+        or request_metadata.get("retrieval_package_hash")
+        != lineage["retrieval_package_hash"]
+        or request_metadata.get("selected_evidence_count")
+        != lineage["selected_evidence_count"]
+    ):
+        raise _invalid("CX grounded generation retrieval lineage is inconsistent.")
+    top_level_retrieval_id = cx_generation.get("retrieval_package_id")
+    if (
+        top_level_retrieval_id is not None
+        and top_level_retrieval_id != lineage["retrieval_package_id"]
+    ):
+        raise _invalid("CX grounded generation retrieval identity is inconsistent.")
+    provider_prompt_hash = request_metadata.get("provider_prompt_package_hash")
+    if provider_prompt_hash is not None and provider_prompt_hash != lineage[
+        "effective_provider_prompt_package_hash"
+    ]:
+        raise _invalid("CX grounded generation prompt lineage is inconsistent.")
+    repair = workflow["repair"]
+    if (
+        lineage["citation_repair_attempted"] is not repair["attempted"]
+        or lineage["citation_repair_attempt_count"] != repair["attempt_count"]
+    ):
+        raise _invalid("CX grounded generation repair lineage is inconsistent.")
+    if repair["source_projection_present"] and (
+        lineage["original_provider_prompt_package_hash"]
+        != repair["original_provider_prompt_package_hash"]
+        or lineage["effective_provider_prompt_package_hash"]
+        != repair["effective_provider_prompt_package_hash"]
+    ):
+        raise _invalid("CX grounded generation repair prompt lineage is inconsistent.")
+    return lineage
+
+
+def _validate_cx_grounding_lineage(value: object) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping) or set(value) != _CX_GROUNDING_LINEAGE_FIELDS:
+        raise _invalid("CX grounded generation lineage has an invalid shape.")
+    lineage = deepcopy(dict(value))
+    if lineage["lineage_schema_version"] != "cx_grounded_generation_lineage.v1":
+        raise _invalid("CX grounded generation lineage version is invalid.")
+    lineage["retrieval_package_id"] = _required_text(
+        lineage["retrieval_package_id"], "grounding_retrieval_package_id"
+    )
+    if len(lineage["retrieval_package_id"]) > 256:
+        raise _invalid("CX grounded generation retrieval package ID is invalid.")
+    for field in (
+        "retrieval_package_hash",
+        "evidence_binding_hash",
+        "original_provider_prompt_package_hash",
+        "effective_provider_prompt_package_hash",
+    ):
+        lineage[field] = _required_sha256(lineage[field], field)
+    evidence_count = lineage["selected_evidence_count"]
+    if (
+        isinstance(evidence_count, bool)
+        or not isinstance(evidence_count, int)
+        or evidence_count < 1
+    ):
+        raise _invalid("CX grounded generation evidence count is invalid.")
+    if lineage["citation_validation_status"] != "VALIDATED":
+        raise _invalid("CX grounded generation citation status is invalid.")
+    attempted = lineage["citation_repair_attempted"]
+    attempt_count = lineage["citation_repair_attempt_count"]
+    if not isinstance(attempted, bool) or (
+        isinstance(attempt_count, bool)
+        or not isinstance(attempt_count, int)
+        or attempt_count != (1 if attempted else 0)
+    ):
+        raise _invalid("CX grounded generation repair attempt is inconsistent.")
+    if not attempted and lineage["original_provider_prompt_package_hash"] != (
+        lineage["effective_provider_prompt_package_hash"]
+    ):
+        raise _invalid("Unrepaired CX grounded generation changed its prompt hash.")
+    if lineage["same_retrieval_package"] is not True:
+        raise _invalid("CX grounded generation changed its retrieval package.")
+    if lineage["private_evidence_included"] is not False:
+        raise _invalid("CX grounded generation lineage contains private evidence.")
+    return lineage
+
+
+def _validate_persisted_grounding_lineage(lineage: Mapping[str, Any]) -> None:
+    grounding = lineage["cx_grounding_lineage"]
+    if grounding is None:
+        return
+    if (
+        grounding["retrieval_package_id"] != lineage["retrieval_package_id"]
+        or grounding["retrieval_package_hash"] != lineage["retrieval_package_hash"]
+        or grounding["citation_repair_attempted"]
+        is not lineage["bounded_repair_applied"]
+        or lineage["citation_workflow_status"] not in {"VALIDATED", "REPAIRED"}
+    ):
+        raise _invalid("Persisted CX grounding lineage is inconsistent.")
 
 
 def _required_text(value: object, field: str) -> str:

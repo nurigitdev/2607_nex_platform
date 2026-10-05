@@ -115,11 +115,42 @@ def sample_workflow(*, repaired: bool = False) -> dict:
     )
 
 
+def sample_cx_generation(*, repaired: bool = False) -> dict:
+    original_hash = "c" * 64 if repaired else "d" * 64
+    return {
+        "cx_generation_id": CX_GENERATION_ID,
+        "status": "COMPLETED",
+        "retrieval_package_id": "retrieval-001",
+        "request_metadata": {
+            "provider_prompt_package_hash": "d" * 64,
+            "grounding_required": True,
+            "retrieval_package_id": "retrieval-001",
+            "retrieval_package_hash": "b" * 64,
+            "selected_evidence_count": 1,
+            "grounding_lineage": {
+                "lineage_schema_version": "cx_grounded_generation_lineage.v1",
+                "retrieval_package_id": "retrieval-001",
+                "retrieval_package_hash": "b" * 64,
+                "evidence_binding_hash": "e" * 64,
+                "selected_evidence_count": 1,
+                "citation_validation_status": "VALIDATED",
+                "citation_repair_attempted": repaired,
+                "citation_repair_attempt_count": 1 if repaired else 0,
+                "original_provider_prompt_package_hash": original_hash,
+                "effective_provider_prompt_package_hash": "d" * 64,
+                "same_retrieval_package": True,
+                "private_evidence_included": False,
+            },
+        },
+    }
+
+
 def sample_bundle(*, retry: bool = False, repaired: bool = False) -> dict:
     return prepare_generated_response(
         sample_record(retry=retry),
         sample_refresh(),
         sample_workflow(repaired=repaired),
+        cx_generation=sample_cx_generation(repaired=repaired),
         parent_response_id="parent-response-001" if retry else None,
     )
 
@@ -133,6 +164,7 @@ def test_prepare_original_response_separates_private_payload_and_public_lineage(
     assert lineage["citation_workflow_status"] == "VALIDATED"
     assert lineage["retrieval_package_id"] == "retrieval-001"
     assert lineage["structured_draft_id"] == "draft-001"
+    assert lineage["cx_grounding_lineage"]["evidence_binding_hash"] == "e" * 64
     assert lineage["raw_content_included"] is False
     assert lineage["storage_ref_included"] is False
     assert "content" not in lineage
@@ -217,10 +249,18 @@ def test_prepare_rejects_integrity_and_retry_parent_errors() -> None:
     bad_hash = sample_refresh()
     bad_hash["content_sha256"] = "f" * 64
     with pytest.raises(AeGeneratedResponseLineageError, match="integrity"):
-        prepare_generated_response(sample_record(), bad_hash, sample_workflow())
+        prepare_generated_response(
+            sample_record(),
+            bad_hash,
+            sample_workflow(),
+            cx_generation=sample_cx_generation(),
+        )
 
     retry_without_parent_response = prepare_generated_response(
-        sample_record(retry=True), sample_refresh(), sample_workflow()
+        sample_record(retry=True),
+        sample_refresh(),
+        sample_workflow(),
+        cx_generation=sample_cx_generation(),
     )
     assert retry_without_parent_response["lineage"]["parent_response_id"] is None
     with pytest.raises(AeGeneratedResponseLineageError, match="cannot have"):
@@ -228,6 +268,7 @@ def test_prepare_rejects_integrity_and_retry_parent_errors() -> None:
             sample_record(),
             sample_refresh(),
             sample_workflow(),
+            cx_generation=sample_cx_generation(),
             parent_response_id="unexpected",
         )
 
@@ -256,7 +297,10 @@ def test_prepare_converts_storage_validation_and_workflow_errors() -> None:
     unsupported_type["content_type"] = "application/json"
     with pytest.raises(AeGeneratedResponseLineageError, match="content type"):
         prepare_generated_response(
-            sample_record(), unsupported_type, sample_workflow()
+            sample_record(),
+            unsupported_type,
+            sample_workflow(),
+            cx_generation=sample_cx_generation(),
         )
 
     workflow = sample_workflow()
@@ -269,20 +313,188 @@ def test_prepare_rejects_retry_shape_and_retrieval_id_drift() -> None:
     invalid_retry = sample_record()
     invalid_retry["generation"]["retry_lineage"] = "invalid"
     with pytest.raises(AeGeneratedResponseLineageError, match="retry lineage"):
-        prepare_generated_response(invalid_retry, sample_refresh(), sample_workflow())
+        prepare_generated_response(
+            invalid_retry,
+            sample_refresh(),
+            sample_workflow(),
+            cx_generation=sample_cx_generation(),
+        )
 
     bad_retrieval_id = sample_record()
     bad_retrieval_id["retrieval"]["cx_retrieval_package_id"] = "different"
     with pytest.raises(AeGeneratedResponseLineageError, match="package ID"):
         prepare_generated_response(
-            bad_retrieval_id, sample_refresh(), sample_workflow()
+            bad_retrieval_id,
+            sample_refresh(),
+            sample_workflow(),
+            cx_generation=sample_cx_generation(),
+        )
+
+    bad_retrieval_hash = sample_record()
+    bad_retrieval_hash["retrieval"]["cx_package_hash"] = "f" * 64
+    with pytest.raises(AeGeneratedResponseLineageError, match="package hash"):
+        prepare_generated_response(
+            bad_retrieval_hash,
+            sample_refresh(),
+            sample_workflow(),
+            cx_generation=sample_cx_generation(),
         )
 
     no_retrieval = sample_record()
     no_retrieval["retrieval"] = None
     assert prepare_generated_response(
-        no_retrieval, sample_refresh(), sample_workflow()
+        no_retrieval,
+        sample_refresh(),
+        sample_workflow(),
+        cx_generation=sample_cx_generation(),
     )["lineage"]["retrieval_package_id"] == "retrieval-001"
+
+
+def test_prepare_ungrounded_response_keeps_grounding_lineage_null() -> None:
+    record = sample_record()
+    record["retrieval"] = None
+    workflow = build_citation_quality_workflow(
+        {
+            "cx_generation_id": CX_GENERATION_ID,
+            "request_metadata": {"grounding_required": False},
+        },
+        interaction_id=INTERACTION_ID,
+    )
+
+    lineage = prepare_generated_response(
+        record,
+        sample_refresh(),
+        workflow,
+    )["lineage"]
+
+    assert lineage["citation_workflow_status"] == "NOT_REQUIRED"
+    assert lineage["cx_grounding_lineage"] is None
+
+
+def test_prepare_blocks_incomplete_grounded_citation_workflow() -> None:
+    workflow = build_citation_quality_workflow(
+        {
+            "cx_generation_id": CX_GENERATION_ID,
+            "request_metadata": {
+                "grounding_required": True,
+                "retrieval_package_id": "retrieval-001",
+                "retrieval_package_hash": "b" * 64,
+                "draft_validation_status": "INVALID",
+                "grounded_response_quality_status": "FAIL",
+                "grounded_response_quality_issue_count": 1,
+            },
+        },
+        interaction_id=INTERACTION_ID,
+    )
+
+    with pytest.raises(AeGeneratedResponseLineageError, match="incomplete"):
+        prepare_generated_response(
+            sample_record(),
+            sample_refresh(),
+            workflow,
+            cx_generation=sample_cx_generation(),
+        )
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda source: source.update(cx_generation_id="different"),
+        lambda source: source.update(request_metadata=None),
+        lambda source: source["request_metadata"].pop("grounding_lineage"),
+        lambda source: source["request_metadata"]["grounding_lineage"].update(
+            extra="unexpected"
+        ),
+        lambda source: source["request_metadata"]["grounding_lineage"].update(
+            lineage_schema_version="v0"
+        ),
+        lambda source: source["request_metadata"]["grounding_lineage"].update(
+            retrieval_package_id="x" * 257
+        ),
+        lambda source: source["request_metadata"]["grounding_lineage"].update(
+            evidence_binding_hash="bad"
+        ),
+        lambda source: source["request_metadata"]["grounding_lineage"].update(
+            selected_evidence_count=True
+        ),
+        lambda source: source["request_metadata"]["grounding_lineage"].update(
+            citation_validation_status="INVALID"
+        ),
+        lambda source: source["request_metadata"]["grounding_lineage"].update(
+            citation_repair_attempted="false"
+        ),
+        lambda source: source["request_metadata"]["grounding_lineage"].update(
+            original_provider_prompt_package_hash="c" * 64
+        ),
+        lambda source: source["request_metadata"]["grounding_lineage"].update(
+            same_retrieval_package=False
+        ),
+        lambda source: source["request_metadata"]["grounding_lineage"].update(
+            private_evidence_included=True
+        ),
+        lambda source: source["request_metadata"].update(
+            selected_evidence_count=2
+        ),
+        lambda source: source.update(retrieval_package_id="different"),
+        lambda source: source["request_metadata"].update(
+            provider_prompt_package_hash="f" * 64
+        ),
+    ],
+)
+def test_prepare_rejects_incomplete_or_drifted_cx_grounding_lineage(mutate) -> None:
+    source = sample_cx_generation()
+    mutate(source)
+
+    with pytest.raises(AeGeneratedResponseLineageError):
+        prepare_generated_response(
+            sample_record(),
+            sample_refresh(),
+            sample_workflow(),
+            cx_generation=source,
+        )
+
+
+def test_prepare_requires_cx_grounding_lineage_for_grounded_workflow() -> None:
+    with pytest.raises(AeGeneratedResponseLineageError, match="metadata is missing"):
+        prepare_generated_response(
+            sample_record(),
+            sample_refresh(),
+            sample_workflow(),
+        )
+
+
+def test_prepare_rejects_repair_attempt_and_prompt_lineage_drift() -> None:
+    attempt_drift = sample_cx_generation(repaired=True)
+    attempt_drift["request_metadata"]["grounding_lineage"].update(
+        citation_repair_attempted=False,
+        citation_repair_attempt_count=0,
+        original_provider_prompt_package_hash="d" * 64,
+    )
+    prompt_drift = sample_cx_generation(repaired=True)
+    prompt_drift["request_metadata"]["grounding_lineage"][
+        "original_provider_prompt_package_hash"
+    ] = "f" * 64
+
+    for source in (attempt_drift, prompt_drift):
+        with pytest.raises(AeGeneratedResponseLineageError):
+            prepare_generated_response(
+                sample_record(),
+                sample_refresh(),
+                sample_workflow(repaired=True),
+                cx_generation=source,
+            )
+
+
+def test_lineage_validator_upgrades_legacy_shape_and_rejects_nested_drift() -> None:
+    lineage = sample_bundle()["lineage"]
+    legacy = deepcopy(lineage)
+    legacy.pop("cx_grounding_lineage")
+    assert validate_generated_response_lineage(legacy)["cx_grounding_lineage"] is None
+
+    drifted = deepcopy(lineage)
+    drifted["cx_grounding_lineage"]["retrieval_package_id"] = "different"
+    with pytest.raises(AeGeneratedResponseLineageError, match="Persisted"):
+        validate_generated_response_lineage(drifted)
 
 
 @pytest.mark.parametrize(
@@ -341,6 +553,7 @@ def test_lineage_validator_rejects_shape_parent_repair_and_conflict_drift() -> N
 
 def test_lineage_validator_accepts_nullable_retrieval_hash() -> None:
     lineage = sample_bundle()["lineage"]
+    lineage.pop("cx_grounding_lineage")
     lineage["retrieval_package_hash"] = None
 
     assert validate_generated_response_lineage(lineage)[

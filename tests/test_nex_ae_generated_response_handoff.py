@@ -12,6 +12,7 @@ from nex_ae_api.generated_response_storage import (
 )
 from test_nex_ae_generated_response_lineage import (
     sample_bundle,
+    sample_cx_generation,
     sample_record,
     sample_refresh,
     sample_workflow,
@@ -32,6 +33,7 @@ def test_ready_handoff_persists_payload_then_safe_record_idempotently() -> None:
         sample_workflow(),
         storage=storage,
         save_record=save,
+        cx_generation=sample_cx_generation(),
     )
     second = persist_ready_generated_response(
         first,
@@ -39,6 +41,7 @@ def test_ready_handoff_persists_payload_then_safe_record_idempotently() -> None:
         sample_workflow(),
         storage=storage,
         save_record=save,
+        cx_generation=sample_cx_generation(),
     )
 
     lineage = first["generation"]["generated_response"]
@@ -62,6 +65,7 @@ def test_new_payload_is_compensated_when_record_save_fails() -> None:
             sample_workflow(),
             storage=storage,
             save_record=fail_save,
+            cx_generation=sample_cx_generation(),
         )
 
     assert storage.payloads == {}
@@ -82,6 +86,7 @@ def test_existing_payload_is_not_deleted_when_replay_record_save_fails() -> None
             sample_workflow(),
             storage=storage,
             save_record=lambda _: (_ for _ in ()).throw(RuntimeError("down")),
+            cx_generation=sample_cx_generation(),
         )
 
     assert len(storage.payloads) == 1
@@ -108,6 +113,7 @@ def test_compensation_failure_does_not_hide_record_save_failure() -> None:
             save_record=lambda _: (_ for _ in ()).throw(
                 RuntimeError("database unavailable")
             ),
+            cx_generation=sample_cx_generation(),
         )
 
 
@@ -125,6 +131,7 @@ def test_handoff_rejects_inconsistent_storage_reference() -> None:
             sample_workflow(),
             storage=WrongReferenceStorage(),
             save_record=lambda record: record,
+            cx_generation=sample_cx_generation(),
         )
 
     assert error.value.error_code == "ae.generated_response_storage_invalid"

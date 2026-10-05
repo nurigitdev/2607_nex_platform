@@ -134,6 +134,18 @@ def test_chat_contract_accepts_public_generated_response_lineage_only() -> None:
         Draft202012Validator(schema).validate(leaked)
 
 
+def test_generated_response_contract_rejects_private_grounding_evidence() -> None:
+    schema = _json(
+        "contracts/schemas/service/nex_ae_api/"
+        "generated_response_lineage.v1.schema.json"
+    )
+    lineage = sample_bundle()["lineage"]
+    lineage["cx_grounding_lineage"]["private_evidence_included"] = True
+
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schema).validate(lineage)
+
+
 def test_openapi_exposes_owner_response_and_metadata_only_lineage() -> None:
     spec = yaml.safe_load(
         (ROOT / "contracts/openapi/nex-ae-api.openapi.yaml").read_text(
@@ -158,6 +170,12 @@ def test_openapi_exposes_owner_response_and_metadata_only_lineage() -> None:
     lineage_properties = schemas["AeGeneratedResponseLineage"]["properties"]
     assert "content" not in lineage_properties
     assert "storage_ref" not in lineage_properties
+    assert lineage_properties["cx_grounding_lineage"]["oneOf"][1]["$ref"] == (
+        "#/components/schemas/CxGroundedGenerationLineage"
+    )
+    assert schemas["CxGroundedGenerationLineage"][
+        "x-nex-canonical-json-schema"
+    ].endswith("cx_grounded_generation_lineage.v1.schema.json")
     assert schemas["AeChatInteraction"]["properties"]["generation"]["anyOf"][0][
         "properties"
     ]["generated_response"]["$ref"] == (

@@ -25,6 +25,7 @@
     "structured_draft_id": null,
     "citation_workflow_status": "NOT_REQUIRED",
     "bounded_repair_applied": false,
+    "cx_grounding_lineage": null,
     "parent_interaction_id": null,
     "parent_response_id": null,
     "owner_scope_enforced": true,

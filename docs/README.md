@@ -1470,6 +1470,8 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1362`](slices/1362_platform_grounded_generation_artifact_boundary.md) | `S137-001` Freeze the grounded generation, citation repair, AE response lineage, and artifact lifecycle E2E boundary. |
 | [`Slice 1363`](slices/1363_cx_retrieval_package_materialization.md) | `S137-002` Materialize restart-safe owner-scoped retrieval packages from PostgreSQL metadata and verified private evidence. |
 | [`Slice 1364`](slices/1364_cx_grounded_generation_runtime_composition.md) | `S137-003` Compose one owner-scoped retrieval store into synchronous and asynchronous CX generation. |
+| [`Slice 1365`](slices/1365_cx_citation_repair_lineage_binding.md) | `S137-004` Bind citation validation and one repair attempt to the exact retrieval package, evidence set, and prompt transition. |
+| [`Slice 1366`](slices/1366_ae_generated_response_grounding_lineage.md) | `S137-005` Persist exact CX grounding lineage in AE, fail closed on incomplete citation workflows, and pass the Checkpoint Gate. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
