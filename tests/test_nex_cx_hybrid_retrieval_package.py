@@ -18,6 +18,7 @@ from nex_cx.hybrid_retrieval_package import (
 )
 from nex_cx.ingestion import ContentIngestionStore
 from nex_cx.retrieval import register_retrieval_routes
+from nex_cx.retrieval_permissions import RetrievalPermissionError
 from nex_cx.retrieval_persistence import build_retrieval_package_persistence_preview
 
 
@@ -157,6 +158,32 @@ def test_runtime_builds_owner_scoped_persistence_compatible_package() -> None:
         "weighted_rrf_vector_bm25_v1"
     )
     assert preview["header"]["permission_snapshot_hash"]
+
+
+def test_runtime_preserves_fail_closed_permission_denial() -> None:
+    class DeniedCandidateProvider:
+        def build_candidate_set(self, **_kwargs):
+            raise RetrievalPermissionError(
+                status_code=404,
+                error_code="cx.document_scope_not_found",
+                detail="One or more requested documents were not found.",
+            )
+
+    runtime = PermissionFilteredHybridPackageRuntime(
+        candidate_provider=DeniedCandidateProvider(),
+        evidence_materializer=FakeMaterializer(),
+    )
+
+    with pytest.raises(HybridRetrievalPackageError) as captured:
+        runtime.build_package(
+            _payload(document_scope={"document_ids": [DOC_ID, "foreign-document"]}),
+            access_context=_context(),
+        )
+
+    assert captured.value.status_code == 404
+    assert captured.value.error_code == "cx.document_scope_not_found"
+    assert captured.value.retryable is False
+    assert "foreign-document" not in captured.value.detail
 
 
 def test_runtime_is_deterministic_except_for_injected_clock() -> None:

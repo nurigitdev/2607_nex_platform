@@ -1458,6 +1458,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1350`](slices/1350_platform_authenticated_ingestion_postgres_smoke.md) | `S135-009` Prove the protected OA-to-AE-to-CX-to-MO upload, durable indexing, restart, owner denial, and residue-free PostgreSQL journey. |
 | [`Slice 1351`](slices/1351_s135_authenticated_document_ingestion_closure.md) | `S135-010` Harden upload-progress contracts and operations, close S135, run Full Gate, and activate the S136 live retrieval handoff. |
 | [`Slice 1352`](slices/1352_platform_permission_hybrid_retrieval_boundary.md) | `S136-001` Freeze the live permission-filtered hybrid retrieval boundary, six integration gaps, and S137 handoff. |
+| [`Slice 1353`](slices/1353_cx_permission_first_scope_hardening.md) | `S136-002` Preserve fail-closed 404 denial and prove mixed owner scope cannot reach candidate or private-payload dependencies. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

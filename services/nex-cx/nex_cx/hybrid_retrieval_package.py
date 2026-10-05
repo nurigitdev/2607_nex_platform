@@ -17,7 +17,10 @@ from nex_cx.hybrid_ranking import (
     PermissionAwareRerankClient,
     rank_permission_filtered_candidates,
 )
-from nex_cx.retrieval_permissions import PERMISSION_POLICY_ID
+from nex_cx.retrieval_permissions import (
+    PERMISSION_POLICY_ID,
+    RetrievalPermissionError,
+)
 
 
 HYBRID_RETRIEVAL_RUNTIME_SCHEMA_VERSION = "cx_hybrid_retrieval_runtime.v1"
@@ -110,6 +113,13 @@ class PermissionFilteredHybridPackageRuntime:
             )
         except HybridRetrievalPackageError:
             raise
+        except RetrievalPermissionError as exc:
+            raise HybridRetrievalPackageError(
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                detail=exc.detail,
+                retryable=False,
+            ) from exc
         except Exception as exc:
             raise HybridRetrievalPackageError(
                 status_code=503,

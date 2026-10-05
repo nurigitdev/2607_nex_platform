@@ -68,7 +68,11 @@ class FakeSource:
 
 
 class FakeLexicalStore:
+    def __init__(self):
+        self.calls = 0
+
     def search(self, **kwargs):
+        self.calls += 1
         return [
             {
                 "lexical_candidate_schema_version": "cx_lexical_candidate.v1",
@@ -145,6 +149,43 @@ def test_candidate_provider_hides_foreign_document_before_provider_call() -> Non
     assert exc_info.value.status_code == 404
     assert embedding.calls == 0
     assert source.calls == ["content"]
+
+
+def test_candidate_provider_rejects_mixed_owner_scope_before_all_candidates() -> None:
+    class MixedOwnerSource(FakeSource):
+        def load_content_objects(self, document_ids):
+            self.calls.append("content")
+            return {
+                document_id: _content(
+                    "owner-s100" if document_id == "document-s100" else "owner-other"
+                )
+                for document_id in document_ids
+            }
+
+    source = MixedOwnerSource()
+    embedding = FakeEmbeddingClient()
+    lexical = FakeLexicalStore()
+    provider = ProductionHybridCandidateProvider(
+        source=source,
+        lexical_store=lexical,
+        vector_repository=object(),
+        vector_store=object(),
+        embedding_client=embedding,
+        embedding_alias="embedding-primary",
+    )
+
+    with pytest.raises(RetrievalPermissionError) as captured:
+        provider.build_candidate_set(
+            access_context=CONTEXT,
+            query_text="권한 검색",
+            requested_document_ids=["document-s100", "document-foreign"],
+        )
+
+    assert captured.value.status_code == 404
+    assert "document-foreign" not in captured.value.detail
+    assert source.calls == ["content"]
+    assert embedding.calls == 0
+    assert lexical.calls == 0
 
 
 @pytest.mark.parametrize(

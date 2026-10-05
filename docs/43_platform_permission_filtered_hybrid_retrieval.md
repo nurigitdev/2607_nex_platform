@@ -45,6 +45,10 @@ persist only hash-bound, metadata-safe retrieval evidence.
 6. No restart/readback, residue-free cleanup, runbook, or closure evidence
    currently binds this journey to the S137 grounded-generation handoff.
 
+Slice 1353 closed the permission error propagation gap: mixed owner/tenant
+scope now remains a generic non-retryable 404 across the package/API boundary,
+before query embedding or either candidate channel can execute.
+
 ## Slice Sequence
 
 | Slice | Scope |
