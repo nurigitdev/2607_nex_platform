@@ -681,3 +681,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_s136_permission_hybrid_live_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s136_permission_hybrid_retrieval_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_grounded_generation_artifact_boundary.py --summary
+"$PYTHON_BIN" scripts/smoke/run_cx_retrieval_package_materialization.py --summary
