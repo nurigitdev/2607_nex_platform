@@ -677,3 +677,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_cx_live_retrieval_provider_identity.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_weighted_rrf_acceptance.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_retrieval_confidence_acceptance.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s136_model_calibration_live.py --summary

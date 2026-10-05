@@ -1,6 +1,6 @@
 # Platform Permission-Filtered Hybrid Retrieval Live Integration
 
-Status: S136 active through Slice 1352.
+Status: S136 active through Slice 1359.
 
 ## Required Outcome
 
@@ -25,8 +25,11 @@ persist only hash-bound, metadata-safe retrieval evidence.
 - The active live profiles are `Qwen3-Embedding-4B` and
   `Qwen3-Reranker-4B`; provider secrets, vectors, and private text are absent
   from stored and emitted evidence.
-- A result below the frozen confidence threshold is not promoted to READY.
-  An empty admitted candidate set returns NO_ANSWER without invoking rerank.
+- A result is not promoted to READY unless an ACTIVE calibration profile
+  exactly matches capability, model revision, request shape, score semantics,
+  and retrieval policy. Unknown or changed models fail closed with
+  CALIBRATION_REQUIRED. An empty admitted candidate set returns NO_ANSWER
+  without invoking rerank.
 - S136 does not reopen upload, extraction, chunking, or index publication.
 
 ## Current Gaps
@@ -61,12 +64,18 @@ Slice 1356 adds count-only candidate-channel evidence for weighted RRF and
 freezes vector/BM25 weights `0.7/0.3` with `rrf_k=60` at the checkpoint gate.
 
 Slice 1357 unifies READY, LOW_CONFIDENCE, and NO_ANSWER under the versioned
-`cx_retrieval_confidence_v1` decision. The frozen threshold is inclusive at
-`0.2`, and the best score is selected independently of evidence order.
+`cx_retrieval_confidence_v1` decision. Its inclusive `0.2` threshold remains a
+deterministic regression baseline and is not accepted as a live-provider
+calibration result.
 
 Slice 1358 advances retrieval operations evidence to
 `cx_retrieval_observability.v2`, exposing only confidence, channel counts,
 safe provider identity, and classified failure-role metadata.
+
+Slice 1359 adds model-agnostic calibration evaluation and exact model/profile
+binding. A protected 36-sample Qwen3-Reranker-4B run rejected every single raw
+score threshold under the false-READY and READY-recall constraints, so it
+created no candidate profile and changed no runtime threshold.
 
 ## Slice Sequence
 
@@ -79,8 +88,8 @@ safe provider identity, and classified failure-role metadata.
 | `1356` | Harden weighted RRF and channel-contribution acceptance evidence; run Checkpoint Gate. |
 | `1357` | Harden READY, LOW_CONFIDENCE, and NO_ANSWER decision semantics. |
 | `1358` | Add metadata-only retrieval operations and provider-failure evidence. |
-| `1359` | Prove protected PostgreSQL plus live embedding/reranker retrieval integration. |
-| `1360` | Prove restart-safe readback, denial isolation, and residue-free cleanup. |
+| `1359` | Add model-bound confidence calibration and reject unsafe threshold activation. |
+| `1360` | Prove calibrated PostgreSQL plus live-provider integration, restart readback, denial isolation, and cleanup. |
 | `1361` | Harden contracts/runbook, close S136, run Full Gate, and activate S137. |
 
 ## Completion Signal

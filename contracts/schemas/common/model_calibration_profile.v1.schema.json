@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/model_calibration_profile.v1.schema.json",
+  "title": "Model Calibration Profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "profile_schema_version",
+    "profile_id",
+    "version",
+    "status",
+    "binding",
+    "threshold",
+    "evaluation",
+    "profile_hash"
+  ],
+  "properties": {
+    "profile_schema_version": {"const": "model_calibration_profile.v1"},
+    "profile_id": {"type": "string", "minLength": 1},
+    "version": {"type": "string", "minLength": 1},
+    "status": {"enum": ["CANDIDATE", "ACTIVE", "RETIRED"]},
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability",
+        "model_revision",
+        "request_shape",
+        "score_semantics",
+        "policy_id"
+      ],
+      "properties": {
+        "capability": {"enum": ["embedding", "reranking", "generation"]},
+        "model_revision": {"type": "string", "minLength": 1},
+        "request_shape": {"type": "string", "minLength": 1},
+        "score_semantics": {"type": "string", "minLength": 1},
+        "policy_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "threshold": {"type": "number", "minimum": 0, "maximum": 1},
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "evaluation_schema_version",
+        "dataset_id",
+        "dataset_sha256",
+        "status",
+        "sample_count",
+        "positive_count",
+        "negative_count",
+        "selected_threshold",
+        "selected_metrics",
+        "constraints"
+      ],
+      "properties": {
+        "evaluation_schema_version": {"const": "model_calibration_evaluation.v1"},
+        "dataset_id": {"type": "string", "minLength": 1},
+        "dataset_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "status": {"const": "PASSED"},
+        "sample_count": {"type": "integer", "minimum": 1},
+        "positive_count": {"type": "integer", "minimum": 1},
+        "negative_count": {"type": "integer", "minimum": 1},
+        "selected_threshold": {"type": "number", "minimum": 0, "maximum": 1},
+        "selected_metrics": {"type": "object"},
+        "constraints": {"type": "object"}
+      }
+    },
+    "profile_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

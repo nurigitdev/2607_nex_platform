@@ -1,0 +1,33 @@
+{
+  "profile_schema_version": "model_calibration_profile.v1",
+  "profile_id": "reranking-model-a-weighted-rrf-v1",
+  "version": "0001",
+  "status": "CANDIDATE",
+  "binding": {
+    "capability": "reranking",
+    "model_revision": "model-a-revision",
+    "request_shape": "rerank",
+    "score_semantics": "provider_native_relevance_0_1",
+    "policy_id": "weighted_rrf_vector_bm25_v1"
+  },
+  "threshold": 0.535,
+  "evaluation": {
+    "evaluation_schema_version": "model_calibration_evaluation.v1",
+    "dataset_id": "public-calibration-v1",
+    "dataset_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": "PASSED",
+    "sample_count": 20,
+    "positive_count": 10,
+    "negative_count": 10,
+    "selected_threshold": 0.535,
+    "selected_metrics": {
+      "false_ready_rate": 0.0,
+      "ready_recall": 1.0
+    },
+    "constraints": {
+      "maximum_false_ready_rate": 0.1,
+      "minimum_ready_recall": 0.8
+    }
+  },
+  "profile_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+}

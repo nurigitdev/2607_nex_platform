@@ -388,6 +388,16 @@ from .signed_token_verifier import (
     StaticJwksSource,
     VerifiedServiceTokenClaims,
 )
+from .model_calibration import (
+    MODEL_CALIBRATION_EVALUATION_SCHEMA_VERSION,
+    MODEL_CALIBRATION_PROFILE_SCHEMA_VERSION,
+    BinaryCalibrationConstraints,
+    ModelCalibrationError,
+    build_model_calibration_profile,
+    classify_calibrated_score,
+    evaluate_binary_score_calibration,
+    select_model_calibration_profile,
+)
 from .recovery import (
     DEFAULT_GENERATION_RECOVERY_POLICIES,
     GenerationRecoveryPolicyError,
@@ -408,6 +418,10 @@ from .subject_resolver import (
 )
 
 __all__ = [
+    "MODEL_CALIBRATION_EVALUATION_SCHEMA_VERSION",
+    "MODEL_CALIBRATION_PROFILE_SCHEMA_VERSION",
+    "BinaryCalibrationConstraints",
+    "ModelCalibrationError",
     "DEFAULT_SERVICE_SCOPE",
     "DEFAULT_GENERATION_RECOVERY_POLICIES",
     "ClaimValidationResult",
@@ -565,6 +579,7 @@ __all__ = [
     "attach_service_persistence_runtime",
     "build_engine",
     "evaluate_platform_trust_evidence",
+    "evaluate_binary_score_calibration",
     "platform_trust_scope_policy",
     "validate_platform_trust_scope_policy",
     "build_platform_trust_restart_plan",
@@ -575,6 +590,7 @@ __all__ = [
     "build_operational_event",
     "build_service_app",
     "build_service_log_entry",
+    "build_model_calibration_profile",
     "build_service_log_retention_execution",
     "build_service_log_retention_history_entry",
     "build_service_log_retention_history_list",
@@ -589,6 +605,7 @@ __all__ = [
     "build_worker_heartbeat",
     "check_database_readiness",
     "check_sqlalchemy_engine",
+    "classify_calibrated_score",
     "database_pool_settings",
     "issue_mock_service_token",
     "load_env_file",
@@ -626,6 +643,7 @@ __all__ = [
     "run_worker_batch",
     "run_worker_once",
     "select_generation_recovery_policy",
+    "select_model_calibration_profile",
     "service_database_settings",
     "service_database_env_prefix",
     "service_log_emitter_from_app",

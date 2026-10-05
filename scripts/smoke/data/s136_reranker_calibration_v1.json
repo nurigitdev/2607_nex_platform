@@ -1,0 +1,114 @@
+{
+  "dataset_schema_version": "model_calibration_dataset.v1",
+  "dataset_id": "s136-reranker-relevance-public-v1",
+  "cases": [
+    {
+      "case_id": "security-zero-trust",
+      "query": "What is the core principle of zero trust network security?",
+      "documents": [
+        {"document_id": "positive", "expected_ready": true, "text": "Zero trust requires every access request to be explicitly verified regardless of network location."},
+        {"document_id": "hard-negative", "expected_ready": false, "text": "A perimeter firewall filters traffic entering and leaving a trusted internal network."},
+        {"document_id": "negative", "expected_ready": false, "text": "Bread dough rises when yeast converts sugars into carbon dioxide."}
+      ]
+    },
+    {
+      "case_id": "hr-annual-leave",
+      "query": "연차 휴가 신청 승인 절차는 무엇인가?",
+      "documents": [
+        {"document_id": "positive", "expected_ready": true, "text": "연차 휴가는 직원이 신청서를 제출하고 직속 관리자의 승인을 받은 뒤 확정된다."},
+        {"document_id": "hard-negative", "expected_ready": false, "text": "재택근무 신청은 부서별 근무 계획과 보안 점검 결과를 기준으로 검토한다."},
+        {"document_id": "negative", "expected_ready": false, "text": "토마토는 햇빛이 충분하고 배수가 잘되는 토양에서 잘 자란다."}
+      ]
+    },
+    {
+      "case_id": "database-vector-index",
+      "query": "How does a pgvector index accelerate similarity search?",
+      "documents": [
+        {"document_id": "positive", "expected_ready": true, "text": "A pgvector HNSW or IVFFlat index narrows nearest-neighbor candidates instead of scanning every stored vector."},
+        {"document_id": "hard-negative", "expected_ready": false, "text": "A PostgreSQL B-tree index accelerates equality and ordered scalar comparisons."},
+        {"document_id": "negative", "expected_ready": false, "text": "Ocean tides are mainly driven by the gravitational pull of the moon."}
+      ]
+    },
+    {
+      "case_id": "rag-reranker",
+      "query": "RAG 검색에서 reranker의 역할은 무엇인가?",
+      "documents": [
+        {"document_id": "positive", "expected_ready": true, "text": "reranker는 초기 검색 후보를 질의와의 관련성 기준으로 다시 평가하여 최종 순서를 조정한다."},
+        {"document_id": "hard-negative", "expected_ready": false, "text": "embedding 모델은 텍스트를 벡터로 변환하여 근사 최근접 검색에 사용한다."},
+        {"document_id": "negative", "expected_ready": false, "text": "냉장고의 적정 보관 온도는 식품 종류와 사용 환경에 따라 달라진다."}
+      ]
+    },
+    {
+      "case_id": "finance-cash-flow",
+      "query": "Why can a profitable company still have negative operating cash flow?",
+      "documents": [
+        {"document_id": "positive", "expected_ready": true, "text": "Profit can coexist with negative operating cash flow when receivables or inventory consume cash faster than earnings are collected."},
+        {"document_id": "hard-negative", "expected_ready": false, "text": "Revenue growth measures the change in sales recognized between accounting periods."},
+        {"document_id": "negative", "expected_ready": false, "text": "A violin produces sound when vibrating strings transfer energy through its bridge."}
+      ]
+    },
+    {
+      "case_id": "maintenance-predictive",
+      "query": "예지 정비는 설비 고장을 어떻게 줄이는가?",
+      "documents": [
+        {"document_id": "positive", "expected_ready": true, "text": "예지 정비는 진동과 온도 같은 상태 데이터를 분석해 고장 징후를 조기에 발견하고 정비 시점을 결정한다."},
+        {"document_id": "hard-negative", "expected_ready": false, "text": "예방 정비는 설비 상태와 무관하게 정해진 주기마다 점검과 부품 교체를 수행한다."},
+        {"document_id": "negative", "expected_ready": false, "text": "고대 로마의 도로는 여러 지역을 연결하는 교통망으로 활용되었다."}
+      ]
+    },
+    {
+      "case_id": "records-retention",
+      "query": "What should a records retention policy define?",
+      "documents": [
+        {"document_id": "positive", "expected_ready": true, "text": "A records retention policy defines record categories, retention periods, legal holds, and approved disposal procedures."},
+        {"document_id": "hard-negative", "expected_ready": false, "text": "An access control policy defines which identities may read or modify protected resources."},
+        {"document_id": "negative", "expected_ready": false, "text": "Migrating birds navigate using visual landmarks and cues from the earth's magnetic field."}
+      ]
+    },
+    {
+      "case_id": "health-appointment",
+      "query": "진료 예약 변경 시 환자에게 어떤 정보를 안내해야 하는가?",
+      "documents": [
+        {"document_id": "positive", "expected_ready": true, "text": "예약 변경 시 새 진료 일시, 담당 의료진, 방문 장소와 준비 사항을 환자에게 확인 안내해야 한다."},
+        {"document_id": "hard-negative", "expected_ready": false, "text": "진료비 청구서는 보험 적용 항목과 환자 본인 부담 항목을 구분하여 표시한다."},
+        {"document_id": "negative", "expected_ready": false, "text": "화산 분출은 지하 마그마의 압력과 가스 방출에 의해 발생한다."}
+      ]
+    },
+    {
+      "case_id": "chemistry-catalyst",
+      "query": "How does a catalyst affect a chemical reaction?",
+      "documents": [
+        {"document_id": "positive", "expected_ready": true, "text": "A catalyst provides an alternative reaction pathway with lower activation energy without being consumed overall."},
+        {"document_id": "hard-negative", "expected_ready": false, "text": "A reagent is a substance consumed or transformed while producing the reaction products."},
+        {"document_id": "negative", "expected_ready": false, "text": "A database transaction groups operations into an atomic unit of work."}
+      ]
+    },
+    {
+      "case_id": "climate-carbon",
+      "query": "탄소 중립과 탄소 배출 상쇄의 차이는 무엇인가?",
+      "documents": [
+        {"document_id": "positive", "expected_ready": true, "text": "탄소 중립은 감축 후 남은 배출량을 제거 또는 상쇄해 순배출을 0으로 만드는 목표이고, 상쇄는 그 수단 중 하나다."},
+        {"document_id": "hard-negative", "expected_ready": false, "text": "일기 예보는 기온, 기압, 습도와 바람의 변화를 수치 모델로 계산한다."},
+        {"document_id": "negative", "expected_ready": false, "text": "클래식 기타는 일반적으로 나일론 줄을 사용한다."}
+      ]
+    },
+    {
+      "case_id": "api-idempotency",
+      "query": "Why is an idempotency key useful for a create API?",
+      "documents": [
+        {"document_id": "positive", "expected_ready": true, "text": "An idempotency key lets a server recognize retried create requests and return the original result without creating a duplicate."},
+        {"document_id": "hard-negative", "expected_ready": false, "text": "A cache key identifies a stored response so repeated reads can avoid recomputation."},
+        {"document_id": "negative", "expected_ready": false, "text": "Photosynthesis converts light energy into chemical energy in plants."}
+      ]
+    },
+    {
+      "case_id": "software-regression",
+      "query": "회귀 테스트가 소프트웨어 변경에서 중요한 이유는 무엇인가?",
+      "documents": [
+        {"document_id": "positive", "expected_ready": true, "text": "회귀 테스트는 새로운 변경이 기존에 정상 동작하던 기능을 깨뜨리지 않았는지 반복 검증한다."},
+        {"document_id": "hard-negative", "expected_ready": false, "text": "성능 테스트는 응답 시간과 처리량이 목표 수준을 만족하는지 측정한다."},
+        {"document_id": "negative", "expected_ready": false, "text": "달의 위상은 지구에서 보이는 태양빛 반사 영역의 변화다."}
+      ]
+    }
+  ]
+}

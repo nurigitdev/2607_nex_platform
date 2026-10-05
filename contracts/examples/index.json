@@ -1084,6 +1084,11 @@
       "name": "ag_federated_auth_runtime_ready",
       "path": "examples/operations/ag_federated_auth_runtime.ready.json",
       "schema": "schemas/service/nex_ag/federated_auth_runtime.v1.schema.json"
+    },
+    {
+      "name": "model_calibration_profile_candidate",
+      "path": "examples/common/model_calibration_profile.candidate.json",
+      "schema": "schemas/common/model_calibration_profile.v1.schema.json"
     }
   ]
 }
