@@ -301,7 +301,10 @@ def register_retrieval_routes(
         if isinstance(access_context, JSONResponse):
             return access_context
 
-        package = store.get_retrieval_package(retrieval_package_id)
+        package = store.get_retrieval_package(
+            retrieval_package_id,
+            access_context=access_context,
+        )
         if package is None or not record_visible_to_owner(access_context, package):
             return _retrieval_problem_response(
                 request,

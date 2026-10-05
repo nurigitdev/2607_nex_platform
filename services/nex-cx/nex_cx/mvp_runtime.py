@@ -28,6 +28,7 @@ from nex_cx.mvp_ingestion_indexing import MvpIngestionVectorIndexer
 from nex_cx.pgvector_store import PgVectorCxVectorStore
 from nex_cx.private_content import CxPrivateTextStore, build_private_payload_key
 from nex_cx.repository import CxContentRepository
+from nex_cx.retrieval_materialization import RestartSafeRetrievalPackageStore
 from nex_cx.retrieval_permissions import evaluate_retrieval_permission
 from nex_cx.vector_index_repository import VectorIndexRepository
 from nex_cx.vector_index_freshness import build_source_snapshot
@@ -262,6 +263,7 @@ class PostgresHybridRetrievalSource(HybridRetrievalSource):
 class CxMvpRuntimeComposition:
     source: PostgresHybridRetrievalSource
     hybrid_retrieval_runtime: PermissionFilteredHybridPackageRuntime
+    retrieval_package_store: RestartSafeRetrievalPackageStore
     ingestion_vector_indexer: MvpIngestionVectorIndexer
     ingestion_step_handlers: Mapping[str, IngestionStepHandler]
 
@@ -269,6 +271,7 @@ class CxMvpRuntimeComposition:
         return {
             "runtime": "cx_mvp_postgres",
             "retrieval": "permission_hardened_hybrid",
+            "retrieval_package_materialization": "restart_safe_owner_scoped",
             "vector_publish": "fresh_owner_scoped_pgvector",
             "private_text": "owner_scoped_external_payload",
             "ingestion_step_count": len(self.ingestion_step_handlers),
@@ -337,6 +340,10 @@ def build_cx_mvp_runtime(
     return CxMvpRuntimeComposition(
         source=source,
         hybrid_retrieval_runtime=hybrid_runtime,
+        retrieval_package_store=RestartSafeRetrievalPackageStore(
+            repository=content_repository,
+            private_evidence_source=source,
+        ),
         ingestion_vector_indexer=vector_indexer,
         ingestion_step_handlers=handlers,
     )

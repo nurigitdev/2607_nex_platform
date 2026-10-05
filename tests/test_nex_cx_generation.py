@@ -29,6 +29,7 @@ from nex_cx.generation import (
     validate_selected_evidence_ids,
 )
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
+from nex_cx.retrieval_materialization import RetrievalPackageMaterializationError
 
 
 class FakeMoClient:
@@ -108,11 +109,33 @@ class FailingMoClient:
 class FakeRetrievalPackageStore:
     def __init__(self, package: dict[str, Any] | None) -> None:
         self.package = package
+        self.access_contexts = []
 
-    def get_retrieval_package(self, retrieval_package_id: str) -> dict[str, Any] | None:
+    def get_retrieval_package(
+        self,
+        retrieval_package_id: str,
+        *,
+        access_context=None,
+    ) -> dict[str, Any] | None:
+        self.access_contexts.append(access_context)
         if self.package and self.package["retrieval_package_id"] == retrieval_package_id:
             return self.package
         return None
+
+
+class FailingRetrievalPackageStore:
+    def get_retrieval_package(
+        self,
+        retrieval_package_id: str,
+        *,
+        access_context=None,
+    ) -> dict[str, Any] | None:
+        raise RetrievalPackageMaterializationError(
+            status_code=503,
+            error_code="cx.retrieval_package_private_evidence_unavailable",
+            detail="Private retrieval evidence could not be loaded.",
+            retryable=True,
+        )
 
 
 def auth_headers(tenant_id: str = "local-tenant", subject_id: str = "local-user") -> dict[str, str]:
@@ -314,11 +337,12 @@ def test_grounded_generation_endpoint_validates_retrieval_package_and_lineage() 
     app = build_service_app(SERVICE_SPECS["nex-cx"])
     store = GenerationExecutionStore()
     mo_client = FakeMoClient()
+    retrieval_store = FakeRetrievalPackageStore(grounded_package())
     register_generation_routes(
         app,
         store=store,
         mo_client=mo_client,
-        retrieval_store=FakeRetrievalPackageStore(grounded_package()),
+        retrieval_store=retrieval_store,
     )
     client = TestClient(app)
 
@@ -347,6 +371,10 @@ def test_grounded_generation_endpoint_validates_retrieval_package_and_lineage() 
     assert provider_payload["metadata"]["selected_evidence_count"] == 1
     assert provider_payload["metadata"]["grounding_context_policy"] == (
         "owner_admitted_untrusted_evidence_v1"
+    )
+    assert retrieval_store.access_contexts[0].ownership_key == (
+        "local-tenant",
+        "local-user",
     )
 
 
@@ -734,6 +762,30 @@ def test_grounded_generation_endpoint_blocks_quality_failure_before_mo_call() ->
 
     assert response.status_code == 409
     assert response.json()["error_code"] == "cx.retrieval_package_quality_blocked"
+    assert mo_client.calls == []
+
+
+def test_grounded_generation_endpoint_maps_materialization_failure() -> None:
+    app = build_service_app(SERVICE_SPECS["nex-cx"])
+    mo_client = FakeMoClient()
+    register_generation_routes(
+        app,
+        store=GenerationExecutionStore(),
+        mo_client=mo_client,
+        retrieval_store=FailingRetrievalPackageStore(),
+    )
+
+    response = TestClient(app).post(
+        "/api/v1/generations",
+        json=grounded_payload(),
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == (
+        "cx.retrieval_package_private_evidence_unavailable"
+    )
+    assert response.json()["retryable"] is True
     assert mo_client.calls == []
 
 

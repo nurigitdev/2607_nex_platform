@@ -73,7 +73,10 @@ ENFORCEMENT_SURFACES = (
     EnforcementSurface(
         "retrieval_package_read",
         "services/nex-cx/nex_cx/retrieval.py",
-        ('@app.get("/api/v1/retrieval/context/{retrieval_package_id}"', "store.get_retrieval_package(retrieval_package_id)"),
+        (
+            '@app.get("/api/v1/retrieval/context/{retrieval_package_id}"',
+            "access_context=access_context",
+        ),
         "SERVICE_TOKEN_ONLY_ID_LOOKUP",
         "HIGH",
         "Persisted and memory package reads are not principal scoped.",

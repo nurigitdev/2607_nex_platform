@@ -49,7 +49,7 @@ def _headers(subject="user-1"):
     }
 
 
-def _client(tmp_path, *, durable=True):
+def _client(tmp_path, *, durable=True, retrieval_store=None):
     app = build_service_app(SERVICE_SPECS["nex-cx"])
     queue = InMemoryJobQueue()
     runtime = (
@@ -67,8 +67,53 @@ def _client(tmp_path, *, durable=True):
         job_queue=queue,
         runtime=runtime,
         request_store=FileSystemCxPrivateTextStore(tmp_path / "requests"),
+        retrieval_store=retrieval_store,
     )
     return TestClient(app), queue, runtime
+
+
+class CapturingRetrievalStore:
+    def __init__(self) -> None:
+        self.contexts = []
+
+    def get_retrieval_package(
+        self,
+        retrieval_package_id,
+        *,
+        access_context=None,
+    ):
+        self.contexts.append(access_context)
+        if retrieval_package_id != "cx-ret-1364":
+            return None
+        return {
+            "retrieval_package_id": "cx-ret-1364",
+            "package_hash": "d" * 64,
+            "status": "READY",
+            "tenant_ref_type": "oa.tenant",
+            "tenant_ref_id": "tenant-1",
+            "owner_subject_ref_type": "oa.user",
+            "owner_subject_ref_id": "user-1",
+            "evidence_items": [
+                {
+                    "evidence_id": "evidence-1364",
+                    "citation_label": "[1]",
+                    "text": "Private grounded evidence.",
+                    "scores": {"final_score": 0.9},
+                    "quality_flags": [],
+                }
+            ],
+            "score_summary": {
+                "best_score": 0.9,
+                "rerank_state": "APPLIED",
+            },
+            "source_summary": {
+                "source_count": 1,
+                "document_count": 1,
+                "chunk_count": 1,
+            },
+            "warnings": [],
+            "no_answer_reason": None,
+        }
 
 
 def test_owner_can_admit_poll_and_idempotently_join(tmp_path) -> None:
@@ -92,6 +137,31 @@ def test_owner_can_admit_poll_and_idempotently_join(tmp_path) -> None:
     assert polled.status_code == 200
     assert polled.json()["status"] == "QUEUED"
     assert len(queue.jobs) == 1
+
+
+def test_grounded_async_admission_propagates_owner_context_to_retrieval_store(
+    tmp_path,
+) -> None:
+    retrieval_store = CapturingRetrievalStore()
+    client, _, _ = _client(tmp_path, retrieval_store=retrieval_store)
+
+    response = client.post(
+        "/api/v1/generation-jobs",
+        json={
+            "prompt": "Grounded question",
+            "execution_mode": "GROUNDED_ANSWER",
+            "generation_profile": "grounded-answer",
+            "retrieval_package_ref": {
+                "retrieval_package_id": "cx-ret-1364",
+                "package_hash": "d" * 64,
+            },
+            "selected_evidence_ids": ["evidence-1364"],
+        },
+        headers=_headers(),
+    )
+
+    assert response.status_code == 202, response.json()
+    assert retrieval_store.contexts[0].ownership_key == ("tenant-1", "user-1")
 
 
 def test_cross_owner_poll_is_indistinguishable_from_missing(tmp_path) -> None:

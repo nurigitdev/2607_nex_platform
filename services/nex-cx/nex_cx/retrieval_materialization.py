@@ -41,8 +41,10 @@ class RestartSafeRetrievalPackageStore:
         self,
         retrieval_package_id: str,
         *,
-        access_context: CxAccessContext,
+        access_context: CxAccessContext | None = None,
     ) -> dict[str, Any] | None:
+        if access_context is None:
+            return None
         record = self.repository.get_retrieval_package_record(
             retrieval_package_id
         )

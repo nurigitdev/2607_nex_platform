@@ -58,7 +58,12 @@ class RetrievalStore:
     def __init__(self, package: dict[str, Any] | None) -> None:
         self.package = package
 
-    def get_retrieval_package(self, retrieval_package_id: str) -> dict[str, Any] | None:
+    def get_retrieval_package(
+        self,
+        retrieval_package_id: str,
+        *,
+        access_context=None,
+    ) -> dict[str, Any] | None:
         if self.package and self.package["retrieval_package_id"] == retrieval_package_id:
             return self.package
         return None

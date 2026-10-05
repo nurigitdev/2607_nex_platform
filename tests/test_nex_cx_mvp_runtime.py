@@ -12,7 +12,10 @@ from sqlalchemy.orm import sessionmaker
 
 from nex_cx.access_context import CxAccessContext
 from nex_cx.ingestion import ContentIngestionStore, CxStorageConfig
-from nex_cx.main import build_cx_mvp_runtime_composition
+from nex_cx.main import (
+    build_cx_mvp_runtime_composition,
+    select_cx_generation_retrieval_store,
+)
 from nex_cx.mvp_runtime import (
     CxMvpRuntimeError,
     PostgresHybridRetrievalSource,
@@ -20,6 +23,7 @@ from nex_cx.mvp_runtime import (
     _identifiers,
     build_cx_mvp_runtime,
 )
+from nex_cx.retrieval_materialization import RestartSafeRetrievalPackageStore
 
 
 TENANT_ID = "tenant-s100"
@@ -637,12 +641,20 @@ def test_runtime_composes_retrieval_and_durable_ingestion(tmp_path: Path) -> Non
     assert composition.hybrid_retrieval_runtime.candidate_provider.source is (
         composition.source
     )
+    assert isinstance(
+        composition.retrieval_package_store,
+        RestartSafeRetrievalPackageStore,
+    )
+    assert composition.retrieval_package_store.private_evidence_source is (
+        composition.source
+    )
     assert composition.ingestion_step_handlers["embedding_index"] is (
         composition.ingestion_vector_indexer
     )
     assert composition.to_safe_summary() == {
         "runtime": "cx_mvp_postgres",
         "retrieval": "permission_hardened_hybrid",
+        "retrieval_package_materialization": "restart_safe_owner_scoped",
         "vector_publish": "fresh_owner_scoped_pgvector",
         "private_text": "owner_scoped_external_payload",
         "ingestion_step_count": 6,
@@ -691,6 +703,21 @@ def test_main_composition_builder_is_postgres_only(monkeypatch, tmp_path: Path) 
         "database_env": "NEX_CX_TEST_DATABASE_URL",
         "workload": "worker",
     }
+
+
+def test_generation_retrieval_store_selects_durable_composition_or_fallback() -> None:
+    fallback = object()
+    durable = object()
+    composition = SimpleNamespace(retrieval_package_store=durable)
+
+    assert select_cx_generation_retrieval_store(
+        None,
+        fallback=fallback,
+    ) is fallback
+    assert select_cx_generation_retrieval_store(
+        composition,
+        fallback=fallback,
+    ) is durable
 
 
 def _storage_config(root: Path) -> CxStorageConfig:

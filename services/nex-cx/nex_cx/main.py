@@ -33,6 +33,7 @@ from nex_cx.embedding_index import (
 )
 from nex_cx.generation import (
     DEFAULT_GENERATION_STORE,
+    RetrievalPackageStore,
     build_default_mo_client,
     register_generation_routes,
 )
@@ -278,6 +279,16 @@ def build_cx_mvp_runtime_composition(
     )
 
 
+def select_cx_generation_retrieval_store(
+    composition: CxMvpRuntimeComposition | None,
+    *,
+    fallback: RetrievalPackageStore = DEFAULT_INGESTION_STORE,
+) -> RetrievalPackageStore:
+    if composition is None:
+        return fallback
+    return composition.retrieval_package_store
+
+
 SERVICE_SPEC = SERVICE_SPECS["nex-cx"]
 SERVICE_TOKEN_ADMISSION = build_service_token_admission_runtime(
     expected_audience=SERVICE_SPEC.service_id
@@ -336,7 +347,11 @@ CX_MVP_RUNTIME = build_cx_mvp_runtime_composition(
     rerank_client=CX_MO_RERANK_CLIENT,
     reranker_alias=CX_RERANKER_ALIAS,
 )
+CX_GENERATION_RETRIEVAL_STORE = select_cx_generation_retrieval_store(
+    CX_MVP_RUNTIME
+)
 app.state.cx_mvp_runtime = CX_MVP_RUNTIME
+app.state.cx_generation_retrieval_store = CX_GENERATION_RETRIEVAL_STORE
 app.state.cx_ingestion_step_handlers = (
     CX_MVP_RUNTIME.ingestion_step_handlers if CX_MVP_RUNTIME is not None else None
 )
@@ -353,7 +368,7 @@ register_service_log_retention_routes(
 register_generation_routes(
     app,
     store=DEFAULT_GENERATION_STORE,
-    retrieval_store=DEFAULT_INGESTION_STORE,
+    retrieval_store=CX_GENERATION_RETRIEVAL_STORE,
     execution_runtime=CX_GENERATION_RUNTIME,
     read_model=CX_GENERATION_READ_MODEL,
 )
@@ -362,7 +377,7 @@ register_async_generation_operations_routes(
     job_queue=SERVICE_PERSISTENCE.job_queue,
     runtime=CX_GENERATION_RUNTIME,
     request_store=CX_GENERATION_REQUEST_STORE,
-    retrieval_store=DEFAULT_INGESTION_STORE,
+    retrieval_store=CX_GENERATION_RETRIEVAL_STORE,
     read_model=CX_GENERATION_READ_MODEL,
 )
 register_remediation_execution_routes(

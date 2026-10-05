@@ -28,6 +28,7 @@ from nex_cx.access_context import CxAccessContext
 from nex_cx.api_ownership import (
     CxApiOwnershipError,
     content_object_visible_to_owner,
+    record_visible_to_owner,
     require_optional_owner_aliases_match,
     require_owner_assertion_match,
 )
@@ -516,8 +517,20 @@ class ContentIngestionStore:
         self._persist_retrieval_package_metadata(package)
         return package
 
-    def get_retrieval_package(self, retrieval_package_id: str) -> dict[str, Any] | None:
-        return self.retrieval_packages.get(retrieval_package_id)
+    def get_retrieval_package(
+        self,
+        retrieval_package_id: str,
+        *,
+        access_context: CxAccessContext | None = None,
+    ) -> dict[str, Any] | None:
+        package = self.retrieval_packages.get(retrieval_package_id)
+        if (
+            package is not None
+            and access_context is not None
+            and not record_visible_to_owner(access_context, package)
+        ):
+            return None
+        return package
 
     def _persist_retrieval_package_metadata(self, package: dict[str, Any]) -> None:
         required_keys = {

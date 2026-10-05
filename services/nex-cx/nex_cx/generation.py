@@ -49,6 +49,7 @@ from nex_cx.grounded_prompt import (
     build_grounded_prompt_package,
     grounded_prompt_safe_metadata,
 )
+from nex_cx.retrieval_materialization import RetrievalPackageMaterializationError
 from nex_cx.grounded_output_validation import (
     GroundedOutputValidationError,
     normalize_generation_provider_response,
@@ -136,7 +137,12 @@ class MoGenerationClient(Protocol):
 
 
 class RetrievalPackageStore(Protocol):
-    def get_retrieval_package(self, retrieval_package_id: str) -> dict[str, Any] | None:
+    def get_retrieval_package(
+        self,
+        retrieval_package_id: str,
+        *,
+        access_context: CxAccessContext | None = None,
+    ) -> dict[str, Any] | None:
         ...
 
 
@@ -1141,9 +1147,30 @@ def evaluate_grounded_generation_boundary(
         )
     stage_status["retrieval_package_store"] = "PASS"
 
-    retrieval_package = retrieval_store.get_retrieval_package(
-        retrieval_ref["retrieval_package_id"]
-    )
+    try:
+        retrieval_package = retrieval_store.get_retrieval_package(
+            retrieval_ref["retrieval_package_id"],
+            access_context=access_context,
+        )
+    except RetrievalPackageMaterializationError as exc:
+        error = GenerationFacadeError(
+            status_code=exc.status_code,
+            error_code=exc.error_code,
+            detail=exc.detail,
+            retryable=exc.retryable,
+        )
+        stage_status["retrieval_package_lookup"] = "FAIL"
+        return _grounded_generation_boundary_decision(
+            source_payload=source_payload,
+            stage_status=stage_status,
+            boundary_status="GROUNDED_BLOCKED",
+            admitted=False,
+            compatibility_rule=compatibility_rule,
+            retrieval_package_ref=retrieval_ref,
+            retrieval_package=None,
+            error=error,
+            failed_stage="retrieval_package_lookup",
+        )
     if retrieval_package is None or (
         access_context is not None
         and not record_visible_to_owner(access_context, retrieval_package)

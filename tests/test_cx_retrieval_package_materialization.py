@@ -206,6 +206,7 @@ def test_restart_safe_store_hides_missing_and_cross_owner_packages_before_privat
     source = FakePrivateEvidenceSource()
     store = RestartSafeRetrievalPackageStore(repository, source)
 
+    assert store.get_retrieval_package(PACKAGE_ID) is None
     assert store.get_retrieval_package(
         "missing", access_context=_access_context()
     ) is None
