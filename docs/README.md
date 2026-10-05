@@ -1465,6 +1465,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1357`](slices/1357_cx_retrieval_confidence_semantics.md) | `S136-006` Unify READY, LOW_CONFIDENCE, and NO_ANSWER under one versioned, inclusive confidence decision. |
 | [`Slice 1358`](slices/1358_cx_retrieval_operations_evidence.md) | `S136-007` Add metadata-only confidence, channel, provider identity, and failure-role operations evidence. |
 | [`Slice 1359`](slices/1359_model_agnostic_confidence_calibration.md) | `S136-008` Add exact model-bound calibration profiles and fail closed when live score evidence cannot support a safe threshold. |
+| [`Slice 1360`](slices/1360_cx_multisignal_calibrated_live_retrieval.md) | `S136-009` Bind multi-signal confidence to embedding/reranker revisions and prove calibrated PostgreSQL/live retrieval, restart readback, denial isolation, and cleanup. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

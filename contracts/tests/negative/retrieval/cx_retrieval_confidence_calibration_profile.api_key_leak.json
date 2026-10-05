@@ -1,0 +1,34 @@
+{
+  "profile_schema_version": "cx_retrieval_confidence_calibration_profile.v1",
+  "profile_id": "embedding-a-reranker-a-weighted-rrf-v1",
+  "version": "0001",
+  "status": "CANDIDATE",
+  "policy_id": "cx_retrieval_confidence_multisignal_v1",
+  "binding": {
+    "embedding_model_revision": "embedding-model-a",
+    "reranker_model_revision": "reranker-model-a",
+    "ranking_policy_id": "weighted_rrf_vector_bm25_v1",
+    "feature_schema_version": "cx_retrieval_confidence_features.v1"
+  },
+  "weights": {
+    "reranker_score": 0.2,
+    "reranker_margin": 0.1,
+    "rrf_normalized_score": 0.4,
+    "channel_support": 0.3
+  },
+  "threshold": 0.675,
+  "evaluation": {
+    "evaluation_schema_version": "model_calibration_evaluation.v1",
+    "dataset_id": "cx-multisignal-public-v1",
+    "dataset_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": "PASSED",
+    "sample_count": 20,
+    "positive_count": 10,
+    "negative_count": 10,
+    "selected_threshold": 0.675,
+    "selected_metrics": {},
+    "constraints": {}
+  },
+  "profile_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "api_key": "must-not-be-accepted"
+}

@@ -8,7 +8,12 @@ from typing import Any
 from fastapi.testclient import TestClient
 import pytest
 
-from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
+from nex_runtime import (
+    SERVICE_SPECS,
+    build_service_app,
+    evaluate_binary_score_calibration,
+    issue_mock_service_token,
+)
 from nex_cx.access_context import CxAccessContext
 from nex_cx.hybrid_ranking import HybridRankingError, HybridRankingPolicy
 from nex_cx.hybrid_retrieval_package import (
@@ -17,6 +22,11 @@ from nex_cx.hybrid_retrieval_package import (
     MAX_QUERY_TEXT_LENGTH,
     PermissionFilteredHybridPackageRuntime,
     _confidence_decision,
+)
+from nex_cx.retrieval_confidence_calibration import (
+    RETRIEVAL_CONFIDENCE_POLICY_ID,
+    RetrievalConfidenceWeights,
+    build_retrieval_confidence_profile,
 )
 from nex_cx.ingestion import ContentIngestionStore
 from nex_cx.retrieval import register_retrieval_routes
@@ -120,6 +130,23 @@ class FakeReranker:
                 for index in range(len(documents))
             ],
         }
+
+
+class CalibratedFakeReranker(FakeReranker):
+    def rerank_documents(
+        self,
+        query: str,
+        documents: list[str],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        response = super().rerank_documents(query, documents, **kwargs)
+        response.update(
+            {
+                "model_revision": "Qwen3-Reranker-4B",
+                "deployment_id": "dgx-reranker-9113",
+            }
+        )
+        return response
 
 
 def test_runtime_builds_owner_scoped_persistence_compatible_package() -> None:
@@ -353,6 +380,62 @@ def test_runtime_treats_exact_confidence_threshold_as_ready() -> None:
     }
 
 
+def test_runtime_uses_exact_model_bound_multisignal_calibration_profile() -> None:
+    profile = _calibrated_profile()
+    runtime = PermissionFilteredHybridPackageRuntime(
+        candidate_provider=FakeCandidateProvider(),
+        evidence_materializer=FakeMaterializer(),
+        rerank_client=CalibratedFakeReranker(),
+        confidence_profiles=(profile,),
+        require_calibrated_confidence=True,
+        now_factory=lambda: "2026-09-22T08:00:00+00:00",
+    )
+
+    package = runtime.build_package(_payload(), access_context=_context())
+
+    assert package["status"] == "READY"
+    assert package["score_summary"]["confidence_policy_id"] == (
+        RETRIEVAL_CONFIDENCE_POLICY_ID
+    )
+    assert package["score_summary"]["calibration_profile_id"] == (
+        profile["profile_id"]
+    )
+    assert package["score_summary"]["confidence_features"]["composite_score"] > (
+        profile["threshold"]
+    )
+    assert package["retrieval_profile"]["confidence_policy"] == {
+        "policy_id": RETRIEVAL_CONFIDENCE_POLICY_ID,
+        "low_confidence_threshold": profile["threshold"],
+        "threshold_inclusive": True,
+        "no_evidence_behavior": "NO_ANSWER",
+        "below_threshold_behavior": "LOW_CONFIDENCE",
+        "feature_schema_version": "cx_retrieval_confidence_features.v1",
+        "calibration_profile_id": profile["profile_id"],
+        "calibration_profile_hash": profile["profile_hash"],
+        "missing_profile_behavior": "LOW_CONFIDENCE",
+    }
+
+
+def test_runtime_fails_closed_when_calibration_model_binding_does_not_match() -> None:
+    runtime = PermissionFilteredHybridPackageRuntime(
+        candidate_provider=FakeCandidateProvider(),
+        evidence_materializer=FakeMaterializer(),
+        rerank_client=CalibratedFakeReranker(),
+        confidence_profiles=(
+            _calibrated_profile(embedding_model_revision="other-model"),
+        ),
+        require_calibrated_confidence=True,
+        now_factory=lambda: "2026-09-22T08:00:00+00:00",
+    )
+
+    package = runtime.build_package(_payload(), access_context=_context())
+
+    assert package["status"] == "LOW_CONFIDENCE"
+    assert package["no_answer_reason"] == "active_calibration_profile_missing"
+    assert package["score_summary"]["low_confidence_threshold"] is None
+    assert package["score_summary"]["calibration_profile_id"] is None
+
+
 def test_confidence_decision_uses_best_score_not_evidence_order() -> None:
     decision = _confidence_decision(
         [
@@ -572,6 +655,40 @@ def test_route_maps_hardened_runtime_errors(error: Exception) -> None:
 
     assert response.status_code == error.status_code  # type: ignore[attr-defined]
     assert response.json()["error_code"] == error.error_code  # type: ignore[attr-defined]
+
+
+def _calibrated_profile(**overrides: object) -> dict[str, Any]:
+    evaluation = evaluate_binary_score_calibration(
+        [
+            {
+                "sample_id": f"ready-{index}",
+                "expected_ready": True,
+                "score": round(0.78 + index * 0.01, 3),
+            }
+            for index in range(10)
+        ]
+        + [
+            {
+                "sample_id": f"low-{index}",
+                "expected_ready": False,
+                "score": round(0.48 + index * 0.01, 3),
+            }
+            for index in range(10)
+        ],
+        dataset_id="cx-package-multisignal-test-v1",
+    )
+    values: dict[str, Any] = {
+        "profile_id": "cx-package-calibration-v1",
+        "version": "0001",
+        "status": "ACTIVE",
+        "embedding_model_revision": "Qwen3-Embedding-4B",
+        "reranker_model_revision": "Qwen3-Reranker-4B",
+        "ranking_policy_id": "weighted_rrf_vector_bm25_v1",
+        "weights": RetrievalConfidenceWeights(),
+        "evaluation": evaluation,
+    }
+    values.update(overrides)
+    return build_retrieval_confidence_profile(**values)
 
 
 def _runtime(

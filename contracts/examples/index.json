@@ -1089,6 +1089,11 @@
       "name": "model_calibration_profile_candidate",
       "path": "examples/common/model_calibration_profile.candidate.json",
       "schema": "schemas/common/model_calibration_profile.v1.schema.json"
+    },
+    {
+      "name": "cx_retrieval_confidence_calibration_profile_candidate",
+      "path": "examples/service/nex_cx/retrieval_confidence_calibration_profile.candidate.json",
+      "schema": "schemas/service/nex_cx/retrieval_confidence_calibration_profile.v1.schema.json"
     }
   ]
 }

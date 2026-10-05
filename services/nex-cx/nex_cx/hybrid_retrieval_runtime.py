@@ -144,6 +144,8 @@ def build_permission_hardened_hybrid_runtime(
     embedding_alias: str,
     rerank_client: PermissionAwareRerankClient | None = None,
     reranker_alias: str = "mock-reranker-default",
+    confidence_profiles: Sequence[Mapping[str, Any]] = (),
+    require_calibrated_confidence: bool = False,
 ) -> PermissionFilteredHybridPackageRuntime:
     return PermissionFilteredHybridPackageRuntime(
         candidate_provider=ProductionHybridCandidateProvider(
@@ -157,6 +159,8 @@ def build_permission_hardened_hybrid_runtime(
         evidence_materializer=ProductionAuthorizedEvidenceMaterializer(source),
         rerank_client=rerank_client,
         reranker_alias=reranker_alias,
+        confidence_profiles=tuple(confidence_profiles),
+        require_calibrated_confidence=require_calibrated_confidence,
     )
 
 

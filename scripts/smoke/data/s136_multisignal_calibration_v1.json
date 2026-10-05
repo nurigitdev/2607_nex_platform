@@ -1,0 +1,31 @@
+{
+  "dataset_schema_version": "cx_retrieval_multisignal_calibration_dataset.v1",
+  "dataset_id": "s136-cx-hybrid-multisignal-public-v1",
+  "source_text": "오리온 프로젝트의 하이브리드 검색 운영 지침입니다. 사용자 권한 필터를 먼저 적용하고 PostgreSQL BM25 검색과 pgvector 벡터 검색 후보를 결합합니다. 후보 순위는 벡터 0.7, BM25 0.3 가중치와 RRF k 60을 사용합니다. Qwen 재순위 모델은 허용된 문서 청크만 처리합니다. 검색 결과의 출처와 인용을 검증하고 낮은 신뢰도 결과는 답변 생성을 중단합니다.",
+  "calibration_cases": [
+    {"case_id": "ready-01", "query": "오리온 프로젝트 하이브리드 검색 운영 지침", "expected_ready": true},
+    {"case_id": "ready-02", "query": "사용자 권한 필터 적용 순서", "expected_ready": true},
+    {"case_id": "ready-03", "query": "PostgreSQL BM25와 pgvector 후보 결합", "expected_ready": true},
+    {"case_id": "ready-04", "query": "벡터 0.7 BM25 0.3 가중치", "expected_ready": true},
+    {"case_id": "ready-05", "query": "RRF k 60 순위 정책", "expected_ready": true},
+    {"case_id": "ready-06", "query": "Qwen 재순위 모델 문서 청크 처리", "expected_ready": true},
+    {"case_id": "ready-07", "query": "낮은 신뢰도 결과 답변 중단", "expected_ready": true},
+    {"case_id": "ready-08", "query": "검색 결과 출처와 인용 검증", "expected_ready": true},
+    {"case_id": "ready-09", "query": "허용된 문서 청크만 처리", "expected_ready": true},
+    {"case_id": "ready-10", "query": "하이브리드 후보 순위 결정", "expected_ready": true},
+    {"case_id": "low-01", "query": "양자 색역학 점근적 자유", "expected_ready": false},
+    {"case_id": "low-02", "query": "프랑스 제과 마카롱 굽기", "expected_ready": false},
+    {"case_id": "low-03", "query": "남극 황제펭귄 번식 주기", "expected_ready": false},
+    {"case_id": "low-04", "query": "화성 탐사선 토양 샘플", "expected_ready": false},
+    {"case_id": "low-05", "query": "르네상스 유화 안료 보존", "expected_ready": false},
+    {"case_id": "low-06", "query": "해저 화산 판구조론", "expected_ready": false},
+    {"case_id": "low-07", "query": "바이올린 현 조율 방법", "expected_ready": false},
+    {"case_id": "low-08", "query": "고대 로마 수도교 건축", "expected_ready": false},
+    {"case_id": "low-09", "query": "열대 저기압 눈벽 교체", "expected_ready": false},
+    {"case_id": "low-10", "query": "단백질 접힘 알파나선", "expected_ready": false}
+  ],
+  "validation_cases": {
+    "ready": "권한 필터 이후 BM25 벡터 후보를 결합하는 방법",
+    "low_confidence": "은하단 중력 렌즈 암흑 물질 분포"
+  }
+}

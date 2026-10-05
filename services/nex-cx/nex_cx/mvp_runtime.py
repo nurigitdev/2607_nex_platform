@@ -290,6 +290,8 @@ def build_cx_mvp_runtime(
     rerank_client: PermissionAwareRerankClient | None,
     reranker_alias: str,
     prompt_store: PromptRegistryStore | None = None,
+    confidence_profiles: Sequence[Mapping[str, Any]] = (),
+    require_calibrated_confidence: bool = False,
 ) -> CxMvpRuntimeComposition:
     source = PostgresHybridRetrievalSource(
         session_factory=session_factory,
@@ -306,6 +308,8 @@ def build_cx_mvp_runtime(
         embedding_alias=embedding_alias,
         rerank_client=rerank_client,
         reranker_alias=reranker_alias,
+        confidence_profiles=confidence_profiles,
+        require_calibrated_confidence=require_calibrated_confidence,
     )
     runtime_hydrator = lambda run: hydrate_ingestion_runtime(
         run,

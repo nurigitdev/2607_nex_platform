@@ -59,6 +59,15 @@ def observe_retrieval_package(
             "confidence_decision_reason": _optional_string(
                 score_summary.get("decision_reason")
             ),
+            "confidence_feature_schema_version": _optional_string(
+                score_summary.get("confidence_feature_schema_version")
+            ),
+            "calibration_profile_id": _optional_string(
+                score_summary.get("calibration_profile_id")
+            ),
+            "calibration_profile_hash": _optional_string(
+                score_summary.get("calibration_profile_hash")
+            ),
             "best_score": _safe_number(score_summary.get("best_score")),
             "low_confidence_threshold": _safe_number(
                 score_summary.get("low_confidence_threshold")

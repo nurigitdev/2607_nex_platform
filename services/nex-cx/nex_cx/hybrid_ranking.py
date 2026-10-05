@@ -305,6 +305,19 @@ def _fuse_weighted_rrf(
             {
                 "rrf_score": raw_score,
                 "rrf_normalized_score": normalized_score,
+                "channel_support_score": round(
+                    (
+                        policy.bm25_weight
+                        if candidate["scores"]["bm25_rank"] is not None
+                        else 0.0
+                    )
+                    + (
+                        policy.vector_weight
+                        if candidate["scores"]["vector_rank"] is not None
+                        else 0.0
+                    ),
+                    8,
+                ),
                 "rerank_score": None,
                 "final_score": normalized_score,
             }

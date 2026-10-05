@@ -6,6 +6,11 @@
       "schema": "schemas/service/nex_cx/source_ownership_boundary_decision.v1.schema.json"
     },
     {
+      "name": "cx_retrieval_confidence_calibration_profile_api_key_leak",
+      "path": "tests/negative/retrieval/cx_retrieval_confidence_calibration_profile.api_key_leak.json",
+      "schema": "schemas/service/nex_cx/retrieval_confidence_calibration_profile.v1.schema.json"
+    },
+    {
       "name": "problem_json_missing_trace_id",
       "path": "tests/negative/common/problem_json.missing_trace_id.json",
       "schema": "schemas/common/problem_json.v1.schema.json"

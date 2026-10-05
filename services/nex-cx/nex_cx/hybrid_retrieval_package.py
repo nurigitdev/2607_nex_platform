@@ -17,6 +17,10 @@ from nex_cx.hybrid_ranking import (
     PermissionAwareRerankClient,
     rank_permission_filtered_candidates,
 )
+from nex_cx.retrieval_confidence_calibration import (
+    RETRIEVAL_CONFIDENCE_POLICY_ID,
+    decide_retrieval_confidence,
+)
 from nex_cx.retrieval_permissions import (
     PERMISSION_POLICY_ID,
     RetrievalPermissionError,
@@ -97,6 +101,8 @@ class PermissionFilteredHybridPackageRuntime:
     rerank_client: PermissionAwareRerankClient | None = None
     reranker_alias: str = "mock-reranker-default"
     ranking_policy: HybridRankingPolicy = DEFAULT_HYBRID_RANKING_POLICY
+    confidence_profiles: tuple[Mapping[str, Any], ...] = ()
+    require_calibrated_confidence: bool = False
     now_factory: Callable[[], str] | None = None
 
     def build_package(
@@ -154,6 +160,8 @@ class PermissionFilteredHybridPackageRuntime:
             candidate_set=candidate_set,
             ranked=ranked,
             evidence_items=evidence_items,
+            confidence_profiles=self.confidence_profiles,
+            require_calibrated_confidence=self.require_calibrated_confidence,
             now=(self.now_factory or _utc_now)(),
         )
 
@@ -330,11 +338,10 @@ def _build_package(
     candidate_set: Mapping[str, Any],
     ranked: Mapping[str, Any],
     evidence_items: list[dict[str, Any]],
+    confidence_profiles: Sequence[Mapping[str, Any]],
+    require_calibrated_confidence: bool,
     now: str,
 ) -> dict[str, Any]:
-    confidence_decision = _confidence_decision(evidence_items)
-    status = confidence_decision["status"]
-    no_answer_reason = confidence_decision["reason"]
     policy = ranked["ranking_policy"]
     policy_hash = _sha256_json(policy)
     rerank_applied = ranked["rerank_state"] == "APPLIED"
@@ -347,6 +354,22 @@ def _build_package(
     query_embedding_profile = candidate_set.get("query_embedding_profile")
     if not isinstance(query_embedding_profile, Mapping):
         query_embedding_profile = {}
+    if require_calibrated_confidence or confidence_profiles:
+        confidence_decision = decide_retrieval_confidence(
+            evidence_items,
+            profiles=confidence_profiles,
+            embedding_model_revision=query_embedding_profile.get(
+                "model_revision"
+            ),
+            reranker_model_revision=ranked["reranker_profile"].get(
+                "model_revision"
+            ),
+            ranking_policy_id=policy["policy_id"],
+        )
+    else:
+        confidence_decision = _confidence_decision(evidence_items)
+    status = confidence_decision["status"]
+    no_answer_reason = confidence_decision["reason"]
     query_dimension = vector_result.get("query_dimension")
     embedding_provided = (
         isinstance(query_dimension, int)
@@ -378,6 +401,15 @@ def _build_package(
                 }
                 for item in evidence_items
             ],
+            "confidence": {
+                "policy_id": confidence_decision["policy_id"],
+                "status": confidence_decision["status"],
+                "best_score": confidence_decision["best_score"],
+                "threshold": confidence_decision["low_confidence_threshold"],
+                "calibration_profile_hash": confidence_decision.get(
+                    "calibration_profile_hash"
+                ),
+            },
         }
     )
     package = {
@@ -419,13 +451,9 @@ def _build_package(
                 "include_neighbors_supported": False,
                 "neighbor_policy": "not_loaded_in_s95",
             },
-            "confidence_policy": {
-                "policy_id": CONFIDENCE_POLICY_ID,
-                "low_confidence_threshold": DEFAULT_LOW_CONFIDENCE_THRESHOLD,
-                "threshold_inclusive": True,
-                "no_evidence_behavior": "NO_ANSWER",
-                "below_threshold_behavior": "LOW_CONFIDENCE",
-            },
+            "confidence_policy": _confidence_policy_projection(
+                confidence_decision
+            ),
             "quality_policy": {
                 **policy,
                 "policy_version": "0001",
@@ -433,7 +461,9 @@ def _build_package(
                 "policy_source": "cx_permission_filtered_hybrid_runtime",
                 "ranker_mix": policy["policy_id"],
                 "reranked_ranker_mix": "weighted_rrf_vector_bm25_with_rerank",
-                "low_confidence_threshold": DEFAULT_LOW_CONFIDENCE_THRESHOLD,
+                "low_confidence_threshold": confidence_decision[
+                    "low_confidence_threshold"
+                ],
             },
             "candidate_summary": _candidate_summary(candidate_set, ranked),
         },
@@ -489,6 +519,18 @@ def _score_summary(
     policy_id: str,
 ) -> dict[str, Any]:
     scores = [float(item["scores"]["final_score"]) for item in evidence_items]
+    calibration = {
+        "confidence_feature_schema_version": confidence_decision.get(
+            "feature_schema_version"
+        ),
+        "confidence_features": confidence_decision.get("features"),
+        "calibration_profile_id": confidence_decision.get(
+            "calibration_profile_id"
+        ),
+        "calibration_profile_hash": confidence_decision.get(
+            "calibration_profile_hash"
+        ),
+    }
     if not scores:
         return {
             "best_score": confidence_decision["best_score"],
@@ -500,13 +542,20 @@ def _score_summary(
             "decision_reason": confidence_decision["reason"],
             "evidence_count": confidence_decision["evidence_count"],
             "quality_policy_id": policy_id,
-            "low_confidence_threshold": DEFAULT_LOW_CONFIDENCE_THRESHOLD,
+            "low_confidence_threshold": confidence_decision[
+                "low_confidence_threshold"
+            ],
+            **calibration,
         }
     best = confidence_decision["best_score"]
     worst = min(scores)
     return {
         "best_score": best,
-        "score_spread": round(best - worst, 8),
+        "score_spread": (
+            confidence_decision.get("features", {}).get("reranker_margin", 0.0)
+            if confidence_decision.get("features") is not None
+            else round(max(scores) - worst, 8)
+        ),
         "ranker_mix": ranker_mix,
         "rerank_state": "APPLIED" if rerank_applied else "NOT_APPLIED",
         "confidence_bucket": confidence_decision["status"],
@@ -514,8 +563,41 @@ def _score_summary(
         "decision_reason": confidence_decision["reason"],
         "evidence_count": confidence_decision["evidence_count"],
         "quality_policy_id": policy_id,
-        "low_confidence_threshold": DEFAULT_LOW_CONFIDENCE_THRESHOLD,
+        "low_confidence_threshold": confidence_decision[
+            "low_confidence_threshold"
+        ],
+        **calibration,
     }
+
+
+def _confidence_policy_projection(
+    confidence_decision: Mapping[str, Any],
+) -> dict[str, Any]:
+    projection = {
+        "policy_id": confidence_decision["policy_id"],
+        "low_confidence_threshold": confidence_decision[
+            "low_confidence_threshold"
+        ],
+        "threshold_inclusive": True,
+        "no_evidence_behavior": "NO_ANSWER",
+        "below_threshold_behavior": "LOW_CONFIDENCE",
+    }
+    if confidence_decision["policy_id"] == RETRIEVAL_CONFIDENCE_POLICY_ID:
+        projection.update(
+            {
+                "feature_schema_version": confidence_decision.get(
+                    "feature_schema_version"
+                ),
+                "calibration_profile_id": confidence_decision.get(
+                    "calibration_profile_id"
+                ),
+                "calibration_profile_hash": confidence_decision.get(
+                    "calibration_profile_hash"
+                ),
+                "missing_profile_behavior": "LOW_CONFIDENCE",
+            }
+        )
+    return projection
 
 
 def _confidence_decision(

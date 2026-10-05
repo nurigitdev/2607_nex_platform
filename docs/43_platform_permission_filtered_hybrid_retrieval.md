@@ -1,6 +1,6 @@
 # Platform Permission-Filtered Hybrid Retrieval Live Integration
 
-Status: S136 active through Slice 1359.
+Status: S136 active through Slice 1360.
 
 ## Required Outcome
 
@@ -77,6 +77,15 @@ binding. A protected 36-sample Qwen3-Reranker-4B run rejected every single raw
 score threshold under the false-READY and READY-recall constraints, so it
 created no candidate profile and changed no runtime threshold.
 
+Slice 1360 replaces the rejected raw-score decision with the approved
+multi-signal policy. The profile combines reranker score and margin,
+normalized weighted-RRF score, and BM25/vector channel support; it is bound to
+both embedding and reranker model revisions plus ranking policy and feature
+schema. Actual `nex_cx_test` and live-provider evidence calibrated 20 samples,
+validated separate READY/LOW_CONFIDENCE queries, reloaded all 23 persisted
+packages through a fresh engine, preserved pre-provider owner denial, and
+removed all fixtures.
+
 ## Slice Sequence
 
 | Slice | Scope |
@@ -89,7 +98,7 @@ created no candidate profile and changed no runtime threshold.
 | `1357` | Harden READY, LOW_CONFIDENCE, and NO_ANSWER decision semantics. |
 | `1358` | Add metadata-only retrieval operations and provider-failure evidence. |
 | `1359` | Add model-bound confidence calibration and reject unsafe threshold activation. |
-| `1360` | Prove calibrated PostgreSQL plus live-provider integration, restart readback, denial isolation, and cleanup. |
+| `1360` | Activate exact-model multi-signal calibration and prove PostgreSQL/live-provider integration, restart readback, denial isolation, and cleanup. |
 | `1361` | Harden contracts/runbook, close S136, run Full Gate, and activate S137. |
 
 ## Completion Signal
