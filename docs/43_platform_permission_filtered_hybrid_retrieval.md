@@ -57,6 +57,9 @@ Slice 1355 preserves query-embedding and reranker alias/model/deployment
 identity in the retrieval profile while excluding endpoints, credentials, raw
 vectors, and private payloads. Live model equality is assigned to Slice 1359.
 
+Slice 1356 adds count-only candidate-channel evidence for weighted RRF and
+freezes vector/BM25 weights `0.7/0.3` with `rrf_k=60` at the checkpoint gate.
+
 ## Slice Sequence
 
 | Slice | Scope |

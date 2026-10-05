@@ -675,3 +675,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_cx_permission_first_scope_hardening.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_current_chunk_candidate_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_cx_live_retrieval_provider_identity.py --summary
+"$PYTHON_BIN" scripts/smoke/run_cx_weighted_rrf_acceptance.py --summary

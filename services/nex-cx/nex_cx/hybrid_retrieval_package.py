@@ -427,6 +427,7 @@ def _build_package(
                 "reranked_ranker_mix": "weighted_rrf_vector_bm25_with_rerank",
                 "low_confidence_threshold": DEFAULT_LOW_CONFIDENCE_THRESHOLD,
             },
+            "candidate_summary": _candidate_summary(candidate_set, ranked),
         },
         "permission_snapshot": dict(ranked["permission_snapshot"]),
         "evidence_items": evidence_items,
@@ -443,6 +444,32 @@ def _build_package(
         "updated_at": now,
     }
     return owner_scoped_record(access_context, package)
+
+
+def _candidate_summary(
+    candidate_set: Mapping[str, Any],
+    ranked: Mapping[str, Any],
+) -> dict[str, int]:
+    candidates = ranked["candidates"]
+    both = sum(
+        1
+        for candidate in candidates
+        if set(candidate["channel_presence"]) == {"bm25", "vector"}
+    )
+    bm25_only = sum(
+        1 for candidate in candidates if candidate["channel_presence"] == ["bm25"]
+    )
+    vector_only = sum(
+        1 for candidate in candidates if candidate["channel_presence"] == ["vector"]
+    )
+    return {
+        "bm25_candidate_count": candidate_set["lexical_candidates"]["candidate_count"],
+        "vector_candidate_count": candidate_set["vector_candidates"]["candidate_count"],
+        "fused_candidate_count": len(candidates),
+        "both_channel_count": both,
+        "bm25_only_count": bm25_only,
+        "vector_only_count": vector_only,
+    }
 
 
 def _score_summary(

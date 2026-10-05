@@ -147,6 +147,14 @@ def test_runtime_builds_owner_scoped_persistence_compatible_package() -> None:
         "model_revision": "Qwen3-Embedding-4B",
         "deployment_id": "dgx-embedding-9112",
     }
+    assert package["retrieval_profile"]["candidate_summary"] == {
+        "bm25_candidate_count": 2,
+        "vector_candidate_count": 2,
+        "fused_candidate_count": 2,
+        "both_channel_count": 2,
+        "bm25_only_count": 0,
+        "vector_only_count": 0,
+    }
     assert package["score_summary"]["rerank_state"] == "APPLIED"
     assert package["evidence_items"][0]["neighbor_context"] == [
         {"policy": "not_loaded_in_s95"}
@@ -206,6 +214,31 @@ def test_runtime_omits_unavailable_query_embedding_identity() -> None:
     assert profile["provider_alias"] is None
     assert profile["model_revision"] is None
     assert profile["deployment_id"] is None
+
+
+def test_candidate_summary_counts_single_channel_contributions() -> None:
+    candidate_set = _candidate_set()
+    candidate_set["lexical_candidates"]["candidates"] = [
+        _lexical(CHUNK_ONE, 2.0)
+    ]
+    candidate_set["lexical_candidates"]["candidate_count"] = 1
+    candidate_set["vector_candidates"]["candidates"] = [
+        _vector(CHUNK_TWO, 0.8)
+    ]
+    candidate_set["vector_candidates"]["candidate_count"] = 1
+
+    package = _runtime(
+        provider=FakeCandidateProvider(candidate_set=candidate_set)
+    ).build_package(_payload(), access_context=_context())
+
+    assert package["retrieval_profile"]["candidate_summary"] == {
+        "bm25_candidate_count": 1,
+        "vector_candidate_count": 1,
+        "fused_candidate_count": 2,
+        "both_channel_count": 0,
+        "bm25_only_count": 1,
+        "vector_only_count": 1,
+    }
 
 
 def test_runtime_is_deterministic_except_for_injected_clock() -> None:
