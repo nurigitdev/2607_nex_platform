@@ -172,6 +172,25 @@ contract and operator runbook and closed the Full Gate with `11,478 passed`,
 coverage `96.99%`. S137 is the next active requirement and owns generation,
 citation repair, and artifact lifecycle.
 
+## S137 Slice Plan
+
+| Slice | Scope |
+| --- | --- |
+| `1362` | Freeze the S137 grounded generation, repair, artifact lifecycle boundary and S138 handoff. |
+| `1363` | Add owner-scoped restart-safe retrieval package materialization for generation. |
+| `1364` | Compose retrieval admission, async generation, worker execution, and durable handoff. |
+| `1365` | Bind citation validation and one bounded repair attempt to the exact package. |
+| `1366` | Persist AE generated-response lineage and run the Checkpoint Gate. |
+| `1367` | Connect verified response lineage to artifact admission and asynchronous rendering. |
+| `1368` | Harden preview/download, restart recovery, cancellation, and owner isolation. |
+| `1369` | Add contracts, operations evidence, and deterministic cross-service E2E. |
+| `1370` | Execute protected PostgreSQL plus live generation-provider E2E evidence. |
+| `1371` | Publish the runbook, close S137, run Full Gate, and activate S138. |
+
+S137 completion signal: Pending. Slice 1362 freezes eight integration gaps and
+the owner-safe OA -> AE -> CX -> MO -> AE artifact boundary. S138 remains
+inactive until actual database/provider evidence and S137 Full Gate pass.
+
 ## Protected Evidence Schedule
 
 - `S131`: repository and deterministic regression evidence; no remote model
