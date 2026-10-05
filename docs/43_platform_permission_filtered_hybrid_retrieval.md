@@ -49,6 +49,10 @@ Slice 1353 closed the permission error propagation gap: mixed owner/tenant
 scope now remains a generic non-retryable 404 across the package/API boundary,
 before query embedding or either candidate channel can execute.
 
+Slice 1354 aligned candidate lineage: PostgreSQL BM25 now reads only the latest
+chunk set for each document, matching the source snapshot used by the pgvector
+freshness guard. Protected test-database evidence rejects stale lexical terms.
+
 ## Slice Sequence
 
 | Slice | Scope |

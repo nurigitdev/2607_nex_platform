@@ -205,7 +205,12 @@ def _fixture(
     )
 
 
-def _seed_fixture(connection: Any, fixture: SimpleNamespace) -> None:  # pragma: no cover
+def _seed_fixture(
+    connection: Any,
+    fixture: SimpleNamespace,
+    *,
+    tenant_id: str = TENANT_ID,
+) -> None:  # pragma: no cover
     observed_at = datetime.now(UTC)
     with connection.cursor() as cursor:
         cursor.execute(
@@ -245,13 +250,13 @@ def _seed_fixture(connection: Any, fixture: SimpleNamespace) -> None:  # pragma:
             """,
             (
                 fixture.content,
-                TENANT_ID,
+                tenant_id,
                 fixture.owner_id,
                 fixture.source,
                 fixture.source_hash,
                 fixture.upload,
                 fixture.lifecycle_status,
-                TENANT_ID,
+                tenant_id,
                 fixture.owner_id,
                 fixture.owner_id,
                 observed_at,

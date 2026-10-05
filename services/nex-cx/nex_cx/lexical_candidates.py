@@ -67,7 +67,14 @@ class PostgresLexicalCandidateStore:
 
 
 _BM25_SQL = """
-WITH eligible_chunks AS (
+WITH latest_chunk_sets AS (
+    SELECT DISTINCT ON (content_object_id)
+        chunk_set_id,
+        content_object_id
+    FROM cx_chunk_sets
+    ORDER BY content_object_id, created_at DESC, chunk_set_id DESC
+),
+eligible_chunks AS (
     SELECT
         chunk.chunk_id,
         chunk.chunk_set_id,
@@ -78,6 +85,9 @@ WITH eligible_chunks AS (
         chunk.text_sha256,
         chunk.text_preview
     FROM cx_chunks AS chunk
+    JOIN latest_chunk_sets AS latest
+      ON latest.chunk_set_id = chunk.chunk_set_id
+     AND latest.content_object_id = chunk.content_object_id
     JOIN cx_content_objects AS content
       ON content.content_object_id = chunk.content_object_id
     WHERE content.lifecycle_status = 'ACTIVE'

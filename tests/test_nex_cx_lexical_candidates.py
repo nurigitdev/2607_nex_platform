@@ -111,6 +111,8 @@ def test_search_binds_owner_scope_and_maps_bm25_candidate() -> None:
         }
     ]
     assert "content.lifecycle_status = 'ACTIVE'" in session.statement
+    assert "SELECT DISTINCT ON (content_object_id)" in session.statement
+    assert "latest.chunk_set_id = chunk.chunk_set_id" in session.statement
     assert "content.tenant_ref_id = :tenant_id" in session.statement
     assert "content.owner_subject_ref_id = :owner_subject_id" in session.statement
     assert session.parameters["tenant_id"] == "tenant-a"
