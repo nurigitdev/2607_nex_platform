@@ -75,7 +75,8 @@
         "grounded_response_quality_audit_schema_version": {"type": ["string", "null"]},
         "grounded_response_quality_status": {"type": ["string", "null"]},
         "grounded_response_quality_issue_count": {"type": ["integer", "null"], "minimum": 0},
-        "citation_repair": {"$ref": "#/$defs/citationRepair"}
+        "citation_repair": {"$ref": "#/$defs/citationRepair"},
+        "grounding_lineage": {"$ref": "#/$defs/groundingLineage"}
       }
     },
     "citationRepair": {
@@ -122,6 +123,45 @@
               "trigger_error_code": {"const": null}
             }
           }
+        }
+      ]
+    },
+    "groundingLineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lineage_schema_version",
+        "retrieval_package_id",
+        "retrieval_package_hash",
+        "evidence_binding_hash",
+        "selected_evidence_count",
+        "citation_validation_status",
+        "citation_repair_attempted",
+        "citation_repair_attempt_count",
+        "original_provider_prompt_package_hash",
+        "effective_provider_prompt_package_hash",
+        "same_retrieval_package",
+        "private_evidence_included"
+      ],
+      "properties": {
+        "lineage_schema_version": {"const": "cx_grounded_generation_lineage.v1"},
+        "retrieval_package_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "retrieval_package_hash": {"$ref": "#/$defs/sha256"},
+        "evidence_binding_hash": {"$ref": "#/$defs/sha256"},
+        "selected_evidence_count": {"type": "integer", "minimum": 1},
+        "citation_validation_status": {"const": "VALIDATED"},
+        "citation_repair_attempted": {"type": "boolean"},
+        "citation_repair_attempt_count": {"type": "integer", "minimum": 0, "maximum": 1},
+        "original_provider_prompt_package_hash": {"$ref": "#/$defs/sha256"},
+        "effective_provider_prompt_package_hash": {"$ref": "#/$defs/sha256"},
+        "same_retrieval_package": {"const": true},
+        "private_evidence_included": {"const": false}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"citation_repair_attempted": {"const": true}}, "required": ["citation_repair_attempted"]},
+          "then": {"properties": {"citation_repair_attempt_count": {"const": 1}}},
+          "else": {"properties": {"citation_repair_attempt_count": {"const": 0}}}
         }
       ]
     },

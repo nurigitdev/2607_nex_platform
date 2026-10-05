@@ -46,26 +46,15 @@ def build_grounded_prompt_package(
         "query_text",
         maximum_length=MAX_GROUNDED_QUERY_LENGTH,
     )
-    package_id = _identifier(
-        retrieval_package.get("retrieval_package_id"),
-        "retrieval_package_id",
+    evidence_binding = build_grounded_evidence_binding(
+        retrieval_package=retrieval_package,
+        selected_evidence_ids=selected_evidence_ids,
     )
-    retrieval_hash = _sha256(
-        retrieval_package.get("package_hash"),
-        "package_hash",
-    )
-    evidence = _evidence_items(retrieval_package.get("evidence_items"))
-    selected_ids = _selected_evidence_ids(selected_evidence_ids, evidence=evidence)
-    selected_set = set(selected_ids)
-    selected = [item for item in evidence if item["evidence_id"] in selected_set]
-    binding = [
-        {
-            "evidence_id": item["evidence_id"],
-            "citation_label": item["citation_label"],
-            "content_sha256": item["content_sha256"],
-        }
-        for item in selected
-    ]
+    package_id = evidence_binding["retrieval_package_id"]
+    retrieval_hash = evidence_binding["retrieval_package_hash"]
+    selected_ids = evidence_binding["selected_evidence_ids"]
+    selected = evidence_binding["selected_evidence"]
+    binding = evidence_binding["evidence_binding"]
     envelope = {
         "schema_version": GROUNDED_CONTEXT_ENVELOPE_SCHEMA_VERSION,
         "question": query,
@@ -94,7 +83,7 @@ def build_grounded_prompt_package(
         },
     ]
     query_sha256 = _sha256_text(query)
-    evidence_binding_hash = _sha256_json(binding)
+    evidence_binding_hash = evidence_binding["evidence_binding_hash"]
     provider_prompt_package_hash = _sha256_json(
         {
             "schema_version": GROUNDED_PROMPT_PACKAGE_SCHEMA_VERSION,
@@ -115,6 +104,41 @@ def build_grounded_prompt_package(
         "evidence_binding_hash": evidence_binding_hash,
         "messages": messages,
         "provider_prompt_package_hash": provider_prompt_package_hash,
+    }
+
+
+def build_grounded_evidence_binding(
+    *,
+    retrieval_package: Mapping[str, Any],
+    selected_evidence_ids: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    package_id = _identifier(
+        retrieval_package.get("retrieval_package_id"),
+        "retrieval_package_id",
+    )
+    retrieval_hash = _sha256(
+        retrieval_package.get("package_hash"),
+        "package_hash",
+    )
+    evidence = _evidence_items(retrieval_package.get("evidence_items"))
+    selected_ids = _selected_evidence_ids(selected_evidence_ids, evidence=evidence)
+    selected_set = set(selected_ids)
+    selected = [item for item in evidence if item["evidence_id"] in selected_set]
+    binding = [
+        {
+            "evidence_id": item["evidence_id"],
+            "citation_label": item["citation_label"],
+            "content_sha256": item["content_sha256"],
+        }
+        for item in selected
+    ]
+    return {
+        "retrieval_package_id": package_id,
+        "retrieval_package_hash": retrieval_hash,
+        "selected_evidence_ids": [item["evidence_id"] for item in selected],
+        "selected_evidence": selected,
+        "evidence_binding": binding,
+        "evidence_binding_hash": _sha256_json(binding),
     }
 
 

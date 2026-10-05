@@ -167,7 +167,9 @@
             "null"
           ],
           "minimum": 0
-        }
+        },
+        "citation_repair": {"$ref": "#/$defs/citationRepair"},
+        "grounding_lineage": {"$ref": "#/$defs/groundingLineage"}
       }
     },
     "response_metadata": {
@@ -405,6 +407,83 @@
     "updated_at": {
       "type": "string",
       "format": "date-time"
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "citationRepair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repair_schema_version",
+        "attempted",
+        "attempt_count",
+        "max_attempts",
+        "trigger_error_code",
+        "same_retrieval_package",
+        "original_provider_prompt_package_hash",
+        "effective_provider_prompt_package_hash",
+        "invalid_output_included"
+      ],
+      "properties": {
+        "repair_schema_version": {"const": "cx_citation_repair.v1"},
+        "attempted": {"type": "boolean"},
+        "attempt_count": {"type": "integer", "minimum": 0, "maximum": 1},
+        "max_attempts": {"const": 1},
+        "trigger_error_code": {
+          "enum": [null, "cx.citation_required_missing", "cx.citation_validation_failed"]
+        },
+        "same_retrieval_package": {"const": true},
+        "original_provider_prompt_package_hash": {"$ref": "#/$defs/sha256"},
+        "effective_provider_prompt_package_hash": {"$ref": "#/$defs/sha256"},
+        "invalid_output_included": {"const": false}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"attempted": {"const": true}}, "required": ["attempted"]},
+          "then": {"properties": {"attempt_count": {"const": 1}}},
+          "else": {"properties": {"attempt_count": {"const": 0}, "trigger_error_code": {"const": null}}}
+        }
+      ]
+    },
+    "groundingLineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lineage_schema_version",
+        "retrieval_package_id",
+        "retrieval_package_hash",
+        "evidence_binding_hash",
+        "selected_evidence_count",
+        "citation_validation_status",
+        "citation_repair_attempted",
+        "citation_repair_attempt_count",
+        "original_provider_prompt_package_hash",
+        "effective_provider_prompt_package_hash",
+        "same_retrieval_package",
+        "private_evidence_included"
+      ],
+      "properties": {
+        "lineage_schema_version": {"const": "cx_grounded_generation_lineage.v1"},
+        "retrieval_package_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "retrieval_package_hash": {"$ref": "#/$defs/sha256"},
+        "evidence_binding_hash": {"$ref": "#/$defs/sha256"},
+        "selected_evidence_count": {"type": "integer", "minimum": 1},
+        "citation_validation_status": {"const": "VALIDATED"},
+        "citation_repair_attempted": {"type": "boolean"},
+        "citation_repair_attempt_count": {"type": "integer", "minimum": 0, "maximum": 1},
+        "original_provider_prompt_package_hash": {"$ref": "#/$defs/sha256"},
+        "effective_provider_prompt_package_hash": {"$ref": "#/$defs/sha256"},
+        "same_retrieval_package": {"const": true},
+        "private_evidence_included": {"const": false}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"citation_repair_attempted": {"const": true}}, "required": ["citation_repair_attempted"]},
+          "then": {"properties": {"citation_repair_attempt_count": {"const": 1}}},
+          "else": {"properties": {"citation_repair_attempt_count": {"const": 0}}}
+        }
+      ]
     }
   }
 }

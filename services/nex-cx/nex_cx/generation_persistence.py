@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID
 
 from nex_cx.citation_repair import validate_citation_repair_projection
+from nex_cx.generation_lineage import validate_grounded_generation_lineage
 from nex_cx.owner_lineage import CxOwnerLineage, attach_owner_lineage
 
 
@@ -31,6 +32,7 @@ _REQUEST_METADATA_FIELDS = frozenset(
         "grounded_response_quality_status",
         "grounded_response_quality_issue_count",
         "citation_repair",
+        "grounding_lineage",
     }
 )
 _RESPONSE_METADATA_FIELDS = frozenset(
@@ -210,9 +212,16 @@ def build_generation_persistence_record(
 
 def _safe_request_metadata(value: object) -> dict[str, Any]:
     repair = value.get("citation_repair") if isinstance(value, Mapping) else None
+    grounding_lineage = (
+        value.get("grounding_lineage") if isinstance(value, Mapping) else None
+    )
     metadata = _safe_mapping(value, allowed_fields=_REQUEST_METADATA_FIELDS)
     if repair is not None:
         metadata["citation_repair"] = validate_citation_repair_projection(repair)
+    if grounding_lineage is not None:
+        metadata["grounding_lineage"] = validate_grounded_generation_lineage(
+            grounding_lineage
+        )
     return metadata
 
 

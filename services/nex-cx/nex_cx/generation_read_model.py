@@ -7,6 +7,7 @@ from typing import Any
 
 from nex_cx.access_context import CxAccessContext
 from nex_cx.citation_repair import validate_citation_repair_projection
+from nex_cx.generation_lineage import validate_grounded_generation_lineage
 from nex_cx.generation_private_output import load_generation_output
 from nex_cx.generation_repository import (
     GenerationRuntimeRepository,
@@ -60,6 +61,7 @@ _REQUEST_METADATA_FIELDS = frozenset(
         "grounded_response_quality_status",
         "grounded_response_quality_issue_count",
         "citation_repair",
+        "grounding_lineage",
     }
 )
 _RESPONSE_METADATA_FIELDS = frozenset({"finish_reason", "output_hash"})
@@ -259,4 +261,9 @@ def _safe_request_metadata(value: object) -> dict[str, Any]:
     repair = metadata.get("citation_repair")
     if repair is not None:
         metadata["citation_repair"] = validate_citation_repair_projection(repair)
+    grounding_lineage = metadata.get("grounding_lineage")
+    if grounding_lineage is not None:
+        metadata["grounding_lineage"] = validate_grounded_generation_lineage(
+            grounding_lineage
+        )
     return metadata

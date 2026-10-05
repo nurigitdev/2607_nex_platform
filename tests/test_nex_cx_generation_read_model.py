@@ -61,12 +61,14 @@ def _record(**overrides: Any) -> dict[str, Any]:
         "provider_capability": "generation",
         "mo_generation_id": "mo-generation-0967",
         "request_metadata": {
-            "provider_prompt_package_hash": "a" * 64,
+            "provider_prompt_package_hash": "d" * 64,
             "generation_request_hash": "b" * 64,
             "response_format_type": "text",
             "source_has_messages": True,
             "source_has_prompt": False,
             "grounding_required": True,
+            "retrieval_package_id": "96700000-0000-0000-0000-000000000001",
+            "retrieval_package_hash": "e" * 64,
             "selected_evidence_count": 1,
             "citation_repair": {
                 "repair_schema_version": "cx_citation_repair.v1",
@@ -78,6 +80,20 @@ def _record(**overrides: Any) -> dict[str, Any]:
                 "original_provider_prompt_package_hash": "c" * 64,
                 "effective_provider_prompt_package_hash": "d" * 64,
                 "invalid_output_included": False,
+            },
+            "grounding_lineage": {
+                "lineage_schema_version": "cx_grounded_generation_lineage.v1",
+                "retrieval_package_id": ("96700000-0000-0000-0000-000000000001"),
+                "retrieval_package_hash": "e" * 64,
+                "evidence_binding_hash": "f" * 64,
+                "selected_evidence_count": 1,
+                "citation_validation_status": "VALIDATED",
+                "citation_repair_attempted": True,
+                "citation_repair_attempt_count": 1,
+                "original_provider_prompt_package_hash": "c" * 64,
+                "effective_provider_prompt_package_hash": "d" * 64,
+                "same_retrieval_package": True,
+                "private_evidence_included": False,
             },
         },
         "response_metadata": {
@@ -188,6 +204,10 @@ def test_restart_safe_read_model_redacts_storage_and_reloads_verified_content(
     assert "output_storage_uri" not in serialized
     assert "output_storage_backend" not in serialized
     assert metadata["request_metadata"]["citation_repair"]["attempted"] is True
+    assert (
+        metadata["request_metadata"]["grounding_lineage"]["evidence_binding_hash"]
+        == "f" * 64
+    )
     assert content == {
         "content_schema_version": CX_GENERATION_CONTENT_SCHEMA_VERSION,
         "cx_generation_id": "cx-generation-0967",

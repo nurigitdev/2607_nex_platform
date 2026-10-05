@@ -1,0 +1,15 @@
+{
+  "lineage_schema_version": "cx_grounded_generation_lineage.v1",
+  "retrieval_package_id": "cx-retrieval-s137-001",
+  "retrieval_package_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "evidence_binding_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "selected_evidence_count": 1,
+  "citation_validation_status": "VALIDATED",
+  "citation_repair_attempted": false,
+  "citation_repair_attempt_count": 0,
+  "original_provider_prompt_package_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "effective_provider_prompt_package_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "same_retrieval_package": true,
+  "private_evidence_included": true,
+  "evidence_text": "This must never enter public lineage."
+}

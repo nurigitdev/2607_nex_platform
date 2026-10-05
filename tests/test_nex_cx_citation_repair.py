@@ -12,6 +12,7 @@ from nex_cx.citation_repair import (
     validate_citation_repair_projection,
 )
 from nex_cx.grounded_output_validation import GroundedOutputValidationError
+from nex_cx.grounded_prompt import build_grounded_evidence_binding
 
 
 def _retrieval_package() -> dict:
@@ -19,13 +20,25 @@ def _retrieval_package() -> dict:
         "retrieval_package_id": "retrieval-0997",
         "package_hash": "b" * 64,
         "evidence_items": [
-            {"evidence_id": "evidence-1", "citation_label": "[1]"},
-            {"evidence_id": "evidence-2", "citation_label": "[2]"},
+            {
+                "evidence_id": "evidence-1",
+                "citation_label": "[1]",
+                "text": "First private evidence.",
+            },
+            {
+                "evidence_id": "evidence-2",
+                "citation_label": "[2]",
+                "text": "Second private evidence.",
+            },
         ],
     }
 
 
 def _payload() -> dict:
+    binding = build_grounded_evidence_binding(
+        retrieval_package=_retrieval_package(),
+        selected_evidence_ids=["evidence-1"],
+    )
     return {
         "client_request_id": "client-0997",
         "cx_generation_id": "generation-0997",
@@ -39,6 +52,8 @@ def _payload() -> dict:
         "metadata": {
             "retrieval_package_id": "retrieval-0997",
             "retrieval_package_hash": "b" * 64,
+            "evidence_binding_hash": binding["evidence_binding_hash"],
+            "selected_evidence_count": 1,
             "generation_request_hash": "c" * 64,
         },
     }
@@ -123,6 +138,9 @@ def test_citation_failure_gets_one_repair_with_same_package(invalid_text, trigge
     repair_payload = client.calls[1]
     assert repair_payload["metadata"]["retrieval_package_id"] == "retrieval-0997"
     assert repair_payload["metadata"]["retrieval_package_hash"] == "b" * 64
+    assert repair_payload["metadata"]["evidence_binding_hash"] == (
+        _payload()["metadata"]["evidence_binding_hash"]
+    )
     assert repair_payload["temperature"] == 0.0
     assert "[1]" in repair_payload["messages"][-1]["content"]
     assert "Missing citation." not in str(repair_payload)
@@ -193,6 +211,16 @@ def test_citation_repair_projection_validation_fails_closed() -> None:
             _retrieval_package(),
             "cx.citation_required_missing",
         ),
+        (
+            {
+                "metadata": {
+                    **_payload()["metadata"],
+                    "evidence_binding_hash": "0" * 64,
+                }
+            },
+            _retrieval_package(),
+            "cx.citation_required_missing",
+        ),
         ({}, _retrieval_package(), "cx.provider_output_invalid"),
     ],
 )
@@ -232,4 +260,17 @@ def test_repair_payload_validates_labels_hashes_and_required_text() -> None:
             selected_evidence_ids=["missing"],
             trigger_error_code="cx.citation_required_missing",
         )
-    assert str(no_labels.value) == "Citation repair has no admitted citation labels."
+    assert str(no_labels.value) == "Citation repair evidence binding is invalid."
+
+
+def test_repair_payload_rejects_selected_evidence_count_drift() -> None:
+    payload = _payload()
+    payload["metadata"]["selected_evidence_count"] = 2
+
+    with pytest.raises(CitationRepairError, match="count changed"):
+        build_citation_repair_payload(
+            payload,
+            retrieval_package=_retrieval_package(),
+            selected_evidence_ids=["evidence-1"],
+            trigger_error_code="cx.citation_required_missing",
+        )

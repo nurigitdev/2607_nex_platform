@@ -9,6 +9,14 @@ from nex_cx.async_generation_contracts import (
     CX_ASYNC_GENERATION_JOB_SCHEMA_VERSION,
     project_async_generation_job,
 )
+from nex_cx.citation_repair import (
+    CitationRepairError,
+    validate_citation_repair_projection,
+)
+from nex_cx.generation_lineage import (
+    GroundedGenerationLineageError,
+    validate_grounded_generation_lineage,
+)
 from nex_cx.generation_read_model import GenerationReadModel, GenerationReadModelError
 
 
@@ -166,7 +174,54 @@ def validate_generation_handoff(value: object) -> dict[str, Any]:
         or not isinstance(content.get("content"), str)
     ):
         raise _invalid("Ready generation handoff content is inconsistent.")
+    _validate_grounding_lineage_handoff(generation)
     return {**handoff, "job": projected_job}
+
+
+def _validate_grounding_lineage_handoff(generation: Mapping[str, Any]) -> None:
+    metadata = generation.get("request_metadata")
+    if (
+        not isinstance(metadata, Mapping)
+        or metadata.get("grounding_required") is not True
+    ):
+        return
+    try:
+        lineage = validate_grounded_generation_lineage(
+            metadata.get("grounding_lineage")
+        )
+    except GroundedGenerationLineageError as exc:
+        raise _invalid("Ready grounded generation lineage is invalid.") from exc
+    if generation.get("retrieval_package_id") != lineage["retrieval_package_id"]:
+        raise _invalid("Ready grounded generation retrieval identity changed.")
+    expected_values = {
+        "retrieval_package_hash": lineage["retrieval_package_hash"],
+        "selected_evidence_count": lineage["selected_evidence_count"],
+        "provider_prompt_package_hash": lineage[
+            "effective_provider_prompt_package_hash"
+        ],
+    }
+    if any(
+        metadata.get(field) != expected for field, expected in expected_values.items()
+    ):
+        raise _invalid("Ready grounded generation metadata does not match its lineage.")
+    repair_value = metadata.get("citation_repair")
+    if repair_value is None:
+        if lineage["citation_repair_attempted"] is True:
+            raise _invalid("Ready grounded generation repair lineage is unavailable.")
+        return
+    try:
+        repair = validate_citation_repair_projection(repair_value)
+    except CitationRepairError as exc:
+        raise _invalid("Ready grounded generation repair metadata is invalid.") from exc
+    if (
+        repair["attempted"] != lineage["citation_repair_attempted"]
+        or repair["attempt_count"] != lineage["citation_repair_attempt_count"]
+        or repair["original_provider_prompt_package_hash"]
+        != lineage["original_provider_prompt_package_hash"]
+        or repair["effective_provider_prompt_package_hash"]
+        != lineage["effective_provider_prompt_package_hash"]
+    ):
+        raise _invalid("Ready grounded generation repair metadata changed.")
 
 
 def _validate_job_projection(value: object) -> dict[str, Any]:

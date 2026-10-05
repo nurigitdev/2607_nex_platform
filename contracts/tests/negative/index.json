@@ -236,6 +236,11 @@
       "schema": "schemas/generation/cx_generation_execution_record.v1.schema.json"
     },
     {
+      "name": "cx_grounded_generation_lineage_private_evidence",
+      "path": "tests/negative/generation/cx_grounded_generation_lineage.private_evidence.json",
+      "schema": "schemas/generation/cx_grounded_generation_lineage.v1.schema.json"
+    },
+    {
       "name": "cx_generation_read_model_storage_uri_leak",
       "path": "tests/negative/generation/cx_generation_read_model.storage_uri_leak.json",
       "schema": "schemas/generation/cx_generation_read_model.v1.schema.json"

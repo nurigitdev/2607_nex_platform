@@ -101,6 +101,43 @@ def _ready_read_model() -> StubReadModel:
     )
 
 
+def _grounded_ready_read_model() -> StubReadModel:
+    model = _ready_read_model()
+    model.metadata["retrieval_package_id"] = "retrieval-1365"
+    model.metadata["request_metadata"] = {
+        "provider_prompt_package_hash": "d" * 64,
+        "grounding_required": True,
+        "retrieval_package_hash": "b" * 64,
+        "selected_evidence_count": 1,
+        "citation_repair": {
+            "repair_schema_version": "cx_citation_repair.v1",
+            "attempted": True,
+            "attempt_count": 1,
+            "max_attempts": 1,
+            "trigger_error_code": "cx.citation_required_missing",
+            "same_retrieval_package": True,
+            "original_provider_prompt_package_hash": "c" * 64,
+            "effective_provider_prompt_package_hash": "d" * 64,
+            "invalid_output_included": False,
+        },
+        "grounding_lineage": {
+            "lineage_schema_version": "cx_grounded_generation_lineage.v1",
+            "retrieval_package_id": "retrieval-1365",
+            "retrieval_package_hash": "b" * 64,
+            "evidence_binding_hash": "e" * 64,
+            "selected_evidence_count": 1,
+            "citation_validation_status": "VALIDATED",
+            "citation_repair_attempted": True,
+            "citation_repair_attempt_count": 1,
+            "original_provider_prompt_package_hash": "c" * 64,
+            "effective_provider_prompt_package_hash": "d" * 64,
+            "same_retrieval_package": True,
+            "private_evidence_included": False,
+        },
+    }
+    return model
+
+
 def test_active_job_projects_pending_without_reading_private_result() -> None:
     read_model = _ready_read_model()
 
@@ -132,6 +169,75 @@ def test_succeeded_job_projects_owner_safe_generation_and_content() -> None:
     assert handoff["content"]["content"] == "Owner grounded answer [1]."
     assert handoff["owner_scope_enforced"] is True
     assert read_model.metadata_calls == read_model.content_calls == 1
+
+
+def test_ready_handoff_preserves_exact_grounding_and_repair_lineage() -> None:
+    job = _job()
+    job["status"] = "SUCCEEDED"
+
+    handoff = build_generation_handoff(
+        job,
+        read_model=_grounded_ready_read_model(),
+        access_context=_context(),
+    )
+
+    lineage = handoff["generation"]["request_metadata"]["grounding_lineage"]
+    assert lineage["evidence_binding_hash"] == "e" * 64
+    assert lineage["citation_repair_attempted"] is True
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda metadata: metadata.pop("grounding_lineage"),
+        lambda metadata: metadata["grounding_lineage"].update(
+            evidence_binding_hash="bad"
+        ),
+        lambda metadata: metadata.update(retrieval_package_hash="f" * 64),
+        lambda metadata: metadata.pop("citation_repair"),
+        lambda metadata: metadata["citation_repair"].update(attempted=False),
+        lambda metadata: metadata["citation_repair"].update(
+            original_provider_prompt_package_hash="9" * 64
+        ),
+    ],
+)
+def test_ready_handoff_rejects_grounding_lineage_drift(mutate) -> None:
+    job = _job()
+    job["status"] = "SUCCEEDED"
+    read_model = _grounded_ready_read_model()
+    mutate(read_model.metadata["request_metadata"])
+
+    with pytest.raises(GenerationHandoffError):
+        build_generation_handoff(job, read_model=read_model, access_context=_context())
+
+
+def test_ready_handoff_accepts_valid_no_repair_lineage() -> None:
+    job = _job()
+    job["status"] = "SUCCEEDED"
+    read_model = _grounded_ready_read_model()
+    metadata = read_model.metadata["request_metadata"]
+    metadata.pop("citation_repair")
+    metadata["grounding_lineage"].update(
+        citation_repair_attempted=False,
+        citation_repair_attempt_count=0,
+        original_provider_prompt_package_hash="d" * 64,
+    )
+
+    handoff = build_generation_handoff(
+        job, read_model=read_model, access_context=_context()
+    )
+
+    assert handoff["handoff_status"] == "READY"
+
+
+def test_ready_handoff_rejects_top_level_retrieval_identity_drift() -> None:
+    job = _job()
+    job["status"] = "SUCCEEDED"
+    read_model = _grounded_ready_read_model()
+    read_model.metadata["retrieval_package_id"] = "other"
+
+    with pytest.raises(GenerationHandoffError, match="identity changed"):
+        build_generation_handoff(job, read_model=read_model, access_context=_context())
 
 
 @pytest.mark.parametrize("status", ["FAILED", "CANCELLED"])

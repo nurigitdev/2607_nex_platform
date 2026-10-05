@@ -64,6 +64,10 @@ from nex_cx.generation_read_model import (
     GenerationReadModelError,
     project_generation_read_model,
 )
+from nex_cx.generation_lineage import (
+    GroundedGenerationLineageError,
+    build_grounded_generation_lineage,
+)
 from nex_cx.generation_observability import (
     observe_generation_outcome,
     observe_generation_request_failure,
@@ -786,6 +790,34 @@ def build_generation_execution_record(
     output = mo_response.get("output", {})
     output_text = output.get("text", "") if isinstance(output, dict) else ""
     quality_audit = _structured_draft_quality_audit(structured_draft)
+    grounding_required = bool(
+        compatibility_rule and compatibility_rule.get("grounding_required")
+    )
+    grounding_lineage = None
+    if grounding_required:
+        if retrieval_package is None or structured_draft is None:
+            raise GenerationFacadeError(
+                status_code=422,
+                error_code="cx.grounded_generation_lineage.invalid",
+                detail="Grounded generation lineage inputs are unavailable.",
+            )
+        try:
+            grounding_lineage = build_grounded_generation_lineage(
+                mo_payload=mo_payload,
+                retrieval_package=retrieval_package,
+                selected_evidence_ids=selected_evidence_ids_from_payload(
+                    source_payload
+                ),
+                structured_draft=structured_draft,
+                citation_repair=citation_repair,
+            )
+        except GroundedGenerationLineageError as exc:
+            raise GenerationFacadeError(
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                detail=exc.detail,
+                retryable=exc.retryable,
+            ) from exc
     return {
         "record_schema_version": "cx_generation_execution_record.v1",
         "cx_generation_id": mo_payload["cx_generation_id"],
@@ -804,9 +836,7 @@ def build_generation_execution_record(
             "compatibility_rule_id": compatibility_rule["compatibility_rule_id"]
             if compatibility_rule
             else None,
-            "grounding_required": compatibility_rule["grounding_required"]
-            if compatibility_rule
-            else False,
+            "grounding_required": grounding_required,
             "retrieval_package_id": retrieval_package["retrieval_package_id"]
             if retrieval_package
             else None,
@@ -831,6 +861,11 @@ def build_generation_execution_record(
             "grounded_response_quality_issue_count": len(quality_audit["issues"])
             if quality_audit
             else None,
+            **(
+                {"grounding_lineage": grounding_lineage}
+                if grounding_lineage is not None
+                else {}
+            ),
             **(
                 {
                     "citation_repair": validate_citation_repair_projection(

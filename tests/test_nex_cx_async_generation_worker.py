@@ -22,6 +22,7 @@ from nex_cx.async_generation_worker import (
 from nex_cx import async_generation_worker as worker_module
 from nex_cx.citation_repair import CitationRepairError
 from nex_cx.generation import GenerationFacadeError
+from nex_cx.grounded_prompt import build_grounded_evidence_binding
 from nex_cx.generation_runtime import (
     GroundedGenerationRuntime,
     GroundedGenerationRuntimeError,
@@ -194,9 +195,17 @@ def test_worker_completes_after_one_citation_repair(tmp_path, monkeypatch) -> No
         "retrieval_package_id": "retrieval-0997",
         "package_hash": "b" * 64,
         "evidence_items": [
-            {"evidence_id": "evidence-1", "citation_label": "[1]"}
+            {
+                "evidence_id": "evidence-1",
+                "citation_label": "[1]",
+                "text": "Private admitted evidence.",
+            }
         ],
     }
+    evidence_binding = build_grounded_evidence_binding(
+        retrieval_package=retrieval_package,
+        selected_evidence_ids=["evidence-1"],
+    )
     envelope = {
         "admission_id": next(iter(runtime.admission_repository.records)),
         "request_id": "request-1",
@@ -215,6 +224,8 @@ def test_worker_completes_after_one_citation_repair(tmp_path, monkeypatch) -> No
                 "generation_request_hash": "c" * 64,
                 "retrieval_package_id": "retrieval-0997",
                 "retrieval_package_hash": "b" * 64,
+                "evidence_binding_hash": evidence_binding["evidence_binding_hash"],
+                "selected_evidence_count": 1,
             },
         },
         "compatibility_rule": {
@@ -267,6 +278,16 @@ def test_worker_completes_after_one_citation_repair(tmp_path, monkeypatch) -> No
     assert runtime.execution_repository.records[generation_id]["request_metadata"][
         "citation_repair"
     ] == result["citation_repair"]
+    grounding_lineage = runtime.execution_repository.records[generation_id][
+        "request_metadata"
+    ]["grounding_lineage"]
+    assert grounding_lineage["evidence_binding_hash"] == evidence_binding[
+        "evidence_binding_hash"
+    ]
+    assert grounding_lineage["citation_repair_attempted"] is True
+    assert grounding_lineage["effective_provider_prompt_package_hash"] == (
+        client.calls[1]["provider_prompt_package_hash"]
+    )
 
 
 def test_worker_maps_invalid_citation_repair_boundary(tmp_path, monkeypatch) -> None:

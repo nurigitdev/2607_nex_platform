@@ -11,6 +11,10 @@ from nex_cx.grounded_output_validation import (
     GroundedOutputValidationError,
     normalize_generation_provider_response,
 )
+from nex_cx.grounded_prompt import (
+    GroundedPromptPackageError,
+    build_grounded_evidence_binding,
+)
 
 
 CX_CITATION_REPAIR_SCHEMA_VERSION = "cx_citation_repair.v1"
@@ -133,19 +137,28 @@ def build_citation_repair_payload(
     messages = payload.get("messages")
     if not isinstance(metadata, Mapping) or not isinstance(messages, list) or not messages:
         raise _invalid("Citation repair requires the original grounded prompt package.")
-    package_id = _required_text(
-        retrieval_package.get("retrieval_package_id"), "retrieval_package_id"
-    )
-    package_hash = _sha256(retrieval_package.get("package_hash"))
+    try:
+        evidence_binding = build_grounded_evidence_binding(
+            retrieval_package=retrieval_package,
+            selected_evidence_ids=selected_evidence_ids,
+        )
+    except GroundedPromptPackageError as exc:
+        raise _invalid("Citation repair evidence binding is invalid.") from exc
+    package_id = evidence_binding["retrieval_package_id"]
+    package_hash = evidence_binding["retrieval_package_hash"]
+    evidence_binding_hash = evidence_binding["evidence_binding_hash"]
     if metadata.get("retrieval_package_id") != package_id or (
         metadata.get("retrieval_package_hash") != package_hash
     ):
         raise _invalid("Citation repair retrieval package identity changed.")
+    if _sha256(metadata.get("evidence_binding_hash")) != evidence_binding_hash:
+        raise _invalid("Citation repair evidence binding changed.")
+    if metadata.get("selected_evidence_count") != len(
+        evidence_binding["selected_evidence_ids"]
+    ):
+        raise _invalid("Citation repair selected evidence count changed.")
     original_hash = _sha256(payload.get("provider_prompt_package_hash"))
-    labels = _selected_citation_labels(
-        retrieval_package,
-        selected_evidence_ids=selected_evidence_ids,
-    )
+    labels = [item["citation_label"] for item in evidence_binding["evidence_binding"]]
     repair_instruction = (
         "Regenerate the answer using the same supplied evidence. The previous "
         "attempt failed citation validation. Cite factual claims using only "
@@ -160,6 +173,7 @@ def build_citation_repair_payload(
             "original_provider_prompt_package_hash": original_hash,
             "retrieval_package_id": package_id,
             "retrieval_package_hash": package_hash,
+            "evidence_binding_hash": evidence_binding_hash,
             "messages": repaired_messages,
         }
     )
@@ -197,26 +211,6 @@ def _normalize(
         retrieval_package=retrieval_package,
         selected_evidence_ids=selected_evidence_ids,
     )
-
-
-def _selected_citation_labels(
-    retrieval_package: Mapping[str, Any],
-    *,
-    selected_evidence_ids: Sequence[str] | None,
-) -> list[str]:
-    items = retrieval_package.get("evidence_items")
-    if isinstance(items, (str, bytes)) or not isinstance(items, Sequence):
-        raise _invalid("Citation repair evidence items are invalid.")
-    selected = set(selected_evidence_ids or [])
-    labels = [
-        _required_text(item.get("citation_label"), "citation_label")
-        for item in items
-        if isinstance(item, Mapping)
-        and (not selected or item.get("evidence_id") in selected)
-    ]
-    if not labels:
-        raise _invalid("Citation repair has no admitted citation labels.")
-    return labels
 
 
 def _repair_projection(

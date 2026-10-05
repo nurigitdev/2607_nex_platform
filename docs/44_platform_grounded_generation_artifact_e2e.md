@@ -1,6 +1,6 @@
 # Platform Grounded Generation, Repair, and Artifact Lifecycle E2E
 
-Status: S137 active through Slice 1364.
+Status: S137 active through Slice 1365.
 
 ## Required Outcome
 
@@ -35,7 +35,7 @@ owner-scoped preview and download surfaces.
 | --- | --- | --- |
 | Restart-safe retrieval package materialization for generation | `1363` | Complete: CX reloads hash-only metadata and verified private evidence only after exact owner admission. |
 | CX grounded generation runtime composition | `1364` | Complete: sync and async generation share one owner-scoped PostgreSQL retrieval materializer with a local fallback. |
-| Citation validation and bounded repair handoff | `1365` | Original and repaired outcomes preserve package identity and citation lineage. |
+| Citation validation and bounded repair handoff | `1365` | Complete: original and repaired outcomes preserve retrieval identity, exact evidence binding, prompt transition, and validated citation lineage through durable CX handoff. |
 | AE generated response lineage integration | `1366` | AE persists owner-scoped response lineage and blocks incomplete citation workflows; run Checkpoint Gate. |
 | Artifact lifecycle admission and render connection | `1367` | Verified response creates an artifact and durable render job without copying private content into the queue. |
 | Preview/download and restart-safe artifact recovery | `1368` | Fresh AE runtime resolves rendered files through owner-scoped API links. |

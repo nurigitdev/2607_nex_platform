@@ -1208,6 +1208,57 @@ def test_build_generation_execution_record_keeps_safe_runtime_keys_only() -> Non
     assert "provider_url" not in record["mo_runtime_metadata"]
 
 
+def test_build_grounded_execution_record_requires_complete_lineage_inputs() -> None:
+    with pytest.raises(GenerationFacadeError) as raised:
+        build_generation_execution_record(
+            source_payload={"selected_evidence_ids": ["evidence-1"]},
+            mo_payload={},
+            mo_response={},
+            compatibility_rule={"grounding_required": True},
+            request_id="request-1365",
+            trace_id="trace-1365",
+        )
+
+    assert raised.value.error_code == "cx.grounded_generation_lineage.invalid"
+
+
+def test_build_grounded_execution_record_maps_lineage_drift() -> None:
+    retrieval_package = {
+        "retrieval_package_id": "retrieval-1365",
+        "package_hash": "b" * 64,
+        "evidence_items": [
+            {
+                "evidence_id": "evidence-1",
+                "citation_label": "[1]",
+                "text": "Owner-private evidence.",
+            }
+        ],
+    }
+
+    with pytest.raises(GenerationFacadeError) as raised:
+        build_generation_execution_record(
+            source_payload={"selected_evidence_ids": ["evidence-1"]},
+            mo_payload={
+                "provider_prompt_package_hash": "a" * 64,
+                "metadata": {
+                    "retrieval_package_id": "retrieval-1365",
+                    "retrieval_package_hash": "b" * 64,
+                    "evidence_binding_hash": "0" * 64,
+                    "selected_evidence_count": 1,
+                },
+            },
+            mo_response={},
+            compatibility_rule={"grounding_required": True},
+            retrieval_package=retrieval_package,
+            structured_draft={"validation": {"citation_status": "VALIDATED"}},
+            request_id="request-1365",
+            trace_id="trace-1365",
+        )
+
+    assert raised.value.error_code == "cx.grounded_generation_lineage.invalid"
+    assert raised.value.retryable is False
+
+
 def test_build_generation_failure_record_uses_safe_policy_lineage_defaults() -> None:
     record = build_generation_failure_record(
         source_payload={"prompt": "private prompt", "attempt_no": 0},

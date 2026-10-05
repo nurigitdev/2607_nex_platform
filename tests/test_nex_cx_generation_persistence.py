@@ -216,6 +216,38 @@ def test_generation_persistence_keeps_private_output_reference_metadata() -> Non
     assert generation_persistence_has_private_payload(persisted) is False
 
 
+def test_generation_persistence_keeps_valid_grounding_lineage() -> None:
+    retrieval_id = "91700000-0000-0000-0000-000000000001"
+    lineage = {
+        "lineage_schema_version": "cx_grounded_generation_lineage.v1",
+        "retrieval_package_id": retrieval_id,
+        "retrieval_package_hash": "c" * 64,
+        "evidence_binding_hash": "d" * 64,
+        "selected_evidence_count": 1,
+        "citation_validation_status": "VALIDATED",
+        "citation_repair_attempted": False,
+        "citation_repair_attempt_count": 0,
+        "original_provider_prompt_package_hash": "e" * 64,
+        "effective_provider_prompt_package_hash": "e" * 64,
+        "same_retrieval_package": True,
+        "private_evidence_included": False,
+    }
+
+    persisted = build_generation_persistence_record(
+        _record(
+            request_metadata={
+                "retrieval_package_id": retrieval_id,
+                "grounding_lineage": lineage,
+            }
+        ),
+        owner_lineage=_lineage(),
+    )
+
+    assert persisted["retrieval_package_id"] == retrieval_id
+    assert persisted["request_metadata"]["grounding_lineage"] == lineage
+    assert generation_persistence_has_private_payload(persisted) is False
+
+
 def test_private_payload_detection_is_recursive() -> None:
     assert generation_persistence_has_private_payload({"prompt": "private"}) is True
     assert generation_persistence_has_private_payload(
