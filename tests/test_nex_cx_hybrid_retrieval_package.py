@@ -12,9 +12,11 @@ from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_tok
 from nex_cx.access_context import CxAccessContext
 from nex_cx.hybrid_ranking import HybridRankingError, HybridRankingPolicy
 from nex_cx.hybrid_retrieval_package import (
+    CONFIDENCE_POLICY_ID,
     HybridRetrievalPackageError,
     MAX_QUERY_TEXT_LENGTH,
     PermissionFilteredHybridPackageRuntime,
+    _confidence_decision,
 )
 from nex_cx.ingestion import ContentIngestionStore
 from nex_cx.retrieval import register_retrieval_routes
@@ -156,6 +158,9 @@ def test_runtime_builds_owner_scoped_persistence_compatible_package() -> None:
         "vector_only_count": 0,
     }
     assert package["score_summary"]["rerank_state"] == "APPLIED"
+    assert package["score_summary"]["confidence_policy_id"] == CONFIDENCE_POLICY_ID
+    assert package["score_summary"]["decision_reason"] is None
+    assert package["score_summary"]["evidence_count"] == 1
     assert package["evidence_items"][0]["neighbor_context"] == [
         {"policy": "not_loaded_in_s95"}
     ]
@@ -290,6 +295,11 @@ def test_runtime_builds_no_answer_without_materializing_evidence() -> None:
     assert package["status"] == "NO_ANSWER"
     assert package["no_answer_reason"] == "no_permission_admitted_candidates"
     assert package["score_summary"]["confidence_bucket"] == "NO_ANSWER"
+    assert package["score_summary"]["confidence_policy_id"] == CONFIDENCE_POLICY_ID
+    assert package["score_summary"]["decision_reason"] == (
+        "no_permission_admitted_candidates"
+    )
+    assert package["score_summary"]["evidence_count"] == 0
     assert package["warnings"] == [
         "vector_retrieval_bm25_only",
         "rerank_not_applied",
@@ -313,6 +323,53 @@ def test_runtime_reports_low_confidence_for_bm25_only_low_weight() -> None:
     assert package["status"] == "LOW_CONFIDENCE"
     assert package["no_answer_reason"] == "best_score_below_threshold"
     assert package["score_summary"]["confidence_bucket"] == "LOW_CONFIDENCE"
+    assert package["score_summary"]["decision_reason"] == (
+        "best_score_below_threshold"
+    )
+
+
+def test_runtime_treats_exact_confidence_threshold_as_ready() -> None:
+    candidate_set = _candidate_set()
+    candidate_set["vector_candidates"].update(
+        {"status": "BM25_ONLY", "candidate_count": 0, "candidates": []}
+    )
+    runtime = _runtime(
+        provider=FakeCandidateProvider(candidate_set),
+        reranker=None,
+        policy=HybridRankingPolicy(vector_weight=0.8, bm25_weight=0.2),
+    )
+
+    package = runtime.build_package(_payload(top_k=1), access_context=_context())
+
+    assert package["score_summary"]["best_score"] == 0.2
+    assert package["status"] == "READY"
+    assert package["no_answer_reason"] is None
+    assert package["retrieval_profile"]["confidence_policy"] == {
+        "policy_id": CONFIDENCE_POLICY_ID,
+        "low_confidence_threshold": 0.2,
+        "threshold_inclusive": True,
+        "no_evidence_behavior": "NO_ANSWER",
+        "below_threshold_behavior": "LOW_CONFIDENCE",
+    }
+
+
+def test_confidence_decision_uses_best_score_not_evidence_order() -> None:
+    decision = _confidence_decision(
+        [
+            {"scores": {"final_score": 0.1}},
+            {"scores": {"final_score": 0.8}},
+        ]
+    )
+
+    assert decision == {
+        "policy_id": CONFIDENCE_POLICY_ID,
+        "status": "READY",
+        "reason": None,
+        "best_score": 0.8,
+        "low_confidence_threshold": 0.2,
+        "threshold_inclusive": True,
+        "evidence_count": 2,
+    }
 
 
 @pytest.mark.parametrize(

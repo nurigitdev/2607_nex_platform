@@ -26,6 +26,7 @@ from nex_cx.retrieval_permissions import (
 HYBRID_RETRIEVAL_RUNTIME_SCHEMA_VERSION = "cx_hybrid_retrieval_runtime.v1"
 RETRIEVAL_PACKAGE_SCHEMA_VERSION = "cx_retrieval_context_package.v1"
 DEFAULT_LOW_CONFIDENCE_THRESHOLD = 0.2
+CONFIDENCE_POLICY_ID = "cx_retrieval_confidence_v1"
 MAX_TOP_K = 20
 MAX_QUERY_TEXT_LENGTH = 16_000
 ALLOWED_PURPOSES = {
@@ -331,7 +332,9 @@ def _build_package(
     evidence_items: list[dict[str, Any]],
     now: str,
 ) -> dict[str, Any]:
-    status, no_answer_reason = _retrieval_status(evidence_items)
+    confidence_decision = _confidence_decision(evidence_items)
+    status = confidence_decision["status"]
+    no_answer_reason = confidence_decision["reason"]
     policy = ranked["ranking_policy"]
     policy_hash = _sha256_json(policy)
     rerank_applied = ranked["rerank_state"] == "APPLIED"
@@ -356,6 +359,7 @@ def _build_package(
     visible_ids = ranked["permission_snapshot"]["scope_applied"]["document_ids"]
     score_summary = _score_summary(
         evidence_items,
+        confidence_decision=confidence_decision,
         ranker_mix=ranker_mix,
         rerank_applied=rerank_applied,
         policy_id=policy["policy_id"],
@@ -416,7 +420,11 @@ def _build_package(
                 "neighbor_policy": "not_loaded_in_s95",
             },
             "confidence_policy": {
+                "policy_id": CONFIDENCE_POLICY_ID,
                 "low_confidence_threshold": DEFAULT_LOW_CONFIDENCE_THRESHOLD,
+                "threshold_inclusive": True,
+                "no_evidence_behavior": "NO_ANSWER",
+                "below_threshold_behavior": "LOW_CONFIDENCE",
             },
             "quality_policy": {
                 **policy,
@@ -475,6 +483,7 @@ def _candidate_summary(
 def _score_summary(
     evidence_items: Sequence[Mapping[str, Any]],
     *,
+    confidence_decision: Mapping[str, Any],
     ranker_mix: str,
     rerank_applied: bool,
     policy_id: str,
@@ -482,38 +491,58 @@ def _score_summary(
     scores = [float(item["scores"]["final_score"]) for item in evidence_items]
     if not scores:
         return {
-            "best_score": 0.0,
+            "best_score": confidence_decision["best_score"],
             "score_spread": 0.0,
             "ranker_mix": ranker_mix,
             "rerank_state": "APPLIED" if rerank_applied else "NOT_APPLIED",
-            "confidence_bucket": "NO_ANSWER",
+            "confidence_bucket": confidence_decision["status"],
+            "confidence_policy_id": confidence_decision["policy_id"],
+            "decision_reason": confidence_decision["reason"],
+            "evidence_count": confidence_decision["evidence_count"],
             "quality_policy_id": policy_id,
             "low_confidence_threshold": DEFAULT_LOW_CONFIDENCE_THRESHOLD,
         }
-    best = max(scores)
+    best = confidence_decision["best_score"]
     worst = min(scores)
     return {
         "best_score": best,
         "score_spread": round(best - worst, 8),
         "ranker_mix": ranker_mix,
         "rerank_state": "APPLIED" if rerank_applied else "NOT_APPLIED",
-        "confidence_bucket": (
-            "READY" if best >= DEFAULT_LOW_CONFIDENCE_THRESHOLD else "LOW_CONFIDENCE"
-        ),
+        "confidence_bucket": confidence_decision["status"],
+        "confidence_policy_id": confidence_decision["policy_id"],
+        "decision_reason": confidence_decision["reason"],
+        "evidence_count": confidence_decision["evidence_count"],
         "quality_policy_id": policy_id,
         "low_confidence_threshold": DEFAULT_LOW_CONFIDENCE_THRESHOLD,
     }
 
 
-def _retrieval_status(
+def _confidence_decision(
     evidence_items: Sequence[Mapping[str, Any]],
-) -> tuple[str, str | None]:
-    if not evidence_items:
-        return "NO_ANSWER", "no_permission_admitted_candidates"
-    best = float(evidence_items[0]["scores"]["final_score"])
-    if best < DEFAULT_LOW_CONFIDENCE_THRESHOLD:
-        return "LOW_CONFIDENCE", "best_score_below_threshold"
-    return "READY", None
+) -> dict[str, Any]:
+    scores = [float(item["scores"]["final_score"]) for item in evidence_items]
+    if not scores:
+        status = "NO_ANSWER"
+        reason = "no_permission_admitted_candidates"
+        best_score = 0.0
+    else:
+        best_score = max(scores)
+        status = (
+            "READY"
+            if best_score >= DEFAULT_LOW_CONFIDENCE_THRESHOLD
+            else "LOW_CONFIDENCE"
+        )
+        reason = None if status == "READY" else "best_score_below_threshold"
+    return {
+        "policy_id": CONFIDENCE_POLICY_ID,
+        "status": status,
+        "reason": reason,
+        "best_score": best_score,
+        "low_confidence_threshold": DEFAULT_LOW_CONFIDENCE_THRESHOLD,
+        "threshold_inclusive": True,
+        "evidence_count": len(scores),
+    }
 
 
 def _warnings(
