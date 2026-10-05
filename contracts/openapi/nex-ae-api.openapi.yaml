@@ -536,6 +536,46 @@ paths:
           description: Service claim is missing or invalid.
         "404":
           description: Artifact handoff was not found.
+  /api/v1/generated-responses/{response_id}/artifacts:
+    post:
+      operationId: createAeGroundedResponseArtifact
+      tags:
+        - Artifacts
+      parameters:
+        - name: response_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Supplies artifact_request_id when omitted from the body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AeGroundedArtifactCreateRequest"
+      responses:
+        "202":
+          description: Owner-scoped grounded response artifact and content-free render job admitted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeGroundedArtifactAdmission"
+        "401":
+          description: Browser session or service claim is missing or invalid.
+        "404":
+          description: Artifact handoff or generated response was not found in owner scope.
+        "409":
+          description: Response lineage, citation workflow, or artifact handoff is not renderable.
+        "422":
+          description: Grounded artifact request is invalid.
+        "503":
+          description: Durable lineage, artifact, or queue state is unavailable.
   /api/v1/artifacts:
     get:
       operationId: listAeArtifacts
@@ -2256,6 +2296,124 @@ components:
         updated_at:
           type: string
           format: date-time
+    AeGroundedArtifactCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - artifact_handoff_id
+      properties:
+        artifact_handoff_id:
+          type: string
+          minLength: 1
+        artifact_request_id:
+          type: string
+          minLength: 1
+          description: Required when Idempotency-Key is not supplied.
+        render_request_id:
+          type: string
+          minLength: 1
+        target_formats:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            enum: [MD, HTML_PREVIEW, DOCX, PDF]
+        trace_id:
+          type: string
+          pattern: "^[0-9a-f]{32}$"
+        max_attempts:
+          type: integer
+          minimum: 1
+          maximum: 5
+    AeArtifactRecord:
+      type: object
+      x-nex-canonical-json-schema: schemas/generation/ae_artifact_record.v1.schema.json
+      additionalProperties: true
+      required:
+        - artifact_schema_version
+        - artifact_id
+        - artifact_status
+        - owner_actor_ref
+        - workspace_ref
+        - source_refs
+        - render_jobs
+      properties:
+        artifact_schema_version:
+          const: ae_artifact_record.v1
+        artifact_id:
+          type: string
+        artifact_status:
+          const: RENDERING
+        owner_actor_ref:
+          type: object
+        workspace_ref:
+          type: object
+        source_refs:
+          type: array
+        render_jobs:
+          type: array
+          minItems: 1
+    AeGroundedArtifactResponseBinding:
+      type: object
+      additionalProperties: false
+      required:
+        - response_binding_schema_version
+        - response_id
+        - interaction_id
+        - chat_document_id
+        - cx_generation_id
+        - structured_draft_id
+        - lineage_type
+        - citation_workflow_status
+        - owner_scope_enforced
+        - content_included
+      properties:
+        response_binding_schema_version:
+          const: ae_async_artifact_response_binding.v1
+        response_id:
+          type: string
+        interaction_id:
+          type: string
+        chat_document_id:
+          type: string
+        cx_generation_id:
+          type: string
+        structured_draft_id:
+          type: string
+        lineage_type:
+          type: string
+          enum: [ORIGINAL, RETRY_CHILD]
+        citation_workflow_status:
+          const: VALIDATED
+        owner_scope_enforced:
+          const: true
+        content_included:
+          const: false
+    AeGroundedArtifactAdmission:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/grounded_artifact_admission.v1.schema.json
+      additionalProperties: false
+      required:
+        - grounded_artifact_admission_schema_version
+        - artifact
+        - response_binding
+        - render_admission
+        - owner_scope_enforced
+        - content_included
+      properties:
+        grounded_artifact_admission_schema_version:
+          const: ae_grounded_artifact_admission.v1
+        artifact:
+          $ref: "#/components/schemas/AeArtifactRecord"
+        response_binding:
+          $ref: "#/components/schemas/AeGroundedArtifactResponseBinding"
+        render_admission:
+          $ref: "#/components/schemas/AeAsyncArtifactRenderAdmission"
+        owner_scope_enforced:
+          const: true
+        content_included:
+          const: false
     AeAsyncArtifactRenderCreateRequest:
       type: object
       additionalProperties: false

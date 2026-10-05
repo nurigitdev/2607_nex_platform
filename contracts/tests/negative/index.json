@@ -945,6 +945,11 @@
       "name": "ag_federated_auth_runtime_subject",
       "path": "tests/negative/operations/ag_federated_auth_runtime.subject.json",
       "schema": "schemas/service/nex_ag/federated_auth_runtime.v1.schema.json"
+    },
+    {
+      "name": "ae_grounded_artifact_admission_content_leak",
+      "path": "tests/negative/generation/ae_grounded_artifact_admission.content_leak.json",
+      "schema": "schemas/service/nex_ae_api/grounded_artifact_admission.v1.schema.json"
     }
   ]
 }

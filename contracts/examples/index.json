@@ -1104,6 +1104,11 @@
       "name": "cx_retrieval_confidence_calibration_profile_candidate",
       "path": "examples/service/nex_cx/retrieval_confidence_calibration_profile.candidate.json",
       "schema": "schemas/service/nex_cx/retrieval_confidence_calibration_profile.v1.schema.json"
+    },
+    {
+      "name": "ae_grounded_artifact_admission_enqueued",
+      "path": "examples/generation/ae_grounded_artifact_admission.enqueued.json",
+      "schema": "schemas/service/nex_ae_api/grounded_artifact_admission.v1.schema.json"
     }
   ]
 }

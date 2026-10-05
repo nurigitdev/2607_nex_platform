@@ -518,13 +518,16 @@
         "current_stage": {
           "type": "string",
           "enum": [
+            "QUEUED",
             "HANDOFF_VALIDATING",
             "MARKDOWN_RENDERING",
             "HTML_PREVIEW_RENDERING",
             "DOCX_RENDERING",
             "PDF_RENDERING",
             "LINK_CREATING",
-            "FINALIZING"
+            "FINALIZING",
+            "FAILED",
+            "CANCELLED"
           ]
         },
         "progress_mode": {
@@ -565,6 +568,14 @@
             "string",
             "null"
           ],
+          "format": "date-time"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
           "format": "date-time"
         }
       }

@@ -1,0 +1,51 @@
+{
+  "grounded_artifact_admission_schema_version": "ae_grounded_artifact_admission.v1",
+  "artifact": {
+    "artifact_schema_version": "ae_artifact_record.v1",
+    "artifact_id": "artifact-grounded-001",
+    "artifact_status": "RENDERING",
+    "chat_document_id": "chat-document-001",
+    "interaction_id": "interaction-001",
+    "owner_actor_ref": {
+      "actor_type": "user",
+      "actor_id": "owner-001",
+      "tenant_id": "tenant-001"
+    },
+    "workspace_ref": {
+      "workspace_id": "workspace-001",
+      "tenant_id": "tenant-001"
+    },
+    "source_refs": [{}],
+    "render_jobs": [{}]
+  },
+  "response_binding": {
+    "response_binding_schema_version": "ae_async_artifact_response_binding.v1",
+    "response_id": "response-001",
+    "interaction_id": "interaction-001",
+    "chat_document_id": "chat-document-001",
+    "cx_generation_id": "cx-generation-001",
+    "structured_draft_id": "structured-draft-001",
+    "lineage_type": "ORIGINAL",
+    "citation_workflow_status": "VALIDATED",
+    "owner_scope_enforced": true,
+    "content_included": false
+  },
+  "render_admission": {
+    "render_admission_schema_version": "ae_async_artifact_render_admission.v1",
+    "admission_status": "ENQUEUED",
+    "render": {
+      "render_projection_schema_version": "ae_async_artifact_render_projection.v1",
+      "render_job_id": "render-job-grounded-001",
+      "artifact_id": "artifact-grounded-001",
+      "render_job_status": "QUEUED",
+      "queue_job_status": "QUEUED",
+      "owner_scope_enforced": true,
+      "rendered_content_included": false
+    },
+    "owner_scope_enforced": true,
+    "content_included": false
+  },
+  "owner_scope_enforced": true,
+  "content_included": true,
+  "generated_content": "private grounded answer"
+}
