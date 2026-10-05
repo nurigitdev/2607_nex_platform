@@ -439,6 +439,7 @@ def register_generation_routes(
                         execution_record=execution_record,
                         output_text=output_text_from_mo_response(mo_response),
                         access_context=access_context,
+                        structured_draft=structured_draft,
                     )
                 except GroundedGenerationRuntimeError as exc:
                     raise _runtime_facade_error(exc) from exc
@@ -620,8 +621,34 @@ def register_generation_routes(
         if isinstance(access_context, JSONResponse):
             return access_context
 
-        record = generation_store.get(cx_generation_id)
-        draft = generation_store.get_structured_draft(cx_generation_id)
+        try:
+            if read_model is not None:
+                record = read_model.get_metadata(
+                    cx_generation_id,
+                    access_context=access_context,
+                )
+                draft = read_model.get_structured_draft(
+                    cx_generation_id,
+                    access_context=access_context,
+                )
+            else:
+                record = generation_store.get(cx_generation_id)
+                draft = generation_store.get_structured_draft(cx_generation_id)
+        except GenerationReadModelError as exc:
+            observe_generation_request_failure(
+                emitter,
+                operation="structured_draft_read",
+                error_code=exc.error_code,
+                status_code=exc.status_code,
+                retryable=exc.retryable,
+                trace_id=trace_id_from_headers(request),
+                request_id=request_id_from_headers(request),
+                cx_generation_id=cx_generation_id,
+            )
+            return _generation_problem_response(
+                request,
+                _read_model_facade_error(exc),
+            )
         if (
             record is None
             or not record_visible_to_owner(access_context, record)

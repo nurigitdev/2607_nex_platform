@@ -34,6 +34,10 @@ from nex_cx.async_generation_operations import (  # noqa: E402
 from nex_cx.async_generation_worker import AsyncGenerationWorkerHandler  # noqa: E402
 from nex_cx.chunking import store_chunk_set  # noqa: E402
 from nex_cx.embedding_index import DEFAULT_EMBEDDING_ALIAS  # noqa: E402
+from nex_cx.generation import (  # noqa: E402
+    GenerationExecutionStore,
+    register_generation_routes,
+)
 from nex_cx.generation_read_model import GenerationReadModel  # noqa: E402
 from nex_cx.generation_repository import (  # noqa: E402
     SqlAlchemyGenerationRuntimeRepository,
@@ -351,6 +355,7 @@ def _execute_live_smoke(  # pragma: no cover - protected PostgreSQL/DGX evidence
                             generation_runtime=generation_runtime,
                             private_store=private_store,
                             generation_repository=generation_repository,
+                            generation_client=mo_client,
                             emitter=emitter,
                         )
                         with TestClient(app) as client:
@@ -511,6 +516,7 @@ def _execute_live_smoke(  # pragma: no cover - protected PostgreSQL/DGX evidence
                                         source_kind="postgres-restart-read",
                                     )
                                 ),
+                                generation_client=mo_client,
                                 emitter=emitter,
                             )
                             with TestClient(restarted_app) as restarted_client:
@@ -638,13 +644,24 @@ def _build_cx_app(
     generation_runtime: GroundedGenerationRuntime,
     private_store: FileSystemCxPrivateTextStore,
     generation_repository: SqlAlchemyGenerationRuntimeRepository,
+    generation_client: Any,
     emitter: OperationalEventEmitter,
 ) -> Any:  # pragma: no cover - protected PostgreSQL/DGX evidence
     app = build_service_app(SERVICE_SPECS[SERVICE_ID])
+    read_model = GenerationReadModel(generation_repository, private_store)
     register_retrieval_routes(
         app,
         store=store,
         hybrid_runtime=hybrid_runtime,
+        event_emitter=emitter,
+    )
+    register_generation_routes(
+        app,
+        store=GenerationExecutionStore(),
+        mo_client=generation_client,
+        retrieval_store=store,
+        execution_runtime=generation_runtime,
+        read_model=read_model,
         event_emitter=emitter,
     )
     register_async_generation_operations_routes(
@@ -653,7 +670,7 @@ def _build_cx_app(
         runtime=generation_runtime,
         request_store=private_store,
         retrieval_store=store,
-        read_model=GenerationReadModel(generation_repository, private_store),
+        read_model=read_model,
         event_emitter=emitter,
     )
     return app

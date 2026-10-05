@@ -16,6 +16,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from nex_cx.access_context import CxAccessContext
 from nex_cx.generation_private_output import persist_generation_output
+from nex_cx.generation_structured_draft import (
+    persist_generation_structured_draft,
+)
 from nex_cx.generation_repository import (
     GenerationRuntimeRepository,
     GenerationRuntimeRepositoryError,
@@ -440,6 +443,7 @@ class GroundedGenerationRuntime:
         execution_record: Mapping[str, Any],
         output_text: str,
         access_context: CxAccessContext,
+        structured_draft: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         output_hash = execution_record.get("response_metadata", {}).get("output_hash")
         if not isinstance(output_hash, str):
@@ -456,8 +460,20 @@ class GroundedGenerationRuntime:
                 output_text=output_text,
                 expected_sha256=output_hash,
             )
+            durable_record = deepcopy(dict(execution_record))
+            if structured_draft is not None:
+                draft_metadata = persist_generation_structured_draft(
+                    private_text_store=self.private_output_store,
+                    access_context=access_context,
+                    cx_generation_id=admission.mo_payload["cx_generation_id"],
+                    structured_draft=structured_draft,
+                )
+                durable_record["request_metadata"] = {
+                    **dict(durable_record.get("request_metadata") or {}),
+                    **draft_metadata,
+                }
             stored = self.execution_repository.save(
-                execution_record,
+                durable_record,
                 access_context=access_context,
                 private_output_metadata=private_output,
             )

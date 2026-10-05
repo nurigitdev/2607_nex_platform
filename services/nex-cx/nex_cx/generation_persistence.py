@@ -8,6 +8,9 @@ from uuid import UUID
 
 from nex_cx.citation_repair import validate_citation_repair_projection
 from nex_cx.generation_lineage import validate_grounded_generation_lineage
+from nex_cx.generation_structured_draft import (
+    STRUCTURED_DRAFT_PRIVATE_METADATA_FIELDS,
+)
 from nex_cx.owner_lineage import CxOwnerLineage, attach_owner_lineage
 
 
@@ -34,7 +37,7 @@ _REQUEST_METADATA_FIELDS = frozenset(
         "citation_repair",
         "grounding_lineage",
     }
-)
+) | STRUCTURED_DRAFT_PRIVATE_METADATA_FIELDS
 _RESPONSE_METADATA_FIELDS = frozenset(
     {
         "finish_reason",

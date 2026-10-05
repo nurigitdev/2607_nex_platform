@@ -166,6 +166,7 @@ PROTECTED_ENV_KEYS = (
 
 SmokeExecutor = Callable[..., dict[str, Any]]
 EvidenceRunner = Callable[[dict[str, str]], dict[str, Any]]
+JourneyHook = Callable[[dict[str, Any]], dict[str, Any]]
 
 
 def run_ae_web_grounded_generation_playwright_postgres_smoke(
@@ -424,11 +425,33 @@ class LiveWorkerCxAsyncClient:
         return self._base.cancel_job(*args, **kwargs)
 
 
+def build_live_ingestion_index_run(
+    *,
+    saved: Mapping[str, Any],
+    extraction: Mapping[str, Any],
+    document_id: str,
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    return {
+        "document_id": document_id,
+        "job_id": str(saved["extraction"]["job_id"]),
+        "idempotency_key": str(saved["upload_id"]),
+        "tenant_ref": {"type": "oa.tenant", "id": TENANT_ID},
+        "owner_subject_ref": {"type": "oa.user", "id": OWNER_ID},
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "created_at": str(saved["created_at"]),
+        "updated_at": str(extraction["updated_at"]),
+    }
+
+
 def _execute_live_browser_smoke(  # pragma: no cover - protected DB/DGX/browser
     *,
     ae_database_url: str,
     cx_database_url: str,
     runtime_environ: dict[str, str],
+    journey_hook: JourneyHook | None = None,
 ) -> dict[str, Any]:
     setup_request_id = f"s109-{uuid4().hex}"
     setup_trace_id = uuid4().hex
@@ -445,6 +468,7 @@ def _execute_live_browser_smoke(  # pragma: no cover - protected DB/DGX/browser
     api_server = None
     web_server = None
     node_result: dict[str, Any] = {}
+    extension_observation: dict[str, Any] = {}
     cleanup: dict[str, int] = {}
 
     cx_engine = build_engine(cx_database_url)
@@ -528,6 +552,7 @@ def _execute_live_browser_smoke(  # pragma: no cover - protected DB/DGX/browser
                         generation_runtime=generation_runtime,
                         private_store=private_store,
                         generation_repository=generation_repository,
+                        generation_client=live_mo_client,
                         emitter=cx_emitter,
                     )
                     with TestClient(cx_app) as cx_client:
@@ -579,17 +604,13 @@ def _execute_live_browser_smoke(  # pragma: no cover - protected DB/DGX/browser
                             trace_id=setup_trace_id,
                         )
                         vector_result = composition.ingestion_vector_indexer(
-                            {
-                                "document_id": document_id,
-                                "tenant_ref": {"type": "oa.tenant", "id": TENANT_ID},
-                                "owner_subject_ref": {
-                                    "type": "oa.user",
-                                    "id": OWNER_ID,
-                                },
-                                "request_id": setup_request_id,
-                                "trace_id": setup_trace_id,
-                                "updated_at": extraction["updated_at"],
-                            }
+                            build_live_ingestion_index_run(
+                                saved=saved,
+                                extraction=extraction,
+                                document_id=document_id,
+                                request_id=setup_request_id,
+                                trace_id=setup_trace_id,
+                            )
                         )
                         vector_index_id = vector_result.output_ref.split(":", 1)[1]
                         async_client = LiveWorkerCxAsyncClient(
@@ -706,10 +727,32 @@ def _execute_live_browser_smoke(  # pragma: no cover - protected DB/DGX/browser
                             cx_generation_id=ae_observation["cx_generation_id"],
                             job_id=ae_observation["job_id"],
                         )
+                        if journey_hook is not None:
+                            extension_observation = journey_hook(
+                                {
+                                    "ae_database_url": ae_database_url,
+                                    "ae_engine": ae_engine,
+                                    "ae_factory": ae_factory,
+                                    "ae_chat_store": ae_chat_store,
+                                    "cx_client": cx_client,
+                                    "storage_root": root,
+                                    "tenant_id": TENANT_ID,
+                                    "owner_id": OWNER_ID,
+                                    "workspace_id": workspace_id,
+                                    "chat_document_id": chat_document_id,
+                                    "interaction_id": browser_interaction_id,
+                                    "cx_generation_id": ae_observation[
+                                        "cx_generation_id"
+                                    ],
+                                    "trace_id": ae_trace_id,
+                                    "request_id": ae_request_id,
+                                }
+                            )
                         ae_identity = _database_identity(ae_engine)
                         cx_identity = _database_identity(cx_engine)
 
             node_checks = dict(node_result.get("checks") or {})
+            extension_checks = dict(extension_observation.get("checks") or {})
             checks = {
                 "actual_ae_test_database": ae_identity
                 == {"database": AE_DATABASE, "role": AE_ROLE},
@@ -740,6 +783,7 @@ def _execute_live_browser_smoke(  # pragma: no cover - protected DB/DGX/browser
                     "browser_secret_headers_absent"
                 )
                 is True,
+                **extension_checks,
             }
             return {
                 "execution_state": "EXECUTED",
@@ -776,6 +820,7 @@ def _execute_live_browser_smoke(  # pragma: no cover - protected DB/DGX/browser
                     "introspection_called": "introspect" in oa_fixture.calls,
                     "credential_material_included": False,
                 },
+                "extension_observation": extension_observation,
                 "checks": checks,
                 "failed_checks": [name for name, passed in checks.items() if not passed],
             }
@@ -1234,6 +1279,13 @@ def _failure(
 
 def _safe_exception_detail(exc: Exception) -> str:
     detail = exc.__class__.__name__
+    smoke_stage = getattr(exc, "smoke_stage", None)
+    if (
+        isinstance(smoke_stage, str)
+        and smoke_stage
+        and all(character.isalnum() or character in "._-" for character in smoke_stage)
+    ):
+        return f"{detail}:{smoke_stage}"
     diagnostic = getattr(getattr(exc, "orig", None), "diag", None)
     constraint = getattr(diagnostic, "constraint_name", None)
     if isinstance(constraint, str) and constraint.replace("_", "").isalnum():

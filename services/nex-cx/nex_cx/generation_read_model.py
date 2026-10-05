@@ -9,6 +9,10 @@ from nex_cx.access_context import CxAccessContext
 from nex_cx.citation_repair import validate_citation_repair_projection
 from nex_cx.generation_lineage import validate_grounded_generation_lineage
 from nex_cx.generation_private_output import load_generation_output
+from nex_cx.generation_structured_draft import (
+    STRUCTURED_DRAFT_PRIVATE_METADATA_FIELDS,
+    load_generation_structured_draft,
+)
 from nex_cx.generation_repository import (
     GenerationRuntimeRepository,
     GenerationRuntimeRepositoryError,
@@ -172,6 +176,55 @@ class GenerationReadModel:
             "size_bytes": metadata["output_size_bytes"],
             "owner_scope_enforced": True,
         }
+
+    def get_structured_draft(
+        self,
+        cx_generation_id: str,
+        *,
+        access_context: CxAccessContext,
+    ) -> dict[str, Any] | None:
+        record = self._get_record(
+            cx_generation_id,
+            access_context=access_context,
+        )
+        if record is None:
+            return None
+        metadata = record.get("request_metadata")
+        if not isinstance(metadata, Mapping) or not all(
+            field in metadata for field in STRUCTURED_DRAFT_PRIVATE_METADATA_FIELDS
+        ):
+            raise GenerationReadModelError(
+                error_code="cx.generation_structured_draft_reference_missing",
+                detail="Structured draft private metadata is unavailable.",
+            )
+        expected_draft_id = metadata.get("structured_draft_id")
+        try:
+            draft = load_generation_structured_draft(
+                private_text_store=self.private_output_store,
+                access_context=access_context,
+                cx_generation_id=cx_generation_id,
+                metadata=metadata,
+                expected_structured_draft_id=(
+                    str(expected_draft_id)
+                    if isinstance(expected_draft_id, str)
+                    else None
+                ),
+            )
+        except CxPrivateContentError as exc:
+            raise GenerationReadModelError(
+                error_code="cx.generation_structured_draft_integrity_failed",
+                detail="Structured draft failed its owner-private integrity check.",
+                status_code=exc.status_code,
+                retryable=exc.retryable,
+            ) from exc
+        if draft is None:
+            raise GenerationReadModelError(
+                error_code="cx.generation_structured_draft_payload_unavailable",
+                detail="Structured draft is temporarily unavailable.",
+                status_code=503,
+                retryable=True,
+            )
+        return draft
 
     def _get_record(
         self,

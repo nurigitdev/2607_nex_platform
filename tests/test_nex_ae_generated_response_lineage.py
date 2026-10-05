@@ -177,6 +177,20 @@ def test_prepare_original_response_separates_private_payload_and_public_lineage(
     assert sample_bundle()["lineage"]["response_id"] == lineage["response_id"]
 
 
+def test_prepare_accepts_canonical_persisted_retrieval_identity() -> None:
+    cx_generation = sample_cx_generation()
+    cx_generation["request_metadata"].pop("retrieval_package_id")
+
+    lineage = prepare_generated_response(
+        sample_record(),
+        sample_refresh(),
+        sample_workflow(),
+        cx_generation=cx_generation,
+    )["lineage"]
+
+    assert lineage["retrieval_package_id"] == "retrieval-001"
+
+
 def test_prepare_retry_and_repaired_response_records_parent_lineage() -> None:
     lineage = sample_bundle(retry=True, repaired=True)["lineage"]
 
@@ -434,6 +448,13 @@ def test_prepare_blocks_incomplete_grounded_citation_workflow() -> None:
         ),
         lambda source: source["request_metadata"].update(
             selected_evidence_count=2
+        ),
+        lambda source: source["request_metadata"].update(
+            retrieval_package_id="different"
+        ),
+        lambda source: (
+            source.pop("retrieval_package_id"),
+            source["request_metadata"].pop("retrieval_package_id"),
         ),
         lambda source: source.update(retrieval_package_id="different"),
         lambda source: source["request_metadata"].update(

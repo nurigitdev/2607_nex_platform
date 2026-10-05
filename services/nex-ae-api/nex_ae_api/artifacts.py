@@ -4409,6 +4409,9 @@ def build_artifact_handoff_record(
     citation_claims_hash = sha256_json({"citations": structured_draft["citations"]})
     validation_result_hash = sha256_json(structured_draft["validation"])
     request_metadata = generation_record.get("request_metadata", {})
+    retrieval_package_id = request_metadata.get(
+        "retrieval_package_id"
+    ) or generation_record.get("retrieval_package_id")
     return {
         "handoff_schema_version": "ae_artifact_handoff.v1",
         "artifact_handoff_id": artifact_handoff_id,
@@ -4441,7 +4444,7 @@ def build_artifact_handoff_record(
             "validation_error_count": len(structured_draft["validation"]["errors"]),
             "warning_count": len(structured_draft["validation"]["warnings"]),
             "grounding_required": bool(request_metadata.get("grounding_required")),
-            "retrieval_package_id": request_metadata.get("retrieval_package_id"),
+            "retrieval_package_id": retrieval_package_id,
             "retrieval_package_hash": request_metadata.get("retrieval_package_hash"),
             "evidence_ref_count": int(request_metadata.get("selected_evidence_count") or 0),
         },

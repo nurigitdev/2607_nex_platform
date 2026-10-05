@@ -1,6 +1,6 @@
 # Platform Grounded Generation, Repair, and Artifact Lifecycle E2E
 
-Status: S137 active through Slice 1369.
+Status: S137 active through Slice 1370.
 
 ## Required Outcome
 
@@ -40,7 +40,21 @@ owner-scoped preview and download surfaces.
 | Artifact lifecycle admission and render connection | `1367` | Complete: verified owner-scoped response lineage creates an artifact and durable render job without copying private content into the queue. |
 | Preview/download and restart-safe artifact recovery | `1368` | Complete: a fresh AE runtime resolves durable render state and rendered files through owner-scoped, storage-ref-free browser links. |
 | Contract, operations, and deterministic E2E evidence | `1369` | Complete: strict grounded-artifact admission contracts and one metadata-only evidence pack prove success, bounded repair, owner/lineage denial, and restart recovery without protected dependencies. |
-| Protected PostgreSQL and live generation evidence | `1370` | Actual CX/AE test databases and MO generation provider complete the journey with zero residue. |
+| Protected PostgreSQL and live generation evidence | `1370` | Complete: actual AE/CX test databases and all three MO provider capabilities completed one authenticated browser-to-artifact journey with restart-safe private structured-draft readback and zero row/file residue. |
+
+## Structured Draft Persistence
+
+S137 uses the owner-private storage decision from Slice 1370. CX serializes the
+complete structured draft into its private payload store and writes only an
+opaque storage reference, SHA-256, byte size, backend, and private schema
+version to PostgreSQL. A fresh runtime must re-authorize the exact tenant and
+owner, then verify size, hash, JSON schema, generation id, and draft id before
+returning the draft to an admitted service caller.
+
+The public generation read model excludes the private reference. AE receives
+only an owner-authorized structured draft through the CX API, and neither AE
+nor AG may resolve the CX storage URI directly. The opaque adapter boundary is
+compatible with a later local-filesystem-to-object-storage migration.
 
 Slice 1371 hardens contracts and the operator runbook, closes S137, runs the
 Full Gate, and activates S138.

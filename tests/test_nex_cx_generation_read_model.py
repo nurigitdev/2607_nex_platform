@@ -15,6 +15,9 @@ from nex_cx.access_context import CxAccessContext
 from nex_cx.citation_repair import CitationRepairError
 from nex_cx.generation import GenerationExecutionStore, register_generation_routes
 from nex_cx.generation_private_output import persist_generation_output
+from nex_cx.generation_structured_draft import (
+    persist_generation_structured_draft,
+)
 from nex_cx.generation_read_model import (
     CX_GENERATION_CONTENT_SCHEMA_VERSION,
     CX_GENERATION_READ_MODEL_SCHEMA_VERSION,
@@ -35,6 +38,14 @@ from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_tok
 NOW = datetime(2026, 9, 23, 15, 0, tzinfo=UTC)
 OUTPUT_TEXT = "Restart-safe owner-private grounded answer [1]."
 OUTPUT_HASH = sha256_private_text(OUTPUT_TEXT)
+STRUCTURED_DRAFT = {
+    "structured_draft_schema_version": "cx_structured_draft.v1",
+    "structured_draft_id": "structured-draft-0967",
+    "cx_generation_id": "cx-generation-0967",
+    "status": "VALIDATED",
+    "citations": [],
+    "validation": {"citation_status": "VALIDATED"},
+}
 
 
 def _context(
@@ -70,6 +81,7 @@ def _record(**overrides: Any) -> dict[str, Any]:
             "retrieval_package_id": "96700000-0000-0000-0000-000000000001",
             "retrieval_package_hash": "e" * 64,
             "selected_evidence_count": 1,
+            "structured_draft_id": STRUCTURED_DRAFT["structured_draft_id"],
             "citation_repair": {
                 "repair_schema_version": "cx_citation_repair.v1",
                 "attempted": True,
@@ -163,12 +175,20 @@ def persisted_read_model(
         output_text=OUTPUT_TEXT,
         expected_sha256=OUTPUT_HASH,
     )
+    draft_metadata = persist_generation_structured_draft(
+        private_text_store=private_store,
+        access_context=context,
+        cx_generation_id="cx-generation-0967",
+        structured_draft=STRUCTURED_DRAFT,
+    )
     repository = SqlAlchemyGenerationRuntimeRepository(
         session_factory,
         source_kind="sqlite-regression",
     )
+    record = _record()
+    record["request_metadata"].update(draft_metadata)
     repository.save(
-        _record(),
+        record,
         access_context=context,
         private_output_metadata=private_metadata,
     )
@@ -189,6 +209,10 @@ def test_restart_safe_read_model_redacts_storage_and_reloads_verified_content(
         "cx-generation-0967",
         access_context=_context(),
     )
+    structured_draft = persisted_read_model.get_structured_draft(
+        "cx-generation-0967",
+        access_context=_context(),
+    )
 
     assert metadata is not None
     assert metadata["read_model_schema_version"] == (
@@ -203,6 +227,7 @@ def test_restart_safe_read_model_redacts_storage_and_reloads_verified_content(
     assert OUTPUT_TEXT not in serialized
     assert "output_storage_uri" not in serialized
     assert "output_storage_backend" not in serialized
+    assert "structured_draft_storage_uri" not in serialized
     assert metadata["request_metadata"]["citation_repair"]["attempted"] is True
     assert (
         metadata["request_metadata"]["grounding_lineage"]["evidence_binding_hash"]
@@ -217,6 +242,7 @@ def test_restart_safe_read_model_redacts_storage_and_reloads_verified_content(
         "size_bytes": len(OUTPUT_TEXT.encode("utf-8")),
         "owner_scope_enforced": True,
     }
+    assert structured_draft == STRUCTURED_DRAFT
 
 
 def test_read_model_hides_missing_and_cross_owner_records(
@@ -442,19 +468,29 @@ def test_generation_routes_read_durable_state_after_memory_restart(
         "/api/v1/generations/cx-generation-0967/content",
         headers=_headers(),
     )
+    structured_draft = client.get(
+        "/api/v1/generations/cx-generation-0967/structured-draft",
+        headers=_headers(),
+    )
     cross_owner = client.get(
         "/api/v1/generations/cx-generation-0967/content",
+        headers=_headers(subject_id="employee-other"),
+    )
+    hidden_draft = client.get(
+        "/api/v1/generations/cx-generation-0967/structured-draft",
         headers=_headers(subject_id="employee-other"),
     )
     missing_auth = client.get(
         "/api/v1/generations/cx-generation-0967/content",
     )
 
-    assert metadata.status_code == content.status_code == 200
+    assert metadata.status_code == content.status_code == structured_draft.status_code == 200
     assert metadata.json()["content_ref"]["available"] is True
     assert OUTPUT_TEXT not in metadata.text
     assert content.json()["content"] == OUTPUT_TEXT
+    assert structured_draft.json() == STRUCTURED_DRAFT
     assert cross_owner.status_code == 404
+    assert hidden_draft.status_code == 404
     assert missing_auth.status_code == 401
 
 

@@ -148,6 +148,7 @@ class AsyncGenerationWorkerHandler:
                 execution_record=record,
                 output_text=output_text,
                 access_context=context,
+                structured_draft=draft,
             )
             return {
                 "worker_result_schema_version": (

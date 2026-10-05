@@ -433,18 +433,22 @@ def _grounding_lineage_from_cx_generation(
     )
     if lineage is None:
         raise _invalid("CX grounded generation lineage is missing.")
+    metadata_retrieval_id = request_metadata.get("retrieval_package_id")
+    top_level_retrieval_id = cx_generation.get("retrieval_package_id")
     if (
         lineage["retrieval_package_id"] != quality["retrieval_package_id"]
         or lineage["retrieval_package_hash"] != quality["retrieval_package_hash"]
-        or request_metadata.get("retrieval_package_id")
-        != lineage["retrieval_package_id"]
         or request_metadata.get("retrieval_package_hash")
         != lineage["retrieval_package_hash"]
         or request_metadata.get("selected_evidence_count")
         != lineage["selected_evidence_count"]
+        or (
+            metadata_retrieval_id is not None
+            and metadata_retrieval_id != lineage["retrieval_package_id"]
+        )
+        or (metadata_retrieval_id is None and top_level_retrieval_id is None)
     ):
         raise _invalid("CX grounded generation retrieval lineage is inconsistent.")
-    top_level_retrieval_id = cx_generation.get("retrieval_package_id")
     if (
         top_level_retrieval_id is not None
         and top_level_retrieval_id != lineage["retrieval_package_id"]

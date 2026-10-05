@@ -177,6 +177,14 @@ def test_failed_checks_and_bounded_exceptions(monkeypatch) -> None:
     assert generic["failure_code"] == "execution_failed"
     assert generic["detail"] == "RuntimeError"
 
+    staged = RuntimeError("private")
+    staged.smoke_stage = "admit_artifact.lineage_invalid"
+    assert smoke._safe_exception_detail(staged) == (
+        "RuntimeError:admit_artifact.lineage_invalid"
+    )
+    staged.smoke_stage = "unsafe detail!"
+    assert smoke._safe_exception_detail(staged) == "RuntimeError"
+
 
 def test_protected_oa_fixture_login_introspection_and_revoke() -> None:
     fixture = smoke.ProtectedOaSessionFixture(

@@ -868,9 +868,13 @@ def sqlite_artifact_session_factory():
 
 
 def test_build_artifact_handoff_record_copies_only_safe_lineage() -> None:
+    generation_record = sample_generation_record()
+    generation_record["retrieval_package_id"] = generation_record[
+        "request_metadata"
+    ].pop("retrieval_package_id")
     record = build_artifact_handoff_record(
         source_payload=artifact_payload(),
-        generation_record=sample_generation_record(),
+        generation_record=generation_record,
         structured_draft=sample_structured_draft(),
         artifact_request_id=None,
         request_id=REQUEST_ID,
@@ -885,6 +889,7 @@ def test_build_artifact_handoff_record_copies_only_safe_lineage() -> None:
     assert len(record["citation_claims_hash"]) == 64
     assert len(record["validation_result_hash"]) == 64
     assert record["quality_summary"]["evidence_ref_count"] == 2
+    assert record["quality_summary"]["retrieval_package_id"] == "cx-ret-001"
     assert "raw prompt" not in str(record).lower()
     assert "/data/nex-platform" not in str(record)
 
