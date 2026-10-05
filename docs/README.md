@@ -1473,6 +1473,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1365`](slices/1365_cx_citation_repair_lineage_binding.md) | `S137-004` Bind citation validation and one repair attempt to the exact retrieval package, evidence set, and prompt transition. |
 | [`Slice 1366`](slices/1366_ae_generated_response_grounding_lineage.md) | `S137-005` Persist exact CX grounding lineage in AE, fail closed on incomplete citation workflows, and pass the Checkpoint Gate. |
 | [`Slice 1367`](slices/1367_ae_grounded_artifact_admission.md) | `S137-006` Admit owner-scoped grounded responses into artifact creation and durable content-free rendering. |
+| [`Slice 1368`](slices/1368_ae_grounded_artifact_recovery_access.md) | `S137-007` Harden owner-scoped artifact access, cancellation, and restart-safe render recovery. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

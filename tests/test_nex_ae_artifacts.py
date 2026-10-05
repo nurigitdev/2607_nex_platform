@@ -8370,6 +8370,10 @@ def test_sqlalchemy_artifact_record_store_round_trips_render_metadata_with_sqlit
         render_result["render_job"]
     )
     assert store.get_file(artifact_file["artifact_file_id"]) == artifact_file
+    assert store.get_artifact_for_file(artifact_file["artifact_file_id"])[
+        "artifact_id"
+    ] == created["artifact_id"]
+    assert store.get_artifact_for_file("missing-file") is None
     assert store.get_file_link(artifact_file["artifact_file_id"], "preview") == (
         render_result["artifact_links"][0]
     )

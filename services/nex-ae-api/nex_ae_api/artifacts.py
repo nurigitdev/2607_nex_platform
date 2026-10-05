@@ -833,6 +833,16 @@ class ArtifactRecordStore:
     def get_file(self, artifact_file_id: str) -> dict[str, Any] | None:
         return self.artifact_files.get(artifact_file_id)
 
+    def get_artifact_for_file(self, artifact_file_id: str) -> dict[str, Any] | None:
+        for record in self.records.values():
+            if any(
+                isinstance(item, Mapping)
+                and item.get("artifact_file_id") == artifact_file_id
+                for item in record.get("files", [])
+            ):
+                return record
+        return None
+
     def get_file_link(
         self,
         artifact_file_id: str,
@@ -1577,6 +1587,25 @@ class SqlAlchemyArtifactRecordStore:
                     .first()
                 )
             return _artifact_file_from_row(row) if row is not None else None
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_store_unavailable",
+                detail="AE artifact store is unavailable.",
+                retryable=True,
+            ) from exc
+
+    def get_artifact_for_file(self, artifact_file_id: str) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                artifact_id = session.execute(
+                    text(
+                        "SELECT artifact_id FROM ae_artifact_files "
+                        "WHERE artifact_file_id = :artifact_file_id"
+                    ),
+                    {"artifact_file_id": artifact_file_id},
+                ).scalar_one_or_none()
+            return self.get(str(artifact_id)) if artifact_id is not None else None
         except SQLAlchemyError as exc:
             raise ArtifactHandoffError(
                 status_code=503,
@@ -4241,11 +4270,14 @@ def register_artifact_handoff_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
-
-        artifact_file = artifact_record_store.get_file(artifact_file_id)
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
+        artifact_file = _visible_artifact_file(
+            artifact_record_store,
+            artifact_file_id,
+            auth_context,
+        )
         if artifact_file is None:
             return _artifact_problem_response(
                 request,
@@ -4255,7 +4287,7 @@ def register_artifact_handoff_routes(
                     detail=f"Artifact file was not found: {artifact_file_id}",
                 ),
             )
-        return artifact_file
+        return _artifact_file_route_view(artifact_file, auth_context)
 
     @app.get("/api/v1/artifact-files/{artifact_file_id}/preview", response_model=None)
     def preview_artifact_file(
@@ -4263,11 +4295,21 @@ def register_artifact_handoff_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
         try:
+            if _visible_artifact_file(
+                artifact_record_store,
+                artifact_file_id,
+                auth_context,
+            ) is None:
+                raise ArtifactHandoffError(
+                    status_code=404,
+                    error_code="ae.artifact_file_not_found",
+                    detail=f"Artifact file was not found: {artifact_file_id}",
+                )
             artifact_file, preview_link, payload = resolve_rendered_artifact_file_payload(
                 artifact_record_store,
                 artifact_file_id=artifact_file_id,
@@ -4277,7 +4319,10 @@ def register_artifact_handoff_routes(
             preview_text = rendered_text[:2000]
             return {
                 "preview_schema_version": "ae_artifact_file_preview.v1",
-                "artifact_file": artifact_file,
+                "artifact_file": _artifact_file_route_view(
+                    artifact_file,
+                    auth_context,
+                ),
                 "artifact_link": preview_link,
                 "content_type": artifact_file["mime_type"],
                 "text_preview": preview_text,
@@ -4292,11 +4337,21 @@ def register_artifact_handoff_routes(
         request: Request,
         authorization: str | None = Header(default=None),
     ):
-        auth_problem = _authorize_ae_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
 
         try:
+            if _visible_artifact_file(
+                artifact_record_store,
+                artifact_file_id,
+                auth_context,
+            ) is None:
+                raise ArtifactHandoffError(
+                    status_code=404,
+                    error_code="ae.artifact_file_not_found",
+                    detail=f"Artifact file was not found: {artifact_file_id}",
+                )
             artifact_file, download_link, payload = resolve_rendered_artifact_file_payload(
                 artifact_record_store,
                 artifact_file_id=artifact_file_id,
@@ -4304,7 +4359,10 @@ def register_artifact_handoff_routes(
             )
             return {
                 "download_schema_version": "ae_artifact_file_download.v1",
-                "artifact_file": artifact_file,
+                "artifact_file": _artifact_file_route_view(
+                    artifact_file,
+                    auth_context,
+                ),
                 "artifact_link": download_link,
                 "download_file_name": artifact_file["file_name"],
                 "content_type": artifact_file["mime_type"],
@@ -11472,6 +11530,44 @@ def _artifact_handoff_visible_to_owner(
         actor_ref.get("tenant_id") == scope.tenant_id
         and actor_ref.get("actor_id") == scope.owner_user_id
     )
+
+
+def _visible_artifact_file(
+    artifact_store: Any,
+    artifact_file_id: str,
+    auth_context: AeFacadeRouteAuthContext,
+) -> dict[str, Any] | None:
+    artifact_file = artifact_store.get_file(artifact_file_id)
+    if artifact_file is None:
+        return None
+    artifact = artifact_store.get_artifact_for_file(artifact_file_id)
+    if artifact is None:
+        return None
+    artifact = _visible_artifact_record(
+        artifact_store,
+        artifact["artifact_id"],
+        auth_context,
+    )
+    if artifact is None:
+        return None
+    files = artifact.get("files")
+    if not isinstance(files, list) or not any(
+        isinstance(item, Mapping)
+        and item.get("artifact_file_id") == artifact_file_id
+        for item in files
+    ):
+        return None
+    return artifact_file
+
+
+def _artifact_file_route_view(
+    artifact_file: Mapping[str, Any],
+    auth_context: AeFacadeRouteAuthContext,
+) -> dict[str, Any]:
+    view = deepcopy(dict(artifact_file))
+    if auth_context.is_browser_user:
+        view.pop("storage_ref", None)
+    return view
 
 
 def _async_artifact_render_problem_response(
