@@ -70,7 +70,7 @@ class ProductionHybridCandidateProvider:
             access_context=access_context,
             document_ids=visible_ids,
         )
-        query_vector = _query_vector(
+        query_vector, query_embedding_profile = _query_embedding(
             self.embedding_client,
             query_text=query_text,
             embedding_alias=self.embedding_alias,
@@ -90,6 +90,7 @@ class ProductionHybridCandidateProvider:
             vector_limit=self.vector_limit,
         )
         result["query_vector_sha256"] = sha256_private_vector(query_vector)
+        result["query_embedding_profile"] = query_embedding_profile
         return result
 
 
@@ -159,13 +160,13 @@ def build_permission_hardened_hybrid_runtime(
     )
 
 
-def _query_vector(
+def _query_embedding(
     client: MoEmbeddingClient,
     *,
     query_text: str,
     embedding_alias: str,
     access_context: CxAccessContext,
-) -> list[float]:
+) -> tuple[list[float], dict[str, str | None]]:
     try:
         response = client.create_embeddings(
             [query_text],
@@ -185,7 +186,12 @@ def _query_vector(
             )
         ):
             raise ValueError("invalid embedding response")
-        return [float(value) for value in vector]
+        return [float(value) for value in vector], {
+            "provider_alias": _optional_identity(response.get("alias"))
+            or embedding_alias,
+            "model_revision": _optional_identity(response.get("model_revision")),
+            "deployment_id": _optional_identity(response.get("deployment_id")),
+        }
     except HybridCandidateOrchestrationError:
         raise
     except Exception as exc:
@@ -195,6 +201,13 @@ def _query_vector(
             detail="Owner-scoped hybrid retrieval query embedding is unavailable.",
             retryable=True,
         ) from exc
+
+
+def _optional_identity(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized if normalized and len(normalized) <= 160 else None
 
 
 def _document_ids(

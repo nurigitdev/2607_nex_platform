@@ -138,6 +138,15 @@ def test_runtime_builds_owner_scoped_persistence_compatible_package() -> None:
     assert package["owner_subject_ref_id"] == "owner-one"
     assert package["permission_snapshot"]["policy_version"] == "cx.private_owner_active.v1"
     assert package["retrieval_profile"]["quality_policy"]["vector_weight"] == 0.7
+    assert package["retrieval_profile"]["embedding_profile"] == {
+        "index_status": "READY",
+        "query_embedding_provided": True,
+        "query_embedding_sha256": "e" * 64,
+        "vector_dimension": 2,
+        "provider_alias": "embedding-default",
+        "model_revision": "Qwen3-Embedding-4B",
+        "deployment_id": "dgx-embedding-9112",
+    }
     assert package["score_summary"]["rerank_state"] == "APPLIED"
     assert package["evidence_items"][0]["neighbor_context"] == [
         {"policy": "not_loaded_in_s95"}
@@ -184,6 +193,19 @@ def test_runtime_preserves_fail_closed_permission_denial() -> None:
     assert captured.value.error_code == "cx.document_scope_not_found"
     assert captured.value.retryable is False
     assert "foreign-document" not in captured.value.detail
+
+
+def test_runtime_omits_unavailable_query_embedding_identity() -> None:
+    candidate_set = _candidate_set()
+    candidate_set["query_embedding_profile"] = None
+    package = _runtime(
+        provider=FakeCandidateProvider(candidate_set=candidate_set)
+    ).build_package(_payload(), access_context=_context())
+
+    profile = package["retrieval_profile"]["embedding_profile"]
+    assert profile["provider_alias"] is None
+    assert profile["model_revision"] is None
+    assert profile["deployment_id"] is None
 
 
 def test_runtime_is_deterministic_except_for_injected_clock() -> None:
@@ -497,6 +519,11 @@ def _candidate_set() -> dict[str, Any]:
         "permission_enforced_before_candidates": True,
         "query_sha256": _digest(QUERY),
         "query_vector_sha256": "e" * 64,
+        "query_embedding_profile": {
+            "provider_alias": "embedding-default",
+            "model_revision": "Qwen3-Embedding-4B",
+            "deployment_id": "dgx-embedding-9112",
+        },
         "tokenizer_profile": {
             "bm25_tokenizer": "mecab_ko",
             "fallback_used": False,

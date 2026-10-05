@@ -11,6 +11,7 @@ from nex_cx.hybrid_candidate_orchestration import HybridCandidateOrchestrationEr
 from nex_cx.hybrid_retrieval_runtime import (
     ProductionAuthorizedEvidenceMaterializer,
     ProductionHybridCandidateProvider,
+    _optional_identity,
     _document_ids,
     build_permission_hardened_hybrid_runtime,
 )
@@ -134,6 +135,42 @@ def test_candidate_provider_enforces_permission_before_embedding() -> None:
     assert result["lexical_candidates"]["candidate_count"] == 1
     assert result["vector_candidates"]["status"] == "BM25_ONLY"
     assert len(result["query_vector_sha256"]) == 64
+    assert result["query_embedding_profile"] == {
+        "provider_alias": "embedding-primary",
+        "model_revision": None,
+        "deployment_id": None,
+    }
+
+
+def test_candidate_provider_preserves_safe_embedding_identity() -> None:
+    embedding = FakeEmbeddingClient(
+        {
+            "alias": "embedding-default",
+            "model_revision": "Qwen3-Embedding-4B",
+            "deployment_id": "dgx-embedding-9112",
+            "data": [{"embedding": [0.1, 0.2]}],
+        }
+    )
+
+    result = _provider(embedding=embedding).build_candidate_set(
+        access_context=CONTEXT,
+        query_text="권한 검색",
+        requested_document_ids=["document-s100"],
+    )
+
+    assert result["query_embedding_profile"] == {
+        "provider_alias": "embedding-default",
+        "model_revision": "Qwen3-Embedding-4B",
+        "deployment_id": "dgx-embedding-9112",
+    }
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(None, None), ("", None), (" " * 3, None), ("x" * 161, None), (" model ", "model")],
+)
+def test_optional_embedding_identity_is_bounded(value, expected) -> None:
+    assert _optional_identity(value) == expected
 
 
 def test_candidate_provider_hides_foreign_document_before_provider_call() -> None:

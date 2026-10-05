@@ -341,6 +341,9 @@ def _build_package(
         else policy["policy_id"]
     )
     vector_result = candidate_set["vector_candidates"]
+    query_embedding_profile = candidate_set.get("query_embedding_profile")
+    if not isinstance(query_embedding_profile, Mapping):
+        query_embedding_profile = {}
     query_dimension = vector_result.get("query_dimension")
     embedding_provided = (
         isinstance(query_dimension, int)
@@ -398,6 +401,9 @@ def _build_package(
                 "query_embedding_provided": embedding_provided,
                 "query_embedding_sha256": embedding_sha256,
                 "vector_dimension": query_dimension if embedding_provided else 0,
+                "provider_alias": query_embedding_profile.get("provider_alias"),
+                "model_revision": query_embedding_profile.get("model_revision"),
+                "deployment_id": query_embedding_profile.get("deployment_id"),
             },
             "bm25_tokenizer": candidate_set["tokenizer_profile"].get(
                 "bm25_tokenizer"

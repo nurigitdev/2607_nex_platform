@@ -53,6 +53,10 @@ Slice 1354 aligned candidate lineage: PostgreSQL BM25 now reads only the latest
 chunk set for each document, matching the source snapshot used by the pgvector
 freshness guard. Protected test-database evidence rejects stale lexical terms.
 
+Slice 1355 preserves query-embedding and reranker alias/model/deployment
+identity in the retrieval profile while excluding endpoints, credentials, raw
+vectors, and private payloads. Live model equality is assigned to Slice 1359.
+
 ## Slice Sequence
 
 | Slice | Scope |

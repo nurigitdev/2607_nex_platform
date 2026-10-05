@@ -1460,6 +1460,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1352`](slices/1352_platform_permission_hybrid_retrieval_boundary.md) | `S136-001` Freeze the live permission-filtered hybrid retrieval boundary, six integration gaps, and S137 handoff. |
 | [`Slice 1353`](slices/1353_cx_permission_first_scope_hardening.md) | `S136-002` Preserve fail-closed 404 denial and prove mixed owner scope cannot reach candidate or private-payload dependencies. |
 | [`Slice 1354`](slices/1354_cx_current_candidate_lineage.md) | `S136-003` Align PostgreSQL BM25 with the current chunk generation and reject stale lexical candidates. |
+| [`Slice 1355`](slices/1355_cx_live_retrieval_provider_identity.md) | `S136-004` Preserve privacy-safe live embedding and reranker alias, model, and deployment identity. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
