@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from fastapi.testclient import TestClient
+import pytest
 
 from nex_runtime import (
     InMemoryOperationalEventStore,
@@ -18,6 +19,7 @@ from nex_cx.retrieval import register_retrieval_routes
 from nex_cx.retrieval_observability import (
     CX_RETRIEVAL_PACKAGE_FAILED_EVENT,
     CX_RETRIEVAL_PACKAGE_OBSERVED_EVENT,
+    _failure_provider_role,
     _failure_event_id,
     _outcome_event_id,
     observe_retrieval_failure,
@@ -69,15 +71,29 @@ def test_success_event_is_metadata_only_and_deterministic() -> None:
         "id": "package-0948",
     }
     assert event["details"] == {
-        "observability_schema_version": "cx_retrieval_observability.v1",
+        "observability_schema_version": "cx_retrieval_observability.v2",
         "retrieval_status": "READY",
         "runtime_schema_version": "cx_hybrid_retrieval_runtime.v1",
         "policy_id": "weighted_rrf_vector_bm25_v1",
         "permission_policy_version": "cx.private_owner_active.v1",
         "rerank_state": "APPLIED",
+        "confidence_policy_id": "cx_retrieval_confidence_v1",
+        "confidence_bucket": "READY",
+        "confidence_decision_reason": None,
+        "best_score": 0.91,
+        "low_confidence_threshold": 0.2,
         "evidence_count": 1,
         "document_count": 1,
         "candidate_count": 2,
+        "bm25_candidate_count": 2,
+        "vector_candidate_count": 2,
+        "fused_candidate_count": 2,
+        "embedding_provider_alias": "embedding-default",
+        "embedding_model_revision": "Qwen3-Embedding-4B",
+        "embedding_deployment_id": "dgx-embedding-9112",
+        "reranker_provider_alias": "reranker-default",
+        "reranker_model_revision": "Qwen3-Reranker-4B",
+        "reranker_deployment_id": "dgx-reranker-9113",
         "warning_count": 0,
         "no_answer_reason": None,
     }
@@ -114,12 +130,13 @@ def test_known_failure_emits_redacted_retry_evidence() -> None:
     assert event["severity"] == "ERROR"
     assert event["subject_ref"] is None
     assert event["details"] == {
-        "observability_schema_version": "cx_retrieval_observability.v1",
+        "observability_schema_version": "cx_retrieval_observability.v2",
         "error_code": "CX_HYBRID_CANDIDATE_PROVIDER_UNAVAILABLE",
         "status_code": 503,
         "retryable": True,
         "failure_stage": "package_build",
         "runtime_mode": "hardened",
+        "provider_role": "candidate_pipeline",
     }
     assert "SECRET" not in json.dumps(event)
 
@@ -206,6 +223,8 @@ def test_observability_helpers_normalize_sparse_metadata_and_warning_severity() 
     assert event["details"]["evidence_count"] == 0
     assert event["details"]["document_count"] == 0
     assert event["details"]["policy_id"] is None
+    assert event["details"]["best_score"] is None
+    assert event["details"]["embedding_provider_alias"] is None
 
 
 def test_failure_helper_normalizes_empty_values_and_warning_severity() -> None:
@@ -240,6 +259,7 @@ def test_failure_helper_normalizes_empty_values_and_warning_severity() -> None:
     assert event["details"]["error_code"] == "CX_RETRIEVAL_FAILED"
     assert event["details"]["failure_stage"] == "unknown"
     assert event["details"]["runtime_mode"] == "unknown"
+    assert event["details"]["provider_role"] is None
     assert event["event_id"] == _failure_event_id(
         error_code="CX_RETRIEVAL_FAILED",
         stage="unknown",
@@ -256,6 +276,27 @@ def test_authentication_failure_does_not_emit_untrusted_event() -> None:
 
     assert response.status_code == 401
     assert events.list_events() == []
+
+
+@pytest.mark.parametrize(
+    ("error_code", "expected"),
+    [
+        ("CX_QUERY_EMBEDDING_UNAVAILABLE", "embedding"),
+        ("CX_RERANKER_UNAVAILABLE", "reranker"),
+        ("CX_VECTOR_CANDIDATE_SEARCH_UNAVAILABLE", "vector_search"),
+        ("CX_QUERY_TOKENIZER_UNAVAILABLE", "lexical_search"),
+        ("CX_AUTHORIZED_EVIDENCE_UNAVAILABLE", "private_evidence"),
+        ("CX_PRIVATE_CHUNK_TEXT_UNAVAILABLE", "private_evidence"),
+        ("CX_HYBRID_CANDIDATE_PROVIDER_UNAVAILABLE", "candidate_pipeline"),
+        ("CX_RETRIEVAL_PERSISTENCE_UNAVAILABLE", "persistence"),
+        ("CX_RETRIEVAL_RUNTIME_UNAVAILABLE", None),
+    ],
+)
+def test_failure_provider_role_is_safe_and_actionable(
+    error_code: str,
+    expected: str | None,
+) -> None:
+    assert _failure_provider_role(error_code) == expected
 
 
 def _client(
@@ -295,13 +336,35 @@ def _package() -> dict[str, Any]:
         "request_id": "request-0948",
         "query_text": PRIVATE_QUERY,
         "retrieval_profile": {
-            "quality_policy": {"policy_id": "weighted_rrf_vector_bm25_v1"}
+            "quality_policy": {"policy_id": "weighted_rrf_vector_bm25_v1"},
+            "candidate_summary": {
+                "bm25_candidate_count": 2,
+                "vector_candidate_count": 2,
+                "fused_candidate_count": 2,
+            },
+            "embedding_profile": {
+                "provider_alias": "embedding-default",
+                "model_revision": "Qwen3-Embedding-4B",
+                "deployment_id": "dgx-embedding-9112",
+            },
+            "reranker_profile": {
+                "provider_alias": "reranker-default",
+                "model_revision": "Qwen3-Reranker-4B",
+                "deployment_id": "dgx-reranker-9113",
+            },
         },
         "permission_snapshot": {
             "actor_id": "owner-one",
             "policy_version": "cx.private_owner_active.v1",
         },
-        "score_summary": {"rerank_state": "APPLIED"},
+        "score_summary": {
+            "rerank_state": "APPLIED",
+            "confidence_policy_id": "cx_retrieval_confidence_v1",
+            "confidence_bucket": "READY",
+            "decision_reason": None,
+            "best_score": 0.91,
+            "low_confidence_threshold": 0.2,
+        },
         "source_summary": {"document_count": 1, "chunk_count": 2},
         "evidence_items": [
             {

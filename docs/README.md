@@ -1463,6 +1463,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1355`](slices/1355_cx_live_retrieval_provider_identity.md) | `S136-004` Preserve privacy-safe live embedding and reranker alias, model, and deployment identity. |
 | [`Slice 1356`](slices/1356_cx_weighted_rrf_acceptance.md) | `S136-005` Add count-only candidate-channel evidence and freeze weighted RRF acceptance at the Checkpoint Gate. |
 | [`Slice 1357`](slices/1357_cx_retrieval_confidence_semantics.md) | `S136-006` Unify READY, LOW_CONFIDENCE, and NO_ANSWER under one versioned, inclusive confidence decision. |
+| [`Slice 1358`](slices/1358_cx_retrieval_operations_evidence.md) | `S136-007` Add metadata-only confidence, channel, provider identity, and failure-role operations evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

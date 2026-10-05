@@ -13,7 +13,7 @@ from nex_runtime import (
 
 CX_RETRIEVAL_PACKAGE_OBSERVED_EVENT = "cx.retrieval.package_observed"
 CX_RETRIEVAL_PACKAGE_FAILED_EVENT = "cx.retrieval.package_failed"
-RETRIEVAL_OBSERVABILITY_SCHEMA_VERSION = "cx_retrieval_observability.v1"
+RETRIEVAL_OBSERVABILITY_SCHEMA_VERSION = "cx_retrieval_observability.v2"
 
 
 def observe_retrieval_package(
@@ -24,6 +24,9 @@ def observe_retrieval_package(
     status = _safe_string(package.get("status"), "UNKNOWN").upper()
     profile = _mapping(package.get("retrieval_profile"))
     quality_policy = _mapping(profile.get("quality_policy"))
+    candidate_summary = _mapping(profile.get("candidate_summary"))
+    embedding_profile = _mapping(profile.get("embedding_profile"))
+    reranker_profile = _mapping(profile.get("reranker_profile"))
     score_summary = _mapping(package.get("score_summary"))
     source_summary = _mapping(package.get("source_summary"))
     permission_snapshot = _mapping(package.get("permission_snapshot"))
@@ -47,9 +50,49 @@ def observe_retrieval_package(
                 permission_snapshot.get("policy_version")
             ),
             "rerank_state": _optional_string(score_summary.get("rerank_state")),
+            "confidence_policy_id": _optional_string(
+                score_summary.get("confidence_policy_id")
+            ),
+            "confidence_bucket": _optional_string(
+                score_summary.get("confidence_bucket")
+            ),
+            "confidence_decision_reason": _optional_string(
+                score_summary.get("decision_reason")
+            ),
+            "best_score": _safe_number(score_summary.get("best_score")),
+            "low_confidence_threshold": _safe_number(
+                score_summary.get("low_confidence_threshold")
+            ),
             "evidence_count": _safe_count(evidence_items),
             "document_count": _safe_int(source_summary.get("document_count")),
             "candidate_count": _safe_int(source_summary.get("chunk_count")),
+            "bm25_candidate_count": _safe_int(
+                candidate_summary.get("bm25_candidate_count")
+            ),
+            "vector_candidate_count": _safe_int(
+                candidate_summary.get("vector_candidate_count")
+            ),
+            "fused_candidate_count": _safe_int(
+                candidate_summary.get("fused_candidate_count")
+            ),
+            "embedding_provider_alias": _optional_string(
+                embedding_profile.get("provider_alias")
+            ),
+            "embedding_model_revision": _optional_string(
+                embedding_profile.get("model_revision")
+            ),
+            "embedding_deployment_id": _optional_string(
+                embedding_profile.get("deployment_id")
+            ),
+            "reranker_provider_alias": _optional_string(
+                reranker_profile.get("provider_alias")
+            ),
+            "reranker_model_revision": _optional_string(
+                reranker_profile.get("model_revision")
+            ),
+            "reranker_deployment_id": _optional_string(
+                reranker_profile.get("deployment_id")
+            ),
             "warning_count": _safe_count(warnings),
             "no_answer_reason": _optional_string(package.get("no_answer_reason")),
         },
@@ -84,6 +127,7 @@ def observe_retrieval_failure(
             "retryable": retryable,
             "failure_stage": safe_stage,
             "runtime_mode": safe_runtime_mode,
+            "provider_role": _failure_provider_role(safe_error_code),
         },
         event_id=_failure_event_id(
             error_code=safe_error_code,
@@ -132,6 +176,30 @@ def _safe_count(value: object) -> int:
 
 def _safe_int(value: object) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _safe_number(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _failure_provider_role(error_code: str) -> str | None:
+    if "EMBEDDING" in error_code:
+        return "embedding"
+    if "RERANK" in error_code:
+        return "reranker"
+    if "VECTOR" in error_code:
+        return "vector_search"
+    if "TOKENIZER" in error_code:
+        return "lexical_search"
+    if "EVIDENCE" in error_code or "PRIVATE_CHUNK" in error_code:
+        return "private_evidence"
+    if "CANDIDATE" in error_code:
+        return "candidate_pipeline"
+    if "PERSISTENCE" in error_code:
+        return "persistence"
+    return None
 
 
 def _safe_string(value: object, fallback: str) -> str:

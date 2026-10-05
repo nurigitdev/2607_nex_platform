@@ -64,6 +64,10 @@ Slice 1357 unifies READY, LOW_CONFIDENCE, and NO_ANSWER under the versioned
 `cx_retrieval_confidence_v1` decision. The frozen threshold is inclusive at
 `0.2`, and the best score is selected independently of evidence order.
 
+Slice 1358 advances retrieval operations evidence to
+`cx_retrieval_observability.v2`, exposing only confidence, channel counts,
+safe provider identity, and classified failure-role metadata.
+
 ## Slice Sequence
 
 | Slice | Scope |

@@ -101,6 +101,13 @@ def run_cx_retrieval_operations_observability() -> dict[str, Any]:
             success_event.get("details", {}).get("retrieval_status") == "READY"
             and success_event.get("details", {}).get("evidence_count") == 1
             and success_event.get("details", {}).get("rerank_state") == "APPLIED"
+            and success_event.get("details", {}).get("bm25_candidate_count") == 1
+            and success_event.get("details", {}).get("vector_candidate_count") == 1
+            and success_event.get("details", {}).get("confidence_bucket") == "READY"
+            and success_event.get("details", {}).get("embedding_model_revision")
+            == "Qwen3-Embedding-4B"
+            and success_event.get("details", {}).get("reranker_model_revision")
+            == "Qwen3-Reranker-4B"
         ),
         "success_event_deterministic": (
             success_event.get("subject_ref", {}).get("id")
@@ -117,6 +124,8 @@ def run_cx_retrieval_operations_observability() -> dict[str, Any]:
             == "package_build"
             and failure_event.get("details", {}).get("retryable") is True
             and failure_event.get("details", {}).get("runtime_mode") == "hardened"
+            and failure_event.get("details", {}).get("provider_role")
+            == "candidate_pipeline"
         ),
         "failure_detail_redacted": "provider private detail" not in serialized_events,
         "private_payload_absent": (
@@ -171,13 +180,35 @@ def _package() -> dict[str, Any]:
         "request_id": "request-0948-contract",
         "query_text": PRIVATE_QUERY,
         "retrieval_profile": {
-            "quality_policy": {"policy_id": "weighted_rrf_vector_bm25_v1"}
+            "quality_policy": {"policy_id": "weighted_rrf_vector_bm25_v1"},
+            "candidate_summary": {
+                "bm25_candidate_count": 1,
+                "vector_candidate_count": 1,
+                "fused_candidate_count": 1,
+            },
+            "embedding_profile": {
+                "provider_alias": "embedding-default",
+                "model_revision": "Qwen3-Embedding-4B",
+                "deployment_id": "dgx-embedding-9112",
+            },
+            "reranker_profile": {
+                "provider_alias": "reranker-default",
+                "model_revision": "Qwen3-Reranker-4B",
+                "deployment_id": "dgx-reranker-9113",
+            },
         },
         "permission_snapshot": {
             "actor_id": "owner-contract",
             "policy_version": "cx.private_owner_active.v1",
         },
-        "score_summary": {"rerank_state": "APPLIED"},
+        "score_summary": {
+            "rerank_state": "APPLIED",
+            "confidence_policy_id": "cx_retrieval_confidence_v1",
+            "confidence_bucket": "READY",
+            "decision_reason": None,
+            "best_score": 0.91,
+            "low_confidence_threshold": 0.2,
+        },
         "source_summary": {"document_count": 1, "chunk_count": 1},
         "evidence_items": [
             {
