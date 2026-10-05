@@ -1,16 +1,16 @@
 {
   "retrieval_package_schema_version": "cx_retrieval_context_package.v1",
   "retrieval_runtime_schema_version": "cx_hybrid_retrieval_runtime.v1",
-  "retrieval_package_id": "7ffcf694-7f86-528b-b1b3-f6a54c7ecbda",
-  "package_hash": "4eb6d09b2ad636f6aa5a2ddfce9b59cbdbfc7e369d18a5b9a5bd6afec7dd7939",
-  "status": "READY",
+  "retrieval_package_id": "e853dc85-30c5-51d0-88bc-579ae637f680",
+  "package_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "status": "NO_ANSWER",
   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
-  "request_id": "0189f0ff-8f22-4f72-9b47-b481dc21bb21",
+  "request_id": "no-answer-request-example",
   "tenant_ref_type": "oa.tenant",
   "tenant_ref_id": "tenant-example",
   "owner_subject_ref_type": "oa.user",
   "owner_subject_ref_id": "owner-example",
-  "query_text": "trace evidence",
+  "query_text": "unmatched example query",
   "query_embedding_snapshot": {
     "provided": true,
     "embedding_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
@@ -35,10 +35,10 @@
       "fallback_used": false
     },
     "reranker_profile": {
-      "provider_alias": "reranker-default",
-      "model_revision": "reranker-model-example",
-      "deployment_id": "reranker-deployment-example",
-      "status": "APPLIED"
+      "provider_alias": null,
+      "model_revision": null,
+      "deployment_id": null,
+      "status": "NOT_REQUESTED"
     },
     "chunk_policy": "chunk_1000_100",
     "source_context_policy": {
@@ -47,13 +47,13 @@
     },
     "confidence_policy": {
       "policy_id": "cx_retrieval_confidence_multisignal_v1",
-      "low_confidence_threshold": 0.7,
+      "low_confidence_threshold": null,
       "threshold_inclusive": true,
       "no_evidence_behavior": "NO_ANSWER",
       "below_threshold_behavior": "LOW_CONFIDENCE",
       "feature_schema_version": "cx_retrieval_confidence_features.v1",
-      "calibration_profile_id": "embedding-a-reranker-a-weighted-rrf-v1",
-      "calibration_profile_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "calibration_profile_id": null,
+      "calibration_profile_hash": null,
       "missing_profile_behavior": "LOW_CONFIDENCE"
     },
     "quality_policy": {
@@ -67,13 +67,13 @@
       "policy_source": "cx_permission_filtered_hybrid_runtime",
       "ranker_mix": "weighted_rrf_vector_bm25_v1",
       "reranked_ranker_mix": "weighted_rrf_vector_bm25_with_rerank",
-      "low_confidence_threshold": 0.7
+      "low_confidence_threshold": null
     },
     "candidate_summary": {
-      "bm25_candidate_count": 1,
-      "vector_candidate_count": 1,
-      "fused_candidate_count": 1,
-      "both_channel_count": 1,
+      "bm25_candidate_count": 0,
+      "vector_candidate_count": 0,
+      "fused_candidate_count": 0,
+      "both_channel_count": 0,
       "bm25_only_count": 0,
       "vector_only_count": 0
     }
@@ -93,74 +93,39 @@
     "visible_document_count": 1,
     "policy_version": "cx.private_owner_active.v1"
   },
-  "evidence_items": [
-    {
-      "evidence_id": "evidence-example",
-      "rank": 1,
-      "content_object_id": "document-example",
-      "content_version_id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-      "chunk_id": "chunk-example",
-      "chunk_policy_id": "chunk_1000_100",
-      "source_anchor": {
-        "type": "character_range",
-        "start_offset": 0,
-        "end_offset": 14
-      },
-      "citation_label": "[1]",
-      "text": "Example source",
-      "neighbor_context": [],
-      "scores": {
-        "bm25_score": 2.1,
-        "vector_score": 0.91,
-        "bm25_rank": 1,
-        "vector_rank": 1,
-        "rrf_score": 0.01639344,
-        "rrf_normalized_score": 1.0,
-        "channel_support_score": 1.0,
-        "rerank_score": 0.9,
-        "final_score": 0.9
-      },
-      "matched_terms": ["trace"],
-      "permission_result": {
-        "visible": true,
-        "reason": "PRIVATE_OWNER_ACTIVE",
-        "policy_version": "cx.private_owner_active.v1"
-      },
-      "quality_flags": []
-    }
-  ],
+  "evidence_items": [],
   "source_summary": {
     "source_count": 1,
     "document_count": 1,
-    "chunk_count": 1,
+    "chunk_count": 0,
     "source_types": ["cx.content_object"]
   },
   "score_summary": {
-    "best_score": 0.88,
+    "best_score": 0.0,
     "score_spread": 0.0,
-    "ranker_mix": "weighted_rrf_vector_bm25_with_rerank",
-    "rerank_state": "APPLIED",
-    "confidence_bucket": "READY",
+    "ranker_mix": "weighted_rrf_vector_bm25_v1",
+    "rerank_state": "NOT_APPLIED",
+    "confidence_bucket": "NO_ANSWER",
     "confidence_policy_id": "cx_retrieval_confidence_multisignal_v1",
-    "decision_reason": null,
-    "evidence_count": 1,
+    "decision_reason": "no_permission_admitted_candidates",
+    "evidence_count": 0,
     "quality_policy_id": "weighted_rrf_vector_bm25_v1",
-    "low_confidence_threshold": 0.7,
+    "low_confidence_threshold": null,
     "confidence_feature_schema_version": "cx_retrieval_confidence_features.v1",
     "confidence_features": {
       "feature_schema_version": "cx_retrieval_confidence_features.v1",
-      "candidate_count": 1,
-      "reranker_score": 0.9,
+      "candidate_count": 0,
+      "reranker_score": 0.0,
       "reranker_margin": 0.0,
-      "rrf_normalized_score": 1.0,
-      "channel_support": 1.0,
-      "composite_score": 0.88
+      "rrf_normalized_score": 0.0,
+      "channel_support": 0.0,
+      "composite_score": 0.0
     },
-    "calibration_profile_id": "embedding-a-reranker-a-weighted-rrf-v1",
-    "calibration_profile_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    "calibration_profile_id": null,
+    "calibration_profile_hash": null
   },
-  "no_answer_reason": null,
-  "warnings": [],
+  "no_answer_reason": "no_permission_admitted_candidates",
+  "warnings": ["rerank_not_applied"],
   "created_at": "2026-10-05T00:00:00Z",
   "updated_at": "2026-10-05T00:00:00Z"
 }

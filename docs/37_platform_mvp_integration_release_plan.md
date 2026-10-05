@@ -159,12 +159,18 @@ requirement and owns live permission-filtered hybrid retrieval integration.
 | `1356` | Harden weighted RRF and channel-contribution evidence; run Checkpoint Gate. |
 | `1357` | Harden READY, LOW_CONFIDENCE, and NO_ANSWER semantics. |
 | `1358` | Add metadata-only retrieval operations and provider-failure evidence. |
-| `1359` | Execute protected PostgreSQL plus live embedding/reranker retrieval smoke. |
-| `1360` | Prove restart-safe readback, denial isolation, and residue-free cleanup. |
+| `1359` | Add exact model-bound confidence calibration and reject unsafe raw-score threshold activation. |
+| `1360` | Activate multi-signal calibration and prove PostgreSQL/live-provider retrieval, restart readback, denial isolation, and cleanup. |
 | `1361` | Harden contracts/runbook, close S136, run Full Gate, and activate S137. |
 
-S136 requires actual `nex_cx_test`, Qwen3-Embedding-4B, and
-Qwen3-Reranker-4B evidence. Generation remains assigned to S137.
+S136 completion signal: Met. Actual `nex_cx_test`, Qwen3-Embedding-4B, and
+Qwen3-Reranker-4B evidence passed permission-first BM25/pgvector retrieval,
+weighted RRF, calibrated READY/LOW_CONFIDENCE/NO_ANSWER, restart readback,
+denial isolation, and residue-free cleanup. Slice 1361 froze the handoff
+contract and operator runbook and closed the Full Gate with `11,478 passed`,
+`31` policy-skipped protected tests, statement coverage `98.06%`, and branch
+coverage `96.99%`. S137 is the next active requirement and owns generation,
+citation repair, and artifact lifecycle.
 
 ## Protected Evidence Schedule
 

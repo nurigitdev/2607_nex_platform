@@ -679,3 +679,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_cx_retrieval_confidence_acceptance.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s136_model_calibration_live.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s136_permission_hybrid_live_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s136_permission_hybrid_retrieval_closure.py --summary

@@ -3,9 +3,11 @@ from __future__ import annotations
 from copy import deepcopy
 import hashlib
 import json
+from pathlib import Path
 from typing import Any
 
 from fastapi.testclient import TestClient
+from jsonschema import Draft202012Validator
 import pytest
 
 from nex_runtime import (
@@ -42,6 +44,10 @@ TEXTS = {
     CHUNK_ONE: "private evidence one",
     CHUNK_TWO: "private evidence two",
 }
+ROOT = Path(__file__).resolve().parents[1]
+RETRIEVAL_PACKAGE_SCHEMA = ROOT / (
+    "contracts/schemas/service/nex_cx/retrieval_context_package.v1.schema.json"
+)
 
 
 def _payload(**overrides: Any) -> dict[str, Any]:
@@ -59,6 +65,11 @@ def _payload(**overrides: Any) -> dict[str, Any]:
 
 def _digest(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _assert_retrieval_package_contract(package: dict[str, Any]) -> None:
+    schema = json.loads(RETRIEVAL_PACKAGE_SCHEMA.read_text(encoding="utf-8"))
+    Draft202012Validator(schema).validate(package)
 
 
 def _evidence_record(chunk_id: str) -> dict[str, Any]:
@@ -393,6 +404,8 @@ def test_runtime_uses_exact_model_bound_multisignal_calibration_profile() -> Non
 
     package = runtime.build_package(_payload(), access_context=_context())
 
+    _assert_retrieval_package_contract(package)
+
     assert package["status"] == "READY"
     assert package["score_summary"]["confidence_policy_id"] == (
         RETRIEVAL_CONFIDENCE_POLICY_ID
@@ -414,6 +427,39 @@ def test_runtime_uses_exact_model_bound_multisignal_calibration_profile() -> Non
         "calibration_profile_hash": profile["profile_hash"],
         "missing_profile_behavior": "LOW_CONFIDENCE",
     }
+
+
+def test_calibrated_runtime_no_answer_matches_handoff_contract() -> None:
+    candidate_set = _candidate_set()
+    candidate_set["lexical_candidates"] = {
+        "candidate_source": "postgresql_bm25",
+        "candidate_count": 0,
+        "candidates": [],
+    }
+    candidate_set["vector_candidates"] = {
+        "candidate_source": "postgresql_pgvector",
+        "status": "READY",
+        "query_dimension": 2,
+        "candidate_count": 0,
+        "candidates": [],
+    }
+    runtime = PermissionFilteredHybridPackageRuntime(
+        candidate_provider=FakeCandidateProvider(candidate_set),
+        evidence_materializer=FakeMaterializer(),
+        rerank_client=CalibratedFakeReranker(),
+        confidence_profiles=(_calibrated_profile(),),
+        require_calibrated_confidence=True,
+        now_factory=lambda: "2026-09-22T08:00:00+00:00",
+    )
+
+    package = runtime.build_package(_payload(), access_context=_context())
+
+    _assert_retrieval_package_contract(package)
+    assert package["status"] == "NO_ANSWER"
+    assert package["evidence_items"] == []
+    assert package["retrieval_profile"]["reranker_profile"]["status"] == (
+        "NOT_REQUESTED"
+    )
 
 
 def test_runtime_fails_closed_when_calibration_model_binding_does_not_match() -> None:

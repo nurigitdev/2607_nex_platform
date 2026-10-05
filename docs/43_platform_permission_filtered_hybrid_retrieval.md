@@ -1,6 +1,6 @@
 # Platform Permission-Filtered Hybrid Retrieval Live Integration
 
-Status: S136 active through Slice 1360.
+Status: S136 complete through Slice 1361.
 
 ## Required Outcome
 
@@ -34,19 +34,21 @@ persist only hash-bound, metadata-safe retrieval evidence.
 
 ## Current Gaps
 
-1. S95 proves the CX retrieval components, but it does not consume the S135
-   authenticated upload-to-index journey in one protected platform smoke.
-2. Production runtime composition is present, but live MO alias selection and
-   model identity are not asserted at the S136 boundary.
-3. Owner and tenant denial is covered separately; no live integration proof
-   shows that denied scope reaches none of BM25, pgvector, private text, or
-   reranker input.
-4. Candidate-channel and weighted-RRF evidence is not summarized by one typed,
-   privacy-safe acceptance projection.
-5. READY, LOW_CONFIDENCE, and NO_ANSWER behavior has deterministic regression
-   coverage but no S136 live PostgreSQL/provider acceptance evidence.
-6. No restart/readback, residue-free cleanup, runbook, or closure evidence
-   currently binds this journey to the S137 grounded-generation handoff.
+All six boundary gaps are closed.
+
+1. Slice 1360 consumed an S135-compatible owner-scoped index-ready document in
+   the actual PostgreSQL/live-provider retrieval composition.
+2. Live MO aliases, embedding/reranker model revisions, deployment identities,
+   and request-path telemetry are asserted without endpoint or credential
+   disclosure.
+3. Denied owner scope returns the generic 404 before embedding, BM25, pgvector,
+   private text, or reranker work and leaves provider counts unchanged.
+4. Candidate-channel counts, weighted-RRF policy, reranker identity, and
+   multi-signal confidence are captured by typed metadata-safe projections.
+5. READY, LOW_CONFIDENCE, and NO_ANSWER were observed against `nex_cx_test`
+   and the actual embedding/reranker providers.
+6. Fresh-engine readback, hash-only persistence, residue-free cleanup, strict
+   contracts, the operator runbook, and closure evidence bind the S137 handoff.
 
 Slice 1353 closed the permission error propagation gap: mixed owner/tenant
 scope now remains a generic non-retryable 404 across the package/API boundary,
@@ -101,17 +103,39 @@ removed all fixtures.
 | `1360` | Activate exact-model multi-signal calibration and prove PostgreSQL/live-provider integration, restart readback, denial isolation, and cleanup. |
 | `1361` | Harden contracts/runbook, close S136, run Full Gate, and activate S137. |
 
+## Slice 1361 Closure
+
+- Hardened `cx_retrieval_context_package.v1` around canonical OA owner
+  lineage, permission-first hybrid runtime identity, BM25/vector/RRF evidence,
+  exact calibration profile binding, and READY/LOW_CONFIDENCE/NO_ANSWER state
+  invariants.
+- Added indexed calibrated READY and NO_ANSWER examples while retaining raw
+  token and calibration-secret negative coverage.
+- Added the protected operations runbook for execution, model replacement,
+  recalibration, triage, cleanup, rollback, privacy, and S137 handoff.
+- Replayed six deterministic S136 evidence components and retained the three
+  database/provider components as explicit protected opt-ins during Full Gate.
+- Recorded the actual Slice 1360 PostgreSQL/live-provider result rather than
+  repeating protected mutation inside ordinary regression.
+- Passed the final contract inventory (`161` schemas, `220` examples, `188`
+  negative examples, and `7` OpenAPI documents), closure `13/13`, and Full
+  Gate with `11,478 passed`, `31` policy-skipped protected tests, statement
+  coverage `98.06%`, and branch coverage `96.99%`.
+
+Completion signal: Met.
+
 ## Completion Signal
 
-S136 is complete when protected evidence against `nex_cx_test` and the actual
+S136 is complete. Protected evidence against `nex_cx_test` and the actual
 embedding/reranker providers proves permission-first BM25 plus pgvector
 candidates, `0.7/0.3` weighted RRF, Qwen3-Reranker-4B reranking, confidence and
 no-answer behavior, restart-safe hash-only persistence, denial isolation, and
-zero fixture residue.
+zero fixture residue. Contract, runbook, closure, and Full Gate evidence are
+bound to that result.
 
 ## S137 Handoff
 
-S137 may consume only an owner-scoped, persisted retrieval package with an
+S137 is the next active requirement. S137 may consume only an owner-scoped retrieval package with an
 explicit READY, LOW_CONFIDENCE, or NO_ANSWER decision and complete provider,
 permission, candidate, ranking, and evidence lineage. S137 owns generation,
 citation validation, repair, and artifact lifecycle; S136 does not call the

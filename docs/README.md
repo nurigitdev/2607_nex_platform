@@ -1466,6 +1466,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1358`](slices/1358_cx_retrieval_operations_evidence.md) | `S136-007` Add metadata-only confidence, channel, provider identity, and failure-role operations evidence. |
 | [`Slice 1359`](slices/1359_model_agnostic_confidence_calibration.md) | `S136-008` Add exact model-bound calibration profiles and fail closed when live score evidence cannot support a safe threshold. |
 | [`Slice 1360`](slices/1360_cx_multisignal_calibrated_live_retrieval.md) | `S136-009` Bind multi-signal confidence to embedding/reranker revisions and prove calibrated PostgreSQL/live retrieval, restart readback, denial isolation, and cleanup. |
+| [`Slice 1361`](slices/1361_s136_permission_hybrid_retrieval_closure.md) | `S136-010` Harden the retrieval handoff contract and operator runbook, close S136, run Full Gate, and activate S137. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
