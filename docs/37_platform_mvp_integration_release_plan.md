@@ -148,6 +148,24 @@ database or file residue. Slice 1351 froze the progress/privacy contracts,
 operator runbook, closure evidence, and Full Gate. S136 is the next active
 requirement and owns live permission-filtered hybrid retrieval integration.
 
+## S136 Slice Plan
+
+| Slice | Scope |
+| --- | --- |
+| `1352` | Freeze the S136 live permission-filtered hybrid retrieval boundary and S137 handoff. |
+| `1353` | Harden permission-first multi-document scope and denial evidence. |
+| `1354` | Bind durable PostgreSQL BM25 and fresh pgvector candidate lineage. |
+| `1355` | Freeze live embedding/reranker aliases, models, and request metadata. |
+| `1356` | Harden weighted RRF and channel-contribution evidence; run Checkpoint Gate. |
+| `1357` | Harden READY, LOW_CONFIDENCE, and NO_ANSWER semantics. |
+| `1358` | Add metadata-only retrieval operations and provider-failure evidence. |
+| `1359` | Execute protected PostgreSQL plus live embedding/reranker retrieval smoke. |
+| `1360` | Prove restart-safe readback, denial isolation, and residue-free cleanup. |
+| `1361` | Harden contracts/runbook, close S136, run Full Gate, and activate S137. |
+
+S136 requires actual `nex_cx_test`, Qwen3-Embedding-4B, and
+Qwen3-Reranker-4B evidence. Generation remains assigned to S137.
+
 ## Protected Evidence Schedule
 
 - `S131`: repository and deterministic regression evidence; no remote model
