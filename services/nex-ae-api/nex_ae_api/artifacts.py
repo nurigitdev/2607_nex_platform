@@ -51,6 +51,7 @@ from nex_runtime import (
 from nex_ae_api.cx_owner_context import cx_owner_headers, cx_owner_scope_from_payload
 from nex_ae_api.async_artifact_rendering import (
     AeAsyncArtifactRenderError,
+    admit_grounded_response_artifact,
     admit_async_artifact_render,
     build_async_artifact_render_request,
     cancel_async_artifact_render,
@@ -2211,6 +2212,80 @@ def register_artifact_handoff_routes(
                 trace_id=payload.get("trace_id") or trace_id_from_headers(request),
             )
             return artifact_record_store.create(record)
+        except ArtifactHandoffError as exc:
+            return _artifact_problem_response(request, exc)
+
+    @app.post(
+        "/api/v1/generated-responses/{response_id}/artifacts",
+        response_model=None,
+        status_code=202,
+    )
+    def create_grounded_response_artifact(
+        response_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ):
+        auth_context = authorize_ae_facade_route_request(request, authorization)
+        if isinstance(auth_context, JSONResponse):
+            return auth_context
+        try:
+            artifact_handoff_id = required_string(
+                payload,
+                "artifact_handoff_id",
+                "ae.artifact_handoff_id_required",
+            )
+            handoff_record = handoff_store.get(artifact_handoff_id)
+            if handoff_record is None or not _artifact_handoff_visible_to_owner(
+                handoff_record,
+                auth_context,
+            ):
+                raise AeAsyncArtifactRenderError(
+                    error_code="ae.grounded_artifact.handoff_not_found",
+                    detail="Artifact handoff was not found for this response.",
+                    status_code=404,
+                )
+            artifact_request_id = idempotency_key or required_string(
+                payload,
+                "artifact_request_id",
+                "ae.artifact_request_id_required",
+            )
+            artifact_record = build_artifact_record_from_handoff(
+                source_payload=payload,
+                handoff_record=handoff_record,
+                artifact_request_id=artifact_request_id,
+                request_id=request_id_from_headers(request),
+                trace_id=payload.get("trace_id") or trace_id_from_headers(request),
+            )
+            lineage_store = getattr(request.app.state, "ae_chat_store", None)
+            if lineage_store is None:
+                raise AeAsyncArtifactRenderError(
+                    error_code="ae.async_artifact_render.response_lineage_unavailable",
+                    detail="Generated response lineage is temporarily unavailable.",
+                    status_code=503,
+                    retryable=True,
+                )
+            return admit_grounded_response_artifact(
+                artifact_record=artifact_record,
+                response_id=response_id,
+                lineage_store=lineage_store,
+                artifact_store=artifact_record_store,
+                job_queue=artifact_retention_job_queue,
+                render_request_id=(
+                    optional_text(payload.get("render_request_id"))
+                    or f"{artifact_request_id}:render"
+                ),
+                target_formats=render_target_formats_from_payload(
+                    payload,
+                    artifact_record,
+                ),
+                request_id=request_id_from_headers(request),
+                trace_id=payload.get("trace_id") or trace_id_from_headers(request),
+                max_attempts=payload.get("max_attempts", 3),
+            )
+        except AeAsyncArtifactRenderError as exc:
+            return _async_artifact_render_problem_response(request, exc)
         except ArtifactHandoffError as exc:
             return _artifact_problem_response(request, exc)
 
@@ -11383,6 +11458,20 @@ def _visible_artifact_record(
     ):
         return None
     return record
+
+
+def _artifact_handoff_visible_to_owner(
+    handoff_record: Mapping[str, Any],
+    auth_context: AeFacadeRouteAuthContext,
+) -> bool:
+    scope = browser_owner_scope(auth_context)
+    if scope is None:
+        return True
+    actor_ref = handoff_record.get("actor_claims_ref")
+    return isinstance(actor_ref, Mapping) and (
+        actor_ref.get("tenant_id") == scope.tenant_id
+        and actor_ref.get("actor_id") == scope.owner_user_id
+    )
 
 
 def _async_artifact_render_problem_response(

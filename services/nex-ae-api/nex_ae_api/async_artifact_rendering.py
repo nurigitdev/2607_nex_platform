@@ -100,6 +100,9 @@ class AeAsyncArtifactRenderError(ValueError):
 
 
 class ArtifactRenderAdmissionStore(Protocol):
+    def create(self, record: dict[str, Any]) -> dict[str, Any]:
+        ...
+
     def get(self, artifact_id: str) -> dict[str, Any] | None:
         ...
 
@@ -197,6 +200,10 @@ def validate_async_artifact_response_lineage(
             detail="Generated response does not match the artifact lineage.",
             status_code=409,
         )
+    _validate_grounded_response_artifact_binding(
+        lineage=lineage,
+        source_ref=source_ref,
+    )
     return {
         "response_binding_schema_version": (
             AE_ASYNC_ARTIFACT_RESPONSE_BINDING_SCHEMA_VERSION
@@ -208,6 +215,67 @@ def validate_async_artifact_response_lineage(
         "structured_draft_id": lineage["structured_draft_id"],
         "lineage_type": lineage["lineage_type"],
         "citation_workflow_status": lineage["citation_workflow_status"],
+        "owner_scope_enforced": True,
+        "content_included": False,
+    }
+
+
+def admit_grounded_response_artifact(
+    *,
+    artifact_record: Mapping[str, Any],
+    response_id: str,
+    lineage_store: GeneratedResponseLineageStore,
+    artifact_store: ArtifactRenderAdmissionStore,
+    job_queue: JobQueue,
+    render_request_id: str,
+    target_formats: list[str],
+    request_id: str,
+    trace_id: str,
+    max_attempts: int = 3,
+    requested_at: str | None = None,
+) -> dict[str, Any]:
+    candidate = deepcopy(dict(_required_mapping(artifact_record, "artifact_record")))
+    response_binding = validate_async_artifact_response_lineage(
+        artifact_record=candidate,
+        response_id=response_id,
+        lineage_store=lineage_store,
+    )
+    stored = artifact_store.create(candidate)
+    response_binding = validate_async_artifact_response_lineage(
+        artifact_record=stored,
+        response_id=response_id,
+        lineage_store=lineage_store,
+    )
+    render_request = build_async_artifact_render_request(
+        artifact_record=stored,
+        render_request_id=render_request_id,
+        target_formats=target_formats,
+        request_id=request_id,
+        trace_id=trace_id,
+        response_id=response_id,
+        max_attempts=max_attempts,
+        requested_at=requested_at,
+    )
+    admission = admit_async_artifact_render(
+        request=render_request,
+        artifact_store=artifact_store,
+        job_queue=job_queue,
+    )
+    persisted_artifact = artifact_store.get(stored["artifact_id"])
+    if persisted_artifact is None:
+        raise AeAsyncArtifactRenderError(
+            error_code="ae.grounded_artifact.artifact_state_unavailable",
+            detail="Grounded artifact state is temporarily unavailable.",
+            status_code=503,
+            retryable=True,
+        )
+    return {
+        "grounded_artifact_admission_schema_version": (
+            "ae_grounded_artifact_admission.v1"
+        ),
+        "artifact": deepcopy(persisted_artifact),
+        "response_binding": response_binding,
+        "render_admission": admission,
         "owner_scope_enforced": True,
         "content_included": False,
     }
@@ -733,6 +801,55 @@ def validate_async_artifact_render_artifact_binding(
     )
     if rebuilt != request:
         raise _invalid("Async artifact render request no longer matches the artifact.")
+
+
+def _validate_grounded_response_artifact_binding(
+    *,
+    lineage: Mapping[str, Any],
+    source_ref: Mapping[str, Any],
+) -> None:
+    retrieval_package_id = source_ref.get("retrieval_package_id")
+    quality_summary = source_ref.get("quality_summary")
+    grounding_required = (
+        isinstance(quality_summary, Mapping)
+        and quality_summary.get("grounding_required") is True
+    ) or retrieval_package_id is not None
+    if not grounding_required:
+        return
+
+    grounding = lineage.get("cx_grounding_lineage")
+    if not isinstance(grounding, Mapping):
+        raise AeAsyncArtifactRenderError(
+            error_code="ae.async_artifact_render.grounding_lineage_required",
+            detail="Verified CX grounding lineage is required for artifact rendering.",
+            status_code=409,
+        )
+    if (
+        lineage.get("citation_workflow_status") not in {"VALIDATED", "REPAIRED"}
+        or grounding.get("citation_validation_status") != "VALIDATED"
+        or grounding.get("same_retrieval_package") is not True
+        or grounding.get("private_evidence_included") is not False
+    ):
+        raise AeAsyncArtifactRenderError(
+            error_code="ae.async_artifact_render.grounding_lineage_invalid",
+            detail="Generated response grounding lineage is not renderable.",
+            status_code=409,
+        )
+    expected_count = source_ref.get("evidence_ref_count")
+    if (
+        lineage.get("retrieval_package_id") != retrieval_package_id
+        or lineage.get("retrieval_package_hash")
+        != source_ref.get("retrieval_package_hash")
+        or grounding.get("retrieval_package_id") != retrieval_package_id
+        or grounding.get("retrieval_package_hash")
+        != source_ref.get("retrieval_package_hash")
+        or grounding.get("selected_evidence_count") != expected_count
+    ):
+        raise AeAsyncArtifactRenderError(
+            error_code="ae.async_artifact_render.grounding_lineage_mismatch",
+            detail="Generated response grounding lineage does not match the artifact.",
+            status_code=409,
+        )
 
 
 def _requests_share_idempotent_identity(
