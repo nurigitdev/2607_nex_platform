@@ -1,6 +1,6 @@
 # Platform AE Web Korean-Default Playwright Golden Journey
 
-Status: S139 active through Slice 1384.
+Status: S139 active through Slice 1385.
 
 ## Required Outcome
 
@@ -82,6 +82,10 @@ acceptance contract.
   browser-safe evidence projection. Ordered transitions, opaque ref/detail
   allowlists, monotonic timestamps, terminal guards, and private-field
   rejection are now frozen for subsequent Playwright integration.
+- Slice 1385 connected authenticated OA session claims, AE upload submission,
+  and owner-scoped ingestion progress to the first three journey stages. AE
+  Web now owns a same-origin progress adapter and requires `INDEX_READY` plus
+  retrieval usability without accepting browser-supplied ownership.
 
 ## Acceptance Rules
 

@@ -14,7 +14,7 @@ def test_repository_has_correlated_browser_safe_journey_state() -> None:
     assert result["declared_stages"] == list(audit.EXPECTED_STAGES)
     assert result["summary"] == {
         "stage_count": 9,
-        "safe_ref_key_count": 11,
+        "safe_ref_key_count": 13,
         "safe_detail_key_count": 8,
         "forbidden_evidence_field_count": 7,
         "issue_count": 0,

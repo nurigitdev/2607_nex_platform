@@ -240,7 +240,9 @@ S139 completion signal: Pending. Slice 1382 froze the browser-only same-origin
 boundary and the requirement's eight acceptance gaps. Slice 1383 established
 the Korean-default, English-ready message and status contract with exact
 catalog parity. Slice 1384 froze one correlated nine-stage journey and
-browser-safe evidence model. Remote model providers are not required for S139 closure;
+browser-safe evidence model. Slice 1385 connected OA login, claim-derived
+upload ownership, and owner-scoped ingestion progress through `INDEX_READY`.
+Remote model providers are not required for S139 closure;
 S140 owns the final browser plus live-provider release-candidate matrix.
 
 ## Protected Evidence Schedule

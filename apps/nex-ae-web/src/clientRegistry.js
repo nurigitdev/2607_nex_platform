@@ -30,6 +30,10 @@ import {
   createFetchUploadClient,
   createMockUploadClient
 } from "./uploadClient.js";
+import {
+  createFetchUploadProgressClient,
+  createMockUploadProgressClient
+} from "./uploadProgressClient.js";
 
 export const AE_WEB_CLIENT_REGISTRY_SCHEMA_VERSION = "ae_web_client_registry.v1";
 export const AE_WEB_CLIENT_MODES = ["mock", "fetch"];
@@ -65,6 +69,9 @@ export function createAeWebClients({
           uploadClient: createMockUploadClient({
             responseFactory: responseFactories.upload
           }),
+          uploadProgressClient: createMockUploadProgressClient({
+            responseFactory: responseFactories.uploadProgress
+          }),
           retrievalClient: createMockRetrievalClient({
             responseFactory: responseFactories.retrieval
           }),
@@ -86,6 +93,7 @@ export function createAeWebClients({
           artifactClient: createFetchArtifactClient(commonFetchOptions),
           documentDetailClient: createFetchDocumentDetailClient(commonFetchOptions),
           uploadClient: createFetchUploadClient(commonFetchOptions),
+          uploadProgressClient: createFetchUploadProgressClient(commonFetchOptions),
           retrievalClient: createFetchRetrievalClient(commonFetchOptions),
           generationFeedbackClient:
             createFetchGenerationFeedbackClient(commonFetchOptions),
@@ -126,6 +134,7 @@ export function buildClientRegistrySummary(registry) {
       artifact: registry.artifactClient.clientMode,
       document_detail: registry.documentDetailClient.clientMode,
       upload: registry.uploadClient.clientMode,
+      upload_progress: registry.uploadProgressClient.clientMode,
       retrieval: registry.retrievalClient.clientMode,
       grounded_generation: registry.groundedGenerationClient.clientMode,
       generation_feedback: registry.generationFeedbackClient.clientMode,
@@ -162,6 +171,7 @@ function isRegistry(value) {
     value.artifactClient &&
     value.documentDetailClient &&
     value.uploadClient &&
+    value.uploadProgressClient &&
     value.retrievalClient &&
     value.groundedGenerationClient &&
     value.generationFeedbackClient &&

@@ -255,6 +255,8 @@ const workspaceState = {
   generationFeedbackClient: null,
   repairedResponseDecisionClient: null,
   uploadSubmission: null,
+  uploadProgress: null,
+  uploadProgressClient: null,
   uploadFileMetadata: defaultUploadFileMetadata,
   uploadDraft: buildUploadSurfaceDraftFromFileMetadata({
     workspaceId: "workspace-local",
@@ -692,6 +694,8 @@ function applySessionBootstrap(sessionBootstrap) {
   workspaceState.documentDetailClient = workspaceState.clientRegistry.documentDetailClient;
   workspaceState.artifactClient = workspaceState.clientRegistry.artifactClient;
   workspaceState.uploadClient = workspaceState.clientRegistry.uploadClient;
+  workspaceState.uploadProgressClient =
+    workspaceState.clientRegistry.uploadProgressClient;
   workspaceState.retrievalClient = workspaceState.clientRegistry.retrievalClient;
   workspaceState.groundedGenerationClient =
     workspaceState.clientRegistry.groundedGenerationClient;
@@ -1021,6 +1025,7 @@ function applyUploadFileMetadataFromForm() {
       ownerScope
     });
     workspaceState.uploadSubmission = null;
+    workspaceState.uploadProgress = null;
     workspaceState.operations.upload = createOperationState({
       operationId: "upload_handoff",
       label: "Upload handoff",
@@ -1048,7 +1053,11 @@ function renderUploadSurface() {
   const payload = buildUploadHandoffPayload(draft);
   const submission = workspaceState.uploadSubmission;
   const operation = workspaceState.operations.upload;
-  const uploadState = operation.status || submission?.status || draft.status;
+  const uploadState =
+    workspaceState.uploadProgress?.status ||
+    operation.status ||
+    submission?.status ||
+    draft.status;
   uploadStatus.textContent = statusLabel(uploadState);
   uploadStatus.className = `badge ${badgeClass(uploadState)}`;
   renderOperationFeedback(uploadFeedback, uploadRetryButton, operation, {
@@ -1139,6 +1148,10 @@ function renderUploadClientSummary(submission) {
     <div>
       <dt>document</dt>
       <dd>${escapeHtml(submission.documentId || "n/a")}</dd>
+    </div>
+    <div>
+      <dt>ingestion</dt>
+      <dd>${escapeHtml(workspaceState.uploadProgress?.status || "not-polled")} · ${escapeHtml(workspaceState.uploadProgress?.progressPercent ?? 0)}%</dd>
     </div>
   `;
 }
@@ -2996,6 +3009,7 @@ async function retryLastRetrievalRequest() {
 }
 
 async function submitUploadDraft() {
+  workspaceState.uploadProgress = null;
   workspaceState.operations.upload = markOperationRunning(workspaceState.operations.upload, {
     clientMode: workspaceState.uploadClient.clientMode,
     route: workspaceState.uploadDraft.uploadRoute
@@ -3018,6 +3032,10 @@ async function submitUploadDraft() {
       await workspaceState.uploadClient.submitUploadDraft(workspaceState.uploadDraft, {
         file: selectedFile
       });
+    workspaceState.uploadProgress =
+      await workspaceState.uploadProgressClient.getProgress(
+        workspaceState.uploadSubmission.uploadHandoffId
+      );
     workspaceState.operations.upload = markOperationSucceeded(
       workspaceState.operations.upload,
       {

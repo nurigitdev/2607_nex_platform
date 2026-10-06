@@ -18,6 +18,8 @@ const SAFE_REF_KEYS = new Set([
   "subject_ref",
   "tenant_ref",
   "workspace_id",
+  "upload_handoff_id",
+  "document_id",
   "source_file_id",
   "processing_run_id",
   "interaction_id",
