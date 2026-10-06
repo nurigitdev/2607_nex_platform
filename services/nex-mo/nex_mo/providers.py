@@ -29,7 +29,10 @@ from nex_mo.provider_registry import (
     list_provider_routes,
     resolve_provider_route,
 )
+from nex_mo.provider_trace import emit_provider_trace_event
 from nex_runtime import (
+    OperationalEventEmitter,
+    operational_event_emitter_from_app,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
@@ -76,7 +79,9 @@ def create_mock_embedding_response(payload: dict[str, Any]) -> dict[str, Any]:
             {
                 "object": "embedding",
                 "index": index,
-                "embedding": _deterministic_vector(text, route.embedding_dimensions or 8),
+                "embedding": _deterministic_vector(
+                    text, route.embedding_dimensions or 8
+                ),
             }
             for index, text in enumerate(inputs)
         ],
@@ -232,6 +237,8 @@ def create_generation_response(
 
 
 def register_mock_provider_routes(app: FastAPI) -> None:
+    trace_emitter = operational_event_emitter_from_app(app, service_id="nex-mo")
+
     @app.get("/api/v1/provider-routes", response_model=None)
     def get_provider_routes(
         request: Request,
@@ -266,7 +273,9 @@ def register_mock_provider_routes(app: FastAPI) -> None:
             "data": [profile.to_wire() for profile in profiles],
             "meta": {
                 "count": len(profiles),
-                "provider_mode": os.getenv("NEX_MO_PROVIDER_MODE", DEFAULT_PROVIDER_MODE),
+                "provider_mode": os.getenv(
+                    "NEX_MO_PROVIDER_MODE", DEFAULT_PROVIDER_MODE
+                ),
             },
         }
 
@@ -303,7 +312,9 @@ def register_mock_provider_routes(app: FastAPI) -> None:
             "data": telemetry,
             "meta": {
                 "count": len(telemetry),
-                "provider_mode": os.getenv("NEX_MO_PROVIDER_MODE", DEFAULT_PROVIDER_MODE),
+                "provider_mode": os.getenv(
+                    "NEX_MO_PROVIDER_MODE", DEFAULT_PROVIDER_MODE
+                ),
                 "schema_version": "mo_provider_telemetry_snapshot.v1",
             },
         }
@@ -317,7 +328,10 @@ def register_mock_provider_routes(app: FastAPI) -> None:
         return _handle_provider_request(
             request,
             authorization,
+            "embedding",
+            _provider_alias(payload, "mock-embedding-default"),
             lambda: create_embedding_response(payload),
+            trace_emitter,
         )
 
     @app.post("/api/v1/rerank", response_model=None)
@@ -329,7 +343,10 @@ def register_mock_provider_routes(app: FastAPI) -> None:
         return _handle_provider_request(
             request,
             authorization,
+            "reranking",
+            _provider_alias(payload, "mock-reranker-default"),
             lambda: create_rerank_response(payload),
+            trace_emitter,
         )
 
     @app.post("/api/v1/generations", response_model=None)
@@ -341,26 +358,47 @@ def register_mock_provider_routes(app: FastAPI) -> None:
         return _handle_provider_request(
             request,
             authorization,
+            "generation",
+            _provider_alias(payload, "general-llm-default"),
             lambda: create_generation_response(
                 payload,
                 request_id=request_id_from_headers(request),
                 trace_id=trace_id_from_headers(request),
             ),
+            trace_emitter,
         )
 
 
 def _handle_provider_request(
     request: Request,
     authorization: str | None,
+    capability: str,
+    alias: str,
     factory,
+    trace_emitter: OperationalEventEmitter,
 ):
     auth_problem = authorize_mo_service_request(request, authorization)
     if auth_problem is not None:
         return auth_problem
 
     try:
-        return factory()
+        response = factory()
+        emit_provider_trace_event(
+            trace_emitter,
+            request=request,
+            capability=capability,
+            alias=alias,
+            response=response,
+        )
+        return response
     except ProviderRouteError as exc:
+        emit_provider_trace_event(
+            trace_emitter,
+            request=request,
+            capability=capability,
+            alias=alias,
+            route_error=exc,
+        )
         return problem_response(
             request,
             status_code=exc.status_code,
@@ -371,6 +409,11 @@ def _handle_provider_request(
             type_uri="https://nex-platform.local/problems/provider-route-rejected",
             details={"degraded": exc.degraded} if exc.degraded else None,
         )
+
+
+def _provider_alias(payload: dict[str, Any], default: str) -> str:
+    value = payload.get("alias", default)
+    return value if isinstance(value, str) and value else default
 
 
 def _string_field(
@@ -386,8 +429,10 @@ def _string_field(
 
 def _string_list_field(payload: dict[str, Any], key: str) -> list[str]:
     value = payload.get(key)
-    if not isinstance(value, list) or not value or not all(
-        isinstance(item, str) and item for item in value
+    if (
+        not isinstance(value, list)
+        or not value
+        or not all(isinstance(item, str) and item for item in value)
     ):
         raise ProviderRouteError(
             400,

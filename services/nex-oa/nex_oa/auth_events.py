@@ -26,7 +26,6 @@ from nex_runtime import (
     validate_authorization_header,
 )
 
-
 LOGGER = logging.getLogger(__name__)
 OA_AUTH_EVENT_SCHEMA_VERSION = "oa_auth_event.v1"
 OA_AUTH_EVENT_LIST_SCHEMA_VERSION = "oa_auth_event_list.v1"
@@ -86,6 +85,13 @@ class OaAuthEventRepository(Protocol):
         limit: int = 100,
     ) -> list[dict[str, Any]]: ...
 
+    def list_events_by_trace(
+        self,
+        trace_id: str,
+        *,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]: ...
+
 
 @dataclass
 class InMemoryOaAuthEventRepository:
@@ -116,6 +122,18 @@ class InMemoryOaAuthEventRepository:
             if _event_matches(event, query)
         ][: query["limit"]]
 
+    def list_events_by_trace(
+        self,
+        trace_id: str,
+        *,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        return [
+            project_auth_event(event)
+            for event in reversed(self.events)
+            if event.get("trace_id") == trace_id
+        ][:limit]
+
 
 class SqlAlchemyOaAuthEventRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
@@ -128,8 +146,7 @@ class SqlAlchemyOaAuthEventRepository:
             try:
                 details_expression = _json_sql_expression(session, "details")
                 session.execute(
-                    text(
-                        f"""
+                    text(f"""
                         INSERT INTO oa_auth_events (
                             event_id, event_schema_version, event_type, outcome,
                             tenant_id, subject_id, credential_id, actor_ref,
@@ -140,8 +157,7 @@ class SqlAlchemyOaAuthEventRepository:
                             :request_id, :trace_id, {details_expression},
                             :occurred_at, :created_at
                         )
-                        """
-                    ),
+                        """),
                     {**event, "details": json.dumps(event["details"], sort_keys=True)},
                 )
                 session.commit()
@@ -187,6 +203,30 @@ class SqlAlchemyOaAuthEventRepository:
                         + " ORDER BY occurred_at DESC, event_id DESC LIMIT :limit"
                     ),
                     query,
+                ).mappings()
+                return [project_auth_event(_event_from_row(row)) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
+    def list_events_by_trace(
+        self,
+        trace_id: str,
+        *,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        try:
+            with self._session_factory() as session:
+                rows = session.execute(
+                    text("""
+                        SELECT event_id, event_schema_version, event_type, outcome,
+                               tenant_id, subject_id, credential_id, actor_ref,
+                               request_id, trace_id, details, occurred_at, created_at
+                        FROM oa_auth_events
+                        WHERE trace_id = :trace_id
+                        ORDER BY occurred_at DESC, event_id DESC
+                        LIMIT :limit
+                        """),
+                    {"trace_id": trace_id, "limit": limit},
                 ).mappings()
                 return [project_auth_event(_event_from_row(row)) for row in rows]
         except SQLAlchemyError as exc:
@@ -309,9 +349,13 @@ def build_auth_event(payload: Mapping[str, Any]) -> dict[str, Any]:
         "outcome": outcome,
         "tenant_id": _optional_id(payload.get("tenant_id"), field_name="tenant_id"),
         "subject_id": _optional_id(payload.get("subject_id"), field_name="subject_id"),
-        "credential_id": _optional_text(payload.get("credential_id"), field_name="credential_id"),
+        "credential_id": _optional_text(
+            payload.get("credential_id"), field_name="credential_id"
+        ),
         "actor_ref": _required_text(payload.get("actor_ref"), field_name="actor_ref"),
-        "request_id": _optional_text(payload.get("request_id"), field_name="request_id"),
+        "request_id": _optional_text(
+            payload.get("request_id"), field_name="request_id"
+        ),
         "trace_id": _optional_text(payload.get("trace_id"), field_name="trace_id"),
         "details": _safe_details(payload.get("details", {})),
         "occurred_at": now,
@@ -354,7 +398,9 @@ def normalize_event_query(
         raise OaAuthEventError(exc.status_code, exc.error_code, exc.detail) from exc
     normalized_type = _event_type(event_type) if event_type is not None else None
     if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 200:
-        raise OaAuthEventError(400, "oa.auth_event_query_invalid", "limit must be between 1 and 200.")
+        raise OaAuthEventError(
+            400, "oa.auth_event_query_invalid", "limit must be between 1 and 200."
+        )
     return {
         "tenant_id": normalized_tenant,
         "subject_id": normalized_subject,
@@ -366,8 +412,14 @@ def normalize_event_query(
 def _event_matches(event: Mapping[str, Any], query: Mapping[str, Any]) -> bool:
     return (
         event.get("tenant_id") == query["tenant_id"]
-        and (query["subject_id"] is None or event.get("subject_id") == query["subject_id"])
-        and (query["event_type"] is None or event.get("event_type") == query["event_type"])
+        and (
+            query["subject_id"] is None
+            or event.get("subject_id") == query["subject_id"]
+        )
+        and (
+            query["event_type"] is None
+            or event.get("event_type") == query["event_type"]
+        )
     )
 
 
@@ -382,14 +434,24 @@ def _event_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
 
 def _safe_details(value: object) -> dict[str, Any]:
     if not isinstance(value, Mapping):
-        raise OaAuthEventError(400, "oa.auth_event_details_invalid", "details must be an object.")
+        raise OaAuthEventError(
+            400, "oa.auth_event_details_invalid", "details must be an object."
+        )
     unexpected = sorted(set(value) - SAFE_DETAIL_FIELDS)
     if unexpected:
-        raise OaAuthEventError(400, "oa.auth_event_details_invalid", f"Unsupported detail field: {unexpected[0]}")
+        raise OaAuthEventError(
+            400,
+            "oa.auth_event_details_invalid",
+            f"Unsupported detail field: {unexpected[0]}",
+        )
     safe = {}
     for key, item in value.items():
         if item is not None and not isinstance(item, (str, bool, int, float)):
-            raise OaAuthEventError(400, "oa.auth_event_details_invalid", f"Detail field must be scalar: {key}")
+            raise OaAuthEventError(
+                400,
+                "oa.auth_event_details_invalid",
+                f"Detail field must be scalar: {key}",
+            )
         safe[str(key)] = item
     return safe
 
@@ -397,14 +459,18 @@ def _safe_details(value: object) -> dict[str, Any]:
 def _event_type(value: object) -> str:
     normalized = _required_text(value, field_name="event_type").upper()
     if normalized not in AUTH_EVENT_TYPES:
-        raise OaAuthEventError(400, "oa.auth_event_type_invalid", "event_type is unsupported.")
+        raise OaAuthEventError(
+            400, "oa.auth_event_type_invalid", "event_type is unsupported."
+        )
     return normalized
 
 
 def _outcome(value: object) -> str:
     normalized = _required_text(value, field_name="outcome").upper()
     if normalized not in AUTH_EVENT_OUTCOMES:
-        raise OaAuthEventError(400, "oa.auth_event_outcome_invalid", "outcome is unsupported.")
+        raise OaAuthEventError(
+            400, "oa.auth_event_outcome_invalid", "outcome is unsupported."
+        )
     return normalized
 
 
@@ -420,7 +486,11 @@ def _optional_id(value: object, *, field_name: str) -> str | None:
 def _required_text(value: object, *, field_name: str) -> str:
     normalized = _optional_text(value, field_name=field_name)
     if normalized is None:
-        raise OaAuthEventError(400, "oa.auth_event_field_invalid", f"{field_name} must be a non-empty string.")
+        raise OaAuthEventError(
+            400,
+            "oa.auth_event_field_invalid",
+            f"{field_name} must be a non-empty string.",
+        )
     return normalized
 
 
@@ -428,7 +498,11 @@ def _optional_text(value: object, *, field_name: str) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str) or not value.strip():
-        raise OaAuthEventError(400, "oa.auth_event_field_invalid", f"{field_name} must be a non-empty string.")
+        raise OaAuthEventError(
+            400,
+            "oa.auth_event_field_invalid",
+            f"{field_name} must be a non-empty string.",
+        )
     return value.strip()
 
 
@@ -456,7 +530,8 @@ def _authorize_read(request: Request, authorization: str | None) -> JSONResponse
         status_code=status,
         error_code=result.error_code or "SERVICE_CLAIM_INVALID",
         title="Authorization failed" if status == 403 else "Authentication failed",
-        detail=result.detail or "OA authentication events require a valid service claim.",
+        detail=result.detail
+        or "OA authentication events require a valid service claim.",
         type_uri="https://nex-platform.local/problems/oa-auth-event-authorization",
     )
 
@@ -474,7 +549,11 @@ def _problem(request: Request, exc: OaAuthEventError) -> JSONResponse:
 
 
 def _json_sql_expression(session: Session, bind_name: str) -> str:
-    return f"CAST(:{bind_name} AS JSONB)" if session.get_bind().dialect.name == "postgresql" else f":{bind_name}"
+    return (
+        f"CAST(:{bind_name} AS JSONB)"
+        if session.get_bind().dialect.name == "postgresql"
+        else f":{bind_name}"
+    )
 
 
 def _json_loads(value: object) -> dict[str, Any]:
@@ -505,4 +584,9 @@ def _utc_now() -> str:
 
 
 def _unavailable() -> OaAuthEventError:
-    return OaAuthEventError(503, "oa.auth_event_repository_unavailable", "Authentication event persistence is unavailable.", True)
+    return OaAuthEventError(
+        503,
+        "oa.auth_event_repository_unavailable",
+        "Authentication event persistence is unavailable.",
+        True,
+    )

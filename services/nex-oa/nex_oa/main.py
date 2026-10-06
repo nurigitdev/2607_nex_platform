@@ -19,7 +19,9 @@ from nex_oa.authorization_service import (
     OaAuthorizationService,
     register_authorization_routes,
 )
-from nex_oa.bootstrap_login_boundary import register_user_bootstrap_login_boundary_routes
+from nex_oa.bootstrap_login_boundary import (
+    register_user_bootstrap_login_boundary_routes,
+)
 from nex_oa.credential_delivery import (
     register_session_credential_delivery_boundary_routes,
 )
@@ -73,7 +75,10 @@ from nex_oa.subjects import (
 )
 from nex_oa.user_login import OaUserLoginService, register_user_login_routes
 from nex_oa.service_auth import build_oa_local_service_token_admission
-
+from nex_oa.trace_projection import (
+    RepositoryOaTraceProjectionSource,
+    register_oa_trace_projection_routes,
+)
 
 SERVICE_SPEC = SERVICE_SPECS["nex-oa"]
 app = build_service_app(SERVICE_SPEC, include_oa_mock_auth_routes=False)
@@ -139,9 +144,7 @@ SERVICE_PRINCIPAL_REPOSITORY = build_service_principal_repository_for_runtime(
 SERVICE_PRINCIPAL_SERVICE = OaServicePrincipalService(
     repository=SERVICE_PRINCIPAL_REPOSITORY
 )
-SIGNED_TOKEN_REPOSITORY = build_signed_token_repository_for_runtime(
-    SERVICE_PERSISTENCE
-)
+SIGNED_TOKEN_REPOSITORY = build_signed_token_repository_for_runtime(SERVICE_PERSISTENCE)
 SIGNING_KEY_SERVICE = OaSigningKeyService(
     repository=SIGNED_TOKEN_REPOSITORY,
 )
@@ -164,6 +167,10 @@ SERVICE_PRINCIPAL_AUDIT_EMITTER = operational_event_emitter_from_app(
     app,
     service_id="nex-oa",
     store=SERVICE_PERSISTENCE.operational_event_store,
+)
+OA_TRACE_PROJECTION_SOURCE = RepositoryOaTraceProjectionSource(
+    AUTH_EVENT_REPOSITORY,
+    SERVICE_PERSISTENCE.operational_event_store,
 )
 register_service_job_control_routes(
     app,
@@ -217,3 +224,4 @@ register_federated_login_routes(
 register_auth_event_routes(app, repository=AUTH_EVENT_REPOSITORY)
 register_session_credential_delivery_boundary_routes(app)
 register_user_bootstrap_login_boundary_routes(app)
+register_oa_trace_projection_routes(app, source=OA_TRACE_PROJECTION_SOURCE)

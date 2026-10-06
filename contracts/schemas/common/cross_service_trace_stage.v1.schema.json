@@ -123,6 +123,10 @@
         "artifact_status": {"$ref": "#/$defs/safe_scalar"},
         "provider_capability": {"$ref": "#/$defs/safe_scalar"},
         "model_alias": {"$ref": "#/$defs/safe_scalar"},
+        "model_revision": {"$ref": "#/$defs/safe_scalar"},
+        "deployment_id": {"$ref": "#/$defs/safe_scalar"},
+        "provider_route_id": {"$ref": "#/$defs/safe_scalar"},
+        "provider_mode": {"$ref": "#/$defs/safe_scalar"},
         "cleanup_residue_count": {"$ref": "#/$defs/safe_scalar"}
       }
     },

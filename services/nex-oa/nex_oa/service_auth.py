@@ -20,8 +20,8 @@ from nex_runtime import (
 from nex_oa.signing_key_service import OaSigningKeyService
 from nex_oa.token_validation_service import OaSignedTokenValidationService
 
-
 OA_SERVICE_CLAIMS_STATE_KEY = "oa_service_claims"
+OA_OPERATIONS_READ_SCOPE = "operations:read"
 
 
 @dataclass(frozen=True)
@@ -106,6 +106,34 @@ def authorize_oa_service_request(
     )
     if isinstance(result, JSONResponse):
         return result
+    setattr(request.state, OA_SERVICE_CLAIMS_STATE_KEY, result)
+    return None
+
+
+def authorize_oa_operations_request(
+    request: Request,
+    authorization: str | None,
+) -> JSONResponse | None:
+    result = admit_service_token_from_request(
+        request,
+        authorization,
+        expected_audience="nex-oa",
+        required_scopes=(DEFAULT_SERVICE_SCOPE, OA_OPERATIONS_READ_SCOPE),
+        route_class="ADMIN",
+    )
+    if isinstance(result, JSONResponse):
+        return result
+    if result.service_id != "nex-ag":
+        from nex_runtime import problem_response
+
+        return problem_response(
+            request,
+            status_code=403,
+            error_code="OA_OPERATIONS_CALLER_FORBIDDEN",
+            title="Authorization failed",
+            detail="OA trace operations are available only to NeX-AG.",
+            type_uri="https://nex-platform.local/problems/authorization-failed",
+        )
     setattr(request.state, OA_SERVICE_CLAIMS_STATE_KEY, result)
     return None
 

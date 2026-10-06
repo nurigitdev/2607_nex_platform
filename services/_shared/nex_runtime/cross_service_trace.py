@@ -5,7 +5,6 @@ from datetime import datetime
 import re
 from typing import Any, Mapping, Sequence
 
-
 TRACE_STAGE_SCHEMA_VERSION = "cross_service_trace_stage.v1"
 TRACE_TIMELINE_SCHEMA_VERSION = "ag_cross_service_trace_e2e.v1"
 TRACE_SOURCE_PROJECTION_SCHEMA_VERSION = "service_cross_service_trace_projection.v1"
@@ -57,6 +56,10 @@ TRACE_SAFE_ATTRIBUTE_FIELDS = frozenset(
         "artifact_status",
         "provider_capability",
         "model_alias",
+        "model_revision",
+        "deployment_id",
+        "provider_route_id",
+        "provider_mode",
         "cleanup_residue_count",
     }
 )

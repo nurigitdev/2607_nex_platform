@@ -23,7 +23,10 @@ from nex_mo.remote_provider import (
 )
 from nex_mo.runtime_observability_api import register_runtime_observability_routes
 from nex_mo.runtime_observability_service import RuntimeObservabilityService
-
+from nex_mo.trace_projection import (
+    MoTraceProjectionSource,
+    register_mo_trace_projection_routes,
+)
 
 SERVICE_SPEC = SERVICE_SPECS["nex-mo"]
 PROVIDER_READINESS = ProviderReadinessService()
@@ -47,6 +50,9 @@ MO_OPERATIONS = MOOperationsService(
     runtime_service=RUNTIME_OBSERVABILITY,
     telemetry_reader=list_remote_provider_telemetry,
 )
+MO_TRACE_PROJECTION_SOURCE = MoTraceProjectionSource(
+    SERVICE_PERSISTENCE.operational_event_store
+)
 configure_provider_route_source(CatalogProviderRouteSource(CATALOG_LIFECYCLE))
 configure_remote_provider_telemetry_store(PROVIDER_TELEMETRY_STORE)
 app.state.provider_telemetry_store = PROVIDER_TELEMETRY_STORE
@@ -68,3 +74,4 @@ register_provider_readiness_routes(app, service=PROVIDER_READINESS)
 register_runtime_observability_routes(app, service=RUNTIME_OBSERVABILITY)
 register_operations_routes(app, service=MO_OPERATIONS)
 register_mo_mvp_acceptance_routes(app)
+register_mo_trace_projection_routes(app, source=MO_TRACE_PROJECTION_SOURCE)

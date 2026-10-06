@@ -9,7 +9,6 @@ from nex_runtime import (
     build_cross_service_trace_timeline,
 )
 
-
 TRACE_ID = "13731373137313731373137313731373"
 OWNER_DIGEST = "a" * 64
 
@@ -32,6 +31,10 @@ def _stage(**overrides: object) -> dict[str, object]:
             "attempt": 1,
             "retryable": False,
             "progress_percent": 100.0,
+            "model_revision": "qwen-revision-1",
+            "deployment_id": "dgx-generation",
+            "provider_route_id": "route-general-default",
+            "provider_mode": "live",
         },
         "owner_digest": OWNER_DIGEST,
     }
@@ -50,8 +53,12 @@ def test_build_stage_normalizes_only_metadata_safe_values() -> None:
     ]
     assert list(result["safe_attributes"]) == [
         "attempt",
+        "deployment_id",
         "event_type",
+        "model_revision",
         "progress_percent",
+        "provider_mode",
+        "provider_route_id",
         "retryable",
     ]
     assert result["private_payload_included"] is False

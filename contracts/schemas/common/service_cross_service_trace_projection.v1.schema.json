@@ -148,6 +148,10 @@
               "artifact_status",
               "provider_capability",
               "model_alias",
+              "model_revision",
+              "deployment_id",
+              "provider_route_id",
+              "provider_mode",
               "cleanup_residue_count"
             ]
           },

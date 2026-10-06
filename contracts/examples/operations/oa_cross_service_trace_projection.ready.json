@@ -1,0 +1,32 @@
+{
+  "projection_schema_version": "service_cross_service_trace_projection.v1",
+  "service_id": "nex-oa",
+  "trace_id": "13761376137613761376137613761376",
+  "source_status": "READY",
+  "checked_at": "2026-10-06T12:00:00Z",
+  "stages": [
+    {
+      "stage_schema_version": "cross_service_trace_stage.v1",
+      "stage_id": "oa-auth-1376",
+      "trace_id": "13761376137613761376137613761376",
+      "request_id": "request-1376",
+      "service_id": "nex-oa",
+      "stage_family": "AUTH",
+      "stage_status": "SUCCEEDED",
+      "operation_timestamp": "2026-10-06T11:00:00Z",
+      "owner_digest": "cbcd95a32cb0713272f0340e3c2ab0dc272c972548a1425b376d2883d23c1f70",
+      "correlation_refs": {},
+      "safe_attributes": {
+        "event_type": "LOGIN_SUCCEEDED",
+        "result_code": "SUCCEEDED"
+      },
+      "private_payload_included": false
+    }
+  ],
+  "summary": {
+    "stage_count": 1,
+    "by_family": {"AUTH": 1},
+    "by_status": {"SUCCEEDED": 1},
+    "private_payload_included": false
+  }
+}

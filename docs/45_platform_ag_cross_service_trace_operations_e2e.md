@@ -1,6 +1,6 @@
 # Platform AG Cross-Service Trace, Audit, and Operations E2E
 
-Status: S138 active through Slice 1375.
+Status: S138 active through Slice 1376.
 
 ## Required Outcome
 
@@ -114,6 +114,16 @@ reads only existing AE-owned durable tables and returns opaque correlation
 identifiers, lifecycle state, progress metadata, timestamps, and a stable
 owner digest. Browser messages, generated responses, artifact titles, rendered
 files, storage references, and all other private payloads remain inside AE.
+
+## Slice 1376 OA and MO Projections
+
+OA projects authentication and trust events from its existing auth-event and
+operational-event stores, replacing user ownership with a stable digest. MO
+records provider success/failure into its existing durable operational-event
+store and projects model-agnostic capability, alias, model revision,
+deployment, route, mode, retryability, result, and opaque request identity.
+Both services expose only the AG-only ADMIN route. Provider URLs, credentials,
+prompts, outputs, raw telemetry, and user-private identifiers are excluded.
 
 ## S139 Handoff
 

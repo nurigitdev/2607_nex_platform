@@ -970,6 +970,16 @@
       "name": "ae_cross_service_trace_projection_private_payload",
       "path": "tests/negative/operations/ae_cross_service_trace_projection.private_payload.json",
       "schema": "schemas/common/service_cross_service_trace_projection.v1.schema.json"
+    },
+    {
+      "name": "oa_cross_service_trace_projection_owner_leak",
+      "path": "tests/negative/operations/oa_cross_service_trace_projection.owner_leak.json",
+      "schema": "schemas/common/service_cross_service_trace_projection.v1.schema.json"
+    },
+    {
+      "name": "mo_cross_service_trace_projection_provider_url",
+      "path": "tests/negative/operations/mo_cross_service_trace_projection.provider_url.json",
+      "schema": "schemas/common/service_cross_service_trace_projection.v1.schema.json"
     }
   ]
 }

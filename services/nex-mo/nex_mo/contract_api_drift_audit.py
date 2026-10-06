@@ -6,7 +6,6 @@ from typing import Any, Mapping
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[3]
 HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete"})
 BUSINESS_PATHS = (
@@ -58,7 +57,9 @@ def build_mo_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
     missing_request_bodies = sorted(
         f"POST {path}"
         for path in POST_PROVIDER_PATHS
-        if not isinstance(paths.get(path, {}).get("post", {}).get("requestBody"), Mapping)
+        if not isinstance(
+            paths.get(path, {}).get("post", {}).get("requestBody"), Mapping
+        )
     )
     documented_business_paths = [path for path in BUSINESS_PATHS if path in paths]
     missing_success_schemas = sorted(
@@ -75,7 +76,9 @@ def build_mo_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
         path.relative_to(root / "contracts").as_posix()
         for path in (root / "contracts/schemas/service/nex_mo").glob("*.json")
     )
-    positive_schemas = _indexed_schemas(root / "contracts/examples/index.json", "examples")
+    positive_schemas = _indexed_schemas(
+        root / "contracts/examples/index.json", "examples"
+    )
     negative_schemas = _indexed_schemas(
         root / "contracts/tests/negative/index.json", "negative_examples"
     )
@@ -83,7 +86,7 @@ def build_mo_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
     missing_negative = sorted(set(schemas) - negative_schemas)
     checks = {
         "openapi_document_readable": bool(document),
-        "runtime_operation_inventory_complete": len(runtime_operations) == 31,
+        "runtime_operation_inventory_complete": len(runtime_operations) == 32,
         "runtime_openapi_operations_match": not missing_openapi and not extra_openapi,
         "openapi_has_no_unknown_operations": not extra_openapi,
         "business_path_inventory_complete": len(BUSINESS_PATHS) == 16,
@@ -106,9 +109,9 @@ def build_mo_contract_api_drift_audit(root: Path = ROOT) -> dict[str, Any]:
         "status": "PASS" if passed else "FAIL",
         "failure_code": None if passed else "mo_contract_api_drift_audit_failed",
         "contract_readiness": (
-            "HARDENED" if passed and drift_count == 0 else "GAPS_CONFIRMED"
-            if passed
-            else "BLOCKED"
+            "HARDENED"
+            if passed and drift_count == 0
+            else "GAPS_CONFIRMED" if passed else "BLOCKED"
         ),
         "checks": checks,
         "summary": {
@@ -180,7 +183,9 @@ def _openapi_operations(document: Mapping[str, Any]) -> set[str]:
 def _has_success_response_schema(path_item: Mapping[str, Any]) -> bool:
     return any(
         isinstance(operation, Mapping)
-        and isinstance(operation.get("responses", {}).get("200", {}).get("content"), Mapping)
+        and isinstance(
+            operation.get("responses", {}).get("200", {}).get("content"), Mapping
+        )
         for method, operation in path_item.items()
         if method in HTTP_METHODS
     )

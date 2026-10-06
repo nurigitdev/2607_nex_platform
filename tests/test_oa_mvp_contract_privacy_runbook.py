@@ -12,8 +12,8 @@ def test_contract_privacy_runbook_evidence_passes() -> None:
     assert all(evidence["checks"].values())
     assert evidence["contract_counts"] == {
         "schemas": 166,
-        "examples": 226,
-        "negative_examples": 194,
+        "examples": 228,
+        "negative_examples": 196,
         "openapi": 7,
     }
     assert evidence["summary"] == {

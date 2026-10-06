@@ -6,6 +6,7 @@ tags:
   - name: Platform
   - name: Internal Job Control
   - name: Internal Service Logs
+  - name: Internal Operations
   - name: Provider Profiles
   - name: Provider Routes
   - name: Provider Readiness
@@ -96,6 +97,31 @@ paths:
                 $ref: "#/components/schemas/ServiceTokenRuntime"
         "401":
           description: Service claim is missing or invalid.
+  /internal/v1/operations/traces/{trace_id}:
+    get:
+      operationId: getMoCrossServiceTraceProjection
+      tags:
+        - Internal Operations
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call, operations:read]
+      parameters:
+        - $ref: "#/components/parameters/TraceId"
+      responses:
+        "200":
+          description: Metadata-only MO provider trace projection for AG operations.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceCrossServiceTraceProjection"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Caller is not the AG operations service or lacks required scopes.
+        "422":
+          description: Trace identifier is invalid.
+        "503":
+          description: Durable MO provider trace records are unavailable.
   /internal/v1/jobs/{job_id}:
     get:
       operationId: getMoServiceJob
@@ -772,6 +798,13 @@ components:
       schema:
         type: string
         pattern: "^[a-z0-9][a-z0-9._:-]{0,127}$"
+    TraceId:
+      name: trace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[0-9a-f]{32}$"
   securitySchemes:
     serviceBearer:
       type: http
@@ -781,6 +814,9 @@ components:
     ActiveServiceClaim:
       type: object
       x-nex-canonical-json-schema: schemas/common/active_service_claim.v1.schema.json
+    ServiceCrossServiceTraceProjection:
+      type: object
+      x-nex-canonical-json-schema: schemas/common/service_cross_service_trace_projection.v1.schema.json
     ServiceRoot:
       type: object
       additionalProperties: false
