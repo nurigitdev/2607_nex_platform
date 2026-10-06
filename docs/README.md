@@ -1512,6 +1512,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1403`](slices/1403_platform_production_deferral_inventory.md) | `S141-002` Trace all nine production deferrals from the runtime constant to canonical owner, target requirement, and deferred state. |
 | [`Slice 1404`](slices/1404_platform_nonproduction_path_inventory.md) | `S141-003` Inventory nine mock, test, and local-only execution path classes and forbid production fallback. |
 | [`Slice 1405`](slices/1405_platform_production_configuration_audit.md) | `S141-004` Audit the 25-value production profile and freeze ten environment, secret, TLS, and operational admission gaps. |
+| [`Slice 1406`](slices/1406_platform_runtime_deployment_coupling_audit.md) | `S141-005` Re-audit API, import, provider, database, loopback, and source-command coupling and pass the fifth-Slice Checkpoint Gate. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

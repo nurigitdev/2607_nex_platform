@@ -97,6 +97,22 @@ following gaps remain outside the production admission contract.
 | `gpu_scheduling_capacity` | Live provider endpoints are required; GPU scheduling and capacity approval are not admitted | MO | `S147` |
 | `monitoring_paging_slo_approval` | Operational telemetry exists; production paging, SLO ownership, and approval are not admitted | AG and platform integration | `S148`, `S150` |
 
+## Runtime and Deployment Coupling Baseline
+
+| Coupling ID | Current evidence | Production disposition | Owner | Target |
+| --- | --- | --- | --- | --- |
+| `cross_service_domain_imports` | Zero foreign service-package imports | `CLEAR` | Every service | Continuous guard |
+| `non_mo_provider_endpoint_access` | Zero provider endpoint references outside MO service source | `CLEAR` | MO and every consumer | Continuous guard |
+| `service_http_api_edges` | 11 client anchors across 7 logical API edges | `TARGET_BOUNDARY` | API producer and consumer pairs | Continuous guard |
+| `ag_legacy_cross_database_adapters` | Four compatibility adapters remain; managed protected profiles require API projection and reject PostgreSQL projection mode | `FORBIDDEN_IN_PROTECTED_PROFILES` | AG | `S142` |
+| `loopback_endpoint_defaults` | 45 local loopback occurrences across 25 Python files; production requires all six service endpoint settings | `FORBIDDEN_IN_PRODUCTION` | Platform integration and client owners | `S142`, `S143` |
+| `source_tree_process_commands` | All 13 manifest processes execute repository source commands | `REPLACE_WITH_IMMUTABLE_ARTIFACTS` | Platform integration | `S142` |
+
+Shared `nex_runtime` infrastructure imports are allowed. Service-owned domain
+package imports, cross-service database reads, and direct model-provider access
+outside MO are not allowed. The retained AG adapters and loopback defaults are
+compatibility mechanisms, not accepted production routes.
+
 ## S141 Slice Plan
 
 | Slice | Scope |
