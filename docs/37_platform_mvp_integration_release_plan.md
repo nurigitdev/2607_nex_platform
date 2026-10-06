@@ -261,6 +261,24 @@ Slice 1391 published the operator runbook, aggregated eight deterministic PASS
 components plus one protected opt-in SKIP, closed S139, and activated S140.
 S140 is the next active requirement.
 
+## S140 Slice Plan
+
+| Slice | Scope |
+| --- | --- |
+| `1392` | Freeze the S140 release-candidate boundary, eight gaps, and non-production completion signal. |
+| `1393` | Define typed release evidence, gate identities, and deterministic aggregation. |
+| `1394` | Execute named deterministic `GEN-E2E-001` through `GEN-E2E-010`. |
+| `1395` | Define protected admission for five test databases, three live providers, and two viewports. |
+| `1396` | Re-run five-database migration, restart, restoration, and cleanup; run Checkpoint Gate. |
+| `1397` | Execute live embedding, reranker, generation, calibration, and grounded-provider acceptance. |
+| `1398` | Bind Korean browser evidence to AG trace, audit, and operations acceptance. |
+| `1399` | Harden failure/recovery, privacy, zero-residue, and deployment-deferral evidence. |
+| `1400` | Execute the complete protected release-candidate acceptance matrix. |
+| `1401` | Publish the operator runbook, close S140, and run Full Gate. |
+
+S140 completion signal: Pending. Slice 1392 freezes the RC boundary and does
+not claim production deployment readiness.
+
 ## Protected Evidence Schedule
 
 - `S131`: repository and deterministic regression evidence; no remote model

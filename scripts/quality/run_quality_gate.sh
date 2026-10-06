@@ -710,3 +710,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_ae_web_korean_golden_journey_playwright_acceptance.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s139_ae_web_protected_acceptance.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s139_ae_web_korean_golden_journey_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_mvp_release_candidate_boundary.py --summary
