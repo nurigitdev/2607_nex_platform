@@ -160,6 +160,9 @@ Unified operations:
 - `GET /admin/v1/operations/traces/{trace_id}` returns
   `ag_cross_service_trace_e2e.v1` from authenticated OA, AE, CX, and MO trace
   APIs plus a durable AG audit stage. It never reads another service database.
+- The deterministic S138 E2E guard covers all eight stage families, isolates a
+  failed source, rejects non-canonical private payloads, and verifies that AG
+  trace-read audits survive a persistence restart.
 - `GET /admin/v1/operations/rollups` returns
   `ag_operations_rollup_metrics_projection.v1`, aggregating per-service job
   and event totals plus source status counts for operator dashboards.

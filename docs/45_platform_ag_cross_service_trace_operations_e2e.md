@@ -1,6 +1,6 @@
 # Platform AG Cross-Service Trace, Audit, and Operations E2E
 
-Status: S138 active through Slice 1378.
+Status: S138 active through Slice 1379.
 
 ## Required Outcome
 
@@ -143,6 +143,17 @@ Every successful read is recorded in AG's existing trace-indexed operational
 event store before the response is returned. Audit storage failure closes the
 request with `503`. The persisted audit is projected as the fifth `nex-ag`
 source and an `OPERATIONS` stage without exposing private payloads.
+
+## Slice 1379 Deterministic E2E
+
+The repository E2E now fixes source clocks and stage fixtures to prove stable
+ordering across all eight stage families. Separate scenarios retain healthy
+source stages when MO is unavailable, reject a CX projection carrying an
+unexpected private prompt field, and expose only bounded diagnostics. AG audit
+events are written to a file-backed SQLite regression store, reopened through
+a new engine and repository, read back unchanged, and appended successfully
+after restart. Slice 1380 remains responsible for the actual service test
+PostgreSQL evidence.
 
 ## S139 Handoff
 
