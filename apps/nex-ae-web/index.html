@@ -7,8 +7,12 @@
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
+    <a class="skip-link" href="#main-workspace" data-i18n="action.skip_main">
+      본문으로 건너뛰기
+    </a>
     <div class="app-shell">
       <aside
+        id="golden-sidebar"
         class="sidebar"
         aria-label="주요 탐색"
         data-i18n-aria-label="app.navigation"
@@ -33,8 +37,8 @@
         </nav>
       </aside>
 
-      <main class="workspace">
-        <header class="topbar">
+      <main class="workspace" id="main-workspace" tabindex="-1">
+        <header class="topbar" id="golden-topbar">
           <div>
             <p class="eyebrow">Slice 0227</p>
             <h1 data-i18n="app.workspace">NeX-Platform 작업면</h1>
@@ -66,13 +70,14 @@
           </article>
         </section>
 
-        <section class="content-grid">
+        <section class="content-grid" id="golden-content">
           <section
+            id="golden-workspace-column"
             class="workspace-column"
             aria-label="채팅과 진행 상태"
             data-i18n-aria-label="chat.region"
           >
-            <section class="chat-pane" aria-labelledby="chat-title">
+            <section class="chat-pane" id="golden-chat" aria-labelledby="chat-title">
               <div class="section-header">
                 <div>
                   <p class="eyebrow" data-i18n="chat.eyebrow">채팅 문서</p>
@@ -134,7 +139,7 @@
               </form>
             </section>
 
-            <section class="timeline-panel" aria-labelledby="timeline-title">
+            <section class="timeline-panel" id="golden-timeline" aria-labelledby="timeline-title">
               <div class="section-header compact">
                 <h2 id="timeline-title" data-i18n="timeline.title">진행 타임라인</h2>
                 <span class="badge running" id="timeline-count">0 events</span>
@@ -144,6 +149,7 @@
           </section>
 
           <aside
+            id="golden-context-pane"
             class="context-pane"
             aria-label="컨텍스트 패널"
             data-i18n-aria-label="context.region"

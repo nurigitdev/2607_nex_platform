@@ -1,6 +1,6 @@
 # Platform AE Web Korean-Default Playwright Golden Journey
 
-Status: S139 active through Slice 1387.
+Status: S139 active through Slice 1388.
 
 ## Required Outcome
 
@@ -94,6 +94,9 @@ acceptance contract.
 - Slice 1387 reused the production artifact client to require completed render,
   exact file lineage, preview, and download before completing all nine journey
   stages; browser evidence retains no preview text or download payload.
+- Slice 1388 froze desktop `1440x900` and mobile `390x844` acceptance with one
+  shared Korean DOM, nine stable regions, accessible names, 24-pixel targets,
+  visible focus, zero horizontal overflow, and five non-overlap pairs.
 
 ## Acceptance Rules
 

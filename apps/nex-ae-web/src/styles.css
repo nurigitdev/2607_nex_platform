@@ -30,6 +30,24 @@ body {
   color: var(--nex-text);
 }
 
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  min-height: 38px;
+  border-radius: 6px;
+  background: var(--nex-primary);
+  color: #ffffff;
+  padding: 9px 12px;
+  text-decoration: none;
+  transform: translateY(-160%);
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
 button,
 input,
 select {
@@ -793,7 +811,9 @@ button {
   color: #ffffff;
   cursor: pointer;
   font-weight: 700;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  text-align: center;
+  white-space: normal;
 }
 
 button:hover {
@@ -1115,6 +1135,32 @@ code {
   overflow-wrap: anywhere;
 }
 
+.workspace,
+.topbar,
+.summary-band,
+.content-grid,
+.workspace-column,
+.context-pane,
+.panel,
+.timeline-panel,
+.section-header,
+.artifact-link-heading,
+.artifact-library-row,
+.artifact-library-actions,
+.composer-row,
+pre,
+input,
+select,
+button {
+  max-width: 100%;
+}
+
+nav a,
+.badge,
+.generation-action-row span {
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 1080px) {
   .content-grid {
     grid-template-columns: 1fr;
@@ -1165,6 +1211,10 @@ code {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .status-strip {
+    justify-content: flex-start;
+  }
+
   .composer-row {
     grid-template-columns: 1fr;
   }
@@ -1210,5 +1260,11 @@ code {
 
   .artifact-library-toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .artifact-link-heading,
+  .artifact-library-row {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

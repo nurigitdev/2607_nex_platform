@@ -1493,6 +1493,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1385`](slices/1385_ae_web_login_upload_ingestion_acceptance.md) | `S139-004` Correlate OA login, claim-derived upload ownership, and AE ingestion progress through INDEX_READY. |
 | [`Slice 1386`](slices/1386_ae_web_grounding_journey_acceptance.md) | `S139-005` Extend the journey through READY retrieval, completed generation, warnings, citations, and validated/repaired grounding. |
 | [`Slice 1387`](slices/1387_ae_web_artifact_journey_acceptance.md) | `S139-006` Complete the nine-stage journey through artifact render, preview, and download with content-free browser evidence. |
+| [`Slice 1388`](slices/1388_ae_web_viewport_accessibility_hardening.md) | `S139-007` Freeze the shared desktop/mobile responsive, accessibility, focus, overflow, and non-overlap acceptance contract. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

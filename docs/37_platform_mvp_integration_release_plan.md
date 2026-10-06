@@ -246,7 +246,9 @@ Slice 1386 extended the same journey through retrieval, generation, citation,
 and repair acceptance and passed the fifth-Slice Checkpoint Gate. Slice 1387
 completed the nine-stage deterministic journey through artifact render,
 preview, and download with exact artifact-file lineage and content-free browser
-evidence.
+evidence. Slice 1388 froze the shared desktop/mobile responsive, accessibility,
+focus, overflow, and primary-region non-overlap contract before Chromium
+execution.
 Remote model providers are not required for S139 closure;
 S140 owns the final browser plus live-provider release-candidate matrix.
 
