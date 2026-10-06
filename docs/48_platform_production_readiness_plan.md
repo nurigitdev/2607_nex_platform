@@ -26,17 +26,17 @@ production-shaped runtime profile as proof that production controls exist.
 
 ## S140 Production Deferral Baseline
 
-| Deferral | Primary owner | Target requirement |
-| --- | --- | --- |
-| External signing-key custody or HSM/KMS integration | OA | `S144` |
-| Managed TLS termination and certificate lifecycle | Platform integration | `S143` |
-| Production secret injection and rotation | Platform integration with every service | `S143` |
-| Enterprise IdP registration and federation metadata | OA | `S144` |
-| Production object storage and lifecycle policy | CX and AE | `S146` |
-| Production PostgreSQL backup, restore, HA, and disaster recovery | Each database owner; platform coordination | `S145` |
-| External notification and incident endpoints | AG | `S148` |
-| Production GPU scheduling, autoscaling, and capacity approval | MO | `S147` |
-| Production monitoring, paging, SLO ownership, and change approval | AG and platform integration | `S148`, `S150` |
+| Deferral ID | Production control | Primary owner | Target requirement | State |
+| --- | --- | --- | --- | --- |
+| `external_signing_key_custody` | External signing-key custody or HSM/KMS integration | OA | `S144` | `DEFERRED` |
+| `managed_tls_certificate_lifecycle` | Managed TLS termination and certificate lifecycle | Platform integration | `S143` | `DEFERRED` |
+| `production_secret_injection_rotation` | Production secret injection and rotation | Platform integration with OA, AE, CX, MO, and AG | `S143` | `DEFERRED` |
+| `enterprise_idp_registration` | Enterprise IdP registration and federation metadata | OA | `S144` | `DEFERRED` |
+| `production_object_storage_lifecycle` | Production object storage and lifecycle policy | CX and AE | `S146` | `DEFERRED` |
+| `production_postgresql_backup_ha_dr` | Production PostgreSQL backup, restore, HA, and disaster recovery | OA, AE, CX, MO, and AG database owners with platform coordination | `S145` | `DEFERRED` |
+| `external_notification_incident_endpoints` | External notification and incident endpoints | AG | `S148` | `DEFERRED` |
+| `production_gpu_scheduling_capacity` | Production GPU scheduling, autoscaling, and capacity approval | MO | `S147` | `DEFERRED` |
+| `production_monitoring_paging_slo_approval` | Production monitoring, paging, SLO ownership, and change approval | AG and platform integration | `S148`, `S150` | `DEFERRED` |
 
 ## Non-Drift Rules
 
