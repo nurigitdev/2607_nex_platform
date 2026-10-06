@@ -54,6 +54,24 @@ production-shaped runtime profile as proof that production controls exist.
 - Slice Gate runs for every Slice, Checkpoint Gate at Slice 1406, and Full Gate
   at Slice 1411.
 
+## Mock, Test, and Local-Only Path Baseline
+
+These paths remain supported for development and regression. Every row is
+`FORBIDDEN_IN_PRODUCTION`; a production profile must fail closed rather than
+silently falling back to it.
+
+| Path ID | Path class | Owners | Allowed scope | Production disposition | Transition target |
+| --- | --- | --- | --- | --- | --- |
+| `local_mock_profile_default` | Default profile and local process composition | Platform integration | local development and deterministic regression | `FORBIDDEN_IN_PRODUCTION` | `S142` |
+| `memory_persistence` | In-memory queues, logs, events, and heartbeats | OA, AE, CX, MO, AG | local development and unit regression | `FORBIDDEN_IN_PRODUCTION` | `S142`, `S145` |
+| `mock_model_provider` | Deterministic embedding, reranking, and generation provider | MO | local development and deterministic regression | `FORBIDDEN_IN_PRODUCTION` | `S147` |
+| `test_mock_service_trust` | Mock service-token admission | OA and platform integration | local development and explicit compatibility tests | `FORBIDDEN_IN_PRODUCTION` | `S144` |
+| `ae_mock_auth_session` | AE mock user/session facade | AE and OA | local development and browser regression | `FORBIDDEN_IN_PRODUCTION` | `S144` |
+| `local_private_filesystem` | CX and AE private payload roots under local `/data` | CX and AE | local, test, and rollback-compatible staging adapters | `FORBIDDEN_IN_PRODUCTION` | `S146` |
+| `local_model_filesystem` | MO model files under the local model root | MO | local model-provider development | `FORBIDDEN_IN_PRODUCTION` | `S147` |
+| `test_database_profile` | Five service-local `_TEST_DATABASE_URL` targets | OA, AE, CX, MO, AG | protected test evidence only | `FORBIDDEN_IN_PRODUCTION` | `S145`, `S149` |
+| `protected_opt_in_smoke` | Environment-enabled PostgreSQL, provider, and browser smoke runners | Platform integration and evidence owner | protected test or staging evidence only | `FORBIDDEN_IN_PRODUCTION` | `S149` |
+
 ## S141 Slice Plan
 
 | Slice | Scope |

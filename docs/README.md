@@ -1510,6 +1510,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1401`](slices/1401_s140_platform_release_candidate_closure.md) | `S140-010` Publish the operator runbook, bind fresh Full Gate evidence, close all nine RC gates, and complete S140 without production deployment approval. |
 | [`Slice 1402`](slices/1402_platform_production_readiness_boundary.md) | `S141-001` Freeze the production-readiness boundary, nine S140 deferrals, nine repository audits, S142 handoff, and non-production decision. |
 | [`Slice 1403`](slices/1403_platform_production_deferral_inventory.md) | `S141-002` Trace all nine production deferrals from the runtime constant to canonical owner, target requirement, and deferred state. |
+| [`Slice 1404`](slices/1404_platform_nonproduction_path_inventory.md) | `S141-003` Inventory nine mock, test, and local-only execution path classes and forbid production fallback. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
