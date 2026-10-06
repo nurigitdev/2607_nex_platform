@@ -1124,6 +1124,11 @@
       "name": "cx_cross_service_trace_projection_ready",
       "path": "examples/operations/cx_cross_service_trace_projection.ready.json",
       "schema": "schemas/common/service_cross_service_trace_projection.v1.schema.json"
+    },
+    {
+      "name": "ae_cross_service_trace_projection_ready",
+      "path": "examples/operations/ae_cross_service_trace_projection.ready.json",
+      "schema": "schemas/common/service_cross_service_trace_projection.v1.schema.json"
     }
   ]
 }

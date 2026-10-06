@@ -14,8 +14,8 @@ def test_repository_contract_trace_privacy_audit_exposes_named_e2e_gap() -> None
     assert result["issues"] == []
     assert result["contract_counts"] == {
         "schemas": 166,
-        "examples": 225,
-        "negative_examples": 193,
+        "examples": 226,
+        "negative_examples": 194,
         "openapi": 7,
     }
     assert result["findings"]["golden_scenario_contract_count"] == 10

@@ -1480,6 +1480,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1372`](slices/1372_platform_ag_cross_service_trace_boundary.md) | `S138-001` Freeze the redacted service-API-only cross-service trace boundary, eight gaps, and S139 handoff. |
 | [`Slice 1373`](slices/1373_cross_service_trace_envelope_contract.md) | `S138-002` Define metadata-only cross-service stage and AG timeline contracts with fail-closed private-field rejection. |
 | [`Slice 1374`](slices/1374_cx_admin_trace_projection.md) | `S138-003` Expose CX ingestion/retrieval/generation trace stages through an AG-only metadata-safe internal API. |
+| [`Slice 1375`](slices/1375_ae_trace_projection.md) | `S138-004` Expose AE upload/response/artifact/render stages through an AG-only metadata-safe internal API. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

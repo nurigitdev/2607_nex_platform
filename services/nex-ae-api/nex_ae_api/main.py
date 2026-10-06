@@ -27,10 +27,14 @@ from nex_ae_api.repaired_response_decisions import (
 from nex_ae_api.repaired_responses import register_repaired_response_handoff_routes
 from nex_ae_api.retrieval import register_retrieval_routes
 from nex_ae_api.runtime_policy_api import register_runtime_policy_routes
+from nex_ae_api.trace_projection import (
+    InMemoryAeTraceProjectionSource,
+    SqlAlchemyAeTraceProjectionSource,
+    register_ae_trace_projection_routes,
+)
 from nex_ae_api.uploads import register_upload_routes
 from nex_ae_api.upload_progress import register_upload_progress_routes
 from nex_ae_api.workspace import register_workspace_routes
-
 
 SERVICE_SPEC = SERVICE_SPECS["nex-ae-api"]
 SERVICE_TOKEN_ADMISSION = build_service_token_admission_runtime(
@@ -42,6 +46,11 @@ app = build_service_app(
 )
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
 AE_PROMPT_STORE = build_default_ae_prompt_store(app)
+AE_TRACE_PROJECTION_SOURCE = (
+    SqlAlchemyAeTraceProjectionSource(SERVICE_PERSISTENCE.api_session_factory)
+    if SERVICE_PERSISTENCE.api_session_factory is not None
+    else InMemoryAeTraceProjectionSource()
+)
 register_service_job_control_routes(
     app,
     service_id=SERVICE_SPEC.service_id,
@@ -78,3 +87,4 @@ register_prompt_registry_routes(
 )
 register_runtime_policy_routes(app, store=AE_PROMPT_STORE)
 register_ae_mvp_acceptance_routes(app)
+register_ae_trace_projection_routes(app, source=AE_TRACE_PROJECTION_SOURCE)

@@ -27,10 +27,10 @@ from nex_ae_api.auth_sessions import (
 )
 from nex_ae_api.oa_session_client import OaUserSessionClient
 
-
 AE_FACADE_ROUTE_AUTH_SCHEMA_VERSION = "ae_facade_route_auth.v1"
 AE_FACADE_ROUTE_AUTH_MODE_SERVICE = "service"
 AE_FACADE_ROUTE_AUTH_MODE_BROWSER_USER = "browser_user"
+AE_OPERATIONS_READ_SCOPE = "operations:read"
 
 
 @dataclass(frozen=True)
@@ -65,9 +65,11 @@ class AeFacadeRouteAuthContext:
         return {
             "auth_schema_version": AE_FACADE_ROUTE_AUTH_SCHEMA_VERSION,
             "auth_mode": self.auth_mode,
-            "service_id": self.service_claims.service_id
-            if self.service_claims is not None
-            else None,
+            "service_id": (
+                self.service_claims.service_id
+                if self.service_claims is not None
+                else None
+            ),
             "owner_scope_authority": "payload",
             "metadata": {
                 "service_token_accepted": True,
@@ -132,6 +134,31 @@ def authorize_ae_facade_route_request(
         )
 
     return service_result
+
+
+def authorize_ae_operations_request(
+    request: Request,
+    authorization: str | None,
+) -> JSONResponse | None:
+    admitted = admit_service_token_from_request(
+        request,
+        authorization,
+        expected_audience="nex-ae-api",
+        required_scopes=(DEFAULT_SERVICE_SCOPE, AE_OPERATIONS_READ_SCOPE),
+        route_class="ADMIN",
+    )
+    if isinstance(admitted, JSONResponse):
+        return admitted
+    if admitted.service_id != "nex-ag":
+        return problem_response(
+            request,
+            status_code=403,
+            error_code="AE_OPERATIONS_CALLER_FORBIDDEN",
+            title="Authorization failed",
+            detail="AE trace operations are available only to NeX-AG.",
+            type_uri="https://nex-platform.local/problems/authorization-failed",
+        )
+    return None
 
 
 def _looks_like_service_authorization(authorization: str | None) -> bool:

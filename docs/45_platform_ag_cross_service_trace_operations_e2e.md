@@ -1,6 +1,6 @@
 # Platform AG Cross-Service Trace, Audit, and Operations E2E
 
-Status: S138 active through Slice 1372.
+Status: S138 active through Slice 1375.
 
 ## Required Outcome
 
@@ -105,6 +105,15 @@ generation tables through the CX-owned repository boundary. Raw tenant/owner
 identifiers and all private content remain inside CX; the response includes
 only a stable owner digest, opaque correlation identifiers, lifecycle status,
 timestamps, and allowlisted scalar operations metadata.
+
+## Slice 1375 AE Projection
+
+AE exposes the same internal operations path and admission policy for its
+upload, generated-response, artifact, and render lifecycle. The projection
+reads only existing AE-owned durable tables and returns opaque correlation
+identifiers, lifecycle state, progress metadata, timestamps, and a stable
+owner digest. Browser messages, generated responses, artifact titles, rendered
+files, storage references, and all other private payloads remain inside AE.
 
 ## S139 Handoff
 

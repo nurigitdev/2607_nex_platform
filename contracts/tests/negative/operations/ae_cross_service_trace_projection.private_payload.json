@@ -1,0 +1,15 @@
+{
+  "projection_schema_version": "service_cross_service_trace_projection.v1",
+  "service_id": "nex-ae-api",
+  "trace_id": "13751375137513751375137513751375",
+  "source_status": "READY",
+  "checked_at": "2026-10-06T11:00:00Z",
+  "stages": [],
+  "summary": {
+    "stage_count": 0,
+    "by_family": {},
+    "by_status": {},
+    "private_payload_included": false
+  },
+  "user_message_preview": "private generated response"
+}
