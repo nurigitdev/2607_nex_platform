@@ -1496,6 +1496,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1388`](slices/1388_ae_web_viewport_accessibility_hardening.md) | `S139-007` Freeze the shared desktop/mobile responsive, accessibility, focus, overflow, and non-overlap acceptance contract. |
 | [`Slice 1389`](slices/1389_ae_web_korean_golden_journey_playwright.md) | `S139-008` Execute the deterministic nine-stage Korean journey in actual Chromium for both frozen viewports. |
 | [`Slice 1390`](slices/1390_ae_web_protected_postgres_acceptance.md) | `S139-009` Prove actual service processes, OA/AE/CX test PostgreSQL, grounded artifact delivery, and desktop/mobile Chromium as one protected evidence pack. |
+| [`Slice 1391`](slices/1391_s139_ae_web_korean_golden_journey_closure.md) | `S139-010` Publish the operator runbook, close S139 with Full Gate evidence, and activate the S140 platform release-candidate handoff. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

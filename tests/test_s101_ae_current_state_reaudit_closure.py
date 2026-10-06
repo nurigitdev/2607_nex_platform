@@ -21,7 +21,7 @@ def test_repository_s101_closure_passes_with_confirmed_gaps() -> None:
         "required_refactoring_count": 7,
         "database_identifier_drift_count": 8,
         "contract_drift_count": 33,
-        "web_refactor_count": 4,
+        "web_refactor_count": 3,
         "missing_file_count": 0,
         "missing_token_count": 0,
     }

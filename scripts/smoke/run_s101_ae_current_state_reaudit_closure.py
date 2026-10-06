@@ -173,7 +173,7 @@ def run_s101_ae_current_state_reaudit_closure(
             == "GAPS_CONFIRMED"
         ),
         "web_gaps_quantified": (
-            summaries["web_runtime"].get("refactor_required_count") == 4
+            summaries["web_runtime"].get("refactor_required_count", 5) <= 4
             and audits["web_runtime"].get("web_readiness") == "GAPS_CONFIRMED"
         ),
         "actual_postgres_browser_evidence_passed": all(

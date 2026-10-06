@@ -1,6 +1,6 @@
 # Platform AE Web Korean-Default Playwright Golden Journey
 
-Status: S139 active through Slice 1390.
+Status: S139 complete.
 
 ## Required Outcome
 
@@ -124,5 +124,17 @@ acceptance contract.
 
 S140 receives a repeatable browser journey, its redacted correlation evidence,
 desktop/mobile screenshots, and the protected service-process command. S140
-owns release-candidate execution across all test databases, live provider
-capabilities, browser acceptance, restart, privacy, and deployment deferrals.
+owns release-candidate execution across all test databases, all three remote
+provider capabilities, browser acceptance, restart, privacy, and deployment
+deferrals.
+
+## Slice 1391 Closure
+
+Completion signal: Met.
+
+Eight deterministic S139 components pass and the protected runner remains an
+explicit opt-in during ordinary regression. Slice 1390 is the authoritative
+protected result: five sources, three actual test databases, thirteen actual
+service processes, two Chromium viewports, and zero owner-scoped fixture
+residue. The operator runbook freezes execution, triage, screenshot, cleanup,
+rollback, and privacy procedures for the S140 release-candidate handoff.
