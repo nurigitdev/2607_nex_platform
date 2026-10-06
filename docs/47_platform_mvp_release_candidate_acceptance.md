@@ -1,6 +1,6 @@
 # Platform MVP Release-Candidate Acceptance And Operations Closure
 
-Status: S140 active through Slice 1396.
+Status: S140 active through Slice 1397.
 
 ## Required Outcome
 
@@ -137,3 +137,9 @@ and recovery evidence are independently executable.
   fifth-Slice Checkpoint passed `11,270` tests at `98.91%` statement and
   `97.29%` branch coverage after stale S131 golden-scenario expectations and
   overlapping Checkpoint coverage sources were corrected.
+- Slice 1397 bound the existing three-provider, S136 hybrid
+  retrieval/calibration, and S137 grounded artifact journeys to the typed
+  `live_provider_matrix` gate. A fresh protected run passed all three provider
+  capabilities, twenty calibration samples, actual CX/AE PostgreSQL work, and
+  zero residue. Model revisions are runtime bindings rather than acceptance
+  constants.

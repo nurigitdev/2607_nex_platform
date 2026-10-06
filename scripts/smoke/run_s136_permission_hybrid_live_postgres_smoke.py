@@ -93,7 +93,7 @@ PROFILE_ENV = "NEX_S136_PERMISSION_HYBRID_LIVE_POSTGRES_SMOKE_PROFILE"
 SERVICE_ID = "nex-cx"
 EXPECTED_DATABASE = "nex_cx_test"
 EXPECTED_ROLE = "nex_cx_user"
-EXPECTED_MODELS = {
+DEFAULT_MODELS = {
     "embedding": "Qwen3-Embedding-4B",
     "reranking": "Qwen3-Reranker-4B",
 }
@@ -202,6 +202,10 @@ def _execute_live_smoke(  # pragma: no cover - protected PostgreSQL/DGX evidence
     runtime_environ: dict[str, str],
     requester: HttpRequester | None,
 ) -> dict[str, Any]:
+    expected_models = {
+        "embedding": runtime_environ["NEX_MO_REMOTE_EMBEDDING_MODEL"],
+        "reranking": runtime_environ["NEX_MO_REMOTE_RERANKER_MODEL"],
+    }
     probe = uuid4().hex
     trace_id = uuid4().hex
     engine = build_engine(database_url)
@@ -322,20 +326,21 @@ def _execute_live_smoke(  # pragma: no cover - protected PostgreSQL/DGX evidence
                             len(model_bindings) == 1
                             and next(iter(model_bindings), None)
                             == (
-                                EXPECTED_MODELS["embedding"],
-                                EXPECTED_MODELS["reranking"],
+                                expected_models["embedding"],
+                                expected_models["reranking"],
                             )
                         )
                         if calibration_evaluation.get("status") == "PASSED" and stable_binding:
                             calibration_profile = build_retrieval_confidence_profile(
                                 profile_id=(
-                                    "qwen3-embedding-4b-qwen3-reranker-4b-"
+                                    "retrieval-binding-"
+                                    f"{_digest('|'.join(expected_models.values()))[:16]}-"
                                     "weighted-rrf-v1"
                                 ),
                                 version="0001",
                                 status="ACTIVE",
-                                embedding_model_revision=EXPECTED_MODELS["embedding"],
-                                reranker_model_revision=EXPECTED_MODELS["reranking"],
+                                embedding_model_revision=expected_models["embedding"],
+                                reranker_model_revision=expected_models["reranking"],
                                 ranking_policy_id="weighted_rrf_vector_bm25_v1",
                                 weights=DEFAULT_RETRIEVAL_CONFIDENCE_WEIGHTS,
                                 evaluation=calibration_evaluation,
@@ -445,11 +450,11 @@ def _execute_live_smoke(  # pragma: no cover - protected PostgreSQL/DGX evidence
                         and calibration_profile.get("binding", {}).get(
                             "embedding_model_revision"
                         )
-                        == EXPECTED_MODELS["embedding"]
+                        == expected_models["embedding"]
                         and calibration_profile.get("binding", {}).get(
                             "reranker_model_revision"
                         )
-                        == EXPECTED_MODELS["reranking"]
+                        == expected_models["reranking"]
                     ),
                     "production_runtime_ready": (
                         ready_response.status_code == 200
@@ -473,9 +478,9 @@ def _execute_live_smoke(  # pragma: no cover - protected PostgreSQL/DGX evidence
                     ),
                     "live_provider_models": (
                         embedding_profile.get("model_revision")
-                        == EXPECTED_MODELS["embedding"]
+                        == expected_models["embedding"]
                         and reranker_profile.get("model_revision")
-                        == EXPECTED_MODELS["reranking"]
+                        == expected_models["reranking"]
                         and ready.get("score_summary", {}).get("rerank_state")
                         == "APPLIED"
                     ),
@@ -513,7 +518,7 @@ def _execute_live_smoke(  # pragma: no cover - protected PostgreSQL/DGX evidence
                         provider_observation[capability]["success_count"] >= 1
                         and provider_observation[capability]["failure_count"] == 0
                         and provider_observation[capability]["model"] == model
-                        for capability, model in EXPECTED_MODELS.items()
+                        for capability, model in expected_models.items()
                     ),
                     "hash_only_postgres_persistence": (
                         len(persisted) == len(retrieval_package_ids) == 23
@@ -529,9 +534,9 @@ def _execute_live_smoke(  # pragma: no cover - protected PostgreSQL/DGX evidence
                         event.get("details", {}).get("observability_schema_version")
                         == "cx_retrieval_observability.v2"
                         and event.get("details", {}).get("embedding_model_revision")
-                        == EXPECTED_MODELS["embedding"]
+                        == expected_models["embedding"]
                         and event.get("details", {}).get("reranker_model_revision")
-                        == EXPECTED_MODELS["reranking"]
+                        == expected_models["reranking"]
                         and calibration_profile is not None
                         and event.get("details", {}).get(
                             "calibration_profile_hash"
@@ -808,15 +813,17 @@ def _headers(request_id: str, trace_id: str, owner_id: str) -> dict[str, str]:
 
 
 def _configuration_issues(environ: Mapping[str, str]) -> list[dict[str, str]]:
-    required = PROTECTED_ENV_KEYS
+    required = (
+        *PROTECTED_ENV_KEYS,
+        "NEX_MO_REMOTE_EMBEDDING_MODEL",
+        "NEX_MO_REMOTE_RERANKER_MODEL",
+    )
     issues = [
         {"error_code": "configuration_missing", "field": key}
         for key in required
         if not str(environ.get(key, "")).strip()
     ]
     expected = {
-        "NEX_MO_REMOTE_EMBEDDING_MODEL": EXPECTED_MODELS["embedding"],
-        "NEX_MO_REMOTE_RERANKER_MODEL": EXPECTED_MODELS["reranking"],
         "NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE": "openai_embeddings",
         "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE": "rerank",
     }
@@ -830,7 +837,7 @@ def _configuration_issues(environ: Mapping[str, str]) -> list[dict[str, str]]:
 
 def _provider_observation(telemetry: Mapping[str, Any]) -> dict[str, Any]:
     result: dict[str, Any] = {}
-    for capability in EXPECTED_MODELS:
+    for capability in ("embedding", "reranking"):
         item = next(
             (
                 candidate

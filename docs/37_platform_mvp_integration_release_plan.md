@@ -293,7 +293,13 @@ orchestrator now emits typed `five_database_restart` RC evidence. A fresh run
 passed migration twice, started thirteen processes in two generations,
 restored and cleaned all five test-database sentinels, and confirmed zero
 database residue. The fifth-Slice Checkpoint passed `11,270` tests at `98.91%`
-statement and `97.29%` branch coverage. Slice 1397 is next.
+statement and `97.29%` branch coverage.
+
+Slice 1397 protected provider progress: a fresh run passed live embedding,
+reranking, generation, twenty-sample multi-signal calibration, grounded
+generation/artifact persistence, and cleanup with three capabilities and zero
+residue. Model revision changes are accepted through runtime binding and
+calibration rather than hard-coded release admission. Slice 1398 is next.
 
 ## Protected Evidence Schedule
 

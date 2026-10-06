@@ -35,7 +35,7 @@ def _execution(**overrides: object) -> dict[str, object]:
                 "success_count": 1,
                 "failure_count": 0,
             }
-            for capability, model in smoke.EXPECTED_MODELS.items()
+            for capability, model in smoke.DEFAULT_MODELS.items()
         },
         "lifecycle": {
             "ready_status": "READY",
@@ -97,22 +97,26 @@ def test_activation_configuration_and_database_guards(monkeypatch) -> None:
     assert target["failure_code"] == "target_not_allowed"
 
 
-def test_configuration_rejects_model_and_shape_drift() -> None:
+def test_configuration_accepts_model_change_and_rejects_missing_model_or_shape_drift() -> None:
     issues = smoke._configuration_issues(
         _live_env(
-            NEX_MO_REMOTE_EMBEDDING_MODEL="old",
+            NEX_MO_REMOTE_EMBEDDING_MODEL="replacement-embedding",
             NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE="legacy",
         )
     )
     assert issues == [
         {
             "error_code": "configuration_mismatch",
-            "field": "NEX_MO_REMOTE_EMBEDDING_MODEL",
-        },
-        {
-            "error_code": "configuration_mismatch",
             "field": "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE",
         },
+    ]
+    assert smoke._configuration_issues(
+        _live_env(NEX_MO_REMOTE_EMBEDDING_MODEL="")
+    ) == [
+        {
+            "error_code": "configuration_missing",
+            "field": "NEX_MO_REMOTE_EMBEDDING_MODEL",
+        }
     ]
 
 
@@ -186,7 +190,7 @@ def test_provider_target_storage_headers_and_redaction_helpers(tmp_path) -> None
                 "failure_count": index,
             }
             for index, (capability, model) in enumerate(
-                smoke.EXPECTED_MODELS.items()
+                smoke.DEFAULT_MODELS.items()
             )
         ]
     }
@@ -253,10 +257,10 @@ def test_multisignal_dataset_and_sample_collection_helpers(tmp_path) -> None:
                 "retrieval_package_id": self.package_id,
                 "retrieval_profile": {
                     "embedding_profile": {
-                        "model_revision": smoke.EXPECTED_MODELS["embedding"]
+                        "model_revision": smoke.DEFAULT_MODELS["embedding"]
                     },
                     "reranker_profile": {
-                        "model_revision": smoke.EXPECTED_MODELS["reranking"]
+                        "model_revision": smoke.DEFAULT_MODELS["reranking"]
                     },
                 },
                 "evidence_items": [
@@ -289,8 +293,8 @@ def test_multisignal_dataset_and_sample_collection_helpers(tmp_path) -> None:
     assert [sample["score"] for sample in samples] == [0.88, 0.88]
     assert bindings == {
         (
-            smoke.EXPECTED_MODELS["embedding"],
-            smoke.EXPECTED_MODELS["reranking"],
+            smoke.DEFAULT_MODELS["embedding"],
+            smoke.DEFAULT_MODELS["reranking"],
         )
     }
     assert package_ids == ["package-1", "package-2"]
