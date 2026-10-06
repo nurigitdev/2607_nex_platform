@@ -306,6 +306,11 @@ Korean Chromium journey passed both frozen viewports, and the S138
 five-database AG service-API trace journey passed all eight stage families,
 restart-safe audit, and zero combined residue. Slice 1399 is next.
 
+Slice 1399 assurance progress: contract and privacy checks, three recovery
+scenarios, actual five-database cleanup, thirteen-process shutdown, temporary
+file cleanup, and all nine production-only deferrals passed with zero residue
+and no production approval claim. Slice 1400 is next.
+
 ## Protected Evidence Schedule
 
 - `S131`: repository and deterministic regression evidence; no remote model

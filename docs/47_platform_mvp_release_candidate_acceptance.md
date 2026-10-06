@@ -1,6 +1,6 @@
 # Platform MVP Release-Candidate Acceptance And Operations Closure
 
-Status: S140 active through Slice 1398.
+Status: S140 active through Slice 1399.
 
 ## Required Outcome
 
@@ -148,3 +148,8 @@ and recovery evidence are independently executable.
   `ag_trace_operations`. A fresh run passed both viewports, all eight trace
   families, restart-safe AG audit, and zero database/file residue while
   keeping browser provider behavior deterministic.
+- Slice 1399 bound contract validation plus recovery/privacy scenarios, actual
+  five-database/process/file cleanup, and the exact nine production-only
+  deferrals to `contract_privacy`, `zero_residue`, and
+  `deployment_deferrals`. The fresh protected run observed zero residue and
+  retained `production_deployment_approved=false`.

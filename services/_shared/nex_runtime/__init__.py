@@ -123,6 +123,11 @@ from .release_candidate_operations import (
     RELEASE_CANDIDATE_OPERATIONS_SCHEMA_VERSION,
     build_release_candidate_browser_ag_evidence,
 )
+from .release_candidate_assurance import (
+    DEPLOYMENT_DEFERRALS,
+    RELEASE_CANDIDATE_ASSURANCE_SCHEMA_VERSION,
+    build_release_candidate_assurance_evidence,
+)
 from .generation_golden import (
     GENERATION_GOLDEN_EVIDENCE_SCHEMA_VERSION,
     GENERATION_GOLDEN_MATRIX_SCHEMA_VERSION,
