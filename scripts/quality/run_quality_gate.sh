@@ -20,6 +20,7 @@ mkdir -p "$REPORT_DIR"
   --cov-branch \
   --cov-report=term-missing \
   --cov-report="json:$REPORT_DIR/coverage.json" \
+  --junitxml="$REPORT_DIR/junit.xml" \
   "$@"
 
 "$PYTHON_BIN" scripts/quality/check_coverage_thresholds.py \
@@ -715,3 +716,8 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_generation_golden_scenarios.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_release_candidate_admission.py --sample --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_release_candidate_postgres_restart.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_release_candidate_live_providers.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_release_candidate_browser_ag_operations.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_release_candidate_assurance.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_release_candidate_protected_matrix.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s140_platform_release_candidate_closure.py --summary

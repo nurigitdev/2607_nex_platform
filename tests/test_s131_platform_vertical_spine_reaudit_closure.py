@@ -21,7 +21,7 @@ def test_repository_closure_passes_and_hands_off_to_s132() -> None:
         "trace_client_count": 13,
         "p0_gap_count": 8,
         "p1_gap_count": 4,
-        "named_e2e_count": 0,
+        "named_e2e_count": 10,
     }
     assert result["decision"]["service_ownership_model_retained"] is True
     assert result["decision"]["current_vertical_spine_is_release_accepted"] is False
@@ -60,13 +60,13 @@ def test_summary_and_main_branches(monkeypatch, capsys) -> None:
             "check_count": 11,
             "http_edge_count": 11,
             "migration_count": 90,
-            "named_e2e_count": 0,
+            "named_e2e_count": 10,
         },
         "decision": {"next_requirement": "S132"},
     }
     assert closure.summary_line(passing) == (
         "s131_platform_vertical_spine_reaudit_closure=pass audits=9/9 "
-        "checks=11/11 edges=11 migrations=90 named_e2e=0/10 next=S132"
+        "checks=11/11 edges=11 migrations=90 named_e2e=10/10 next=S132"
     )
     assert closure.summary_line(
         {"status": "FAIL", "failed_checks": ["a"]}

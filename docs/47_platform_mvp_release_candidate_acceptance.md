@@ -1,6 +1,7 @@
 # Platform MVP Release-Candidate Acceptance And Operations Closure
 
-Status: S140 active through Slice 1400; Full Gate pending.
+Status: S140 complete through Slice 1401; MVP release candidate. Production
+deployment is not approved.
 
 ## Required Outcome
 
@@ -91,6 +92,10 @@ named scenarios pass, all protected resources are cleaned up, Full Gate passes
 at the repository thresholds, and every production-only dependency remains an
 explicit deferral rather than an implicit claim.
 
+This completion signal is met. The accepted closure reported `9/9` gates,
+`5/5` actual protected gates, zero privacy violations, and
+`production_deployment_approved=false`.
+
 ## Deployment Deferrals
 
 The following remain outside MVP release-candidate acceptance and block any
@@ -158,3 +163,11 @@ and recovery evidence are independently executable.
   five protected actual-execution requirements passed with no privacy
   violation. The evaluator remains deliberately blocked only by the Slice
   1401 `full_regression` gate.
+- Slice 1401 replaced the pending gate with fresh JUnit and coverage evidence,
+  published the operator runbook, and reran Full Gate after correcting one
+  stale S131 golden-scenario expectation and pytest's child-suite JUnit shape.
+  The accepted run passed `12,010` tests with `31` policy skips, statement
+  coverage `98.11%`, branch coverage `97.01%`, and contract validation
+  `166/228/196/7`. The final evaluator passed `9/9` gates, retained all `5/5`
+  actual protected gates and zero privacy violations, and declared
+  `RELEASE_CANDIDATE` without approving production deployment.

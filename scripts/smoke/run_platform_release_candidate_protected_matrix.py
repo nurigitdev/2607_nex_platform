@@ -149,11 +149,24 @@ def summary_line(result: Mapping[str, Any]) -> str:
     )
 
 
+def write_evidence(path: Path, result: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--summary", action="store_true")
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     result = run_platform_release_candidate_protected_matrix()
+    if args.output is not None:
+        write_evidence(args.output, result)
     print(
         summary_line(result)
         if args.summary

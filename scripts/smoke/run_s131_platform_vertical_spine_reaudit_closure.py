@@ -126,7 +126,7 @@ def run_s131_platform_vertical_spine_reaudit_closure(
             all(
                 _finding(persistence, "process_orchestration_gaps", {}).values()
             )
-            and _finding(e2e, "executable_named_golden_scenario_count") == 0
+            and _finding(e2e, "executable_named_golden_scenario_count") == 10
         ),
         "s132_handoff_is_frozen": all(
             token in _read_text(root / "docs/38_platform_mvp_vertical_spine_reaudit.md")

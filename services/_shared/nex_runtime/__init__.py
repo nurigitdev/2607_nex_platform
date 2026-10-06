@@ -132,6 +132,11 @@ from .release_candidate_protected_matrix import (
     RELEASE_CANDIDATE_PROTECTED_MATRIX_SCHEMA_VERSION,
     build_release_candidate_protected_matrix,
 )
+from .release_candidate_closure import (
+    RELEASE_CANDIDATE_CLOSURE_SCHEMA_VERSION,
+    build_release_candidate_closure,
+    load_full_regression_evidence,
+)
 from .generation_golden import (
     GENERATION_GOLDEN_EVIDENCE_SCHEMA_VERSION,
     GENERATION_GOLDEN_MATRIX_SCHEMA_VERSION,

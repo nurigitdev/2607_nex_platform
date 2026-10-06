@@ -276,8 +276,9 @@ S140 is the next active requirement.
 | `1400` | Execute the complete protected release-candidate acceptance matrix. |
 | `1401` | Publish the operator runbook, close S140, and run Full Gate. |
 
-S140 completion signal: Pending. Slice 1392 freezes the RC boundary and does
-not claim production deployment readiness.
+S140 completion signal: Met. The accepted Slice 1401 closure declares the MVP
+a release candidate and explicitly does not claim production deployment
+readiness.
 
 Slice 1394 deterministic progress: `GEN-E2E-001` through `GEN-E2E-010` now
 have one executable metadata-only aggregate runner. Protected database,
@@ -316,6 +317,14 @@ actual protected gates passed after source-specific trust/provider profiles
 were isolated. Privacy violations remained zero. The matrix is
 `READY_FOR_FULL_GATE`; `full_regression` is the only pending gate and Slice
 1401 is next.
+
+Slice 1401 closure: fresh Full Gate evidence reported `12,010 passed`, `31`
+policy skips, statement coverage `98.11%`, branch coverage `97.01%`, and
+contract validation `166/228/196/7`. After fail-closed corrections for the S131
+golden-scenario inventory and pytest child-suite JUnit aggregation, the full
+run was repeated successfully. The final decision passed `9/9` gates, retained
+`5/5` actual protected gates and zero privacy violations, and set
+`RELEASE_CANDIDATE` while keeping `production_deployment_approved=false`.
 
 ## Protected Evidence Schedule
 

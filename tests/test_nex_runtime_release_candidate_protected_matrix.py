@@ -291,7 +291,9 @@ def test_runner_is_opt_in_executes_in_order_and_enables_sources(
     )
 
 
-def test_runner_admission_exception_and_main_branches(monkeypatch, capsys) -> None:
+def test_runner_admission_exception_and_main_branches(
+    monkeypatch, capsys, tmp_path
+) -> None:
     monkeypatch.delenv("NEX_S140_TEMP_PROFILE", raising=False)
     with runner._patched_environ({"NEX_S140_TEMP_PROFILE": "temporary"}):
         assert runner.os.environ["NEX_S140_TEMP_PROFILE"] == "temporary"
@@ -318,8 +320,11 @@ def test_runner_admission_exception_and_main_branches(monkeypatch, capsys) -> No
         "run_platform_release_candidate_protected_matrix",
         lambda: {"status": "SKIPPED"},
     )
-    assert runner.main(["--summary"]) == 0
+    output = tmp_path / "nested" / "protected.json"
+    assert runner.main(["--summary", "--output", str(output)]) == 0
     assert "=skip" in capsys.readouterr().out
+    assert json.loads(output.read_text(encoding="utf-8"))["status"] == "SKIPPED"
+    assert not output.with_name(f".{output.name}.tmp").exists()
     monkeypatch.setattr(
         runner,
         "run_platform_release_candidate_protected_matrix",
