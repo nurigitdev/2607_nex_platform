@@ -714,3 +714,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_release_candidate_gate_matrix.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_generation_golden_scenarios.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_release_candidate_admission.py --sample --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_release_candidate_postgres_restart.py --summary

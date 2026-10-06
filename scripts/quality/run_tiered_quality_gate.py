@@ -171,11 +171,18 @@ def build_checkpoint_plan(
     ]
     if closure_tests:
         raise ValueError("closure tests belong to the full gate")
+    validated_targets = tuple(
+        _validated_coverage_target(root, item) for item in coverage_targets
+    )
     targets = _deduplicated(
         (
             "services",
             "providers",
-            *(_validated_coverage_target(root, item) for item in coverage_targets),
+            *(
+                item
+                for item in validated_targets
+                if not item.startswith(("services/", "providers/"))
+            ),
         )
     )
     smokes = [

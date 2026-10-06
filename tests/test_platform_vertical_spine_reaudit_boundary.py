@@ -21,7 +21,10 @@ def test_boundary_audit_passes_for_repository() -> None:
     assert result["baseline_findings"]["golden_scenario_contract_count"] == 10
     assert result["baseline_findings"][
         "executable_named_golden_scenario_count"
-    ] == 0
+    ] == 10
+    assert result["baseline_findings"][
+        "executable_named_golden_scenario_ids"
+    ] == [f"GEN-E2E-{index:03d}" for index in range(1, 11)]
     assert len(result["audit_surfaces"]) == 8
     assert len(result["slice_plan"]) == 10
     assert result["quality_cadence"]["checkpoint_gate"] == "1306"

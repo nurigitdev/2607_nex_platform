@@ -1502,6 +1502,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1393`](slices/1393_platform_release_candidate_gate_matrix.md) | `S140-002` Define nine blocking typed RC gates with exact inventory, freshness, digest, privacy, protected-execution, and metric checks. |
 | [`Slice 1394`](slices/1394_platform_generation_golden_scenarios.md) | `S140-003` Execute `GEN-E2E-001` through `GEN-E2E-010` as one deterministic, metadata-only aggregate acceptance runner. |
 | [`Slice 1395`](slices/1395_platform_release_candidate_protected_admission.md) | `S140-004` Fail closed unless five test databases, three live capabilities, protected runtime modes, and two browser viewports are admitted. |
+| [`Slice 1396`](slices/1396_platform_release_candidate_postgres_restart.md) | `S140-005` Bind actual five-database migration, restart, restoration, cleanup, and zero-residue evidence to the RC gate and pass Checkpoint Gate. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

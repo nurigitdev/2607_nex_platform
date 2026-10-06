@@ -68,7 +68,10 @@ def test_checkpoint_plan_excludes_historical_closures_and_keeps_full_sources(
         root=root,
         python_bin="python-test",
         focused_tests=["tests/test_focused.py"],
-        coverage_targets=["scripts/smoke/extra.py"],
+        coverage_targets=[
+            "services/nex-cx/nex_cx/module.py",
+            "scripts/smoke/extra.py",
+        ],
         smoke_scripts=["scripts/smoke/run_current_smoke.py"],
     )
 
@@ -80,7 +83,9 @@ def test_checkpoint_plan_excludes_historical_closures_and_keeps_full_sources(
     assert "tests/test_focused.py" not in pytest_command
     assert "--cov=services" in pytest_command
     assert "--cov=providers" in pytest_command
+    assert "--cov=nex_cx.module" not in pytest_command
     assert "--cov=extra" in pytest_command
+    assert "services/nex-cx/nex_cx/module.py" in plan.commands[2]
     assert plan.commands[-1][-1] == "--summary"
 
 

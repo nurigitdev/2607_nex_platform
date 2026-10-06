@@ -45,7 +45,10 @@ replace service regression. Checkpoint Gate validates each `--test` path but
 collects the `tests` directory only once; non-closure focused tests are already
 part of that collection, while closure tests remain Full Gate evidence. Both
 accelerated tiers run contract validation and fail immediately when any
-command fails.
+command fails. Checkpoint Gate also measures `services` and `providers` once;
+explicit targets below either root remain per-file threshold scopes without
+adding overlapping pytest-cov sources. Explicit `scripts` targets are added to
+collection because scripts are outside the default Checkpoint coverage roots.
 
 The Full Gate also runs the complete `nex-ae-web` Node regression and its
 grounded-generation accessibility/diagnostics contract smoke. This keeps Web

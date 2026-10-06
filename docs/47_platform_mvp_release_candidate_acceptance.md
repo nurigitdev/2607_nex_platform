@@ -1,6 +1,6 @@
 # Platform MVP Release-Candidate Acceptance And Operations Closure
 
-Status: S140 active through Slice 1395.
+Status: S140 active through Slice 1396.
 
 ## Required Outcome
 
@@ -130,3 +130,10 @@ and recovery evidence are independently executable.
   test databases, three model-independent live provider capabilities, signed
   trust/API operations modes, and both browser viewports must be present before
   protected release-candidate execution can start.
+- Slice 1396 bound the existing S133 migration/restart/restoration machinery to
+  the typed `five_database_restart` RC gate. A fresh protected run reached,
+  restored, cleaned, and confirmed absence in all five service-owned test
+  databases with two process generations and zero database residue. The
+  fifth-Slice Checkpoint passed `11,270` tests at `98.91%` statement and
+  `97.29%` branch coverage after stale S131 golden-scenario expectations and
+  overlapping Checkpoint coverage sources were corrected.

@@ -111,6 +111,10 @@ from .release_candidate_admission import (
     ReleaseCandidateProviderAdmission,
     evaluate_release_candidate_admission,
 )
+from .release_candidate_postgres import (
+    RELEASE_CANDIDATE_POSTGRES_SCHEMA_VERSION,
+    build_release_candidate_postgres_restart_evidence,
+)
 from .generation_golden import (
     GENERATION_GOLDEN_EVIDENCE_SCHEMA_VERSION,
     GENERATION_GOLDEN_MATRIX_SCHEMA_VERSION,

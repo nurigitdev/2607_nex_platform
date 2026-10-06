@@ -288,6 +288,13 @@ unless all five test database identities, all three live provider capabilities,
 the canonical provider profile, protected runtime modes, and both browser
 viewports are configured. Admission performs no protected execution itself.
 
+Slice 1396 protected database progress: the existing platform restart
+orchestrator now emits typed `five_database_restart` RC evidence. A fresh run
+passed migration twice, started thirteen processes in two generations,
+restored and cleaned all five test-database sentinels, and confirmed zero
+database residue. The fifth-Slice Checkpoint passed `11,270` tests at `98.91%`
+statement and `97.29%` branch coverage. Slice 1397 is next.
+
 ## Protected Evidence Schedule
 
 - `S131`: repository and deterministic regression evidence; no remote model

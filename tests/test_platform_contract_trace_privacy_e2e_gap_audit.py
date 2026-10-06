@@ -6,7 +6,7 @@ from pathlib import Path
 import run_platform_contract_trace_privacy_e2e_gap_audit as audit
 
 
-def test_repository_contract_trace_privacy_audit_exposes_named_e2e_gap() -> None:
+def test_repository_contract_trace_privacy_audit_tracks_named_e2e_execution() -> None:
     result = audit.run_platform_contract_trace_privacy_e2e_gap_audit()
 
     assert result["status"] == "PASS"
@@ -19,7 +19,11 @@ def test_repository_contract_trace_privacy_audit_exposes_named_e2e_gap() -> None
         "openapi": 7,
     }
     assert result["findings"]["golden_scenario_contract_count"] == 10
-    assert result["findings"]["executable_named_golden_scenario_count"] == 0
+    assert result["findings"]["executable_named_golden_scenario_count"] == 10
+    assert result["findings"]["executable_named_golden_scenario_ids"] == [
+        f"GEN-E2E-{index:03d}" for index in range(1, 11)
+    ]
+    assert result["findings"]["named_generation_e2e_suite_present"] is True
     assert result["findings"]["trace_propagating_http_client_count"] == 13
     assert result["findings"]["single_trace_vertical_spine_evidence_present"] is False
     assert len(result["scenario_handoff"]) == 10
