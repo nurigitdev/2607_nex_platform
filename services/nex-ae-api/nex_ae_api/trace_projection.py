@@ -22,7 +22,7 @@ from nex_runtime import (
 )
 
 AE_TRACE_OPERATIONS_PATH = "/internal/v1/operations/traces/{trace_id}"
-AE_TRACE_RECORD_KINDS = ("upload", "response", "artifact", "render")
+AE_TRACE_RECORD_KINDS = ("upload", "response", "artifact", "render", "access")
 
 
 @dataclass(frozen=True)
@@ -121,6 +121,22 @@ class SqlAlchemyAeTraceProjectionSource:
                         trace_id,
                     )
                 )
+                records.extend(
+                    _records(
+                        session,
+                        "access",
+                        """
+                        SELECT event_id, event_type, trace_id, request_id,
+                               subject_id, details, created_at,
+                               created_at AS updated_at
+                        FROM service_operational_events
+                        WHERE service_id = 'nex-ae-api'
+                          AND trace_id = :trace_id
+                          AND event_type LIKE 'ae.artifact_access.%'
+                        """,
+                        trace_id,
+                    )
+                )
                 return records
         except SQLAlchemyError as exc:
             raise AeTraceProjectionError(
@@ -205,9 +221,35 @@ def _build_stage(trace_id: str, record: Mapping[str, Any]) -> dict[str, Any]:
             status_code=500,
             retryable=False,
         )
-    owner_digest = _owner_digest(record)
     timestamp = _record_timestamp(record)
     request_id = _required_text(record, "request_id")
+
+    if kind == "access":
+        details = _mapping(record.get("details"))
+        result_code = _required_text(details, "result_code")
+        event_type = _required_text(record, "event_type")
+        _required_text(details, "access_type")
+        artifact_id = _optional_identifier(details.get("artifact_id"))
+        refs = {"artifact_id": artifact_id} if artifact_id is not None else {}
+        attributes: dict[str, object] = {
+            "event_type": event_type,
+            "result_code": result_code,
+        }
+        if result_code == "BLOCKED":
+            attributes["failure_code"] = "ACCESS_BLOCKED"
+        return _stage(
+            stage_id=f"ae-access-{_required_identifier(record, 'event_id')}",
+            trace_id=trace_id,
+            request_id=request_id,
+            family="ACCESS",
+            status=result_code,
+            timestamp=timestamp,
+            refs=refs,
+            attributes=attributes,
+            owner_digest=None,
+        )
+
+    owner_digest = _owner_digest(record)
     status = _required_text(record, "status")
 
     if kind == "upload":
@@ -293,7 +335,7 @@ def _stage(
     timestamp: str,
     refs: Mapping[str, object],
     attributes: Mapping[str, object],
-    owner_digest: str,
+    owner_digest: str | None,
 ) -> dict[str, Any]:
     return build_cross_service_trace_stage(
         stage_id=stage_id,
@@ -338,6 +380,10 @@ def _owner_digest(record: Mapping[str, Any]) -> str:
     tenant_id = _required_text(record, "tenant_id")
     owner_id = _required_text(record, "owner_user_id")
     return hashlib.sha256(f"{tenant_id}:{owner_id}".encode("utf-8")).hexdigest()
+
+
+def _mapping(value: object) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
 
 
 def _record_timestamp(record: Mapping[str, Any]) -> str:

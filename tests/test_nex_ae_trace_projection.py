@@ -70,6 +70,21 @@ def _records() -> list[dict[str, object]]:
             "failure_code": None,
             "updated_at": datetime(2026, 10, 6, 10, 4, tzinfo=UTC),
         },
+        {
+            "record_kind": "access",
+            "event_id": "access-event-1375",
+            "event_type": "ae.artifact_access.preview.succeeded",
+            "trace_id": TRACE_ID,
+            "request_id": "request-access-1375",
+            "subject_id": "artifact-file-1375",
+            "details": {
+                "access_type": "preview",
+                "result_code": "SUCCEEDED",
+                "artifact_id": "artifact-1375",
+            },
+            "created_at": "2026-10-06T10:05:00Z",
+            "updated_at": "2026-10-06T10:05:00Z",
+        },
     ]
 
 
@@ -78,9 +93,14 @@ def test_projection_redacts_owner_and_private_fields() -> None:
 
     assert result["service_id"] == "nex-ae-api"
     assert result["summary"] == {
-        "stage_count": 4,
-        "by_family": {"ARTIFACT": 2, "GENERATION": 1, "UPLOAD": 1},
-        "by_status": {"SUCCEEDED": 4},
+        "stage_count": 5,
+        "by_family": {
+            "ACCESS": 1,
+            "ARTIFACT": 2,
+            "GENERATION": 1,
+            "UPLOAD": 1,
+        },
+        "by_status": {"SUCCEEDED": 5},
         "private_payload_included": False,
     }
     assert [stage["stage_family"] for stage in result["stages"]] == [
@@ -88,11 +108,13 @@ def test_projection_redacts_owner_and_private_fields() -> None:
         "GENERATION",
         "ARTIFACT",
         "ARTIFACT",
+        "ACCESS",
     ]
     serialized = str(result)
     assert "tenant-private" not in serialized
     assert "owner-private" not in serialized
-    assert all(len(stage["owner_digest"]) == 64 for stage in result["stages"])
+    assert all(len(stage["owner_digest"]) == 64 for stage in result["stages"][:4])
+    assert "owner_digest" not in result["stages"][4]
     assert result["stages"][1]["correlation_refs"] == {
         "response_id": "response-1375",
         "retrieval_package_id": "retrieval-1375",
@@ -177,7 +199,7 @@ def test_in_memory_source_filters_and_copies() -> None:
     selected = source.list_trace_records(TRACE_ID)
     selected[0]["status"] = "CHANGED"
 
-    assert len(selected) == 4
+    assert len(selected) == 5
     assert source.records[0]["status"] == "READY"
 
 
@@ -202,6 +224,11 @@ def _sqlite_source() -> SqlAlchemyAeTraceProjectionSource:
         connection.execute(
             text(
                 "CREATE TABLE ae_artifact_render_jobs (render_job_id TEXT, artifact_id TEXT, job_status TEXT, progress_percent INTEGER, retryable BOOLEAN, failure_code TEXT, created_at TEXT, updated_at TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE service_operational_events (event_id TEXT, service_id TEXT, event_type TEXT, trace_id TEXT, request_id TEXT, subject_id TEXT, details TEXT, created_at TEXT)"
             )
         )
         connection.execute(
@@ -240,6 +267,16 @@ def _sqlite_source() -> SqlAlchemyAeTraceProjectionSource:
             ),
             {"created": "2026-10-06T10:03:00Z", "updated": "2026-10-06T10:04:00Z"},
         )
+        connection.execute(
+            text(
+                "INSERT INTO service_operational_events VALUES ('access-event-1375','nex-ae-api','ae.artifact_access.preview.succeeded',:trace,'request-access-1375','artifact-file-1375',:details,:created)"
+            ),
+            {
+                "trace": TRACE_ID,
+                "details": '{"access_type":"preview","result_code":"SUCCEEDED","artifact_id":"artifact-1375"}',
+                "created": "2026-10-06T10:05:00Z",
+            },
+        )
     return SqlAlchemyAeTraceProjectionSource(sessionmaker(bind=engine))
 
 
@@ -253,6 +290,7 @@ def test_sqlalchemy_source_queries_existing_durable_tables() -> None:
         "response",
         "artifact",
         "render",
+        "access",
     ]
     assert source.list_trace_records("f" * 32) == []
 
@@ -315,7 +353,7 @@ def test_route_requires_ag_operations_scope_and_returns_projection() -> None:
 
     response = client.get(path, headers={"Authorization": _authorization()})
     assert response.status_code == 200
-    assert response.json()["summary"]["stage_count"] == 4
+    assert response.json()["summary"]["stage_count"] == 5
 
 
 def test_route_translates_invalid_trace_and_source_failure() -> None:

@@ -28,10 +28,13 @@ from nex_runtime import (
     AdmittedServiceClaims,
     DEFAULT_SERVICE_SCOPE,
     InMemoryJobQueue,
+    InMemoryOperationalEventStore,
     InMemoryWorkerHeartbeatStore,
     JOB_STATUSES,
     JobQueue,
     JobQueueError,
+    OperationalEventEmitter,
+    OperationalEventStore,
     ServiceLogEmitter,
     WorkerBatchResult,
     WorkerHeartbeatEmitter,
@@ -48,6 +51,7 @@ from nex_runtime import (
     validate_common_job,
     worker_heartbeat_store_from_app,
 )
+from nex_ae_api.artifact_access_observability import observe_artifact_access
 from nex_ae_api.cx_owner_context import cx_owner_headers, cx_owner_scope_from_payload
 from nex_ae_api.async_artifact_rendering import (
     AeAsyncArtifactRenderError,
@@ -2088,6 +2092,7 @@ def register_artifact_handoff_routes(
     retention_scheduler_daemon_supervisor_adapter: Any | None = None,
     job_queue: JobQueue | None = None,
     cx_client: CxArtifactSourceClient | None = None,
+    operational_event_store: OperationalEventStore | None = None,
 ) -> None:
     handoff_store = store or build_default_artifact_handoff_store(app)
     artifact_record_store = artifact_store or build_default_artifact_record_store(app)
@@ -2137,6 +2142,41 @@ def register_artifact_handoff_routes(
             retention_scheduler_daemon_supervisor_adapter
         )
     client = cx_client or build_default_cx_artifact_source_client()
+    persistence = getattr(app.state, "nex_persistence", None)
+    runtime_event_store = getattr(persistence, "operational_event_store", None)
+    artifact_access_emitter = OperationalEventEmitter(
+        service_id="nex-ae-api",
+        store=(
+            operational_event_store
+            or runtime_event_store
+            or InMemoryOperationalEventStore()
+        ),
+    )
+
+    def audit_artifact_access(
+        *,
+        action: str,
+        artifact_file_id: str,
+        artifact_id: str | None,
+        allowed: bool,
+        request: Request,
+    ) -> None:
+        result = observe_artifact_access(
+            artifact_access_emitter,
+            action=action,
+            artifact_file_id=artifact_file_id,
+            artifact_id=artifact_id,
+            allowed=allowed,
+            request_id=request_id_from_headers(request),
+            trace_id=trace_id_from_headers(request),
+        )
+        if not result.ok:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_access_audit_unavailable",
+                detail="Artifact access audit evidence is unavailable.",
+                retryable=True,
+            )
 
     @app.post("/api/v1/artifact-handoffs", response_model=None)
     def create_artifact_handoff(
@@ -4300,11 +4340,19 @@ def register_artifact_handoff_routes(
             return auth_context
 
         try:
-            if _visible_artifact_file(
+            visible_file = _visible_artifact_file(
                 artifact_record_store,
                 artifact_file_id,
                 auth_context,
-            ) is None:
+            )
+            if visible_file is None:
+                audit_artifact_access(
+                    action="preview",
+                    artifact_file_id=artifact_file_id,
+                    artifact_id=None,
+                    allowed=False,
+                    request=request,
+                )
                 raise ArtifactHandoffError(
                     status_code=404,
                     error_code="ae.artifact_file_not_found",
@@ -4314,6 +4362,18 @@ def register_artifact_handoff_routes(
                 artifact_record_store,
                 artifact_file_id=artifact_file_id,
                 link_type="preview",
+            )
+            artifact = artifact_record_store.get_artifact_for_file(artifact_file_id)
+            audit_artifact_access(
+                action="preview",
+                artifact_file_id=artifact_file_id,
+                artifact_id=(
+                    str(artifact["artifact_id"])
+                    if isinstance(artifact, Mapping) and artifact.get("artifact_id")
+                    else None
+                ),
+                allowed=True,
+                request=request,
             )
             rendered_text = rendered_text_from_payload(artifact_file, payload)
             preview_text = rendered_text[:2000]
@@ -4342,11 +4402,19 @@ def register_artifact_handoff_routes(
             return auth_context
 
         try:
-            if _visible_artifact_file(
+            visible_file = _visible_artifact_file(
                 artifact_record_store,
                 artifact_file_id,
                 auth_context,
-            ) is None:
+            )
+            if visible_file is None:
+                audit_artifact_access(
+                    action="download",
+                    artifact_file_id=artifact_file_id,
+                    artifact_id=None,
+                    allowed=False,
+                    request=request,
+                )
                 raise ArtifactHandoffError(
                     status_code=404,
                     error_code="ae.artifact_file_not_found",
@@ -4356,6 +4424,18 @@ def register_artifact_handoff_routes(
                 artifact_record_store,
                 artifact_file_id=artifact_file_id,
                 link_type="download",
+            )
+            artifact = artifact_record_store.get_artifact_for_file(artifact_file_id)
+            audit_artifact_access(
+                action="download",
+                artifact_file_id=artifact_file_id,
+                artifact_id=(
+                    str(artifact["artifact_id"])
+                    if isinstance(artifact, Mapping) and artifact.get("artifact_id")
+                    else None
+                ),
+                allowed=True,
+                request=request,
             )
             return {
                 "download_schema_version": "ae_artifact_file_download.v1",

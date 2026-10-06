@@ -16,11 +16,12 @@ from nex_ae_api.async_artifact_rendering import (
 )
 from nex_runtime import (
     InMemoryJobQueue,
+    InMemoryOperationalEventStore,
+    OperationalEventError,
     SERVICE_SPECS,
     build_service_app,
     issue_mock_user_token,
 )
-
 
 NOW = "2026-10-06T01:00:00Z"
 PAYLOAD = b"# Restart-safe grounded artifact\n\nVerified answer [1].\n"
@@ -112,12 +113,17 @@ def _persistent_runtime() -> tuple[ArtifactRecordStore, InMemoryJobQueue, str]:
     return store, queue, render_request["render_job_id"]
 
 
-def _client(store: ArtifactRecordStore, queue: InMemoryJobQueue) -> TestClient:
+def _client(
+    store: ArtifactRecordStore,
+    queue: InMemoryJobQueue,
+    event_store: InMemoryOperationalEventStore | None = None,
+) -> TestClient:
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
     register_artifact_handoff_routes(
         app,
         artifact_store=store,
         job_queue=queue,
+        operational_event_store=event_store,
     )
     return TestClient(app)
 
@@ -128,6 +134,14 @@ def _headers(owner_user_id: str) -> dict[str, str]:
         user_id=owner_user_id,
     )
     return {"Authorization": f"Bearer {token.access_token}"}
+
+
+def _trace_headers(owner_user_id: str, request_id: str) -> dict[str, str]:
+    return {
+        **_headers(owner_user_id),
+        "X-Request-ID": request_id,
+        "traceparent": "00-13801380138013801380138013801380-00f067aa0ba902b7-01",
+    }
 
 
 def test_fresh_runtime_restores_owner_preview_download_and_cancelled_recovery() -> None:
@@ -191,8 +205,7 @@ def test_artifact_file_and_recovery_routes_hide_cross_owner_state() -> None:
         ("post", f"/api/v1/async-artifact-render-jobs/{render_job_id}/cancel"),
     )
     responses = [
-        getattr(client, method)(route, headers=other)
-        for method, route in routes
+        getattr(client, method)(route, headers=other) for method, route in routes
     ]
 
     assert [response.status_code for response in responses] == [404] * len(routes)
@@ -212,3 +225,48 @@ def test_orphaned_file_metadata_is_not_publicly_resolvable() -> None:
 
     assert response.status_code == 404
     assert response.json()["error_code"] == "ae.artifact_file_not_found"
+
+
+def test_preview_and_denied_download_emit_traceable_access_audits() -> None:
+    store, queue, _ = _persistent_runtime()
+    events = InMemoryOperationalEventStore()
+    client = _client(store, queue, events)
+
+    preview = client.get(
+        "/api/v1/artifact-files/artifact-file-1/preview",
+        headers=_trace_headers("owner-1", "request-preview-1380"),
+    )
+    denied = client.get(
+        "/api/v1/artifact-files/artifact-file-1/download",
+        headers=_trace_headers("other-owner", "request-download-1380"),
+    )
+    observed = events.list_events(trace_id="13801380138013801380138013801380")
+
+    assert preview.status_code == 200
+    assert denied.status_code == 404
+    assert {event["event_type"] for event in observed} == {
+        "ae.artifact_access.preview.succeeded",
+        "ae.artifact_access.download.blocked",
+    }
+    assert all(
+        event["details"]["private_payload_included"] is False for event in observed
+    )
+
+
+class _BrokenEventStore(InMemoryOperationalEventStore):
+    def append(self, event):
+        del event
+        raise OperationalEventError("event.store_unavailable", "unavailable", 503)
+
+
+def test_artifact_access_fails_closed_when_audit_is_unavailable() -> None:
+    store, queue, _ = _persistent_runtime()
+    client = _client(store, queue, _BrokenEventStore())
+
+    response = client.get(
+        "/api/v1/artifact-files/artifact-file-1/preview",
+        headers=_trace_headers("owner-1", "request-preview-failed-1380"),
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == "ae.artifact_access_audit_unavailable"

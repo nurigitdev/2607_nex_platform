@@ -212,10 +212,11 @@ through redacted service APIs only.
 | `1380` | Prove the timeline against actual service test PostgreSQL databases. |
 | `1381` | Publish the runbook, close S138, run Full Gate, and activate S139. |
 
-S138 completion signal: Pending. Slice 1379 proves deterministic ordering,
-partial-source failure isolation, private-payload rejection, and restart-safe
-AG audit replay. S139 remains inactive until Slice 1380 actual database
-evidence and the S138 Full Gate pass.
+S138 completion signal: Pending Full Gate. Slice 1380 proved all eight stage
+families through authenticated service APIs against all five actual test
+PostgreSQL databases, with `94` migrations current, restart-safe AG audit
+readback, no direct cross-database reads, and zero fixture residue. S139 remains
+inactive until the Slice 1381 runbook and S138 Full Gate pass.
 
 ## Protected Evidence Schedule
 

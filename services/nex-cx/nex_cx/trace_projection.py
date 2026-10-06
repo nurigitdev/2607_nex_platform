@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import hashlib
 from typing import Any, Protocol
+from uuid import UUID
 
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
@@ -198,7 +199,7 @@ def _build_stage(
     request_id = _required_text(record, "request_id")
     status = _required_text(record, "status")
     if kind == "ingestion":
-        run_id = _required_text(record, "run_id")
+        run_id = _required_identifier(record, "run_id")
         attributes: dict[str, object] = {
             "event_type": "cx.ingestion",
             "result_code": status,
@@ -220,7 +221,7 @@ def _build_stage(
             owner_digest=owner_digest,
         )
     if kind == "retrieval":
-        package_id = _required_text(record, "retrieval_package_id")
+        package_id = _required_identifier(record, "retrieval_package_id")
         attributes = {
             "event_type": "cx.retrieval",
             "result_code": status,
@@ -244,8 +245,8 @@ def _build_stage(
 
     generation_id = _required_text(record, "cx_generation_id")
     refs = {"cx_generation_id": generation_id}
-    retrieval_package_id = record.get("retrieval_package_id")
-    if isinstance(retrieval_package_id, str) and retrieval_package_id:
+    retrieval_package_id = _optional_identifier(record.get("retrieval_package_id"))
+    if retrieval_package_id is not None:
         refs["retrieval_package_id"] = retrieval_package_id
     attributes = {
         "event_type": "cx.generation",
@@ -340,6 +341,26 @@ def _required_text(record: Mapping[str, Any], field_name: str) -> str:
             retryable=False,
         )
     return value
+
+
+def _required_identifier(record: Mapping[str, Any], field_name: str) -> str:
+    value = _optional_identifier(record.get(field_name))
+    if value is None:
+        raise CxTraceProjectionError(
+            "cx.trace_record_invalid",
+            f"CX trace record field is invalid: {field_name}",
+            status_code=500,
+            retryable=False,
+        )
+    return value
+
+
+def _optional_identifier(value: object) -> str | None:
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, str) and value:
+        return value
+    return None
 
 
 def _nonnegative_integer(value: object) -> int:

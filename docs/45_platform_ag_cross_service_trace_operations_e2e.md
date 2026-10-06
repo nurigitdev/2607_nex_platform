@@ -1,6 +1,6 @@
 # Platform AG Cross-Service Trace, Audit, and Operations E2E
 
-Status: S138 active through Slice 1379.
+Status: S138 active through Slice 1380.
 
 ## Required Outcome
 
@@ -154,6 +154,20 @@ events are written to a file-backed SQLite regression store, reopened through
 a new engine and repository, read back unchanged, and appended successfully
 after restart. Slice 1380 remains responsible for the actual service test
 PostgreSQL evidence.
+
+## Slice 1380 Actual PostgreSQL E2E
+
+The protected runner applied all five service migration chains and reconstructed
+one trace through the OA, AE, CX, and MO internal APIs plus the AG operations
+route. The run proved all eight stage families, five expected database/role
+identities, restart-safe AG audit readback, private-payload exclusion, and zero
+fixture residue. It also closed two production-only differences that SQLite did
+not reveal: psycopg UUID result normalization in CX and durable AE artifact
+access audit projection.
+
+Observed evidence was `checks=9/9`, `services=5`, `families=8`, `residue=0`,
+with `94` migrations current. Remote model providers were intentionally not
+called because S138 reads accepted lifecycle metadata only.
 
 ## S139 Handoff
 

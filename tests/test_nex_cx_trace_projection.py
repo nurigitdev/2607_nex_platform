@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import UUID
 
 import pytest
 from fastapi import FastAPI
@@ -104,6 +105,27 @@ def test_optional_trace_metadata_is_omitted() -> None:
     assert result["stages"][2]["correlation_refs"] == {
         "cx_generation_id": "generation-1374"
     }
+
+
+def test_postgresql_uuid_identifiers_are_normalized() -> None:
+    records = _records()
+    run_id = UUID("13741374-1374-1374-1374-137413741374")
+    package_id = UUID("13741374-1374-1374-1374-137413741375")
+    records[0]["run_id"] = run_id
+    records[1]["retrieval_package_id"] = package_id
+    records[2]["retrieval_package_id"] = package_id
+
+    result = build_cx_trace_projection(TRACE_ID, records, checked_at=NOW)
+
+    assert result["stages"][0]["correlation_refs"] == {
+        "ingestion_run_id": str(run_id)
+    }
+    assert result["stages"][1]["correlation_refs"] == {
+        "retrieval_package_id": str(package_id)
+    }
+    assert result["stages"][2]["correlation_refs"]["retrieval_package_id"] == str(
+        package_id
+    )
 
 
 @pytest.mark.parametrize(
