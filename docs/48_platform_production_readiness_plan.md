@@ -113,6 +113,42 @@ package imports, cross-service database reads, and direct model-provider access
 outside MO are not allowed. The retained AG adapters and loopback defaults are
 compatibility mechanisms, not accepted production routes.
 
+## Production Control Responsibility Matrix
+
+`Accountable` owns the control decision and accepts its implementation
+evidence. `Responsible` implements and operates the control. `Coordinator`
+orders cross-service work but does not acquire another service's data or
+domain ownership.
+
+| Production control ID | Accountable | Responsible | Coordinator | Implementation target |
+| --- | --- | --- | --- | --- |
+| `external_signing_key_custody` | OA | OA | Platform integration | `S144` |
+| `managed_tls_certificate_lifecycle` | Platform integration | Platform integration | Platform integration | `S143` |
+| `production_secret_injection_rotation` | Platform integration | OA, AE, CX, MO, AG for their own secrets | Platform integration | `S143` |
+| `enterprise_idp_registration` | OA | OA | Platform integration | `S144` |
+| `production_object_storage_lifecycle` | CX and AE for their own namespaces | CX and AE | Platform integration | `S146` |
+| `production_postgresql_backup_ha_dr` | OA, AE, CX, MO, AG for their own databases | Each database owner | Platform integration | `S145` |
+| `external_notification_incident_endpoints` | AG | AG | Platform integration | `S148` |
+| `production_gpu_scheduling_capacity` | MO | MO | Platform integration | `S147` |
+| `production_monitoring_paging_slo_approval` | AG for operations; Platform integration for release approval | OA, AE, CX, MO, AG provide service signals; AG operates aggregation and paging | Platform integration | `S148`, `S150` |
+
+Responsibility rules:
+
+- OA owns identity, federation, token, and signing-key policy.
+- AE owns browser/API session facade behavior, chat/workspace orchestration,
+  rendered artifacts, and its private payload namespace.
+- CX owns source content, extraction, indexing, retrieval, grounded-generation
+  orchestration, and its private payload namespace.
+- MO exclusively owns external model-provider access, model catalog, runtime
+  telemetry, calibration binding, and GPU-serving operations.
+- AG owns cross-service operational projections, audit, alert aggregation,
+  paging, and external incident dispatch, through service APIs.
+- Each backend owns its own PostgreSQL schema, migration, pool, backup, restore,
+  and recovery evidence. Cross-service database reads remain prohibited.
+- Platform integration owns packaging, topology, environment admission, TLS,
+  coordinated rollout, staging acceptance, and the explicit go/no-go packet;
+  it does not own service domain data.
+
 ## S141 Slice Plan
 
 | Slice | Scope |
