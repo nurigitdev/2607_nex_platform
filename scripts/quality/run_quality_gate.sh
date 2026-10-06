@@ -704,3 +704,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_ae_web_korean_message_contract.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_golden_journey_state.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_login_upload_ingestion_acceptance.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_web_grounding_journey_acceptance.py --summary

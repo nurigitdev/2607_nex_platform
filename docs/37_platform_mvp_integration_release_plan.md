@@ -242,6 +242,8 @@ the Korean-default, English-ready message and status contract with exact
 catalog parity. Slice 1384 froze one correlated nine-stage journey and
 browser-safe evidence model. Slice 1385 connected OA login, claim-derived
 upload ownership, and owner-scoped ingestion progress through `INDEX_READY`.
+Slice 1386 extended the same journey through retrieval, generation, citation,
+and repair acceptance and requires the fifth-Slice Checkpoint Gate.
 Remote model providers are not required for S139 closure;
 S140 owns the final browser plus live-provider release-candidate matrix.
 

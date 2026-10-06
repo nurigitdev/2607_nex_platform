@@ -1,6 +1,6 @@
 # Platform AE Web Korean-Default Playwright Golden Journey
 
-Status: S139 active through Slice 1385.
+Status: S139 active through Slice 1386.
 
 ## Required Outcome
 
@@ -86,6 +86,11 @@ acceptance contract.
   and owner-scoped ingestion progress to the first three journey stages. AE
   Web now owns a same-origin progress adapter and requires `INDEX_READY` plus
   retrieval usability without accepting browser-supplied ownership.
+- Slice 1386 reused the production grounded workflow and presentation path to
+  extend the journey through READY retrieval, completed generation, and
+  validated or repaired grounding. Warning, citation, and repair counts are
+  metadata-only. The fifth-Slice Checkpoint Gate passed with `11,154 passed`,
+  `30 skipped`, statement coverage `98.91%`, and branch coverage `97.28%`.
 
 ## Acceptance Rules
 

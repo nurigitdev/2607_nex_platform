@@ -1491,6 +1491,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1383`](slices/1383_ae_web_korean_message_contract.md) | `S139-002` Centralize Korean-default, English-ready UI messages, statuses, static labels, and accessibility text under exact catalog parity. |
 | [`Slice 1384`](slices/1384_ae_web_golden_journey_state.md) | `S139-003` Define one ordered, immutable, browser-safe journey state and redacted evidence projection from login through download. |
 | [`Slice 1385`](slices/1385_ae_web_login_upload_ingestion_acceptance.md) | `S139-004` Correlate OA login, claim-derived upload ownership, and AE ingestion progress through INDEX_READY. |
+| [`Slice 1386`](slices/1386_ae_web_grounding_journey_acceptance.md) | `S139-005` Extend the journey through READY retrieval, completed generation, warnings, citations, and validated/repaired grounding. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
