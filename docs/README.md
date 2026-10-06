@@ -1499,6 +1499,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1390`](slices/1390_ae_web_protected_postgres_acceptance.md) | `S139-009` Prove actual service processes, OA/AE/CX test PostgreSQL, grounded artifact delivery, and desktop/mobile Chromium as one protected evidence pack. |
 | [`Slice 1391`](slices/1391_s139_ae_web_korean_golden_journey_closure.md) | `S139-010` Publish the operator runbook, close S139 with Full Gate evidence, and activate the S140 platform release-candidate handoff. |
 | [`Slice 1392`](slices/1392_platform_mvp_release_candidate_boundary.md) | `S140-001` Freeze the release-candidate boundary, ten named scenarios, eight gaps, protected matrix, and non-production completion signal. |
+| [`Slice 1393`](slices/1393_platform_release_candidate_gate_matrix.md) | `S140-002` Define nine blocking typed RC gates with exact inventory, freshness, digest, privacy, protected-execution, and metric checks. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -1,6 +1,6 @@
 # Platform MVP Release-Candidate Acceptance And Operations Closure
 
-Status: S140 active through Slice 1392.
+Status: S140 active through Slice 1393.
 
 ## Required Outcome
 
@@ -112,3 +112,13 @@ The boundary is frozen without adding tables or contacting PostgreSQL, a model
 provider, or a browser. Protected execution is deferred to Slice 1400 after
 deterministic contracts, admission, restart, live-provider, browser/operations,
 and recovery evidence are independently executable.
+
+## Progress
+
+- Slice 1392 froze the boundary, ten named scenarios, eight release gaps,
+  protected matrix dimensions, zero-residue rule, and production deployment
+  deferrals.
+- Slice 1393 defined nine blocking typed gate identities. Evidence must have an
+  exact inventory, unique IDs, a valid digest, bounded freshness, no private
+  payload, and gate-specific metrics. Five gates require actual protected
+  execution and no required gate may be skipped.

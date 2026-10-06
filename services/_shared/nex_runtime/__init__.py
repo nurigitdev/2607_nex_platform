@@ -90,6 +90,15 @@ from .platform_trust_evidence import (
     TRUST_EVIDENCE_SCHEMA_VERSION,
     evaluate_platform_trust_evidence,
 )
+from .release_candidate import (
+    DEFAULT_MAX_EVIDENCE_AGE_HOURS,
+    RELEASE_CANDIDATE_EVIDENCE_SCHEMA_VERSION,
+    RELEASE_CANDIDATE_GATE_MATRIX_VERSION,
+    RELEASE_CANDIDATE_GATE_SPECS,
+    ReleaseCandidateGateSpec,
+    build_release_candidate_gate_matrix,
+    evaluate_release_candidate_evidence,
+)
 from .platform_trust_scope_policy import (
     ACTIVE_CLAIM_ROUTE_CLASS,
     OA_INTROSPECTION_SCOPE as PLATFORM_TRUST_INTROSPECTION_SCOPE,
