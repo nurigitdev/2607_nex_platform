@@ -175,6 +175,39 @@ controls needed to turn isolated production capabilities into an operable
 release: model rollout/calibration, staging rehearsal, and explicit go-live
 rollback/change approval.
 
+## Implementation Dependency and Evidence Schedule
+
+S142-S150 form a dependency DAG, not nine unrelated backlogs. Requirements in
+the same wave may proceed in parallel, but closure evidence must satisfy every
+listed dependency.
+
+| Requirement | Wave | Completion dependencies | Evidence mode | External capability required |
+| --- | --- | --- | --- | --- |
+| `S142` | 0 | S141 closure | deterministic build plus protected process restart | none |
+| `S143` | 1 | `S142` | protected staging injection/rotation/TLS | external secret manager; managed TLS/certificate endpoint |
+| `S144` | 2 | `S143` | protected trust rotation/federation | external key custody; enterprise IdP |
+| `S145` | 2 | `S143` | protected backup/restore/failover | production-like PostgreSQL topology |
+| `S146` | 2 | `S143` | protected private payload migration/rollback | production-like object storage |
+| `S147` | 2 | `S143` | protected capacity/canary/failover | GPU model-serving environment |
+| `S148` | 3 | `S143`, `S144`, `S145`, `S146`, `S147` | protected telemetry/alert/incident delivery | monitoring and paging; external incident endpoints |
+| `S149` | 4 | `S144`, `S145`, `S146`, `S147`, `S148` | integrated pre-production load/security/recovery | integrated staging environment |
+| `S150` | 5 | `S149` | fresh aggregate evidence and explicit decision | change approval authority |
+
+Execution rules:
+
+- S142 first removes source-tree packaging ambiguity and materializes explicit
+  environment topology.
+- S143 then establishes the secret and transport boundary required by every
+  external production integration.
+- S144-S147 may proceed in parallel after S143, with independent rollback and
+  protected evidence.
+- S148 may build its framework earlier, but cannot close until S144-S147 emit
+  production-shaped signals and incident metadata.
+- S149 runs only after all trust, data, storage, model, and observability
+  controls close.
+- S150 consumes fresh S149 evidence, records an explicit go/no-go decision,
+  and never performs an implicit production deployment.
+
 ## S141 Slice Plan
 
 | Slice | Scope |
