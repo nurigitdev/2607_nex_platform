@@ -187,9 +187,15 @@ citation repair, and artifact lifecycle.
 | `1370` | Execute protected PostgreSQL plus live generation-provider E2E evidence. |
 | `1371` | Publish the runbook, close S137, run Full Gate, and activate S138. |
 
-S137 completion signal: Pending. Slice 1362 freezes eight integration gaps and
-the owner-safe OA -> AE -> CX -> MO -> AE artifact boundary. S138 remains
-inactive until actual database/provider evidence and S137 Full Gate pass.
+S137 completion signal: Met. Slice 1370 proved one authenticated and correlated
+OA -> AE Web/API -> CX -> MO -> AE artifact journey against actual AE/CX test
+databases and all three live provider capabilities, with restart-safe private
+structured-draft and artifact readback, owner denial, and zero residue. Slice
+1371 froze operations/privacy controls and closed the Full Gate with `11,641`
+passed, `31` policy-skipped protected tests, statement coverage `98.06%`,
+branch coverage `96.98%`, and S137 closure checks `15/15`. S138 is the next
+active requirement and owns AG cross-service trace, audit, and operations E2E
+through redacted service APIs only.
 
 ## Protected Evidence Schedule
 

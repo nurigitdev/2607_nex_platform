@@ -1,6 +1,6 @@
 # Platform Grounded Generation, Repair, and Artifact Lifecycle E2E
 
-Status: S137 active through Slice 1370.
+Status: S137 complete.
 
 ## Required Outcome
 
@@ -58,6 +58,19 @@ compatible with a later local-filesystem-to-object-storage migration.
 
 Slice 1371 hardens contracts and the operator runbook, closes S137, runs the
 Full Gate, and activates S138.
+
+## Slice 1371 Closure
+
+The operator runbook freezes protected execution, failure triage, cleanup,
+rollback, private structured-draft handling, and S138 admission. All S137
+component evidence is registered in the repository Full Gate; protected
+PostgreSQL/provider mutation remains opt-in and the actual Slice 1370 PASS is
+the authoritative live result. The closure Full Gate passed with `11,641`
+tests, `31` policy-skipped protected tests, statement coverage `98.06%`, branch
+coverage `96.98%`, contract inventory `163/222/190/7`, and S137 closure checks
+`15/15`.
+
+Completion signal: Met.
 
 ## Slice Sequence
 
