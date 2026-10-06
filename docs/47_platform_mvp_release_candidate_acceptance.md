@@ -1,6 +1,6 @@
 # Platform MVP Release-Candidate Acceptance And Operations Closure
 
-Status: S140 active through Slice 1394.
+Status: S140 active through Slice 1395.
 
 ## Required Outcome
 
@@ -126,3 +126,7 @@ and recovery evidence are independently executable.
   deterministic aggregate. It reuses production functions and in-memory
   service flows, emits metadata-only hashed evidence, and explicitly makes no
   PostgreSQL, live-provider, or browser execution claim.
+- Slice 1395 added fail-closed protected admission. Five exact service-local
+  test databases, three model-independent live provider capabilities, signed
+  trust/API operations modes, and both browser viewports must be present before
+  protected release-candidate execution can start.

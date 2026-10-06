@@ -283,6 +283,11 @@ Slice 1394 deterministic progress: `GEN-E2E-001` through `GEN-E2E-010` now
 have one executable metadata-only aggregate runner. Protected database,
 provider, browser, AG operations, and cleanup evidence remains pending.
 
+Slice 1395 protected admission: the release-candidate profile now fails closed
+unless all five test database identities, all three live provider capabilities,
+the canonical provider profile, protected runtime modes, and both browser
+viewports are configured. Admission performs no protected execution itself.
+
 ## Protected Evidence Schedule
 
 - `S131`: repository and deterministic regression evidence; no remote model

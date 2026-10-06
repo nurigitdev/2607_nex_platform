@@ -99,6 +99,18 @@ from .release_candidate import (
     build_release_candidate_gate_matrix,
     evaluate_release_candidate_evidence,
 )
+from .release_candidate_admission import (
+    BROWSER_VIEWPORTS_ENV,
+    CANONICAL_PROVIDER_PROFILE_ENV,
+    EXPECTED_BROWSER_VIEWPORTS,
+    RELEASE_CANDIDATE_ADMISSION_SCHEMA_VERSION,
+    RELEASE_CANDIDATE_ENABLE_ENV,
+    RELEASE_CANDIDATE_PROFILE,
+    RELEASE_CANDIDATE_PROFILE_ENV,
+    RELEASE_CANDIDATE_PROVIDER_ADMISSIONS,
+    ReleaseCandidateProviderAdmission,
+    evaluate_release_candidate_admission,
+)
 from .generation_golden import (
     GENERATION_GOLDEN_EVIDENCE_SCHEMA_VERSION,
     GENERATION_GOLDEN_MATRIX_SCHEMA_VERSION,
