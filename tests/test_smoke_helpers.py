@@ -3600,13 +3600,13 @@ def test_ag_retrieval_package_postgres_smoke_reports_pass_without_leaking_secret
             "projection_versions": {
                 "list": "ag_retrieval_package_operations_projection.v1",
                 "detail": "ag_retrieval_package_detail_projection.v1",
-                "trace": "ag_cross_service_trace_timeline_projection.v1",
+                "trace": "ag_cross_service_trace_e2e.v1",
             },
             "http_statuses": {"list": 200, "detail": 200, "trace": 200},
             "counts": {
                 "list_total": 1,
                 "detail_evidence_items": 1,
-                "trace_timeline_total": 1,
+                "trace_timeline_total": 2,
             },
             "checks": {
                 "list_projection_reads_postgres": True,
@@ -3630,7 +3630,7 @@ def test_ag_retrieval_package_postgres_smoke_reports_pass_without_leaking_secret
     assert evidence["counts"] == {
         "list_total": 1,
         "detail_evidence_items": 1,
-        "trace_timeline_total": 1,
+        "trace_timeline_total": 2,
     }
     assert "secret" not in str(evidence)
     assert "raw_values" not in evidence
@@ -3638,7 +3638,7 @@ def test_ag_retrieval_package_postgres_smoke_reports_pass_without_leaking_secret
     assert ag_retrieval_postgres_smoke.summary_line(evidence) == (
         "ag_retrieval_package_postgres_smoke=pass "
         "service=nex-cx db_env=nex-cx:test:env "
-        "list=1 detail_evidence=1 timeline=1"
+        "list=1 detail_evidence=1 timeline=2"
     )
 
 
@@ -3737,7 +3737,7 @@ def test_ag_retrieval_package_postgres_smoke_execute_with_sqlite_fixture(
     assert evidence["counts"] == {
         "list_total": 1,
         "detail_evidence_items": 1,
-        "trace_timeline_total": 1,
+        "trace_timeline_total": 2,
     }
     assert all(evidence["checks"].values())
     assert ag_retrieval_postgres_smoke._redaction_safe(

@@ -47,7 +47,9 @@ def run_platform_contract_trace_privacy_e2e_gap_audit(
     )
     service_logs = _read_text(root / "services/_shared/nex_runtime/service_logs.py")
     jobs = _read_text(root / "services/_shared/nex_runtime/jobs.py")
-    ag_operations = _read_text(root / "services/nex-ag/nex_ag/operations.py")
+    ag_operations = _read_text(
+        root / "services/nex-ag/nex_ag/cross_service_trace.py"
+    )
     ag_generation = _read_text(root / "services/nex-ag/nex_ag/generation_audit.py")
     ag_openapi = _read_text(root / "contracts/openapi/nex-ag.openapi.yaml")
 
@@ -115,7 +117,8 @@ def run_platform_contract_trace_privacy_e2e_gap_audit(
             for token in ('"trace_id"', '"request_id"')
         ),
         "ag_exposes_cross_service_trace_projection": (
-            '@app.get("/admin/v1/operations/traces/{trace_id}"' in ag_operations
+            'AG_TRACE_OPERATIONS_PATH = "/admin/v1/operations/traces/{trace_id}"'
+            in ag_operations
             and "/admin/v1/operations/traces/{trace_id}:" in ag_openapi
         ),
         "shared_and_ag_privacy_denylists_cover_raw_sensitive_data": (

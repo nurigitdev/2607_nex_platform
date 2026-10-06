@@ -25,7 +25,7 @@ REQUIRED_PATHS = (
     "docs/38_platform_mvp_vertical_spine_reaudit.md",
     "docs/44_platform_grounded_generation_artifact_e2e.md",
     CANONICAL_DOCUMENT,
-    "services/nex-ag/nex_ag/operations.py",
+    "services/nex-ag/nex_ag/cross_service_trace.py",
     "services/nex-ag/nex_ag/generation_audit.py",
     "services/nex-ag/nex_ag/artifact_operations.py",
     "services/nex-cx/nex_cx/generation.py",
@@ -43,7 +43,7 @@ TOKENS = (
     ),
     EvidenceToken(
         "ag_trace_route",
-        "services/nex-ag/nex_ag/operations.py",
+        "services/nex-ag/nex_ag/cross_service_trace.py",
         '"/admin/v1/operations/traces/{trace_id}"',
     ),
     EvidenceToken(

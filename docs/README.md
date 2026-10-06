@@ -1486,6 +1486,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1378`](slices/1378_ag_cross_service_trace_operations.md) | `S138-007` Replace the AG compatibility trace route with audited service-API aggregation and restart-safe operational evidence. |
 | [`Slice 1379`](slices/1379_ag_cross_service_trace_deterministic_e2e.md) | `S138-008` Prove deterministic ordering, partial-failure isolation, private-payload rejection, and restart-safe AG audit evidence. |
 | [`Slice 1380`](slices/1380_platform_ag_trace_postgresql_smoke.md) | `S138-009` Prove all eight trace stages through service APIs against five actual test PostgreSQL databases with restart-safe audit and zero residue. |
+| [`Slice 1381`](slices/1381_s138_ag_cross_service_trace_closure.md) | `S138-010` Publish the operator runbook, close S138 with Full Gate evidence, and activate the S139 Korean-default browser handoff. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -29,6 +29,10 @@ from nex_ag.operations import (  # noqa: E402
     register_service_log_routes,
     register_unified_operation_routes,
 )
+from nex_ag.cross_service_trace import (  # noqa: E402
+    CrossServiceTraceAggregator,
+    register_cross_service_trace_routes,
+)
 from nex_ag.processing_operations import (  # noqa: E402
     InMemoryCxProcessingRunOperationsStore,
     register_cx_processing_run_operation_routes,
@@ -49,6 +53,8 @@ from nex_runtime import (  # noqa: E402
     InMemoryWorkerHeartbeatStore,
     SERVICE_SPECS,
     build_common_job,
+    build_cross_service_trace_source_projection,
+    build_cross_service_trace_stage,
     build_operational_event,
     build_service_app,
     build_service_log_entry,
@@ -62,6 +68,46 @@ from nex_runtime import (  # noqa: E402
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
 SCHEMA_VERSION = "ag_operations_dashboard_smoke.v1"
+
+
+class _DashboardTraceSourceClient:
+    def __init__(self, service_id: str, families: tuple[str, ...]) -> None:
+        self.service_id = service_id
+        self._families = families
+
+    def get_trace_projection(
+        self,
+        trace_id: str,
+        *,
+        request_id: str,
+        request_trace_id: str,
+    ) -> dict[str, Any]:
+        del request_id, request_trace_id
+        stages = [
+            build_cross_service_trace_stage(
+                stage_id=f"smoke-{self.service_id}-{family.lower()}",
+                trace_id=trace_id,
+                request_id=f"smoke-request-{self.service_id}",
+                service_id=self.service_id,
+                stage_family=family,
+                stage_status="SUCCEEDED",
+                operation_timestamp=f"2026-08-05T00:00:0{index + 1}Z",
+                correlation_refs=(
+                    {"retrieval_package_id": "smoke-retrieval-package-cx-001"}
+                    if family == "RETRIEVAL"
+                    else {}
+                ),
+                safe_attributes={"result_code": "READY"},
+            )
+            for index, family in enumerate(self._families)
+        ]
+        return build_cross_service_trace_source_projection(
+            service_id=self.service_id,
+            trace_id=trace_id,
+            stages=stages,
+            source_status="READY",
+            checked_at="2026-08-05T00:00:10Z",
+        )
 
 
 def run_ag_operations_dashboard_smoke() -> dict[str, Any]:
@@ -101,6 +147,23 @@ def run_ag_operations_dashboard_smoke() -> dict[str, Any]:
     register_operational_event_routes(app, registry=registry)
     register_service_log_routes(app, registry=registry)
     register_job_operation_routes(app, registry=registry)
+    register_cross_service_trace_routes(
+        app,
+        aggregator=CrossServiceTraceAggregator(
+            {
+                "nex-oa": _DashboardTraceSourceClient("nex-oa", ("AUTH",)),
+                "nex-ae-api": _DashboardTraceSourceClient(
+                    "nex-ae-api", ("UPLOAD",)
+                ),
+                "nex-cx": _DashboardTraceSourceClient(
+                    "nex-cx", ("INGESTION", "RETRIEVAL")
+                ),
+                "nex-mo": _DashboardTraceSourceClient("nex-mo", ("GENERATION",)),
+            },
+            clock=lambda: datetime(2026, 8, 5, 0, 0, 10, tzinfo=UTC),
+        ),
+        event_store=InMemoryOperationalEventStore(),
+    )
 
     client = TestClient(app)
     projections = _read_operations_projections(client)
@@ -706,7 +769,7 @@ def _ag_operations_dashboard_smoke_checks(
         "job_detail": "ag_job_operation_detail_projection.v1",
         "workers": "ag_worker_runtime_projection.v1",
         "worker_detail": "ag_worker_detail_projection.v1",
-        "trace_timeline": "ag_cross_service_trace_timeline_projection.v1",
+        "trace_timeline": "ag_cross_service_trace_e2e.v1",
         "rollups": "ag_operations_rollup_metrics_projection.v1",
         "dashboard": "ag_operations_dashboard_snapshot_projection.v1",
         "issue_candidates": "ag_operations_issue_candidate_projection.v1",
@@ -779,13 +842,15 @@ def _ag_operations_dashboard_smoke_checks(
             and worker_detail["summary"]["source_statuses"]
             == {"workers": "READY", "jobs": "READY", "events": "READY"}
         ),
-        "trace_timeline_mixes_jobs_events_logs": {
-            item["timeline_item_type"]
-            for item in trace_timeline["timeline"]
-        } == {"job", "event", "log", "retrieval_package"}
-        and trace_timeline["log_source_statuses"]["nex-cx"]["status"] == "READY"
-        and trace_timeline["retrieval_package_source_statuses"]["nex-cx"]["status"]
-        == "READY",
+        "trace_timeline_uses_service_api_stages": {
+            item["stage_family"] for item in trace_timeline["timeline"]
+        }
+        == {"AUTH", "UPLOAD", "INGESTION", "RETRIEVAL", "GENERATION", "OPERATIONS"}
+        and all(
+            item["source_status"] == "READY"
+            for item in trace_timeline["source_statuses"]
+        )
+        and trace_timeline["summary"]["private_payload_included"] is False,
         "rollup_counts": (
             projections["rollups"]["rollups"][0]["jobs"]["total"] == 2
             and projections["rollups"]["rollups"][0]["events"]["total"] == 2

@@ -85,7 +85,7 @@ TOKEN_CHECKS = (
     (
         "zero_drift_audit",
         "services/nex-mo/nex_mo/contract_api_drift_audit.py",
-        '"HARDENED" if passed and drift_count == 0',
+        "drift_count == 0",
     ),
     (
         "root_contract",

@@ -699,3 +699,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_ag_cross_service_trace_operations_contract.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ag_cross_service_trace_deterministic_e2e.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_ag_trace_postgres_smoke.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s138_ag_cross_service_trace_closure.py --summary

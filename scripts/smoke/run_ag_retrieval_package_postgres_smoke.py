@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime
 import json
 import os
 import sys
@@ -22,6 +23,10 @@ sys.path.insert(0, str(DB_SCRIPT_PATH))
 sys.path.insert(0, str(AG_PATH))
 
 from nex_ag.operations import register_unified_operation_routes  # noqa: E402
+from nex_ag.cross_service_trace import (  # noqa: E402
+    CrossServiceTraceAggregator,
+    register_cross_service_trace_routes,
+)
 from nex_ag.retrieval_operations import (  # noqa: E402
     AG_RETRIEVAL_PACKAGE_DETAIL_PROJECTION_SCHEMA_VERSION,
     AG_RETRIEVAL_PACKAGE_OPERATIONS_PROJECTION_SCHEMA_VERSION,
@@ -29,7 +34,10 @@ from nex_ag.retrieval_operations import (  # noqa: E402
     register_retrieval_package_operation_routes,
 )
 from nex_runtime import (  # noqa: E402
+    InMemoryOperationalEventStore,
     SERVICE_SPECS,
+    build_cross_service_trace_source_projection,
+    build_cross_service_trace_stage,
     build_engine,
     build_service_app,
     build_session_factory,
@@ -51,8 +59,47 @@ SMOKE_PROFILE_ENV = "NEX_AG_RETRIEVAL_PACKAGE_POSTGRES_SMOKE_PROFILE"
 DEFAULT_PROFILE = "test"
 SERVICE_ID = "nex-cx"
 SCHEMA_VERSION = "ag_retrieval_package_postgres_smoke.v1"
-TRACE_TIMELINE_SCHEMA_VERSION = "ag_cross_service_trace_timeline_projection.v1"
+TRACE_TIMELINE_SCHEMA_VERSION = "ag_cross_service_trace_e2e.v1"
 CREATED_AT = "2026-08-09T00:00:00Z"
+
+
+class _RetrievalTraceSourceClient:
+    def __init__(self, service_id: str, retrieval_package_id: str | None = None) -> None:
+        self.service_id = service_id
+        self._retrieval_package_id = retrieval_package_id
+
+    def get_trace_projection(
+        self,
+        trace_id: str,
+        *,
+        request_id: str,
+        request_trace_id: str,
+    ) -> dict[str, Any]:
+        del request_id, request_trace_id
+        stages = []
+        if self._retrieval_package_id is not None:
+            stages.append(
+                build_cross_service_trace_stage(
+                    stage_id=f"cx-retrieval-{self._retrieval_package_id}",
+                    trace_id=trace_id,
+                    request_id="ag-retrieval-smoke-source",
+                    service_id=self.service_id,
+                    stage_family="RETRIEVAL",
+                    stage_status="SUCCEEDED",
+                    operation_timestamp=CREATED_AT,
+                    correlation_refs={
+                        "retrieval_package_id": self._retrieval_package_id
+                    },
+                    safe_attributes={"result_code": "READY"},
+                )
+            )
+        return build_cross_service_trace_source_projection(
+            service_id=self.service_id,
+            trace_id=trace_id,
+            stages=stages,
+            source_status="READY",
+            checked_at=CREATED_AT,
+        )
 
 
 def run_ag_retrieval_package_postgres_smoke(
@@ -138,7 +185,7 @@ def _execute_ag_retrieval_package_postgres_smoke(
             database_env=database_env,
             redacted_database_url=redact_database_url(database_url),
         )
-        client = _build_ag_client(store=store)
+        client = _build_ag_client(store=store, refs=refs)
         list_response = _get_json(
             client,
             "/admin/v1/operations/retrieval-packages",
@@ -198,7 +245,9 @@ def _execute_ag_retrieval_package_postgres_smoke(
                 "detail_evidence_items": detail_response.get("summary", {}).get(
                     "returned_evidence_items"
                 ),
-                "trace_timeline_total": trace_response.get("summary", {}).get("total"),
+                "trace_timeline_total": trace_response.get("summary", {}).get(
+                    "stage_count"
+                ),
             },
             "checks": checks,
             "raw_values": raw_values,
@@ -210,11 +259,26 @@ def _execute_ag_retrieval_package_postgres_smoke(
 def _build_ag_client(
     *,
     store: SqlAlchemyRetrievalPackageOperationsStore,
+    refs: dict[str, str],
 ) -> TestClient:
     app = build_service_app(SERVICE_SPECS["nex-ag"])
     stores = {SERVICE_ID: store}
     register_retrieval_package_operation_routes(app, stores=stores)
     register_unified_operation_routes(app, retrieval_package_stores=stores)
+    register_cross_service_trace_routes(
+        app,
+        aggregator=CrossServiceTraceAggregator(
+            {
+                service_id: _RetrievalTraceSourceClient(
+                    service_id,
+                    refs["retrieval_package_id"] if service_id == SERVICE_ID else None,
+                )
+                for service_id in ("nex-oa", "nex-ae-api", "nex-cx", "nex-mo")
+            },
+            clock=lambda: datetime(2026, 8, 9, tzinfo=UTC),
+        ),
+        event_store=InMemoryOperationalEventStore(),
+    )
     return TestClient(app)
 
 
@@ -658,15 +722,18 @@ def _checks(
             and trace_response.get("projection_schema_version")
             == TRACE_TIMELINE_SCHEMA_VERSION
             and any(
-                item.get("timeline_item_type") == "retrieval_package"
-                and item.get("retrieval_package", {}).get("retrieval_package_id")
+                item.get("stage_family") == "RETRIEVAL"
+                and item.get("correlation_refs", {}).get("retrieval_package_id")
                 == refs["retrieval_package_id"]
                 for item in trace_items
             )
-            and trace_response.get("retrieval_package_source_statuses", {})
-            .get(SERVICE_ID, {})
-            .get("status")
-            == "READY"
+            and any(
+                item.get("service_id") == SERVICE_ID
+                and item.get("source_status") == "READY"
+                for item in trace_response.get("source_statuses", [])
+            )
+            and trace_response.get("summary", {}).get("private_payload_included")
+            is False
         ),
         "raw_values_absent_from_ag_evidence": not any(
             value and value in serialized_responses for value in raw_values

@@ -212,11 +212,14 @@ through redacted service APIs only.
 | `1380` | Prove the timeline against actual service test PostgreSQL databases. |
 | `1381` | Publish the runbook, close S138, run Full Gate, and activate S139. |
 
-S138 completion signal: Pending Full Gate. Slice 1380 proved all eight stage
-families through authenticated service APIs against all five actual test
-PostgreSQL databases, with `94` migrations current, restart-safe AG audit
-readback, no direct cross-database reads, and zero fixture residue. S139 remains
-inactive until the Slice 1381 runbook and S138 Full Gate pass.
+S138 completion signal: Met. Slice 1380 proved all eight stage families through
+authenticated service APIs against all five actual test PostgreSQL databases,
+with `94` migrations current, restart-safe AG audit readback, no direct
+cross-database reads, and zero fixture residue. Slice 1381 published the
+operator runbook, composed all S138 evidence, and closed the Full Gate with
+`11,784 passed`, `31 skipped`, statement coverage `98.08%`, branch coverage
+`97.00%`, and closure checks `15/15`. S139 is the next active requirement and
+owns Korean-default AE Web Playwright golden-journey acceptance.
 
 ## Protected Evidence Schedule
 

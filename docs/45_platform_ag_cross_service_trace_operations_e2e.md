@@ -1,6 +1,6 @@
 # Platform AG Cross-Service Trace, Audit, and Operations E2E
 
-Status: S138 active through Slice 1380.
+Status: S138 complete.
 
 ## Required Outcome
 
@@ -168,6 +168,24 @@ access audit projection.
 Observed evidence was `checks=9/9`, `services=5`, `families=8`, `residue=0`,
 with `94` migrations current. Remote model providers were intentionally not
 called because S138 reads accepted lifecycle metadata only.
+
+## Slice 1381 Closure
+
+The closure runner composes all eight deterministic boundary, contract,
+projection, aggregation, operations, and E2E evidence components. The actual
+PostgreSQL runner remains protected and opt-in in the default Full Gate; Slice
+1380 is its authoritative five-database evidence. The operator runbook freezes
+service ownership, partial-source behavior, durable AG and AE access audit,
+restart verification, cleanup, rollback, and privacy controls.
+
+Completion signal: Met. S138 reconstructs all eight stage families through
+authenticated metadata-only service APIs, persists redacted operator evidence,
+survives restart, isolates partial source failure, rejects private payloads,
+and has actual five-test-database evidence with zero residue.
+
+The closure Full Gate passed with `11,784` tests, `31` protected skips,
+statement coverage `98.08%`, branch coverage `97.00%`, deterministic E2E
+checks `16/16`, and closure checks `15/15`.
 
 ## S139 Handoff
 
