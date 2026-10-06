@@ -53,6 +53,7 @@ from .cross_service_trace import (
     build_cross_service_trace_stage,
     build_cross_service_trace_source_projection,
     build_cross_service_trace_timeline,
+    validate_cross_service_trace_source_projection,
 )
 from .env import load_env_file, merge_pythonpath
 from .topology import (
@@ -728,4 +729,5 @@ __all__ = [
     "build_cross_service_trace_stage",
     "build_cross_service_trace_source_projection",
     "build_cross_service_trace_timeline",
+    "validate_cross_service_trace_source_projection",
 ]

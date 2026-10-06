@@ -10,14 +10,16 @@ from typing import Any, Mapping
 from fastapi import FastAPI, Header, Request
 from fastapi.testclient import TestClient
 
-
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "services/_shared"))
 sys.path.insert(0, str(ROOT / "services/nex-ag"))
 sys.path.insert(0, str(ROOT / "services/nex-oa"))
 
 from nex_ag.service_auth import authorize_ag_service_request  # noqa: E402
-from nex_oa.token_signing import InMemoryOaRsaSigningProvider, encode_signed_jwt  # noqa: E402
+from nex_oa.token_signing import (
+    InMemoryOaRsaSigningProvider,
+    encode_signed_jwt,
+)  # noqa: E402
 from nex_runtime import (  # noqa: E402
     BoundedJwksCache,
     ServiceTokenAdmissionRuntime,
@@ -26,9 +28,9 @@ from nex_runtime import (  # noqa: E402
     issue_mock_service_token,
 )
 
-
 OUTBOUND_CLIENT_MODULES = {
     "artifact_operations.py",
+    "cross_service_trace.py",
     "generation_audit.py",
     "generation_remediation_handoff.py",
     "job_control.py",
@@ -94,35 +96,30 @@ def run_ag_signed_token_adoption(root: Path = ROOT) -> dict[str, Any]:
         return denied or {"authorized": True}
 
     client = TestClient(app)
-    signed_response = client.get(
-        "/guard", headers={"Authorization": f"Bearer {token}"}
-    )
-    mock = issue_mock_service_token(
-        service_id="nex-oa", audience="nex-ag"
-    ).access_token
-    mock_response = client.get(
-        "/guard", headers={"Authorization": f"Bearer {mock}"}
-    )
+    signed_response = client.get("/guard", headers={"Authorization": f"Bearer {token}"})
+    mock = issue_mock_service_token(service_id="nex-oa", audience="nex-ag").access_token
+    mock_response = client.get("/guard", headers={"Authorization": f"Bearer {mock}"})
 
     package = root / "services/nex-ag/nex_ag"
     sources = {
         path.name: path.read_text(encoding="utf-8") for path in package.glob("*.py")
     }
     legacy_validator_files = sorted(
-        name for name, source in sources.items()
+        name
+        for name, source in sources.items()
         if "validate_authorization_header" in source
     )
     mock_issuer_files = sorted(
-        name for name, source in sources.items()
-        if "issue_mock_service_token" in source
+        name for name, source in sources.items() if "issue_mock_service_token" in source
     )
     outbound_modules = {
-        name for name, source in sources.items()
-        if "resolve_ag_outbound_service_token" in source
-        and name != "service_auth.py"
+        name
+        for name, source in sources.items()
+        if "resolve_ag_outbound_service_token" in source and name != "service_auth.py"
     }
     dual_admin_modules = {
-        name for name, source in sources.items()
+        name
+        for name, source in sources.items()
         if "authorize_ag_service_or_admin_request" in source
         and name != "service_auth.py"
     }

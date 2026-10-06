@@ -1,6 +1,6 @@
 # Platform AG Cross-Service Trace, Audit, and Operations E2E
 
-Status: S138 active through Slice 1376.
+Status: S138 active through Slice 1377.
 
 ## Required Outcome
 
@@ -124,6 +124,16 @@ store and projects model-agnostic capability, alias, model revision,
 deployment, route, mode, retryability, result, and opaque request identity.
 Both services expose only the AG-only ADMIN route. Provider URLs, credentials,
 prompts, outputs, raw telemetry, and user-private identifiers are excluded.
+
+## Slice 1377 AG Client and Aggregation
+
+AG now has typed HTTP clients for all four source-service trace APIs. Outbound
+TEST_MOCK claims include both required scopes, signed profiles use the existing
+OA-issued token environment, and every source response is rebuilt through the
+strict metadata-only contract before admission. The aggregator keeps healthy
+stages when one source fails, marks that source `DEGRADED` or `UNAVAILABLE`,
+and emits only bounded metadata diagnostics. Route wiring and durable AG audit
+evidence are intentionally atomic in Slice 1378.
 
 ## S139 Handoff
 

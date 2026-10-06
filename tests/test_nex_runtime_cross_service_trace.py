@@ -7,6 +7,7 @@ from nex_runtime import (
     build_cross_service_trace_source_projection,
     build_cross_service_trace_stage,
     build_cross_service_trace_timeline,
+    validate_cross_service_trace_source_projection,
 )
 
 TRACE_ID = "13731373137313731373137313731373"
@@ -121,6 +122,58 @@ def test_build_source_projection_reuses_validated_timeline() -> None:
         "by_status": {"SUCCEEDED": 1},
         "private_payload_included": False,
     }
+
+
+def test_validate_source_projection_requires_exact_metadata_only_contract() -> None:
+    projection = build_cross_service_trace_source_projection(
+        service_id="nex-cx",
+        trace_id=TRACE_ID,
+        stages=[_stage()],
+        source_status="READY",
+        checked_at="2026-10-06T09:14:00Z",
+    )
+
+    assert (
+        validate_cross_service_trace_source_projection(
+            projection,
+            expected_service_id="nex-cx",
+            expected_trace_id=TRACE_ID,
+        )
+        == projection
+    )
+
+    invalid_cases = []
+    with_extra = {**projection, "prompt": "private"}
+    invalid_cases.append((with_extra, "trace.source_projection_fields_invalid"))
+    wrong_version = {**projection, "projection_schema_version": "old"}
+    invalid_cases.append((wrong_version, "trace.source_projection_version_invalid"))
+    wrong_service = {**projection, "service_id": "nex-mo"}
+    invalid_cases.append((wrong_service, "trace.source_projection_service_mismatch"))
+    wrong_trace = {**projection, "trace_id": "a" * 32}
+    invalid_cases.append((wrong_trace, "trace.source_projection_trace_mismatch"))
+    wrong_stages = {**projection, "stages": {}}
+    invalid_cases.append((wrong_stages, "trace.source_projection_stages_invalid"))
+    wrong_summary = {
+        **projection,
+        "summary": {**projection["summary"], "stage_count": 2},
+    }
+    invalid_cases.append((wrong_summary, "trace.source_projection_contract_invalid"))
+    private_stage = {**projection["stages"][0], "generated_text": "private"}
+    invalid_cases.append(
+        (
+            {**projection, "stages": [private_stage]},
+            "trace.source_projection_contract_invalid",
+        )
+    )
+
+    for payload, error_code in invalid_cases:
+        with pytest.raises(CrossServiceTraceError) as exc_info:
+            validate_cross_service_trace_source_projection(
+                payload,
+                expected_service_id="nex-cx",
+                expected_trace_id=TRACE_ID,
+            )
+        assert exc_info.value.error_code == error_code
 
 
 @pytest.mark.parametrize(

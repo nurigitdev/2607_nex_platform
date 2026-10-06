@@ -22,7 +22,6 @@ from nex_ag.federated_operator_authorization import (
     federated_operator_context_header,
 )
 
-
 AG_SERVICE_CLAIMS_STATE_KEY = "ag_service_claims"
 AG_OUTBOUND_TOKEN_ENV_BY_AUDIENCE = {
     "nex-oa": "NEX_AG_TO_OA_SERVICE_TOKEN",
@@ -116,6 +115,7 @@ def resolve_ag_outbound_service_token(
     *,
     audience: str,
     environ: Mapping[str, str] | None = None,
+    required_scopes: Sequence[str] = (DEFAULT_SERVICE_SCOPE,),
 ) -> str:
     if configured_token is not None:
         if not configured_token or configured_token != configured_token.strip():
@@ -128,7 +128,9 @@ def resolve_ag_outbound_service_token(
     profile = env.get("NEX_SERVICE_TOKEN_ROLLOUT_PROFILE", "TEST_MOCK").strip().upper()
     if profile == "TEST_MOCK":
         return issue_mock_service_token(
-            service_id="nex-ag", audience=audience
+            service_id="nex-ag",
+            audience=audience,
+            scopes=tuple(required_scopes),
         ).access_token
     if profile not in {"DUAL_READ", "SIGNED_ONLY"}:
         raise AgOutboundServiceTokenError(

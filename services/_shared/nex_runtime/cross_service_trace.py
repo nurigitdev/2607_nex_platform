@@ -239,6 +239,65 @@ def build_cross_service_trace_source_projection(
     }
 
 
+def validate_cross_service_trace_source_projection(
+    payload: Mapping[str, Any],
+    *,
+    expected_service_id: str,
+    expected_trace_id: str,
+) -> dict[str, Any]:
+    required_fields = {
+        "projection_schema_version",
+        "service_id",
+        "trace_id",
+        "source_status",
+        "checked_at",
+        "stages",
+        "summary",
+    }
+    if set(payload) != required_fields:
+        raise CrossServiceTraceError(
+            "trace.source_projection_fields_invalid",
+            "source projection fields do not match the canonical contract",
+        )
+    if (
+        payload.get("projection_schema_version")
+        != TRACE_SOURCE_PROJECTION_SCHEMA_VERSION
+    ):
+        raise CrossServiceTraceError(
+            "trace.source_projection_version_invalid",
+            "source projection schema version is not supported",
+        )
+    if payload.get("service_id") != expected_service_id:
+        raise CrossServiceTraceError(
+            "trace.source_projection_service_mismatch",
+            "source projection service does not match the requested service",
+        )
+    if payload.get("trace_id") != expected_trace_id:
+        raise CrossServiceTraceError(
+            "trace.source_projection_trace_mismatch",
+            "source projection trace does not match the requested trace",
+        )
+    stages = payload.get("stages")
+    if not isinstance(stages, list):
+        raise CrossServiceTraceError(
+            "trace.source_projection_stages_invalid",
+            "source projection stages must be an array",
+        )
+    rebuilt = build_cross_service_trace_source_projection(
+        service_id=expected_service_id,
+        trace_id=expected_trace_id,
+        stages=stages,
+        source_status=payload.get("source_status"),
+        checked_at=payload.get("checked_at"),
+    )
+    if rebuilt != dict(payload):
+        raise CrossServiceTraceError(
+            "trace.source_projection_contract_invalid",
+            "source projection does not match the canonical metadata-only contract",
+        )
+    return rebuilt
+
+
 def _validated_stage(stage: Mapping[str, Any], trace_id: str) -> dict[str, Any]:
     try:
         rebuilt = build_cross_service_trace_stage(
