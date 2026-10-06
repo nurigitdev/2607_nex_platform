@@ -1,6 +1,6 @@
 # Platform AE Web Korean-Default Playwright Golden Journey
 
-Status: S139 active through Slice 1383.
+Status: S139 active through Slice 1384.
 
 ## Required Outcome
 
@@ -78,6 +78,10 @@ acceptance contract.
   fallback behavior, stable dynamic status keys, and declarative static text
   and accessible-label bindings. The default remains Korean; an English
   catalog is readiness evidence rather than a second business workflow.
+- Slice 1384 introduced one immutable nine-stage `journey_id` state and a
+  browser-safe evidence projection. Ordered transitions, opaque ref/detail
+  allowlists, monotonic timestamps, terminal guards, and private-field
+  rejection are now frozen for subsequent Playwright integration.
 
 ## Acceptance Rules
 

@@ -138,6 +138,7 @@ import {
   buildGroundedGenerationPresentation,
   buildGroundedGenerationPresentationFailure
 } from "./groundedGenerationPresentation.js";
+import { createGoldenJourneyState } from "./goldenJourneyState.js";
 import { buildGenerationLifecycleReadModel } from "./generationLifecycleState.js";
 import {
   buildGenerationFeedbackRequest,
@@ -210,6 +211,11 @@ const workspaceState = {
   workspaceId: workspaceBootstrap?.workspaceId || "workspace-local",
   chatDocumentId: workspaceBootstrap?.chatDocumentId || "chat-doc-local",
   interactionId: "interaction-local",
+  goldenJourney: createGoldenJourneyState({
+    journeyId: "journey-local-001",
+    startedAt: new Date().toISOString(),
+    locale: activeLocale
+  }),
   cxGenerationId: "cx-gen-local",
   retrievalPackageId: "cx-ret-local",
   artifactHandoffId: "handoff-local",
