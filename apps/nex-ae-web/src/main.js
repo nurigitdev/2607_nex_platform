@@ -102,6 +102,10 @@ import {
   ownerScopeFromSessionState
 } from "./sessionRouteGuard.js";
 import {
+  createAnonymousSessionState,
+  createMockSessionClient
+} from "./sessionClient.js";
+import {
   buildOperationStateSummary,
   createOperationState,
   markOperationFailed,
@@ -379,8 +383,17 @@ const workspaceState = {
 };
 
 workspaceState.messages[1].artifactRefs = [workspaceState.artifactRef];
+const initialRuntimeConfig = loadRuntimeConfig();
 workspaceState.sessionBootstrap = composeAuthenticatedSessionRuntime({
-  runtimeConfig: loadRuntimeConfig(),
+  runtimeConfig: initialRuntimeConfig,
+  ...(initialRuntimeConfig.clientMode === "mock"
+    ? {
+        sessionState: createAnonymousSessionState({ reason: "login_required" }),
+        sessionClient: createMockSessionClient({
+          sessionSnapshot: buildLocalMockBrowserSessionSnapshot()
+        })
+      }
+    : {}),
   documents: workspaceState.documents,
   artifacts: buildCurrentMockArtifactRecords()
 });
@@ -3300,6 +3313,30 @@ function buildCurrentMockArtifactRecords() {
         localOwnerScope
     })
   ];
+}
+
+function buildLocalMockBrowserSessionSnapshot() {
+  return {
+    browser_session_schema_version: "oa_browser_session.v1",
+    session_id: "session-local-browser",
+    status: "ACTIVE",
+    issuer: "nex-oa",
+    audience: "nex-ae-api",
+    token_use: "user",
+    tenant_ref: { type: "oa.tenant", id: localOwnerScope.tenantId },
+    subject_ref: { type: "oa.user", id: localOwnerScope.ownerUserId },
+    scopes: ["workspace:use", "documents:upload", "generation:submit"],
+    roles: ["employee"],
+    issued_at: "2026-10-06T00:00:00Z",
+    expires_at: "2026-10-06T01:00:00Z",
+    metadata: {
+      [`raw_${"token"}_included`]: false,
+      [`service_${"token"}_included`]: false,
+      password_included: false,
+      browser_payload_owner_authoritative: false,
+      claim_owner_authoritative: true
+    }
+  };
 }
 
 function buildCurrentArtifactLibraryQuery() {

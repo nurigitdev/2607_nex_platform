@@ -17,6 +17,7 @@
     "smoke:credential-login-playwright": "node scripts/runCredentialLoginPlaywrightSmoke.mjs --summary",
     "smoke:grounded-generation-experience": "node scripts/runGroundedGenerationExperienceSmoke.mjs --summary",
     "smoke:grounded-generation-playwright": "node scripts/runGroundedGenerationPlaywrightSmoke.mjs --summary",
+    "smoke:korean-golden-journey-playwright": "node scripts/runKoreanGoldenJourneyPlaywrightAcceptance.mjs --summary",
     "smoke:playwright-readiness": "node scripts/runCredentialLoginPlaywrightReadiness.mjs --summary",
     "test": "node --test test/*.test.mjs"
   },

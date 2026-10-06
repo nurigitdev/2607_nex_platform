@@ -707,3 +707,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_ae_web_grounding_journey_acceptance.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_journey_acceptance.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_viewport_accessibility_acceptance.py --summary
+"$PYTHON_BIN" scripts/smoke/run_ae_web_korean_golden_journey_playwright_acceptance.py --summary

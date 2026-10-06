@@ -248,7 +248,9 @@ completed the nine-stage deterministic journey through artifact render,
 preview, and download with exact artifact-file lineage and content-free browser
 evidence. Slice 1388 froze the shared desktop/mobile responsive, accessibility,
 focus, overflow, and primary-region non-overlap contract before Chromium
-execution.
+execution. Slice 1389 then passed the deterministic nine-stage Korean journey
+in actual Chromium at both frozen viewports, including visible login, upload,
+generation, preview, and download actions with redacted evidence.
 Remote model providers are not required for S139 closure;
 S140 owns the final browser plus live-provider release-candidate matrix.
 
