@@ -1,6 +1,6 @@
 # Platform AE Web Korean-Default Playwright Golden Journey
 
-Status: S139 active through Slice 1386.
+Status: S139 active through Slice 1387.
 
 ## Required Outcome
 
@@ -91,6 +91,9 @@ acceptance contract.
   validated or repaired grounding. Warning, citation, and repair counts are
   metadata-only. The fifth-Slice Checkpoint Gate passed with `11,154 passed`,
   `30 skipped`, statement coverage `98.91%`, and branch coverage `97.28%`.
+- Slice 1387 reused the production artifact client to require completed render,
+  exact file lineage, preview, and download before completing all nine journey
+  stages; browser evidence retains no preview text or download payload.
 
 ## Acceptance Rules
 

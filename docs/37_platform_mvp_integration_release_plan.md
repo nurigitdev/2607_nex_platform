@@ -243,7 +243,10 @@ catalog parity. Slice 1384 froze one correlated nine-stage journey and
 browser-safe evidence model. Slice 1385 connected OA login, claim-derived
 upload ownership, and owner-scoped ingestion progress through `INDEX_READY`.
 Slice 1386 extended the same journey through retrieval, generation, citation,
-and repair acceptance and requires the fifth-Slice Checkpoint Gate.
+and repair acceptance and passed the fifth-Slice Checkpoint Gate. Slice 1387
+completed the nine-stage deterministic journey through artifact render,
+preview, and download with exact artifact-file lineage and content-free browser
+evidence.
 Remote model providers are not required for S139 closure;
 S140 owns the final browser plus live-provider release-candidate matrix.
 
