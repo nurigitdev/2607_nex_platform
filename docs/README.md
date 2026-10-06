@@ -1477,6 +1477,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1369`](slices/1369_platform_grounded_generation_artifact_deterministic_e2e.md) | `S137-008` Publish grounded-artifact contracts and compose deterministic success, repair, denial, and recovery evidence. |
 | [`Slice 1370`](slices/1370_platform_grounded_generation_artifact_live_postgres.md) | `S137-009` Prove actual AE/CX PostgreSQL, live provider, private structured-draft, browser, and artifact lifecycle integration. |
 | [`Slice 1371`](slices/1371_s137_grounded_generation_artifact_closure.md) | `S137-010` Publish the runbook, close S137, run Full Gate, and activate the S138 service-API-only operations handoff. |
+| [`Slice 1372`](slices/1372_platform_ag_cross_service_trace_boundary.md) | `S138-001` Freeze the redacted service-API-only cross-service trace boundary, eight gaps, and S139 handoff. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

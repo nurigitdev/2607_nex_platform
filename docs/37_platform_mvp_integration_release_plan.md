@@ -197,6 +197,26 @@ branch coverage `96.98%`, and S137 closure checks `15/15`. S138 is the next
 active requirement and owns AG cross-service trace, audit, and operations E2E
 through redacted service APIs only.
 
+## S138 Slice Plan
+
+| Slice | Scope |
+| --- | --- |
+| `1372` | Freeze the service-API-only S138 boundary, eight gaps, and S139 handoff. |
+| `1373` | Define strict redacted stage-envelope and timeline contracts. |
+| `1374` | Add CX ADMIN-scoped ingestion/retrieval/generation trace projection. |
+| `1375` | Add AE upload/response/artifact trace projection. |
+| `1376` | Add OA trust and MO provider trace projections. |
+| `1377` | Add AG typed service-API clients and cross-service timeline aggregation. |
+| `1378` | Persist redacted AG audit evidence and expose protected operations APIs. |
+| `1379` | Prove deterministic success, failure, privacy, and restart scenarios. |
+| `1380` | Prove the timeline against actual service test PostgreSQL databases. |
+| `1381` | Publish the runbook, close S138, run Full Gate, and activate S139. |
+
+S138 completion signal: Pending. Slice 1372 freezes service ownership,
+`operations:read` ADMIN admission, the API-only source policy, and eight
+integration gaps. S139 remains inactive until actual database evidence and the
+S138 Full Gate pass.
+
 ## Protected Evidence Schedule
 
 - `S131`: repository and deterministic regression evidence; no remote model
@@ -205,6 +225,8 @@ through redacted service APIs only.
 - `S133` to `S135`: actual service test databases are required.
 - `S136`: actual embedding and reranker providers are required for closure.
 - `S137`: actual generation provider is additionally required for closure.
+- `S138`: actual service test databases are required; remote providers need
+  not be called again solely to reconstruct the accepted S137 trace.
 - `S139`: actual browser and service processes are required.
 - `S140`: all test databases and all three remote provider capabilities are
   required for protected release-candidate evidence.

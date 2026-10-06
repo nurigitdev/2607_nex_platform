@@ -690,3 +690,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_grounded_generation_artifact_e2e.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_grounded_generation_artifact_live_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s137_grounded_generation_artifact_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_ag_cross_service_trace_boundary.py --summary
