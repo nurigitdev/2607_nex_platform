@@ -1,6 +1,6 @@
 # Platform MVP Release-Candidate Acceptance And Operations Closure
 
-Status: S140 active through Slice 1399.
+Status: S140 active through Slice 1400; Full Gate pending.
 
 ## Required Outcome
 
@@ -153,3 +153,8 @@ and recovery evidence are independently executable.
   deferrals to `contract_privacy`, `zero_residue`, and
   `deployment_deferrals`. The fresh protected run observed zero residue and
   retained `production_deployment_approved=false`.
+- Slice 1400 executed the complete protected matrix after isolating each source
+  runner's canonical runtime profile. All eight non-regression gates and all
+  five protected actual-execution requirements passed with no privacy
+  violation. The evaluator remains deliberately blocked only by the Slice
+  1401 `full_regression` gate.

@@ -1506,6 +1506,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1397`](slices/1397_platform_release_candidate_live_providers.md) | `S140-006` Bind three live provider capabilities, model-independent calibration, grounded PostgreSQL execution, and zero residue to the RC gate. |
 | [`Slice 1398`](slices/1398_platform_release_candidate_browser_ag_operations.md) | `S140-007` Bind actual desktop/mobile Korean browser and five-database AG trace/audit/operations evidence to two protected RC gates. |
 | [`Slice 1399`](slices/1399_platform_release_candidate_assurance.md) | `S140-008` Bind contract/privacy, recovery, actual database/file/process zero residue, and nine production deployment deferrals to three RC gates. |
+| [`Slice 1400`](slices/1400_platform_release_candidate_protected_matrix.md) | `S140-009` Execute the complete protected matrix, pass eight non-regression gates and five actual protected gates, and leave only Full Gate pending. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

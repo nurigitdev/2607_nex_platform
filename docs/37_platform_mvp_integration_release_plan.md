@@ -311,6 +311,12 @@ scenarios, actual five-database cleanup, thirteen-process shutdown, temporary
 file cleanup, and all nine production-only deferrals passed with zero residue
 and no production approval claim. Slice 1400 is next.
 
+Slice 1400 protected matrix progress: all eight non-regression gates and five
+actual protected gates passed after source-specific trust/provider profiles
+were isolated. Privacy violations remained zero. The matrix is
+`READY_FOR_FULL_GATE`; `full_regression` is the only pending gate and Slice
+1401 is next.
+
 ## Protected Evidence Schedule
 
 - `S131`: repository and deterministic regression evidence; no remote model

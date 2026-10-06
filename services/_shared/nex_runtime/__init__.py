@@ -128,6 +128,10 @@ from .release_candidate_assurance import (
     RELEASE_CANDIDATE_ASSURANCE_SCHEMA_VERSION,
     build_release_candidate_assurance_evidence,
 )
+from .release_candidate_protected_matrix import (
+    RELEASE_CANDIDATE_PROTECTED_MATRIX_SCHEMA_VERSION,
+    build_release_candidate_protected_matrix,
+)
 from .generation_golden import (
     GENERATION_GOLDEN_EVIDENCE_SCHEMA_VERSION,
     GENERATION_GOLDEN_MATRIX_SCHEMA_VERSION,
