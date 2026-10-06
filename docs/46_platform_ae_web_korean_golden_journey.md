@@ -1,6 +1,6 @@
 # Platform AE Web Korean-Default Playwright Golden Journey
 
-Status: S139 active through Slice 1389.
+Status: S139 active through Slice 1390.
 
 ## Required Outcome
 
@@ -101,6 +101,12 @@ acceptance contract.
   generation, preview, and download workflow in actual Chromium. Both frozen
   viewports passed with 57 named controls, zero overflow/overlap, visible focus,
   and zero page errors; screenshots remain generated evidence.
+- Slice 1390 added the opt-in protected evidence pack for the thirteen-process
+  topology, OA-backed browser login, owner-scoped upload, grounded artifact
+  delivery, and both Chromium viewports against the OA/AE/CX test databases.
+  All five sources passed, all thirteen processes stopped cleanly, and all
+  seven protected AE/CX fixture-residue counters were zero. The deterministic
+  MO mock remains deliberate; S140 owns the final live provider matrix.
 
 ## Acceptance Rules
 

@@ -493,16 +493,22 @@ def test_cx_upload_client_owner_resolver_and_prepared_cleanup(
     monkeypatch.setattr(
         smoke,
         "_cx_service_headers",
-        lambda *, trace_id, request_id: {
+        lambda *, trace_id, request_id, tenant_id, subject_id: {
             "Authorization": "Bearer redacted",
             "X-Request-ID": request_id,
             "traceparent": trace_id,
+            "X-NEX-Tenant-ID": tenant_id,
+            "X-NEX-Subject-ID": subject_id,
         },
     )
     client = Client()
     adapter = smoke.TestClientCxUploadClient(client)
     payload = adapter.register_upload(
-        {"filename": "metadata.md"},
+        {
+            "filename": "metadata.md",
+            "tenant_id": "tenant",
+            "owner_user_id": "user",
+        },
         request_id="request-0274",
         trace_id="trace0274",
     )
@@ -581,6 +587,32 @@ def test_cx_upload_client_owner_resolver_and_prepared_cleanup(
     assert oa_calls[0]["session_id"] == "session-0274"
     assert cleanup["cx_rows"]["deleted_content_objects"] == 1
     assert temp_dir.cleaned is True
+
+
+def test_pending_progress_client_returns_owner_scoped_queued_state() -> None:
+    client = smoke.PendingCxUploadProgressClient()
+
+    collection = client.list_ingestion_runs(
+        "document-0274",
+        tenant_id="tenant",
+        owner_user_id="user",
+        request_id="request-0274",
+        trace_id="trace0274",
+    )
+    readiness = client.get_vector_readiness(
+        "vector-0274",
+        tenant_id="tenant",
+        owner_user_id="user",
+        request_id="request-0274",
+        trace_id="trace0274",
+    )
+
+    assert collection == {"document_id": "document-0274", "runs": []}
+    assert readiness is None
+    assert [call["operation"] for call in client.calls] == [
+        "list_ingestion_runs",
+        "get_vector_readiness",
+    ]
 
 
 def test_delete_cx_smoke_rows_keeps_shared_source_file(tmp_path: Path) -> None:
@@ -748,8 +780,17 @@ def test_helpers_redaction_node_env_and_main(
         smoke._valid_sha256("not-a-hash")
     storage = smoke._storage_config(tmp_path)
     headers = smoke._cx_service_headers(trace_id="0" * 32, request_id="request-0274")
+    owner_headers = smoke._cx_service_headers(
+        trace_id="0" * 32,
+        request_id="request-0274",
+        tenant_id="tenant-a",
+        subject_id="user-a",
+    )
     assert storage.chunk_policy == "chunk_1000_100"
     assert headers["X-Service-ID"] == smoke.base_auth.AE_SERVICE_ID
+    assert "X-NEX-Tenant-ID" not in headers
+    assert owner_headers["X-NEX-Tenant-ID"] == "tenant-a"
+    assert owner_headers["X-NEX-Subject-ID"] == "user-a"
     assert smoke._source_status(None, version_key="x") == {"status": "NOT_RUN"}
     assert smoke._source_status({"status": "PASS", "x": "v1"}, version_key="x") == {
         "status": "PASS",

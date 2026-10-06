@@ -28,6 +28,7 @@ sys.path.insert(0, str(AE_PATH))
 sys.path.insert(0, str(CX_PATH))
 
 from nex_ae_api.auth_sessions import AUTH_SESSION_MODE_OA  # noqa: E402
+from nex_ae_api.upload_progress import register_upload_progress_routes  # noqa: E402
 from nex_ae_api.uploads import (  # noqa: E402
     UPLOAD_OWNER_RESOLVER_DISABLED,
     UploadHandoffStore,
@@ -106,9 +107,20 @@ class TestClientCxUploadClient:
         request_id: str,
         trace_id: str,
     ) -> dict[str, Any]:
+        ownership_ref = _mapping(payload.get("ownership_ref"))
+        legacy_owner = _mapping(ownership_ref.get("legacy"))
+        tenant_id = str(payload.get("tenant_id") or legacy_owner.get("tenant_id") or "")
+        subject_id = str(
+            payload.get("owner_user_id") or legacy_owner.get("owner_user_id") or ""
+        )
         response = self.client.post(
             "/api/v1/documents/uploads",
-            headers=_cx_service_headers(trace_id=trace_id, request_id=request_id),
+            headers=_cx_service_headers(
+                trace_id=trace_id,
+                request_id=request_id,
+                tenant_id=tenant_id,
+                subject_id=subject_id,
+            ),
             json=payload,
         )
         body = _safe_response_json(response)
@@ -152,6 +164,31 @@ class StaticOwnerResolver:
             "owner_subject_ref": dict(normalized["owner_subject_ref"]),
             "uploaded_by_subject_ref": dict(normalized["uploaded_by_subject_ref"]),
         }
+
+
+@dataclass
+class PendingCxUploadProgressClient:
+    calls: list[dict[str, str]] = field(default_factory=list)
+
+    def list_ingestion_runs(
+        self,
+        document_id: str,
+        **kwargs: str,
+    ) -> dict[str, Any]:
+        self.calls.append(
+            {"operation": "list_ingestion_runs", "document_id": document_id, **kwargs}
+        )
+        return {"document_id": document_id, "runs": []}
+
+    def get_vector_readiness(
+        self,
+        vector_index_id: str,
+        **kwargs: str,
+    ) -> dict[str, Any] | None:
+        self.calls.append(
+            {"operation": "get_vector_readiness", "vector_index_id": vector_index_id, **kwargs}
+        )
+        return None
 
 
 @dataclass
@@ -536,6 +573,7 @@ def build_ae_app(
     )
     if ae_persistence.api_session_factory is None:
         raise RuntimeError("AE PostgreSQL session factory is unavailable")
+    upload_store = UploadHandoffStore()
     base_auth.register_auth_session_routes(
         ae_app,
         oa_session_client=oa_session_client,
@@ -543,9 +581,16 @@ def build_ae_app(
     )
     register_upload_routes(
         ae_app,
-        store=UploadHandoffStore(),
+        store=upload_store,
         cx_client=cx_upload_client,
         owner_resolver_mode=UPLOAD_OWNER_RESOLVER_DISABLED,
+        oa_session_client=oa_session_client,
+        session_mode=AUTH_SESSION_MODE_OA,
+    )
+    register_upload_progress_routes(
+        ae_app,
+        upload_store=upload_store,
+        cx_client=PendingCxUploadProgressClient(),
         oa_session_client=oa_session_client,
         session_mode=AUTH_SESSION_MODE_OA,
     )
@@ -1062,17 +1107,28 @@ def _storage_config(temp_dir: Path) -> CxStorageConfig:
     )
 
 
-def _cx_service_headers(*, trace_id: str, request_id: str) -> dict[str, str]:
+def _cx_service_headers(
+    *,
+    trace_id: str,
+    request_id: str,
+    tenant_id: str | None = None,
+    subject_id: str | None = None,
+) -> dict[str, str]:
     issued = base_auth.issue_mock_service_token(
         service_id=base_auth.AE_SERVICE_ID,
         audience=CX_SERVICE_ID,
     )
-    return {
+    headers = {
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": request_id,
         "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
         "X-Service-ID": base_auth.AE_SERVICE_ID,
     }
+    if tenant_id:
+        headers["X-NEX-Tenant-ID"] = tenant_id
+    if subject_id:
+        headers["X-NEX-Subject-ID"] = subject_id
+    return headers
 
 
 def _bounded_size_bytes(raw_value: str | None) -> int:

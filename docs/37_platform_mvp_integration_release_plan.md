@@ -251,6 +251,10 @@ focus, overflow, and primary-region non-overlap contract before Chromium
 execution. Slice 1389 then passed the deterministic nine-stage Korean journey
 in actual Chromium at both frozen viewports, including visible login, upload,
 generation, preview, and download actions with redacted evidence.
+Slice 1390 composes the actual thirteen-process topology, OA-backed browser
+login, owner-scoped upload, AE/CX PostgreSQL grounded artifact path, and both
+Chromium viewports as one opt-in protected acceptance pack. Its five sources
+passed with zero protected AE/CX fixture residue.
 Remote model providers are not required for S139 closure;
 S140 owns the final browser plus live-provider release-candidate matrix.
 
