@@ -99,6 +99,15 @@ from .release_candidate import (
     build_release_candidate_gate_matrix,
     evaluate_release_candidate_evidence,
 )
+from .generation_golden import (
+    GENERATION_GOLDEN_EVIDENCE_SCHEMA_VERSION,
+    GENERATION_GOLDEN_MATRIX_SCHEMA_VERSION,
+    GENERATION_GOLDEN_SCENARIOS,
+    GenerationGoldenScenarioSpec,
+    build_generation_golden_evidence,
+    build_generation_golden_matrix,
+    evaluate_generation_golden_evidence,
+)
 from .platform_trust_scope_policy import (
     ACTIVE_CLAIM_ROUTE_CLASS,
     OA_INTROSPECTION_SCOPE as PLATFORM_TRUST_INTROSPECTION_SCOPE,

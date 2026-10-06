@@ -1,6 +1,6 @@
 # Platform MVP Release-Candidate Acceptance And Operations Closure
 
-Status: S140 active through Slice 1393.
+Status: S140 active through Slice 1394.
 
 ## Required Outcome
 
@@ -122,3 +122,7 @@ and recovery evidence are independently executable.
   exact inventory, unique IDs, a valid digest, bounded freshness, no private
   payload, and gate-specific metrics. Five gates require actual protected
   execution and no required gate may be skipped.
+- Slice 1394 made `GEN-E2E-001` through `GEN-E2E-010` executable as one
+  deterministic aggregate. It reuses production functions and in-memory
+  service flows, emits metadata-only hashed evidence, and explicitly makes no
+  PostgreSQL, live-provider, or browser execution claim.

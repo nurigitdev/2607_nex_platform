@@ -279,6 +279,10 @@ S140 is the next active requirement.
 S140 completion signal: Pending. Slice 1392 freezes the RC boundary and does
 not claim production deployment readiness.
 
+Slice 1394 deterministic progress: `GEN-E2E-001` through `GEN-E2E-010` now
+have one executable metadata-only aggregate runner. Protected database,
+provider, browser, AG operations, and cleanup evidence remains pending.
+
 ## Protected Evidence Schedule
 
 - `S131`: repository and deterministic regression evidence; no remote model
