@@ -301,6 +301,11 @@ generation/artifact persistence, and cleanup with three capabilities and zero
 residue. Model revision changes are accepted through runtime binding and
 calibration rather than hard-coded release admission. Slice 1398 is next.
 
+Slice 1398 protected browser/operations progress: the S139 actual-process
+Korean Chromium journey passed both frozen viewports, and the S138
+five-database AG service-API trace journey passed all eight stage families,
+restart-safe audit, and zero combined residue. Slice 1399 is next.
+
 ## Protected Evidence Schedule
 
 - `S131`: repository and deterministic regression evidence; no remote model

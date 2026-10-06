@@ -1504,6 +1504,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1395`](slices/1395_platform_release_candidate_protected_admission.md) | `S140-004` Fail closed unless five test databases, three live capabilities, protected runtime modes, and two browser viewports are admitted. |
 | [`Slice 1396`](slices/1396_platform_release_candidate_postgres_restart.md) | `S140-005` Bind actual five-database migration, restart, restoration, cleanup, and zero-residue evidence to the RC gate and pass Checkpoint Gate. |
 | [`Slice 1397`](slices/1397_platform_release_candidate_live_providers.md) | `S140-006` Bind three live provider capabilities, model-independent calibration, grounded PostgreSQL execution, and zero residue to the RC gate. |
+| [`Slice 1398`](slices/1398_platform_release_candidate_browser_ag_operations.md) | `S140-007` Bind actual desktop/mobile Korean browser and five-database AG trace/audit/operations evidence to two protected RC gates. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

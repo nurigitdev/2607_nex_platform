@@ -1,6 +1,6 @@
 # Platform MVP Release-Candidate Acceptance And Operations Closure
 
-Status: S140 active through Slice 1397.
+Status: S140 active through Slice 1398.
 
 ## Required Outcome
 
@@ -143,3 +143,8 @@ and recovery evidence are independently executable.
   capabilities, twenty calibration samples, actual CX/AE PostgreSQL work, and
   zero residue. Model revisions are runtime bindings rather than acceptance
   constants.
+- Slice 1398 bound the protected S139 desktop/mobile Chromium journey and the
+  S138 five-database service-API trace journey to `korean_browser_journey` and
+  `ag_trace_operations`. A fresh run passed both viewports, all eight trace
+  families, restart-safe AG audit, and zero database/file residue while
+  keeping browser provider behavior deterministic.
