@@ -221,6 +221,26 @@ operator runbook, composed all S138 evidence, and closed the Full Gate with
 `97.00%`, and closure checks `15/15`. S139 is the next active requirement and
 owns Korean-default AE Web Playwright golden-journey acceptance.
 
+## S139 Slice Plan
+
+| Slice | Scope |
+| --- | --- |
+| `1382` | Freeze the S139 browser boundary, eight gaps, and S140 handoff. |
+| `1383` | Define Korean-default, English-ready UI message and status contracts. |
+| `1384` | Define the correlated golden-journey state and browser-safe evidence model. |
+| `1385` | Integrate login, upload, and ingestion-progress browser acceptance. |
+| `1386` | Integrate retrieval, generation, warning, citation, and repair acceptance; run Checkpoint Gate. |
+| `1387` | Integrate artifact render, preview, and download acceptance. |
+| `1388` | Harden desktop/mobile responsive, accessibility, and non-overlap acceptance. |
+| `1389` | Execute deterministic two-viewport Playwright golden-journey acceptance. |
+| `1390` | Execute protected browser plus service-process and test-PostgreSQL acceptance. |
+| `1391` | Publish the runbook, close S139, run Full Gate, and activate S140. |
+
+S139 completion signal: Pending. Slice 1382 freezes the browser-only same-origin
+boundary and the requirement's eight acceptance gaps before UI orchestration
+changes begin. Remote model providers are not required for S139 closure; S140
+owns the final browser plus live-provider release-candidate matrix.
+
 ## Protected Evidence Schedule
 
 - `S131`: repository and deterministic regression evidence; no remote model
