@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/service_cross_service_trace_projection.v1.schema.json",
+  "title": "NeX Metadata-Only Service Trace Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "projection_schema_version",
+    "service_id",
+    "trace_id",
+    "source_status",
+    "checked_at",
+    "stages",
+    "summary"
+  ],
+  "properties": {
+    "projection_schema_version": {
+      "const": "service_cross_service_trace_projection.v1"
+    },
+    "service_id": {"$ref": "#/$defs/service_id"},
+    "trace_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "source_status": {
+      "type": "string",
+      "enum": ["READY", "DEGRADED", "UNAVAILABLE"]
+    },
+    "checked_at": {"type": "string", "format": "date-time"},
+    "stages": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/stage"}
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage_count",
+        "by_family",
+        "by_status",
+        "private_payload_included"
+      ],
+      "properties": {
+        "stage_count": {"type": "integer", "minimum": 0},
+        "by_family": {"$ref": "#/$defs/count_map"},
+        "by_status": {"$ref": "#/$defs/count_map"},
+        "private_payload_included": {"const": false}
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$"
+    },
+    "service_id": {
+      "type": "string",
+      "enum": ["nex-oa", "nex-ae-api", "nex-cx", "nex-mo", "nex-ag"]
+    },
+    "count_map": {
+      "type": "object",
+      "additionalProperties": {"type": "integer", "minimum": 1}
+    },
+    "safe_scalar": {
+      "anyOf": [
+        {"type": "string", "minLength": 1, "maxLength": 128},
+        {"type": "integer"},
+        {"type": "number"},
+        {"type": "boolean"}
+      ]
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage_schema_version",
+        "stage_id",
+        "trace_id",
+        "request_id",
+        "service_id",
+        "stage_family",
+        "stage_status",
+        "operation_timestamp",
+        "correlation_refs",
+        "safe_attributes",
+        "private_payload_included"
+      ],
+      "properties": {
+        "stage_schema_version": {"const": "cross_service_trace_stage.v1"},
+        "stage_id": {"$ref": "#/$defs/identifier"},
+        "trace_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+        "request_id": {"$ref": "#/$defs/identifier"},
+        "service_id": {"$ref": "#/$defs/service_id"},
+        "stage_family": {
+          "type": "string",
+          "enum": [
+            "AUTH",
+            "UPLOAD",
+            "INGESTION",
+            "RETRIEVAL",
+            "GENERATION",
+            "ARTIFACT",
+            "ACCESS",
+            "OPERATIONS"
+          ]
+        },
+        "stage_status": {
+          "type": "string",
+          "enum": [
+            "STARTED",
+            "SUCCEEDED",
+            "FAILED",
+            "BLOCKED",
+            "SKIPPED",
+            "RECOVERING"
+          ]
+        },
+        "operation_timestamp": {"type": "string", "format": "date-time"},
+        "owner_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "correlation_refs": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "session_id",
+              "upload_id",
+              "source_file_id",
+              "processing_run_id",
+              "ingestion_run_id",
+              "retrieval_package_id",
+              "cx_generation_id",
+              "response_id",
+              "artifact_id",
+              "render_job_id",
+              "provider_request_id"
+            ]
+          },
+          "additionalProperties": {"$ref": "#/$defs/identifier"}
+        },
+        "safe_attributes": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "event_type",
+              "result_code",
+              "failure_code",
+              "retryable",
+              "attempt",
+              "progress_percent",
+              "confidence_state",
+              "citation_status",
+              "artifact_status",
+              "provider_capability",
+              "model_alias",
+              "cleanup_residue_count"
+            ]
+          },
+          "additionalProperties": {"$ref": "#/$defs/safe_scalar"}
+        },
+        "private_payload_included": {"const": false}
+      }
+    }
+  }
+}

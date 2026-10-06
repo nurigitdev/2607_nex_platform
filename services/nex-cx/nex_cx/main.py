@@ -103,6 +103,11 @@ from nex_cx.vector_index_repository import (
 )
 from nex_cx.worker_leases import SqlAlchemyCxWorkerLeaseStore
 from nex_cx.worker_operations import register_worker_operations_routes
+from nex_cx.trace_projection import (
+    InMemoryCxTraceProjectionSource,
+    SqlAlchemyCxTraceProjectionSource,
+    register_cx_trace_projection_routes,
+)
 
 
 def build_cx_content_repository(
@@ -236,6 +241,15 @@ def build_cx_worker_lease_store(
     return None
 
 
+def build_cx_trace_projection_source(runtime: ServicePersistenceRuntime):
+    if (
+        runtime.mode == PERSISTENCE_MODE_POSTGRES
+        and runtime.api_session_factory is not None
+    ):
+        return SqlAlchemyCxTraceProjectionSource(runtime.api_session_factory)
+    return InMemoryCxTraceProjectionSource()
+
+
 def build_cx_mvp_runtime_composition(
     runtime: ServicePersistenceRuntime,
     *,
@@ -323,6 +337,7 @@ CX_GENERATION_RUNTIME = build_cx_generation_runtime(SERVICE_PERSISTENCE)
 CX_GENERATION_READ_MODEL = build_cx_generation_read_model(CX_GENERATION_RUNTIME)
 CX_GENERATION_REQUEST_STORE = build_generation_request_store()
 CX_WORKER_LEASE_STORE = build_cx_worker_lease_store(SERVICE_PERSISTENCE)
+CX_TRACE_PROJECTION_SOURCE = build_cx_trace_projection_source(SERVICE_PERSISTENCE)
 (
     CX_PRIVATE_SUMMARY_TEXT_STORE,
     CX_SUMMARY_VECTOR_STORE,
@@ -438,6 +453,7 @@ register_worker_operations_routes(
         ),
     },
 )
+register_cx_trace_projection_routes(app, source=CX_TRACE_PROJECTION_SOURCE)
 register_vector_index_operations_routes(
     app,
     repository=CX_VECTOR_INDEX_REPOSITORY,

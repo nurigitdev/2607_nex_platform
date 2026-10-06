@@ -28,6 +28,7 @@ CX_CALLER_SCOPES_STATE_KEY = "cx_caller_scopes"
 CX_ACCESS_CONTEXT_STATE_KEY = "cx_access_context"
 CX_TENANT_HEADER = "X-NEX-Tenant-ID"
 CX_SUBJECT_HEADER = "X-NEX-Subject-ID"
+CX_OPERATIONS_READ_SCOPE = "operations:read"
 
 
 def authorize_cx_request(
@@ -72,6 +73,33 @@ def authorize_cx_owner_request(
     setattr(request.state, CX_CALLER_SCOPES_STATE_KEY, context.scopes)
     setattr(request.state, CX_ACCESS_CONTEXT_STATE_KEY, context)
     return context
+
+
+def authorize_cx_operations_request(
+    request: Request,
+    authorization: str | None,
+) -> JSONResponse | None:
+    admitted = admit_service_token_from_request(
+        request,
+        authorization,
+        expected_audience="nex-cx",
+        required_scopes=(DEFAULT_SERVICE_SCOPE, CX_OPERATIONS_READ_SCOPE),
+        route_class="ADMIN",
+    )
+    if isinstance(admitted, JSONResponse):
+        return admitted
+    if admitted.service_id != "nex-ag":
+        return problem_response(
+            request,
+            status_code=403,
+            error_code="CX_OPERATIONS_CALLER_FORBIDDEN",
+            title="Authorization failed",
+            detail="CX trace operations are available only to NeX-AG.",
+            type_uri="https://nex-platform.local/problems/authorization-failed",
+        )
+    setattr(request.state, CX_CALLER_SERVICE_STATE_KEY, admitted.service_id)
+    setattr(request.state, CX_CALLER_SCOPES_STATE_KEY, admitted.scopes)
+    return None
 
 
 def _admit_cx_request_claim(

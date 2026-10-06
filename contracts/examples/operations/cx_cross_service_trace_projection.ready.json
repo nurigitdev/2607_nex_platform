@@ -1,0 +1,37 @@
+{
+  "projection_schema_version": "service_cross_service_trace_projection.v1",
+  "service_id": "nex-cx",
+  "trace_id": "13741374137413741374137413741374",
+  "source_status": "READY",
+  "checked_at": "2026-10-06T10:00:00Z",
+  "stages": [
+    {
+      "stage_schema_version": "cross_service_trace_stage.v1",
+      "stage_id": "cx-generation-generation-1374",
+      "trace_id": "13741374137413741374137413741374",
+      "request_id": "request-1374",
+      "service_id": "nex-cx",
+      "stage_family": "GENERATION",
+      "stage_status": "SUCCEEDED",
+      "operation_timestamp": "2026-10-06T09:07:00Z",
+      "owner_digest": "cbcd95a32cb0713272f0340e3c2ab0dc272c972548a1425b376d2883d23c1f70",
+      "correlation_refs": {
+        "cx_generation_id": "generation-1374",
+        "retrieval_package_id": "retrieval-1374"
+      },
+      "safe_attributes": {
+        "event_type": "cx.generation",
+        "model_alias": "general-llm-default",
+        "provider_capability": "generation",
+        "result_code": "COMPLETED"
+      },
+      "private_payload_included": false
+    }
+  ],
+  "summary": {
+    "stage_count": 1,
+    "by_family": {"GENERATION": 1},
+    "by_status": {"SUCCEEDED": 1},
+    "private_payload_included": false
+  }
+}

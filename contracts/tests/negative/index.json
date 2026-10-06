@@ -960,6 +960,11 @@
       "name": "ag_cross_service_trace_e2e_private_stage",
       "path": "tests/negative/operations/ag_cross_service_trace_e2e.private_stage.json",
       "schema": "schemas/service/nex_ag/cross_service_trace_e2e.v1.schema.json"
+    },
+    {
+      "name": "cx_cross_service_trace_projection_owner_leak",
+      "path": "tests/negative/operations/cx_cross_service_trace_projection.owner_leak.json",
+      "schema": "schemas/common/service_cross_service_trace_projection.v1.schema.json"
     }
   ]
 }

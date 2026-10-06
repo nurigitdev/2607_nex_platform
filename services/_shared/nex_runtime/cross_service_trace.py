@@ -8,6 +8,7 @@ from typing import Any, Mapping, Sequence
 
 TRACE_STAGE_SCHEMA_VERSION = "cross_service_trace_stage.v1"
 TRACE_TIMELINE_SCHEMA_VERSION = "ag_cross_service_trace_e2e.v1"
+TRACE_SOURCE_PROJECTION_SCHEMA_VERSION = "service_cross_service_trace_projection.v1"
 TRACE_STAGE_FAMILIES = (
     "AUTH",
     "UPLOAD",
@@ -180,6 +181,56 @@ def build_cross_service_trace_timeline(
             "source_count": len(normalized_sources),
             "by_family": dict(sorted(by_family.items())),
             "by_status": dict(sorted(by_status.items())),
+            "private_payload_included": False,
+        },
+    }
+
+
+def build_cross_service_trace_source_projection(
+    *,
+    service_id: str,
+    trace_id: str,
+    stages: Sequence[Mapping[str, Any]],
+    source_status: str,
+    checked_at: str,
+) -> dict[str, Any]:
+    if service_id not in TRACE_SERVICE_IDS:
+        raise CrossServiceTraceError(
+            "trace.source_service_invalid", "source service is not supported"
+        )
+    if source_status not in TRACE_SOURCE_STATUSES:
+        raise CrossServiceTraceError(
+            "trace.source_status_invalid", "source status is not supported"
+        )
+    timeline = build_cross_service_trace_timeline(
+        trace_id=trace_id,
+        stages=stages,
+        source_statuses={service_id: source_status},
+        checked_at=checked_at,
+    )
+    foreign_services = sorted(
+        {
+            stage["service_id"]
+            for stage in timeline["timeline"]
+            if stage["service_id"] != service_id
+        }
+    )
+    if foreign_services:
+        raise CrossServiceTraceError(
+            "trace.source_stage_service_mismatch",
+            "source projection stages must belong to the source service",
+        )
+    return {
+        "projection_schema_version": TRACE_SOURCE_PROJECTION_SCHEMA_VERSION,
+        "service_id": service_id,
+        "trace_id": trace_id,
+        "source_status": source_status,
+        "checked_at": timeline["checked_at"],
+        "stages": timeline["timeline"],
+        "summary": {
+            "stage_count": timeline["summary"]["stage_count"],
+            "by_family": timeline["summary"]["by_family"],
+            "by_status": timeline["summary"]["by_status"],
             "private_payload_included": False,
         },
     }

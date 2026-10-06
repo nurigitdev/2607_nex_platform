@@ -4,6 +4,7 @@ import pytest
 
 from nex_runtime import (
     CrossServiceTraceError,
+    build_cross_service_trace_source_projection,
     build_cross_service_trace_stage,
     build_cross_service_trace_timeline,
 )
@@ -91,6 +92,59 @@ def test_build_timeline_sorts_and_summarizes_ready_stages() -> None:
         "by_status": {"SUCCEEDED": 2},
         "private_payload_included": False,
     }
+
+
+def test_build_source_projection_reuses_validated_timeline() -> None:
+    result = build_cross_service_trace_source_projection(
+        service_id="nex-cx",
+        trace_id=TRACE_ID,
+        stages=[_stage()],
+        source_status="READY",
+        checked_at="2026-10-06T09:14:00Z",
+    )
+
+    assert result["projection_schema_version"] == (
+        "service_cross_service_trace_projection.v1"
+    )
+    assert result["service_id"] == "nex-cx"
+    assert result["source_status"] == "READY"
+    assert result["summary"] == {
+        "stage_count": 1,
+        "by_family": {"GENERATION": 1},
+        "by_status": {"SUCCEEDED": 1},
+        "private_payload_included": False,
+    }
+
+
+@pytest.mark.parametrize(
+    ("service_id", "source_status", "stage_service", "error_code"),
+    [
+        ("unknown", "READY", "nex-cx", "trace.source_service_invalid"),
+        ("nex-cx", "BROKEN", "nex-cx", "trace.source_status_invalid"),
+        (
+            "nex-cx",
+            "READY",
+            "nex-mo",
+            "trace.source_stage_service_mismatch",
+        ),
+    ],
+)
+def test_source_projection_rejects_invalid_source_binding(
+    service_id: str,
+    source_status: str,
+    stage_service: str,
+    error_code: str,
+) -> None:
+    with pytest.raises(CrossServiceTraceError) as exc_info:
+        build_cross_service_trace_source_projection(
+            service_id=service_id,
+            trace_id=TRACE_ID,
+            stages=[_stage(service_id=stage_service)],
+            source_status=source_status,
+            checked_at="2026-10-06T09:14:00Z",
+        )
+
+    assert exc_info.value.error_code == error_code
 
 
 @pytest.mark.parametrize(

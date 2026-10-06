@@ -44,12 +44,14 @@ from .cross_service_trace import (
     TRACE_SAFE_ATTRIBUTE_FIELDS,
     TRACE_SERVICE_IDS,
     TRACE_SOURCE_STATUSES,
+    TRACE_SOURCE_PROJECTION_SCHEMA_VERSION,
     TRACE_STAGE_FAMILIES,
     TRACE_STAGE_SCHEMA_VERSION,
     TRACE_STAGE_STATUSES,
     TRACE_TIMELINE_SCHEMA_VERSION,
     CrossServiceTraceError,
     build_cross_service_trace_stage,
+    build_cross_service_trace_source_projection,
     build_cross_service_trace_timeline,
 )
 from .env import load_env_file, merge_pythonpath
@@ -717,11 +719,13 @@ __all__ = [
     "TRACE_SAFE_ATTRIBUTE_FIELDS",
     "TRACE_SERVICE_IDS",
     "TRACE_SOURCE_STATUSES",
+    "TRACE_SOURCE_PROJECTION_SCHEMA_VERSION",
     "TRACE_STAGE_FAMILIES",
     "TRACE_STAGE_SCHEMA_VERSION",
     "TRACE_STAGE_STATUSES",
     "TRACE_TIMELINE_SCHEMA_VERSION",
     "CrossServiceTraceError",
     "build_cross_service_trace_stage",
+    "build_cross_service_trace_source_projection",
     "build_cross_service_trace_timeline",
 ]

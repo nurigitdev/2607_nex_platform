@@ -96,6 +96,16 @@ reports each source API as `READY`, `DEGRADED`, or `UNAVAILABLE`, and becomes
 `DEGRADED` when a source is unhealthy or a stage is `FAILED`/`BLOCKED`. Both
 contracts explicitly assert `private_payload_included=false`.
 
+## Slice 1374 CX Projection
+
+CX exposes `/internal/v1/operations/traces/{trace_id}` only to an OA-admitted
+`nex-ag` service principal carrying `service:call` and `operations:read`; the
+route is classified `ADMIN`. It reads existing ingestion, retrieval, and
+generation tables through the CX-owned repository boundary. Raw tenant/owner
+identifiers and all private content remain inside CX; the response includes
+only a stable owner digest, opaque correlation identifiers, lifecycle status,
+timestamps, and allowlisted scalar operations metadata.
+
 ## S139 Handoff
 
 S139 receives the stable trace id, public correlation ids, safe stage status,
