@@ -72,6 +72,31 @@ silently falling back to it.
 | `test_database_profile` | Five service-local `_TEST_DATABASE_URL` targets | OA, AE, CX, MO, AG | protected test evidence only | `FORBIDDEN_IN_PRODUCTION` | `S145`, `S149` |
 | `protected_opt_in_smoke` | Environment-enabled PostgreSQL, provider, and browser smoke runners | Platform integration and evidence owner | protected test or staging evidence only | `FORBIDDEN_IN_PRODUCTION` | `S149` |
 
+## Environment and Production Admission Baseline
+
+The typed `production` runtime profile currently selects PostgreSQL, live model
+providers, signed service trust, service-API AG projections, OA-backed AE auth,
+and secure AE session cookies. It requires 25 non-placeholder values: five
+service database URLs, six service endpoints, eight signed-trust credentials,
+and six live-provider endpoint or credential values. Mode conflicts, missing
+values, and known placeholders fail closed.
+
+This is configuration-shape evidence, not production control evidence. The
+following gaps remain outside the production admission contract.
+
+| Configuration gap ID | Current state | Owner | Target |
+| --- | --- | --- | --- |
+| `immutable_deployment_environment` | Typed process manifest exists; immutable packaged environment composition is not admitted | Platform integration | `S142` |
+| `external_secret_provider_rotation` | Raw process environment values are required; external references, injection, and rotation are not admitted | Platform integration and all services | `S143` |
+| `managed_tls_certificate_lifecycle` | HTTP and HTTPS endpoint shapes are accepted; managed certificate lifecycle is not admitted | Platform integration | `S143` |
+| `external_signing_key_custody` | OA issuance remains fail-closed without an injected external signing provider | OA | `S144` |
+| `enterprise_idp_registration` | OIDC verification primitives exist; production registration and federation metadata are not admitted | OA | `S144` |
+| `postgresql_backup_ha_dr` | Connection and pool configuration exist; backup, restore, HA, RPO, and RTO are not admitted | Five database owners and platform integration | `S145` |
+| `object_storage_lifecycle` | CX and AE use owner-private local filesystem adapters; production object storage is not admitted | CX and AE | `S146` |
+| `external_incident_delivery` | AG HTTP transport settings exist; production endpoints and credentials are not required by the profile | AG | `S148` |
+| `gpu_scheduling_capacity` | Live provider endpoints are required; GPU scheduling and capacity approval are not admitted | MO | `S147` |
+| `monitoring_paging_slo_approval` | Operational telemetry exists; production paging, SLO ownership, and approval are not admitted | AG and platform integration | `S148`, `S150` |
+
 ## S141 Slice Plan
 
 | Slice | Scope |

@@ -724,3 +724,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_production_readiness_boundary.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_production_deferral_inventory.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_nonproduction_path_inventory.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_production_configuration_audit.py --summary
