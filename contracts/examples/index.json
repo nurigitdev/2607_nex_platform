@@ -1109,6 +1109,16 @@
       "name": "ae_grounded_artifact_admission_enqueued",
       "path": "examples/generation/ae_grounded_artifact_admission.enqueued.json",
       "schema": "schemas/service/nex_ae_api/grounded_artifact_admission.v1.schema.json"
+    },
+    {
+      "name": "cross_service_trace_stage_generation",
+      "path": "examples/common/cross_service_trace_stage.generation.json",
+      "schema": "schemas/common/cross_service_trace_stage.v1.schema.json"
+    },
+    {
+      "name": "ag_cross_service_trace_e2e_ready",
+      "path": "examples/operations/ag_cross_service_trace_e2e.ready.json",
+      "schema": "schemas/service/nex_ag/cross_service_trace_e2e.v1.schema.json"
     }
   ]
 }

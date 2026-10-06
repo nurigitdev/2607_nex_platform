@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/cross_service_trace_stage.v1.schema.json",
+  "title": "NeX Redacted Cross-Service Trace Stage",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "stage_schema_version",
+    "stage_id",
+    "trace_id",
+    "request_id",
+    "service_id",
+    "stage_family",
+    "stage_status",
+    "operation_timestamp",
+    "correlation_refs",
+    "safe_attributes",
+    "private_payload_included"
+  ],
+  "properties": {
+    "stage_schema_version": {
+      "const": "cross_service_trace_stage.v1"
+    },
+    "stage_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "service_id": {
+      "$ref": "#/$defs/service_id"
+    },
+    "stage_family": {
+      "$ref": "#/$defs/stage_family"
+    },
+    "stage_status": {
+      "$ref": "#/$defs/stage_status"
+    },
+    "operation_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "owner_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "correlation_refs": {
+      "$ref": "#/$defs/correlation_refs"
+    },
+    "safe_attributes": {
+      "$ref": "#/$defs/safe_attributes"
+    },
+    "private_payload_included": {
+      "const": false
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$"
+    },
+    "service_id": {
+      "type": "string",
+      "enum": ["nex-oa", "nex-ae-api", "nex-cx", "nex-mo", "nex-ag"]
+    },
+    "stage_family": {
+      "type": "string",
+      "enum": [
+        "AUTH",
+        "UPLOAD",
+        "INGESTION",
+        "RETRIEVAL",
+        "GENERATION",
+        "ARTIFACT",
+        "ACCESS",
+        "OPERATIONS"
+      ]
+    },
+    "stage_status": {
+      "type": "string",
+      "enum": [
+        "STARTED",
+        "SUCCEEDED",
+        "FAILED",
+        "BLOCKED",
+        "SKIPPED",
+        "RECOVERING"
+      ]
+    },
+    "correlation_refs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {"$ref": "#/$defs/identifier"},
+        "upload_id": {"$ref": "#/$defs/identifier"},
+        "source_file_id": {"$ref": "#/$defs/identifier"},
+        "processing_run_id": {"$ref": "#/$defs/identifier"},
+        "ingestion_run_id": {"$ref": "#/$defs/identifier"},
+        "retrieval_package_id": {"$ref": "#/$defs/identifier"},
+        "cx_generation_id": {"$ref": "#/$defs/identifier"},
+        "response_id": {"$ref": "#/$defs/identifier"},
+        "artifact_id": {"$ref": "#/$defs/identifier"},
+        "render_job_id": {"$ref": "#/$defs/identifier"},
+        "provider_request_id": {"$ref": "#/$defs/identifier"}
+      }
+    },
+    "safe_attributes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "event_type": {"$ref": "#/$defs/safe_scalar"},
+        "result_code": {"$ref": "#/$defs/safe_scalar"},
+        "failure_code": {"$ref": "#/$defs/safe_scalar"},
+        "retryable": {"$ref": "#/$defs/safe_scalar"},
+        "attempt": {"$ref": "#/$defs/safe_scalar"},
+        "progress_percent": {"$ref": "#/$defs/safe_scalar"},
+        "confidence_state": {"$ref": "#/$defs/safe_scalar"},
+        "citation_status": {"$ref": "#/$defs/safe_scalar"},
+        "artifact_status": {"$ref": "#/$defs/safe_scalar"},
+        "provider_capability": {"$ref": "#/$defs/safe_scalar"},
+        "model_alias": {"$ref": "#/$defs/safe_scalar"},
+        "cleanup_residue_count": {"$ref": "#/$defs/safe_scalar"}
+      }
+    },
+    "safe_scalar": {
+      "anyOf": [
+        {"type": "string", "minLength": 1, "maxLength": 128},
+        {"type": "integer"},
+        {"type": "number"},
+        {"type": "boolean"}
+      ]
+    }
+  }
+}

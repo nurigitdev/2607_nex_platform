@@ -1,0 +1,21 @@
+{
+  "stage_schema_version": "cross_service_trace_stage.v1",
+  "stage_id": "stage-generation-1373",
+  "trace_id": "13731373137313731373137313731373",
+  "request_id": "request-1373",
+  "service_id": "nex-cx",
+  "stage_family": "GENERATION",
+  "stage_status": "SUCCEEDED",
+  "operation_timestamp": "2026-10-06T09:13:00Z",
+  "owner_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "correlation_refs": {
+    "retrieval_package_id": "retrieval-1373",
+    "cx_generation_id": "generation-1373"
+  },
+  "safe_attributes": {
+    "event_type": "generation.completed",
+    "citation_status": "VALIDATED",
+    "attempt": 1
+  },
+  "private_payload_included": false
+}

@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ag/cross_service_trace_e2e.v1.schema.json",
+  "title": "NeX AG Cross-Service Trace E2E Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "projection_schema_version",
+    "trace_id",
+    "projection_status",
+    "checked_at",
+    "source_statuses",
+    "timeline",
+    "summary"
+  ],
+  "properties": {
+    "projection_schema_version": {
+      "const": "ag_cross_service_trace_e2e.v1"
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "projection_status": {
+      "type": "string",
+      "enum": ["READY", "DEGRADED"]
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_statuses": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["service_id", "source_status"],
+        "properties": {
+          "service_id": {"$ref": "#/$defs/service_id"},
+          "source_status": {
+            "type": "string",
+            "enum": ["READY", "DEGRADED", "UNAVAILABLE"]
+          }
+        }
+      }
+    },
+    "timeline": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/stage"}
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage_count",
+        "source_count",
+        "by_family",
+        "by_status",
+        "private_payload_included"
+      ],
+      "properties": {
+        "stage_count": {"type": "integer", "minimum": 0},
+        "source_count": {"type": "integer", "minimum": 1},
+        "by_family": {"$ref": "#/$defs/count_map"},
+        "by_status": {"$ref": "#/$defs/count_map"},
+        "private_payload_included": {"const": false}
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$"
+    },
+    "service_id": {
+      "type": "string",
+      "enum": ["nex-oa", "nex-ae-api", "nex-cx", "nex-mo", "nex-ag"]
+    },
+    "count_map": {
+      "type": "object",
+      "additionalProperties": {"type": "integer", "minimum": 1}
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage_schema_version",
+        "stage_id",
+        "trace_id",
+        "request_id",
+        "service_id",
+        "stage_family",
+        "stage_status",
+        "operation_timestamp",
+        "correlation_refs",
+        "safe_attributes",
+        "private_payload_included"
+      ],
+      "properties": {
+        "stage_schema_version": {"const": "cross_service_trace_stage.v1"},
+        "stage_id": {"$ref": "#/$defs/identifier"},
+        "trace_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+        "request_id": {"$ref": "#/$defs/identifier"},
+        "service_id": {"$ref": "#/$defs/service_id"},
+        "stage_family": {
+          "type": "string",
+          "enum": [
+            "AUTH",
+            "UPLOAD",
+            "INGESTION",
+            "RETRIEVAL",
+            "GENERATION",
+            "ARTIFACT",
+            "ACCESS",
+            "OPERATIONS"
+          ]
+        },
+        "stage_status": {
+          "type": "string",
+          "enum": [
+            "STARTED",
+            "SUCCEEDED",
+            "FAILED",
+            "BLOCKED",
+            "SKIPPED",
+            "RECOVERING"
+          ]
+        },
+        "operation_timestamp": {"type": "string", "format": "date-time"},
+        "owner_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "correlation_refs": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "session_id",
+              "upload_id",
+              "source_file_id",
+              "processing_run_id",
+              "ingestion_run_id",
+              "retrieval_package_id",
+              "cx_generation_id",
+              "response_id",
+              "artifact_id",
+              "render_job_id",
+              "provider_request_id"
+            ]
+          },
+          "additionalProperties": {"$ref": "#/$defs/identifier"}
+        },
+        "safe_attributes": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "event_type",
+              "result_code",
+              "failure_code",
+              "retryable",
+              "attempt",
+              "progress_percent",
+              "confidence_state",
+              "citation_status",
+              "artifact_status",
+              "provider_capability",
+              "model_alias",
+              "cleanup_residue_count"
+            ]
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {"type": "string", "minLength": 1, "maxLength": 128},
+              {"type": "integer"},
+              {"type": "number"},
+              {"type": "boolean"}
+            ]
+          }
+        },
+        "private_payload_included": {"const": false}
+      }
+    }
+  }
+}

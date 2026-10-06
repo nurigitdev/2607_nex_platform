@@ -1,0 +1,14 @@
+{
+  "stage_schema_version": "cross_service_trace_stage.v1",
+  "stage_id": "stage-generation-private",
+  "trace_id": "13731373137313731373137313731373",
+  "request_id": "request-1373",
+  "service_id": "nex-cx",
+  "stage_family": "GENERATION",
+  "stage_status": "SUCCEEDED",
+  "operation_timestamp": "2026-10-06T09:13:00Z",
+  "correlation_refs": {},
+  "safe_attributes": {},
+  "private_payload_included": false,
+  "prompt": "forbidden"
+}

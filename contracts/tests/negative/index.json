@@ -950,6 +950,16 @@
       "name": "ae_grounded_artifact_admission_content_leak",
       "path": "tests/negative/generation/ae_grounded_artifact_admission.content_leak.json",
       "schema": "schemas/service/nex_ae_api/grounded_artifact_admission.v1.schema.json"
+    },
+    {
+      "name": "cross_service_trace_stage_prompt_leak",
+      "path": "tests/negative/common/cross_service_trace_stage.prompt_leak.json",
+      "schema": "schemas/common/cross_service_trace_stage.v1.schema.json"
+    },
+    {
+      "name": "ag_cross_service_trace_e2e_private_stage",
+      "path": "tests/negative/operations/ag_cross_service_trace_e2e.private_stage.json",
+      "schema": "schemas/service/nex_ag/cross_service_trace_e2e.v1.schema.json"
     }
   ]
 }

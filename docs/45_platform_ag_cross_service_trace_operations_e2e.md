@@ -82,6 +82,20 @@ payloads, survives restart, represents partial source failure explicitly,
 rejects unauthorized and cross-owner disclosure attempts, and passes actual
 test-PostgreSQL plus Full Gate evidence with zero fixture residue.
 
+## Slice 1373 Contract
+
+`cross_service_trace_stage.v1` is the only source-service stage envelope admitted
+to the S138 timeline. It allows opaque identifiers, a SHA-256 owner digest,
+enumerated lifecycle state, timestamps, and a small allowlist of scalar
+operations attributes. Prompt text, source/evidence/generated content, draft
+payloads, vectors, credentials, provider URLs, database URLs, storage
+references, and file paths are rejected.
+
+`ag_cross_service_trace_e2e.v1` sorts those stages into a single trace timeline,
+reports each source API as `READY`, `DEGRADED`, or `UNAVAILABLE`, and becomes
+`DEGRADED` when a source is unhealthy or a stage is `FAILED`/`BLOCKED`. Both
+contracts explicitly assert `private_payload_included=false`.
+
 ## S139 Handoff
 
 S139 receives the stable trace id, public correlation ids, safe stage status,

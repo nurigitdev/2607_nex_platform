@@ -38,6 +38,20 @@ from .database import (
     service_database_env_prefix,
     sqlalchemy_database_url,
 )
+from .cross_service_trace import (
+    TRACE_CORRELATION_FIELDS,
+    TRACE_FORBIDDEN_KEY_FRAGMENTS,
+    TRACE_SAFE_ATTRIBUTE_FIELDS,
+    TRACE_SERVICE_IDS,
+    TRACE_SOURCE_STATUSES,
+    TRACE_STAGE_FAMILIES,
+    TRACE_STAGE_SCHEMA_VERSION,
+    TRACE_STAGE_STATUSES,
+    TRACE_TIMELINE_SCHEMA_VERSION,
+    CrossServiceTraceError,
+    build_cross_service_trace_stage,
+    build_cross_service_trace_timeline,
+)
 from .env import load_env_file, merge_pythonpath
 from .topology import (
     AG_PROJECTION_MODES,
@@ -698,4 +712,16 @@ __all__ = [
     "worker_heartbeat_emitter_from_app",
     "worker_heartbeat_store_from_app",
     "worker_heartbeat_is_stale",
+    "TRACE_CORRELATION_FIELDS",
+    "TRACE_FORBIDDEN_KEY_FRAGMENTS",
+    "TRACE_SAFE_ATTRIBUTE_FIELDS",
+    "TRACE_SERVICE_IDS",
+    "TRACE_SOURCE_STATUSES",
+    "TRACE_STAGE_FAMILIES",
+    "TRACE_STAGE_SCHEMA_VERSION",
+    "TRACE_STAGE_STATUSES",
+    "TRACE_TIMELINE_SCHEMA_VERSION",
+    "CrossServiceTraceError",
+    "build_cross_service_trace_stage",
+    "build_cross_service_trace_timeline",
 ]
