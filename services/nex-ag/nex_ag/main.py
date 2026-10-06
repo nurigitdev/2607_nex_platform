@@ -7,6 +7,10 @@ from nex_runtime import (
     register_service_log_retention_routes,
 )
 from nex_ag.audit_evidence_api import register_audit_evidence_routes
+from nex_ag.cross_service_trace import (
+    build_default_cross_service_trace_aggregator,
+    register_cross_service_trace_routes,
+)
 from nex_ag.audit_retention_operations import (
     build_ag_audit_retention_runtime_stores,
     register_ag_audit_retention_routes,
@@ -117,6 +121,7 @@ OPERATOR_REVIEW_LIVENESS_ACK_STATE_STORE = (
 AUDIT_RETENTION_STORES = build_ag_audit_retention_runtime_stores(
     SERVICE_PERSISTENCE
 )
+CROSS_SERVICE_TRACE_AGGREGATOR = build_default_cross_service_trace_aggregator()
 register_readiness_routes(app)
 register_ag_federated_operator_runtime_routes(
     app,
@@ -151,6 +156,11 @@ register_audit_evidence_routes(
 )
 register_ag_audit_retention_routes(app, **AUDIT_RETENTION_STORES)
 register_ag_mvp_acceptance_routes(app)
+register_cross_service_trace_routes(
+    app,
+    aggregator=CROSS_SERVICE_TRACE_AGGREGATOR,
+    event_store=SERVICE_PERSISTENCE.operational_event_store,
+)
 register_operator_review_case_routes(
     app,
     store=OPERATOR_REVIEW_CASE_STORE,

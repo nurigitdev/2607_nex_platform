@@ -1483,6 +1483,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1375`](slices/1375_ae_trace_projection.md) | `S138-004` Expose AE upload/response/artifact/render stages through an AG-only metadata-safe internal API. |
 | [`Slice 1376`](slices/1376_oa_mo_trace_projections.md) | `S138-005` Expose OA trust and MO provider execution through AG-only metadata-safe trace APIs. |
 | [`Slice 1377`](slices/1377_ag_cross_service_trace_aggregation.md) | `S138-006` Aggregate strict OA/AE/CX/MO trace APIs through scope-aware AG clients with partial-failure isolation. |
+| [`Slice 1378`](slices/1378_ag_cross_service_trace_operations.md) | `S138-007` Replace the AG compatibility trace route with audited service-API aggregation and restart-safe operational evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

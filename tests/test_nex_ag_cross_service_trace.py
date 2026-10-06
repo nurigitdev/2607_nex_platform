@@ -5,6 +5,7 @@ from typing import Any
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 
 from nex_ag.cross_service_trace import (
     AG_TRACE_REQUIRED_SCOPES,
@@ -12,12 +13,19 @@ from nex_ag.cross_service_trace import (
     CrossServiceTraceAggregator,
     HttpCrossServiceTraceSourceClient,
     _safe_error_code,
+    register_cross_service_trace_routes,
     build_default_cross_service_trace_aggregator,
 )
 from nex_runtime import (
+    CrossServiceTraceError,
+    InMemoryOperationalEventStore,
+    OperationalEventError,
+    SERVICE_SPECS,
+    build_service_app,
     build_cross_service_trace_source_projection,
     build_cross_service_trace_stage,
     validate_mock_service_token,
+    issue_mock_service_token,
 )
 
 TRACE_ID = "13771377137713771377137713771377"
@@ -338,3 +346,124 @@ def test_default_aggregator_uses_service_environment_without_leaking_tokens() ->
 
     assert _safe_error_code("oa.valid_code") == "oa.valid_code"
     assert _safe_error_code(None) == "ag.trace_source_request_failed"
+
+
+def _route_aggregator() -> CrossServiceTraceAggregator:
+    return CrossServiceTraceAggregator(
+        {
+            service_id: StubClient(service_id, _source(service_id))
+            for service_id in ("nex-oa", "nex-ae-api", "nex-cx", "nex-mo")
+        },
+        clock=lambda: datetime(2026, 10, 6, 13, 0, tzinfo=UTC),
+    )
+
+
+def _auth_headers() -> dict[str, str]:
+    token = issue_mock_service_token(
+        service_id="nex-oa",
+        audience="nex-ag",
+    ).access_token
+    return {
+        "Authorization": f"Bearer {token}",
+        "X-Request-ID": "request-route-1378",
+        "traceparent": f"00-{REQUEST_TRACE_ID}-00f067aa0ba902b7-01",
+    }
+
+
+def test_protected_route_persists_audit_and_appends_ag_stage() -> None:
+    store = InMemoryOperationalEventStore()
+    app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_cross_service_trace_routes(
+        app,
+        aggregator=_route_aggregator(),
+        event_store=store,
+    )
+    client = TestClient(app)
+
+    assert client.get(f"/admin/v1/operations/traces/{TRACE_ID}").status_code == 401
+    response = client.get(
+        f"/admin/v1/operations/traces/{TRACE_ID}", headers=_auth_headers()
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["projection_schema_version"] == "ag_cross_service_trace_e2e.v1"
+    assert payload["summary"]["source_count"] == 5
+    assert payload["summary"]["stage_count"] == 5
+    ag_stages = [
+        stage for stage in payload["timeline"] if stage["service_id"] == "nex-ag"
+    ]
+    assert len(ag_stages) == 1
+    assert ag_stages[0]["stage_family"] == "OPERATIONS"
+    events = store.list_events(trace_id=TRACE_ID)
+    assert len(events) == 1
+    assert events[0]["event_type"] == "ag.cross_service_trace.read.succeeded"
+    assert events[0]["details"] == {
+        "projection_status": "READY",
+        "source_count": 4,
+        "ready_source_count": 4,
+        "degraded_source_count": 0,
+        "unavailable_source_count": 0,
+        "stage_count": 4,
+        "diagnostic_count": 0,
+        "diagnostic_error_codes": [],
+        "private_payload_included": False,
+    }
+
+
+class BrokenEventStore(InMemoryOperationalEventStore):
+    def append(self, event: dict[str, Any]) -> dict[str, Any]:
+        del event
+        raise OperationalEventError(
+            "operational_event.store_unavailable",
+            "store unavailable",
+            503,
+        )
+
+
+class BrokenAggregator:
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+
+    def aggregate(self, *args: Any, **kwargs: Any):
+        del args, kwargs
+        raise self.error
+
+
+def test_protected_route_fails_closed_for_audit_and_aggregation_errors() -> None:
+    audit_app = build_service_app(SERVICE_SPECS["nex-ag"])
+    register_cross_service_trace_routes(
+        audit_app,
+        aggregator=_route_aggregator(),
+        event_store=BrokenEventStore(),
+    )
+    audit_response = TestClient(audit_app).get(
+        f"/admin/v1/operations/traces/{TRACE_ID}", headers=_auth_headers()
+    )
+    assert audit_response.status_code == 503
+    assert audit_response.json()["error_code"] == (
+        "ag.cross_service_trace_audit_unavailable"
+    )
+
+    for error, status_code, error_code in (
+        (
+            ValueError("private"),
+            503,
+            "ag.cross_service_trace_aggregation_failed",
+        ),
+        (
+            CrossServiceTraceError("trace.trace_id_invalid", "invalid trace"),
+            422,
+            "trace.trace_id_invalid",
+        ),
+    ):
+        app = build_service_app(SERVICE_SPECS["nex-ag"])
+        register_cross_service_trace_routes(
+            app,
+            aggregator=BrokenAggregator(error),  # type: ignore[arg-type]
+        )
+        response = TestClient(app).get(
+            f"/admin/v1/operations/traces/{TRACE_ID}", headers=_auth_headers()
+        )
+        assert response.status_code == status_code
+        assert response.json()["error_code"] == error_code

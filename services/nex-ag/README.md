@@ -158,9 +158,8 @@ Unified operations:
 - The response embeds the existing job and event projection shapes plus a
   combined summary and optional source registry summary.
 - `GET /admin/v1/operations/traces/{trace_id}` returns
-  `ag_cross_service_trace_timeline_projection.v1`, mixing matching jobs and
-  events, structured service logs, and configured CX retrieval packages into
-  one timestamped cross-service timeline.
+  `ag_cross_service_trace_e2e.v1` from authenticated OA, AE, CX, and MO trace
+  APIs plus a durable AG audit stage. It never reads another service database.
 - `GET /admin/v1/operations/rollups` returns
   `ag_operations_rollup_metrics_projection.v1`, aggregating per-service job
   and event totals plus source status counts for operator dashboards.

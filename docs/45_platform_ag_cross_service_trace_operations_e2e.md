@@ -1,6 +1,6 @@
 # Platform AG Cross-Service Trace, Audit, and Operations E2E
 
-Status: S138 active through Slice 1377.
+Status: S138 active through Slice 1378.
 
 ## Required Outcome
 
@@ -134,6 +134,15 @@ strict metadata-only contract before admission. The aggregator keeps healthy
 stages when one source fails, marks that source `DEGRADED` or `UNAVAILABLE`,
 and emits only bounded metadata diagnostics. Route wiring and durable AG audit
 evidence are intentionally atomic in Slice 1378.
+
+## Slice 1378 AG Durable Audit and Operations API
+
+The protected AG trace route now calls the typed service-API aggregator and no
+longer reads cross-service job, event, log, or retrieval-package databases.
+Every successful read is recorded in AG's existing trace-indexed operational
+event store before the response is returned. Audit storage failure closes the
+request with `503`. The persisted audit is projected as the fifth `nex-ag`
+source and an `OPERATIONS` stage without exposing private payloads.
 
 ## S139 Handoff
 

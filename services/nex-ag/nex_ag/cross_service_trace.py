@@ -7,6 +7,8 @@ import os
 from typing import Any, Protocol
 
 import httpx
+from fastapi import FastAPI, Header, Request
+from fastapi.responses import JSONResponse
 
 from nex_ag.service_auth import (
     AgOutboundServiceTokenError,
@@ -14,14 +16,24 @@ from nex_ag.service_auth import (
 )
 from nex_runtime import (
     CrossServiceTraceError,
+    InMemoryOperationalEventStore,
+    OperationalEventEmitter,
+    OperationalEventStore,
     build_cross_service_trace_timeline,
+    build_cross_service_trace_stage,
+    problem_response,
+    request_id_from_headers,
+    trace_id_from_headers,
     validate_cross_service_trace_source_projection,
 )
+from nex_ag.service_auth import authorize_ag_service_request
 
 AG_TRACE_SOURCE_SERVICE_IDS = ("nex-oa", "nex-ae-api", "nex-cx", "nex-mo")
 AG_TRACE_REQUIRED_SCOPES = ("service:call", "operations:read")
 AG_TRACE_SOURCE_PATH = "/internal/v1/operations/traces/{trace_id}"
 DEFAULT_TRACE_SOURCE_TIMEOUT_SECONDS = 5.0
+AG_TRACE_READ_EVENT_TYPE = "ag.cross_service_trace.read.succeeded"
+AG_TRACE_OPERATIONS_PATH = "/admin/v1/operations/traces/{trace_id}"
 DEFAULT_TRACE_SOURCE_BASE_URLS = {
     "nex-oa": "http://127.0.0.1:8101",
     "nex-ae-api": "http://127.0.0.1:8103",
@@ -272,6 +284,147 @@ def build_default_cross_service_trace_aggregator(
         for service_id in AG_TRACE_SOURCE_SERVICE_IDS
     }
     return CrossServiceTraceAggregator(clients)
+
+
+def register_cross_service_trace_routes(
+    app: FastAPI,
+    *,
+    aggregator: CrossServiceTraceAggregator | None = None,
+    event_store: OperationalEventStore | None = None,
+) -> None:
+    selected_aggregator = aggregator or build_default_cross_service_trace_aggregator()
+    audit_emitter = OperationalEventEmitter(
+        service_id="nex-ag",
+        store=event_store or InMemoryOperationalEventStore(),
+    )
+
+    @app.get(AG_TRACE_OPERATIONS_PATH, response_model=None)
+    def get_cross_service_trace(
+        trace_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth_problem = authorize_ag_service_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        request_id = request_id_from_headers(request)
+        request_trace_id = trace_id_from_headers(request)
+        try:
+            aggregation = selected_aggregator.aggregate(
+                trace_id,
+                request_id=request_id,
+                request_trace_id=request_trace_id,
+            )
+        except CrossServiceTraceError as exc:
+            return problem_response(
+                request,
+                status_code=422,
+                error_code=exc.error_code,
+                title="Cross-service trace query rejected",
+                detail=exc.detail,
+                retryable=False,
+                type_uri="https://nex-platform.local/problems/cross-service-trace-invalid",
+            )
+        except ValueError:
+            return problem_response(
+                request,
+                status_code=503,
+                error_code="ag.cross_service_trace_aggregation_failed",
+                title="Cross-service trace unavailable",
+                detail="Cross-service trace aggregation is temporarily unavailable.",
+                retryable=True,
+                type_uri="https://nex-platform.local/problems/cross-service-trace-unavailable",
+            )
+
+        audit = emit_cross_service_trace_read_audit_event(
+            audit_emitter,
+            trace_id=trace_id,
+            request_id=request_id,
+            aggregation=aggregation,
+        )
+        if not audit.ok or audit.event is None:
+            return problem_response(
+                request,
+                status_code=503,
+                error_code="ag.cross_service_trace_audit_unavailable",
+                title="Cross-service trace audit unavailable",
+                detail="Durable trace-read audit evidence is unavailable.",
+                retryable=True,
+                type_uri="https://nex-platform.local/problems/cross-service-trace-audit-unavailable",
+            )
+        return attach_ag_trace_read_audit_stage(aggregation.projection, audit.event)
+
+
+def emit_cross_service_trace_read_audit_event(
+    emitter: OperationalEventEmitter,
+    *,
+    trace_id: str,
+    request_id: str,
+    aggregation: CrossServiceTraceAggregation,
+):
+    statuses = {
+        item["service_id"]: item["source_status"]
+        for item in aggregation.projection["source_statuses"]
+    }
+    return emitter.safe_emit(
+        event_type=AG_TRACE_READ_EVENT_TYPE,
+        severity=(
+            "INFO"
+            if aggregation.projection["projection_status"] == "READY"
+            else "WARNING"
+        ),
+        message="AG cross-service trace projection was read.",
+        trace_id=trace_id,
+        request_id=request_id,
+        subject_ref={"type": "cross_service_trace", "id": trace_id},
+        details={
+            "projection_status": aggregation.projection["projection_status"],
+            "source_count": len(statuses),
+            "ready_source_count": sum(value == "READY" for value in statuses.values()),
+            "degraded_source_count": sum(
+                value == "DEGRADED" for value in statuses.values()
+            ),
+            "unavailable_source_count": sum(
+                value == "UNAVAILABLE" for value in statuses.values()
+            ),
+            "stage_count": aggregation.projection["summary"]["stage_count"],
+            "diagnostic_count": len(aggregation.diagnostics),
+            "diagnostic_error_codes": sorted(
+                str(item["error_code"]) for item in aggregation.diagnostics
+            ),
+            "private_payload_included": False,
+        },
+    )
+
+
+def attach_ag_trace_read_audit_stage(
+    projection: Mapping[str, Any],
+    audit_event: Mapping[str, Any],
+) -> dict[str, Any]:
+    stage = build_cross_service_trace_stage(
+        stage_id=f"ag-event-{audit_event['event_id']}",
+        trace_id=projection["trace_id"],
+        request_id=audit_event["request_id"],
+        service_id="nex-ag",
+        stage_family="OPERATIONS",
+        stage_status="SUCCEEDED",
+        operation_timestamp=audit_event["created_at"],
+        safe_attributes={
+            "event_type": audit_event["event_type"],
+            "result_code": "AUDITED",
+        },
+    )
+    statuses = {
+        item["service_id"]: item["source_status"]
+        for item in projection["source_statuses"]
+    }
+    statuses["nex-ag"] = "READY"
+    return build_cross_service_trace_timeline(
+        trace_id=projection["trace_id"],
+        stages=[*projection["timeline"], stage],
+        source_statuses=statuses,
+        checked_at=audit_event["created_at"],
+    )
 
 
 def _safe_response_json(response: httpx.Response) -> dict[str, Any]:

@@ -9233,9 +9233,7 @@ def test_summarize_trace_timeline_items_counts_empty_and_unknown_services() -> N
     }
 
 
-def test_cross_service_trace_timeline_route_requires_auth_and_returns_projection() -> (
-    None
-):
+def test_unified_operations_no_longer_owns_cross_service_trace_route() -> None:
     registry = build_operations_source_registry(
         job_queues=build_job_queues(),
         event_stores=build_event_stores(),
@@ -9252,58 +9250,15 @@ def test_cross_service_trace_timeline_route_requires_auth_and_returns_projection
     )
     client = TestClient(app)
 
-    missing_auth = client.get(f"/admin/v1/operations/traces/{TRACE_ID}")
-    response = client.get(
-        f"/admin/v1/operations/traces/{TRACE_ID}",
-        params={"service_id": "nex-cx", "sort": "asc", "limit": 3},
-        headers={
-            **auth_headers(),
-            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
-        },
-    )
-
-    assert missing_auth.status_code == 401
-    assert missing_auth.json()["error_code"] == "AUTHORIZATION_HEADER_MISSING"
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["request_trace_id"] == TRACE_ID
-    assert payload["filters"]["trace_id"] == TRACE_ID
-    assert payload["filters"]["service_id"] == "nex-cx"
-    assert [item["timeline_item_type"] for item in payload["timeline"]] == [
-        "event",
-        "retrieval_package",
-        "job",
-    ]
-    assert payload["retrieval_package_source_statuses"]["nex-cx"] == {
-        "status": "READY",
-        "retrieval_package_count": 1,
-    }
-    assert payload["log_source_statuses"]["nex-cx"] == {
-        "status": "NOT_CONFIGURED",
-        "log_count": 0,
-    }
+    assert client.get(f"/admin/v1/operations/traces/{TRACE_ID}").status_code == 404
 
 
-def test_cross_service_trace_timeline_route_rejects_bad_filters() -> None:
+def test_unified_operations_route_inventory_excludes_legacy_trace_reader() -> None:
     app = build_service_app(SERVICE_SPECS["nex-ag"])
     register_unified_operation_routes(app)
-    client = TestClient(app)
-
-    bad_service = client.get(
-        f"/admin/v1/operations/traces/{TRACE_ID}",
-        params={"service_id": "nex-unknown"},
-        headers=auth_headers(),
-    )
-    bad_cursor = client.get(
-        f"/admin/v1/operations/traces/{TRACE_ID}",
-        params={"cursor": "before"},
-        headers=auth_headers(),
-    )
-
-    assert bad_service.status_code == 400
-    assert bad_service.json()["error_code"] == "ag.job_service_invalid"
-    assert bad_cursor.status_code == 400
-    assert bad_cursor.json()["error_code"] == "ag.operation_cursor_invalid"
+    assert "/admin/v1/operations/traces/{trace_id}" not in {
+        route.path for route in app.routes
+    }
 
 
 def test_ag_operations_contract_schema_accepts_runtime_projection_family() -> None:

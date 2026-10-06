@@ -3365,23 +3365,19 @@ paths:
           required: true
           schema:
             $ref: "#/components/schemas/TraceId"
-        - $ref: "#/components/parameters/serviceId"
-        - $ref: "#/components/parameters/since"
-        - $ref: "#/components/parameters/until"
-        - $ref: "#/components/parameters/sort"
-        - $ref: "#/components/parameters/cursor"
-        - $ref: "#/components/parameters/limit"
       responses:
         "200":
-          description: Read-only cross-service trace timeline projection over jobs, events, logs, and configured CX retrieval packages.
+          description: Audited metadata-only trace timeline aggregated through OA, AE, CX, and MO service APIs.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgOperationsProjection"
-        "400":
-          description: Invalid trace timeline query or filter.
+                $ref: "#/components/schemas/AgCrossServiceTraceE2E"
         "401":
           description: Service claim is missing or invalid.
+        "422":
+          description: Trace identifier or source contract is invalid.
+        "503":
+          description: Aggregation or durable AG audit evidence is unavailable.
 components:
   parameters:
     federatedOperatorContext:
@@ -5898,6 +5894,10 @@ components:
           type: string
           format: date-time
       additionalProperties: true
+    AgCrossServiceTraceE2E:
+      type: object
+      additionalProperties: false
+      x-nex-canonical-json-schema: schemas/service/nex_ag/cross_service_trace_e2e.v1.schema.json
     AgOperatorReviewWorkbench:
       type: object
       additionalProperties: true

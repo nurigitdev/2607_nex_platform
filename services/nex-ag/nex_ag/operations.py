@@ -2917,53 +2917,6 @@ def register_unified_operation_routes(
                 type_uri="https://nex-platform.local/problems/worker-detail-query-failed",
             )
 
-    @app.get("/admin/v1/operations/traces/{trace_id}", response_model=None)
-    def get_cross_service_trace_timeline(
-        trace_id: str,
-        request: Request,
-        authorization: str | None = Header(default=None),
-        service_id: str | None = None,
-        since: str | None = None,
-        until: str | None = None,
-        sort: str | None = None,
-        cursor: str | None = None,
-        limit: int = Query(default=50, ge=1),
-    ):
-        auth_problem = _authorize_ag_request(request, authorization)
-        if auth_problem is not None:
-            return auth_problem
-
-        filter_problem = _validate_job_operation_filters(
-            request,
-            service_id=service_id,
-            status=None,
-        )
-        if filter_problem is not None:
-            return filter_problem
-        query_options = _build_query_options_or_problem(
-            request,
-            limit=limit,
-            since=since,
-            until=until,
-            sort=sort,
-            cursor=cursor,
-        )
-        if isinstance(query_options, JSONResponse):
-            return query_options
-
-        return build_cross_service_trace_timeline_projection(
-            trace_id=trace_id,
-            job_queues=job_queues,
-            event_store=event_store,
-            service_log_stores=service_log_stores,
-            retrieval_package_stores=retrieval_package_stores,
-            registry=registry,
-            service_id=service_id,
-            query_options=query_options,
-            request_trace_id=trace_id_from_headers(request),
-        )
-
-
 class _OperatorReviewDispatchDaemonRouteService:
     def __init__(self, dispatch_store: Any) -> None:
         self._dispatch_store = dispatch_store
