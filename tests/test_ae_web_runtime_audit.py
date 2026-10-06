@@ -23,10 +23,10 @@ def test_repository_web_runtime_audit_classifies_current_gaps() -> None:
     assert result["summary"]["playwright_script_count"] == 7
     assert result["summary"]["playwright_test_count"] == 7
     assert result["summary"]["accessibility_script_count"] == 1
-    assert result["summary"]["localization_file_count"] == 0
+    assert result["summary"]["localization_file_count"] >= 1
     assert result["summary"]["hardcoded_korean_line_count"] > 0
-    assert result["summary"]["refactor_required_count"] == 4
-    assert result["summary"]["good_boundary_count"] == 3
+    assert result["summary"]["refactor_required_count"] == 3
+    assert result["summary"]["good_boundary_count"] == 4
     assert result["package_version"] == "0.0.0-slice0227"
 
 
@@ -62,12 +62,12 @@ def test_summary_line_and_runner_main_paths(monkeypatch, capsys) -> None:
         "ae_web_runtime_audit=pass readiness=GAPS_CONFIRMED "
         f"source={summary['source_file_count']} tests={summary['test_file_count']} "
         f"main_lines={summary['main_js_line_count']} playwright=7/7 "
-        "refactors=4 issues=0"
+        "refactors=3 issues=0"
     )
     assert "readiness=UNKNOWN" in runner.summary_line({"status": "FAIL"})
     monkeypatch.setattr(runner, "run_ae_web_runtime_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0
-    assert "refactors=4" in capsys.readouterr().out
+    assert "refactors=3" in capsys.readouterr().out
     assert runner.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
 

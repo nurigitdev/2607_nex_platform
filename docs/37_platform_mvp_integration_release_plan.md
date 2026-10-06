@@ -236,10 +236,11 @@ owns Korean-default AE Web Playwright golden-journey acceptance.
 | `1390` | Execute protected browser plus service-process and test-PostgreSQL acceptance. |
 | `1391` | Publish the runbook, close S139, run Full Gate, and activate S140. |
 
-S139 completion signal: Pending. Slice 1382 freezes the browser-only same-origin
-boundary and the requirement's eight acceptance gaps before UI orchestration
-changes begin. Remote model providers are not required for S139 closure; S140
-owns the final browser plus live-provider release-candidate matrix.
+S139 completion signal: Pending. Slice 1382 froze the browser-only same-origin
+boundary and the requirement's eight acceptance gaps. Slice 1383 established
+the Korean-default, English-ready message and status contract with exact
+catalog parity. Remote model providers are not required for S139 closure;
+S140 owns the final browser plus live-provider release-candidate matrix.
 
 ## Protected Evidence Schedule
 

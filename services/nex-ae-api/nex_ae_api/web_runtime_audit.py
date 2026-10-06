@@ -58,6 +58,10 @@ def build_ae_web_runtime_audit(root: Path = ROOT) -> dict[str, Any]:
             for part in path.relative_to(web_root).parts
         )
     ]
+    localization_contract_present = any(
+        path.name == "messages.js" and "locales" in path.relative_to(web_root).parts
+        for path in localization_files
+    )
     package_text = _read_text(package_path)
     package_version = str(package.get("version") or "")
     main_line_count = len(main_source.splitlines())
@@ -86,7 +90,7 @@ def build_ae_web_runtime_audit(root: Path = ROOT) -> dict[str, Any]:
         "semantic_baseline_present": all(semantic_tokens.values()),
         "known_gaps_classified": (
             main_line_count >= 2_500
-            and not localization_files
+            and localization_contract_present
             and "slice0227" in package_version
             and "axe-core" not in package_text
         ),
@@ -100,11 +104,14 @@ def build_ae_web_runtime_audit(root: Path = ROOT) -> dict[str, Any]:
             "evidence": {"main_js_line_count": main_line_count},
         },
         {
-            "finding_id": "localization_layer_missing",
-            "disposition": "REFACTOR_REQUIRED",
-            "risk": "HIGH",
+            "finding_id": "localization_contract",
+            "disposition": (
+                "GOOD_BOUNDARY" if localization_contract_present else "REFACTOR_REQUIRED"
+            ),
+            "risk": "LOW" if localization_contract_present else "HIGH",
             "evidence": {
                 "localization_file_count": len(localization_files),
+                "localization_contract_present": localization_contract_present,
                 "hardcoded_korean_line_count": hardcoded_korean_lines,
             },
         },
@@ -180,12 +187,12 @@ def build_ae_web_runtime_audit(root: Path = ROOT) -> dict[str, Any]:
             "target_requirement": "S102",
             "priorities": [
                 "extract Web application composition by capability",
-                "introduce locale catalogs with Korean as the default locale",
                 "add whole-page automated accessibility checks",
                 "replace slice-era package versioning",
             ],
             "preserve": [
                 "semantic HTML baseline",
+                "Korean-default locale catalog contract",
                 "deterministic Playwright harnesses",
                 "module-level Node regression suite",
             ],

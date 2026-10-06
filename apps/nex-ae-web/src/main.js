@@ -112,6 +112,12 @@ import {
   buildOperationFeedback
 } from "./operationFeedback.js";
 import {
+  applyDocumentMessages,
+  message as uiMessage,
+  normalizeLocale,
+  statusMessage
+} from "./locales/messages.js";
+import {
   buildRetrievalQualityWarningSurface,
   buildRetrievalQualityWarningSummary
 } from "./retrievalQualityWarnings.js";
@@ -162,6 +168,9 @@ import {
   buildUploadSurfaceDraftFromFileMetadata
 } from "./uploadSurface.js";
 import { loadWorkspaceBootstrap } from "./workspaceBootstrap.js";
+
+const activeLocale = normalizeLocale(document.documentElement.lang);
+applyDocumentMessages(document, activeLocale);
 
 const services = [
   ["nex-oa", 8101],
@@ -1593,7 +1602,10 @@ function renderTimeline() {
     `;
     progressTimeline.appendChild(item);
   });
-  timelineCount.textContent = `${workspaceState.progressEvents.length} events`;
+  timelineCount.textContent = uiMessage("timeline.event_count", {
+    locale: activeLocale,
+    values: { count: workspaceState.progressEvents.length }
+  });
 }
 
 function renderArtifactSummary() {
@@ -3503,41 +3515,7 @@ function badgeClass(status) {
 }
 
 function statusLabel(status) {
-  const labels = {
-    COMPLETED: "완료",
-    SKIPPED: "건너뜀",
-    RUNNING: "진행",
-    QUEUED: "대기열",
-    READY: "준비",
-    ALREADY_EXISTS: "이미 있음",
-    READY_FOR_HANDOFF: "전달 준비",
-    READY_FOR_PROMPT: "입력 준비",
-    READY_FOR_SUBMIT: "전송 준비",
-    READY_FOR_RENDERING: "렌더링 준비",
-    READY_FOR_LOGIN: "로그인 준비",
-    PREVIEW_READY: "미리보기 준비",
-    DOWNLOAD_READY: "다운로드 준비",
-    SUBMITTING: "전송 중",
-    AUTHENTICATED: "인증됨",
-    FAILED: "실패",
-    LOGGED_OUT: "로그아웃",
-    PREVIEW_ONLY: "미리보기",
-    VALIDATED: "검증됨",
-    SUCCEEDED: "성공",
-    SAVED: "저장됨",
-    SELECTED: "선택됨",
-    SELECTING: "선택 중",
-    EXPORT_READY: "내보내기 준비",
-    EXPORT_PENDING: "내보내기 진행",
-    EMPTY: "비어 있음",
-    NOT_REQUIRED: "불필요",
-    NOT_READY: "미준비",
-    UNHEALTHY: "비정상",
-    UNAVAILABLE: "사용 불가",
-    HIGH: "높음",
-    MEDIUM: "중간"
-  };
-  return labels[status] || status;
+  return statusMessage(status, activeLocale);
 }
 
 function escapeHtml(value) {

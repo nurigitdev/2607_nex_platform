@@ -3,12 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>NeX AE Workspace</title>
+    <title data-i18n="app.title">NeX AE 작업 공간</title>
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar" aria-label="주요 탐색">
+      <aside
+        class="sidebar"
+        aria-label="주요 탐색"
+        data-i18n-aria-label="app.navigation"
+      >
         <div class="brand">
           <span class="brand-mark" aria-hidden="true">NX</span>
           <div>
@@ -17,15 +21,15 @@
           </div>
         </div>
         <nav>
-          <a class="active" href="#workspace-summary">워크스페이스</a>
-          <a href="#credential-login-panel">로그인</a>
-          <a href="#runtime-diagnostics-panel">런타임</a>
-          <a href="#upload-surface-panel">업로드</a>
-          <a href="#document-list">문서</a>
-          <a href="#document-detail-panel">상세</a>
-          <a href="#retrieval-scope-panel">검색</a>
-          <a href="#artifact-panel">아티팩트</a>
-          <a href="#audit-panel">감사</a>
+          <a class="active" href="#workspace-summary" data-i18n="nav.workspace">워크스페이스</a>
+          <a href="#credential-login-panel" data-i18n="nav.login">로그인</a>
+          <a href="#runtime-diagnostics-panel" data-i18n="nav.runtime">런타임</a>
+          <a href="#upload-surface-panel" data-i18n="nav.upload">업로드</a>
+          <a href="#document-list" data-i18n="nav.documents">문서</a>
+          <a href="#document-detail-panel" data-i18n="nav.detail">상세</a>
+          <a href="#retrieval-scope-panel" data-i18n="nav.retrieval">검색</a>
+          <a href="#artifact-panel" data-i18n="nav.artifact">아티팩트</a>
+          <a href="#audit-panel" data-i18n="nav.audit">감사</a>
         </nav>
       </aside>
 
@@ -33,37 +37,46 @@
         <header class="topbar">
           <div>
             <p class="eyebrow">Slice 0227</p>
-            <h1>NeX-Platform 작업면</h1>
+            <h1 data-i18n="app.workspace">NeX-Platform 작업면</h1>
           </div>
           <div class="status-strip" id="status-strip" aria-live="polite"></div>
         </header>
 
-        <section class="summary-band" id="workspace-summary" aria-label="작업 현황">
+        <section
+          class="summary-band"
+          id="workspace-summary"
+          aria-label="작업 현황"
+          data-i18n-aria-label="summary.label"
+        >
           <article>
-            <span>Workspace</span>
+            <span data-i18n="summary.workspace">워크스페이스</span>
             <strong id="workspace-id">workspace-local</strong>
           </article>
           <article>
-            <span>문서</span>
+            <span data-i18n="summary.documents">문서</span>
             <strong id="document-count">0</strong>
           </article>
           <article>
-            <span>진행</span>
+            <span data-i18n="summary.progress">진행</span>
             <strong id="generation-stage">대기</strong>
           </article>
           <article>
-            <span>Artifact</span>
+            <span data-i18n="summary.artifact">아티팩트</span>
             <strong id="artifact-status">준비 전</strong>
           </article>
         </section>
 
         <section class="content-grid">
-          <section class="workspace-column" aria-label="채팅과 진행 상태">
+          <section
+            class="workspace-column"
+            aria-label="채팅과 진행 상태"
+            data-i18n-aria-label="chat.region"
+          >
             <section class="chat-pane" aria-labelledby="chat-title">
               <div class="section-header">
                 <div>
-                  <p class="eyebrow">채팅 문서</p>
-                  <h2 id="chat-title">계약 기반 생성 흐름</h2>
+                  <p class="eyebrow" data-i18n="chat.eyebrow">채팅 문서</p>
+                  <h2 id="chat-title" data-i18n="chat.title">계약 기반 생성 흐름</h2>
                 </div>
                 <span class="badge pending" id="chat-status">대기</span>
               </div>
@@ -78,7 +91,7 @@
               <div class="message-list" id="message-list"></div>
 
               <form class="composer" id="composer">
-                <label for="prompt">프롬프트</label>
+                <label for="prompt" data-i18n="chat.prompt">프롬프트</label>
                 <div class="composer-row">
                   <input
                     id="prompt"
@@ -87,29 +100,34 @@
                   />
                   <label class="toggle">
                     <input id="retrieval-toggle" type="checkbox" checked />
-                    <span>근거 사용</span>
+                    <span data-i18n="chat.use_evidence">근거 사용</span>
                   </label>
-                  <select id="format-select" aria-label="출력 형식">
+                  <select
+                    id="format-select"
+                    aria-label="출력 형식"
+                    data-i18n-aria-label="chat.output_format"
+                  >
                     <option value="MD">MD</option>
                     <option value="HTML_PREVIEW">HTML</option>
                     <option value="PDF">PDF</option>
                   </select>
-                  <button type="submit">전송</button>
+                  <button type="submit" data-i18n="action.send">전송</button>
                 </div>
                 <div
                   class="generation-action-row"
                   aria-label="생성 작업 제어"
+                  data-i18n-aria-label="generation.controls"
                 >
-                  <button id="generation-cancel-button" type="button" disabled>
+                  <button id="generation-cancel-button" type="button" disabled data-i18n="action.cancel">
                     취소
                   </button>
-                  <button id="generation-recovery-button" type="button" disabled>
+                  <button id="generation-recovery-button" type="button" disabled data-i18n="action.inspect_recovery">
                     복구 확인
                   </button>
-                  <button id="generation-retry-button" type="button" disabled>
+                  <button id="generation-retry-button" type="button" disabled data-i18n="action.retry">
                     재시도
                   </button>
-                  <span id="generation-action-feedback" role="status" aria-live="polite">
+                  <span id="generation-action-feedback" role="status" aria-live="polite" data-i18n="generation.none">
                     생성 작업 없음
                   </span>
                 </div>
@@ -118,18 +136,22 @@
 
             <section class="timeline-panel" aria-labelledby="timeline-title">
               <div class="section-header compact">
-                <h2 id="timeline-title">진행 타임라인</h2>
+                <h2 id="timeline-title" data-i18n="timeline.title">진행 타임라인</h2>
                 <span class="badge running" id="timeline-count">0 events</span>
               </div>
               <ol class="timeline" id="progress-timeline"></ol>
             </section>
           </section>
 
-          <aside class="context-pane" aria-label="컨텍스트 패널">
+          <aside
+            class="context-pane"
+            aria-label="컨텍스트 패널"
+            data-i18n-aria-label="context.region"
+          >
             <section class="panel">
               <div class="section-header compact">
-                <h2>서비스 상태</h2>
-                <button id="refresh-button" type="button">새로고침</button>
+                <h2 data-i18n="service.title">서비스 상태</h2>
+                <button id="refresh-button" type="button" data-i18n="action.refresh">새로고침</button>
               </div>
               <div class="service-list" id="service-list"></div>
             </section>
@@ -140,16 +162,16 @@
               aria-labelledby="credential-login-title"
             >
               <div class="section-header compact">
-                <h2 id="credential-login-title">사번 로그인</h2>
+                <h2 id="credential-login-title" data-i18n="auth.title">사번 로그인</h2>
                 <div class="badge-pair">
                   <span class="badge pending" id="credential-login-status">대기</span>
                   <button id="credential-logout-button" type="button" hidden>
-                    로그아웃
+                    <span data-i18n="auth.logout">로그아웃</span>
                   </button>
                 </div>
               </div>
               <form class="credential-login-form" id="credential-login-form">
-                <label for="credential-tenant-id">Tenant</label>
+                <label for="credential-tenant-id" data-i18n="auth.tenant">테넌트</label>
                 <input
                   id="credential-tenant-id"
                   name="tenant_id"
@@ -157,21 +179,21 @@
                   value="tenant-local"
                   autocomplete="organization"
                 />
-                <label for="credential-employee-id">사번</label>
+                <label for="credential-employee-id" data-i18n="auth.employee_id">사번</label>
                 <input
                   id="credential-employee-id"
                   name="employee_id"
                   type="text"
                   autocomplete="username"
                 />
-                <label for="credential-password">비밀번호</label>
+                <label for="credential-password" data-i18n="auth.password">비밀번호</label>
                 <input
                   id="credential-password"
                   name="password"
                   type="password"
                   autocomplete="current-password"
                 />
-                <button id="credential-login-submit-button" type="submit">
+                <button id="credential-login-submit-button" type="submit" data-i18n="auth.login">
                   로그인
                 </button>
               </form>
@@ -198,7 +220,7 @@
               aria-labelledby="runtime-diagnostics-title"
             >
               <div class="section-header compact">
-                <h2 id="runtime-diagnostics-title">런타임 진단</h2>
+                <h2 id="runtime-diagnostics-title" data-i18n="runtime.title">런타임 진단</h2>
                 <span class="badge pending" id="runtime-diagnostics-status">대기</span>
               </div>
               <dl
@@ -219,20 +241,20 @@
               aria-labelledby="upload-surface-title"
             >
               <div class="section-header compact">
-                <h2 id="upload-surface-title">업로드 준비</h2>
+                <h2 id="upload-surface-title" data-i18n="upload.title">업로드 준비</h2>
                 <div class="badge-pair">
                   <span class="badge pending" id="upload-status">대기</span>
                   <button id="upload-metadata-apply-button" type="submit" form="upload-metadata-form">
-                    적용
+                    <span data-i18n="action.apply">적용</span>
                   </button>
-                  <button id="upload-submit-button" type="button">전송</button>
-                  <button id="upload-retry-button" type="button" hidden>재시도</button>
+                  <button id="upload-submit-button" type="button" data-i18n="action.send">전송</button>
+                  <button id="upload-retry-button" type="button" hidden data-i18n="action.retry">재시도</button>
                 </div>
               </div>
               <form class="upload-metadata-form" id="upload-metadata-form">
-                <label for="upload-file-input">파일</label>
+                <label for="upload-file-input" data-i18n="upload.file">파일</label>
                 <input id="upload-file-input" name="source_file" type="file" />
-                <label for="upload-source-sha256">SHA-256</label>
+                <label for="upload-source-sha256" data-i18n="upload.sha256">SHA-256</label>
                 <input
                   id="upload-source-sha256"
                   name="source_sha256"
@@ -263,7 +285,7 @@
 
             <section class="panel" aria-labelledby="documents-title">
               <div class="section-header compact">
-                <h2 id="documents-title">문서 범위</h2>
+                <h2 id="documents-title" data-i18n="documents.title">문서 범위</h2>
                 <span class="badge success">READY</span>
               </div>
               <div class="document-list" id="document-list"></div>
@@ -275,11 +297,11 @@
               aria-labelledby="document-detail-title"
             >
               <div class="section-header compact">
-                <h2 id="document-detail-title">문서 상세</h2>
+                <h2 id="document-detail-title" data-i18n="document_detail.title">문서 상세</h2>
                 <div class="badge-pair">
                   <span class="badge pending" id="document-detail-status">대기</span>
                   <button id="document-detail-retry-button" type="button" hidden>
-                    재시도
+                    <span data-i18n="action.retry">재시도</span>
                   </button>
                 </div>
               </div>
@@ -297,10 +319,10 @@
               aria-labelledby="retrieval-scope-title"
             >
               <div class="section-header compact">
-                <h2 id="retrieval-scope-title">검색 범위</h2>
+                <h2 id="retrieval-scope-title" data-i18n="retrieval.title">검색 범위</h2>
                 <div class="badge-pair">
                   <span class="badge pending" id="retrieval-scope-status">대기</span>
-                  <button id="retrieval-retry-button" type="button" hidden>재시도</button>
+                  <button id="retrieval-retry-button" type="button" hidden data-i18n="action.retry">재시도</button>
                 </div>
               </div>
               <div
@@ -329,22 +351,23 @@
 
             <section class="panel" id="artifact-panel" aria-labelledby="artifact-title">
               <div class="section-header compact">
-                <h2 id="artifact-title">Artifact</h2>
+                <h2 id="artifact-title" data-i18n="artifact.title">아티팩트</h2>
                 <span class="badge pending" id="handoff-badge">대기</span>
               </div>
               <div class="artifact-library-toolbar">
                 <select
                   id="artifact-library-filter"
-                  aria-label="Artifact library filter"
+                  aria-label="아티팩트 목록 필터"
+                  data-i18n-aria-label="artifact.filter"
                 >
-                  <option value="all">All</option>
-                  <option value="ready">Ready</option>
-                  <option value="failed">Failed</option>
-                  <option value="downloadable">Download</option>
-                  <option value="previewable">Preview</option>
+                  <option value="all" data-i18n="artifact.filter.all">전체</option>
+                  <option value="ready" data-i18n="artifact.filter.ready">준비됨</option>
+                  <option value="failed" data-i18n="artifact.filter.failed">실패</option>
+                  <option value="downloadable" data-i18n="artifact.filter.downloadable">다운로드 가능</option>
+                  <option value="previewable" data-i18n="artifact.filter.previewable">미리보기 가능</option>
                 </select>
                 <button id="artifact-library-refresh-button" type="button">
-                  새로고침
+                  <span data-i18n="action.refresh">새로고침</span>
                 </button>
                 <span class="badge pending" id="artifact-library-status">대기</span>
               </div>
@@ -398,8 +421,8 @@
 
             <section class="panel" id="audit-panel" aria-labelledby="audit-title">
               <div class="section-header compact">
-                <h2 id="audit-title">AG Audit</h2>
-                <span class="badge success">redacted</span>
+                <h2 id="audit-title" data-i18n="audit.title">AG 감사</h2>
+                <span class="badge success" data-i18n="audit.redacted">민감정보 제거됨</span>
               </div>
               <dl class="meta-list" id="audit-summary"></dl>
             </section>
