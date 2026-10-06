@@ -149,6 +149,32 @@ Responsibility rules:
   coordinated rollout, staging acceptance, and the explicit go/no-go packet;
   it does not own service domain data.
 
+## Operational Incompleteness Register
+
+Every row remains `OPEN`. `P0` means production admission is blocked without
+the control. `P1` means the control must be complete before S149 acceptance or
+must have an explicitly approved dependency and rollback plan.
+
+| Operational gap ID | Domain | Priority | Owner | Target | Required evidence |
+| --- | --- | --- | --- | --- | --- |
+| `secret_rotation_operations` | trust/configuration | `P0` | Platform integration and all services | `S143` | External injection, rotation, revocation, restart, and no-secret evidence |
+| `tls_certificate_operations` | trust/configuration | `P0` | Platform integration | `S143` | TLS termination, renewal, expiry alert, and rollback rehearsal |
+| `signing_key_custody_rotation` | trust | `P0` | OA | External custody, rotation, overlap, revocation, JWKS, and restart evidence |
+| `enterprise_federation_operations` | trust | `P1` | OA | IdP registration, metadata rollover, login denial, and outage recovery |
+| `postgres_backup_failover_restore` | data | `P0` | Five database owners and Platform integration | `S145` | Backup, point-in-time restore, failover, rollback, RPO, and RTO evidence |
+| `private_object_storage_lifecycle` | data | `P0` | CX and AE | `S146` | Encryption, owner scope, versioning, retention, restore, and rollback evidence |
+| `gpu_capacity_scheduling` | model | `P1` | MO | `S147` | Capacity, concurrency, placement, saturation, and recovery evidence |
+| `model_rollout_failover_calibration` | model | `P1` | MO and CX | `S147` | Model-independent canary, fallback, calibration, drift, and rollback evidence |
+| `external_incident_dispatch` | incident | `P1` | AG | `S148` | Redacted delivery, retry, deduplication, outage, and recovery evidence |
+| `monitoring_paging_slo_operations` | incident | `P0` | AG, Platform integration, and service owners | `S148` | SLI/SLO, alert, paging, ownership, escalation, and audit evidence |
+| `staging_reliability_security_rehearsal` | release | `P0` | Platform integration and all services | `S149` | Load, soak, failure injection, security, privacy, recovery, and rollback evidence |
+| `go_live_rollback_change_approval` | release | `P0` | Platform integration | `S150` | Fresh evidence manifest, approver decision, rollout, rollback, and residue checks |
+
+The register covers all nine S140 deferrals and adds the three integration
+controls needed to turn isolated production capabilities into an operable
+release: model rollout/calibration, staging rehearsal, and explicit go-live
+rollback/change approval.
+
 ## S141 Slice Plan
 
 | Slice | Scope |

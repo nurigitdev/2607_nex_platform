@@ -727,3 +727,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_production_configuration_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_runtime_deployment_coupling_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_production_responsibility_matrix.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_operational_incompleteness_register.py --summary

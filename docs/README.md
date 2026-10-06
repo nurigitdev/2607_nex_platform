@@ -1514,6 +1514,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1405`](slices/1405_platform_production_configuration_audit.md) | `S141-004` Audit the 25-value production profile and freeze ten environment, secret, TLS, and operational admission gaps. |
 | [`Slice 1406`](slices/1406_platform_runtime_deployment_coupling_audit.md) | `S141-005` Re-audit API, import, provider, database, loopback, and source-command coupling and pass the fifth-Slice Checkpoint Gate. |
 | [`Slice 1407`](slices/1407_platform_production_responsibility_matrix.md) | `S141-006` Freeze accountable, responsible, and coordinating owners for all nine production controls without changing service data ownership. |
+| [`Slice 1408`](slices/1408_platform_operational_incompleteness_register.md) | `S141-007` Prioritize twelve open trust, data, model, incident, and release operations gaps with explicit evidence outcomes. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
