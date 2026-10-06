@@ -208,6 +208,46 @@ Execution rules:
 - S150 consumes fresh S149 evidence, records an explicit go/no-go decision,
   and never performs an implicit production deployment.
 
+## Production Evidence, Privacy, Rollback, and Decision Contract
+
+Every S142-S150 protected result must provide a metadata-only envelope with
+these fields: `schema_version`, `evidence_id`, `requirement_id`, `control_ids`,
+`release_candidate_id`, `environment_class`, `execution_mode`,
+`actual_execution`, `started_at`, `completed_at`, `source_revision`,
+`artifact_digests`, `configuration_digest`, `dependency_evidence_digests`,
+`checks`, `metrics`, `privacy`, `rollback`, `residue`, and `evidence_digest`.
+Digests must be computed over a canonical serialization and dependency digests
+must bind the exact upstream evidence consumed by the run.
+
+Source-controlled or exported evidence must not contain fields for `secret`,
+`password`, `token`, `api_key`, `cookie`, `authorization`, `database_url`,
+`provider_endpoint`, `private_payload`, `source_document`, `prompt_content`,
+`physical_storage_path`, or `signing_private_key`. Counts, opaque IDs, and
+one-way digests are allowed; raw values are not.
+
+Freshness classes:
+
+| Class | Requirement |
+| --- | --- |
+| `BUILD_BOUND` | Artifact and configuration digests must exactly match the candidate; wall-clock age alone cannot validate a different build. |
+| `RELEASE_WINDOW_72H` | S142-S148 component evidence consumed by S149 must be no older than 72 hours and belong to the same release candidate. |
+| `GO_LIVE_WINDOW_24H` | Integrated S149 evidence consumed by S150 must be no older than 24 hours. |
+| `IMMEDIATE_PREFLIGHT_4H` | Trust, database, storage, provider, monitoring, and incident readiness must be re-probed within 4 hours of the S150 decision. |
+
+Every rollback object must include `plan_id`, `owner`, `trigger_conditions`,
+`last_known_good_artifacts`, `last_known_good_configuration`,
+`data_migration_strategy`, `drill_status`, `recovery_metrics`, and
+`residue_counts`.
+
+The S150 decision evaluator has ten mandatory gates:
+`all_dependency_evidence_passed`, `evidence_fresh`,
+`artifact_configuration_digest_exact`, `no_open_p0`, `p1_waivers_valid`,
+`privacy_clean`, `rollback_drill_passed`, `zero_residue`,
+`approval_roles_complete`, and `production_deployment_separate`. A P1 waiver
+must name its owner, risk, expiry, compensating control, and rollback trigger.
+The only decision states are `GO` and `NO_GO`; there is no implicit or
+conditional deployment state.
+
 ## S141 Slice Plan
 
 | Slice | Scope |

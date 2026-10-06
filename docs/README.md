@@ -1516,6 +1516,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1407`](slices/1407_platform_production_responsibility_matrix.md) | `S141-006` Freeze accountable, responsible, and coordinating owners for all nine production controls without changing service data ownership. |
 | [`Slice 1408`](slices/1408_platform_operational_incompleteness_register.md) | `S141-007` Prioritize twelve open trust, data, model, incident, and release operations gaps with explicit evidence outcomes. |
 | [`Slice 1409`](slices/1409_platform_production_transition_dependency_plan.md) | `S141-008` Freeze the six-wave acyclic S142-S150 transition order, parallel work, closure dependencies, and protected evidence schedule. |
+| [`Slice 1410`](slices/1410_platform_production_evidence_decision_contract.md) | `S141-009` Freeze metadata-only evidence, privacy, freshness, rollback, and explicit GO/NO_GO requirements for S142-S150. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
