@@ -1,7 +1,7 @@
 # Platform Production Readiness Plan
 
-Status: Canonical scope freeze for requirements S141 through S150. S142 is
-complete and S143 is active; production deployment remains unapproved.
+Status: Canonical scope freeze for requirements S141 through S150. S143 is
+complete and S144-S147 are ready; production deployment remains unapproved.
 
 ## Program Outcome
 
@@ -302,3 +302,20 @@ After the Slice 1421 closure, Docker access was restored on the approved local
 build host. Supplemental Slice 1422 adds protected six-image build, inspection,
 network-isolated background checks, and ignored local release-set reporting.
 It does not publish to a registry or alter the S143 production-approval state.
+At that historical handoff boundary, S142 is complete and S143 is active;
+production deployment remains unapproved.
+
+## S143 Completion Update
+
+S143 completed through Slice 1432 with fail-closed production-shaped
+configuration, sixteen owner-scoped external references, MO-only provider
+credential custody, rolling generation rollback, and managed TLS lifecycle.
+The protected single-host Docker Compose acceptance used OpenBao and Traefik
+containers, five actual PostgreSQL test databases, six immutable application
+images, and three live DGX provider capabilities. Its value-free attestation
+binds the source, release set, configuration, and ignored reports.
+
+S143 performed no registry push or production contact. Production deployment
+remains unapproved. The wave-two requirements S144, S145, S146, and S147 may
+now proceed independently under their existing owners and protected evidence
+contracts; S148 closure remains dependent on all four.

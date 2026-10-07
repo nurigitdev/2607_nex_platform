@@ -750,3 +750,5 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_production_api_key_custody.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_production_tls_lifecycle.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_production_security_local_rehearsal.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s143_external_staging_acceptance.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s143_production_configuration_secret_tls_closure.py --summary

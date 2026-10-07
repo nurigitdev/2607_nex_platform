@@ -1,6 +1,6 @@
 # Platform Production Configuration, Secret, and TLS Lifecycle
 
-Status: S143 active through Slice 1431. Production deployment remains
+Status: S143 complete through Slice 1432. Production deployment remains
 unapproved.
 
 ## Required Outcome
@@ -16,9 +16,9 @@ uses single-host Docker Compose, OpenBao, and Traefik; production may retain or
 replace those adapters without changing the owner-scoped secret, HTTPS, or
 metadata-only evidence contracts.
 
-Actual external staging acceptance remains mandatory for S143 closure. Slice
-1431 supplies its protected runner and Slice 1432 must bind a passing execution
-to the Full Gate before closing the requirement.
+Actual external staging acceptance remains mandatory for every accepted S143
+release set. Slice 1431 supplied its protected runner and a passing execution;
+Slice 1432 binds that execution to a value-free attestation and Full Gate.
 
 ## Configuration Inventory
 
@@ -70,8 +70,10 @@ values and must be validated independently.
 | `certificate_renewal_expiry_rollback` | Platform integration | `1429` | Renewal overlap, expiry alert, revocation, and rollback lifecycle is explicit. |
 | `protected_staging_acceptance` | Platform integration | `1430`, `1431` | Local rehearsal and actual external staging evidence both pass without secret disclosure. |
 
-All gaps begin `OPEN`. Repository implementation or local loopback evidence
-cannot mark `protected_staging_acceptance` complete.
+All gaps began `OPEN`. Repository implementation or local loopback evidence
+alone cannot mark `protected_staging_acceptance` complete. Slice 1432 closes
+the nine S143 gaps for the accepted non-production staging release set; a new
+release set must produce fresh protected evidence.
 
 Slice 1424 implements the typed manifest and one-to-one secret-reference
 classification. Runtime materialization and startup admission remain open.
@@ -120,6 +122,13 @@ PostgreSQL readiness, live provider route health, immutable image use, and
 cleanup. Reports contain metadata only. Production deployment remains blocked
 until Slice 1432 closure and the later S144-S150 controls.
 
+Slice 1431 passed that protected acceptance against five actual test databases,
+six immutable application images, and all three live provider capabilities.
+OpenBao owner isolation, generation `1,2,1`, nine Traefik routes, certificate
+renewal and rollback, six-service readiness for all three generations, and zero
+Compose residue passed. The ignored detailed report is bound by digest into
+the source-controlled, value-free Slice 1432 attestation.
+
 ## Slice Sequence
 
 | Slice | Scope |
@@ -162,3 +171,32 @@ until Slice 1432 closure and the later S144-S150 controls.
 OpenBao and Traefik are OCI image dependencies, not host-installed software.
 Kubernetes, Helm, a service mesh, and external notification endpoints are not
 S143 prerequisites.
+
+## Closure Decision
+
+S143 is complete for the accepted non-production staging release set. Seven
+deterministic audits, the single-host Compose contract, protected PostgreSQL
+and live-provider execution, owner-scoped secret rotation, managed TLS renewal
+and rollback, privacy checks, and zero residue are bound by the closure runner.
+No image was pushed, no production resource was contacted, and production
+deployment remains unapproved.
+
+The host software boundary is frozen: the existing Docker Engine, Docker
+Compose plugin, Git, and repository Python environment are sufficient.
+OpenBao and Traefik remain digest-pinned container dependencies, not host
+packages. The repeatable procedure is recorded in
+`docs/runbooks/platform_production_configuration_secret_tls.md`.
+
+Completion signal: Met.
+
+## S144-S147 Handoff
+
+The dependency gate now permits S144 through S147 to proceed independently:
+
+- S144: OA external signing-key custody, rotation, and enterprise federation;
+- S145: five-database backup, restore, failover, RPO, and RTO;
+- S146: CX/AE private object-storage migration and lifecycle; and
+- S147: model-serving capacity, canary, calibration, failover, and rollback.
+
+S148 cannot close until all four handoffs emit their protected evidence. S149
+and S150 remain blocked by the canonical dependency plan.

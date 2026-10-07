@@ -44,5 +44,12 @@ unseal/backup HA and production CA custody remain later production work.
   application image references.
 - Protected execution writes metadata-only evidence to
   `reports/deployment/s143-external-staging-acceptance.json`.
+- Accepted execution: `PASS`; five migrated databases, six ready application
+  services in each of three generations, three live provider capabilities,
+  five isolated owners, sixteen external references, nine TLS routes,
+  certificate renewal/rollback, and zero Compose residue.
+- Slice 1432 records the accepted source, release-set, configuration, and raw
+  report digests in a tracked value-free attestation; the raw report remains
+  ignored.
 - Slice Gate remains required before the Slice commit. Slice 1432 owns the S143
   Full Gate and production-readiness handoff.

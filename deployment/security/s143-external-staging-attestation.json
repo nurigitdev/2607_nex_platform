@@ -1,0 +1,83 @@
+{
+  "schema_version": "production_evidence.v1",
+  "evidence_id": "s143-external-staging-f7dcef75",
+  "requirement_id": "S143",
+  "control_ids": [
+    "managed_tls_certificate_lifecycle",
+    "production_secret_injection_rotation"
+  ],
+  "release_candidate_id": "s143-staging-d51d1f90",
+  "environment_class": "external_staging",
+  "execution_mode": "protected",
+  "actual_execution": true,
+  "started_at": "2026-10-07T08:43:58.297631+00:00",
+  "completed_at": "2026-10-07T08:43:58.297631+00:00",
+  "source_revision": "f7dcef7562e39aa15873eba9c6087eb3ff1201b1",
+  "artifact_digests": [
+    "sha256:d51d1f90b9fc0d6171ab8355e4b48fdd49f8212d048ee644569ee421867e27cc"
+  ],
+  "configuration_digest": "sha256:1d47d7441641ca1ad7463d2d6348dd88367c64e7053ce506495cf04f2ec1d690",
+  "dependency_evidence_digests": [
+    "sha256:d47c8ed6ee2b41021d8be615799227b5ce2bbfb0ff13ed0931480690c0155433",
+    "sha256:ff829926e7b444074d90a9397e60dc3c436ca0d22cf918d2a5cab3f8a794495f"
+  ],
+  "checks": {
+    "application_restart": true,
+    "database_migration": true,
+    "generation_rollback": true,
+    "generation_rotation": true,
+    "live_embedding": true,
+    "live_generation": true,
+    "live_reranking": true,
+    "owner_scope_denial": true,
+    "production_approval_absent": true,
+    "production_contact_absent": true,
+    "registry_push_absent": true,
+    "tls_renewal": true,
+    "tls_rollback": true
+  },
+  "metrics": {
+    "application_ready_count": 6,
+    "database_service_count": 5,
+    "generation_transition_count": 3,
+    "managed_route_count": 9,
+    "owner_count": 5,
+    "provider_capability_count": 3,
+    "execution_duration_recorded": false
+  },
+  "privacy": {
+    "raw_value_count": 0,
+    "violation_count": 0
+  },
+  "rollback": {
+    "plan_id": "s143-owner-and-tls-rollback",
+    "owner": "platform-integration",
+    "trigger_conditions": [
+      "owner-readiness-failure",
+      "managed-route-probe-failure"
+    ],
+    "last_known_good_artifacts": [
+      "sha256:d51d1f90b9fc0d6171ab8355e4b48fdd49f8212d048ee644569ee421867e27cc"
+    ],
+    "last_known_good_configuration": "sha256:1d47d7441641ca1ad7463d2d6348dd88367c64e7053ce506495cf04f2ec1d690",
+    "data_migration_strategy": "forward-only-no-schema-change",
+    "drill_status": "PASS",
+    "recovery_metrics": {
+      "certificate_restored": true,
+      "service_ready_count": 6
+    },
+    "residue_counts": {
+      "container_count": 0,
+      "network_count": 0,
+      "runtime_file_count": 0,
+      "volume_count": 0
+    }
+  },
+  "residue": {
+    "container_count": 0,
+    "network_count": 0,
+    "runtime_file_count": 0,
+    "volume_count": 0
+  },
+  "evidence_digest": "sha256:257810a76069c8814b7a1ba1cec69cc5b96f935866f7a95d7417be048941fd83"
+}

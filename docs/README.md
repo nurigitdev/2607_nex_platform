@@ -45,6 +45,7 @@ documents and show the current build direction directly.
 | [38 Platform MVP Vertical-Spine Current-State Re-Audit](38_platform_mvp_vertical_spine_reaudit.md) | Records the S131 actual-state matrix, prioritized integration gaps, and S132 handoff. |
 | [47 Platform MVP Release-Candidate Acceptance](47_platform_mvp_release_candidate_acceptance.md) | Freezes S140 named scenarios, protected RC matrix, zero-residue gates, and production deployment deferrals. |
 | [50 Platform Reproducible Deployment Packaging](50_platform_reproducible_deployment_packaging.md) | Freezes S142 artifact ownership, reproducible build rules, environment topology, lifecycle acceptance, and S143 handoff. |
+| [51 Platform Production Configuration, Secret, and TLS Lifecycle](51_platform_production_configuration_secret_tls.md) | Closes S143 with fail-closed configuration, owner-scoped external secrets, managed TLS, single-host Compose acceptance, and S144-S147 handoff. |
 
 Recommended first read:
 
@@ -1539,6 +1540,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1429`](slices/1429_platform_production_tls_lifecycle.md) | `S143-007` Define managed TLS termination, renewal, overlap, expiry, revocation, and rollback. |
 | [`Slice 1430`](slices/1430_platform_production_security_local_rehearsal.md) | `S143-008` Rehearse owner-process injection, secret rollback, TLS replacement, and zero-residue cleanup locally. |
 | [`Slice 1431`](slices/1431_s143_external_staging_acceptance.md) | `S143-009` Implement single-host Compose with OpenBao and Traefik and prove protected PostgreSQL/provider secret and TLS lifecycle acceptance. |
+| [`Slice 1432`](slices/1432_s143_production_configuration_secret_tls_closure.md) | `S143-010` Bind value-free protected staging evidence, publish the operations runbook, pass Full Gate, close S143, and activate S144-S147. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
