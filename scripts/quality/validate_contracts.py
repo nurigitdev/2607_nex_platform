@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from importlib.resources import files
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -9,8 +10,19 @@ from typing import Any
 import yaml
 from jsonschema import Draft202012Validator, ValidationError
 from openapi_spec_validator import validate
+from openapi_spec_validator.validation import OpenAPIV31SpecValidator
 
 SUPPORTED_OPENAPI_SUFFIXES = {".json", ".yaml", ".yml"}
+
+
+class DeterministicOpenAPIV31Validator(OpenAPIV31SpecValidator):
+    schema_validator = Draft202012Validator(
+        json.loads(
+            (
+                files("openapi_spec_validator") / "resources/schemas/v3.1/schema.json"
+            ).read_text(encoding="utf-8")
+        )
+    )
 
 
 @dataclass
@@ -148,7 +160,11 @@ def validate_negative_examples(root: Path, summary: ContractValidationSummary) -
 def validate_openapi_specs(root: Path, summary: ContractValidationSummary) -> None:
     for spec_path in iter_openapi_files(root):
         try:
-            validate(load_structured_file(spec_path))
+            validate(
+                load_structured_file(spec_path),
+                base_uri=(f"urn:nex-platform:contract:openapi:{spec_path.name}"),
+                cls=DeterministicOpenAPIV31Validator,
+            )
         except Exception as exc:
             summary.failures.append(f"{spec_path}: invalid OpenAPI spec: {exc}")
         else:

@@ -1,0 +1,39 @@
+services:
+  openbao:
+    volumes:
+      - ../compose/openbao/s144-config.hcl:/openbao/config/config.hcl:ro
+
+  traefik:
+    volumes:
+      - ../compose/traefik/s144-dynamic.yaml:/etc/traefik/dynamic.yaml:ro
+    secrets: [platform_tls_cert, platform_tls_key, openbao_ca]
+    networks:
+      edge: {}
+      service:
+        aliases:
+          - oa.nex-staging.test
+          - ag.nex-staging.test
+          - ae-api.nex-staging.test
+          - cx.nex-staging.test
+          - mo.nex-staging.test
+          - ae.nex-staging.test
+          - embedding.nex-staging.test
+          - reranker.nex-staging.test
+          - generation.nex-staging.test
+          - id.nex-staging.test
+
+  nex-oa:
+    environment:
+      NEX_CONFIG_GENERATION: config:s144-staging.1
+      NEX_OA_SIGNING_PROVIDER: OPENBAO_TRANSIT
+      NEX_OA_OIDC_PROVIDER_ID: openbao-staging
+      NEX_OA_OIDC_ISSUER: https://id.nex-staging.test:8443/v1/identity/oidc/provider/nex-platform
+      NEX_OA_OIDC_DISCOVERY_URL: https://id.nex-staging.test:8443/v1/identity/oidc/provider/nex-platform/.well-known/openid-configuration
+      NEX_OA_OIDC_CLIENT_ID: ${NEX_S144_OIDC_CLIENT_ID:?OpenBao generated OIDC client id is required}
+      NEX_OA_OIDC_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-oa/NEX_OA_OIDC_CLIENT_SECRET@${NEX_S144_OIDC_SECRET_VERSION:-v1}
+      NEX_OA_OIDC_REDIRECT_URI: https://oa.nex-staging.test:8443/api/v1/auth/federated/callback
+      NEX_OA_OIDC_SCOPES: openid
+      NEX_OA_OIDC_GRANT_TYPE: authorization_code
+      NEX_OA_OIDC_RESPONSE_TYPE: code
+      NEX_OA_OIDC_PKCE_METHOD: S256
+      NEX_OA_OIDC_CLIENT_AUTH_METHOD: client_secret_basic

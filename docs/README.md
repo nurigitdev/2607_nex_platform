@@ -1549,6 +1549,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1437`](slices/1437_oa_openbao_transit_rotation_checkpoint.md) | `S144-005` Make key activation atomic and prove Transit rotation, JWKS overlap, revocation, introspection, restart reconstruction, rollback, and the Checkpoint Gate. |
 | [`Slice 1438`](slices/1438_oa_enterprise_oidc_registration.md) | `S144-006` Freeze exact enterprise OIDC registration and fail-closed discovery metadata validation without persisting client secrets. |
 | [`Slice 1439`](slices/1439_oa_oidc_rollover_resilience.md) | `S144-007` Harden bounded OIDC rollover, issuer-origin JWKS, outage, cache expiry, recovery, and disabled trust paths. |
+| [`Slice 1440`](slices/1440_s144_staging_trust_rehearsal.md) | `S144-008` Layer Transit and OpenBao OIDC onto the S143 single-host Compose topology and rehearse value-free configuration. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

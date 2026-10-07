@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from jsonschema_path.loaders import JsonschemaSafeLoader
 
 import validate_contracts
 
@@ -119,6 +120,46 @@ def test_validate_contract_tree_reports_invalid_openapi(tmp_path: Path) -> None:
 
     assert not summary.ok
     assert "invalid OpenAPI spec" in summary.failures[0]
+
+
+def test_openapi_validation_uses_io_free_document_base_uri(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    build_contract_fixture(tmp_path)
+    calls: list[tuple[str, object]] = []
+
+    def capture(_spec: object, *, base_uri: str, cls: object) -> None:
+        calls.append((base_uri, cls))
+
+    monkeypatch.setattr(validate_contracts, "validate", capture)
+
+    summary = validate_contracts.validate_contract_tree(tmp_path)
+
+    assert summary.ok
+    assert calls == [
+        (
+            "urn:nex-platform:contract:openapi:sample.openapi.yaml",
+            validate_contracts.DeterministicOpenAPIV31Validator,
+        )
+    ]
+
+
+def test_openapi_validation_does_not_depend_on_lazy_c_yaml_loader(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    build_contract_fixture(tmp_path)
+    monkeypatch.setattr(
+        JsonschemaSafeLoader,
+        "resolve",
+        lambda *_args, **_kwargs: None,
+    )
+
+    summary = validate_contracts.validate_contract_tree(tmp_path)
+
+    assert summary.ok
+    assert summary.openapi_count == 1
 
 
 def test_validate_contract_tree_reports_negative_fixture_that_validates(

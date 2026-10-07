@@ -100,7 +100,7 @@ def load_oa_enterprise_oidc_registration(
     )
     if redirect_uri != f"{base_url}{OIDC_CALLBACK_PATH}":
         raise _configuration_error("enterprise OIDC redirect URI is not canonical")
-    client_id = _identifier(_required(environ, "NEX_OA_OIDC_CLIENT_ID"), "client id")
+    client_id = _client_id(_required(environ, "NEX_OA_OIDC_CLIENT_ID"))
     secret_reference = _secret_reference(
         _required(environ, "NEX_OA_OIDC_CLIENT_SECRET_REF"),
         namespace=namespace,
@@ -153,11 +153,13 @@ def validate_enterprise_oidc_discovery(
             )
     _supports(document, "response_types_supported", registration.response_type)
     _supports(document, "grant_types_supported", registration.grant_type)
-    _supports(
-        document,
-        "code_challenge_methods_supported",
-        registration.pkce_method,
-    )
+    pkce_methods = document.get("code_challenge_methods_supported")
+    if pkce_methods is not None:
+        _supports(
+            document,
+            "code_challenge_methods_supported",
+            registration.pkce_method,
+        )
     _supports(
         document,
         "token_endpoint_auth_methods_supported",
@@ -171,7 +173,8 @@ def validate_enterprise_oidc_discovery(
         "issuer": registration.issuer,
         "endpoint_count": len(endpoints),
         "authorization_code_supported": True,
-        "pkce_s256_supported": True,
+        "pkce_s256_required_by_oa": True,
+        "pkce_s256_advertised": pkce_methods is not None,
         "client_secret_basic_supported": True,
         "openid_scope_supported": True,
         "rs256_supported": True,
@@ -198,6 +201,16 @@ def _exact_setting(
 def _identifier(value: str, label: str) -> str:
     if _IDENTIFIER.fullmatch(value) is None:
         raise _configuration_error(f"enterprise OIDC {label} is invalid")
+    return value
+
+
+def _client_id(value: str) -> str:
+    if (
+        not 2 <= len(value) <= 255
+        or any(character.isspace() for character in value)
+        or any(ord(character) < 33 or ord(character) == 127 for character in value)
+    ):
+        raise _configuration_error("enterprise OIDC client id is invalid")
     return value
 
 

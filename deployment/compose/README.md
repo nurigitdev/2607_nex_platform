@@ -72,3 +72,27 @@ The runner uses a temporary runtime directory and always executes
 installation may instead prepare an operator-controlled directory under
 `/data/nex-platform/staging`, but its bootstrap and unseal material must remain
 outside the repository and backup policy belongs to S145.
+
+## S144 Trust and Federation Override
+
+S144 keeps the S143 base file immutable and layers
+`s144-staging.override.yaml` on top. The override enables the OpenBao browser
+authorization UI, routes `id.nex-staging.test` through Traefik with verified
+OpenBao TLS, selects OA's Transit signer, and supplies the exact enterprise
+OIDC policy. OpenBao generates the public client ID during protected setup; it
+must be passed to Compose without writing the client secret to an environment
+file.
+
+```bash
+NEX_S144_OIDC_CLIENT_ID='OpenBao-generated-public-id' \
+docker compose \
+  -f deployment/compose/s143-staging.compose.yaml \
+  -f deployment/compose/s144-staging.override.yaml \
+  config --quiet
+```
+
+The client secret stays in OpenBao KV, the OA AppRole retains owner-only KV
+read plus exact Transit sign/read permissions, and the separate bootstrap
+administrator remains the only principal allowed to create or rotate keys and
+OIDC resources. No Kubernetes, host OpenBao/Traefik package, Docker socket
+mount, or privileged application container is introduced.

@@ -84,7 +84,8 @@ def test_validates_authorization_code_discovery_metadata() -> None:
 
     assert result["endpoint_count"] == 3
     assert result["authorization_code_supported"] is True
-    assert result["pkce_s256_supported"] is True
+    assert result["pkce_s256_required_by_oa"] is True
+    assert result["pkce_s256_advertised"] is True
     assert result["endpoint_origins_match"] is True
 
 
@@ -148,6 +149,20 @@ def test_production_profile_requires_production_secret_namespace() -> None:
         )
     )
     assert "production" in registration.client_secret_reference
+
+
+def test_openbao_generated_client_id_and_optional_pkce_metadata_are_accepted() -> None:
+    registration = load_oa_enterprise_oidc_registration(
+        _environment(NEX_OA_OIDC_CLIENT_ID="GSDTnn3KaOrLpNlVGlYLS9TVsZgOTweO")
+    )
+    discovery = _discovery()
+    discovery.pop("code_challenge_methods_supported")
+
+    result = validate_enterprise_oidc_discovery(registration, discovery)
+
+    assert registration.client_id == "GSDTnn3KaOrLpNlVGlYLS9TVsZgOTweO"
+    assert result["pkce_s256_required_by_oa"] is True
+    assert result["pkce_s256_advertised"] is False
 
 
 @pytest.mark.parametrize(

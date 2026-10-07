@@ -1,6 +1,6 @@
 # OA Production Trust, Key Custody, and Enterprise Federation
 
-Status: S144 active through Slice 1439. Production deployment remains
+Status: S144 active through Slice 1440. Production deployment remains
 unapproved.
 
 ## Required Outcome
@@ -121,6 +121,21 @@ an IdP failure. The cache retains its last-good generation for diagnosis,
 records redacted failure state, and clears that state only after a complete
 recovery refresh. Disabled providers and disabled exact-subject links remain
 fail-closed. Protected live rollover and outage proof remains in Slice 1441.
+
+Slice 1440 closes the deterministic Compose and OpenBao configuration portion
+of `protected_single_host_acceptance`. An S144 override preserves the S143 base
+topology while enabling the OpenBao authorization UI, adding a Traefik-managed
+HTTPS issuer route with OpenBao CA verification, selecting the Transit signer,
+and injecting exact OIDC registration metadata into OA. OpenBao provisions the
+non-exportable RSA-3072 Transit key, a sign/read-only OA policy, a confidential
+OIDC client, KV custody for its secret, and an exact client allowlist.
+
+OpenBao assigns the client ID; it is public opaque metadata rather than a
+repository-selected identifier. OA always requires PKCE S256. OpenBao 2.7 may
+omit `code_challenge_methods_supported` from discovery, so absence is accepted
+while an advertised incompatible value is rejected. This does not relax OA's
+authorization request policy. Protected execution remains mandatory in Slice
+1441.
 
 ## Slice Sequence
 
