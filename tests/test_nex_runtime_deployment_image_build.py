@@ -65,6 +65,7 @@ def _evidence() -> OciImageBuildEvidence:
                     f"nex-platform-local/{definition.artifact_id}@{manifest_digest}"
                 ),
                 base_image_reference=definition.base_image,
+                builder_image_references=definition.builder_images,
                 source_revision=REVISION,
                 dependency_lock_id=lock.lock_id,
                 dependency_lock_digest=f"sha256:{lock.sha256}",
@@ -169,6 +170,7 @@ def test_top_level_evidence_drift_fails_closed(change, message: str) -> None:
         ({"manifest_digest": "bad"}, "manifest digest"),
         ({"image_reference": "mutable:latest"}, "immutable image reference"),
         ({"base_image_reference": "python:latest"}, "base image digest"),
+        ({"builder_image_references": ()}, "builder image digest"),
         ({"source_revision": "b" * 40}, "source revision drift"),
         ({"dependency_lock_id": "wrong"}, "dependency lock drift"),
         ({"build_definition_digest": "bad"}, "definition digest"),

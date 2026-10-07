@@ -41,6 +41,7 @@ def run_platform_oci_build_definitions(root: Path = ROOT) -> dict[str, Any]:
                     "target": definition.target,
                     "platform": definition.platform,
                     "base_image": definition.base_image,
+                    "builder_images": list(definition.builder_images),
                     "context_digest": oci_build_context_digest(manifest),
                     "file_count": projection["file_count"],
                     "byte_count": projection["byte_count"],
@@ -52,6 +53,20 @@ def run_platform_oci_build_definitions(root: Path = ROOT) -> dict[str, Any]:
         and len({item["target"] for item in contexts}) == 6
         and all(item["file_count"] > 0 for item in contexts)
         and all("@sha256:" in item["base_image"] for item in contexts)
+        and sum(
+            "@sha256:" in image
+            for item in contexts
+            for image in item["builder_images"]
+        )
+        == 10
+        and len(
+            {
+                image
+                for item in contexts
+                for image in item["builder_images"]
+            }
+        )
+        == 2
     )
     return {
         "evidence_schema_version": SCHEMA_VERSION,
@@ -66,6 +81,18 @@ def run_platform_oci_build_definitions(root: Path = ROOT) -> dict[str, Any]:
             "context_byte_count": sum(item["byte_count"] for item in contexts),
             "digest_pinned_base_count": sum(
                 "@sha256:" in item["base_image"] for item in contexts
+            ),
+            "digest_pinned_builder_count": sum(
+                "@sha256:" in image
+                for item in contexts
+                for image in item["builder_images"]
+            ),
+            "unique_builder_image_count": len(
+                {
+                    image
+                    for item in contexts
+                    for image in item["builder_images"]
+                }
             ),
         },
         "decision": {
@@ -90,6 +117,7 @@ def summary_line(result: Mapping[str, Any]) -> str:
         f"targets={summary.get('target_count', 0)} "
         f"files={summary.get('context_file_count', 0)} "
         f"base_digests={summary.get('digest_pinned_base_count', 0)} "
+        f"builder_digests={summary.get('digest_pinned_builder_count', 0)} "
         f"next={decision.get('next_slice')}"
     )
 
@@ -112,4 +140,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
-

@@ -14,6 +14,10 @@
   staging contact, production contact, or production approval is performed.
 - Isolated Buildx from the host home and registry credentials with an ephemeral
   empty Docker CLI configuration.
+- Added digest-pinned full Python and Rust builder stages for native wheels
+  after the first real build exposed that `mecab-ko-python` cannot compile in
+  the compiler-free slim runtime image. Final Python images retain the pinned
+  slim base and install only the locked wheel set without index access.
 
 ## Protected Command
 
@@ -32,15 +36,18 @@ Gate invokes the command without either and verifies the skip boundary.
 
 Only an exact six-image set built from a clean revision can become
 `RELEASE_SET_READY`. Local image evidence does not imply registry publication
-or production deployment approval. S143 remains the next requirement.
+or production deployment approval. A mutable or missing builder image, failed
+native wheel build, partial image set, inspection mismatch, or background
+check failure produces no release-set digest. S143 remains the next
+requirement.
 
 ## Verification
 
-- Focused domain/runner tests: `45 passed`; statement and branch coverage both
-  `100%` across the two new modules.
-- Slice Gate: `366 passed, 6 skipped`; statement coverage `100%`; branch
-  coverage `100%`; contract validation `166` schemas, `228` examples, `196`
-  negative examples, and `7` OpenAPI documents.
+- Focused OCI/provenance/closure tests: `78 passed`.
+- Slice Gate: `389 passed, 6 skipped`; statement and branch coverage both
+  `100%` across the five selected OCI build, definition, and provenance
+  modules; contract validation `166` schemas, `228` examples, `196` negative
+  examples, and `7` OpenAPI documents.
 - S142 repository closure: `8/8` audits passed with `6` artifacts, `13`
   process bindings, `5` profiles, and `65` lifecycle process steps.
 - The protected Docker result is generated after this Slice is committed so

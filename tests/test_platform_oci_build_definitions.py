@@ -12,6 +12,8 @@ def test_repository_oci_build_evidence_is_complete() -> None:
     assert result["summary"]["context_file_count"] > 700
     assert result["summary"]["context_byte_count"] > 0
     assert result["summary"]["digest_pinned_base_count"] == 6
+    assert result["summary"]["digest_pinned_builder_count"] == 10
+    assert result["summary"]["unique_builder_image_count"] == 2
     assert result["decision"] == {
         "repository_root_build_context_allowed": False,
         "owner_allowlist_context_required": True,
@@ -44,4 +46,3 @@ def test_summary_and_main_branches(monkeypatch, capsys) -> None:
     )
     assert smoke.main([]) == 1
     assert '"status": "FAIL"' in capsys.readouterr().out
-

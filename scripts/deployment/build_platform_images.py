@@ -324,6 +324,7 @@ def _build_record(
             f"{LOCAL_REPOSITORY}/{definition.artifact_id}@{manifest_digest}"
         ),
         base_image_reference=definition.base_image,
+        builder_image_references=definition.builder_images,
         source_revision=source_revision,
         dependency_lock_id=lock.lock_id,
         dependency_lock_digest=f"sha256:{lock.sha256}",

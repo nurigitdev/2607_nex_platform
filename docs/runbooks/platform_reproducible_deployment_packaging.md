@@ -75,6 +75,13 @@ set, dirty worktree, mutable base, command drift, privileged runtime user,
 missing manifest digest, or failed background check blocks the release-set
 digest.
 
+The five Python images build hash-locked wheels in digest-pinned full Python
+and Rust stages. The final images remain on the digest-pinned slim Python base,
+install wheels with `--no-index --no-deps`, and contain neither compiler nor
+Rust toolchain. Builder digest drift or native wheel failure blocks all six
+images from release-set admission; do not install build tools into the runtime
+stage as a recovery shortcut.
+
 ## Closure And Full Gate
 
 ```bash

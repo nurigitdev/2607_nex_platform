@@ -51,6 +51,7 @@ class OciImageBuildRecord:
     manifest_digest: str
     image_reference: str
     base_image_reference: str
+    builder_image_references: tuple[str, ...]
     source_revision: str
     dependency_lock_id: str
     dependency_lock_digest: str
@@ -198,6 +199,8 @@ def validate_oci_image_build_evidence(
             errors.append(f"OCI immutable image reference drift: {record.artifact_id}")
         if record.base_image_reference != definition.base_image:
             errors.append(f"OCI base image digest drift: {record.artifact_id}")
+        if record.builder_image_references != definition.builder_images:
+            errors.append(f"OCI builder image digest drift: {record.artifact_id}")
         if record.source_revision != evidence.source_revision:
             errors.append(f"OCI image source revision drift: {record.artifact_id}")
         if (
@@ -284,6 +287,7 @@ def oci_image_build_evidence_projection(
                 "manifest_digest": record.manifest_digest,
                 "image_reference": record.image_reference,
                 "base_image_reference": record.base_image_reference,
+                "builder_image_references": list(record.builder_image_references),
                 "source_revision": record.source_revision,
                 "dependency_lock_id": record.dependency_lock_id,
                 "dependency_lock_digest": record.dependency_lock_digest,

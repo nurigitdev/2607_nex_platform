@@ -329,6 +329,7 @@ def oci_build_definition_digest(root: Path, definition: OciBuildDefinition) -> s
             "target": definition.target,
             "platform": definition.platform,
             "base_image": definition.base_image,
+            "builder_images": list(definition.builder_images),
             "context_paths": list(definition.context_paths),
         },
         ensure_ascii=True,

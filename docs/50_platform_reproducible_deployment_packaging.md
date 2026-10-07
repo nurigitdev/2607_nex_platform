@@ -123,7 +123,10 @@ requirements to immutable release identities.
 
 - Python and Node production dependencies must be exact, integrity-verifiable
   build inputs. Range-only dependency files are not release locks.
-- Base runtime images must resolve to immutable digests in admitted topology.
+- Base runtime and native-dependency builder images must resolve to immutable
+  digests. Python native wheels are built outside the slim runtime stage; final
+  images contain no compiler or Rust toolchain and install without index
+  access.
 - Build contexts are owner scoped and exclude `.git`, environments, caches,
   reports, test evidence, local secrets, and private data.
 - Artifact manifests contain no secret value, database credential, private
@@ -185,6 +188,8 @@ non-root users and six default packaged commands, executes seven background
 container checks without network access, and admits only the exact six-image
 set into the existing provenance contract. Runtime reports and logs remain
 under ignored `reports/`; no registry push or published release is implied.
+Five Python artifacts share digest-pinned full Python and Rust wheel builders,
+while their final stages retain the digest-pinned slim Python runtime.
 
 ## Slice Sequence
 

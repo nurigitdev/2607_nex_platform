@@ -19,6 +19,14 @@ PYTHON_BASE_IMAGE = (
     "python:3.12.13-slim-bookworm@"
     "sha256:4766d8b510c428e595d74b9cc5bbb2fae8e26316fffb4adc89908d79aacd58a2"
 )
+PYTHON_BUILDER_IMAGE = (
+    "python:3.12.13-bookworm@"
+    "sha256:3cd9086bdb30f7c9bc08a3fa621d9842e0d3f6f9291aeb4677e0547817c10b12"
+)
+RUST_BUILDER_IMAGE = (
+    "rust:1.99.0-slim-bookworm@"
+    "sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa"
+)
 NODE_BASE_IMAGE = (
     "node:22-bookworm-slim@"
     "sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392"
@@ -41,6 +49,7 @@ class OciBuildDefinition:
     platform: str
     base_image: str
     context_paths: tuple[str, ...]
+    builder_images: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -74,6 +83,7 @@ def build_default_oci_definitions(
             )
             containerfile = PYTHON_CONTAINERFILE
             base_image = PYTHON_BASE_IMAGE
+            builder_images = (PYTHON_BUILDER_IMAGE, RUST_BUILDER_IMAGE)
         else:
             context_paths = (
                 "apps/nex-ae-web/package.json",
@@ -84,6 +94,7 @@ def build_default_oci_definitions(
             )
             containerfile = NODE_CONTAINERFILE
             base_image = NODE_BASE_IMAGE
+            builder_images = ()
         definitions.append(
             OciBuildDefinition(
                 artifact_id=artifact.artifact_id,
@@ -92,6 +103,7 @@ def build_default_oci_definitions(
                 platform="linux/amd64",
                 base_image=base_image,
                 context_paths=context_paths,
+                builder_images=builder_images,
             )
         )
     result = tuple(definitions)
@@ -120,6 +132,15 @@ def validate_oci_build_definitions(
             errors.append(f"unsupported OCI platform: {definition.artifact_id}")
         if re.fullmatch(r"[^@]+@sha256:[0-9a-f]{64}", definition.base_image) is None:
             errors.append(f"base image is not digest pinned: {definition.artifact_id}")
+        if len(set(definition.builder_images)) != len(definition.builder_images):
+            errors.append(f"duplicate builder image: {definition.artifact_id}")
+        if any(
+            re.fullmatch(r"[^@]+@sha256:[0-9a-f]{64}", image) is None
+            for image in definition.builder_images
+        ):
+            errors.append(
+                f"builder image is not digest pinned: {definition.artifact_id}"
+            )
         if not definition.containerfile.endswith(".Containerfile"):
             errors.append(f"invalid Containerfile path: {definition.artifact_id}")
         if not definition.context_paths:
@@ -153,6 +174,8 @@ def validate_oci_containerfiles(
             continue
         if definition.base_image not in text:
             errors.append(f"base image digest drift: {definition.artifact_id}")
+        if any(image not in text for image in definition.builder_images):
+            errors.append(f"builder image digest drift: {definition.artifact_id}")
         if f" AS {definition.target}" not in text:
             errors.append(f"OCI target is missing: {definition.artifact_id}")
         if "USER " not in text:
@@ -162,6 +185,8 @@ def validate_oci_containerfiles(
     python_text = by_path.get(PYTHON_CONTAINERFILE, "")
     if "--no-deps --require-hashes" not in python_text:
         errors.append("Python Containerfile does not enforce the production lock")
+    if "--no-index --no-deps" not in python_text:
+        errors.append("Python Containerfile does not isolate runtime wheel installation")
     node_text = by_path.get(NODE_CONTAINERFILE, "")
     if "npm ci --omit=dev --ignore-scripts" not in node_text:
         errors.append("Node Containerfile does not enforce npm ci")

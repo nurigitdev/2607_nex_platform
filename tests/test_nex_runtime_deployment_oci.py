@@ -14,7 +14,9 @@ from nex_runtime.deployment_oci import (
     NODE_CONTAINERFILE,
     OCI_BUILD_DEFINITIONS_SCHEMA_VERSION,
     PYTHON_BASE_IMAGE,
+    PYTHON_BUILDER_IMAGE,
     PYTHON_CONTAINERFILE,
+    RUST_BUILDER_IMAGE,
     OciBuildDefinition,
     OciBuildDefinitionError,
     _excluded_context_file,
@@ -51,6 +53,11 @@ def test_default_oci_definitions_cover_catalog_exactly() -> None:
     }
     assert sum(item.base_image == PYTHON_BASE_IMAGE for item in definitions) == 5
     assert sum(item.base_image == NODE_BASE_IMAGE for item in definitions) == 1
+    assert sum(
+        item.builder_images == (PYTHON_BUILDER_IMAGE, RUST_BUILDER_IMAGE)
+        for item in definitions
+    ) == 5
+    assert sum(not item.builder_images for item in definitions) == 1
 
 
 def test_oci_definition_validation_reports_all_invalid_fields() -> None:
@@ -62,6 +69,7 @@ def test_oci_definition_validation_reports_all_invalid_fields() -> None:
         platform="windows/amd64",
         base_image="python:latest",
         context_paths=("../secret", "../secret"),
+        builder_images=("rust:latest", "rust:latest"),
     )
     empty = replace(invalid, artifact_id="nex-oa-runtime", context_paths=())
 
@@ -75,6 +83,8 @@ def test_oci_definition_validation_reports_all_invalid_fields() -> None:
         "duplicate OCI target",
         "unsupported OCI platform",
         "base image is not digest pinned",
+        "duplicate builder image",
+        "builder image is not digest pinned",
         "invalid Containerfile path",
         "duplicate OCI context path",
         "unsafe OCI context path",
@@ -120,10 +130,12 @@ def test_containerfile_validation_fails_closed(tmp_path: Path) -> None:
 
     detail = str(raised.value)
     assert "base image digest drift" in detail
+    assert "builder image digest drift" in detail
     assert "OCI target is missing" in detail
     assert "non-root user is missing" in detail
     assert "ADD is prohibited" in detail
     assert "does not enforce the production lock" in detail
+    assert "does not isolate runtime wheel installation" in detail
     assert "does not enforce npm ci" in detail
 
 

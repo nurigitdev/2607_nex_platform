@@ -185,6 +185,8 @@ def run_s142_platform_deployment_packaging_closure(
             oci.get("artifact_count") == 6
             and oci.get("target_count") == 6
             and oci.get("digest_pinned_base_count") == 6
+            and oci.get("digest_pinned_builder_count") == 10
+            and oci.get("unique_builder_image_count") == 2
             and int(oci.get("context_file_count") or 0) > 0
         ),
         "packaged_entrypoints_exact": (

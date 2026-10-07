@@ -220,3 +220,14 @@ def test_definition_digest_rejects_missing_containerfile(tmp_path: Path) -> None
     definition = build_default_oci_definitions()[0]
     with pytest.raises(DeploymentProvenanceError, match="build definition is missing"):
         oci_build_definition_digest(tmp_path, definition)
+
+
+def test_definition_digest_binds_builder_images() -> None:
+    definition = build_default_oci_definitions()[0]
+
+    assert oci_build_definition_digest(ROOT, definition) != (
+        oci_build_definition_digest(
+            ROOT,
+            replace(definition, builder_images=tuple(reversed(definition.builder_images))),
+        )
+    )
