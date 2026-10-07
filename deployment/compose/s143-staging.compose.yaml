@@ -1,0 +1,303 @@
+name: nex-platform-s143
+
+x-platform-environment: &platform-environment
+  NEX_PROFILE: staging_live
+  NEX_PERSISTENCE_MODE: postgres
+  NEX_MO_PROVIDER_MODE: live
+  NEX_SERVICE_TOKEN_ROLLOUT_PROFILE: SIGNED_ONLY
+  NEX_AG_OPERATIONS_SOURCE_MODE: api
+  NEX_AE_AUTH_SESSION_MODE: oa
+  NEX_AE_SESSION_COOKIE_SECURE: "true"
+  NEX_OPENBAO_ADDR: https://openbao:8200
+  NEX_OPENBAO_CA_CERT_FILE: /run/secrets/openbao_ca
+  NEX_OPENBAO_ROLE_ID_FILE: /run/secrets/openbao_role_id
+  NEX_OPENBAO_SECRET_ID_FILE: /run/secrets/openbao_secret_id
+  NEX_OPENBAO_SECRET_NAMESPACE: staging
+  NEX_OPENBAO_TIMEOUT_SECONDS: "10"
+  SSL_CERT_FILE: /run/secrets/platform_ca
+  REQUESTS_CA_BUNDLE: /run/secrets/platform_ca
+  NEX_CONFIG_GENERATION: config:s143-staging.1
+  NEX_SECRET_GENERATION: ${NEX_S143_SECRET_GENERATION:-secret:s143-staging.1}
+  NEX_TLS_GENERATION: ${NEX_S143_TLS_GENERATION:-tls:s143-staging.1}
+  NEX_TLS_TERMINATION_POLICY_REF: tls://openbao/nex-platform/staging/policy@v1
+  NEX_TLS_CERTIFICATE_REF: tls://openbao/nex-platform/staging/certificate@v1
+  NEX_TLS_TRUST_BUNDLE_REF: tls://openbao/nex-platform/staging/trust-bundle@v1
+  NEX_OA_DATABASE_URL_REF: secret://openbao/nex-platform/staging/nex-oa/NEX_OA_DATABASE_URL@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_AG_DATABASE_URL_REF: secret://openbao/nex-platform/staging/nex-ag/NEX_AG_DATABASE_URL@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_AE_DATABASE_URL_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_DATABASE_URL@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_CX_DATABASE_URL_REF: secret://openbao/nex-platform/staging/nex-cx/NEX_CX_DATABASE_URL@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_MO_DATABASE_URL_REF: secret://openbao/nex-platform/staging/nex-mo/NEX_MO_DATABASE_URL@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_OA_INTROSPECTION_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-oa/NEX_OA_INTROSPECTION_SERVICE_TOKEN@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_AE_TO_OA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_OA_SERVICE_TOKEN@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_AE_TO_CX_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_CX_SERVICE_TOKEN@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_CX_TO_MO_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-cx/NEX_CX_TO_MO_SERVICE_TOKEN@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_AG_TO_OA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ag/NEX_AG_TO_OA_SERVICE_TOKEN@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_AG_TO_AE_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ag/NEX_AG_TO_AE_SERVICE_TOKEN@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_AG_TO_CX_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ag/NEX_AG_TO_CX_SERVICE_TOKEN@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_AG_TO_MO_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ag/NEX_AG_TO_MO_SERVICE_TOKEN@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_MO_REMOTE_EMBEDDING_API_KEY_REF: secret://openbao/nex-platform/staging/nex-mo/NEX_MO_REMOTE_EMBEDDING_API_KEY@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_MO_REMOTE_RERANKER_API_KEY_REF: secret://openbao/nex-platform/staging/nex-mo/NEX_MO_REMOTE_RERANKER_API_KEY@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_MO_VLLM_API_KEY_REF: secret://openbao/nex-platform/staging/nex-mo/NEX_MO_VLLM_API_KEY@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_OA_BASE_URL: https://oa.nex-staging.test:8443
+  NEX_AG_BASE_URL: https://ag.nex-staging.test:8443
+  NEX_AE_API_BASE_URL: https://ae-api.nex-staging.test:8443
+  NEX_CX_BASE_URL: https://cx.nex-staging.test:8443
+  NEX_MO_BASE_URL: https://mo.nex-staging.test:8443
+  NEX_AE_WEB_BASE_URL: https://ae.nex-staging.test:8443
+  NEX_MO_REMOTE_EMBEDDING_URL: https://embedding.nex-staging.test:8443/v1/embeddings
+  NEX_MO_REMOTE_RERANKER_URL: https://reranker.nex-staging.test:8443/v1/rerank
+  NEX_MO_VLLM_BASE_URL: https://generation.nex-staging.test:8443
+
+x-platform-service: &platform-service
+  restart: "no"
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  extra_hosts: [host.docker.internal:host-gateway]
+  networks: [service, control]
+  depends_on:
+    openbao:
+      condition: service_healthy
+    traefik:
+      condition: service_healthy
+
+services:
+  openbao-data-init:
+    image: ghcr.io/openbao/openbao:2.7.1@sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf
+    user: "0:0"
+    entrypoint: [sh, -ec]
+    command: ["owner=$(stat -c '%u:%g' /openbao/data); if [ \"$${owner}\" != '100:1000' ]; then chmod 700 /openbao/data && chown 100:1000 /openbao/data; fi"]
+    restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN]
+    security_opt: [no-new-privileges:true]
+    network_mode: none
+    volumes:
+      - openbao-data:/openbao/data
+
+  openbao:
+    image: ghcr.io/openbao/openbao:2.7.1@sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf
+    command: [server, -config=/openbao/config/config.hcl]
+    restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    ports: ["127.0.0.1:8200:8200"]
+    volumes:
+      - openbao-data:/openbao/data
+      - ../compose/openbao/config.hcl:/openbao/config/config.hcl:ro
+    secrets: [openbao_server_cert, openbao_server_key, openbao_ca]
+    environment:
+      BAO_ADDR: https://127.0.0.1:8200
+      BAO_CACERT: /run/secrets/openbao_ca
+    healthcheck:
+      test: [CMD, bao, status]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks: [control, admin]
+    depends_on:
+      openbao-data-init:
+        condition: service_completed_successfully
+
+  traefik:
+    image: traefik:3.7.14@sha256:e849695bc5c317da0cec22bfee4794fd9e15871fe554f864d31b625983e883ff
+    restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    ports: ["8080:8080", "8443:8443"]
+    volumes:
+      - ../compose/traefik/static.yaml:/etc/traefik/traefik.yaml:ro
+      - ../compose/traefik/dynamic.yaml:/etc/traefik/dynamic.yaml:ro
+    secrets: [platform_tls_cert, platform_tls_key]
+    healthcheck:
+      test: [CMD, traefik, healthcheck, --ping]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks:
+      edge: {}
+      service:
+        aliases:
+          - oa.nex-staging.test
+          - ag.nex-staging.test
+          - ae-api.nex-staging.test
+          - cx.nex-staging.test
+          - mo.nex-staging.test
+          - ae.nex-staging.test
+          - embedding.nex-staging.test
+          - reranker.nex-staging.test
+          - generation.nex-staging.test
+
+  nex-oa:
+    <<: *platform-service
+    image: ${NEX_OA_RUNTIME_IMAGE:?immutable OA image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-oa, --]
+    command: [python, -m, uvicorn, nex_oa.main:app, --host, 0.0.0.0, --port, "8101"]
+    environment: *platform-environment
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: oa_role_id
+        target: openbao_role_id
+      - source: oa_secret_id
+        target: openbao_secret_id
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8101/ready', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  nex-ag:
+    <<: *platform-service
+    image: ${NEX_AG_RUNTIME_IMAGE:?immutable AG image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-ag, --]
+    command: [python, -m, uvicorn, nex_ag.main:app, --host, 0.0.0.0, --port, "8102"]
+    environment: *platform-environment
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: ag_role_id
+        target: openbao_role_id
+      - source: ag_secret_id
+        target: openbao_secret_id
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8102/ready', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  nex-ae-api:
+    <<: *platform-service
+    image: ${NEX_AE_RUNTIME_IMAGE:?immutable AE image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-ae-api, --]
+    command: [python, -m, uvicorn, nex_ae_api.main:app, --host, 0.0.0.0, --port, "8103"]
+    environment: *platform-environment
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: ae_role_id
+        target: openbao_role_id
+      - source: ae_secret_id
+        target: openbao_secret_id
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8103/ready', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  nex-cx:
+    <<: *platform-service
+    image: ${NEX_CX_RUNTIME_IMAGE:?immutable CX image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-cx, --]
+    command: [python, -m, uvicorn, nex_cx.main:app, --host, 0.0.0.0, --port, "8104"]
+    environment: *platform-environment
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: cx_role_id
+        target: openbao_role_id
+      - source: cx_secret_id
+        target: openbao_secret_id
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8104/ready', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  nex-mo:
+    <<: *platform-service
+    image: ${NEX_MO_RUNTIME_IMAGE:?immutable MO image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-mo, --]
+    command: [python, -m, uvicorn, nex_mo.main:app, --host, 0.0.0.0, --port, "8105"]
+    environment: *platform-environment
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: mo_role_id
+        target: openbao_role_id
+      - source: mo_secret_id
+        target: openbao_secret_id
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8105/ready', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  nex-ae-web:
+    image: ${NEX_AE_WEB_IMAGE:?immutable AE Web image is required}
+    restart: "no"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      HOST: 0.0.0.0
+      PORT: "5173"
+      NEX_AE_WEB_BASE_URL: https://ae.nex-staging.test:8443
+      NEX_AE_API_BASE_URL: https://ae-api.nex-staging.test:8443
+      AE_API_PROXY_TARGET: https://ae-api.nex-staging.test:8443
+      NODE_EXTRA_CA_CERTS: /run/secrets/platform_ca
+    secrets: [platform_ca]
+    depends_on:
+      nex-ae-api:
+        condition: service_healthy
+      traefik:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:5173/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    networks: [service]
+
+secrets:
+  openbao_server_cert:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/tls/openbao.crt"
+  openbao_server_key:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/tls/openbao.key"
+  openbao_ca:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/tls/openbao-ca.crt"
+  platform_tls_cert:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/tls/platform.crt"
+  platform_tls_key:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/tls/platform.key"
+  platform_ca:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/tls/platform-ca.crt"
+  oa_role_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-oa.role-id"
+  oa_secret_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-oa.secret-id"
+  ae_role_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-ae-api.role-id"
+  ae_secret_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-ae-api.secret-id"
+  cx_role_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-cx.role-id"
+  cx_secret_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-cx.secret-id"
+  mo_role_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-mo.role-id"
+  mo_secret_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-mo.secret-id"
+  ag_role_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-ag.role-id"
+  ag_secret_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-ag.secret-id"
+
+networks:
+  edge: {}
+  service:
+    driver: bridge
+  control:
+    internal: true
+  admin:
+    driver: bridge
+
+volumes:
+  openbao-data: {}

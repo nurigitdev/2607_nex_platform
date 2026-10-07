@@ -41,6 +41,7 @@ LABEL org.opencontainers.image.title="NeX Platform service runtime" \
 COPY --chown=65532:65532 services /app/services
 COPY --chown=65532:65532 database /app/database
 COPY --chown=65532:65532 scripts/db /app/scripts/db
+COPY --chown=65532:65532 deployment/security /app/deployment/security
 ENV HOME=/tmp
 USER 65532:65532
 

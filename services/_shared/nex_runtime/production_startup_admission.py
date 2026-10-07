@@ -18,6 +18,7 @@ from .runtime_profiles import runtime_profile_environment_overlay
 
 
 PRODUCTION_STARTUP_ADMISSION_SCHEMA_VERSION = "production_startup_admission.v1"
+EXTERNAL_STARTUP_PROFILES = ("staging_live", "production")
 _GENERATION = re.compile(r"^[a-z][a-z0-9-]{2,31}:[A-Za-z0-9][A-Za-z0-9._-]{3,127}$")
 _PLACEHOLDERS = {"changeme", "change-me", "placeholder", "<password>", "<secret>"}
 
@@ -47,13 +48,32 @@ def admit_production_startup(
     root: Path,
     manifest: ProductionConfigurationManifest | None = None,
 ) -> ProductionStartupAdmission:
+    return admit_external_startup(
+        environ,
+        profile="production",
+        root=root,
+        manifest=manifest,
+    )
+
+
+def admit_external_startup(
+    environ: Mapping[str, str],
+    *,
+    profile: str,
+    root: Path,
+    manifest: ProductionConfigurationManifest | None = None,
+) -> ProductionStartupAdmission:
+    if profile not in EXTERNAL_STARTUP_PROFILES:
+        raise ProductionStartupAdmissionError(
+            (f"external startup profile is invalid: {profile}",)
+        )
     definition = manifest or load_production_configuration_manifest(root)
     errors: list[str] = []
-    expected_modes = runtime_profile_environment_overlay("production")
+    expected_modes = runtime_profile_environment_overlay(profile)
     for name, expected in expected_modes.items():
         configured = str(environ.get(name) or "").strip()
         if configured != expected:
-            errors.append(f"production runtime mode is invalid: {name}")
+            errors.append(f"{profile} runtime mode is invalid: {name}")
 
     selected_values: list[tuple[str, str]] = []
     secret_reference_count = 0
@@ -79,7 +99,7 @@ def admit_production_startup(
             endpoint = str(environ.get(binding.source_environment_name) or "").strip()
             if not _valid_https_endpoint(endpoint):
                 errors.append(
-                    "production HTTPS endpoint is missing or invalid: "
+                    f"{profile} HTTPS endpoint is missing or invalid: "
                     f"{binding.source_environment_name}"
                 )
             else:
@@ -107,7 +127,7 @@ def admit_production_startup(
     configuration_digest = _configuration_digest(selected_values)
     return ProductionStartupAdmission(
         schema_version=PRODUCTION_STARTUP_ADMISSION_SCHEMA_VERSION,
-        profile="production",
+        profile=profile,
         status="ADMITTED_FOR_SECRET_MATERIALIZATION",
         configuration_digest=configuration_digest,
         secret_reference_count=secret_reference_count,
@@ -135,6 +155,51 @@ def production_startup_admission_projection(
     ):
         raise ProductionStartupAdmissionError(
             ("production startup admission projection is invalid",)
+        )
+    return {
+        "schema_version": admission.schema_version,
+        "profile": admission.profile,
+        "status": admission.status,
+        "configuration_digest": admission.configuration_digest,
+        "secret_reference_count": admission.secret_reference_count,
+        "public_connection_count": admission.public_connection_count,
+        "control_environment_count": admission.control_environment_count,
+        "https_endpoint_count": admission.https_endpoint_count,
+        "raw_secret_environment_count": admission.raw_secret_environment_count,
+        "raw_secret_values_included": False,
+        "reference_values_included": False,
+        "endpoint_values_included": False,
+    }
+
+
+def external_startup_admission_projection(
+    admission: ProductionStartupAdmission,
+    *,
+    expected_profile: str,
+) -> dict[str, Any]:
+    if expected_profile not in EXTERNAL_STARTUP_PROFILES:
+        raise ProductionStartupAdmissionError(
+            ("external startup admission profile is invalid",)
+        )
+    if admission.profile != expected_profile:
+        raise ProductionStartupAdmissionError(
+            ("external startup admission projection is invalid",)
+        )
+    if expected_profile == "production":
+        return production_startup_admission_projection(admission)
+    if (
+        admission.schema_version != PRODUCTION_STARTUP_ADMISSION_SCHEMA_VERSION
+        or admission.status != "ADMITTED_FOR_SECRET_MATERIALIZATION"
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", admission.configuration_digest)
+        is None
+        or admission.secret_reference_count != 16
+        or admission.public_connection_count != 9
+        or admission.control_environment_count != 6
+        or admission.https_endpoint_count != 9
+        or admission.raw_secret_environment_count != 0
+    ):
+        raise ProductionStartupAdmissionError(
+            ("external startup admission projection is invalid",)
         )
     return {
         "schema_version": admission.schema_version,
@@ -207,4 +272,3 @@ def _configuration_digest(values: list[tuple[str, str]]) -> str:
         sorted(values), ensure_ascii=True, separators=(",", ":")
     ).encode("ascii")
     return f"sha256:{hashlib.sha256(payload).hexdigest()}"
-

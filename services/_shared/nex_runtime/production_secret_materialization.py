@@ -13,7 +13,7 @@ from .production_configuration import (
     ProductionConfigurationManifest,
     load_production_configuration_manifest,
 )
-from .production_startup_admission import admit_production_startup
+from .production_startup_admission import admit_external_startup, admit_production_startup
 
 
 PRODUCTION_SECRET_MATERIALIZATION_SCHEMA_VERSION = (
@@ -82,6 +82,17 @@ class ProductionSecretMaterialization:
         raise ProductionSecretMaterializationError(
             f"secret materialization owner is unknown: {owner}"
         )
+
+
+@dataclass(frozen=True)
+class OwnerProductionSecretMaterialization:
+    schema_version: str
+    profile: str
+    status: str
+    configuration_digest: str
+    materialization_digest: str
+    secret_generation: str
+    owner_environment: OwnerSecretEnvironment = field(repr=False)
 
 
 def materialize_production_secrets(
@@ -153,6 +164,122 @@ def materialize_production_secrets(
         secret_generation=generation,
         owner_environments=owner_environments,
     )
+
+
+def materialize_owner_production_secrets(
+    environ: Mapping[str, str],
+    resolver: SecretReferenceResolver,
+    *,
+    owner: str,
+    profile: str = "production",
+    root: Path,
+    manifest: ProductionConfigurationManifest | None = None,
+) -> OwnerProductionSecretMaterialization:
+    definition = manifest or load_production_configuration_manifest(root)
+    admission = admit_external_startup(
+        environ,
+        profile=profile,
+        root=root,
+        manifest=definition,
+    )
+    bindings = tuple(
+        binding
+        for binding in definition.bindings
+        if binding.input_kind == "external_secret_reference"
+        and binding.owner == owner
+    )
+    if not bindings:
+        raise ProductionSecretMaterializationError(
+            f"production secret owner is unknown: {owner}"
+        )
+    generation = str(environ["NEX_SECRET_GENERATION"]).strip()
+    secrets = []
+    metadata = []
+    for binding in bindings:
+        reference = str(environ[binding.source_environment_name]).strip()
+        provider_id, reference_version = _reference_metadata(reference)
+        context = SecretResolutionContext(
+            owner=owner,
+            target_environment_name=binding.target_environment_name,
+            secret_generation=generation,
+            reference_version=reference_version,
+        )
+        try:
+            secret = resolver.resolve(reference, context=context)
+        except Exception:
+            raise ProductionSecretMaterializationError(
+                "external owner secret resolution failed: "
+                f"{binding.target_environment_name}"
+            ) from None
+        _validate_resolved_secret(secret, context=context, provider_id=provider_id)
+        secrets.append(secret)
+        metadata.append(
+            (
+                owner,
+                binding.target_environment_name,
+                secret.provider_id,
+                secret.reference_version,
+            )
+        )
+    digest_payload = {
+        "configuration_digest": admission.configuration_digest,
+        "secret_generation": generation,
+        "owner": owner,
+        "metadata": metadata,
+    }
+    digest = hashlib.sha256(
+        json.dumps(
+            digest_payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+        ).encode("ascii")
+    ).hexdigest()
+    return OwnerProductionSecretMaterialization(
+        schema_version=PRODUCTION_SECRET_MATERIALIZATION_SCHEMA_VERSION,
+        profile=profile,
+        status="MATERIALIZED_FOR_OWNER_PROCESS",
+        configuration_digest=admission.configuration_digest,
+        materialization_digest=f"sha256:{digest}",
+        secret_generation=generation,
+        owner_environment=OwnerSecretEnvironment(owner=owner, secrets=tuple(secrets)),
+    )
+
+
+def owner_production_secret_materialization_projection(
+    materialization: OwnerProductionSecretMaterialization,
+) -> dict[str, Any]:
+    if (
+        materialization.schema_version
+        != PRODUCTION_SECRET_MATERIALIZATION_SCHEMA_VERSION
+        or materialization.profile not in {"staging_live", "production"}
+        or materialization.status != "MATERIALIZED_FOR_OWNER_PROCESS"
+        or _DIGEST.fullmatch(materialization.configuration_digest) is None
+        or _DIGEST.fullmatch(materialization.materialization_digest) is None
+        or not materialization.owner_environment.owner
+        or not materialization.owner_environment.secrets
+    ):
+        raise ProductionSecretMaterializationError(
+            "owner production secret materialization projection is invalid"
+        )
+    environment_names = [
+        secret.target_environment_name
+        for secret in materialization.owner_environment.secrets
+    ]
+    if len(environment_names) != len(set(environment_names)):
+        raise ProductionSecretMaterializationError(
+            "owner production secret materialization coverage drift"
+        )
+    return {
+        "schema_version": materialization.schema_version,
+        "profile": materialization.profile,
+        "status": materialization.status,
+        "configuration_digest": materialization.configuration_digest,
+        "materialization_digest": materialization.materialization_digest,
+        "secret_generation": materialization.secret_generation,
+        "owner": materialization.owner_environment.owner,
+        "target_environment_names": environment_names,
+        "secret_count": len(environment_names),
+        "raw_secret_values_included": False,
+        "reference_values_included": False,
+    }
 
 
 def production_secret_materialization_projection(

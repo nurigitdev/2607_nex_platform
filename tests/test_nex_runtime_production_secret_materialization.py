@@ -10,13 +10,17 @@ from nex_runtime.production_configuration import (
     build_default_production_configuration_manifest,
 )
 from nex_runtime.production_secret_materialization import (
+    OwnerProductionSecretMaterialization,
     OwnerSecretEnvironment,
     ProductionSecretMaterializationError,
     ResolvedSecret,
     SecretResolutionContext,
+    materialize_owner_production_secrets,
     materialize_production_secrets,
+    owner_production_secret_materialization_projection,
     production_secret_materialization_projection,
 )
+from nex_runtime.runtime_profiles import runtime_profile_environment_overlay
 from run_platform_production_startup_admission import _synthetic_environment
 
 
@@ -60,6 +64,85 @@ def test_materializes_exact_owner_scoped_environments_without_mutating_input() -
     }
     with pytest.raises(ProductionSecretMaterializationError, match="unknown"):
         result.environment_for("nex-unknown")
+
+
+def test_materializes_one_owner_without_resolving_other_owner_values() -> None:
+    environment = _synthetic_environment(ROOT)
+    resolver = Resolver()
+    result = materialize_owner_production_secrets(
+        environment,
+        resolver,
+        owner="nex-mo",
+        root=ROOT,
+    )
+    projection = owner_production_secret_materialization_projection(result)
+
+    assert projection["owner"] == "nex-mo"
+    assert projection["secret_count"] == 4
+    assert projection["raw_secret_values_included"] is False
+    assert set(result.owner_environment.process_environment()) == {
+        "NEX_MO_DATABASE_URL",
+        "NEX_MO_REMOTE_EMBEDDING_API_KEY",
+        "NEX_MO_REMOTE_RERANKER_API_KEY",
+        "NEX_MO_VLLM_API_KEY",
+    }
+
+
+def test_owner_materialization_supports_external_staging_profile() -> None:
+    environment = _synthetic_environment(ROOT)
+    environment.update(runtime_profile_environment_overlay("staging_live"))
+    result = materialize_owner_production_secrets(
+        environment,
+        Resolver(),
+        owner="nex-oa",
+        profile="staging_live",
+        root=ROOT,
+    )
+
+    assert result.profile == "staging_live"
+    assert owner_production_secret_materialization_projection(result)["profile"] == (
+        "staging_live"
+    )
+
+
+def test_owner_materialization_rejects_unknown_owner_resolution_and_projection() -> None:
+    environment = _synthetic_environment(ROOT)
+    with pytest.raises(ProductionSecretMaterializationError, match="owner is unknown"):
+        materialize_owner_production_secrets(
+            environment,
+            Resolver(),
+            owner="nex-unknown",
+            root=ROOT,
+        )
+    with pytest.raises(ProductionSecretMaterializationError, match="resolution failed"):
+        materialize_owner_production_secrets(
+            environment,
+            Resolver(raises=True),
+            owner="nex-oa",
+            root=ROOT,
+        )
+    valid = materialize_owner_production_secrets(
+        environment,
+        Resolver(),
+        owner="nex-oa",
+        root=ROOT,
+    )
+    with pytest.raises(ProductionSecretMaterializationError, match="projection is invalid"):
+        owner_production_secret_materialization_projection(
+            replace(valid, status="OTHER")
+        )
+    duplicate = replace(
+        valid,
+        owner_environment=OwnerSecretEnvironment(
+            "nex-oa",
+            (
+                valid.owner_environment.secrets[0],
+                valid.owner_environment.secrets[0],
+            ),
+        ),
+    )
+    with pytest.raises(ProductionSecretMaterializationError, match="coverage drift"):
+        owner_production_secret_materialization_projection(duplicate)
 
 
 @pytest.mark.parametrize(

@@ -1,0 +1,84 @@
+tls:
+  certificates:
+    - certFile: /run/secrets/platform_tls_cert
+      keyFile: /run/secrets/platform_tls_key
+
+http:
+  routers:
+    oa:
+      rule: Host(`oa.nex-staging.test`)
+      entryPoints: [websecure]
+      service: oa
+      tls: {}
+    ag:
+      rule: Host(`ag.nex-staging.test`)
+      entryPoints: [websecure]
+      service: ag
+      tls: {}
+    ae-api:
+      rule: Host(`ae-api.nex-staging.test`)
+      entryPoints: [websecure]
+      service: ae-api
+      tls: {}
+    cx:
+      rule: Host(`cx.nex-staging.test`)
+      entryPoints: [websecure]
+      service: cx
+      tls: {}
+    mo:
+      rule: Host(`mo.nex-staging.test`)
+      entryPoints: [websecure]
+      service: mo
+      tls: {}
+    ae-web:
+      rule: Host(`ae.nex-staging.test`)
+      entryPoints: [websecure]
+      service: ae-web
+      tls: {}
+    embedding:
+      rule: Host(`embedding.nex-staging.test`)
+      entryPoints: [websecure]
+      service: embedding
+      tls: {}
+    reranker:
+      rule: Host(`reranker.nex-staging.test`)
+      entryPoints: [websecure]
+      service: reranker
+      tls: {}
+    generation:
+      rule: Host(`generation.nex-staging.test`)
+      entryPoints: [websecure]
+      service: generation
+      tls: {}
+
+  services:
+    oa:
+      loadBalancer:
+        servers: [{url: "http://nex-oa:8101"}]
+    ag:
+      loadBalancer:
+        servers: [{url: "http://nex-ag:8102"}]
+    ae-api:
+      loadBalancer:
+        servers: [{url: "http://nex-ae-api:8103"}]
+    cx:
+      loadBalancer:
+        servers: [{url: "http://nex-cx:8104"}]
+    mo:
+      loadBalancer:
+        servers: [{url: "http://nex-mo:8105"}]
+    ae-web:
+      loadBalancer:
+        servers: [{url: "http://nex-ae-web:5173"}]
+    embedding:
+      loadBalancer:
+        passHostHeader: false
+        servers: [{url: "http://192.168.20.243:9112"}]
+    reranker:
+      loadBalancer:
+        passHostHeader: false
+        servers: [{url: "http://192.168.20.243:9113"}]
+    generation:
+      loadBalancer:
+        passHostHeader: false
+        servers: [{url: "http://192.168.20.243:9111"}]

@@ -1,6 +1,6 @@
 # Platform Production Configuration, Secret, and TLS Lifecycle
 
-Status: S143 active through Slice 1425. Production deployment remains
+Status: S143 active through Slice 1431. Production deployment remains
 unapproved.
 
 ## Required Outcome
@@ -11,9 +11,14 @@ is complete before startup, secret values are injected from external custody,
 rotation is recoverable, provider API keys never enter artifacts or evidence,
 and TLS certificate lifecycle is managed outside application containers.
 
-This requirement is vendor-neutral. It defines provider contracts and protected
-evidence before selecting a secret manager, ingress, certificate authority, or
-orchestrator. Actual external staging acceptance remains mandatory for closure.
+The core requirement remains vendor-neutral. Its external staging realization
+uses single-host Docker Compose, OpenBao, and Traefik; production may retain or
+replace those adapters without changing the owner-scoped secret, HTTPS, or
+metadata-only evidence contracts.
+
+Actual external staging acceptance remains mandatory for S143 closure. Slice
+1431 supplies its protected runner and Slice 1432 must bind a passing execution
+to the Full Gate before closing the requirement.
 
 ## Configuration Inventory
 
@@ -93,6 +98,28 @@ rollback owner processes, three HTTPS probes, zero residue, and direct
 private-value/evidence comparison. This evidence remains explicitly
 non-production and non-external.
 
+Slice 1431 selects the deliberately small staging topology: Docker Compose
+orchestrates six application images, OpenBao integrated Raft owns KV v2,
+owner-specific AppRole, and staging PKI, and Traefik owns HTTPS ingress for six
+platform routes and three DGX routes. The existing five PostgreSQL test
+databases are reached through `host.docker.internal`; the existing DGX
+providers remain external upstreams. Neither OpenBao nor Traefik requires a
+host package installation.
+
+OpenBao remains a non-root runtime. A network-disabled one-shot initializer,
+using the same digest-pinned image, grants the named Raft volume to UID 100 and
+GID 1000 with only the `CHOWN` capability before startup. It checks the current
+owner first, so later Compose evaluation is an idempotent no-op. The runtime
+joins the internal `control` network and a separate `admin` bridge; only the
+latter is used to publish the TLS administration endpoint on
+`127.0.0.1:8200`.
+
+The protected acceptance must prove v1 startup, owner-policy denial, v2 rolling
+restart, certificate renewal, v1 and prior-certificate rollback, real
+PostgreSQL readiness, live provider route health, immutable image use, and
+cleanup. Reports contain metadata only. Production deployment remains blocked
+until Slice 1432 closure and the later S144-S150 controls.
+
 ## Slice Sequence
 
 | Slice | Scope |
@@ -122,10 +149,16 @@ non-production and non-external.
 - Slice Gate runs for every Slice, Checkpoint Gate at Slice 1427, and Full Gate
   at Slice 1432.
 
-## External Prerequisites
+## Staging Prerequisites
 
-Slice 1431 requires an approved non-production external secret provider and a
-managed TLS endpoint capable of certificate issue/renew/rollback evidence.
-Provider identity, endpoint, authentication mechanism, and test namespace must
-be supplied out of band. Until then, S143 remains active and production stays
-blocked.
+- Docker Engine and the Docker Compose plugin on the single staging host;
+- six current immutable local OCI image references from the S142 build;
+- five existing localhost PostgreSQL test database URLs;
+- reachable DGX provider endpoints at ports 9111, 9112, and 9113 plus their
+  protected API-key inputs; and
+- an operator-controlled runtime directory, created temporarily by the
+  protected runner or persistently under `/data/nex-platform/staging`.
+
+OpenBao and Traefik are OCI image dependencies, not host-installed software.
+Kubernetes, Helm, a service mesh, and external notification endpoints are not
+S143 prerequisites.

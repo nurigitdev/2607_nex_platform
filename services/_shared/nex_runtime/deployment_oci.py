@@ -80,6 +80,7 @@ def build_default_oci_definitions(
                 f"database/{service_id}",
                 "scripts/db",
                 "deployment/locks/python-production.lock",
+                "deployment/security/production-configuration.yaml",
             )
             containerfile = PYTHON_CONTAINERFILE
             base_image = PYTHON_BASE_IMAGE

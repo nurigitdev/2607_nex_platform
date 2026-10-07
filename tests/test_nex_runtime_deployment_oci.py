@@ -58,6 +58,13 @@ def test_default_oci_definitions_cover_catalog_exactly() -> None:
         for item in definitions
     ) == 5
     assert sum(not item.builder_images for item in definitions) == 1
+    python_definitions = tuple(
+        item for item in definitions if item.base_image == PYTHON_BASE_IMAGE
+    )
+    assert all(
+        "deployment/security/production-configuration.yaml" in item.context_paths
+        for item in python_definitions
+    )
 
 
 def test_oci_definition_validation_reports_all_invalid_fields() -> None:

@@ -1530,6 +1530,15 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1420`](slices/1420_platform_packaged_runtime_acceptance.md) | `S142-009` Exercise six materialized owner package contexts against five real test databases, seven background checks, and two complete network startup generations without production contact or false OCI image claims. |
 | [`Slice 1421`](slices/1421_s142_platform_deployment_packaging_closure.md) | `S142-010` Aggregate eight packaging audits, publish the runbook, preserve honest unbuilt-image provenance, run Full Gate, and activate S143 without production approval. |
 | [`Slice 1422`](slices/1422_s142_oci_image_build_supplement.md) | `S142-S01` Build six owner-scoped local OCI images, capture actual manifest/config provenance, verify non-root packaged commands, execute seven network-isolated background checks, and keep reports outside source control. |
+| [`Slice 1423`](slices/1423_platform_production_security_boundary.md) | `S143-001` Freeze production configuration, secret, TLS, evidence, ownership, and non-drift boundaries. |
+| [`Slice 1424`](slices/1424_platform_production_configuration_manifest.md) | `S143-002` Classify sixteen secret references, nine public connections, six control values, and exact owners. |
+| [`Slice 1425`](slices/1425_platform_production_startup_admission.md) | `S143-003` Fail closed on incomplete modes, raw secrets, insecure endpoints, generation drift, and invalid TLS references. |
+| [`Slice 1426`](slices/1426_platform_production_secret_materialization.md) | `S143-004` Resolve provider-neutral secret references into exact owner process environments without value disclosure. |
+| [`Slice 1427`](slices/1427_platform_production_secret_rotation.md) | `S143-005` Freeze prepare, activate, verify, retire, and rollback rotation with the Checkpoint Gate. |
+| [`Slice 1428`](slices/1428_platform_production_api_key_custody.md) | `S143-006` Enforce MO-only provider-key custody and value-aware evidence redaction. |
+| [`Slice 1429`](slices/1429_platform_production_tls_lifecycle.md) | `S143-007` Define managed TLS termination, renewal, overlap, expiry, revocation, and rollback. |
+| [`Slice 1430`](slices/1430_platform_production_security_local_rehearsal.md) | `S143-008` Rehearse owner-process injection, secret rollback, TLS replacement, and zero-residue cleanup locally. |
+| [`Slice 1431`](slices/1431_s143_external_staging_acceptance.md) | `S143-009` Implement single-host Compose with OpenBao and Traefik and prove protected PostgreSQL/provider secret and TLS lifecycle acceptance. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

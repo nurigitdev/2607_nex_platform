@@ -12,9 +12,12 @@ from nex_runtime.production_startup_admission import (
     _is_placeholder,
     _valid_https_endpoint,
     _valid_versioned_reference,
+    admit_external_startup,
     admit_production_startup,
+    external_startup_admission_projection,
     production_startup_admission_projection,
 )
+from nex_runtime.runtime_profiles import runtime_profile_environment_overlay
 
 import run_platform_production_startup_admission as smoke
 
@@ -40,6 +43,45 @@ def test_valid_production_prestart_is_metadata_only_and_deterministic() -> None:
     assert projection["reference_values_included"] is False
     assert projection["endpoint_values_included"] is False
     assert "external/nex-platform" not in str(projection)
+
+
+def test_staging_live_external_admission_reuses_fail_closed_boundary() -> None:
+    environment = smoke._synthetic_environment()
+    environment.update(runtime_profile_environment_overlay("staging_live"))
+    admission = admit_external_startup(
+        environment,
+        profile="staging_live",
+        root=ROOT,
+    )
+    projection = external_startup_admission_projection(
+        admission,
+        expected_profile="staging_live",
+    )
+
+    assert projection["profile"] == "staging_live"
+    assert projection["secret_reference_count"] == 16
+    with pytest.raises(ProductionStartupAdmissionError, match="projection"):
+        external_startup_admission_projection(
+            admission,
+            expected_profile="production",
+        )
+    with pytest.raises(ProductionStartupAdmissionError, match="profile"):
+        admit_external_startup(environment, profile="test", root=ROOT)
+    with pytest.raises(ProductionStartupAdmissionError, match="profile"):
+        external_startup_admission_projection(
+            admission,
+            expected_profile="test",
+        )
+    production = admit_production_startup(smoke._synthetic_environment(), root=ROOT)
+    assert external_startup_admission_projection(
+        production,
+        expected_profile="production",
+    )["profile"] == "production"
+    with pytest.raises(ProductionStartupAdmissionError, match="projection"):
+        external_startup_admission_projection(
+            replace(admission, secret_reference_count=0),
+            expected_profile="staging_live",
+        )
 
 
 @pytest.mark.parametrize(
@@ -126,4 +168,3 @@ def test_reference_endpoint_placeholder_and_digest_helpers_cover_edges() -> None
     assert _configuration_digest([("b", "2"), ("a", "1")]) == (
         _configuration_digest([("a", "1"), ("b", "2")])
     )
-
