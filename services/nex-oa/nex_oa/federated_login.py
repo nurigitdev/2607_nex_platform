@@ -32,8 +32,8 @@ from nex_runtime import (
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
-    validate_authorization_header,
 )
+from nex_oa.service_auth import authorize_oa_service_request
 
 
 OA_FEDERATED_LOGIN_RESPONSE_SCHEMA_VERSION = "oa_federated_login_response.v1"
@@ -302,20 +302,11 @@ def register_federated_login_routes(
 def _authorize_federated_login(
     request: Request, authorization: str | None
 ) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-oa",
-        required_scopes=(DEFAULT_SERVICE_SCOPE,),
-    )
-    if result.ok:
-        return None
-    return problem_response(
+    return authorize_oa_service_request(
         request,
-        status_code=401,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authentication failed",
-        detail=result.detail or "OA requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authentication-failed",
+        authorization,
+        required_scopes=(DEFAULT_SERVICE_SCOPE,),
+        route_class="CREDENTIAL",
     )
 
 

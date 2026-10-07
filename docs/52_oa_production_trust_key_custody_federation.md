@@ -1,6 +1,6 @@
 # OA Production Trust, Key Custody, and Enterprise Federation
 
-Status: S144 active through Slice 1440. Production deployment remains
+Status: S144 active through Slice 1441. Production deployment remains
 unapproved.
 
 ## Required Outcome
@@ -137,6 +137,29 @@ while an advertised incompatible value is rejected. This does not relax OA's
 authorization request policy. Protected execution remains mandatory in Slice
 1441.
 
+Slice 1441 connects the real `nex_oa_test` migration head, current immutable
+OA image, OpenBao Raft/Transit/OIDC, and Traefik HTTPS boundary. The protected
+runner performs authorization code exchange with PKCE S256, submits the actual
+OpenBao ID token to OA's exact-subject federation service, rotates Transit and
+OIDC keys, verifies JWKS overlap, revocation, restart, outage fail-closed
+behavior, recovery, privacy, and cleanup. The federated-login route now uses
+the configured signed-token admission runtime rather than directly parsing a
+legacy mock token. Traefik reaches OpenBao only through a dedicated internal
+identity network, and the ten-route managed certificate includes the identity
+issuer SAN. OA uses separate AppRoles for one-use KV bootstrap and repeatable,
+sign/read-only Transit authentication; the signer retries once with the latter
+when its short-lived client token expires. OA restart refreshes the one-use KV
+credential and recreates the container rather than weakening bootstrap reuse.
+Acceptance is fail-closed: OA session issuance, an actual OIDC token `kid`
+change, and old/new JWKS overlap must all be observed rather than inferred from
+key-set counts.
+
+The canonical browser callback URL remains registration metadata only; OA does
+not yet expose the callback route or state-cookie/browser redirect lifecycle.
+That gap is explicit in protected evidence and blocks production approval. It
+does not invalidate the single-host feasibility decision or the live provider
+protocol/session-boundary proof.
+
 ## Slice Sequence
 
 | Slice | Scope |
@@ -161,8 +184,9 @@ authorization request policy. Protected execution remains mandatory in Slice
   subject, or database URL may enter source-controlled evidence.
 - Automatic linking by email or employee number remains forbidden. Federation
   requires an exact pre-provisioned external-subject digest.
-- OpenBao root/admin tokens never enter OA. OA receives least-privilege AppRole
-  credentials materialized at its process boundary.
+- OpenBao root/admin tokens never enter OA. OA receives distinct
+  least-privilege AppRole credentials for one-use KV bootstrap and runtime
+  Transit signing; neither role may inherit the other's capabilities.
 - PostgreSQL stores opaque custody references and public JWKs only. It never
   stores private key material or OIDC client credentials.
 - `SIGNED_ONLY` remains mandatory; key or IdP outage fails closed and cannot

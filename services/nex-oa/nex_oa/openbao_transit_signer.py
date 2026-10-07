@@ -56,11 +56,25 @@ class OpenBaoTransitKeyReference:
 
 
 class OpenBaoTransitOaRsaSigningProvider:
-    def __init__(self, transport: OpenBaoTransitTransport, token: str) -> None:
+    def __init__(
+        self,
+        transport: OpenBaoTransitTransport,
+        token: str,
+        *,
+        role_id: str | None = None,
+        secret_id: str | None = None,
+    ) -> None:
         if not _valid_credential(token):
             raise _custody_error("OpenBao Transit client token is invalid")
+        if (role_id is None) != (secret_id is None) or (
+            role_id is not None
+            and (not _valid_credential(role_id) or not _valid_credential(secret_id))
+        ):
+            raise _custody_error("OpenBao Transit AppRole credential is invalid")
         self._transport = transport
         self._token = token
+        self._role_id = role_id
+        self._secret_id = secret_id
         self._closed = False
 
     @classmethod
@@ -73,19 +87,12 @@ class OpenBaoTransitOaRsaSigningProvider:
     ) -> OpenBaoTransitOaRsaSigningProvider:
         if not _valid_credential(role_id) or not _valid_credential(secret_id):
             raise _custody_error("OpenBao Transit AppRole credential is invalid")
-        try:
-            response = transport.request(
-                "POST",
-                "/v1/auth/approle/login",
-                payload={"role_id": role_id, "secret_id": secret_id},
-            )
-        except Exception as exc:
-            raise _transport_error() from exc
-        auth = response.get("auth")
-        token = auth.get("client_token") if isinstance(auth, Mapping) else None
-        if not isinstance(token, str) or not _valid_credential(token):
-            raise _custody_error("OpenBao Transit AppRole login failed")
-        return cls(transport, token)
+        token = _authenticate_token(
+            transport,
+            role_id=role_id,
+            secret_id=secret_id,
+        )
+        return cls(transport, token, role_id=role_id, secret_id=secret_id)
 
     def sign_rs256(self, private_key_ref: str, signing_input: bytes) -> bytes:
         if self._closed:
@@ -107,18 +114,7 @@ class OpenBaoTransitOaRsaSigningProvider:
             "prehashed": False,
             "signature_algorithm": "pkcs1v15",
         }
-        try:
-            response = self._transport.request(
-                "POST",
-                f"/v1/{OPENBAO_TRANSIT_MOUNT}/sign/"
-                f"{quote(reference.key_name, safe='-')}/sha2-256",
-                token=self._token,
-                payload=payload,
-            )
-        except OaSignedTokenError:
-            raise
-        except Exception as exc:
-            raise _transport_error() from exc
+        response = self._request_signature(reference, payload)
         data = response.get("data")
         encoded = data.get("signature") if isinstance(data, Mapping) else None
         match = _SIGNATURE.fullmatch(encoded) if isinstance(encoded, str) else None
@@ -131,6 +127,38 @@ class OpenBaoTransitOaRsaSigningProvider:
         if len(signature) != RSA_3072_SIGNATURE_BYTES:
             raise _custody_error("OpenBao Transit signature size is invalid")
         return signature
+
+    def _request_signature(
+        self,
+        reference: OpenBaoTransitKeyReference,
+        payload: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        path = (
+            f"/v1/{OPENBAO_TRANSIT_MOUNT}/sign/"
+            f"{quote(reference.key_name, safe='-')}/sha2-256"
+        )
+        try:
+            return self._transport.request(
+                "POST", path, token=self._token, payload=payload
+            )
+        except OaSignedTokenError:
+            raise
+        except Exception as first_error:
+            if self._role_id is None or self._secret_id is None:
+                raise _transport_error() from first_error
+            try:
+                self._token = _authenticate_token(
+                    self._transport,
+                    role_id=self._role_id,
+                    secret_id=self._secret_id,
+                )
+                return self._transport.request(
+                    "POST", path, token=self._token, payload=payload
+                )
+            except OaSignedTokenError:
+                raise
+            except Exception as retry_error:
+                raise _transport_error() from retry_error
 
     def close(self) -> None:
         if self._closed:
@@ -185,7 +213,19 @@ def build_openbao_transit_signing_provider(
             "OpenBao Transit signing requires a production-shaped profile"
         )
     try:
-        settings = load_openbao_client_settings(environ)
+        credential_environment = dict(environ)
+        transit_role = str(environ.get("NEX_OA_TRANSIT_ROLE_ID_FILE") or "").strip()
+        transit_secret = str(
+            environ.get("NEX_OA_TRANSIT_SECRET_ID_FILE") or ""
+        ).strip()
+        if bool(transit_role) != bool(transit_secret):
+            raise OpenBaoSecretResolverError(
+                "OpenBao Transit credential file settings are incomplete"
+            )
+        if transit_role:
+            credential_environment["NEX_OPENBAO_ROLE_ID_FILE"] = transit_role
+            credential_environment["NEX_OPENBAO_SECRET_ID_FILE"] = transit_secret
+        settings = load_openbao_client_settings(credential_environment)
         transport = transport_factory(
             settings.address,
             ca_certificate_file=settings.ca_certificate_file,
@@ -209,6 +249,27 @@ def _valid_credential(value: str) -> bool:
         and not any(character.isspace() for character in value)
         and not any(ord(character) < 32 or ord(character) == 127 for character in value)
     )
+
+
+def _authenticate_token(
+    transport: OpenBaoTransitTransport,
+    *,
+    role_id: str,
+    secret_id: str,
+) -> str:
+    try:
+        response = transport.request(
+            "POST",
+            "/v1/auth/approle/login",
+            payload={"role_id": role_id, "secret_id": secret_id},
+        )
+    except Exception as exc:
+        raise _transport_error() from exc
+    auth = response.get("auth")
+    token = auth.get("client_token") if isinstance(auth, Mapping) else None
+    if not isinstance(token, str) or not _valid_credential(token):
+        raise _custody_error("OpenBao Transit AppRole login failed")
+    return token
 
 
 def _transport_error() -> OaSignedTokenError:

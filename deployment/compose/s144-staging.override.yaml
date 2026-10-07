@@ -2,6 +2,7 @@ services:
   openbao:
     volumes:
       - ../compose/openbao/s144-config.hcl:/openbao/config/config.hcl:ro
+    networks: [control, admin, identity]
 
   traefik:
     volumes:
@@ -21,6 +22,7 @@ services:
           - reranker.nex-staging.test
           - generation.nex-staging.test
           - id.nex-staging.test
+      identity: {}
 
   nex-oa:
     environment:
@@ -37,3 +39,26 @@ services:
       NEX_OA_OIDC_RESPONSE_TYPE: code
       NEX_OA_OIDC_PKCE_METHOD: S256
       NEX_OA_OIDC_CLIENT_AUTH_METHOD: client_secret_basic
+      NEX_OA_TRANSIT_ROLE_ID_FILE: /run/secrets/openbao_transit_role_id
+      NEX_OA_TRANSIT_SECRET_ID_FILE: /run/secrets/openbao_transit_secret_id
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: oa_role_id
+        target: openbao_role_id
+      - source: oa_secret_id
+        target: openbao_secret_id
+      - source: oa_transit_role_id
+        target: openbao_transit_role_id
+      - source: oa_transit_secret_id
+        target: openbao_transit_secret_id
+
+secrets:
+  oa_transit_role_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-oa-transit.role-id"
+  oa_transit_secret_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-oa-transit.secret-id"
+
+networks:
+  identity:
+    internal: true

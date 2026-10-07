@@ -12,6 +12,7 @@ from nex_runtime.s144_staging import (
     OIDC_CALLBACK,
     S144StagingError,
     configure_openbao_s144_trust,
+    refresh_openbao_s144_transit_credentials,
     validate_s144_compose_assets,
 )
 
@@ -51,6 +52,10 @@ class FakeClient:
             return {"data": {"version": self.kv_version}}
         if path == "/v1/identity/oidc/provider/nex-platform" and method == "GET":
             return {"data": {"allowed_client_ids": self.provider_client_ids}}
+        if path.endswith("/role-id"):
+            return {"data": {"role_id": "transit-role-id-12345678"}}
+        if path.endswith("/secret-id"):
+            return {"data": {"secret_id": "transit-secret-id-12345678"}}
         return {}
 
 
@@ -72,7 +77,9 @@ def test_s144_compose_override_is_value_free_and_single_host() -> None:
         "override_service_count": 3,
         "tls_route_count": 10,
         "oidc_secret_reference_count": 1,
+        "transit_runtime_secret_count": 2,
         "openbao_ui_enabled": True,
+        "identity_network_internal": True,
         "host_software_install_required": False,
         "raw_secret_values_included": False,
     }
@@ -81,6 +88,18 @@ def test_s144_compose_override_is_value_free_and_single_host() -> None:
 @pytest.mark.parametrize(
     ("path", "old", "new", "message"),
     (
+        (
+            "deployment/compose/s144-staging.override.yaml",
+            "  identity:\n    internal: true",
+            "  identity:\n    internal: false",
+            "identity network",
+        ),
+        (
+            "deployment/compose/s144-staging.override.yaml",
+            "NEX_OA_TRANSIT_ROLE_ID_FILE: /run/secrets/openbao_transit_role_id",
+            "NEX_OA_TRANSIT_ROLE_ID_FILE: /run/secrets/missing",
+            "OA trust",
+        ),
         (
             "deployment/compose/s144-staging.override.yaml",
             "NEX_OA_SIGNING_PROVIDER: OPENBAO_TRANSIT",
@@ -151,17 +170,26 @@ def test_openbao_trust_configuration_is_policy_isolated_and_value_free() -> None
 
     assert result["status"] == "CONFIGURED"
     assert result["transit_key_version"] == 1
+    assert result["transit_role_name"] == "nex-oa-transit-staging"
     assert result["oidc_secret_version"] == 1
     assert result["oidc_client_secret_included"] is False
     assert result["oidc_client_secret_reference_included"] is False
     assert client.client_data["client_secret"] not in json.dumps(result)
     policy_request = next(
-        item for item in client.requests if item[1].endswith("nex-oa-staging")
+        item for item in client.requests if item[1].endswith("nex-oa-transit-staging")
     )
     policy = policy_request[3]["policy"]
     assert 'path "transit/sign/oa-signing/sha2-256"' in policy
     assert 'capabilities = ["update"]' in policy
     assert "transit/keys/oa-signing/rotate" not in policy
+    assert "kv/data/" not in policy
+    role_request = next(
+        item
+        for item in client.requests
+        if item[1].endswith("role/nex-oa-transit-staging")
+    )
+    assert role_request[3]["secret_id_num_uses"] == 0
+    assert role_request[3]["secret_id_ttl"] == "24h"
     client_request = next(
         item
         for item in client.requests
@@ -200,13 +228,65 @@ def test_openbao_trust_configuration_rejects_invalid_root_credential() -> None:
         )
 
 
+def test_transit_runtime_credentials_are_written_without_secret_projection(
+    tmp_path: Path,
+) -> None:
+    runtime = tmp_path / "runtime"
+    (runtime / "credentials").mkdir(parents=True)
+    client = FakeClient()
+
+    result = refresh_openbao_s144_transit_credentials(
+        client,
+        root_token="root-" + "x" * 24,
+        runtime_dir=runtime,
+    )
+
+    assert result["status"] == "REFRESHED"
+    assert result["secret_id_included"] is False
+    assert "transit-secret-id" not in json.dumps(result)
+    assert (runtime / "credentials/nex-oa-transit.role-id").read_text().strip() == (
+        "transit-role-id-12345678"
+    )
+    assert (runtime / "credentials/nex-oa-transit.secret-id").read_text().strip() == (
+        "transit-secret-id-12345678"
+    )
+    assert (runtime / "credentials/nex-oa-transit.secret-id").stat().st_mode & 0o777 == 0o644
+
+
+def test_transit_runtime_credentials_fail_closed(tmp_path: Path) -> None:
+    with pytest.raises(S144StagingError, match="root credential"):
+        refresh_openbao_s144_transit_credentials(
+            FakeClient(), root_token="short", runtime_dir=tmp_path
+        )
+    with pytest.raises(S144StagingError, match="directory"):
+        refresh_openbao_s144_transit_credentials(
+            FakeClient(), root_token="root-" + "x" * 24, runtime_dir=tmp_path
+        )
+
+    runtime = tmp_path / "runtime"
+    (runtime / "credentials").mkdir(parents=True)
+
+    class InvalidClient(FakeClient):
+        def request(self, method, path, *, token=None, payload=None):
+            if path.endswith("/secret-id"):
+                return {"data": {"secret_id": "short"}}
+            return super().request(method, path, token=token, payload=payload)
+
+    with pytest.raises(S144StagingError, match="AppRole credential"):
+        refresh_openbao_s144_transit_credentials(
+            InvalidClient(),
+            root_token="root-" + "x" * 24,
+            runtime_dir=runtime,
+        )
+
+
 def test_rehearsal_runner_and_cli(monkeypatch, capsys) -> None:
     result = runner.run_s144_staging_trust_rehearsal()
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
     assert result["decision"]["topology"] == "docker-compose-single-host"
     assert runner.summary_line(result).startswith(
-        "s144_staging_trust_rehearsal=pass checks=16/16"
+        "s144_staging_trust_rehearsal=pass checks=17/17"
     )
 
     monkeypatch.setattr(runner, "run_s144_staging_trust_rehearsal", lambda: result)

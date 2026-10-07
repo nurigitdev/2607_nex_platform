@@ -179,6 +179,25 @@ def test_api_route_authorization_success_failure_and_audit() -> None:
     assert "private-token" not in json.dumps(events.events)
 
 
+def test_api_route_uses_configured_signed_token_admission_runtime() -> None:
+    service, _ = _service()
+    app = FastAPI()
+    app.state.service_token_admission = object()
+    register_federated_login_routes(app, service=service)
+    token = issue_mock_service_token(
+        service_id="nex-ae-api", audience="nex-oa"
+    ).access_token
+
+    response = TestClient(app).post(
+        "/internal/v1/auth/federated-login",
+        json=_payload(),
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == "nex.service_token_admission_unavailable"
+
+
 def test_runner_and_cli(monkeypatch, capsys) -> None:
     evidence = runner.run_oa_federated_login_orchestration()
     assert evidence["status"] == "PASS"

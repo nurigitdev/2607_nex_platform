@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import ipaddress
@@ -591,14 +591,21 @@ def issue_openbao_platform_certificate(
     *,
     root_token: str,
     runtime_dir: Path,
+    subject_alt_names: Sequence[str] = STAGING_HOSTS,
 ) -> dict[str, str]:
+    hostnames = tuple(subject_alt_names)
+    if not hostnames or any(
+        not isinstance(hostname, str) or not hostname or "," in hostname
+        for hostname in hostnames
+    ):
+        raise S143StagingError("OpenBao PKI subject alternative names are invalid")
     response = client.request(
         "POST",
         "/v1/pki/issue/nex-platform-staging",
         token=root_token,
         payload={
             "common_name": "nex-staging.test",
-            "alt_names": ",".join(STAGING_HOSTS),
+            "alt_names": ",".join(hostnames),
             "ttl": "24h",
             "private_key_format": "pkcs8",
         },

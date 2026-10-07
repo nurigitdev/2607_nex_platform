@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from hashlib import sha256
+import os
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -20,6 +21,10 @@ OIDC_ISSUER_ORIGIN = "https://id.nex-staging.test:8443"
 OIDC_ISSUER = f"{OIDC_ISSUER_ORIGIN}/v1/identity/oidc/provider/{OIDC_PROVIDER_NAME}"
 OIDC_CALLBACK = "https://oa.nex-staging.test:8443/api/v1/auth/federated/callback"
 TRANSIT_KEY_NAME = "oa-signing"
+TRANSIT_POLICY_NAME = "nex-oa-transit-staging"
+TRANSIT_ROLE_NAME = "nex-oa-transit-staging"
+TRANSIT_ROLE_ID_FILE = "nex-oa-transit.role-id"
+TRANSIT_SECRET_ID_FILE = "nex-oa-transit.secret-id"
 _OPAQUE_CLIENT_VALUE = re.compile(r"^[\x21-\x7e]{8,4096}$")
 
 
@@ -70,6 +75,12 @@ def validate_s144_compose_assets(root: Path) -> dict[str, Any]:
         "../compose/openbao/s144-config.hcl:/openbao/config/config.hcl:ro"
     ]:
         raise S144StagingError("S144 OpenBao configuration override drift")
+    networks = override.get("networks")
+    if (
+        networks != {"identity": {"internal": True}}
+        or "identity" not in services["openbao"].get("networks", ())
+    ):
+        raise S144StagingError("S144 isolated identity network drift")
     traefik = services["traefik"]
     if (
         traefik.get("volumes")
@@ -77,6 +88,7 @@ def validate_s144_compose_assets(root: Path) -> dict[str, Any]:
         or "openbao_ca" not in traefik.get("secrets", ())
         or "id.nex-staging.test"
         not in traefik.get("networks", {}).get("service", {}).get("aliases", ())
+        or traefik.get("networks", {}).get("identity") != {}
     ):
         raise S144StagingError("S144 Traefik identity route override drift")
 
@@ -94,6 +106,8 @@ def validate_s144_compose_assets(root: Path) -> dict[str, Any]:
         "NEX_OA_OIDC_RESPONSE_TYPE": "code",
         "NEX_OA_OIDC_PKCE_METHOD": "S256",
         "NEX_OA_OIDC_CLIENT_AUTH_METHOD": "client_secret_basic",
+        "NEX_OA_TRANSIT_ROLE_ID_FILE": "/run/secrets/openbao_transit_role_id",
+        "NEX_OA_TRANSIT_SECRET_ID_FILE": "/run/secrets/openbao_transit_secret_id",
     }
     if not isinstance(oa_environment, Mapping) or any(
         oa_environment.get(name) != expected for name, expected in required_oa.items()
@@ -108,6 +122,23 @@ def validate_s144_compose_assets(root: Path) -> dict[str, Any]:
         "secret://openbao/nex-platform/staging/nex-oa/NEX_OA_OIDC_CLIENT_SECRET@"
     ):
         raise S144StagingError("S144 OIDC secret reference drift")
+    oa_secrets = services["nex-oa"].get("secrets")
+    required_transit_secrets = {
+        ("oa_transit_role_id", "openbao_transit_role_id"),
+        ("oa_transit_secret_id", "openbao_transit_secret_id"),
+    }
+    mounted_transit_secrets = {
+        (item.get("source"), item.get("target"))
+        for item in oa_secrets or ()
+        if isinstance(item, Mapping)
+    }
+    secret_files = override.get("secrets")
+    if (
+        not required_transit_secrets.issubset(mounted_transit_secrets)
+        or not isinstance(secret_files, Mapping)
+        or set(secret_files) != {"oa_transit_role_id", "oa_transit_secret_id"}
+    ):
+        raise S144StagingError("S144 Transit runtime credential boundary drift")
 
     http = dynamic.get("http")
     identity = (
@@ -136,7 +167,9 @@ def validate_s144_compose_assets(root: Path) -> dict[str, Any]:
         "override_service_count": len(services),
         "tls_route_count": 10,
         "oidc_secret_reference_count": 1,
+        "transit_runtime_secret_count": 2,
         "openbao_ui_enabled": True,
+        "identity_network_internal": True,
         "host_software_install_required": False,
         "raw_secret_values_included": False,
     }
@@ -184,9 +217,6 @@ def configure_openbao_s144_trust(
         raise S144StagingError("S144 Transit key policy is invalid")
 
     policy = (
-        'path "kv/data/nex-platform/staging/nex-oa/*" {\n'
-        '  capabilities = ["read"]\n'
-        "}\n"
         f'path "transit/sign/{TRANSIT_KEY_NAME}/sha2-256" {{\n'
         '  capabilities = ["update"]\n'
         "}\n"
@@ -196,9 +226,21 @@ def configure_openbao_s144_trust(
     )
     client.request(
         "PUT",
-        "/v1/sys/policies/acl/nex-oa-staging",
+        f"/v1/sys/policies/acl/{TRANSIT_POLICY_NAME}",
         token=root_token,
         payload={"policy": policy},
+    )
+    client.request(
+        "POST",
+        f"/v1/auth/approle/role/{TRANSIT_ROLE_NAME}",
+        token=root_token,
+        payload={
+            "token_policies": [TRANSIT_POLICY_NAME],
+            "token_ttl": "5m",
+            "token_max_ttl": "10m",
+            "secret_id_ttl": "24h",
+            "secret_id_num_uses": 0,
+        },
     )
     client.request(
         "POST",
@@ -273,6 +315,7 @@ def configure_openbao_s144_trust(
         "status": "CONFIGURED",
         "transit_key_name": TRANSIT_KEY_NAME,
         "transit_key_version": 1,
+        "transit_role_name": TRANSIT_ROLE_NAME,
         "oidc_provider_name": OIDC_PROVIDER_NAME,
         "oidc_client_name": OIDC_CLIENT_NAME,
         "oidc_client_id": client_id,
@@ -281,6 +324,49 @@ def configure_openbao_s144_trust(
         "oidc_client_secret_included": False,
         "oidc_client_secret_reference_included": False,
         "raw_private_key_included": False,
+    }
+
+
+def refresh_openbao_s144_transit_credentials(
+    client: OpenBaoS144AdminClient,
+    *,
+    root_token: str,
+    runtime_dir: Path,
+) -> dict[str, Any]:
+    if _opaque_value(root_token) is None:
+        raise S144StagingError("S144 OpenBao root credential is invalid")
+    credential_dir = runtime_dir / "credentials"
+    if not runtime_dir.is_absolute() or not credential_dir.is_dir():
+        raise S144StagingError("S144 runtime credential directory is unavailable")
+    role_data = _data(
+        client.request(
+            "GET",
+            f"/v1/auth/approle/role/{TRANSIT_ROLE_NAME}/role-id",
+            token=root_token,
+        ),
+        "Transit role ID",
+    )
+    secret_data = _data(
+        client.request(
+            "POST",
+            f"/v1/auth/approle/role/{TRANSIT_ROLE_NAME}/secret-id",
+            token=root_token,
+            payload={},
+        ),
+        "Transit secret ID",
+    )
+    role_id = _opaque_value(role_data.get("role_id"))
+    secret_id = _opaque_value(secret_data.get("secret_id"))
+    if role_id is None or secret_id is None:
+        raise S144StagingError("S144 Transit AppRole credential is invalid")
+    _replace_credential(credential_dir / TRANSIT_ROLE_ID_FILE, role_id)
+    _replace_credential(credential_dir / TRANSIT_SECRET_ID_FILE, secret_id)
+    return {
+        "schema_version": S144_STAGING_SCHEMA_VERSION,
+        "status": "REFRESHED",
+        "role_name": TRANSIT_ROLE_NAME,
+        "role_id_digest": sha256(role_id.encode("utf-8")).hexdigest(),
+        "secret_id_included": False,
     }
 
 
@@ -295,3 +381,13 @@ def _opaque_value(value: object, *, maximum: int = 4096) -> str | None:
     if not isinstance(value, str) or len(value) > maximum:
         return None
     return value if _OPAQUE_CLIENT_VALUE.fullmatch(value) else None
+
+
+def _replace_credential(path: Path, value: str) -> None:
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            output.write(f"{value}\n")
+        os.chmod(path, 0o644)
+    except OSError:
+        raise S144StagingError("S144 Transit credential write failed") from None

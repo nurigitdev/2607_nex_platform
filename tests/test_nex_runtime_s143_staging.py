@@ -566,3 +566,20 @@ def test_openbao_initialization_and_pki_fail_closed(tmp_path) -> None:
             root_token="root-token-12345678",
             runtime_dir=runtime,
         )
+    with pytest.raises(S143StagingError, match="subject alternative names"):
+        issue_openbao_platform_certificate(
+            FakeClient(),
+            root_token="root-token-12345678",
+            runtime_dir=runtime,
+            subject_alt_names=("invalid,hostname",),
+        )
+    client = FakeClient()
+    issue_openbao_platform_certificate(
+        client,
+        root_token="root-token-12345678",
+        runtime_dir=runtime,
+        subject_alt_names=("oa.nex-staging.test", "id.nex-staging.test"),
+    )
+    assert client.requests[-1][3]["alt_names"] == (
+        "oa.nex-staging.test,id.nex-staging.test"
+    )

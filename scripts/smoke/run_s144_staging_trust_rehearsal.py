@@ -122,9 +122,12 @@ def run_s144_staging_trust_rehearsal() -> dict[str, Any]:
         "single_host_compose_valid": compose["status"] == "VALID",
         "openbao_ui_enabled": compose["openbao_ui_enabled"] is True,
         "managed_identity_tls_route": compose["tls_route_count"] == 10,
+        "identity_network_isolated": compose["identity_network_internal"] is True,
         "transit_mounted": paths[0] == "/v1/sys/mounts/transit",
         "rsa3072_key_bound": configured["transit_key_version"] == 1,
-        "oa_policy_updated": "/v1/sys/policies/acl/nex-oa-staging" in paths,
+        "transit_policy_isolated": (
+            "/v1/sys/policies/acl/nex-oa-transit-staging" in paths
+        ),
         "confidential_client_registered": configured["oidc_client_name"]
         == "nex-platform-oa-staging",
         "generated_client_id_accepted": registration.client_id
@@ -174,7 +177,7 @@ def summary_line(result: Mapping[str, Any]) -> str:
     decision = dict(result.get("decision") or {})
     return (
         "s144_staging_trust_rehearsal=pass "
-        f"checks={summary.get('check_count', 0)}/16 "
+        f"checks={summary.get('check_count', 0)}/17 "
         f"requests={summary.get('request_count', 0)} "
         f"routes={summary.get('tls_route_count', 0)} "
         f"topology={decision.get('topology')} "
