@@ -1522,6 +1522,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1412`](slices/1412_platform_deployment_packaging_boundary.md) | `S142-001` Freeze six owner-scoped artifacts, thirteen process bindings, four environment classes, and the S142 gate sequence. |
 | [`Slice 1413`](slices/1413_platform_deployment_artifact_catalog.md) | `S142-002` Implement the typed immutable artifact catalog, canonical digest, exact process coverage, and OCI digest-reference guardrails. |
 | [`Slice 1414`](slices/1414_platform_deployment_build_input_locks.md) | `S142-003` Lock Python and Node production dependencies with integrity metadata and bind them to a deterministic build-input digest. |
+| [`Slice 1415`](slices/1415_platform_owner_scoped_oci_build_definitions.md) | `S142-004` Define six digest-pinned OCI targets and deterministic owner-allowlist build contexts with non-root runtime policy. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
