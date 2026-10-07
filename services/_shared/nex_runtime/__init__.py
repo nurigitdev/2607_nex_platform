@@ -56,6 +56,22 @@ from .cross_service_trace import (
     validate_cross_service_trace_source_projection,
 )
 from .env import load_env_file, merge_pythonpath
+from .deployment_artifacts import (
+    ARTIFACT_KINDS,
+    DEFAULT_DEPLOYMENT_ARTIFACTS,
+    DEFAULT_PROCESS_ARTIFACT_BINDINGS,
+    DEPLOYMENT_ARTIFACT_CATALOG_SCHEMA_VERSION,
+    DeploymentArtifactCatalog,
+    DeploymentArtifactDefinition,
+    DeploymentArtifactError,
+    ProcessArtifactBinding,
+    build_default_deployment_artifact_catalog,
+    canonical_deployment_artifact_catalog,
+    deployment_artifact_catalog_digest,
+    deployment_artifact_catalog_projection,
+    immutable_image_reference,
+    validate_deployment_artifact_catalog,
+)
 from .topology import (
     AG_PROJECTION_MODES,
     PROCESS_KINDS,
@@ -491,6 +507,14 @@ from .subject_resolver import (
 )
 
 __all__ = [
+    "ARTIFACT_KINDS",
+    "DEFAULT_DEPLOYMENT_ARTIFACTS",
+    "DEFAULT_PROCESS_ARTIFACT_BINDINGS",
+    "DEPLOYMENT_ARTIFACT_CATALOG_SCHEMA_VERSION",
+    "DeploymentArtifactCatalog",
+    "DeploymentArtifactDefinition",
+    "DeploymentArtifactError",
+    "ProcessArtifactBinding",
     "MODEL_CALIBRATION_EVALUATION_SCHEMA_VERSION",
     "MODEL_CALIBRATION_PROFILE_SCHEMA_VERSION",
     "BinaryCalibrationConstraints",
@@ -668,6 +692,7 @@ __all__ = [
     "build_service_log_retention_history_entry",
     "build_service_log_retention_history_list",
     "build_service_job_control_response",
+    "build_default_deployment_artifact_catalog",
     "build_service_job_controls",
     "build_service_job_replay_response",
     "build_session_factory",
@@ -678,9 +703,13 @@ __all__ = [
     "build_worker_heartbeat",
     "check_database_readiness",
     "check_sqlalchemy_engine",
+    "canonical_deployment_artifact_catalog",
     "classify_calibrated_score",
     "database_pool_settings",
+    "deployment_artifact_catalog_digest",
+    "deployment_artifact_catalog_projection",
     "issue_mock_service_token",
+    "immutable_image_reference",
     "load_env_file",
     "list_operational_event_taxonomy",
     "merge_pythonpath",
@@ -761,6 +790,7 @@ __all__ = [
     "trace_id_from_headers",
     "transition_common_job",
     "validate_authorization_header",
+    "validate_deployment_artifact_catalog",
     "validate_common_job",
     "validate_mock_service_token",
     "validate_operational_event",

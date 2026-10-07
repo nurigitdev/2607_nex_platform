@@ -1,7 +1,7 @@
 # Platform Reproducible Deployment Packaging and Environment Topology
 
-Status: Canonical scope freeze for S142. Slice 1412 boundary audit complete;
-production deployment remains unapproved.
+Status: S142 active through Slice 1413; production deployment remains
+unapproved.
 
 ## Required Outcome
 
