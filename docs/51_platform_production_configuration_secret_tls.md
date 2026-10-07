@@ -1,6 +1,7 @@
 # Platform Production Configuration, Secret, and TLS Lifecycle
 
-Status: S143 active at Slice 1423. Production deployment remains unapproved.
+Status: S143 active through Slice 1424. Production deployment remains
+unapproved.
 
 ## Required Outcome
 
@@ -67,6 +68,9 @@ values and must be validated independently.
 All gaps begin `OPEN`. Repository implementation or local loopback evidence
 cannot mark `protected_staging_acceptance` complete.
 
+Slice 1424 implements the typed manifest and one-to-one secret-reference
+classification. Runtime materialization and startup admission remain open.
+
 ## Slice Sequence
 
 | Slice | Scope |
@@ -103,4 +107,3 @@ managed TLS endpoint capable of certificate issue/renew/rollback evidence.
 Provider identity, endpoint, authentication mechanism, and test namespace must
 be supplied out of band. Until then, S143 remains active and production stays
 blocked.
-
