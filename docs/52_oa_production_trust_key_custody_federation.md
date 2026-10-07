@@ -1,6 +1,6 @@
 # OA Production Trust, Key Custody, and Enterprise Federation
 
-Status: S144 active through Slice 1438. Production deployment remains
+Status: S144 active through Slice 1439. Production deployment remains
 unapproved.
 
 ## Required Outcome
@@ -112,6 +112,15 @@ the secret nor its reference is persisted or emitted. Discovery endpoints
 must remain on the issuer origin and explicitly advertise the accepted flow,
 scope, authentication method, PKCE method, and RS256 signing algorithm. Live
 OpenBao registration remains owned by Slices 1440 and 1441.
+
+Slice 1439 closes the deterministic `federation_rollover_outage` gap. An
+unknown key identifier causes one bounded refresh, a refreshed JWKS is swapped
+in only after discovery and every public key validate, and a JWKS URI must
+remain on the HTTPS issuer origin. Expired caches never serve stale keys after
+an IdP failure. The cache retains its last-good generation for diagnosis,
+records redacted failure state, and clears that state only after a complete
+recovery refresh. Disabled providers and disabled exact-subject links remain
+fail-closed. Protected live rollover and outage proof remains in Slice 1441.
 
 ## Slice Sequence
 

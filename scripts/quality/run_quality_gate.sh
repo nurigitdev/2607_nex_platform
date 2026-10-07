@@ -758,3 +758,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_oa_openbao_transit_key_lifecycle.py --summary
 "$PYTHON_BIN" scripts/smoke/run_oa_openbao_transit_rotation_checkpoint.py --summary
 "$PYTHON_BIN" scripts/smoke/run_oa_enterprise_oidc_registration.py --summary
+"$PYTHON_BIN" scripts/smoke/run_oa_oidc_rollover_resilience.py --summary

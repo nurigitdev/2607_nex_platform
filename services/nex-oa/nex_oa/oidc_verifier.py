@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from hashlib import sha256
-import json
 from time import time
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from nex_oa.federated_identities import OaFederationError
-
 
 OIDC_ID_TOKEN_ALGORITHM = "RS256"
 OIDC_ID_TOKEN_TYPE = "JWT"
@@ -97,9 +97,17 @@ class OidcDiscoveryJwksCache:
         max_keys: int = OIDC_MAX_KEYS,
         clock: Callable[[], float] = time,
     ) -> None:
-        if not isinstance(ttl_seconds, int) or isinstance(ttl_seconds, bool) or not 1 <= ttl_seconds <= OIDC_MAX_CACHE_TTL_SECONDS:
+        if (
+            not isinstance(ttl_seconds, int)
+            or isinstance(ttl_seconds, bool)
+            or not 1 <= ttl_seconds <= OIDC_MAX_CACHE_TTL_SECONDS
+        ):
             raise ValueError("OIDC cache TTL is outside the supported range")
-        if not isinstance(max_keys, int) or isinstance(max_keys, bool) or not 1 <= max_keys <= OIDC_MAX_KEYS:
+        if (
+            not isinstance(max_keys, int)
+            or isinstance(max_keys, bool)
+            or not 1 <= max_keys <= OIDC_MAX_KEYS
+        ):
             raise ValueError("OIDC cache key limit is outside the supported range")
         if not callable(getattr(source, "fetch_json", None)):
             raise TypeError("OIDC document source must implement fetch_json")
@@ -113,18 +121,28 @@ class OidcDiscoveryJwksCache:
         self._keys: dict[str, rsa.RSAPublicKey] = {}
         self._jwks_uri: str | None = None
         self._refreshed_at: int | None = None
+        self._refresh_generation = 0
+        self._last_refresh_outcome = "NEVER"
+        self._last_failure_at: int | None = None
+        self._consecutive_failures = 0
 
-    def key_for(self, key_id: object, *, now_epoch: int | None = None) -> rsa.RSAPublicKey:
+    def key_for(
+        self, key_id: object, *, now_epoch: int | None = None
+    ) -> rsa.RSAPublicKey:
         kid = _nonempty_text(key_id, "kid")
         now = self._now(now_epoch)
+        refreshed = False
         if self._refreshed_at is None or now - self._refreshed_at >= self._ttl_seconds:
             self.refresh(now_epoch=now)
+            refreshed = True
         key = self._keys.get(kid)
-        if key is None:
+        if key is None and not refreshed:
             self.refresh(now_epoch=now)
             key = self._keys.get(kid)
         if key is None:
-            raise _auth_error("oa.oidc_key_unavailable", "OIDC signing key is unavailable.")
+            raise _auth_error(
+                "oa.oidc_key_unavailable", "OIDC signing key is unavailable."
+            )
         return key
 
     def refresh(self, *, now_epoch: int | None = None) -> int:
@@ -135,8 +153,10 @@ class OidcDiscoveryJwksCache:
             jwks = self._source.fetch_json(jwks_uri)
             keys = _validated_jwks(jwks, max_keys=self._max_keys)
         except OaFederationError:
+            self._record_refresh_failure(now)
             raise
         except Exception as exc:
+            self._record_refresh_failure(now)
             raise OaFederationError(
                 503,
                 "oa.oidc_document_unavailable",
@@ -145,11 +165,15 @@ class OidcDiscoveryJwksCache:
         self._jwks_uri = jwks_uri
         self._keys = keys
         self._refreshed_at = now
+        self._refresh_generation += 1
+        self._last_refresh_outcome = "SUCCEEDED"
+        self._last_failure_at = None
+        self._consecutive_failures = 0
         return len(keys)
 
     def safe_snapshot(self) -> dict[str, Any]:
         return {
-            "cache_schema_version": "oa_oidc_cache.v1",
+            "cache_schema_version": "oa_oidc_cache.v2",
             "provider_id": self._provider.get("provider_id"),
             "status": "POPULATED" if self._keys else "EMPTY",
             "key_count": len(self._keys),
@@ -158,7 +182,16 @@ class OidcDiscoveryJwksCache:
             "max_keys": self._max_keys,
             "jwks_uri_configured": self._jwks_uri is not None,
             "key_ids_included": False,
+            "refresh_generation": self._refresh_generation,
+            "last_refresh_outcome": self._last_refresh_outcome,
+            "last_failure_at_epoch": self._last_failure_at,
+            "consecutive_failures": self._consecutive_failures,
         }
+
+    def _record_refresh_failure(self, now: int) -> None:
+        self._last_refresh_outcome = "FAILED"
+        self._last_failure_at = now
+        self._consecutive_failures += 1
 
     def _now(self, now_epoch: int | None) -> int:
         value = int(self._clock()) if now_epoch is None else now_epoch
@@ -225,23 +258,65 @@ class OidcIdTokenVerifier:
     def _now(self, now_epoch: int | None) -> int:
         value = int(self._clock()) if now_epoch is None else now_epoch
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-            raise _auth_error("oa.oidc_clock_invalid", "OIDC validation clock is invalid.")
+            raise _auth_error(
+                "oa.oidc_clock_invalid", "OIDC validation clock is invalid."
+            )
         return value
 
 
-def _validated_discovery(
-    document: object, *, provider: Mapping[str, Any]
-) -> str:
+def _validated_discovery(document: object, *, provider: Mapping[str, Any]) -> str:
     if not isinstance(document, Mapping):
-        raise _provider_error("oa.oidc_discovery_invalid", "OIDC discovery document is invalid.")
+        raise _provider_error(
+            "oa.oidc_discovery_invalid", "OIDC discovery document is invalid."
+        )
     if document.get("issuer") != provider.get("issuer"):
-        raise _provider_error("oa.oidc_discovery_issuer_invalid", "OIDC discovery issuer is invalid.")
+        raise _provider_error(
+            "oa.oidc_discovery_issuer_invalid", "OIDC discovery issuer is invalid."
+        )
     algorithms = document.get("id_token_signing_alg_values_supported")
     if not isinstance(algorithms, list) or OIDC_ID_TOKEN_ALGORITHM not in algorithms:
-        raise _provider_error("oa.oidc_discovery_algorithm_invalid", "OIDC provider does not support RS256.")
+        raise _provider_error(
+            "oa.oidc_discovery_algorithm_invalid",
+            "OIDC provider does not support RS256.",
+        )
     jwks_uri = _nonempty_text(document.get("jwks_uri"), "jwks_uri")
-    if not jwks_uri.startswith("https://"):
-        raise _provider_error("oa.oidc_jwks_uri_invalid", "OIDC JWKS URI must use HTTPS.")
+    try:
+        jwks = urlsplit(jwks_uri)
+        issuer = urlsplit(str(provider.get("issuer") or ""))
+        jwks_port = jwks.port
+        issuer_port = issuer.port
+    except ValueError:
+        raise _provider_error(
+            "oa.oidc_jwks_uri_invalid", "OIDC JWKS URI is invalid."
+        ) from None
+    if (
+        jwks.scheme != "https"
+        or not jwks.hostname
+        or jwks.username is not None
+        or jwks.password is not None
+        or jwks.query
+        or jwks.fragment
+        or not jwks.path
+        or jwks.path == "/"
+        or jwks_port is not None
+        and not 1 <= jwks_port <= 65_535
+    ):
+        raise _provider_error(
+            "oa.oidc_jwks_uri_invalid", "OIDC JWKS URI must use HTTPS."
+        )
+    if (
+        jwks.scheme,
+        jwks.hostname,
+        jwks_port or 443,
+    ) != (
+        issuer.scheme,
+        issuer.hostname,
+        issuer_port or 443,
+    ):
+        raise _provider_error(
+            "oa.oidc_jwks_origin_invalid",
+            "OIDC JWKS URI must use the issuer origin.",
+        )
     return jwks_uri
 
 
@@ -257,20 +332,31 @@ def _validated_jwks(document: object, *, max_keys: int) -> dict[str, rsa.RSAPubl
             raise _provider_error("oa.oidc_jwk_invalid", "OIDC JWK is invalid.")
         kid = _nonempty_text(item.get("kid"), "kid")
         if kid in keys:
-            raise _provider_error("oa.oidc_jwk_duplicate", "OIDC JWKS contains duplicate key ids.")
+            raise _provider_error(
+                "oa.oidc_jwk_duplicate", "OIDC JWKS contains duplicate key ids."
+            )
         keys[kid] = _public_key(item)
     return keys
 
 
 def _public_key(jwk: Mapping[str, Any]) -> rsa.RSAPublicKey:
     if OIDC_PRIVATE_JWK_MEMBERS.intersection(jwk):
-        raise _provider_error("oa.oidc_jwk_private", "OIDC JWK contains private material.")
-    if any(jwk.get(name) != value for name, value in {"kty": "RSA", "use": "sig", "alg": "RS256"}.items()):
-        raise _provider_error("oa.oidc_jwk_metadata_invalid", "OIDC JWK metadata is invalid.")
+        raise _provider_error(
+            "oa.oidc_jwk_private", "OIDC JWK contains private material."
+        )
+    if any(
+        jwk.get(name) != value
+        for name, value in {"kty": "RSA", "use": "sig", "alg": "RS256"}.items()
+    ):
+        raise _provider_error(
+            "oa.oidc_jwk_metadata_invalid", "OIDC JWK metadata is invalid."
+        )
     modulus = _jwk_integer(jwk.get("n"), "n")
     exponent = _jwk_integer(jwk.get("e"), "e")
     if modulus.bit_length() < OIDC_MIN_RSA_BITS or exponent < 3 or exponent % 2 == 0:
-        raise _provider_error("oa.oidc_jwk_numbers_invalid", "OIDC JWK RSA parameters are invalid.")
+        raise _provider_error(
+            "oa.oidc_jwk_numbers_invalid", "OIDC JWK RSA parameters are invalid."
+        )
     try:
         return rsa.RSAPublicNumbers(e=exponent, n=modulus).public_key()
     except ValueError as exc:
@@ -279,11 +365,15 @@ def _public_key(jwk: Mapping[str, Any]) -> rsa.RSAPublicKey:
 
 def _validated_headers(headers: Mapping[str, Any]) -> str:
     if headers.get("alg") != OIDC_ID_TOKEN_ALGORITHM:
-        raise _auth_error("oa.oidc_algorithm_invalid", "OIDC ID token algorithm is invalid.")
+        raise _auth_error(
+            "oa.oidc_algorithm_invalid", "OIDC ID token algorithm is invalid."
+        )
     if headers.get("typ") not in {None, OIDC_ID_TOKEN_TYPE}:
         raise _auth_error("oa.oidc_type_invalid", "OIDC ID token type is invalid.")
     if OIDC_FORBIDDEN_HEADERS.intersection(headers):
-        raise _auth_error("oa.oidc_header_forbidden", "OIDC ID token header is forbidden.")
+        raise _auth_error(
+            "oa.oidc_header_forbidden", "OIDC ID token header is forbidden."
+        )
     return _nonempty_text(headers.get("kid"), "kid")
 
 
@@ -297,7 +387,9 @@ def _validated_identity(
 ) -> VerifiedOidcIdentity:
     required = ("iss", "sub", "aud", "iat", "exp", "nonce")
     if any(name not in claims for name in required):
-        raise _auth_error("oa.oidc_claim_missing", "OIDC ID token claims are incomplete.")
+        raise _auth_error(
+            "oa.oidc_claim_missing", "OIDC ID token claims are incomplete."
+        )
     issuer = _nonempty_text(claims["iss"], "iss")
     subject = _nonempty_text(claims["sub"], "sub")
     if issuer != provider.get("issuer"):
@@ -305,7 +397,9 @@ def _validated_identity(
     audiences = _audiences(claims["aud"])
     client_id = str(provider.get("client_id") or "")
     if client_id not in audiences:
-        raise _auth_error("oa.oidc_audience_invalid", "OIDC ID token audience is invalid.")
+        raise _auth_error(
+            "oa.oidc_audience_invalid", "OIDC ID token audience is invalid."
+        )
     authorized_party = claims.get("azp", client_id)
     if len(audiences) > 1 and "azp" not in claims:
         raise _auth_error("oa.oidc_azp_missing", "OIDC authorized party is required.")
@@ -318,10 +412,15 @@ def _validated_identity(
     expires_at = _integer_claim(claims["exp"], "exp")
     not_before = _integer_claim(claims.get("nbf", issued_at), "nbf")
     if not_before > issued_at or issued_at >= expires_at:
-        raise _auth_error("oa.oidc_time_invalid", "OIDC ID token time claims are invalid.")
+        raise _auth_error(
+            "oa.oidc_time_invalid", "OIDC ID token time claims are invalid."
+        )
     if expires_at - issued_at > OIDC_MAX_TOKEN_TTL_SECONDS:
         raise _auth_error("oa.oidc_ttl_invalid", "OIDC ID token lifetime is invalid.")
-    if issued_at > now_epoch + OIDC_MAX_CLOCK_SKEW_SECONDS or not_before > now_epoch + OIDC_MAX_CLOCK_SKEW_SECONDS:
+    if (
+        issued_at > now_epoch + OIDC_MAX_CLOCK_SKEW_SECONDS
+        or not_before > now_epoch + OIDC_MAX_CLOCK_SKEW_SECONDS
+    ):
         raise _auth_error("oa.oidc_not_yet_valid", "OIDC ID token is not yet valid.")
     if expires_at <= now_epoch - OIDC_MAX_CLOCK_SKEW_SECONDS:
         raise _auth_error("oa.oidc_expired", "OIDC ID token is expired.")
@@ -353,17 +452,25 @@ def _json_object(segment: str, label: str) -> Mapping[str, Any]:
     try:
         decoded = json.loads(_decode_segment(segment, label).decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise _auth_error("oa.oidc_token_malformed", f"OIDC ID token {label} is invalid.") from exc
+        raise _auth_error(
+            "oa.oidc_token_malformed", f"OIDC ID token {label} is invalid."
+        ) from exc
     if not isinstance(decoded, Mapping):
-        raise _auth_error("oa.oidc_token_malformed", f"OIDC ID token {label} is invalid.")
+        raise _auth_error(
+            "oa.oidc_token_malformed", f"OIDC ID token {label} is invalid."
+        )
     return decoded
 
 
 def _decode_segment(segment: str, label: str) -> bytes:
     try:
-        return base64.b64decode(segment + "=" * (-len(segment) % 4), altchars=b"-_", validate=True)
+        return base64.b64decode(
+            segment + "=" * (-len(segment) % 4), altchars=b"-_", validate=True
+        )
     except (binascii.Error, ValueError) as exc:
-        raise _auth_error("oa.oidc_token_malformed", f"OIDC ID token {label} is invalid.") from exc
+        raise _auth_error(
+            "oa.oidc_token_malformed", f"OIDC ID token {label} is invalid."
+        ) from exc
 
 
 def _jwk_integer(value: object, label: str) -> int:
@@ -376,7 +483,9 @@ def _jwk_integer(value: object, label: str) -> int:
 
 def _integer_claim(value: object, label: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise _auth_error("oa.oidc_claim_invalid", f"OIDC ID token {label} claim is invalid.")
+        raise _auth_error(
+            "oa.oidc_claim_invalid", f"OIDC ID token {label} claim is invalid."
+        )
     return value
 
 
