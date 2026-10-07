@@ -297,3 +297,8 @@ No final OCI image set was published because the execution host lacks Docker
 socket access; this prerequisite remains explicit and production deployment is
 still unapproved. S143 is now active for external secret injection, rotation,
 managed TLS, and certificate lifecycle.
+
+After the Slice 1421 closure, Docker access was restored on the approved local
+build host. Supplemental Slice 1422 adds protected six-image build, inspection,
+network-isolated background checks, and ignored local release-set reporting.
+It does not publish to a registry or alter the S143 production-approval state.

@@ -1,7 +1,7 @@
 # Platform Reproducible Deployment Packaging and Environment Topology
 
-Status: S142 complete through Slice 1421. Production deployment remains
-unapproved, and S143 is active.
+Status: S142 complete with supplemental Slice 1422. Production deployment
+remains unapproved, and S143 is active.
 
 ## Required Outcome
 
@@ -171,14 +171,20 @@ composition portions of this register, plus the deterministic packaged
 lifecycle plan and build provenance/release identity. Slice 1420 closes the
 protected package-context acceptance with all six owner contexts, five actual
 test PostgreSQL migrations, seven background checks, and two complete network
-process generations. OCI image build/run remains explicitly unclaimed because
-the current host cannot access its Docker socket; this is an execution-host
-prerequisite, not a synthetic pass.
+process generations. At that boundary, OCI image build/run remained explicitly
+unclaimed because the execution host could not access its Docker socket.
 
-Slice 1421 closes the repository packaging boundary. The accepted artifact is
-the immutable owner-scoped build input and package-context identity, not a
-published image set. Final image digests remain absent and an OCI-capable build
-host is still required before staging or production admission.
+Slice 1421 closed the repository packaging boundary. At that checkpoint, the
+accepted artifact was the immutable owner-scoped build input and
+package-context identity, not a published image set; final image digests were
+absent and an OCI-capable build host was still required.
+
+Supplemental Slice 1422 adds a protected clean-commit command that builds and
+loads all six images, captures BuildKit manifest and config digests, verifies
+non-root users and six default packaged commands, executes seven background
+container checks without network access, and admits only the exact six-image
+set into the existing provenance contract. Runtime reports and logs remain
+under ignored `reports/`; no registry push or published release is implied.
 
 ## Slice Sequence
 
@@ -194,6 +200,7 @@ host is still required before staging or production admission.
 | `1419` | Build provenance and artifact-set release manifest | Source, lock, definition, image, and set digests with privacy validation. |
 | `1420` | Protected packaged-runtime acceptance | Local OCI/package validation with zero production contact and rollback evidence. |
 | `1421` | S142 closure | Contract/runbook closure, zero drift, Full Gate, and S143 handoff. |
+| `1422` | Protected OCI image build supplement | Six real local images, manifest/config digests, non-root/default-command inspection, seven network-isolated background checks, and external release-set evidence. |
 
 ## Non-Drift Rules
 
@@ -208,8 +215,8 @@ host is still required before staging or production admission.
   execution; AG uses service API projections there.
 - S142 does not choose a production orchestrator, registry, secret manager,
   ingress, database platform, object store, GPU scheduler, or monitoring vendor.
-- Slice Gate runs for every Slice, Checkpoint Gate at Slice 1416, and Full Gate
-  at Slice 1421.
+- Slice Gate runs for every Slice, Checkpoint Gate at Slice 1416, Full Gate at
+  Slice 1421, and a focused supplemental Slice Gate at Slice 1422.
 
 ## Completion Signal
 
@@ -222,9 +229,11 @@ PostgreSQL databases without contacting a registry, model provider, staging,
 or production resource.
 
 No production resource was contacted by S142. Production deployment remains
-unapproved. No final image digest or published release set is claimed; an
-OCI-capable execution host remains a prerequisite for later staging evidence.
-In canonical admission terms, production deployment remains unapproved.
+unapproved. Slice 1422 can issue an ignored local complete-set report with
+actual image digests, but no registry publication or deployable registry
+reference is claimed. Registry, staging, and production admission remain later
+protected decisions. In canonical admission terms, production deployment
+remains unapproved.
 
 ## S143 Handoff
 

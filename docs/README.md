@@ -1529,6 +1529,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1419`](slices/1419_platform_deployment_provenance.md) | `S142-008` Bind source, lock, build definition, owner context, base image, and optional final image digests into fail-closed artifact provenance and complete release-set identity. |
 | [`Slice 1420`](slices/1420_platform_packaged_runtime_acceptance.md) | `S142-009` Exercise six materialized owner package contexts against five real test databases, seven background checks, and two complete network startup generations without production contact or false OCI image claims. |
 | [`Slice 1421`](slices/1421_s142_platform_deployment_packaging_closure.md) | `S142-010` Aggregate eight packaging audits, publish the runbook, preserve honest unbuilt-image provenance, run Full Gate, and activate S143 without production approval. |
+| [`Slice 1422`](slices/1422_s142_oci_image_build_supplement.md) | `S142-S01` Build six owner-scoped local OCI images, capture actual manifest/config provenance, verify non-root packaged commands, execute seven network-isolated background checks, and keep reports outside source control. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

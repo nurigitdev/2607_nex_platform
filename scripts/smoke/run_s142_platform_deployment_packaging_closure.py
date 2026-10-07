@@ -45,6 +45,7 @@ PROGRAM_PATH = "docs/48_platform_production_readiness_plan.md"
 RUNBOOK_PATH = "docs/runbooks/platform_reproducible_deployment_packaging.md"
 QUALITY_GATE_PATH = "scripts/quality/run_quality_gate.sh"
 CLOSURE_RUNNER = "run_s142_platform_deployment_packaging_closure.py"
+IMAGE_BUILD_RUNNER = "build_platform_images.py"
 EvidenceRunner = Callable[[], dict[str, Any]]
 EVIDENCE_RUNNERS: tuple[tuple[str, str, EvidenceRunner], ...] = (
     (
@@ -101,6 +102,7 @@ SLICE_DOCUMENTS = tuple(
         ("1419", "platform_deployment_provenance"),
         ("1420", "platform_packaged_runtime_acceptance"),
         ("1421", "s142_platform_deployment_packaging_closure"),
+        ("1422", "s142_oci_image_build_supplement"),
     )
 )
 
@@ -144,13 +146,17 @@ def run_s142_platform_deployment_packaging_closure(
             CLOSURE_RUNNER
         )
         == 1,
+        "protected_image_build_registered_once_in_full_gate": (
+            quality_gate.count(IMAGE_BUILD_RUNNER) == 1
+        ),
         "canonical_completion_and_s143_handoff_frozen": all(
             token in canonical
             for token in (
-                "Status: S142 complete through Slice 1421",
+                "Status: S142 complete with supplemental Slice 1422",
                 "Production deployment remains unapproved.",
                 "No production resource was contacted by S142.",
                 "Completion signal: Met.",
+                "Supplemental Slice 1422 adds a protected clean-commit command",
                 "## S143 Handoff",
             )
         ),
@@ -203,7 +209,7 @@ def run_s142_platform_deployment_packaging_closure(
             "process_step_count": 65,
             "profile_count": 5,
         },
-        "provenance_is_honest_about_unbuilt_images": provenance
+        "repository_provenance_defers_runtime_image_evidence": provenance
         == {
             "artifact_count": 6,
             "image_digest_count": 0,
@@ -225,6 +231,8 @@ def run_s142_platform_deployment_packaging_closure(
             for _, script_name, _ in EVIDENCE_RUNNERS
         )
         and "run_platform_packaged_runtime_acceptance.py" in runbook
+        and IMAGE_BUILD_RUNNER in runbook
+        and "NEX_PLATFORM_OCI_IMAGE_BUILD=1" in runbook
         and CLOSURE_RUNNER in runbook
         and "scripts/quality/run_quality_gate.sh" in runbook,
         "production_and_release_set_not_overclaimed": (
@@ -251,7 +259,7 @@ def run_s142_platform_deployment_packaging_closure(
     return {
         "closure_schema_version": SCHEMA_VERSION,
         "slice": "1421",
-        "slice_range": "1412-1421",
+        "slice_range": "1412-1422",
         "requirement": "S142",
         "status": "PASS" if passed else "FAIL",
         "failure_code": None
@@ -285,7 +293,9 @@ def run_s142_platform_deployment_packaging_closure(
         },
         "decision": {
             "package_context_accepted": passed,
-            "oci_image_execution_prerequisite_open": True,
+            "oci_image_execution_prerequisite_open": False,
+            "oci_image_build_command_protected": passed,
+            "oci_image_build_report_tracked": False,
             "release_set_published": False,
             "production_deployment_approved": False,
             "production_resources_contacted": False,

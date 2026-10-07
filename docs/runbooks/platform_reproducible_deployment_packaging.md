@@ -49,6 +49,30 @@ If the OCI daemon is inaccessible, the result records
 change socket permissions or use privileged execution merely to turn this
 metadata into a pass. Actual image execution belongs on an approved build host.
 
+## Protected OCI Image Build
+
+Run only from a clean committed worktree on an approved local build host. The
+command materializes six ephemeral owner-scoped contexts, builds and loads all
+six images, records BuildKit manifest and config digests, inspects non-root
+users and packaged commands, and executes all seven background `--check`
+commands with no network:
+
+```bash
+NEX_PLATFORM_OCI_IMAGE_BUILD=1 \
+./.venv/bin/python scripts/deployment/build_platform_images.py \
+  --execute \
+  --report reports/deployment/s142-oci-image-build.json \
+  --summary
+```
+
+The expected summary is six artifacts, six unique manifest digests, six
+non-root images, seven background checks, and a ready release set. Build logs
+are written beside the JSON report. Both are ignored by Git. The command uses
+`--load` and never uses `--push`; it does not contact a registry, model
+provider, staging, or production environment. A partial image set, dirty
+worktree, mutable base, command drift, privileged runtime user, missing
+manifest digest, or failed background check blocks the release-set digest.
+
 ## Closure And Full Gate
 
 ```bash
@@ -56,9 +80,10 @@ metadata into a pass. Actual image execution belongs on an approved build host.
 scripts/quality/run_quality_gate.sh
 ```
 
-The closure must report eight of eight audits, six artifacts, thirteen process
-bindings, five profiles, sixty-five packaged lifecycle process steps, zero
-claimed final image digests, and `next=S143`.
+The closure must report eight of eight repository audits, six artifacts,
+thirteen process bindings, five profiles, sixty-five packaged lifecycle process
+steps, zero repository-claimed runtime image digests, and `next=S143`. Actual
+image digests remain in the ignored protected build report.
 
 ## Failure And Recovery
 

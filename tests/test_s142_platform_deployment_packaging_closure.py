@@ -15,8 +15,8 @@ def test_repository_closure_passes_and_hands_off_to_s143() -> None:
     assert result["summary"] == {
         "audit_count": 8,
         "passed_audit_count": 8,
-        "check_count": 15,
-        "passed_check_count": 15,
+        "check_count": 16,
+        "passed_check_count": 16,
         "artifact_count": 6,
         "process_binding_count": 13,
         "profile_count": 5,
@@ -25,7 +25,9 @@ def test_repository_closure_passes_and_hands_off_to_s143() -> None:
     }
     assert result["decision"] == {
         "package_context_accepted": True,
-        "oci_image_execution_prerequisite_open": True,
+        "oci_image_execution_prerequisite_open": False,
+        "oci_image_build_command_protected": True,
+        "oci_image_build_report_tracked": False,
         "release_set_published": False,
         "production_deployment_approved": False,
         "production_resources_contacted": False,

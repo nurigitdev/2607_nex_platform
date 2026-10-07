@@ -67,6 +67,10 @@ SERVICE_PROFILES = {
         ),
         coverage_targets=("providers/nex-compatible-provider/nex_compatible_provider",),
     ),
+    "platform": ServiceProfile(
+        test_patterns=("test_platform_*.py",),
+        coverage_targets=(),
+    ),
 }
 
 

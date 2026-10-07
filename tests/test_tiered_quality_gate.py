@@ -15,6 +15,7 @@ def _minimal_root(tmp_path: Path) -> Path:
         "tests/test_focused.py",
         "tests/test_nex_ae_web_static.py",
         "tests/test_ae_web_runtime_audit.py",
+        "tests/test_platform_alpha.py",
         "tests/test_s97_example_closure.py",
         "scripts/smoke/run_current_smoke.py",
         "services/nex-cx/nex_cx/module.py",
@@ -109,6 +110,27 @@ def test_ae_web_slice_profile_selects_browser_regression_without_python_service(
     assert not any(
         item.startswith("--cov=services/nex-ae-api") for item in pytest_command
     )
+
+
+def test_platform_slice_profile_requires_explicit_changed_coverage_scope(
+    tmp_path: Path,
+) -> None:
+    root = _minimal_root(tmp_path)
+
+    plan = gate.build_slice_plan(
+        root=root,
+        python_bin="python-test",
+        service="platform",
+        focused_tests=["tests/test_focused.py"],
+        coverage_targets=["scripts/smoke/extra.py"],
+    )
+
+    pytest_command = plan.commands[0]
+    assert plan.test_count == 2
+    assert "tests/test_platform_alpha.py" in pytest_command
+    assert "tests/test_focused.py" in pytest_command
+    assert "--cov=extra" in pytest_command
+    assert not any(item == "--cov=services" for item in pytest_command)
 
 
 @pytest.mark.parametrize(
