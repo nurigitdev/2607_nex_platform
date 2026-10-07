@@ -30,3 +30,17 @@ packaged-entrypoint catalog is the authority for those overrides;
 Build context materialization is deterministic and fails when the destination
 already exists. Generated contexts and local OCI outputs belong under
 `reports/` and are not committed.
+
+## PostgreSQL Recovery Tool
+
+`postgres-operator.Containerfile` is a separately versioned operations tool,
+not a seventh application release artifact. It combines a registry-published,
+immutable NeX Python runtime input with the digest-pinned PostgreSQL 16.9 image
+and copies only shared runtime code, database scripts, and S145 policy. It runs
+as UID/GID 65532 and is admitted only by the opt-in `postgres-operations`
+Compose profile.
+
+A local S145 rehearsal may use an inspected local Python runtime tag because
+S142 deliberately did not push images. Production provenance must supply a
+registry-resolvable immutable Python runtime digest; a local pseudo RepoDigest
+is not accepted as registry evidence.

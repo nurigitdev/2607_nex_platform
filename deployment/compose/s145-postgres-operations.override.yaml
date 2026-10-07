@@ -1,0 +1,39 @@
+services:
+  postgres-backup-operator:
+    profiles: [postgres-operations]
+    image: ${NEX_POSTGRES_OPERATOR_IMAGE:?immutable PostgreSQL operator image is required}
+    user: "65532:65532"
+    restart: "no"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    extra_hosts: [host.docker.internal:host-gateway]
+    networks: [service]
+    environment:
+      NEX_POSTGRES_BACKUP_ROOT: /var/lib/nex-backup
+      NEX_POSTGRES_BACKUP_STATE_ROOT: /var/lib/nex-state
+      NEX_POSTGRES_WAL_ARCHIVE_ROOT: /var/lib/nex-backup/wal
+      NEX_POSTGRES_SERVICE_FILE_SOURCE: /run/secrets/postgres_backup_services
+      NEX_POSTGRES_PASSFILE_SOURCE: /run/secrets/postgres_backup_passfile
+      NEX_POSTGRES_SEPARATE_MOUNT_VERIFIED: "1"
+    secrets:
+      - postgres_backup_services
+      - postgres_backup_passfile
+    volumes:
+      - type: bind
+        source: ${NEX_POSTGRES_BACKUP_ROOT:?separate backup root is required}
+        target: /var/lib/nex-backup
+      - type: bind
+        source: ${NEX_POSTGRES_BACKUP_STATE_ROOT:?backup state root is required}
+        target: /var/lib/nex-state
+
+secrets:
+  postgres_backup_services:
+    file: ${NEX_S145_RUNTIME_DIR:?S145 runtime directory is required}/credentials/pg_service.conf
+  postgres_backup_passfile:
+    file: ${NEX_S145_RUNTIME_DIR:?S145 runtime directory is required}/credentials/pgpass
+
+networks:
+  service:
+    driver: bridge

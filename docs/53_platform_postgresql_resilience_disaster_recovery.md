@@ -122,6 +122,14 @@ source-unavailable and dump failures retry, with bounded exponential delays
 and at most three attempts. Terminal run IDs are idempotent and never execute
 again implicitly.
 
+Slice 1450 binds that worker boundary to a single-host Compose operations
+profile. A dedicated non-root PostgreSQL 16.9 recovery-tool image remains
+outside the six-image application release set. It receives two explicit bind
+mounts and two external credential files, has no Docker socket or elevated
+privilege, and is opt-in only. Deterministic rehearsal produces one catalogued
+logical archive for each of the five services, while an actual container check
+proves all three PostgreSQL 16 client tools without contacting a database.
+
 ## Slice Sequence
 
 | Slice | Scope |

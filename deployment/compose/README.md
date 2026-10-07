@@ -96,3 +96,27 @@ read plus exact Transit sign/read permissions, and the separate bootstrap
 administrator remains the only principal allowed to create or rotate keys and
 OIDC resources. No Kubernetes, host OpenBao/Traefik package, Docker socket
 mount, or privileged application container is introduced.
+
+## S145 PostgreSQL Operations Profile
+
+`s145-postgres-operations.override.yaml` adds one opt-in recovery-tool service.
+It does not start with the application topology and does not alter the six
+application-image release set. The operator runs non-root with a read-only
+root filesystem, no Linux capabilities, no Docker socket, and two explicit
+host binds: a separately mounted backup root and a small durable state root.
+The libpq service file and passfile arrive as Compose secrets and their values
+never enter image layers, commands, or reports.
+
+```bash
+docker compose \
+  -f deployment/compose/s145-postgres-operations.override.yaml \
+  --profile postgres-operations \
+  run --rm --no-deps postgres-backup-operator --check --summary
+```
+
+Required host inputs are `NEX_POSTGRES_OPERATOR_IMAGE`,
+`NEX_POSTGRES_BACKUP_ROOT`, `NEX_POSTGRES_BACKUP_STATE_ROOT`, and
+`NEX_S145_RUNTIME_DIR`. Production uses a registry-resolvable immutable image
+digest and an independently failed backup mount. The `--check` path probes
+PostgreSQL 16 `pg_dump`, `pg_restore`, and `pg_basebackup` without contacting a
+database; protected database execution belongs to Slice 1451.
