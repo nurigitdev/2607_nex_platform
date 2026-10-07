@@ -93,12 +93,12 @@ def test_full_build_orchestration_with_fake_docker(
     def fake_build_image(**kwargs) -> None:
         definition = kwargs["definition"]
         index = definitions.index(definition) + 1
-        image_id = f"sha256:{index:064x}"
         manifest_digest = f"sha256:{index + 100:064x}"
+        config_digest = f"sha256:{index + 200:064x}"
         kwargs["metadata_path"].write_text(
             json.dumps(
                 {
-                    "containerimage.config.digest": image_id,
+                    "containerimage.config.digest": config_digest,
                     "containerimage.digest": manifest_digest,
                 }
             ),
@@ -108,7 +108,11 @@ def test_full_build_orchestration_with_fake_docker(
             item for item in catalog.artifacts if item.artifact_id == definition.artifact_id
         )
         inspections[kwargs["tag"]] = {
-            "Id": image_id,
+            "Id": manifest_digest,
+            "Descriptor": {
+                "digest": manifest_digest,
+                "annotations": {"config.digest": config_digest},
+            },
             "Config": {
                 "User": "node" if artifact.kind == "node-web" else "65532:65532",
                 "Entrypoint": None,
@@ -297,6 +301,61 @@ def test_image_record_inspection_and_release_decision_fail_closed(
     )
     assert record.image_id == image_id
     assert record.manifest_digest == manifest_digest
+    assert record.config_digest == image_id
+
+    containerd_inspection = {
+        **valid_inspection,
+        "Id": manifest_digest,
+        "Descriptor": {
+            "digest": manifest_digest,
+            "annotations": {"config.digest": image_id},
+        },
+    }
+    monkeypatch.setattr(
+        build, "_inspect_image", lambda tag, root: containerd_inspection
+    )
+    containerd_record = build._build_record(
+        root=ROOT,
+        definition=definition,
+        artifact=artifact,
+        lock=lock,
+        context=context,
+        metadata_path=metadata_path,
+        tag=record.local_tag,
+        source_revision=REVISION,
+        build_inputs_digest=deployment_build_inputs_digest(inputs),
+    )
+    assert containerd_record.image_id == manifest_digest
+    assert containerd_record.config_digest == image_id
+
+    invalid_descriptors = (
+        ("invalid", "descriptor invalid"),
+        ({"annotations": "invalid"}, "descriptor annotations invalid"),
+        ({"digest": "sha256:" + "3" * 64}, "manifest digest drift"),
+        (
+            {"annotations": {"config.digest": "sha256:" + "3" * 64}},
+            "config digest drift",
+        ),
+    )
+    for descriptor, message in invalid_descriptors:
+        inspection = {**valid_inspection, "Descriptor": descriptor}
+        monkeypatch.setattr(
+            build,
+            "_inspect_image",
+            lambda tag, root, inspection=inspection: inspection,
+        )
+        with pytest.raises(build.PlatformImageBuildError, match=message):
+            build._build_record(
+                root=ROOT,
+                definition=definition,
+                artifact=artifact,
+                lock=lock,
+                context=context,
+                metadata_path=metadata_path,
+                tag=record.local_tag,
+                source_revision=REVISION,
+                build_inputs_digest=deployment_build_inputs_digest(inputs),
+            )
 
     metadata_path.write_text(
         json.dumps(
@@ -307,7 +366,7 @@ def test_image_record_inspection_and_release_decision_fail_closed(
         ),
         encoding="utf-8",
     )
-    with pytest.raises(build.PlatformImageBuildError, match="config digest drift"):
+    with pytest.raises(build.PlatformImageBuildError, match="identity drift"):
         build._build_record(
             root=ROOT,
             definition=definition,
@@ -324,6 +383,28 @@ def test_image_record_inspection_and_release_decision_fail_closed(
         json.dumps({"containerimage.digest": manifest_digest}), encoding="utf-8"
     )
     monkeypatch.setattr(build, "_inspect_image", lambda tag, root: {"Id": image_id})
+    with pytest.raises(build.PlatformImageBuildError, match="image config digest"):
+        build._build_record(
+            root=ROOT,
+            definition=definition,
+            artifact=artifact,
+            lock=lock,
+            context=context,
+            metadata_path=metadata_path,
+            tag=record.local_tag,
+            source_revision=REVISION,
+            build_inputs_digest=deployment_build_inputs_digest(inputs),
+        )
+
+    metadata_path.write_text(
+        json.dumps(
+            {
+                "containerimage.config.digest": image_id,
+                "containerimage.digest": manifest_digest,
+            }
+        ),
+        encoding="utf-8",
+    )
     with pytest.raises(build.PlatformImageBuildError, match="configuration missing"):
         build._build_record(
             root=ROOT,

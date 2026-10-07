@@ -61,6 +61,7 @@ def _evidence() -> OciImageBuildEvidence:
                 local_tag=f"nex-platform-local/{definition.artifact_id}:aaaaaaaaaaaa",
                 image_id=f"sha256:{index:064x}",
                 manifest_digest=manifest_digest,
+                config_digest=f"sha256:{index:064x}",
                 image_reference=(
                     f"nex-platform-local/{definition.artifact_id}@{manifest_digest}"
                 ),
@@ -124,6 +125,7 @@ def test_complete_image_set_is_private_non_root_and_deterministic() -> None:
     assert len(projection["background_checks"]) == 7
     assert len({item["image_id"] for item in projection["artifacts"]}) == 6
     assert len({item["manifest_digest"] for item in projection["artifacts"]}) == 6
+    assert len({item["config_digest"] for item in projection["artifacts"]}) == 6
     assert all(item["runtime_user"] not in {"", "0", "root"} for item in projection["artifacts"])
     assert projection["registry_push_performed"] is False
     assert projection["production_contacted"] is False
@@ -168,6 +170,8 @@ def test_top_level_evidence_drift_fails_closed(change, message: str) -> None:
         ({"local_tag": "bad@sha256"}, "local image tag"),
         ({"image_id": "bad"}, "image ID"),
         ({"manifest_digest": "bad"}, "manifest digest"),
+        ({"config_digest": "bad"}, "config digest"),
+        ({"image_id": "sha256:" + "f" * 64}, "identity drift"),
         ({"image_reference": "mutable:latest"}, "immutable image reference"),
         ({"base_image_reference": "python:latest"}, "base image digest"),
         ({"builder_image_references": ()}, "builder image digest"),
@@ -202,6 +206,7 @@ def test_duplicate_image_and_manifest_digests_fail_closed() -> None:
         records[1],
         image_id=records[0].image_id,
         manifest_digest=records[0].manifest_digest,
+        config_digest=records[0].config_digest,
         image_reference=(
             f"nex-platform-local/{records[1].artifact_id}"
             f"@{records[0].manifest_digest}"
@@ -215,6 +220,7 @@ def test_duplicate_image_and_manifest_digests_fail_closed() -> None:
         )
 
     assert "manifest digests must be unique" in str(raised.value)
+    assert "config digests must be unique" in str(raised.value)
     assert "image IDs must be unique" in str(raised.value)
 
 

@@ -25,7 +25,7 @@ from .deployment_oci import (
 from .process_manifest import BACKGROUND_PROCESS_IDS
 
 
-OCI_IMAGE_BUILD_EVIDENCE_SCHEMA_VERSION = "oci_image_build_evidence.v1"
+OCI_IMAGE_BUILD_EVIDENCE_SCHEMA_VERSION = "oci_image_build_evidence.v2"
 OCI_IMAGE_BUILD_STATUS = "RELEASE_SET_BUILT"
 OCI_BUILD_LABEL_KEYS = (
     "org.opencontainers.image.version",
@@ -49,6 +49,7 @@ class OciImageBuildRecord:
     local_tag: str
     image_id: str
     manifest_digest: str
+    config_digest: str
     image_reference: str
     base_image_reference: str
     builder_image_references: tuple[str, ...]
@@ -170,6 +171,7 @@ def validate_oci_image_build_evidence(
     if observed_artifacts != expected_artifacts:
         errors.append("OCI image artifact coverage or order drift")
     manifest_digests: list[str] = []
+    config_digests: list[str] = []
     image_ids: list[str] = []
     for record in evidence.artifacts:
         artifact = artifacts_by_id.get(record.artifact_id)
@@ -192,6 +194,12 @@ def validate_oci_image_build_evidence(
             errors.append(f"OCI manifest digest is invalid: {record.artifact_id}")
         else:
             manifest_digests.append(record.manifest_digest)
+        if _SHA256.fullmatch(record.config_digest) is None:
+            errors.append(f"OCI config digest is invalid: {record.artifact_id}")
+        else:
+            config_digests.append(record.config_digest)
+        if record.image_id not in {record.manifest_digest, record.config_digest}:
+            errors.append(f"OCI image identity drift: {record.artifact_id}")
         if (
             _IMMUTABLE_IMAGE.fullmatch(record.image_reference) is None
             or not record.image_reference.endswith(f"@{record.manifest_digest}")
@@ -235,6 +243,8 @@ def validate_oci_image_build_evidence(
             errors.append(f"OCI image label drift: {record.artifact_id}")
     if len(manifest_digests) != len(set(manifest_digests)):
         errors.append("OCI manifest digests must be unique")
+    if len(config_digests) != len(set(config_digests)):
+        errors.append("OCI config digests must be unique")
     if len(image_ids) != len(set(image_ids)):
         errors.append("OCI image IDs must be unique")
 
@@ -285,6 +295,7 @@ def oci_image_build_evidence_projection(
                 "local_tag": record.local_tag,
                 "image_id": record.image_id,
                 "manifest_digest": record.manifest_digest,
+                "config_digest": record.config_digest,
                 "image_reference": record.image_reference,
                 "base_image_reference": record.base_image_reference,
                 "builder_image_references": list(record.builder_image_references),

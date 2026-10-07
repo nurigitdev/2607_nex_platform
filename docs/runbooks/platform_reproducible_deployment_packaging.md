@@ -75,6 +75,12 @@ set, dirty worktree, mutable base, command drift, privileged runtime user,
 missing manifest digest, or failed background check blocks the release-set
 digest.
 
+The report keeps Docker's inspected image ID, the BuildKit manifest digest,
+and the BuildKit config digest as separate values. Docker 29/containerd image
+stores may expose the manifest digest as `.Id`; older stores may expose the
+config digest. Descriptor annotations are checked when present, and the image
+ID must identify either the verified manifest or config object.
+
 The five Python images build hash-locked wheels in digest-pinned full Python
 and Rust stages. The final images remain on the digest-pinned slim Python base,
 install wheels with `--no-index --no-deps`, and contain neither compiler nor

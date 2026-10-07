@@ -298,10 +298,35 @@ def _build_record(
     manifest_digest = _manifest_digest(metadata)
     inspection = _inspect_image(tag, root=root)
     image_id = _required_digest(inspection.get("Id"), "image ID")
-    config_digest = metadata.get("containerimage.config.digest")
-    if config_digest is not None and config_digest != image_id:
+    config_digest = _required_digest(
+        metadata.get("containerimage.config.digest"), "image config digest"
+    )
+    descriptor = inspection.get("Descriptor") or {}
+    if not isinstance(descriptor, dict):
+        raise PlatformImageBuildError(
+            f"image descriptor invalid: {definition.artifact_id}"
+        )
+    descriptor_digest = descriptor.get("digest")
+    annotations = descriptor.get("annotations") or {}
+    if not isinstance(annotations, dict):
+        raise PlatformImageBuildError(
+            f"image descriptor annotations invalid: {definition.artifact_id}"
+        )
+    descriptor_config_digest = annotations.get("config.digest")
+    if descriptor_digest is not None and descriptor_digest != manifest_digest:
+        raise PlatformImageBuildError(
+            f"image manifest digest drift: {definition.artifact_id}"
+        )
+    if (
+        descriptor_config_digest is not None
+        and descriptor_config_digest != config_digest
+    ):
         raise PlatformImageBuildError(
             f"image config digest drift: {definition.artifact_id}"
+        )
+    if image_id not in {manifest_digest, config_digest}:
+        raise PlatformImageBuildError(
+            f"image identity drift: {definition.artifact_id}"
         )
     config = inspection.get("Config")
     if not isinstance(config, dict):
@@ -320,6 +345,7 @@ def _build_record(
         local_tag=tag,
         image_id=image_id,
         manifest_digest=manifest_digest,
+        config_digest=config_digest,
         image_reference=(
             f"{LOCAL_REPOSITORY}/{definition.artifact_id}@{manifest_digest}"
         ),

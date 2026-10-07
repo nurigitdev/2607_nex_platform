@@ -18,6 +18,10 @@
   after the first real build exposed that `mecab-ko-python` cannot compile in
   the compiler-free slim runtime image. Final Python images retain the pinned
   slim base and install only the locked wheel set without index access.
+- Recorded image ID, manifest digest, and config digest independently. Docker
+  29 with the containerd image store reports the manifest as `.Id`, while
+  older stores may report the config digest; both forms remain descriptor-
+  checked and fail closed when the identities are unrelated.
 
 ## Protected Command
 
@@ -43,8 +47,8 @@ requirement.
 
 ## Verification
 
-- Focused OCI/provenance/closure tests: `78 passed`.
-- Slice Gate: `389 passed, 6 skipped`; statement and branch coverage both
+- Focused OCI/provenance/closure tests: `80 passed`.
+- Slice Gate: `391 passed, 6 skipped`; statement and branch coverage both
   `100%` across the five selected OCI build, definition, and provenance
   modules; contract validation `166` schemas, `228` examples, `196` negative
   examples, and `7` OpenAPI documents.
