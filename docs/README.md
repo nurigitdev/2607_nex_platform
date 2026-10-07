@@ -1543,6 +1543,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1431`](slices/1431_s143_external_staging_acceptance.md) | `S143-009` Implement single-host Compose with OpenBao and Traefik and prove protected PostgreSQL/provider secret and TLS lifecycle acceptance. |
 | [`Slice 1432`](slices/1432_s143_production_configuration_secret_tls_closure.md) | `S143-010` Bind value-free protected staging evidence, publish the operations runbook, pass Full Gate, close S143, and activate S144-S147. |
 | [`Slice 1433`](slices/1433_oa_production_trust_boundary.md) | `S144-001` Freeze OA external key custody and federation scope, prove single-host feasibility, and register eight gaps plus the Slice 1434-1442 order. |
+| [`Slice 1434`](slices/1434_oa_openbao_transit_signer.md) | `S144-002` Add a bounded AppRole-authenticated OpenBao Transit RSA-3072 signer with version pinning, redacted failures, and token self-revocation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

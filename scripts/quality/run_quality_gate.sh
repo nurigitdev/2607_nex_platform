@@ -753,3 +753,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_s143_external_staging_acceptance.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s143_production_configuration_secret_tls_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s144_oa_production_trust_boundary.py --summary
+"$PYTHON_BIN" scripts/smoke/run_oa_openbao_transit_signer.py --summary
