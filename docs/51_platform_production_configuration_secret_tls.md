@@ -82,6 +82,10 @@ Slice 1428 enforces MO-only custody for all three provider API keys and adds a
 value-aware recursive redaction boundary. Raw values and their hashes remain
 forbidden in evidence.
 
+Slice 1429 fixes managed TLS termination, end-to-end HTTPS, certificate
+overlap verification, expiry alerting, revocation blocking, and rollback. No
+application image or process may receive TLS private-key material.
+
 ## Slice Sequence
 
 | Slice | Scope |
