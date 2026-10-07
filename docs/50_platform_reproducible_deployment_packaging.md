@@ -1,6 +1,6 @@
 # Platform Reproducible Deployment Packaging and Environment Topology
 
-Status: S142 active through Slice 1415; production deployment remains
+Status: S142 active through Slice 1416; production deployment remains
 unapproved.
 
 ## Required Outcome
@@ -41,6 +41,22 @@ it would erase service ownership and enlarge the deployment blast radius.
 Each artifact identity is a repository-independent name plus an immutable
 content digest. Mutable tags may be display aliases only and cannot be used by
 an admitted staging or production topology.
+
+## Packaged Entrypoint Admission
+
+All thirteen process commands have package-relative forms. Python APIs use
+module execution, AE Web uses its locked npm start command, and all seven
+background roles use `python -m nex_runtime.background_process` with an
+explicit process ID and profile. The source-tree script remains only as a thin
+development compatibility wrapper.
+
+Entrypoint presence is not treated as execution readiness. CX ingestion is the
+only background role currently connected to a durable claiming loop through
+this process shell. The other six roles prove import and lifecycle readiness
+only. Their capability is recorded as `lifecycle_only`, and staging or
+production background admission remains fail-closed until owner-specific
+execution adapters receive separate protected evidence. Packaging must not
+turn a passive process shell into a false production-readiness claim.
 
 ## Environment Topology
 
@@ -112,6 +128,11 @@ The measured gap register is:
 
 These are implementation gaps, not production incidents. S142 evidence must
 remain local or explicitly protected and must not contact production resources.
+
+Slices 1413 through 1416 have closed the immutable artifact, exact lock, OCI
+definition, process binding, and package-relative command portions of this
+register. Environment compositions, provenance, and packaged lifecycle
+acceptance remain open.
 
 ## Slice Sequence
 

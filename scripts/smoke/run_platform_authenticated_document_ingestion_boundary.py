@@ -22,6 +22,7 @@ REQUIRED_PATHS = (
     "services/nex-cx/nex_cx/ingestion_coordinator.py",
     "services/nex-cx/nex_cx/mvp_runtime.py",
     "services/nex-cx/nex_cx/vector_index_publish.py",
+    "services/_shared/nex_runtime/background_process.py",
     "scripts/dev/run_background_process.py",
 )
 REQUIRED_TOKENS = (
@@ -64,7 +65,12 @@ def run_platform_authenticated_document_ingestion_boundary(
             root / "services/nex-cx/nex_cx/ingestion_coordinator.py"
         ),
         "cx_mvp": _read_text(root / "services/nex-cx/nex_cx/mvp_runtime.py"),
-        "background": _read_text(root / "scripts/dev/run_background_process.py"),
+        "background": _read_text(
+            root / "services/_shared/nex_runtime/background_process.py"
+        ),
+        "background_wrapper": _read_text(
+            root / "scripts/dev/run_background_process.py"
+        ),
     }
     checks = {
         "required_paths_present": all(item["present"] for item in paths),
@@ -103,6 +109,7 @@ def run_platform_authenticated_document_ingestion_boundary(
         ),
         "ingestion_process_registered": (
             '"nex-cx-ingestion-worker"' in sources["background"]
+            and "nex_runtime.background_process" in sources["background_wrapper"]
         ),
     }
     issues = sorted(name for name, passed in checks.items() if not passed)

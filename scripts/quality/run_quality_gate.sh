@@ -735,3 +735,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_deployment_artifact_catalog.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_deployment_build_inputs.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_oci_build_definitions.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_packaged_entrypoints.py --summary

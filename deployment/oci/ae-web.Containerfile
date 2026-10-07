@@ -20,5 +20,4 @@ ENV HOST=0.0.0.0 \
     PORT=5173 \
     NODE_ENV=production
 USER node
-CMD ["node", "scripts/serve.mjs"]
-
+CMD ["npm", "start", "--silent"]

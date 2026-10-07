@@ -28,25 +28,24 @@ USER 65532:65532
 FROM python-source AS oa-runtime
 ENV PYTHONPATH=/app/services/_shared:/app/services/nex-oa
 RUN python -c "import importlib.util; assert importlib.util.find_spec('nex_oa')"
-CMD ["uvicorn", "nex_oa.main:app", "--host", "0.0.0.0", "--port", "8101"]
+CMD ["python", "-m", "uvicorn", "nex_oa.main:app", "--host", "0.0.0.0", "--port", "8101"]
 
 FROM python-source AS ae-runtime
 ENV PYTHONPATH=/app/services/_shared:/app/services/nex-ae-api
 RUN python -c "import importlib.util; assert importlib.util.find_spec('nex_ae_api')"
-CMD ["uvicorn", "nex_ae_api.main:app", "--host", "0.0.0.0", "--port", "8103"]
+CMD ["python", "-m", "uvicorn", "nex_ae_api.main:app", "--host", "0.0.0.0", "--port", "8103"]
 
 FROM python-source AS cx-runtime
 ENV PYTHONPATH=/app/services/_shared:/app/services/nex-cx
 RUN python -c "import importlib.util; assert importlib.util.find_spec('nex_cx')"
-CMD ["uvicorn", "nex_cx.main:app", "--host", "0.0.0.0", "--port", "8104"]
+CMD ["python", "-m", "uvicorn", "nex_cx.main:app", "--host", "0.0.0.0", "--port", "8104"]
 
 FROM python-source AS mo-runtime
 ENV PYTHONPATH=/app/services/_shared:/app/services/nex-mo
 RUN python -c "import importlib.util; assert importlib.util.find_spec('nex_mo')"
-CMD ["uvicorn", "nex_mo.main:app", "--host", "0.0.0.0", "--port", "8105"]
+CMD ["python", "-m", "uvicorn", "nex_mo.main:app", "--host", "0.0.0.0", "--port", "8105"]
 
 FROM python-source AS ag-runtime
 ENV PYTHONPATH=/app/services/_shared:/app/services/nex-ag
 RUN python -c "import importlib.util; assert importlib.util.find_spec('nex_ag')"
-CMD ["uvicorn", "nex_ag.main:app", "--host", "0.0.0.0", "--port", "8102"]
-
+CMD ["python", "-m", "uvicorn", "nex_ag.main:app", "--host", "0.0.0.0", "--port", "8102"]

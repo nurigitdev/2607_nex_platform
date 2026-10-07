@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-import run_background_process as runner
+from nex_runtime import background_process as runner
 
 
 class Engine:
@@ -74,7 +74,7 @@ def test_protected_metadata_uses_worker_pool_and_disposes() -> None:
         "nex-cx-ingestion-worker",
         "test",
         environ={
-            "NEX_CX_DATABASE_URL": (
+            "NEX_CX_TEST_DATABASE_URL": (
                 "postgresql://nex_cx_user:secret@localhost/nex_cx_test"
             )
         },
@@ -84,7 +84,7 @@ def test_protected_metadata_uses_worker_pool_and_disposes() -> None:
 
     assert metadata["persistence_mode"] == "postgres"
     assert metadata["pool_workload"] == "worker"
-    assert metadata["database_env"] == "NEX_CX_DATABASE_URL"
+    assert metadata["database_env"] == "NEX_CX_TEST_DATABASE_URL"
     assert metadata["work_claiming_enabled"] is False
     assert engine.dispose_count == 1
     assert "secret" not in str(metadata)
@@ -104,7 +104,7 @@ def test_protected_persistence_failure_is_normalized(failure) -> None:
             "nex-ag-dispatch-daemon",
             "test",
             environ={
-                "NEX_AG_DATABASE_URL": (
+                "NEX_AG_TEST_DATABASE_URL": (
                     "postgresql://nex_ag_user:secret@localhost/nex_ag_test"
                 )
             },
@@ -130,7 +130,7 @@ def test_failed_readiness_ignores_cleanup_dispose_error() -> None:
             "nex-cx-remediation-worker",
             "test",
             environ={
-                "NEX_CX_DATABASE_URL": (
+                "NEX_CX_TEST_DATABASE_URL": (
                     "postgresql://nex_cx_user:secret@localhost/nex_cx_test"
                 )
             },
@@ -275,3 +275,29 @@ def test_ingestion_shell_executes_recovery_and_work_cycle(monkeypatch) -> None:
 def test_ingestion_work_process_builder_normalizes_profile_error() -> None:
     with pytest.raises(ValueError, match="profile is not enabled"):
         runner._build_ingestion_work_process("production")
+
+
+def test_database_environment_and_required_url_helpers() -> None:
+    assert runner._database_environment("nex-ae-api", "test") == (
+        "NEX_AE_TEST_DATABASE_URL"
+    )
+    assert runner._database_environment("nex-ae-api", "local_mock") == (
+        "NEX_AE_DATABASE_URL"
+    )
+    assert runner._required_database_url("DATABASE_URL", {"DATABASE_URL": " db "}) == (
+        "db"
+    )
+    with pytest.raises(ValueError, match="DATABASE_URL"):
+        runner._required_database_url("DATABASE_URL", {})
+
+
+def test_signal_handler_installation_and_source_wrapper(monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(runner.signal, "signal", lambda *args: calls.append(args))
+    runner.install_signal_handlers()
+
+    import run_background_process as source_wrapper
+
+    assert len(calls) == 2
+    assert source_wrapper.main is runner.main
+    assert source_wrapper.BACKGROUND_MODULES is runner.BACKGROUND_MODULES
