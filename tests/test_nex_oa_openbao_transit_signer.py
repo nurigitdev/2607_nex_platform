@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from nex_oa.openbao_transit_signer import (
     MAX_SIGNING_INPUT_BYTES,
     OpenBaoTransitOaRsaSigningProvider,
+    build_openbao_transit_signing_provider,
     parse_openbao_transit_key_reference,
 )
 from nex_oa.signed_tokens import OaSignedTokenError
@@ -191,3 +192,74 @@ def test_explicit_signing_error_is_preserved() -> None:
 def test_constructor_rejects_invalid_client_token() -> None:
     with pytest.raises(OaSignedTokenError, match="client token"):
         OpenBaoTransitOaRsaSigningProvider(TransitTransport(), "short")
+
+
+def test_runtime_builder_uses_shared_tls_approle_settings(tmp_path) -> None:
+    ca = tmp_path / "ca.pem"
+    role = tmp_path / "role-id"
+    secret = tmp_path / "secret-id"
+    ca.write_text("test-ca", encoding="utf-8")
+    role.write_text("role-id-12345678", encoding="utf-8")
+    secret.write_text("secret-id-12345678", encoding="utf-8")
+    captured = {}
+
+    def factory(address, *, ca_certificate_file, timeout_seconds):
+        captured.update(
+            address=address,
+            ca=ca_certificate_file,
+            timeout=timeout_seconds,
+        )
+        return TransitTransport()
+
+    provider = build_openbao_transit_signing_provider(
+        {
+            "NEX_PROFILE": "staging_live",
+            "NEX_OPENBAO_ADDR": "https://openbao:8200",
+            "NEX_OPENBAO_CA_CERT_FILE": str(ca),
+            "NEX_OPENBAO_ROLE_ID_FILE": str(role),
+            "NEX_OPENBAO_SECRET_ID_FILE": str(secret),
+            "NEX_OPENBAO_TIMEOUT_SECONDS": "8.5",
+        },
+        transport_factory=factory,
+    )
+
+    assert isinstance(provider, OpenBaoTransitOaRsaSigningProvider)
+    assert captured == {
+        "address": "https://openbao:8200",
+        "ca": ca,
+        "timeout": 8.5,
+    }
+
+
+def test_runtime_builder_rejects_non_production_profile_and_bad_settings(tmp_path) -> None:
+    with pytest.raises(OaSignedTokenError, match="production-shaped"):
+        build_openbao_transit_signing_provider({"NEX_PROFILE": "test"})
+    with pytest.raises(OaSignedTokenError, match="configuration"):
+        build_openbao_transit_signing_provider({"NEX_PROFILE": "production"})
+
+    ca = tmp_path / "ca.pem"
+    role = tmp_path / "role-id"
+    secret = tmp_path / "secret-id"
+    for path, value in (
+        (ca, "test-ca"),
+        (role, "role-id-12345678"),
+        (secret, "secret-id-12345678"),
+    ):
+        path.write_text(value, encoding="utf-8")
+    environment = {
+        "NEX_PROFILE": "production",
+        "NEX_OPENBAO_ADDR": "https://openbao:8200",
+        "NEX_OPENBAO_CA_CERT_FILE": str(ca),
+        "NEX_OPENBAO_ROLE_ID_FILE": str(role),
+        "NEX_OPENBAO_SECRET_ID_FILE": str(secret),
+    }
+
+    def invalid_factory(*args, **kwargs):
+        raise TypeError("private configuration detail")
+
+    with pytest.raises(OaSignedTokenError, match="configuration") as exc:
+        build_openbao_transit_signing_provider(
+            environment,
+            transport_factory=invalid_factory,
+        )
+    assert "private" not in str(exc.value)

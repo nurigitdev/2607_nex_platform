@@ -9,9 +9,11 @@ import pytest
 
 from nex_runtime.openbao_secret_resolver import (
     OpenBaoSecretResolver,
+    OpenBaoClientSettings,
     OpenBaoSecretResolverError,
     UrllibOpenBaoTransport,
     build_openbao_secret_resolver,
+    load_openbao_client_settings,
 )
 from nex_runtime.production_secret_materialization import SecretResolutionContext
 
@@ -163,6 +165,21 @@ def test_environment_factory_reads_only_absolute_credential_files(tmp_path, monk
         "ca": ca,
         "timeout": 7.5,
     }
+    assert load_openbao_client_settings(
+        {
+            "NEX_OPENBAO_ADDR": "https://openbao:8200",
+            "NEX_OPENBAO_CA_CERT_FILE": str(ca),
+            "NEX_OPENBAO_ROLE_ID_FILE": str(role),
+            "NEX_OPENBAO_SECRET_ID_FILE": str(secret),
+            "NEX_OPENBAO_TIMEOUT_SECONDS": "7.5",
+        }
+    ) == OpenBaoClientSettings(
+        address="https://openbao:8200",
+        ca_certificate_file=ca,
+        role_id="role-id-12345678",
+        secret_id="secret-id-12345678",
+        timeout_seconds=7.5,
+    )
 
     for values in (
         {},

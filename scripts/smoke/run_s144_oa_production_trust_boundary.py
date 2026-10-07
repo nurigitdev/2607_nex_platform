@@ -102,7 +102,10 @@ def run_oa_production_trust_boundary(root: Path = ROOT) -> dict[str, Any]:
             'NEX_OA_SIGNING_PROVIDER", "UNAVAILABLE"' in token_signing
             and "UnavailableOaRsaSigningProvider" in token_signing
             and "TEST_FILE" in token_signing
-            and "OPENBAO_TRANSIT" not in token_signing
+            and (
+                "OPENBAO_TRANSIT" not in token_signing
+                or "build_openbao_transit_signing_provider" in token_signing
+            )
         ),
         "oidc_validation_foundation_exists": all(
             token in oidc_verifier

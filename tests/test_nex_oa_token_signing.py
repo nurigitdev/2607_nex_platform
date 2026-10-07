@@ -166,6 +166,22 @@ def test_signing_provider_builder_is_explicit_and_test_only(tmp_path: Path) -> N
         assert exc.value.code == "oa.signing_key_custody_unavailable"
 
 
+def test_signing_provider_builder_delegates_explicit_transit(monkeypatch) -> None:
+    expected = object()
+    monkeypatch.setattr(
+        "nex_oa.openbao_transit_signer.build_openbao_transit_signing_provider",
+        lambda environ: expected,
+    )
+
+    provider = build_oa_signing_provider(
+        {
+            "NEX_PROFILE": "staging_live",
+            "NEX_OA_SIGNING_PROVIDER": "openbao_transit",
+        }
+    )
+    assert provider is expected
+
+
 def test_test_file_provider_rejects_unsafe_references_and_permissions(
     tmp_path: Path,
 ) -> None:

@@ -1,6 +1,6 @@
 # OA Production Trust, Key Custody, and Enterprise Federation
 
-Status: S144 active through Slice 1434. Production deployment remains
+Status: S144 active through Slice 1435. Production deployment remains
 unapproved.
 
 ## Required Outcome
@@ -81,6 +81,11 @@ OA-local adapter authenticates with AppRole, accepts only version-pinned
 SHA-256 PKCS#1 v1.5 signatures, verifies response version/size, redacts all
 transport failures, and self-revokes its client token. Live OpenBao execution
 remains part of the protected acceptance gap.
+
+Slice 1435 closes `oa_runtime_signer_wiring`. The `OPENBAO_TRANSIT` provider is
+available only in `staging_live` and `production`, reuses the S143 TLS/AppRole
+file boundary, authenticates eagerly, and has no automatic fallback. The
+default remains unavailable and the file provider remains test-only.
 
 ## Slice Sequence
 

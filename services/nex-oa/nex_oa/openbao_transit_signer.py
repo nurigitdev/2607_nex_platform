@@ -8,6 +8,11 @@ from typing import Any, Protocol
 from urllib.parse import quote, urlsplit
 
 from nex_oa.signed_tokens import OaSignedTokenError
+from nex_runtime.openbao_secret_resolver import (
+    OpenBaoSecretResolverError,
+    UrllibOpenBaoTransport,
+    load_openbao_client_settings,
+)
 
 
 OPENBAO_TRANSIT_PROVIDER_ID = "openbao"
@@ -32,6 +37,16 @@ class OpenBaoTransitTransport(Protocol):
         token: str | None = None,
         payload: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any]: ...
+
+
+class OpenBaoTransportFactory(Protocol):
+    def __call__(
+        self,
+        address: str,
+        *,
+        ca_certificate_file: Any,
+        timeout_seconds: float,
+    ) -> OpenBaoTransitTransport: ...
 
 
 @dataclass(frozen=True)
@@ -157,6 +172,34 @@ def parse_openbao_transit_key_reference(value: str) -> OpenBaoTransitKeyReferenc
         key_name=match.group("key"),
         key_version=int(match.group("version")),
     )
+
+
+def build_openbao_transit_signing_provider(
+    environ: Mapping[str, str],
+    *,
+    transport_factory: OpenBaoTransportFactory = UrllibOpenBaoTransport,
+) -> OpenBaoTransitOaRsaSigningProvider:
+    profile = str(environ.get("NEX_PROFILE") or "").strip().lower()
+    if profile not in {"staging_live", "production"}:
+        raise _custody_error(
+            "OpenBao Transit signing requires a production-shaped profile"
+        )
+    try:
+        settings = load_openbao_client_settings(environ)
+        transport = transport_factory(
+            settings.address,
+            ca_certificate_file=settings.ca_certificate_file,
+            timeout_seconds=settings.timeout_seconds,
+        )
+        return OpenBaoTransitOaRsaSigningProvider.authenticate(
+            transport,
+            role_id=settings.role_id,
+            secret_id=settings.secret_id,
+        )
+    except OaSignedTokenError:
+        raise
+    except (OpenBaoSecretResolverError, OSError, ValueError, TypeError) as exc:
+        raise _custody_error("OpenBao Transit configuration is unavailable") from exc
 
 
 def _valid_credential(value: str) -> bool:

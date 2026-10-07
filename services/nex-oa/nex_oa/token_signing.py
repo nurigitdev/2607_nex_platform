@@ -148,6 +148,12 @@ def build_oa_signing_provider(
     provider = env.get("NEX_OA_SIGNING_PROVIDER", "UNAVAILABLE").strip().upper()
     if provider == "UNAVAILABLE":
         return UnavailableOaRsaSigningProvider()
+    if provider == "OPENBAO_TRANSIT":
+        from nex_oa.openbao_transit_signer import (
+            build_openbao_transit_signing_provider,
+        )
+
+        return build_openbao_transit_signing_provider(env)
     if provider != "TEST_FILE":
         raise _custody_error("OA signing provider is unsupported")
     if env.get("NEX_PROFILE", "local_mock").strip().lower() != "test":

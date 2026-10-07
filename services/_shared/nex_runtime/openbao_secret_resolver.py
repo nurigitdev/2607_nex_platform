@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
@@ -28,6 +29,15 @@ _RESOURCE = re.compile(
 
 class OpenBaoSecretResolverError(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class OpenBaoClientSettings:
+    address: str
+    ca_certificate_file: Path
+    role_id: str
+    secret_id: str
+    timeout_seconds: float
 
 
 class OpenBaoTransport(Protocol):
@@ -242,6 +252,27 @@ class OpenBaoSecretResolver:
 def build_openbao_secret_resolver(
     environ: Mapping[str, str],
 ) -> OpenBaoSecretResolver:
+    settings = load_openbao_client_settings(environ)
+    namespace = str(environ.get("NEX_OPENBAO_SECRET_NAMESPACE") or "").strip()
+    if namespace not in {"staging", "production"}:
+        raise OpenBaoSecretResolverError("OpenBao secret namespace is invalid")
+
+    transport = UrllibOpenBaoTransport(
+        settings.address,
+        ca_certificate_file=settings.ca_certificate_file,
+        timeout_seconds=settings.timeout_seconds,
+    )
+    return OpenBaoSecretResolver.authenticate(
+        transport,
+        role_id=settings.role_id,
+        secret_id=settings.secret_id,
+        namespace=namespace,
+    )
+
+
+def load_openbao_client_settings(
+    environ: Mapping[str, str],
+) -> OpenBaoClientSettings:
     address = str(environ.get("NEX_OPENBAO_ADDR") or "").strip()
     ca_file = _required_path(environ, "NEX_OPENBAO_CA_CERT_FILE")
     role_id = _read_credential(
@@ -251,23 +282,16 @@ def build_openbao_secret_resolver(
         _required_path(environ, "NEX_OPENBAO_SECRET_ID_FILE"), "secret ID"
     )
     timeout_raw = str(environ.get("NEX_OPENBAO_TIMEOUT_SECONDS") or "5").strip()
-    namespace = str(environ.get("NEX_OPENBAO_SECRET_NAMESPACE") or "").strip()
-    if namespace not in {"staging", "production"}:
-        raise OpenBaoSecretResolverError("OpenBao secret namespace is invalid")
     try:
         timeout_seconds = float(timeout_raw)
     except ValueError:
         raise OpenBaoSecretResolverError("OpenBao timeout is invalid") from None
-    transport = UrllibOpenBaoTransport(
-        address,
+    return OpenBaoClientSettings(
+        address=address,
         ca_certificate_file=ca_file,
-        timeout_seconds=timeout_seconds,
-    )
-    return OpenBaoSecretResolver.authenticate(
-        transport,
         role_id=role_id,
         secret_id=secret_id,
-        namespace=namespace,
+        timeout_seconds=timeout_seconds,
     )
 
 
