@@ -1,6 +1,6 @@
 # Platform Reproducible Deployment Packaging and Environment Topology
 
-Status: S142 active through Slice 1419; production deployment remains
+Status: S142 active through Slice 1420; production deployment remains
 unapproved.
 
 ## Required Outcome
@@ -168,8 +168,12 @@ remain local or explicitly protected and must not contact production resources.
 Slices 1413 through 1419 have closed the immutable artifact, exact lock, OCI
 definition, process binding, package-relative command, and environment
 composition portions of this register, plus the deterministic packaged
-lifecycle plan and build provenance/release identity. Packaged-runtime
-acceptance remains open.
+lifecycle plan and build provenance/release identity. Slice 1420 closes the
+protected package-context acceptance with all six owner contexts, five actual
+test PostgreSQL migrations, seven background checks, and two complete network
+process generations. OCI image build/run remains explicitly unclaimed because
+the current host cannot access its Docker socket; this is an execution-host
+prerequisite, not a synthetic pass.
 
 ## Slice Sequence
 
