@@ -189,7 +189,10 @@ container checks without network access, and admits only the exact six-image
 set into the existing provenance contract. Runtime reports and logs remain
 under ignored `reports/`; no registry push or published release is implied.
 Five Python artifacts share digest-pinned full Python and Rust wheel builders,
-while their final stages retain the digest-pinned slim Python runtime.
+while their final stages retain the digest-pinned slim Python runtime. API
+image defaults bind to `0.0.0.0` independently of loopback local-process
+commands, and AE Web clears the inherited Node entrypoint before declaring its
+exact npm command.
 
 ## Slice Sequence
 

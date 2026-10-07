@@ -20,4 +20,5 @@ ENV HOST=0.0.0.0 \
     PORT=5173 \
     NODE_ENV=production
 USER node
+ENTRYPOINT []
 CMD ["npm", "start", "--silent"]

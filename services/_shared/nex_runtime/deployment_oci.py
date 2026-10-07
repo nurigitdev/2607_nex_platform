@@ -190,6 +190,8 @@ def validate_oci_containerfiles(
     node_text = by_path.get(NODE_CONTAINERFILE, "")
     if "npm ci --omit=dev --ignore-scripts" not in node_text:
         errors.append("Node Containerfile does not enforce npm ci")
+    if "ENTRYPOINT []" not in node_text:
+        errors.append("Node Containerfile does not clear the base entrypoint")
     if errors:
         raise OciBuildDefinitionError("; ".join(errors))
 

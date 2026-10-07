@@ -137,6 +137,7 @@ def test_containerfile_validation_fails_closed(tmp_path: Path) -> None:
     assert "does not enforce the production lock" in detail
     assert "does not isolate runtime wheel installation" in detail
     assert "does not enforce npm ci" in detail
+    assert "does not clear the base entrypoint" in detail
 
 
 def test_materialized_context_is_deterministic_and_owner_scoped(tmp_path: Path) -> None:

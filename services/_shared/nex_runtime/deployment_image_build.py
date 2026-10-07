@@ -10,6 +10,7 @@ from .deployment_artifacts import (
     build_default_deployment_artifact_catalog,
 )
 from .deployment_entrypoints import (
+    PackagedEntrypointDefinition,
     build_packaged_entrypoint_definitions,
     build_packaged_runtime_manifest,
 )
@@ -143,7 +144,7 @@ def validate_oci_image_build_evidence(
     )
     entrypoints = build_packaged_entrypoint_definitions(manifest, artifact_catalog)
     default_commands = {
-        entry.artifact_id: entry.command
+        entry.artifact_id: packaged_image_default_command(entry)
         for entry in entrypoints
         if entry.kind in {"api", "web"}
     }
@@ -341,3 +342,13 @@ def _non_root_user(value: str) -> bool:
         and not normalized.startswith("0:")
         and not normalized.startswith("root:")
     )
+
+
+def packaged_image_default_command(
+    entry: PackagedEntrypointDefinition,
+) -> tuple[str, ...]:
+    if entry.kind != "api":
+        return entry.command
+    command = list(entry.command)
+    command[command.index("--host") + 1] = "0.0.0.0"
+    return tuple(command)

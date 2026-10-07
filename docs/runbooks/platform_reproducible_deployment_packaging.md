@@ -81,6 +81,11 @@ stores may expose the manifest digest as `.Id`; older stores may expose the
 config digest. Descriptor annotations are checked when present, and the image
 ID must identify either the verified manifest or config object.
 
+API image commands must bind to `0.0.0.0`; the loopback host in local process
+orchestration is not the container command authority. AE Web must expose an
+empty OCI entrypoint and the exact `npm start --silent` command, preventing the
+Node base image entrypoint from becoming an implicit packaged command.
+
 The five Python images build hash-locked wheels in digest-pinned full Python
 and Rust stages. The final images remain on the digest-pinned slim Python base,
 install wheels with `--no-index --no-deps`, and contain neither compiler nor

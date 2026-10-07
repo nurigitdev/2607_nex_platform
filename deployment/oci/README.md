@@ -18,11 +18,14 @@ full Python and Rust stages. The slim runtime installs only those wheels with
 final five Python images. AE Web uses `npm ci --omit=dev`. Final processes run
 as non-root users.
 
-Each image target defaults to its API or Web packaged command. Worker and
-daemon deployments reuse the owning Python target and override the command
-with `python -m nex_runtime.background_process <process-id> --profile
-<profile>`. The typed packaged-entrypoint catalog is the authority for those
-overrides; `scripts/dev` is not required inside an image.
+Each image target defaults to its API or Web packaged command. API image
+commands bind to `0.0.0.0`, independently of the loopback host used by local
+process orchestration. AE Web clears the Node base image entrypoint and uses
+the exact packaged npm command. Worker and daemon deployments reuse the owning
+Python target and override the command with `python -m
+nex_runtime.background_process <process-id> --profile <profile>`. The typed
+packaged-entrypoint catalog is the authority for those overrides;
+`scripts/dev` is not required inside an image.
 
 Build context materialization is deterministic and fails when the destination
 already exists. Generated contexts and local OCI outputs belong under

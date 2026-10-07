@@ -17,6 +17,7 @@ from nex_runtime.deployment_locks import (
     build_deployment_build_inputs,
     deployment_build_inputs_digest,
 )
+from nex_runtime.deployment_image_build import packaged_image_default_command
 from nex_runtime.deployment_oci import build_default_oci_definitions
 from nex_runtime.process_manifest import BACKGROUND_PROCESS_IDS
 
@@ -71,7 +72,7 @@ def test_full_build_orchestration_with_fake_docker(
     )
     entries = build_packaged_entrypoint_definitions(manifest, catalog)
     default_commands = {
-        entry.artifact_id: entry.command
+        entry.artifact_id: packaged_image_default_command(entry)
         for entry in entries
         if entry.kind in {"api", "web"}
     }

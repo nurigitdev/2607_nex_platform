@@ -22,6 +22,9 @@
   29 with the containerd image store reports the manifest as `.Id`, while
   older stores may report the config digest; both forms remain descriptor-
   checked and fail closed when the identities are unrelated.
+- Separated container-default API commands from loopback local-process
+  commands: packaged APIs bind to `0.0.0.0`, and AE Web explicitly clears the
+  inherited Node entrypoint before its exact npm command is inspected.
 
 ## Protected Command
 

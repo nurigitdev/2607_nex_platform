@@ -19,6 +19,7 @@ from nex_runtime.deployment_image_build import (
     OciImageBuildRecord,
     build_oci_image_build_evidence,
     oci_image_build_evidence_projection,
+    packaged_image_default_command,
     validate_oci_image_build_evidence,
 )
 from nex_runtime.deployment_locks import (
@@ -44,7 +45,7 @@ def _evidence() -> OciImageBuildEvidence:
     )
     entrypoints = build_packaged_entrypoint_definitions(manifest, catalog)
     default_commands = {
-        entry.artifact_id: entry.command
+        entry.artifact_id: packaged_image_default_command(entry)
         for entry in entrypoints
         if entry.kind in {"api", "web"}
     }
