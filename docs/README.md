@@ -1556,6 +1556,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1444`](slices/1444_s145_postgresql_backup_policy.md) | `S145-002` Validate the five-database backup policy, recovery objectives, retention, storage separation, credentials, and PostgreSQL compatibility. |
 | [`Slice 1445`](slices/1445_s145_logical_backup_execution.md) | `S145-003` Execute credential-safe atomic PostgreSQL logical backups with private files, SHA-256 manifests, and fail-closed partial handling. |
 | [`Slice 1446`](slices/1446_s145_isolated_restore_guard.md) | `S145-004` Admit only integrity-checked archives into isolated recovery services and require migration, identity, query, and extension probes. |
+| [`Slice 1447`](slices/1447_s145_backup_catalog_retention_checkpoint.md) | `S145-005` Verify recovery points, scan catalog integrity, quarantine partials, protect retention minima, and run Checkpoint Gate. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

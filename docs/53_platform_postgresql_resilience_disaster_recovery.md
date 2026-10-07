@@ -101,6 +101,12 @@ exact manifest shape, archive size and SHA-256, symlink absence, and a
 `isolated_recovery` class are accepted. A single-transaction restore must then
 pass identity, migration-head, query, and extension probes.
 
+Slice 1447 closes `catalog_integrity_retention`. Only an archive with a bound
+four-probe restore sidecar becomes `VERIFIED`. Catalog scanning reports
+manifest/archive/verification drift and orphans, stale partials move to a
+private quarantine, and retention preserves the newest 28 points, seven days,
+and at least one verified recovery point before any deletion is planned.
+
 ## Slice Sequence
 
 | Slice | Scope |
