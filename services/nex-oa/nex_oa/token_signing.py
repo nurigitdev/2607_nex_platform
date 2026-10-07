@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import base64
+import os
 from collections.abc import Mapping
 from json import dumps
-import os
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import unquote, urlsplit
 
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from nex_oa.signed_tokens import OaSignedTokenError
@@ -185,9 +184,19 @@ def public_jwk_from_key(
     *,
     key_id: str,
 ) -> dict[str, str]:
-    if private_key.key_size < MINIMUM_RSA_MODULUS_BITS:
+    return public_jwk_from_public_key(private_key.public_key(), key_id=key_id)
+
+
+def public_jwk_from_public_key(
+    public_key: rsa.RSAPublicKey,
+    *,
+    key_id: str,
+) -> dict[str, str]:
+    if not isinstance(public_key, rsa.RSAPublicKey):
+        raise _signing_error("public signing key must be RSA")
+    if public_key.key_size < MINIMUM_RSA_MODULUS_BITS:
         raise _signing_error("RSA signing key is too small")
-    numbers = private_key.public_key().public_numbers()
+    numbers = public_key.public_numbers()
     return {
         "kty": "RSA",
         "use": "sig",

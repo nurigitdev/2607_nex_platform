@@ -6,17 +6,18 @@ from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.asymmetric import rsa
-
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from nex_oa.signed_tokens import OaSignedTokenError
 from nex_oa.token_signing import (
     InMemoryOaRsaSigningProvider,
-    TestFileOaRsaSigningProvider as FileSigningProvider,
     UnavailableOaRsaSigningProvider,
     build_oa_signing_provider,
     encode_signed_jwt,
     public_jwk_from_key,
+    public_jwk_from_public_key,
+)
+from nex_oa.token_signing import (
+    TestFileOaRsaSigningProvider as FileSigningProvider,
 )
 
 
@@ -47,6 +48,13 @@ def test_provider_accepts_injected_3072_bit_key() -> None:
     provider.add_key("kms://oa/key-1", key)
 
     assert provider.public_jwk("kms://oa/key-1", key_id="key-1")["e"] == "AQAB"
+
+
+def test_public_jwk_rejects_non_rsa_public_key() -> None:
+    public_key = ec.generate_private_key(ec.SECP256R1()).public_key()
+
+    with pytest.raises(OaSignedTokenError, match="must be RSA"):
+        public_jwk_from_public_key(public_key, key_id="ec-key")  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(

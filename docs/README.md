@@ -1545,6 +1545,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1433`](slices/1433_oa_production_trust_boundary.md) | `S144-001` Freeze OA external key custody and federation scope, prove single-host feasibility, and register eight gaps plus the Slice 1434-1442 order. |
 | [`Slice 1434`](slices/1434_oa_openbao_transit_signer.md) | `S144-002` Add a bounded AppRole-authenticated OpenBao Transit RSA-3072 signer with version pinning, redacted failures, and token self-revocation. |
 | [`Slice 1435`](slices/1435_oa_openbao_transit_runtime_wiring.md) | `S144-003` Reuse shared TLS/AppRole settings and wire explicit fail-closed `OPENBAO_TRANSIT` runtime selection for production-shaped OA profiles. |
+| [`Slice 1436`](slices/1436_oa_openbao_transit_key_lifecycle.md) | `S144-004` Provision non-exportable Transit RSA-3072 keys and bind public JWK plus version-pinned opaque custody references to OA lifecycle metadata. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

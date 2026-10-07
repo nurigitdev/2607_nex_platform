@@ -1,6 +1,6 @@
 # OA Production Trust, Key Custody, and Enterprise Federation
 
-Status: S144 active through Slice 1435. Production deployment remains
+Status: S144 active through Slice 1436. Production deployment remains
 unapproved.
 
 ## Required Outcome
@@ -86,6 +86,14 @@ Slice 1435 closes `oa_runtime_signer_wiring`. The `OPENBAO_TRANSIT` provider is
 available only in `staging_live` and `production`, reuses the S143 TLS/AppRole
 file boundary, authenticates eagerly, and has no automatic fallback. The
 default remains unavailable and the file provider remains test-only.
+
+Slice 1436 closes the deterministic portion of `custody_key_lifecycle`.
+Operator-only provisioning creates and reads back an exact `rsa-3072` Transit
+key with derived mode, export, and plaintext backup disabled. OA registration
+receives only a version-pinned opaque custody reference and the projected
+public JWK. The application runtime has no key-create, rotate, export, backup,
+delete, or policy capability. Live policy isolation and rotation remain for
+Slices 1437 and 1441.
 
 ## Slice Sequence
 
