@@ -1,6 +1,6 @@
 # Platform Reproducible Deployment Packaging and Environment Topology
 
-Status: S142 active through Slice 1418; production deployment remains
+Status: S142 active through Slice 1419; production deployment remains
 unapproved.
 
 ## Required Outcome
@@ -133,6 +133,14 @@ requirements to immutable release identities.
 - Build provenance records source revision, lock digests, build definition
   digest, artifact digest, and toolchain identity.
 
+Provenance is hierarchical and timestamp-free. Each artifact record binds the
+full Git revision to its dependency lock, Containerfile/build definition,
+owner-scoped context, immutable base image, platform, and optional final image
+digest. `BUILD_INPUTS_READY` means these reproducible inputs are known but no
+complete image set is claimed. `RELEASE_SET_READY` requires a clean source tree
+and six distinct immutable final image references; partial sets are rejected.
+Only then is a complete release-set digest issued.
+
 ## Current-State Audit
 
 At Slice 1412 the repository already has five typed runtime profiles, six
@@ -157,10 +165,11 @@ The measured gap register is:
 These are implementation gaps, not production incidents. S142 evidence must
 remain local or explicitly protected and must not contact production resources.
 
-Slices 1413 through 1418 have closed the immutable artifact, exact lock, OCI
+Slices 1413 through 1419 have closed the immutable artifact, exact lock, OCI
 definition, process binding, package-relative command, and environment
 composition portions of this register, plus the deterministic packaged
-lifecycle plan. Provenance and packaged-runtime acceptance remain open.
+lifecycle plan and build provenance/release identity. Packaged-runtime
+acceptance remains open.
 
 ## Slice Sequence
 
