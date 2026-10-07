@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
+from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -36,6 +37,7 @@ def run_s140_platform_release_candidate_closure(
     protected_evidence_path: Path | None = None,
     junit_path: Path | None = None,
     coverage_path: Path | None = None,
+    observed_at: datetime | None = None,
 ) -> dict[str, Any]:
     env = dict(os.environ if environ is None else environ)
     if env.get(ENABLE_ENV) != "1":
@@ -57,8 +59,12 @@ def run_s140_platform_release_candidate_closure(
         protected = json.loads(protected_path.read_text(encoding="utf-8"))
         if not isinstance(protected, Mapping):
             raise ValueError("protected evidence must be an object")
-        full_regression = load_full_regression_evidence(junit, coverage)
-        return build_release_candidate_closure(protected, full_regression)
+        full_regression = load_full_regression_evidence(
+            junit, coverage, observed_at=observed_at
+        )
+        return build_release_candidate_closure(
+            protected, full_regression, evaluated_at=observed_at
+        )
     except (OSError, ValueError, ET.ParseError):
         return {
             "schema_version": RELEASE_CANDIDATE_CLOSURE_SCHEMA_VERSION,

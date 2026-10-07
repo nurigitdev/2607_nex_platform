@@ -262,6 +262,7 @@ def test_runner_is_opt_in_executes_in_order_and_enables_sources(
         provider_runner=lambda env: value["providers"],
         operations_runner=operations_source,
         assurance_runner=assurance_source,
+        observed_at=NOW,
     )
 
     assert captured["admission"][runner.postgres.ENABLE_ENV] == "1"

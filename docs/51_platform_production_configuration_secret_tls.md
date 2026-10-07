@@ -71,9 +71,10 @@ cannot mark `protected_staging_acceptance` complete.
 Slice 1424 implements the typed manifest and one-to-one secret-reference
 classification. Runtime materialization and startup admission remain open.
 
-Slice 1425 implements metadata-only pre-start admission. Secret
-materialization, process-scoped injection, and post-materialization runtime
-validation remain open.
+Slice 1425 implements metadata-only pre-start admission. Slice 1426 implements
+provider-neutral resolution and exact owner-scoped process environments without
+publishing raw values or opaque references. External-provider acceptance,
+rotation, and post-materialization runtime validation remain open.
 
 ## Slice Sequence
 

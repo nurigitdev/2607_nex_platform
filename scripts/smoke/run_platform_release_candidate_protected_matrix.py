@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable, Mapping
 from contextlib import contextmanager
+from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -40,6 +41,7 @@ def run_platform_release_candidate_protected_matrix(
     provider_runner: SourceRunner = providers.run_platform_release_candidate_live_providers,
     operations_runner: SourceRunner = operations.run_platform_release_candidate_browser_ag_operations,
     assurance_runner: SourceRunner = assurance.run_platform_release_candidate_assurance,
+    observed_at: datetime | None = None,
 ) -> dict[str, Any]:
     env = dict(os.environ if environ is None else environ)
     if env.get(ENABLE_ENV) != "1":
@@ -83,6 +85,7 @@ def run_platform_release_candidate_protected_matrix(
             provider_source,
             operations_source,
             assurance_source,
+            observed_at=observed_at,
         )
     except Exception:
         result = {

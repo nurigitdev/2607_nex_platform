@@ -321,6 +321,7 @@ def test_runner_is_opt_in_writes_safe_evidence_and_handles_inputs(
         },
         junit_path=junit,
         coverage_path=coverage_path,
+        observed_at=NOW,
     )
     assert result["status"] == "PASS"
     assert "gates=9/9" in runner.summary_line(result)
