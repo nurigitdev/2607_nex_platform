@@ -1,6 +1,6 @@
 # OA Production Trust, Key Custody, and Enterprise Federation
 
-Status: S144 active through Slice 1437. Production deployment remains
+Status: S144 active through Slice 1438. Production deployment remains
 unapproved.
 
 ## Required Outcome
@@ -102,6 +102,16 @@ single repository transaction. A rejected activation leaves the previous key
 active. JWKS overlap validates old and new tokens, revocation remains effective
 after service reconstruction, and no private material enters OA persistence or
 evidence. Protected OpenBao and PostgreSQL proof remains owned by Slice 1441.
+
+Slice 1438 closes the deterministic `federation_registration_metadata` gap.
+OA accepts only a production-shaped HTTPS issuer, issuer-relative discovery,
+the canonical OA callback, authorization code flow with PKCE S256, confidential
+client authentication, and the exact `openid` scope. OpenBao owns the client
+secret and OA receives only an S143 namespace-scoped opaque reference; neither
+the secret nor its reference is persisted or emitted. Discovery endpoints
+must remain on the issuer origin and explicitly advertise the accepted flow,
+scope, authentication method, PKCE method, and RS256 signing algorithm. Live
+OpenBao registration remains owned by Slices 1440 and 1441.
 
 ## Slice Sequence
 
