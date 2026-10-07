@@ -86,6 +86,13 @@ Slice 1429 fixes managed TLS termination, end-to-end HTTPS, certificate
 overlap verification, expiry alerting, revocation blocking, and rollback. No
 application image or process may receive TLS private-key material.
 
+Slice 1430 performs actual local owner-process injection, generation rollback,
+loopback HTTPS certificate replacement/rollback, and zero-residue cleanup.
+The protected rehearsal passed with five candidate owner processes, five
+rollback owner processes, three HTTPS probes, zero residue, and direct
+private-value/evidence comparison. This evidence remains explicitly
+non-production and non-external.
+
 ## Slice Sequence
 
 | Slice | Scope |
