@@ -180,7 +180,9 @@ def run_s143_production_configuration_secret_tls_closure(
         "program_marks_s143_complete_and_s144_s147_ready": all(
             token in plan
             for token in (
-                "S143 is complete and S144-S147 are ready",
+                "S143 completed through Slice 1432",
+                "The wave-two requirements S144, S145, S146, and S147 "
+                "may now proceed independently",
                 "production deployment remains unapproved",
                 "## S143 Completion Update",
             )

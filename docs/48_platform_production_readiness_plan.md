@@ -331,3 +331,18 @@ Logical process, network, policy, credential, and persistence isolation is
 mandatory even though the containers share one host. No corporate IdP or
 production resource is contacted, and production deployment remains
 unapproved.
+
+## S144 Completion Update
+
+S144 completed through Slice 1442 on the accepted single-host Docker Compose
+topology. The protected acceptance used the actual `nex_oa_test` migration
+head, the committed six-image release set, OpenBao non-exportable RSA-3072
+Transit custody and OIDC provider, and ten Traefik TLS routes. Its value-free
+attestation binds source, artifacts, configuration, predecessor evidence, and
+the ignored protected report.
+
+S144 is complete and its S148 dependency is ready. The browser callback route,
+state-cookie lifecycle, and redirect journey remain S149 integrated-staging
+prerequisites. No corporate IdP, registry, or production resource was
+contacted, and production deployment remains unapproved. S145 is the next
+implementation requirement.

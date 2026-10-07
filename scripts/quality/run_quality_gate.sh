@@ -760,3 +760,5 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_oa_enterprise_oidc_registration.py --summary
 "$PYTHON_BIN" scripts/smoke/run_oa_oidc_rollover_resilience.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s144_staging_trust_rehearsal.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s144_protected_trust_federation_acceptance.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s144_oa_production_trust_closure.py --summary

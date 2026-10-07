@@ -1,0 +1,92 @@
+{
+  "schema_version": "production_evidence.v1",
+  "evidence_id": "s144-trust-federation-6733a7ba",
+  "requirement_id": "S144",
+  "control_ids": [
+    "enterprise_federation",
+    "external_signing_key_custody"
+  ],
+  "release_candidate_id": "s144-staging-c889c93b",
+  "environment_class": "external_staging",
+  "execution_mode": "protected",
+  "actual_execution": true,
+  "started_at": "2026-10-07T13:15:46.797904+00:00",
+  "completed_at": "2026-10-07T13:15:46.797904+00:00",
+  "source_revision": "6733a7ba3b75e66e0c6d6366dcbaf564cde86b82",
+  "artifact_digests": [
+    "sha256:c889c93ba7252f3b57c90ae6f8ffdfeca977c2af99644c11750f77833a9a1945"
+  ],
+  "configuration_digest": "sha256:fdd2d0caee786a454da55064d8bc87ea7668398d6070fbb0068edbd796511753",
+  "dependency_evidence_digests": [
+    "sha256:257810a76069c8814b7a1ba1cec69cc5b96f935866f7a95d7417be048941fd83",
+    "sha256:3f24356371007a4beee4ed8ec3f270716858063207913f8eeeaad090ca092551"
+  ],
+  "checks": {
+    "access_revocation": true,
+    "browser_callback_deferred": true,
+    "database_migration": true,
+    "exact_subject_link": true,
+    "id_assertion_verified": true,
+    "oa_jwks_overlap": true,
+    "oa_restart": true,
+    "oa_session": true,
+    "oidc_code_flow": true,
+    "oidc_discovery": true,
+    "oidc_jwks_overlap": true,
+    "oidc_key_rollover": true,
+    "oidc_pkce": true,
+    "production_approval_absent": true,
+    "production_contact_absent": true,
+    "registry_push_absent": true,
+    "transit_key_non_exportable": true,
+    "transit_outage_fail_closed": true,
+    "transit_policy_isolated": true,
+    "transit_recovery": true,
+    "transit_rotation": true
+  },
+  "metrics": {
+    "application_service_count": 1,
+    "database_service_count": 1,
+    "execution_duration_recorded": false,
+    "managed_route_count": 10,
+    "migration_count": 18,
+    "oidc_jwks_key_count": 2,
+    "transit_version_count": 2
+  },
+  "privacy": {
+    "raw_value_count": 0,
+    "violation_count": 0
+  },
+  "rollback": {
+    "plan_id": "s144-transit-and-federation-rollback",
+    "owner": "nex-oa-and-platform-integration",
+    "trigger_conditions": [
+      "federation-verification-failure",
+      "signing-custody-failure"
+    ],
+    "last_known_good_artifacts": [
+      "sha256:c889c93ba7252f3b57c90ae6f8ffdfeca977c2af99644c11750f77833a9a1945"
+    ],
+    "last_known_good_configuration": "sha256:fdd2d0caee786a454da55064d8bc87ea7668398d6070fbb0068edbd796511753",
+    "data_migration_strategy": "forward-only-no-schema-change",
+    "drill_status": "PASS",
+    "recovery_metrics": {
+      "oa_ready": true,
+      "openbao_recovered": true,
+      "signing_recovered": true
+    },
+    "residue_counts": {
+      "container_count": 0,
+      "network_count": 0,
+      "oa_test_row_count": 0,
+      "volume_count": 0
+    }
+  },
+  "residue": {
+    "container_count": 0,
+    "network_count": 0,
+    "oa_test_row_count": 0,
+    "volume_count": 0
+  },
+  "evidence_digest": "sha256:cedac783308fb720c09fabf1ef5fb3789b9d80845c81498ad9bc4e161a074d52"
+}

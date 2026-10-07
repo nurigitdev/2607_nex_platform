@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
+import subprocess
+import sys
+
 import run_oa_openbao_transit_signer as runner
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_transit_signer_smoke_passes() -> None:
@@ -17,6 +25,27 @@ def test_transit_signer_smoke_passes() -> None:
     }
     assert result["decision"]["private_key_exported"] is False
     assert result["decision"]["next_slice"] == "1435"
+
+
+def test_transit_signer_smoke_is_standalone_executable() -> None:
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = ""
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/smoke/run_oa_openbao_transit_signer.py"),
+            "--summary",
+        ],
+        cwd=ROOT,
+        env=environment,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stdout
+    assert "oa_openbao_transit_signer=pass" in completed.stdout
 
 
 def test_transit_signer_summary_and_main(monkeypatch, capsys) -> None:

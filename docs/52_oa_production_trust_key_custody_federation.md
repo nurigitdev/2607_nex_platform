@@ -1,6 +1,6 @@
 # OA Production Trust, Key Custody, and Enterprise Federation
 
-Status: S144 active through Slice 1441. Production deployment remains
+Status: S144 complete through Slice 1442. Production deployment remains
 unapproved.
 
 ## Required Outcome
@@ -159,6 +159,32 @@ not yet expose the callback route or state-cookie/browser redirect lifecycle.
 That gap is explicit in protected evidence and blocks production approval. It
 does not invalidate the single-host feasibility decision or the live provider
 protocol/session-boundary proof.
+
+## Closure Decision
+
+Slice 1442 closes all eight S144 gaps. Eight deterministic audits and the
+actual `nex_oa_test`/OpenBao/Traefik execution are bound to a metadata-only
+attestation. The accepted run proves non-exportable RSA-3072 custody, Transit
+and OIDC rotation, OA and upstream JWKS overlap, revocation, restart, outage
+failure, recovery, exact-subject federation, and OA session issuance. The
+runbook and both quality hooks are registered, and Full Gate is mandatory.
+
+The callback URL remains an admitted registration value, not an implemented
+browser callback. The callback route, state-cookie lifecycle, and redirect
+experience are explicit S149 integrated-staging prerequisites. Corporate IdP
+onboarding, registry publication, production contact, and production approval
+were not performed.
+
+Completion signal: Met.
+
+## S148 Handoff
+
+The S144 value-free attestation is ready for S148 telemetry, alerting, and
+incident integration. S148 may consume custody availability, signing failure,
+OIDC refresh, federation denial, and recovery signals without receiving raw
+credentials, assertions, subjects, sessions, or private key material. S145
+remains the next implementation requirement; production deployment remains
+unapproved.
 
 ## Slice Sequence
 

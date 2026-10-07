@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "services" / "_shared"))
 sys.path.insert(0, str(ROOT / "services" / "nex-oa"))
 
 from nex_oa.openbao_transit_signer import (  # noqa: E402
