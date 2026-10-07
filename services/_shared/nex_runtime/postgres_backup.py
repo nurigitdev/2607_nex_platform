@@ -95,7 +95,7 @@ def build_logical_backup_plan(
 
     service_directory = backup_root / target.service_id
     archive_name = f"{backup_id}.dump"
-    environment = _safe_subprocess_environment(
+    environment = build_libpq_file_environment(
         parent_environ or os.environ,
         service_file=service_file,
         passfile=passfile,
@@ -197,7 +197,7 @@ def _validate_target(
         raise PostgresBackupError("backup_target_not_in_policy")
 
 
-def _safe_subprocess_environment(
+def build_libpq_file_environment(
     parent: Mapping[str, str], *, service_file: Path, passfile: Path
 ) -> dict[str, str]:
     environment = {

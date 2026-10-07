@@ -95,6 +95,12 @@ service/passfile boundary, restricts inherited environment values, streams
 atomically publishes an archive and value-free `CREATED` manifest. A failed,
 empty, duplicate, symlinked, or partially published run is never admitted.
 
+Slice 1446 closes `isolated_restore_guard`. Restore admission verifies the
+exact manifest shape, archive size and SHA-256, symlink absence, and a
+`pg_restore --list` probe. Only the policy-bound `-recovery` service and
+`isolated_recovery` class are accepted. A single-transaction restore must then
+pass identity, migration-head, query, and extension probes.
+
 ## Slice Sequence
 
 | Slice | Scope |
