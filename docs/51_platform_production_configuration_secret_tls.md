@@ -78,6 +78,10 @@ and post-materialization runtime validation remain open. Slice 1427 freezes
 owner-ordered rolling restart, all-owner verification before retirement, and
 reverse-order rollback for rotation failures.
 
+Slice 1428 enforces MO-only custody for all three provider API keys and adds a
+value-aware recursive redaction boundary. Raw values and their hashes remain
+forbidden in evidence.
+
 ## Slice Sequence
 
 | Slice | Scope |
