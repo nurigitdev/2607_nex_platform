@@ -1,7 +1,8 @@
 # Platform Production Readiness Plan
 
 Status: Canonical scope freeze for requirements S141 through S150. S141 is
-active; production deployment remains unapproved.
+complete; production deployment remains unapproved. S142 is the active
+handoff.
 
 ## Program Outcome
 
@@ -274,3 +275,11 @@ provider connection.
 
 Any scope change must update this document first and identify the evidence or
 dependency that caused the change.
+
+Completion signal: Met. The canonical result is recorded in
+`docs/49_platform_production_readiness_reaudit.md`, and the repeatable audit
+procedure is recorded in
+`docs/runbooks/platform_production_readiness_reaudit.md`. All nine repository
+audits pass, all production gaps remain explicit, and no production resource
+was contacted. S140 remains the release-candidate rollback baseline while S142
+starts reproducible packaging and topology work.
