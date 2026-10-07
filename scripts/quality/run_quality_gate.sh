@@ -763,3 +763,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_s144_protected_trust_federation_acceptance.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s144_oa_production_trust_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s145_postgresql_resilience_boundary.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s145_postgresql_backup_policy.py --summary

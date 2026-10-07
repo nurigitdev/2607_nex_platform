@@ -1,0 +1,57 @@
+schema_version: postgres_resilience_policy.v1
+topology:
+  mode: single_host_cold_recovery
+  high_availability: false
+  automatic_failover: false
+  operator_cutover_required: true
+services:
+  - service_id: nex-oa
+    database_env: NEX_OA_DATABASE_URL
+    libpq_service: nex-oa-backup
+    required_extensions: {}
+  - service_id: nex-ag
+    database_env: NEX_AG_DATABASE_URL
+    libpq_service: nex-ag-backup
+    required_extensions: {}
+  - service_id: nex-ae-api
+    database_env: NEX_AE_DATABASE_URL
+    libpq_service: nex-ae-api-backup
+    required_extensions:
+      pgcrypto: "1.3"
+  - service_id: nex-cx
+    database_env: NEX_CX_DATABASE_URL
+    libpq_service: nex-cx-backup
+    required_extensions:
+      pgcrypto: "1.3"
+      vector: "0.8.4"
+  - service_id: nex-mo
+    database_env: NEX_MO_DATABASE_URL
+    libpq_service: nex-mo-backup
+    required_extensions: {}
+logical_backup:
+  format: custom
+  compression: gzip:6
+  interval_hours: 6
+  service_restore_rto_minutes: 30
+  retention_restore_points: 28
+  retention_days: 7
+  minimum_verified_points: 1
+cluster_recovery:
+  method: basebackup_wal_pitr
+  archive_timeout_seconds: 300
+  cluster_rto_minutes: 60
+  retained_base_generations: 2
+storage:
+  production_class: separate_mount
+  rehearsal_class: ephemeral_local
+  forbid_postgres_data_volume: true
+  atomic_publish_required: true
+credentials:
+  transport: libpq_service_passfile
+  password_in_process_args: false
+  distinct_backup_role_required: true
+compatibility:
+  postgres_major: 16
+  pg_dump_major: 16
+  pg_restore_major: 16
+

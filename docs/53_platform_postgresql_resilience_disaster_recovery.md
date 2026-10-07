@@ -82,6 +82,13 @@ rehearsal values, and S149 must reassess them with production-sized data.
 All gaps begin `OPEN`. Unit tests and command-plan inspection cannot close the
 protected restore and PITR acceptance gap.
 
+Slice 1444 closes `backup_policy_contract`. The machine-validated policy binds
+all five owners to distinct libpq services, PostgreSQL 16-compatible tools,
+the pgcrypto/vector extension inventory, six-hour logical backups, 28 restore
+points, seven days of retention, two base generations, five-minute WAL archive
+exposure, and 30/60-minute service/cluster RTO budgets. Production storage must
+be a separate mount and backup subprocess arguments may not carry credentials.
+
 ## Slice Sequence
 
 | Slice | Scope |
@@ -129,4 +136,3 @@ archive can be admitted, WAL retention cannot cover a retained base backup, or
 the isolated cluster cannot be removed cleanly. Also stop on any requirement
 for privileged application containers, Docker socket mounting, automatic
 promotion, production contact, or silent SQLite/memory fallback.
-
