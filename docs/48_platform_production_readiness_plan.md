@@ -1,8 +1,7 @@
 # Platform Production Readiness Plan
 
 Status: Canonical scope freeze for requirements S141 through S150. S141 is
-complete; production deployment remains unapproved. S142 is the active
-handoff.
+complete and S142 is active; production deployment remains unapproved.
 
 ## Program Outcome
 

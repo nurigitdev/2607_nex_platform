@@ -731,3 +731,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_production_transition_dependency_plan.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_production_evidence_decision_contract.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s141_platform_production_readiness_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_deployment_packaging_boundary.py --summary

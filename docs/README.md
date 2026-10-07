@@ -44,6 +44,7 @@ documents and show the current build direction directly.
 | [37 Platform MVP Integration and Release Plan](37_platform_mvp_integration_release_plan.md) | Freezes S131-S140 vertical integration, protected evidence, and release-candidate scope. |
 | [38 Platform MVP Vertical-Spine Current-State Re-Audit](38_platform_mvp_vertical_spine_reaudit.md) | Records the S131 actual-state matrix, prioritized integration gaps, and S132 handoff. |
 | [47 Platform MVP Release-Candidate Acceptance](47_platform_mvp_release_candidate_acceptance.md) | Freezes S140 named scenarios, protected RC matrix, zero-residue gates, and production deployment deferrals. |
+| [50 Platform Reproducible Deployment Packaging](50_platform_reproducible_deployment_packaging.md) | Freezes S142 artifact ownership, reproducible build rules, environment topology, lifecycle acceptance, and S143 handoff. |
 
 Recommended first read:
 
