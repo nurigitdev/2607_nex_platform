@@ -116,6 +116,8 @@ def _execute_image_build(root: Path, report_path: Path) -> dict[str, Any]:
 
     with TemporaryDirectory(prefix="nex-platform-oci-build-") as temporary:
         temporary_root = Path(temporary)
+        docker_config = temporary_root / "docker-config"
+        docker_config.mkdir()
         for index, definition in enumerate(definitions, start=1):
             print(
                 f"[{index}/{len(definitions)}] building {definition.artifact_id}",
@@ -142,6 +144,7 @@ def _execute_image_build(root: Path, report_path: Path) -> dict[str, Any]:
                 tag=tag,
                 source_revision=source_revision,
                 build_inputs_digest=inputs_digest,
+                docker_config=docker_config,
                 root=root,
             )
             record = _build_record(
@@ -231,6 +234,7 @@ def _build_image(
     tag: str,
     source_revision: str,
     build_inputs_digest: str,
+    docker_config: Path,
     root: Path,
 ) -> None:
     command = (
@@ -260,6 +264,8 @@ def _build_image(
         str(context_root),
     )
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    environment = dict(os.environ)
+    environment["DOCKER_CONFIG"] = str(docker_config)
     with log_path.open("w", encoding="utf-8") as output:
         completed = subprocess.run(
             command,
@@ -268,6 +274,7 @@ def _build_image(
             stdout=output,
             stderr=subprocess.STDOUT,
             text=True,
+            env=environment,
         )
     if completed.returncode != 0:
         raise PlatformImageBuildError(

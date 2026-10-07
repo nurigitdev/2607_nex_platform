@@ -12,6 +12,8 @@
   container checks.
 - Kept JSON evidence and build logs under ignored `reports/`; no registry push,
   staging contact, production contact, or production approval is performed.
+- Isolated Buildx from the host home and registry credentials with an ephemeral
+  empty Docker CLI configuration.
 
 ## Protected Command
 

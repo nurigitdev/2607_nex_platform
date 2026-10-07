@@ -437,6 +437,7 @@ def test_build_and_capture_command_errors(
             tag="local/test:tag",
             source_revision=REVISION,
             build_inputs_digest="sha256:" + "b" * 64,
+            docker_config=tmp_path / "docker-config",
             root=tmp_path,
         )
     with pytest.raises(build.PlatformImageBuildError, match="operation failed"):
@@ -455,6 +456,7 @@ def test_build_and_capture_command_errors(
         tag="local/test:tag",
         source_revision=REVISION,
         build_inputs_digest="sha256:" + "b" * 64,
+        docker_config=tmp_path / "docker-config",
         root=tmp_path,
     )
 

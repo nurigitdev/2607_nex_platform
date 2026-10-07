@@ -68,10 +68,12 @@ NEX_PLATFORM_OCI_IMAGE_BUILD=1 \
 The expected summary is six artifacts, six unique manifest digests, six
 non-root images, seven background checks, and a ready release set. Build logs
 are written beside the JSON report. Both are ignored by Git. The command uses
-`--load` and never uses `--push`; it does not contact a registry, model
-provider, staging, or production environment. A partial image set, dirty
-worktree, mutable base, command drift, privileged runtime user, missing
-manifest digest, or failed background check blocks the release-set digest.
+an ephemeral empty Docker CLI configuration, `--load`, and never uses `--push`;
+host registry credentials are neither required nor read. It does not contact a
+registry, model provider, staging, or production environment. A partial image
+set, dirty worktree, mutable base, command drift, privileged runtime user,
+missing manifest digest, or failed background check blocks the release-set
+digest.
 
 ## Closure And Full Gate
 
