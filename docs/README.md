@@ -1558,6 +1558,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1446`](slices/1446_s145_isolated_restore_guard.md) | `S145-004` Admit only integrity-checked archives into isolated recovery services and require migration, identity, query, and extension probes. |
 | [`Slice 1447`](slices/1447_s145_backup_catalog_retention_checkpoint.md) | `S145-005` Verify recovery points, scan catalog integrity, quarantine partials, protect retention minima, and run Checkpoint Gate. |
 | [`Slice 1448`](slices/1448_s145_postgresql_pitr_plan.md) | `S145-006` Plan safe base backup and WAL PITR, archive/restore WAL atomically, pause recovery, and require explicit cold cutover. |
+| [`Slice 1449`](slices/1449_s145_postgresql_backup_worker.md) | `S145-007` Add exclusive restart-safe backup execution, durable state, stale-run recovery, bounded retry, and terminal idempotency. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -114,6 +114,14 @@ deny conflicting content, and verify digest sidecars. Recovery follows the
 latest timeline and pauses at the target; promotion and cutover remain an
 explicit operator decision after all five databases and migration heads pass.
 
+Slice 1449 closes `restart_safe_backup_worker`. One non-blocking file lock
+admits a run ID, and an atomically replaced mode-0600 state document records
+attempts and the five service outcomes. A fresh `RUNNING` state is not stolen;
+after 30 minutes it may be recovered and old partials are quarantined. Only
+source-unavailable and dump failures retry, with bounded exponential delays
+and at most three attempts. Terminal run IDs are idempotent and never execute
+again implicitly.
+
 ## Slice Sequence
 
 | Slice | Scope |
