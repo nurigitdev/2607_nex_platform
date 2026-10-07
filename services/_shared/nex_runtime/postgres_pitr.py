@@ -133,4 +133,4 @@ def validate_pitr_cutover(
 def _timestamp(value: datetime) -> str:
     if value.tzinfo is None or value.utcoffset() is None:
         raise PostgresPitrError("recovery_target_not_timezone_aware")
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    return value.astimezone(timezone.utc).isoformat(sep=" ")

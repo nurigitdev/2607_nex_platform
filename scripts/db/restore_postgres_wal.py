@@ -11,7 +11,8 @@ from archive_postgres_wal import WAL_NAME, WalArchiveError
 
 
 def restore_wal_segment(segment_name: str, destination: Path, archive_root: Path) -> str:
-    if not WAL_NAME.fullmatch(segment_name) or destination.name != segment_name:
+    accepted_targets = {segment_name, "RECOVERYXLOG", "RECOVERYHISTORY"}
+    if not WAL_NAME.fullmatch(segment_name) or destination.name not in accepted_targets:
         raise WalArchiveError("wal_restore_target_invalid")
     source = archive_root / segment_name
     digest_path = archive_root / f"{segment_name}.sha256"

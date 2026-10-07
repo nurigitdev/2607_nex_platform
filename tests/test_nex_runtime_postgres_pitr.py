@@ -36,6 +36,8 @@ def test_pitr_plan_is_cold_recovery_and_value_free(tmp_path: Path) -> None:
     assert plan.environment["PGCONNECT_TIMEOUT"] == "10"
     assert "PGPASSWORD" not in plan.environment
     assert dict(plan.archive_settings)["archive_mode"] == "on"
+    assert plan.recovery_target_time == "2026-10-08 00:00:00+00:00"
+    assert dict(plan.recovery_settings)["recovery_target_time"] == plan.recovery_target_time
     assert projection["recovery_target_action"] == "pause"
     assert projection["operator_cutover_required"] is True
     assert projection["automatic_promotion"] is False

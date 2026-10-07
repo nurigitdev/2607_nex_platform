@@ -27,6 +27,18 @@ def test_wal_archive_restore_roundtrip_and_idempotency(tmp_path: Path) -> None:
     assert destination.read_bytes() == b"wal"
     assert oct(destination.stat().st_mode & 0o777) == "0o600"
 
+    recovery_target = tmp_path / "restore" / "RECOVERYXLOG"
+    assert restore_wal_segment(SEGMENT, recovery_target, archive) == digest
+    assert recovery_target.read_bytes() == b"wal"
+
+    history_name = "00000002.history"
+    history_source = tmp_path / history_name
+    history_source.write_bytes(b"history")
+    archive_wal_segment(history_source, history_name, archive)
+    history_target = tmp_path / "restore" / "RECOVERYHISTORY"
+    restore_wal_segment(history_name, history_target, archive)
+    assert history_target.read_bytes() == b"history"
+
 
 @pytest.mark.parametrize("name", ["../bad", "lowercase", "0001"])
 def test_wal_archive_rejects_invalid_names(tmp_path: Path, name: str) -> None:

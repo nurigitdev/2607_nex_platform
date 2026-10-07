@@ -130,6 +130,20 @@ privilege, and is opt-in only. Deterministic rehearsal produces one catalogued
 logical archive for each of the five services, while an actual container check
 proves all three PostgreSQL 16 client tools without contacting a database.
 
+Slice 1451 closes the protected recovery acceptance gap. All five actual test
+databases were fingerprinted and dumped read-only, restored into an ephemeral
+PostgreSQL 16 cluster, verified as five catalogued recovery points, captured by
+physical base backup, and replayed through six archived WAL segments. Recovery
+paused before a post-target marker, all 95 migration records and 121 public
+tables matched, and no promotion occurred. The run completed in 13.326 seconds;
+the protected pytest reported 3 passed with no skip. All five source databases
+remained marker-free and no temporary PostgreSQL process remained.
+
+The protected run found and fixed two real compatibility defects that command
+planning alone could not expose: PostgreSQL supplies `RECOVERYXLOG` or
+`RECOVERYHISTORY` as the restore destination, and `recovery_target_time` needs
+PostgreSQL timestamp syntax rather than RFC3339 `T...Z` syntax.
+
 ## Slice Sequence
 
 | Slice | Scope |
