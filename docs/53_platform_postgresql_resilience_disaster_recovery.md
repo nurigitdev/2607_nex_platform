@@ -89,6 +89,12 @@ points, seven days of retention, two base generations, five-minute WAL archive
 exposure, and 30/60-minute service/cluster RTO budgets. Production storage must
 be a separate mount and backup subprocess arguments may not carry credentials.
 
+Slice 1445 closes `logical_backup_execution`. The executor uses a libpq
+service/passfile boundary, restricts inherited environment values, streams
+`pg_dump` custom output into a mode-0600 partial, fsyncs and hashes it, then
+atomically publishes an archive and value-free `CREATED` manifest. A failed,
+empty, duplicate, symlinked, or partially published run is never admitted.
+
 ## Slice Sequence
 
 | Slice | Scope |
