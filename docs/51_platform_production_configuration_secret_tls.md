@@ -74,7 +74,9 @@ classification. Runtime materialization and startup admission remain open.
 Slice 1425 implements metadata-only pre-start admission. Slice 1426 implements
 provider-neutral resolution and exact owner-scoped process environments without
 publishing raw values or opaque references. External-provider acceptance,
-rotation, and post-materialization runtime validation remain open.
+and post-materialization runtime validation remain open. Slice 1427 freezes
+owner-ordered rolling restart, all-owner verification before retirement, and
+reverse-order rollback for rotation failures.
 
 ## Slice Sequence
 

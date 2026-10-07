@@ -746,3 +746,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_platform_production_configuration_manifest.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_production_startup_admission.py --summary
 "$PYTHON_BIN" scripts/smoke/run_platform_production_secret_materialization.py --summary
+"$PYTHON_BIN" scripts/smoke/run_platform_production_secret_rotation.py --summary
