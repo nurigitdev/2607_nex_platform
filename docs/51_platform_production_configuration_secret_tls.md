@@ -1,6 +1,6 @@
 # Platform Production Configuration, Secret, and TLS Lifecycle
 
-Status: S143 active through Slice 1424. Production deployment remains
+Status: S143 active through Slice 1425. Production deployment remains
 unapproved.
 
 ## Required Outcome
@@ -70,6 +70,10 @@ cannot mark `protected_staging_acceptance` complete.
 
 Slice 1424 implements the typed manifest and one-to-one secret-reference
 classification. Runtime materialization and startup admission remain open.
+
+Slice 1425 implements metadata-only pre-start admission. Secret
+materialization, process-scoped injection, and post-materialization runtime
+validation remain open.
 
 ## Slice Sequence
 
