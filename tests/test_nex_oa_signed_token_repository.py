@@ -1,13 +1,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 from types import SimpleNamespace
-import pytest
 
 import nex_oa.signed_token_repository as repository_module
+import pytest
 from nex_oa.production_token_profiles import PRODUCTION_TOKEN_ISSUER
 from nex_oa.signed_token_repository import (
     InMemoryOaSignedTokenRepository,
@@ -21,8 +18,14 @@ from nex_oa.signed_tokens import (
     build_token_revocation_record,
     plan_signing_key_transition,
 )
-from nex_runtime import PERSISTENCE_MODE_MEMORY, build_service_persistence_runtime
-from nex_runtime import PERSISTENCE_MODE_POSTGRES
+from nex_runtime import (
+    PERSISTENCE_MODE_MEMORY,
+    PERSISTENCE_MODE_POSTGRES,
+    build_service_persistence_runtime,
+)
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 
 def _key(key_id: str) -> dict:
@@ -106,6 +109,110 @@ def test_repository_enforces_revision_and_one_active_key(repository) -> None:
         repository.save_signing_key({**first, "revision": 2, "previous_revision": 1})
 
 
+def test_repository_rotates_signing_keys_atomically(repository) -> None:
+    first = repository.save_signing_key(_key("oa-key-a"))
+    second = repository.save_signing_key(_key("oa-key-b"))
+    active_first = plan_signing_key_transition(
+        first, target_state="ACTIVE", expected_revision=1, now_epoch=430
+    )
+    repository.save_signing_key(active_first)
+    previous = plan_signing_key_transition(
+        active_first,
+        target_state="VERIFY_ONLY",
+        expected_revision=2,
+        now_epoch=500,
+    )
+    active = plan_signing_key_transition(
+        second,
+        target_state="ACTIVE",
+        expected_revision=1,
+        now_epoch=430,
+    )
+
+    stored_previous, stored_active = repository.rotate_signing_keys(
+        previous, active
+    )
+
+    assert stored_previous["state"] == "VERIFY_ONLY"
+    assert stored_active["state"] == "ACTIVE"
+    assert repository.get_signing_key("oa-key-a")["state"] == "VERIFY_ONLY"
+    assert repository.get_signing_key("oa-key-b")["state"] == "ACTIVE"
+
+
+def test_repository_rotation_failure_rolls_back_both_keys(repository) -> None:
+    first = repository.save_signing_key(_key("oa-key-a"))
+    second = repository.save_signing_key(_key("oa-key-b"))
+    active_first = plan_signing_key_transition(
+        first, target_state="ACTIVE", expected_revision=1, now_epoch=430
+    )
+    repository.save_signing_key(active_first)
+    previous = plan_signing_key_transition(
+        active_first,
+        target_state="VERIFY_ONLY",
+        expected_revision=2,
+        now_epoch=500,
+    )
+    active = plan_signing_key_transition(
+        second,
+        target_state="ACTIVE",
+        expected_revision=1,
+        now_epoch=430,
+    )
+
+    with pytest.raises(OaSignedTokenError, match="revision conflict"):
+        repository.rotate_signing_keys(
+            previous,
+            {**active, "previous_revision": 99},
+        )
+
+    assert repository.get_signing_key("oa-key-a")["state"] == "ACTIVE"
+    assert repository.get_signing_key("oa-key-b")["state"] == "PREPUBLISHED"
+
+
+def test_repository_rotation_rejects_same_key(repository) -> None:
+    first = repository.save_signing_key(_key("oa-key-a"))
+    with pytest.raises(OaSignedTokenError, match="revision conflict"):
+        repository.rotate_signing_keys(first, first)
+
+
+def test_memory_rotation_rejects_missing_invalid_and_competing_keys() -> None:
+    repository = InMemoryOaSignedTokenRepository()
+    first = repository.save_signing_key(_key("oa-key-a"))
+    second = repository.save_signing_key(_key("oa-key-b"))
+    with pytest.raises(OaSignedTokenError, match="revision conflict"):
+        repository.rotate_signing_keys(first, _key("oa-key-missing"))
+
+    invalid_previous = {
+        **first,
+        "state": "ACTIVE",
+        "revision": 2,
+        "previous_revision": 1,
+    }
+    planned_active = {
+        **second,
+        "state": "ACTIVE",
+        "revision": 2,
+        "previous_revision": 1,
+    }
+    with pytest.raises(OaSignedTokenError, match="active signing key"):
+        repository.rotate_signing_keys(invalid_previous, planned_active)
+
+    third = repository.save_signing_key(_key("oa-key-c"))
+    repository.save_signing_key(
+        plan_signing_key_transition(
+            third, target_state="ACTIVE", expected_revision=1, now_epoch=430
+        )
+    )
+    planned_previous = {
+        **first,
+        "state": "VERIFY_ONLY",
+        "revision": 2,
+        "previous_revision": 1,
+    }
+    with pytest.raises(OaSignedTokenError, match="active signing key"):
+        repository.rotate_signing_keys(planned_previous, planned_active)
+
+
 def test_repository_persists_finds_and_purges_revocations(repository) -> None:
     record = repository.create_revocation(_revocation())
 
@@ -177,12 +284,17 @@ def test_sql_repository_maps_database_failures_to_unavailable() -> None:
         repository.purge_expired_revocations(at_epoch=900)
     with pytest.raises(OaSignedTokenError, match="persistence is unavailable"):
         repository.list_signing_keys()
+    with pytest.raises(OaSignedTokenError, match="persistence is unavailable"):
+        repository.rotate_signing_keys(
+            {**_key("oa-key-a"), "state": "VERIFY_ONLY", "revision": 2, "previous_revision": 1},
+            {**_key("oa-key-b"), "state": "ACTIVE", "revision": 2, "previous_revision": 1},
+        )
     engine.dispose()
 
 
 def test_repository_value_helpers_cover_datetime_and_decode_branches() -> None:
     aware = datetime(1970, 1, 1, 0, 10, tzinfo=UTC)
-    naive = datetime(1970, 1, 1, 0, 10)
+    naive = datetime(1970, 1, 1, 0, 10)  # noqa: DTZ001 - exercises naive input
     assert repository_module._timestamp(aware) is aware
     assert repository_module._timestamp(naive).tzinfo is UTC
     assert repository_module._epoch("1970-01-01T00:10:00+00:00") == 600

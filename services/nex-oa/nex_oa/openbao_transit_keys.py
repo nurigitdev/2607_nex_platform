@@ -118,6 +118,39 @@ class OpenBaoTransitKeyProvisioner:
             public_jwk=public_jwk_from_public_key(public_key, key_id=key_id),
         )
 
+    def rotate_rsa3072(
+        self,
+        key_name: str,
+        *,
+        expected_current_version: int,
+    ) -> int:
+        self._ensure_open()
+        normalized = _normalize_key_name(key_name)
+        expected = _positive_version(expected_current_version)
+        current = _positive_version(
+            self._read_key_data(normalized).get("latest_version")
+        )
+        if current != expected:
+            raise OaSignedTokenError(
+                "oa.signing_key_version_conflict",
+                "OpenBao Transit key version conflict",
+                409,
+            )
+        _request(
+            self._transport,
+            "POST",
+            f"/v1/{OPENBAO_TRANSIT_MOUNT}/keys/"
+            f"{quote(normalized, safe='-')}/rotate",
+            token=self._token,
+            payload={},
+        )
+        rotated = _positive_version(
+            self._read_key_data(normalized).get("latest_version")
+        )
+        if rotated != current + 1:
+            raise _custody_error("OpenBao Transit key rotation result is invalid")
+        return rotated
+
     def close(self) -> None:
         if self._closed:
             return

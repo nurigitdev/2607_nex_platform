@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from copy import deepcopy
 from datetime import UTC, datetime
-import json
 from typing import Any, Protocol
 
+from nex_runtime import PERSISTENCE_MODE_POSTGRES, ServicePersistenceRuntime
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -15,11 +16,15 @@ from nex_oa.signed_tokens import (
     normalize_revocation_id,
     normalize_signing_key_id,
 )
-from nex_runtime import PERSISTENCE_MODE_POSTGRES, ServicePersistenceRuntime
 
 
 class OaSignedTokenRepository(Protocol):
     def save_signing_key(self, record: Mapping[str, Any]) -> dict[str, Any]: ...
+    def rotate_signing_keys(
+        self,
+        previous_record: Mapping[str, Any],
+        active_record: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]: ...
     def get_signing_key(self, key_id: str) -> dict[str, Any] | None: ...
     def list_signing_keys(self) -> list[dict[str, Any]]: ...
     def create_revocation(self, record: Mapping[str, Any]) -> dict[str, Any]: ...
@@ -52,6 +57,42 @@ class InMemoryOaSignedTokenRepository:
     def get_signing_key(self, key_id: str) -> dict[str, Any] | None:
         record = self.signing_keys.get(normalize_signing_key_id(key_id))
         return deepcopy(record) if record is not None else None
+
+    def rotate_signing_keys(
+        self,
+        previous_record: Mapping[str, Any],
+        active_record: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        previous_id = normalize_signing_key_id(previous_record.get("key_id"))
+        active_id = normalize_signing_key_id(active_record.get("key_id"))
+        if previous_id == active_id:
+            raise _revision_conflict()
+        current_previous = self.signing_keys.get(previous_id)
+        current_active = self.signing_keys.get(active_id)
+        if current_previous is None or current_active is None:
+            raise _revision_conflict()
+        if int(current_previous["revision"]) != int(
+            previous_record.get("previous_revision") or 0
+        ) or int(current_active["revision"]) != int(
+            active_record.get("previous_revision") or 0
+        ):
+            raise _revision_conflict()
+        if previous_record.get("state") != "VERIFY_ONLY" or active_record.get(
+            "state"
+        ) != "ACTIVE":
+            raise _active_key_conflict()
+        if any(
+            item["key_id"] not in {previous_id, active_id}
+            and item["issuer"] == active_record.get("issuer")
+            and item["state"] == "ACTIVE"
+            for item in self.signing_keys.values()
+        ):
+            raise _active_key_conflict()
+        stored_previous = deepcopy(dict(previous_record))
+        stored_active = deepcopy(dict(active_record))
+        self.signing_keys[previous_id] = stored_previous
+        self.signing_keys[active_id] = stored_active
+        return deepcopy(stored_previous), deepcopy(stored_active)
 
     def list_signing_keys(self) -> list[dict[str, Any]]:
         return [
@@ -151,6 +192,49 @@ class SqlAlchemyOaSignedTokenRepository:
             timestamp_columns=("published_at", "activate_at", "sign_until", "verify_until"),
         )
         return rows[0] if rows else None
+
+    def rotate_signing_keys(
+        self,
+        previous_record: Mapping[str, Any],
+        active_record: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        previous_id = normalize_signing_key_id(previous_record.get("key_id"))
+        active_id = normalize_signing_key_id(active_record.get("key_id"))
+        if previous_id == active_id:
+            raise _revision_conflict()
+        session = self._session_factory()
+        try:
+            previous = session.execute(
+                text(
+                    "UPDATE oa_signing_keys SET state = :state, revision = :revision, "
+                    "updated_at = :updated_at WHERE key_id = :key_id "
+                    "AND revision = :previous_revision AND state = 'ACTIVE'"
+                ),
+                _rotation_params(previous_record),
+            )
+            active = session.execute(
+                text(
+                    "UPDATE oa_signing_keys SET state = :state, revision = :revision, "
+                    "updated_at = :updated_at WHERE key_id = :key_id "
+                    "AND revision = :previous_revision AND state = 'PREPUBLISHED'"
+                ),
+                _rotation_params(active_record),
+            )
+            if previous.rowcount != 1 or active.rowcount != 1:
+                raise _revision_conflict()
+            session.commit()
+            return deepcopy(dict(previous_record)), deepcopy(dict(active_record))
+        except OaSignedTokenError:
+            session.rollback()
+            raise
+        except IntegrityError as exc:
+            session.rollback()
+            raise _active_key_conflict() from exc
+        except SQLAlchemyError as exc:
+            session.rollback()
+            raise _unavailable() from exc
+        finally:
+            session.close()
 
     def list_signing_keys(self) -> list[dict[str, Any]]:
         return self._read(
@@ -264,6 +348,16 @@ def _revocation_params(record: Mapping[str, Any]) -> dict[str, Any]:
         "reason_code": record["reason_code"],
         "revoked_at": _timestamp(record["revoked_at"]),
         "expires_at": _timestamp(record["expires_at"]),
+    }
+
+
+def _rotation_params(record: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "key_id": normalize_signing_key_id(record.get("key_id")),
+        "state": record["state"],
+        "revision": int(record["revision"]),
+        "previous_revision": int(record.get("previous_revision") or 0),
+        "updated_at": _utc_now(),
     }
 
 

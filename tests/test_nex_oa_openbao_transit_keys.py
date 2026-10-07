@@ -34,6 +34,14 @@ class ProvisioningTransport:
             raise self.failure
         if path == "/v1/auth/approle/login":
             return self.login
+        if path.endswith("/rotate"):
+            next_version = int(self.metadata["latest_version"]) + 1
+            next_key = rsa.generate_private_key(public_exponent=65537, key_size=3072)
+            self.metadata["latest_version"] = next_version
+            self.metadata["keys"][str(next_version)] = {
+                "public_key": _pem(next_key.public_key())
+            }
+            return {}
         if method == "GET":
             return {"data": deepcopy(self.metadata)}
         return {}
@@ -226,6 +234,41 @@ def test_reference_and_closed_provisioner_fail_closed() -> None:
     with pytest.raises(OaSignedTokenError, match="closed"):
         provisioner.project_key_version(
             "oa-signing", key_version=1, key_id="oa-key-2026-01"
+        )
+
+
+def test_rotation_requires_exact_current_version_and_one_step_result() -> None:
+    provisioner, transport = _provisioner()
+
+    with pytest.raises(OaSignedTokenError) as conflict:
+        provisioner.rotate_rsa3072(
+            "oa-signing", expected_current_version=2
+        )
+    assert conflict.value.code == "oa.signing_key_version_conflict"
+
+    assert provisioner.rotate_rsa3072(
+        "oa-signing", expected_current_version=1
+    ) == 2
+    assert transport.requests[-2][1] == "/v1/transit/keys/oa-signing/rotate"
+    projection = provisioner.project_key_version(
+        "oa-signing", key_version=2, key_id="oa-key-2026-02"
+    )
+    assert projection.key_version == 2
+    assert projection.public_jwk["kid"] == "oa-key-2026-02"
+
+
+def test_rotation_rejects_non_incrementing_provider_result() -> None:
+    class NonRotatingTransport(ProvisioningTransport):
+        def request(self, method, path, *, token=None, payload=None):
+            if path.endswith("/rotate"):
+                self.requests.append((method, path, token, payload))
+                return {}
+            return super().request(method, path, token=token, payload=payload)
+
+    provisioner, _ = _provisioner(NonRotatingTransport())
+    with pytest.raises(OaSignedTokenError, match="result is invalid"):
+        provisioner.rotate_rsa3072(
+            "oa-signing", expected_current_version=1
         )
 
 

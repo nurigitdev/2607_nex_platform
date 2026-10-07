@@ -1,6 +1,6 @@
 # OA Production Trust, Key Custody, and Enterprise Federation
 
-Status: S144 active through Slice 1436. Production deployment remains
+Status: S144 active through Slice 1437. Production deployment remains
 unapproved.
 
 ## Required Outcome
@@ -94,6 +94,14 @@ receives only a version-pinned opaque custody reference and the projected
 public JWK. The application runtime has no key-create, rotate, export, backup,
 delete, or policy capability. Live policy isolation and rotation remain for
 Slices 1437 and 1441.
+
+Slice 1437 closes the deterministic `rotation_jwks_introspection` gap. Transit
+rotation requires the exact current version, new public metadata is
+prepublished before activation, and the previous/new OA state transition is a
+single repository transaction. A rejected activation leaves the previous key
+active. JWKS overlap validates old and new tokens, revocation remains effective
+after service reconstruction, and no private material enters OA persistence or
+evidence. Protected OpenBao and PostgreSQL proof remains owned by Slice 1441.
 
 ## Slice Sequence
 

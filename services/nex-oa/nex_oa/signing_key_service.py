@@ -15,9 +15,9 @@ from nex_oa.signed_tokens import (
     token_is_revoked,
 )
 
-
 OA_SIGNING_KEY_RESPONSE_SCHEMA_VERSION = "oa_signing_key_response.v1"
 OA_SIGNING_KEY_LIST_SCHEMA_VERSION = "oa_signing_key_list.v1"
+OA_SIGNING_KEY_ROTATION_SCHEMA_VERSION = "oa_signing_key_rotation_response.v1"
 
 
 class OaSigningKeyService:
@@ -55,6 +55,54 @@ class OaSigningKeyService:
             now_epoch=_now_epoch() if now_epoch is None else now_epoch,
         )
         return _key_response(self.repository.save_signing_key(planned))
+
+    def activate_rotation(
+        self,
+        previous_key_id: str,
+        active_key_id: str,
+        *,
+        expected_previous_revision: object,
+        expected_active_revision: object,
+        now_epoch: int | None = None,
+    ) -> dict[str, Any]:
+        if previous_key_id == active_key_id:
+            raise OaSignedTokenError(
+                "oa.signing_key_rotation_invalid",
+                "rotation requires two distinct signing keys",
+                400,
+            )
+        previous = self.repository.get_signing_key(previous_key_id)
+        active = self.repository.get_signing_key(active_key_id)
+        if previous is None or active is None:
+            raise _key_not_found()
+        if previous["issuer"] != active["issuer"]:
+            raise OaSignedTokenError(
+                "oa.signing_key_rotation_invalid",
+                "rotation keys must have the same issuer",
+                400,
+            )
+        now = _now_epoch() if now_epoch is None else now_epoch
+        planned_previous = plan_signing_key_transition(
+            previous,
+            target_state="VERIFY_ONLY",
+            expected_revision=expected_previous_revision,
+            now_epoch=now,
+        )
+        planned_active = plan_signing_key_transition(
+            active,
+            target_state="ACTIVE",
+            expected_revision=expected_active_revision,
+            now_epoch=now,
+        )
+        stored_previous, stored_active = self.repository.rotate_signing_keys(
+            planned_previous,
+            planned_active,
+        )
+        return {
+            "response_schema_version": OA_SIGNING_KEY_ROTATION_SCHEMA_VERSION,
+            "previous_signing_key": _key_wire(stored_previous),
+            "active_signing_key": _key_wire(stored_active),
+        }
 
     def get_key(self, key_id: str) -> dict[str, Any]:
         record = self.repository.get_signing_key(key_id)

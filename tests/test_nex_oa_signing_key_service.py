@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from nex_oa.production_token_profiles import PRODUCTION_TOKEN_ISSUER
 from nex_oa.signed_token_repository import InMemoryOaSignedTokenRepository
 from nex_oa.signed_tokens import OaSignedTokenError, build_test_public_jwk
@@ -82,6 +81,87 @@ def test_service_reconciles_signing_and_verification_windows() -> None:
     assert third == {"verify_only_count": 0, "retired_count": 0}
     assert service.get_key("oa-key-reconcile")["signing_key"]["state"] == "RETIRED"
     assert service.jwks(at_epoch=1_200)["key_count"] == 0
+
+
+def test_service_activates_rotation_atomically() -> None:
+    service = _service()
+    service.register_key(_payload("oa-key-old"))
+    service.register_key(_payload("oa-key-new"))
+    service.set_key_state(
+        "oa-key-old", target_state="ACTIVE", expected_revision=1, now_epoch=430
+    )
+
+    result = service.activate_rotation(
+        "oa-key-old",
+        "oa-key-new",
+        expected_previous_revision=2,
+        expected_active_revision=1,
+        now_epoch=430,
+    )
+
+    assert result["response_schema_version"] == (
+        "oa_signing_key_rotation_response.v1"
+    )
+    assert result["previous_signing_key"]["state"] == "VERIFY_ONLY"
+    assert result["active_signing_key"]["state"] == "ACTIVE"
+    assert service.active_signing_key(at_epoch=500)["key_id"] == "oa-key-new"
+    assert service.jwks(at_epoch=500)["key_count"] == 2
+
+
+def test_service_rotation_rejection_preserves_previous_active_key() -> None:
+    service = _service()
+    service.register_key(_payload("oa-key-old"))
+    service.register_key(_payload("oa-key-new", offset=100))
+    service.set_key_state(
+        "oa-key-old", target_state="ACTIVE", expected_revision=1, now_epoch=430
+    )
+
+    with pytest.raises(OaSignedTokenError, match="activation time"):
+        service.activate_rotation(
+            "oa-key-old",
+            "oa-key-new",
+            expected_previous_revision=2,
+            expected_active_revision=1,
+            now_epoch=529,
+        )
+
+    assert service.get_key("oa-key-old")["signing_key"]["state"] == "ACTIVE"
+    assert service.get_key("oa-key-new")["signing_key"]["state"] == "PREPUBLISHED"
+
+
+def test_service_rotation_rejects_invalid_key_pairs() -> None:
+    service = _service()
+    service.register_key(_payload("oa-key-old"))
+    with pytest.raises(OaSignedTokenError, match="distinct"):
+        service.activate_rotation(
+            "oa-key-old",
+            "oa-key-old",
+            expected_previous_revision=1,
+            expected_active_revision=1,
+            now_epoch=430,
+        )
+    with pytest.raises(OaSignedTokenError, match="not found"):
+        service.activate_rotation(
+            "oa-key-old",
+            "oa-key-missing",
+            expected_previous_revision=1,
+            expected_active_revision=1,
+            now_epoch=430,
+        )
+
+    service.repository.signing_keys["oa-key-other"] = {  # type: ignore[attr-defined]
+        **service.repository.signing_keys["oa-key-old"],  # type: ignore[attr-defined]
+        "key_id": "oa-key-other",
+        "issuer": "https://other.example.test",
+    }
+    with pytest.raises(OaSignedTokenError, match="same issuer"):
+        service.activate_rotation(
+            "oa-key-old",
+            "oa-key-other",
+            expected_previous_revision=1,
+            expected_active_revision=1,
+            now_epoch=430,
+        )
 
 
 def test_service_revokes_checks_and_purges_token_jti() -> None:
