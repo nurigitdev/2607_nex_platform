@@ -107,6 +107,13 @@ manifest/archive/verification drift and orphans, stale partials move to a
 private quarantine, and retention preserves the newest 28 points, seven days,
 and at least one verified recovery point before any deletion is planned.
 
+Slice 1448 closes `cluster_pitr_recovery`. A dedicated non-secret libpq
+service drives a plain `pg_basebackup` with streamed WAL and a SHA-256 backup
+manifest. WAL archive/restore commands validate segment names, copy atomically,
+deny conflicting content, and verify digest sidecars. Recovery follows the
+latest timeline and pauses at the target; promotion and cutover remain an
+explicit operator decision after all five databases and migration heads pass.
+
 ## Slice Sequence
 
 | Slice | Scope |

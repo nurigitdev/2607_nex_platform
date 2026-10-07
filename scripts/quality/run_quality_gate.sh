@@ -767,3 +767,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_s145_logical_backup_execution.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s145_isolated_restore_guard.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s145_backup_catalog_retention.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s145_postgresql_pitr_plan.py --summary

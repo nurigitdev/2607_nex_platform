@@ -51,6 +51,8 @@ def test_canonical_policy_is_strict_and_public_projection_is_value_free() -> Non
         (lambda d: d["logical_backup"].update(retention_days=6), "logical_retention_too_short"),
         (lambda d: d["logical_backup"].update(minimum_verified_points=0), "minimum_verified_points_invalid"),
         (lambda d: d["cluster_recovery"].update(method="snapshot"), "cluster_recovery_method_invalid"),
+        (lambda d: d["cluster_recovery"].update(libpq_service="bad service"), "cluster_libpq_service_invalid"),
+        (lambda d: d["cluster_recovery"].update(wal_archive_root_env="bad-env"), "wal_archive_root_env_invalid"),
         (lambda d: d["cluster_recovery"].update(archive_timeout_seconds=301), "cluster_recovery_objective_too_weak"),
         (lambda d: d["cluster_recovery"].update(cluster_rto_minutes=61), "cluster_recovery_objective_too_weak"),
         (lambda d: d["cluster_recovery"].update(retained_base_generations=1), "base_backup_retention_too_short"),

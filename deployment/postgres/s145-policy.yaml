@@ -38,6 +38,8 @@ logical_backup:
   minimum_verified_points: 1
 cluster_recovery:
   method: basebackup_wal_pitr
+  libpq_service: nex-platform-cluster-backup
+  wal_archive_root_env: NEX_POSTGRES_WAL_ARCHIVE_ROOT
   archive_timeout_seconds: 300
   cluster_rto_minutes: 60
   retained_base_generations: 2
@@ -54,4 +56,3 @@ compatibility:
   postgres_major: 16
   pg_dump_major: 16
   pg_restore_major: 16
-

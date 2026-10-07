@@ -44,6 +44,8 @@ class PostgresResiliencePolicy:
     retention_days: int
     minimum_verified_points: int
     cluster_recovery_method: str
+    cluster_libpq_service: str
+    wal_archive_root_env: str
     archive_timeout_seconds: int
     cluster_rto_minutes: int
     retained_base_generations: int
@@ -96,6 +98,8 @@ def validate_postgres_resilience_policy(
         retention_days=_integer(logical, "retention_days"),
         minimum_verified_points=_integer(logical, "minimum_verified_points"),
         cluster_recovery_method=_text(cluster, "method"),
+        cluster_libpq_service=_text(cluster, "libpq_service"),
+        wal_archive_root_env=_text(cluster, "wal_archive_root_env"),
         archive_timeout_seconds=_integer(cluster, "archive_timeout_seconds"),
         cluster_rto_minutes=_integer(cluster, "cluster_rto_minutes"),
         retained_base_generations=_integer(cluster, "retained_base_generations"),
@@ -131,6 +135,8 @@ def policy_public_projection(policy: PostgresResiliencePolicy) -> dict[str, Any]
         "retention_days": policy.retention_days,
         "minimum_verified_points": policy.minimum_verified_points,
         "cluster_recovery_method": policy.cluster_recovery_method,
+        "cluster_libpq_service": policy.cluster_libpq_service,
+        "wal_archive_root_env": policy.wal_archive_root_env,
         "archive_timeout_seconds": policy.archive_timeout_seconds,
         "cluster_rto_minutes": policy.cluster_rto_minutes,
         "retained_base_generations": policy.retained_base_generations,
@@ -182,6 +188,10 @@ def _validate_invariants(policy: PostgresResiliencePolicy) -> None:
         raise PostgresResiliencePolicyError("logical_retention_too_short")
     if policy.cluster_recovery_method != "basebackup_wal_pitr":
         raise PostgresResiliencePolicyError("cluster_recovery_method_invalid")
+    if policy.cluster_libpq_service != "nex-platform-cluster-backup":
+        raise PostgresResiliencePolicyError("cluster_libpq_service_invalid")
+    if policy.wal_archive_root_env != "NEX_POSTGRES_WAL_ARCHIVE_ROOT":
+        raise PostgresResiliencePolicyError("wal_archive_root_env_invalid")
     if policy.archive_timeout_seconds > 300 or policy.cluster_rto_minutes > 60:
         raise PostgresResiliencePolicyError("cluster_recovery_objective_too_weak")
     if policy.retained_base_generations < 2:
