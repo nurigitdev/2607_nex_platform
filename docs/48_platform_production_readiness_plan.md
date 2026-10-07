@@ -1,7 +1,8 @@
 # Platform Production Readiness Plan
 
 Status: Canonical scope freeze for requirements S141 through S150. S143 is
-complete and S144-S147 are ready; production deployment remains unapproved.
+complete, S144 is active, and S145-S147 are ready; production deployment
+remains unapproved.
 
 ## Program Outcome
 
@@ -319,3 +320,14 @@ S143 performed no registry push or production contact. Production deployment
 remains unapproved. The wave-two requirements S144, S145, S146, and S147 may
 now proceed independently under their existing owners and protected evidence
 contracts; S148 closure remains dependent on all four.
+
+## S144 Activation Update
+
+S144 starts at Slice 1433 on the accepted S143 single-host Docker Compose
+topology. OpenBao Transit supplies staging external RSA-3072 custody and the
+OpenBao OIDC provider supplies the TLS federation issuer; Traefik remains the
+managed edge and `nex_oa_test` remains the only protected database target.
+Logical process, network, policy, credential, and persistence isolation is
+mandatory even though the containers share one host. No corporate IdP or
+production resource is contacted, and production deployment remains
+unapproved.
