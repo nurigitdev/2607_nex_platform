@@ -1,6 +1,6 @@
 # Platform Reproducible Deployment Packaging and Environment Topology
 
-Status: S142 active through Slice 1417; production deployment remains
+Status: S142 active through Slice 1418; production deployment remains
 unapproved.
 
 ## Required Outcome
@@ -105,6 +105,20 @@ Required lifecycle order is:
 6. restart or roll back to the complete previous artifact set, never a mixed
    implicit version set.
 
+The packaged lifecycle plan implements this order for all five runtime
+profiles. `local_mock` skips PostgreSQL migration; every persistent profile
+runs service-owned migrations in OA, MO, CX, AE, AG dependency order before
+starting the six DAG layers. HTTP processes use liveness only in `local_mock`
+and readiness everywhere else. Background roles require two consecutive live
+process observations, consistent with the existing orchestrator contract.
+
+Stop order is the exact reverse of flattened startup order. Restart repeats
+stop, migration, start, and readiness. Rollback may select only a complete
+previous six-artifact set and must verify that it remains compatible with the
+already-migrated schema. Mixed-version rollback and automatic database
+downgrade are prohibited. Slice 1419 will bind these logical artifact-set
+requirements to immutable release identities.
+
 ## Reproducibility Rules
 
 - Python and Node production dependencies must be exact, integrity-verifiable
@@ -143,10 +157,10 @@ The measured gap register is:
 These are implementation gaps, not production incidents. S142 evidence must
 remain local or explicitly protected and must not contact production resources.
 
-Slices 1413 through 1417 have closed the immutable artifact, exact lock, OCI
+Slices 1413 through 1418 have closed the immutable artifact, exact lock, OCI
 definition, process binding, package-relative command, and environment
-composition portions of this register. Provenance and packaged lifecycle
-acceptance remain open.
+composition portions of this register, plus the deterministic packaged
+lifecycle plan. Provenance and packaged-runtime acceptance remain open.
 
 ## Slice Sequence
 

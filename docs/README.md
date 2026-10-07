@@ -1525,6 +1525,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1415`](slices/1415_platform_owner_scoped_oci_build_definitions.md) | `S142-004` Define six digest-pinned OCI targets and deterministic owner-allowlist build contexts with non-root runtime policy. |
 | [`Slice 1416`](slices/1416_platform_packaged_background_entrypoints.md) | `S142-005` Move seven background roles to package-relative entrypoints, record execution capability honestly, and pass the fifth-Slice Checkpoint Gate. |
 | [`Slice 1417`](slices/1417_platform_environment_compositions.md) | `S142-006` Implement four canonical environment compositions, exact five-profile coverage, immutable protected artifact references, and fail-closed background admission. |
+| [`Slice 1418`](slices/1418_platform_packaged_deployment_lifecycle.md) | `S142-007` Bind service-owned migration, six-layer startup/readiness, reverse stop, restart, and complete-set rollback into one deterministic packaged lifecycle. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
