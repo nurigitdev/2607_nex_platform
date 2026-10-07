@@ -1,0 +1,11 @@
+schema_version: environment_composition.v1
+environment_class: production
+runtime_profiles:
+  - production
+artifact_reference_policy: immutable_digest
+immutable_artifacts_required: true
+allow_loopback: false
+allow_local_storage: false
+secret_source: external_reference
+production_contact_allowed: false
+admitted_background_profiles: []

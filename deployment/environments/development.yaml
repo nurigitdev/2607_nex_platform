@@ -1,0 +1,13 @@
+schema_version: environment_composition.v1
+environment_class: development
+runtime_profiles:
+  - local_mock
+  - local_live
+artifact_reference_policy: local_build_or_digest
+immutable_artifacts_required: false
+allow_loopback: true
+allow_local_storage: true
+secret_source: local_environment
+production_contact_allowed: false
+admitted_background_profiles:
+  - local_mock

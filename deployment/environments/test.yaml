@@ -1,0 +1,12 @@
+schema_version: environment_composition.v1
+environment_class: test
+runtime_profiles:
+  - test
+artifact_reference_policy: immutable_digest
+immutable_artifacts_required: true
+allow_loopback: false
+allow_local_storage: false
+secret_source: test_injection
+production_contact_allowed: false
+admitted_background_profiles:
+  - test

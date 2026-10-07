@@ -129,6 +129,12 @@ def runtime_profile_environment_overlay(profile: str) -> dict[str, str]:
     }
 
 
+def runtime_profile_required_environment_names(profile: str) -> tuple[str, ...]:
+    if profile not in RUNTIME_PROFILES:
+        raise RuntimeProfileError((f"unsupported runtime profile: {profile}",))
+    return _required_environment_names(profile)
+
+
 def runtime_profile_public_projection(
     resolution: RuntimeProfileResolution,
 ) -> dict[str, Any]:

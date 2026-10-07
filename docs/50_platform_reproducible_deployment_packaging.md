@@ -1,6 +1,6 @@
 # Platform Reproducible Deployment Packaging and Environment Topology
 
-Status: S142 active through Slice 1416; production deployment remains
+Status: S142 active through Slice 1417; production deployment remains
 unapproved.
 
 ## Required Outcome
@@ -75,6 +75,20 @@ URLs remain runtime configuration. They are never baked into an artifact.
 Production composition must fail closed if any artifact digest or required
 external value is absent.
 
+The four manifests under `deployment/environments` are the canonical
+composition declarations. Their runtime-profile coverage must be exact and
+non-overlapping. `test`, `staging`, and `production` require six distinct OCI
+digest references; mutable tags, omitted references, loopback endpoints, and
+local storage fallback are rejected. Resolved evidence exposes required
+variable names and artifact counts only, never their values.
+
+Environment composition does not imply worker execution admission.
+`local_mock` and `test` are currently `LIMITED` because six background roles
+remain lifecycle-only. `local_live`, `staging_live`, and `production` are
+`BLOCKED` because their background profiles are not admitted; production also
+retains the explicit deployment-approval deferral. This status can change only
+after owner execution adapters and protected evidence are available.
+
 ## Dependency and Startup Topology
 
 The current 13-process dependency graph is preserved. Packaged topology must
@@ -129,9 +143,9 @@ The measured gap register is:
 These are implementation gaps, not production incidents. S142 evidence must
 remain local or explicitly protected and must not contact production resources.
 
-Slices 1413 through 1416 have closed the immutable artifact, exact lock, OCI
-definition, process binding, and package-relative command portions of this
-register. Environment compositions, provenance, and packaged lifecycle
+Slices 1413 through 1417 have closed the immutable artifact, exact lock, OCI
+definition, process binding, package-relative command, and environment
+composition portions of this register. Provenance and packaged lifecycle
 acceptance remain open.
 
 ## Slice Sequence
