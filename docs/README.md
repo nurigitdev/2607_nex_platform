@@ -1552,6 +1552,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1440`](slices/1440_s144_staging_trust_rehearsal.md) | `S144-008` Layer Transit and OpenBao OIDC onto the S143 single-host Compose topology and rehearse value-free configuration. |
 | [`Slice 1441`](slices/1441_s144_protected_trust_federation_acceptance.md) | `S144-009` Prove actual PostgreSQL/OpenBao/Traefik custody, rotation, federation, restart, outage, recovery, and cleanup. |
 | [`Slice 1442`](slices/1442_s144_oa_production_trust_closure.md) | `S144-010` Bind value-free protected evidence, publish the runbook, pass Full Gate, close S144, and make its S148 dependency ready. |
+| [`Slice 1443`](slices/1443_s145_postgresql_resilience_boundary.md) | `S145-001` Freeze the single-host cold-recovery boundary, RPO/RTO targets, no-HA decision, gap register, and Slice 1444-1452 order. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

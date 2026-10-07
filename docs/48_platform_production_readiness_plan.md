@@ -1,8 +1,8 @@
 # Platform Production Readiness Plan
 
-Status: Canonical scope freeze for requirements S141 through S150. S143 is
-complete, S144 is active, and S145-S147 are ready; production deployment
-remains unapproved.
+Status: Canonical scope freeze for requirements S141 through S150. S143 and
+S144 are complete, S145 is active, and S146-S147 are ready; production
+deployment remains unapproved.
 
 ## Program Outcome
 
@@ -18,7 +18,7 @@ production-shaped runtime profile as proof that production controls exist.
 | `S142` | Reproducible deployment packaging and environment topology | Build immutable, reproducible service/process artifacts and explicit dev, test, staging, and production deployment composition. |
 | `S143` | Production configuration, secret, and TLS lifecycle | Fail closed on incomplete production configuration and prove external secret injection, rotation, TLS, and certificate lifecycle. |
 | `S144` | OA production trust, key custody, and enterprise federation | Replace local signing custody with an external adapter and prove enterprise IdP, rotation, revocation, JWKS, and introspection. |
-| `S145` | PostgreSQL production resilience and disaster recovery | Prove migration, pool sizing, backup, restore, failover, rollback, RPO, and RTO across all five service-owned databases. |
+| `S145` | PostgreSQL production resilience and disaster recovery | Prove migration, pool sizing, service-local backup/restore, cluster PITR, cold-recovery cutover/rollback, RPO, and RTO across all five service-owned databases; HA and automatic failover are out of scope. |
 | `S146` | Private object-storage migration and lifecycle | Move private CX and AE payloads behind object-storage ports with encryption, versioning, retention, owner scope, and rollback. |
 | `S147` | Production model-serving capacity and rollout resilience | Prove model-independent capacity, scheduling, calibration, canary, failover, and rollback for embedding, reranking, and generation. |
 | `S148` | Platform observability, SLO, alerting, and incident integration | Define SLIs/SLOs and connect redacted metrics, logs, traces, alerts, paging, and external incident delivery. |
@@ -187,7 +187,7 @@ listed dependency.
 | `S142` | 0 | S141 closure | deterministic build plus protected process restart | none |
 | `S143` | 1 | `S142` | protected staging injection/rotation/TLS | external secret manager; managed TLS/certificate endpoint |
 | `S144` | 2 | `S143` | protected trust rotation/federation | external key custody; enterprise IdP |
-| `S145` | 2 | `S143` | protected backup/restore/failover | production-like PostgreSQL topology |
+| `S145` | 2 | `S143` | protected backup/restore/PITR and operator-controlled cold recovery | production-like single-host PostgreSQL topology plus an isolated recovery target |
 | `S146` | 2 | `S143` | protected private payload migration/rollback | production-like object storage |
 | `S147` | 2 | `S143` | protected capacity/canary/failover | GPU model-serving environment |
 | `S148` | 3 | `S143`, `S144`, `S145`, `S146`, `S147` | protected telemetry/alert/incident delivery | monitoring and paging; external incident endpoints |
