@@ -1,7 +1,7 @@
 # Platform Production Readiness Plan
 
-Status: Canonical scope freeze for requirements S141 through S150. S141 is
-complete and S142 is active; production deployment remains unapproved.
+Status: Canonical scope freeze for requirements S141 through S150. S142 is
+complete and S143 is active; production deployment remains unapproved.
 
 ## Program Outcome
 
@@ -282,3 +282,18 @@ procedure is recorded in
 audits pass, all production gaps remain explicit, and no production resource
 was contacted. S140 remains the release-candidate rollback baseline while S142
 starts reproducible packaging and topology work.
+
+At the S141 closure boundary, S141 is complete; production deployment remains
+unapproved, and S142 is the active requirement. This historical handoff remains
+the immutable input to the completed S142 work below.
+
+## S142 Completion Update
+
+S142 completed through Slice 1421 with six owner-scoped artifact definitions,
+integrity-locked Python and Node inputs, exact process bindings, four explicit
+environment compositions, deterministic packaged lifecycle rules, provenance,
+and protected package-context restart evidence against all five test databases.
+No final OCI image set was published because the execution host lacks Docker
+socket access; this prerequisite remains explicit and production deployment is
+still unapproved. S143 is now active for external secret injection, rotation,
+managed TLS, and certificate lifecycle.

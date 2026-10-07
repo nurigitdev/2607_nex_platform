@@ -1,7 +1,7 @@
 # Platform Reproducible Deployment Packaging and Environment Topology
 
-Status: S142 active through Slice 1420; production deployment remains
-unapproved.
+Status: S142 complete through Slice 1421. Production deployment remains
+unapproved, and S143 is active.
 
 ## Required Outcome
 
@@ -175,6 +175,11 @@ process generations. OCI image build/run remains explicitly unclaimed because
 the current host cannot access its Docker socket; this is an execution-host
 prerequisite, not a synthetic pass.
 
+Slice 1421 closes the repository packaging boundary. The accepted artifact is
+the immutable owner-scoped build input and package-context identity, not a
+published image set. Final image digests remain absent and an OCI-capable build
+host is still required before staging or production admission.
+
 ## Slice Sequence
 
 | Slice | Scope | Exit evidence |
@@ -205,6 +210,21 @@ prerequisite, not a synthetic pass.
   ingress, database platform, object store, GPU scheduler, or monitoring vendor.
 - Slice Gate runs for every Slice, Checkpoint Gate at Slice 1416, and Full Gate
   at Slice 1421.
+
+## Completion Signal
+
+Completion signal: Met. Six owner-scoped artifacts cover all thirteen runtime
+processes, Python and Node inputs are integrity locked, all five runtime
+profiles map exactly to four environment classes, and packaged migration,
+startup, readiness, stop, restart, and rollback rules are deterministic.
+Protected package-context acceptance passed against all five service-owned test
+PostgreSQL databases without contacting a registry, model provider, staging,
+or production resource.
+
+No production resource was contacted by S142. Production deployment remains
+unapproved. No final image digest or published release set is claimed; an
+OCI-capable execution host remains a prerequisite for later staging evidence.
+In canonical admission terms, production deployment remains unapproved.
 
 ## S143 Handoff
 

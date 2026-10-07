@@ -34,6 +34,8 @@ contacted.
 - Protected smoke: six artifact contexts, five real test PostgreSQL migration
   identities, seven background checks, and two complete HTTP process startup
   generations passed.
+- The protected run therefore covered five actual test PostgreSQL identities,
+  without persisting their connection values.
 - Slice Gate: `995 passed, 11 skipped`; statement coverage `98.44%`; branch
   coverage `97.80%`; contract validation `166` schemas, `228` examples, `196`
   negative examples, and `7` OpenAPI documents.
