@@ -1563,6 +1563,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1450`](slices/1450_s145_postgresql_compose_rehearsal.md) | `S145-008` Add an opt-in hardened PostgreSQL operator profile, separate operations image, five-service deterministic rehearsal, and actual container tool check. |
 | [`Slice 1451`](slices/1451_s145_postgresql_recovery_acceptance.md) | `S145-009` Back up five real test databases, restore them into PostgreSQL 16, replay archived WAL to a paused target, and prove source/readiness cleanup. |
 | [`Slice 1452`](slices/1452_s145_postgresql_resilience_closure.md) | `S145-010` Bind metadata-only protected evidence, publish the single-host recovery runbook, pass Full Gate, close S145, and activate S146. |
+| [`Slice 1453`](slices/1453_s146_private_object_storage_boundary.md) | `S146-001` Freeze the RustFS/S3 boundary, seven private payload families, owner scope, lifecycle, rollback, exclusions, and Slice 1454-1462 order. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

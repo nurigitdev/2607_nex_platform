@@ -1,7 +1,7 @@
 # Platform Production Readiness Plan
 
 Status: Canonical scope freeze for requirements S141 through S150. S143,
-S144, and S145 are complete, and S146-S147 are ready; production
+S144, and S145 are complete, S146 is active, and S147 is ready; production
 deployment remains unapproved.
 
 ## Program Outcome
