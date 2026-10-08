@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from pathlib import Path
 import shutil
-
-import pytest
-import yaml
+from pathlib import Path
 
 import nex_runtime.s146_compose as compose_module
+import pytest
+import yaml
 from nex_runtime.s146_compose import S146ComposeError, validate_s146_compose_assets
-
 
 ROOT = Path(__file__).resolve().parents[1]
 

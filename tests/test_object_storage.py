@@ -165,6 +165,8 @@ def test_immutable_put_get_head_delete_and_readiness() -> None:
     assert created.storage_uri == f"s3://nex-cx-private/{key}"
     assert created.version_id == "v1"
     assert created.server_side_encryption == "AES256"
+    client.objects[key]["head"]["Metadata"] = {"Sha256": digest}
+    assert store.head(key) == created
     assert store.put_immutable(
         key=key, payload=payload, expected_sha256=digest, content_type="text/plain"
     ) == created
@@ -270,3 +272,53 @@ def test_read_limits_body_failures_publish_race_and_builder(monkeypatch) -> None
     assert captured["args"] == ("s3",)
     assert captured["kwargs"]["verify"] == "/run/secrets/platform_ca"
 
+
+def test_publish_race_incomplete_visibility_and_body_without_close() -> None:
+    key = "v1/text/aa/owner/content.utf8"
+    payload = b"xy"
+    digest = hashlib.sha256(payload).hexdigest()
+    settings = object_storage_settings("nex-cx", settings_env())
+
+    race_client = FakeS3Client()
+    race_store = S3ObjectStore(race_client, settings)
+    original_put = race_client.put_object
+
+    def concurrent_put(**kwargs):
+        original_put(**kwargs)
+        raise ClientFailure(412, "PreconditionFailed")
+
+    race_client.put_object = concurrent_put  # type: ignore[method-assign]
+    published = race_store.put_immutable(
+        key=key,
+        payload=payload,
+        expected_sha256=digest,
+        content_type="text/plain",
+    )
+    assert published.sha256 == digest
+
+    invisible_client = FakeS3Client()
+    invisible_client.put_object = lambda **_kwargs: {}  # type: ignore[method-assign]
+    invisible_store = S3ObjectStore(invisible_client, settings)
+    with pytest.raises(ObjectStorageError) as exc_info:
+        invisible_store.put_immutable(
+            key=key,
+            payload=payload,
+            expected_sha256=digest,
+            content_type="text/plain",
+        )
+    assert exc_info.value.code == "OBJECT_STORAGE_PUBLISH_INCOMPLETE"
+    assert exc_info.value.retryable is True
+
+    class BodyWithoutClose:
+        def read(self, _size):
+            return payload
+
+    read_client = FakeS3Client()
+    read_client.get_object = lambda **_kwargs: {"Body": BodyWithoutClose()}  # type: ignore[method-assign]
+    read_store = S3ObjectStore(read_client, settings)
+    assert read_store.get_bytes(
+        key=key,
+        expected_sha256=digest,
+        expected_size_bytes=len(payload),
+        max_size_bytes=10,
+    ) == payload

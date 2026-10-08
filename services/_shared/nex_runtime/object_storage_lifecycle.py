@@ -434,7 +434,11 @@ def _verify_restore_source(
     expected_content_type: str,
 ) -> None:
     metadata = response.get("Metadata")
-    metadata = metadata if isinstance(metadata, Mapping) else {}
+    metadata = (
+        {str(name).lower(): value for name, value in metadata.items()}
+        if isinstance(metadata, Mapping)
+        else {}
+    )
     if (
         response.get("DeleteMarker") is True
         or response.get("ContentLength") != expected_size_bytes

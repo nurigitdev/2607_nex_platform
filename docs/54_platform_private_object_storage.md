@@ -225,6 +225,10 @@ preferences use `NEX_CX_OBJECT_STORAGE_READ_MODE` and
 - Root access and secret keys enter RustFS through Docker secret files. The
   files are runtime outputs of OpenBao materialization and are not values in
   Compose, environment, source, reports, or command arguments.
+- The SSE-S3 local master key is a separate OpenBao value materialized as a
+  Docker secret. A minimal wrapper entrypoint exports the base64-encoded
+  32-byte value only to the RustFS process because RustFS 1.0.1 does not expose
+  a corresponding `_FILE` setting. CX and AE never receive this key.
 - The current production manifest contains 20 secret references and 11 HTTPS
   connection bindings. CX and AE each own their own access/secret pair; other
   owners carry only the references needed for complete pre-start admission.
@@ -236,8 +240,32 @@ preferences use `NEX_CX_OBJECT_STORAGE_READ_MODE` and
 
 `scripts/smoke/run_s146_object_storage_compose.py` validates this topology.
 The rendered three-layer Compose configuration also passed the host Docker
-Compose parser. Real credential materialization and RustFS behavior remain
-Slice 1461 work and are not claimed by the static topology evidence.
+Compose parser.
+
+## Protected Acceptance Evidence
+
+- `scripts/smoke/run_s146_object_storage_acceptance.py` is opt-in through
+  `NEX_S146_PROTECTED_ACCEPTANCE=1` and `--execute`. It uses all five real test
+  PostgreSQL databases and an ephemeral single-host OpenBao, Traefik, and
+  RustFS Compose deployment.
+- OpenBao materializes RustFS root and SSE-S3 bootstrap secrets before the
+  container starts. Root credentials perform only bucket and IAM bootstrap;
+  separate bucket-scoped CX and AE users perform application operations.
+- Both buckets proved versioning, default AES256 encryption, three lifecycle
+  rules, CX/AE cross-bucket denial, managed-TLS routing, non-root execution,
+  named-volume persistence, restart recovery, and delete-marker restore.
+- The real CX source/Markdown adapters and AE generated-response adapter
+  completed encrypted write/read verification. RustFS returns user metadata
+  keys with preserved capitalization, so the product-neutral S3 port now
+  treats metadata names case-insensitively as required by S3 semantics.
+- CX and AE migration copied and verified one private payload each, admitted
+  `OBJECT_ONLY`, and preserved both legacy sources. PostgreSQL probes persisted
+  only hash, size, and opaque reference fields in temporary metadata tables;
+  no payload column or payload byte was introduced.
+- Cleanup removed every object version and delete marker, both buckets, all
+  containers, and the named volumes. The report contains counts and aggregate
+  digests only and keeps credentials, endpoints, object keys, filesystem
+  paths, and payloads absent.
 
 ## Non-Drift Rules
 

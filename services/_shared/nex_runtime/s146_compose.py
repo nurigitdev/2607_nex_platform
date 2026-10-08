@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from pathlib import Path
-import re
 from typing import Any
 
 import yaml
@@ -13,7 +13,6 @@ from .production_configuration import (
     load_production_configuration_manifest,
 )
 from .s144_staging import validate_s144_compose_assets
-
 
 S146_COMPOSE_SCHEMA_VERSION = "s146_object_storage_compose.v1"
 S146_OVERRIDE_PATH = "deployment/compose/s146-object-storage.override.yaml"
@@ -59,6 +58,7 @@ def validate_s146_compose_assets(root: Path) -> dict[str, Any]:
         "network_mode: host",
         "RUSTFS_ACCESS_KEY:",
         "RUSTFS_SECRET_KEY:",
+        "RUSTFS_SSE_S3_MASTER_KEY:",
     )
     if any(marker in override_text for marker in forbidden):
         raise S146ComposeError("S146 privilege or raw-secret boundary drift")
@@ -78,6 +78,10 @@ def validate_s146_compose_assets(root: Path) -> dict[str, Any]:
         "rustfs_root_secret_key": (
             "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/"
             "credentials/rustfs-root.secret-key"
+        ),
+        "rustfs_sse_s3_master_key": (
+            "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/"
+            "credentials/rustfs-sse-s3.master-key"
         ),
     }
     if not isinstance(secrets, Mapping) or {
@@ -137,6 +141,8 @@ def _validate_rustfs(service: Any) -> None:
         "volumes": service.get("volumes"),
         "secrets": service.get("secrets"),
         "networks": service.get("networks"),
+        "entrypoint": service.get("entrypoint"),
+        "command": service.get("command"),
         "host_ports_present": "ports" in service,
     }
     expected_runtime = {
@@ -148,8 +154,18 @@ def _validate_rustfs(service: Any) -> None:
         "security_opt": ["no-new-privileges:true"],
         "tmpfs": ["/tmp", "/logs"],
         "volumes": ["rustfs-data:/data"],
-        "secrets": ["rustfs_root_access_key", "rustfs_root_secret_key"],
+        "secrets": [
+            "rustfs_root_access_key",
+            "rustfs_root_secret_key",
+            "rustfs_sse_s3_master_key",
+        ],
         "networks": ["object-storage"],
+        "entrypoint": [
+            "sh",
+            "-ec",
+            'export RUSTFS_SSE_S3_MASTER_KEY="$$(cat /run/secrets/rustfs_sse_s3_master_key)"; exec /entrypoint.sh rustfs',
+        ],
+        "command": [],
         "host_ports_present": False,
     }
     if runtime_snapshot != expected_runtime:

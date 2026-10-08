@@ -439,6 +439,7 @@ def test_purge_tagging_rejects_invalid_bucket_and_key():
 def test_restore_version_republishes_and_verifies_current_object():
     client = FakeLifecycleClient(bucket_exists=True)
     key, version_id, digest = _restore_source(client)
+    client.source_versions[(key, version_id)]["Metadata"] = {"Sha256": digest}
     store = S3ObjectStore(client, _settings())
     receipt = restore_object_version(
         client,

@@ -261,7 +261,11 @@ class S3ObjectStore:
 
 def _metadata(bucket: str, key: str, response: Mapping[str, Any]) -> ObjectMetadata:
     metadata = response.get("Metadata")
-    metadata = metadata if isinstance(metadata, Mapping) else {}
+    metadata = (
+        {str(name).lower(): value for name, value in metadata.items()}
+        if isinstance(metadata, Mapping)
+        else {}
+    )
     sha256 = str(metadata.get("sha256") or "")
     size = response.get("ContentLength")
     content_type = str(response.get("ContentType") or "application/octet-stream")
@@ -392,4 +396,3 @@ def _client_error(code: str, exc: Exception) -> ObjectStorageError:
         "Object-storage operation failed.",
         retryable=status == 0 or status == 429 or status >= 500,
     )
-

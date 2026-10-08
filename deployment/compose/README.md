@@ -149,6 +149,10 @@ docker compose \
 
 The runtime directory must contain
 `credentials/rustfs-root.access-key` and
-`credentials/rustfs-root.secret-key` before starting `rustfs`. Slice 1461 owns
-the protected OpenBao materialization, RustFS IAM/bucket bootstrap, CX/AE
+`credentials/rustfs-root.secret-key` before starting `rustfs`. It must also
+contain `credentials/rustfs-sse-s3.master-key`, a base64-encoded 32-byte value
+materialized from OpenBao. The wrapper entrypoint reads that Docker secret and
+exports it only to the RustFS process; the raw value is absent from Compose,
+image layers, reports, and application containers. Slice 1461 proves the
+protected OpenBao materialization, RustFS IAM/bucket bootstrap, CX/AE
 cross-bucket denial, restart, lifecycle, restore, and cleanup execution.

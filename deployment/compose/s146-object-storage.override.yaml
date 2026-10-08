@@ -43,11 +43,17 @@ services:
       RUSTFS_ACCESS_KEY_FILE: /run/secrets/rustfs_root_access_key
       RUSTFS_SECRET_KEY_FILE: /run/secrets/rustfs_root_secret_key
       RUSTFS_OBS_LOGGER_LEVEL: warn
+    entrypoint:
+      - sh
+      - -ec
+      - 'export RUSTFS_SSE_S3_MASTER_KEY="$$(cat /run/secrets/rustfs_sse_s3_master_key)"; exec /entrypoint.sh rustfs'
+    command: []
     volumes:
       - rustfs-data:/data
     secrets:
       - rustfs_root_access_key
       - rustfs_root_secret_key
+      - rustfs_sse_s3_master_key
     healthcheck:
       test: [CMD, curl, -fsS, http://127.0.0.1:9000/health]
       interval: 3s
@@ -106,6 +112,8 @@ secrets:
     file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/rustfs-root.access-key"
   rustfs_root_secret_key:
     file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/rustfs-root.secret-key"
+  rustfs_sse_s3_master_key:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/rustfs-sse-s3.master-key"
 
 networks:
   object-storage:
