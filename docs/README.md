@@ -1588,6 +1588,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1472`](slices/1472_s147_model_serving_rollout_closure.md) | `S147-010` Publish rollout contracts and runbook, bind protected evidence, pass Full Gate, close S147, and activate S148. |
 | [`Slice 1473`](slices/1473_s148_observability_incident_boundary.md) | `S148-001` Freeze signal correlation, SLI/SLO, alert, delivery-zone, persistence, privacy, single-host, and acceptance boundaries. |
 | [`Slice 1474`](slices/1474_s148_signal_correlation.md) | `S148-002` Add the shared metadata-only metric/log/trace/readiness envelope and trace-first bounded correlation. |
+| [`Slice 1475`](slices/1475_s148_sli_slo_evaluation.md) | `S148-003` Add versioned service SLI/SLO policies, burn-rate evaluation, ownership, runbooks, and fail-closed no-data semantics. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
