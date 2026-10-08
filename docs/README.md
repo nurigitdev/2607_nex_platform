@@ -1579,6 +1579,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1464`](slices/1464_s147_model_revision_capacity_domain.md) | `S147-002` Add immutable model revision identity and product-neutral GPU capacity snapshots with freshness and privacy guards. |
 | [`Slice 1465`](slices/1465_s147_gpu_capacity_admission.md) | `S147-003` Implement deterministic GPU placement, reservation, pressure/headroom admission, and explicit release. |
 | [`Slice 1466`](slices/1466_s147_revision_bound_readiness.md) | `S147-004` Bind provider preflight, GPU runtime, capacity, freshness, and live-source evidence to the exact candidate revision. |
+| [`Slice 1467`](slices/1467_s147_capability_calibration_lifecycle.md) | `S147-005` Add exact-revision embedding, reranking, and generation calibration profiles, activation, invalidation, and retirement. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
