@@ -4,7 +4,7 @@ import json
 import subprocess
 
 import pytest
-
+import run_mo_runtime_observation_collector as runner
 from nex_mo.runtime_observability_collector import (
     RAW_SCHEMA_VERSION,
     REMOTE_COLLECTOR,
@@ -13,8 +13,6 @@ from nex_mo.runtime_observability_collector import (
     normalize_runtime_observation_payload,
 )
 from nex_mo.runtime_observability_plan import build_runtime_observation_plan
-import run_mo_runtime_observation_collector as runner
-
 
 OBSERVED_AT = "2026-09-30T00:00:00Z"
 
@@ -73,8 +71,14 @@ def test_live_collector_executes_fixed_ssh_shape_and_projects_safe_snapshot() ->
     wire = snapshot.to_wire()
     serialized = json.dumps(wire)
 
-    assert captured["command"][:5] == [
-        "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5"
+    assert captured["command"][:7] == [
+        "ssh",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=5",
+        "-o",
+        "PubkeyAuthentication=host-bound",
     ]
     assert captured["command"][-2:] == ["python3", "-"]
     assert "nvidia-smi" in str(captured["input"])

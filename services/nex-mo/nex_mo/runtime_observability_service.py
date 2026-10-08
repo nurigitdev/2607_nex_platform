@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 import os
+from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from threading import Lock
-from typing import Any, Callable, Mapping
+from typing import Any
 
 from nex_mo.runtime_observability import REQUIRED_RUNTIME_CAPABILITIES
 from nex_mo.runtime_observability_cache import InMemoryRuntimeObservationStore
@@ -13,7 +14,6 @@ from nex_mo.runtime_observability_plan import (
     build_runtime_observation_plan,
 )
 from nex_mo.runtime_observability_policy import runtime_observation_thresholds
-
 
 RUNTIME_OBSERVATION_TTL_ENV = "NEX_MO_RUNTIME_OBSERVABILITY_TTL_SECONDS"
 DEFAULT_RUNTIME_OBSERVATION_TTL_SECONDS = 30
@@ -119,6 +119,7 @@ def _private_plan_identity(plan: RuntimeObservationPlan) -> tuple[Any, ...]:
     return (
         plan.mode,
         plan.ssh_target,
+        plan.ssh_pubkey_mode,
         plan.collector_protocol,
         plan.connect_timeout_seconds,
         plan.command_timeout_seconds,

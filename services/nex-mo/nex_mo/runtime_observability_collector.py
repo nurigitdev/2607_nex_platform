@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import subprocess
-from typing import Any, Callable, Mapping
+from collections.abc import Callable, Mapping
+from typing import Any
 
 from nex_mo.runtime_observability import (
     ModelRuntimeObservation,
@@ -15,7 +16,6 @@ from nex_mo.runtime_observability_policy import (
     RuntimeObservationThresholds,
     classify_runtime_observation,
 )
-
 
 RAW_SCHEMA_VERSION = "mo_runtime_observability_collector.raw.v1"
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
@@ -251,6 +251,8 @@ def collect_runtime_observations(
         "BatchMode=yes",
         "-o",
         f"ConnectTimeout={plan.connect_timeout_seconds}",
+        "-o",
+        f"PubkeyAuthentication={plan.ssh_pubkey_mode}",
         plan.ssh_target,
         "python3",
         "-",

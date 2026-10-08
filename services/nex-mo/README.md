@@ -75,6 +75,12 @@ Model profile defaults:
   `NEX_MO_RUNTIME_OBSERVABILITY_MODE=live` and a validated
   `NEX_MO_DGX_SSH_TARGET`. Snapshots use a 30-second process-local TTL and are
   not persisted to PostgreSQL. `force_refresh=true` bypasses only the cache.
+  SSH uses explicit `host-bound` public-key authentication by default. The
+  connect and bounded collector timeouts are configurable with
+  `NEX_MO_RUNTIME_CONNECT_TIMEOUT_SECONDS` and
+  `NEX_MO_RUNTIME_COMMAND_TIMEOUT_SECONDS`; use
+  `NEX_MO_DGX_SSH_PUBKEY_MODE=unbound` only for an audited agent that cannot
+  complete host-bound signing.
 - The authenticated `GET /api/v1/operations-snapshot` projection joins active
   catalog aliases, route readiness, restart-safe provider telemetry, and current
   model runtime observations. `force_refresh=true` refreshes only bounded
@@ -154,6 +160,20 @@ NEX_MO_CONTRACT_API_POSTGRES_SMOKE_PROFILE=test \
 The runner accepts only `nex_mo_user@nex_mo_test`, applies current MO
 migrations, performs bounded job/log/retention write-read checks, and removes
 all temporary rows. It does not call DGX providers.
+
+S147 model-rollout acceptance is explicitly protected and accepts only the
+test profile plus `nex_mo_user@nex_mo_test`:
+
+```bash
+NEX_MO_MODEL_ROLLOUT_LIVE_ACCEPTANCE=1 \
+NEX_MO_MODEL_ROLLOUT_LIVE_ACCEPTANCE_PROFILE=test \
+NEX_MO_TEST_DATABASE_URL='<protected nex_mo_test URL>' \
+./.venv/bin/python scripts/smoke/run_s147_model_rollout_live_acceptance.py --summary
+```
+
+The runner reuses the configured live provider and SSH runtime variables,
+rehearses three temporary rollout records without canary or alias mutation,
+checks restart/API readback, and removes its rollout, event, and catalog rows.
 
 Manual live preflight:
 

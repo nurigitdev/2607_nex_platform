@@ -3,14 +3,16 @@ from __future__ import annotations
 import json
 
 import pytest
-
+import run_mo_runtime_observation_plan as runner
 from nex_mo.runtime_observability_plan import (
+    COMMAND_TIMEOUT_ENV,
+    CONNECT_TIMEOUT_ENV,
     OBSERVABILITY_MODE_ENV,
+    SSH_PUBKEY_MODE_ENV,
     SSH_TARGET_ENV,
     build_runtime_observation_plan,
     project_runtime_observation_plan,
 )
-import run_mo_runtime_observation_plan as runner
 
 
 def test_mock_plan_is_deterministic_complete_and_private() -> None:
@@ -45,6 +47,48 @@ def test_live_plan_requires_and_accepts_valid_ssh_target() -> None:
     assert plan.configured is True
     assert plan.collector_protocol == "fixed_python_stdin_v1"
     assert plan.ssh_target == "operator@dgx.local"
+    assert plan.ssh_pubkey_mode == "host-bound"
+    assert plan.connect_timeout_seconds == 5
+    assert plan.command_timeout_seconds == 15
+
+
+def test_plan_supports_bounded_timeout_overrides() -> None:
+    plan = build_runtime_observation_plan(
+        {
+            CONNECT_TIMEOUT_ENV: "10",
+            COMMAND_TIMEOUT_ENV: "60",
+        }
+    )
+
+    assert plan.connect_timeout_seconds == 10
+    assert plan.command_timeout_seconds == 60
+
+
+def test_plan_supports_explicit_unbound_pubkey_mode() -> None:
+    plan = build_runtime_observation_plan({SSH_PUBKEY_MODE_ENV: "unbound"})
+
+    assert plan.ssh_pubkey_mode == "unbound"
+
+
+def test_plan_rejects_unsupported_pubkey_mode() -> None:
+    with pytest.raises(ValueError, match=SSH_PUBKEY_MODE_ENV):
+        build_runtime_observation_plan({SSH_PUBKEY_MODE_ENV: "yes"})
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        (CONNECT_TIMEOUT_ENV, "bad"),
+        (CONNECT_TIMEOUT_ENV, "0"),
+        (CONNECT_TIMEOUT_ENV, "31"),
+        (COMMAND_TIMEOUT_ENV, "bad"),
+        (COMMAND_TIMEOUT_ENV, "4"),
+        (COMMAND_TIMEOUT_ENV, "121"),
+    ],
+)
+def test_plan_rejects_invalid_timeout_overrides(key: str, value: str) -> None:
+    with pytest.raises(ValueError, match=key):
+        build_runtime_observation_plan({key: value})
 
 
 def test_plan_supports_valid_port_overrides() -> None:

@@ -1583,6 +1583,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1468`](slices/1468_s147_canary_rollout_checkpoint.md) | `S147-006` Add guarded rollout states, canary traffic/quality budgets, promotability, fail-closed blocking, and the Checkpoint Gate. |
 | [`Slice 1469`](slices/1469_s147_rollout_activation_rollback.md) | `S147-007` Reuse atomic catalog alias switching for guarded promotion, exact last-known-good rollback, lineage retention, and candidate capacity release. |
 | [`Slice 1470`](slices/1470_s147_rollout_persistence_operations.md) | `S147-008` Persist optimistic rollout state and append-only events, recover after restart, and expose NeX-AG-only metadata-safe operations reads. |
+| [`Slice 1471`](slices/1471_s147_model_rollout_protected_acceptance.md) | `S147-009` Prove actual DGX providers/runtime plus `nex_mo_test` rollout restart/API rehearsal, fail-closed candidate admission, alias immutability, and zero-residue cleanup. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
