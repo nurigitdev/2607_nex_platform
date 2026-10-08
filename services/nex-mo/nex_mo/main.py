@@ -6,17 +6,20 @@ from nex_runtime import (
     register_service_job_control_routes,
     register_service_log_retention_routes,
 )
-from nex_mo.providers import register_mock_provider_routes
+
 from nex_mo.catalog_lifecycle_api import register_catalog_lifecycle_routes
-from nex_mo.catalog_route_source import CatalogProviderRouteSource
 from nex_mo.catalog_lifecycle_runtime import build_catalog_lifecycle_service
+from nex_mo.catalog_route_source import CatalogProviderRouteSource
+from nex_mo.model_rollout_api import register_model_rollout_routes
+from nex_mo.model_rollout_runtime import build_model_rollout_service
+from nex_mo.mvp_acceptance_api import register_mo_mvp_acceptance_routes
 from nex_mo.operations_api import register_operations_routes
 from nex_mo.operations_service import MOOperationsService
-from nex_mo.mvp_acceptance_api import register_mo_mvp_acceptance_routes
 from nex_mo.provider_readiness_api import register_provider_readiness_routes
 from nex_mo.provider_readiness_service import ProviderReadinessService
-from nex_mo.provider_telemetry_runtime import build_provider_telemetry_store
 from nex_mo.provider_registry import configure_provider_route_source
+from nex_mo.provider_telemetry_runtime import build_provider_telemetry_store
+from nex_mo.providers import register_mock_provider_routes
 from nex_mo.remote_provider import (
     configure_remote_provider_telemetry_store,
     list_remote_provider_telemetry,
@@ -44,6 +47,7 @@ app.state.runtime_observability_service = RUNTIME_OBSERVABILITY
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
 PROVIDER_TELEMETRY_STORE = build_provider_telemetry_store(SERVICE_PERSISTENCE)
 CATALOG_LIFECYCLE = build_catalog_lifecycle_service(SERVICE_PERSISTENCE)
+MODEL_ROLLOUTS = build_model_rollout_service(SERVICE_PERSISTENCE)
 MO_OPERATIONS = MOOperationsService(
     catalog_service=CATALOG_LIFECYCLE,
     readiness_service=PROVIDER_READINESS,
@@ -57,6 +61,7 @@ configure_provider_route_source(CatalogProviderRouteSource(CATALOG_LIFECYCLE))
 configure_remote_provider_telemetry_store(PROVIDER_TELEMETRY_STORE)
 app.state.provider_telemetry_store = PROVIDER_TELEMETRY_STORE
 app.state.catalog_lifecycle_service = CATALOG_LIFECYCLE
+app.state.model_rollout_service = MODEL_ROLLOUTS
 app.state.mo_operations_service = MO_OPERATIONS
 register_service_job_control_routes(
     app,
@@ -70,6 +75,7 @@ register_service_log_retention_routes(
 )
 register_mock_provider_routes(app)
 register_catalog_lifecycle_routes(app, service=CATALOG_LIFECYCLE)
+register_model_rollout_routes(app, service=MODEL_ROLLOUTS)
 register_provider_readiness_routes(app, service=PROVIDER_READINESS)
 register_runtime_observability_routes(app, service=RUNTIME_OBSERVABILITY)
 register_operations_routes(app, service=MO_OPERATIONS)

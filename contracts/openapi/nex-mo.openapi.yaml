@@ -12,6 +12,7 @@ tags:
   - name: Provider Readiness
   - name: Providers
   - name: Model Catalog
+  - name: Model Rollouts
 paths:
   /:
     get:
@@ -775,6 +776,84 @@ paths:
           description: Alias rollback payload is invalid.
         "503":
           description: Durable alias binding state is temporarily unavailable.
+  /api/v1/model-rollouts:
+    get:
+      operationId: listMoModelRollouts
+      tags: [Model Rollouts]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call, operations:read]
+      x-nex-route-class: ADMIN
+      parameters:
+        - name: capability
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [embedding, reranking, generation]
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [REGISTERED, VALIDATING, READY, CANARY, BLOCKED, ACTIVE, ROLLED_BACK]
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 200, default: 100}
+      responses:
+        "200":
+          description: Metadata-only model rollout operations collection for NeX-AG.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelRolloutCollection"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Caller is not NeX-AG or lacks operations scope.}
+        "422": {description: Rollout filter is invalid.}
+        "503": {description: Durable rollout state is temporarily unavailable.}
+  /api/v1/model-rollouts/{rollout_id}:
+    get:
+      operationId: getMoModelRollout
+      tags: [Model Rollouts]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call, operations:read]
+      x-nex-route-class: ADMIN
+      parameters:
+        - $ref: "#/components/parameters/RolloutId"
+      responses:
+        "200":
+          description: Metadata-only model rollout state for NeX-AG.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelRollout"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Caller is not NeX-AG or lacks operations scope.}
+        "404": {description: Model rollout was not found.}
+        "503": {description: Durable rollout state is temporarily unavailable.}
+  /api/v1/model-rollouts/{rollout_id}/events:
+    get:
+      operationId: listMoModelRolloutEvents
+      tags: [Model Rollouts]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call, operations:read]
+      x-nex-route-class: ADMIN
+      parameters:
+        - $ref: "#/components/parameters/RolloutId"
+      responses:
+        "200":
+          description: Append-only metadata model rollout event history for NeX-AG.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelRolloutEventCollection"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Caller is not NeX-AG or lacks operations scope.}
+        "404": {description: Model rollout was not found.}
+        "503": {description: Durable rollout events are temporarily unavailable.}
 components:
   parameters:
     JobId:
@@ -798,6 +877,13 @@ components:
       schema:
         type: string
         pattern: "^[a-z0-9][a-z0-9._:-]{0,127}$"
+    RolloutId:
+      name: rollout_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$"
     TraceId:
       name: trace_id
       in: path
@@ -1156,6 +1242,90 @@ components:
         revision: {type: integer, minimum: 1}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+    ModelRevisionIdentity:
+      type: object
+      additionalProperties: false
+      required: [provider_capability, alias, catalog_id, model_revision, deployment_id, artifact_digest, runtime_engine, precision, request_shape_hash]
+      properties:
+        provider_capability: {type: string, enum: [embedding, reranking, generation]}
+        alias: {type: string}
+        catalog_id: {type: string}
+        model_revision: {type: string}
+        deployment_id: {type: string}
+        artifact_digest: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        runtime_engine: {type: string}
+        precision: {type: string}
+        request_shape_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+    ModelRollout:
+      type: object
+      additionalProperties: false
+      required: [schema_version, rollout_id, identity, identity_fingerprint, state, state_revision, last_known_good_binding_id, last_known_good_identity_fingerprint, readiness_evidence_digest, calibration_profile_id, calibration_profile_hash, reservation_id, canary_policy_hash, canary_status, activated_binding_id, failure_code, created_at, updated_at]
+      properties:
+        schema_version: {const: mo_model_rollout.v1}
+        rollout_id: {type: string}
+        identity: {$ref: "#/components/schemas/ModelRevisionIdentity"}
+        identity_fingerprint: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        state: {type: string, enum: [REGISTERED, VALIDATING, READY, CANARY, BLOCKED, ACTIVE, ROLLED_BACK]}
+        state_revision: {type: integer, minimum: 1}
+        last_known_good_binding_id: {type: string}
+        last_known_good_identity_fingerprint: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        readiness_evidence_digest: {type: [string, "null"]}
+        calibration_profile_id: {type: [string, "null"]}
+        calibration_profile_hash: {type: [string, "null"]}
+        reservation_id: {type: [string, "null"]}
+        canary_policy_hash: {type: [string, "null"]}
+        canary_status: {type: [string, "null"]}
+        activated_binding_id: {type: [string, "null"]}
+        failure_code: {type: [string, "null"]}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    ModelRolloutCollection:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: {$ref: "#/components/schemas/ModelRollout"}
+        meta:
+          type: object
+          additionalProperties: false
+          required: [schema_version, capability, state, limit]
+          properties:
+            schema_version: {const: mo_model_rollout_collection.v1}
+            capability: {type: [string, "null"]}
+            state: {type: [string, "null"]}
+            limit: {type: integer, minimum: 1, maximum: 200}
+    ModelRolloutEvent:
+      type: object
+      additionalProperties: false
+      required: [schema_version, event_id, rollout_id, event_type, from_state, to_state, state_revision, evidence_digest, failure_code, occurred_at]
+      properties:
+        schema_version: {const: mo_model_rollout_event.v1}
+        event_id: {type: string}
+        rollout_id: {type: string}
+        event_type: {type: string}
+        from_state: {type: [string, "null"]}
+        to_state: {type: string}
+        state_revision: {type: integer, minimum: 1}
+        evidence_digest: {type: [string, "null"]}
+        failure_code: {type: [string, "null"]}
+        occurred_at: {type: string, format: date-time}
+    ModelRolloutEventCollection:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: {$ref: "#/components/schemas/ModelRolloutEvent"}
+        meta:
+          type: object
+          additionalProperties: false
+          required: [schema_version, rollout_id]
+          properties:
+            schema_version: {const: mo_model_rollout_event_collection.v1}
+            rollout_id: {type: string}
     ModelCatalogCollection:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_mo/model_catalog_collection.v1.schema.json

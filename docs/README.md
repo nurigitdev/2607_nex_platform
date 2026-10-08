@@ -1582,6 +1582,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1467`](slices/1467_s147_capability_calibration_lifecycle.md) | `S147-005` Add exact-revision embedding, reranking, and generation calibration profiles, activation, invalidation, and retirement. |
 | [`Slice 1468`](slices/1468_s147_canary_rollout_checkpoint.md) | `S147-006` Add guarded rollout states, canary traffic/quality budgets, promotability, fail-closed blocking, and the Checkpoint Gate. |
 | [`Slice 1469`](slices/1469_s147_rollout_activation_rollback.md) | `S147-007` Reuse atomic catalog alias switching for guarded promotion, exact last-known-good rollback, lineage retention, and candidate capacity release. |
+| [`Slice 1470`](slices/1470_s147_rollout_persistence_operations.md) | `S147-008` Persist optimistic rollout state and append-only events, recover after restart, and expose NeX-AG-only metadata-safe operations reads. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

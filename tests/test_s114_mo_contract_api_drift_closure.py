@@ -20,9 +20,9 @@ def test_repository_s114_closure_passes() -> None:
         "passed_evidence_count": 8,
         "component_count": 6,
         "closed_component_count": 6,
-        "runtime_operation_count": 32,
-        "openapi_operation_count": 32,
-        "protected_operation_count": 28,
+        "runtime_operation_count": 35,
+        "openapi_operation_count": 35,
+        "protected_operation_count": 31,
         "contract_drift_count": 0,
         "protected_postgres_check_count": 12,
         "missing_file_count": 0,
@@ -92,7 +92,7 @@ def test_s114_closure_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = closure.run_s114_mo_contract_api_drift_closure()
     assert closure.summary_line(passing) == (
         "s114_mo_contract_api_drift_closure=pass evidence=8/8 "
-        "components=6/6 operations=32/32 drift=0 next=S115"
+        "components=6/6 operations=35/35 drift=0 next=S115"
     )
     assert "next=blocked" in closure.summary_line({"status": "FAIL"})
 
