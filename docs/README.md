@@ -1593,6 +1593,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1477`](slices/1477_s148_alert_persistence_checkpoint.md) | `S148-005` Persist optimistic alerts and leased notification outbox/attempt state, prove restart recovery, and pass Checkpoint Gate. |
 | [`Slice 1478`](slices/1478_s148_mock_notification_delivery.md) | `S148-006` Execute real local and honest private/internet mock notification delivery with retry and receipts. |
 | [`Slice 1479`](slices/1479_s148_observability_operations_api.md) | `S148-007` Expose protected SLO, alert, delivery, dashboard, acknowledgement, suppression, trace, and audit operations. |
+| [`Slice 1480`](slices/1480_s148_observability_postgres_smoke.md) | `S148-008` Prove migrations, restart recovery, protected operations, and zero residue against actual `nex_ag_test` PostgreSQL. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

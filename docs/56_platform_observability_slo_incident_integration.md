@@ -170,7 +170,7 @@ accepts this limitation explicitly; it is not production host-down evidence.
 | `1477` | Persist alert/outbox/attempt state, prove restart recovery, and run Checkpoint Gate. |
 | `1478` | **Complete.** Implemented local, private-network, and internet-connected mock delivery with retry and receipts. |
 | `1479` | **Complete.** Wired protected AG APIs and the integrated operations/dashboard projection. |
-| `1480` | Run actual `nex_ag_test` migration, restart-safe processing, and zero-residue protected smoke. |
+| `1480` | **Complete.** Ran actual `nex_ag_test` migration, restart-safe processing, and zero-residue protected smoke. |
 | `1481` | Publish schemas/OpenAPI, privacy fixtures, mock incident acceptance, and operations evidence. |
 | `1482` | Publish the runbook, bind closure evidence, run Full Gate, close S148, and activate S149. |
 
