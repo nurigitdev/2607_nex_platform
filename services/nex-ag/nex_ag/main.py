@@ -60,6 +60,10 @@ from nex_ag.processing_operations import (
     build_cx_processing_run_operation_stores,
     register_cx_processing_run_operation_routes,
 )
+from nex_ag.platform_observability_operations import (
+    build_platform_observability_operations,
+    register_platform_observability_routes,
+)
 from nex_ag.readiness import register_readiness_routes
 from nex_ag.remediation_execution_operations import (
     build_remediation_execution_operations_projection,
@@ -122,7 +126,15 @@ AUDIT_RETENTION_STORES = build_ag_audit_retention_runtime_stores(
     SERVICE_PERSISTENCE
 )
 CROSS_SERVICE_TRACE_AGGREGATOR = build_default_cross_service_trace_aggregator()
+PLATFORM_OBSERVABILITY_OPERATIONS = build_platform_observability_operations(
+    SERVICE_PERSISTENCE
+)
 register_readiness_routes(app)
+register_platform_observability_routes(
+    app,
+    operations=PLATFORM_OBSERVABILITY_OPERATIONS,
+    audit_event_store=SERVICE_PERSISTENCE.operational_event_store,
+)
 register_ag_federated_operator_runtime_routes(
     app,
     telemetry=FEDERATED_AUTHORIZATION_TELEMETRY,

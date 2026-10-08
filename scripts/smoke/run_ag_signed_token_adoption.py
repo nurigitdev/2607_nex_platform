@@ -43,6 +43,7 @@ DUAL_ADMIN_MODULES = {
     "federated_operator_operations.py",
     "mvp_acceptance_api.py",
     "operator_reviews.py",
+    "platform_observability_operations.py",
 }
 
 

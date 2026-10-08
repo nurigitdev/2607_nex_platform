@@ -166,6 +166,51 @@ class SqlAlchemyPlatformAlertRepository:
         except (SQLAlchemyError, ValueError, TypeError, KeyError) as exc:
             raise _unavailable() from exc
 
+    def list_alerts(
+        self,
+        *,
+        service_id: str | None = None,
+        state: str | None = None,
+        limit: int = 100,
+    ) -> list[AlertRecord]:
+        if state is not None and state not in {
+            "PENDING",
+            "FIRING",
+            "ACKNOWLEDGED",
+            "RESOLVED",
+            "SUPPRESSED",
+        }:
+            raise PlatformAlertRepositoryError(
+                "alert.filter_invalid", "alert state filter is invalid"
+            )
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 200:
+            raise PlatformAlertRepositoryError(
+                "alert.filter_invalid", "alert limit is invalid"
+            )
+        clauses: list[str] = []
+        params: dict[str, Any] = {"limit": limit}
+        if service_id is not None:
+            _identifier(service_id, "service_id")
+            clauses.append("service_id = :service_id")
+            params["service_id"] = service_id
+        if state is not None:
+            clauses.append("alert_state = :alert_state")
+            params["alert_state"] = state
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        try:
+            with self._session_factory() as session:
+                rows = session.execute(
+                    text(
+                        _SELECT_ALERT_SQL
+                        + where
+                        + " ORDER BY last_observed_at DESC, alert_id LIMIT :limit"
+                    ),
+                    params,
+                ).mappings().all()
+            return [_alert_from_mapping(row) for row in rows]
+        except (SQLAlchemyError, ValueError, TypeError, KeyError) as exc:
+            raise _unavailable() from exc
+
     def update_alert(
         self, alert: AlertRecord, *, expected_state_revision: int
     ) -> AlertRecord:

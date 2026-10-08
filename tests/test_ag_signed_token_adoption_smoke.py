@@ -12,7 +12,7 @@ def test_ag_signed_token_adoption_smoke_passes() -> None:
     assert all(evidence["checks"].values())
     assert evidence["legacy_validator_file_count"] == 0
     assert evidence["outbound_client_count"] == 7
-    assert evidence["dual_admin_module_count"] == 5
+    assert evidence["dual_admin_module_count"] == 6
     assert evidence["next_slice"] == "1279"
 
 
@@ -26,7 +26,7 @@ def test_audit_fails_for_empty_repository(tmp_path: Path) -> None:
 def test_summary_and_main(capsys, monkeypatch) -> None:
     evidence = runner.run_ag_signed_token_adoption()
     assert runner.summary_line(evidence) == (
-        "ag_signed_token_adoption=pass outbound=7 admin=5 next=1279"
+        "ag_signed_token_adoption=pass outbound=7 admin=6 next=1279"
     )
     monkeypatch.setattr(runner, "run_ag_signed_token_adoption", lambda: evidence)
     assert runner.main(["--summary"]) == 0
