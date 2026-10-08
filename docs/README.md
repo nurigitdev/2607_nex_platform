@@ -48,6 +48,8 @@ documents and show the current build direction directly.
 | [51 Platform Production Configuration, Secret, and TLS Lifecycle](51_platform_production_configuration_secret_tls.md) | Closes S143 with fail-closed configuration, owner-scoped external secrets, managed TLS, single-host Compose acceptance, and S144-S147 handoff. |
 | [52 OA Production Trust, Key Custody, and Enterprise Federation](52_oa_production_trust_key_custody_federation.md) | Freezes S144 external Transit custody, rotation/JWKS/introspection, enterprise OIDC federation, single-host acceptance, and S148 handoff. |
 | [53 PostgreSQL Production Resilience and Disaster Recovery](53_platform_postgresql_resilience_disaster_recovery.md) | Closes S145 with five-database logical recovery, base-backup/WAL PITR, operator-controlled cold cutover, protected evidence, and S148/S149 handoff. |
+| [54 Platform Private Object Storage](54_platform_private_object_storage.md) | Closes S146 with RustFS-backed private CX/AE payloads, migration, lifecycle, restore, protected acceptance, and S147 handoff. |
+| [55 Production Model-Serving Capacity and Rollout Resilience](55_platform_model_serving_capacity_rollout.md) | Freezes S147 model-independent GPU capacity, readiness, calibration, canary, rollback, persistence, and protected acceptance. |
 
 Recommended first read:
 
@@ -1570,6 +1572,10 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1457`](slices/1457_s146_ae_private_payload_adapter.md) | `S146-005` Route AE generated responses and rendered artifacts through owner-scoped S3 adapters and pass the fifth-Slice Checkpoint Gate. |
 | [`Slice 1458`](slices/1458_s146_object_storage_migration.md) | `S146-006` Add verified filesystem-to-object migration, explicit dual-read/rollback policy, redacted evidence, and zero-data-loss cutover guards. |
 | [`Slice 1459`](slices/1459_s146_object_storage_lifecycle.md) | `S146-007` Bootstrap versioned encrypted buckets, gate purge eligibility around holds, and restore verified historical versions. |
+| [`Slice 1460`](slices/1460_s146_object_storage_compose.md) | `S146-008` Integrate RustFS, IAM, managed secrets, TLS, non-root persistence, and lifecycle into the single-host Compose topology. |
+| [`Slice 1461`](slices/1461_s146_object_storage_protected_acceptance.md) | `S146-009` Prove actual RustFS, five test databases, owner isolation, migration, restore, restart, and zero-residue cleanup. |
+| [`Slice 1462`](slices/1462_s146_private_object_storage_closure.md) | `S146-010` Publish value-free acceptance evidence and the operations runbook, pass Full Gate, close S146, and activate S147. |
+| [`Slice 1463`](slices/1463_s147_model_serving_rollout_boundary.md) | `S147-001` Freeze model-independent revision identity, GPU capacity, calibration, canary, rollback, protected acceptance, and Slice 1464-1472 order. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
