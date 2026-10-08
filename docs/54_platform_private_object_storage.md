@@ -1,7 +1,8 @@
 # Private Object Storage Migration and Lifecycle
 
-Status: CX and AE application adapters complete at Slice 1457. Implementation is in progress;
-production deployment remains unapproved.
+Status: CX and AE adapters plus the migration/rollback control plane are
+complete at Slice 1458. Implementation is in progress; production deployment
+remains unapproved.
 
 ## Required Outcome
 
@@ -148,6 +149,42 @@ Checkpoint Gate runs at Slice 1457 and Full Gate at Slice 1462.
 - Existing memory and filesystem adapters remain available for tests, local
   development, and explicit rollback; they are not silently selected when an
   S3 profile is requested.
+
+## Implemented Migration And Rollback Control Plane
+
+- `object_storage_migration_manifest.v1` is a runtime-only manifest of opaque
+  item IDs, relative source paths, target keys, expected hashes, sizes, and
+  content types. Manifests contain operational paths and keys and must not be
+  committed or copied into evidence.
+- Inventory rejects unsafe roots, symlinks, traversal, duplicate source or
+  target entries, invalid metadata, and source hash/size drift. Copy re-reads
+  every source, publishes immutably with SSE-S3, downloads the target, and
+  verifies its bytes and metadata before recording completion.
+- Evidence includes only counts, total bytes, aggregate digests, phase, and
+  reason codes. It never includes payloads, physical paths, or object keys.
+- `OBJECT_FIRST` is the migration dual-read mode. `FILESYSTEM_FIRST` is the
+  rollback preference. Both require an explicit owner-scoped admission flag;
+  fallback occurs only when the preferred copy is missing, never after an
+  integrity or availability error.
+- New CX private text and AE generated-response writes always go to object
+  storage while either dual-read mode is active. Deletes affect only the
+  object copy; the migration layer has no filesystem delete operation.
+- `OBJECT_ONLY` requires a complete verified copy and an elapsed rollback
+  window. Source retirement additionally requires a separately recorded purge
+  decision, and the migration runner still does not perform that purge.
+- CX source/extracted records and AE artifact records carry backend or storage
+  references in PostgreSQL. Their object copy does not authorize cutover until
+  a protected, transactional metadata-reference update is verified. Rollback
+  must restore read preference and the matching metadata reference together.
+
+The executable operator boundary is
+`scripts/smoke/run_s146_object_storage_migration.py`. Source roots are supplied
+through `NEX_CX_OBJECT_STORAGE_MIGRATION_ROOT` or
+`NEX_AE_OBJECT_STORAGE_MIGRATION_ROOT`; they are never CLI output. Runtime read
+preferences use `NEX_CX_OBJECT_STORAGE_READ_MODE` and
+`NEX_AE_OBJECT_STORAGE_READ_MODE`. `OBJECT_FIRST` requires the corresponding
+`*_OBJECT_STORAGE_MIGRATION_ADMITTED=true`, and `FILESYSTEM_FIRST` requires
+`*_OBJECT_STORAGE_ROLLBACK_ADMITTED=true`.
 
 ## Non-Drift Rules
 

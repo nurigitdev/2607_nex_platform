@@ -9,6 +9,8 @@ from nex_runtime.object_storage import ObjectStorageError, S3ObjectStore
 from nex_cx.access_context import CxAccessContext
 from nex_cx.private_content import CxPrivateContentError, build_private_payload_key
 from nex_cx.private_text_store import (
+    FileSystemCxPrivateTextStore,
+    MigratingCxPrivateTextStore,
     PRIVATE_STORAGE_MODE_ENV,
     S3_PRIVATE_TEXT_STORAGE_BACKEND,
     S3CxPrivateTextStore,
@@ -200,3 +202,66 @@ def test_builder_selects_s3_and_rejects_unsafe_configuration(monkeypatch) -> Non
         "NEX_RUNTIME_PROFILE": "protected_test",
     }), S3CxPrivateTextStore)
 
+
+def test_migrating_text_store_writes_object_and_dual_reads_legacy(tmp_path) -> None:
+    target, _client = _store()
+    legacy = FileSystemCxPrivateTextStore(tmp_path / "legacy")
+    store = MigratingCxPrivateTextStore(target, legacy, "OBJECT_FIRST")
+    key = _key()
+    legacy_text = "legacy private text"
+    legacy_digest = hashlib.sha256(legacy_text.encode()).hexdigest()
+    legacy.put_text(
+        access_context=_context(),
+        key=key,
+        text=legacy_text,
+        expected_sha256=legacy_digest,
+    )
+    assert store.get_text(
+        access_context=_context(), key=key, expected_sha256=legacy_digest
+    ) == legacy_text
+
+    new_key = build_private_payload_key(
+        _context(), payload_kind="chunk_text", content_id="new-object"
+    )
+    new_text = "new object text"
+    new_digest = hashlib.sha256(new_text.encode()).hexdigest()
+    store.put_text(
+        access_context=_context(),
+        key=new_key,
+        text=new_text,
+        expected_sha256=new_digest,
+    )
+    assert target.get_text(
+        access_context=_context(), key=new_key, expected_sha256=new_digest
+    ) == new_text
+    assert legacy.get_text(
+        access_context=_context(), key=new_key, expected_sha256=new_digest
+    ) is None
+    assert store.delete_text(access_context=_context(), key=key) is False
+    assert legacy.get_text(
+        access_context=_context(), key=key, expected_sha256=legacy_digest
+    ) == legacy_text
+
+
+def test_builder_requires_explicit_dual_read_admission(monkeypatch, tmp_path) -> None:
+    fake_store, _client = _store()
+    monkeypatch.setattr(
+        "nex_cx.private_text_store.build_s3_client",
+        lambda _settings: fake_store.object_store.client,
+    )
+    env = {
+        PRIVATE_STORAGE_MODE_ENV: "S3",
+        "NEX_CX_OBJECT_STORAGE_BACKEND": "S3",
+        "NEX_CX_OBJECT_STORAGE_ENDPOINT": "https://object.example.test",
+        "NEX_CX_OBJECT_STORAGE_ACCESS_KEY": "cx-access-key",
+        "NEX_CX_OBJECT_STORAGE_SECRET_KEY": "cx-secret-key-long",
+        "NEX_CX_PRIVATE_TEXT_STORAGE_ROOT": str(tmp_path),
+        "NEX_CX_OBJECT_STORAGE_READ_MODE": "OBJECT_FIRST",
+    }
+    with pytest.raises(CxPrivateContentError) as blocked:
+        build_private_text_store(env)
+    assert blocked.value.error_code == "CX_PRIVATE_STORAGE_CONFIGURATION_INVALID"
+    store = build_private_text_store(
+        {**env, "NEX_CX_OBJECT_STORAGE_MIGRATION_ADMITTED": "true"}
+    )
+    assert isinstance(store, MigratingCxPrivateTextStore)

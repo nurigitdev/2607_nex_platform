@@ -18,6 +18,8 @@ from nex_ae_api.artifacts import (
 )
 from nex_ae_api.generated_response_storage import (
     GeneratedResponseStorageError,
+    LocalGeneratedResponseStorage,
+    MigratingGeneratedResponseStorage,
     S3GeneratedResponseStorage,
     build_default_generated_response_storage,
     build_generated_response_payload,
@@ -170,6 +172,37 @@ def test_generated_response_s3_round_trip_is_owner_scoped_and_compensatable() ->
         metadata,
         _owner_record(),
     ) is False
+
+
+def test_generated_response_migration_dual_reads_and_writes_object_only(tmp_path) -> None:
+    object_store, _client = _object_store()
+    target = S3GeneratedResponseStorage(object_store)
+    legacy = LocalGeneratedResponseStorage(tmp_path / "legacy")
+    storage = MigratingGeneratedResponseStorage(target, legacy, "OBJECT_FIRST")
+    legacy_payload = build_generated_response_payload(
+        response_id="legacy-response",
+        content="legacy private response",
+    )
+    legacy_metadata = generated_response_storage_metadata(legacy_payload)
+    legacy.save(legacy_payload)
+    assert load_generated_response_for_record(
+        storage, legacy_metadata, _owner_record()
+    ) == "legacy private response"
+
+    new_payload = build_generated_response_payload(
+        response_id="new-response",
+        content="new private response",
+    )
+    new_metadata = generated_response_storage_metadata(new_payload)
+    save_generated_response_for_record(storage, new_payload, _owner_record())
+    assert load_generated_response_for_record(
+        storage, new_metadata, _owner_record()
+    ) == "new private response"
+    assert legacy.load(new_metadata) is None
+    assert delete_generated_response_for_record(
+        storage, legacy_metadata, _owner_record()
+    ) is False
+    assert legacy.load(legacy_metadata) == "legacy private response"
 
 
 def test_generated_response_s3_rejects_corruption_outage_and_invalid_owner(
@@ -344,7 +377,9 @@ def test_rendered_artifact_s3_maps_missing_publish_delete_and_markdown_failures(
     assert deletion.value.retryable is True
 
 
-def test_ae_private_storage_builders_select_s3_and_fail_closed(monkeypatch) -> None:
+def test_ae_private_storage_builders_select_s3_and_fail_closed(
+    monkeypatch, tmp_path
+) -> None:
     object_store, _client = _object_store()
     monkeypatch.setattr(
         "nex_ae_api.generated_response_storage.build_ae_private_object_store",
@@ -369,6 +404,31 @@ def test_ae_private_storage_builders_select_s3_and_fail_closed(monkeypatch) -> N
         build_default_rendered_artifact_storage(env),
         S3RenderedArtifactStorage,
     )
+    migration_env = {
+        **env,
+        "NEX_AE_CHAT_RESPONSE_STORAGE_ROOT": str(tmp_path),
+        "NEX_AE_OBJECT_STORAGE_READ_MODE": "OBJECT_FIRST",
+    }
+    with pytest.raises(GeneratedResponseStorageError) as admission:
+        build_default_generated_response_storage(migration_env)
+    assert admission.value.error_code == "ae.generated_response_migration_invalid"
+    assert isinstance(
+        build_default_generated_response_storage(
+            {
+                **migration_env,
+                "NEX_AE_OBJECT_STORAGE_MIGRATION_ADMITTED": "true",
+            }
+        ),
+        MigratingGeneratedResponseStorage,
+    )
+    with pytest.raises(GeneratedResponseStorageError):
+        build_default_generated_response_storage(
+            {
+                **env,
+                "NEX_AE_OBJECT_STORAGE_READ_MODE": "OBJECT_FIRST",
+                "NEX_AE_OBJECT_STORAGE_MIGRATION_ADMITTED": "true",
+            }
+        )
     with pytest.raises(GeneratedResponseStorageError):
         build_default_generated_response_storage(
             {"NEX_AE_PRIVATE_STORAGE_MODE": "FILESYSTEM"}

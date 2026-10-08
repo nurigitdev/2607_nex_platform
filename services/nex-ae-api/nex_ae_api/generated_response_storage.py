@@ -13,6 +13,11 @@ from nex_runtime.object_storage import (
     S3ObjectStore,
     build_owner_object_key,
 )
+from nex_runtime.object_storage_migration import (
+    ObjectMigrationError,
+    configured_migration_read_mode,
+    read_with_migration_policy,
+)
 from nex_ae_api.private_object_store import (
     AePrivateObjectStorageError,
     ae_private_storage_mode,
@@ -360,6 +365,56 @@ class S3GeneratedResponseStorage:
             raise _s3_storage_error(exc) from exc
 
 
+@dataclass(frozen=True)
+class MigratingGeneratedResponseStorage:
+    target: S3GeneratedResponseStorage
+    legacy: LocalGeneratedResponseStorage
+    read_mode: str
+
+    def save_for_owner(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        tenant_id: str,
+        subject_id: str,
+    ) -> str:
+        return self.target.save_for_owner(
+            payload,
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+        )
+
+    def load_for_owner(
+        self,
+        metadata: Mapping[str, Any],
+        *,
+        tenant_id: str,
+        subject_id: str,
+    ) -> str | None:
+        return read_with_migration_policy(
+            self.read_mode,
+            object_read=lambda: self.target.load_for_owner(
+                metadata,
+                tenant_id=tenant_id,
+                subject_id=subject_id,
+            ),
+            filesystem_read=lambda: self.legacy.load(metadata),
+        )
+
+    def delete_for_owner(
+        self,
+        metadata: Mapping[str, Any],
+        *,
+        tenant_id: str,
+        subject_id: str,
+    ) -> bool:
+        return self.target.delete_for_owner(
+            metadata,
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+        )
+
+
 def save_generated_response_for_record(
     storage: GeneratedResponseStorage,
     payload: Mapping[str, Any],
@@ -415,10 +470,24 @@ def build_default_generated_response_storage(
     try:
         mode = ae_private_storage_mode(env)
         if mode == "S3":
-            return S3GeneratedResponseStorage(build_ae_private_object_store(env))
-    except AePrivateObjectStorageError as exc:
+            target = S3GeneratedResponseStorage(build_ae_private_object_store(env))
+            read_mode = configured_migration_read_mode("nex-ae-api", env)
+            if read_mode == "OBJECT_ONLY":
+                return target
+            root = env.get(GENERATED_RESPONSE_STORAGE_ENV)
+            if not isinstance(root, str) or not root.strip():
+                raise _invalid(
+                    "AE generated response migration requires its filesystem root."
+                )
+            return MigratingGeneratedResponseStorage(
+                target=target,
+                legacy=LocalGeneratedResponseStorage(Path(root.strip())),
+                read_mode=read_mode,
+            )
+    except (AePrivateObjectStorageError, ObjectMigrationError) as exc:
         raise GeneratedResponseStorageError(
-            error_code=exc.error_code,
+            error_code=getattr(exc, "error_code", None)
+            or "ae.generated_response_migration_invalid",
             detail=exc.detail,
             retryable=exc.retryable,
         ) from exc

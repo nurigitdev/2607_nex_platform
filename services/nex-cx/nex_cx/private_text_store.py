@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 import os
 from pathlib import Path
 
@@ -11,6 +12,11 @@ from nex_runtime.object_storage import (
     build_owner_object_key,
     build_s3_client,
     object_storage_settings,
+)
+from nex_runtime.object_storage_migration import (
+    ObjectMigrationError,
+    configured_migration_read_mode,
+    read_with_migration_policy,
 )
 
 from nex_cx.access_context import CxAccessContext
@@ -256,6 +262,57 @@ class S3CxPrivateTextStore:
         )
 
 
+@dataclass(frozen=True)
+class MigratingCxPrivateTextStore:
+    target: S3CxPrivateTextStore
+    legacy: FileSystemCxPrivateTextStore
+    read_mode: str
+
+    def put_text(
+        self,
+        *,
+        access_context: CxAccessContext,
+        key: CxPrivatePayloadKey,
+        text: str,
+        expected_sha256: str,
+    ) -> CxPrivatePayloadReceipt:
+        return self.target.put_text(
+            access_context=access_context,
+            key=key,
+            text=text,
+            expected_sha256=expected_sha256,
+        )
+
+    def get_text(
+        self,
+        *,
+        access_context: CxAccessContext,
+        key: CxPrivatePayloadKey,
+        expected_sha256: str,
+    ) -> str | None:
+        return read_with_migration_policy(
+            self.read_mode,
+            object_read=lambda: self.target.get_text(
+                access_context=access_context,
+                key=key,
+                expected_sha256=expected_sha256,
+            ),
+            filesystem_read=lambda: self.legacy.get_text(
+                access_context=access_context,
+                key=key,
+                expected_sha256=expected_sha256,
+            ),
+        )
+
+    def delete_text(
+        self,
+        *,
+        access_context: CxAccessContext,
+        key: CxPrivatePayloadKey,
+    ) -> bool:
+        return self.target.delete_text(access_context=access_context, key=key)
+
+
 def build_private_text_store(
     environ: Mapping[str, str] | None = None,
 ) -> CxPrivateTextStore:
@@ -294,10 +351,20 @@ def build_cx_private_text_store(
             environ,
             allow_insecure_endpoint=allow_insecure,
         )
-        return S3CxPrivateTextStore(
+        target = S3CxPrivateTextStore(
             S3ObjectStore(build_s3_client(settings), settings)
         )
-    except ObjectStorageError as exc:
+        read_mode = configured_migration_read_mode("nex-cx", environ)
+        if read_mode == "OBJECT_ONLY":
+            return target
+        return MigratingCxPrivateTextStore(
+            target=target,
+            legacy=FileSystemCxPrivateTextStore(
+                environ.get(filesystem_root_env, str(default_root))
+            ),
+            read_mode=read_mode,
+        )
+    except (ObjectStorageError, ObjectMigrationError) as exc:
         raise _cx_storage_error(exc, configuration=True) from exc
 
 
@@ -336,7 +403,7 @@ def _allow_insecure_object_endpoint(environ: Mapping[str, str]) -> bool:
 
 
 def _cx_storage_error(
-    exc: ObjectStorageError,
+    exc: ObjectStorageError | ObjectMigrationError,
     *,
     configuration: bool = False,
 ) -> CxPrivateContentError:
