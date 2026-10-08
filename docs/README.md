@@ -50,6 +50,7 @@ documents and show the current build direction directly.
 | [53 PostgreSQL Production Resilience and Disaster Recovery](53_platform_postgresql_resilience_disaster_recovery.md) | Closes S145 with five-database logical recovery, base-backup/WAL PITR, operator-controlled cold cutover, protected evidence, and S148/S149 handoff. |
 | [54 Platform Private Object Storage](54_platform_private_object_storage.md) | Closes S146 with RustFS-backed private CX/AE payloads, migration, lifecycle, restore, protected acceptance, and S147 handoff. |
 | [55 Production Model-Serving Capacity and Rollout Resilience](55_platform_model_serving_capacity_rollout.md) | Closes S147 with model-independent GPU admission, readiness, calibration, canary, rollback, persistence, protected acceptance, and S148 handoff. |
+| [56 Platform Observability, SLO, Alerting, and Incident Integration](56_platform_observability_slo_incident_integration.md) | Freezes S148 redacted signal correlation, service SLOs, durable alerting, environment-aware notification, AG operations, and mock external acceptance. |
 
 Recommended first read:
 
@@ -1585,6 +1586,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1470`](slices/1470_s147_rollout_persistence_operations.md) | `S147-008` Persist optimistic rollout state and append-only events, recover after restart, and expose NeX-AG-only metadata-safe operations reads. |
 | [`Slice 1471`](slices/1471_s147_model_rollout_protected_acceptance.md) | `S147-009` Prove actual DGX providers/runtime plus `nex_mo_test` rollout restart/API rehearsal, fail-closed candidate admission, alias immutability, and zero-residue cleanup. |
 | [`Slice 1472`](slices/1472_s147_model_serving_rollout_closure.md) | `S147-010` Publish rollout contracts and runbook, bind protected evidence, pass Full Gate, close S147, and activate S148. |
+| [`Slice 1473`](slices/1473_s148_observability_incident_boundary.md) | `S148-001` Freeze signal correlation, SLI/SLO, alert, delivery-zone, persistence, privacy, single-host, and acceptance boundaries. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
