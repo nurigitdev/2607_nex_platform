@@ -1258,6 +1258,7 @@ components:
         request_shape_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
     ModelRollout:
       type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/model_rollout.v1.schema.json
       additionalProperties: false
       required: [schema_version, rollout_id, identity, identity_fingerprint, state, state_revision, last_known_good_binding_id, last_known_good_identity_fingerprint, readiness_evidence_digest, calibration_profile_id, calibration_profile_hash, reservation_id, canary_policy_hash, canary_status, activated_binding_id, failure_code, created_at, updated_at]
       properties:
@@ -1298,6 +1299,7 @@ components:
             limit: {type: integer, minimum: 1, maximum: 200}
     ModelRolloutEvent:
       type: object
+      x-nex-canonical-json-schema: schemas/service/nex_mo/model_rollout_event.v1.schema.json
       additionalProperties: false
       required: [schema_version, event_id, rollout_id, event_type, from_state, to_state, state_revision, evidence_digest, failure_code, occurred_at]
       properties:

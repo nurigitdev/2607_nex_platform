@@ -49,7 +49,7 @@ documents and show the current build direction directly.
 | [52 OA Production Trust, Key Custody, and Enterprise Federation](52_oa_production_trust_key_custody_federation.md) | Freezes S144 external Transit custody, rotation/JWKS/introspection, enterprise OIDC federation, single-host acceptance, and S148 handoff. |
 | [53 PostgreSQL Production Resilience and Disaster Recovery](53_platform_postgresql_resilience_disaster_recovery.md) | Closes S145 with five-database logical recovery, base-backup/WAL PITR, operator-controlled cold cutover, protected evidence, and S148/S149 handoff. |
 | [54 Platform Private Object Storage](54_platform_private_object_storage.md) | Closes S146 with RustFS-backed private CX/AE payloads, migration, lifecycle, restore, protected acceptance, and S147 handoff. |
-| [55 Production Model-Serving Capacity and Rollout Resilience](55_platform_model_serving_capacity_rollout.md) | Freezes S147 model-independent GPU capacity, readiness, calibration, canary, rollback, persistence, and protected acceptance. |
+| [55 Production Model-Serving Capacity and Rollout Resilience](55_platform_model_serving_capacity_rollout.md) | Closes S147 with model-independent GPU admission, readiness, calibration, canary, rollback, persistence, protected acceptance, and S148 handoff. |
 
 Recommended first read:
 
@@ -1584,6 +1584,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1469`](slices/1469_s147_rollout_activation_rollback.md) | `S147-007` Reuse atomic catalog alias switching for guarded promotion, exact last-known-good rollback, lineage retention, and candidate capacity release. |
 | [`Slice 1470`](slices/1470_s147_rollout_persistence_operations.md) | `S147-008` Persist optimistic rollout state and append-only events, recover after restart, and expose NeX-AG-only metadata-safe operations reads. |
 | [`Slice 1471`](slices/1471_s147_model_rollout_protected_acceptance.md) | `S147-009` Prove actual DGX providers/runtime plus `nex_mo_test` rollout restart/API rehearsal, fail-closed candidate admission, alias immutability, and zero-residue cleanup. |
+| [`Slice 1472`](slices/1472_s147_model_serving_rollout_closure.md) | `S147-010` Publish rollout contracts and runbook, bind protected evidence, pass Full Gate, close S147, and activate S148. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -1,7 +1,7 @@
 # Production Model-Serving Capacity and Rollout Resilience
 
-Status: S147 active at Slice 1463. The boundary and implementation order are
-frozen; production deployment remains unapproved.
+Status: S147 complete through Slice 1472. S148 is active; production deployment
+remains unapproved.
 
 ## Required Outcome
 
@@ -189,3 +189,32 @@ test-database rehearsal produce zero residue, rollback remains executable, the
 operations runbook is published, and Full Gate passes. S148 then consumes
 capacity, saturation, rollout, calibration, canary, rollback, and failure
 signals for monitoring and incident response.
+
+## Closure Decision
+
+Completion signal: Met.
+
+- Immutable revision identity, scheduler-neutral GPU capacity, deterministic
+  reservation, exact-revision readiness, capability calibration, bounded
+  canary, atomic activation, and exact rollback are implemented.
+- PostgreSQL rollout/event state is restart-safe and available through
+  NeX-AG-only metadata projections.
+- Actual protected acceptance passed all 12 checks against the three current
+  DGX providers and `nex_mo_test`, then removed all temporary rows.
+- The current environment has no separately configured candidate revision, so
+  protected acceptance correctly stopped at `CALIBRATION_REQUIRED` and made no
+  live alias or process mutation.
+- Canonical schemas reject provider endpoints and raw payloads in rollout
+  operations evidence.
+
+Production deployment remains unapproved. S147 does not claim multi-host HA,
+autoscaling, production traffic canary, or production capacity approval; S149
+owns production-sized reliability rehearsal and S150 owns the final go/no-go.
+
+## S148 and S149 Handoff
+
+- S148 consumes capacity pressure, runtime readiness, calibration validity,
+  canary budgets, activation, rollback, persistence health, and failure codes
+  as redacted observability signals.
+- S149 consumes the rollout runbook and exact last-known-good rollback contract
+  for load, soak, failure injection, and recovery rehearsal.

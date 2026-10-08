@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import run_mo_contract_api_drift_audit as runner
 from nex_mo.contract_api_drift_audit import (
     _has_security_declaration,
     _has_success_response_schema,
@@ -12,7 +13,6 @@ from nex_mo.contract_api_drift_audit import (
     _runtime_operations,
     build_mo_contract_api_drift_audit,
 )
-import run_mo_contract_api_drift_audit as runner
 
 
 def test_repository_contract_and_api_drift_is_quantified() -> None:
@@ -29,9 +29,9 @@ def test_repository_contract_and_api_drift_is_quantified() -> None:
         "missing_request_body_count": 0,
         "missing_success_schema_count": 0,
         "missing_security_count": 0,
-        "schema_count": 28,
-        "positive_fixture_covered_count": 28,
-        "negative_fixture_covered_count": 28,
+        "schema_count": 30,
+        "positive_fixture_covered_count": 30,
+        "negative_fixture_covered_count": 30,
         "drift_count": 0,
     }
     assert "GET /api/v1/provider-telemetry" not in result["missing_openapi_operations"]
@@ -85,7 +85,7 @@ def test_runner_summary_json_and_failure_paths(monkeypatch, capsys) -> None:
     assert "operations=35/35" in runner.summary_line(passing)
     monkeypatch.setattr(runner, "run_mo_contract_api_drift_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0
-    assert "negative=28/28" in capsys.readouterr().out
+    assert "negative=30/30" in capsys.readouterr().out
     assert runner.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
 

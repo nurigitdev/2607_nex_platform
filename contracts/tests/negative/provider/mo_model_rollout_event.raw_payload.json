@@ -1,0 +1,13 @@
+{
+  "schema_version": "mo_model_rollout_event.v1",
+  "event_id": "event:generation:validation-started",
+  "rollout_id": "rollout:generation:20261008",
+  "event_type": "rollout.validation_started",
+  "from_state": "REGISTERED",
+  "to_state": "VALIDATING",
+  "state_revision": 2,
+  "evidence_digest": null,
+  "failure_code": null,
+  "occurred_at": "2026-10-08T06:01:00Z",
+  "raw_provider_payload": {"text": "private response"}
+}

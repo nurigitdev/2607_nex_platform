@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_mo/model_rollout.v1.schema.json",
+  "title": "NeX MO Model Rollout",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "rollout_id", "identity", "identity_fingerprint",
+    "state", "state_revision", "last_known_good_binding_id",
+    "last_known_good_identity_fingerprint", "readiness_evidence_digest",
+    "calibration_profile_id", "calibration_profile_hash", "reservation_id",
+    "canary_policy_hash", "canary_status", "activated_binding_id",
+    "failure_code", "created_at", "updated_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "mo_model_rollout.v1"},
+    "rollout_id": {"$ref": "#/$defs/identifier"},
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_capability", "alias", "catalog_id", "model_revision",
+        "deployment_id", "artifact_digest", "runtime_engine", "precision",
+        "request_shape_hash"
+      ],
+      "properties": {
+        "provider_capability": {"enum": ["embedding", "reranking", "generation"]},
+        "alias": {"$ref": "#/$defs/identifier"},
+        "catalog_id": {"$ref": "#/$defs/identifier"},
+        "model_revision": {"$ref": "#/$defs/identifier"},
+        "deployment_id": {"$ref": "#/$defs/identifier"},
+        "artifact_digest": {"$ref": "#/$defs/digest"},
+        "runtime_engine": {"$ref": "#/$defs/identifier"},
+        "precision": {"$ref": "#/$defs/identifier"},
+        "request_shape_hash": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "identity_fingerprint": {"$ref": "#/$defs/digest"},
+    "state": {
+      "enum": [
+        "REGISTERED", "VALIDATING", "READY", "CANARY", "BLOCKED",
+        "ACTIVE", "ROLLED_BACK"
+      ]
+    },
+    "state_revision": {"type": "integer", "minimum": 1},
+    "last_known_good_binding_id": {"$ref": "#/$defs/identifier"},
+    "last_known_good_identity_fingerprint": {"$ref": "#/$defs/digest"},
+    "readiness_evidence_digest": {"$ref": "#/$defs/nullable_digest"},
+    "calibration_profile_id": {"$ref": "#/$defs/nullable_identifier"},
+    "calibration_profile_hash": {"$ref": "#/$defs/nullable_digest"},
+    "reservation_id": {"$ref": "#/$defs/nullable_identifier"},
+    "canary_policy_hash": {"$ref": "#/$defs/nullable_digest"},
+    "canary_status": {"enum": ["RUNNING", "PASSED", "FAILED", null]},
+    "activated_binding_id": {"$ref": "#/$defs/nullable_identifier"},
+    "failure_code": {"$ref": "#/$defs/nullable_identifier"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "nullable_identifier": {
+      "anyOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/identifier"}
+      ]
+    },
+    "nullable_digest": {
+      "anyOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/digest"}
+      ]
+    }
+  }
+}

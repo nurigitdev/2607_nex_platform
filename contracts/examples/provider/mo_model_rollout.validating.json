@@ -1,0 +1,30 @@
+{
+  "schema_version": "mo_model_rollout.v1",
+  "rollout_id": "rollout:generation:20261008",
+  "identity": {
+    "provider_capability": "generation",
+    "alias": "general-llm-default",
+    "catalog_id": "catalog:generation-candidate",
+    "model_revision": "generation-revision-20261008",
+    "deployment_id": "generation-deployment-20261008",
+    "artifact_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "runtime_engine": "vllm",
+    "precision": "bfloat16",
+    "request_shape_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "identity_fingerprint": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "state": "VALIDATING",
+  "state_revision": 2,
+  "last_known_good_binding_id": "binding:generation-current",
+  "last_known_good_identity_fingerprint": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "readiness_evidence_digest": null,
+  "calibration_profile_id": null,
+  "calibration_profile_hash": null,
+  "reservation_id": null,
+  "canary_policy_hash": null,
+  "canary_status": null,
+  "activated_binding_id": null,
+  "failure_code": null,
+  "created_at": "2026-10-08T06:00:00Z",
+  "updated_at": "2026-10-08T06:01:00Z"
+}

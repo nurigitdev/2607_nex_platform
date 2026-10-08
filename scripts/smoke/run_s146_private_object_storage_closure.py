@@ -207,7 +207,7 @@ def run_s146_private_object_storage_closure(
             token in plan
             for token in (
                 "S146 is complete and its S148/S149 object-storage inputs are ready",
-                "S147 is the next implementation requirement",
+                "At the S146 checkpoint, S147 was the next implementation requirement",
                 "## S146 Completion Update",
                 "production deployment remains unapproved",
             )

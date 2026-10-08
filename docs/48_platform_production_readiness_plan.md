@@ -1,7 +1,7 @@
 # Platform Production Readiness Plan
 
 Status: Canonical scope freeze for requirements S141 through S150. S143
-through S146 are complete, S147 is active, and production deployment remains
+through S147 are complete, S148 is active, and production deployment remains
 unapproved.
 
 ## Program Outcome
@@ -384,4 +384,24 @@ S146 is complete and its S148/S149 object-storage inputs are ready; high
 availability, independent backup, host-loss recovery, production-sized
 capacity and lifecycle timing remain S149 responsibilities. Production and
 registry resources were not contacted, and production deployment remains
-unapproved. S147 is the next implementation requirement.
+unapproved. At the S146 checkpoint, S147 was the next implementation
+requirement.
+
+## S147 Completion Update
+
+S147 is complete and its S148/S149 model-serving inputs are ready. NeX-MO now
+uses model-independent revision identity, deterministic GPU admission,
+exact-revision readiness, capability-specific calibration, bounded canary,
+atomic alias activation, exact last-known-good rollback, and restart-safe
+PostgreSQL rollout/event state.
+
+Protected acceptance contacted the three current DGX providers and the actual
+`nex_mo_test` database. Provider, model identity, runtime health, precision,
+GPU observation, restart readback, protected API, alias immutability, and
+cleanup all passed. Because there is no separately configured candidate
+revision, the rehearsal stopped at `CALIBRATION_REQUIRED` and performed no
+live canary, alias, or provider-process mutation.
+
+Multi-host HA, autoscaling, production traffic canary, production capacity
+approval, and production-sized load remain deferred to S149/S150. Production
+deployment remains unapproved. S148 is the next implementation requirement.

@@ -26,7 +26,7 @@ def test_repository_s129_closure_passes(monkeypatch) -> None:
         "component_count": 5,
         "closed_component_count": 5,
         "federation_table_count": 2,
-        "canonical_schema_count": 166,
+        "canonical_schema_count": 168,
         "postgres_migration_count": 17,
         "postgres_tls_request_count": 2,
         "postgres_cleanup_residue_count": 0,

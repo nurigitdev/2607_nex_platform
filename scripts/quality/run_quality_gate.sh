@@ -776,3 +776,13 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_s146_object_storage_compose.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s146_object_storage_acceptance.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s146_private_object_storage_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s147_model_serving_rollout_boundary.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s147_model_revision_capacity_domain.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s147_gpu_capacity_admission.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s147_revision_readiness.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s147_capability_calibration.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s147_canary_rollout.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s147_rollout_activation_rollback.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s147_rollout_persistence_restart.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s147_model_rollout_live_acceptance.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s147_model_serving_rollout_closure.py --summary

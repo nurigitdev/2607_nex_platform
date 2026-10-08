@@ -1,0 +1,55 @@
+{
+  "evidence_schema_version": "s147_model_rollout_acceptance_attestation.v1",
+  "requirement_id": "S147",
+  "environment_class": "protected_test",
+  "execution_mode": "protected",
+  "actual_execution": true,
+  "source_revision": "6386a20f3358746beb8e0d9c9d4ed20edc2d4197",
+  "artifact_digests": [
+    "sha256:496f2c4531fa9db227eb8d7ee6fac2549d5d27f459559c97b4698a61cba754df",
+    "sha256:77e035d2537de241f5c26065b381288100ffd951767e42baa7c4a90d731c6208",
+    "sha256:32acc60ad4ed4f7fed59f595ceeeaca594542802d42510d7626ce90a5d604640",
+    "sha256:3ee6d44b62c28f83a1c4af41f096dc3835d66b44b42bd35402031498d0ba4b8e",
+    "sha256:bd497d6af4e8895dd0643d89a7f81f9bbbcbf2cf031a7c1d5029e068d75b50c8"
+  ],
+  "checks": {
+    "actual_test_database_identity": true,
+    "rollout_migration_current": true,
+    "all_live_provider_requests_succeeded": true,
+    "all_live_models_matched": true,
+    "all_live_runtime_models_healthy": true,
+    "all_capability_rehearsals_persisted": true,
+    "atomic_transition_events_persisted": true,
+    "restart_readback_complete": true,
+    "protected_api_readback_complete": true,
+    "rollouts_stop_before_unproven_canary": true,
+    "live_aliases_unchanged": true,
+    "targeted_cleanup_complete": true
+  },
+  "metrics": {
+    "provider_count": 3,
+    "model_match_count": 3,
+    "runtime_ready_count": 3,
+    "rollout_count": 3,
+    "event_count": 6,
+    "api_item_count": 3,
+    "residue_count": 0
+  },
+  "candidate_admission": {
+    "status": "CALIBRATION_REQUIRED",
+    "promotion_eligible": false,
+    "live_mutation_performed": false
+  },
+  "privacy": {
+    "raw_value_count": 0,
+    "violation_count": 0
+  },
+  "residue": {
+    "rollout_row_count": 0,
+    "event_row_count": 0,
+    "catalog_row_count": 0
+  },
+  "production_resources_contacted": false,
+  "production_deployment_approved": false,
+  "evidence_digest": "sha256:13d08abc9400b32a57663dd527076e2998b97e82381c2d4509609c024ae8845d"
+}

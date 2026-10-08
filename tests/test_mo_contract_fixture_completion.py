@@ -9,9 +9,9 @@ def test_repository_mo_contract_fixtures_are_complete() -> None:
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
     assert result["summary"] == {
-        "schema_count": 28,
-        "positive_fixture_count": 28,
-        "negative_fixture_count": 28,
+        "schema_count": 30,
+        "positive_fixture_count": 30,
+        "negative_fixture_count": 30,
         "remaining_drift_count": 0,
     }
     assert result["next_slice"] == "1135"
@@ -48,8 +48,8 @@ def test_fixture_completion_helpers_fail_closed() -> None:
 def test_fixture_completion_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_mo_contract_fixture_completion()
     assert runner.summary_line(passing) == (
-        "mo_contract_fixture_completion=pass positive=28/28 "
-        "negative=28/28 drift=0 next=1135"
+        "mo_contract_fixture_completion=pass positive=30/30 "
+        "negative=30/30 drift=0 next=1135"
     )
 
     monkeypatch.setattr(
@@ -58,7 +58,7 @@ def test_fixture_completion_summary_and_main_paths(monkeypatch, capsys) -> None:
         lambda: passing,
     )
     assert runner.main(["--summary"]) == 0
-    assert "negative=28/28" in capsys.readouterr().out
+    assert "negative=30/30" in capsys.readouterr().out
     assert runner.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
 

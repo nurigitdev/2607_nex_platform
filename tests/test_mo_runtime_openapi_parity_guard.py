@@ -16,7 +16,7 @@ def test_repository_mo_runtime_openapi_parity_is_hardened() -> None:
         "operation_id_count": 35,
         "protected_operation_count": 31,
         "secured_operation_count": 31,
-        "canonical_component_count": 21,
+        "canonical_component_count": 23,
         "drift_count": 0,
     }
     assert result["missing_openapi_operations"] == []
@@ -72,7 +72,7 @@ def test_parity_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_mo_runtime_openapi_parity_guard()
     assert runner.summary_line(passing) == (
         "mo_runtime_openapi_parity_guard=pass operations=35/35 "
-        "secured=31/31 canonical=21 drift=0 next=1139"
+        "secured=31/31 canonical=23 drift=0 next=1139"
     )
 
     monkeypatch.setattr(

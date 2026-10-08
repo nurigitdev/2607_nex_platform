@@ -1139,6 +1139,16 @@
       "name": "mo_cross_service_trace_projection_ready",
       "path": "examples/operations/mo_cross_service_trace_projection.ready.json",
       "schema": "schemas/common/service_cross_service_trace_projection.v1.schema.json"
+    },
+    {
+      "name": "mo_model_rollout_validating",
+      "path": "examples/provider/mo_model_rollout.validating.json",
+      "schema": "schemas/service/nex_mo/model_rollout.v1.schema.json"
+    },
+    {
+      "name": "mo_model_rollout_event_validation_started",
+      "path": "examples/provider/mo_model_rollout_event.validation_started.json",
+      "schema": "schemas/service/nex_mo/model_rollout_event.v1.schema.json"
     }
   ]
 }

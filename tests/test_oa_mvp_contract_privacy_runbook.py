@@ -11,9 +11,9 @@ def test_contract_privacy_runbook_evidence_passes() -> None:
     assert evidence["status"] == "PASS", evidence
     assert all(evidence["checks"].values())
     assert evidence["contract_counts"] == {
-        "schemas": 166,
-        "examples": 228,
-        "negative_examples": 196,
+        "schemas": 168,
+        "examples": 230,
+        "negative_examples": 198,
         "openapi": 7,
     }
     assert evidence["summary"] == {
@@ -60,7 +60,7 @@ def test_document_loaders_fail_closed(tmp_path) -> None:
 def test_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_oa_mvp_contract_privacy_runbook()
     assert runner.summary_line(passing) == (
-        "oa_mvp_contract_privacy_runbook=pass checks=11/11 schemas=166 "
+        "oa_mvp_contract_privacy_runbook=pass checks=11/11 schemas=168 "
         "routes=6 documents=9 privacy=0 next=1300"
     )
 
