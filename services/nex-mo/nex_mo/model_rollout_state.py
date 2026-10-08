@@ -119,6 +119,7 @@ class ModelRolloutRecord:
     reservation_id: str | None
     canary_policy_hash: str | None
     canary_status: str | None
+    activated_binding_id: str | None
     failure_code: str | None
     created_at: str
     updated_at: str
@@ -155,7 +156,11 @@ class ModelRolloutRecord:
             value = getattr(self, field_name)
             if value is not None:
                 _sha256(value, field_name)
-        for field_name in ("calibration_profile_id", "reservation_id"):
+        for field_name in (
+            "calibration_profile_id",
+            "reservation_id",
+            "activated_binding_id",
+        ):
             value = getattr(self, field_name)
             if value is not None:
                 _identifier(value, field_name)
@@ -176,6 +181,7 @@ class ModelRolloutRecord:
             "reservation_id": self.reservation_id,
             "canary_policy_hash": self.canary_policy_hash,
             "canary_status": self.canary_status,
+            "activated_binding_id": self.activated_binding_id,
             "failure_code": self.failure_code,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -208,6 +214,7 @@ def register_rollout(
         reservation_id=None,
         canary_policy_hash=None,
         canary_status=None,
+        activated_binding_id=None,
         failure_code=None,
         created_at=created_at,
         updated_at=created_at,
@@ -342,6 +349,50 @@ def evaluate_canary(
         updated_at=changed_at,
     )
     return updated, decision
+
+
+def mark_rollout_active(
+    record: ModelRolloutRecord,
+    *,
+    activated_binding_id: str,
+    changed_at: str,
+) -> ModelRolloutRecord:
+    if record.state != "CANARY" or record.canary_status != "PASSED":
+        raise ModelRolloutError(
+            "mo.rollout_promotion_not_admitted",
+            "a passing canary is required before alias activation",
+        )
+    _identifier(activated_binding_id, "activated_binding_id")
+    _validate_changed_at(record, changed_at)
+    return replace(
+        record,
+        state="ACTIVE",
+        state_revision=record.state_revision + 1,
+        activated_binding_id=activated_binding_id,
+        updated_at=changed_at,
+    )
+
+
+def mark_rollout_rolled_back(
+    record: ModelRolloutRecord,
+    *,
+    failure_code: str,
+    changed_at: str,
+) -> ModelRolloutRecord:
+    if record.state != "ACTIVE" or record.activated_binding_id is None:
+        raise ModelRolloutError(
+            "mo.rollout_rollback_not_available",
+            "an active rollout binding is required before rollback",
+        )
+    _identifier(failure_code, "failure_code")
+    _validate_changed_at(record, changed_at)
+    return replace(
+        record,
+        state="ROLLED_BACK",
+        state_revision=record.state_revision + 1,
+        failure_code=failure_code,
+        updated_at=changed_at,
+    )
 
 
 def _transition(
