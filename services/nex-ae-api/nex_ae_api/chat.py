@@ -53,6 +53,7 @@ from nex_ae_api.generated_response_lineage import (
 from nex_ae_api.generated_response_storage import (
     GeneratedResponseStorageError,
     build_default_generated_response_storage,
+    load_generated_response_for_record,
 )
 from nex_ae_api.generated_response_observability import (
     observe_generated_response_persisted,
@@ -931,7 +932,11 @@ def register_chat_routes(
                     retryable=True,
                 )
             metadata = generated_response_storage_metadata_from_lineage(lineage)
-            content = response_storage.load(metadata)
+            content = load_generated_response_for_record(
+                response_storage,
+                metadata,
+                record,
+            )
             if content is None:
                 raise ChatInteractionError(
                     status_code=503,

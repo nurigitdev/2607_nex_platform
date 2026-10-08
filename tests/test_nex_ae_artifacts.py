@@ -1416,7 +1416,8 @@ def test_build_rendered_artifact_file_uses_format_catalog_and_bytes_hash() -> No
     assert artifact_file["source_version_hash"] == render_result["artifact_version"][
         "artifact_content_hash"
     ]
-    assert artifact_file["storage_ref"].endswith("/generated-report-2026-08.pdf")
+    assert artifact_file["storage_ref"].endswith(".pdf")
+    assert "generated-report-2026-08" not in artifact_file["storage_ref"]
     assert "/data/nex-platform" not in artifact_file["storage_ref"]
 
 

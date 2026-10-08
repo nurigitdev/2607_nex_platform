@@ -44,7 +44,7 @@ def test_repository_build_inputs_are_locked_and_deterministic() -> None:
         "python-production",
     ]
     assert projection["locks"][0]["package_count"] == 4
-    assert projection["locks"][1]["package_count"] == 45
+    assert projection["locks"][1]["package_count"] == 52
     assert projection["locks"][1]["integrity_count"] > 1000
     assert deployment_build_inputs_digest(inputs).startswith("sha256:")
 

@@ -9,8 +9,10 @@ from nex_ae_api.generated_response_lineage import (
     prepare_generated_response,
 )
 from nex_ae_api.generated_response_storage import (
+    delete_generated_response_for_record,
     GeneratedResponseStorage,
     GeneratedResponseStorageError,
+    save_generated_response_for_record,
 )
 
 
@@ -33,7 +35,11 @@ def persist_ready_generated_response(
     lineage = bundle["lineage"]
     attached = attach_generated_response_lineage(record, lineage)
     metadata = generated_response_storage_metadata_from_lineage(lineage)
-    saved_ref = storage.save(bundle["storage_payload"])
+    saved_ref = save_generated_response_for_record(
+        storage,
+        bundle["storage_payload"],
+        record,
+    )
     if saved_ref != metadata["storage_ref"]:
         raise GeneratedResponseStorageError(
             error_code="ae.generated_response_storage_invalid",
@@ -44,7 +50,11 @@ def persist_ready_generated_response(
     except Exception:
         if existing is None:
             try:
-                storage.delete(metadata)
+                delete_generated_response_for_record(
+                    storage,
+                    metadata,
+                    record,
+                )
             except GeneratedResponseStorageError:
                 pass
         raise

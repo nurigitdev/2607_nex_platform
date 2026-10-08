@@ -24,6 +24,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_runtime.object_storage import (
+    ObjectStorageError,
+    S3ObjectStore,
+    build_owner_object_key,
+)
+
 from nex_runtime import (
     AdmittedServiceClaims,
     DEFAULT_SERVICE_SCOPE,
@@ -69,6 +75,11 @@ from nex_ae_api.async_artifact_render_recovery import (
 from nex_ae_api.route_auth import (
     AeFacadeRouteAuthContext,
     authorize_ae_facade_route_request,
+)
+from nex_ae_api.private_object_store import (
+    AePrivateObjectStorageError,
+    ae_private_storage_mode,
+    build_ae_private_object_store,
 )
 from nex_ae_api.service_auth import resolve_ae_outbound_service_token
 from nex_ae_api.workspace_chat_auth import browser_owner_scope
@@ -297,6 +308,7 @@ ARTIFACT_COLLECTION_SCHEMA_VERSION = "ae_artifact_collection.v1"
 ARTIFACT_COLLECTION_ITEM_SCHEMA_VERSION = "ae_artifact_collection_item.v1"
 DEFAULT_ARTIFACT_COLLECTION_LIMIT = 20
 MAX_ARTIFACT_COLLECTION_LIMIT = 100
+MAX_RENDERED_ARTIFACT_BYTES = 256 * 1024 * 1024
 
 
 class CxArtifactSourceClient(Protocol):
@@ -1119,11 +1131,147 @@ class LocalRenderedArtifactStorage:
         return path
 
 
+@dataclass(frozen=True)
+class S3RenderedArtifactStorage:
+    object_store: S3ObjectStore
+
+    def save_rendered_artifact_file(
+        self,
+        artifact_file: dict[str, Any],
+        payload: bytes,
+    ) -> str:
+        key, digest, size_bytes, content_type = self._validated_file(artifact_file)
+        if not isinstance(payload, bytes):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_payload_invalid",
+                detail="Rendered artifact payload must be bytes.",
+            )
+        if len(payload) != size_bytes:
+            raise ArtifactHandoffError(
+                status_code=409,
+                error_code="ae.artifact_storage_integrity_failed",
+                detail="Rendered artifact size does not match its metadata.",
+            )
+        try:
+            self.object_store.put_immutable(
+                key=key,
+                payload=payload,
+                expected_sha256=digest,
+                content_type=content_type,
+            )
+        except ObjectStorageError as exc:
+            raise _artifact_object_storage_error(exc) from exc
+        return str(artifact_file["storage_ref"])
+
+    def get_rendered_artifact_file(
+        self,
+        artifact_file: dict[str, Any],
+    ) -> bytes | None:
+        key, digest, size_bytes, _content_type = self._validated_file(artifact_file)
+        try:
+            return self.object_store.get_bytes(
+                key=key,
+                expected_sha256=digest,
+                expected_size_bytes=size_bytes,
+                max_size_bytes=MAX_RENDERED_ARTIFACT_BYTES,
+            )
+        except ObjectStorageError as exc:
+            raise _artifact_object_storage_error(exc) from exc
+
+    def delete_rendered_artifact_file(
+        self,
+        artifact_file: dict[str, Any],
+    ) -> bool:
+        key, _digest, _size_bytes, _content_type = self._validated_file(artifact_file)
+        try:
+            if self.object_store.head(key) is None:
+                return False
+            self.object_store.delete(key)
+        except ObjectStorageError as exc:
+            raise _artifact_object_storage_error(exc) from exc
+        return True
+
+    def save_markdown(self, artifact_file: dict[str, Any], markdown: str) -> str:
+        if not isinstance(markdown, str):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_payload_invalid",
+                detail="Rendered Markdown must be text.",
+            )
+        return self.save_rendered_artifact_file(
+            artifact_file,
+            markdown.encode("utf-8"),
+        )
+
+    def get_markdown(self, artifact_file: dict[str, Any]) -> str | None:
+        payload = self.get_rendered_artifact_file(artifact_file)
+        if payload is None:
+            return None
+        try:
+            return payload.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ArtifactHandoffError(
+                status_code=409,
+                error_code="ae.artifact_storage_integrity_failed",
+                detail="Rendered Markdown is not valid UTF-8.",
+            ) from exc
+
+    @staticmethod
+    def _validated_file(
+        artifact_file: dict[str, Any],
+    ) -> tuple[str, str, int, str]:
+        storage_ref = artifact_file.get("storage_ref")
+        relative = _storage_ref_relative_path(storage_ref)
+        if not relative.startswith("v1/artifact/"):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_storage_ref_invalid",
+                detail="Rendered artifact storage ref is not object-storage ready.",
+            )
+        digest = artifact_file.get("file_hash")
+        size_bytes = artifact_file.get("file_size_bytes")
+        content_type = artifact_file.get("mime_type")
+        if (
+            not isinstance(digest, str)
+            or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            or isinstance(size_bytes, bool)
+            or not isinstance(size_bytes, int)
+            or size_bytes < 0
+            or size_bytes > MAX_RENDERED_ARTIFACT_BYTES
+            or not isinstance(content_type, str)
+            or not content_type.strip()
+        ):
+            raise ArtifactHandoffError(
+                status_code=422,
+                error_code="ae.artifact_storage_metadata_invalid",
+                detail="Rendered artifact storage metadata is invalid.",
+            )
+        return relative, digest, size_bytes, content_type.strip()
+
+
 def build_default_rendered_artifact_storage(
     environ: dict[str, str] | None = None,
 ) -> RenderedArtifactStorage:
     env = environ if environ is not None else os.environ
+    try:
+        mode = ae_private_storage_mode(env)
+        if mode == "S3":
+            return S3RenderedArtifactStorage(build_ae_private_object_store(env))
+    except AePrivateObjectStorageError as exc:
+        raise ArtifactHandoffError(
+            status_code=500,
+            error_code=exc.error_code,
+            detail=exc.detail,
+            retryable=exc.retryable,
+        ) from exc
     root = optional_text(env.get("NEX_AE_ARTIFACT_STORAGE_ROOT"))
+    if mode == "FILESYSTEM" and root is None:
+        raise ArtifactHandoffError(
+            status_code=500,
+            error_code="ae.artifact_storage_root_required",
+            detail="AE artifact filesystem root is required.",
+        )
     if root is None:
         return InMemoryRenderedArtifactStorage()
     return LocalRenderedArtifactStorage(Path(root))
@@ -10710,17 +10858,34 @@ def build_rendered_artifact_file(
         artifact_record["display_title"],
         spec["format"],
     )
+    owner_ref = artifact_record.get("owner_actor_ref")
+    if not isinstance(owner_ref, Mapping):
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_owner_scope_invalid",
+            detail="Artifact owner scope is invalid.",
+        )
+    try:
+        object_key = build_owner_object_key(
+            payload_family="artifact",
+            tenant_id=str(owner_ref.get("tenant_id") or ""),
+            subject_id=str(owner_ref.get("actor_id") or ""),
+            content_id=artifact_file_id,
+            suffix=str(spec["extension"]),
+        )
+    except ObjectStorageError as exc:
+        raise ArtifactHandoffError(
+            status_code=422,
+            error_code="ae.artifact_owner_scope_invalid",
+            detail="Artifact owner scope is invalid.",
+        ) from exc
     return {
         "artifact_file_id": artifact_file_id,
         "artifact_version_id": artifact_version["artifact_version_id"],
         "format": spec["format"],
         "mime_type": spec["mime_type"],
         "file_name": file_name,
-        "storage_ref": (
-            "ae://artifacts/"
-            f"{artifact_record['artifact_id']}/versions/"
-            f"{artifact_version['artifact_version_id']}/{file_name}"
-        ),
+        "storage_ref": f"ae://artifacts/{object_key}",
         "file_size_bytes": len(payload),
         "file_hash": sha256_bytes(payload),
         "source_version_hash": artifact_version["artifact_content_hash"],
@@ -13098,6 +13263,34 @@ def _storage_ref_relative_path(storage_ref: str) -> str:
             detail="Artifact storage ref contains an unsafe path segment.",
         )
     return relative
+
+
+def _artifact_object_storage_error(
+    exc: ObjectStorageError,
+) -> ArtifactHandoffError:
+    if exc.retryable:
+        return ArtifactHandoffError(
+            status_code=503,
+            error_code="ae.artifact_storage_unavailable",
+            detail="AE artifact object storage is unavailable.",
+            retryable=True,
+        )
+    if exc.code in {
+        "OBJECT_STORAGE_IMMUTABLE_CONFLICT",
+        "OBJECT_STORAGE_INTEGRITY_MISMATCH",
+        "OBJECT_STORAGE_METADATA_INVALID",
+        "OBJECT_STORAGE_SIZE_MISMATCH",
+    }:
+        return ArtifactHandoffError(
+            status_code=409,
+            error_code="ae.artifact_storage_integrity_failed",
+            detail="AE artifact object failed integrity validation.",
+        )
+    return ArtifactHandoffError(
+        status_code=500,
+        error_code="ae.artifact_storage_failed",
+        detail="AE artifact object-storage operation failed.",
+    )
 
 
 def _datetime_value(value: Any) -> str:

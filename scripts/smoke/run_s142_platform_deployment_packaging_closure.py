@@ -176,7 +176,7 @@ def run_s142_platform_deployment_packaging_closure(
         },
         "dependency_locks_are_integrity_complete": (
             build_inputs.get("lock_count") == 2
-            and build_inputs.get("python_package_count") == 45
+            and build_inputs.get("python_package_count") == 52
             and int(build_inputs.get("python_hash_count") or 0) >= 1200
             and build_inputs.get("node_package_count") == 4
             and build_inputs.get("node_integrity_count") == 4

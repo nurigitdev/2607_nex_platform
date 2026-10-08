@@ -8,9 +8,21 @@ import re
 import tempfile
 from typing import Any, Mapping, Protocol
 
+from nex_runtime.object_storage import (
+    ObjectStorageError,
+    S3ObjectStore,
+    build_owner_object_key,
+)
+from nex_ae_api.private_object_store import (
+    AePrivateObjectStorageError,
+    ae_private_storage_mode,
+    build_ae_private_object_store,
+)
+
 
 GENERATED_RESPONSE_STORAGE_ENV = "NEX_AE_CHAT_RESPONSE_STORAGE_ROOT"
 GENERATED_RESPONSE_STORAGE_SCHEME = "ae://chat-responses/"
+MAX_GENERATED_RESPONSE_BYTES = 16 * 1024 * 1024
 _SAFE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -247,14 +259,205 @@ class LocalGeneratedResponseStorage:
         return path
 
 
+@dataclass(frozen=True)
+class S3GeneratedResponseStorage:
+    object_store: S3ObjectStore
+
+    def save_for_owner(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        tenant_id: str,
+        subject_id: str,
+    ) -> str:
+        normalized = validate_generated_response_payload(
+            payload,
+            require_content=True,
+        )
+        encoded = str(normalized["content"]).encode("utf-8")
+        if len(encoded) > MAX_GENERATED_RESPONSE_BYTES:
+            raise _invalid("Generated response exceeds its storage boundary.")
+        key = self._key(
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+            response_id=str(normalized["response_id"]),
+        )
+        try:
+            self.object_store.put_immutable(
+                key=key,
+                payload=encoded,
+                expected_sha256=str(normalized["content_sha256"]),
+                content_type=str(normalized["content_type"]),
+            )
+        except ObjectStorageError as exc:
+            raise _s3_storage_error(exc) from exc
+        return str(normalized["storage_ref"])
+
+    def load_for_owner(
+        self,
+        metadata: Mapping[str, Any],
+        *,
+        tenant_id: str,
+        subject_id: str,
+    ) -> str | None:
+        normalized = validate_generated_response_payload(
+            metadata,
+            require_content=False,
+        )
+        key = self._key(
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+            response_id=str(normalized["response_id"]),
+        )
+        try:
+            payload = self.object_store.get_bytes(
+                key=key,
+                expected_sha256=str(normalized["content_sha256"]),
+                expected_size_bytes=int(normalized["size_bytes"]),
+                max_size_bytes=MAX_GENERATED_RESPONSE_BYTES,
+            )
+        except ObjectStorageError as exc:
+            raise _s3_storage_error(exc) from exc
+        if payload is None:
+            return None
+        return _verified_decoded_content(payload, normalized)
+
+    def delete_for_owner(
+        self,
+        metadata: Mapping[str, Any],
+        *,
+        tenant_id: str,
+        subject_id: str,
+    ) -> bool:
+        normalized = validate_generated_response_payload(
+            metadata,
+            require_content=False,
+        )
+        key = self._key(
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+            response_id=str(normalized["response_id"]),
+        )
+        try:
+            if self.object_store.head(key) is None:
+                return False
+            self.object_store.delete(key)
+        except ObjectStorageError as exc:
+            raise _s3_storage_error(exc) from exc
+        return True
+
+    @staticmethod
+    def _key(*, tenant_id: str, subject_id: str, response_id: str) -> str:
+        try:
+            return build_owner_object_key(
+                payload_family="chat-response",
+                tenant_id=tenant_id,
+                subject_id=subject_id,
+                content_id=response_id,
+                suffix="txt",
+            )
+        except ObjectStorageError as exc:
+            raise _s3_storage_error(exc) from exc
+
+
+def save_generated_response_for_record(
+    storage: GeneratedResponseStorage,
+    payload: Mapping[str, Any],
+    record: Mapping[str, Any],
+) -> str:
+    owner_method = getattr(storage, "save_for_owner", None)
+    if callable(owner_method):
+        tenant_id, subject_id = _record_owner_scope(record)
+        return owner_method(
+            payload,
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+        )
+    return storage.save(payload)
+
+
+def load_generated_response_for_record(
+    storage: GeneratedResponseStorage,
+    metadata: Mapping[str, Any],
+    record: Mapping[str, Any],
+) -> str | None:
+    owner_method = getattr(storage, "load_for_owner", None)
+    if callable(owner_method):
+        tenant_id, subject_id = _record_owner_scope(record)
+        return owner_method(
+            metadata,
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+        )
+    return storage.load(metadata)
+
+
+def delete_generated_response_for_record(
+    storage: GeneratedResponseStorage,
+    metadata: Mapping[str, Any],
+    record: Mapping[str, Any],
+) -> bool:
+    owner_method = getattr(storage, "delete_for_owner", None)
+    if callable(owner_method):
+        tenant_id, subject_id = _record_owner_scope(record)
+        return owner_method(
+            metadata,
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+        )
+    return storage.delete(metadata)
+
+
 def build_default_generated_response_storage(
     environ: Mapping[str, str] | None = None,
 ) -> GeneratedResponseStorage:
     env = environ if environ is not None else os.environ
+    try:
+        mode = ae_private_storage_mode(env)
+        if mode == "S3":
+            return S3GeneratedResponseStorage(build_ae_private_object_store(env))
+    except AePrivateObjectStorageError as exc:
+        raise GeneratedResponseStorageError(
+            error_code=exc.error_code,
+            detail=exc.detail,
+            retryable=exc.retryable,
+        ) from exc
     root = env.get(GENERATED_RESPONSE_STORAGE_ENV)
+    if mode == "FILESYSTEM" and (not isinstance(root, str) or not root.strip()):
+        raise _invalid("AE generated response filesystem root is required.")
     if not isinstance(root, str) or not root.strip():
         return InMemoryGeneratedResponseStorage()
     return LocalGeneratedResponseStorage(Path(root.strip()))
+
+
+def _record_owner_scope(record: Mapping[str, Any]) -> tuple[str, str]:
+    tenant_id = record.get("tenant_id")
+    subject_id = record.get("owner_user_id") or record.get("user_id")
+    if (
+        not isinstance(tenant_id, str)
+        or not tenant_id.strip()
+        or not isinstance(subject_id, str)
+        or not subject_id.strip()
+    ):
+        raise _invalid("Generated response owner scope is invalid.")
+    return tenant_id.strip(), subject_id.strip()
+
+
+def _s3_storage_error(exc: ObjectStorageError) -> GeneratedResponseStorageError:
+    if exc.retryable:
+        return GeneratedResponseStorageError(
+            "ae.generated_response_storage_unavailable",
+            "AE generated response storage is unavailable.",
+            True,
+        )
+    if exc.code in {
+        "OBJECT_STORAGE_IMMUTABLE_CONFLICT",
+        "OBJECT_STORAGE_INTEGRITY_MISMATCH",
+        "OBJECT_STORAGE_METADATA_INVALID",
+        "OBJECT_STORAGE_SIZE_MISMATCH",
+    }:
+        return _integrity_error()
+    return _invalid("AE generated response object-storage operation failed.")
 
 
 def _storage_ref_relative_path(storage_ref: object) -> str:

@@ -8,7 +8,7 @@ def test_repository_build_input_evidence_is_complete() -> None:
 
     assert result["status"] == "PASS"
     assert result["summary"]["lock_count"] == 2
-    assert result["summary"]["python_package_count"] == 45
+    assert result["summary"]["python_package_count"] == 52
     assert result["summary"]["python_hash_count"] > 1000
     assert result["summary"]["node_package_count"] == 4
     assert result["summary"]["node_integrity_count"] == 4
@@ -24,7 +24,7 @@ def test_repository_build_input_evidence_is_complete() -> None:
 def test_summary_and_main_branches(monkeypatch, capsys) -> None:
     passing = smoke.run_platform_deployment_build_inputs()
     assert smoke.summary_line(passing).startswith(
-        "platform_deployment_build_inputs=pass locks=2 python_packages=45"
+        "platform_deployment_build_inputs=pass locks=2 python_packages=52"
     )
     assert smoke.summary_line({"status": "FAIL"}) == (
         "platform_deployment_build_inputs=fail"
@@ -43,4 +43,3 @@ def test_summary_and_main_branches(monkeypatch, capsys) -> None:
     )
     assert smoke.main([]) == 1
     assert '"status": "FAIL"' in capsys.readouterr().out
-

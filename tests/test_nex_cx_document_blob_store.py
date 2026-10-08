@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import hashlib
 import io
 from pathlib import Path
@@ -20,6 +21,7 @@ from nex_cx.document_blob_store import (
     source_object_key,
 )
 from nex_cx.ingestion import (
+    align_upload_registration_to_source_file,
     ContentIngestionStore,
     CxStorageConfig,
     SOURCE_READER_S3_OBJECT,
@@ -479,3 +481,24 @@ def test_builder_selects_s3_and_rejects_unsafe_modes(monkeypatch) -> None:
         ),
         S3CxDocumentBlobStore,
     )
+
+
+def test_source_lineage_alignment_preserves_local_candidate_path_without_db_path(
+    tmp_path: Path,
+) -> None:
+    config = replace(_config(tmp_path), private_storage_mode="FILESYSTEM")
+    registration = _registration(config)
+    storage = registration["storage"]
+    source_file = {
+        "storage_backend": "local_filesystem",
+        "storage_key": storage["source_storage_key"],
+        "stored_filename": storage["stored_filename"],
+        "stored_extension": storage["stored_extension"],
+        "content_type": registration["content_type"],
+    }
+
+    aligned = align_upload_registration_to_source_file(registration, source_file)
+
+    assert aligned["storage"]["source_storage_path"] == storage[
+        "source_storage_path"
+    ]

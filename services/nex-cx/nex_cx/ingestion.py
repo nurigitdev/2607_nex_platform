@@ -1399,7 +1399,7 @@ def align_upload_registration_to_source_file(
         storage["source_content_type"] = source_file["content_type"]
     if source_file.get("source_storage_path"):
         storage["source_storage_path"] = source_file["source_storage_path"]
-    else:
+    elif source_file["storage_backend"] != "local_filesystem":
         storage.pop("source_storage_path", None)
     return {**record, "storage": storage}
 

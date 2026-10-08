@@ -1,6 +1,6 @@
 # Private Object Storage Migration and Lifecycle
 
-Status: CX document object integration complete at Slice 1456. Implementation is in progress;
+Status: CX and AE application adapters complete at Slice 1457. Implementation is in progress;
 production deployment remains unapproved.
 
 ## Required Outcome
@@ -128,6 +128,26 @@ Checkpoint Gate runs at Slice 1457 and Full Gate at Slice 1462.
   verified temporary file, not a durable filesystem payload.
 - The filesystem paths remain compatible for local development and explicit
   rollback, while S3 registrations do not persist a physical source path.
+
+## Implemented AE Private Payload Boundary
+
+- `NEX_AE_PRIVATE_STORAGE_MODE=S3` selects the RustFS-compatible adapter for
+  generated chat responses and rendered artifact files. Explicit filesystem
+  mode requires the corresponding local root; missing or invalid protected
+  configuration fails closed.
+- Generated response object keys are derived from the persisted chat record's
+  tenant and owner subject. The existing logical response reference and
+  lineage schema remain unchanged, so object keys and owner identifiers do not
+  enter chat responses or operations evidence.
+- Artifact display names remain PostgreSQL metadata for browser downloads,
+  while new `ae://artifacts/v1/...` references contain only owner and content
+  digests plus the format extension.
+- S3 reads verify expected SHA-256 and size, writes are immutable SSE-S3
+  publications, and retention deletes create the object-store delete boundary
+  before graph rows are removed.
+- Existing memory and filesystem adapters remain available for tests, local
+  development, and explicit rollback; they are not silently selected when an
+  S3 profile is requested.
 
 ## Non-Drift Rules
 
