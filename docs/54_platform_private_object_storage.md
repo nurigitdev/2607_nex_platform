@@ -1,8 +1,8 @@
 # Private Object Storage Migration and Lifecycle
 
-Status: CX and AE adapters plus the migration/rollback control plane are
-complete at Slice 1458. Implementation is in progress; production deployment
-remains unapproved.
+Status: CX and AE adapters, migration/rollback, and lifecycle/restore controls
+are complete at Slice 1459. Implementation is in progress; production
+deployment remains unapproved.
 
 ## Required Outcome
 
@@ -185,6 +185,29 @@ preferences use `NEX_CX_OBJECT_STORAGE_READ_MODE` and
 `NEX_AE_OBJECT_STORAGE_READ_MODE`. `OBJECT_FIRST` requires the corresponding
 `*_OBJECT_STORAGE_MIGRATION_ADMITTED=true`, and `FILESYSTEM_FIRST` requires
 `*_OBJECT_STORAGE_ROLLBACK_ADMITTED=true`.
+
+## Implemented Lifecycle And Restore Controls
+
+- The bucket bootstrap applies and reads back versioning `Enabled`, default
+  `AES256` encryption, a 7-day incomplete multipart abort rule, a tagged
+  noncurrent-version retention rule, and expired delete-marker cleanup.
+- Noncurrent versions are not unconditionally expired. The 30-day rule applies
+  only to versions tagged `nex-purge=eligible` after the service proves zero
+  active references, no legal hold, a recorded purge decision, and an elapsed
+  rollback window. Existing classification tags are preserved.
+- Delete-marker cleanup applies only after no retained object version remains.
+  A held or unapproved version remains untagged and therefore prevents an
+  expired delete marker from becoming eligible.
+- Restore requires the authorized object-key prefix, exact source version ID,
+  expected SHA-256, size, content type, and SSE-S3 metadata. It downloads and
+  verifies the historical version before publishing it as a new immutable
+  current version, then downloads the new current version again.
+- Restore refuses to overwrite an active current version. Operational evidence
+  hashes bucket and version identifiers and does not disclose keys, payloads,
+  endpoints, or credentials.
+- `scripts/smoke/run_s146_object_storage_lifecycle.py` uses dedicated bootstrap
+  credentials from `NEX_OBJECT_STORAGE_BOOTSTRAP_*`; CX and AE application
+  credentials are not reused for bucket administration.
 
 ## Non-Drift Rules
 

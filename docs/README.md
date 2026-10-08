@@ -1569,6 +1569,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1456`](slices/1456_s146_cx_document_blob_adapter.md) | `S146-004` Move CX source and extracted Markdown bytes behind immutable S3 objects with metadata-only persistence and verified restart hydration. |
 | [`Slice 1457`](slices/1457_s146_ae_private_payload_adapter.md) | `S146-005` Route AE generated responses and rendered artifacts through owner-scoped S3 adapters and pass the fifth-Slice Checkpoint Gate. |
 | [`Slice 1458`](slices/1458_s146_object_storage_migration.md) | `S146-006` Add verified filesystem-to-object migration, explicit dual-read/rollback policy, redacted evidence, and zero-data-loss cutover guards. |
+| [`Slice 1459`](slices/1459_s146_object_storage_lifecycle.md) | `S146-007` Bootstrap versioned encrypted buckets, gate purge eligibility around holds, and restore verified historical versions. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
