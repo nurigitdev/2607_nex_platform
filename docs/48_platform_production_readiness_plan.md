@@ -1,8 +1,8 @@
 # Platform Production Readiness Plan
 
-Status: Canonical scope freeze for requirements S141 through S150. S143,
-S144, and S145 are complete, S146 is active, and S147 is ready; production
-deployment remains unapproved.
+Status: Canonical scope freeze for requirements S141 through S150. S143
+through S146 are complete, S147 is active, and production deployment remains
+unapproved.
 
 ## Program Outcome
 
@@ -106,7 +106,7 @@ following gaps remain outside the production admission contract.
 | `non_mo_provider_endpoint_access` | Zero provider endpoint references outside MO service source | `CLEAR` | MO and every consumer | Continuous guard |
 | `service_http_api_edges` | 11 client anchors across 7 logical API edges | `TARGET_BOUNDARY` | API producer and consumer pairs | Continuous guard |
 | `ag_legacy_cross_database_adapters` | Four compatibility adapters remain; managed protected profiles require API projection and reject PostgreSQL projection mode | `FORBIDDEN_IN_PROTECTED_PROFILES` | AG | `S142` |
-| `loopback_endpoint_defaults` | 45 local loopback occurrences across 25 Python files; production requires all six service endpoint settings | `FORBIDDEN_IN_PRODUCTION` | Platform integration and client owners | `S142`, `S143` |
+| `loopback_endpoint_defaults` | 46 local loopback occurrences across 26 Python files; production requires all six service endpoint settings | `FORBIDDEN_IN_PRODUCTION` | Platform integration and client owners | `S142`, `S143` |
 | `source_tree_process_commands` | All 13 manifest processes execute repository source commands | `REPLACE_WITH_IMMUTABLE_ARTIFACTS` | Platform integration | `S142` |
 
 Shared `nex_runtime` infrastructure imports are allowed. Service-owned domain
@@ -363,3 +363,25 @@ measured test-sized duration, and rollback metadata. Production-sized RPO/RTO,
 failure injection, and recovery rehearsal remain S149 responsibilities. S145
 is complete and its S148/S149 dependencies are ready; production deployment
 remains unapproved. S146 is the next implementation requirement.
+
+## S146 Completion Update
+
+S146 completed through Slice 1462 on the accepted single-host Docker Compose
+topology. CX source/Markdown and AE generated-response payloads completed real
+RustFS round trips; owner-scoped migration preserved both filesystem sources,
+and PostgreSQL retained only metadata, hashes, sizes, and opaque references.
+Both private buckets proved versioning, default AES256 encryption, lifecycle
+rules, separate IAM users, bidirectional cross-bucket denial, delete-marker
+restore, managed TLS, non-root persistence, and restart recovery.
+
+The protected acceptance used all five actual PostgreSQL test databases, 20
+OpenBao-managed references, and complete container, bucket, object-version,
+and named-volume cleanup. Its value-free attestation binds the accepted source,
+runtime artifacts, configuration, predecessor evidence, ignored report digest,
+rollback contract, and zero residue.
+
+S146 is complete and its S148/S149 object-storage inputs are ready; high
+availability, independent backup, host-loss recovery, production-sized
+capacity and lifecycle timing remain S149 responsibilities. Production and
+registry resources were not contacted, and production deployment remains
+unapproved. S147 is the next implementation requirement.

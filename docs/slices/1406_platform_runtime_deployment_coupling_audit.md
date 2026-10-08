@@ -6,8 +6,8 @@
   database-coupling audits against the S140 repository.
 - Confirmed eleven HTTP client anchors across seven logical edges, zero foreign
   service-domain imports, and zero provider endpoint references outside MO.
-- Froze four retained AG legacy database adapters, 45 loopback defaults across
-  25 Python files, and thirteen source-command processes as explicit
+- Froze four retained AG legacy database adapters, 46 loopback defaults across
+  26 Python files, and thirteen source-command processes as explicit
   nonproduction or deployment-packaging debt.
 - Confirmed managed production rejects AG PostgreSQL projection mode and
   requires all six service endpoint settings.

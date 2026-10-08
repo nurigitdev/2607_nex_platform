@@ -1,8 +1,9 @@
 # Private Object Storage Migration and Lifecycle
 
-Status: CX and AE adapters, migration/rollback, lifecycle/restore controls,
-and the single-host RustFS Compose topology are complete at Slice 1460.
-Protected acceptance remains open; production deployment remains unapproved.
+Status: S146 complete through Slice 1462. CX and AE adapters,
+migration/rollback, lifecycle/restore controls, the single-host RustFS Compose
+topology, and protected acceptance are complete. Production deployment remains
+unapproved.
 
 ## Required Outcome
 
@@ -266,6 +267,40 @@ Compose parser.
   containers, and the named volumes. The report contains counts and aggregate
   digests only and keeps credentials, endpoints, object keys, filesystem
   paths, and payloads absent.
+
+## Closure Decision
+
+- `deployment/object-storage/s146-rustfs-acceptance-attestation.json` binds the
+  accepted source revision, S146 Compose configuration, Traefik route, S3
+  runtime ports, IAM bootstrap port, protected runner, predecessor evidence,
+  and ignored protected-report digest.
+- The attestation contains only checks, counts, aggregate digests, rollback
+  metadata, and zero-residue facts. The ignored live report remains outside
+  Git and contains no endpoint, object key, payload, filesystem path, or raw
+  credential value.
+- `docs/runbooks/private_object_storage_operations.md` freezes bootstrap,
+  normal operation, migration, cutover, rollback, restore, credential
+  rotation, restart, protected acceptance, cleanup, and escalation.
+- The fail-closed closure audit reruns the deterministic boundary and Compose
+  audits, validates all ten Slice documents and bound digests, and verifies
+  the Full Gate registration without replaying a credentialed acceptance.
+- Completion signal: Met.
+
+S146 accepts the single-host RustFS private object-storage mechanics and the
+S3-compatible CX/AE application boundary. It does not claim high availability,
+independent object backup, host-loss recovery, production-sized capacity, or
+production deployment approval.
+
+## S147, S148, and S149 Handoff
+
+- S147 is the next implementation requirement for model-serving capacity,
+  rollout resilience, canary, failover, and rollback.
+- S148 consumes redacted RustFS health, capacity, access-denial, lifecycle,
+  migration, restore, and credential-age signals.
+- S149 must rehearse external backup, host/volume loss, failure injection,
+  production-sized capacity and lifecycle timing, and integrated rollback.
+
+Production deployment remains unapproved.
 
 ## Non-Drift Rules
 

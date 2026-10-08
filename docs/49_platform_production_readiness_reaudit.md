@@ -18,7 +18,7 @@ The platform is `READY_FOR_S142` only.
 | Deferrals | 9/9 registered and documented, 9 open | Every deferral has an owner and S143-S150 target. |
 | Non-production paths | 9 paths, 15 anchors, 5 classes | All 9 paths are forbidden as silent production fallbacks. |
 | Configuration | 25 required values and 10 unadmitted controls | Environment values alone are not production control evidence. |
-| Coupling | 11 HTTP anchors, 7 logical edges, 0 foreign imports, 0 non-MO provider references | Four AG compatibility database adapters, 45 loopback references in 25 files, and 13 source commands must be removed from protected production paths. |
+| Coupling | 11 HTTP anchors, 7 logical edges, 0 foreign imports, 0 non-MO provider references | Four AG compatibility database adapters, 46 loopback references in 26 files, and 13 source commands must be removed from protected production paths. |
 | Responsibility | 9 controls, 6 owner groups, 5 database owners | Service data ownership remains separate; platform integration coordinates only. |
 | Operations | 12 open gaps: 8 P0 and 4 P1 across 5 domains | Inventory is not completion evidence and production admission stays blocked. |
 | Transition | 9 requirements, 6 waves, 16 dependency edges | S144-S147 may run in parallel only after S143. |

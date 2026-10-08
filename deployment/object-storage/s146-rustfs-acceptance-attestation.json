@@ -1,0 +1,116 @@
+{
+  "schema_version": "production_evidence.v1",
+  "evidence_id": "s146-rustfs-acceptance-46896134",
+  "requirement_id": "S146",
+  "control_ids": [
+    "private_object_storage_owner_isolation",
+    "private_object_storage_encryption_versioning_lifecycle",
+    "private_object_storage_migration_restore_restart"
+  ],
+  "release_candidate_id": "s146-single-host-rustfs-46896134",
+  "environment_class": "protected_test",
+  "execution_mode": "protected",
+  "actual_execution": true,
+  "started_at": "2026-10-08T03:37:10.272185+00:00",
+  "completed_at": "2026-10-08T03:37:10.272185+00:00",
+  "source_revision": "468961349c404696c708f3bc04b96ea3f0eed4d1",
+  "artifact_digests": [
+    "sha256:3f758a90a2c67c52c67c0005b82eec285a276f3245050b3c3e1a10d970d41b25",
+    "sha256:5165c17597a06ac50aa44abfaf683d792145aeb788916e23cb0f352794ce75d0",
+    "sha256:a0cadf55a7cd1c98a139bf205fef82864b655bad50be744183360252af9e3d4c",
+    "sha256:604343dbf4c76fea138a39c12fb44cc6e0890222da108908922bff3b7b4ea327",
+    "sha256:1bb953d766d0489d7d60907114c4044a9304595a0124f1a8fc06762166c61651"
+  ],
+  "configuration_digest": "sha256:9b30a8507b3001ddac88c9651760398a53e9b8a3854240d1dc32f1a64ba0c4e6",
+  "dependency_evidence_digests": [
+    "sha256:257810a76069c8814b7a1ba1cec69cc5b96f935866f7a95d7417be048941fd83",
+    "sha256:cedac783308fb720c09fabf1ef5fb3789b9d80845c81498ad9bc4e161a074d52",
+    "sha256:6d92326c90e408e562af8032f9af09907daee0e564b840959957182ccf8919d7"
+  ],
+  "checks": {
+    "five_test_database_migrations_current": true,
+    "two_service_metadata_probes_passed": true,
+    "payload_column_absent": true,
+    "two_private_buckets_bootstrapped": true,
+    "bucket_versioning_enabled": true,
+    "bucket_default_aes256_enabled": true,
+    "six_lifecycle_rules_verified": true,
+    "two_service_identities_provisioned": true,
+    "root_identity_not_reused": true,
+    "two_cross_bucket_attempts_denied": true,
+    "cx_source_round_trip_verified": true,
+    "cx_markdown_round_trip_verified": true,
+    "ae_response_round_trip_verified": true,
+    "two_owner_migrations_verified": true,
+    "filesystem_sources_preserved": true,
+    "object_only_cutover_admitted": true,
+    "delete_marker_created": true,
+    "historical_version_restored": true,
+    "restart_recovery_verified": true,
+    "non_root_container_verified": true,
+    "durable_volume_verified": true,
+    "managed_tls_route_verified": true,
+    "containers_volumes_buckets_cleaned": true,
+    "evidence_values_redacted": true,
+    "production_contact_absent": true,
+    "production_approval_absent": true
+  },
+  "metrics": {
+    "database_count": 5,
+    "metadata_service_count": 2,
+    "managed_reference_count": 20,
+    "bucket_count": 2,
+    "lifecycle_rule_count": 6,
+    "service_identity_count": 2,
+    "cross_bucket_deny_count": 2,
+    "adapter_round_trip_count": 3,
+    "migration_owner_count": 2,
+    "migration_item_count": 2,
+    "restored_object_count": 1,
+    "removed_version_count": 9,
+    "protected_check_count": 26
+  },
+  "privacy": {
+    "raw_value_count": 0,
+    "violation_count": 0
+  },
+  "rollback": {
+    "plan_id": "s146-object-storage-dual-read-rollback",
+    "owner": "cx-ae-and-platform-integration",
+    "trigger_conditions": [
+      "integrity-or-owner-isolation-failure",
+      "object-store-unavailability",
+      "migration-or-restore-verification-failure"
+    ],
+    "last_known_good_artifacts": [
+      "sha256:3f758a90a2c67c52c67c0005b82eec285a276f3245050b3c3e1a10d970d41b25",
+      "sha256:5165c17597a06ac50aa44abfaf683d792145aeb788916e23cb0f352794ce75d0",
+      "sha256:a0cadf55a7cd1c98a139bf205fef82864b655bad50be744183360252af9e3d4c",
+      "sha256:604343dbf4c76fea138a39c12fb44cc6e0890222da108908922bff3b7b4ea327",
+      "sha256:1bb953d766d0489d7d60907114c4044a9304595a0124f1a8fc06762166c61651"
+    ],
+    "last_known_good_configuration": "sha256:9b30a8507b3001ddac88c9651760398a53e9b8a3854240d1dc32f1a64ba0c4e6",
+    "data_migration_strategy": "verified-copy-dual-read-source-preserved",
+    "drill_status": "PASS",
+    "recovery_metrics": {
+      "dual_read_available": true,
+      "source_copy_preserved": true,
+      "historical_restore_verified": true,
+      "restart_recovery_verified": true,
+      "operator_cutover_required": true
+    },
+    "residue_counts": {
+      "temporary_container_count": 0,
+      "named_volume_count": 0,
+      "object_bucket_count": 0,
+      "production_resource_count": 0
+    }
+  },
+  "residue": {
+    "temporary_container_count": 0,
+    "named_volume_count": 0,
+    "object_bucket_count": 0,
+    "production_resource_count": 0
+  },
+  "evidence_digest": "sha256:1d9da315c5c343296573e18286f21d319fea00c2fd8352442cf82b5b956d9168"
+}

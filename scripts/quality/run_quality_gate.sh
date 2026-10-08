@@ -774,3 +774,5 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_s145_postgresql_resilience_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s146_private_object_storage_boundary.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s146_object_storage_compose.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s146_object_storage_acceptance.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s146_private_object_storage_closure.py --summary
