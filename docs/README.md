@@ -1577,6 +1577,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1462`](slices/1462_s146_private_object_storage_closure.md) | `S146-010` Publish value-free acceptance evidence and the operations runbook, pass Full Gate, close S146, and activate S147. |
 | [`Slice 1463`](slices/1463_s147_model_serving_rollout_boundary.md) | `S147-001` Freeze model-independent revision identity, GPU capacity, calibration, canary, rollback, protected acceptance, and Slice 1464-1472 order. |
 | [`Slice 1464`](slices/1464_s147_model_revision_capacity_domain.md) | `S147-002` Add immutable model revision identity and product-neutral GPU capacity snapshots with freshness and privacy guards. |
+| [`Slice 1465`](slices/1465_s147_gpu_capacity_admission.md) | `S147-003` Implement deterministic GPU placement, reservation, pressure/headroom admission, and explicit release. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
