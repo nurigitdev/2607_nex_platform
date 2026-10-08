@@ -17,7 +17,7 @@ def test_repository_closure_passes_and_hands_off_to_s132() -> None:
         "check_count": 11,
         "passed_check_count": 11,
         "http_edge_count": 11,
-        "migration_count": 95,
+        "migration_count": 96,
         "trace_client_count": 13,
         "p0_gap_count": 8,
         "p1_gap_count": 4,

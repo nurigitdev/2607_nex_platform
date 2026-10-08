@@ -191,10 +191,10 @@ def run_s147_model_serving_rollout_closure(
                 "Production deployment remains unapproved.",
             )
         ),
-        "program_marks_s147_complete_and_s148_active": all(
+        "program_preserves_s147_handoff_and_marks_s149_active": all(
             token in plan
             for token in (
-                "through S147 are complete, S148 is active",
+                "through S148 are complete, S149 is active",
                 "## S147 Completion Update",
                 "S148 is the next implementation requirement",
                 "Production deployment remains unapproved",

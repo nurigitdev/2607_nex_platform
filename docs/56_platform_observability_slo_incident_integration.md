@@ -1,9 +1,8 @@
 # Platform Observability, SLO, Alerting, and Incident Integration
 
-Status: S148 active through Slice 1477. The boundary, redacted signal
-correlation, service SLI/SLO evaluation, alert routing, and restart-safe
-persistence are complete; protected PostgreSQL evidence and external endpoint
-activation remain pending.
+Status: S148 complete through Slice 1482. Production deployment remains
+unapproved, external incident delivery remains `EXTERNAL_NOT_ACTIVATED`, and
+S149 is active with that explicit acceptance dependency.
 
 ## Outcome
 
@@ -163,16 +162,16 @@ accepts this limitation explicitly; it is not production host-down evidence.
 
 | Slice | Outcome |
 | --- | --- |
-| `1473` | Freeze the signal, SLI/SLO, alert, delivery-zone, persistence, privacy, single-host, and acceptance boundary. |
-| `1474` | Implement the common redacted signal envelope and metric/log/trace correlation. |
-| `1475` | Implement service-owned SLI/SLO policies, window evaluation, burn rate, and no-data semantics. |
-| `1476` | Implement alert lifecycle, grouping, deduplication, suppression, and routing decisions. |
-| `1477` | Persist alert/outbox/attempt state, prove restart recovery, and run Checkpoint Gate. |
+| `1473` | **Complete.** Froze the signal, SLI/SLO, alert, delivery-zone, persistence, privacy, single-host, and acceptance boundary. |
+| `1474` | **Complete.** Implemented the common redacted signal envelope and metric/log/trace correlation. |
+| `1475` | **Complete.** Implemented service-owned SLI/SLO policies, window evaluation, burn rate, and no-data semantics. |
+| `1476` | **Complete.** Implemented alert lifecycle, grouping, deduplication, suppression, and routing decisions. |
+| `1477` | **Complete.** Persisted alert/outbox/attempt state, proved restart recovery, and passed Checkpoint Gate. |
 | `1478` | **Complete.** Implemented local, private-network, and internet-connected mock delivery with retry and receipts. |
 | `1479` | **Complete.** Wired protected AG APIs and the integrated operations/dashboard projection. |
 | `1480` | **Complete.** Ran actual `nex_ag_test` migration, restart-safe processing, and zero-residue protected smoke. |
 | `1481` | **Complete.** Published schemas/OpenAPI, privacy fixtures, mock incident acceptance, and operations evidence. |
-| `1482` | Publish the runbook, bind closure evidence, run Full Gate, close S148, and activate S149. |
+| `1482` | **Complete.** Published the runbook, bound closure evidence, passed Full Gate, closed S148, and activated S149. |
 
 Checkpoint Gate runs at Slice 1477. Full Gate runs at Slice 1482.
 
@@ -184,3 +183,21 @@ and recovery rehearsal. S150 requires explicit SLO ownership and either a
 protected live external endpoint or an approved time-bounded P1 waiver with a
 local compensating control. Neither S148 nor a passing mock transport performs
 an implicit production deployment.
+
+## Closure Decision
+
+S148 closes the platform-owned observability framework: metadata-only signal
+correlation, versioned SLI/SLO evaluation, durable alert and notification
+state, environment-aware routing, protected AG operations, and mock external
+incident acceptance are implemented. Actual PostgreSQL evidence used
+`nex_ag_test`, exercised restart recovery and operator actions, and left zero
+residue. The operations runbook is
+`docs/runbooks/platform_observability_incident_operations.md`.
+
+The absence of an approved external endpoint is not converted into a live
+success claim. S149 may execute integrated staging rehearsal, but its release
+acceptance must either prove protected external delivery or carry the explicit
+time-bounded P1 waiver and compensating local control required by S150.
+Production deployment remains unapproved.
+
+Completion signal: Met.

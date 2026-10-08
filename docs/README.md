@@ -1595,6 +1595,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1479`](slices/1479_s148_observability_operations_api.md) | `S148-007` Expose protected SLO, alert, delivery, dashboard, acknowledgement, suppression, trace, and audit operations. |
 | [`Slice 1480`](slices/1480_s148_observability_postgres_smoke.md) | `S148-008` Prove migrations, restart recovery, protected operations, and zero residue against actual `nex_ag_test` PostgreSQL. |
 | [`Slice 1481`](slices/1481_s148_contract_mock_acceptance.md) | `S148-009` Publish observability contracts/OpenAPI, reject privacy leaks, and prove honest mock incident acceptance. |
+| [`Slice 1482`](slices/1482_s148_observability_incident_closure.md) | `S148-010` Publish the operations runbook, bind protected evidence, pass Full Gate, close S148, and activate S149 with its external-delivery dependency. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

@@ -786,3 +786,13 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_s147_rollout_persistence_restart.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s147_model_rollout_live_acceptance.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s147_model_serving_rollout_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s148_observability_incident_boundary.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s148_signal_correlation.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s148_slo_evaluation.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s148_alert_routing.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s148_alert_persistence_restart.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s148_mock_notification_delivery.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s148_observability_api.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s148_observability_postgres.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s148_contract_mock_acceptance.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s148_observability_incident_closure.py --summary

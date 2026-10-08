@@ -1,8 +1,8 @@
 # Platform Production Readiness Plan
 
 Status: Canonical scope freeze for requirements S141 through S150. S143
-through S147 are complete, S148 is active, and production deployment remains
-unapproved.
+through S148 are complete, S149 is active with an explicit external-incident
+activation dependency, and production deployment remains unapproved.
 
 ## Program Outcome
 
@@ -405,3 +405,23 @@ live canary, alias, or provider-process mutation.
 Multi-host HA, autoscaling, production traffic canary, production capacity
 approval, and production-sized load remain deferred to S149/S150. Production
 deployment remains unapproved. S148 is the next implementation requirement.
+
+## S148 Completion Update
+
+S148 is complete through Slice 1482. NeX-AG now owns a metadata-only platform
+operations path covering metric/log/trace/readiness correlation, versioned
+service SLI/SLO evaluation, durable alert and notification state, bounded
+retry, acknowledgement, suppression, and protected dashboard/API access.
+Actual `nex_ag_test` PostgreSQL acceptance proved migration, insert/select,
+restart reconstruction, retry recovery, operator mutations, cleanup, and zero
+residue.
+
+No approved external notification or incident endpoint exists in the current
+environment. Private-network and internet-connected acceptance therefore
+remains `MOCK_ACCEPTED` and `EXTERNAL_NOT_ACTIVATED`; it is not production
+delivery evidence. S149 is the next implementation requirement and may begin
+integrated staging rehearsal, but cannot complete release acceptance until a
+protected external endpoint succeeds or S150 records an approved time-bounded
+P1 waiver plus local compensating control. Single-host total outage detection
+also requires an external heartbeat receiver or separate management node.
+Production deployment remains unapproved.
