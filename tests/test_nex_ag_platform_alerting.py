@@ -309,6 +309,7 @@ def replace_state(alert: AlertRecord, state: str) -> AlertRecord:
         ({"state": "BAD"}, "alert.state_invalid"),
         ({"severity": "BAD"}, "alert.severity_invalid"),
         ({"occurrence_count": 0}, "alert.occurrence_count_invalid"),
+        ({"state_revision": 0}, "alert.state_revision_invalid"),
         ({"last_observed_at": "2026-10-08T00:00:00Z"}, "alert.timestamp_order_invalid"),
         ({"suppression_until": "bad"}, "alert.timestamp_invalid"),
         ({"acknowledged_by_hash": "bad"}, "alert.digest_invalid"),

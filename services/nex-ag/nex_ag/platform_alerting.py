@@ -72,6 +72,7 @@ class AlertRecord:
     runbook_ref: str
     suppression_until: str | None = None
     acknowledged_by_hash: str | None = None
+    state_revision: int = 1
 
     def __post_init__(self) -> None:
         for field in (
@@ -92,6 +93,10 @@ class AlertRecord:
         if self.occurrence_count < 1:
             raise PlatformAlertError(
                 "alert.occurrence_count_invalid", "occurrence count must be positive"
+            )
+        if self.state_revision < 1:
+            raise PlatformAlertError(
+                "alert.state_revision_invalid", "alert state revision must be positive"
             )
         first = _timestamp(self.first_observed_at, "first_observed_at")
         last = _timestamp(self.last_observed_at, "last_observed_at")
@@ -122,6 +127,7 @@ class AlertRecord:
             "runbook_ref": self.runbook_ref,
             "suppression_until": self.suppression_until,
             "acknowledged_by_hash": self.acknowledged_by_hash,
+            "state_revision": self.state_revision,
             "private_payload_included": False,
         }
 
@@ -183,6 +189,7 @@ def apply_slo_evaluation(
             reason_code="SLO_RECOVERED",
             last_observed_at=_wire_timestamp(now),
             suppression_until=None,
+            state_revision=previous.state_revision + 1,
         )
 
     severity = _severity(rule, status)
@@ -224,6 +231,7 @@ def apply_slo_evaluation(
         occurrence_count=occurrence_count,
         last_observed_at=_wire_timestamp(now),
         suppression_until=previous.suppression_until if suppression_active else None,
+        state_revision=previous.state_revision + 1,
     )
 
 
@@ -240,6 +248,7 @@ def acknowledge_alert(
         state="ACKNOWLEDGED",
         acknowledged_by_hash=operator_ref_hash,
         last_observed_at=_wire_timestamp(changed),
+        state_revision=alert.state_revision + 1,
     )
 
 
@@ -260,6 +269,7 @@ def suppress_alert(
         reason_code=reason_code,
         last_observed_at=_wire_timestamp(changed),
         suppression_until=_wire_timestamp(until),
+        state_revision=alert.state_revision + 1,
     )
 
 
