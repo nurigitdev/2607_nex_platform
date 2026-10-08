@@ -12,7 +12,7 @@ from nex_cx.private_content import (
     build_private_payload_key,
     sha256_private_text,
 )
-from nex_cx.private_text_store import FileSystemCxPrivateTextStore
+from nex_cx.private_text_store import build_cx_private_text_store
 
 
 GENERATION_PRIVATE_OUTPUT_SCHEMA_VERSION = "cx_generation_private_output.v1"
@@ -96,13 +96,13 @@ def load_generation_output(
 
 def build_generation_output_store(
     environ: Mapping[str, str] | None = None,
-) -> FileSystemCxPrivateTextStore:
+) -> CxPrivateTextStore:
     env = os.environ if environ is None else environ
-    root = env.get(
-        GENERATION_OUTPUT_STORAGE_ROOT_ENV,
-        str(DEFAULT_GENERATION_OUTPUT_STORAGE_ROOT),
+    return build_cx_private_text_store(
+        env,
+        filesystem_root_env=GENERATION_OUTPUT_STORAGE_ROOT_ENV,
+        default_root=DEFAULT_GENERATION_OUTPUT_STORAGE_ROOT,
     )
-    return FileSystemCxPrivateTextStore(root)
 
 
 def validate_generation_output_metadata(

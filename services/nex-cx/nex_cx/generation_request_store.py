@@ -13,7 +13,7 @@ from nex_cx.private_content import (
     CxPrivateTextStore,
     build_private_payload_key,
 )
-from nex_cx.private_text_store import FileSystemCxPrivateTextStore
+from nex_cx.private_text_store import build_cx_private_text_store
 
 
 GENERATION_REQUEST_ENVELOPE_SCHEMA_VERSION = "cx_generation_request_envelope.v1"
@@ -219,13 +219,13 @@ def validate_generation_request_receipt(value: Mapping[str, Any]) -> dict[str, A
 
 def build_generation_request_store(
     environ: Mapping[str, str] | None = None,
-) -> FileSystemCxPrivateTextStore:
+) -> CxPrivateTextStore:
     env = os.environ if environ is None else environ
-    root = env.get(
-        GENERATION_REQUEST_STORAGE_ROOT_ENV,
-        str(DEFAULT_GENERATION_REQUEST_STORAGE_ROOT),
+    return build_cx_private_text_store(
+        env,
+        filesystem_root_env=GENERATION_REQUEST_STORAGE_ROOT_ENV,
+        default_root=DEFAULT_GENERATION_REQUEST_STORAGE_ROOT,
     )
-    return FileSystemCxPrivateTextStore(root)
 
 
 def _mapping(value: object, field_name: str) -> dict[str, Any]:

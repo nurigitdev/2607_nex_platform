@@ -80,8 +80,8 @@ from nex_cx.remediation_execution import (
 )
 from nex_cx.summary_embeddings import register_summary_embedding_routes
 from nex_cx.summaries import register_summary_routes
+from nex_cx.private_content import CxPrivateTextStore
 from nex_cx.private_text_store import (
-    FileSystemCxPrivateTextStore,
     build_private_text_store,
 )
 from nex_cx.pgvector_store import (
@@ -176,7 +176,7 @@ def build_cx_vector_operations_dependencies(
 def build_cx_document_intelligence_dependencies(
     runtime: ServicePersistenceRuntime,
 ) -> tuple[
-    FileSystemCxPrivateTextStore | None,
+    CxPrivateTextStore | None,
     SummaryPgVectorStore | None,
     PostgresSummarySimilarityStore | None,
 ]:
@@ -258,7 +258,7 @@ def build_cx_mvp_runtime_composition(
     content_repository: CxContentRepository,
     vector_repository: VectorIndexRepository | None,
     retrieval_vector_store: PgVectorCxVectorStore | None,
-    private_text_store: FileSystemCxPrivateTextStore | None,
+    private_text_store: CxPrivateTextStore | None,
     embedding_client: MoEmbeddingClient,
     embedding_alias: str,
     rerank_client: MoRerankClient | None,

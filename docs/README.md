@@ -1565,6 +1565,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1452`](slices/1452_s145_postgresql_resilience_closure.md) | `S145-010` Bind metadata-only protected evidence, publish the single-host recovery runbook, pass Full Gate, close S145, and activate S146. |
 | [`Slice 1453`](slices/1453_s146_private_object_storage_boundary.md) | `S146-001` Freeze the RustFS/S3 boundary, seven private payload families, owner scope, lifecycle, rollback, exclusions, and Slice 1454-1462 order. |
 | [`Slice 1454`](slices/1454_s146_s3_client_foundation.md) | `S146-002` Implement fail-closed S3 configuration, opaque keys, immutable SSE-S3 writes, bounded reads, integrity checks, delete markers, and readiness. |
+| [`Slice 1455`](slices/1455_s146_cx_private_text_adapter.md) | `S146-003` Route CX private text, generation request/output, and structured draft families through an owner-scoped S3 adapter. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
