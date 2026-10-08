@@ -1,0 +1,20 @@
+{
+  "schema_version": "ag_platform_observability_dashboard.v1",
+  "observed_at": "2026-10-08T06:00:00Z",
+  "status": "HEALTHY",
+  "notification_mode": "local_only",
+  "external_activation": "LOCAL_ONLY",
+  "summary": {
+    "slo_policy_count": 1,
+    "unhealthy_slo_count": 0,
+    "active_alert_count": 0,
+    "delivery_issue_count": 0
+  },
+  "slo_evaluations": [],
+  "alerts": [],
+  "notifications": [],
+  "alert_state_counts": {},
+  "notification_state_counts": {},
+  "private_payload_included": false,
+  "database_url": "postgresql://private"
+}

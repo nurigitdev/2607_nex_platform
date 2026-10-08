@@ -1,0 +1,82 @@
+{
+  "schema_version": "ag_platform_observability_dashboard.v1",
+  "observed_at": "2026-10-08T06:00:00Z",
+  "status": "DEGRADED",
+  "notification_mode": "internet_connected",
+  "external_activation": "EXTERNAL_NOT_ACTIVATED",
+  "summary": {
+    "slo_policy_count": 1,
+    "unhealthy_slo_count": 1,
+    "active_alert_count": 1,
+    "delivery_issue_count": 1
+  },
+  "slo_evaluations": [
+    {
+      "schema_version": "ag_slo_evaluation.v1",
+      "policy_id": "slo:nex-cx:index_freshness",
+      "policy_revision": 1,
+      "policy_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "service_id": "nex-cx",
+      "sli_name": "cx.index_freshness",
+      "status": "NO_DATA",
+      "reason_code": "SLO_SAMPLE_FLOOR_NOT_MET",
+      "evaluated_at": "2026-10-08T06:00:00Z",
+      "window_seconds": 300,
+      "sample_count": 0,
+      "good_count": 0,
+      "bad_count": 0,
+      "attainment": null,
+      "burn_rate": null,
+      "latest_observed_at": null,
+      "accountable_owner": "content",
+      "runbook_ref": "runbook:nex-cx:index_freshness",
+      "private_payload_included": false
+    }
+  ],
+  "alerts": [
+    {
+      "schema_version": "ag_platform_alert.v1",
+      "alert_id": "alert:s148-contract",
+      "dedup_key": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "rule_id": "rule:nex-cx:index-freshness",
+      "policy_id": "slo:nex-cx:index-freshness",
+      "service_id": "nex-cx",
+      "state": "FIRING",
+      "severity": "CRITICAL",
+      "reason_code": "SLO_CRITICAL_BURN",
+      "occurrence_count": 2,
+      "first_observed_at": "2026-10-08T05:59:00Z",
+      "last_observed_at": "2026-10-08T06:00:00Z",
+      "accountable_owner": "content",
+      "runbook_ref": "runbook:nex-cx:index-freshness",
+      "suppression_until": null,
+      "acknowledged_by_hash": null,
+      "state_revision": 2,
+      "private_payload_included": false
+    }
+  ],
+  "notifications": [
+    {
+      "notify_id": "notify:s148-contract",
+      "alert_id": "alert:s148-contract",
+      "idempotency_key_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "channel": "EXTERNAL_WEBHOOK",
+      "route_alias": "incident-external",
+      "payload_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "delivery_state": "BLOCKED",
+      "attempt_count": 2,
+      "next_attempt_at": null,
+      "lease_owner": null,
+      "lease_expires_at": null,
+      "last_error_code": "EXTERNAL_NOT_ACTIVATED",
+      "created_at": "2026-10-08T05:59:00Z",
+      "updated_at": "2026-10-08T06:00:00Z",
+      "delivered_at": null,
+      "external_activation": "EXTERNAL_NOT_ACTIVATED",
+      "private_payload_included": false
+    }
+  ],
+  "alert_state_counts": {"FIRING": 1},
+  "notification_state_counts": {"BLOCKED": 1},
+  "private_payload_included": false
+}

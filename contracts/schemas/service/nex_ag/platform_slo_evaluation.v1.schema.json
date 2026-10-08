@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ag/platform_slo_evaluation.v1.schema.json",
+  "title": "NeX AG Platform SLO Evaluation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "policy_id", "policy_revision", "policy_hash", "service_id",
+    "sli_name", "status", "reason_code", "evaluated_at", "window_seconds",
+    "sample_count", "good_count", "bad_count", "attainment", "burn_rate",
+    "latest_observed_at", "accountable_owner", "runbook_ref", "private_payload_included"
+  ],
+  "properties": {
+    "schema_version": {"const": "ag_slo_evaluation.v1"},
+    "policy_id": {"$ref": "#/$defs/identifier"},
+    "policy_revision": {"type": "integer", "minimum": 1},
+    "policy_hash": {"$ref": "#/$defs/digest"},
+    "service_id": {"enum": ["nex-oa", "nex-ae-api", "nex-cx", "nex-mo", "nex-ag"]},
+    "sli_name": {"$ref": "#/$defs/identifier"},
+    "status": {"enum": ["HEALTHY", "AT_RISK", "BREACHED", "NO_DATA"]},
+    "reason_code": {"$ref": "#/$defs/identifier"},
+    "evaluated_at": {"type": "string", "format": "date-time"},
+    "window_seconds": {"type": "integer", "minimum": 60},
+    "sample_count": {"type": "integer", "minimum": 0},
+    "good_count": {"type": "integer", "minimum": 0},
+    "bad_count": {"type": "integer", "minimum": 0},
+    "attainment": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "burn_rate": {"type": ["number", "null"], "minimum": 0},
+    "latest_observed_at": {"type": ["string", "null"], "format": "date-time"},
+    "accountable_owner": {"$ref": "#/$defs/identifier"},
+    "runbook_ref": {"$ref": "#/$defs/identifier"},
+    "private_payload_included": {"const": false}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,199}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ag/platform_alert_routing.v1.schema.json",
+  "title": "NeX AG Platform Alert Routing Decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "alert_id", "alert_state", "severity", "notification_mode", "environment_class", "routing_status", "external_activation", "external_required", "intents", "private_payload_included"],
+  "properties": {
+    "schema_version": {"const": "ag_alert_routing_decision.v1"},
+    "alert_id": {"$ref": "#/$defs/identifier"},
+    "alert_state": {"enum": ["PENDING", "FIRING", "ACKNOWLEDGED", "RESOLVED", "SUPPRESSED"]},
+    "severity": {"enum": ["INFO", "WARNING", "ERROR", "CRITICAL"]},
+    "notification_mode": {"enum": ["local_only", "private_network", "internet_connected"]},
+    "environment_class": {"$ref": "#/$defs/identifier"},
+    "routing_status": {"enum": ["ROUTED", "BLOCKED", "NO_DELIVERY_REQUIRED"]},
+    "external_activation": {"enum": ["LOCAL_ONLY", "EXTERNAL_ACTIVATED", "EXTERNAL_NOT_ACTIVATED", "SUPPRESSED", "ACKNOWLEDGED"]},
+    "external_required": {"type": "boolean"},
+    "intents": {
+      "type": "array", "maxItems": 2,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["channel", "route_alias", "idempotency_key_hash", "payload_hash"],
+        "properties": {
+          "channel": {"enum": ["LOCAL", "INTERNAL_WEBHOOK", "EXTERNAL_WEBHOOK"]},
+          "route_alias": {"$ref": "#/$defs/identifier"},
+          "idempotency_key_hash": {"$ref": "#/$defs/digest"},
+          "payload_hash": {"$ref": "#/$defs/digest"}
+        }
+      }
+    },
+    "private_payload_included": {"const": false}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,199}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

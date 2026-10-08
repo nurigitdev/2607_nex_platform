@@ -1,0 +1,22 @@
+{
+  "schema_version": "ag_slo_evaluation.v1",
+  "policy_id": "slo:nex-cx:index",
+  "policy_revision": 1,
+  "policy_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "service_id": "nex-cx",
+  "sli_name": "cx.index_freshness",
+  "status": "NO_DATA",
+  "reason_code": "SLO_SAMPLE_FLOOR_NOT_MET",
+  "evaluated_at": "2026-10-08T06:00:00Z",
+  "window_seconds": 300,
+  "sample_count": 0,
+  "good_count": 0,
+  "bad_count": 0,
+  "attainment": null,
+  "burn_rate": null,
+  "latest_observed_at": null,
+  "accountable_owner": "content",
+  "runbook_ref": "runbook:nex-cx:index",
+  "private_payload_included": false,
+  "raw_samples": ["private"]
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": "ag_platform_alert.v1",
+  "alert_id": "alert:s148-contract",
+  "dedup_key": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "rule_id": "rule:nex-cx:index-freshness",
+  "policy_id": "slo:nex-cx:index-freshness",
+  "service_id": "nex-cx",
+  "state": "FIRING",
+  "severity": "CRITICAL",
+  "reason_code": "SLO_CRITICAL_BURN",
+  "occurrence_count": 2,
+  "first_observed_at": "2026-10-08T05:59:00Z",
+  "last_observed_at": "2026-10-08T06:00:00Z",
+  "accountable_owner": "content",
+  "runbook_ref": "runbook:nex-cx:index-freshness",
+  "suppression_until": null,
+  "acknowledged_by_hash": null,
+  "state_revision": 2,
+  "private_payload_included": false
+}

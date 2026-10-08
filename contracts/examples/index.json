@@ -1149,6 +1149,36 @@
       "name": "mo_model_rollout_event_validation_started",
       "path": "examples/provider/mo_model_rollout_event.validation_started.json",
       "schema": "schemas/service/nex_mo/model_rollout_event.v1.schema.json"
+    },
+    {
+      "name": "platform_observability_signal_healthy",
+      "path": "examples/operations/platform_observability_signal.healthy.json",
+      "schema": "schemas/common/platform_observability_signal.v1.schema.json"
+    },
+    {
+      "name": "ag_platform_slo_evaluation_no_data",
+      "path": "examples/operations/ag_platform_slo_evaluation.no_data.json",
+      "schema": "schemas/service/nex_ag/platform_slo_evaluation.v1.schema.json"
+    },
+    {
+      "name": "ag_platform_alert_firing",
+      "path": "examples/operations/ag_platform_alert.firing.json",
+      "schema": "schemas/service/nex_ag/platform_alert.v1.schema.json"
+    },
+    {
+      "name": "ag_platform_alert_routing_mock_external",
+      "path": "examples/operations/ag_platform_alert_routing.mock_external.json",
+      "schema": "schemas/service/nex_ag/platform_alert_routing.v1.schema.json"
+    },
+    {
+      "name": "ag_platform_notification_delivery_mock_accepted",
+      "path": "examples/operations/ag_platform_notification_delivery.mock_accepted.json",
+      "schema": "schemas/service/nex_ag/platform_notification_delivery.v1.schema.json"
+    },
+    {
+      "name": "ag_platform_observability_dashboard_mock_external",
+      "path": "examples/operations/ag_platform_observability_dashboard.mock_external.json",
+      "schema": "schemas/service/nex_ag/platform_observability_dashboard.v1.schema.json"
     }
   ]
 }

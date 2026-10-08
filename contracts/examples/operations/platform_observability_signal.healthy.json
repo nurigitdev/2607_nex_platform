@@ -1,0 +1,20 @@
+{
+  "schema_version": "platform_observability_signal.v1",
+  "signal_id": "signal:nex-cx:index-freshness:1481",
+  "service_id": "nex-cx",
+  "signal_kind": "METRIC",
+  "signal_name": "cx.index.freshness",
+  "observed_at": "2026-10-08T06:00:00Z",
+  "severity": "INFO",
+  "status": "HEALTHY",
+  "correlation_key": "cx:index:freshness",
+  "trace_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "request_id": "request-1481",
+  "resource_type": "index",
+  "resource_id": "primary",
+  "measurements": {"freshness_age_seconds": 3.0},
+  "reason_codes": ["INDEX_FRESH"],
+  "safe_attributes": {"environment_class": "test", "state": "READY"},
+  "private_payload_included": false,
+  "signal_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+}

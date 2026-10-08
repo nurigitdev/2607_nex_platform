@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ag/platform_notification_delivery.v1.schema.json",
+  "title": "NeX AG Platform Notification Delivery Execution",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "notification_mode", "claimed_count", "result_count", "results", "private_payload_included"],
+  "properties": {
+    "schema_version": {"const": "ag_notification_delivery_execution.v1"},
+    "notification_mode": {"enum": ["local_only", "private_network", "internet_connected"]},
+    "claimed_count": {"type": "integer", "minimum": 0, "maximum": 100},
+    "result_count": {"type": "integer", "minimum": 0, "maximum": 100},
+    "results": {
+      "type": "array", "maxItems": 100,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["notify_id", "channel", "route_alias", "attempt_number", "delivery_state", "acceptance_status", "external_activation", "response_code", "receipt_digest", "error_code", "next_attempt_at", "private_payload_included"],
+        "properties": {
+          "notify_id": {"$ref": "#/$defs/identifier"},
+          "channel": {"enum": ["LOCAL", "INTERNAL_WEBHOOK", "EXTERNAL_WEBHOOK"]},
+          "route_alias": {"$ref": "#/$defs/identifier"},
+          "attempt_number": {"type": "integer", "minimum": 1},
+          "delivery_state": {"enum": ["DELIVERED", "RETRY_WAIT", "BLOCKED", "DEAD_LETTER"]},
+          "acceptance_status": {"enum": ["LOCAL_DELIVERED", "MOCK_ACCEPTED", "RETRY_SCHEDULED", "DELIVERY_BLOCKED", "DELIVERY_EXHAUSTED"]},
+          "external_activation": {"enum": ["LOCAL_ONLY", "EXTERNAL_NOT_ACTIVATED"]},
+          "response_code": {"type": ["integer", "null"], "minimum": 100, "maximum": 599},
+          "receipt_digest": {"anyOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+          "error_code": {"anyOf": [{"$ref": "#/$defs/identifier"}, {"type": "null"}]},
+          "next_attempt_at": {"type": ["string", "null"], "format": "date-time"},
+          "private_payload_included": {"const": false}
+        }
+      }
+    },
+    "private_payload_included": {"const": false}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,199}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": "platform_observability_signal.v1",
+  "signal_id": "signal:nex-cx:index:negative",
+  "service_id": "nex-cx",
+  "signal_kind": "METRIC",
+  "signal_name": "cx.index.freshness",
+  "observed_at": "2026-10-08T06:00:00Z",
+  "severity": "INFO",
+  "status": "HEALTHY",
+  "correlation_key": "cx:index",
+  "trace_id": null,
+  "request_id": null,
+  "resource_type": null,
+  "resource_id": null,
+  "measurements": {},
+  "reason_codes": [],
+  "safe_attributes": {"raw_prompt": "private"},
+  "private_payload_included": false,
+  "signal_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+}

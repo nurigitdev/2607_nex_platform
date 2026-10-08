@@ -1,0 +1,24 @@
+{
+  "schema_version": "ag_notification_delivery_execution.v1",
+  "notification_mode": "internet_connected",
+  "claimed_count": 1,
+  "result_count": 1,
+  "results": [
+    {
+      "notify_id": "notify:negative",
+      "channel": "EXTERNAL_WEBHOOK",
+      "route_alias": "incident-external",
+      "attempt_number": 1,
+      "delivery_state": "BLOCKED",
+      "acceptance_status": "MOCK_ACCEPTED",
+      "external_activation": "EXTERNAL_NOT_ACTIVATED",
+      "response_code": 202,
+      "receipt_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "error_code": "EXTERNAL_NOT_ACTIVATED",
+      "next_attempt_at": null,
+      "private_payload_included": false,
+      "authorization": "Bearer private"
+    }
+  ],
+  "private_payload_included": false
+}

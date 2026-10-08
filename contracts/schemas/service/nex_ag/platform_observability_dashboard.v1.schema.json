@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ag/platform_observability_dashboard.v1.schema.json",
+  "title": "NeX AG Platform Observability Dashboard",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "observed_at", "status", "notification_mode", "external_activation", "summary", "slo_evaluations", "alerts", "notifications", "alert_state_counts", "notification_state_counts", "private_payload_included"],
+  "properties": {
+    "schema_version": {"const": "ag_platform_observability_dashboard.v1"},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "status": {"enum": ["HEALTHY", "DEGRADED"]},
+    "notification_mode": {"enum": ["local_only", "private_network", "internet_connected"]},
+    "external_activation": {"enum": ["LOCAL_ONLY", "EXTERNAL_NOT_ACTIVATED"]},
+    "summary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["slo_policy_count", "unhealthy_slo_count", "active_alert_count", "delivery_issue_count"],
+      "properties": {
+        "slo_policy_count": {"type": "integer", "minimum": 1},
+        "unhealthy_slo_count": {"type": "integer", "minimum": 0},
+        "active_alert_count": {"type": "integer", "minimum": 0},
+        "delivery_issue_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "slo_evaluations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["schema_version", "private_payload_included"],
+        "properties": {
+          "schema_version": {"const": "ag_slo_evaluation.v1"},
+          "private_payload_included": {"const": false}
+        },
+        "propertyNames": {"not": {"enum": ["raw_samples", "raw_prompt", "content", "authorization", "database_url"]}},
+        "additionalProperties": true
+      }
+    },
+    "alerts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["schema_version", "private_payload_included"],
+        "properties": {
+          "schema_version": {"const": "ag_platform_alert.v1"},
+          "private_payload_included": {"const": false}
+        },
+        "propertyNames": {"not": {"enum": ["private_content", "raw_prompt", "content", "authorization", "database_url"]}},
+        "additionalProperties": true
+      }
+    },
+    "notifications": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["notify_id", "alert_id", "idempotency_key_hash", "channel", "route_alias", "payload_hash", "delivery_state", "attempt_count", "next_attempt_at", "lease_owner", "lease_expires_at", "last_error_code", "created_at", "updated_at", "delivered_at", "external_activation", "private_payload_included"],
+        "properties": {
+          "notify_id": {"$ref": "#/$defs/identifier"},
+          "alert_id": {"$ref": "#/$defs/identifier"},
+          "idempotency_key_hash": {"$ref": "#/$defs/digest"},
+          "channel": {"enum": ["LOCAL", "INTERNAL_WEBHOOK", "EXTERNAL_WEBHOOK"]},
+          "route_alias": {"$ref": "#/$defs/identifier"},
+          "payload_hash": {"$ref": "#/$defs/digest"},
+          "delivery_state": {"enum": ["PENDING", "CLAIMED", "DELIVERED", "RETRY_WAIT", "BLOCKED", "DEAD_LETTER"]},
+          "attempt_count": {"type": "integer", "minimum": 0},
+          "next_attempt_at": {"type": ["string", "null"], "format": "date-time"},
+          "lease_owner": {"type": ["string", "null"]},
+          "lease_expires_at": {"type": ["string", "null"], "format": "date-time"},
+          "last_error_code": {"type": ["string", "null"]},
+          "created_at": {"type": "string", "format": "date-time"},
+          "updated_at": {"type": "string", "format": "date-time"},
+          "delivered_at": {"type": ["string", "null"], "format": "date-time"},
+          "external_activation": {"enum": ["LOCAL_ONLY", "EXTERNAL_NOT_ACTIVATED"]},
+          "private_payload_included": {"const": false}
+        }
+      }
+    },
+    "alert_state_counts": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "notification_state_counts": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "private_payload_included": {"const": false}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,199}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

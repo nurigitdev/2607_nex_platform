@@ -1,0 +1,21 @@
+{
+  "schema_version": "ag_alert_routing_decision.v1",
+  "alert_id": "alert:negative",
+  "alert_state": "FIRING",
+  "severity": "CRITICAL",
+  "notification_mode": "internet_connected",
+  "environment_class": "test",
+  "routing_status": "ROUTED",
+  "external_activation": "EXTERNAL_ACTIVATED",
+  "external_required": true,
+  "intents": [
+    {
+      "channel": "EXTERNAL_WEBHOOK",
+      "route_alias": "incident-external",
+      "idempotency_key_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "payload_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "endpoint": "https://private.invalid/hook"
+    }
+  ],
+  "private_payload_included": false
+}

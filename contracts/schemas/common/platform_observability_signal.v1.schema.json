@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/platform_observability_signal.v1.schema.json",
+  "title": "Platform Observability Signal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "signal_id", "service_id", "signal_kind", "signal_name",
+    "observed_at", "severity", "status", "correlation_key", "trace_id",
+    "request_id", "resource_type", "resource_id", "measurements", "reason_codes",
+    "safe_attributes", "private_payload_included", "signal_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "platform_observability_signal.v1"},
+    "signal_id": {"$ref": "#/$defs/identifier"},
+    "service_id": {"enum": ["nex-oa", "nex-ae-api", "nex-cx", "nex-mo", "nex-ag"]},
+    "signal_kind": {"enum": ["METRIC", "LOG", "TRACE", "READINESS"]},
+    "signal_name": {"$ref": "#/$defs/identifier"},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "severity": {"enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]},
+    "status": {"enum": ["HEALTHY", "DEGRADED", "FAILED", "NO_DATA"]},
+    "correlation_key": {"$ref": "#/$defs/identifier"},
+    "trace_id": {"type": ["string", "null"], "pattern": "^[0-9a-f]{32}$"},
+    "request_id": {"anyOf": [{"$ref": "#/$defs/identifier"}, {"type": "null"}]},
+    "resource_type": {"anyOf": [{"$ref": "#/$defs/identifier"}, {"type": "null"}]},
+    "resource_id": {"anyOf": [{"$ref": "#/$defs/identifier"}, {"type": "null"}]},
+    "measurements": {
+      "type": "object", "maxProperties": 32,
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_.]{0,95}$"},
+      "additionalProperties": {"type": "number"}
+    },
+    "reason_codes": {
+      "type": "array", "maxItems": 16, "uniqueItems": true,
+      "items": {"$ref": "#/$defs/identifier"}
+    },
+    "safe_attributes": {
+      "type": "object", "maxProperties": 16,
+      "propertyNames": {
+        "enum": ["environment_class", "capability", "operation", "state", "failure_code", "policy_id", "revision_fingerprint", "route_alias", "source_kind", "retryable"]
+      },
+      "additionalProperties": {"type": ["string", "boolean", "integer", "number", "null"]}
+    },
+    "private_payload_included": {"const": false},
+    "signal_digest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,199}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

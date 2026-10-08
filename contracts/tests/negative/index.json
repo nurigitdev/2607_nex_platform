@@ -990,6 +990,36 @@
       "name": "mo_model_rollout_event_raw_payload",
       "path": "tests/negative/provider/mo_model_rollout_event.raw_payload.json",
       "schema": "schemas/service/nex_mo/model_rollout_event.v1.schema.json"
+    },
+    {
+      "name": "platform_observability_signal_prompt_leak",
+      "path": "tests/negative/operations/platform_observability_signal.prompt_leak.json",
+      "schema": "schemas/common/platform_observability_signal.v1.schema.json"
+    },
+    {
+      "name": "ag_platform_slo_evaluation_raw_samples",
+      "path": "tests/negative/operations/ag_platform_slo_evaluation.raw_samples.json",
+      "schema": "schemas/service/nex_ag/platform_slo_evaluation.v1.schema.json"
+    },
+    {
+      "name": "ag_platform_alert_private_content",
+      "path": "tests/negative/operations/ag_platform_alert.private_content.json",
+      "schema": "schemas/service/nex_ag/platform_alert.v1.schema.json"
+    },
+    {
+      "name": "ag_platform_alert_routing_endpoint_leak",
+      "path": "tests/negative/operations/ag_platform_alert_routing.endpoint_leak.json",
+      "schema": "schemas/service/nex_ag/platform_alert_routing.v1.schema.json"
+    },
+    {
+      "name": "ag_platform_notification_delivery_authorization_leak",
+      "path": "tests/negative/operations/ag_platform_notification_delivery.authorization_leak.json",
+      "schema": "schemas/service/nex_ag/platform_notification_delivery.v1.schema.json"
+    },
+    {
+      "name": "ag_platform_observability_dashboard_database_url",
+      "path": "tests/negative/operations/ag_platform_observability_dashboard.database_url.json",
+      "schema": "schemas/service/nex_ag/platform_observability_dashboard.v1.schema.json"
     }
   ]
 }

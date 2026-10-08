@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ag/platform_alert.v1.schema.json",
+  "title": "NeX AG Platform Alert",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "alert_id", "dedup_key", "rule_id", "policy_id", "service_id",
+    "state", "severity", "reason_code", "occurrence_count", "first_observed_at",
+    "last_observed_at", "accountable_owner", "runbook_ref", "suppression_until",
+    "acknowledged_by_hash", "state_revision", "private_payload_included"
+  ],
+  "properties": {
+    "schema_version": {"const": "ag_platform_alert.v1"},
+    "alert_id": {"$ref": "#/$defs/identifier"},
+    "dedup_key": {"$ref": "#/$defs/digest"},
+    "rule_id": {"$ref": "#/$defs/identifier"},
+    "policy_id": {"$ref": "#/$defs/identifier"},
+    "service_id": {"enum": ["nex-oa", "nex-ae-api", "nex-cx", "nex-mo", "nex-ag"]},
+    "state": {"enum": ["PENDING", "FIRING", "ACKNOWLEDGED", "RESOLVED", "SUPPRESSED"]},
+    "severity": {"enum": ["INFO", "WARNING", "ERROR", "CRITICAL"]},
+    "reason_code": {"$ref": "#/$defs/identifier"},
+    "occurrence_count": {"type": "integer", "minimum": 1},
+    "first_observed_at": {"type": "string", "format": "date-time"},
+    "last_observed_at": {"type": "string", "format": "date-time"},
+    "accountable_owner": {"$ref": "#/$defs/identifier"},
+    "runbook_ref": {"$ref": "#/$defs/identifier"},
+    "suppression_until": {"type": ["string", "null"], "format": "date-time"},
+    "acknowledged_by_hash": {"anyOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+    "state_revision": {"type": "integer", "minimum": 1},
+    "private_payload_included": {"const": false}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,199}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}
