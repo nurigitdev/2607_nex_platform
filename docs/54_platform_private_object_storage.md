@@ -1,6 +1,6 @@
 # Private Object Storage Migration and Lifecycle
 
-Status: S146 boundary frozen at Slice 1453. Implementation is in progress;
+Status: CX document object integration complete at Slice 1456. Implementation is in progress;
 production deployment remains unapproved.
 
 ## Required Outcome
@@ -55,6 +55,14 @@ scope and content identity are one-way SHA-256 digests. The canonical form is:
 
 `v1/<payload-family>/<owner-prefix>/<owner-digest>/<content-digest>.<suffix>`
 
+Uploaded CX source bytes are the deliberate exception to the owner digest
+layout. They use `v1/source/<sha-prefix>/<sha256>.<suffix>` so the existing
+global physical deduplication by source hash remains effective. These objects
+are CX-internal and cannot be addressed through an end-user API. Authorization
+is enforced through owner-scoped `content_object` references, and a source
+object cannot be retired until its durable reference count reaches zero.
+Extracted Markdown and every other private payload remain owner scoped.
+
 CX and AE enforce owner authorization before resolving any object reference.
 Bucket policy is a second boundary, not a replacement for service-domain
 authorization. Listing is never part of an end-user API. Metadata records keep
@@ -105,6 +113,22 @@ S149 must revalidate lifecycle timing with production-sized staging data.
 
 Checkpoint Gate runs at Slice 1457 and Full Gate at Slice 1462.
 
+## Implemented CX Document Boundary
+
+- `NEX_CX_PRIVATE_STORAGE_MODE=FILESYSTEM` preserves the local compatibility
+  adapter; `S3` selects the RustFS-compatible object port and fails closed when
+  configuration is incomplete.
+- Source bytes are published immutably under a content-addressed key, verified
+  before `checksum_verified_at` is recorded, and can be re-read after process
+  memory is cleared.
+- Extracted Markdown is published under an opaque owner-scoped key. PostgreSQL
+  keeps only its URI, SHA-256, character count, extractor lineage, and status.
+- Restart hydration downloads and verifies Markdown into
+  `extraction_temp_root/hydrated`; downstream chunking and summary code sees a
+  verified temporary file, not a durable filesystem payload.
+- The filesystem paths remain compatible for local development and explicit
+  rollback, while S3 registrations do not persist a physical source path.
+
 ## Non-Drift Rules
 
 - RustFS is the deployment product; S3 compatibility is the application port.
@@ -131,4 +155,3 @@ integrity cannot be checked end to end, an owner can address another owner's
 object, a local fallback is silent in staging/production, migration can delete
 a source before verification, or evidence would disclose a credential,
 endpoint, object key, physical path, or payload.
-

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,10 @@ from nex_cx.ingestion import (
     build_upload_registration,
     restore_upload_registration_lineage,
     sha256_text,
+)
+from nex_cx.document_blob_store import (
+    CxDocumentBlobError,
+    DOCUMENT_BLOB_URI_PREFIX,
 )
 from nex_cx.lexical_index import build_tokenizer_profile
 
@@ -91,8 +96,17 @@ def hydrate_ingestion_runtime(
     )
     markdown_text: str | None = None
     if artifact is not None:
-        markdown_path = _markdown_path(artifact, storage_config=storage_config)
-        markdown_text = _read_verified_markdown(markdown_path, artifact)
+        markdown_path = _markdown_path(
+            artifact,
+            storage_config=storage_config,
+            document_id=document_id,
+        )
+        markdown_text = _read_verified_markdown(
+            markdown_path,
+            artifact,
+            store=store,
+            content_object=content_object,
+        )
         extraction = _extraction_result(
             artifact,
             content_object=content_object,
@@ -203,8 +217,17 @@ def _markdown_path(
     artifact: Mapping[str, Any],
     *,
     storage_config: CxStorageConfig,
+    document_id: str,
 ) -> Path:
     uri = artifact.get("markdown_storage_uri")
+    if isinstance(uri, str) and uri.startswith(DOCUMENT_BLOB_URI_PREFIX):
+        digest = hashlib.sha256(document_id.encode("utf-8")).hexdigest()
+        return (
+            storage_config.extraction_temp_root
+            / "hydrated"
+            / digest[:2]
+            / f"{digest}.md"
+        )
     if not isinstance(uri, str) or not uri.startswith(MARKDOWN_STORAGE_URI_PREFIX):
         raise _lineage_conflict("Persisted Markdown storage URI is invalid.")
     relative = Path(uri.removeprefix(MARKDOWN_STORAGE_URI_PREFIX))
@@ -224,16 +247,62 @@ def _markdown_path(
 def _read_verified_markdown(
     markdown_path: Path,
     artifact: Mapping[str, Any],
+    *,
+    store: ContentIngestionStore,
+    content_object: Mapping[str, Any],
 ) -> str:
-    try:
-        markdown_text = markdown_path.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise IngestionHydrationError(
-            error_code="cx.ingestion_hydration.markdown_unavailable",
-            detail="Persisted extracted Markdown is unavailable.",
-            status_code=503,
-            retryable=True,
-        ) from exc
+    uri = artifact.get("markdown_storage_uri")
+    if isinstance(uri, str) and uri.startswith(DOCUMENT_BLOB_URI_PREFIX):
+        if store.document_blob_store is None:
+            raise IngestionHydrationError(
+                error_code="cx.ingestion_hydration.object_store_unavailable",
+                detail="CX document object storage is not configured.",
+                status_code=503,
+                retryable=True,
+            )
+        ownership = content_object.get("ownership_ref")
+        if not isinstance(ownership, Mapping):
+            raise _lineage_conflict("Persisted document ownership is invalid.")
+        tenant_ref = ownership.get("tenant_ref")
+        owner_ref = ownership.get("owner_subject_ref")
+        if not isinstance(tenant_ref, Mapping) or not isinstance(owner_ref, Mapping):
+            raise _lineage_conflict("Persisted document ownership is invalid.")
+        try:
+            markdown_text = store.document_blob_store.get_markdown(
+                storage_uri=uri,
+                tenant_id=_required_string(tenant_ref.get("id"), "tenant_ref.id"),
+                subject_id=_required_string(
+                    owner_ref.get("id"), "owner_subject_ref.id"
+                ),
+                document_id=str(content_object["content_object_id"]),
+                expected_sha256=str(artifact["markdown_sha256"]),
+            )
+        except CxDocumentBlobError as exc:
+            raise IngestionHydrationError(
+                error_code=exc.error_code,
+                detail=exc.detail,
+                status_code=exc.status_code,
+                retryable=exc.retryable,
+            ) from exc
+        if markdown_text is None:
+            raise IngestionHydrationError(
+                error_code="cx.ingestion_hydration.markdown_unavailable",
+                detail="Persisted extracted Markdown is unavailable.",
+                status_code=503,
+                retryable=True,
+            )
+        markdown_path.parent.mkdir(parents=True, exist_ok=True)
+        markdown_path.write_text(markdown_text, encoding="utf-8")
+    else:
+        try:
+            markdown_text = markdown_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise IngestionHydrationError(
+                error_code="cx.ingestion_hydration.markdown_unavailable",
+                detail="Persisted extracted Markdown is unavailable.",
+                status_code=503,
+                retryable=True,
+            ) from exc
     if sha256_text(markdown_text) != artifact.get("markdown_sha256"):
         raise _lineage_conflict("Persisted extracted Markdown failed integrity validation.")
     return markdown_text

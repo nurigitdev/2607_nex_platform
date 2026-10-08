@@ -38,6 +38,12 @@ from nex_cx.authorization import (
     authorize_cx_owner_request,
 )
 from nex_cx.document_library import build_document_detail_projection
+from nex_cx.document_blob_store import (
+    CxDocumentBlobError,
+    CxDocumentBlobStore,
+    DOCUMENT_BLOB_BACKEND,
+    source_object_key,
+)
 from nex_cx.document_summary_storage import (
     load_document_summary_text,
     persist_document_summary_text,
@@ -96,6 +102,7 @@ CX_SOURCE_FILE_MATERIALIZATION_RECEIPT_SCHEMA_VERSION = (
 CX_SOURCE_READER_SCHEMA_VERSION = "cx_source_reader.v1"
 SOURCE_READER_RUNTIME_MEMORY = "runtime_memory"
 SOURCE_READER_MATERIALIZED_LOCAL_FILE = "materialized_local_source_file"
+SOURCE_READER_S3_OBJECT = "s3_object_source"
 OWNERSHIP_COMPATIBILITY_MODE = "legacy_owner_fields_mapped_to_oa_subject_refs"
 UPLOAD_OWNER_RESOLVER_DISABLED = "disabled"
 UPLOAD_OWNER_RESOLVER_VERIFY = "verify"
@@ -132,6 +139,7 @@ class CxStorageConfig:
     bm25_tokenizer: str
     bm25_tokenizer_fallback: str
     max_upload_size_bytes: int = DEFAULT_MAX_UPLOAD_SIZE_BYTES
+    private_storage_mode: str = "FILESYSTEM"
 
 
 @dataclass
@@ -158,6 +166,7 @@ class ContentIngestionStore:
     )
     document_content_refs: dict[str, dict[str, str]] = field(default_factory=dict)
     private_summary_text_store: CxPrivateTextStore | None = None
+    document_blob_store: CxDocumentBlobStore | None = None
 
     def save_upload_registration(
         self,
@@ -235,7 +244,11 @@ class ContentIngestionStore:
         if source_text is not None:
             materialized_source = source_text.encode("utf-8")
         if materialized_source is not None:
-            verified_at = materialize_local_source_bytes(record, materialized_source)
+            verified_at = materialize_source_bytes(
+                record,
+                materialized_source,
+                document_blob_store=self.document_blob_store,
+            )
             self.content_repository.mark_source_file_checksum_verified(
                 source_file["source_file_id"],
                 verified_at=verified_at,
@@ -302,7 +315,11 @@ class ContentIngestionStore:
         if materialized_source is None:
             return
         refs = self.document_content_refs.get(record["document_id"])
-        verified_at = materialize_local_source_bytes(record, materialized_source)
+        verified_at = materialize_source_bytes(
+            record,
+            materialized_source,
+            document_blob_store=self.document_blob_store,
+        )
         if refs is not None:
             self.content_repository.mark_source_file_checksum_verified(
                 refs["source_file_id"],
@@ -840,6 +857,9 @@ def build_storage_config(environ: dict[str, str] | None = None) -> CxStorageConf
             default=DEFAULT_MAX_UPLOAD_SIZE_BYTES,
             field_name="NEX_CX_MAX_UPLOAD_SIZE_BYTES",
         ),
+        private_storage_mode=str(
+            env.get("NEX_CX_PRIVATE_STORAGE_MODE", "FILESYSTEM")
+        ).strip().upper(),
     )
 
 
@@ -1375,8 +1395,12 @@ def align_upload_registration_to_source_file(
         "stored_filename": source_file["stored_filename"],
         "stored_extension": source_file["stored_extension"],
     }
+    if source_file["content_type"] != record["content_type"]:
+        storage["source_content_type"] = source_file["content_type"]
     if source_file.get("source_storage_path"):
         storage["source_storage_path"] = source_file["source_storage_path"]
+    else:
+        storage.pop("source_storage_path", None)
     return {**record, "storage": storage}
 
 
@@ -1581,6 +1605,25 @@ def run_text_extraction_job(
     markdown_path = Path(document["storage"]["extracted_markdown_path"])
     write_extracted_markdown(markdown_path, markdown_text)
     extracted_sha256 = sha256_text(markdown_text)
+    markdown_storage_uri: str | None = None
+    if store.document_blob_store is not None:
+        ownership = document["ownership"]
+        try:
+            receipt = store.document_blob_store.put_markdown(
+                tenant_id=str(ownership["tenant_id"]),
+                subject_id=str(ownership["owner_user_id"]),
+                document_id=str(document["document_id"]),
+                markdown_text=markdown_text,
+                expected_sha256=extracted_sha256,
+            )
+        except CxDocumentBlobError as exc:
+            raise IngestionError(
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                detail=exc.detail,
+                retryable=exc.retryable,
+            ) from exc
+        markdown_storage_uri = receipt.storage_uri
     now = _utc_now()
     result = {
         "extraction_schema_version": "cx_text_extraction.v1",
@@ -1592,6 +1635,7 @@ def run_text_extraction_job(
         "source_sha256": document["source_sha256"],
         "extracted_markdown_sha256": extracted_sha256,
         "extracted_markdown_path": str(markdown_path),
+        "extracted_markdown_storage_uri": markdown_storage_uri,
         "markdown_char_count": len(markdown_text),
         "markdown_preview": markdown_text[:120],
         "extracted_markdown_normalization": normalization,
@@ -1646,7 +1690,12 @@ def source_bytes_for_extraction(
             ) from exc
         raise
     return source_bytes, build_source_reader_metadata(
-        source=SOURCE_READER_MATERIALIZED_LOCAL_FILE,
+        source=(
+            SOURCE_READER_S3_OBJECT
+            if document["storage"].get("source_storage_backend")
+            == DOCUMENT_BLOB_BACKEND
+            else SOURCE_READER_MATERIALIZED_LOCAL_FILE
+        ),
         runtime_source_bytes_used=False,
         fallback_used=True,
     )
@@ -1672,11 +1721,12 @@ def read_verified_materialized_source_bytes(
             error_code="cx.source_file_not_found",
             detail="Source-file metadata was not found for extraction fallback.",
         )
-    if source_file.get("storage_backend") != "local_filesystem":
+    storage_backend = source_file.get("storage_backend")
+    if storage_backend not in {"local_filesystem", DOCUMENT_BLOB_BACKEND}:
         raise IngestionError(
             status_code=409,
             error_code="cx.source_reader_backend_unsupported",
-            detail="Extraction source fallback only supports local_filesystem storage.",
+            detail="Extraction source fallback does not support this storage backend.",
         )
     if not isinstance(source_file.get("checksum_verified_at"), str):
         raise IngestionError(
@@ -1697,24 +1747,59 @@ def read_verified_materialized_source_bytes(
             error_code="cx.source_storage_key_invalid",
             detail="source storage key must be relative and safe.",
         )
-    source_path = storage_config.source_root / storage_key
-    if not _is_relative_to(
-        source_path.resolve(strict=False),
-        storage_config.source_root.resolve(strict=False),
-    ):
-        raise IngestionError(
-            status_code=422,
-            error_code="cx.source_storage_key_invalid",
-            detail="source storage key must stay under the configured source root.",
-        )
-    if not source_path.exists():
+    expected_size = source_file.get("size_bytes")
+    if not isinstance(expected_size, int) or isinstance(expected_size, bool):
         raise IngestionError(
             status_code=409,
-            error_code="cx.source_file_missing",
-            detail="Verified source file was not found on local storage.",
+            error_code="cx.source_size_invalid",
+            detail="Verified source file size metadata is invalid.",
         )
-    source_bytes = source_path.read_bytes()
-    expected_size = source_file.get("size_bytes")
+    if storage_backend == DOCUMENT_BLOB_BACKEND:
+        if store.document_blob_store is None:
+            raise IngestionError(
+                status_code=503,
+                error_code="cx.source_object_store_unavailable",
+                detail="CX source object storage is not configured.",
+                retryable=True,
+            )
+        try:
+            source_bytes = store.document_blob_store.get_source(
+                storage_key=storage_key,
+                expected_sha256=str(source_file["source_sha256"]),
+                expected_size_bytes=expected_size,
+                max_size_bytes=storage_config.max_upload_size_bytes,
+            )
+        except CxDocumentBlobError as exc:
+            raise IngestionError(
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                detail=exc.detail,
+                retryable=exc.retryable,
+            ) from exc
+        if source_bytes is None:
+            raise IngestionError(
+                status_code=409,
+                error_code="cx.source_file_missing",
+                detail="Verified source object was not found.",
+            )
+    else:
+        source_path = storage_config.source_root / storage_key
+        if not _is_relative_to(
+            source_path.resolve(strict=False),
+            storage_config.source_root.resolve(strict=False),
+        ):
+            raise IngestionError(
+                status_code=422,
+                error_code="cx.source_storage_key_invalid",
+                detail="source storage key must stay under the configured source root.",
+            )
+        if not source_path.exists():
+            raise IngestionError(
+                status_code=409,
+                error_code="cx.source_file_missing",
+                detail="Verified source file was not found on local storage.",
+            )
+        source_bytes = source_path.read_bytes()
     if isinstance(expected_size, int) and len(source_bytes) != expected_size:
         raise IngestionError(
             status_code=409,
@@ -1763,6 +1848,57 @@ def write_extracted_markdown(path: Path, markdown_text: str) -> None:
 
 def materialize_local_source_file(record: dict[str, Any], source_text: str) -> str:
     return materialize_local_source_bytes(record, source_text.encode("utf-8"))
+
+
+def materialize_source_bytes(
+    record: dict[str, Any],
+    source_bytes: bytes,
+    *,
+    document_blob_store: CxDocumentBlobStore | None,
+) -> str:
+    if len(source_bytes) != int(record["size_bytes"]):
+        raise IngestionError(
+            status_code=409,
+            error_code="cx.source_size_mismatch",
+            detail="Source content size did not match upload registration.",
+        )
+    storage = record["storage"]
+    if storage["source_storage_backend"] == "local_filesystem":
+        return materialize_local_source_bytes(record, source_bytes)
+    if storage["source_storage_backend"] != DOCUMENT_BLOB_BACKEND:
+        raise IngestionError(
+            status_code=422,
+            error_code="cx.source_storage_backend_unsupported",
+            detail="Source materialization does not support this storage backend.",
+        )
+    if document_blob_store is None:
+        raise IngestionError(
+            status_code=503,
+            error_code="cx.source_object_store_unavailable",
+            detail="CX source object storage is not configured.",
+            retryable=True,
+        )
+    try:
+        receipt = document_blob_store.put_source(
+            storage_key=str(storage["source_storage_key"]),
+            payload=source_bytes,
+            expected_sha256=str(record["source_sha256"]),
+            content_type=str(storage.get("source_content_type", record["content_type"])),
+        )
+    except CxDocumentBlobError as exc:
+        raise IngestionError(
+            status_code=exc.status_code,
+            error_code=exc.error_code,
+            detail=exc.detail,
+            retryable=exc.retryable,
+        ) from exc
+    if receipt.size_bytes != int(record["size_bytes"]):
+        raise IngestionError(
+            status_code=409,
+            error_code="cx.source_size_mismatch",
+            detail="Source object size did not match upload registration.",
+        )
+    return _utc_now()
 
 
 def materialize_local_source_bytes(record: dict[str, Any], source_bytes: bytes) -> str:
@@ -1823,24 +1959,42 @@ def storage_paths_for_document(
     source_file_id: str | None = None,
     created_at: str | None = None,
 ) -> dict[str, str]:
-    date_partition = storage_date_partition(created_at)
     shard_one = source_sha256[:2]
-    shard_two = source_sha256[2:4]
     stored_extension = stored_extension_for(filename)
     storage_object_id = source_file_id or document_id
     stored_filename = f"{storage_object_id}{stored_extension}"
-    source_storage_key = f"{date_partition}/{shard_one}/{shard_two}/{stored_filename}"
-    return {
-        "source_storage_backend": "local_filesystem",
+    mode = storage_config.private_storage_mode.strip().upper()
+    if mode not in {"FILESYSTEM", "S3"}:
+        raise IngestionError(
+            status_code=500,
+            error_code="cx.private_storage_mode_invalid",
+            detail="CX private storage mode must be FILESYSTEM or S3.",
+        )
+    if mode == "S3":
+        source_storage_key = source_object_key(source_sha256, filename)
+        source_storage_backend = DOCUMENT_BLOB_BACKEND
+        markdown_root = storage_config.extraction_temp_root / "hydrated"
+    else:
+        date_partition = storage_date_partition(created_at)
+        shard_two = source_sha256[2:4]
+        source_storage_key = f"{date_partition}/{shard_one}/{shard_two}/{stored_filename}"
+        source_storage_backend = "local_filesystem"
+        markdown_root = storage_config.extracted_markdown_root
+    paths = {
+        "source_storage_backend": source_storage_backend,
         "source_storage_key": source_storage_key,
-        "source_storage_path": str(storage_config.source_root / source_storage_key),
         "stored_filename": stored_filename,
         "stored_extension": stored_extension,
         "extracted_markdown_path": str(
-            storage_config.extracted_markdown_root / shard_one / f"{document_id}.md"
+            markdown_root / shard_one / f"{document_id}.md"
         ),
         "extraction_temp_path": str(storage_config.extraction_temp_root / document_id),
     }
+    if mode == "FILESYSTEM":
+        paths["source_storage_path"] = str(
+            storage_config.source_root / source_storage_key
+        )
+    return paths
 
 
 def storage_date_partition(created_at: str | None) -> str:

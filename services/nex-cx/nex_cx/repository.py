@@ -3038,21 +3038,29 @@ def build_source_file_record(upload_registration: dict[str, Any]) -> dict[str, A
     storage = upload_registration["storage"]
     source_sha256 = upload_registration["source_sha256"]
     source_file_id = str(uuid5(NAMESPACE_URL, f"cx-source-file:{source_sha256}"))
-    return {
+    backend = storage["source_storage_backend"]
+    storage_uri = (
+        f"cx-private://{backend}/{storage['source_storage_key']}"
+        if backend != "local_filesystem"
+        else f"local://cx/source-files/{storage['source_storage_key']}"
+    )
+    record = {
         "source_file_id": source_file_id,
         "source_sha256": source_sha256,
         "size_bytes": upload_registration["size_bytes"],
         "content_type": upload_registration["content_type"],
-        "storage_uri": f"local://cx/source-files/{storage['source_storage_key']}",
-        "storage_backend": storage["source_storage_backend"],
+        "storage_uri": storage_uri,
+        "storage_backend": backend,
         "storage_key": storage["source_storage_key"],
-        "source_storage_path": storage["source_storage_path"],
         "stored_filename": storage["stored_filename"],
         "stored_extension": storage["stored_extension"],
         "first_seen_trace_id": upload_registration["trace_id"],
         "checksum_verified_at": None,
         "created_at": upload_registration["created_at"],
     }
+    if backend == "local_filesystem":
+        record["source_storage_path"] = storage["source_storage_path"]
+    return record
 
 
 def build_content_object_record(
@@ -3115,7 +3123,10 @@ def build_extraction_artifact_record(
         "extractor_name": extractor_name,
         "extractor_version": extractor_version,
         "markdown_sha256": markdown_sha256,
-        "markdown_storage_uri": markdown_storage_uri_from_path(
+        "markdown_storage_uri": extraction_result.get(
+            "extracted_markdown_storage_uri"
+        )
+        or markdown_storage_uri_from_path(
             str(extraction_result["extracted_markdown_path"])
         ),
         "markdown_char_count": extraction_result["markdown_char_count"],

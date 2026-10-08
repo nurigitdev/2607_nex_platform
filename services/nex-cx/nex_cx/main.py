@@ -24,6 +24,7 @@ from nex_cx.async_generation_recovery import (
 from nex_cx.document_intelligence_orchestration import (
     register_document_intelligence_routes,
 )
+from nex_cx.document_blob_store import build_document_blob_store
 from nex_cx.document_library import register_document_library_routes
 from nex_cx.embedding_index import (
     DEFAULT_EMBEDDING_ALIAS,
@@ -314,11 +315,13 @@ app = build_service_app(
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
 CX_PROMPT_STORE = build_default_cx_prompt_store(app)
 CX_STORAGE_CONFIG = build_storage_config()
+CX_DOCUMENT_BLOB_STORE = build_document_blob_store()
 CX_CONTENT_REPOSITORY = build_cx_content_repository(
     SERVICE_PERSISTENCE,
     storage_config=CX_STORAGE_CONFIG,
 )
 DEFAULT_INGESTION_STORE.content_repository = CX_CONTENT_REPOSITORY
+DEFAULT_INGESTION_STORE.document_blob_store = CX_DOCUMENT_BLOB_STORE
 CX_PROCESSING_RUN_REPOSITORY: CxContentRepository | None = (
     CX_CONTENT_REPOSITORY
     if SERVICE_PERSISTENCE.mode == PERSISTENCE_MODE_POSTGRES
