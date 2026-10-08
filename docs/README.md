@@ -1587,6 +1587,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1471`](slices/1471_s147_model_rollout_protected_acceptance.md) | `S147-009` Prove actual DGX providers/runtime plus `nex_mo_test` rollout restart/API rehearsal, fail-closed candidate admission, alias immutability, and zero-residue cleanup. |
 | [`Slice 1472`](slices/1472_s147_model_serving_rollout_closure.md) | `S147-010` Publish rollout contracts and runbook, bind protected evidence, pass Full Gate, close S147, and activate S148. |
 | [`Slice 1473`](slices/1473_s148_observability_incident_boundary.md) | `S148-001` Freeze signal correlation, SLI/SLO, alert, delivery-zone, persistence, privacy, single-host, and acceptance boundaries. |
+| [`Slice 1474`](slices/1474_s148_signal_correlation.md) | `S148-002` Add the shared metadata-only metric/log/trace/readiness envelope and trace-first bounded correlation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

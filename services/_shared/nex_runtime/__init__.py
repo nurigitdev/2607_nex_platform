@@ -55,6 +55,19 @@ from .cross_service_trace import (
     build_cross_service_trace_timeline,
     validate_cross_service_trace_source_projection,
 )
+from .observability_signals import (
+    OBSERVABILITY_CORRELATION_SCHEMA_VERSION,
+    OBSERVABILITY_FORBIDDEN_KEY_FRAGMENTS,
+    OBSERVABILITY_SAFE_ATTRIBUTE_FIELDS,
+    OBSERVABILITY_SERVICE_IDS,
+    OBSERVABILITY_SEVERITIES,
+    OBSERVABILITY_SIGNAL_KINDS,
+    OBSERVABILITY_SIGNAL_SCHEMA_VERSION,
+    OBSERVABILITY_SIGNAL_STATUSES,
+    ObservabilitySignal,
+    ObservabilitySignalError,
+    correlate_observability_signals,
+)
 from .env import load_env_file, merge_pythonpath
 from .deployment_artifacts import (
     ARTIFACT_KINDS,

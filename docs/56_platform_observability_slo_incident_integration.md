@@ -1,6 +1,7 @@
 # Platform Observability, SLO, Alerting, and Incident Integration
 
-Status: S148 active through Slice 1473. The boundary is frozen; implementation,
+Status: S148 active through Slice 1474. The boundary and redacted signal
+correlation are complete; SLI/SLO implementation,
 protected PostgreSQL evidence, and external endpoint activation remain pending.
 
 ## Outcome
