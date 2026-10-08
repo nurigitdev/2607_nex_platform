@@ -1589,6 +1589,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1473`](slices/1473_s148_observability_incident_boundary.md) | `S148-001` Freeze signal correlation, SLI/SLO, alert, delivery-zone, persistence, privacy, single-host, and acceptance boundaries. |
 | [`Slice 1474`](slices/1474_s148_signal_correlation.md) | `S148-002` Add the shared metadata-only metric/log/trace/readiness envelope and trace-first bounded correlation. |
 | [`Slice 1475`](slices/1475_s148_sli_slo_evaluation.md) | `S148-003` Add versioned service SLI/SLO policies, burn-rate evaluation, ownership, runbooks, and fail-closed no-data semantics. |
+| [`Slice 1476`](slices/1476_s148_alert_lifecycle_routing.md) | `S148-004` Add grouped alert lifecycle, acknowledgement, suppression, recovery, environment-aware routing, and honest external activation. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
