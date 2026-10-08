@@ -1,0 +1,91 @@
+{
+  "schema_version": "production_evidence.v1",
+  "evidence_id": "s145-postgres-recovery-e432c38c",
+  "requirement_id": "S145",
+  "control_ids": [
+    "postgresql_logical_backup_restore",
+    "postgresql_cluster_pitr",
+    "operator_controlled_cold_recovery"
+  ],
+  "release_candidate_id": "s145-single-host-recovery-e432c38c",
+  "environment_class": "protected_test",
+  "execution_mode": "protected",
+  "actual_execution": true,
+  "started_at": "2026-10-07T23:42:51.674000+00:00",
+  "completed_at": "2026-10-07T23:43:05+00:00",
+  "source_revision": "e432c38ce78e215dc0735f178178d24c4bd4d9bc",
+  "artifact_digests": [
+    "sha256:0a33a5aa638fcd30e248b2a0730d9958f45ee68eac7c252e62a71694d33fe342",
+    "sha256:c1d8beee8088c11b3a355f1ace3d26d8d0a37a1bbf681724df317d4faf7d835c"
+  ],
+  "configuration_digest": "sha256:05833050c88a11a412596f7f0fe3ef8cc2353bc54315195fa309d0e9051d429e",
+  "dependency_evidence_digests": [
+    "sha256:257810a76069c8814b7a1ba1cec69cc5b96f935866f7a95d7417be048941fd83",
+    "sha256:cedac783308fb720c09fabf1ef5fb3789b9d80845c81498ad9bc4e161a074d52"
+  ],
+  "checks": {
+    "actual_five_test_databases": true,
+    "source_read_only": true,
+    "logical_backup_restore": true,
+    "verified_catalogs": true,
+    "physical_basebackup": true,
+    "wal_archive_replay": true,
+    "pitr_paused_without_promotion": true,
+    "five_database_fingerprints_match": true,
+    "migration_inventory_matches": true,
+    "required_extensions_match": true,
+    "credential_values_redacted": true,
+    "source_marker_absent": true,
+    "temporary_process_residue_zero": true,
+    "automatic_failover_disabled": true,
+    "production_contact_absent": true,
+    "production_approval_absent": true
+  },
+  "metrics": {
+    "database_count": 5,
+    "migration_count": 95,
+    "table_count": 121,
+    "required_extension_count": 3,
+    "wal_segment_count": 6,
+    "elapsed_seconds": 13.326,
+    "protected_check_count": 10,
+    "protected_pytest_passed": 3,
+    "protected_pytest_skipped": 0
+  },
+  "privacy": {
+    "raw_value_count": 0,
+    "violation_count": 0
+  },
+  "rollback": {
+    "plan_id": "s145-single-host-cold-recovery-rollback",
+    "owner": "postgres-operator-and-platform-integration",
+    "trigger_conditions": [
+      "restore-verification-failure",
+      "migration-or-extension-mismatch",
+      "recovery-target-mismatch"
+    ],
+    "last_known_good_artifacts": [
+      "sha256:0a33a5aa638fcd30e248b2a0730d9958f45ee68eac7c252e62a71694d33fe342",
+      "sha256:c1d8beee8088c11b3a355f1ace3d26d8d0a37a1bbf681724df317d4faf7d835c"
+    ],
+    "last_known_good_configuration": "sha256:05833050c88a11a412596f7f0fe3ef8cc2353bc54315195fa309d0e9051d429e",
+    "data_migration_strategy": "isolated-restore-no-source-mutation",
+    "drill_status": "PASS",
+    "recovery_metrics": {
+      "logical_restore_verified": true,
+      "cluster_pitr_verified": true,
+      "operator_cutover_required": true
+    },
+    "residue_counts": {
+      "source_marker_table_count": 0,
+      "temporary_process_count": 0,
+      "production_resource_count": 0
+    }
+  },
+  "residue": {
+    "source_marker_table_count": 0,
+    "temporary_process_count": 0,
+    "production_resource_count": 0
+  },
+  "evidence_digest": "sha256:12bc27e0bb051671ee8b99632e0b646b5e94770043b7035919de599e7832944d"
+}

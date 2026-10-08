@@ -47,6 +47,7 @@ documents and show the current build direction directly.
 | [50 Platform Reproducible Deployment Packaging](50_platform_reproducible_deployment_packaging.md) | Freezes S142 artifact ownership, reproducible build rules, environment topology, lifecycle acceptance, and S143 handoff. |
 | [51 Platform Production Configuration, Secret, and TLS Lifecycle](51_platform_production_configuration_secret_tls.md) | Closes S143 with fail-closed configuration, owner-scoped external secrets, managed TLS, single-host Compose acceptance, and S144-S147 handoff. |
 | [52 OA Production Trust, Key Custody, and Enterprise Federation](52_oa_production_trust_key_custody_federation.md) | Freezes S144 external Transit custody, rotation/JWKS/introspection, enterprise OIDC federation, single-host acceptance, and S148 handoff. |
+| [53 PostgreSQL Production Resilience and Disaster Recovery](53_platform_postgresql_resilience_disaster_recovery.md) | Closes S145 with five-database logical recovery, base-backup/WAL PITR, operator-controlled cold cutover, protected evidence, and S148/S149 handoff. |
 
 Recommended first read:
 
@@ -1561,6 +1562,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1449`](slices/1449_s145_postgresql_backup_worker.md) | `S145-007` Add exclusive restart-safe backup execution, durable state, stale-run recovery, bounded retry, and terminal idempotency. |
 | [`Slice 1450`](slices/1450_s145_postgresql_compose_rehearsal.md) | `S145-008` Add an opt-in hardened PostgreSQL operator profile, separate operations image, five-service deterministic rehearsal, and actual container tool check. |
 | [`Slice 1451`](slices/1451_s145_postgresql_recovery_acceptance.md) | `S145-009` Back up five real test databases, restore them into PostgreSQL 16, replay archived WAL to a paused target, and prove source/readiness cleanup. |
+| [`Slice 1452`](slices/1452_s145_postgresql_resilience_closure.md) | `S145-010` Bind metadata-only protected evidence, publish the single-host recovery runbook, pass Full Gate, close S145, and activate S146. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

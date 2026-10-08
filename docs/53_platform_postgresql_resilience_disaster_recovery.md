@@ -1,6 +1,6 @@
 # PostgreSQL Production Resilience and Disaster Recovery
 
-Status: S145 active from Slice 1443. Production deployment remains
+Status: S145 complete through Slice 1452. Production deployment remains
 unapproved.
 
 ## Required Outcome
@@ -79,8 +79,9 @@ rehearsal values, and S149 must reassess them with production-sized data.
 | `restart_safe_backup_worker` | Platform integration | `1449` | Add exclusive execution, durable state, stale-run recovery, bounded retries, and safe exit codes. |
 | `compose_rehearsal_acceptance_closure` | Platform integration and five database owners | `1450`, `1451`, `1452` | Bind Compose operations, actual restore/PITR evidence, runbook, attestation, and Full Gate. |
 
-All gaps begin `OPEN`. Unit tests and command-plan inspection cannot close the
-protected restore and PITR acceptance gap.
+All gaps began `OPEN`. Unit tests and command-plan inspection could not close
+the protected restore and PITR acceptance gap. Slice 1452 closes all eight
+gaps after the protected five-database restore/PITR evidence was accepted.
 
 Slice 1444 closes `backup_policy_contract`. The machine-validated policy binds
 all five owners to distinct libpq services, PostgreSQL 16-compatible tools,
@@ -144,6 +145,15 @@ planning alone could not expose: PostgreSQL supplies `RECOVERYXLOG` or
 `RECOVERYHISTORY` as the restore destination, and `recovery_target_time` needs
 PostgreSQL timestamp syntax rather than RFC3339 `T...Z` syntax.
 
+Slice 1452 closes S145. The metadata-only attestation binds the accepted
+source revision, policy, hardened operator profile, recovery image definition,
+predecessor evidence, 10 protected checks, five database fingerprints, six WAL
+segments, measured duration, and zero residue without tracking credentials,
+raw rows, backup content, or physical paths. The operator runbook separates
+service-local logical restore from whole-cluster PITR and requires recovery to
+pause until an explicit operator cutover decision. All eight deterministic
+audits and 64 audit checks are aggregated by the closure runner.
+
 ## Slice Sequence
 
 | Slice | Scope |
@@ -191,3 +201,30 @@ archive can be admitted, WAL retention cannot cover a retained base backup, or
 the isolated cluster cannot be removed cleanly. Also stop on any requirement
 for privileged application containers, Docker socket mounting, automatic
 promotion, production contact, or silent SQLite/memory fallback.
+
+## Closure Decision
+
+S145 is complete for the accepted single-host Docker Compose cold-recovery
+boundary. The actual protected run used all five PostgreSQL test databases as
+read-only sources and an ephemeral PostgreSQL 16 target. Logical restore,
+catalog verification, physical base backup, WAL replay, paused PITR, migration
+and extension fidelity, source cleanup, and process cleanup all passed.
+
+High availability, streaming replication, automatic leader election,
+automatic promotion, zero-downtime cutover, production contact, and production
+deployment approval remain outside this result. The 13.326-second test-sized
+run is not a production-sized RTO claim. Slice 1452 Full Gate passed with
+12,767 tests, 98.03% statement coverage, 96.96% branch coverage, and contract
+validation at 166 schemas, 228 examples, 196 negative examples, and 7 OpenAPI
+files.
+
+Completion signal: Met.
+
+## S146, S148, and S149 Handoff
+
+S146 is the next implementation requirement and moves CX/AE private payloads
+behind production object-storage ports. S148 may consume redacted backup age,
+WAL archive lag, restore result, RPO/RTO, and incident signals only after S146
+and S147 also close. S149 must rerun service restore and whole-cluster PITR
+with production-sized staging data, failure injection, measured budgets, and
+rollback before S150 can consider a go-live decision.
