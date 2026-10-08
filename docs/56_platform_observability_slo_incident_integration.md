@@ -168,7 +168,7 @@ accepts this limitation explicitly; it is not production host-down evidence.
 | `1475` | Implement service-owned SLI/SLO policies, window evaluation, burn rate, and no-data semantics. |
 | `1476` | Implement alert lifecycle, grouping, deduplication, suppression, and routing decisions. |
 | `1477` | Persist alert/outbox/attempt state, prove restart recovery, and run Checkpoint Gate. |
-| `1478` | Implement local, private-network, and internet-connected mock delivery with retry and receipts. |
+| `1478` | **Complete.** Implemented local, private-network, and internet-connected mock delivery with retry and receipts. |
 | `1479` | Wire protected AG APIs and the integrated operations/dashboard projection. |
 | `1480` | Run actual `nex_ag_test` migration, restart-safe processing, and zero-residue protected smoke. |
 | `1481` | Publish schemas/OpenAPI, privacy fixtures, mock incident acceptance, and operations evidence. |
