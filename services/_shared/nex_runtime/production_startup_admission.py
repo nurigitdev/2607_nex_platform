@@ -11,6 +11,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from .production_configuration import (
+    PRODUCTION_PUBLIC_CONNECTION_COUNT,
+    PRODUCTION_SECRET_BINDING_COUNT,
     ProductionConfigurationManifest,
     load_production_configuration_manifest,
 )
@@ -147,10 +149,10 @@ def production_startup_admission_projection(
         or admission.status != "ADMITTED_FOR_SECRET_MATERIALIZATION"
         or re.fullmatch(r"sha256:[0-9a-f]{64}", admission.configuration_digest)
         is None
-        or admission.secret_reference_count != 16
-        or admission.public_connection_count != 9
+        or admission.secret_reference_count != PRODUCTION_SECRET_BINDING_COUNT
+        or admission.public_connection_count != PRODUCTION_PUBLIC_CONNECTION_COUNT
         or admission.control_environment_count != 6
-        or admission.https_endpoint_count != 9
+        or admission.https_endpoint_count != PRODUCTION_PUBLIC_CONNECTION_COUNT
         or admission.raw_secret_environment_count != 0
     ):
         raise ProductionStartupAdmissionError(
@@ -192,10 +194,10 @@ def external_startup_admission_projection(
         or admission.status != "ADMITTED_FOR_SECRET_MATERIALIZATION"
         or re.fullmatch(r"sha256:[0-9a-f]{64}", admission.configuration_digest)
         is None
-        or admission.secret_reference_count != 16
-        or admission.public_connection_count != 9
+        or admission.secret_reference_count != PRODUCTION_SECRET_BINDING_COUNT
+        or admission.public_connection_count != PRODUCTION_PUBLIC_CONNECTION_COUNT
         or admission.control_environment_count != 6
-        or admission.https_endpoint_count != 9
+        or admission.https_endpoint_count != PRODUCTION_PUBLIC_CONNECTION_COUNT
         or admission.raw_secret_environment_count != 0
     ):
         raise ProductionStartupAdmissionError(

@@ -30,7 +30,7 @@ def test_actual_local_secret_rotation_tls_and_cleanup_rehearsal() -> None:
     assert result["status"] == "PASS", result
     assert all(result["checks"].values())
     assert result["summary"] == {
-        "secret_file_count": 32,
+        "secret_file_count": 40,
         "candidate_owner_process_count": 5,
         "rollback_owner_process_count": 5,
         "tls_probe_count": 3,

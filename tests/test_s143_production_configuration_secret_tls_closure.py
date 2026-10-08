@@ -18,7 +18,7 @@ def test_repository_closure_passes_and_hands_off_to_s144_s147() -> None:
         "check_count": 15,
         "passed_check_count": 15,
         "required_environment_count": 25,
-        "secret_reference_count": 16,
+        "secret_reference_count": 20,
         "compose_service_count": 9,
         "protected_database_count": 5,
         "protected_provider_count": 3,
@@ -89,7 +89,7 @@ def test_summary_and_main_branches(monkeypatch, capsys) -> None:
         "summary": {
             "passed_audit_count": 7,
             "audit_count": 7,
-            "secret_reference_count": 16,
+            "secret_reference_count": 20,
             "compose_service_count": 9,
             "protected_database_count": 5,
             "protected_provider_count": 3,
@@ -99,7 +99,7 @@ def test_summary_and_main_branches(monkeypatch, capsys) -> None:
     }
     assert closure.summary_line(passing) == (
         "s143_production_configuration_secret_tls_closure=pass audits=7/7 "
-        "secrets=16 compose=9 databases=5 providers=3 routes=9 next=S144"
+        "secrets=20 compose=9 databases=5 providers=3 routes=9 next=S144"
     )
     failing = {"status": "FAIL", "failed_checks": ["one"]}
     assert closure.summary_line(failing) == (

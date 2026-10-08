@@ -37,6 +37,8 @@ _PUBLIC_ENDPOINTS = {
     ),
     "NEX_MO_REMOTE_RERANKER_URL": "https://reranker.models.example/v1/rerank",
     "NEX_MO_VLLM_BASE_URL": "https://generation.models.example/v1",
+    "NEX_CX_OBJECT_STORAGE_ENDPOINT": "https://object.platform.example",
+    "NEX_AE_OBJECT_STORAGE_ENDPOINT": "https://object.platform.example",
 }
 _CONTROL_VALUES = {
     "NEX_CONFIG_GENERATION": "config:2026-10-07.1",
@@ -169,4 +171,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
-

@@ -31,11 +31,19 @@ _SECRET_ENV_NAMES = (
     *DATABASE_ENV_NAMES,
     *SIGNED_TRUST_ENV_NAMES,
     *(name for name in LIVE_PROVIDER_ENV_NAMES if name.endswith("_API_KEY")),
+    "NEX_CX_OBJECT_STORAGE_ACCESS_KEY",
+    "NEX_CX_OBJECT_STORAGE_SECRET_KEY",
+    "NEX_AE_OBJECT_STORAGE_ACCESS_KEY",
+    "NEX_AE_OBJECT_STORAGE_SECRET_KEY",
 )
 _PUBLIC_CONNECTION_ENV_NAMES = (
     *SERVICE_ENDPOINT_ENV_NAMES,
     *(name for name in LIVE_PROVIDER_ENV_NAMES if not name.endswith("_API_KEY")),
+    "NEX_CX_OBJECT_STORAGE_ENDPOINT",
+    "NEX_AE_OBJECT_STORAGE_ENDPOINT",
 )
+PRODUCTION_SECRET_BINDING_COUNT = len(_SECRET_ENV_NAMES)
+PRODUCTION_PUBLIC_CONNECTION_COUNT = len(_PUBLIC_CONNECTION_ENV_NAMES)
 _ALLOWED_OWNERS = (
     "platform_integration",
     "nex-oa",
@@ -275,4 +283,3 @@ def _required_string_sequence(value: Any, field: str) -> tuple[str, ...]:
     ):
         raise TypeError(f"{field} must be a non-empty string list")
     return tuple(value)
-

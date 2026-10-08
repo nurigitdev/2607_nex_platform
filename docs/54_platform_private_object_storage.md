@@ -1,8 +1,8 @@
 # Private Object Storage Migration and Lifecycle
 
-Status: CX and AE adapters, migration/rollback, and lifecycle/restore controls
-are complete at Slice 1459. Implementation is in progress; production
-deployment remains unapproved.
+Status: CX and AE adapters, migration/rollback, lifecycle/restore controls,
+and the single-host RustFS Compose topology are complete at Slice 1460.
+Protected acceptance remains open; production deployment remains unapproved.
 
 ## Required Outcome
 
@@ -208,6 +208,36 @@ preferences use `NEX_CX_OBJECT_STORAGE_READ_MODE` and
 - `scripts/smoke/run_s146_object_storage_lifecycle.py` uses dedicated bootstrap
   credentials from `NEX_OBJECT_STORAGE_BOOTSTRAP_*`; CX and AE application
   credentials are not reused for bucket administration.
+
+## Implemented Single-Host Compose Topology
+
+- `deployment/compose/s146-object-storage.override.yaml` layers on the
+  unchanged S143 and S144 files. It pins RustFS 1.0.1 to an immutable
+  multi-architecture manifest digest and introduces no Docker socket,
+  privileged mode, host networking, Kubernetes, or registry push.
+- RustFS uses the official non-root `10001:10001` identity, a read-only root
+  filesystem, dropped capabilities, a named `/data` volume, internal-only
+  object-storage network, disabled console, and `/health` readiness probe. It
+  publishes no host port.
+- Traefik terminates managed TLS for `object.nex-staging.test` and is the only
+  process that can reach the internal RustFS HTTP listener. The S143 platform
+  certificate and CA remain the application trust anchor.
+- Root access and secret keys enter RustFS through Docker secret files. The
+  files are runtime outputs of OpenBao materialization and are not values in
+  Compose, environment, source, reports, or command arguments.
+- The current production manifest contains 20 secret references and 11 HTTPS
+  connection bindings. CX and AE each own their own access/secret pair; other
+  owners carry only the references needed for complete pre-start admission.
+  Owner-scoped materialization prevents those services from receiving CX or
+  AE values.
+- CX and AE select `S3`, separate buckets, platform CA verification, and
+  fail-closed `OBJECT_ONLY` by default. Migration and rollback modes remain
+  explicit operator-gated overrides.
+
+`scripts/smoke/run_s146_object_storage_compose.py` validates this topology.
+The rendered three-layer Compose configuration also passed the host Docker
+Compose parser. Real credential materialization and RustFS behavior remain
+Slice 1461 work and are not claimed by the static topology evidence.
 
 ## Non-Drift Rules
 

@@ -32,9 +32,9 @@ def test_repository_manifest_matches_typed_default_and_is_metadata_only() -> Non
     assert loaded == default
     assert projection["schema_version"] == PRODUCTION_CONFIGURATION_SCHEMA_VERSION
     assert projection["profile"] == "production"
-    assert projection["binding_count"] == 25
-    assert projection["secret_reference_count"] == 16
-    assert projection["public_connection_count"] == 9
+    assert projection["binding_count"] == 31
+    assert projection["secret_reference_count"] == 20
+    assert projection["public_connection_count"] == 11
     assert projection["control_environment_count"] == 6
     assert projection["control_environment_names"] == list(
         PRODUCTION_CONTROL_ENV_NAMES
@@ -51,7 +51,7 @@ def test_secret_owners_and_reference_bindings_are_exact() -> None:
         if item.input_kind == "external_secret_reference"
     ]
 
-    assert len(secrets) == 16
+    assert len(secrets) == 20
     assert all(
         item.source_environment_name == f"{item.target_environment_name}_REF"
         for item in secrets
@@ -61,6 +61,8 @@ def test_secret_owners_and_reference_bindings_are_exact() -> None:
     assert _secret_owner("NEX_AG_TO_OA_SERVICE_TOKEN") == "nex-ag"
     assert _secret_owner("NEX_OA_DATABASE_URL") == "nex-oa"
     assert _secret_owner("NEX_MO_VLLM_API_KEY") == "nex-mo"
+    assert _secret_owner("NEX_CX_OBJECT_STORAGE_SECRET_KEY") == "nex-cx"
+    assert _secret_owner("NEX_AE_OBJECT_STORAGE_ACCESS_KEY") == "nex-ae-api"
     with pytest.raises(ProductionConfigurationError, match="owner is unknown"):
         _secret_owner("UNKNOWN_SECRET")
 

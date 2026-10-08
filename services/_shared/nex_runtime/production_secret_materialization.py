@@ -10,6 +10,7 @@ from typing import Any, Protocol
 from urllib.parse import urlsplit
 
 from .production_configuration import (
+    PRODUCTION_SECRET_BINDING_COUNT,
     ProductionConfigurationManifest,
     load_production_configuration_manifest,
 )
@@ -141,7 +142,10 @@ def materialize_production_secrets(
         OwnerSecretEnvironment(owner=owner, secrets=tuple(secrets))
         for owner, secrets in by_owner.items()
     )
-    if sum(len(item.secrets) for item in owner_environments) != 16:
+    if (
+        sum(len(item.secrets) for item in owner_environments)
+        != PRODUCTION_SECRET_BINDING_COUNT
+    ):
         raise ProductionSecretMaterializationError(
             "production secret materialization coverage drift"
         )
@@ -306,7 +310,10 @@ def production_secret_materialization_projection(
         }
         for item in materialization.owner_environments
     ]
-    if sum(int(item["secret_count"]) for item in owners) != 16:
+    if (
+        sum(int(item["secret_count"]) for item in owners)
+        != PRODUCTION_SECRET_BINDING_COUNT
+    ):
         raise ProductionSecretMaterializationError(
             "production secret materialization projection coverage drift"
         )

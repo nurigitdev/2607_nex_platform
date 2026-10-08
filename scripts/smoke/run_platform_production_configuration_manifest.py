@@ -27,9 +27,9 @@ def run_platform_production_configuration_manifest(
     projection = production_configuration_manifest_projection(manifest)
     owner_count = len({item["owner"] for item in projection["bindings"]})
     passed = (
-        projection["binding_count"] == 25
-        and projection["secret_reference_count"] == 16
-        and projection["public_connection_count"] == 9
+        projection["binding_count"] == 31
+        and projection["secret_reference_count"] == 20
+        and projection["public_connection_count"] == 11
         and projection["control_environment_count"] == 6
         and owner_count == 6
         and not projection["raw_secret_values_included"]
@@ -96,4 +96,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
-

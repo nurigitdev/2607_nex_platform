@@ -17,8 +17,8 @@ def test_repository_coupling_audit_freezes_current_boundary() -> None:
         "cross_service_import_count": 0,
         "non_mo_provider_reference_count": 0,
         "legacy_database_adapter_count": 4,
-        "loopback_occurrence_count": 45,
-        "loopback_file_count": 25,
+        "loopback_occurrence_count": 46,
+        "loopback_file_count": 26,
         "source_process_count": 13,
         "coupling_record_count": 6,
     }
@@ -82,7 +82,7 @@ def test_summary_and_main_branches(monkeypatch, capsys) -> None:
     passing = audit.run_platform_runtime_deployment_coupling_audit()
     assert audit.summary_line(passing) == (
         "platform_runtime_deployment_coupling_audit=pass http=11 imports=0 "
-        "provider_refs=0 legacy_db=4 loopback=45/25 processes=13 next=1407"
+        "provider_refs=0 legacy_db=4 loopback=46/26 processes=13 next=1407"
     )
     failing = {"status": "FAIL", "issues": ["one"]}
     assert audit.summary_line(failing) == (

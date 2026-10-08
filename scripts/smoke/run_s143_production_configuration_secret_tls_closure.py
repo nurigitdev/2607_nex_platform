@@ -195,9 +195,9 @@ def run_s143_production_configuration_secret_tls_closure(
             and boundary.get("gap_count") == 9
             and manifest
             == {
-                "binding_count": 25,
-                "secret_reference_count": 16,
-                "public_connection_count": 9,
+                "binding_count": 31,
+                "secret_reference_count": 20,
+                "public_connection_count": 11,
                 "control_environment_count": 6,
                 "owner_count": 6,
             }
@@ -205,7 +205,7 @@ def run_s143_production_configuration_secret_tls_closure(
             and materialization
             == {
                 "owner_count": 5,
-                "secret_count": 16,
+                "secret_count": 20,
                 "fail_closed_case_count": 3,
                 "secret_value_leak_count": 0,
             }

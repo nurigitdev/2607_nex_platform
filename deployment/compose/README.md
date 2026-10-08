@@ -50,8 +50,9 @@ The runner requires explicit opt-in and eight protected inputs: five test
 database URLs and the three current DGX API keys. It performs current test DB
 migration readiness, builds the OpenBao KV/AppRole/PKI state, starts the six
 application images, verifies all service readiness and three live provider
-routes, rotates all sixteen secret versions, renews TLS, and proves both secret
-and certificate rollback.
+routes, rotates the S143 baseline secret generation, renews TLS, and proves
+both secret and certificate rollback. The S146 override extends that generation
+with four owner-scoped object-storage credentials.
 
 ```bash
 NEX_S143_EXTERNAL_STAGING_ACCEPTANCE=1 \
@@ -120,3 +121,34 @@ Required host inputs are `NEX_POSTGRES_OPERATOR_IMAGE`,
 digest and an independently failed backup mount. The `--check` path probes
 PostgreSQL 16 `pg_dump`, `pg_restore`, and `pg_basebackup` without contacting a
 database; protected database execution belongs to Slice 1451.
+
+## S146 RustFS Object Storage Override
+
+`s146-object-storage.override.yaml` adds digest-pinned RustFS 1.0.1 without
+changing the attested S143 base Compose file. RustFS runs as UID/GID
+`10001:10001`, exposes no host port, disables its console, persists only
+`/data` in a named volume, and joins an internal `object-storage` network.
+Traefik is the sole TLS route at `object.nex-staging.test`; its RustFS upstream
+is plain HTTP only inside that network.
+
+RustFS root credentials are Docker secret files materialized from OpenBao into
+the operator-controlled S143 runtime directory before RustFS starts. They are
+never passed to an application. The S146 override adds four versioned OpenBao
+references to every Python service's pre-start admission environment, while
+the production bootstrap resolves only the two credentials owned by CX or AE.
+CX and AE use separate versioned buckets and default to `OBJECT_ONLY`; an
+operator must explicitly select and admit migration or rollback modes.
+
+```bash
+docker compose \
+  -f deployment/compose/s143-staging.compose.yaml \
+  -f deployment/compose/s144-staging.override.yaml \
+  -f deployment/compose/s146-object-storage.override.yaml \
+  config --quiet
+```
+
+The runtime directory must contain
+`credentials/rustfs-root.access-key` and
+`credentials/rustfs-root.secret-key` before starting `rustfs`. Slice 1461 owns
+the protected OpenBao materialization, RustFS IAM/bucket bootstrap, CX/AE
+cross-bucket denial, restart, lifecycle, restore, and cleanup execution.

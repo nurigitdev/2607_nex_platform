@@ -90,7 +90,7 @@ def test_protected_acceptance_orchestrates_rotation_tls_and_rollback(
         "configure_openbao_staging",
         lambda *args, **kwargs: {
             "owner_count": 5,
-            "secret_count": 16,
+            "secret_count": 20,
             "certificate_serial": "01:11",
         },
     )
@@ -179,7 +179,7 @@ def test_secret_input_mapping_is_complete_owner_scoped_and_container_routable() 
     values = smoke._staging_secret_values(_protected_environment(), root=ROOT)
     rotated = smoke._rotated_secret_values(values)
 
-    assert len(values) == 16
+    assert len(values) == 20
     assert "@host.docker.internal:5432/" in values["NEX_CX_DATABASE_URL"]
     assert values["NEX_MO_VLLM_API_KEY"] == "provider-key-generation"
     assert rotated["NEX_CX_DATABASE_URL"] == values["NEX_CX_DATABASE_URL"]
@@ -320,12 +320,12 @@ def test_summary_lines_are_bounded() -> None:
     result = {
         "status": "PASS",
         "services": {"initial_ready_count": 6},
-        "openbao": {"secret_count": 16},
+        "openbao": {"secret_count": 20},
         "tls": {"route_count": 9},
     }
     line = smoke.summary_line(result)
     assert line == (
-        "s143_external_staging_acceptance=pass services=6 secrets=16 "
+        "s143_external_staging_acceptance=pass services=6 secrets=20 "
         "tls_routes=9 provider_capabilities=3 next=1432"
     )
 

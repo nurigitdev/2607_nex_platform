@@ -34,10 +34,10 @@ def test_valid_production_prestart_is_metadata_only_and_deterministic() -> None:
     assert first == second
     assert first.schema_version == PRODUCTION_STARTUP_ADMISSION_SCHEMA_VERSION
     assert projection["status"] == "ADMITTED_FOR_SECRET_MATERIALIZATION"
-    assert projection["secret_reference_count"] == 16
-    assert projection["public_connection_count"] == 9
+    assert projection["secret_reference_count"] == 20
+    assert projection["public_connection_count"] == 11
     assert projection["control_environment_count"] == 6
-    assert projection["https_endpoint_count"] == 9
+    assert projection["https_endpoint_count"] == 11
     assert projection["raw_secret_environment_count"] == 0
     assert projection["raw_secret_values_included"] is False
     assert projection["reference_values_included"] is False
@@ -59,7 +59,7 @@ def test_staging_live_external_admission_reuses_fail_closed_boundary() -> None:
     )
 
     assert projection["profile"] == "staging_live"
-    assert projection["secret_reference_count"] == 16
+    assert projection["secret_reference_count"] == 20
     with pytest.raises(ProductionStartupAdmissionError, match="projection"):
         external_startup_admission_projection(
             admission,

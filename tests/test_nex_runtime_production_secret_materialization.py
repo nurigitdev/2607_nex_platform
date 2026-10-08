@@ -55,7 +55,7 @@ def test_materializes_exact_owner_scoped_environments_without_mutating_input() -
     assert environment == original
     assert projection["status"] == "MATERIALIZED_FOR_OWNER_PROCESSES"
     assert projection["owner_count"] == 5
-    assert projection["secret_count"] == 16
+    assert projection["secret_count"] == 20
     assert projection["raw_secret_values_included"] is False
     assert len(result.environment_for("nex-mo")) == 4
     assert set(result.environment_for("nex-oa")) == {

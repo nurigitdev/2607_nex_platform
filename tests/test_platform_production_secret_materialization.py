@@ -9,14 +9,14 @@ def test_repository_secret_materialization_evidence_passes() -> None:
     assert result["owner_secret_counts"] == {
         "nex-oa": 2,
         "nex-ag": 5,
-        "nex-ae-api": 3,
-        "nex-cx": 2,
+        "nex-ae-api": 5,
+        "nex-cx": 4,
         "nex-mo": 4,
     }
     assert all(result["fail_closed_cases"].values())
     assert result["summary"] == {
         "owner_count": 5,
-        "secret_count": 16,
+        "secret_count": 20,
         "fail_closed_case_count": 3,
         "secret_value_leak_count": 0,
     }
@@ -26,7 +26,7 @@ def test_repository_secret_materialization_evidence_passes() -> None:
 def test_summary_and_main_branches(monkeypatch, capsys) -> None:
     passing = smoke.run_platform_production_secret_materialization()
     assert smoke.summary_line(passing) == (
-        "platform_production_secret_materialization=pass owners=5 secrets=16 "
+        "platform_production_secret_materialization=pass owners=5 secrets=20 "
         "fail_closed=3 leaks=0 next=1427"
     )
     assert smoke.summary_line({"status": "FAIL"}) == (

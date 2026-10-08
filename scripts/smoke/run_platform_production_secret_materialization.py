@@ -91,8 +91,8 @@ def run_platform_production_secret_materialization(
         == {
             "nex-oa": 2,
             "nex-ag": 5,
-            "nex-ae-api": 3,
-            "nex-cx": 2,
+            "nex-ae-api": 5,
+            "nex-cx": 4,
             "nex-mo": 4,
         }
         and all(fail_closed_cases.values())

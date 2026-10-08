@@ -22,14 +22,17 @@ Slice 1432 binds that execution to a value-free attestation and Full Gate.
 
 ## Configuration Inventory
 
-The existing production profile requires 25 values:
+The current production configuration manifest requires 31 values. S143
+originally froze 25 platform and provider values; S146 extends that inventory
+without weakening the same fail-closed boundary:
 
-- 16 secret-bearing values: five database URLs, eight signed service-trust
-  credentials, and three MO provider API keys;
-- 9 public connection values: six platform service endpoints and three MO
-  provider endpoints; and
-- 9 network endpoints that must use HTTPS in production: the six service
-  endpoints plus the three provider endpoints.
+- 20 secret-bearing values: five database URLs, eight signed service-trust
+  credentials, three MO provider API keys, and four CX/AE object-storage
+  access/secret keys;
+- 11 public connection values: six platform service endpoints, three MO
+  provider endpoints, and two owner-scoped object-storage endpoint bindings;
+  and
+- 11 network endpoint bindings that must use HTTPS in production.
 
 Runtime mode selectors, artifact digests, secret references, TLS references,
 and rotation metadata are additional deployment inputs. They are not secret

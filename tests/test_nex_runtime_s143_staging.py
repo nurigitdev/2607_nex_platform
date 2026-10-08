@@ -278,7 +278,7 @@ def test_openbao_initialization_configuration_and_credentials_are_metadata_only(
     assert result == {
         "schema_version": "s143_external_staging.v1",
         "status": "CONFIGURED",
-        "secret_count": 16,
+        "secret_count": 20,
         "owner_count": 5,
         "secret_versions": [1],
         "certificate_serial": "01:23",

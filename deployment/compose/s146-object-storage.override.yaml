@@ -1,0 +1,115 @@
+x-s146-object-environment: &s146-object-environment
+  NEX_CX_OBJECT_STORAGE_ACCESS_KEY_REF: secret://openbao/nex-platform/staging/nex-cx/NEX_CX_OBJECT_STORAGE_ACCESS_KEY@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_CX_OBJECT_STORAGE_SECRET_KEY_REF: secret://openbao/nex-platform/staging/nex-cx/NEX_CX_OBJECT_STORAGE_SECRET_KEY@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_AE_OBJECT_STORAGE_ACCESS_KEY_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_OBJECT_STORAGE_ACCESS_KEY@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_AE_OBJECT_STORAGE_SECRET_KEY_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_OBJECT_STORAGE_SECRET_KEY@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_CX_OBJECT_STORAGE_ENDPOINT: https://object.nex-staging.test:8443
+  NEX_AE_OBJECT_STORAGE_ENDPOINT: https://object.nex-staging.test:8443
+
+services:
+  traefik:
+    volumes:
+      - ../compose/traefik/s146-dynamic.yaml:/etc/traefik/dynamic.yaml:ro
+    networks:
+      edge: {}
+      service:
+        aliases:
+          - oa.nex-staging.test
+          - ag.nex-staging.test
+          - ae-api.nex-staging.test
+          - cx.nex-staging.test
+          - mo.nex-staging.test
+          - ae.nex-staging.test
+          - embedding.nex-staging.test
+          - reranker.nex-staging.test
+          - generation.nex-staging.test
+          - id.nex-staging.test
+          - object.nex-staging.test
+      identity: {}
+      object-storage: {}
+
+  rustfs:
+    image: rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
+    user: "10001:10001"
+    restart: "no"
+    read_only: true
+    tmpfs: [/tmp, /logs]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ENABLE: "false"
+      RUSTFS_ACCESS_KEY_FILE: /run/secrets/rustfs_root_access_key
+      RUSTFS_SECRET_KEY_FILE: /run/secrets/rustfs_root_secret_key
+      RUSTFS_OBS_LOGGER_LEVEL: warn
+    volumes:
+      - rustfs-data:/data
+    secrets:
+      - rustfs_root_access_key
+      - rustfs_root_secret_key
+    healthcheck:
+      test: [CMD, curl, -fsS, http://127.0.0.1:9000/health]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+      start_period: 10s
+    networks: [object-storage]
+
+  nex-ae-api:
+    environment:
+      <<: *s146-object-environment
+      NEX_CONFIG_GENERATION: config:s146-staging.1
+      NEX_AE_PRIVATE_STORAGE_MODE: S3
+      NEX_AE_OBJECT_STORAGE_BACKEND: S3
+      NEX_AE_OBJECT_STORAGE_BUCKET: nex-ae-private
+      NEX_AE_OBJECT_STORAGE_REGION: us-east-1
+      NEX_AE_OBJECT_STORAGE_CA_BUNDLE: /run/secrets/platform_ca
+      NEX_AE_OBJECT_STORAGE_ALLOW_INSECURE: "false"
+      NEX_AE_OBJECT_STORAGE_READ_MODE: ${NEX_S146_AE_READ_MODE:-OBJECT_ONLY}
+      NEX_AE_OBJECT_STORAGE_MIGRATION_ADMITTED: ${NEX_S146_AE_MIGRATION_ADMITTED:-false}
+      NEX_AE_OBJECT_STORAGE_ROLLBACK_ADMITTED: ${NEX_S146_AE_ROLLBACK_ADMITTED:-false}
+    networks: [service, control, object-storage]
+    depends_on:
+      rustfs:
+        condition: service_healthy
+
+  nex-cx:
+    environment:
+      <<: *s146-object-environment
+      NEX_CONFIG_GENERATION: config:s146-staging.1
+      NEX_CX_PRIVATE_STORAGE_MODE: S3
+      NEX_CX_OBJECT_STORAGE_BACKEND: S3
+      NEX_CX_OBJECT_STORAGE_BUCKET: nex-cx-private
+      NEX_CX_OBJECT_STORAGE_REGION: us-east-1
+      NEX_CX_OBJECT_STORAGE_CA_BUNDLE: /run/secrets/platform_ca
+      NEX_CX_OBJECT_STORAGE_ALLOW_INSECURE: "false"
+      NEX_CX_OBJECT_STORAGE_READ_MODE: ${NEX_S146_CX_READ_MODE:-OBJECT_ONLY}
+      NEX_CX_OBJECT_STORAGE_MIGRATION_ADMITTED: ${NEX_S146_CX_MIGRATION_ADMITTED:-false}
+      NEX_CX_OBJECT_STORAGE_ROLLBACK_ADMITTED: ${NEX_S146_CX_ROLLBACK_ADMITTED:-false}
+    networks: [service, control, object-storage]
+    depends_on:
+      rustfs:
+        condition: service_healthy
+
+  nex-oa:
+    environment: *s146-object-environment
+
+  nex-ag:
+    environment: *s146-object-environment
+
+  nex-mo:
+    environment: *s146-object-environment
+
+secrets:
+  rustfs_root_access_key:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/rustfs-root.access-key"
+  rustfs_root_secret_key:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/rustfs-root.secret-key"
+
+networks:
+  object-storage:
+    internal: true
+
+volumes:
+  rustfs-data: {}

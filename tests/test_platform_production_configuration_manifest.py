@@ -8,9 +8,9 @@ def test_repository_manifest_evidence_is_complete() -> None:
 
     assert result["status"] == "PASS"
     assert result["summary"] == {
-        "binding_count": 25,
-        "secret_reference_count": 16,
-        "public_connection_count": 9,
+        "binding_count": 31,
+        "secret_reference_count": 20,
+        "public_connection_count": 11,
         "control_environment_count": 6,
         "owner_count": 6,
     }
@@ -27,8 +27,8 @@ def test_repository_manifest_evidence_is_complete() -> None:
 def test_summary_and_main_branches(monkeypatch, capsys) -> None:
     passing = smoke.run_platform_production_configuration_manifest()
     assert smoke.summary_line(passing) == (
-        "platform_production_configuration_manifest=pass bindings=25 "
-        "secrets=16 connections=9 controls=6 owners=6 next=1425"
+        "platform_production_configuration_manifest=pass bindings=31 "
+        "secrets=20 connections=11 controls=6 owners=6 next=1425"
     )
     assert smoke.summary_line({"status": "FAIL"}) == (
         "platform_production_configuration_manifest=fail"
@@ -48,4 +48,3 @@ def test_summary_and_main_branches(monkeypatch, capsys) -> None:
     )
     assert smoke.main([]) == 1
     assert '"status": "FAIL"' in capsys.readouterr().out
-
