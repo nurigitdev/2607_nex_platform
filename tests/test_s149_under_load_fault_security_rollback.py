@@ -469,6 +469,25 @@ def test_pinned_release_environment_admits_non_runtime_changes(
     assert admission["non_runtime_change_count"] == 3
 
 
+def test_pinned_release_environment_admits_exact_build_revision(
+    monkeypatch, tmp_path: Path
+) -> None:
+    report = tmp_path / "oci.json"
+    report.write_text(json.dumps(_oci_build_report()))
+    monkeypatch.setattr(smoke, "_git", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(smoke, "_git_output", lambda _root, *args: "")
+
+    _, digest, admission = smoke._load_pinned_release_environment(
+        _predecessor(),
+        root=tmp_path,
+        oci_report_path=report,
+    )
+
+    assert digest == RELEASE_DIGEST
+    assert admission["status"] == "ADMITTED"
+    assert admission["non_runtime_change_count"] == 0
+
+
 @pytest.mark.parametrize(
     "failure_case",
     [
@@ -476,7 +495,6 @@ def test_pinned_release_environment_admits_non_runtime_changes(
         "digest_drift",
         "bad_revision",
         "not_ancestor",
-        "no_changes",
         "runtime_change",
         "dirty_worktree",
         "invalid_artifacts",
@@ -502,8 +520,6 @@ def test_pinned_release_environment_fails_closed(
         image_build["source_revision"] = "bad"
     elif failure_case == "not_ancestor":
         ancestor_status = 1
-    elif failure_case == "no_changes":
-        changed = ""
     elif failure_case == "runtime_change":
         changed = "services/nex-oa/main.py"
     elif failure_case == "dirty_worktree":

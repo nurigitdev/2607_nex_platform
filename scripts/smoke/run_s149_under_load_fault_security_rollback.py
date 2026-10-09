@@ -362,7 +362,7 @@ def _load_pinned_release_environment(
         ).splitlines()
         if path
     )
-    if not changed_paths or any(
+    if any(
         not path.startswith(NON_RUNTIME_CHANGE_PREFIXES) for path in changed_paths
     ):
         raise ValueError("runtime-affecting change exists after pinned OCI build")
