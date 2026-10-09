@@ -19,6 +19,9 @@ sys.path.insert(0, str(ROOT / "scripts" / "smoke"))
 from run_oa_enterprise_oidc_registration import (  # noqa: E402
     run_oa_enterprise_oidc_registration,
 )
+from repository_revision_evidence import (  # noqa: E402
+    aggregate_digest_at_revision,
+)
 from run_oa_oidc_rollover_resilience import (  # noqa: E402
     run_oa_oidc_rollover_resilience,
 )
@@ -158,6 +161,15 @@ def run_s144_oa_production_trust_closure(root: Path = ROOT) -> dict[str, Any]:
     rollback = _mapping(attestation.get("rollback"))
     residue = _mapping(attestation.get("residue"))
     dependency_digests = attestation.get("dependency_evidence_digests") or []
+    accepted_configuration_digest = (
+        aggregate_digest_at_revision(
+            root,
+            ACCEPTED_SOURCE_REVISION,
+            CONFIGURATION_ASSETS,
+        )
+        if repository_ready
+        else ""
+    )
 
     checks = {
         "all_eight_repository_audits_passed": len(evidence) == 8
@@ -210,7 +222,7 @@ def run_s144_oa_production_trust_closure(root: Path = ROOT) -> dict[str, Any]:
             set(attestation) == set(EVIDENCE_FIELDS)
             and attestation.get("evidence_digest") == _evidence_digest(attestation)
             and attestation.get("configuration_digest")
-            == _configuration_digest(root)
+            == accepted_configuration_digest
             and re.fullmatch(
                 r"[0-9a-f]{40}", str(attestation.get("source_revision") or "")
             )

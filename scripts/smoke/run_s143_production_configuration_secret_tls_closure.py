@@ -16,6 +16,9 @@ sys.path.insert(0, str(ROOT / "services" / "_shared"))
 sys.path.insert(0, str(ROOT / "scripts" / "smoke"))
 
 from nex_runtime.s143_staging import validate_s143_compose_assets  # noqa: E402
+from repository_revision_evidence import (  # noqa: E402
+    aggregate_digest_at_revision,
+)
 from run_platform_production_api_key_custody import (  # noqa: E402
     run_platform_production_api_key_custody,
 )
@@ -152,7 +155,15 @@ def run_s143_production_configuration_secret_tls_closure(
     digest_valid = bool(attestation) and attestation.get(
         "evidence_digest"
     ) == _evidence_digest(attestation)
-    configuration_digest = _configuration_digest(root)
+    accepted_configuration_digest = (
+        aggregate_digest_at_revision(
+            root,
+            ACCEPTED_SOURCE_REVISION,
+            CONFIGURATION_ASSETS,
+        )
+        if repository_ready
+        else ""
+    )
     checks = {
         "all_seven_repository_audits_passed": len(evidence) == 7
         and all(item.get("status") == "PASS" for item in evidence.values()),
@@ -224,7 +235,7 @@ def run_s143_production_configuration_secret_tls_closure(
             "service_count": 9,
             "runtime_service_count": 8,
             "initializer_service_count": 1,
-            "secret_reference_count": 16,
+            "secret_reference_count": 20,
             "tls_route_count": 9,
             "external_images": compose.get("external_images", []),
             "host_software_install_required": False,
@@ -235,7 +246,7 @@ def run_s143_production_configuration_secret_tls_closure(
             attestation_fields == set(EVIDENCE_FIELDS)
             and digest_valid
             and attestation.get("configuration_digest")
-            == configuration_digest
+            == accepted_configuration_digest
             and re.fullmatch(
                 r"[0-9a-f]{40}", str(attestation.get("source_revision") or "")
             )

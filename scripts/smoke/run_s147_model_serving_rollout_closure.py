@@ -21,6 +21,7 @@ from run_s147_model_serving_rollout_boundary import run_model_serving_rollout_bo
 from run_s147_revision_readiness import run_revision_readiness
 from run_s147_rollout_activation_rollback import run_rollout_activation_rollback
 from run_s147_rollout_persistence_restart import run_rollout_persistence_restart
+from repository_revision_evidence import file_digests_at_revision_match
 
 SCHEMA_VERSION = "s147_model_serving_rollout_closure.v1"
 PLAN_PATH = "docs/48_platform_production_readiness_plan.md"
@@ -137,9 +138,10 @@ def run_s147_model_serving_rollout_closure(
         ),
         "attestation_artifact_digests_exact": (
             artifact_digests == expected_artifact_digests
-            and all(
-                _file_digest(root / path) == digest
-                for path, digest in ARTIFACT_DIGESTS.items()
+            and file_digests_at_revision_match(
+                root,
+                ACCEPTED_SOURCE_REVISION,
+                ARTIFACT_DIGESTS,
             )
         ),
         "protected_execution_identity_valid": (

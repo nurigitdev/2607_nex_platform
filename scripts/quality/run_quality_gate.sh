@@ -796,3 +796,15 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_s148_observability_postgres.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s148_contract_mock_acceptance.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s148_observability_incident_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s149_preproduction_acceptance_boundary.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s149_workload_profile.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s149_bounded_load_harness.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s149_soak_stability.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s149_fault_recovery.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s149_security_privacy.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s149_rollback_rehearsal.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s149_single_host_live_acceptance.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s149_release_bound_target_workload.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s149_under_load_fault_security_rollback.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s149_evidence_admission.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s149_preproduction_acceptance_closure.py --summary

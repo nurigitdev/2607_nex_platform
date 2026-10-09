@@ -1,6 +1,6 @@
 # Platform Pre-production Reliability, Security, and Recovery Acceptance
 
-Status: S149 active through Slice 1493. The acceptance boundary,
+Status: S149 complete; S150 active. The acceptance boundary,
 release-bound workload profiles, bounded concurrency harness, and soak
 stability evaluator, fault/recovery plan, Checkpoint Gate, and security/privacy
 matrix, rollback rehearsal, and protected Single-host live orchestration are complete for
@@ -163,7 +163,7 @@ and local compensating control before a `GO` decision.
 | `1491` | **Complete.** Bind and execute the protected 30-minute target workload with pre/post actual journey sentinels and explicit provider-call caps. |
 | `1492` | **Complete.** Execute eight allowlisted client-route faults plus actual trust, RustFS, provider, security/privacy, and rollback acceptance during an exact three-minute live shadow workload. |
 | `1493` | **Complete.** Aggregate the S1490-S1492 digest chain, classify five Single-host limitations as explicit backlog, and record conditional S150 admission with Full Gate and external-notification waiver still open. |
-| `1494` | Publish the runbook, pass Full Gate, close S149, and activate S150. |
+| `1494` | **Complete.** Publish the operator runbook, bind fresh Full Gate JUnit and coverage evidence, close S149, and activate S150 with the production GO guard preserved. |
 
 Checkpoint Gate runs at Slice 1487. Full Gate runs at Slice 1494.
 

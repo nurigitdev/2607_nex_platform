@@ -18,7 +18,7 @@ def test_repository_boundary_freezes_s149_scope() -> None:
         "workload_class_count": 3,
         "fault_class_count": 5,
         "backlog_count": 5,
-        "slice_count": 10,
+        "slice_count": 12,
         "missing_path_count": 0,
     }
     assert result["decision"]["distributed_failover_evidence"] == (
@@ -56,7 +56,7 @@ def test_helpers_summary_and_main_branches(tmp_path: Path, monkeypatch, capsys) 
     passing = boundary.run_preproduction_acceptance_boundary()
     assert boundary.summary_line(passing) == (
         "s149_acceptance_boundary=pass checks=12/12 workloads=3 faults=5 "
-        "backlog=5 slices=10 next=1484"
+        "backlog=5 slices=12 next=1484"
     )
     assert boundary.summary_line({"status": "FAIL", "issues": ["one"]}) == (
         "s149_acceptance_boundary=fail issues=1"
@@ -77,4 +77,3 @@ def test_helpers_summary_and_main_branches(tmp_path: Path, monkeypatch, capsys) 
         lambda: {"status": "FAIL", "issues": []},
     )
     assert boundary.main([]) == 1
-

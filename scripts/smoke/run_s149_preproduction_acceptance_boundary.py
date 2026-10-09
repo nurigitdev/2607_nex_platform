@@ -77,10 +77,10 @@ def run_preproduction_acceptance_boundary(root: Path = ROOT) -> dict[str, Any]:
             item in canonical for item in BACKLOG_CAPABILITIES
         )
         and "NOT_APPLICABLE_SINGLE_HOST" in canonical,
-        "ten_slice_gate_sequence_frozen": (
-            all(f"`{slice_id}`" in canonical for slice_id in range(1483, 1493))
+        "twelve_slice_gate_sequence_frozen": (
+            all(f"`{slice_id}`" in canonical for slice_id in range(1483, 1495))
             and "Checkpoint Gate runs at Slice 1487" in canonical
-            and "Full Gate runs at Slice 1492" in canonical
+            and "Full Gate runs at Slice 1494" in canonical
         ),
         "production_and_external_limits_open": all(
             token in canonical + " " + readiness
@@ -120,7 +120,7 @@ def run_preproduction_acceptance_boundary(root: Path = ROOT) -> dict[str, Any]:
             "workload_class_count": len(WORKLOAD_CLASSES),
             "fault_class_count": len(FAULT_CLASSES),
             "backlog_count": len(BACKLOG_CAPABILITIES),
-            "slice_count": 10,
+            "slice_count": 12,
             "missing_path_count": sum(not value for value in paths.values()),
         },
         "decision": {
