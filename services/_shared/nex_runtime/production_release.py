@@ -17,6 +17,9 @@ SAFE_RELEASE_ID = re.compile(r"^rc:s149:[0-9a-f]{16}$")
 SAFE_CONTROL_ID = re.compile(r"^[a-z][a-z0-9_]{2,63}$")
 MAX_FUTURE_SKEW_SECONDS = 300
 MAX_WAIVER_LIFETIME_SECONDS = 30 * 24 * 3600
+REQUIRED_APPROVAL_ROLES = frozenset(
+    {"data_owner", "operations_owner", "release_manager", "security_owner"}
+)
 DERIVED_MANIFEST_FIELDS = frozenset(
     {"checks", "failed_checks", "next_slice", "slice", "status", "summary"}
 )
@@ -339,6 +342,106 @@ def evaluate_release_risk_governance(
             "open_p0_count": len(open_p0),
             "open_p1_count": len(open_p1),
             "valid_waiver_count": sum(waiver_validity.values()),
+        },
+    }
+
+
+def evaluate_release_approval_governance(
+    approval_document: Mapping[str, Any],
+    *,
+    expected_release_candidate_id: str,
+    expected_release_set_digest: str,
+    evaluated_at: datetime,
+) -> dict[str, Any]:
+    if evaluated_at.tzinfo is None:
+        raise ValueError("evaluated_at must be timezone-aware")
+    now = evaluated_at.astimezone(UTC)
+    errors: list[str] = []
+    raw_approvals = approval_document.get("approvals", [])
+    if not isinstance(raw_approvals, Sequence) or isinstance(
+        raw_approvals, (str, bytes)
+    ):
+        raw_approvals = []
+        errors.append("approvals.list")
+    approvals_by_role: dict[str, dict[str, Any]] = {}
+    for index, approval in enumerate(raw_approvals):
+        prefix = f"approval[{index}]"
+        if not isinstance(approval, Mapping):
+            errors.append(f"{prefix}.mapping")
+            continue
+        record = dict(approval)
+        role = str(record.get("role") or "")
+        if role not in REQUIRED_APPROVAL_ROLES:
+            errors.append(f"{prefix}.role")
+        elif role in approvals_by_role:
+            errors.append(f"{prefix}.duplicate_role")
+        else:
+            approvals_by_role[role] = record
+        if not str(record.get("subject") or "").strip():
+            errors.append(f"{prefix}.subject")
+        if record.get("decision") != "APPROVE":
+            errors.append(f"{prefix}.decision")
+        if record.get("release_candidate_id") != expected_release_candidate_id:
+            errors.append(f"{prefix}.release_candidate_id")
+        if record.get("release_set_digest") != expected_release_set_digest:
+            errors.append(f"{prefix}.release_set_digest")
+        approved_at = _parse_timestamp(record.get("approved_at"))
+        expires_at = _parse_timestamp(record.get("expires_at"))
+        if (
+            approved_at is None
+            or expires_at is None
+            or approved_at > now
+            or expires_at <= now
+            or expires_at <= approved_at
+        ):
+            errors.append(f"{prefix}.validity_window")
+
+    missing_roles = sorted(REQUIRED_APPROVAL_ROLES - approvals_by_role.keys())
+    change_window = approval_document.get("change_window")
+    change_window_valid = False
+    if change_window is not None:
+        if not isinstance(change_window, Mapping):
+            errors.append("change_window.mapping")
+        else:
+            window = dict(change_window)
+            starts_at = _parse_timestamp(window.get("starts_at"))
+            ends_at = _parse_timestamp(window.get("ends_at"))
+            rollback_deadline = _parse_timestamp(window.get("rollback_deadline"))
+            release_manager = approvals_by_role.get("release_manager", {})
+            deployment_actor = str(window.get("deployment_actor") or "")
+            change_window_valid = bool(
+                SAFE_CONTROL_ID.fullmatch(str(window.get("change_id") or ""))
+                and starts_at is not None
+                and ends_at is not None
+                and rollback_deadline is not None
+                and starts_at <= now < ends_at <= rollback_deadline
+                and deployment_actor
+                and deployment_actor != release_manager.get("subject")
+            )
+            if not change_window_valid:
+                errors.append("change_window.validity")
+
+    deployment_separate = (
+        approval_document.get("decision_only") is True
+        and approval_document.get("deployment_execution_requested") is False
+    )
+    gate_results = {
+        "approval_roles_complete": not missing_roles
+        and not any(error.startswith("approval[") for error in errors)
+        and change_window_valid,
+        "production_deployment_separate": deployment_separate,
+    }
+    return {
+        "status": "PASS" if not errors else "FAIL",
+        "errors": sorted(errors),
+        "gate_results": gate_results,
+        "decision_readiness": "GO" if all(gate_results.values()) and not errors else "NO_GO",
+        "missing_approval_roles": missing_roles,
+        "change_window_valid": change_window_valid,
+        "summary": {
+            "required_role_count": len(REQUIRED_APPROVAL_ROLES),
+            "approved_role_count": len(approvals_by_role),
+            "missing_role_count": len(missing_roles),
         },
     }
 

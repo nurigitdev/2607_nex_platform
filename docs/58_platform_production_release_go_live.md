@@ -72,7 +72,7 @@ does not manufacture or self-approve that waiver.
 | `1496` | **Complete.** Build the immutable release-candidate evidence manifest. |
 | `1497` | **Complete.** Enforce evidence freshness and digest-chain admission. |
 | `1498` | **Complete.** Define P0/P1 risk and waiver governance. |
-| `1499` | Define approval roles, change window, and separation of deployment; run Checkpoint Gate. |
+| `1499` | **Complete.** Define approval roles, change window, and separation of deployment; run Checkpoint Gate. |
 | `1500` | Compose the immediate trust/data/storage/provider/operations preflight. |
 | `1501` | Rehearse cutover, rollback, and zero-residue controls. |
 | `1502` | Implement the ten-gate `GO`/`NO_GO` evaluator. |
@@ -80,6 +80,16 @@ does not manufacture or self-approve that waiver.
 | `1504` | Publish the runbook, run Full Gate, and close S150 without deploying. |
 
 Checkpoint Gate at 1499 and Full Gate at 1504 are mandatory.
+
+## Approval and Change Governance
+
+The exact release candidate requires four valid approvals: release manager,
+operations owner, security owner, and data owner. Approvals are time-bounded
+and digest-bound. The active change window identifies a deployment actor who
+is distinct from the release manager and includes a rollback deadline. S150
+only emits decision metadata; deployment execution remains a separate human
+operation. Missing approvals or a missing change window therefore remain an
+explicit `NO_GO` without blocking readiness implementation.
 
 ## Risk and Waiver Governance
 
