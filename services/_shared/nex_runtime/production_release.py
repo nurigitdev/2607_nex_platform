@@ -14,7 +14,9 @@ SAFE_SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 SAFE_RAW_DIGEST = re.compile(r"^[0-9a-f]{64}$")
 SAFE_REVISION = re.compile(r"^[0-9a-f]{40}$")
 SAFE_RELEASE_ID = re.compile(r"^rc:s149:[0-9a-f]{16}$")
+SAFE_CONTROL_ID = re.compile(r"^[a-z][a-z0-9_]{2,63}$")
 MAX_FUTURE_SKEW_SECONDS = 300
+MAX_WAIVER_LIFETIME_SECONDS = 30 * 24 * 3600
 DERIVED_MANIFEST_FIELDS = frozenset(
     {"checks", "failed_checks", "next_slice", "slice", "status", "summary"}
 )
@@ -230,6 +232,113 @@ def evaluate_release_evidence_admission(
             "passed_check_count": sum(checks.values()),
             "dependency_count": len(records),
             "max_age_hours": max_age_hours,
+        },
+    }
+
+
+def evaluate_release_risk_governance(
+    risks: Sequence[Mapping[str, Any]],
+    waivers: Sequence[Mapping[str, Any]],
+    *,
+    evaluated_at: datetime,
+) -> dict[str, Any]:
+    if evaluated_at.tzinfo is None:
+        raise ValueError("evaluated_at must be timezone-aware")
+    now = evaluated_at.astimezone(UTC)
+    errors: list[str] = []
+    risk_by_id: dict[str, dict[str, Any]] = {}
+    for index, risk in enumerate(risks):
+        record = dict(risk)
+        risk_id = str(record.get("risk_id") or "")
+        priority = record.get("priority")
+        status = record.get("status")
+        if not SAFE_CONTROL_ID.fullmatch(risk_id):
+            errors.append(f"risk[{index}].risk_id")
+        elif risk_id in risk_by_id:
+            errors.append(f"risk[{index}].duplicate")
+        else:
+            risk_by_id[risk_id] = record
+        if priority not in {"P0", "P1"}:
+            errors.append(f"risk[{index}].priority")
+        if status not in {"OPEN", "CLOSED"}:
+            errors.append(f"risk[{index}].status")
+        if status == "CLOSED" and not SAFE_SHA256.fullmatch(
+            str(record.get("evidence_digest") or "")
+        ):
+            errors.append(f"risk[{index}].evidence_digest")
+
+    waiver_by_risk: dict[str, dict[str, Any]] = {}
+    waiver_validity: dict[str, bool] = {}
+    for index, waiver in enumerate(waivers):
+        record = dict(waiver)
+        risk_id = str(record.get("risk_id") or "")
+        waiver_id = str(record.get("waiver_id") or "")
+        prefix = f"waiver[{index}]"
+        waiver_errors: list[str] = []
+        if not SAFE_CONTROL_ID.fullmatch(waiver_id):
+            waiver_errors.append("waiver_id")
+        if risk_id in waiver_by_risk:
+            waiver_errors.append("duplicate_risk")
+        risk = risk_by_id.get(risk_id)
+        if not risk or risk.get("priority") != "P1" or risk.get("status") != "OPEN":
+            waiver_errors.append("eligible_risk")
+        owner = str(record.get("owner") or "")
+        approver = str(record.get("approver") or "")
+        if not owner or not approver or owner == approver:
+            waiver_errors.append("owner_approver_separation")
+        issued_at = _parse_timestamp(record.get("issued_at"))
+        expires_at = _parse_timestamp(record.get("expires_at"))
+        if (
+            issued_at is None
+            or expires_at is None
+            or issued_at > now
+            or expires_at <= now
+            or expires_at <= issued_at
+            or (expires_at - issued_at).total_seconds() > MAX_WAIVER_LIFETIME_SECONDS
+        ):
+            waiver_errors.append("validity_window")
+        if not str(record.get("compensating_control") or "").strip():
+            waiver_errors.append("compensating_control")
+        if not str(record.get("rollback_trigger") or "").strip():
+            waiver_errors.append("rollback_trigger")
+        cadence = record.get("review_cadence_hours")
+        if not isinstance(cadence, int) or isinstance(cadence, bool) or cadence < 1:
+            waiver_errors.append("review_cadence_hours")
+        waiver_by_risk[risk_id] = record
+        waiver_validity[risk_id] = not waiver_errors
+        errors.extend(f"{prefix}.{name}" for name in waiver_errors)
+
+    open_p0 = sorted(
+        risk_id
+        for risk_id, risk in risk_by_id.items()
+        if risk.get("priority") == "P0" and risk.get("status") == "OPEN"
+    )
+    open_p1 = sorted(
+        risk_id
+        for risk_id, risk in risk_by_id.items()
+        if risk.get("priority") == "P1" and risk.get("status") == "OPEN"
+    )
+    uncovered_p1 = [
+        risk_id for risk_id in open_p1 if not waiver_validity.get(risk_id, False)
+    ]
+    gate_results = {
+        "no_open_p0": not open_p0,
+        "p1_waivers_valid": not uncovered_p1,
+    }
+    return {
+        "status": "PASS" if not errors else "FAIL",
+        "errors": sorted(errors),
+        "gate_results": gate_results,
+        "decision_readiness": "GO" if all(gate_results.values()) and not errors else "NO_GO",
+        "open_p0_risk_ids": open_p0,
+        "open_p1_risk_ids": open_p1,
+        "waiver_required_risk_ids": uncovered_p1,
+        "summary": {
+            "risk_count": len(risks),
+            "waiver_count": len(waivers),
+            "open_p0_count": len(open_p0),
+            "open_p1_count": len(open_p1),
+            "valid_waiver_count": sum(waiver_validity.values()),
         },
     }
 

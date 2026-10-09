@@ -71,7 +71,7 @@ does not manufacture or self-approve that waiver.
 | `1495` | Freeze the Single-host v1.0 topology, ten decision gates, and distributed backlog. |
 | `1496` | **Complete.** Build the immutable release-candidate evidence manifest. |
 | `1497` | **Complete.** Enforce evidence freshness and digest-chain admission. |
-| `1498` | Define P0/P1 risk and waiver governance. |
+| `1498` | **Complete.** Define P0/P1 risk and waiver governance. |
 | `1499` | Define approval roles, change window, and separation of deployment; run Checkpoint Gate. |
 | `1500` | Compose the immediate trust/data/storage/provider/operations preflight. |
 | `1501` | Rehearse cutover, rollback, and zero-residue controls. |
@@ -80,6 +80,20 @@ does not manufacture or self-approve that waiver.
 | `1504` | Publish the runbook, run Full Gate, and close S150 without deploying. |
 
 Checkpoint Gate at 1499 and Full Gate at 1504 are mandatory.
+
+## Risk and Waiver Governance
+
+- An open `P0` can never be waived for a v1.0 `GO`.
+- An open `P1` requires one valid waiver bound to that exact risk.
+- Waiver owner and approver must be distinct, and the maximum lifetime is 30
+  days.
+- Every waiver carries an issue time, expiry, compensating control, rollback
+  trigger, and positive review cadence.
+- The external-notification risk remains open without a granted waiver, so
+  current decision readiness is `NO_GO` even though governance evaluation is
+  structurally valid.
+- Distributed-environment backlog items are outside the Single-host v1.0 risk
+  register and cannot be counted as synthetic release failures or passes.
 
 ## Completion Signal
 

@@ -811,3 +811,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_s150_production_release_boundary.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s150_release_evidence_manifest.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s150_evidence_freshness_admission.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s150_risk_waiver_governance.py --summary
