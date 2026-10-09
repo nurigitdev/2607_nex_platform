@@ -74,7 +74,7 @@ does not manufacture or self-approve that waiver.
 | `1498` | **Complete.** Define P0/P1 risk and waiver governance. |
 | `1499` | **Complete.** Define approval roles, change window, and separation of deployment; run Checkpoint Gate. |
 | `1500` | **Complete.** Compose the immediate trust/data/storage/provider/operations preflight. |
-| `1501` | Rehearse cutover, rollback, and zero-residue controls. |
+| `1501` | **Complete.** Rehearse cutover, rollback, and zero-residue controls. |
 | `1502` | Implement the ten-gate `GO`/`NO_GO` evaluator. |
 | `1503` | Execute protected Single-host v1.0 go-live readiness acceptance. |
 | `1504` | Publish the runbook, run Full Gate, and close S150 without deploying. |

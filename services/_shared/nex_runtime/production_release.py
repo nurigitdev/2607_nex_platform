@@ -20,6 +20,14 @@ MAX_WAIVER_LIFETIME_SECONDS = 30 * 24 * 3600
 REQUIRED_APPROVAL_ROLES = frozenset(
     {"data_owner", "operations_owner", "release_manager", "security_owner"}
 )
+REQUIRED_CUTOVER_PHASES = (
+    "freeze_change_inputs",
+    "verify_immediate_preflight",
+    "activate_pinned_release_references",
+    "verify_service_and_data_paths",
+    "observe_rollback_triggers",
+    "close_or_restore_last_known_good",
+)
 DERIVED_MANIFEST_FIELDS = frozenset(
     {"checks", "failed_checks", "next_slice", "slice", "status", "summary"}
 )
@@ -442,6 +450,131 @@ def evaluate_release_approval_governance(
             "required_role_count": len(REQUIRED_APPROVAL_ROLES),
             "approved_role_count": len(approvals_by_role),
             "missing_role_count": len(missing_roles),
+        },
+    }
+
+
+def evaluate_cutover_rollback_rehearsal(
+    manifest: Mapping[str, Any],
+    immediate_preflight: Mapping[str, Any],
+    under_load_acceptance: Mapping[str, Any],
+    cutover_plan: Mapping[str, Any],
+    rollback_plan: Mapping[str, Any],
+    rollback_evaluation: Mapping[str, Any],
+    *,
+    evaluated_at: datetime,
+) -> dict[str, Any]:
+    if evaluated_at.tzinfo is None:
+        raise ValueError("evaluated_at must be timezone-aware")
+    now = evaluated_at.astimezone(UTC)
+    manifest_validation = validate_release_evidence_manifest(manifest)
+    release_candidate_id = manifest.get("release_candidate_id")
+    release_set_digest = manifest.get("release_set_digest")
+    preflight_checks = _mapping(immediate_preflight.get("checks"))
+    under_load_checks = _mapping(under_load_acceptance.get("checks"))
+    under_load_binding = _mapping(under_load_acceptance.get("release_binding"))
+    under_load_cleanup = _mapping(under_load_acceptance.get("cleanup"))
+    rollback_checks = _mapping(rollback_evaluation.get("checks"))
+    rollback_summary = _mapping(rollback_evaluation.get("summary"))
+    observed_at = _parse_timestamp(immediate_preflight.get("observed_at"))
+    expires_at = _parse_timestamp(immediate_preflight.get("expires_at"))
+    phases = cutover_plan.get("phases")
+    normalized_phases = (
+        tuple(str(item) for item in phases)
+        if isinstance(phases, Sequence) and not isinstance(phases, (str, bytes))
+        else ()
+    )
+    residue_count = sum(
+        int(under_load_cleanup.get(name) or 0)
+        for name in (
+            "client_fault_residue_count",
+            "provider_residue_count",
+            "shadow_residue_count",
+        )
+    ) + int(rollback_summary.get("residue_count") or 0)
+    checks = {
+        "manifest_valid": manifest_validation.get("status") == "PASS",
+        "exact_release_candidate_bound": (
+            immediate_preflight.get("release_candidate_id") == release_candidate_id
+            and under_load_binding.get("release_candidate_id") == release_candidate_id
+            and cutover_plan.get("release_candidate_id") == release_candidate_id
+            and rollback_plan.get("release_candidate_id") == release_candidate_id
+        ),
+        "artifact_configuration_digest_exact": (
+            immediate_preflight.get("release_set_digest") == release_set_digest
+            and under_load_binding.get("release_set_digest") == release_set_digest
+            and cutover_plan.get("release_set_digest") == release_set_digest
+        ),
+        "immediate_preflight_fresh": (
+            immediate_preflight.get("status") == "PASS"
+            and observed_at is not None
+            and expires_at is not None
+            and observed_at <= now < expires_at
+            and all(preflight_checks.values())
+        ),
+        "cutover_control_plan_exact": (
+            cutover_plan.get("topology") == "single_host_docker_compose"
+            and normalized_phases == REQUIRED_CUTOVER_PHASES
+            and cutover_plan.get("rollback_trigger_count") == 4
+            and cutover_plan.get("dry_run_only") is True
+        ),
+        "under_load_recovery_passed": (
+            under_load_acceptance.get("status") == "PASS"
+            and under_load_checks.get("rollback_under_load_passed") is True
+            and under_load_checks.get("eight_client_faults_recovered") is True
+            and under_load_checks.get("zero_data_loss_isolation_and_residue") is True
+        ),
+        "rollback_plan_admitted_exact": (
+            rollback_plan.get("admission") == "ADMITTED"
+            and rollback_plan.get("production_deployment_targeted") is False
+            and SAFE_RAW_DIGEST.fullmatch(
+                str(rollback_plan.get("rollback_plan_digest") or "")
+            )
+            is not None
+        ),
+        "rollback_drill_passed": (
+            rollback_evaluation.get("status") == "PASS"
+            and all(rollback_checks.values())
+            and int(rollback_summary.get("verified_component_count") or 0) == 6
+            and int(rollback_summary.get("committed_data_loss_count") or 0) == 0
+        ),
+        "zero_residue": (
+            preflight_checks.get("zero_residue") is True
+            and under_load_cleanup.get("storage_status") == "PASS"
+            and residue_count == 0
+        ),
+        "privacy_clean": not _privacy_violations(
+            {
+                "cutover_plan": cutover_plan,
+                "rollback_plan": rollback_plan,
+                "rollback_evaluation": rollback_evaluation,
+            }
+        ),
+        "production_deployment_separate": (
+            cutover_plan.get("deployment_execution_requested") is False
+            and immediate_preflight.get("production_deployment_approved") is False
+            and _mapping(under_load_acceptance.get("execution_scope")).get(
+                "production_deployment_approved"
+            )
+            is False
+        ),
+    }
+    failed_checks = sorted(name for name, passed in checks.items() if not passed)
+    return {
+        "status": "PASS" if not failed_checks else "FAIL",
+        "checks": checks,
+        "failed_checks": failed_checks,
+        "release_candidate_id": release_candidate_id,
+        "release_set_digest": release_set_digest,
+        "summary": {
+            "check_count": len(checks),
+            "passed_check_count": sum(checks.values()),
+            "cutover_phase_count": len(normalized_phases),
+            "rollback_component_count": int(
+                rollback_summary.get("component_count") or 0
+            ),
+            "recovery_ms": int(rollback_summary.get("recovery_ms") or 0),
+            "residue_count": residue_count,
         },
     }
 
