@@ -440,3 +440,17 @@ autoscaling/failover, and external dead-man monitoring remain explicit future
 backlog and cannot be reported as passing Single-host evidence.
 
 Production deployment remains unapproved.
+
+## S150 Activation Update
+
+S150 starts at Slice 1495 with Single-host Docker Compose fixed as the NeX
+Platform v1.0 supported topology. Its canonical scope is
+`docs/58_platform_production_release_go_live.md`: immutable S149 evidence,
+freshness and digest-chain admission, P0/P1 governance, approval roles,
+immediate preflight, rollback, an exact `GO`/`NO_GO` evaluator, protected
+acceptance, and closure without implicit deployment. Multi-node service
+failover, PostgreSQL automatic failover, distributed object-storage node loss,
+GPU autoscaling/failover, and external dead-man monitoring remain explicit
+post-v1.0 backlog.
+
+Production deployment remains unapproved.
