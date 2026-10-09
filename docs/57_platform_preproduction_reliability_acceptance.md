@@ -1,8 +1,9 @@
 # Platform Pre-production Reliability, Security, and Recovery Acceptance
 
-Status: S149 active through Slice 1487. The acceptance boundary,
+Status: S149 active through Slice 1488. The acceptance boundary,
 release-bound workload profiles, bounded concurrency harness, and soak
-stability evaluator, fault/recovery plan, and Checkpoint Gate are complete for
+stability evaluator, fault/recovery plan, Checkpoint Gate, and security/privacy
+matrix are complete for
 the Single-host Docker Compose staging topology. Production deployment remains
 unapproved.
 
@@ -127,7 +128,7 @@ and local compensating control before a `GO` decision.
 | `1485` | **Complete.** Implement the bounded concurrency/load harness and metadata-only measurements. |
 | `1486` | **Complete.** Implement soak windows, stability/leak trends, saturation, and SLO evaluation. |
 | `1487` | **Complete.** Implement allowlisted fault injection, provider degradation, recovery state, and Checkpoint Gate. |
-| `1488` | Execute security, authorization, tenant-isolation, and evidence-privacy acceptance. |
+| `1488` | **Complete.** Execute security, authorization, tenant-isolation, and evidence-privacy acceptance. |
 | `1489` | Implement rollback rehearsal, last-known-good restoration, cleanup, and zero-residue proof. |
 | `1490` | Run protected Single-host Compose, PostgreSQL, RustFS, and remote-provider acceptance. |
 | `1491` | Aggregate evidence, classify topology limitations/backlog, and evaluate S150 admission. |

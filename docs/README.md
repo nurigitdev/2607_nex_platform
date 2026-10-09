@@ -1601,6 +1601,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1485`](slices/1485_s149_bounded_concurrency_load_harness.md) | `S149-003` Add bounded weighted concurrency execution and metadata-only latency, throughput, saturation, duplicate, and isolation measurements. |
 | [`Slice 1486`](slices/1486_s149_soak_stability.md) | `S149-004` Add fixed-window soak SLO evaluation with no-data, leak, saturation, queue, and tail-stability guards. |
 | [`Slice 1487`](slices/1487_s149_fault_recovery_checkpoint.md) | `S149-005` Add allowlisted Single-host fault and provider-degradation state machines, recovery budgets, zero-residue checks, and Checkpoint Gate. |
+| [`Slice 1488`](slices/1488_s149_security_privacy_acceptance.md) | `S149-006` Add the exact tenant, owner, token, credential, storage, request-boundary, recovery, and evidence-privacy negative matrix. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
