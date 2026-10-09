@@ -1,11 +1,13 @@
 # Platform Pre-production Reliability, Security, and Recovery Acceptance
 
-Status: S149 active through Slice 1490. The acceptance boundary,
+Status: S149 active through Slice 1491. The acceptance boundary,
 release-bound workload profiles, bounded concurrency harness, and soak
 stability evaluator, fault/recovery plan, Checkpoint Gate, and security/privacy
 matrix, rollback rehearsal, and protected Single-host live orchestration are complete for
-the Single-host Docker Compose staging topology. Production deployment remains
-unapproved.
+the Single-host Docker Compose staging topology. The protected target-workload
+runner binds a 30-minute, 4 RPS, 7,200-request operation mix to the admitted
+release candidate while keeping expensive provider calls explicitly capped.
+Production deployment remains unapproved.
 
 ## Outcome
 
@@ -49,6 +51,26 @@ upload-to-index, permission-filtered retrieval, grounded generation, artifact
 access, AG operations reads, and persistence/readiness probes. Per-operation
 results record only counts, latency buckets, safe reason codes, and opaque
 correlation IDs.
+
+The protected live mix preserves the admitted soak duration, target RPS, and
+request count without applying the deterministic equal-weight mix to expensive
+GPU operations. It executes 2,400 readiness probes, 1,440 OA trust reads, 1,440
+AG operations reads, 720 CX ingestion persistence probes, 720 AE artifact
+reads, 450 hybrid retrieval probes, and 30 grounded generation probes. Each
+hybrid retrieval probe makes one embedding and one reranking call, so the
+provider budgets are exactly 450 embedding, 450 reranking, and 30 generation
+calls. Model names and revisions remain runtime configuration, not workload
+constants.
+
+The aggregate error-rate budget cannot hide a failed low-frequency capability.
+All 450 hybrid retrieval operations and all 30 grounded generation operations
+must succeed independently of the overall error-rate calculation.
+
+Actual authenticated ingestion and grounded-generation/artifact journeys run
+before and after the load as sentinels. The 7,200-request interval exercises
+actual PostgreSQL and remote-provider boundaries; it is not represented as
+7,200 complete browser journeys. A passing S149 result therefore requires both
+sentinels, the bounded workload, and zero rehearsal residue.
 
 Acceptance requires:
 
@@ -131,10 +153,12 @@ and local compensating control before a `GO` decision.
 | `1488` | **Complete.** Execute security, authorization, tenant-isolation, and evidence-privacy acceptance. |
 | `1489` | **Complete.** Implement rollback rehearsal, last-known-good restoration, cleanup, and zero-residue proof. |
 | `1490` | **Complete.** Run protected Single-host Compose, PostgreSQL, RustFS, and remote-provider acceptance. |
-| `1491` | Aggregate evidence, classify topology limitations/backlog, and evaluate S150 admission. |
-| `1492` | Publish the runbook, pass Full Gate, close S149, and activate S150. |
+| `1491` | **Complete.** Bind and execute the protected 30-minute target workload with pre/post actual journey sentinels and explicit provider-call caps. |
+| `1492` | Execute allowlisted fault, security/privacy, and rollback checks while the protected workload is active. |
+| `1493` | Aggregate release-bound evidence, classify topology limitations/backlog, and evaluate S150 admission. |
+| `1494` | Publish the runbook, pass Full Gate, close S149, and activate S150. |
 
-Checkpoint Gate runs at Slice 1487. Full Gate runs at Slice 1492.
+Checkpoint Gate runs at Slice 1487. Full Gate runs at Slice 1494.
 
 ## Completion Signal
 
