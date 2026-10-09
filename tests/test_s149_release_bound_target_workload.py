@@ -375,6 +375,7 @@ def test_runtime_executes_each_boundary_and_cleans_residue() -> None:
         "reranking": 1,
         "generation": 1,
     }
+    assert statistics["generation_reasoning_mode"] == "disabled"
     assert statistics["operation_outcome_counts"]["grounded_generation"] == {
         "SUCCESS": 1,
         "ERROR": 0,

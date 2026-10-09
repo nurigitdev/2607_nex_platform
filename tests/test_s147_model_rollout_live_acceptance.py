@@ -111,6 +111,7 @@ def test_acceptance_passes_with_redacted_non_disruptive_evidence() -> None:
         "restart_read_count": 3,
         "api_status": 200,
         "api_item_count": 3,
+        "generation_reasoning_mode": "disabled",
     }
     assert result["candidate_admission"] == {
         "status": "CALIBRATION_REQUIRED",

@@ -93,7 +93,11 @@ def test_execute_protected_acceptance_orchestrates_real_boundaries_with_doubles(
     monkeypatch.setattr(runner, "validate_s144_compose_assets", lambda _root: {"status": "VALID"})
     monkeypatch.setattr(runner, "run_service_migrations", lambda *args, **kwargs: migration)
     monkeypatch.setattr(runner, "_verify_database_identity", lambda _url: None)
-    monkeypatch.setattr(runner.s143, "_image_environment", lambda _root: ({"NEX_OA_RUNTIME_IMAGE": "oa@sha256:x"}, "release-digest"))
+    monkeypatch.setattr(
+        runner.s143,
+        "_image_environment",
+        lambda _root: (_ for _ in ()).throw(AssertionError("strict loader used")),
+    )
     monkeypatch.setattr(runner, "prepare_staging_runtime_directory", lambda _path: None)
     compose_calls: list[tuple[str, ...]] = []
     compose_environments: list[dict[str, str]] = []
@@ -227,7 +231,12 @@ def test_execute_protected_acceptance_orchestrates_real_boundaries_with_doubles(
     )
 
     result = runner._execute_protected_acceptance(
-        {runner.OA_DATABASE_ENV: "postgresql://private"}, root=tmp_path
+        {runner.OA_DATABASE_ENV: "postgresql://private"},
+        root=tmp_path,
+        image_environment_loader=lambda _root: (
+            {"NEX_OA_RUNTIME_IMAGE": "oa@sha256:x"},
+            "release-digest",
+        ),
     )
 
     assert result["status"] == "PASS"

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 import base64
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -98,6 +98,7 @@ REPORT_PATH = ROOT / "reports/deployment/s144-protected-trust-federation.json"
 BASE_COMPOSE = ROOT / "deployment/compose/s143-staging.compose.yaml"
 OVERRIDE_COMPOSE = ROOT / "deployment/compose/s144-staging.override.yaml"
 OA_DATABASE_ENV = "NEX_OA_TEST_DATABASE_URL"
+ImageEnvironmentLoader = Callable[[Path], tuple[dict[str, str], str]]
 
 
 class S144ProtectedAcceptanceError(RuntimeError):
@@ -110,6 +111,7 @@ def run_s144_protected_acceptance(
     execute: bool = False,
     root: Path = ROOT,
     report_path: Path = REPORT_PATH,
+    image_environment_loader: ImageEnvironmentLoader | None = None,
 ) -> dict[str, Any]:
     env = dict(os.environ if environ is None else environ)
     if not execute or env.get(ENABLE_ENV) != "1":
@@ -121,7 +123,11 @@ def run_s144_protected_acceptance(
             "skip_reason": f"--execute and {ENABLE_ENV}=1 are required.",
         }
     try:
-        result = _execute_protected_acceptance(env, root=root)
+        result = _execute_protected_acceptance(
+            env,
+            root=root,
+            image_environment_loader=image_environment_loader,
+        )
         _assert_value_free(result, _protected_environment_values(env))
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(
@@ -145,7 +151,10 @@ def run_s144_protected_acceptance(
 
 
 def _execute_protected_acceptance(
-    env: Mapping[str, str], *, root: Path
+    env: Mapping[str, str],
+    *,
+    root: Path,
+    image_environment_loader: ImageEnvironmentLoader | None = None,
 ) -> dict[str, Any]:
     compose_contract = validate_s144_compose_assets(root)
     database_url = str(env.get(OA_DATABASE_ENV) or "").strip()
@@ -155,7 +164,9 @@ def _execute_protected_acceptance(
         "nex-oa", database_url=database_url, profile="test", dry_run=False
     )
     _verify_database_identity(database_url)
-    image_environment, release_set_digest = s143._image_environment(root)
+    image_environment, release_set_digest = (
+        image_environment_loader or s143._image_environment
+    )(root)
     run_id = f"s144-{uuid4().hex[:12]}"
     context = _seed_context(run_id)
     runtime = None

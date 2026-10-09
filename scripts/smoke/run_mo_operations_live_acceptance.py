@@ -62,6 +62,7 @@ from run_migrations import run_service_migrations  # noqa: E402
 
 
 SCHEMA_VERSION = "mo_operations_live_acceptance.v1"
+GENERATION_REASONING_MODE = "disabled"
 ACTIVATION_ENV = "NEX_MO_OPERATIONS_LIVE_ACCEPTANCE"
 PROFILE_ENV = "NEX_MO_OPERATIONS_LIVE_ACCEPTANCE_PROFILE"
 DATABASE_ENV = "NEX_MO_TEST_DATABASE_URL"
@@ -185,6 +186,7 @@ def run_mo_operations_live_acceptance(
                 "schema_error_count": _nonnegative_int(
                     observations.get("schema_error_count")
                 ),
+                "generation_reasoning_mode": GENERATION_REASONING_MODE,
             },
             "cleanup": cleanup,
             "redaction": {
@@ -283,7 +285,7 @@ def _exercise_live(database_url: str, environment: dict[str, str]) -> dict[str, 
                 "provider_capability": "generation",
                 "prompt": "Return the exact phrase 'NEX S119 OK' and no extra text.",
                 "response_format": {"type": "text"},
-                "reasoning_mode": "disabled",
+                "reasoning_mode": GENERATION_REASONING_MODE,
                 "max_output_tokens": 32,
                 "temperature": 0.0,
             },

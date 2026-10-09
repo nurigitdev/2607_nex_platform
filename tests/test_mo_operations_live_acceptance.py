@@ -98,6 +98,7 @@ def test_live_acceptance_accepts_complete_redacted_evidence() -> None:
         "ready_capability_count": 3,
         "runtime_ready_capability_count": 3,
         "schema_error_count": 0,
+        "generation_reasoning_mode": "disabled",
     }
     assert result["next_slice"] == "1191"
     assert "private-provider-key" not in serialized

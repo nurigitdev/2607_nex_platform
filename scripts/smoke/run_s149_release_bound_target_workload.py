@@ -54,6 +54,7 @@ import run_platform_release_candidate_live_providers as live_providers  # noqa: 
 
 
 SCHEMA_VERSION = "s149_release_bound_target_workload.v1"
+PROTECTED_GENERATION_REASONING_MODE = "disabled"
 ACTIVATION_ENV = "NEX_S149_RELEASE_BOUND_TARGET_WORKLOAD"
 PROFILE_ENV = "NEX_S149_RELEASE_BOUND_TARGET_WORKLOAD_PROFILE"
 DEFAULT_PROFILE = "test"
@@ -233,7 +234,7 @@ class ProtectedLiveOperationRuntime:
                 "temperature": 0.0,
                 "max_output_tokens": 32,
                 "stream": False,
-                "reasoning_mode": "disabled",
+                "reasoning_mode": PROTECTED_GENERATION_REASONING_MODE,
             },
             request_id=request.request_id,
             trace_id=hashlib.sha256(request.request_id.encode()).hexdigest()[:32],
@@ -265,7 +266,7 @@ class ProtectedLiveOperationRuntime:
             "residue_count": int(residue),
         }
 
-    def statistics(self) -> dict[str, dict[str, int]]:
+    def statistics(self) -> dict[str, Any]:
         with self._lock:
             return {
                 "operation_counts": dict(self._operation_counts),
@@ -278,6 +279,7 @@ class ProtectedLiveOperationRuntime:
                 },
                 "database_call_counts": dict(self._database_counts),
                 "provider_call_counts": dict(self._provider_counts),
+                "generation_reasoning_mode": PROTECTED_GENERATION_REASONING_MODE,
             }
 
     def close(self) -> None:

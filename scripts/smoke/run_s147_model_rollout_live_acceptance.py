@@ -54,6 +54,7 @@ from nex_runtime import (
 )
 from run_migrations import run_service_migrations
 from run_mo_operations_live_acceptance import (
+    GENERATION_REASONING_MODE,
     run_mo_operations_live_acceptance,
 )
 
@@ -180,6 +181,7 @@ def run_s147_model_rollout_live_acceptance(
                 ),
                 "api_status": _count(persistence.get("api_status")),
                 "api_item_count": _count(persistence.get("api_item_count")),
+                "generation_reasoning_mode": GENERATION_REASONING_MODE,
             },
             "candidate_admission": {
                 "status": "CALIBRATION_REQUIRED",
