@@ -809,3 +809,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_s149_evidence_admission.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s149_preproduction_acceptance_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s150_production_release_boundary.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s150_release_evidence_manifest.py --summary

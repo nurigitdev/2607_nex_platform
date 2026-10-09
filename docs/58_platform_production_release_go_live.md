@@ -69,7 +69,7 @@ does not manufacture or self-approve that waiver.
 | Slice | Scope |
 | --- | --- |
 | `1495` | Freeze the Single-host v1.0 topology, ten decision gates, and distributed backlog. |
-| `1496` | Build the immutable release-candidate evidence manifest. |
+| `1496` | **Complete.** Build the immutable release-candidate evidence manifest. |
 | `1497` | Enforce evidence freshness and digest-chain admission. |
 | `1498` | Define P0/P1 risk and waiver governance. |
 | `1499` | Define approval roles, change window, and separation of deployment; run Checkpoint Gate. |
