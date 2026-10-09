@@ -28,6 +28,18 @@ REQUIRED_CUTOVER_PHASES = (
     "observe_rollback_triggers",
     "close_or_restore_last_known_good",
 )
+RELEASE_GATE_NAMES = (
+    "all_dependency_evidence_passed",
+    "evidence_fresh",
+    "artifact_configuration_digest_exact",
+    "no_open_p0",
+    "p1_waivers_valid",
+    "privacy_clean",
+    "rollback_drill_passed",
+    "zero_residue",
+    "approval_roles_complete",
+    "production_deployment_separate",
+)
 DERIVED_MANIFEST_FIELDS = frozenset(
     {"checks", "failed_checks", "next_slice", "slice", "status", "summary"}
 )
@@ -575,6 +587,108 @@ def evaluate_cutover_rollback_rehearsal(
             ),
             "recovery_ms": int(rollback_summary.get("recovery_ms") or 0),
             "residue_count": residue_count,
+        },
+    }
+
+
+def evaluate_release_decision_gates(
+    manifest: Mapping[str, Any],
+    admission: Mapping[str, Any],
+    risk_governance: Mapping[str, Any],
+    approval_governance: Mapping[str, Any],
+    immediate_preflight: Mapping[str, Any],
+    rollback_rehearsal: Mapping[str, Any],
+    *,
+    evaluated_at: datetime,
+) -> dict[str, Any]:
+    if evaluated_at.tzinfo is None:
+        raise ValueError("evaluated_at must be timezone-aware")
+    now = evaluated_at.astimezone(UTC)
+    sources = (
+        admission,
+        risk_governance,
+        approval_governance,
+        immediate_preflight,
+        rollback_rehearsal,
+    )
+    manifest_validation = validate_release_evidence_manifest(manifest)
+    release_candidate_id = manifest.get("release_candidate_id")
+    release_set_digest = manifest.get("release_set_digest")
+    admission_checks = _mapping(admission.get("checks"))
+    risk_gates = _mapping(risk_governance.get("gate_results"))
+    approval_gates = _mapping(approval_governance.get("gate_results"))
+    preflight_checks = _mapping(immediate_preflight.get("checks"))
+    rollback_checks = _mapping(rollback_rehearsal.get("checks"))
+    preflight_observed_at = _parse_timestamp(immediate_preflight.get("observed_at"))
+    preflight_expires_at = _parse_timestamp(immediate_preflight.get("expires_at"))
+    identity_exact = all(
+        source.get("release_candidate_id") == release_candidate_id
+        and source.get("release_set_digest") == release_set_digest
+        for source in sources
+    )
+    deployment_separate = all(
+        source.get("production_deployment_approved") is False for source in sources
+    ) and all(
+        source.get("implicit_deployment_performed") is not True
+        for source in sources
+    )
+    checks = {
+        "all_dependency_evidence_passed": (
+            manifest_validation.get("status") == "PASS"
+            and all(source.get("status") == "PASS" for source in sources)
+        ),
+        "evidence_fresh": (
+            admission_checks.get("go_live_window_24h") is True
+            and preflight_observed_at is not None
+            and preflight_expires_at is not None
+            and preflight_observed_at <= now < preflight_expires_at
+            and preflight_checks.get("preflight_completed_within_window") is True
+        ),
+        "artifact_configuration_digest_exact": (
+            identity_exact
+            and admission_checks.get("release_candidate_id_exact") is True
+            and admission_checks.get("release_set_digest_exact") is True
+            and rollback_checks.get("artifact_configuration_digest_exact") is True
+        ),
+        "no_open_p0": risk_gates.get("no_open_p0") is True,
+        "p1_waivers_valid": risk_gates.get("p1_waivers_valid") is True,
+        "privacy_clean": not _privacy_violations(
+            {
+                "manifest": manifest,
+                "admission": admission,
+                "risk_governance": risk_governance,
+                "approval_governance": approval_governance,
+                "immediate_preflight": immediate_preflight,
+                "rollback_rehearsal": rollback_rehearsal,
+            }
+        )
+        and rollback_checks.get("privacy_clean") is True,
+        "rollback_drill_passed": rollback_checks.get("rollback_drill_passed")
+        is True,
+        "zero_residue": preflight_checks.get("zero_residue") is True
+        and rollback_checks.get("zero_residue") is True,
+        "approval_roles_complete": approval_gates.get("approval_roles_complete")
+        is True,
+        "production_deployment_separate": deployment_separate
+        and admission_checks.get("production_deployment_separate") is True
+        and approval_gates.get("production_deployment_separate") is True
+        and preflight_checks.get("production_deployment_separate") is True
+        and rollback_checks.get("production_deployment_separate") is True,
+    }
+    if tuple(checks) != RELEASE_GATE_NAMES:  # pragma: no cover - constant guard
+        raise RuntimeError("release decision gate inventory drift")
+    failed_gates = [name for name in RELEASE_GATE_NAMES if not checks[name]]
+    return {
+        "status": "PASS",
+        "decision": "GO" if not failed_gates else "NO_GO",
+        "gate_results": checks,
+        "failed_gates": failed_gates,
+        "release_candidate_id": release_candidate_id,
+        "release_set_digest": release_set_digest,
+        "summary": {
+            "gate_count": len(RELEASE_GATE_NAMES),
+            "passed_gate_count": sum(checks.values()),
+            "failed_gate_count": len(failed_gates),
         },
     }
 

@@ -815,3 +815,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_s150_approval_change_governance.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s150_immediate_preflight.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s150_cutover_rollback_rehearsal.py --summary
+"$PYTHON_BIN" scripts/smoke/run_s150_release_decision.py --summary
