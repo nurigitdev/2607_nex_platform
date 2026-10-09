@@ -261,12 +261,107 @@ def test_current_release_set_is_projected_to_compose_environment(
     path = tmp_path / "reports/deployment/s142-oci-image-build.json"
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps(report), encoding="utf-8")
-    monkeypatch.setattr(smoke, "_git", lambda *args: "a" * 40)
+    monkeypatch.setattr(
+        smoke,
+        "_git",
+        lambda _root, *args: "a" * 40
+        if args[:2] == ("rev-parse", "HEAD")
+        else "",
+    )
 
     environment, digest = smoke._image_environment(tmp_path)
 
     assert set(environment) == set(smoke.IMAGE_ENV_BY_ARTIFACT.values())
     assert digest == "sha256:" + "f" * 64
+
+
+def test_release_set_projection_admits_non_runtime_changes(
+    tmp_path, monkeypatch
+) -> None:
+    artifacts = [
+        {
+            "artifact_id": artifact,
+            "image_reference": f"local/{artifact}@sha256:{index:064x}",
+        }
+        for index, artifact in enumerate(smoke.IMAGE_ENV_BY_ARTIFACT, start=1)
+    ]
+    report = {
+        "image_build": {
+            "status": "RELEASE_SET_BUILT",
+            "source_revision": "a" * 40,
+            "release_set_digest": "sha256:" + "f" * 64,
+            "artifacts": artifacts,
+        }
+    }
+    path = tmp_path / "reports/deployment/s142-oci-image-build.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(report), encoding="utf-8")
+
+    def git_output(_root, *args):
+        if args[:2] == ("rev-parse", "HEAD"):
+            return "b" * 40
+        if args[0] == "merge-base":
+            return "a" * 40
+        if args[0] == "diff":
+            return "docs/slices/1500.md\nscripts/smoke/run_s150.py\ntests/test_s150.py"
+        return ""
+
+    monkeypatch.setattr(smoke, "_git", git_output)
+
+    environment, digest = smoke._image_environment(tmp_path)
+
+    assert set(environment) == set(smoke.IMAGE_ENV_BY_ARTIFACT.values())
+    assert digest == "sha256:" + "f" * 64
+
+
+@pytest.mark.parametrize(
+    ("changed_paths", "status", "message"),
+    [
+        ("services/nex-cx/src/nex_cx/api.py", "", "stale"),
+        ("docs/slices/1500.md", " M docs/slices/1500.md", "worktree"),
+    ],
+)
+def test_release_set_projection_rejects_runtime_or_dirty_changes(
+    tmp_path, monkeypatch, changed_paths, status, message
+) -> None:
+    artifacts = [
+        {
+            "artifact_id": artifact,
+            "image_reference": f"local/{artifact}@sha256:{index:064x}",
+        }
+        for index, artifact in enumerate(smoke.IMAGE_ENV_BY_ARTIFACT, start=1)
+    ]
+    path = tmp_path / "reports/deployment/s142-oci-image-build.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "image_build": {
+                    "status": "RELEASE_SET_BUILT",
+                    "source_revision": "a" * 40,
+                    "release_set_digest": "sha256:" + "f" * 64,
+                    "artifacts": artifacts,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def git_output(_root, *args):
+        if args[:2] == ("rev-parse", "HEAD"):
+            return "b" * 40
+        if args[0] == "merge-base":
+            return "a" * 40
+        if args[0] == "diff":
+            return changed_paths
+        if args[0] == "status":
+            return status
+        return ""
+
+    monkeypatch.setattr(smoke, "_git", git_output)
+
+    with pytest.raises(smoke.ExternalStagingAcceptanceError, match=message):
+        smoke._image_environment(tmp_path)
 
 
 def test_release_set_and_evidence_redaction_fail_closed(tmp_path, monkeypatch) -> None:
@@ -317,7 +412,13 @@ def test_release_set_projection_rejects_identity_drift(
     path = tmp_path / "reports/deployment/s142-oci-image-build.json"
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps({"image_build": image_build}), encoding="utf-8")
-    monkeypatch.setattr(smoke, "_git", lambda *args: "a" * 40)
+    monkeypatch.setattr(
+        smoke,
+        "_git",
+        lambda _root, *args: "a" * 40
+        if args[:2] == ("rev-parse", "HEAD")
+        else "",
+    )
     with pytest.raises(smoke.ExternalStagingAcceptanceError, match=message):
         smoke._image_environment(tmp_path)
 

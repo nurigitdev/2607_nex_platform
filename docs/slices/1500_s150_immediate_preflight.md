@@ -17,3 +17,8 @@ Status: Complete.
   reasoning mode `disabled`.
 - Kept external notification `EXTERNAL_NOT_ACTIVATED`; mock delivery is
   operational rehearsal, not a granted P1 waiver.
+- OCI source admission accepts only committed documentation, smoke tooling, and
+  test changes after the pinned image revision. Runtime-affecting changes,
+  non-ancestor revisions, and tracked dirty worktrees still fail closed. This
+  keeps the immutable release candidate stable while S150 assurance evidence is
+  assembled.

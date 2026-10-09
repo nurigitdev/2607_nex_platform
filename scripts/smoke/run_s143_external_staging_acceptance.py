@@ -77,6 +77,7 @@ IMAGE_ENV_BY_ARTIFACT = {
     "nex-mo-runtime": "NEX_MO_RUNTIME_IMAGE",
     "nex-ae-web": "NEX_AE_WEB_IMAGE",
 }
+NON_RUNTIME_CHANGE_PREFIXES = ("docs/", "scripts/smoke/", "tests/")
 
 
 class ExternalStagingAcceptanceError(RuntimeError):
@@ -399,9 +400,31 @@ def _image_environment(root: Path) -> tuple[dict[str, str], str]:
         or image_build.get("status") != "RELEASE_SET_BUILT"
     ):
         raise ExternalStagingAcceptanceError("OCI release set is not ready")
-    source_revision = _git(root, "rev-parse", "HEAD")
-    if image_build.get("source_revision") != source_revision:
-        raise ExternalStagingAcceptanceError("OCI release set source revision is stale")
+    source_revision = str(image_build.get("source_revision") or "")
+    head_revision = _git(root, "rev-parse", "HEAD")
+    if source_revision != head_revision:
+        merge_base = _git(root, "merge-base", source_revision, head_revision)
+        changed_paths = tuple(
+            path
+            for path in _git(
+                root,
+                "diff",
+                "--name-only",
+                f"{source_revision}..{head_revision}",
+            ).splitlines()
+            if path
+        )
+        if merge_base != source_revision or any(
+            not path.startswith(NON_RUNTIME_CHANGE_PREFIXES)
+            for path in changed_paths
+        ):
+            raise ExternalStagingAcceptanceError(
+                "OCI release set source revision is stale"
+            )
+    if _git(root, "status", "--porcelain", "--untracked-files=no"):
+        raise ExternalStagingAcceptanceError(
+            "tracked worktree changes prevent OCI release set admission"
+        )
     artifacts = image_build.get("artifacts")
     if not isinstance(artifacts, list):
         raise ExternalStagingAcceptanceError("OCI release set artifact list is invalid")
