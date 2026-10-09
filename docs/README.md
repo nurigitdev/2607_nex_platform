@@ -1599,6 +1599,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1483`](slices/1483_s149_preproduction_acceptance_boundary.md) | `S149-001` Freeze workload, SLO, fault, security/privacy, rollback, zero-residue, Single-host, and distributed-backlog boundaries. |
 | [`Slice 1484`](slices/1484_s149_workload_profile.md) | `S149-002` Add release-bound baseline, concurrency, and soak workload profiles with complete operation mix and bounded SLO budgets. |
 | [`Slice 1485`](slices/1485_s149_bounded_concurrency_load_harness.md) | `S149-003` Add bounded weighted concurrency execution and metadata-only latency, throughput, saturation, duplicate, and isolation measurements. |
+| [`Slice 1486`](slices/1486_s149_soak_stability.md) | `S149-004` Add fixed-window soak SLO evaluation with no-data, leak, saturation, queue, and tail-stability guards. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
