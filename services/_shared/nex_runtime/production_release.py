@@ -14,6 +14,10 @@ SAFE_SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 SAFE_RAW_DIGEST = re.compile(r"^[0-9a-f]{64}$")
 SAFE_REVISION = re.compile(r"^[0-9a-f]{40}$")
 SAFE_RELEASE_ID = re.compile(r"^rc:s149:[0-9a-f]{16}$")
+MAX_FUTURE_SKEW_SECONDS = 300
+DERIVED_MANIFEST_FIELDS = frozenset(
+    {"checks", "failed_checks", "next_slice", "slice", "status", "summary"}
+)
 FORBIDDEN_KEY_PARTS = (
     "api_key",
     "authorization",
@@ -105,7 +109,11 @@ def validate_release_evidence_manifest(
     regression = _mapping(manifest.get("full_regression"))
     privacy_violations = _privacy_violations(manifest)
     expected_digest = canonical_digest(
-        {key: value for key, value in manifest.items() if key != "manifest_digest"}
+        {
+            key: value
+            for key, value in manifest.items()
+            if key != "manifest_digest" and key not in DERIVED_MANIFEST_FIELDS
+        }
     )
     checks = {
         "schema_and_requirement_valid": (
@@ -158,6 +166,70 @@ def validate_release_evidence_manifest(
             "passed_check_count": sum(checks.values()),
             "dependency_count": len(records),
             "backlog_count": int(manifest.get("single_host_backlog_count") or 0),
+        },
+    }
+
+
+def evaluate_release_evidence_admission(
+    manifest: Mapping[str, Any],
+    *,
+    expected_release_candidate_id: str,
+    expected_release_set_digest: str,
+    evaluated_at: datetime,
+    max_age_hours: int = 24,
+) -> dict[str, Any]:
+    if evaluated_at.tzinfo is None:
+        raise ValueError("evaluated_at must be timezone-aware")
+    if (
+        not isinstance(max_age_hours, int)
+        or isinstance(max_age_hours, bool)
+        or max_age_hours < 1
+    ):
+        raise ValueError("max_age_hours must be a positive integer")
+    validation = validate_release_evidence_manifest(manifest)
+    observed_at = _parse_timestamp(manifest.get("observed_at"))
+    age_seconds = (
+        (evaluated_at.astimezone(UTC) - observed_at).total_seconds()
+        if observed_at is not None
+        else None
+    )
+    dependencies = manifest.get("dependency_evidence")
+    records = (
+        [dict(item) for item in dependencies if isinstance(item, Mapping)]
+        if isinstance(dependencies, Sequence)
+        and not isinstance(dependencies, (str, bytes))
+        else []
+    )
+    dependency_digests = [str(item.get("digest") or "") for item in records]
+    checks = {
+        "manifest_validation_passed": validation["status"] == "PASS",
+        "release_candidate_id_exact": manifest.get("release_candidate_id")
+        == expected_release_candidate_id,
+        "release_set_digest_exact": manifest.get("release_set_digest")
+        == expected_release_set_digest,
+        "go_live_window_24h": age_seconds is not None
+        and age_seconds >= -MAX_FUTURE_SKEW_SECONDS
+        and age_seconds <= max_age_hours * 3600,
+        "dependency_digests_unique": len(dependency_digests) == 3
+        and len(set(dependency_digests)) == 3,
+        "production_deployment_separate": manifest.get(
+            "production_deployment_approved"
+        )
+        is False,
+    }
+    failed_checks = sorted(name for name, passed in checks.items() if not passed)
+    return {
+        "status": "PASS" if not failed_checks else "FAIL",
+        "checks": checks,
+        "failed_checks": failed_checks,
+        "manifest_validation": validation,
+        "age_seconds": round(age_seconds, 3) if age_seconds is not None else None,
+        "max_age_seconds": max_age_hours * 3600,
+        "summary": {
+            "check_count": len(checks),
+            "passed_check_count": sum(checks.values()),
+            "dependency_count": len(records),
+            "max_age_hours": max_age_hours,
         },
     }
 

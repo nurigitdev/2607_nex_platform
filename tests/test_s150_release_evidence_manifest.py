@@ -63,6 +63,19 @@ def test_manifest_build_and_validation_are_release_bound() -> None:
     assert manifest["manifest_digest"].startswith("sha256:")
     assert manifest["dependency_evidence"][2]["digest"] == canonical_digest(closure)
 
+    persisted = {
+        **manifest,
+        "slice": "1496",
+        "status": "PASS",
+        "checks": result["checks"],
+        "failed_checks": [],
+        "summary": result["summary"],
+        "next_slice": "1497",
+    }
+    assert validate_release_evidence_manifest(persisted)["status"] == "PASS"
+    persisted["unknown_release_field"] = "drift"
+    assert validate_release_evidence_manifest(persisted)["status"] == "FAIL"
+
 
 def test_manifest_validation_fails_closed_for_drift_and_privacy() -> None:
     manifest = build_release_evidence_manifest(
