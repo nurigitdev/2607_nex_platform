@@ -21,7 +21,10 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 import yaml
 
-from .production_configuration import load_production_configuration_manifest
+from .production_configuration import (
+    PRODUCTION_SECRET_BINDING_COUNT,
+    load_production_configuration_manifest,
+)
 
 
 S143_STAGING_SCHEMA_VERSION = "s143_external_staging.v1"
@@ -140,7 +143,7 @@ def validate_s143_compose_assets(root: Path) -> dict[str, Any]:
     if any(f"Host(`{host}`)" not in dynamic for host in STAGING_HOSTS):
         raise S143StagingError("Traefik staging route coverage drift")
     secret_refs = re.findall(r"secret://openbao/[^\s]+", compose_text)
-    if len(secret_refs) != 16:
+    if len(secret_refs) != PRODUCTION_SECRET_BINDING_COUNT:
         raise S143StagingError("OpenBao secret reference coverage drift")
     return {
         "schema_version": S143_STAGING_SCHEMA_VERSION,

@@ -38,6 +38,10 @@ x-platform-environment: &platform-environment
   NEX_MO_REMOTE_EMBEDDING_API_KEY_REF: secret://openbao/nex-platform/staging/nex-mo/NEX_MO_REMOTE_EMBEDDING_API_KEY@${NEX_S143_SECRET_VERSION:-v1}
   NEX_MO_REMOTE_RERANKER_API_KEY_REF: secret://openbao/nex-platform/staging/nex-mo/NEX_MO_REMOTE_RERANKER_API_KEY@${NEX_S143_SECRET_VERSION:-v1}
   NEX_MO_VLLM_API_KEY_REF: secret://openbao/nex-platform/staging/nex-mo/NEX_MO_VLLM_API_KEY@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_CX_OBJECT_STORAGE_ACCESS_KEY_REF: secret://openbao/nex-platform/staging/nex-cx/NEX_CX_OBJECT_STORAGE_ACCESS_KEY@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_CX_OBJECT_STORAGE_SECRET_KEY_REF: secret://openbao/nex-platform/staging/nex-cx/NEX_CX_OBJECT_STORAGE_SECRET_KEY@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_AE_OBJECT_STORAGE_ACCESS_KEY_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_OBJECT_STORAGE_ACCESS_KEY@${NEX_S143_SECRET_VERSION:-v1}
+  NEX_AE_OBJECT_STORAGE_SECRET_KEY_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_OBJECT_STORAGE_SECRET_KEY@${NEX_S143_SECRET_VERSION:-v1}
   NEX_OA_BASE_URL: https://oa.nex-staging.test:8443
   NEX_AG_BASE_URL: https://ag.nex-staging.test:8443
   NEX_AE_API_BASE_URL: https://ae-api.nex-staging.test:8443
@@ -47,6 +51,8 @@ x-platform-environment: &platform-environment
   NEX_MO_REMOTE_EMBEDDING_URL: https://embedding.nex-staging.test:8443/v1/embeddings
   NEX_MO_REMOTE_RERANKER_URL: https://reranker.nex-staging.test:8443/v1/rerank
   NEX_MO_VLLM_BASE_URL: https://generation.nex-staging.test:8443
+  NEX_CX_OBJECT_STORAGE_ENDPOINT: https://object.nex-staging.test:8443
+  NEX_AE_OBJECT_STORAGE_ENDPOINT: https://object.nex-staging.test:8443
 
 x-platform-service: &platform-service
   restart: "no"

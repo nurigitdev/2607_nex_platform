@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import pytest
-
 import run_s143_external_staging_acceptance as smoke
+import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -199,6 +199,20 @@ def test_secret_input_mapping_fails_closed() -> None:
             "postgresql+psycopg://user:password@db.example:5432/nex"
         )
     assert smoke._container_database_url("") == ""
+
+
+def test_base_compose_tracks_current_object_storage_manifest() -> None:
+    compose = yaml.safe_load(smoke.COMPOSE_FILE.read_text(encoding="utf-8"))
+    environment = compose["x-platform-environment"]
+
+    assert {
+        "NEX_CX_OBJECT_STORAGE_ACCESS_KEY_REF",
+        "NEX_CX_OBJECT_STORAGE_SECRET_KEY_REF",
+        "NEX_AE_OBJECT_STORAGE_ACCESS_KEY_REF",
+        "NEX_AE_OBJECT_STORAGE_SECRET_KEY_REF",
+        "NEX_CX_OBJECT_STORAGE_ENDPOINT",
+        "NEX_AE_OBJECT_STORAGE_ENDPOINT",
+    }.issubset(environment)
 
 
 def test_migration_projection_accepts_runtime_result_and_rejects_drift() -> None:

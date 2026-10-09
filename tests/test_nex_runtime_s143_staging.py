@@ -85,7 +85,7 @@ def test_compose_contract_is_digest_pinned_and_value_free() -> None:
     assert result["service_count"] == 9
     assert result["runtime_service_count"] == 8
     assert result["initializer_service_count"] == 1
-    assert result["secret_reference_count"] == 16
+    assert result["secret_reference_count"] == 20
     assert result["tls_route_count"] == 9
     assert result["host_software_install_required"] is False
     assert result["raw_secret_values_included"] is False

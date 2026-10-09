@@ -1603,6 +1603,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1487`](slices/1487_s149_fault_recovery_checkpoint.md) | `S149-005` Add allowlisted Single-host fault and provider-degradation state machines, recovery budgets, zero-residue checks, and Checkpoint Gate. |
 | [`Slice 1488`](slices/1488_s149_security_privacy_acceptance.md) | `S149-006` Add the exact tenant, owner, token, credential, storage, request-boundary, recovery, and evidence-privacy negative matrix. |
 | [`Slice 1489`](slices/1489_s149_rollback_rehearsal.md) | `S149-007` Add exact last-known-good rollback state, component verification, committed-data preservation, recovery budget, and zero-residue proof. |
+| [`Slice 1490`](slices/1490_s149_single_host_live_acceptance.md) | `S149-008` Bind actual Single-host Compose, five test databases, RustFS restart/isolation, and three live provider capabilities into redacted protected evidence. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or
