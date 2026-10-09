@@ -76,7 +76,7 @@ does not manufacture or self-approve that waiver.
 | `1500` | **Complete.** Compose the immediate trust/data/storage/provider/operations preflight. |
 | `1501` | **Complete.** Rehearse cutover, rollback, and zero-residue controls. |
 | `1502` | **Complete.** Implement the ten-gate `GO`/`NO_GO` evaluator. |
-| `1503` | Execute protected Single-host v1.0 go-live readiness acceptance. |
+| `1503` | **Complete.** Execute protected Single-host v1.0 go-live readiness acceptance. |
 | `1504` | Publish the runbook, run Full Gate, and close S150 without deploying. |
 
 Checkpoint Gate at 1499 and Full Gate at 1504 are mandatory.
