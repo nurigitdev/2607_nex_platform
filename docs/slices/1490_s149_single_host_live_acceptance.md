@@ -34,8 +34,10 @@ counts and evidence digests.
 
 ## Verification
 
-- Focused unit tests cover opt-in, nested failures, all thirteen admission
+- Focused unit tests cover opt-in, nested failures, all fourteen admission
   checks, exception redaction, report writing, adapters, and CLI behavior.
+- Provider admission explicitly requires generation reasoning mode to remain
+  `disabled`.
 - The protected report is written under `reports/deployment/`, which remains
   outside source control and excludes credentials, URLs, payloads, and raw
   nested evidence.

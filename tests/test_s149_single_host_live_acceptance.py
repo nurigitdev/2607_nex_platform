@@ -68,6 +68,7 @@ def _providers(*, status: str = "PASS") -> dict[str, object]:
             "live_provider_count": 3,
             "live_model_match_count": 3,
             "runtime_ready_count": 3,
+            "generation_reasoning_mode": "disabled",
         },
         "cleanup": {"residue": 0},
     }
@@ -106,8 +107,8 @@ def test_acceptance_passes_and_writes_metadata_only_evidence(tmp_path: Path) -> 
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
     assert result["summary"] == {
-        "passed_check_count": 13,
-        "check_count": 13,
+        "passed_check_count": 14,
+        "check_count": 14,
         "test_database_count": 5,
         "runtime_service_count": 6,
         "object_storage_owner_count": 2,
@@ -185,6 +186,12 @@ def test_acceptance_stops_at_failed_nested_boundary(
             "provider_model_identity_matched",
         ),
         (
+            lambda _t, _s, p: p["summary"].update(
+                generation_reasoning_mode="provider_default"
+            ),
+            "generation_reasoning_disabled",
+        ),
+        (
             lambda _t, _s, p: p["cleanup"].update(residue=1),
             "provider_rehearsal_zero_residue",
         ),
@@ -257,12 +264,12 @@ def test_summary_and_main(monkeypatch, capsys, tmp_path: Path) -> None:
     skipped = smoke.run_s149_single_host_live_acceptance({})
     assert smoke.summary_line(skipped) == "s149_single_host_live_acceptance=skipped"
     assert smoke.summary_line(passing) == (
-        "s149_single_host_live_acceptance=pass checks=13/13 databases=5/5 "
+        "s149_single_host_live_acceptance=pass checks=14/14 databases=5/5 "
         "services=6/6 providers=3/3 residue=0 next=1491"
     )
     monkeypatch.setattr(smoke, "run_s149_single_host_live_acceptance", lambda **_kwargs: passing)
     assert smoke.main(["--execute", "--summary", "--report-path", str(tmp_path / "x")]) == 0
-    assert "checks=13/13" in capsys.readouterr().out
+    assert "checks=14/14" in capsys.readouterr().out
     monkeypatch.setattr(
         smoke, "run_s149_single_host_live_acceptance", lambda **_kwargs: {"status": "FAIL"}
     )

@@ -189,6 +189,10 @@ def _evaluate(
             "live_model_match_count"
         )
         == 3,
+        "generation_reasoning_disabled": provider_summary.get(
+            "generation_reasoning_mode"
+        )
+        == "disabled",
         "provider_rehearsal_zero_residue": provider_cleanup.get("residue") == 0,
         "production_resources_not_targeted": all(
             _mapping(item.get("decision")).get("production_contacted") is False
