@@ -1,8 +1,9 @@
 # Platform Production Readiness Plan
 
 Status: Canonical scope freeze for requirements S141 through S150. S143
-through S148 are complete, S149 is active with an explicit external-incident
-activation dependency, and production deployment remains unapproved.
+through S148 are complete, S149 is active through Slice 1483 with an explicit
+external-incident activation dependency, and production deployment remains
+unapproved.
 
 ## Program Outcome
 
@@ -424,4 +425,18 @@ integrated staging rehearsal, but cannot complete release acceptance until a
 protected external endpoint succeeds or S150 records an approved time-bounded
 P1 waiver plus local compensating control. Single-host total outage detection
 also requires an external heartbeat receiver or separate management node.
+Production deployment remains unapproved.
+
+## S149 Activation Update
+
+S149 starts at Slice 1483 on the accepted Single-host Docker Compose staging
+topology. Its canonical scope is
+`docs/57_platform_preproduction_reliability_acceptance.md`: release-bound
+baseline/concurrency/soak workloads, reversible local fault injection,
+client-side provider degradation, security/privacy isolation, rollback,
+recovery, and zero-residue acceptance. Multi-node service failover,
+PostgreSQL automatic failover, distributed object-storage node loss, GPU
+autoscaling/failover, and external dead-man monitoring remain explicit future
+backlog and cannot be reported as passing Single-host evidence.
+
 Production deployment remains unapproved.
