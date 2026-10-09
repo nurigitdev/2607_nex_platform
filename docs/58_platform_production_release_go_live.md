@@ -1,6 +1,10 @@
 # Platform Production Release-candidate and Go-live Readiness
 
-Status: S150 active from Slice 1495. Production deployment remains unapproved.
+Status: S150 complete.
+
+Current release decision: `NO_GO`.
+
+Production deployment remains unapproved.
 
 ## v1.0 Supported Topology
 
@@ -77,7 +81,7 @@ does not manufacture or self-approve that waiver.
 | `1501` | **Complete.** Rehearse cutover, rollback, and zero-residue controls. |
 | `1502` | **Complete.** Implement the ten-gate `GO`/`NO_GO` evaluator. |
 | `1503` | **Complete.** Execute protected Single-host v1.0 go-live readiness acceptance. |
-| `1504` | Publish the runbook, run Full Gate, and close S150 without deploying. |
+| `1504` | **Complete.** Publish the runbook, run Full Gate, and close S150 without deploying. |
 
 Checkpoint Gate at 1499 and Full Gate at 1504 are mandatory.
 
@@ -111,3 +115,12 @@ S150 completes when the exact release candidate has fresh metadata-only
 evidence, every mandatory gate has an explicit result, the decision is exactly
 `GO` or `NO_GO`, unsupported distributed capabilities remain backlog, and no
 command performs an implicit production deployment.
+
+## Closure Result
+
+The Single-host Docker Compose v1.0 release process is implemented and accepted.
+The current candidate is `NO_GO`: eight gates pass, while
+`p1_waivers_valid` and `approval_roles_complete` remain false. S150 may be
+closed without weakening those blockers because implementation completion and
+production authorization are separate states. The five distributed features
+remain `NOT_APPLICABLE_SINGLE_HOST` backlog.
