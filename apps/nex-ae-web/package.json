@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "docs:capture-v1": "node scripts/captureV1ManualScreenshots.mjs --summary",
     "dev": "node scripts/serve.mjs",
     "start": "node scripts/serve.mjs",
     "smoke:authenticated-upload-fetch": "node scripts/runAuthenticatedUploadFetchSmoke.mjs --summary",

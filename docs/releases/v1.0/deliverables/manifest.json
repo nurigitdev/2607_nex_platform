@@ -1,0 +1,39 @@
+{
+  "document_count": 4,
+  "outputs": [
+    {
+      "deliverable": "deliverables/NeX_Platform_v1.0_시스템구축절차서.docx",
+      "deliverable_sha256": "2cc6d89b6a1ad50e264c0cb8b53e02f9de99900b3fb6e7ce0a34cb4fc9c490b0",
+      "size_bytes": 171731,
+      "source": "source/01_system_installation_guide.md",
+      "source_sha256": "6196b2730b05c702d05cb94d4b3f676ae64b39394b0d260cc44c9fa3eb9dbedc"
+    },
+    {
+      "deliverable": "deliverables/NeX_Platform_v1.0_시스템기동종료절차서.docx",
+      "deliverable_sha256": "1820fa4f059529d655089278e08d872ac9ece8c4f9861ccfa3ea706f94091ba0",
+      "size_bytes": 76809,
+      "source": "source/02_system_startup_shutdown_guide.md",
+      "source_sha256": "8971a711d6cee4e2035f106dc08e1865fdcba18cbccbbd1e79307ef0aee8ac4d"
+    },
+    {
+      "deliverable": "deliverables/NeX_Platform_v1.0_시스템운영절차서.docx",
+      "deliverable_sha256": "93e492735c4afe515c63e5b53c6f33a2327ef6e558d91289bfe4ddd88b3a2094",
+      "size_bytes": 136688,
+      "source": "source/03_system_operations_guide.md",
+      "source_sha256": "a3ee41ca2fffadf44f9d800d853e74d8583696a2e2e26ec0d66dc02642ace22c"
+    },
+    {
+      "deliverable": "deliverables/NeX_Platform_v1.0_사용자매뉴얼.docx",
+      "deliverable_sha256": "76ad9e1df8eb3d3146b7a9f4c2639cc0f116b507f177ec988789f52ed985d70f",
+      "size_bytes": 361448,
+      "source": "source/04_user_manual.md",
+      "source_sha256": "56c36cf72c2c23c9c7b5ec55fa7edfdb72bf96bebfec6715c570e7f1f864a4d3"
+    }
+  ],
+  "schema_version": "nex_v1_manual_deliverables.v1",
+  "screenshot_count": 7,
+  "screenshot_manifest_sha256": "45c6f3ace6d4d326ef7f62e5cc3d228a68baa493732b77b4300c7ecebc90ca42",
+  "source_date": "2026-10-09",
+  "source_revision": "ab7af0fc3b42225d1d71d20d517889d694a01c03",
+  "source_tag": "v1.0"
+}

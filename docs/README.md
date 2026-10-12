@@ -25,6 +25,22 @@ Slice IDs should be written as four digits, for example `Slice 0001`. A slice
 should stay small enough to review and should reference the relevant requirement
 IDs, contracts, and evidence artifacts.
 
+## Versioned Release Manuals
+
+The [NeX Platform v1.0 manual package](releases/v1.0/README.md) preserves the
+editable Markdown and PNG sources together with four reproducible DOCX
+deliverables:
+
+- system installation guide
+- system startup and shutdown guide
+- system operations guide
+- end-user manual
+
+The package is fixed to the immutable `v1.0` tag and records source,
+screenshot, and deliverable SHA-256 digests. It describes the supported
+Single-host Docker Compose topology without overriding the recorded release
+governance decision.
+
 ## Canonical Start Package
 
 Documents `29` through `36` are the canonical MVP start package for this
