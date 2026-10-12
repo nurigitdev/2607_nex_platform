@@ -1620,6 +1620,7 @@ The first implementation slices should follow the Sprint 1 backlog in
 | [`Slice 1488`](slices/1488_s149_security_privacy_acceptance.md) | `S149-006` Add the exact tenant, owner, token, credential, storage, request-boundary, recovery, and evidence-privacy negative matrix. |
 | [`Slice 1489`](slices/1489_s149_rollback_rehearsal.md) | `S149-007` Add exact last-known-good rollback state, component verification, committed-data preservation, recovery budget, and zero-residue proof. |
 | [`Slice 1490`](slices/1490_s149_single_host_live_acceptance.md) | `S149-008` Bind actual Single-host Compose, five test databases, RustFS restart/isolation, and three live provider capabilities into redacted protected evidence. |
+| [`P4-S1`](slices/p4_s1_chat_application_service_refactor.md) | Extract the reusable Chat/RAG application-service seam and enforce exact-once invocation across future legacy/shadow paths. |
 
 Each implementation slice should leave behind the smallest useful evidence:
 quality output, contract validation output, API smoke output, UI screenshot, or

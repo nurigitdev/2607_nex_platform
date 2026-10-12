@@ -120,6 +120,7 @@ from nex_ae_api.workspace_chat_orchestration import (
     idempotent_chat_record,
 )
 from nex_ae_api.workspace_chat_observability import observe_workspace_chat_state
+from nex_ae_api.chat_application import ChatApplicationService
 
 AE_CHAT_RETRIEVAL_QUALITY_WARNING_CONTRACT_VERSION = (
     "ae_chat_retrieval_quality_warning.v1"
@@ -406,6 +407,7 @@ def register_chat_routes(
     event_emitter: OperationalEventEmitter | None = None,
     prompt_store: Any | None = None,
     generated_response_storage: Any | None = None,
+    application_service: ChatApplicationService | None = None,
 ) -> None:
     chat_store = store or build_default_chat_store(app)
     app.state.ae_chat_store = chat_store
@@ -425,9 +427,10 @@ def register_chat_routes(
         generated_response_storage or build_default_generated_response_storage()
     )
     app.state.ae_generated_response_storage = response_storage
+    chat_application = application_service or ChatApplicationService()
+    app.state.ae_chat_application_service = chat_application
 
-    @app.post("/api/v1/chat/interactions", response_model=None)
-    def create_chat_interaction(
+    def _create_chat_interaction_operation(
         payload: dict[str, Any],
         request: Request,
         authorization: str | None = Header(default=None),
@@ -786,11 +789,7 @@ def register_chat_routes(
             )
         return record
 
-    @app.post(
-        "/api/v1/chat/interactions/{interaction_id}/refresh",
-        response_model=None,
-    )
-    def refresh_chat_interaction(
+    def _refresh_chat_interaction_operation(
         interaction_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
@@ -1095,11 +1094,7 @@ def register_chat_routes(
         except ChatInteractionError as exc:
             return _chat_problem_response(request, exc)
 
-    @app.post(
-        "/api/v1/chat/interactions/{interaction_id}/cancel",
-        response_model=None,
-    )
-    def cancel_chat_interaction(
+    def _cancel_chat_interaction_operation(
         interaction_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
@@ -1185,11 +1180,7 @@ def register_chat_routes(
         except ChatInteractionError as exc:
             return _chat_problem_response(request, exc)
 
-    @app.get(
-        "/api/v1/chat/interactions/{interaction_id}/recovery",
-        response_model=None,
-    )
-    def get_chat_interaction_recovery(
+    def _get_chat_interaction_recovery_operation(
         interaction_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
@@ -1252,11 +1243,7 @@ def register_chat_routes(
         except ChatInteractionError as exc:
             return _chat_problem_response(request, exc)
 
-    @app.post(
-        "/api/v1/chat/interactions/{interaction_id}/retry",
-        response_model=None,
-    )
-    def retry_chat_interaction(
+    def _retry_chat_interaction_operation(
         interaction_id: str,
         payload: dict[str, Any],
         request: Request,
@@ -1376,6 +1363,90 @@ def register_chat_routes(
             "chat_document_id": record["chat_document_id"],
             "artifact_refs": record["artifact_refs"],
         }
+
+    @app.post("/api/v1/chat/interactions", response_model=None)
+    def create_chat_interaction(
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        return chat_application.create(
+            lambda: _create_chat_interaction_operation(
+                payload,
+                request,
+                authorization,
+            )
+        )
+
+    @app.post(
+        "/api/v1/chat/interactions/{interaction_id}/refresh",
+        response_model=None,
+    )
+    def refresh_chat_interaction(
+        interaction_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        return chat_application.refresh(
+            lambda: _refresh_chat_interaction_operation(
+                interaction_id,
+                request,
+                authorization,
+            )
+        )
+
+    @app.post(
+        "/api/v1/chat/interactions/{interaction_id}/cancel",
+        response_model=None,
+    )
+    def cancel_chat_interaction(
+        interaction_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        return chat_application.cancel(
+            lambda: _cancel_chat_interaction_operation(
+                interaction_id,
+                request,
+                authorization,
+            )
+        )
+
+    @app.get(
+        "/api/v1/chat/interactions/{interaction_id}/recovery",
+        response_model=None,
+    )
+    def get_chat_interaction_recovery(
+        interaction_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        return chat_application.recovery(
+            lambda: _get_chat_interaction_recovery_operation(
+                interaction_id,
+                request,
+                authorization,
+            )
+        )
+
+    @app.post(
+        "/api/v1/chat/interactions/{interaction_id}/retry",
+        response_model=None,
+    )
+    def retry_chat_interaction(
+        interaction_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        return chat_application.retry(
+            lambda: _retry_chat_interaction_operation(
+                interaction_id,
+                payload,
+                request,
+                authorization,
+            )
+        )
 
 
 def build_cx_generation_payload(
