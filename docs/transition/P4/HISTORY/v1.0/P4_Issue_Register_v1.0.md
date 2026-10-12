@@ -1,5 +1,7 @@
 # P4 Agent Runtime Foundation Issue Register v1.0
 
+> **SUPERSEDED:** Historical P4 v1.0 record. Use the v1.1 baseline in the P4 parent directory.
+
 **Status:** ACTIVE TRANSITION REGISTER
 **Opened:** 2026-10-12
 **Scope:** narrowed project-neutral P4 IA Runtime Foundation

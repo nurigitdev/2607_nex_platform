@@ -1,6 +1,8 @@
 
 # P4 — NeX Agent Runtime Foundation SRS v1.0
 
+> **SUPERSEDED:** Historical P4 v1.0 record. Use the v1.1 baseline in the P4 parent directory.
+
 **Document Status:** IMPLEMENTATION BASELINE — P4  
 **Target Branch:** `transition/p4-agent-runtime-foundation`  
 **As-Built Baseline:** NeX Platform v1.0 tag `v1.0` (`ab7af0fc3b42225d1d71d20d517889d694a01c03`)  

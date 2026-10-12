@@ -1,5 +1,7 @@
 # P4 Result Persistence and Publication Traceability v1.0
 
+> **SUPERSEDED:** Historical P4 v1.0 record. Use the v1.1 baseline in the P4 parent directory.
+
 **Status:** STEP 8.1 DESIGN PRESERVED / IMPLEMENTATION DEFERRED
 **Companion:** `P4_Result_Persistence_and_Publication_Design_Hardening_FROZEN_v1.0.md`
 **Scope review:** `P4_IA_Runtime_Foundation_Scope_Review_v1.0.md`

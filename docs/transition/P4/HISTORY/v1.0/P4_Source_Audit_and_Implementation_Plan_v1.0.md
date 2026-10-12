@@ -1,5 +1,7 @@
 # P4 Source Audit and Implementation Plan v1.0
 
+> **SUPERSEDED:** Historical P4 v1.0 record. Use the v1.1 baseline in the P4 parent directory.
+
 **Status:** STEP 9 NARROWED REVIEW BASELINE
 **Prepared:** 2026-10-12
 **Scope:** project-neutral IA runtime foundation for existing Chat/RAG

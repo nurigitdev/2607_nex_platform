@@ -1,5 +1,7 @@
 # P4 Result Persistence and Publication Design Hardening FROZEN v1.0
 
+> **SUPERSEDED:** Historical P4 v1.0 record. Use the v1.1 baseline in the P4 parent directory.
+
 **Process Step:** STEP 8.1
 **Status:** P4 TRANSITION DESIGN BASELINE - FROZEN
 **Scope:** P4 AgentResult persistence, required ResultDelivery, IA workspace

@@ -1,5 +1,7 @@
 # P4 IA Runtime Foundation Scope Review v1.0
 
+> **SUPERSEDED:** Historical P4 v1.0 record. Use the v1.1 baseline in the P4 parent directory.
+
 **Status:** STEP 9 SCOPE CORRECTION
 **Prepared:** 2026-10-12
 **Scope:** project-neutral IA runtime foundation around the existing Chat/RAG path
