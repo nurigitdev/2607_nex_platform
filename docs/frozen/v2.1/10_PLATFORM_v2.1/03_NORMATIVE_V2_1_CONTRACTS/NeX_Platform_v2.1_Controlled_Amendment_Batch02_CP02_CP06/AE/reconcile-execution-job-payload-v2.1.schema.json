@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:ae:reconcile-execution-job-payload:v2.1",
+  "title": "RECONCILE_EXECUTION Job Payload v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "reconciliation_id",
+    "agent_execution_id",
+    "business_operation_id",
+    "idempotency_key_ref",
+    "target_system"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reconciliation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "business_operation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "idempotency_key_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target_system": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operation_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "business_object_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

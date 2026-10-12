@@ -1,0 +1,45 @@
+﻿Probe,PASS,Detail
+E12-S00,True,Normative JSON Schema structural PASS=61
+E12-P00,True,Python Protocol compile PASS=12
+E12-W01,True,WorkItem source_type=SCHEDULE validates
+E12-W02,True,Scheduled WorkItem without source_ref rejected
+E12-T01,True,ScheduleTarget singular required_capability validates
+E12-T02,True,Legacy required_capabilities[] rejected
+E12-T03,True,PA ScheduleTarget without project_scope_ref rejected
+E12-S01,True,PA CRON ScheduleSpec validates
+E12-S02,True,PA ScheduleSpec without project_id rejected
+E12-S03,True,6-field CRON rejected by CRON5_V1
+E12-S04,True,invalid next_run_at rejected
+E12-S05,True,canonical FIXED_INTERVAL validates
+E12-S06,True,CATCH_UP without max_catch_up rejected
+E12-O01,True,Occurrence bound to schedule_version validates
+E12-O02,True,Occurrence without schedule_version rejected
+E12-O03,True,MATERIALIZED without WorkItem ref rejected
+E12-O04,True,MATERIALIZED with WorkItem ref validates
+E12-M01,True,Typed scheduled WorkItem materialization validates
+E12-M02,True,Materialization without version fence rejected
+E12-M03,True,Materialization with non-SCHEDULE WorkItem source rejected
+E12-M04,True,Materialization without singular capability rejected
+E12-M05,True,Invalid payload hash rejected
+E12-M06,True,Same semantic materialization can return existing WorkItem
+E12-A01,True,Schedule materialization audit evidence validates
+E12-A02,True,Audit without authorization decision rejected
+E12-TM01,True,IANA timezone validation accepts Asia/Seoul
+E12-TM02,True,Unknown timezone rejected
+E12-TM03,True,CRON5 profile accepts five fields
+E12-TM04,True,CRON5 rejects six fields
+E12-B01,True,PA ScheduleSpec→WorkItem project binding validates
+E12-B02,True,PA project mismatch rejected
+E12-DB01,True,Occurrence stores schedule_version
+E12-DB02,True,Exactly-one materialization table/unique occurrence exists
+E12-DB03,True,Payload hash + materialization key conflict boundary exists
+E12-DB04,True,Durable schedule audit table includes authorization evidence
+E12-TR01,True,Atomic idempotent materialization semantics fixed
+E12-TR02,True,Version/enabled fence fixed before materialization
+E12-TR03,True,Schedule cannot directly start AgentExecution
+E12-API01,True,All six Schedule API operations have typed requestBody
+E12-API02,True,All Schedule API operations have typed success response
+E12-API03,True,Schedule API requires authenticated security scheme
+E12-API04,True,Current authorization decision/tenant required by API envelope
+E12-FZ-01,True,NeX_Agent_v2.1_NSL_v0.2_Integration_Contract_v1.0.md byte-for-byte unchanged
+E12-FZ-02,True,NeX_Agent_v2.1_NSL_v0.2_Final_Freeze_Declaration_v1.0.md byte-for-byte unchanged

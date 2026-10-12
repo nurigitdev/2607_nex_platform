@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentProfileGovernanceProjection v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "agent_id",
+    "agent_type",
+    "profile_version",
+    "governance_status"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string"
+    },
+    "agent_id": {
+      "type": "string"
+    },
+    "agent_type": {
+      "enum": [
+        "IA",
+        "CA",
+        "PA",
+        "EA"
+      ]
+    },
+    "profile_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "profile_version": {
+      "type": "string"
+    },
+    "project_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "governance_status": {
+      "enum": [
+        "ACTIVE",
+        "SUSPENDED",
+        "DEPRECATED",
+        "RETIRED"
+      ]
+    },
+    "kill_switch_state": {
+      "enum": [
+        "INACTIVE",
+        "ACTIVE",
+        "RELEASE_PENDING"
+      ]
+    },
+    "decision_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

@@ -1,0 +1,748 @@
+{
+  "schema_version": "2.0",
+  "generated_date": "2026-09-01",
+  "workflows": [
+    {
+      "id": "WF-ACC-01",
+      "domain": "Accounting",
+      "title": "Project Expense Voucher Draft & Approval",
+      "purpose": "영수증/증빙이 있는 프로젝트 비용을 자연어 요청으로 시작해 계정/프로젝트를 검증하고 전표 Draft→제출/승인→결과까지 처리한다.",
+      "trigger": "Employee Interactive Prompt + receipt Artifact",
+      "actor": "Employee + Accounting Coworker",
+      "work_class": "BUSINESS_TRANSACTION",
+      "route": "CERTIFIED_BINDING / Known Plan 우선",
+      "template": "ACCOUNTING.PROJECT_EXPENSE_VOUCHER_STANDARD",
+      "risk": "R2~R4",
+      "data_class": "CONFIDENTIAL",
+      "intent": "프로젝트 비용의 증빙·프로젝트·계정·금액을 검증하고 회계 전표를 생성/제출해 승인 가능한 상태로 만든다.",
+      "steps": [
+        [
+          "S1",
+          "LOCAL_CAPABILITY",
+          "ARTIFACT.VALIDATE_EXPENSE_EVIDENCE",
+          "증빙 형식/필수항목 확인",
+          "-",
+          "R2"
+        ],
+        [
+          "S2",
+          "LOCAL_CAPABILITY",
+          "PROJECT.RESOLVE",
+          "프로젝트 Selector→Stable Project ID",
+          "S1",
+          "R2"
+        ],
+        [
+          "S3",
+          "LOCAL_CAPABILITY",
+          "ACCOUNT.SEARCH_ACCOUNT_CODES",
+          "계정과목 후보/정책 조회",
+          "S2",
+          "R2"
+        ],
+        [
+          "S4",
+          "LOCAL_CAPABILITY",
+          "FINANCE.CREATE_VOUCHER_DRAFT",
+          "Voucher Draft 생성",
+          "S3",
+          "R3"
+        ],
+        [
+          "S5",
+          "LOCAL_CAPABILITY",
+          "FINANCE.SUBMIT_VOUCHER",
+          "전표 제출/승인 프로세스 시작",
+          "S4",
+          "R4"
+        ],
+        [
+          "S6",
+          "REPORT",
+          "REPORT.ACCOUNTING_RESULT",
+          "Voucher/Approval/Ledger refs 결과보고",
+          "S5",
+          "R1"
+        ]
+      ],
+      "compiler": [
+        "S4 앞 Structured Confirmation 삽입",
+        "S5에 Domain Policy상 Formal Approval 필요 시 Approval Gate 삽입",
+        "각 Write에 stable operation_key/idempotency_key/commit semantics 삽입"
+      ],
+      "wait": "S5 이후 승인 대기 시 WAITING_APPROVAL; approval event로 Resume",
+      "apis": [
+        "ARTIFACT.GET/VALIDATE",
+        "PROJECT.RESOLVE",
+        "ACCOUNT.SEARCH_ACCOUNT_CODES",
+        "FINANCE.CREATE_VOUCHER_DRAFT",
+        "FINANCE.SUBMIT_VOUCHER",
+        "APPROVAL.GET_INSTANCE",
+        "WORKITEM.REPORT_RESULT"
+      ],
+      "result": "VoucherRef + ApprovalRef + LedgerRef(if posted) + evidence refs",
+      "workasset": "WorkActivity(prompt/review/confirmation) → WorkAsset(accounting transaction support) → ProjectAttribution",
+      "tests": [
+        [
+          "ACC-AT-01",
+          "정상 프로젝트/증빙/금액",
+          "Known Plan 선택→Draft→승인대기→승인 후 Result",
+          "PASS"
+        ],
+        [
+          "ACC-AT-02",
+          "프로젝트명이 중복/모호",
+          "PROJECT.RESOLVE ambiguous",
+          "WAITING_INPUT; Stable ID guess 금지"
+        ],
+        [
+          "ACC-AT-03",
+          "증빙 누락",
+          "Evidence validation fail",
+          "Write 없음; clarification"
+        ],
+        [
+          "ACC-AT-04",
+          "S4 응답 timeout 후 remote commit 가능",
+          "same idempotency key replay",
+          "Voucher 중복 없음"
+        ],
+        [
+          "ACC-AT-05",
+          "승인대기 중 RoleBinding 취소",
+          "approval event 후 Resume",
+          "reauthorization fail→ESCALATED/BLOCKED"
+        ],
+        [
+          "ACC-AT-06",
+          "동일 요청 재전송",
+          "operation identity 동일",
+          "중복 Voucher 생성 금지"
+        ]
+      ]
+    },
+    {
+      "id": "WF-FIN-01",
+      "domain": "Finance",
+      "title": "Payment Request Preparation & Controlled Disbursement",
+      "purpose": "승인된 지급대상 채무를 검증하고 지급 Batch/Draft를 준비한 뒤 Human Approval과 실제 지급 담당자에게 위임하여 지급 결과를 회수한다.",
+      "trigger": "Finance WorkItem or Finance Manager Prompt",
+      "actor": "Finance Coworker + Finance Human Operator",
+      "work_class": "BUSINESS_TRANSACTION / COORDINATION",
+      "route": "Known Plan",
+      "template": "FINANCE.PAYMENT_REQUEST_CONTROLLED",
+      "risk": "R2~R5",
+      "data_class": "RESTRICTED",
+      "intent": "승인된 지급대상을 모아 지급 준비자료를 만들고 최종 지급은 명시적 승인/권한자 수행으로 제한한다.",
+      "steps": [
+        [
+          "S1",
+          "LOCAL_CAPABILITY",
+          "FINANCE.LIST_APPROVED_PAYABLES",
+          "지급가능 채무 조회",
+          "-",
+          "R2"
+        ],
+        [
+          "S2",
+          "AGGREGATE",
+          "FINANCE.BUILD_PAYMENT_BATCH",
+          "지급대상/은행/일자 기준 Batch 구성",
+          "S1",
+          "R2"
+        ],
+        [
+          "S3",
+          "LOCAL_CAPABILITY",
+          "FINANCE.CREATE_PAYMENT_BATCH_DRAFT",
+          "지급 Batch Draft 생성",
+          "S2",
+          "R3"
+        ],
+        [
+          "S4",
+          "DELEGATE_WORK",
+          "FINANCE.EXECUTE_BANK_PAYMENT",
+          "승인된 Batch 실제 지급 수행 Human Work",
+          "S3",
+          "R5"
+        ],
+        [
+          "S5",
+          "AGGREGATE",
+          "FINANCE.VALIDATE_PAYMENT_RESULT",
+          "지급 결과/오류/BankRef 검증",
+          "S4",
+          "R2"
+        ],
+        [
+          "S6",
+          "REPORT",
+          "REPORT.FINANCE_PAYMENT_RESULT",
+          "지급결과/미지급/예외 보고",
+          "S5",
+          "R1"
+        ]
+      ],
+      "compiler": [
+        "S3 앞 Confirmation",
+        "S4 Child WorkItem은 Finance capability pool/승인권한 Scope로 Routing",
+        "S4 실제 Assignee는 WC가 결정",
+        "R5 execution은 Agent가 직접 bank write하지 않음"
+      ],
+      "wait": "S4 Child WorkItem 생성 후 WAITING_DEPENDENCY; Human 지급 결과 제출 Event로 Resume",
+      "apis": [
+        "FINANCE.LIST_APPROVED_PAYABLES",
+        "FINANCE.CREATE_PAYMENT_BATCH_DRAFT",
+        "WORKITEM.CREATE_CHILD",
+        "WORKITEM.GET/RESULT",
+        "ARTIFACT.GET",
+        "WORKITEM.REPORT_RESULT"
+      ],
+      "result": "PaymentBatchRef + HumanExecution WorkResult + Bank/ERP ResultRefs",
+      "workasset": "지급 준비와 Human 지급작업을 각각 Activity/Evidence로 남기고 Finance WorkAsset로 집계",
+      "tests": [
+        [
+          "FIN-AT-01",
+          "승인된 채무만 존재",
+          "Batch Draft 후 Human Work 위임",
+          "Agent 직접 bank 지급 없음"
+        ],
+        [
+          "FIN-AT-02",
+          "미승인 Voucher 포함",
+          "eligibility validation",
+          "대상 제외/정책오류; 지급 금지"
+        ],
+        [
+          "FIN-AT-03",
+          "Child WorkItem 중복 생성 retry",
+          "same idempotency key",
+          "하나의 Child WorkItem만 존재"
+        ],
+        [
+          "FIN-AT-04",
+          "Human 지급 실패",
+          "WorkResult=FAILED",
+          "Parent Resume→예외보고/재배정 정책"
+        ],
+        [
+          "FIN-AT-05",
+          "Remote result artifact 변조/스키마 불일치",
+          "Result validation fail",
+          "Parent 완료 금지"
+        ],
+        [
+          "FIN-AT-06",
+          "R5 Capability kill switch",
+          "Side-effect/위임 직전 check",
+          "BLOCKED/ESCALATED"
+        ]
+      ]
+    },
+    {
+      "id": "WF-HR-01",
+      "domain": "HR",
+      "title": "Employee Onboarding Orchestration",
+      "purpose": "신규 입사자의 Employee Draft/RoleBinding 준비와 IT 계정·총무 장비·조직 안내를 여러 Child WorkItem으로 병렬 위임하고 완료를 집계한다.",
+      "trigger": "HR Manager Prompt / HR WorkItem",
+      "actor": "HR Coworker + IT/GA Capability Pools + Hiring Manager",
+      "work_class": "COORDINATION / BUSINESS_TRANSACTION",
+      "route": "Certified Binding / Known Plan",
+      "template": "HR.EMPLOYEE_ONBOARDING_STANDARD",
+      "risk": "R2~R4",
+      "data_class": "RESTRICTED",
+      "intent": "입사 기준일/조직/직무가 확정된 신규 입사자를 안전하게 등록하고 필요한 사전준비 업무를 자동 분배/추적한다.",
+      "steps": [
+        [
+          "S1",
+          "LOCAL_CAPABILITY",
+          "HR.VALIDATE_ONBOARDING_INPUT",
+          "입사일/조직/Manager/필수정보 검증",
+          "-",
+          "R2"
+        ],
+        [
+          "S2",
+          "LOCAL_CAPABILITY",
+          "HR.CREATE_EMPLOYEE_DRAFT",
+          "Employee Draft 생성",
+          "S1",
+          "R4"
+        ],
+        [
+          "S3",
+          "DELEGATE_WORK",
+          "IT.PROVISION_EMPLOYEE_ACCESS",
+          "메일/계정/접근권한 준비",
+          "S2",
+          "R3"
+        ],
+        [
+          "S4",
+          "DELEGATE_WORK",
+          "GA.PROVIDE_EMPLOYEE_EQUIPMENT",
+          "노트북/출입/좌석/비품 준비",
+          "S2",
+          "R3"
+        ],
+        [
+          "S5",
+          "DELEGATE_WORK",
+          "HR.MANAGER_ONBOARDING_PREP",
+          "부서 안내/멘토/첫주 일정 준비",
+          "S2",
+          "R2"
+        ],
+        [
+          "S6",
+          "AGGREGATE",
+          "HR.ONBOARDING_READINESS",
+          "S3~S5 결과를 readiness로 집계",
+          "S3,S4,S5",
+          "R2"
+        ],
+        [
+          "S7",
+          "REPORT",
+          "REPORT.HR_ONBOARDING",
+          "완료/미완료/Blocker 보고",
+          "S6",
+          "R1"
+        ]
+      ],
+      "compiler": [
+        "S2 Formal Approval 또는 HR Domain Gate 삽입 가능",
+        "S3~S5를 Child WorkItem으로 병렬 생성",
+        "각 Child는 capability+org scope로 Routing",
+        "PII는 최소 stable refs로 전달"
+      ],
+      "wait": "S3~S5 Child 결과를 ALL_REQUIRED_CHILDREN 정책으로 기다리며 WAITING_DEPENDENCY",
+      "apis": [
+        "HR.CREATE_EMPLOYEE_DRAFT",
+        "WORKITEM.CREATE_CHILD",
+        "WORKITEM.GET/RESULT",
+        "IDENTITY/ORG queries",
+        "REPORT/ARTIFACT"
+      ],
+      "result": "EmployeeDraftRef + IT/GA/Manager Child Work Results + readiness report",
+      "workasset": "HR WorkAsset와 각 지원부서 WorkAsset을 분리하고 하나의 onboarding correlation_id로 연결",
+      "tests": [
+        [
+          "HR-AT-01",
+          "정상 신규입사",
+          "3개 Child 병렬 생성",
+          "모든 required child 후 readiness complete"
+        ],
+        [
+          "HR-AT-02",
+          "Manager 미지정",
+          "validation fail",
+          "WAITING_INPUT"
+        ],
+        [
+          "HR-AT-03",
+          "민감 개인정보가 Prompt에 과다 포함",
+          "data filter",
+          "Model context 최소화/마스킹"
+        ],
+        [
+          "HR-AT-04",
+          "GA Child만 실패",
+          "ALL_REQUIRED_CHILDREN",
+          "Parent 완료 금지; blocker 표시"
+        ],
+        [
+          "HR-AT-05",
+          "같은 입사자 onboarding 재요청",
+          "dedup/business key",
+          "중복 Employee Draft/Child 금지"
+        ],
+        [
+          "HR-AT-06",
+          "대기 중 조직 RoleBinding 변경",
+          "Resume",
+          "현재 Scope 재검증 후 재Routing/ESCALATE"
+        ]
+      ]
+    },
+    {
+      "id": "WF-GA-01",
+      "domain": "General Affairs",
+      "title": "Facility / Office Asset Repair & Procurement Escalation",
+      "purpose": "시설/비품 문제를 접수해 현장점검을 위임하고 결과에 따라 수리종료 또는 구매/조달이 필요한 경우 bounded Replan으로 Procurement 업무를 생성한다.",
+      "trigger": "Employee Prompt → GA WorkItem",
+      "actor": "GA Coworker + Facility Staff + Procurement",
+      "work_class": "COORDINATION",
+      "route": "Known Plan + possible bounded Replan",
+      "template": "GA.FACILITY_MAINTENANCE_STANDARD",
+      "risk": "R1~R4",
+      "data_class": "INTERNAL",
+      "intent": "시설/비품 문제를 확인하고 수리/교체/구매 경로를 결정하여 조치 결과를 추적한다.",
+      "steps": [
+        [
+          "S1",
+          "LOCAL_CAPABILITY",
+          "GA.RESOLVE_ASSET_LOCATION",
+          "자산/장소 확인",
+          "-",
+          "R1"
+        ],
+        [
+          "S2",
+          "DELEGATE_WORK",
+          "GA.INSPECT_AND_REPAIR_ASSET",
+          "현장점검/가능하면 수리",
+          "S1",
+          "R3"
+        ],
+        [
+          "S3",
+          "AGGREGATE",
+          "GA.VALIDATE_MAINTENANCE_RESULT",
+          "수리완료/교체필요/구매필요 판정",
+          "S2",
+          "R2"
+        ],
+        [
+          "S4",
+          "REPORT",
+          "REPORT.GA_MAINTENANCE",
+          "초기 Plan은 점검결과 보고",
+          "S3",
+          "R1"
+        ]
+      ],
+      "compiler": [
+        "S2 Child WorkItem으로 Facility capability pool에 Routing",
+        "S2 결과가 구매필요인 경우 기존 Plan in-place 수정 금지",
+        "Replan v2에서 PROCUREMENT.SOURCE_ITEM DELEGATE_WORK 추가"
+      ],
+      "wait": "S2 WAITING_DEPENDENCY; Replan v2가 Procurement Child 생성 시 다시 WAITING_DEPENDENCY",
+      "apis": [
+        "GA asset queries",
+        "WORKITEM.CREATE_CHILD",
+        "WORKITEM.RESULT",
+        "PLAN replan/versioning",
+        "PROCUREMENT child contract"
+      ],
+      "result": "Maintenance Result + optional Procurement WorkRef + repair/replacement Artifact",
+      "workasset": "시설업무 WorkAsset; 구매로 넘어가면 GA와 Procurement WorkAsset를 별도 보존",
+      "tests": [
+        [
+          "GA-AT-01",
+          "현장 수리완료",
+          "S2 result=REPAIRED",
+          "S4 report; Replan 없음"
+        ],
+        [
+          "GA-AT-02",
+          "교체/구매 필요",
+          "S2 result=PROCUREMENT_REQUIRED",
+          "AgentPlan v2 생성, 기존 v1 immutable"
+        ],
+        [
+          "GA-AT-03",
+          "동일 설비 기존 Open WorkItem",
+          "duplicate check",
+          "새 중복 Work 대신 기존 Work 연결/정책"
+        ],
+        [
+          "GA-AT-04",
+          "Replan 횟수 초과",
+          "max_replan_count",
+          "ESCALATED"
+        ],
+        [
+          "GA-AT-05",
+          "Procurement Child 실패",
+          "dependency result failure",
+          "GA Parent 예외보고/대체조치"
+        ],
+        [
+          "GA-AT-06",
+          "시설 담당자 lease 만료",
+          "WC claim/reassign",
+          "중복 수리 Side Effect는 business control로 방지"
+        ]
+      ]
+    },
+    {
+      "id": "WF-MFG-01",
+      "domain": "Manufacturing",
+      "title": "Production Material Shortage Response",
+      "purpose": "생산계획/BOM/재고를 조회해 부족자재를 확정하고 구매 Coworker에게 조달업무를 위임한 뒤 납기결과를 받아 생산영향 보고/조정 Draft를 만든다.",
+      "trigger": "Manufacturing Manager Prompt or integration-created WorkItem",
+      "actor": "Manufacturing Coworker + Procurement Coworker",
+      "work_class": "COORDINATION / ANALYSIS",
+      "route": "Known Plan",
+      "template": "MFG.MATERIAL_SHORTAGE_RESPONSE",
+      "risk": "R2~R4",
+      "data_class": "CONFIDENTIAL",
+      "intent": "생산계획 대비 재고 부족을 정확히 계산하고 필요한 구매업무를 생성하여 납기/생산영향을 추적한다.",
+      "steps": [
+        [
+          "S1",
+          "LOCAL_CAPABILITY",
+          "MFG.GET_PRODUCTION_REQUIREMENTS",
+          "생산계획/BOM 요구량 조회",
+          "-",
+          "R2"
+        ],
+        [
+          "S2",
+          "LOCAL_CAPABILITY",
+          "INVENTORY.GET_AVAILABLE_STOCK",
+          "가용재고/확정입고 조회",
+          "S1",
+          "R2"
+        ],
+        [
+          "S3",
+          "AGGREGATE",
+          "MFG.CALCULATE_SHORTAGE",
+          "부족수량/필요일 deterministic 계산",
+          "S1,S2",
+          "R2"
+        ],
+        [
+          "S4",
+          "DELEGATE_WORK",
+          "PROCUREMENT.SOURCE_MATERIAL",
+          "부족자재 조달 Child Work 생성",
+          "S3",
+          "R3"
+        ],
+        [
+          "S5",
+          "AGGREGATE",
+          "MFG.ASSESS_PRODUCTION_IMPACT",
+          "조달결과+생산계획 영향 분석",
+          "S4",
+          "R2"
+        ],
+        [
+          "S6",
+          "LOCAL_CAPABILITY",
+          "MFG.CREATE_SCHEDULE_ADJUSTMENT_DRAFT",
+          "필요시 생산조정 Draft",
+          "S5",
+          "R3"
+        ],
+        [
+          "S7",
+          "REPORT",
+          "REPORT.MFG_SHORTAGE",
+          "부족/구매/납기/조정 Draft 보고",
+          "S6",
+          "R1"
+        ]
+      ],
+      "compiler": [
+        "S4 capability+plant/project scope로 Procurement Routing",
+        "S6 앞 Confirmation/Manager Gate 정책 가능",
+        "부족수량 계산은 LLM이 아닌 canonical data + deterministic formula"
+      ],
+      "wait": "S4 Child Work 후 WAITING_DEPENDENCY; procurement result event로 Resume",
+      "apis": [
+        "MFG/ERP production query",
+        "INVENTORY query",
+        "WORKITEM.CREATE_CHILD",
+        "MFG.CREATE_SCHEDULE_ADJUSTMENT_DRAFT",
+        "WORKITEM.REPORT_RESULT"
+      ],
+      "result": "Shortage Analysis + Procurement WorkResult + ScheduleAdjustmentDraftRef",
+      "workasset": "Manufacturing 분석 WorkAsset와 Procurement 실행 WorkAsset를 correlation으로 연결; Project/Product/Plant attribution",
+      "tests": [
+        [
+          "MFG-AT-01",
+          "부족 없음",
+          "shortage=0",
+          "Procurement Child 생성 금지"
+        ],
+        [
+          "MFG-AT-02",
+          "부족 존재",
+          "deterministic shortage",
+          "정확한 qty/due/project로 Child 생성"
+        ],
+        [
+          "MFG-AT-03",
+          "중복 shortage WorkItem",
+          "same shortage operation",
+          "중복 구매요청 방지"
+        ],
+        [
+          "MFG-AT-04",
+          "Procurement 납기 불가",
+          "WorkResult exception",
+          "S5 영향분석→조정 Draft/ESCALATE"
+        ],
+        [
+          "MFG-AT-05",
+          "재고가 대기 중 변경",
+          "Resume freshness check",
+          "S5에서 최신 상태 재평가"
+        ],
+        [
+          "MFG-AT-06",
+          "S6 승인/권한 취소",
+          "side-effect gate",
+          "Draft 생성 차단"
+        ]
+      ]
+    },
+    {
+      "id": "WF-PROC-01",
+      "domain": "Procurement",
+      "title": "Purchase Requisition → RFQ → Quote Compare → PO Draft",
+      "purpose": "구매요청을 검증하고 공급사/RFQ/견적회수/비교를 거쳐 PO Draft를 생성하고 승인 프로세스로 넘긴다.",
+      "trigger": "Procurement Child WorkItem from MFG/GA or Procurement Prompt",
+      "actor": "Procurement Coworker + Human Buyer / Suppliers",
+      "work_class": "BUSINESS_TRANSACTION / COORDINATION",
+      "route": "Known Plan",
+      "template": "PROCUREMENT.STANDARD_SOURCING",
+      "risk": "R2~R4",
+      "data_class": "CONFIDENTIAL",
+      "intent": "구매요청의 품목/수량/납기/프로젝트를 검증하고 적격 공급사 견적을 비교해 PO Draft를 준비한다.",
+      "steps": [
+        [
+          "S1",
+          "LOCAL_CAPABILITY",
+          "PROCUREMENT.VALIDATE_REQUISITION",
+          "품목/수량/납기/예산/프로젝트 검증",
+          "-",
+          "R2"
+        ],
+        [
+          "S2",
+          "LOCAL_CAPABILITY",
+          "PROCUREMENT.LIST_APPROVED_SUPPLIERS",
+          "적격 공급사 조회",
+          "S1",
+          "R2"
+        ],
+        [
+          "S3",
+          "LOCAL_CAPABILITY",
+          "PROCUREMENT.CREATE_RFQ_DRAFT",
+          "RFQ Draft 생성",
+          "S2",
+          "R3"
+        ],
+        [
+          "S4",
+          "DELEGATE_WORK",
+          "PROCUREMENT.COLLECT_QUOTES",
+          "Buyer가 RFQ 발송/견적 수집",
+          "S3",
+          "R3"
+        ],
+        [
+          "S5",
+          "AGGREGATE",
+          "PROCUREMENT.COMPARE_QUOTES",
+          "가격/납기/조건 정규화 비교",
+          "S4",
+          "R2"
+        ],
+        [
+          "S6",
+          "LOCAL_CAPABILITY",
+          "PROCUREMENT.CREATE_PO_DRAFT",
+          "선정안 기반 PO Draft 생성",
+          "S5",
+          "R3"
+        ],
+        [
+          "S7",
+          "LOCAL_CAPABILITY",
+          "PROCUREMENT.SUBMIT_PO",
+          "PO 승인 프로세스 시작",
+          "S6",
+          "R4"
+        ],
+        [
+          "S8",
+          "REPORT",
+          "REPORT.PROCUREMENT_RESULT",
+          "PO/Approval/납기정보 Parent에 반환",
+          "S7",
+          "R1"
+        ]
+      ],
+      "compiler": [
+        "S3/S6 Confirmation",
+        "S7 Formal Approval Domain Gate",
+        "S4 Human Buyer capability pool Child WorkItem",
+        "견적 비교 LLM 사용 시 구조화된 가격/납기 원천값은 변경 금지"
+      ],
+      "wait": "S4 견적수집 WAITING_DEPENDENCY/INPUT; S7 승인 WAITING_APPROVAL",
+      "apis": [
+        "PROCUREMENT queries/commands",
+        "WORKITEM.CREATE_CHILD/RESULT",
+        "APPROVAL",
+        "ARTIFACT",
+        "REPORT"
+      ],
+      "result": "RFQRef + QuoteArtifacts + Comparison + PODraft/ApprovalRef + committed delivery info",
+      "workasset": "Procurement sourcing WorkAsset; Parent Manufacturing/GA WorkItem refs를 evidence로 연결",
+      "tests": [
+        [
+          "PROC-AT-01",
+          "정상 구매",
+          "approved suppliers+quotes",
+          "PO Draft/approval flow"
+        ],
+        [
+          "PROC-AT-02",
+          "적격 공급사 없음",
+          "supplier list empty",
+          "ESCALATED/Dynamic sourcing policy; PO 금지"
+        ],
+        [
+          "PROC-AT-03",
+          "견적 Artifact 누락/스키마 오류",
+          "S4 result invalid",
+          "S5 진행 금지"
+        ],
+        [
+          "PROC-AT-04",
+          "LLM 비교가 원가격 변경 시도",
+          "schema/source validation",
+          "원천 numeric value 보존; invalid output"
+        ],
+        [
+          "PROC-AT-05",
+          "PO Draft command timeout",
+          "same idempotency key",
+          "중복 PO Draft 금지"
+        ],
+        [
+          "PROC-AT-06",
+          "승인 중 Supplier/price change",
+          "business state/freshness",
+          "재검토/approval invalidation 정책"
+        ]
+      ]
+    }
+  ],
+  "cross_domain_scenario": {
+    "id": "XWF-01",
+    "title": "Manufacturing Shortage → Procurement Sourcing → Manufacturing Resume",
+    "flow": [
+      "Manufacturing WorkItem / Coworker execution",
+      "deterministic shortage calculation",
+      "DELEGATE_WORK(PROCUREMENT.SOURCE_MATERIAL)",
+      "WC Child WorkItem routed to Procurement capability pool",
+      "Manufacturing Execution → WAITING_DEPENDENCY + Checkpoint",
+      "Procurement Coworker claims Child Work",
+      "RFQ/Quote/PO Draft/Approval",
+      "Procurement WORK_RESULT_SUBMITTED",
+      "Domain Event satisfies Manufacturing wait",
+      "Manufacturing Resume reauthorization + freshness check",
+      "Production impact / schedule adjustment draft",
+      "Parent WorkResult + WorkAsset linkage"
+    ]
+  }
+}

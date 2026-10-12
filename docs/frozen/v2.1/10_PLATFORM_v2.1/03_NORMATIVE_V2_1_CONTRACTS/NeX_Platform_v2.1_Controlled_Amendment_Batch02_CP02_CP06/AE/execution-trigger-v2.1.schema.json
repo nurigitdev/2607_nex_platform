@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:schema:ae:execution-trigger:2.1",
+  "title": "NeX ExecutionTrigger v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "trigger_id",
+    "source_type",
+    "source_ref",
+    "tenant_id",
+    "agent_type",
+    "agent_id",
+    "project_id",
+    "correlation_id",
+    "received_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.1"
+    },
+    "trigger_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_type": {
+      "enum": [
+        "PROMPT",
+        "CLAIMED_WORKITEM"
+      ]
+    },
+    "source_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_type": {
+      "enum": [
+        "IA",
+        "CA",
+        "PA",
+        "EA"
+      ]
+    },
+    "agent_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "work_item_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "claim_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "claim_generation": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "assignment_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "requester_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "received_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "source_type": {
+            "const": "PROMPT"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "agent_type": {
+            "const": "IA"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source_type": {
+            "const": "CLAIMED_WORKITEM"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "work_item_ref",
+          "claim_ref",
+          "assignment_ref"
+        ],
+        "properties": {
+          "agent_type": {
+            "enum": [
+              "CA",
+              "PA",
+              "EA"
+            ]
+          },
+          "work_item_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "claim_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "assignment_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,447 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:schema:oa:effective-authority-context:2.1",
+  "title": "NeX Effective Authority Context v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "authority_context_id",
+    "authenticated_principal_ref",
+    "business_actor_ref",
+    "role_binding_ref",
+    "capability_ref",
+    "risk_level",
+    "org_scope_refs",
+    "project_scope_refs",
+    "auth_context",
+    "policy_snapshot_ref",
+    "issued_at",
+    "valid_until",
+    "correlation_id",
+    "context_hash",
+    "tenant_id",
+    "agent_identity_ref",
+    "agent_type"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.1"
+    },
+    "authority_context_id": {
+      "type": "string"
+    },
+    "authenticated_principal_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity_type",
+        "entity_id"
+      ],
+      "properties": {
+        "entity_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "entity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "version": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 80
+        }
+      }
+    },
+    "business_actor_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity_type",
+        "entity_id"
+      ],
+      "properties": {
+        "entity_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "entity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "version": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 80
+        }
+      }
+    },
+    "coworker_profile_ref": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "entity_type",
+            "entity_id"
+          ],
+          "properties": {
+            "entity_type": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "entity_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "version": {
+              "type": [
+                "string",
+                "integer",
+                "null"
+              ]
+            },
+            "status": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 80
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "role_binding_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity_type",
+        "entity_id"
+      ],
+      "properties": {
+        "entity_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "entity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "version": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 80
+        }
+      }
+    },
+    "work_item_ref": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "entity_type",
+            "entity_id"
+          ],
+          "properties": {
+            "entity_type": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "entity_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "version": {
+              "type": [
+                "string",
+                "integer",
+                "null"
+              ]
+            },
+            "status": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 80
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "capability_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity_type",
+        "entity_id"
+      ],
+      "properties": {
+        "entity_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "entity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "version": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 80
+        }
+      }
+    },
+    "risk_level": {
+      "enum": [
+        "R0",
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5"
+      ]
+    },
+    "org_scope_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "entity_type",
+          "entity_id"
+        ],
+        "properties": {
+          "entity_type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "entity_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "version": {
+            "type": [
+              "string",
+              "integer",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 80
+          }
+        }
+      }
+    },
+    "project_scope_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "entity_type",
+          "entity_id"
+        ],
+        "properties": {
+          "entity_type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "entity_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "version": {
+            "type": [
+              "string",
+              "integer",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 80
+          }
+        }
+      }
+    },
+    "auth_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "auth_level",
+        "step_up_satisfied",
+        "authenticator_types"
+      ],
+      "properties": {
+        "auth_level": {
+          "enum": [
+            "AAL1_EQUIVALENT",
+            "AAL2_EQUIVALENT",
+            "PHISHING_RESISTANT",
+            "SERVICE_STRONG"
+          ]
+        },
+        "step_up_satisfied": {
+          "type": "boolean"
+        },
+        "authenticator_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "authenticated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "autonomy_level": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "human_gate_state": {
+      "enum": [
+        "NONE",
+        "REQUIRED",
+        "SATISFIED",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "policy_snapshot_ref": {
+      "type": "string"
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "correlation_id": {
+      "type": "string"
+    },
+    "context_hash": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{64}$"
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_identity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity_type",
+        "entity_id"
+      ],
+      "properties": {
+        "entity_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "entity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "version": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 80
+        }
+      }
+    },
+    "agent_type": {
+      "enum": [
+        "IA",
+        "CA",
+        "PA",
+        "EA"
+      ]
+    }
+  }
+}

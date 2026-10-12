@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex.local/schemas/agent-plan-v1.schema.json",
+  "title": "NeX AgentPlan v1",
+  "description": "Immutable logical JSON IR produced/bound before deterministic compilation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "agent_plan_id",
+    "agent_plan_version",
+    "execution_id",
+    "work_intent_id",
+    "plan_kind",
+    "steps",
+    "completion_criteria",
+    "planning_constraints",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "agent_plan_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_plan_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "work_intent_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "plan_kind": {
+      "enum": [
+        "DIRECT",
+        "CERTIFIED_BINDING",
+        "KNOWN_TEMPLATE",
+        "DYNAMIC"
+      ]
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "$ref": "plan-step-v1.schema.json"
+      }
+    },
+    "completion_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "criterion_id",
+          "description"
+        ],
+        "properties": {
+          "criterion_id": {
+            "type": "string",
+            "pattern": "^C[1-9][0-9]*$"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "required_terminal_step_refs": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^S[1-9][0-9]*$"
+            }
+          }
+        }
+      }
+    },
+    "planning_constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_plan_steps",
+        "max_delegation_depth"
+      ],
+      "properties": {
+        "max_plan_steps": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "max_delegation_depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "replan_allowed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "user_safe_rationale_summary": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 2000
+    },
+    "source_plan_template": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "template_id",
+        "template_version"
+      ],
+      "properties": {
+        "template_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "template_version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "supersedes_agent_plan_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "replan_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "builder_type",
+        "input_context_hash"
+      ],
+      "properties": {
+        "builder_type": {
+          "enum": [
+            "DIRECT_BINDER",
+            "CERTIFIED_BINDER",
+            "TEMPLATE_BINDER",
+            "DYNAMIC_BUILDER"
+          ]
+        },
+        "prompt_template_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_profile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input_context_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "routing_decision_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

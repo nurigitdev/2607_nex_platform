@@ -1,0 +1,1517 @@
+{
+  "document": "33_Integrated_Test_and_Acceptance_Strategy_v2.0",
+  "version": "v2.0",
+  "date": "2026-09-04",
+  "counts": {
+    "MUST": 158,
+    "SHOULD": 18
+  },
+  "requirements": [
+    {
+      "section": "4.1 Test Architecture & Governance",
+      "id": "NEX-TST-ARCH-FR-001",
+      "priority": "MUST",
+      "requirement": "33번 Test Strategy는 31 Horizontal E2E와 32 Reliability Contract를 검증 대상의 상위 Baseline으로 사용하고 서비스별 SRS/DD를 임의 재정의하지 않아야 한다.",
+      "verification": "Traceability Inspection",
+      "parent": "00/31/32"
+    },
+    {
+      "section": "4.1 Test Architecture & Governance",
+      "id": "NEX-TST-ARCH-FR-002",
+      "priority": "MUST",
+      "requirement": "Test Architecture는 Unit → Contract → Integration → Fault Injection → E2E → Golden Slice → Acceptance → Regression Gate의 증명 계층을 명시해야 한다.",
+      "verification": "Architecture Review",
+      "parent": "00/33"
+    },
+    {
+      "section": "4.1 Test Architecture & Governance",
+      "id": "NEX-TST-ARCH-FR-003",
+      "priority": "MUST",
+      "requirement": "각 Requirement는 최소 하나의 검증 방법 또는 Test Case ID와 연결되어야 하며 미검증 Requirement를 release-ready로 간주해서는 안 된다.",
+      "verification": "Traceability Audit",
+      "parent": "00"
+    },
+    {
+      "section": "4.1 Test Architecture & Governance",
+      "id": "NEX-TST-ARCH-FR-004",
+      "priority": "MUST",
+      "requirement": "Test Case는 happy path뿐 아니라 해당 Requirement의 boundary, robustness, worst-case 또는 failure path를 포함해야 한다.",
+      "verification": "Test Design Review",
+      "parent": "Project rule"
+    },
+    {
+      "section": "4.1 Test Architecture & Governance",
+      "id": "NEX-TST-ARCH-FR-005",
+      "priority": "MUST",
+      "requirement": "테스트 자동화는 pytest를 기본으로 하고 Web/Workspace E2E는 Playwright를 사용해야 한다.",
+      "verification": "CI Inspection",
+      "parent": "Project rule"
+    },
+    {
+      "section": "4.1 Test Architecture & Governance",
+      "id": "NEX-TST-ARCH-FR-006",
+      "priority": "MUST",
+      "requirement": "기능 추가 전 코드 구조를 검토하고 필요한 refactoring을 우선하며 refactor 전후 regression baseline을 확보해야 한다.",
+      "verification": "PR Review",
+      "parent": "Project rule"
+    },
+    {
+      "section": "4.1 Test Architecture & Governance",
+      "id": "NEX-TST-ARCH-FR-007",
+      "priority": "MUST",
+      "requirement": "Source 변경은 unit/integration/regression/smoke test 통과 후에만 merge/tag할 수 있어야 한다.",
+      "verification": "CI Gate",
+      "parent": "Project rule"
+    },
+    {
+      "section": "4.1 Test Architecture & Governance",
+      "id": "NEX-TST-ARCH-FR-008",
+      "priority": "MUST",
+      "requirement": "테스트 결과는 build/commit/environment/test-plan version과 연결된 immutable TestRun/Evidence로 남겨야 한다.",
+      "verification": "Evidence Audit",
+      "parent": "33"
+    },
+    {
+      "section": "4.1 Test Architecture & Governance",
+      "id": "NEX-TST-ARCH-FR-009",
+      "priority": "MUST",
+      "requirement": "각 서비스의 테스트는 다른 서비스 DB를 직접 수정하여 fixture를 만들지 않고 canonical API 또는 service-owned fixture loader를 사용해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "07/31"
+    },
+    {
+      "section": "4.1 Test Architecture & Governance",
+      "id": "NEX-TST-ARCH-FR-010",
+      "priority": "SHOULD",
+      "requirement": "Critical deterministic code에는 property-based 또는 mutation testing을 선택적으로 적용하여 assertion quality를 보강할 수 있어야 한다.",
+      "verification": "Quality Review",
+      "parent": "33"
+    },
+    {
+      "section": "4.2 Unit Test",
+      "id": "NEX-TST-UNIT-FR-001",
+      "priority": "MUST",
+      "requirement": "Unit Test는 외부 네트워크/실 DB/실 모델에 의존하지 않고 pure domain logic과 state transition을 빠르게 검증해야 한다.",
+      "verification": "pytest",
+      "parent": "33"
+    },
+    {
+      "section": "4.2 Unit Test",
+      "id": "NEX-TST-UNIT-FR-002",
+      "priority": "MUST",
+      "requirement": "Authorization predicate, retry classifier, plan validator/compiler, routing policy, state machine, idempotency key generation은 unit test 대상이어야 한다.",
+      "verification": "pytest",
+      "parent": "12/26/32"
+    },
+    {
+      "section": "4.2 Unit Test",
+      "id": "NEX-TST-UNIT-FR-003",
+      "priority": "MUST",
+      "requirement": "금액/원가/원장 계산은 Decimal 기반 정확성, 반올림, 0/음수/최대값/통화 경계를 검증해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "20~22"
+    },
+    {
+      "section": "4.2 Unit Test",
+      "id": "NEX-TST-UNIT-FR-004",
+      "priority": "MUST",
+      "requirement": "Retry classifier는 동일 error code가 무조건 retry되는 구현을 금지하고 READ/WRITE/commit uncertainty별 분류를 검증해야 한다.",
+      "verification": "Table-driven Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.2 Unit Test",
+      "id": "NEX-TST-UNIT-FR-005",
+      "priority": "MUST",
+      "requirement": "State transition test는 허용 전이와 금지 전이를 모두 검증하고 stale version 전이를 거부해야 한다.",
+      "verification": "State Test",
+      "parent": "11/12/14/32"
+    },
+    {
+      "section": "4.2 Unit Test",
+      "id": "NEX-TST-UNIT-FR-006",
+      "priority": "MUST",
+      "requirement": "Plan/Skill/Prompt/Policy version selector는 exact version/hash가 고정되는지 검증해야 한다.",
+      "verification": "Unit Test",
+      "parent": "12/17/29/30"
+    },
+    {
+      "section": "4.2 Unit Test",
+      "id": "NEX-TST-UNIT-FR-007",
+      "priority": "MUST",
+      "requirement": "Entity/Stable ID resolver는 ambiguity에서 guess하지 않고 명시적 unresolved/clarification을 반환하는지 검증해야 한다.",
+      "verification": "Negative Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.2 Unit Test",
+      "id": "NEX-TST-UNIT-FR-008",
+      "priority": "MUST",
+      "requirement": "Event/Job/Request/Business idempotency identity 생성기는 서로 다른 namespace와 semantics를 갖는지 검증해야 한다.",
+      "verification": "Unit Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.2 Unit Test",
+      "id": "NEX-TST-UNIT-FR-009",
+      "priority": "SHOULD",
+      "requirement": "시간 의존 로직은 fake clock/frozen time을 사용하여 expiry, lease, retry backoff, policy effective period를 재현 가능하게 검증할 수 있어야 한다.",
+      "verification": "Unit Test",
+      "parent": "26/32"
+    },
+    {
+      "section": "4.2 Unit Test",
+      "id": "NEX-TST-UNIT-FR-010",
+      "priority": "MUST",
+      "requirement": "Unit Test 실패 시 테스트 재실행으로 green을 만드는 관행을 release gate로 사용해서는 안 되며 flaky 원인을 분리·수정해야 한다.",
+      "verification": "CI Policy",
+      "parent": "33"
+    },
+    {
+      "section": "4.3 Contract / Schema Test",
+      "id": "NEX-TST-CON-FR-001",
+      "priority": "MUST",
+      "requirement": "JSON Schema/OpenAPI/Event/ExecutionContext/RuntimeResult 등 service contract는 schema validation test를 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "08/17/26~32"
+    },
+    {
+      "section": "4.3 Contract / Schema Test",
+      "id": "NEX-TST-CON-FR-002",
+      "priority": "MUST",
+      "requirement": "Provider와 Consumer는 같은 contract version/hash를 사용하는지 CI에서 검증해야 한다.",
+      "verification": "Contract Test",
+      "parent": "31"
+    },
+    {
+      "section": "4.3 Contract / Schema Test",
+      "id": "NEX-TST-CON-FR-003",
+      "priority": "MUST",
+      "requirement": "Backward compatible 변경과 breaking 변경을 구분하고 breaking 변경은 version bump와 migration/dual support 계획이 있어야 한다.",
+      "verification": "Compatibility Test",
+      "parent": "08/35"
+    },
+    {
+      "section": "4.3 Contract / Schema Test",
+      "id": "NEX-TST-CON-FR-004",
+      "priority": "MUST",
+      "requirement": "Unknown field/enum/schema version 처리 규칙을 closed/open contract 정의에 맞게 검증해야 한다.",
+      "verification": "Negative Contract Test",
+      "parent": "08/12"
+    },
+    {
+      "section": "4.3 Contract / Schema Test",
+      "id": "NEX-TST-CON-FR-005",
+      "priority": "MUST",
+      "requirement": "Service-to-service auth header/service identity/audience/capability scope contract를 실제 HTTP integration 없이도 contract test로 검증할 수 있어야 한다.",
+      "verification": "Contract Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.3 Contract / Schema Test",
+      "id": "NEX-TST-CON-FR-006",
+      "priority": "MUST",
+      "requirement": "Event contract는 event_id/type/source/schema_version/correlation_id/causation_id/occurred_at을 검증해야 한다.",
+      "verification": "Schema Test",
+      "parent": "31/32"
+    },
+    {
+      "section": "4.3 Contract / Schema Test",
+      "id": "NEX-TST-CON-FR-007",
+      "priority": "MUST",
+      "requirement": "NSL ExecutionContext와 RuntimeResult는 17번 exact schema/version compatibility를 검증해야 한다.",
+      "verification": "Contract Test",
+      "parent": "17/29"
+    },
+    {
+      "section": "4.3 Contract / Schema Test",
+      "id": "NEX-TST-CON-FR-008",
+      "priority": "MUST",
+      "requirement": "CX Evidence Bundle/AE Context는 source locator, authority/policy refs, bundle hash, relation provenance가 schema에 부합하는지 검증해야 한다.",
+      "verification": "Contract Test",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.3 Contract / Schema Test",
+      "id": "NEX-TST-CON-FR-009",
+      "priority": "MUST",
+      "requirement": "WC Child WorkItem/Result/Event contract는 parent/execution/plan-step causation과 required result schema를 검증해야 한다.",
+      "verification": "Contract Test",
+      "parent": "14/31"
+    },
+    {
+      "section": "4.3 Contract / Schema Test",
+      "id": "NEX-TST-CON-FR-010",
+      "priority": "SHOULD",
+      "requirement": "Consumer-driven contract test를 주요 cross-service interface에 적용하여 provider release 전에 consumer breakage를 탐지할 수 있어야 한다.",
+      "verification": "CDC Test",
+      "parent": "33"
+    },
+    {
+      "section": "4.4 Integration Test",
+      "id": "NEX-TST-INT-FR-001",
+      "priority": "MUST",
+      "requirement": "Integration Test는 실제 PostgreSQL schema/migration을 사용하고 각 테스트 suite 시작 시 격리된 test DB를 초기화해야 한다.",
+      "verification": "pytest + PostgreSQL",
+      "parent": "Project rule"
+    },
+    {
+      "section": "4.4 Integration Test",
+      "id": "NEX-TST-INT-FR-002",
+      "priority": "MUST",
+      "requirement": "Repository/Transaction/Outbox/Inbox/JobQueue는 실제 PostgreSQL transaction과 unique constraint를 사용해 검증해야 한다.",
+      "verification": "DB Integration",
+      "parent": "12/14/32"
+    },
+    {
+      "section": "4.4 Integration Test",
+      "id": "NEX-TST-INT-FR-003",
+      "priority": "MUST",
+      "requirement": "OA→AE/CX/WC/NSL authorization integration은 실제 PDP contract 또는 deterministic test PDP를 통해 allow/deny/reason/step-up/gate를 검증해야 한다.",
+      "verification": "Integration Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.4 Integration Test",
+      "id": "NEX-TST-INT-FR-004",
+      "priority": "MUST",
+      "requirement": "AE→MO structured generation integration은 schema-valid output, timeout, invalid schema, model unavailable를 검증해야 한다.",
+      "verification": "Integration Test",
+      "parent": "28/29"
+    },
+    {
+      "section": "4.4 Integration Test",
+      "id": "NEX-TST-INT-FR-005",
+      "priority": "MUST",
+      "requirement": "AE→CX retrieval integration은 permission-safe result, insufficient evidence, stale authority, Graph-lite evidence provenance를 검증해야 한다.",
+      "verification": "Integration Test",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.4 Integration Test",
+      "id": "NEX-TST-INT-FR-006",
+      "priority": "MUST",
+      "requirement": "AE↔WC integration은 create/route/claim/child/result/event/resume lifecycle을 service-owned API로 검증해야 한다.",
+      "verification": "Integration Test",
+      "parent": "14/31"
+    },
+    {
+      "section": "4.4 Integration Test",
+      "id": "NEX-TST-INT-FR-007",
+      "priority": "MUST",
+      "requirement": "AE→NSL→Canonical API integration은 exact skill version, preflight, gate proof, idempotency, result mapping을 검증해야 한다.",
+      "verification": "Integration Test",
+      "parent": "17/29"
+    },
+    {
+      "section": "4.4 Integration Test",
+      "id": "NEX-TST-INT-FR-008",
+      "priority": "MUST",
+      "requirement": "Enterprise OS write integration은 실제 business object ref와 commit state를 반환하고 UI/AE가 이를 LLM text보다 우선하는지 검증해야 한다.",
+      "verification": "Integration Test",
+      "parent": "18~22/31"
+    },
+    {
+      "section": "4.4 Integration Test",
+      "id": "NEX-TST-INT-FR-009",
+      "priority": "MUST",
+      "requirement": "WA projection integration은 Activity/Event가 authoritative runtime/work/business refs를 보존하며 재구축 가능한지 검증해야 한다.",
+      "verification": "Integration Test",
+      "parent": "22/31"
+    },
+    {
+      "section": "4.4 Integration Test",
+      "id": "NEX-TST-INT-FR-010",
+      "priority": "SHOULD",
+      "requirement": "External provider/vLLM/legacy connector integration은 contract-compatible simulator와 real staging provider test를 분리 운영할 수 있어야 한다.",
+      "verification": "Integration Strategy",
+      "parent": "28/34"
+    },
+    {
+      "section": "4.5 Database / Concurrency Test",
+      "id": "NEX-TST-DB-FR-001",
+      "priority": "MUST",
+      "requirement": "JobQueue claim은 10개 이상 concurrent worker에서 동일 job 중복 claim이 발생하지 않는지 검증해야 한다.",
+      "verification": "Concurrency Test",
+      "parent": "14/32"
+    },
+    {
+      "section": "4.5 Database / Concurrency Test",
+      "id": "NEX-TST-DB-FR-002",
+      "priority": "MUST",
+      "requirement": "WC WorkClaim과 AE Job Lease가 서로 독립적으로 만료/reclaim되며 business idempotency와 혼동되지 않는지 검증해야 한다.",
+      "verification": "Concurrency/Fault",
+      "parent": "14/32"
+    },
+    {
+      "section": "4.5 Database / Concurrency Test",
+      "id": "NEX-TST-DB-FR-003",
+      "priority": "MUST",
+      "requirement": "Optimistic version 충돌은 stale update를 거부하고 latest state 재조회/재평가 경로를 검증해야 한다.",
+      "verification": "Concurrency Test",
+      "parent": "12/14"
+    },
+    {
+      "section": "4.5 Database / Concurrency Test",
+      "id": "NEX-TST-DB-FR-004",
+      "priority": "MUST",
+      "requirement": "Duplicate child creation/result submit/event delivery에 대해 unique/dedup/idempotency가 중복 Work/Result/Effect를 막는지 검증해야 한다.",
+      "verification": "Robustness Test",
+      "parent": "14/32"
+    },
+    {
+      "section": "4.5 Database / Concurrency Test",
+      "id": "NEX-TST-DB-FR-005",
+      "priority": "MUST",
+      "requirement": "Lease expiry 직전 heartbeat, expiry 후 reclaim, stale lease token complete/fail 시도를 경계값으로 검증해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.5 Database / Concurrency Test",
+      "id": "NEX-TST-DB-FR-006",
+      "priority": "MUST",
+      "requirement": "Outbox local transaction commit과 publisher crash window를 fault test로 검증해야 한다.",
+      "verification": "Fault Injection",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.5 Database / Concurrency Test",
+      "id": "NEX-TST-DB-FR-007",
+      "priority": "MUST",
+      "requirement": "Wait 만족 Event와 Resume enqueue가 동시에 중복 처리되어도 하나의 active resume만 생성되는지 검증해야 한다.",
+      "verification": "Concurrency Test",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.5 Database / Concurrency Test",
+      "id": "NEX-TST-DB-FR-008",
+      "priority": "SHOULD",
+      "requirement": "고부하 contention test는 queue age/fairness/starvation metric을 수집하여 priority policy를 calibration할 수 있어야 한다.",
+      "verification": "Load Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.6 Security / Authorization Test",
+      "id": "NEX-TST-SEC-FR-001",
+      "priority": "MUST",
+      "requirement": "권한 테스트는 Principal/Business Actor/RoleBinding/Org Scope/Project Scope/Data Classification/Capability/Risk를 조합한 positive/negative matrix를 포함해야 한다.",
+      "verification": "Security Matrix",
+      "parent": "26"
+    },
+    {
+      "section": "4.6 Security / Authorization Test",
+      "id": "NEX-TST-SEC-FR-002",
+      "priority": "MUST",
+      "requirement": "서로 다른 RoleBinding 속성을 교차 결합하여 privilege amplification이 발생하지 않는지 검증해야 한다.",
+      "verification": "Adversarial Test",
+      "parent": "26/27"
+    },
+    {
+      "section": "4.6 Security / Authorization Test",
+      "id": "NEX-TST-SEC-FR-003",
+      "priority": "MUST",
+      "requirement": "RoleBinding revoke/expire, employee suspend/termination, kill switch activation이 신규 실행과 WAITING Resume에 반영되는지 검증해야 한다.",
+      "verification": "Security Fault",
+      "parent": "26/30/31"
+    },
+    {
+      "section": "4.6 Security / Authorization Test",
+      "id": "NEX-TST-SEC-FR-004",
+      "priority": "MUST",
+      "requirement": "Background Worker가 employee browser token/refresh token을 사용하지 않고 service identity + employee-bound EAC를 사용하는지 검증해야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/31"
+    },
+    {
+      "section": "4.6 Security / Authorization Test",
+      "id": "NEX-TST-SEC-FR-005",
+      "priority": "MUST",
+      "requirement": "R3+ side effect 직전 current authorization, gate, kill switch, capability/skill status가 재검증되는지 검증해야 한다.",
+      "verification": "Security E2E",
+      "parent": "12/17/26"
+    },
+    {
+      "section": "4.6 Security / Authorization Test",
+      "id": "NEX-TST-SEC-FR-006",
+      "priority": "MUST",
+      "requirement": "CX retrieval/citation/artifact export/notification/audit view에서 Data Classification leakage가 0인지 검증해야 한다.",
+      "verification": "Leakage Test",
+      "parent": "27/29/30"
+    },
+    {
+      "section": "4.6 Security / Authorization Test",
+      "id": "NEX-TST-SEC-FR-007",
+      "priority": "MUST",
+      "requirement": "Prompt injection/indirect injection이 stable ID, permission, skill version, actual assignee, approval result를 권한 source로 만들 수 없는지 검증해야 한다.",
+      "verification": "Adversarial E2E",
+      "parent": "11/29"
+    },
+    {
+      "section": "4.6 Security / Authorization Test",
+      "id": "NEX-TST-SEC-FR-008",
+      "priority": "MUST",
+      "requirement": "Raw token, private key, secret, credential이 prompt/log/audit/evidence/test artifact에 포함되지 않는지 automated scan을 수행해야 한다.",
+      "verification": "Security Scan",
+      "parent": "26~30"
+    },
+    {
+      "section": "4.6 Security / Authorization Test",
+      "id": "NEX-TST-SEC-FR-009",
+      "priority": "MUST",
+      "requirement": "Confirmation/Formal Approval/OA Step-up을 서로 대체할 수 없는지 negative test를 포함해야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.6 Security / Authorization Test",
+      "id": "NEX-TST-SEC-FR-010",
+      "priority": "SHOULD",
+      "requirement": "Critical security test는 release 전 별도 suite로 재실행하고 결과를 Acceptance Evidence Package에 첨부할 수 있어야 한다.",
+      "verification": "Release Security Gate",
+      "parent": "33"
+    },
+    {
+      "section": "4.7 Intent / Plan / Model Evaluation",
+      "id": "NEX-TST-AI-FR-001",
+      "priority": "MUST",
+      "requirement": "LLM 관련 unit/contract test는 exact 자연어 문장 일치를 요구하지 않고 structured schema, allowed candidate set, required fields, safety invariant를 검증해야 한다.",
+      "verification": "Evaluation Test",
+      "parent": "11/12/29"
+    },
+    {
+      "section": "4.7 Intent / Plan / Model Evaluation",
+      "id": "NEX-TST-AI-FR-002",
+      "priority": "MUST",
+      "requirement": "Intent benchmark는 대표 직무별 요청/모호 요청/업무외 요청/공격성 입력을 포함하고 WorkIntent goal/work_class/entity selector/clarification을 평가해야 한다.",
+      "verification": "Benchmark",
+      "parent": "11/29"
+    },
+    {
+      "section": "4.7 Intent / Plan / Model Evaluation",
+      "id": "NEX-TST-AI-FR-003",
+      "priority": "MUST",
+      "requirement": "Plan benchmark는 Direct/Certified/Known/Dynamic routing이 policy에 맞게 선택되고 LLM selector가 Top-K 외 ID를 선택할 수 없는지 검증해야 한다.",
+      "verification": "Routing Eval",
+      "parent": "12/29"
+    },
+    {
+      "section": "4.7 Intent / Plan / Model Evaluation",
+      "id": "NEX-TST-AI-FR-004",
+      "priority": "MUST",
+      "requirement": "Dynamic Plan은 schema/semantic validator와 compiler를 통과하지 못하면 executable하지 않음을 검증해야 한다.",
+      "verification": "Negative Test",
+      "parent": "12"
+    },
+    {
+      "section": "4.7 Intent / Plan / Model Evaluation",
+      "id": "NEX-TST-AI-FR-005",
+      "priority": "MUST",
+      "requirement": "LLM이 concrete skill version/actual assignee/stable authority를 임의 고정해도 compiler가 무시 또는 reject하는지 검증해야 한다.",
+      "verification": "Adversarial Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.7 Intent / Plan / Model Evaluation",
+      "id": "NEX-TST-AI-FR-006",
+      "priority": "MUST",
+      "requirement": "Pinned model/profile/prompt version을 사용한 evaluation run은 provenance와 seed/decoding config를 가능한 범위에서 기록해야 한다.",
+      "verification": "Eval Audit",
+      "parent": "28/29"
+    },
+    {
+      "section": "4.7 Intent / Plan / Model Evaluation",
+      "id": "NEX-TST-AI-FR-007",
+      "priority": "SHOULD",
+      "requirement": "동일 benchmark를 model/profile 변경 전후에 실행하여 schema failure, clarification, correction, replan rate의 regression을 측정할 수 있어야 한다.",
+      "verification": "Model Regression",
+      "parent": "28/29"
+    },
+    {
+      "section": "4.7 Intent / Plan / Model Evaluation",
+      "id": "NEX-TST-AI-FR-008",
+      "priority": "MUST",
+      "requirement": "Critical business acceptance는 LLM confidence 단독이 아니라 deterministic compiled plan/authority/gate/skill result를 기준으로 판정해야 한다.",
+      "verification": "Acceptance Inspection",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.7 Intent / Plan / Model Evaluation",
+      "id": "NEX-TST-AI-FR-009",
+      "priority": "MUST",
+      "requirement": "LLM timeout/invalid JSON/hallucinated ID는 silent fallback으로 실행하지 않고 bounded retry/clarification/escalation 정책을 검증해야 한다.",
+      "verification": "Fault/E2E",
+      "parent": "12/28"
+    },
+    {
+      "section": "4.7 Intent / Plan / Model Evaluation",
+      "id": "NEX-TST-AI-FR-010",
+      "priority": "SHOULD",
+      "requirement": "사용자-safe rationale/plan summary 평가는 private chain-of-thought 보존을 요구하지 않고 결과 설명의 충분성만 평가해야 한다.",
+      "verification": "UX Eval",
+      "parent": "29"
+    },
+    {
+      "section": "4.8 CX Evidence / Retrieval Evaluation",
+      "id": "NEX-TST-CX-FR-001",
+      "priority": "MUST",
+      "requirement": "CX benchmark는 BM25, pgvector, 1-hop Graph-lite를 개별/결합 profile로 평가하여 retrieval quality와 latency를 기록해야 한다.",
+      "verification": "Retrieval Benchmark",
+      "parent": "27"
+    },
+    {
+      "section": "4.8 CX Evidence / Retrieval Evaluation",
+      "id": "NEX-TST-CX-FR-002",
+      "priority": "MUST",
+      "requirement": "Golden A 기본 전표등록 direct path는 CX 없이도 성공해야 하며 CX가 불필요한 hard dependency가 아님을 E2E로 증명해야 한다.",
+      "verification": "Golden E2E",
+      "parent": "31/latest Golden A"
+    },
+    {
+      "section": "4.8 CX Evidence / Retrieval Evaluation",
+      "id": "NEX-TST-CX-FR-003",
+      "priority": "MUST",
+      "requirement": "Golden A에서 증빙/규정/정책 근거가 필요한 변형은 CX Evidence Bundle을 사용하고 citation/source locator를 검증해야 한다.",
+      "verification": "Golden Variant",
+      "parent": "27/31"
+    },
+    {
+      "section": "4.8 CX Evidence / Retrieval Evaluation",
+      "id": "NEX-TST-CX-FR-004",
+      "priority": "MUST",
+      "requirement": "Graph-lite relation은 accessible relation evidence가 없으면 edge 존재조차 노출하지 않는지 security regression을 수행해야 한다.",
+      "verification": "Graph Security Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.8 CX Evidence / Retrieval Evaluation",
+      "id": "NEX-TST-CX-FR-005",
+      "priority": "MUST",
+      "requirement": "1-hop 기본 profile에서 2-hop이 비활성화되어 있는지와 relation provenance가 Evidence Bundle에 유지되는지 검증해야 한다.",
+      "verification": "Contract/Regression",
+      "parent": "27"
+    },
+    {
+      "section": "4.8 CX Evidence / Retrieval Evaluation",
+      "id": "NEX-TST-CX-FR-006",
+      "priority": "MUST",
+      "requirement": "Insufficient/Conflict Evidence는 생성/Artifact에서 명시적 caveat로 전달되고 LLM이 근거를 보완해 만들어내지 않는지 검증해야 한다.",
+      "verification": "E2E Quality",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.8 CX Evidence / Retrieval Evaluation",
+      "id": "NEX-TST-CX-FR-007",
+      "priority": "MUST",
+      "requirement": "Embedding compatibility key 변경 시 자동 cross-model fallback이 발생하지 않고 reindex/degraded path가 선택되는지 검증해야 한다.",
+      "verification": "Integration/Fault",
+      "parent": "27/28"
+    },
+    {
+      "section": "4.8 CX Evidence / Retrieval Evaluation",
+      "id": "NEX-TST-CX-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Retrieval benchmark dataset은 permission scope별 정답/비정답과 graph-related evidence를 함께 버전 관리할 수 있어야 한다.",
+      "verification": "Dataset Governance",
+      "parent": "27/33"
+    },
+    {
+      "section": "4.9 NSL / Certified Skill Test",
+      "id": "NEX-TST-NSL-FR-001",
+      "priority": "MUST",
+      "requirement": "Certified NSL Skill은 source/NSO/manifest/hash/signature/runtime compatibility를 exact version 기준으로 Golden Test해야 한다.",
+      "verification": "Golden Skill Test",
+      "parent": "16/17"
+    },
+    {
+      "section": "4.9 NSL / Certified Skill Test",
+      "id": "NEX-TST-NSL-FR-002",
+      "priority": "MUST",
+      "requirement": "NSL v0.1 read-only compatibility와 v0.2 Controlled Write capability를 별도 test profile로 검증해야 한다.",
+      "verification": "Compatibility Test",
+      "parent": "16/17"
+    },
+    {
+      "section": "4.9 NSL / Certified Skill Test",
+      "id": "NEX-TST-NSL-FR-003",
+      "priority": "MUST",
+      "requirement": "WRITE 가능한 Skill은 current PDP/gate proof/idempotency/preflight 실패 시 provider write call count가 0임을 검증해야 한다.",
+      "verification": "Security/Fault",
+      "parent": "17"
+    },
+    {
+      "section": "4.9 NSL / Certified Skill Test",
+      "id": "NEX-TST-NSL-FR-004",
+      "priority": "MUST",
+      "requirement": "동일 idempotency key + 동일 payload는 동일 result를 재사용하고 동일 key + 다른 payload는 conflict로 차단되는지 검증해야 한다.",
+      "verification": "Idempotency Test",
+      "parent": "17/32"
+    },
+    {
+      "section": "4.9 NSL / Certified Skill Test",
+      "id": "NEX-TST-NSL-FR-005",
+      "priority": "MUST",
+      "requirement": "COMMITTED/NOT_COMMITTED/UNKNOWN_COMMIT_STATE 결과와 AE state mapping을 모두 검증해야 한다.",
+      "verification": "Integration/Fault",
+      "parent": "17/29/32"
+    },
+    {
+      "section": "4.9 NSL / Certified Skill Test",
+      "id": "NEX-TST-NSL-FR-006",
+      "priority": "MUST",
+      "requirement": "REPLAY mode에서는 실제 WRITE provider 호출 횟수가 0이고 recorded bundle 결과가 재현되는지 검증해야 한다.",
+      "verification": "Replay Test",
+      "parent": "17"
+    },
+    {
+      "section": "4.9 NSL / Certified Skill Test",
+      "id": "NEX-TST-NSL-FR-007",
+      "priority": "MUST",
+      "requirement": "Skill SUSPENDED/REVALIDATION_REQUIRED/key revoked/contract drift 상태에서 preflight fail-closed가 동작하는지 검증해야 한다.",
+      "verification": "Governance Security",
+      "parent": "17/30"
+    },
+    {
+      "section": "4.9 NSL / Certified Skill Test",
+      "id": "NEX-TST-NSL-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Certified Skill upgrade는 prior Golden/Replay bundle을 새 version에 재실행하여 behavior regression evidence를 생성할 수 있어야 한다.",
+      "verification": "Regression",
+      "parent": "17/30"
+    },
+    {
+      "section": "4.10 Fault Injection / Recovery Test",
+      "id": "NEX-TST-FLT-FR-001",
+      "priority": "MUST",
+      "requirement": "Fault Injection은 worker process kill, DB connection loss, service timeout, duplicate event, out-of-order event, lease expiry, partial response를 최소 포함해야 한다.",
+      "verification": "Fault Campaign",
+      "parent": "32"
+    },
+    {
+      "section": "4.10 Fault Injection / Recovery Test",
+      "id": "NEX-TST-FLT-FR-002",
+      "priority": "MUST",
+      "requirement": "Remote business commit 직후 local persist 이전 crash를 주입하여 same-key replay/reconciliation으로 복구되는지 검증해야 한다.",
+      "verification": "Crash Window Test",
+      "parent": "17/32"
+    },
+    {
+      "section": "4.10 Fault Injection / Recovery Test",
+      "id": "NEX-TST-FLT-FR-003",
+      "priority": "MUST",
+      "requirement": "Local state commit 직후 outbox publish 실패를 주입하여 outbox retry가 동일 event_id로 복구되는지 검증해야 한다.",
+      "verification": "Fault Injection",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.10 Fault Injection / Recovery Test",
+      "id": "NEX-TST-FLT-FR-004",
+      "priority": "MUST",
+      "requirement": "Consumer 처리 중 crash 후 event redelivery가 inbox dedup을 통해 side effect/resume 중복을 만들지 않는지 검증해야 한다.",
+      "verification": "Fault Injection",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.10 Fault Injection / Recovery Test",
+      "id": "NEX-TST-FLT-FR-005",
+      "priority": "MUST",
+      "requirement": "Checkpoint 저장 후 resume enqueue 누락 또는 worker crash를 주입하여 recovery scanner가 stranded wait를 복구하는지 검증해야 한다.",
+      "verification": "Fault Injection",
+      "parent": "32"
+    },
+    {
+      "section": "4.10 Fault Injection / Recovery Test",
+      "id": "NEX-TST-FLT-FR-006",
+      "priority": "MUST",
+      "requirement": "UNKNOWN_COMMIT_STATE를 주입하여 blind retry가 0회이고 ReconciliationCase가 생성되는지 검증해야 한다.",
+      "verification": "Fault Injection",
+      "parent": "17/32"
+    },
+    {
+      "section": "4.10 Fault Injection / Recovery Test",
+      "id": "NEX-TST-FLT-FR-007",
+      "priority": "MUST",
+      "requirement": "Reconciliation은 CONFIRMED_COMMITTED/CONFIRMED_NOT_COMMITTED/STILL_UNKNOWN/CONFLICT 네 결과를 모두 검증해야 한다.",
+      "verification": "Fault/State Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.10 Fault Injection / Recovery Test",
+      "id": "NEX-TST-FLT-FR-008",
+      "priority": "MUST",
+      "requirement": "OA outage/kill switch/RoleBinding revoke를 실행 또는 resume 직전에 주입하여 protected side effect가 fail-closed되는지 검증해야 한다.",
+      "verification": "Security Fault",
+      "parent": "26/31/32"
+    },
+    {
+      "section": "4.10 Fault Injection / Recovery Test",
+      "id": "NEX-TST-FLT-FR-009",
+      "priority": "MUST",
+      "requirement": "MO provider OOM/overload, CX embedding degraded, AG telemetry outage를 주입하여 defined degraded/block 정책과 SoR separation을 검증해야 한다.",
+      "verification": "Partial Failure",
+      "parent": "27/28/30/32"
+    },
+    {
+      "section": "4.10 Fault Injection / Recovery Test",
+      "id": "NEX-TST-FLT-FR-010",
+      "priority": "MUST",
+      "requirement": "Retry backoff test는 실제 장시간 sleep 대신 fake clock을 사용하되 policy 계산과 max attempt/dead-letter 전이를 검증해야 한다.",
+      "verification": "Unit/Fault",
+      "parent": "32"
+    },
+    {
+      "section": "4.10 Fault Injection / Recovery Test",
+      "id": "NEX-TST-FLT-FR-011",
+      "priority": "MUST",
+      "requirement": "Dead-letter/quarantine 재처리가 새로운 business idempotency identity를 자동 생성하지 않는지 검증해야 한다.",
+      "verification": "Recovery Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.10 Fault Injection / Recovery Test",
+      "id": "NEX-TST-FLT-FR-012",
+      "priority": "SHOULD",
+      "requirement": "정기 chaos/fault campaign은 운영 전 staging에서 deterministic fault scenario set으로 반복 실행할 수 있어야 한다.",
+      "verification": "Operational Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.11 Horizontal E2E Test",
+      "id": "NEX-TST-E2E-FR-001",
+      "priority": "MUST",
+      "requirement": "31번 E2E-01~10 각각에 최소 하나의 automated E2E 또는 integration-equivalent Acceptance flow가 있어야 한다.",
+      "verification": "Coverage Matrix",
+      "parent": "31"
+    },
+    {
+      "section": "4.11 Horizontal E2E Test",
+      "id": "NEX-TST-E2E-FR-002",
+      "priority": "MUST",
+      "requirement": "E2E는 correlation_id를 통해 OA/AE/CX/MO/WC/NSL/EOS/WA/AG 주요 경계의 trace를 재구성할 수 있어야 한다.",
+      "verification": "Trace E2E",
+      "parent": "31"
+    },
+    {
+      "section": "4.11 Horizontal E2E Test",
+      "id": "NEX-TST-E2E-FR-003",
+      "priority": "MUST",
+      "requirement": "E2E completion은 technical success가 아니라 authoritative Work/Runtime/Business/Evidence state의 일관성으로 판정해야 한다.",
+      "verification": "Acceptance E2E",
+      "parent": "31"
+    },
+    {
+      "section": "4.11 Horizontal E2E Test",
+      "id": "NEX-TST-E2E-FR-004",
+      "priority": "MUST",
+      "requirement": "E2E test fixture는 다른 서비스 DB 직접 write가 아니라 canonical setup API 또는 approved fixture importer를 사용해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "31/33"
+    },
+    {
+      "section": "4.11 Horizontal E2E Test",
+      "id": "NEX-TST-E2E-FR-005",
+      "priority": "MUST",
+      "requirement": "Interactive와 Background execution 모두 E2E 대상이며 background는 service account + EAC를 사용해야 한다.",
+      "verification": "E2E",
+      "parent": "11/26"
+    },
+    {
+      "section": "4.11 Horizontal E2E Test",
+      "id": "NEX-TST-E2E-FR-006",
+      "priority": "MUST",
+      "requirement": "WAITING/Resume가 포함된 E2E는 worker가 대기 중 점유되지 않는지와 resume reauthorization을 함께 검증해야 한다.",
+      "verification": "E2E/Fault",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.11 Horizontal E2E Test",
+      "id": "NEX-TST-E2E-FR-007",
+      "priority": "MUST",
+      "requirement": "E2E 결과 화면은 Artifact/Business Object/WorkItem Closure를 구분하여 표시하는지 Playwright로 검증해야 한다.",
+      "verification": "Playwright",
+      "parent": "29/31"
+    },
+    {
+      "section": "4.11 Horizontal E2E Test",
+      "id": "NEX-TST-E2E-FR-008",
+      "priority": "MUST",
+      "requirement": "E2E에서 CX/Graph-lite가 optional인 flow와 mandatory인 flow를 구분하고 불필요한 서비스 hard dependency를 만들지 않는지 검증해야 한다.",
+      "verification": "Architecture E2E",
+      "parent": "27/31"
+    },
+    {
+      "section": "4.11 Horizontal E2E Test",
+      "id": "NEX-TST-E2E-FR-009",
+      "priority": "MUST",
+      "requirement": "Cross-service timeout은 UI에서 silent hang이 아니라 typed progress/wait/failure/reconciliation 상태로 표시되어야 한다.",
+      "verification": "Playwright/Fault",
+      "parent": "29/32"
+    },
+    {
+      "section": "4.11 Horizontal E2E Test",
+      "id": "NEX-TST-E2E-FR-010",
+      "priority": "SHOULD",
+      "requirement": "E2E suite는 핵심 flow를 smoke와 full regression으로 분리하여 PR/야간/Release cadence에 맞게 실행할 수 있어야 한다.",
+      "verification": "CI Strategy",
+      "parent": "33"
+    },
+    {
+      "section": "4.12 Golden Slice A - Accounting Transaction",
+      "id": "NEX-TST-GSA-FR-001",
+      "priority": "MUST",
+      "requirement": "Golden Slice A 기본 시나리오는 “A 프로젝트 출장비 84,000원 전표 등록”을 canonical fixture로 유지해야 한다.",
+      "verification": "Golden E2E",
+      "parent": "00/31"
+    },
+    {
+      "section": "4.12 Golden Slice A - Accounting Transaction",
+      "id": "NEX-TST-GSA-FR-002",
+      "priority": "MUST",
+      "requirement": "기본 경로는 AE Workspace→Unified Runtime→OA current authority→필요 시 Human Gate→NSL→Canonical API→Enterprise OS→Ledger/P&L로 검증해야 한다.",
+      "verification": "Golden E2E",
+      "parent": "latest Golden A"
+    },
+    {
+      "section": "4.12 Golden Slice A - Accounting Transaction",
+      "id": "NEX-TST-GSA-FR-003",
+      "priority": "MUST",
+      "requirement": "기본 시나리오에서 Project/금액/비용분류가 구조적으로 충분하면 CX 검색 없이 성공해야 한다.",
+      "verification": "Dependency Test",
+      "parent": "latest Golden A"
+    },
+    {
+      "section": "4.12 Golden Slice A - Accounting Transaction",
+      "id": "NEX-TST-GSA-FR-004",
+      "priority": "MUST",
+      "requirement": "첨부 증빙 또는 정책 근거가 필요할 때만 CX를 선택적으로 사용하고 Evidence Bundle/Citation을 결과와 연결해야 한다.",
+      "verification": "Golden Variant",
+      "parent": "27/31"
+    },
+    {
+      "section": "4.12 Golden Slice A - Accounting Transaction",
+      "id": "NEX-TST-GSA-FR-005",
+      "priority": "MUST",
+      "requirement": "OA는 Principal/RoleBinding/Org Scope/Project Scope/Data Classification/PDP/EAC를 통해 현재 권한을 검증해야 한다.",
+      "verification": "Security Golden",
+      "parent": "26"
+    },
+    {
+      "section": "4.12 Golden Slice A - Accounting Transaction",
+      "id": "NEX-TST-GSA-FR-006",
+      "priority": "MUST",
+      "requirement": "Confirmation/Approval이 필요한 risk profile에서는 gate 전 WRITE가 0회이고 승인 후 exact payload proof를 검증해야 한다.",
+      "verification": "Golden Security",
+      "parent": "17/29"
+    },
+    {
+      "section": "4.12 Golden Slice A - Accounting Transaction",
+      "id": "NEX-TST-GSA-FR-007",
+      "priority": "MUST",
+      "requirement": "NSL은 exact Certified Skill version으로 실행되어 Voucher business_ref와 commit state를 반환해야 한다.",
+      "verification": "Golden Skill",
+      "parent": "17"
+    },
+    {
+      "section": "4.12 Golden Slice A - Accounting Transaction",
+      "id": "NEX-TST-GSA-FR-008",
+      "priority": "MUST",
+      "requirement": "Voucher COMMITTED와 WorkItem CLOSED를 동일 상태로 취급하지 않아야 한다.",
+      "verification": "State Golden",
+      "parent": "14/31"
+    },
+    {
+      "section": "4.12 Golden Slice A - Accounting Transaction",
+      "id": "NEX-TST-GSA-FR-009",
+      "priority": "MUST",
+      "requirement": "Voucher response timeout 변형은 UNKNOWN_COMMIT_STATE→Reconciliation을 거쳐 실제 Enterprise OS 상태를 확인할 때까지 성공 UI를 금지해야 한다.",
+      "verification": "Golden Fault",
+      "parent": "32"
+    },
+    {
+      "section": "4.12 Golden Slice A - Accounting Transaction",
+      "id": "NEX-TST-GSA-FR-010",
+      "priority": "MUST",
+      "requirement": "Ledger/P&L 반영은 authoritative voucher/project refs에 연결되고 Work Activity/Audit trace에서 결과를 추적할 수 있어야 한다.",
+      "verification": "Trace Golden",
+      "parent": "20~23/31"
+    },
+    {
+      "section": "4.13 Golden Slice B - Semi-autonomous Collaboration",
+      "id": "NEX-TST-GSB-FR-001",
+      "priority": "MUST",
+      "requirement": "Golden Slice B는 제조 리스크 또는 사용자 요청이 Parent WorkItem과 Manufacturing Coworker Plan으로 연결되는 canonical scenario를 유지해야 한다.",
+      "verification": "Golden E2E",
+      "parent": "00/31"
+    },
+    {
+      "section": "4.13 Golden Slice B - Semi-autonomous Collaboration",
+      "id": "NEX-TST-GSB-FR-002",
+      "priority": "MUST",
+      "requirement": "AE Unified Runtime은 Intent/Plan과 Canonical Plan 표준 계약을 생성하고 DELEGATE_WORK를 WC Child WorkItem으로 변환해야 한다.",
+      "verification": "Golden Contract",
+      "parent": "11/12/14"
+    },
+    {
+      "section": "4.13 Golden Slice B - Semi-autonomous Collaboration",
+      "id": "NEX-TST-GSB-FR-003",
+      "priority": "MUST",
+      "requirement": "WC는 Parent/Child WorkItem, Assignment/Routing, Event Dedup, Resume Signal의 authoritative Work SoR이어야 한다.",
+      "verification": "State Golden",
+      "parent": "14"
+    },
+    {
+      "section": "4.13 Golden Slice B - Semi-autonomous Collaboration",
+      "id": "NEX-TST-GSB-FR-004",
+      "priority": "MUST",
+      "requirement": "Procurement Child Work는 JobQueue/Worker Claim/Lease 후 Background Coworker execution으로 시작되어야 한다.",
+      "verification": "Concurrency Golden",
+      "parent": "14/32"
+    },
+    {
+      "section": "4.13 Golden Slice B - Semi-autonomous Collaboration",
+      "id": "NEX-TST-GSB-FR-005",
+      "priority": "MUST",
+      "requirement": "Child execution의 OA 검증은 Principal/Service Principal, RoleBinding, Org/Project Scope, Data Classification, PDP/EAC를 current 기준으로 평가해야 한다.",
+      "verification": "Security Golden",
+      "parent": "26"
+    },
+    {
+      "section": "4.13 Golden Slice B - Semi-autonomous Collaboration",
+      "id": "NEX-TST-GSB-FR-006",
+      "priority": "MUST",
+      "requirement": "CX/MO는 리스크 분석/근거/추론이 필요한 경우 선택적으로 사용하되 authoritative assignment/permission/business result를 결정하지 않아야 한다.",
+      "verification": "Architecture Golden",
+      "parent": "27/28"
+    },
+    {
+      "section": "4.13 Golden Slice B - Semi-autonomous Collaboration",
+      "id": "NEX-TST-GSB-FR-007",
+      "priority": "MUST",
+      "requirement": "NSL/Canonical API 실행은 exact Skill, current preflight, controlled command를 사용하고 결과 business_ref를 반환해야 한다.",
+      "verification": "Golden Skill",
+      "parent": "17"
+    },
+    {
+      "section": "4.13 Golden Slice B - Semi-autonomous Collaboration",
+      "id": "NEX-TST-GSB-FR-008",
+      "priority": "MUST",
+      "requirement": "WORK_RESULT_SUBMITTED event 중복 전달은 하나의 parent resume만 생성하고 child result schema를 검증해야 한다.",
+      "verification": "Golden Fault",
+      "parent": "14/32"
+    },
+    {
+      "section": "4.13 Golden Slice B - Semi-autonomous Collaboration",
+      "id": "NEX-TST-GSB-FR-009",
+      "priority": "MUST",
+      "requirement": "Parent Resume 전 OA current reauthorization을 수행하고 role/skill/capability revoke 변형에서 side effect 없이 block/replan되어야 한다.",
+      "verification": "Golden Security Fault",
+      "parent": "26/32"
+    },
+    {
+      "section": "4.13 Golden Slice B - Semi-autonomous Collaboration",
+      "id": "NEX-TST-GSB-FR-010",
+      "priority": "MUST",
+      "requirement": "NeX-WA는 Child/Parent execution, step/event history, result/activity를 traceable Work Activity로 저장해야 한다.",
+      "verification": "WA Integration",
+      "parent": "22/31"
+    },
+    {
+      "section": "4.13 Golden Slice B - Semi-autonomous Collaboration",
+      "id": "NEX-TST-GSB-FR-011",
+      "priority": "MUST",
+      "requirement": "Parent aggregate result, human review/closure, Artifact/Evidence/Audit가 동일 correlation chain으로 재구성되어야 한다.",
+      "verification": "Golden Trace",
+      "parent": "23/31"
+    },
+    {
+      "section": "4.13 Golden Slice B - Semi-autonomous Collaboration",
+      "id": "NEX-TST-GSB-FR-012",
+      "priority": "MUST",
+      "requirement": "Parent/Child causation + event dedup + current reauthorization + authoritative WC Work SoR + traceable WA Activity를 Golden B pass invariant로 사용해야 한다.",
+      "verification": "Golden Acceptance",
+      "parent": "latest Golden B"
+    },
+    {
+      "section": "4.14 Acceptance / UAT",
+      "id": "NEX-TST-ACC-FR-001",
+      "priority": "MUST",
+      "requirement": "Acceptance는 Test pass 비율만이 아니라 Business Owner, Security, Operations, Architecture의 역할별 승인 기준을 가져야 한다.",
+      "verification": "Acceptance Review",
+      "parent": "33"
+    },
+    {
+      "section": "4.14 Acceptance / UAT",
+      "id": "NEX-TST-ACC-FR-002",
+      "priority": "MUST",
+      "requirement": "Business Acceptance는 expected business object/result/closure semantics와 verified outcome을 확인해야 한다.",
+      "verification": "UAT",
+      "parent": "31"
+    },
+    {
+      "section": "4.14 Acceptance / UAT",
+      "id": "NEX-TST-ACC-FR-003",
+      "priority": "MUST",
+      "requirement": "Security Acceptance는 unauthorized write/data leakage/secret exposure/approval bypass/kill-switch bypass가 0임을 요구해야 한다.",
+      "verification": "Security Acceptance",
+      "parent": "26~32"
+    },
+    {
+      "section": "4.14 Acceptance / UAT",
+      "id": "NEX-TST-ACC-FR-004",
+      "priority": "MUST",
+      "requirement": "Reliability Acceptance는 Golden Fault, lease/reclaim, duplicate event, unknown commit/reconciliation, recovery scan을 통과해야 한다.",
+      "verification": "Reliability Acceptance",
+      "parent": "32"
+    },
+    {
+      "section": "4.14 Acceptance / UAT",
+      "id": "NEX-TST-ACC-FR-005",
+      "priority": "MUST",
+      "requirement": "Operations Acceptance는 AG dashboard/alert/trace/recovery action으로 주요 장애를 탐지·추적·복구할 수 있음을 증명해야 한다.",
+      "verification": "Operational Acceptance",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.14 Acceptance / UAT",
+      "id": "NEX-TST-ACC-FR-006",
+      "priority": "MUST",
+      "requirement": "Architecture Acceptance는 cross-service direct DB write, LLM authority, distributed 2PC illusion이 없는지 확인해야 한다.",
+      "verification": "Architecture Review",
+      "parent": "31/32"
+    },
+    {
+      "section": "4.14 Acceptance / UAT",
+      "id": "NEX-TST-ACC-FR-007",
+      "priority": "MUST",
+      "requirement": "Acceptance 결과는 PASS/CONDITIONAL_PASS/FAIL로 구분하고 CONDITIONAL_PASS는 owner/deadline/waiver risk를 명시해야 한다.",
+      "verification": "Governance Workflow",
+      "parent": "33"
+    },
+    {
+      "section": "4.14 Acceptance / UAT",
+      "id": "NEX-TST-ACC-FR-008",
+      "priority": "MUST",
+      "requirement": "Critical security/reliability requirement 실패는 waiver로 일반 release를 허용하지 않는 release-blocker class로 지정해야 한다.",
+      "verification": "Release Policy",
+      "parent": "33"
+    },
+    {
+      "section": "4.14 Acceptance / UAT",
+      "id": "NEX-TST-ACC-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Pilot/UAT 피드백은 requirement/test 변경 후보로 기록하되 승인된 baseline을 직접 덮어쓰지 않아야 한다.",
+      "verification": "Governance",
+      "parent": "00/33"
+    },
+    {
+      "section": "4.14 Acceptance / UAT",
+      "id": "NEX-TST-ACC-FR-010",
+      "priority": "MUST",
+      "requirement": "Acceptance Evidence Package는 build SHA, environment, requirement coverage, test results, defect/waiver, sign-off를 포함해야 한다.",
+      "verification": "Package Validation",
+      "parent": "33"
+    },
+    {
+      "section": "4.15 Regression / Release Gate",
+      "id": "NEX-TST-REG-FR-001",
+      "priority": "MUST",
+      "requirement": "모든 PR은 affected unit/contract/integration suite와 static/schema checks를 통과해야 한다.",
+      "verification": "PR CI",
+      "parent": "33"
+    },
+    {
+      "section": "4.15 Regression / Release Gate",
+      "id": "NEX-TST-REG-FR-002",
+      "priority": "MUST",
+      "requirement": "main merge 전 변경 영역의 statement coverage 95% 이상, branch coverage 85% 이상을 목표로 하고 coverage drop을 gate로 관리해야 한다.",
+      "verification": "Coverage Gate",
+      "parent": "Project rule"
+    },
+    {
+      "section": "4.15 Regression / Release Gate",
+      "id": "NEX-TST-REG-FR-003",
+      "priority": "MUST",
+      "requirement": "서비스 간 contract 변경 PR은 affected consumer contract suite를 통과해야 한다.",
+      "verification": "CI Contract Gate",
+      "parent": "33"
+    },
+    {
+      "section": "4.15 Regression / Release Gate",
+      "id": "NEX-TST-REG-FR-004",
+      "priority": "MUST",
+      "requirement": "야간 regression은 cross-service integration, concurrency, selected fault injection, E2E smoke를 포함해야 한다.",
+      "verification": "Nightly CI",
+      "parent": "33"
+    },
+    {
+      "section": "4.15 Regression / Release Gate",
+      "id": "NEX-TST-REG-FR-005",
+      "priority": "MUST",
+      "requirement": "Release Candidate는 Golden Slice A/B full suite와 security/reliability acceptance를 반드시 통과해야 한다.",
+      "verification": "RC Gate",
+      "parent": "00/31/32"
+    },
+    {
+      "section": "4.15 Regression / Release Gate",
+      "id": "NEX-TST-REG-FR-006",
+      "priority": "MUST",
+      "requirement": "Flaky test 재실행 성공을 pass 근거로 사용하지 않고 flaky test는 owner/issue/expiry를 가진 quarantine 정책으로 관리해야 한다.",
+      "verification": "CI Policy",
+      "parent": "33"
+    },
+    {
+      "section": "4.15 Regression / Release Gate",
+      "id": "NEX-TST-REG-FR-007",
+      "priority": "MUST",
+      "requirement": "Test quarantine은 Golden Slice/critical security/reliability test에는 허용하지 않아야 한다.",
+      "verification": "Release Policy",
+      "parent": "33"
+    },
+    {
+      "section": "4.15 Regression / Release Gate",
+      "id": "NEX-TST-REG-FR-008",
+      "priority": "MUST",
+      "requirement": "Regression failure가 있는 상태에서 source baseline tag를 만들지 않아야 한다.",
+      "verification": "Release Gate",
+      "parent": "Project rule"
+    },
+    {
+      "section": "4.15 Regression / Release Gate",
+      "id": "NEX-TST-REG-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Risk-based test selection을 사용하더라도 Release Candidate에서는 full critical regression을 생략하지 않아야 한다.",
+      "verification": "CI Strategy",
+      "parent": "33"
+    },
+    {
+      "section": "4.15 Regression / Release Gate",
+      "id": "NEX-TST-REG-FR-010",
+      "priority": "MUST",
+      "requirement": "Post-deploy smoke는 authentication, health, basic read, one safe deterministic flow, alert/trace를 검증해야 한다.",
+      "verification": "Smoke Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.16 Test Evidence / Traceability",
+      "id": "NEX-TST-EVD-FR-001",
+      "priority": "MUST",
+      "requirement": "TestRun은 test_case_id/requirement_ids/build_ref/environment/status/start/end/attempt/evidence_refs를 저장해야 한다.",
+      "verification": "Schema Test",
+      "parent": "33"
+    },
+    {
+      "section": "4.16 Test Evidence / Traceability",
+      "id": "NEX-TST-EVD-FR-002",
+      "priority": "MUST",
+      "requirement": "Failure evidence는 error/trace/log/state snapshot을 포함하되 raw secret/token을 포함해서는 안 된다.",
+      "verification": "Evidence Security",
+      "parent": "33"
+    },
+    {
+      "section": "4.16 Test Evidence / Traceability",
+      "id": "NEX-TST-EVD-FR-003",
+      "priority": "MUST",
+      "requirement": "E2E TestRun은 correlation_id로 WorkItem/Execution/Plan/Skill/BusinessRef/Artifact/Evidence/WA까지 trace completeness를 평가해야 한다.",
+      "verification": "Trace Audit",
+      "parent": "31"
+    },
+    {
+      "section": "4.16 Test Evidence / Traceability",
+      "id": "NEX-TST-EVD-FR-004",
+      "priority": "MUST",
+      "requirement": "Golden Slice 결과에는 canonical expected refs와 actual refs를 비교하는 machine-readable assertion summary가 있어야 한다.",
+      "verification": "Golden Evidence",
+      "parent": "33"
+    },
+    {
+      "section": "4.16 Test Evidence / Traceability",
+      "id": "NEX-TST-EVD-FR-005",
+      "priority": "MUST",
+      "requirement": "Fault Injection evidence는 fault point/time/affected component/expected recovery/actual recovery를 기록해야 한다.",
+      "verification": "Fault Evidence",
+      "parent": "32/33"
+    },
+    {
+      "section": "4.16 Test Evidence / Traceability",
+      "id": "NEX-TST-EVD-FR-006",
+      "priority": "MUST",
+      "requirement": "Acceptance sign-off는 TestRun/Evidence hash를 참조하여 결과 변경 후 서명이 자동 유효한 것처럼 보이지 않게 해야 한다.",
+      "verification": "Governance Test",
+      "parent": "33"
+    },
+    {
+      "section": "4.16 Test Evidence / Traceability",
+      "id": "NEX-TST-EVD-FR-007",
+      "priority": "SHOULD",
+      "requirement": "Test evidence는 장기 추적을 위해 CI artifact storage와 AG/Trace projection에서 stable ref로 연결할 수 있어야 한다.",
+      "verification": "Operations Integration",
+      "parent": "30/33"
+    },
+    {
+      "section": "4.16 Test Evidence / Traceability",
+      "id": "NEX-TST-EVD-FR-008",
+      "priority": "MUST",
+      "requirement": "Traceability Matrix는 Requirement→Architecture/Contract→TestCase→TestRun→Acceptance Result를 추적할 수 있어야 한다.",
+      "verification": "Traceability Audit",
+      "parent": "00/33"
+    },
+    {
+      "section": "4.17 Test Data / Environment",
+      "id": "NEX-TST-DATA-FR-001",
+      "priority": "MUST",
+      "requirement": "Test Data는 production raw data 복제를 기본으로 하지 않고 synthetic/masked/canonical fixture를 사용해야 한다.",
+      "verification": "Data Governance",
+      "parent": "33"
+    },
+    {
+      "section": "4.17 Test Data / Environment",
+      "id": "NEX-TST-DATA-FR-002",
+      "priority": "MUST",
+      "requirement": "Canonical Golden fixture는 stable employee/project/account/vendor/work/skill IDs와 expected outputs를 version 관리해야 한다.",
+      "verification": "Fixture Test",
+      "parent": "33"
+    },
+    {
+      "section": "4.17 Test Data / Environment",
+      "id": "NEX-TST-DATA-FR-003",
+      "priority": "MUST",
+      "requirement": "각 integration test suite는 독립 PostgreSQL DB/schema를 초기화하여 순서 의존성을 제거해야 한다.",
+      "verification": "Test Isolation",
+      "parent": "Project rule"
+    },
+    {
+      "section": "4.17 Test Data / Environment",
+      "id": "NEX-TST-DATA-FR-004",
+      "priority": "MUST",
+      "requirement": "시간대/날짜/월마감/정책 effective date 테스트는 고정 clock과 명시적 timezone을 사용해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "33"
+    },
+    {
+      "section": "4.17 Test Data / Environment",
+      "id": "NEX-TST-DATA-FR-005",
+      "priority": "MUST",
+      "requirement": "테스트 secret은 secret manager/CI secret으로 주입하고 fixture/log에 평문 저장해서는 안 된다.",
+      "verification": "Security Scan",
+      "parent": "33"
+    },
+    {
+      "section": "4.17 Test Data / Environment",
+      "id": "NEX-TST-DATA-FR-006",
+      "priority": "MUST",
+      "requirement": "LLM/Retrieval benchmark dataset은 version/hash와 expected annotation을 가져야 한다.",
+      "verification": "Dataset Versioning",
+      "parent": "27/28/29"
+    },
+    {
+      "section": "4.17 Test Data / Environment",
+      "id": "NEX-TST-DATA-FR-007",
+      "priority": "SHOULD",
+      "requirement": "Staging/UAT는 production topology와 주요 security boundary를 가능한 범위에서 동일하게 유지하되 production credential/data는 사용하지 않아야 한다.",
+      "verification": "Environment Review",
+      "parent": "34"
+    },
+    {
+      "section": "4.17 Test Data / Environment",
+      "id": "NEX-TST-DATA-FR-008",
+      "priority": "MUST",
+      "requirement": "Environment drift가 발생하면 TestRun에 image/runtime/migration/model/skill/prompt/policy version을 기록해야 한다.",
+      "verification": "Reproducibility",
+      "parent": "33"
+    },
+    {
+      "section": "4.18 Performance / Capacity Acceptance",
+      "id": "NEX-TST-PERF-FR-001",
+      "priority": "MUST",
+      "requirement": "Performance test는 interactive latency, background throughput, queue age, worker utilization, model latency를 분리 측정해야 한다.",
+      "verification": "Load Test",
+      "parent": "28/29/32"
+    },
+    {
+      "section": "4.18 Performance / Capacity Acceptance",
+      "id": "NEX-TST-PERF-FR-002",
+      "priority": "MUST",
+      "requirement": "초기 100명 규모 baseline에서 주요 user journey의 p50/p95와 saturation point를 측정하고 SLA budget 후보를 산출해야 한다.",
+      "verification": "Performance Baseline",
+      "parent": "27~30"
+    },
+    {
+      "section": "4.18 Performance / Capacity Acceptance",
+      "id": "NEX-TST-PERF-FR-003",
+      "priority": "MUST",
+      "requirement": "Load 중 권한검사/trace/idempotency를 비활성화하여 성능을 얻는 구성을 허용해서는 안 된다.",
+      "verification": "Security Load",
+      "parent": "33"
+    },
+    {
+      "section": "4.18 Performance / Capacity Acceptance",
+      "id": "NEX-TST-PERF-FR-004",
+      "priority": "MUST",
+      "requirement": "Queue/Worker load test는 starvation, lease churn, retry storm, dead-letter growth를 관찰해야 한다.",
+      "verification": "Reliability Load",
+      "parent": "32"
+    },
+    {
+      "section": "4.18 Performance / Capacity Acceptance",
+      "id": "NEX-TST-PERF-FR-005",
+      "priority": "SHOULD",
+      "requirement": "Model/CX benchmark는 품질과 latency/cost/capacity를 함께 기록하여 model/profile 변경 acceptance에 사용할 수 있어야 한다.",
+      "verification": "Benchmark",
+      "parent": "27/28"
+    },
+    {
+      "section": "4.18 Performance / Capacity Acceptance",
+      "id": "NEX-TST-PERF-FR-006",
+      "priority": "MUST",
+      "requirement": "성능 회귀 기준은 hardcoded 절대값만이 아니라 approved baseline 대비 변화율과 resource saturation evidence를 함께 사용해야 한다.",
+      "verification": "Performance Gate",
+      "parent": "33"
+    },
+    {
+      "section": "4.19 Operations / Readiness Test",
+      "id": "NEX-TST-OPS-FR-001",
+      "priority": "MUST",
+      "requirement": "AG Operations Dashboard는 서비스/Job/Worker/Runtime/Work/Reconciliation/Alert/Test readiness를 drill-down할 수 있어야 한다.",
+      "verification": "Ops Acceptance",
+      "parent": "30/33"
+    },
+    {
+      "section": "4.19 Operations / Readiness Test",
+      "id": "NEX-TST-OPS-FR-002",
+      "priority": "MUST",
+      "requirement": "Monitoring/Alert test는 stale worker, queue backlog, reconciliation age, dead-letter, policy distribution lag를 synthetic signal로 검증해야 한다.",
+      "verification": "Alert Test",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.19 Operations / Readiness Test",
+      "id": "NEX-TST-OPS-FR-003",
+      "priority": "MUST",
+      "requirement": "Typed recovery/admin action은 staging에서 authorization/idempotency/audit/unknown-control reconciliation을 검증해야 한다.",
+      "verification": "Ops Fault Test",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.19 Operations / Readiness Test",
+      "id": "NEX-TST-OPS-FR-004",
+      "priority": "MUST",
+      "requirement": "Backup/restore 전 테스트 데이터와 Test Evidence/Trace 복원 요구사항을 34번 Deployment/Backup 설계에 전달해야 한다.",
+      "verification": "Trace to 34",
+      "parent": "34"
+    },
+    {
+      "section": "4.19 Operations / Readiness Test",
+      "id": "NEX-TST-OPS-FR-005",
+      "priority": "SHOULD",
+      "requirement": "Release 전 operational game-day를 통해 worker crash, service restart/drain, provider outage, reconciliation backlog를 연습할 수 있어야 한다.",
+      "verification": "Game Day",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.19 Operations / Readiness Test",
+      "id": "NEX-TST-OPS-FR-006",
+      "priority": "MUST",
+      "requirement": "운영 테스트가 business authoritative state를 임의 수정하는 shell/SQL backdoor에 의존해서는 안 된다.",
+      "verification": "Security Review",
+      "parent": "30/32"
+    }
+  ],
+  "test_cases": [
+    {
+      "id": "TC-GSA-001",
+      "level": "GOLDEN",
+      "title": "Golden A direct voucher registration without CX",
+      "requirements": [
+        "NEX-TST-GSA-FR-001",
+        "NEX-TST-GSA-FR-002",
+        "NEX-TST-GSA-FR-003"
+      ],
+      "expected": "Voucher committed; ledger linked; no CX call required."
+    },
+    {
+      "id": "TC-GSA-002",
+      "level": "GOLDEN",
+      "title": "Golden A evidence-assisted voucher variant",
+      "requirements": [
+        "NEX-TST-GSA-FR-004",
+        "NEX-TST-CX-FR-003"
+      ],
+      "expected": "CX evidence bundle/citation linked; transaction still governed by OA/NSL/EOS."
+    },
+    {
+      "id": "TC-GSA-003",
+      "level": "FAULT",
+      "title": "Golden A unknown commit",
+      "requirements": [
+        "NEX-TST-GSA-FR-009",
+        "NEX-TST-FLT-FR-006"
+      ],
+      "expected": "No success UI; reconciliation case; authoritative EOS query."
+    },
+    {
+      "id": "TC-GSB-001",
+      "level": "GOLDEN",
+      "title": "Golden B parent-child collaboration",
+      "requirements": [
+        "NEX-TST-GSB-FR-001",
+        "NEX-TST-GSB-FR-003",
+        "NEX-TST-GSB-FR-004"
+      ],
+      "expected": "Child work claimed/executed and result event resumes parent."
+    },
+    {
+      "id": "TC-GSB-002",
+      "level": "FAULT",
+      "title": "Golden B duplicate result event",
+      "requirements": [
+        "NEX-TST-GSB-FR-008"
+      ],
+      "expected": "One resume only; duplicate event deduped."
+    },
+    {
+      "id": "TC-GSB-003",
+      "level": "SECURITY",
+      "title": "Golden B revoke before parent resume",
+      "requirements": [
+        "NEX-TST-GSB-FR-009"
+      ],
+      "expected": "Current reauthorization denies side effect; block/replan."
+    },
+    {
+      "id": "TC-REL-001",
+      "level": "FAULT",
+      "title": "Worker dies after remote commit before local persist",
+      "requirements": [
+        "NEX-TST-FLT-FR-002"
+      ],
+      "expected": "Same-key replay/reconcile; no duplicate write."
+    },
+    {
+      "id": "TC-REL-002",
+      "level": "FAULT",
+      "title": "Outbox publish crash window",
+      "requirements": [
+        "NEX-TST-FLT-FR-003"
+      ],
+      "expected": "Outbox retry with same event_id."
+    },
+    {
+      "id": "TC-REL-003",
+      "level": "CONCURRENCY",
+      "title": "10+ worker claim race",
+      "requirements": [
+        "NEX-TST-DB-FR-001"
+      ],
+      "expected": "Single claim per job."
+    },
+    {
+      "id": "TC-SEC-001",
+      "level": "SECURITY",
+      "title": "Cross-role privilege amplification attempt",
+      "requirements": [
+        "NEX-TST-SEC-FR-002"
+      ],
+      "expected": "Denied; no resource/edge leakage."
+    }
+  ]
+}

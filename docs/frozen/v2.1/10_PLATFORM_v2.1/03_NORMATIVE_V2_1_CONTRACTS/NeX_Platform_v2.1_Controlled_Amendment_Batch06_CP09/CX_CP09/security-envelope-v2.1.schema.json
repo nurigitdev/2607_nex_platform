@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CXSecurityEnvelope v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "org_scope_ref",
+    "classification_code",
+    "classification_rank",
+    "policy_version",
+    "security_envelope_hash"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "org_scope_ref": {
+      "type": "string"
+    },
+    "project_scope_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "classification_code": {
+      "type": "string"
+    },
+    "classification_rank": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "policy_version": {
+      "type": "string"
+    },
+    "security_source": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "authority_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "security_envelope_hash": {
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:ae:runtime-job:v2.1",
+  "title": "AE RuntimeJob v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "runtime_job_id",
+    "job_type",
+    "execution_id",
+    "state",
+    "dedup_key",
+    "attempt_no",
+    "run_after",
+    "correlation_id",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.1"
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime_job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "job_type": {
+      "enum": [
+        "START_EXECUTION",
+        "CONTINUE_EXECUTION",
+        "RESUME_EXECUTION",
+        "RETRY_EXECUTION",
+        "RECONCILE_EXECUTION",
+        "PUBLISH_RESULT",
+        "RECONCILE_PUBLICATION"
+      ]
+    },
+    "execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "executable_step_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "wait_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reconciliation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "state": {
+      "enum": [
+        "QUEUED",
+        "RUNNING",
+        "DONE",
+        "FAILED",
+        "CANCELLED",
+        "DEAD_LETTER"
+      ]
+    },
+    "dedup_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attempt_no": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "run_after": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "lease_owner": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "lease_token": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "lease_until": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object"
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "result_delivery_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "publication_reconciliation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "RUNNING"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "lease_owner",
+          "lease_token",
+          "lease_until"
+        ],
+        "properties": {
+          "lease_owner": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lease_token": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lease_until": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "job_type": {
+            "const": "RESUME_EXECUTION"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "wait_id"
+        ],
+        "properties": {
+          "wait_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "job_type": {
+            "const": "RECONCILE_EXECUTION"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "reconciliation_id"
+        ],
+        "properties": {
+          "reconciliation_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "job_type": {
+            "const": "PUBLISH_RESULT"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "result_delivery_id"
+        ],
+        "properties": {
+          "result_delivery_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "job_type": {
+            "const": "RECONCILE_PUBLICATION"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "result_delivery_id",
+          "publication_reconciliation_id"
+        ],
+        "properties": {
+          "result_delivery_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "publication_reconciliation_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  ]
+}

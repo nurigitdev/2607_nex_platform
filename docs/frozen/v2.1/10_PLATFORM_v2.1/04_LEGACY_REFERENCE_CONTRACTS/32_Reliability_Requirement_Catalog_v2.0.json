@@ -1,0 +1,1195 @@
+{
+  "document": "32_Reliability_JobQueue_Worker_Recovery_Design_v2.0",
+  "version": "v2.0",
+  "date": "2026-09-04",
+  "counts": {
+    "MUST": 133,
+    "SHOULD": 15
+  },
+  "requirements": [
+    {
+      "section": "4.1 Common Reliability Contract",
+      "id": "NEX-REL-COM-FR-001",
+      "priority": "MUST",
+      "requirement": "모든 NeX 서비스의 비동기 실행은 공통 Reliability Contract를 따르되 Job/Worker 상태는 각 서비스 Local DB가 소유해야 한다.",
+      "verification": "Architecture",
+      "parent": "00/31"
+    },
+    {
+      "section": "4.1 Common Reliability Contract",
+      "id": "NEX-REL-COM-FR-002",
+      "priority": "MUST",
+      "requirement": "Global 중앙 Job DB를 서비스 간 authoritative state store로 사용해서는 안 되며 AG는 projection/operations plane으로만 동작해야 한다.",
+      "verification": "Architecture",
+      "parent": "30/31"
+    },
+    {
+      "section": "4.1 Common Reliability Contract",
+      "id": "NEX-REL-COM-FR-003",
+      "priority": "MUST",
+      "requirement": "Job delivery의 중복 가능성을 전제로 하고 business effect exactly-once를 JobQueue 자체의 속성으로 주장해서는 안 된다.",
+      "verification": "Inspection/Fault",
+      "parent": "12/17/31"
+    },
+    {
+      "section": "4.1 Common Reliability Contract",
+      "id": "NEX-REL-COM-FR-004",
+      "priority": "MUST",
+      "requirement": "Job Lease, Work Claim/Lease, Business Idempotency를 서로 다른 coordination/side-effect 개념으로 유지해야 한다.",
+      "verification": "Architecture",
+      "parent": "12/14/31"
+    },
+    {
+      "section": "4.1 Common Reliability Contract",
+      "id": "NEX-REL-COM-FR-005",
+      "priority": "MUST",
+      "requirement": "Cross-service write는 distributed 2PC로 묶지 않고 local transaction + idempotency + explicit commit state + reconciliation으로 연결해야 한다.",
+      "verification": "Fault/Architecture",
+      "parent": "12/17/31"
+    },
+    {
+      "section": "4.1 Common Reliability Contract",
+      "id": "NEX-REL-COM-FR-006",
+      "priority": "MUST",
+      "requirement": "Failure/timeout/duplicate/out-of-order/stale/partial 상태를 silent success로 변환해서는 안 된다.",
+      "verification": "Fault",
+      "parent": "31"
+    },
+    {
+      "section": "4.1 Common Reliability Contract",
+      "id": "NEX-REL-COM-FR-007",
+      "priority": "MUST",
+      "requirement": "모든 reliability object는 correlation_id를 유지하고 causation_id로 parent work/event/recovery action을 연결해야 한다.",
+      "verification": "Trace",
+      "parent": "31"
+    },
+    {
+      "section": "4.1 Common Reliability Contract",
+      "id": "NEX-REL-COM-FR-008",
+      "priority": "MUST",
+      "requirement": "서비스 간 recovery가 타 서비스 DB를 직접 수정해서는 안 되며 owner service contract를 사용해야 한다.",
+      "verification": "Architecture",
+      "parent": "31"
+    },
+    {
+      "section": "4.1 Common Reliability Contract",
+      "id": "NEX-REL-COM-FR-009",
+      "priority": "MUST",
+      "requirement": "Recovery가 business state를 추측해서는 안 되고 authoritative SoR의 현재 상태와 version/ref를 확인해야 한다.",
+      "verification": "Fault/State",
+      "parent": "31/EOS/WC"
+    },
+    {
+      "section": "4.1 Common Reliability Contract",
+      "id": "NEX-REL-COM-FR-010",
+      "priority": "MUST",
+      "requirement": "정상 Runtime hot path는 NeX-AG 가용성에 의존해서는 안 된다.",
+      "verification": "Fault",
+      "parent": "30"
+    },
+    {
+      "section": "4.1 Common Reliability Contract",
+      "id": "NEX-REL-COM-FR-011",
+      "priority": "MUST",
+      "requirement": "Protected action/Resume에서 current OA/PDP 확인이 필요한 경우 authority 확인 실패를 성공이나 cached grant로 우회해서는 안 된다.",
+      "verification": "Security Fault",
+      "parent": "26/31"
+    },
+    {
+      "section": "4.1 Common Reliability Contract",
+      "id": "NEX-REL-COM-FR-012",
+      "priority": "MUST",
+      "requirement": "Reliability 상태와 Domain 상태를 분리하여 Job SUCCEEDED가 AgentExecution/WorkItem/BusinessTransaction 완료를 의미하지 않도록 해야 한다.",
+      "verification": "State",
+      "parent": "11/14/31"
+    },
+    {
+      "section": "4.1 Common Reliability Contract",
+      "id": "NEX-REL-COM-FR-013",
+      "priority": "SHOULD",
+      "requirement": "각 서비스는 동일 logical contract를 내부 table명/package 구조에 맞게 mapping할 수 있어야 한다.",
+      "verification": "Architecture",
+      "parent": "32"
+    },
+    {
+      "section": "4.1 Common Reliability Contract",
+      "id": "NEX-REL-COM-FR-014",
+      "priority": "MUST",
+      "requirement": "Common Reliability Contract의 version/hash를 service capability/health endpoint에서 확인할 수 있어야 한다.",
+      "verification": "Contract",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.2 Job / Attempt Model",
+      "id": "NEX-REL-JOB-FR-001",
+      "priority": "MUST",
+      "requirement": "Job은 job_id, job_type, queue_name, priority, payload_ref, status, available_at, attempt/max_attempts, correlation_id, version을 가져야 한다.",
+      "verification": "Schema",
+      "parent": "32"
+    },
+    {
+      "section": "4.2 Job / Attempt Model",
+      "id": "NEX-REL-JOB-FR-002",
+      "priority": "MUST",
+      "requirement": "대용량/민감 payload를 Job row에 무제한 복제하지 않고 owner data/ref/hash를 사용할 수 있어야 한다.",
+      "verification": "Data/Security",
+      "parent": "31"
+    },
+    {
+      "section": "4.2 Job / Attempt Model",
+      "id": "NEX-REL-JOB-FR-003",
+      "priority": "MUST",
+      "requirement": "Job status는 최소 QUEUED/RUNNING/SUCCEEDED/FAILED/CANCELLED/DEAD_LETTER/RECONCILIATION_REQUIRED를 구분해야 한다.",
+      "verification": "State",
+      "parent": "32"
+    },
+    {
+      "section": "4.2 Job / Attempt Model",
+      "id": "NEX-REL-JOB-FR-004",
+      "priority": "MUST",
+      "requirement": "장기 business wait는 Job RUNNING/WAITING worker 점유로 표현하지 않고 Domain Wait/Checkpoint로 분리해야 한다.",
+      "verification": "State/Fault",
+      "parent": "12/31"
+    },
+    {
+      "section": "4.2 Job / Attempt Model",
+      "id": "NEX-REL-JOB-FR-005",
+      "priority": "MUST",
+      "requirement": "재시도 대기는 QUEUED + available_at/next_retry_at으로 스케줄링하고 Worker sleep으로 점유해서는 안 된다.",
+      "verification": "Fault",
+      "parent": "32"
+    },
+    {
+      "section": "4.2 Job / Attempt Model",
+      "id": "NEX-REL-JOB-FR-006",
+      "priority": "MUST",
+      "requirement": "JobAttempt는 attempt_id, job_id, worker_id, lease_token, started/ended, outcome/error, retry_decision을 append 방식으로 보존해야 한다.",
+      "verification": "Schema",
+      "parent": "32"
+    },
+    {
+      "section": "4.2 Job / Attempt Model",
+      "id": "NEX-REL-JOB-FR-007",
+      "priority": "MUST",
+      "requirement": "Job completion/failure transition은 optimistic version 또는 current lease token으로 stale worker를 거부해야 한다.",
+      "verification": "Concurrency",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.2 Job / Attempt Model",
+      "id": "NEX-REL-JOB-FR-008",
+      "priority": "MUST",
+      "requirement": "Job enqueue는 dedup_key 또는 idempotent creation contract를 지원해 동일 logical enqueue가 중복 Job을 만들지 않게 할 수 있어야 한다.",
+      "verification": "Fault",
+      "parent": "31"
+    },
+    {
+      "section": "4.2 Job / Attempt Model",
+      "id": "NEX-REL-JOB-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Job dependency는 서비스 내부 batch/maintenance에 필요할 때만 명시적으로 모델링하고 Domain Work dependency를 대체해서는 안 된다.",
+      "verification": "Architecture",
+      "parent": "32"
+    },
+    {
+      "section": "4.2 Job / Attempt Model",
+      "id": "NEX-REL-JOB-FR-010",
+      "priority": "MUST",
+      "requirement": "Job payload/result/error에 raw token/private key/secret을 저장해서는 안 된다.",
+      "verification": "Security Scan",
+      "parent": "26"
+    },
+    {
+      "section": "4.3 Atomic Claim / Lease / Heartbeat",
+      "id": "NEX-REL-LEASE-FR-001",
+      "priority": "MUST",
+      "requirement": "여러 Worker의 claim은 PostgreSQL FOR UPDATE SKIP LOCKED 또는 동등한 atomic claim을 사용해야 한다.",
+      "verification": "Concurrency",
+      "parent": "12/Platform"
+    },
+    {
+      "section": "4.3 Atomic Claim / Lease / Heartbeat",
+      "id": "NEX-REL-LEASE-FR-002",
+      "priority": "MUST",
+      "requirement": "Claim 성공 시 worker_id, lease_token, lease_expires_at을 원자적으로 기록해야 한다.",
+      "verification": "DB Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.3 Atomic Claim / Lease / Heartbeat",
+      "id": "NEX-REL-LEASE-FR-003",
+      "priority": "MUST",
+      "requirement": "Heartbeat/complete/fail은 current lease_token이 일치하는 Worker만 수행할 수 있어야 한다.",
+      "verification": "Concurrency",
+      "parent": "12"
+    },
+    {
+      "section": "4.3 Atomic Claim / Lease / Heartbeat",
+      "id": "NEX-REL-LEASE-FR-004",
+      "priority": "MUST",
+      "requirement": "Lease 만료 후 다른 Worker가 reclaim할 수 있어야 하며 이전 Worker의 stale completion은 거부해야 한다.",
+      "verification": "Fault",
+      "parent": "12/31"
+    },
+    {
+      "section": "4.3 Atomic Claim / Lease / Heartbeat",
+      "id": "NEX-REL-LEASE-FR-005",
+      "priority": "MUST",
+      "requirement": "Lease timeout은 job type/profile별로 설정 가능하되 remote side effect retry safety와 독립적으로 관리해야 한다.",
+      "verification": "Policy/Fault",
+      "parent": "32"
+    },
+    {
+      "section": "4.3 Atomic Claim / Lease / Heartbeat",
+      "id": "NEX-REL-LEASE-FR-006",
+      "priority": "MUST",
+      "requirement": "DB server time 또는 일관된 clock source를 lease 판단의 기준으로 사용해야 한다.",
+      "verification": "Clock/DB Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.3 Atomic Claim / Lease / Heartbeat",
+      "id": "NEX-REL-LEASE-FR-007",
+      "priority": "SHOULD",
+      "requirement": "장시간 step은 heartbeat를 주기적으로 갱신하고 lease remaining threshold 경고를 노출할 수 있어야 한다.",
+      "verification": "Monitoring",
+      "parent": "32"
+    },
+    {
+      "section": "4.3 Atomic Claim / Lease / Heartbeat",
+      "id": "NEX-REL-LEASE-FR-008",
+      "priority": "MUST",
+      "requirement": "Worker crash 후 reclaim은 이미 발생했을 수 있는 business effect를 재실행할 권한을 의미하지 않는다.",
+      "verification": "Fault/Idempotency",
+      "parent": "12/17"
+    },
+    {
+      "section": "4.3 Atomic Claim / Lease / Heartbeat",
+      "id": "NEX-REL-LEASE-FR-009",
+      "priority": "MUST",
+      "requirement": "WC WorkClaim lease와 service Job lease를 별도 ID/metric으로 추적해야 한다.",
+      "verification": "Trace",
+      "parent": "14/31"
+    },
+    {
+      "section": "4.4 Worker Runtime / Pool",
+      "id": "NEX-REL-WRK-FR-001",
+      "priority": "MUST",
+      "requirement": "Worker는 가능한 한 stateless하게 유지하고 durable state는 Job/Checkpoint/Domain DB/SoR에 저장해야 한다.",
+      "verification": "Architecture",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.4 Worker Runtime / Pool",
+      "id": "NEX-REL-WRK-FR-002",
+      "priority": "MUST",
+      "requirement": "Worker는 worker_id/type/hostname/process/version/status/current_job/last_heartbeat를 노출해야 한다.",
+      "verification": "Schema/Monitoring",
+      "parent": "Platform/30"
+    },
+    {
+      "section": "4.4 Worker Runtime / Pool",
+      "id": "NEX-REL-WRK-FR-003",
+      "priority": "MUST",
+      "requirement": "Logical worker type은 EXECUTION/RESUME/RECONCILIATION/PROJECTION/ARTIFACT/MAINTENANCE 등으로 구분할 수 있어야 한다.",
+      "verification": "Architecture",
+      "parent": "32"
+    },
+    {
+      "section": "4.4 Worker Runtime / Pool",
+      "id": "NEX-REL-WRK-FR-004",
+      "priority": "MUST",
+      "requirement": "Worker pool concurrency는 service/profile/job type/global policy로 제한 가능해야 한다.",
+      "verification": "Load",
+      "parent": "11/30"
+    },
+    {
+      "section": "4.4 Worker Runtime / Pool",
+      "id": "NEX-REL-WRK-FR-005",
+      "priority": "MUST",
+      "requirement": "High-risk WRITE/interactive/resume workload는 bulk/maintenance job으로부터 capacity isolation 또는 reserved concurrency를 가질 수 있어야 한다.",
+      "verification": "Load/Recovery",
+      "parent": "32"
+    },
+    {
+      "section": "4.4 Worker Runtime / Pool",
+      "id": "NEX-REL-WRK-FR-006",
+      "priority": "MUST",
+      "requirement": "Graceful drain 시 신규 claim을 중단하고 current job을 안전 종료/checkpoint하거나 lease 만료 전 handoff 가능한 상태로 만들어야 한다.",
+      "verification": "Operation Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.4 Worker Runtime / Pool",
+      "id": "NEX-REL-WRK-FR-007",
+      "priority": "MUST",
+      "requirement": "강제 종료된 Worker가 재시작 후 local memory를 authority/state로 사용하지 않아야 한다.",
+      "verification": "Crash Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.4 Worker Runtime / Pool",
+      "id": "NEX-REL-WRK-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Worker binary/runtime version과 contract version을 JobAttempt provenance에 기록할 수 있어야 한다.",
+      "verification": "Audit",
+      "parent": "32"
+    },
+    {
+      "section": "4.5 Scheduling / Priority / Fairness",
+      "id": "NEX-REL-SCH-FR-001",
+      "priority": "MUST",
+      "requirement": "Job scheduling은 priority와 available_at을 반영해야 한다.",
+      "verification": "DB Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.5 Scheduling / Priority / Fairness",
+      "id": "NEX-REL-SCH-FR-002",
+      "priority": "SHOULD",
+      "requirement": "Queue class는 INTERACTIVE/RESUME/HIGH/NORMAL/BULK/MAINTENANCE 등 logical class로 구분할 수 있어야 한다.",
+      "verification": "Policy",
+      "parent": "32"
+    },
+    {
+      "section": "4.5 Scheduling / Priority / Fairness",
+      "id": "NEX-REL-SCH-FR-003",
+      "priority": "MUST",
+      "requirement": "High priority 지속 유입 시 lower priority starvation을 막기 위한 aging/fairness 정책을 적용할 수 있어야 한다.",
+      "verification": "Load",
+      "parent": "32"
+    },
+    {
+      "section": "4.5 Scheduling / Priority / Fairness",
+      "id": "NEX-REL-SCH-FR-004",
+      "priority": "MUST",
+      "requirement": "Queue health는 queue_depth뿐 아니라 oldest_job_age/queue_lag를 핵심 지표로 제공해야 한다.",
+      "verification": "Monitoring",
+      "parent": "32/30"
+    },
+    {
+      "section": "4.5 Scheduling / Priority / Fairness",
+      "id": "NEX-REL-SCH-FR-005",
+      "priority": "MUST",
+      "requirement": "서비스/tenant/job type별 concurrency/admission quota를 적용할 수 있어야 한다.",
+      "verification": "Load",
+      "parent": "28/30"
+    },
+    {
+      "section": "4.5 Scheduling / Priority / Fairness",
+      "id": "NEX-REL-SCH-FR-006",
+      "priority": "SHOULD",
+      "requirement": "Scheduled recurring maintenance는 missed-run 정책(SKIP/CATCH_UP/LATEST_ONLY)을 명시할 수 있어야 한다.",
+      "verification": "Scheduler Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.6 Retry Classification / Backoff",
+      "id": "NEX-REL-RTY-FR-001",
+      "priority": "MUST",
+      "requirement": "Retry decision은 최소 RETRY_WITH_BACKOFF/DO_NOT_RETRY/RECONCILE_FIRST/REPLAN_OR_ESCALATE를 구분해야 한다.",
+      "verification": "Policy Test",
+      "parent": "12/17/32"
+    },
+    {
+      "section": "4.6 Retry Classification / Backoff",
+      "id": "NEX-REL-RTY-FR-002",
+      "priority": "MUST",
+      "requirement": "TRANSIENT_TIMEOUT/THROTTLED/TEMP_UNAVAILABLE은 contract가 허용할 때 bounded retry 대상이 될 수 있어야 한다.",
+      "verification": "Fault",
+      "parent": "12/28"
+    },
+    {
+      "section": "4.6 Retry Classification / Backoff",
+      "id": "NEX-REL-RTY-FR-003",
+      "priority": "MUST",
+      "requirement": "PERMISSION_DENIED/VALIDATION_FAILED/APPROVAL_REJECTED/ENTITY_AMBIGUOUS 등 deterministic 오류를 동일 입력으로 자동 retry해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "12/26"
+    },
+    {
+      "section": "4.6 Retry Classification / Backoff",
+      "id": "NEX-REL-RTY-FR-004",
+      "priority": "MUST",
+      "requirement": "STATE_CONFLICT는 최신 state를 re-read/re-evaluate한 뒤 동일 write overwrite가 아닌 새 deterministic decision으로 진행해야 한다.",
+      "verification": "Concurrency",
+      "parent": "12/EOS"
+    },
+    {
+      "section": "4.6 Retry Classification / Backoff",
+      "id": "NEX-REL-RTY-FR-005",
+      "priority": "MUST",
+      "requirement": "WRITE retry는 NOT_COMMITTED + retryable contract + stable idempotency key가 모두 확인된 경우에만 허용해야 한다.",
+      "verification": "Fault",
+      "parent": "17/31"
+    },
+    {
+      "section": "4.6 Retry Classification / Backoff",
+      "id": "NEX-REL-RTY-FR-006",
+      "priority": "MUST",
+      "requirement": "UNKNOWN_COMMIT_STATE는 모든 일반 retry path보다 우선하여 RECONCILE_FIRST로 분류해야 한다.",
+      "verification": "Fault",
+      "parent": "17/31"
+    },
+    {
+      "section": "4.6 Retry Classification / Backoff",
+      "id": "NEX-REL-RTY-FR-007",
+      "priority": "MUST",
+      "requirement": "Exponential backoff + jitter 또는 동등한 분산 backoff를 지원해야 한다.",
+      "verification": "Unit/Load",
+      "parent": "32"
+    },
+    {
+      "section": "4.6 Retry Classification / Backoff",
+      "id": "NEX-REL-RTY-FR-008",
+      "priority": "MUST",
+      "requirement": "Retry는 max_attempts/max_elapsed_time/absolute deadline 중 정책이 요구하는 bounded limit을 가져야 한다.",
+      "verification": "Boundary",
+      "parent": "32"
+    },
+    {
+      "section": "4.6 Retry Classification / Backoff",
+      "id": "NEX-REL-RTY-FR-009",
+      "priority": "MUST",
+      "requirement": "429/overload retry는 provider Retry-After 또는 service capacity policy를 존중해야 한다.",
+      "verification": "Integration",
+      "parent": "28/32"
+    },
+    {
+      "section": "4.6 Retry Classification / Backoff",
+      "id": "NEX-REL-RTY-FR-010",
+      "priority": "MUST",
+      "requirement": "Retry attempt는 기존 correlation과 operation identity를 보존하되 개별 request_id/attempt_id는 새 값일 수 있어야 한다.",
+      "verification": "Trace",
+      "parent": "08/17"
+    },
+    {
+      "section": "4.7 Idempotency Layers",
+      "id": "NEX-REL-IDM-FR-001",
+      "priority": "MUST",
+      "requirement": "Job dedup key, Event id, request_id, Business idempotency_key를 서로 다른 의미로 정의해야 한다.",
+      "verification": "Architecture",
+      "parent": "17/31"
+    },
+    {
+      "section": "4.7 Idempotency Layers",
+      "id": "NEX-REL-IDM-FR-002",
+      "priority": "MUST",
+      "requirement": "Business idempotency_key는 현재 timestamp/random retry attempt가 아니라 stable business operation identity에서 생성되어야 한다.",
+      "verification": "Unit",
+      "parent": "17/29"
+    },
+    {
+      "section": "4.7 Idempotency Layers",
+      "id": "NEX-REL-IDM-FR-003",
+      "priority": "MUST",
+      "requirement": "동일 key + 동일 semantic payload는 기존 결과를 재사용하거나 provider의 동일 business result를 반환해야 한다.",
+      "verification": "Idempotency Test",
+      "parent": "17"
+    },
+    {
+      "section": "4.7 Idempotency Layers",
+      "id": "NEX-REL-IDM-FR-004",
+      "priority": "MUST",
+      "requirement": "동일 key + 다른 semantic payload는 IDEMPOTENCY_CONFLICT로 fail-closed해야 한다.",
+      "verification": "Negative Test",
+      "parent": "17"
+    },
+    {
+      "section": "4.7 Idempotency Layers",
+      "id": "NEX-REL-IDM-FR-005",
+      "priority": "MUST",
+      "requirement": "Replan/Resume가 동일 business operation을 이어갈 때 기존 operation/key 또는 verified result identity를 재사용해야 한다.",
+      "verification": "E2E/Fault",
+      "parent": "17/29"
+    },
+    {
+      "section": "4.7 Idempotency Layers",
+      "id": "NEX-REL-IDM-FR-006",
+      "priority": "MUST",
+      "requirement": "Local runtime journal과 Canonical provider idempotency는 상호 보완하며 어느 하나만으로 cross-process crash window가 모두 닫힌다고 가정해서는 안 된다.",
+      "verification": "Fault",
+      "parent": "17"
+    },
+    {
+      "section": "4.7 Idempotency Layers",
+      "id": "NEX-REL-IDM-FR-007",
+      "priority": "MUST",
+      "requirement": "Idempotency record에는 operation_ref, semantic_payload_hash, original commit/result refs를 추적 가능하게 보존해야 한다.",
+      "verification": "Schema/Audit",
+      "parent": "17"
+    },
+    {
+      "section": "4.7 Idempotency Layers",
+      "id": "NEX-REL-IDM-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Idempotency retention은 downstream replay/reconciliation 기간보다 짧아지지 않도록 policy로 관리할 수 있어야 한다.",
+      "verification": "Retention Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.8 At-least-once Event / Inbox / Outbox",
+      "id": "NEX-REL-EVT-FR-001",
+      "priority": "MUST",
+      "requirement": "Cross-service event delivery는 기본적으로 at-least-once를 가정하고 consumer dedup을 필수로 해야 한다.",
+      "verification": "Fault",
+      "parent": "12/31"
+    },
+    {
+      "section": "4.8 At-least-once Event / Inbox / Outbox",
+      "id": "NEX-REL-EVT-FR-002",
+      "priority": "MUST",
+      "requirement": "Event Inbox는 event_id unique/dedup 상태와 processed/outcome을 durable하게 기록해야 한다.",
+      "verification": "DB Test",
+      "parent": "12"
+    },
+    {
+      "section": "4.8 At-least-once Event / Inbox / Outbox",
+      "id": "NEX-REL-EVT-FR-003",
+      "priority": "MUST",
+      "requirement": "Outbox event는 owner local state transaction과 함께 append되어 publish failure가 이미 commit된 state를 rollback하지 않도록 해야 한다.",
+      "verification": "Fault/Transaction",
+      "parent": "12"
+    },
+    {
+      "section": "4.8 At-least-once Event / Inbox / Outbox",
+      "id": "NEX-REL-EVT-FR-004",
+      "priority": "MUST",
+      "requirement": "Publisher는 미전송 Outbox를 retry할 수 있어야 하며 동일 event_id를 유지해야 한다.",
+      "verification": "Fault",
+      "parent": "12"
+    },
+    {
+      "section": "4.8 At-least-once Event / Inbox / Outbox",
+      "id": "NEX-REL-EVT-FR-005",
+      "priority": "MUST",
+      "requirement": "Consumer는 duplicate/out-of-order event를 source object version/state와 함께 검증해야 한다.",
+      "verification": "Fault",
+      "parent": "31"
+    },
+    {
+      "section": "4.8 At-least-once Event / Inbox / Outbox",
+      "id": "NEX-REL-EVT-FR-006",
+      "priority": "MUST",
+      "requirement": "Event schema_version/type/source/occurred_at/correlation_id/causation_id를 포함해야 한다.",
+      "verification": "Schema",
+      "parent": "08/31"
+    },
+    {
+      "section": "4.8 At-least-once Event / Inbox / Outbox",
+      "id": "NEX-REL-EVT-FR-007",
+      "priority": "MUST",
+      "requirement": "Event payload의 actor/role/permission field를 current authority source로 사용해서는 안 된다.",
+      "verification": "Security",
+      "parent": "26/31"
+    },
+    {
+      "section": "4.8 At-least-once Event / Inbox / Outbox",
+      "id": "NEX-REL-EVT-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Outbox/inbox backlog와 oldest age를 운영 metric으로 제공해야 한다.",
+      "verification": "Monitoring",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.9 Checkpoint / Wait / Resume",
+      "id": "NEX-REL-WAIT-FR-001",
+      "priority": "MUST",
+      "requirement": "WAITING_INPUT/CONFIRMATION/APPROVAL/DEPENDENCY는 durable Agent/Domain wait로 저장하고 worker를 해제해야 한다.",
+      "verification": "Fault/State",
+      "parent": "11/12/31"
+    },
+    {
+      "section": "4.9 Checkpoint / Wait / Resume",
+      "id": "NEX-REL-WAIT-FR-002",
+      "priority": "MUST",
+      "requirement": "Checkpoint는 execution/plan version/current-next step/wait condition/completed output refs/stable entity refs/trace/checksum을 포함해야 한다.",
+      "verification": "Schema",
+      "parent": "12"
+    },
+    {
+      "section": "4.9 Checkpoint / Wait / Resume",
+      "id": "NEX-REL-WAIT-FR-003",
+      "priority": "MUST",
+      "requirement": "Checkpoint는 raw user token/refresh token/service private key/secret을 저장해서는 안 된다.",
+      "verification": "Security Scan",
+      "parent": "12/26"
+    },
+    {
+      "section": "4.9 Checkpoint / Wait / Resume",
+      "id": "NEX-REL-WAIT-FR-004",
+      "priority": "MUST",
+      "requirement": "policy_snapshot_ref는 audit reference일 뿐 Resume authorization grant로 재사용해서는 안 된다.",
+      "verification": "Security",
+      "parent": "12/26/31"
+    },
+    {
+      "section": "4.9 Checkpoint / Wait / Resume",
+      "id": "NEX-REL-WAIT-FR-005",
+      "priority": "MUST",
+      "requirement": "matching Event 처리와 Wait SATISFIED + Resume Job enqueue는 duplicate resume를 막는 transactional boundary를 가져야 한다.",
+      "verification": "Fault/DB",
+      "parent": "12"
+    },
+    {
+      "section": "4.9 Checkpoint / Wait / Resume",
+      "id": "NEX-REL-WAIT-FR-006",
+      "priority": "MUST",
+      "requirement": "Resume dedup key는 execution_id/checkpoint_id 또는 동등한 stable identity로 uniqueness를 보장해야 한다.",
+      "verification": "Unit/DB",
+      "parent": "12"
+    },
+    {
+      "section": "4.9 Checkpoint / Wait / Resume",
+      "id": "NEX-REL-WAIT-FR-007",
+      "priority": "MUST",
+      "requirement": "Resume Worker는 current OA EAC/PDP, RoleBinding, Capability/Skill/Policy/KillSwitch를 재검증한 후에만 RUNNING으로 전환해야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/12/31"
+    },
+    {
+      "section": "4.9 Checkpoint / Wait / Resume",
+      "id": "NEX-REL-WAIT-FR-008",
+      "priority": "MUST",
+      "requirement": "Resume reauthorization deny는 BLOCKED/ESCALATED/Replan으로 처리하고 과거 approval/session 상태로 우회해서는 안 된다.",
+      "verification": "Security Fault",
+      "parent": "26/31"
+    },
+    {
+      "section": "4.9 Checkpoint / Wait / Resume",
+      "id": "NEX-REL-WAIT-FR-009",
+      "priority": "SHOULD",
+      "requirement": "stale/expired wait를 감지하는 recovery scanner와 alert를 제공할 수 있어야 한다.",
+      "verification": "Operation",
+      "parent": "32/30"
+    },
+    {
+      "section": "4.10 Unknown Commit / Reconciliation",
+      "id": "NEX-REL-REC-FR-001",
+      "priority": "MUST",
+      "requirement": "Canonical WRITE 결과는 COMMITTED/NOT_COMMITTED/UNKNOWN_COMMIT_STATE를 명시적으로 구분해야 한다.",
+      "verification": "Contract",
+      "parent": "17/EOS"
+    },
+    {
+      "section": "4.10 Unknown Commit / Reconciliation",
+      "id": "NEX-REL-REC-FR-002",
+      "priority": "MUST",
+      "requirement": "UNKNOWN_COMMIT_STATE를 FAILED 또는 retryable timeout으로 downgrade해서는 안 된다.",
+      "verification": "Fault",
+      "parent": "17/31"
+    },
+    {
+      "section": "4.10 Unknown Commit / Reconciliation",
+      "id": "NEX-REL-REC-FR-003",
+      "priority": "MUST",
+      "requirement": "UNKNOWN_COMMIT_STATE 수신 즉시 operation_ref/idempotency_key/evidence를 보존하고 ReconciliationCase를 생성해야 한다.",
+      "verification": "DB/Fault",
+      "parent": "17/29"
+    },
+    {
+      "section": "4.10 Unknown Commit / Reconciliation",
+      "id": "NEX-REL-REC-FR-004",
+      "priority": "MUST",
+      "requirement": "Reconciliation은 authoritative SoR을 operation_ref/idempotency_key/business ref로 조회하여 실제 effect를 판정해야 한다.",
+      "verification": "Integration",
+      "parent": "17/31"
+    },
+    {
+      "section": "4.10 Unknown Commit / Reconciliation",
+      "id": "NEX-REL-REC-FR-005",
+      "priority": "MUST",
+      "requirement": "Reconciliation outcome은 CONFIRMED_COMMITTED/CONFIRMED_NOT_COMMITTED/STILL_UNKNOWN/CONFLICT를 최소 구분해야 한다.",
+      "verification": "State",
+      "parent": "32"
+    },
+    {
+      "section": "4.10 Unknown Commit / Reconciliation",
+      "id": "NEX-REL-REC-FR-006",
+      "priority": "MUST",
+      "requirement": "CONFIRMED_COMMITTED면 original operation identity에 verified result를 연결하고 새 WRITE를 호출해서는 안 된다.",
+      "verification": "Fault",
+      "parent": "17"
+    },
+    {
+      "section": "4.10 Unknown Commit / Reconciliation",
+      "id": "NEX-REL-REC-FR-007",
+      "priority": "MUST",
+      "requirement": "CONFIRMED_NOT_COMMITTED 후 새 attempt 가능 여부는 caller/domain retry policy가 결정해야 한다.",
+      "verification": "Policy",
+      "parent": "17"
+    },
+    {
+      "section": "4.10 Unknown Commit / Reconciliation",
+      "id": "NEX-REL-REC-FR-008",
+      "priority": "MUST",
+      "requirement": "STILL_UNKNOWN 또는 CONFLICT가 SLA를 초과하면 Human/Ops escalation과 alert를 생성해야 한다.",
+      "verification": "Operation",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.10 Unknown Commit / Reconciliation",
+      "id": "NEX-REL-REC-FR-009",
+      "priority": "MUST",
+      "requirement": "Reconciliation backlog/oldest_age/outcome distribution을 운영 metric으로 제공해야 한다.",
+      "verification": "Monitoring",
+      "parent": "12/30"
+    },
+    {
+      "section": "4.10 Unknown Commit / Reconciliation",
+      "id": "NEX-REL-REC-FR-010",
+      "priority": "MUST",
+      "requirement": "Reconciliation 완료 전 UI/Report/WorkResult가 success 또는 closure를 암시해서는 안 된다.",
+      "verification": "UI/E2E",
+      "parent": "29/31"
+    },
+    {
+      "section": "4.11 Partial Failure Handling",
+      "id": "NEX-REL-PART-FR-001",
+      "priority": "MUST",
+      "requirement": "Remote commit 후 local persist 이전 crash를 same-key replay/reconciliation으로 복구할 수 있어야 한다.",
+      "verification": "Fault Injection",
+      "parent": "17/32"
+    },
+    {
+      "section": "4.11 Partial Failure Handling",
+      "id": "NEX-REL-PART-FR-002",
+      "priority": "MUST",
+      "requirement": "Local state commit 후 event publish 실패는 Outbox retry로 복구해야 한다.",
+      "verification": "Fault Injection",
+      "parent": "12"
+    },
+    {
+      "section": "4.11 Partial Failure Handling",
+      "id": "NEX-REL-PART-FR-003",
+      "priority": "MUST",
+      "requirement": "Consumer processing 중 crash는 Inbox dedup으로 재전달을 안전하게 수용해야 한다.",
+      "verification": "Fault Injection",
+      "parent": "12"
+    },
+    {
+      "section": "4.11 Partial Failure Handling",
+      "id": "NEX-REL-PART-FR-004",
+      "priority": "MUST",
+      "requirement": "Checkpoint commit 후 Resume enqueue 누락을 recovery scanner/outbox로 감지·복구해야 한다.",
+      "verification": "Fault Injection",
+      "parent": "32"
+    },
+    {
+      "section": "4.11 Partial Failure Handling",
+      "id": "NEX-REL-PART-FR-005",
+      "priority": "MUST",
+      "requirement": "Partial provider/service degradation은 DEGRADE/BLOCK/RETRY/FALLBACK 정책을 typed 상태로 반환하고 silent success하지 않아야 한다.",
+      "verification": "Fault",
+      "parent": "27/28/31"
+    },
+    {
+      "section": "4.11 Partial Failure Handling",
+      "id": "NEX-REL-PART-FR-006",
+      "priority": "MUST",
+      "requirement": "Projection(WA/Ledger/AG) 지연은 authoritative transaction/work completion과 분리해서 stale/lag 상태를 표시해야 한다.",
+      "verification": "State/UI",
+      "parent": "31"
+    },
+    {
+      "section": "4.11 Partial Failure Handling",
+      "id": "NEX-REL-PART-FR-007",
+      "priority": "MUST",
+      "requirement": "AG/telemetry 장애는 이미 배포된 runtime policy와 정상 business execution의 즉시 중단 원인이 되어서는 안 된다.",
+      "verification": "Fault",
+      "parent": "30"
+    },
+    {
+      "section": "4.11 Partial Failure Handling",
+      "id": "NEX-REL-PART-FR-008",
+      "priority": "MUST",
+      "requirement": "OA/PDP outage 중 protected side effect는 fail-closed하거나 명시적 approved degraded policy 없이는 실행해서는 안 된다.",
+      "verification": "Security Fault",
+      "parent": "26/31"
+    },
+    {
+      "section": "4.12 Dead Letter / Quarantine",
+      "id": "NEX-REL-DLQ-FR-001",
+      "priority": "MUST",
+      "requirement": "max attempts 또는 poison 판단을 초과한 Job은 DEAD_LETTER/QUARANTINE 상태로 이동해야 한다.",
+      "verification": "State/Fault",
+      "parent": "32"
+    },
+    {
+      "section": "4.12 Dead Letter / Quarantine",
+      "id": "NEX-REL-DLQ-FR-002",
+      "priority": "MUST",
+      "requirement": "Dead Letter에는 original job ref, attempts, last error/retry decisions, trace, payload ref/hash를 보존해야 한다.",
+      "verification": "Schema/Audit",
+      "parent": "32"
+    },
+    {
+      "section": "4.12 Dead Letter / Quarantine",
+      "id": "NEX-REL-DLQ-FR-003",
+      "priority": "MUST",
+      "requirement": "Dead Letter 재처리는 operator authorization과 명시적 recovery action을 통해 새 attempt/enqueue로 수행해야 한다.",
+      "verification": "Security/Operation",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.12 Dead Letter / Quarantine",
+      "id": "NEX-REL-DLQ-FR-004",
+      "priority": "MUST",
+      "requirement": "Dead Letter replay가 새로운 business idempotency identity를 자동 생성해서는 안 된다.",
+      "verification": "Fault/Idempotency",
+      "parent": "17/32"
+    },
+    {
+      "section": "4.12 Dead Letter / Quarantine",
+      "id": "NEX-REL-DLQ-FR-005",
+      "priority": "SHOULD",
+      "requirement": "동일 fingerprint의 반복 poison job을 자동 group/alert할 수 있어야 한다.",
+      "verification": "Monitoring",
+      "parent": "32"
+    },
+    {
+      "section": "4.12 Dead Letter / Quarantine",
+      "id": "NEX-REL-DLQ-FR-006",
+      "priority": "MUST",
+      "requirement": "무한 retry loop와 동일 장애의 busy loop를 방지해야 한다.",
+      "verification": "Boundary/Load",
+      "parent": "32"
+    },
+    {
+      "section": "4.13 Cancellation / Timeout / Drain",
+      "id": "NEX-REL-CAN-FR-001",
+      "priority": "MUST",
+      "requirement": "Cancel은 cooperative cancellation을 기본으로 하고 cancel_requested와 safe cancellation point를 구분해야 한다.",
+      "verification": "Fault",
+      "parent": "Platform/32"
+    },
+    {
+      "section": "4.13 Cancellation / Timeout / Drain",
+      "id": "NEX-REL-CAN-FR-002",
+      "priority": "MUST",
+      "requirement": "이미 COMMITTED된 business effect를 Job cancel로 rollback되었다고 표시해서는 안 된다.",
+      "verification": "State",
+      "parent": "17/31"
+    },
+    {
+      "section": "4.13 Cancellation / Timeout / Drain",
+      "id": "NEX-REL-CAN-FR-003",
+      "priority": "MUST",
+      "requirement": "remote call 진행 중 cancel 가능 여부는 provider/capability contract에 따라 처리하고 unknown outcome은 reconciliation으로 전환해야 한다.",
+      "verification": "Fault",
+      "parent": "32"
+    },
+    {
+      "section": "4.13 Cancellation / Timeout / Drain",
+      "id": "NEX-REL-CAN-FR-004",
+      "priority": "MUST",
+      "requirement": "Job timeout과 business deadline을 구분하고 timeout 발생 시 commit uncertainty를 별도 평가해야 한다.",
+      "verification": "Fault",
+      "parent": "17/32"
+    },
+    {
+      "section": "4.13 Cancellation / Timeout / Drain",
+      "id": "NEX-REL-CAN-FR-005",
+      "priority": "MUST",
+      "requirement": "Service shutdown/drain은 신규 claim을 막고 active lease/job/wait/outbox 상태를 운영자가 확인할 수 있게 해야 한다.",
+      "verification": "Operation",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.13 Cancellation / Timeout / Drain",
+      "id": "NEX-REL-CAN-FR-006",
+      "priority": "SHOULD",
+      "requirement": "maintenance window는 low-priority 신규 enqueue/claim을 제한할 수 있어야 한다.",
+      "verification": "Operation",
+      "parent": "34"
+    },
+    {
+      "section": "4.14 Operational Recovery",
+      "id": "NEX-REL-OPS-FR-001",
+      "priority": "MUST",
+      "requirement": "각 서비스는 expired lease, stale worker, stuck outbox, stranded wait, reconciliation backlog, dead letter를 탐지하는 recovery scan을 제공해야 한다.",
+      "verification": "Operation/Fault",
+      "parent": "32"
+    },
+    {
+      "section": "4.14 Operational Recovery",
+      "id": "NEX-REL-OPS-FR-002",
+      "priority": "MUST",
+      "requirement": "Recovery Action은 action_id/type/target/ref/requester/authorization/reason/status/result를 audit해야 한다.",
+      "verification": "Audit",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.14 Operational Recovery",
+      "id": "NEX-REL-OPS-FR-003",
+      "priority": "MUST",
+      "requirement": "Recovery Action timeout/UNKNOWN state는 blind retry하지 않고 target state reconciliation을 수행해야 한다.",
+      "verification": "Fault",
+      "parent": "30"
+    },
+    {
+      "section": "4.14 Operational Recovery",
+      "id": "NEX-REL-OPS-FR-004",
+      "priority": "MUST",
+      "requirement": "운영자는 service/job/worker/reconciliation/dead-letter 상태를 correlation trace로 drill-down할 수 있어야 한다.",
+      "verification": "Operations UI",
+      "parent": "30"
+    },
+    {
+      "section": "4.14 Operational Recovery",
+      "id": "NEX-REL-OPS-FR-005",
+      "priority": "MUST",
+      "requirement": "Recovery는 raw SSH/shell/SQL backdoor가 아니라 typed admin/recovery contract로 수행해야 한다.",
+      "verification": "Security",
+      "parent": "30"
+    },
+    {
+      "section": "4.14 Operational Recovery",
+      "id": "NEX-REL-OPS-FR-006",
+      "priority": "SHOULD",
+      "requirement": "Projection gap(WA/AG/Ledger read model)은 authoritative event/ref로 rebuild 가능한 절차를 제공할 수 있어야 한다.",
+      "verification": "Recovery Test",
+      "parent": "31/32"
+    },
+    {
+      "section": "4.14 Operational Recovery",
+      "id": "NEX-REL-OPS-FR-007",
+      "priority": "MUST",
+      "requirement": "Recovery action 전후 source object version/ref를 기록하여 stale operator action을 거부할 수 있어야 한다.",
+      "verification": "Concurrency/Audit",
+      "parent": "32"
+    },
+    {
+      "section": "4.14 Operational Recovery",
+      "id": "NEX-REL-OPS-FR-008",
+      "priority": "MUST",
+      "requirement": "운영 복구가 WorkItem CLOSED, Approval, Voucher/Ledger 등 business authoritative state를 임의 변경하지 않아야 한다.",
+      "verification": "Architecture",
+      "parent": "31"
+    },
+    {
+      "section": "4.15 Observability / Audit",
+      "id": "NEX-REL-OBS-FR-001",
+      "priority": "MUST",
+      "requirement": "queue_depth, oldest_job_age, enqueue/claim/complete/fail throughput을 job_type/priority별 제공해야 한다.",
+      "verification": "Monitoring",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.15 Observability / Audit",
+      "id": "NEX-REL-OBS-FR-002",
+      "priority": "MUST",
+      "requirement": "worker heartbeat age, active/idle/draining count, lease_expired/reclaim/stale_completion을 제공해야 한다.",
+      "verification": "Monitoring",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.15 Observability / Audit",
+      "id": "NEX-REL-OBS-FR-003",
+      "priority": "MUST",
+      "requirement": "retry_total/backoff_delay/dead_letter/idempotency_conflict/event_duplicate/outbox_lag를 제공해야 한다.",
+      "verification": "Monitoring",
+      "parent": "32"
+    },
+    {
+      "section": "4.15 Observability / Audit",
+      "id": "NEX-REL-OBS-FR-004",
+      "priority": "MUST",
+      "requirement": "checkpoint_wait_age/resume_latency/resume_reauth_denied를 제공해야 한다.",
+      "verification": "Monitoring",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.15 Observability / Audit",
+      "id": "NEX-REL-OBS-FR-005",
+      "priority": "MUST",
+      "requirement": "unknown_commit_total/reconciliation_backlog/oldest_age/outcome을 capability/provider별 제공해야 한다.",
+      "verification": "Monitoring",
+      "parent": "17/30"
+    },
+    {
+      "section": "4.15 Observability / Audit",
+      "id": "NEX-REL-OBS-FR-006",
+      "priority": "MUST",
+      "requirement": "metric/log/audit에 raw token/secret/private key를 포함하지 않아야 한다.",
+      "verification": "Security Scan",
+      "parent": "26"
+    },
+    {
+      "section": "4.15 Observability / Audit",
+      "id": "NEX-REL-OBS-FR-007",
+      "priority": "SHOULD",
+      "requirement": "Reliability SLI는 business success와 별도로 queue lag, recovery time, reconciliation age, duplicate suppression rate를 포함할 수 있어야 한다.",
+      "verification": "SLA Design",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.15 Observability / Audit",
+      "id": "NEX-REL-OBS-FR-008",
+      "priority": "MUST",
+      "requirement": "모든 reliability event는 correlation/job/attempt/worker/work/execution/operation refs 중 적용 가능한 stable ref를 제공해야 한다.",
+      "verification": "Trace",
+      "parent": "31"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-SEC-NFR-001",
+      "priority": "MUST",
+      "requirement": "Job/recovery/admin action은 server-side authenticated principal/service identity와 current authorization을 적용해야 한다.",
+      "verification": "Security",
+      "parent": "26/30"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-SEC-NFR-002",
+      "priority": "MUST",
+      "requirement": "Client/LLM/Event payload의 retry/priority/actor/permission 값을 authority source로 신뢰해서는 안 된다.",
+      "verification": "Adversarial",
+      "parent": "26/31"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-SEC-NFR-003",
+      "priority": "MUST",
+      "requirement": "Sensitive payload/log/replay bundle은 Data Classification/retention/redaction policy를 적용해야 한다.",
+      "verification": "Security/Data",
+      "parent": "26/27"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-SEC-NFR-004",
+      "priority": "MUST",
+      "requirement": "Recovery operator 권한은 일반 runtime 사용자 권한과 분리되고 high-risk recovery에 step-up을 요구할 수 있어야 한다.",
+      "verification": "Security",
+      "parent": "26/30"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-REL-NFR-001",
+      "priority": "MUST",
+      "requirement": "PostgreSQL/worker process crash 후 durable Job/Checkpoint/Inbox/Outbox/Reconciliation 상태로 복구 가능해야 한다.",
+      "verification": "Crash Test",
+      "parent": "12/32"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-REL-NFR-002",
+      "priority": "MUST",
+      "requirement": "At-least-once delivery와 duplicate execution을 fault injection에서 검증해야 한다.",
+      "verification": "Fault Injection",
+      "parent": "12/31"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-REL-NFR-003",
+      "priority": "MUST",
+      "requirement": "Single component failure가 cross-service business state corruption으로 확산되지 않도록 owner boundary를 유지해야 한다.",
+      "verification": "Chaos/Fault",
+      "parent": "31"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-REL-NFR-004",
+      "priority": "MUST",
+      "requirement": "Recovery scanner 자체 실패가 동일 recovery action을 중복 실행해 business effect를 만들지 않도록 idempotent해야 한다.",
+      "verification": "Fault",
+      "parent": "32"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-PERF-NFR-001",
+      "priority": "MUST",
+      "requirement": "Job claim/heartbeat DB hot path는 초기 100명 규모와 예상 worker concurrency에서 p95 baseline을 측정해야 한다.",
+      "verification": "Load",
+      "parent": "32"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-PERF-NFR-002",
+      "priority": "MUST",
+      "requirement": "Queue backlog는 depth와 age를 함께 사용해 capacity threshold를 수립해야 한다.",
+      "verification": "Load/Monitoring",
+      "parent": "32"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-PERF-NFR-003",
+      "priority": "SHOULD",
+      "requirement": "Bulk/maintenance queue가 interactive/resume SLA를 침해하지 않는지 load test를 수행해야 한다.",
+      "verification": "Load",
+      "parent": "32"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-DATA-NFR-001",
+      "priority": "MUST",
+      "requirement": "각 서비스 DB에 있는 reliability record는 owner service DB 외부 FK/direct write에 의존하지 않아야 한다.",
+      "verification": "Architecture",
+      "parent": "31"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-DATA-NFR-002",
+      "priority": "MUST",
+      "requirement": "JobAttempt/Event/Recovery evidence는 append/version 이력을 우선하고 원인 분석에 필요한 prior state를 보존해야 한다.",
+      "verification": "Data",
+      "parent": "32"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-DATA-NFR-003",
+      "priority": "SHOULD",
+      "requirement": "고용량 completed job/event history는 retention/archive/partition을 지원할 수 있어야 한다.",
+      "verification": "Data/Perf",
+      "parent": "32"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-TST-NFR-001",
+      "priority": "MUST",
+      "requirement": "신규 Reliability 코드 statement coverage 95% 이상, branch coverage 85% 이상을 목표로 해야 한다.",
+      "verification": "Coverage",
+      "parent": "Project quality"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-TST-NFR-002",
+      "priority": "MUST",
+      "requirement": "PostgreSQL integration test는 격리된 test DB를 초기화하고 multi-worker concurrency를 포함해야 한다.",
+      "verification": "pytest/DB",
+      "parent": "Project quality"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-TST-NFR-003",
+      "priority": "MUST",
+      "requirement": "Crash before/after remote commit, lease expiry, duplicate event, outbox failure, checkpoint/resume gap, unknown commit을 fault injection으로 검증해야 한다.",
+      "verification": "Fault Injection",
+      "parent": "32"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-TST-NFR-004",
+      "priority": "MUST",
+      "requirement": "Golden Slice A/B에 reliability fault variant를 추가해 duplicate business effect=0과 trace completeness를 검증해야 한다.",
+      "verification": "E2E Golden",
+      "parent": "31/32"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-TST-NFR-005",
+      "priority": "MUST",
+      "requirement": "Boundary/robustness/worst-case로 max retry, zero/huge backoff, stale token, clock skew, queue starvation, huge backlog를 테스트해야 한다.",
+      "verification": "Test Design",
+      "parent": "Project quality"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-REL-TST-NFR-006",
+      "priority": "MUST",
+      "requirement": "Source 변경 후 unit/integration/regression/smoke/fault suite 통과를 merge/release gate로 해야 한다.",
+      "verification": "CI",
+      "parent": "Project quality"
+    }
+  ]
+}

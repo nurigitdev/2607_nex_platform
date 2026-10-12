@@ -1,0 +1,33 @@
+﻿Probe,Expected,Actual,Result,Issue
+16_NeX_NSL_Language_Specification_v0.2_PLATFORM_REBASELINE_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: active stale term gateproof,absent,absent,PASS,STEP8-P0-01
+16_NeX_NSL_Language_Specification_v0.2_PLATFORM_REBASELINE_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: active stale term human_gate_requirement,absent,absent,PASS,STEP8-P0-01
+16_NeX_NSL_Language_Specification_v0.2_PLATFORM_REBASELINE_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: active stale term signed nso,absent,absent,PASS,STEP8-P0-01
+16_NeX_NSL_Language_Specification_v0.2_PLATFORM_REBASELINE_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: active stale term unsigned nso,absent,absent,PASS,STEP8-P0-01
+16_NeX_NSL_Language_Specification_v0.2_PLATFORM_REBASELINE_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: active stale term nsl proof integration,absent,absent,PASS,STEP8-P0-01
+16_NeX_NSL_Language_Specification_v0.2_PLATFORM_REBASELINE_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: active stale term nsl proof validation,absent,absent,PASS,STEP8-P0-01
+17_NeX_NSL_Runtime_and_Certified_Skill_Detailed_Design_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: active stale term gateproof,absent,absent,PASS,STEP8-P0-01
+17_NeX_NSL_Runtime_and_Certified_Skill_Detailed_Design_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: active stale term human_gate_requirement,absent,absent,PASS,STEP8-P0-01
+17_NeX_NSL_Runtime_and_Certified_Skill_Detailed_Design_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: active stale term signed nso,absent,absent,PASS,STEP8-P0-01
+17_NeX_NSL_Runtime_and_Certified_Skill_Detailed_Design_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: active stale term unsigned nso,absent,absent,PASS,STEP8-P0-01
+17_NeX_NSL_Runtime_and_Certified_Skill_Detailed_Design_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: active stale term nsl proof integration,absent,absent,PASS,STEP8-P0-01
+17_NeX_NSL_Runtime_and_Certified_Skill_Detailed_Design_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: active stale term nsl proof validation,absent,absent,PASS,STEP8-P0-01
+18_NeX_Approval_and_Human_Gate_Detailed_Design_v2.1_CP08.docx: active stale term gateproof,absent,absent,PASS,STEP8-P0-01
+18_NeX_Approval_and_Human_Gate_Detailed_Design_v2.1_CP08.docx: active stale term human_gate_requirement,absent,absent,PASS,STEP8-P0-01
+18_NeX_Approval_and_Human_Gate_Detailed_Design_v2.1_CP08.docx: active stale term signed nso,absent,absent,PASS,STEP8-P0-01
+18_NeX_Approval_and_Human_Gate_Detailed_Design_v2.1_CP08.docx: active stale term unsigned nso,absent,absent,PASS,STEP8-P0-01
+18_NeX_Approval_and_Human_Gate_Detailed_Design_v2.1_CP08.docx: active stale term nsl proof integration,absent,absent,PASS,STEP8-P0-01
+18_NeX_Approval_and_Human_Gate_Detailed_Design_v2.1_CP08.docx: active stale term nsl proof validation,absent,absent,PASS,STEP8-P0-01
+16_NeX_NSL_Language_Specification_v0.2_PLATFORM_REBASELINE_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: proof-before-NSL references quarantined,legacy/superseded only,1 reference(s),PASS,STEP8-P0-01
+17_NeX_NSL_Runtime_and_Certified_Skill_Detailed_Design_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: proof-before-NSL references quarantined,legacy/superseded only,1 reference(s),PASS,STEP8-P0-01
+16_NeX_NSL_Language_Specification_v0.2_PLATFORM_REBASELINE_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: canonical package trust chain,Signed NSP + PackageTrustEvidence + VerifiedSkillArtifact,present,PASS,STEP8-P0-01
+17_NeX_NSL_Runtime_and_Certified_Skill_Detailed_Design_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: canonical package trust chain,Signed NSP + PackageTrustEvidence + VerifiedSkillArtifact,present,PASS,STEP8-P0-01
+01_NeX_Terminology_and_Naming_Standard_v2.1_FINAL_BACKPROP.docx: old direct-trigger vocabulary,absent,absent,PASS,STEP8-P1-01
+01_NeX_Terminology_and_Naming_Standard_v2.1_FINAL_BACKPROP.docx: canonical trigger/work path,PROMPT|CLAIMED_WORKITEM + Schedule→WorkItem→Claim,present,PASS,STEP8-P1-01
+05_NeX_Master_System_Architecture_v2.1_FINAL_BACKPROP.docx: old direct-trigger vocabulary,absent,absent,PASS,STEP8-P1-01
+05_NeX_Master_System_Architecture_v2.1_FINAL_BACKPROP.docx: canonical trigger/work path,PROMPT|CLAIMED_WORKITEM + Schedule→WorkItem→Claim,present,PASS,STEP8-P1-01
+31_Cross_System_End_to_End_Flow_Design_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: background WorkResult/claim-lineage closure,WC_WORK_RESULT + Claim + ACK + SUCCEEDED + WA,present,PASS,STEP8-PCG-01
+33_Integrated_Test_and_Acceptance_Strategy_v2.1_FINAL_CONSISTENCY_CLOSURE.docx: background WorkResult/claim-lineage closure,WC_WORK_RESULT + claim + ACK + SUCCEEDED,present,PASS,STEP8-PCG-01
+44_NeX_WC_Recurring_Work_and_Schedule_Detailed_Design_v2.1_CP05.docx: background WorkResult/claim-lineage closure,WC WorkResult + Claim + ACK + SUCCEEDED + WA,present,PASS,STEP8-PCG-01
+Historical baseline files removed from active root,old root names absent,absent,PASS,STEP8-P2-01
+Historical manifest/review quarantined under HISTORY,present,present,PASS,STEP8-P2-01
+Current Final Closure Review v1.2,present,present,PASS,STEP8-P2-01

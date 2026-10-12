@@ -1,0 +1,954 @@
+{
+  "document": "28_NeX_MO_SRS_and_Detailed_Design_v2.0",
+  "date": "2026-09-03",
+  "counts": {
+    "MUST": 104,
+    "SHOULD": 14
+  },
+  "requirements": [
+    {
+      "section": "4.1 Model Registry",
+      "id": "NEX-MO-REG-FR-001",
+      "priority": "MUST",
+      "requirement": "MO는 GENERATION, EMBEDDING, RERANKING, CLASSIFICATION, ENTITY_LINKING, ENTITY_RELATION_EXTRACTION capability를 model registry에서 명시적으로 구분해야 한다.",
+      "verification": "Schema Test",
+      "parent": "27/CX"
+    },
+    {
+      "section": "4.1 Model Registry",
+      "id": "NEX-MO-REG-FR-002",
+      "priority": "MUST",
+      "requirement": "논리 Model, immutable ModelVersion, ModelArtifact, Deployment, Alias/Profile을 서로 다른 객체로 관리해야 한다.",
+      "verification": "Invariant Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.1 Model Registry",
+      "id": "NEX-MO-REG-FR-003",
+      "priority": "MUST",
+      "requirement": "ModelVersion은 source revision, artifact checksum, tokenizer/template/config version과 연결되어야 하며 등록 후 의미가 변경되어서는 안 된다.",
+      "verification": "Schema/Security",
+      "parent": "28"
+    },
+    {
+      "section": "4.1 Model Registry",
+      "id": "NEX-MO-REG-FR-004",
+      "priority": "MUST",
+      "requirement": "ModelArtifact에는 source, format, size, checksum, license_ref, security_scan_status, local_path/object_ref를 저장해야 한다.",
+      "verification": "Schema Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.1 Model Registry",
+      "id": "NEX-MO-REG-FR-005",
+      "priority": "MUST",
+      "requirement": "Model capability별 input/output contract, maximum input length, output dimension/score semantics/structured schema를 등록할 수 있어야 한다.",
+      "verification": "Contract Test",
+      "parent": "27/28"
+    },
+    {
+      "section": "4.1 Model Registry",
+      "id": "NEX-MO-REG-FR-006",
+      "priority": "MUST",
+      "requirement": "Embedding model은 embedding_compatibility_key를 가져야 하며 CX index profile과 동일 key일 때만 query-time routing 후보가 될 수 있다.",
+      "verification": "Compatibility Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.1 Model Registry",
+      "id": "NEX-MO-REG-FR-007",
+      "priority": "MUST",
+      "requirement": "Entity/Relation Extraction model은 extraction_schema_version과 supported entity/relation taxonomy profile을 등록해야 한다.",
+      "verification": "Schema Test",
+      "parent": "27 Graph-lite"
+    },
+    {
+      "section": "4.1 Model Registry",
+      "id": "NEX-MO-REG-FR-008",
+      "priority": "MUST",
+      "requirement": "Model alias(prod/canary 등)는 mutable pointer일 수 있으나 모든 실행 결과에는 immutable model_version_id와 deployment_id가 기록되어야 한다.",
+      "verification": "Audit Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.1 Model Registry",
+      "id": "NEX-MO-REG-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Model card/benchmark/known limitation/security note를 registry metadata로 연결할 수 있어야 한다.",
+      "verification": "Inspection",
+      "parent": "28"
+    },
+    {
+      "section": "4.2 Provider Adapter",
+      "id": "NEX-MO-ADP-FR-001",
+      "priority": "MUST",
+      "requirement": "Caller 서비스는 vLLM 등 runtime endpoint를 직접 호출하지 않고 MO의 stable capability API를 사용해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "Platform"
+    },
+    {
+      "section": "4.2 Provider Adapter",
+      "id": "NEX-MO-ADP-FR-002",
+      "priority": "MUST",
+      "requirement": "Provider Adapter는 generate/embed/rerank/classify/extract capability를 공통 internal protocol 뒤에 추상화해야 한다.",
+      "verification": "Unit/Contract",
+      "parent": "28"
+    },
+    {
+      "section": "4.2 Provider Adapter",
+      "id": "NEX-MO-ADP-FR-003",
+      "priority": "MUST",
+      "requirement": "Provider endpoint, auth secret, TLS/mTLS credential은 secret_ref로 관리하고 application log에 원문을 기록해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "09/26"
+    },
+    {
+      "section": "4.2 Provider Adapter",
+      "id": "NEX-MO-ADP-FR-004",
+      "priority": "MUST",
+      "requirement": "Provider timeout/retry/circuit-breaker 정책은 capability별로 versioned configuration으로 관리해야 한다.",
+      "verification": "Fault Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.2 Provider Adapter",
+      "id": "NEX-MO-ADP-FR-005",
+      "priority": "MUST",
+      "requirement": "Provider 응답은 provider-specific payload를 그대로 상위 서비스에 노출하지 않고 MO canonical response로 변환해야 한다.",
+      "verification": "Contract Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.2 Provider Adapter",
+      "id": "NEX-MO-ADP-FR-006",
+      "priority": "MUST",
+      "requirement": "Provider Adapter는 request_id/correlation_id/model_version/deployment/runtime_version을 propagation해야 한다.",
+      "verification": "Trace Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.2 Provider Adapter",
+      "id": "NEX-MO-ADP-FR-007",
+      "priority": "SHOULD",
+      "requirement": "지원되지 않는 모델 아키텍처를 위해 DedicatedEmbeddingProvider/DedicatedRerankerProvider 등 별도 adapter를 추가할 수 있어야 한다.",
+      "verification": "Architecture Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.3 vLLM Runtime",
+      "id": "NEX-MO-VLLM-FR-001",
+      "priority": "MUST",
+      "requirement": "Open-weight LLM/Pooling 모델의 기본 online serving runtime으로 vLLM Provider를 지원해야 한다.",
+      "verification": "Integration Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.3 vLLM Runtime",
+      "id": "NEX-MO-VLLM-FR-002",
+      "priority": "MUST",
+      "requirement": "vLLM의 OpenAI-compatible generation API와 embedding/score/rerank pooling capability를 Provider Adapter 뒤에서 사용할 수 있어야 한다.",
+      "verification": "Integration Test",
+      "parent": "vLLM docs"
+    },
+    {
+      "section": "4.3 vLLM Runtime",
+      "id": "NEX-MO-VLLM-FR-003",
+      "priority": "MUST",
+      "requirement": "Tensor Parallel/Data Parallel/Pipeline Parallel 설정은 ModelDeployment의 versioned runtime_config로 관리해야 한다.",
+      "verification": "Config Test",
+      "parent": "vLLM docs"
+    },
+    {
+      "section": "4.3 vLLM Runtime",
+      "id": "NEX-MO-VLLM-FR-004",
+      "priority": "MUST",
+      "requirement": "GPU visibility, dtype, quantization, max model length, max concurrent sequences, GPU memory utilization 등 핵심 serving parameter를 deployment config로 고정해야 한다.",
+      "verification": "Config Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.3 vLLM Runtime",
+      "id": "NEX-MO-VLLM-FR-005",
+      "priority": "MUST",
+      "requirement": "Runtime 시작 후 model identity/version/checksum과 실제 loaded model을 검증한 뒤 READY로 전환해야 한다.",
+      "verification": "Readiness Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.3 vLLM Runtime",
+      "id": "NEX-MO-VLLM-FR-006",
+      "priority": "MUST",
+      "requirement": "MO 외부에 vLLM admin/runtime endpoint를 직접 노출하지 않고 내부 network boundary로 제한해야 한다.",
+      "verification": "Security Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.3 vLLM Runtime",
+      "id": "NEX-MO-VLLM-FR-007",
+      "priority": "MUST",
+      "requirement": "vLLM runtime process crash/OOM/hang을 감지하여 deployment health를 UNHEALTHY로 전환하고 신규 routing을 차단해야 한다.",
+      "verification": "Fault Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.3 vLLM Runtime",
+      "id": "NEX-MO-VLLM-FR-008",
+      "priority": "SHOULD",
+      "requirement": "모델별 warm-up/synthetic inference를 지원하여 첫 요청 latency와 shape/config 오류를 사전 검증할 수 있어야 한다.",
+      "verification": "Operation Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.4 Embedding",
+      "id": "NEX-MO-EMB-FR-001",
+      "priority": "MUST",
+      "requirement": "Embedding API는 embedding_profile_ref, texts, purpose(query/document/entity), output_dimension, normalize option을 canonical contract로 지원해야 한다.",
+      "verification": "Contract Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.4 Embedding",
+      "id": "NEX-MO-EMB-FR-002",
+      "priority": "MUST",
+      "requirement": "CX가 지정한 embedding_compatibility_key와 일치하는 deployment만 query embedding에 사용해야 한다.",
+      "verification": "Compatibility Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.4 Embedding",
+      "id": "NEX-MO-EMB-FR-003",
+      "priority": "MUST",
+      "requirement": "다른 embedding model/version으로의 자동 fallback을 금지하고 동일 compatibility key replica로만 failover해야 한다.",
+      "verification": "Negative Test",
+      "parent": "27/28"
+    },
+    {
+      "section": "4.4 Embedding",
+      "id": "NEX-MO-EMB-FR-004",
+      "priority": "MUST",
+      "requirement": "호환 replica가 없으면 실패 또는 명시적 degraded 상태를 반환하여 CX가 BM25/Graph-only 검색으로 결정할 수 있게 해야 한다.",
+      "verification": "Fault Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.4 Embedding",
+      "id": "NEX-MO-EMB-FR-005",
+      "priority": "MUST",
+      "requirement": "Embedding batch size, queue class, max text length, truncation policy를 profile별로 고정하고 응답에 truncation 여부를 표시해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.4 Embedding",
+      "id": "NEX-MO-EMB-FR-006",
+      "priority": "MUST",
+      "requirement": "Document/query instruction 또는 prefix를 사용하는 모델은 instruction template version을 embedding profile에 포함해야 한다.",
+      "verification": "Repro Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.4 Embedding",
+      "id": "NEX-MO-EMB-FR-007",
+      "priority": "MUST",
+      "requirement": "Embedding response에는 model_version_id, compatibility_key, dimension, normalized flag, request_id를 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "27/28"
+    },
+    {
+      "section": "4.4 Embedding",
+      "id": "NEX-MO-EMB-FR-008",
+      "priority": "SHOULD",
+      "requirement": "대량 reindex용 batch embedding은 interactive query embedding보다 낮은 우선순위 queue로 운영할 수 있어야 한다.",
+      "verification": "Load Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.5 Reranker",
+      "id": "NEX-MO-RER-FR-001",
+      "priority": "MUST",
+      "requirement": "Rerank API는 query + candidate text/id 목록과 top_n을 입력받고 score/order를 반환하는 canonical contract를 제공해야 한다.",
+      "verification": "Contract Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.5 Reranker",
+      "id": "NEX-MO-RER-FR-002",
+      "priority": "MUST",
+      "requirement": "CX는 permission-safe candidate만 MO에 전달하며 MO는 CX DB나 권한정보를 직접 조회해서는 안 된다.",
+      "verification": "Architecture/Security",
+      "parent": "27"
+    },
+    {
+      "section": "4.5 Reranker",
+      "id": "NEX-MO-RER-FR-003",
+      "priority": "MUST",
+      "requirement": "Reranker score는 모델 버전 간 절대 비교하지 않고 model_version별 score semantics를 registry에 기록해야 한다.",
+      "verification": "Quality Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.5 Reranker",
+      "id": "NEX-MO-RER-FR-004",
+      "priority": "MUST",
+      "requirement": "max_candidates, max_pair_tokens, batch_size, top_n을 profile로 제한하여 capacity 폭주를 방지해야 한다.",
+      "verification": "Load Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.5 Reranker",
+      "id": "NEX-MO-RER-FR-005",
+      "priority": "MUST",
+      "requirement": "Reranker 장애 시 skip 또는 approved fallback 여부를 routing policy로 결정하고 degraded_mode를 caller에 표시해야 한다.",
+      "verification": "Fault Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.5 Reranker",
+      "id": "NEX-MO-RER-FR-006",
+      "priority": "MUST",
+      "requirement": "Rerank 결과에는 selected model_version/deployment와 latency/score list를 trace 가능하게 반환해야 한다.",
+      "verification": "Audit Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.5 Reranker",
+      "id": "NEX-MO-RER-FR-007",
+      "priority": "SHOULD",
+      "requirement": "Cross-encoder 외 새로운 scoring architecture를 adapter로 추가할 수 있어야 한다.",
+      "verification": "Architecture Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.6 CX 1-Hop Ontology Graph-lite Model Support",
+      "id": "NEX-MO-GRAPH-FR-001",
+      "priority": "MUST",
+      "requirement": "MO는 ENTITY_LINKING 및 ENTITY_RELATION_EXTRACTION capability를 제공할 수 있어야 하며 Graph storage/query 자체는 CX 책임으로 유지해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "27 Graph-lite"
+    },
+    {
+      "section": "4.6 CX 1-Hop Ontology Graph-lite Model Support",
+      "id": "NEX-MO-GRAPH-FR-002",
+      "priority": "MUST",
+      "requirement": "Extraction request는 chunk text, source locator reference, taxonomy/extraction_schema_version을 입력받아 structured JSON 후보를 반환해야 한다.",
+      "verification": "Contract Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 CX 1-Hop Ontology Graph-lite Model Support",
+      "id": "NEX-MO-GRAPH-FR-003",
+      "priority": "MUST",
+      "requirement": "Extraction response는 entity/relation 후보별 confidence, evidence span offsets, model_version_id, schema_version을 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 CX 1-Hop Ontology Graph-lite Model Support",
+      "id": "NEX-MO-GRAPH-FR-004",
+      "priority": "MUST",
+      "requirement": "MO가 반환한 Relation 후보를 authoritative fact로 간주하거나 cx_relation에 직접 write해서는 안 된다.",
+      "verification": "Invariant Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 CX 1-Hop Ontology Graph-lite Model Support",
+      "id": "NEX-MO-GRAPH-FR-005",
+      "priority": "MUST",
+      "requirement": "CX가 evidence/permission/provenance를 검증한 후에만 Graph-lite relation을 저장하며 MO는 해당 승인 판정을 대체하지 않는다.",
+      "verification": "E2E Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 CX 1-Hop Ontology Graph-lite Model Support",
+      "id": "NEX-MO-GRAPH-FR-006",
+      "priority": "MUST",
+      "requirement": "1-hop 탐색 depth는 CX retrieval policy가 결정하고 MO extraction model이 graph traversal depth를 확장해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 CX 1-Hop Ontology Graph-lite Model Support",
+      "id": "NEX-MO-GRAPH-FR-007",
+      "priority": "MUST",
+      "requirement": "Graph extraction model 변경 시 schema compatibility와 extraction quality regression을 검증해야 한다.",
+      "verification": "Regression Test",
+      "parent": "27/28"
+    },
+    {
+      "section": "4.6 CX 1-Hop Ontology Graph-lite Model Support",
+      "id": "NEX-MO-GRAPH-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Entity candidate normalization을 위해 entity embedding/linking provider를 사용할 수 있으나 CX canonical entity resolution과 provenance 기록을 우회해서는 안 된다.",
+      "verification": "Quality Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.7 Deterministic Routing",
+      "id": "NEX-MO-ROUTE-FR-001",
+      "priority": "MUST",
+      "requirement": "Routing은 LLM/prompt가 아니라 server-side deterministic policy로 결정해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "09/26"
+    },
+    {
+      "section": "4.7 Deterministic Routing",
+      "id": "NEX-MO-ROUTE-FR-002",
+      "priority": "MUST",
+      "requirement": "Routing input은 capability, profile_ref, caller_service, input_classification_rank, policy_ref, compatibility_key/schema_version, latency class를 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.7 Deterministic Routing",
+      "id": "NEX-MO-ROUTE-FR-003",
+      "priority": "MUST",
+      "requirement": "후보 deployment는 capability/profile compatibility → security zone/egress → version compatibility → health → capacity 순으로 필터링해야 한다.",
+      "verification": "Policy Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.7 Deterministic Routing",
+      "id": "NEX-MO-ROUTE-FR-004",
+      "priority": "MUST",
+      "requirement": "Data Classification 등급명은 하드코딩하지 않고 rank/policy_version 기반으로 provider security ceiling과 비교해야 한다.",
+      "verification": "Policy Test",
+      "parent": "26/27"
+    },
+    {
+      "section": "4.7 Deterministic Routing",
+      "id": "NEX-MO-ROUTE-FR-005",
+      "priority": "MUST",
+      "requirement": "Local-only 또는 restricted data가 external-egress provider로 routing되지 않도록 fail-closed해야 한다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "section": "4.7 Deterministic Routing",
+      "id": "NEX-MO-ROUTE-FR-006",
+      "priority": "MUST",
+      "requirement": "Embedding route는 동일 compatibility key를 강제하고 다른 model family로 quality fallback하지 않아야 한다.",
+      "verification": "Negative Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.7 Deterministic Routing",
+      "id": "NEX-MO-ROUTE-FR-007",
+      "priority": "MUST",
+      "requirement": "Generation/Reranker/Extraction fallback은 approved fallback chain과 동일 security zone/schema constraints 안에서만 허용해야 한다.",
+      "verification": "Fault Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.7 Deterministic Routing",
+      "id": "NEX-MO-ROUTE-FR-008",
+      "priority": "MUST",
+      "requirement": "모든 routing decision은 selected deployment/model version, reason_codes, degraded_mode, policy_version, decision_hash를 기록해야 한다.",
+      "verification": "Audit Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.7 Deterministic Routing",
+      "id": "NEX-MO-ROUTE-FR-009",
+      "priority": "MUST",
+      "requirement": "CANARY deployment는 explicit routing percentage/subject cohort 정책을 통과한 요청에만 선택되어야 한다.",
+      "verification": "Rollout Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.7 Deterministic Routing",
+      "id": "NEX-MO-ROUTE-FR-010",
+      "priority": "SHOULD",
+      "requirement": "동일 조건의 후보가 여러 개인 경우 latency/capacity/affinity score를 사용한 deterministic tie-break를 지원할 수 있어야 한다.",
+      "verification": "Load Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.8 Health",
+      "id": "NEX-MO-HLT-FR-001",
+      "priority": "MUST",
+      "requirement": "Provider/Deployment 상태는 UNKNOWN, STARTING, WARMING, READY, DEGRADED, UNHEALTHY, DRAINING, STOPPED를 구분해야 한다.",
+      "verification": "State Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.8 Health",
+      "id": "NEX-MO-HLT-FR-002",
+      "priority": "MUST",
+      "requirement": "Liveness와 Readiness를 분리하고 process alive만으로 READY를 판정해서는 안 된다.",
+      "verification": "Fault Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.8 Health",
+      "id": "NEX-MO-HLT-FR-003",
+      "priority": "MUST",
+      "requirement": "capability별 synthetic probe(generate/embed/rerank/extract)를 주기적으로 실행할 수 있어야 한다.",
+      "verification": "Integration Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.8 Health",
+      "id": "NEX-MO-HLT-FR-004",
+      "priority": "MUST",
+      "requirement": "최근 error rate, timeout, p50/p95 latency, queue depth, OOM/restart를 health evaluation input으로 사용해야 한다.",
+      "verification": "Metrics Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.8 Health",
+      "id": "NEX-MO-HLT-FR-005",
+      "priority": "MUST",
+      "requirement": "UNHEALTHY/DRAINING deployment는 신규 request routing 대상에서 제외해야 한다.",
+      "verification": "Routing Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.8 Health",
+      "id": "NEX-MO-HLT-FR-006",
+      "priority": "MUST",
+      "requirement": "health transition과 원인 reason_code를 audit/event로 기록해야 한다.",
+      "verification": "Audit Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.8 Health",
+      "id": "NEX-MO-HLT-FR-007",
+      "priority": "SHOULD",
+      "requirement": "짧은 transient failure에 과도하게 flap하지 않도록 hysteresis/consecutive probe policy를 지원해야 한다.",
+      "verification": "Fault Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.9 Capacity / Admission Control",
+      "id": "NEX-MO-CAP-FR-001",
+      "priority": "MUST",
+      "requirement": "MO는 GPU device/pool, deployment별 reserved/usable memory, queue depth, concurrency, throughput을 capacity snapshot으로 관리해야 한다.",
+      "verification": "Schema/Metric",
+      "parent": "28"
+    },
+    {
+      "section": "4.9 Capacity / Admission Control",
+      "id": "NEX-MO-CAP-FR-002",
+      "priority": "MUST",
+      "requirement": "Generation capacity는 model weights + runtime overhead + KV cache/headroom을 고려한 deployment profile로 관리해야 한다.",
+      "verification": "Capacity Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.9 Capacity / Admission Control",
+      "id": "NEX-MO-CAP-FR-003",
+      "priority": "MUST",
+      "requirement": "Embedding/Reranker/Extraction은 batch size와 max in-flight request를 별도 capacity profile로 관리해야 한다.",
+      "verification": "Load Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.9 Capacity / Admission Control",
+      "id": "NEX-MO-CAP-FR-004",
+      "priority": "MUST",
+      "requirement": "Interactive와 batch workload를 queue class로 분리하고 batch reindex가 interactive AE/CX traffic을 고갈시키지 않게 해야 한다.",
+      "verification": "Load Test",
+      "parent": "27/28"
+    },
+    {
+      "section": "4.9 Capacity / Admission Control",
+      "id": "NEX-MO-CAP-FR-005",
+      "priority": "MUST",
+      "requirement": "capacity threshold 초과 시 무제한 accept하지 않고 queue/reject/degraded decision을 admission policy에 따라 수행해야 한다.",
+      "verification": "Overload Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.9 Capacity / Admission Control",
+      "id": "NEX-MO-CAP-FR-006",
+      "priority": "MUST",
+      "requirement": "Request deadline/timeout을 고려하여 queue 대기 후 의미 없는 실행을 방지해야 한다.",
+      "verification": "Timeout Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.9 Capacity / Admission Control",
+      "id": "NEX-MO-CAP-FR-007",
+      "priority": "MUST",
+      "requirement": "모델별 max input/output tokens 또는 pair length 제한을 admission 이전에 검증해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.9 Capacity / Admission Control",
+      "id": "NEX-MO-CAP-FR-008",
+      "priority": "MUST",
+      "requirement": "capacity snapshot은 routing decision과 연결되어 사후 왜 특정 deployment가 선택/거부되었는지 재현할 수 있어야 한다.",
+      "verification": "Audit Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.9 Capacity / Admission Control",
+      "id": "NEX-MO-CAP-FR-009",
+      "priority": "SHOULD",
+      "requirement": "수동/자동 replica scale-out을 향후 지원할 수 있도록 DeploymentReplica 추상화를 사용해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "Roadmap"
+    },
+    {
+      "section": "4.10 Versioning / Deployment / Rollback",
+      "id": "NEX-MO-VER-FR-001",
+      "priority": "MUST",
+      "requirement": "Model artifact version, runtime config version, deployment version, routing policy version, profile version을 독립적으로 관리해야 한다.",
+      "verification": "Schema Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.10 Versioning / Deployment / Rollback",
+      "id": "NEX-MO-VER-FR-002",
+      "priority": "MUST",
+      "requirement": "ACTIVE alias 변경은 transactional하게 수행하고 변경 전/후 version을 audit해야 한다.",
+      "verification": "Audit Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.10 Versioning / Deployment / Rollback",
+      "id": "NEX-MO-VER-FR-003",
+      "priority": "MUST",
+      "requirement": "새 deployment는 REGISTERED→VALIDATED→DEPLOYING→WARMING→READY 단계를 거쳐야 한다.",
+      "verification": "State Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.10 Versioning / Deployment / Rollback",
+      "id": "NEX-MO-VER-FR-004",
+      "priority": "MUST",
+      "requirement": "Canary→Active promotion은 health/quality acceptance gate를 통과한 경우에만 허용해야 한다.",
+      "verification": "Acceptance Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.10 Versioning / Deployment / Rollback",
+      "id": "NEX-MO-VER-FR-005",
+      "priority": "MUST",
+      "requirement": "Rollback은 이전 immutable model version + runtime config + routing policy 조합으로 복구 가능해야 한다.",
+      "verification": "Rollback Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.10 Versioning / Deployment / Rollback",
+      "id": "NEX-MO-VER-FR-006",
+      "priority": "MUST",
+      "requirement": "Embedding model compatibility key가 변경되면 기존 CX vector index에 자동 연결하지 않고 reindex migration이 완료될 때까지 별도 profile로 공존해야 한다.",
+      "verification": "Migration Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.10 Versioning / Deployment / Rollback",
+      "id": "NEX-MO-VER-FR-007",
+      "priority": "MUST",
+      "requirement": "Extraction schema version 변경은 CX parser/validator 호환성 검증 후 활성화해야 한다.",
+      "verification": "Contract Test",
+      "parent": "27 Graph-lite"
+    },
+    {
+      "section": "4.10 Versioning / Deployment / Rollback",
+      "id": "NEX-MO-VER-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Shadow inference를 사용하여 실제 응답에 영향 없이 신규 모델 품질/latency를 비교할 수 있어야 한다.",
+      "verification": "Quality Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.11 Model Security",
+      "id": "NEX-MO-SEC-FR-001",
+      "priority": "MUST",
+      "requirement": "Model artifact는 승인된 source 또는 사내 mirror에서만 등록하고 runtime이 임의 Internet download를 수행해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "section": "4.11 Model Security",
+      "id": "NEX-MO-SEC-FR-002",
+      "priority": "MUST",
+      "requirement": "Artifact 등록 시 checksum/signature 가능한 경우 서명, file format, unexpected executable/code content를 검증해야 한다.",
+      "verification": "Supply-chain Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.11 Model Security",
+      "id": "NEX-MO-SEC-FR-003",
+      "priority": "MUST",
+      "requirement": "trust_remote_code는 기본 비활성화하고 예외는 별도 security approval과 sandbox 정책을 요구해야 한다.",
+      "verification": "Security Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.11 Model Security",
+      "id": "NEX-MO-SEC-FR-004",
+      "priority": "MUST",
+      "requirement": "가능한 경우 safetensors 등 code-execution 위험이 낮은 model artifact format을 우선해야 한다.",
+      "verification": "Inspection",
+      "parent": "28"
+    },
+    {
+      "section": "4.11 Model Security",
+      "id": "NEX-MO-SEC-FR-005",
+      "priority": "MUST",
+      "requirement": "Model license/redistribution/use restriction을 registry에 기록하고 승인되지 않은 license model은 production deployment를 차단해야 한다.",
+      "verification": "Governance Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.11 Model Security",
+      "id": "NEX-MO-SEC-FR-006",
+      "priority": "MUST",
+      "requirement": "Provider/Deployment는 permitted_classification_ceiling과 egress_mode(LOCAL_ONLY/APPROVED_EXTERNAL 등)를 가져야 한다.",
+      "verification": "Schema/Policy",
+      "parent": "09/27"
+    },
+    {
+      "section": "4.11 Model Security",
+      "id": "NEX-MO-SEC-FR-007",
+      "priority": "MUST",
+      "requirement": "Restricted/Local-only 입력의 raw prompt/document text를 외부 provider로 전송해서는 안 된다.",
+      "verification": "DLP/Security",
+      "parent": "09"
+    },
+    {
+      "section": "4.11 Model Security",
+      "id": "NEX-MO-SEC-FR-008",
+      "priority": "MUST",
+      "requirement": "Raw prompt/document text를 기본 request log에 저장하지 않고 hash/size/classification/metrics 중심으로 기록해야 한다.",
+      "verification": "Privacy Test",
+      "parent": "09/27"
+    },
+    {
+      "section": "4.11 Model Security",
+      "id": "NEX-MO-SEC-FR-009",
+      "priority": "MUST",
+      "requirement": "서비스 간 호출은 OA Service Account/mTLS 등 승인된 service authentication을 사용해야 한다.",
+      "verification": "Integration Test",
+      "parent": "26/OA"
+    },
+    {
+      "section": "4.11 Model Security",
+      "id": "NEX-MO-SEC-FR-010",
+      "priority": "MUST",
+      "requirement": "모델 output은 untrusted data로 취급하며 Authorization/Approval/Business Write 권한을 부여하는 입력으로 직접 사용해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "09/26"
+    },
+    {
+      "section": "4.11 Model Security",
+      "id": "NEX-MO-SEC-FR-011",
+      "priority": "MUST",
+      "requirement": "Model registry/deployment/routing policy 변경은 관리자 권한과 full audit를 요구해야 한다.",
+      "verification": "Admin Security",
+      "parent": "AG/OA"
+    },
+    {
+      "section": "4.11 Model Security",
+      "id": "NEX-MO-SEC-FR-012",
+      "priority": "SHOULD",
+      "requirement": "고위험 모델/새 artifact에 대해 malware/content scan 또는 isolated validation runner를 연계할 수 있어야 한다.",
+      "verification": "Security Test",
+      "parent": "Roadmap"
+    },
+    {
+      "section": "4.12 Operations / Audit",
+      "id": "NEX-MO-OPS-FR-001",
+      "priority": "MUST",
+      "requirement": "MO는 별도 nex_mo_db를 사용하고 CX/AE/OA/AG DB를 직접 조회해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "Platform"
+    },
+    {
+      "section": "4.12 Operations / Audit",
+      "id": "NEX-MO-OPS-FR-002",
+      "priority": "MUST",
+      "requirement": "Model artifact bytes는 local model store/object storage에 두고 DB에는 metadata/path/checksum만 저장해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.12 Operations / Audit",
+      "id": "NEX-MO-OPS-FR-003",
+      "priority": "MUST",
+      "requirement": "Deployment/validation/batch benchmark 등 장기 작업은 PostgreSQL Job Queue + Python Worker 구조를 사용할 수 있어야 한다.",
+      "verification": "Job Test",
+      "parent": "Platform v1.1"
+    },
+    {
+      "section": "4.12 Operations / Audit",
+      "id": "NEX-MO-OPS-FR-004",
+      "priority": "MUST",
+      "requirement": "AG가 조회할 model/provider/deployment/health/capacity/job summary admin API를 제공해야 한다.",
+      "verification": "Integration Test",
+      "parent": "AG"
+    },
+    {
+      "section": "4.12 Operations / Audit",
+      "id": "NEX-MO-OPS-FR-005",
+      "priority": "MUST",
+      "requirement": "모든 inference audit에는 request_id, caller_service, capability, model_version, deployment, routing_policy, latency, status를 기록해야 한다.",
+      "verification": "Audit Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.12 Operations / Audit",
+      "id": "NEX-MO-OPS-FR-006",
+      "priority": "MUST",
+      "requirement": "모델 삭제/retire는 active profile/deployment/CX compatibility reference를 확인한 후 수행해야 한다.",
+      "verification": "Lifecycle Test",
+      "parent": "27/28"
+    },
+    {
+      "section": "4.12 Operations / Audit",
+      "id": "NEX-MO-OPS-FR-007",
+      "priority": "SHOULD",
+      "requirement": "운영자가 신규 deployment를 drain/restart/warm-up/rollback할 수 있는 control API를 제공해야 한다.",
+      "verification": "Operation Test",
+      "parent": "AG"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-MO-SEC-NFR-001",
+      "priority": "MUST",
+      "requirement": "Routing/Model selection이 prompt injection이나 model output에 의해 변경되지 않도록 policy input boundary를 분리해야 한다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-MO-SEC-NFR-002",
+      "priority": "MUST",
+      "requirement": "Classification/egress/compatibility 정보가 누락되거나 policy validation이 실패하면 fail-closed해야 한다.",
+      "verification": "Negative Test",
+      "parent": "26/27"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-MO-SEC-NFR-003",
+      "priority": "MUST",
+      "requirement": "Model artifact/registry/route/deployment admin endpoint는 일반 inference caller와 별도 관리자 capability를 요구해야 한다.",
+      "verification": "Authorization Test",
+      "parent": "OA/AG"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-MO-SEC-NFR-004",
+      "priority": "MUST",
+      "requirement": "Secret/credential/raw prompt가 log/metric/trace에 포함되지 않는지 automated scan을 수행해야 한다.",
+      "verification": "Security Scan",
+      "parent": "28"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-MO-REL-NFR-001",
+      "priority": "MUST",
+      "requirement": "단일 deployment 장애가 전체 capability 장애로 전파되지 않도록 replica/provider isolation을 지원해야 한다.",
+      "verification": "Fault Test",
+      "parent": "28"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-MO-REL-NFR-002",
+      "priority": "MUST",
+      "requirement": "Embedding은 incompatible fallback을 금지하고, Reranker/Generation/Extraction은 정책이 허용하는 explicit degraded/fallback만 수행해야 한다.",
+      "verification": "Fault Test",
+      "parent": "27/28"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-MO-REL-NFR-003",
+      "priority": "MUST",
+      "requirement": "MO restart 후 registry/deployment desired state를 복원하고 실제 runtime state와 reconciliation해야 한다.",
+      "verification": "Recovery Test",
+      "parent": "28"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-MO-REL-NFR-004",
+      "priority": "SHOULD",
+      "requirement": "Provider transient failure에 retry budget/backoff/circuit breaker를 적용해 retry storm을 방지해야 한다.",
+      "verification": "Fault Test",
+      "parent": "28"
+    },
+    {
+      "section": "5.3 Performance NFR",
+      "id": "NEX-MO-PERF-NFR-001",
+      "priority": "MUST",
+      "requirement": "Generation/Embedding/Reranker/Extraction capability별 p50/p95 latency, throughput, queue time을 측정해야 한다.",
+      "verification": "Load Test",
+      "parent": "28"
+    },
+    {
+      "section": "5.3 Performance NFR",
+      "id": "NEX-MO-PERF-NFR-002",
+      "priority": "MUST",
+      "requirement": "초기 100명 규모 운영에서 interactive CX/AE workload 기준 capacity baseline과 saturation point를 측정해야 한다.",
+      "verification": "Load Test",
+      "parent": "Phase4 SLA"
+    },
+    {
+      "section": "5.3 Performance NFR",
+      "id": "NEX-MO-PERF-NFR-003",
+      "priority": "MUST",
+      "requirement": "Embedding/Reranker batch size와 vLLM concurrency parameter는 benchmark evidence를 기반으로 profile에 고정해야 한다.",
+      "verification": "Benchmark",
+      "parent": "28"
+    },
+    {
+      "section": "5.3 Performance NFR",
+      "id": "NEX-MO-PERF-NFR-004",
+      "priority": "SHOULD",
+      "requirement": "라우팅 hot metadata(registry/health/capacity/policy)는 bounded-staleness cache를 사용할 수 있어야 한다.",
+      "verification": "Performance Test",
+      "parent": "28"
+    },
+    {
+      "section": "5.4 Test / Acceptance NFR",
+      "id": "NEX-MO-TST-NFR-001",
+      "priority": "MUST",
+      "requirement": "Statement coverage 95% 이상, branch coverage 85% 이상 목표를 유지해야 한다.",
+      "verification": "Coverage",
+      "parent": "Project quality"
+    },
+    {
+      "section": "5.4 Test / Acceptance NFR",
+      "id": "NEX-MO-TST-NFR-002",
+      "priority": "MUST",
+      "requirement": "Model Registry/Provider Adapter/Routing/Health/Capacity를 PostgreSQL test DB 초기화 후 pytest로 자동 검증해야 한다.",
+      "verification": "pytest",
+      "parent": "Project quality"
+    },
+    {
+      "section": "5.4 Test / Acceptance NFR",
+      "id": "NEX-MO-TST-NFR-003",
+      "priority": "MUST",
+      "requirement": "Embedding compatibility mismatch, restricted→external route, stale health, capacity overload, OOM, provider timeout negative tests를 포함해야 한다.",
+      "verification": "Security/Fault",
+      "parent": "28"
+    },
+    {
+      "section": "5.4 Test / Acceptance NFR",
+      "id": "NEX-MO-TST-NFR-004",
+      "priority": "MUST",
+      "requirement": "Graph extraction schema/evidence span/model version provenance와 CX validation handoff를 E2E로 검증해야 한다.",
+      "verification": "E2E Test",
+      "parent": "27 Graph-lite"
+    },
+    {
+      "section": "5.4 Test / Acceptance NFR",
+      "id": "NEX-MO-TST-NFR-005",
+      "priority": "MUST",
+      "requirement": "Canary/rollback/alias switch가 immutable version trace를 보존하는지 regression test해야 한다.",
+      "verification": "Regression Test",
+      "parent": "28"
+    },
+    {
+      "section": "5.4 Test / Acceptance NFR",
+      "id": "NEX-MO-TST-NFR-006",
+      "priority": "MUST",
+      "requirement": "AG 운영 화면은 Playwright로 deployment status, health, capacity, rollback control을 검증해야 한다.",
+      "verification": "Playwright",
+      "parent": "AG"
+    }
+  ]
+}

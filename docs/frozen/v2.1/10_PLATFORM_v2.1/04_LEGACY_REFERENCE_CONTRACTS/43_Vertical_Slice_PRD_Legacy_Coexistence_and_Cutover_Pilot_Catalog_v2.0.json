@@ -1,0 +1,1395 @@
+{
+  "document": "43_Vertical_Slice_PRD_Legacy_Coexistence_and_Cutover_Pilot_v2.0",
+  "version": "v2.0",
+  "date": "2026-09-07",
+  "pilot_domain": "Project Expense Voucher / Approval bounded scope",
+  "repository_evidence": "PENDING",
+  "counts": {
+    "MUST": 121,
+    "SHOULD": 17
+  },
+  "requirements": [
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD43-SCP-001",
+      "priority": "MUST",
+      "requirement": "PRD43의 사용자 가치는 Legacy ERP/Finance/Approval 경로를 즉시 폐기하지 않고 selected Pilot Scope에서 Target Enterprise OS로 안전하게 전환하는 과정을 Shadow/Compare→Limited Coexistence→Cutover Gate→Rollback Window→Retirement까지 증명하는 것이다.",
+      "verification": "Pilot E2E",
+      "parent": "35/36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD43-SCP-002",
+      "priority": "MUST",
+      "requirement": "Pilot Domain은 Project Expense Voucher/Approval 계열의 bounded scope를 기본 예제로 사용하되 실제 Legacy 제품명, table, endpoint, repository path는 Repository Evidence 확인 전 PENDING으로 유지해야 한다.",
+      "verification": "Repository Gate",
+      "parent": "35/36/37/38"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD43-SCP-003",
+      "priority": "MUST",
+      "requirement": "Pilot Scope는 최소 domain, business entity, pilot org/project, capability, effective time, legacy source, target source를 명시해야 한다.",
+      "verification": "Schema Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD43-SCP-004",
+      "priority": "MUST",
+      "requirement": "본 Slice는 35번 Migration Baseline을 재설계하지 않고 실제 Pilot transition과 evidence를 구현 수준으로 내리는 문서여야 한다.",
+      "verification": "Baseline Review",
+      "parent": "35/36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD43-SCP-005",
+      "priority": "MUST",
+      "requirement": "실제 KEEP/REFACTOR/REPLACE 판정과 physical mapping은 02/10 Repository Evidence 확인 이후에만 확정해야 한다.",
+      "verification": "Evidence Review",
+      "parent": "10/36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD43-SCP-006",
+      "priority": "MUST",
+      "requirement": "Pilot 중 어느 시점에도 동일 scope/effective time의 authoritative write owner가 둘 이상 존재해서는 안 된다.",
+      "verification": "SoR Invariant",
+      "parent": "35"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD43-SCP-007",
+      "priority": "MUST",
+      "requirement": "Dual Run은 비교와 검증이며 uncontrolled dual-master write가 아니어야 한다.",
+      "verification": "Architecture Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD43-SCP-008",
+      "priority": "SHOULD",
+      "requirement": "Pilot은 실제 production transaction 대신 synthetic/test tenant 또는 승인된 non-production fixture에서 먼저 실행해야 한다.",
+      "verification": "Test Data Review",
+      "parent": "33/36"
+    },
+    {
+      "section": "4.2 Transition State & Write Authority",
+      "id": "NEX-PRD43-SOR-001",
+      "priority": "MUST",
+      "requirement": "Pilot transition은 LEGACY→READ_SYNC→DUAL_RUN_VALIDATION→NEW_SYSTEM→LEGACY_READ_ONLY→ARCHIVED 상태를 사용해야 한다.",
+      "verification": "State Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.2 Transition State & Write Authority",
+      "id": "NEX-PRD43-SOR-002",
+      "priority": "MUST",
+      "requirement": "LEGACY 상태에서는 Legacy가 유일한 authoritative writer이며 Target은 write를 수행해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.2 Transition State & Write Authority",
+      "id": "NEX-PRD43-SOR-003",
+      "priority": "MUST",
+      "requirement": "READ_SYNC에서는 Legacy write authority를 유지하고 Target은 read/reference/shadow data만 보유해야 한다.",
+      "verification": "State Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.2 Transition State & Write Authority",
+      "id": "NEX-PRD43-SOR-004",
+      "priority": "MUST",
+      "requirement": "DUAL_RUN_VALIDATION에서는 동일 canonical input에 대한 Legacy result와 Target shadow result를 비교하되 Target business write는 authoritative effect를 만들지 않아야 한다.",
+      "verification": "Dual-run Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.2 Transition State & Write Authority",
+      "id": "NEX-PRD43-SOR-005",
+      "priority": "MUST",
+      "requirement": "NEW_SYSTEM 상태에서는 해당 Pilot Scope의 신규 business write가 Target Enterprise OS로만 수행되어야 한다.",
+      "verification": "E2E Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.2 Transition State & Write Authority",
+      "id": "NEX-PRD43-SOR-006",
+      "priority": "MUST",
+      "requirement": "LEGACY_READ_ONLY 상태에서는 Legacy 신규 write를 기술적으로 차단하거나 authoritative route에서 제거해야 한다.",
+      "verification": "Security/Operation",
+      "parent": "35"
+    },
+    {
+      "section": "4.2 Transition State & Write Authority",
+      "id": "NEX-PRD43-SOR-007",
+      "priority": "MUST",
+      "requirement": "ARCHIVED 상태에서는 Legacy를 operational routing에서 제거하고 승인된 historical query 경로만 유지해야 한다.",
+      "verification": "Archive Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.2 Transition State & Write Authority",
+      "id": "NEX-PRD43-SOR-008",
+      "priority": "MUST",
+      "requirement": "Transition policy overlap 또는 gap으로 write target이 모호하면 write를 fail-closed해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.2 Transition State & Write Authority",
+      "id": "NEX-PRD43-SOR-009",
+      "priority": "MUST",
+      "requirement": "Transition state 변경은 versioned decision으로 저장하고 effective_at, approver, evidence refs, rollback policy를 남겨야 한다.",
+      "verification": "Audit Test",
+      "parent": "35/42"
+    },
+    {
+      "section": "4.2 Transition State & Write Authority",
+      "id": "NEX-PRD43-SOR-010",
+      "priority": "SHOULD",
+      "requirement": "Pilot project/org/capability 단위 staged cutover를 지원하여 전체 Finance domain보다 작은 범위로 SoR을 이전할 수 있어야 한다.",
+      "verification": "Pilot Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.3 Inventory, Mapping & Provenance",
+      "id": "NEX-PRD43-MAP-001",
+      "priority": "MUST",
+      "requirement": "Pilot Inventory는 source API/table/view, business key, volume, owner, retention, criticality, data quality, dependency를 기록해야 한다.",
+      "verification": "Inventory Review",
+      "parent": "35"
+    },
+    {
+      "section": "4.3 Inventory, Mapping & Provenance",
+      "id": "NEX-PRD43-MAP-002",
+      "priority": "MUST",
+      "requirement": "Legacy ID와 Target stable ID 사이의 mapping registry를 두고 mapping source, confidence/verification, effective time을 기록해야 한다.",
+      "verification": "Schema Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.3 Inventory, Mapping & Provenance",
+      "id": "NEX-PRD43-MAP-003",
+      "priority": "MUST",
+      "requirement": "Project, Employee, Vendor, Account/Expense Category, Approval Ref, Voucher Ref 등 business-critical ID를 LLM이 임의 생성해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "29/35"
+    },
+    {
+      "section": "4.3 Inventory, Mapping & Provenance",
+      "id": "NEX-PRD43-MAP-004",
+      "priority": "MUST",
+      "requirement": "Mapping collision, one-to-many ambiguity, missing mandatory mapping은 cutover blocker로 분류해야 한다.",
+      "verification": "Data Quality Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.3 Inventory, Mapping & Provenance",
+      "id": "NEX-PRD43-MAP-005",
+      "priority": "MUST",
+      "requirement": "Imported/reference record는 source_system, source_ref, source_version/watermark, migrated_at, mapping_version을 추적해야 한다.",
+      "verification": "Provenance Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.3 Inventory, Mapping & Provenance",
+      "id": "NEX-PRD43-MAP-006",
+      "priority": "MUST",
+      "requirement": "Legacy delete/inactive는 Target hard delete로 자동 변환하지 않고 lifecycle/tombstone 정책을 적용해야 한다.",
+      "verification": "Lifecycle Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.3 Inventory, Mapping & Provenance",
+      "id": "NEX-PRD43-MAP-007",
+      "priority": "MUST",
+      "requirement": "Historical transaction은 current operational entity와 구분하여 opening/history/archive 정책을 적용해야 한다.",
+      "verification": "History Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.3 Inventory, Mapping & Provenance",
+      "id": "NEX-PRD43-MAP-008",
+      "priority": "MUST",
+      "requirement": "Reconciliation comparison을 위해 normalized business key와 canonical representation을 정의해야 한다.",
+      "verification": "Contract Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.3 Inventory, Mapping & Provenance",
+      "id": "NEX-PRD43-MAP-009",
+      "priority": "MUST",
+      "requirement": "Data mapping 변경은 versioned하며 과거 compare/cutover evidence를 재현할 수 있어야 한다.",
+      "verification": "Repro Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.3 Inventory, Mapping & Provenance",
+      "id": "NEX-PRD43-MAP-010",
+      "priority": "SHOULD",
+      "requirement": "Mapping dashboard는 unresolved/ambiguous/stale mapping count와 top blockers를 표시할 수 있어야 한다.",
+      "verification": "Ops UI",
+      "parent": "30/35"
+    },
+    {
+      "section": "4.4 Canonical Routing & Legacy Adapter",
+      "id": "NEX-PRD43-RTR-001",
+      "priority": "MUST",
+      "requirement": "AE/NSL/Coworker는 Legacy DB/API를 직접 호출하지 않고 Canonical Business Capability/Transition Router를 사용해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "35/37"
+    },
+    {
+      "section": "4.4 Canonical Routing & Legacy Adapter",
+      "id": "NEX-PRD43-RTR-002",
+      "priority": "MUST",
+      "requirement": "Transition Router는 domain+scope+effective time+policy version으로 read_target/write_target을 deterministic하게 선택해야 한다.",
+      "verification": "Routing Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.4 Canonical Routing & Legacy Adapter",
+      "id": "NEX-PRD43-RTR-003",
+      "priority": "MUST",
+      "requirement": "Legacy Adapter는 request/response mapping, timeout, error mapping, correlation, idempotency/commit-state 지원을 제공해야 한다.",
+      "verification": "Contract Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.4 Canonical Routing & Legacy Adapter",
+      "id": "NEX-PRD43-RTR-004",
+      "priority": "MUST",
+      "requirement": "Target Adapter/Canonical API는 동일 logical capability 계약을 유지하여 consumer가 transition state를 몰라도 되게 해야 한다.",
+      "verification": "Contract Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.4 Canonical Routing & Legacy Adapter",
+      "id": "NEX-PRD43-RTR-005",
+      "priority": "MUST",
+      "requirement": "Target write failure 시 Legacy write로 자동 fallback해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.4 Canonical Routing & Legacy Adapter",
+      "id": "NEX-PRD43-RTR-006",
+      "priority": "MUST",
+      "requirement": "Read fallback이 policy상 허용되는 경우에도 source_system/staleness/confidence를 사용자와 audit에 표시해야 한다.",
+      "verification": "Degraded Read",
+      "parent": "35"
+    },
+    {
+      "section": "4.4 Canonical Routing & Legacy Adapter",
+      "id": "NEX-PRD43-RTR-007",
+      "priority": "MUST",
+      "requirement": "Legacy credential은 secret ref로 관리하고 prompt/log/audit에 raw value를 노출해서는 안 된다.",
+      "verification": "Secret Scan",
+      "parent": "26/35"
+    },
+    {
+      "section": "4.4 Canonical Routing & Legacy Adapter",
+      "id": "NEX-PRD43-RTR-008",
+      "priority": "MUST",
+      "requirement": "Routing decision은 transition_policy_version, scope_hash, selected_target, correlation_id를 기록해야 한다.",
+      "verification": "Trace Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.4 Canonical Routing & Legacy Adapter",
+      "id": "NEX-PRD43-RTR-009",
+      "priority": "MUST",
+      "requirement": "Legacy Adapter의 arbitrary SQL / generic shell / unrestricted MCP execution을 금지해야 한다.",
+      "verification": "Security Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.4 Canonical Routing & Legacy Adapter",
+      "id": "NEX-PRD43-RTR-010",
+      "priority": "SHOULD",
+      "requirement": "Legacy official API 또는 read-only view를 raw DB access보다 우선해야 한다.",
+      "verification": "Integration Review",
+      "parent": "35"
+    },
+    {
+      "section": "4.5 Shadow / Compare",
+      "id": "NEX-PRD43-SHD-001",
+      "priority": "MUST",
+      "requirement": "Shadow/Compare 단계에서 authoritative business effect는 Legacy 결과만 사용해야 한다.",
+      "verification": "E2E Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.5 Shadow / Compare",
+      "id": "NEX-PRD43-SHD-002",
+      "priority": "MUST",
+      "requirement": "Target Shadow execution은 side-effect-free simulation/dry-run 또는 isolated shadow store를 사용해야 한다.",
+      "verification": "Safety Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.5 Shadow / Compare",
+      "id": "NEX-PRD43-SHD-003",
+      "priority": "MUST",
+      "requirement": "Compare는 canonical normalized input/result를 사용하고 raw field order/format 차이를 business mismatch로 오인하지 않아야 한다.",
+      "verification": "Compare Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.5 Shadow / Compare",
+      "id": "NEX-PRD43-SHD-004",
+      "priority": "MUST",
+      "requirement": "CompareResult는 MATCH, EXPLAINED_DIFF, UNEXPLAINED_DIFF, NOT_COMPARABLE 중 하나로 분류해야 한다.",
+      "verification": "Schema Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.5 Shadow / Compare",
+      "id": "NEX-PRD43-SHD-005",
+      "priority": "MUST",
+      "requirement": "금액, project attribution, account/expense category, approval state, voucher reference 등 critical field mismatch는 cutover blocker가 되어야 한다.",
+      "verification": "Business Invariant Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.5 Shadow / Compare",
+      "id": "NEX-PRD43-SHD-006",
+      "priority": "MUST",
+      "requirement": "Shadow sample은 happy path뿐 아니라 boundary/error/reject/approval-required cases를 포함해야 한다.",
+      "verification": "Test Coverage",
+      "parent": "33/35"
+    },
+    {
+      "section": "4.5 Shadow / Compare",
+      "id": "NEX-PRD43-SHD-007",
+      "priority": "MUST",
+      "requirement": "Compare evidence는 source refs, mapping version, policy version, canonical payload hash, result hash를 보존해야 한다.",
+      "verification": "Evidence Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.5 Shadow / Compare",
+      "id": "NEX-PRD43-SHD-008",
+      "priority": "MUST",
+      "requirement": "Target Shadow가 unavailable해도 Legacy authoritative 업무를 불필요하게 중단하지 않고 validation status를 DEGRADED로 표시해야 한다.",
+      "verification": "Resilience Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.5 Shadow / Compare",
+      "id": "NEX-PRD43-SHD-009",
+      "priority": "MUST",
+      "requirement": "Compare 결과를 사람이 승인/설명한 경우 decision actor/reason/evidence를 남겨야 한다.",
+      "verification": "Governance Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.5 Shadow / Compare",
+      "id": "NEX-PRD43-SHD-010",
+      "priority": "SHOULD",
+      "requirement": "Cutover 후보 scope마다 configurable sample size/time window/critical mismatch threshold를 정의할 수 있어야 한다.",
+      "verification": "Pilot Metrics",
+      "parent": "35"
+    },
+    {
+      "section": "4.6 Limited Coexistence",
+      "id": "NEX-PRD43-COX-001",
+      "priority": "MUST",
+      "requirement": "Limited Coexistence에서 NeX-AE/Runtime/NSL은 Target UX/plan/skill 경로를 사용하되 Transition Router가 write authority에 따라 Legacy Adapter 또는 Target API를 선택해야 한다.",
+      "verification": "E2E Test",
+      "parent": "35/37"
+    },
+    {
+      "section": "4.6 Limited Coexistence",
+      "id": "NEX-PRD43-COX-002",
+      "priority": "MUST",
+      "requirement": "Cutover 전 Pilot Scope의 authoritative write는 여전히 Legacy로 유지하거나 명시된 scope만 Target으로 전환하며 모호한 mixed authority를 허용해서는 안 된다.",
+      "verification": "SoR Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.6 Limited Coexistence",
+      "id": "NEX-PRD43-COX-003",
+      "priority": "MUST",
+      "requirement": "Target read model은 sync lag와 source provenance를 표시해야 한다.",
+      "verification": "UI/Data Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.6 Limited Coexistence",
+      "id": "NEX-PRD43-COX-004",
+      "priority": "MUST",
+      "requirement": "제한적 dual-write가 불가피한 예외에서는 하나의 authoritative operation_id를 유지한 secondary bridge/mirror replication만 허용해야 한다.",
+      "verification": "Architecture Review",
+      "parent": "35"
+    },
+    {
+      "section": "4.6 Limited Coexistence",
+      "id": "NEX-PRD43-COX-005",
+      "priority": "MUST",
+      "requirement": "Bridge replication은 동일 business_operation_id/idempotency_key를 사용하고 secondary failure를 authoritative success로 합성해서는 안 된다.",
+      "verification": "Reliability Test",
+      "parent": "32/35"
+    },
+    {
+      "section": "4.6 Limited Coexistence",
+      "id": "NEX-PRD43-COX-006",
+      "priority": "MUST",
+      "requirement": "Bridge replication failure/unknown은 reconciliation 대상으로 남겨야 하며 blind retry로 duplicate effect를 만들면 안 된다.",
+      "verification": "Fault Test",
+      "parent": "32/35"
+    },
+    {
+      "section": "4.6 Limited Coexistence",
+      "id": "NEX-PRD43-COX-007",
+      "priority": "MUST",
+      "requirement": "Pilot 사용자 UI는 현재 authoritative system과 migration state를 숨기지 않고 필요한 경우 source badge를 제공해야 한다.",
+      "verification": "UX Test",
+      "parent": "29A/35"
+    },
+    {
+      "section": "4.6 Limited Coexistence",
+      "id": "NEX-PRD43-COX-008",
+      "priority": "MUST",
+      "requirement": "Legacy/Target 간 read discrepancy가 critical invariant에 영향을 주면 affected action을 BLOCK하거나 clarification으로 전환해야 한다.",
+      "verification": "Safety Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.6 Limited Coexistence",
+      "id": "NEX-PRD43-COX-009",
+      "priority": "MUST",
+      "requirement": "Limited Coexistence 기간의 user/business error rate, compare mismatch, sync lag, adapter error를 cutover evidence로 수집해야 한다.",
+      "verification": "Metrics Test",
+      "parent": "35/36"
+    },
+    {
+      "section": "4.6 Limited Coexistence",
+      "id": "NEX-PRD43-COX-010",
+      "priority": "SHOULD",
+      "requirement": "Pilot Scope를 단계적으로 확대할 때 이전 scope의 authority/evidence를 재검증하고 자동 상속만으로 확대하지 않아야 한다.",
+      "verification": "Governance Review",
+      "parent": "35"
+    },
+    {
+      "section": "4.7 Reconciliation & Drift Control",
+      "id": "NEX-PRD43-REC-001",
+      "priority": "MUST",
+      "requirement": "Reconciliation은 count 일치뿐 아니라 project/account/amount/status/reference 등 business invariant를 검증해야 한다.",
+      "verification": "Reconciliation Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.7 Reconciliation & Drift Control",
+      "id": "NEX-PRD43-REC-002",
+      "priority": "MUST",
+      "requirement": "Reconciliation Result는 MATCH, MISMATCH, MISSING_SOURCE, MISSING_TARGET, DUPLICATE, UNKNOWN 중 최소 하나로 분류해야 한다.",
+      "verification": "Schema Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.7 Reconciliation & Drift Control",
+      "id": "NEX-PRD43-REC-003",
+      "priority": "MUST",
+      "requirement": "Cutover 전 모든 Critical mismatch는 0건이거나 승인된 exception evidence가 있어야 한다.",
+      "verification": "Cutover Gate",
+      "parent": "35"
+    },
+    {
+      "section": "4.7 Reconciliation & Drift Control",
+      "id": "NEX-PRD43-REC-004",
+      "priority": "MUST",
+      "requirement": "Reconciliation case는 owner, severity, scope, source/target refs, detected_at, resolution, evidence를 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.7 Reconciliation & Drift Control",
+      "id": "NEX-PRD43-REC-005",
+      "priority": "MUST",
+      "requirement": "UNKNOWN/ambiguous reconciliation은 자동으로 MATCH로 downgrade해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.7 Reconciliation & Drift Control",
+      "id": "NEX-PRD43-REC-006",
+      "priority": "MUST",
+      "requirement": "Sync/compare/reconciliation worker의 재실행은 idempotent해야 한다.",
+      "verification": "Idempotency Test",
+      "parent": "32/35"
+    },
+    {
+      "section": "4.7 Reconciliation & Drift Control",
+      "id": "NEX-PRD43-REC-007",
+      "priority": "MUST",
+      "requirement": "Data drift가 threshold를 초과하면 Cutover Gate를 자동 실패시키거나 governance review를 요구해야 한다.",
+      "verification": "Gate Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.7 Reconciliation & Drift Control",
+      "id": "NEX-PRD43-REC-008",
+      "priority": "MUST",
+      "requirement": "Cutover 후 rollback window 동안 target→legacy delta reconciliation 준비가 되어 있어야 한다.",
+      "verification": "Rollback Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.7 Reconciliation & Drift Control",
+      "id": "NEX-PRD43-REC-009",
+      "priority": "MUST",
+      "requirement": "Reconciliation evidence는 immutable/hashable package로 CutoverRecord에 연결해야 한다.",
+      "verification": "Evidence Test",
+      "parent": "33/35"
+    },
+    {
+      "section": "4.7 Reconciliation & Drift Control",
+      "id": "NEX-PRD43-REC-010",
+      "priority": "SHOULD",
+      "requirement": "Drift dashboard는 mismatch trend, sync lag, unresolved age를 시각화할 수 있어야 한다.",
+      "verification": "Ops UX",
+      "parent": "30/35"
+    },
+    {
+      "section": "4.8 Cutover Gate & Execution",
+      "id": "NEX-PRD43-CUT-001",
+      "priority": "MUST",
+      "requirement": "Cutover는 Repository Evidence, mapping completeness, shadow compare, reconciliation, backup/restore, rollback/forward-fix, acceptance evidence를 모두 Gate로 평가해야 한다.",
+      "verification": "Gate Review",
+      "parent": "33~36"
+    },
+    {
+      "section": "4.8 Cutover Gate & Execution",
+      "id": "NEX-PRD43-CUT-002",
+      "priority": "MUST",
+      "requirement": "CutoverRecord는 scope, from/to SoR, effective_at, policy version, evidence package, approver, operator, rollback window를 저장해야 한다.",
+      "verification": "Schema Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.8 Cutover Gate & Execution",
+      "id": "NEX-PRD43-CUT-003",
+      "priority": "MUST",
+      "requirement": "Cutover 전 freeze/drain이 필요한 경우 34번 maintenance/drain contract를 따라야 한다.",
+      "verification": "Runbook Test",
+      "parent": "34/35"
+    },
+    {
+      "section": "4.8 Cutover Gate & Execution",
+      "id": "NEX-PRD43-CUT-004",
+      "priority": "MUST",
+      "requirement": "Cutover action은 OA current admin authorization과 AG typed governance action을 사용해야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/30/35"
+    },
+    {
+      "section": "4.8 Cutover Gate & Execution",
+      "id": "NEX-PRD43-CUT-005",
+      "priority": "MUST",
+      "requirement": "Cutover 시 Transition Router의 authoritative write target 변경은 atomic/versioned configuration change로 수행되어야 한다.",
+      "verification": "Config Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.8 Cutover Gate & Execution",
+      "id": "NEX-PRD43-CUT-006",
+      "priority": "MUST",
+      "requirement": "Cutover 직후 smoke test는 read/write/approval/result/audit 및 selected Golden transaction을 확인해야 한다.",
+      "verification": "Post-cutover Test",
+      "parent": "33/35"
+    },
+    {
+      "section": "4.8 Cutover Gate & Execution",
+      "id": "NEX-PRD43-CUT-007",
+      "priority": "MUST",
+      "requirement": "Cutover 후 Legacy 신규 write path가 기술적으로 차단되었는지 검증해야 한다.",
+      "verification": "Negative Write Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.8 Cutover Gate & Execution",
+      "id": "NEX-PRD43-CUT-008",
+      "priority": "MUST",
+      "requirement": "Cutover partial failure를 success로 표시하지 않고 target별/app별 status와 remediation을 기록해야 한다.",
+      "verification": "Fault Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.8 Cutover Gate & Execution",
+      "id": "NEX-PRD43-CUT-009",
+      "priority": "MUST",
+      "requirement": "Cutover 완료는 migration state NEW_SYSTEM, source verification, no critical blocker, operator sign-off가 모두 만족될 때만 선언해야 한다.",
+      "verification": "Acceptance Review",
+      "parent": "35"
+    },
+    {
+      "section": "4.8 Cutover Gate & Execution",
+      "id": "NEX-PRD43-CUT-010",
+      "priority": "SHOULD",
+      "requirement": "Cutover window 동안 monitoring/alert threshold를 강화하고 rollback decision timer를 표시할 수 있어야 한다.",
+      "verification": "Ops Pilot",
+      "parent": "34/35"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-PRD43-RBK-001",
+      "priority": "MUST",
+      "requirement": "Rollback Window는 duration, allowed conditions, prohibited conditions, authority owner, data delta handling을 명시해야 한다.",
+      "verification": "Policy Review",
+      "parent": "35"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-PRD43-RBK-002",
+      "priority": "MUST",
+      "requirement": "Application rollback과 SoR authority rollback을 별개의 결정으로 처리해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "34/35"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-PRD43-RBK-003",
+      "priority": "MUST",
+      "requirement": "Target-only committed transaction이 Legacy로 안전하게 복원/반영될 수 없는 경우 authority rollback을 금지하고 forward-fix를 선택해야 한다.",
+      "verification": "Rollback Gate",
+      "parent": "35"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-PRD43-RBK-004",
+      "priority": "MUST",
+      "requirement": "Rollback decision은 target delta count/business invariant, legacy readiness, mapping compatibility, reconciliation status를 확인해야 한다.",
+      "verification": "Decision Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-PRD43-RBK-005",
+      "priority": "MUST",
+      "requirement": "Rollback 시 이전 Transition Policy version을 맹목 복원하지 않고 current scope/evidence로 새 versioned decision을 만들어야 한다.",
+      "verification": "Governance Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-PRD43-RBK-006",
+      "priority": "MUST",
+      "requirement": "Rollback 실행 후 Target 신규 write를 차단하고 Legacy authority를 재확립했는지 검증해야 한다.",
+      "verification": "E2E Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-PRD43-RBK-007",
+      "priority": "MUST",
+      "requirement": "Rollback 과정에서 duplicate business effect를 방지하기 위해 operation/idempotency/provenance를 유지해야 한다.",
+      "verification": "Reliability Test",
+      "parent": "32/35"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-PRD43-RBK-008",
+      "priority": "MUST",
+      "requirement": "Rollback 실패/불명확은 UNKNOWN_ROLLBACK_STATE로 관리하고 수동 reconciliation을 요구해야 한다.",
+      "verification": "Fault Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-PRD43-RBK-009",
+      "priority": "MUST",
+      "requirement": "Rollback Window 종료 후에는 authority rollback을 기본 비활성화하고 forward-fix를 기본 복구 전략으로 전환해야 한다.",
+      "verification": "Policy Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-PRD43-RBK-010",
+      "priority": "SHOULD",
+      "requirement": "Rollback/forward-fix 의사결정에는 predefined decision matrix와 operator structured review를 제공할 수 있어야 한다.",
+      "verification": "UX Test",
+      "parent": "30/35"
+    },
+    {
+      "section": "4.10 Legacy Read-only, Archive & Retirement",
+      "id": "NEX-PRD43-RET-001",
+      "priority": "MUST",
+      "requirement": "Cutover 안정화 후 Legacy는 LEGACY_READ_ONLY로 전환하고 신규 business write를 차단해야 한다.",
+      "verification": "Operation Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.10 Legacy Read-only, Archive & Retirement",
+      "id": "NEX-PRD43-RET-002",
+      "priority": "MUST",
+      "requirement": "Historical query가 필요하면 승인된 archive/read-only access path와 Data Classification을 적용해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/35"
+    },
+    {
+      "section": "4.10 Legacy Read-only, Archive & Retirement",
+      "id": "NEX-PRD43-RET-003",
+      "priority": "MUST",
+      "requirement": "Retirement 전 retention/legal/audit/restore requirement를 확인해야 한다.",
+      "verification": "Governance Review",
+      "parent": "34/35"
+    },
+    {
+      "section": "4.10 Legacy Read-only, Archive & Retirement",
+      "id": "NEX-PRD43-RET-004",
+      "priority": "MUST",
+      "requirement": "Legacy adapter 제거 전 active consumer/caller/cron/report dependency가 0인지 증명해야 한다.",
+      "verification": "Dependency Scan",
+      "parent": "35"
+    },
+    {
+      "section": "4.10 Legacy Read-only, Archive & Retirement",
+      "id": "NEX-PRD43-RET-005",
+      "priority": "MUST",
+      "requirement": "Legacy credential, network rule, scheduled job, admin account를 단계적으로 revoke/disable해야 한다.",
+      "verification": "Security Closure",
+      "parent": "35"
+    },
+    {
+      "section": "4.10 Legacy Read-only, Archive & Retirement",
+      "id": "NEX-PRD43-RET-006",
+      "priority": "MUST",
+      "requirement": "RetirementRecord는 archived location, checksum, retention, restore procedure, retired_at, approver를 보존해야 한다.",
+      "verification": "Schema Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.10 Legacy Read-only, Archive & Retirement",
+      "id": "NEX-PRD43-RET-007",
+      "priority": "MUST",
+      "requirement": "Legacy data 삭제는 Archive/Retention 완료와 승인 없이는 수행해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.10 Legacy Read-only, Archive & Retirement",
+      "id": "NEX-PRD43-RET-008",
+      "priority": "SHOULD",
+      "requirement": "Retirement 후 일정 기간 legacy access attempt를 탐지하여 hidden dependency를 확인할 수 있어야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "35"
+    },
+    {
+      "section": "4.11 Governance, UI & Operator Experience",
+      "id": "NEX-PRD43-GOV-001",
+      "priority": "MUST",
+      "requirement": "NeX-AG는 migration scope/state, sync lag, compare mismatch, reconciliation blocker, cutover/rollback window를 dashboard로 제공해야 한다.",
+      "verification": "UI E2E",
+      "parent": "30/35"
+    },
+    {
+      "section": "4.11 Governance, UI & Operator Experience",
+      "id": "NEX-PRD43-GOV-002",
+      "priority": "MUST",
+      "requirement": "Operator는 migration state 변경, cutover, rollback, retirement에 current OA authorization을 사용해야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.11 Governance, UI & Operator Experience",
+      "id": "NEX-PRD43-GOV-003",
+      "priority": "MUST",
+      "requirement": "High-risk migration action은 scope/impact/current authority/evidence/expected effect를 보여주는 structured review를 제공해야 한다.",
+      "verification": "UX Test",
+      "parent": "30/35"
+    },
+    {
+      "section": "4.11 Governance, UI & Operator Experience",
+      "id": "NEX-PRD43-GOV-004",
+      "priority": "MUST",
+      "requirement": "AE-WEB은 사용자에게 migration 내부 세부를 과도하게 노출하지 않되 read source staleness 또는 action block 원인을 이해 가능한 방식으로 표시해야 한다.",
+      "verification": "UX Test",
+      "parent": "29A/35"
+    },
+    {
+      "section": "4.11 Governance, UI & Operator Experience",
+      "id": "NEX-PRD43-GOV-005",
+      "priority": "MUST",
+      "requirement": "Cutover/rollback/retirement action에는 reason/comment와 evidence refs가 필수여야 한다.",
+      "verification": "Audit Test",
+      "parent": "30/35"
+    },
+    {
+      "section": "4.11 Governance, UI & Operator Experience",
+      "id": "NEX-PRD43-GOV-006",
+      "priority": "MUST",
+      "requirement": "Migration dashboard의 source/target counts가 stale/unavailable이면 UNKNOWN/STALE로 표시하고 0건으로 표시해서는 안 된다.",
+      "verification": "Fault UI",
+      "parent": "30/35"
+    },
+    {
+      "section": "4.11 Governance, UI & Operator Experience",
+      "id": "NEX-PRD43-GOV-007",
+      "priority": "SHOULD",
+      "requirement": "Operator timeline에서 sync→compare→reconcile→cutover→rollback/retirement를 correlation으로 추적할 수 있어야 한다.",
+      "verification": "Trace UI",
+      "parent": "30/35"
+    },
+    {
+      "section": "4.11 Governance, UI & Operator Experience",
+      "id": "NEX-PRD43-GOV-008",
+      "priority": "SHOULD",
+      "requirement": "Pilot 종료 후 migration duration, manual intervention, mismatch rate, rollback-window incidents를 improvement evidence로 수집해야 한다.",
+      "verification": "Ops Metrics",
+      "parent": "35/36"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-PRD43-SEC-001",
+      "priority": "MUST",
+      "requirement": "Unauthorized actor는 migration policy/cutover/rollback/retirement control을 수행할 수 없어야 한다.",
+      "verification": "Security Test",
+      "parent": "26/30/35"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-PRD43-SEC-002",
+      "priority": "MUST",
+      "requirement": "Legacy credential/secrets는 source code, prompt, UI, audit에 노출해서는 안 된다.",
+      "verification": "Secret Scan",
+      "parent": "35"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-PRD43-SEC-003",
+      "priority": "MUST",
+      "requirement": "Legacy read-only access는 minimum privilege와 allowlisted query/API를 사용해야 한다.",
+      "verification": "DB/API Security",
+      "parent": "35"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-PRD43-SEC-004",
+      "priority": "MUST",
+      "requirement": "Data Classification과 Org/Project Scope는 sync/compare/export/archive 전 과정에 유지되어야 한다.",
+      "verification": "Data Security",
+      "parent": "26/35"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-PRD43-SEC-005",
+      "priority": "MUST",
+      "requirement": "Cutover/rollback control request는 request replay/forged authority를 방어해야 한다.",
+      "verification": "Security Test",
+      "parent": "30/35"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-PRD43-SEC-006",
+      "priority": "MUST",
+      "requirement": "Legacy write disable 후 bypass path 또는 direct DB credential로 신규 write가 가능한 상태를 허용해서는 안 된다.",
+      "verification": "Pen Test",
+      "parent": "35"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-PRD43-SEC-007",
+      "priority": "SHOULD",
+      "requirement": "High-risk cutover/rollback에는 dual-control 또는 step-up policy를 적용할 수 있어야 한다.",
+      "verification": "Policy Test",
+      "parent": "26/35"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-PRD43-REL-001",
+      "priority": "MUST",
+      "requirement": "Sync/compare/reconciliation/cutover job은 at-least-once execution에서도 idempotent해야 한다.",
+      "verification": "Fault Injection",
+      "parent": "32/35"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-PRD43-REL-002",
+      "priority": "MUST",
+      "requirement": "Transition policy change와 Router reload 사이의 race가 mixed authority를 만들지 않아야 한다.",
+      "verification": "Concurrency Test",
+      "parent": "35"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-PRD43-REL-003",
+      "priority": "MUST",
+      "requirement": "Bridge replication failure가 authoritative business effect를 이중 실행하게 만들어서는 안 된다.",
+      "verification": "Fault Test",
+      "parent": "32/35"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-PRD43-REL-004",
+      "priority": "MUST",
+      "requirement": "Cutover/rollback partial failure는 explicit state와 recovery runbook을 가져야 한다.",
+      "verification": "Fault Injection",
+      "parent": "34/35"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-PRD43-REL-005",
+      "priority": "MUST",
+      "requirement": "Reconciliation worker failure는 case/evidence를 잃지 않고 재개 가능해야 한다.",
+      "verification": "Recovery Test",
+      "parent": "32/35"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-PRD43-REL-006",
+      "priority": "MUST",
+      "requirement": "Legacy adapter outage가 Target-authoritative scope를 Legacy fallback write로 전환시키지 않아야 한다.",
+      "verification": "Negative Test",
+      "parent": "35"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-PRD43-REL-007",
+      "priority": "SHOULD",
+      "requirement": "AG outage 중에도 이미 배포된 transition/routing state가 owner services에서 유지되어야 한다.",
+      "verification": "Resilience Test",
+      "parent": "30/34/35"
+    },
+    {
+      "section": "5.3 Performance / Capacity NFR",
+      "id": "NEX-PRD43-PERF-001",
+      "priority": "MUST",
+      "requirement": "Sync lag, compare throughput, reconciliation throughput, router latency를 Pilot에서 baseline 측정해야 한다.",
+      "verification": "Performance Test",
+      "parent": "35/36"
+    },
+    {
+      "section": "5.3 Performance / Capacity NFR",
+      "id": "NEX-PRD43-PERF-002",
+      "priority": "MUST",
+      "requirement": "Shadow compare가 Legacy production API/DB에 과도한 부하를 주지 않도록 rate limit/throttle을 지원해야 한다.",
+      "verification": "Load Test",
+      "parent": "35"
+    },
+    {
+      "section": "5.3 Performance / Capacity NFR",
+      "id": "NEX-PRD43-PERF-003",
+      "priority": "MUST",
+      "requirement": "Cutover window의 expected request volume과 adapter capacity를 사전 검증해야 한다.",
+      "verification": "Capacity Test",
+      "parent": "34/35"
+    },
+    {
+      "section": "5.3 Performance / Capacity NFR",
+      "id": "NEX-PRD43-PERF-004",
+      "priority": "MUST",
+      "requirement": "Archive/historical query가 operational workload를 방해하지 않도록 resource isolation 또는 제한을 적용해야 한다.",
+      "verification": "Ops Test",
+      "parent": "35"
+    },
+    {
+      "section": "5.3 Performance / Capacity NFR",
+      "id": "NEX-PRD43-PERF-005",
+      "priority": "SHOULD",
+      "requirement": "Pilot 확대 전 compare/mismatch/reconciliation 비용을 scope 크기와 함께 추정할 수 있어야 한다.",
+      "verification": "Capacity Review",
+      "parent": "35/36"
+    },
+    {
+      "section": "5.4 Observability NFR",
+      "id": "NEX-PRD43-OBS-001",
+      "priority": "MUST",
+      "requirement": "최소 metric은 sync_lag, compare_match_rate, unexplained_diff_count, reconciliation_backlog, unresolved_mapping, cutover_state, rollback_window_remaining을 포함해야 한다.",
+      "verification": "Metric Test",
+      "parent": "30/35"
+    },
+    {
+      "section": "5.4 Observability NFR",
+      "id": "NEX-PRD43-OBS-002",
+      "priority": "MUST",
+      "requirement": "Transition Router decision과 selected source/target을 correlation trace에서 확인할 수 있어야 한다.",
+      "verification": "Trace Test",
+      "parent": "31/35"
+    },
+    {
+      "section": "5.4 Observability NFR",
+      "id": "NEX-PRD43-OBS-003",
+      "priority": "MUST",
+      "requirement": "Legacy/Target adapter error와 timeout은 source별로 구분되어야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "35"
+    },
+    {
+      "section": "5.4 Observability NFR",
+      "id": "NEX-PRD43-OBS-004",
+      "priority": "MUST",
+      "requirement": "Cutover 후 Legacy write attempt를 별도 security/operations metric으로 탐지해야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "35"
+    },
+    {
+      "section": "5.4 Observability NFR",
+      "id": "NEX-PRD43-OBS-005",
+      "priority": "SHOULD",
+      "requirement": "Pilot dashboard는 transition stage별 lead time과 blocker age를 제공할 수 있어야 한다.",
+      "verification": "Ops Analytics",
+      "parent": "35"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD43-TST-001",
+      "priority": "MUST",
+      "requirement": "PRD43은 Unit→Contract→Integration→Shadow Compare→Fault Injection→Cutover Drill→Rollback Drill→Acceptance→Regression Gate를 적용해야 한다.",
+      "verification": "Test Strategy",
+      "parent": "33"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD43-TST-002",
+      "priority": "MUST",
+      "requirement": "Shadow compare는 happy/boundary/reject/approval-required/invalid-mapping cases를 포함해야 한다.",
+      "verification": "Test Matrix",
+      "parent": "33/35"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD43-TST-003",
+      "priority": "MUST",
+      "requirement": "Cutover 전에 Golden A Direct Voucher/Approval 관련 Pilot transaction을 Target route로 검증해야 한다.",
+      "verification": "Golden Slice",
+      "parent": "37/38"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD43-TST-004",
+      "priority": "MUST",
+      "requirement": "Uncontrolled dual-master write가 0회인지 자동 검증해야 한다.",
+      "verification": "Architecture Acceptance",
+      "parent": "35"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD43-TST-005",
+      "priority": "MUST",
+      "requirement": "Target write failure 시 Legacy automatic fallback write가 0회인지 검증해야 한다.",
+      "verification": "Negative Acceptance",
+      "parent": "35"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD43-TST-006",
+      "priority": "MUST",
+      "requirement": "Rollback prohibited condition에서 authority rollback이 차단되는지 검증해야 한다.",
+      "verification": "Rollback Test",
+      "parent": "35"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD43-TST-007",
+      "priority": "MUST",
+      "requirement": "Retirement 전 hidden legacy dependency와 legacy write attempt가 0인지 검증해야 한다.",
+      "verification": "Retirement Gate",
+      "parent": "35"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD43-TST-008",
+      "priority": "MUST",
+      "requirement": "Acceptance는 Architecture/Data/Security/Operations/Business owner sign-off와 Migration Evidence Package를 요구해야 한다.",
+      "verification": "Acceptance Review",
+      "parent": "33/35"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD43-TST-009",
+      "priority": "MUST",
+      "requirement": "Critical mapping/reconciliation/security blocker가 있으면 CONDITIONAL_PASS로 cutover하지 않아야 한다.",
+      "verification": "Release Gate",
+      "parent": "33/35"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD43-TST-010",
+      "priority": "SHOULD",
+      "requirement": "Repository Evidence 확인 후 logical tasks를 실제 repo/module/API/table/migration test로 매핑해야 한다.",
+      "verification": "Repository Gate",
+      "parent": "36/43"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T43-01",
+      "area": "Repository Evidence Gate",
+      "deliverable": "Legacy/Target inventory checklist, actual repo/API/DB mapping PENDING table"
+    },
+    {
+      "id": "T43-02",
+      "area": "Pilot Scope Definition",
+      "deliverable": "Project Expense Voucher/Approval pilot scope and effective-time definition"
+    },
+    {
+      "id": "T43-03",
+      "area": "Transition Policy Model",
+      "deliverable": "State/version/scope/write-owner policy model"
+    },
+    {
+      "id": "T43-04",
+      "area": "Stable ID Mapping",
+      "deliverable": "Project/Employee/Vendor/Account/Voucher mapping registry"
+    },
+    {
+      "id": "T43-05",
+      "area": "Legacy Read/Write Adapter",
+      "deliverable": "Canonical request/response/error/commit-state adapter contract"
+    },
+    {
+      "id": "T43-06",
+      "area": "Target Canonical Adapter",
+      "deliverable": "Enterprise OS capability adapter with same logical contract"
+    },
+    {
+      "id": "T43-07",
+      "area": "Transition Router",
+      "deliverable": "Deterministic read/write target resolution"
+    },
+    {
+      "id": "T43-08",
+      "area": "READ_SYNC Pipeline",
+      "deliverable": "Initial/full + incremental sync, provenance, lag metrics"
+    },
+    {
+      "id": "T43-09",
+      "area": "Shadow Executor",
+      "deliverable": "Side-effect-free target simulation/shadow store"
+    },
+    {
+      "id": "T43-10",
+      "area": "Compare Engine",
+      "deliverable": "Canonical normalization + MATCH/DIFF classification"
+    },
+    {
+      "id": "T43-11",
+      "area": "Reconciliation Engine",
+      "deliverable": "Business invariant and unresolved case management"
+    },
+    {
+      "id": "T43-12",
+      "area": "Migration Dashboard",
+      "deliverable": "State, sync lag, mismatch, mapping, blocker views"
+    },
+    {
+      "id": "T43-13",
+      "area": "AE Source/Block UX",
+      "deliverable": "Source/staleness/block reason presentation"
+    },
+    {
+      "id": "T43-14",
+      "area": "Limited Coexistence Route",
+      "deliverable": "NeX UX/Runtime + Legacy authoritative adapter path"
+    },
+    {
+      "id": "T43-15",
+      "area": "Optional Bridge Replication",
+      "deliverable": "Single authoritative operation + secondary mirror policy"
+    },
+    {
+      "id": "T43-16",
+      "area": "Cutover Gate Evaluator",
+      "deliverable": "Evidence-based go/no-go gate"
+    },
+    {
+      "id": "T43-17",
+      "area": "Cutover Admin Action",
+      "deliverable": "OA-authorized versioned transition action"
+    },
+    {
+      "id": "T43-18",
+      "area": "Post-cutover Smoke",
+      "deliverable": "Target write/read/result/audit verification"
+    },
+    {
+      "id": "T43-19",
+      "area": "Legacy Write Disable",
+      "deliverable": "Read-only enforcement and bypass test"
+    },
+    {
+      "id": "T43-20",
+      "area": "Rollback Decision Engine",
+      "deliverable": "Rollback vs forward-fix decision matrix"
+    },
+    {
+      "id": "T43-21",
+      "area": "Rollback Drill",
+      "deliverable": "Authority rollback fixture with delta reconciliation"
+    },
+    {
+      "id": "T43-22",
+      "area": "Archive/Retirement",
+      "deliverable": "Retention, archive, credential revoke, dependency closure"
+    },
+    {
+      "id": "T43-23",
+      "area": "Fault Injection",
+      "deliverable": "sync gap, adapter timeout, policy race, partial cutover, bridge failure"
+    },
+    {
+      "id": "T43-24",
+      "area": "Migration Evidence Package",
+      "deliverable": "Compare/reconcile/cutover/rollback/retirement evidence bundle"
+    },
+    {
+      "id": "T43-25",
+      "area": "Playwright/Admin E2E",
+      "deliverable": "Dashboard→compare→cutover→rollback/retirement UX automation"
+    },
+    {
+      "id": "T43-26",
+      "area": "Regression Gate",
+      "deliverable": "Golden A/Approval + no-dual-write + no-fallback-write automated gate"
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "AC43-01",
+      "criteria": "Pilot Scope의 domain/org/project/capability/effective time/source/target이 versioned policy로 식별된다."
+    },
+    {
+      "id": "AC43-02",
+      "criteria": "동일 scope/time의 authoritative writer가 항상 정확히 하나다."
+    },
+    {
+      "id": "AC43-03",
+      "criteria": "READ_SYNC 동안 Target 신규 authoritative write는 0회다."
+    },
+    {
+      "id": "AC43-04",
+      "criteria": "Shadow execution은 authoritative business effect를 0건 생성한다."
+    },
+    {
+      "id": "AC43-05",
+      "criteria": "Critical canonical fields의 CompareResult가 재현 가능하게 생성된다."
+    },
+    {
+      "id": "AC43-06",
+      "criteria": "Unexplained critical diff가 존재하면 Cutover Gate가 실패한다."
+    },
+    {
+      "id": "AC43-07",
+      "criteria": "Missing/ambiguous stable ID mapping이 cutover blocker로 표시된다."
+    },
+    {
+      "id": "AC43-08",
+      "criteria": "NeX-AE/NSL consumer는 Legacy DB/API를 직접 호출하지 않는다."
+    },
+    {
+      "id": "AC43-09",
+      "criteria": "Limited Coexistence에서 Transition Router가 authoritative write target을 deterministic하게 선택한다."
+    },
+    {
+      "id": "AC43-10",
+      "criteria": "Target write 실패 시 Legacy automatic fallback write 횟수는 0이다."
+    },
+    {
+      "id": "AC43-11",
+      "criteria": "Read fallback 사용 시 UI/audit에 source와 staleness가 표시된다."
+    },
+    {
+      "id": "AC43-12",
+      "criteria": "Optional bridge replication이 동일 operation/idempotency identity를 유지한다."
+    },
+    {
+      "id": "AC43-13",
+      "criteria": "Bridge failure/unknown이 reconciliation case로 남고 duplicate effect는 0이다."
+    },
+    {
+      "id": "AC43-14",
+      "criteria": "Sync lag/mismatch/reconciliation backlog를 AG에서 조회할 수 있다."
+    },
+    {
+      "id": "AC43-15",
+      "criteria": "Cutover Gate는 Repository Evidence, Mapping, Compare, Reconciliation, Backup, Acceptance를 모두 평가한다."
+    },
+    {
+      "id": "AC43-16",
+      "criteria": "Cutover action은 OA current authorization과 reason/evidence를 요구한다."
+    },
+    {
+      "id": "AC43-17",
+      "criteria": "Cutover 직후 Target이 Pilot Scope의 유일한 authoritative writer가 된다."
+    },
+    {
+      "id": "AC43-18",
+      "criteria": "Cutover 후 Legacy 신규 write 시도가 기술적으로 차단된다."
+    },
+    {
+      "id": "AC43-19",
+      "criteria": "Golden A Direct Voucher/Approval selected transaction이 Target route에서 통과한다."
+    },
+    {
+      "id": "AC43-20",
+      "criteria": "Cutover partial failure가 false success로 표시되지 않는다."
+    },
+    {
+      "id": "AC43-21",
+      "criteria": "Rollback Window와 allowed/prohibited condition이 명시되어 있다."
+    },
+    {
+      "id": "AC43-22",
+      "criteria": "Target-only unsafe delta가 존재하면 authority rollback이 차단되고 forward-fix로 전환된다."
+    },
+    {
+      "id": "AC43-23",
+      "criteria": "Rollback 허용 fixture에서는 authority와 routing이 versioned decision으로 복구된다."
+    },
+    {
+      "id": "AC43-24",
+      "criteria": "Rollback 전후 duplicate business effect가 0이다."
+    },
+    {
+      "id": "AC43-25",
+      "criteria": "Rollback 실패/불명확은 UNKNOWN_ROLLBACK_STATE로 남아 수동 reconciliation을 요구한다."
+    },
+    {
+      "id": "AC43-26",
+      "criteria": "Rollback Window 종료 후 authority rollback은 기본 비활성화된다."
+    },
+    {
+      "id": "AC43-27",
+      "criteria": "LEGACY_READ_ONLY에서 Legacy operational write path가 0건이다."
+    },
+    {
+      "id": "AC43-28",
+      "criteria": "Retirement 전 active consumer/cron/report dependency가 0임을 증명한다."
+    },
+    {
+      "id": "AC43-29",
+      "criteria": "Archive/retention/restore evidence 없이는 Legacy data delete가 수행되지 않는다."
+    },
+    {
+      "id": "AC43-30",
+      "criteria": "Legacy credential/network/scheduled job revoke가 evidence로 남는다."
+    },
+    {
+      "id": "AC43-31",
+      "criteria": "Migration action/audit에서 raw secret/token이 노출되지 않는다."
+    },
+    {
+      "id": "AC43-32",
+      "criteria": "Data Classification/Org/Project Scope가 sync/compare/archive 전 과정에서 유지된다."
+    },
+    {
+      "id": "AC43-33",
+      "criteria": "AG outage가 이미 적용된 transition routing/write authority를 제거하지 않는다."
+    },
+    {
+      "id": "AC43-34",
+      "criteria": "Migration Evidence Package가 scope, compare, reconciliation, cutover, rollback/retirement, sign-off를 연결한다."
+    },
+    {
+      "id": "AC43-35",
+      "criteria": "Critical mapping/reconciliation/security blocker가 있으면 cutover acceptance는 FAIL이다."
+    },
+    {
+      "id": "AC43-36",
+      "criteria": "Repository Evidence 확인 전 physical endpoint/table/module 이름은 PENDING으로 남는다."
+    }
+  ]
+}

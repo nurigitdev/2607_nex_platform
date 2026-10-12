@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:nsl:retry-safety-evidence:v2.1",
+  "title": "RetrySafetyEvidence v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "evidence_id",
+    "tenant_id",
+    "nsl_execution_id",
+    "business_operation_id",
+    "commit_state",
+    "retry_safety",
+    "reason_codes",
+    "created_at"
+  ],
+  "properties": {
+    "evidence_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nsl_execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "business_operation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "idempotency_key_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "commit_state": {
+      "enum": [
+        "COMMITTED",
+        "NOT_COMMITTED",
+        "UNKNOWN_COMMIT_STATE"
+      ]
+    },
+    "retry_safety": {
+      "enum": [
+        "SAFE_TO_RETRY",
+        "UNSAFE_TO_RETRY",
+        "REQUIRES_RECONCILIATION"
+      ]
+    },
+    "tool_contract_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "idempotency_supported": {
+      "type": "boolean"
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "commit_state": {
+            "const": "COMMITTED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "retry_safety": {
+            "const": "UNSAFE_TO_RETRY"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "commit_state": {
+            "const": "UNKNOWN_COMMIT_STATE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "retry_safety": {
+            "const": "REQUIRES_RECONCILIATION"
+          }
+        }
+      }
+    }
+  ]
+}

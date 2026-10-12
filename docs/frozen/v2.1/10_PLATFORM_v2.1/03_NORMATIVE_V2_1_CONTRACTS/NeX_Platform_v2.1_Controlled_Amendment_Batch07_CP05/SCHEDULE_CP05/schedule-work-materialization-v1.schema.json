@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ScheduleWorkMaterialization v1.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "schedule_id",
+    "occurrence_id",
+    "nominal_time",
+    "expected_schedule_version",
+    "materialization_key",
+    "work_item_payload_hash",
+    "service_authorization_decision_ref",
+    "correlation_id",
+    "requested_at",
+    "work_item_request"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schedule_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "occurrence_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nominal_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expected_schedule_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "materialization_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "work_item_payload_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "service_authorization_decision_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "work_item_request": {
+      "allOf": [
+        {
+          "$ref": "../../NeX_Platform_v2.1_Controlled_Amendment_Batch02_CP02_CP06/WC/work-item-v2.1.schema.json"
+        },
+        {
+          "type": "object",
+          "required": [
+            "source",
+            "routing_target"
+          ],
+          "properties": {
+            "source": {
+              "type": "object",
+              "required": [
+                "source_type",
+                "source_ref"
+              ],
+              "properties": {
+                "source_type": {
+                  "const": "SCHEDULE"
+                },
+                "source_ref": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "routing_target": {
+              "type": "object",
+              "required": [
+                "required_capability"
+              ],
+              "properties": {
+                "required_capability": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

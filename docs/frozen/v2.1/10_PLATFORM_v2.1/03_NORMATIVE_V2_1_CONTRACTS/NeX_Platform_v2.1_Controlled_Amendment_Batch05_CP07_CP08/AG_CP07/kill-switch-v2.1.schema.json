@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KillSwitch v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kill_switch_id",
+    "target_type",
+    "target_ref",
+    "state",
+    "reason_code"
+  ],
+  "properties": {
+    "kill_switch_id": {
+      "type": "string"
+    },
+    "target_type": {
+      "enum": [
+        "GLOBAL",
+        "SERVICE",
+        "AGENT_PROFILE",
+        "TRUST_PROFILE",
+        "SKILL",
+        "CAPABILITY",
+        "NSP_PACKAGE",
+        "PUBLISHER",
+        "SIGNING_KEY",
+        "CONNECTOR",
+        "MODEL"
+      ]
+    },
+    "target_ref": {
+      "type": "string"
+    },
+    "state": {
+      "enum": [
+        "INACTIVE",
+        "ACTIVE",
+        "RELEASE_PENDING"
+      ]
+    },
+    "reason_code": {
+      "type": "string"
+    },
+    "policy_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tenant_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

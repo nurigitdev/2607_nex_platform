@@ -1,0 +1,4 @@
+﻿Scenario,Title,Verdict,Summary
+E2E-08,Duplicate RuntimeJob / Idempotency,PASS,RuntimeJob dedup/lease and durable IdempotencyRecord now normative; same-key conflict helper/SQL verified.
+E2E-09,UNKNOWN_COMMIT_STATE / Reconciliation,PASS,Typed result condition + ReconciliationEvidence/Case/Outcome + RECONCILE_EXECUTION contract verified.
+E2E-10,COMMITTED + Verification FAILED,PASS,Commit/verification typing + UNSAFE_TO_RETRY + typed DO_NOT_RETRY mapping verified.

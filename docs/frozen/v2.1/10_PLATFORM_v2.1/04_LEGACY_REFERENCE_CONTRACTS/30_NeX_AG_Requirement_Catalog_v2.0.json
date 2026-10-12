@@ -1,0 +1,1228 @@
+{
+  "document": "30_NeX_AG_SRS_and_Detailed_Design_v2.0",
+  "version": "v2.0",
+  "date": "2026-09-03",
+  "service": "NeX-AG",
+  "counts": {
+    "MUST": 134,
+    "SHOULD": 18
+  },
+  "requirements": [
+    {
+      "section": "4.1 Governance Plane Boundary",
+      "id": "NEX-AG-BND-FR-001",
+      "priority": "MUST",
+      "requirement": "NeX-AG는 별도 PostgreSQL database인 nex_ag_db를 사용하고 OA/CX/MO/AE/WC/NSL database를 직접 조회·수정해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "Platform v1.1"
+    },
+    {
+      "section": "4.1 Governance Plane Boundary",
+      "id": "NEX-AG-BND-FR-002",
+      "priority": "MUST",
+      "requirement": "AG에 저장되는 타 서비스 상태는 운영 Projection/Snapshot/Reference이며 원본 Runtime/Business/Registry Source of Truth를 대체해서는 안 된다.",
+      "verification": "Architecture/Data Test",
+      "parent": "26~29/11/17"
+    },
+    {
+      "section": "4.1 Governance Plane Boundary",
+      "id": "NEX-AG-BND-FR-003",
+      "priority": "MUST",
+      "requirement": "Authorization PDP의 runtime decision은 NeX-OA가 소유하고 NeX-AG는 versioned Policy Administration(PAP)과 distribution/governance lifecycle을 담당해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.1 Governance Plane Boundary",
+      "id": "NEX-AG-BND-FR-004",
+      "priority": "MUST",
+      "requirement": "정상 Interactive/Background Runtime은 AG의 실시간 응답을 매 요청마다 요구하는 hot-path dependency를 가져서는 안 된다.",
+      "verification": "Fault/Architecture Test",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.1 Governance Plane Boundary",
+      "id": "NEX-AG-BND-FR-005",
+      "priority": "MUST",
+      "requirement": "모든 Admin/Governance/Operations action은 OA가 인증한 Principal과 current Admin Effective Authority/PDP decision을 사용해야 한다.",
+      "verification": "Security Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.1 Governance Plane Boundary",
+      "id": "NEX-AG-BND-FR-006",
+      "priority": "MUST",
+      "requirement": "AG의 관리 변경은 direct data mutation이 아니라 owning service의 versioned Admin/Control Contract를 통해 수행해야 한다.",
+      "verification": "Integration Test",
+      "parent": "Platform boundary"
+    },
+    {
+      "section": "4.1 Governance Plane Boundary",
+      "id": "NEX-AG-BND-FR-007",
+      "priority": "MUST",
+      "requirement": "LLM/Prompt/Chat text는 Policy activation, Kill Switch, Certification, Service Control, Alert severity를 직접 결정하는 authority가 되어서는 안 된다.",
+      "verification": "Security/Architecture Test",
+      "parent": "26/11"
+    },
+    {
+      "section": "4.1 Governance Plane Boundary",
+      "id": "NEX-AG-BND-FR-008",
+      "priority": "MUST",
+      "requirement": "AG 운영 성공 상태는 WorkItem CLOSED, AgentExecution SUCCEEDED, Skill execution success 등 각 owning domain의 business state를 임의로 변경해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "11/12/WC"
+    },
+    {
+      "section": "4.2 Service Registry & Health",
+      "id": "NEX-AG-HLT-FR-001",
+      "priority": "MUST",
+      "requirement": "AG는 OA/CX/MO/AE/WC/NSL 및 등록된 Platform Service의 service_id, service_type, endpoint, build/version, owner, environment를 registry로 관리해야 한다.",
+      "verification": "Schema Test",
+      "parent": "Platform"
+    },
+    {
+      "section": "4.2 Service Registry & Health",
+      "id": "NEX-AG-HLT-FR-002",
+      "priority": "MUST",
+      "requirement": "각 서비스의 health contract에서 availability, readiness, dependency state, build/version, last heartbeat를 수집해야 한다.",
+      "verification": "Integration Test",
+      "parent": "26~29"
+    },
+    {
+      "section": "4.2 Service Registry & Health",
+      "id": "NEX-AG-HLT-FR-003",
+      "priority": "MUST",
+      "requirement": "Health 상태는 UP/DEGRADED/DOWN/MAINTENANCE 또는 동등한 명시적 상태로 정규화해야 한다.",
+      "verification": "State Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.2 Service Registry & Health",
+      "id": "NEX-AG-HLT-FR-004",
+      "priority": "MUST",
+      "requirement": "서비스별 database/connectivity/provider/dependency 장애를 service summary와 별도 dependency health로 구분해 표시해야 한다.",
+      "verification": "Fault Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.2 Service Registry & Health",
+      "id": "NEX-AG-HLT-FR-005",
+      "priority": "MUST",
+      "requirement": "Health Snapshot에는 observed_at, source_timestamp, collector_timestamp를 보존하여 stale telemetry를 식별할 수 있어야 한다.",
+      "verification": "Schema/Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.2 Service Registry & Health",
+      "id": "NEX-AG-HLT-FR-006",
+      "priority": "SHOULD",
+      "requirement": "Health 수집 주기와 timeout은 서비스/환경별 versioned monitoring policy로 설정 가능해야 한다.",
+      "verification": "Policy Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.2 Service Registry & Health",
+      "id": "NEX-AG-HLT-FR-007",
+      "priority": "MUST",
+      "requirement": "동일 서비스의 복수 instance/worker pool이 있는 경우 instance 상태와 service aggregate 상태를 분리해야 한다.",
+      "verification": "Load/State Test",
+      "parent": "28/30"
+    },
+    {
+      "section": "4.2 Service Registry & Health",
+      "id": "NEX-AG-HLT-FR-008",
+      "priority": "MUST",
+      "requirement": "Telemetry 수집 실패와 실제 Service DOWN을 구분하고 UNKNOWN/STALE 상태를 DOWN으로 자동 단정해서는 안 된다.",
+      "verification": "Fault Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.3 Job / Worker Operations",
+      "id": "NEX-AG-JOB-FR-001",
+      "priority": "MUST",
+      "requirement": "AG는 각 서비스의 /admin/jobs/summary 또는 동등 contract를 통해 queued/running/failed/cancel/retry/timeout/backlog 정보를 조회해야 한다.",
+      "verification": "Integration Test",
+      "parent": "Platform v1.1"
+    },
+    {
+      "section": "4.3 Job / Worker Operations",
+      "id": "NEX-AG-JOB-FR-002",
+      "priority": "MUST",
+      "requirement": "AG는 worker_id/type/pool/state/heartbeat/active_job/lease age를 owning service contract로 조회·정규화해야 한다.",
+      "verification": "Integration Test",
+      "parent": "12/27~29"
+    },
+    {
+      "section": "4.3 Job / Worker Operations",
+      "id": "NEX-AG-JOB-FR-003",
+      "priority": "MUST",
+      "requirement": "Queue oldest_age, backlog depth, failure rate, retry count를 서비스·job_type별로 집계해야 한다.",
+      "verification": "Projection Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.3 Job / Worker Operations",
+      "id": "NEX-AG-JOB-FR-004",
+      "priority": "MUST",
+      "requirement": "Stale worker/expired lease는 운영 이상으로 표시하되 business side effect의 재실행 여부를 AG가 임의 결정해서는 안 된다.",
+      "verification": "Fault Test",
+      "parent": "12/17"
+    },
+    {
+      "section": "4.3 Job / Worker Operations",
+      "id": "NEX-AG-JOB-FR-005",
+      "priority": "MUST",
+      "requirement": "Job cancel/retry 요청은 owning service Admin API에 typed ControlRequest로 전달해야 하며 AG DB의 job snapshot을 직접 수정해서는 안 된다.",
+      "verification": "Integration Test",
+      "parent": "Platform boundary"
+    },
+    {
+      "section": "4.3 Job / Worker Operations",
+      "id": "NEX-AG-JOB-FR-006",
+      "priority": "MUST",
+      "requirement": "UNKNOWN_COMMIT_STATE/RECONCILIATION_REQUIRED 작업은 일반 failed/retry queue와 구분해 별도 backlog로 표시해야 한다.",
+      "verification": "State/UX Test",
+      "parent": "12/17/29"
+    },
+    {
+      "section": "4.3 Job / Worker Operations",
+      "id": "NEX-AG-JOB-FR-007",
+      "priority": "SHOULD",
+      "requirement": "반복 실패/poisoned job에 대한 quarantine/dead-letter 상태를 owning service가 제공하는 경우 별도 운영 큐로 표시해야 한다.",
+      "verification": "Fault/UX Test",
+      "parent": "11"
+    },
+    {
+      "section": "4.3 Job / Worker Operations",
+      "id": "NEX-AG-JOB-FR-008",
+      "priority": "MUST",
+      "requirement": "Job/Worker dashboard는 service/job_type/state/age/owner/correlation_id로 필터링 가능해야 한다.",
+      "verification": "UI Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.3 Job / Worker Operations",
+      "id": "NEX-AG-JOB-FR-009",
+      "priority": "MUST",
+      "requirement": "Cancel/Retry/Drain action의 요청자, authority, target, reason, request_id, result를 audit해야 한다.",
+      "verification": "Audit Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.4 Policy Administration & Distribution",
+      "id": "NEX-AG-POL-FR-001",
+      "priority": "MUST",
+      "requirement": "AG는 OA PDP가 사용하는 versioned Authorization/Runtime Governance Policy를 PolicyBundle 단위로 관리해야 한다.",
+      "verification": "Schema Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.4 Policy Administration & Distribution",
+      "id": "NEX-AG-POL-FR-002",
+      "priority": "MUST",
+      "requirement": "PolicyBundle은 immutable version, policy_type, target scope, effective period, rules/hash, owner, evidence, status를 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.4 Policy Administration & Distribution",
+      "id": "NEX-AG-POL-FR-003",
+      "priority": "MUST",
+      "requirement": "Policy lifecycle은 최소 DRAFT→VALIDATED→APPROVED→ACTIVE→SUPERSEDED/RETIRED 상태를 지원해야 한다.",
+      "verification": "State Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.4 Policy Administration & Distribution",
+      "id": "NEX-AG-POL-FR-004",
+      "priority": "MUST",
+      "requirement": "ACTIVE 전환은 OA current Admin authorization과 Governance approval policy를 통과해야 하며 self-approval을 정책으로 제한할 수 있어야 한다.",
+      "verification": "Security/Workflow Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.4 Policy Administration & Distribution",
+      "id": "NEX-AG-POL-FR-005",
+      "priority": "MUST",
+      "requirement": "Policy activation은 immutable PolicySnapshot/Hash를 생성하고 OA 및 대상 서비스에 distribution sequence/version으로 배포해야 한다.",
+      "verification": "Integration Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.4 Policy Administration & Distribution",
+      "id": "NEX-AG-POL-FR-006",
+      "priority": "MUST",
+      "requirement": "OA/대상 서비스는 적용한 policy_version/hash에 대한 acknowledgement를 반환할 수 있어야 하며 AG는 distribution lag를 추적해야 한다.",
+      "verification": "Integration Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.4 Policy Administration & Distribution",
+      "id": "NEX-AG-POL-FR-007",
+      "priority": "MUST",
+      "requirement": "Policy 배포 일부 실패 시 성공 대상의 runtime을 임의 rollback하지 않고 상태를 PARTIAL/DEGRADED로 표시하고 재배포/운영 대응을 지원해야 한다.",
+      "verification": "Fault Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.4 Policy Administration & Distribution",
+      "id": "NEX-AG-POL-FR-008",
+      "priority": "MUST",
+      "requirement": "AG 장애 시 OA와 서비스는 마지막으로 검증·활성화된 policy snapshot을 사용할 수 있어야 하며 AG online dependency 때문에 fail-open해서는 안 된다.",
+      "verification": "Fault Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.4 Policy Administration & Distribution",
+      "id": "NEX-AG-POL-FR-009",
+      "priority": "MUST",
+      "requirement": "Policy 변경 diff, validation result, approver, activation time, supersedes version, distribution acknowledgements를 보존해야 한다.",
+      "verification": "Audit Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.4 Policy Administration & Distribution",
+      "id": "NEX-AG-POL-FR-010",
+      "priority": "SHOULD",
+      "requirement": "Policy activation은 scheduled effective_from을 지원할 수 있어야 하되 emergency revocation/kill switch보다 우선해서는 안 된다.",
+      "verification": "Policy/Time Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.5 Kill Switch Administration",
+      "id": "NEX-AG-KILL-FR-001",
+      "priority": "MUST",
+      "requirement": "AG는 OA baseline의 GLOBAL/SERVICE/PROFILE/SKILL/CAPABILITY/CONNECTOR kill switch target을 관리할 수 있어야 한다.",
+      "verification": "Schema/Integration Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.5 Kill Switch Administration",
+      "id": "NEX-AG-KILL-FR-002",
+      "priority": "MUST",
+      "requirement": "Kill Switch activation은 target_ref, reason_code, severity, activated_by, activated_at, policy_ref를 가진 immutable action evidence를 생성해야 한다.",
+      "verification": "Audit Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.5 Kill Switch Administration",
+      "id": "NEX-AG-KILL-FR-003",
+      "priority": "MUST",
+      "requirement": "Kill Switch는 OA PDP/PIP와 해당 service PEP에 bounded propagation으로 반영되어 신규 execution/Resume/R3+ side effect에서 강제되어야 한다.",
+      "verification": "Security/E2E Test",
+      "parent": "26/12"
+    },
+    {
+      "section": "4.5 Kill Switch Administration",
+      "id": "NEX-AG-KILL-FR-004",
+      "priority": "MUST",
+      "requirement": "Emergency activation은 정책이 허용한 Security/Platform authority로 즉시 수행 가능하되 current OA authorization과 full audit를 생략해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.5 Kill Switch Administration",
+      "id": "NEX-AG-KILL-FR-005",
+      "priority": "MUST",
+      "requirement": "Kill Switch release는 별도 authorized action으로 처리하고 원인/조치/evidence/revalidation 필요 여부를 기록해야 한다.",
+      "verification": "Workflow/Audit Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.5 Kill Switch Administration",
+      "id": "NEX-AG-KILL-FR-006",
+      "priority": "MUST",
+      "requirement": "ACTIVE Kill Switch는 Operations Dashboard와 관련 Plan/Skill/Runtime/Service detail에 prominent state로 표시되어야 한다.",
+      "verification": "UI Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.5 Kill Switch Administration",
+      "id": "NEX-AG-KILL-FR-007",
+      "priority": "MUST",
+      "requirement": "Kill Switch 활성화가 이미 COMMITTED된 business effect를 rollback하는 의미로 해석되어서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "17/30"
+    },
+    {
+      "section": "4.5 Kill Switch Administration",
+      "id": "NEX-AG-KILL-FR-008",
+      "priority": "SHOULD",
+      "requirement": "시간 제한 temporary kill switch를 지원할 수 있으나 자동 만료 시 release audit와 current policy 재평가를 수행해야 한다.",
+      "verification": "Time/Workflow Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.6 AE Runtime Governance",
+      "id": "NEX-AG-RUN-FR-001",
+      "priority": "MUST",
+      "requirement": "AG는 AE의 AgentExecution mode/state/current step/wait reason/replan count/duration을 운영 Projection으로 조회해야 한다.",
+      "verification": "Integration Test",
+      "parent": "11/29"
+    },
+    {
+      "section": "4.6 AE Runtime Governance",
+      "id": "NEX-AG-RUN-FR-002",
+      "priority": "MUST",
+      "requirement": "INTERACTIVE/BACKGROUND_COWORKER/BACKGROUND_EXPERT execution을 구분해 running/waiting/blocked/escalated/reconciliation 상태를 집계해야 한다.",
+      "verification": "Projection Test",
+      "parent": "11"
+    },
+    {
+      "section": "4.6 AE Runtime Governance",
+      "id": "NEX-AG-RUN-FR-003",
+      "priority": "MUST",
+      "requirement": "WAITING_INPUT/CONFIRMATION/APPROVAL/DEPENDENCY의 age와 due/SLA risk를 구분해 표시해야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.6 AE Runtime Governance",
+      "id": "NEX-AG-RUN-FR-004",
+      "priority": "MUST",
+      "requirement": "RECONCILIATION_REQUIRED backlog는 capability/domain/age 기준으로 별도 운영 view와 alert source를 제공해야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "12/17/29"
+    },
+    {
+      "section": "4.6 AE Runtime Governance",
+      "id": "NEX-AG-RUN-FR-005",
+      "priority": "MUST",
+      "requirement": "AG는 AgentExecution을 성공/완료로 직접 변경해서는 안 되며 pause/cancel/quarantine 등 허용된 운영 control을 AE Admin Contract로 요청해야 한다.",
+      "verification": "Negative/Integration Test",
+      "parent": "11/29"
+    },
+    {
+      "section": "4.6 AE Runtime Governance",
+      "id": "NEX-AG-RUN-FR-006",
+      "priority": "MUST",
+      "requirement": "Runtime governance는 route_type(DIRECT/CERTIFIED/KNOWN/DYNAMIC), validation failures, replan/escalation을 통계로 제공해야 한다.",
+      "verification": "Projection Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.6 AE Runtime Governance",
+      "id": "NEX-AG-RUN-FR-007",
+      "priority": "SHOULD",
+      "requirement": "Coworker/Profile별 concurrency/risk policy 위반 징후를 표시할 수 있어야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "11/26"
+    },
+    {
+      "section": "4.6 AE Runtime Governance",
+      "id": "NEX-AG-RUN-FR-008",
+      "priority": "MUST",
+      "requirement": "Runtime detail은 correlation_id를 통해 WorkItem/Plan/Skill/Prompt/Model/Evidence/Artifact trace로 이동할 수 있어야 한다.",
+      "verification": "Trace/UI Test",
+      "parent": "11/29"
+    },
+    {
+      "section": "4.7 Plan / Routing Governance",
+      "id": "NEX-AG-PLAN-FR-001",
+      "priority": "MUST",
+      "requirement": "PlanTemplate/PlanRoutingBinding의 definition Source of Truth는 Plan Registry에 유지하고 AG는 governance projection/evidence/decision을 관리해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.7 Plan / Routing Governance",
+      "id": "NEX-AG-PLAN-FR-002",
+      "priority": "MUST",
+      "requirement": "AG는 PlanTemplate lifecycle DRAFT/INTERNAL_PILOT/VALIDATED/READY_FOR_CERTIFICATION/CERTIFIED/REVALIDATION_REQUIRED/DEPRECATED/RETIRED를 표시해야 한다.",
+      "verification": "State Test",
+      "parent": "11"
+    },
+    {
+      "section": "4.7 Plan / Routing Governance",
+      "id": "NEX-AG-PLAN-FR-003",
+      "priority": "MUST",
+      "requirement": "CERTIFIED 전환은 READY_FOR_CERTIFICATION 상태와 required execution/correction/replan/exception/diversity evidence를 검토한 Governance Owner의 명시적 승인으로만 수행해야 한다.",
+      "verification": "Workflow Test",
+      "parent": "11"
+    },
+    {
+      "section": "4.7 Plan / Routing Governance",
+      "id": "NEX-AG-PLAN-FR-004",
+      "priority": "MUST",
+      "requirement": "PlanRoutingBinding certification/status/statistics는 PlanTemplate certification과 별도로 관리·표시해야 한다.",
+      "verification": "Governance Test",
+      "parent": "11"
+    },
+    {
+      "section": "4.7 Plan / Routing Governance",
+      "id": "NEX-AG-PLAN-FR-005",
+      "priority": "MUST",
+      "requirement": "Plan version은 immutable하며 AG가 기존 plan JSON을 수정하지 않고 새 version/supersede 또는 governance status 변경만 요청해야 한다.",
+      "verification": "Version Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.7 Plan / Routing Governance",
+      "id": "NEX-AG-PLAN-FR-006",
+      "priority": "MUST",
+      "requirement": "success degradation, exception/replan/human correction 증가, dependency deprecation/security disable은 REVALIDATION_REQUIRED/SUSPEND decision input이어야 한다.",
+      "verification": "Policy Test",
+      "parent": "11"
+    },
+    {
+      "section": "4.7 Plan / Routing Governance",
+      "id": "NEX-AG-PLAN-FR-007",
+      "priority": "MUST",
+      "requirement": "AG는 route distribution/selector NONE/fallback/dynamic plan rate와 verified business outcome을 plan governance evidence로 표시해야 한다.",
+      "verification": "Projection Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.7 Plan / Routing Governance",
+      "id": "NEX-AG-PLAN-FR-008",
+      "priority": "MUST",
+      "requirement": "Disabled/Deprecated/Revalidation-required Plan/Binding이 Runtime routing에서 자동선택되지 않는지 monitoring/acceptance test로 검증 가능해야 한다.",
+      "verification": "E2E Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.7 Plan / Routing Governance",
+      "id": "NEX-AG-PLAN-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Plan governance detail에서 model/prompt/policy/capability/skill dependency version drift를 dependency graph/ref 형태로 표시할 수 있어야 한다.",
+      "verification": "UI/Dependency Test",
+      "parent": "12/30"
+    },
+    {
+      "section": "4.8 Certified Skill Governance",
+      "id": "NEX-AG-SKILL-FR-001",
+      "priority": "MUST",
+      "requirement": "Certified Skill Source/NSO/Manifest/Runtime evidence의 Source of Truth는 NeX-NSL Skill Registry에 유지하고 AG는 governance projection/decision을 관리해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "17"
+    },
+    {
+      "section": "4.8 Certified Skill Governance",
+      "id": "NEX-AG-SKILL-FR-002",
+      "priority": "MUST",
+      "requirement": "AG는 Skill lifecycle DRAFT/COMPILED/TESTING/READY_FOR_CERTIFICATION/CERTIFIED/REVALIDATION_REQUIRED/SUSPENDED/DEPRECATED/RETIRED를 표시해야 한다.",
+      "verification": "State Test",
+      "parent": "17"
+    },
+    {
+      "section": "4.8 Certified Skill Governance",
+      "id": "NEX-AG-SKILL-FR-003",
+      "priority": "MUST",
+      "requirement": "자동화된 evidence는 READY_FOR_CERTIFICATION까지만 올릴 수 있고 CERTIFIED는 Governance Owner의 명시적 승인으로만 전환해야 한다.",
+      "verification": "Workflow Test",
+      "parent": "17"
+    },
+    {
+      "section": "4.8 Certified Skill Governance",
+      "id": "NEX-AG-SKILL-FR-004",
+      "priority": "MUST",
+      "requirement": "Certification view는 exact skill/version, manifest_hash, nso_hash, publisher/signing key status, contract hashes, golden/security/replay/compatibility evidence를 참조해야 한다.",
+      "verification": "Governance Test",
+      "parent": "17"
+    },
+    {
+      "section": "4.8 Certified Skill Governance",
+      "id": "NEX-AG-SKILL-FR-005",
+      "priority": "MUST",
+      "requirement": "AG는 private signing key를 저장·사용해서는 안 되며 public key/status와 signing/certification evidence만 참조해야 한다.",
+      "verification": "Security Test",
+      "parent": "17"
+    },
+    {
+      "section": "4.8 Certified Skill Governance",
+      "id": "NEX-AG-SKILL-FR-006",
+      "priority": "MUST",
+      "requirement": "Capability contract drift, key revoke, runtime incompatibility, quality degradation은 Skill revalidation/suspend decision input이어야 한다.",
+      "verification": "Policy Test",
+      "parent": "17"
+    },
+    {
+      "section": "4.8 Certified Skill Governance",
+      "id": "NEX-AG-SKILL-FR-007",
+      "priority": "MUST",
+      "requirement": "Skill SUSPENDED/REVALIDATION_REQUIRED 상태는 current runtime preflight/PDP에서 실행 차단 또는 제한되도록 owning Registry/OA와 연계해야 한다.",
+      "verification": "Security/E2E Test",
+      "parent": "17/26"
+    },
+    {
+      "section": "4.8 Certified Skill Governance",
+      "id": "NEX-AG-SKILL-FR-008",
+      "priority": "MUST",
+      "requirement": "AG는 nsl_verified_success_rate, preflight_denied, gate failure, contract mismatch, reconciliation metrics를 skill version별 governance evidence로 표시해야 한다.",
+      "verification": "Projection Test",
+      "parent": "17"
+    },
+    {
+      "section": "4.8 Certified Skill Governance",
+      "id": "NEX-AG-SKILL-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Skill certification decision에는 replacement/migration target과 operator note를 연결할 수 있어야 한다.",
+      "verification": "Workflow Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.9 Prompt Asset Governance",
+      "id": "NEX-AG-PRM-FR-001",
+      "priority": "MUST",
+      "requirement": "Business Prompt Template의 Source of Truth와 내용 소유권은 NeX-AE에 유지하고 AG는 prompt_ref/version/hash/metadata/evidence/governance status를 관리해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "12/29"
+    },
+    {
+      "section": "4.9 Prompt Asset Governance",
+      "id": "NEX-AG-PRM-FR-002",
+      "priority": "MUST",
+      "requirement": "AG는 INTENT/PLAN_SELECTOR/PLAN_BUILDER/EXPERT_REASONING/AGGREGATE/RESULT_FORMATTING 등 Prompt Purpose와 output schema/model profile binding을 표시해야 한다.",
+      "verification": "Integration Test",
+      "parent": "12/29"
+    },
+    {
+      "section": "4.9 Prompt Asset Governance",
+      "id": "NEX-AG-PRM-FR-003",
+      "priority": "MUST",
+      "requirement": "Prompt version은 immutable reference/hash로 governance하며 기존 ACTIVE prompt text를 AG에서 in-place 수정해서는 안 된다.",
+      "verification": "Version Test",
+      "parent": "29/30"
+    },
+    {
+      "section": "4.9 Prompt Asset Governance",
+      "id": "NEX-AG-PRM-FR-004",
+      "priority": "MUST",
+      "requirement": "Prompt lifecycle은 최소 DRAFT/TESTING/APPROVED/ACTIVE/REVALIDATION_REQUIRED/SUSPENDED/DEPRECATED/RETIRED 상태를 지원해야 한다.",
+      "verification": "State Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.9 Prompt Asset Governance",
+      "id": "NEX-AG-PRM-FR-005",
+      "priority": "MUST",
+      "requirement": "ACTIVE 전환 전 structured output schema, regression/evaluation, prompt injection/adversarial, model-profile compatibility evidence를 정책에 따라 요구할 수 있어야 한다.",
+      "verification": "Governance Test",
+      "parent": "29/30"
+    },
+    {
+      "section": "4.9 Prompt Asset Governance",
+      "id": "NEX-AG-PRM-FR-006",
+      "priority": "MUST",
+      "requirement": "Prompt governance는 raw secret/credential 또는 허용되지 않은 data classification content를 AG projection에 복제해서는 안 된다.",
+      "verification": "Security/Data Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.9 Prompt Asset Governance",
+      "id": "NEX-AG-PRM-FR-007",
+      "priority": "MUST",
+      "requirement": "Prompt quality degradation/schema failure/injection incident/model dependency change는 REVALIDATION_REQUIRED/SUSPEND decision input이어야 한다.",
+      "verification": "Policy Test",
+      "parent": "29/30"
+    },
+    {
+      "section": "4.9 Prompt Asset Governance",
+      "id": "NEX-AG-PRM-FR-008",
+      "priority": "MUST",
+      "requirement": "Prompt activation/rollback은 AE Admin Contract로 exact version을 지정하고 runtime provenance에 prompt version/hash가 남는지 검증 가능해야 한다.",
+      "verification": "Integration/Audit Test",
+      "parent": "12/29"
+    },
+    {
+      "section": "4.9 Prompt Asset Governance",
+      "id": "NEX-AG-PRM-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Authorized Governance reviewer는 AE가 제공하는 safe diff/evaluation summary를 AG 화면에서 확인할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.10 Model / Provider Governance",
+      "id": "NEX-AG-MOD-FR-001",
+      "priority": "MUST",
+      "requirement": "Model/Deployment/Provider Source of Truth는 NeX-MO에 유지하고 AG는 registry version, deployment state, health, capacity, security/license projection을 표시해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.10 Model / Provider Governance",
+      "id": "NEX-AG-MOD-FR-002",
+      "priority": "MUST",
+      "requirement": "AG는 capability별 model deployment, alias/version, security zone, health/capacity 상태를 governance detail에 표시해야 한다.",
+      "verification": "Integration Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.10 Model / Provider Governance",
+      "id": "NEX-AG-MOD-FR-003",
+      "priority": "MUST",
+      "requirement": "Embedding deployment에서는 embedding_compatibility_key 불일치 fallback을 운영자가 AG에서 강제로 우회할 수 없어야 한다.",
+      "verification": "Negative Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.10 Model / Provider Governance",
+      "id": "NEX-AG-MOD-FR-004",
+      "priority": "MUST",
+      "requirement": "Model/provider control은 MO Admin Contract를 통해 drain/activate/deactivate/reload 등 허용 action만 요청해야 한다.",
+      "verification": "Integration Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.10 Model / Provider Governance",
+      "id": "NEX-AG-MOD-FR-005",
+      "priority": "MUST",
+      "requirement": "Model supply-chain/security/license status가 blocked/revalidation 상태이면 routing/activation governance에 반영되어야 한다.",
+      "verification": "Security Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.10 Model / Provider Governance",
+      "id": "NEX-AG-MOD-FR-006",
+      "priority": "SHOULD",
+      "requirement": "AG는 GPU memory/KV cache/queue/throughput/latency saturation을 capacity dashboard와 alert rule에 사용할 수 있어야 한다.",
+      "verification": "Performance/Monitoring",
+      "parent": "28"
+    },
+    {
+      "section": "4.10 Model / Provider Governance",
+      "id": "NEX-AG-MOD-FR-007",
+      "priority": "MUST",
+      "requirement": "MO degraded/fallback mode는 서비스 건강상태와 CX/AE 영향도를 함께 표시해야 한다.",
+      "verification": "Integration/UX Test",
+      "parent": "27~29"
+    },
+    {
+      "section": "4.11 CX / WC Operational Governance",
+      "id": "NEX-AG-CXWC-FR-001",
+      "priority": "MUST",
+      "requirement": "CX의 ingestion/search/vector/BM25/Graph-lite job 상태와 retrieval/evidence quality/security metrics를 AG 운영 projection으로 수집해야 한다.",
+      "verification": "Integration Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.11 CX / WC Operational Governance",
+      "id": "NEX-AG-CXWC-FR-002",
+      "priority": "MUST",
+      "requirement": "CX permission-filter/final-recheck denial, evidence insufficiency, embedding degraded, graph extraction error를 security/quality 운영지표로 구분해야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.11 CX / WC Operational Governance",
+      "id": "NEX-AG-CXWC-FR-003",
+      "priority": "MUST",
+      "requirement": "CX reindex/retry/cancel 등 운영 action은 CX Admin Contract로 요청하고 document security metadata를 AG에서 직접 수정해서는 안 된다.",
+      "verification": "Integration/Negative Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.11 CX / WC Operational Governance",
+      "id": "NEX-AG-CXWC-FR-004",
+      "priority": "MUST",
+      "requirement": "WC의 WorkItem backlog, blocked/revision, claim/lease age, dependency wait, result-submitted/closure lag를 운영 projection으로 수집할 수 있어야 한다.",
+      "verification": "Integration Test",
+      "parent": "WC/11"
+    },
+    {
+      "section": "4.11 CX / WC Operational Governance",
+      "id": "NEX-AG-CXWC-FR-005",
+      "priority": "MUST",
+      "requirement": "AG 운영 화면에서 Runtime SUCCEEDED와 WorkItem CLOSED를 동일 상태로 표시해서는 안 된다.",
+      "verification": "State/UI Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.11 CX / WC Operational Governance",
+      "id": "NEX-AG-CXWC-FR-006",
+      "priority": "MUST",
+      "requirement": "WC retry/reassign/requeue/administrative action은 WC의 authority/closure/assignment contract를 따라야 하며 AG가 WorkItem business state를 직접 변경해서는 안 된다.",
+      "verification": "Security/Integration Test",
+      "parent": "WC"
+    },
+    {
+      "section": "4.11 CX / WC Operational Governance",
+      "id": "NEX-AG-CXWC-FR-007",
+      "priority": "SHOULD",
+      "requirement": "Parent/Child WorkItem dependency chain의 blocked/overdue hotspot을 운영 view로 표시할 수 있어야 한다.",
+      "verification": "UX Test",
+      "parent": "11/WC"
+    },
+    {
+      "section": "4.11 CX / WC Operational Governance",
+      "id": "NEX-AG-CXWC-FR-008",
+      "priority": "MUST",
+      "requirement": "CX/WC 운영 action과 결과는 correlation_id/target ref/reason/result로 AG audit에 연결되어야 한다.",
+      "verification": "Audit Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.12 Audit / Federated Trace",
+      "id": "NEX-AG-AUD-FR-001",
+      "priority": "MUST",
+      "requirement": "AG는 Policy/KillSwitch/Certification/Prompt activation/Model control/Service control/Job control 등 모든 governance action을 append-only admin audit로 기록해야 한다.",
+      "verification": "Audit Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.12 Audit / Federated Trace",
+      "id": "NEX-AG-AUD-FR-002",
+      "priority": "MUST",
+      "requirement": "Audit에는 principal_ref, business/admin actor, role/eac/policy refs, action, target, reason, before/after version refs, result, timestamp를 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.12 Audit / Federated Trace",
+      "id": "NEX-AG-AUD-FR-003",
+      "priority": "MUST",
+      "requirement": "AG Audit에 raw password/token/OTP/private key/secret을 저장해서는 안 된다.",
+      "verification": "Security Scan",
+      "parent": "26/17"
+    },
+    {
+      "section": "4.12 Audit / Federated Trace",
+      "id": "NEX-AG-AUD-FR-004",
+      "priority": "MUST",
+      "requirement": "타 서비스 audit의 원문 Source of Truth를 AG로 복제하지 않고 service/event/reference/hash 중심의 federated audit index를 제공해야 한다.",
+      "verification": "Architecture/Data Test",
+      "parent": "26~29/17"
+    },
+    {
+      "section": "4.12 Audit / Federated Trace",
+      "id": "NEX-AG-AUD-FR-005",
+      "priority": "MUST",
+      "requirement": "correlation_id/causation_id/request_id/execution_id/work_item_id/plan/skill/prompt/model refs를 이용해 cross-service trace navigation을 지원해야 한다.",
+      "verification": "Trace Test",
+      "parent": "11/12/29"
+    },
+    {
+      "section": "4.12 Audit / Federated Trace",
+      "id": "NEX-AG-AUD-FR-006",
+      "priority": "MUST",
+      "requirement": "Governance decision은 evidence snapshot/ref와 policy_version을 연결하여 사후 동일 기준으로 재구성할 수 있어야 한다.",
+      "verification": "Repro/Audit Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.12 Audit / Federated Trace",
+      "id": "NEX-AG-AUD-FR-007",
+      "priority": "SHOULD",
+      "requirement": "중요 governance audit record에 tamper-evident hash chain 또는 외부 immutable archive export를 적용할 수 있어야 한다.",
+      "verification": "Security Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.12 Audit / Federated Trace",
+      "id": "NEX-AG-AUD-FR-008",
+      "priority": "MUST",
+      "requirement": "Audit 조회/내보내기는 Data Classification과 Auditor/Admin scope를 적용해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.13 Alerting / Incident",
+      "id": "NEX-AG-ALT-FR-001",
+      "priority": "MUST",
+      "requirement": "Alert Rule은 deterministic metric/state predicate로 평가되어야 하며 LLM 판단만으로 OPEN/CLOSE해서는 안 된다.",
+      "verification": "Unit/Architecture Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.13 Alerting / Incident",
+      "id": "NEX-AG-ALT-FR-002",
+      "priority": "MUST",
+      "requirement": "Alert lifecycle은 OPEN→ACKNOWLEDGED→RESOLVED 및 SUPPRESSED 상태를 지원해야 한다.",
+      "verification": "State Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.13 Alerting / Incident",
+      "id": "NEX-AG-ALT-FR-003",
+      "priority": "MUST",
+      "requirement": "Alert Rule은 severity, target scope, threshold/window, cooldown, dedup key, routing policy를 versioned configuration으로 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.13 Alerting / Incident",
+      "id": "NEX-AG-ALT-FR-004",
+      "priority": "MUST",
+      "requirement": "서비스 DOWN/DEGRADED, queue backlog, stale worker, policy distribution lag, active kill switch, reconciliation backlog, certification revalidation, model capacity를 기본 alert source로 지원해야 한다.",
+      "verification": "Integration Test",
+      "parent": "26~29/17"
+    },
+    {
+      "section": "4.13 Alerting / Incident",
+      "id": "NEX-AG-ALT-FR-005",
+      "priority": "MUST",
+      "requirement": "동일 원인/target의 반복 Alert는 dedup/cooldown으로 storm을 줄이되 underlying metric/history를 잃어서는 안 된다.",
+      "verification": "Fault Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.13 Alerting / Incident",
+      "id": "NEX-AG-ALT-FR-006",
+      "priority": "MUST",
+      "requirement": "Alert acknowledgement/resolution/suppression은 actor/reason/time을 audit해야 한다.",
+      "verification": "Audit Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.13 Alerting / Incident",
+      "id": "NEX-AG-ALT-FR-007",
+      "priority": "SHOULD",
+      "requirement": "여러 Alert를 하나의 Incident로 묶고 owner/severity/status/timeline/action refs를 관리할 수 있어야 한다.",
+      "verification": "Workflow Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.13 Alerting / Incident",
+      "id": "NEX-AG-ALT-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Notification channel adapter를 통해 Admin UI 외 운영 채널로 전달할 수 있어야 하며 delivery failure가 Alert 자체를 삭제해서는 안 된다.",
+      "verification": "Integration Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.14 Operations Dashboard & Admin UX",
+      "id": "NEX-AG-DASH-FR-001",
+      "priority": "MUST",
+      "requirement": "Dashboard는 최소 Overview, Service/Job/Worker, Runtime/Work, Governance Assets, Security/KillSwitch, Alert/Audit view를 제공해야 한다.",
+      "verification": "UI Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.14 Operations Dashboard & Admin UX",
+      "id": "NEX-AG-DASH-FR-002",
+      "priority": "MUST",
+      "requirement": "Overview는 서비스 건강상태, active alerts, queue backlog, reconciliation backlog, active kill switches, pending governance decisions를 한 화면에서 요약해야 한다.",
+      "verification": "UI Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.14 Operations Dashboard & Admin UX",
+      "id": "NEX-AG-DASH-FR-003",
+      "priority": "MUST",
+      "requirement": "Admin UI의 메뉴/action 노출은 OA current capability/scope에 따라 제한되어야 한다.",
+      "verification": "Security/UI Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.14 Operations Dashboard & Admin UX",
+      "id": "NEX-AG-DASH-FR-004",
+      "priority": "MUST",
+      "requirement": "High-risk action 전에는 target/version/reason/impact를 확인할 수 있는 structured review를 제공하고 정책상 Step-up/Human Approval이 필요하면 OA/EOS gate를 통과해야 한다.",
+      "verification": "E2E Test",
+      "parent": "26/18"
+    },
+    {
+      "section": "4.14 Operations Dashboard & Admin UX",
+      "id": "NEX-AG-DASH-FR-005",
+      "priority": "MUST",
+      "requirement": "Projection 화면에는 data_timestamp/freshness/stale 표시를 제공해 과거 상태를 현재 상태로 오인하지 않도록 해야 한다.",
+      "verification": "UI Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.14 Operations Dashboard & Admin UX",
+      "id": "NEX-AG-DASH-FR-006",
+      "priority": "MUST",
+      "requirement": "Governance asset detail은 exact version/hash/status/evidence/dependency/decision/audit를 조회할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "11/17/29"
+    },
+    {
+      "section": "4.14 Operations Dashboard & Admin UX",
+      "id": "NEX-AG-DASH-FR-007",
+      "priority": "SHOULD",
+      "requirement": "운영자별 saved filter/dashboard preset을 제공할 수 있으나 권한 필터를 우회해서는 안 된다.",
+      "verification": "UI/Security Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.15 Typed Admin Control Actions",
+      "id": "NEX-AG-CTRL-FR-001",
+      "priority": "MUST",
+      "requirement": "Admin action은 target_type/target_ref/action_type/reason/request_id/idempotency_key/authority_ref를 가진 typed ControlRequest로 표현해야 한다.",
+      "verification": "Schema Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.15 Typed Admin Control Actions",
+      "id": "NEX-AG-CTRL-FR-002",
+      "priority": "MUST",
+      "requirement": "Service restart/drain, Job cancel/retry, Runtime cancel/quarantine, Policy activate, KillSwitch activate/release, Asset suspend/revalidate 등 action별 allowlist contract를 가져야 한다.",
+      "verification": "Contract Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.15 Typed Admin Control Actions",
+      "id": "NEX-AG-CTRL-FR-003",
+      "priority": "MUST",
+      "requirement": "AG는 raw shell/SSH/SQL/script execution을 일반 Admin action으로 제공해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.15 Typed Admin Control Actions",
+      "id": "NEX-AG-CTRL-FR-004",
+      "priority": "MUST",
+      "requirement": "ControlRequest는 current OA authorization과 필요 시 admin step-up/human approval을 완료한 후 owning service에 전달해야 한다.",
+      "verification": "Security/E2E Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.15 Typed Admin Control Actions",
+      "id": "NEX-AG-CTRL-FR-005",
+      "priority": "MUST",
+      "requirement": "Owning service는 ControlResult에 accepted/rejected/in_progress/succeeded/failed 상태와 reason/evidence ref를 반환할 수 있어야 한다.",
+      "verification": "Contract Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.15 Typed Admin Control Actions",
+      "id": "NEX-AG-CTRL-FR-006",
+      "priority": "MUST",
+      "requirement": "동일 request/idempotency key의 재전송이 중복 restart/retry/activation effect를 만들지 않도록 control endpoint가 idempotent semantics를 가져야 한다.",
+      "verification": "Fault Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.15 Typed Admin Control Actions",
+      "id": "NEX-AG-CTRL-FR-007",
+      "priority": "MUST",
+      "requirement": "AG timeout은 action 실패로 단정하지 않고 owning service status/reconciliation 확인이 필요한 UNKNOWN_CONTROL_STATE를 표현할 수 있어야 한다.",
+      "verification": "Fault Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.15 Typed Admin Control Actions",
+      "id": "NEX-AG-CTRL-FR-008",
+      "priority": "MUST",
+      "requirement": "모든 control request/result는 admin audit와 alert/incident timeline에 연결 가능해야 한다.",
+      "verification": "Audit Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-AG-SEC-NFR-001",
+      "priority": "MUST",
+      "requirement": "AG의 모든 read/write Admin endpoint는 OA authentication과 current authorization을 적용해야 하며 client-supplied role/scope를 신뢰해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "26"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-AG-SEC-NFR-002",
+      "priority": "MUST",
+      "requirement": "Policy/KillSwitch/Certification/Control high-risk capability는 stronger auth/step-up 정책을 요구할 수 있어야 한다.",
+      "verification": "Security Test",
+      "parent": "26"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-AG-SEC-NFR-003",
+      "priority": "MUST",
+      "requirement": "AG는 Secret/Private Key/Raw Token을 Governance projection/audit/alert payload에 저장하지 않아야 한다.",
+      "verification": "Security Scan",
+      "parent": "26/17"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-AG-SEC-NFR-004",
+      "priority": "MUST",
+      "requirement": "Federated trace와 audit export는 Org/Project/Data Classification/Administrator scope를 적용해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/27"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-AG-SEC-NFR-005",
+      "priority": "MUST",
+      "requirement": "Control endpoint는 CSRF/session fixation/replay/rate-limit 및 action-level authorization을 적용해야 한다.",
+      "verification": "Web Security Test",
+      "parent": "26"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-AG-SEC-NFR-006",
+      "priority": "MUST",
+      "requirement": "Governance decision/alert rule/policy evaluation은 deterministic server-side code로 수행하고 LLM output을 authority로 사용해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "26/11"
+    },
+    {
+      "section": "5.2 Reliability / Availability NFR",
+      "id": "NEX-AG-REL-NFR-001",
+      "priority": "MUST",
+      "requirement": "AG 장애가 이미 배포된 OA PDP policy/kill switch 및 정상 service runtime의 즉시 중단 원인이 되어서는 안 된다.",
+      "verification": "Fault Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "5.2 Reliability / Availability NFR",
+      "id": "NEX-AG-REL-NFR-002",
+      "priority": "MUST",
+      "requirement": "Telemetry collection은 at-least-once/duplicate/out-of-order를 허용하고 source_timestamp/idempotent upsert로 projection을 안정화해야 한다.",
+      "verification": "Fault Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.2 Reliability / Availability NFR",
+      "id": "NEX-AG-REL-NFR-003",
+      "priority": "MUST",
+      "requirement": "Policy/KillSwitch distribution은 target별 acknowledgement/retry를 지원하고 partial delivery 상태를 보존해야 한다.",
+      "verification": "Fault Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.2 Reliability / Availability NFR",
+      "id": "NEX-AG-REL-NFR-004",
+      "priority": "MUST",
+      "requirement": "Control action timeout/unknown state는 blind retry하지 않고 target state 확인/reconciliation 경로를 가져야 한다.",
+      "verification": "Fault Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.2 Reliability / Availability NFR",
+      "id": "NEX-AG-REL-NFR-005",
+      "priority": "SHOULD",
+      "requirement": "AG 자체 collector/alert worker failure는 lease/heartbeat/reclaim으로 복구 가능해야 한다.",
+      "verification": "Fault Test",
+      "parent": "Platform job runtime"
+    },
+    {
+      "section": "5.3 Performance / Scale NFR",
+      "id": "NEX-AG-PERF-NFR-001",
+      "priority": "MUST",
+      "requirement": "Dashboard 주요 summary는 초기 100명 규모에서 운영자가 대화형으로 사용할 수 있는 p95 latency baseline을 측정해야 한다.",
+      "verification": "Performance Test",
+      "parent": "Phase4 SLA"
+    },
+    {
+      "section": "5.3 Performance / Scale NFR",
+      "id": "NEX-AG-PERF-NFR-002",
+      "priority": "MUST",
+      "requirement": "Telemetry/alert ingestion은 Runtime hot path를 block하지 않는 비동기 polling/event adapter 구조여야 한다.",
+      "verification": "Architecture/Load Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.3 Performance / Scale NFR",
+      "id": "NEX-AG-PERF-NFR-003",
+      "priority": "SHOULD",
+      "requirement": "고빈도 raw metric은 AG PostgreSQL에 무제한 저장하지 않고 aggregation/retention/downsampling 정책을 적용할 수 있어야 한다.",
+      "verification": "Load/Retention Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.3 Performance / Scale NFR",
+      "id": "NEX-AG-PERF-NFR-004",
+      "priority": "MUST",
+      "requirement": "Policy/KillSwitch propagation lag, collector lag, dashboard freshness를 측정하고 운영 baseline을 수립해야 한다.",
+      "verification": "Performance Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.4 Observability NFR",
+      "id": "NEX-AG-OBS-NFR-001",
+      "priority": "MUST",
+      "requirement": "AG 자체 API/collector/alert/control/policy distribution worker의 health/latency/error/queue metric을 노출해야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.4 Observability NFR",
+      "id": "NEX-AG-OBS-NFR-002",
+      "priority": "MUST",
+      "requirement": "Policy distribution, governance decision, kill switch, control action에 correlation_id/decision_id/request_id를 부여해야 한다.",
+      "verification": "Trace Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.4 Observability NFR",
+      "id": "NEX-AG-OBS-NFR-003",
+      "priority": "MUST",
+      "requirement": "Dashboard projection freshness와 source/collector lag를 metric으로 제공해야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.4 Observability NFR",
+      "id": "NEX-AG-OBS-NFR-004",
+      "priority": "SHOULD",
+      "requirement": "Alert rule evaluation duration/backlog/dedup/suppression rate를 운영 metric으로 제공해야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.5 Data / Retention NFR",
+      "id": "NEX-AG-DATA-NFR-001",
+      "priority": "MUST",
+      "requirement": "Policy/Governance/Control/Audit definition history는 overwrite가 아니라 immutable version/decision lineage로 보존해야 한다.",
+      "verification": "Data Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.5 Data / Retention NFR",
+      "id": "NEX-AG-DATA-NFR-002",
+      "priority": "MUST",
+      "requirement": "타 서비스 entity는 stable ref/version/hash로 연결하고 cross-service direct foreign key/write 의존성을 만들지 않아야 한다.",
+      "verification": "Architecture Test",
+      "parent": "26~29"
+    },
+    {
+      "section": "5.5 Data / Retention NFR",
+      "id": "NEX-AG-DATA-NFR-003",
+      "priority": "SHOULD",
+      "requirement": "Health/metric/alert/audit projection retention은 data classification와 운영/감사 목적에 따라 configurable해야 한다.",
+      "verification": "Retention Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.6 Test / Acceptance NFR",
+      "id": "NEX-AG-TST-NFR-001",
+      "priority": "MUST",
+      "requirement": "Statement coverage 95% 이상, branch coverage 85% 이상을 목표로 한다.",
+      "verification": "Coverage",
+      "parent": "Project quality"
+    },
+    {
+      "section": "5.6 Test / Acceptance NFR",
+      "id": "NEX-AG-TST-NFR-002",
+      "priority": "MUST",
+      "requirement": "Policy lifecycle/distribution ack, kill switch propagation, plan/skill certification, prompt activation, typed control request에 automated test가 있어야 한다.",
+      "verification": "Test Inspection",
+      "parent": "30"
+    },
+    {
+      "section": "5.6 Test / Acceptance NFR",
+      "id": "NEX-AG-TST-NFR-003",
+      "priority": "MUST",
+      "requirement": "Boundary/robustness/worst-case test로 stale telemetry, partial distribution, duplicate control, alert storm, unknown control state를 검증해야 한다.",
+      "verification": "Test Design",
+      "parent": "Project quality"
+    },
+    {
+      "section": "5.6 Test / Acceptance NFR",
+      "id": "NEX-AG-TST-NFR-004",
+      "priority": "MUST",
+      "requirement": "PostgreSQL integration test는 독립 test DB를 초기화하고 projection/audit/control idempotency를 검증해야 한다.",
+      "verification": "Integration Test",
+      "parent": "Project quality"
+    },
+    {
+      "section": "5.6 Test / Acceptance NFR",
+      "id": "NEX-AG-TST-NFR-005",
+      "priority": "MUST",
+      "requirement": "AG Web UI는 Playwright로 dashboard filtering, high-risk action review, stale data, kill switch, certification workflow를 E2E 검증해야 한다.",
+      "verification": "Playwright",
+      "parent": "Project quality"
+    },
+    {
+      "section": "5.6 Test / Acceptance NFR",
+      "id": "NEX-AG-TST-NFR-006",
+      "priority": "MUST",
+      "requirement": "AG-GS-01~12 Golden Scenario를 regression/release gate로 유지해야 한다.",
+      "verification": "E2E Test",
+      "parent": "30"
+    }
+  ]
+}

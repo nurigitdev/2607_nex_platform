@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentFormalApprovalRequest v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "agent_execution_id",
+    "executable_step_id",
+    "business_operation_id",
+    "operation_fingerprint",
+    "display_safe_summary"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string"
+    },
+    "agent_execution_id": {
+      "type": "string"
+    },
+    "executable_step_id": {
+      "type": "string"
+    },
+    "business_operation_id": {
+      "type": "string"
+    },
+    "operation_fingerprint": {
+      "type": "string"
+    },
+    "display_safe_summary": {
+      "type": "object"
+    },
+    "requires_eos_business_approval": {
+      "type": "boolean"
+    },
+    "expires_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

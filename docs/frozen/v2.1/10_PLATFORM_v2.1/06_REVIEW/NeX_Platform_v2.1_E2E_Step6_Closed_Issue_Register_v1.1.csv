@@ -1,0 +1,8 @@
+﻿Issue,Status,Title,Closure
+E2E12-P1-01,CLOSED,Scheduled WorkItem provenance contract,WorkItem source enum adds SCHEDULE; SCHEDULE requires source_ref=OccurrenceId and materialization contract enforces it.
+E2E12-P1-02,CLOSED,Schedule capability cardinality mismatch,ScheduleTarget now uses singular required_capability matching WorkItem/RoutingDecision.
+E2E12-P1-03,CLOSED,PA Schedule project binding,PA Schedule requires project_id/project_scope; protocol binds same project through generated WorkItem.
+E2E12-PCG-01,CLOSED,Occurrence→WorkItem exactly-one materialization,"WC atomic materialization table/protocol uses occurrence/key uniqueness + payload hash; same payload reuses WorkItem, mismatch conflicts."
+E2E12-PCG-02,CLOSED,Schedule update/disable/version race fencing,Occurrence snapshots schedule_version; materialization requires expected version and enabled/current row-lock check.
+E2E12-PCG-03,CLOSED,Exact time/misfire semantics,WC_SCHEDULE_TIME_V1 fixes CRON5/IANA/DST/UTC nominal instant/fixed interval rules; misfire operates on deterministic nominal instants.
+E2E12-PCG-04,CLOSED,Schedule OA/API/Audit/acceptance,OpenAPI 3.1 typed requests/responses + AuthorityContext + durable audit schema/table + TST-E12-01~10 acceptance.

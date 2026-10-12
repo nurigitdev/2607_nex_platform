@@ -1,0 +1,187 @@
+{
+  "checks": [
+    {
+      "name": "Platform v1.8 SHA",
+      "result": "PASS",
+      "detail": "269 matched, 0 bad, 0 missing"
+    },
+    {
+      "name": "Frozen Agent/NSL SHA",
+      "result": "PASS",
+      "detail": "31 matched, 0 bad, 0 missing"
+    },
+    {
+      "name": "JSON Schema structural",
+      "result": "PASS",
+      "detail": "61/61 expected; errors=0"
+    },
+    {
+      "name": "Duplicate schema $id",
+      "result": "PASS",
+      "detail": "0 duplicates"
+    },
+    {
+      "name": "Duplicate schema title",
+      "result": "PASS",
+      "detail": "0 duplicates"
+    },
+    {
+      "name": "Python protocol compile",
+      "result": "PASS",
+      "detail": "12/12 PASS"
+    },
+    {
+      "name": "YAML/OpenAPI parse",
+      "result": "PASS",
+      "detail": "1/1 PASS"
+    },
+    {
+      "name": "F-G01 Core E2E-01~12",
+      "result": "PASS",
+      "detail": "E2E-01=PASS, E2E-02=PASS, E2E-03=PASS, E2E-04=PASS, E2E-05=PASS, E2E-06=PASS, E2E-07=PASS, E2E-08=PASS, E2E-09=PASS, E2E-10=PASS, E2E-11=PASS, E2E-12=PASS"
+    },
+    {
+      "name": "Step8 issues closed",
+      "result": "PASS",
+      "detail": "open=0"
+    },
+    {
+      "name": "F-G03 E2E-P0=0",
+      "result": "PASS",
+      "detail": "{'E2E-P0': 0, 'E2E-P1': 0, 'E2E-PCG': 0, 'E2E-P2': 0}"
+    },
+    {
+      "name": "F-G04 E2E-P1=0",
+      "result": "PASS",
+      "detail": "{'E2E-P0': 0, 'E2E-P1': 0, 'E2E-PCG': 0, 'E2E-P2': 0}"
+    },
+    {
+      "name": "F-G05 E2E-PCG=0",
+      "result": "PASS",
+      "detail": "{'E2E-P0': 0, 'E2E-P1': 0, 'E2E-PCG': 0, 'E2E-P2': 0}"
+    },
+    {
+      "name": "F-G06 Platform consistency CLOSED",
+      "result": "PASS",
+      "detail": "Final Review v1.2 + independent recheck"
+    },
+    {
+      "name": "F-G07 Agent v2.1 Frozen semantics unchanged",
+      "result": "PASS",
+      "detail": "Integration/Freeze authority copies byte-identical; Frozen set 31/31 hash PASS"
+    },
+    {
+      "name": "F-G08 NSL v0.2 Frozen semantics unchanged",
+      "result": "PASS",
+      "detail": "Integration/Freeze authority copies byte-identical; Frozen set 31/31 hash PASS"
+    },
+    {
+      "name": "F-G09 SoR ownership no dual owner",
+      "result": "PASS",
+      "detail": "Agent=AE, Work/Claim/Schedule=WC, Authorization=OA, Business Tx=EOS, WA post-work"
+    },
+    {
+      "name": "F-G10 Identity chain traceable",
+      "result": "PASS",
+      "detail": "Frozen integration chain + Platform work/claim/runtime/approval/schedule/result identities present"
+    },
+    {
+      "name": "F-G11 Approval domains separated",
+      "result": "PASS",
+      "detail": "domains=['AGENT_FORMAL', 'NSL_WRITE']; separate request contracts"
+    },
+    {
+      "name": "F-G12 No blind WRITE retry",
+      "result": "PASS",
+      "detail": "COMMITTED->DO_NOT_RETRY; UNKNOWN_COMMIT_STATE->RECONCILE_FIRST"
+    },
+    {
+      "name": "FV-01 v1.8 replay",
+      "result": "PASS",
+      "detail": "unauthorized approval rejected"
+    },
+    {
+      "name": "FV-02 v1.8 replay",
+      "result": "PASS",
+      "detail": "all four replay/hash mismatch probes fail closed"
+    },
+    {
+      "name": "FV-08 v1.8 replay",
+      "result": "PASS",
+      "detail": "cross-tenant resume binding fails closed"
+    },
+    {
+      "name": "FV-03 v1.8 replay",
+      "result": "PASS",
+      "detail": "REVOKED + ADMITTED rejected"
+    },
+    {
+      "name": "FV-04 v1.8 replay",
+      "result": "PASS",
+      "detail": "current Resume/KillSwitch control markers retained"
+    },
+    {
+      "name": "FV-05 v1.8 replay",
+      "result": "PASS",
+      "detail": "RESUME requires wait_id + tenant/dedup uniqueness"
+    },
+    {
+      "name": "FV-06 v1.8 replay",
+      "result": "PASS",
+      "detail": "occurrence/materialization/work-item uniqueness retained"
+    },
+    {
+      "name": "FV-07 v1.8 replay",
+      "result": "PASS",
+      "detail": "misfire=['SKIP', 'CATCH_UP', 'LATEST_ONLY']; deterministic time model retained"
+    },
+    {
+      "name": "FV-09 v1.8 replay",
+      "result": "PASS",
+      "detail": "CX context is bounded input; OA rebuilds current RoleBinding/Scope/Policy"
+    },
+    {
+      "name": "FV-10 v1.8 replay",
+      "result": "PASS",
+      "detail": "UNKNOWN_DELIVERY requires reconciliation; action=RECONCILE_FIRST"
+    },
+    {
+      "name": "F-G02 Required Fault Variants",
+      "result": "PASS",
+      "detail": "FV-01~FV-10 replay/semantic checks PASS on v1.8"
+    },
+    {
+      "name": "F-G13 Package/governance/current-policy fail closed",
+      "result": "PASS",
+      "detail": "OA deny, trust mismatch, revoked package, current kill-switch/OA checks fail closed"
+    },
+    {
+      "name": "F-G14 Schedule→WorkItem→Claim→Agent PASS",
+      "result": "PASS",
+      "detail": "E2E-12 PASS + duplicate/misfire replay PASS"
+    },
+    {
+      "name": "F-G15 WA post-work assetization only",
+      "result": "PASS",
+      "detail": "ADR/ledger exclude WA from Scheduler/Work SoR"
+    }
+  ],
+  "gates": {
+    "F-G01": "PASS",
+    "F-G02": "PASS",
+    "F-G03": "PASS",
+    "F-G04": "PASS",
+    "F-G05": "PASS",
+    "F-G06": "PASS",
+    "F-G07": "PASS",
+    "F-G08": "PASS",
+    "F-G09": "PASS",
+    "F-G10": "PASS",
+    "F-G11": "PASS",
+    "F-G12": "PASS",
+    "F-G13": "PASS",
+    "F-G14": "PASS",
+    "F-G15": "PASS"
+  },
+  "all_pass": true
+}

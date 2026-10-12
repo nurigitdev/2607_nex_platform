@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:agent:operation-trust-decision:v2.1",
+  "title": "OperationTrustDecision v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decision",
+    "decision_mode",
+    "assurance_level",
+    "operation_fingerprint",
+    "facts_hash",
+    "decision_hash",
+    "evaluated_at",
+    "expires_at"
+  ],
+  "properties": {
+    "decision": {
+      "enum": [
+        "ALLOW",
+        "DENY",
+        "REVIEW",
+        "INDETERMINATE"
+      ]
+    },
+    "decision_mode": {
+      "type": "string",
+      "minLength": 1
+    },
+    "assurance_level": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operation_fingerprint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rule_set_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "rule_set_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "facts_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "proof_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reason_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "evaluated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "decision_hash": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

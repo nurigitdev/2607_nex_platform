@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ScheduleSpec v1.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "schedule_id",
+    "owner_ref",
+    "timezone",
+    "time_semantics_version",
+    "nominal_time_basis",
+    "dst_gap_policy",
+    "dst_overlap_policy",
+    "schedule_expression_type",
+    "schedule_expression_profile",
+    "schedule_expression",
+    "enabled",
+    "misfire_policy",
+    "concurrency_policy",
+    "target",
+    "version",
+    "next_run_at"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schedule_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "timezone": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "time_semantics_version": {
+      "const": "WC_SCHEDULE_TIME_V1"
+    },
+    "nominal_time_basis": {
+      "const": "UTC_INSTANT"
+    },
+    "dst_gap_policy": {
+      "const": "SKIP_NONEXISTENT_LOCAL_TIME"
+    },
+    "dst_overlap_policy": {
+      "const": "EARLIEST_OFFSET_ONLY"
+    },
+    "schedule_expression_type": {
+      "enum": [
+        "CRON",
+        "FIXED_INTERVAL"
+      ]
+    },
+    "schedule_expression_profile": {
+      "enum": [
+        "CRON5_V1",
+        "ISO8601_INTERVAL_V1"
+      ]
+    },
+    "schedule_expression": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "misfire_policy": {
+      "enum": [
+        "SKIP",
+        "CATCH_UP",
+        "LATEST_ONLY"
+      ]
+    },
+    "max_catch_up": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "concurrency_policy": {
+      "enum": [
+        "ALLOW_OVERLAP",
+        "FORBID_OVERLAP"
+      ]
+    },
+    "target": {
+      "$ref": "schedule-target-v1.schema.json"
+    },
+    "last_run_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "next_run_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schedule_expression_type": {
+            "const": "CRON"
+          }
+        },
+        "required": [
+          "schedule_expression_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "schedule_expression_profile": {
+            "const": "CRON5_V1"
+          },
+          "schedule_expression": {
+            "type": "string",
+            "pattern": "^\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+\\S+$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schedule_expression_type": {
+            "const": "FIXED_INTERVAL"
+          }
+        },
+        "required": [
+          "schedule_expression_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "schedule_expression_profile": {
+            "const": "ISO8601_INTERVAL_V1"
+          },
+          "schedule_expression": {
+            "type": "string",
+            "pattern": "^(?:P[1-9][0-9]*D|PT(?=.*[0-9])(?:[0-9]+H)?(?:[0-9]+M)?(?:[0-9]+(?:\\.[0-9]+)?S)?)$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "misfire_policy": {
+            "const": "CATCH_UP"
+          }
+        },
+        "required": [
+          "misfire_policy"
+        ]
+      },
+      "then": {
+        "required": [
+          "max_catch_up"
+        ],
+        "properties": {
+          "max_catch_up": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target": {
+            "required": [
+              "required_agent_type"
+            ],
+            "properties": {
+              "required_agent_type": {
+                "const": "PA"
+              }
+            }
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "then": {
+        "required": [
+          "project_id"
+        ],
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:nsl:idempotency-record:v2.1",
+  "title": "NSL IdempotencyRecord v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "idempotency_key",
+    "business_operation_id",
+    "write_node_id",
+    "payload_hash",
+    "state",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "business_operation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "write_node_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payload_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "write_intent_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "state": {
+      "enum": [
+        "RESERVED",
+        "WRITE_REQUESTED",
+        "COMMITTED",
+        "NOT_COMMITTED",
+        "UNKNOWN_COMMIT_STATE"
+      ]
+    },
+    "original_nsl_execution_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "original_result_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "provider_transaction_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "business_reference": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "last_error_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

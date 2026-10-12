@@ -1,0 +1,7 @@
+Issue,Status,Title,Closure
+E2E11-PCG-01,CLOSED,AgentResult/ResultDelivery canonical contract,"AgentResult/ResultDelivery schemas + AE persistence SQL + domain back-propagation added."
+E2E11-PCG-02,CLOSED,PublicationOperationId/idempotency contract,"Stable semantic identity helper + unique persistence constraints + trace contract added."
+E2E11-PCG-03,CLOSED,Delivery state vs Notification state,"Canonical ResultDelivery state machine added; NotificationView explicitly remains UX projection."
+E2E11-PCG-04,CLOSED,UNKNOWN_DELIVERY reconciliation,"PublicationReconciliation Case/Outcome/Job + adapter protocol added; UNKNOWN_COMMIT remains separate."
+E2E11-PCG-05,CLOSED,Required delivery completion gate,"Required/optional semantics + can_finalize_success + AgentExecution finalization rules back-propagated."
+E2E11-PCG-06,CLOSED,Publication authorization/trace/test,"AS_OF_NOW preflight schema + OA/scope/visibility requirements + E2E fault acceptance added."

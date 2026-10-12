@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HumanGateView v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "gate_id",
+    "approval_domain",
+    "state",
+    "title",
+    "summary",
+    "action_ref"
+  ],
+  "properties": {
+    "gate_id": {
+      "type": "string"
+    },
+    "approval_domain": {
+      "enum": [
+        "AGENT_FORMAL",
+        "NSL_WRITE",
+        "HUMAN_CONFIRMATION",
+        "STEP_UP"
+      ]
+    },
+    "approval_provider_type": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "approval_target_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "nsl_execution_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "business_operation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "approval_request_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "state": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "expires_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "action_ref": {
+      "type": "string"
+    }
+  }
+}

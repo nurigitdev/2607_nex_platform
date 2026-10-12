@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:ae:artifact-admission-decision:v2.1",
+  "title": "ArtifactAdmissionDecision v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decision_id",
+    "decision",
+    "package_id",
+    "package_hash",
+    "publisher_id",
+    "signing_key_id",
+    "governance_status",
+    "trust_policy_id",
+    "reason_codes",
+    "decided_at"
+  ],
+  "properties": {
+    "decision_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decision": {
+      "enum": [
+        "ADMITTED",
+        "REJECTED"
+      ]
+    },
+    "package_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "package_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "publisher_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signing_key_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "governance_status": {
+      "enum": [
+        "ACTIVE",
+        "SUSPENDED",
+        "REVALIDATION_REQUIRED",
+        "REVOKED",
+        "DEPRECATED"
+      ]
+    },
+    "trust_policy_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "package_trust_evidence_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "decided_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "ADMITTED"
+          }
+        },
+        "required": [
+          "decision"
+        ]
+      },
+      "then": {
+        "properties": {
+          "governance_status": {
+            "const": "ACTIVE"
+          },
+          "package_trust_evidence_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "package_trust_evidence_ref"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "governance_status": {
+            "enum": [
+              "SUSPENDED",
+              "REVALIDATION_REQUIRED",
+              "REVOKED",
+              "DEPRECATED"
+            ]
+          }
+        },
+        "required": [
+          "governance_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision": {
+            "const": "REJECTED"
+          }
+        }
+      }
+    }
+  ]
+}

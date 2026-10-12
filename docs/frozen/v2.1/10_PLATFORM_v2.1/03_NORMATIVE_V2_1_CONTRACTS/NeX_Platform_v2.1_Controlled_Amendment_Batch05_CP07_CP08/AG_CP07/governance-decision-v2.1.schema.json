@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GovernanceDecision v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decision_id",
+    "asset_type",
+    "asset_ref",
+    "exact_version",
+    "decision",
+    "evidence_refs"
+  ],
+  "properties": {
+    "decision_id": {
+      "type": "string"
+    },
+    "asset_type": {
+      "enum": [
+        "PLAN",
+        "PLAN_BINDING",
+        "AGENT_PROFILE",
+        "TRUST_PROFILE",
+        "TRUST_EVALUATOR",
+        "SKILL",
+        "NSP_PACKAGE",
+        "PUBLISHER",
+        "SIGNING_KEY",
+        "PROMPT",
+        "MODEL",
+        "POLICY"
+      ]
+    },
+    "asset_ref": {
+      "type": "string"
+    },
+    "exact_version": {
+      "type": "string"
+    },
+    "asset_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "decision": {
+      "enum": [
+        "APPROVE",
+        "REJECT",
+        "CERTIFY",
+        "SUSPEND",
+        "REVALIDATE",
+        "DEPRECATE",
+        "RETIRE"
+      ]
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "policy_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tenant_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "effective_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

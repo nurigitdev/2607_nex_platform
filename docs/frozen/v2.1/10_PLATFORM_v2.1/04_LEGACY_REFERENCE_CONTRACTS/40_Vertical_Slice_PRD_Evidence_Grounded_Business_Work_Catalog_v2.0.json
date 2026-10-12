@@ -1,0 +1,1248 @@
+{
+  "document": "40_Vertical_Slice_PRD_Evidence_Grounded_Business_Work_v2.0",
+  "version": "v2.0",
+  "date": "2026-09-04",
+  "counts": {
+    "MUST": 90,
+    "SHOULD": 13
+  },
+  "requirements": [
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD40-SCP-FR-001",
+      "priority": "MUST",
+      "requirement": "PRD40의 핵심 사용자 가치는 자연어 업무 분석/생성 요청을 permission-safe Evidence Bundle에 근거하여 수행하고 Citation/불충분/충돌/Artifact provenance를 사용자에게 검증 가능하게 제공하는 것이다.",
+      "verification": "Business E2E",
+      "parent": "00/27/29/36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD40-SCP-FR-002",
+      "priority": "MUST",
+      "requirement": "본 PRD는 27 CX, 28 MO, 29 AE, 31~36 Baseline을 재정의하지 않고 Evidence-grounded read/analyze/draft Vertical Slice만 구현 수준으로 내린다.",
+      "verification": "Trace Review",
+      "parent": "27~36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD40-SCP-FR-003",
+      "priority": "MUST",
+      "requirement": "Repository Evidence가 미확인된 기존 component의 실제 repo/path/class/table/endpoint 이름은 확정하지 않고 logical contract/task 수준으로 유지해야 한다.",
+      "verification": "Evidence Gate",
+      "parent": "36/02/10"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD40-SCP-FR-004",
+      "priority": "MUST",
+      "requirement": "기존 코드의 KEEP/REFACTOR/REPLACE 판단은 repo/branch/commit/schema/API/test/runtime evidence 확인 전 NOT ASSESSED 또는 PROVISIONAL을 유지해야 한다.",
+      "verification": "Implementation Review",
+      "parent": "35/36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD40-SCP-FR-005",
+      "priority": "MUST",
+      "requirement": "Golden fixture와 예시 문서/엔티티/관계는 TEST-ONLY synthetic data임을 명시하고 실제 고객/프로젝트 사실로 오인되지 않아야 한다.",
+      "verification": "Fixture Review",
+      "parent": "33/36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD40-SCP-FR-006",
+      "priority": "MUST",
+      "requirement": "PRD40 core path는 Business Write를 수행하지 않는 READ/ANALYZE/DRAFT slice로 유지하고 실제 transaction/approval/closure를 결과 텍스트로 임의 주장해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "11/29/31"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD40-SCP-FR-007",
+      "priority": "MUST",
+      "requirement": "Evidence Source of Truth는 CX Evidence Bundle/Source document이며 AE/MO가 별도 evidence truth를 만들지 않아야 한다.",
+      "verification": "Architecture Test",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD40-SCP-FR-008",
+      "priority": "SHOULD",
+      "requirement": "NSL/Enterprise OS canonical read를 추가하는 변형은 별도 read-only context source로 결합할 수 있으나 CX evidence provenance와 authoritative business refs를 구분해야 한다.",
+      "verification": "Extension Test",
+      "parent": "17/31"
+    },
+    {
+      "section": "4.2 User Request, Intent & Plan",
+      "id": "NEX-PRD40-INT-FR-001",
+      "priority": "MUST",
+      "requirement": "AE Workspace는 사용자의 evidence-grounded analysis/draft 요청과 project/document/time filter를 versioned request contract로 제출해야 한다.",
+      "verification": "UI/Contract",
+      "parent": "29"
+    },
+    {
+      "section": "4.2 User Request, Intent & Plan",
+      "id": "NEX-PRD40-INT-FR-002",
+      "priority": "MUST",
+      "requirement": "WorkIntent는 goal, work_class, entity selectors, filters, expected artifact/result type, completion criteria를 구조화해야 한다.",
+      "verification": "Schema Test",
+      "parent": "11/29"
+    },
+    {
+      "section": "4.2 User Request, Intent & Plan",
+      "id": "NEX-PRD40-INT-FR-003",
+      "priority": "MUST",
+      "requirement": "LLM은 Project/Document/Vendor 등 Stable ID를 생성하지 않고 selector/candidate만 제안하며 canonical resolver가 stable ref를 확정해야 한다.",
+      "verification": "Adversarial Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.2 User Request, Intent & Plan",
+      "id": "NEX-PRD40-INT-FR-004",
+      "priority": "MUST",
+      "requirement": "사용자가 명시한 Project Scope/Data Classification 제한은 retrieval request에 server-side context로 반영하되 client 값만을 authority source로 신뢰해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "26/27"
+    },
+    {
+      "section": "4.2 User Request, Intent & Plan",
+      "id": "NEX-PRD40-INT-FR-005",
+      "priority": "MUST",
+      "requirement": "Evidence가 필요한지 여부와 artifact 형태는 Plan에서 명시적으로 표현하고 retrieval/generation step이 traceable plan/execution ref를 가져야 한다.",
+      "verification": "Plan Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.2 User Request, Intent & Plan",
+      "id": "NEX-PRD40-INT-FR-006",
+      "priority": "MUST",
+      "requirement": "Known deterministic direct retrieval path가 가능한 요청은 불필요한 dynamic planning을 강제하지 않아야 한다.",
+      "verification": "Routing Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.2 User Request, Intent & Plan",
+      "id": "NEX-PRD40-INT-FR-007",
+      "priority": "MUST",
+      "requirement": "Prompt injection 또는 문서 내부 instruction은 사용자 Intent/Plan authority를 변경하지 못하고 retrieved evidence data로만 취급되어야 한다.",
+      "verification": "Prompt Injection Test",
+      "parent": "29/33"
+    },
+    {
+      "section": "4.2 User Request, Intent & Plan",
+      "id": "NEX-PRD40-INT-FR-008",
+      "priority": "SHOULD",
+      "requirement": "사용자는 결과 생성 전 optional filter/document scope를 수정하고 재검색할 수 있어야 한다.",
+      "verification": "UX Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.3 OA Current Authority & Retrieval Security",
+      "id": "NEX-PRD40-OA-FR-001",
+      "priority": "MUST",
+      "requirement": "Retrieval 시작 전 OA는 Principal, Business Actor, RoleBinding, Org Scope, Project Scope, Data Classification, capability/risk/kill switch를 current 기준으로 평가해야 한다.",
+      "verification": "Security Golden",
+      "parent": "26/27"
+    },
+    {
+      "section": "4.3 OA Current Authority & Retrieval Security",
+      "id": "NEX-PRD40-OA-FR-002",
+      "priority": "MUST",
+      "requirement": "CX retrieval request는 OA current authority/PDP result 또는 검증된 server-to-server authority context를 사용해야 한다.",
+      "verification": "Contract/Security",
+      "parent": "26/27"
+    },
+    {
+      "section": "4.3 OA Current Authority & Retrieval Security",
+      "id": "NEX-PRD40-OA-FR-003",
+      "priority": "MUST",
+      "requirement": "서로 다른 RoleBinding의 넓은 Org Scope와 높은 Classification Ceiling을 교차 조합하여 privilege amplification을 만들지 않아야 한다.",
+      "verification": "Negative Security",
+      "parent": "26/27"
+    },
+    {
+      "section": "4.3 OA Current Authority & Retrieval Security",
+      "id": "NEX-PRD40-OA-FR-004",
+      "priority": "MUST",
+      "requirement": "RoleBinding revoke/expire, employee suspension, project assignment change는 신규 retrieval과 source preview/follow-up에 반영되어야 한다.",
+      "verification": "Lifecycle Test",
+      "parent": "26/27"
+    },
+    {
+      "section": "4.3 OA Current Authority & Retrieval Security",
+      "id": "NEX-PRD40-OA-FR-005",
+      "priority": "MUST",
+      "requirement": "OA/PDP unavailable 또는 authority ambiguity 시 permission-sensitive retrieval/source preview/export는 fail-closed해야 한다.",
+      "verification": "Fault Test",
+      "parent": "26/32"
+    },
+    {
+      "section": "4.3 OA Current Authority & Retrieval Security",
+      "id": "NEX-PRD40-OA-FR-006",
+      "priority": "MUST",
+      "requirement": "Authority context/audit에는 raw token/EAC secret을 저장하지 않고 authority_hash/policy_version/ref만 사용해야 한다.",
+      "verification": "Security Scan",
+      "parent": "26/27"
+    },
+    {
+      "section": "4.3 OA Current Authority & Retrieval Security",
+      "id": "NEX-PRD40-OA-FR-007",
+      "priority": "MUST",
+      "requirement": "Evidence Bundle을 AE에 반환하기 직전 CX는 current permission을 final recheck해야 한다.",
+      "verification": "Security E2E",
+      "parent": "27"
+    },
+    {
+      "section": "4.3 OA Current Authority & Retrieval Security",
+      "id": "NEX-PRD40-OA-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Read-only user-facing diagnostics는 권한이 없는 문서/edge의 존재 여부를 추론할 수 있는 filtered count/detail을 노출하지 않도록 정책화해야 한다.",
+      "verification": "Side-channel Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.4 Permission-aware Hybrid Retrieval",
+      "id": "NEX-PRD40-RET-FR-001",
+      "priority": "MUST",
+      "requirement": "CX는 BM25 lexical retrieval과 pgvector dense retrieval을 permission-safe candidate query로 수행해야 한다.",
+      "verification": "Retrieval E2E",
+      "parent": "27"
+    },
+    {
+      "section": "4.4 Permission-aware Hybrid Retrieval",
+      "id": "NEX-PRD40-RET-FR-002",
+      "priority": "MUST",
+      "requirement": "BM25/vector candidate generation부터 Org/Project/Classification/status predicate를 적용하고 unauthorized 후보를 application post-filter에만 의존해서는 안 된다.",
+      "verification": "SQL/Security",
+      "parent": "27"
+    },
+    {
+      "section": "4.4 Permission-aware Hybrid Retrieval",
+      "id": "NEX-PRD40-RET-FR-003",
+      "priority": "MUST",
+      "requirement": "Hybrid fusion은 permission-safe BM25/vector/optional graph candidate set에서만 수행해야 한다.",
+      "verification": "Security/Quality",
+      "parent": "27"
+    },
+    {
+      "section": "4.4 Permission-aware Hybrid Retrieval",
+      "id": "NEX-PRD40-RET-FR-004",
+      "priority": "MUST",
+      "requirement": "Reranker 입력 역시 permission-safe candidate만 사용해야 한다.",
+      "verification": "Security Test",
+      "parent": "27/28"
+    },
+    {
+      "section": "4.4 Permission-aware Hybrid Retrieval",
+      "id": "NEX-PRD40-RET-FR-005",
+      "priority": "MUST",
+      "requirement": "Retrieval profile, embedding/reranker/model version, score components, query filters를 reproducibility trace에 남길 수 있어야 한다.",
+      "verification": "Audit/Repro",
+      "parent": "27/28"
+    },
+    {
+      "section": "4.4 Permission-aware Hybrid Retrieval",
+      "id": "NEX-PRD40-RET-FR-006",
+      "priority": "MUST",
+      "requirement": "권한 filter로 evidence가 부족해진 경우 unauthorized 후보를 채워 넣지 않고 insufficient evidence 상태를 반환해야 한다.",
+      "verification": "Negative Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.4 Permission-aware Hybrid Retrieval",
+      "id": "NEX-PRD40-RET-FR-007",
+      "priority": "MUST",
+      "requirement": "Embedding provider 장애 시 compatibility-safe replica가 없으면 CX는 정책에 따라 BM25/Graph-only degraded 또는 typed failure를 명시적으로 반환해야 한다.",
+      "verification": "Fault Test",
+      "parent": "27/28"
+    },
+    {
+      "section": "4.4 Permission-aware Hybrid Retrieval",
+      "id": "NEX-PRD40-RET-FR-008",
+      "priority": "MUST",
+      "requirement": "Retrieval 결과 중 near-duplicate chunk를 diversity 규칙으로 축약해도 source/citation trace를 잃어서는 안 된다.",
+      "verification": "Quality Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.4 Permission-aware Hybrid Retrieval",
+      "id": "NEX-PRD40-RET-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Query/document/date/taxonomy/project filter는 permission predicate와 AND로 결합되고 profile별 benchmark를 가질 수 있어야 한다.",
+      "verification": "Benchmark",
+      "parent": "27/33"
+    },
+    {
+      "section": "4.5 Optional 1-Hop Ontology Graph-lite",
+      "id": "NEX-PRD40-GRA-FR-001",
+      "priority": "MUST",
+      "requirement": "1-Hop Ontology Graph-lite는 기본 Retrieval의 optional expansion이며 BM25/vector permission-safe initial candidate와 entity linking 이후에만 활성화되어야 한다.",
+      "verification": "Graph E2E",
+      "parent": "27"
+    },
+    {
+      "section": "4.5 Optional 1-Hop Ontology Graph-lite",
+      "id": "NEX-PRD40-GRA-FR-002",
+      "priority": "MUST",
+      "requirement": "기본 Graph traversal depth는 정확히 1-hop이고 2-hop 이상은 기본 비활성화되어야 한다.",
+      "verification": "Boundary Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.5 Optional 1-Hop Ontology Graph-lite",
+      "id": "NEX-PRD40-GRA-FR-003",
+      "priority": "MUST",
+      "requirement": "모든 Graph Relation은 최소 하나의 source document/chunk/source_locator 기반 Relation Evidence와 연결되어야 한다.",
+      "verification": "Invariant Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.5 Optional 1-Hop Ontology Graph-lite",
+      "id": "NEX-PRD40-GRA-FR-004",
+      "priority": "MUST",
+      "requirement": "Supporting relation evidence가 current authority predicate를 통과하지 못하면 해당 relation/edge 존재 자체를 result/diagnostics/AE Context에 노출해서는 안 된다.",
+      "verification": "Graph Security",
+      "parent": "27/33"
+    },
+    {
+      "section": "4.5 Optional 1-Hop Ontology Graph-lite",
+      "id": "NEX-PRD40-GRA-FR-005",
+      "priority": "MUST",
+      "requirement": "Graph-derived candidate는 relation_id/relation_type/relation_evidence_ref/graph provenance를 Evidence Bundle까지 유지해야 한다.",
+      "verification": "Contract Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.5 Optional 1-Hop Ontology Graph-lite",
+      "id": "NEX-PRD40-GRA-FR-006",
+      "priority": "MUST",
+      "requirement": "LLM/Rule 기반 relation extraction confidence는 navigation metadata일 뿐 evidence 없는 authoritative fact 또는 security metadata 변경 근거로 사용해서는 안 된다.",
+      "verification": "Hallucination Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.5 Optional 1-Hop Ontology Graph-lite",
+      "id": "NEX-PRD40-GRA-FR-007",
+      "priority": "MUST",
+      "requirement": "Graph candidate도 BM25/vector와 동일한 final permission recheck를 통과해야 한다.",
+      "verification": "Security Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.5 Optional 1-Hop Ontology Graph-lite",
+      "id": "NEX-PRD40-GRA-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Graph-lite가 비활성/장애인 경우 core retrieval은 BM25/vector 경로로 계속 가능해야 하며 degraded diagnostics를 표시할 수 있어야 한다.",
+      "verification": "Degraded Test",
+      "parent": "27/32"
+    },
+    {
+      "section": "4.6 Evidence Bundle Contract & Quality",
+      "id": "NEX-PRD40-EVD-FR-001",
+      "priority": "MUST",
+      "requirement": "CX는 최종 검색 결과를 immutable/versioned Evidence Bundle 객체로 구성해야 한다.",
+      "verification": "Contract Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 Evidence Bundle Contract & Quality",
+      "id": "NEX-PRD40-EVD-FR-002",
+      "priority": "MUST",
+      "requirement": "Evidence Bundle은 bundle/query ID, authority_hash, policy_version, retrieval_profile, evidence_quality, evidence items, bundle_hash를 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 Evidence Bundle Contract & Quality",
+      "id": "NEX-PRD40-EVD-FR-003",
+      "priority": "MUST",
+      "requirement": "각 Evidence Item은 document/chunk/source_locator, controlled text/excerpt, citation label, scores, metadata, security envelope hash를 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 Evidence Bundle Contract & Quality",
+      "id": "NEX-PRD40-EVD-FR-004",
+      "priority": "MUST",
+      "requirement": "Graph-derived Evidence Item은 relation_id/relation_type/relation_evidence_ref와 supporting source citation을 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 Evidence Bundle Contract & Quality",
+      "id": "NEX-PRD40-EVD-FR-005",
+      "priority": "MUST",
+      "requirement": "Evidence Bundle은 원본 resource의 classification을 낮추거나 감추어 사용자에게 전달해서는 안 된다.",
+      "verification": "Invariant Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 Evidence Bundle Contract & Quality",
+      "id": "NEX-PRD40-EVD-FR-006",
+      "priority": "MUST",
+      "requirement": "Evidence Bundle은 evidence_quality를 SUFFICIENT/PARTIAL/INSUFFICIENT/CONFLICT 중 명시적 상태로 반환해야 한다.",
+      "verification": "Quality Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 Evidence Bundle Contract & Quality",
+      "id": "NEX-PRD40-EVD-FR-007",
+      "priority": "MUST",
+      "requirement": "Bundle hash와 source locator/citation map을 이용해 이후 AE response/Artifact가 정확한 근거 set을 재현할 수 있어야 한다.",
+      "verification": "Audit/Repro",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.6 Evidence Bundle Contract & Quality",
+      "id": "NEX-PRD40-EVD-FR-008",
+      "priority": "MUST",
+      "requirement": "Bundle이 STALE/REVOKED/EXPIRED 상태가 되면 follow-up 재사용 전에 current permission/freshness revalidation을 요구해야 한다.",
+      "verification": "Lifecycle Test",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.6 Evidence Bundle Contract & Quality",
+      "id": "NEX-PRD40-EVD-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Evidence Bundle은 coverage/conflict/insufficiency reason code를 user-safe diagnostics로 projection할 수 있어야 한다.",
+      "verification": "UX/Quality",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.7 Evidence Quality Decision & User Behavior",
+      "id": "NEX-PRD40-QAL-FR-001",
+      "priority": "MUST",
+      "requirement": "SUFFICIENT 상태에서는 evidence-grounded answer/draft 생성이 가능하되 모든 주요 factual claim은 allowed citation set에 연결 가능해야 한다.",
+      "verification": "Acceptance E2E",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.7 Evidence Quality Decision & User Behavior",
+      "id": "NEX-PRD40-QAL-FR-002",
+      "priority": "MUST",
+      "requirement": "PARTIAL 상태에서는 결과/Artifact에 불완전 근거 caveat와 missing information을 표시하고 complete/authoritative conclusion으로 표현해서는 안 된다.",
+      "verification": "UX E2E",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.7 Evidence Quality Decision & User Behavior",
+      "id": "NEX-PRD40-QAL-FR-003",
+      "priority": "MUST",
+      "requirement": "INSUFFICIENT 상태에서는 authoritative conclusion을 생성하지 않고 추가 evidence 요청/refine/clarification 또는 insufficient 결과를 반환해야 한다.",
+      "verification": "Negative E2E",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.7 Evidence Quality Decision & User Behavior",
+      "id": "NEX-PRD40-QAL-FR-004",
+      "priority": "MUST",
+      "requirement": "CONFLICT 상태에서는 상충 source/citation을 함께 제시하고 모델이 근거 없이 하나를 선택하여 단정하지 않아야 한다.",
+      "verification": "Conflict E2E",
+      "parent": "27/29/33"
+    },
+    {
+      "section": "4.7 Evidence Quality Decision & User Behavior",
+      "id": "NEX-PRD40-QAL-FR-005",
+      "priority": "MUST",
+      "requirement": "Evidence quality state는 MO/LLM이 임의 상향 변경하지 못하고 CX contract의 상태를 그대로 유지해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "27/28"
+    },
+    {
+      "section": "4.7 Evidence Quality Decision & User Behavior",
+      "id": "NEX-PRD40-QAL-FR-006",
+      "priority": "MUST",
+      "requirement": "Generation 후 발견된 unsupported/unknown citation 또는 citation completeness failure는 response/artifact를 VALID로 처리하지 않고 validation error/caveat로 전환해야 한다.",
+      "verification": "Post-gen Validation",
+      "parent": "29/33"
+    },
+    {
+      "section": "4.7 Evidence Quality Decision & User Behavior",
+      "id": "NEX-PRD40-QAL-FR-007",
+      "priority": "MUST",
+      "requirement": "사용자가 conflict/insufficient 상태에서도 초안 생성을 요청하는 경우 Artifact는 DRAFT/CAVEATED 상태와 unresolved issue를 명시해야 한다.",
+      "verification": "Product Policy Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.7 Evidence Quality Decision & User Behavior",
+      "id": "NEX-PRD40-QAL-FR-008",
+      "priority": "SHOULD",
+      "requirement": "AE는 evidence quality와 source count/diversity를 기반으로 추가 검색 제안을 제공할 수 있으나 숨겨진 unauthorized source를 암시해서는 안 된다.",
+      "verification": "UX/Security",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.8 AE Context, Prompt Package & MO Generation",
+      "id": "NEX-PRD40-GEN-FR-001",
+      "priority": "MUST",
+      "requirement": "AE는 CX의 versioned AE Context를 사용하고 raw vector/index/storage internals를 MO prompt에 직접 전달해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.8 AE Context, Prompt Package & MO Generation",
+      "id": "NEX-PRD40-GEN-FR-002",
+      "priority": "MUST",
+      "requirement": "Prompt package는 evidence priority/diversity/token budget을 고려하고 allowed citation labels와 evidence_quality를 포함해야 한다.",
+      "verification": "Contract Test",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.8 AE Context, Prompt Package & MO Generation",
+      "id": "NEX-PRD40-GEN-FR-003",
+      "priority": "MUST",
+      "requirement": "Retrieved document text는 untrusted data 영역으로 구분되어 prompt instruction/system policy를 변경할 수 없어야 한다.",
+      "verification": "Prompt Injection Test",
+      "parent": "29/33"
+    },
+    {
+      "section": "4.8 AE Context, Prompt Package & MO Generation",
+      "id": "NEX-PRD40-GEN-FR-004",
+      "priority": "MUST",
+      "requirement": "MO generation은 versioned prompt/model profile과 response schema를 사용하고 allowed citation IDs 집합 밖의 citation을 반환할 수 없도록 structured output contract를 적용해야 한다.",
+      "verification": "Structured Generation",
+      "parent": "28/29"
+    },
+    {
+      "section": "4.8 AE Context, Prompt Package & MO Generation",
+      "id": "NEX-PRD40-GEN-FR-005",
+      "priority": "MUST",
+      "requirement": "MO는 evidence_quality/authority/permission을 결정하지 않고 제공된 context 범위에서 요약/분석/초안 생성만 수행해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "28/29"
+    },
+    {
+      "section": "4.8 AE Context, Prompt Package & MO Generation",
+      "id": "NEX-PRD40-GEN-FR-006",
+      "priority": "MUST",
+      "requirement": "모델 출력의 factual field/citation ID는 server-side validator가 schema/allowed-set을 검증한 후 사용자에게 표시해야 한다.",
+      "verification": "Validation Test",
+      "parent": "29/33"
+    },
+    {
+      "section": "4.8 AE Context, Prompt Package & MO Generation",
+      "id": "NEX-PRD40-GEN-FR-007",
+      "priority": "MUST",
+      "requirement": "MO 장애/timeout은 fabricated answer로 숨기지 않고 evidence-only view, retryable typed failure 또는 explicit degraded result로 처리해야 한다.",
+      "verification": "Fault Test",
+      "parent": "28/32"
+    },
+    {
+      "section": "4.8 AE Context, Prompt Package & MO Generation",
+      "id": "NEX-PRD40-GEN-FR-008",
+      "priority": "MUST",
+      "requirement": "Streaming response가 있어도 final Artifact/Result는 validation 완료 후에만 authoritative-looking completed state로 표시해야 한다.",
+      "verification": "Streaming/E2E",
+      "parent": "29"
+    },
+    {
+      "section": "4.8 AE Context, Prompt Package & MO Generation",
+      "id": "NEX-PRD40-GEN-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Claim-level citation completeness score 또는 uncited-claim count를 품질 metric으로 수집할 수 있어야 한다.",
+      "verification": "Quality Metric",
+      "parent": "29/33"
+    },
+    {
+      "section": "4.9 Citation, Evidence Panel & Source Preview UX",
+      "id": "NEX-PRD40-CIT-FR-001",
+      "priority": "MUST",
+      "requirement": "AE Citation은 CX가 제공한 citation_map/source locator를 기준으로 표시하고 LLM이 임의 citation label/source를 생성해서는 안 된다.",
+      "verification": "Citation E2E",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.9 Citation, Evidence Panel & Source Preview UX",
+      "id": "NEX-PRD40-CIT-FR-002",
+      "priority": "MUST",
+      "requirement": "Evidence panel은 문서명, page/heading/source locator, evidence quality, project/classification label을 policy-safe 범위에서 표시해야 한다.",
+      "verification": "Playwright",
+      "parent": "29"
+    },
+    {
+      "section": "4.9 Citation, Evidence Panel & Source Preview UX",
+      "id": "NEX-PRD40-CIT-FR-003",
+      "priority": "MUST",
+      "requirement": "Graph relation evidence는 relation label과 supporting source citation을 함께 표시하고 edge 단독을 사실 근거로 표현해서는 안 된다.",
+      "verification": "Graph UX Test",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.9 Citation, Evidence Panel & Source Preview UX",
+      "id": "NEX-PRD40-CIT-FR-004",
+      "priority": "MUST",
+      "requirement": "Citation click/source preview는 current permission을 CX/OA 경계에서 재검증해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/27/29"
+    },
+    {
+      "section": "4.9 Citation, Evidence Panel & Source Preview UX",
+      "id": "NEX-PRD40-CIT-FR-005",
+      "priority": "MUST",
+      "requirement": "Source preview 권한이 revoke된 경우 Artifact/Citation provenance ref는 보존하되 원문 내용/edge detail은 더 이상 노출하지 않아야 한다.",
+      "verification": "Lifecycle Security",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.9 Citation, Evidence Panel & Source Preview UX",
+      "id": "NEX-PRD40-CIT-FR-006",
+      "priority": "MUST",
+      "requirement": "PARTIAL/INSUFFICIENT/CONFLICT 상태는 response header/Artifact metadata/Evidence panel 중 적절한 위치에 명시적으로 표시해야 한다.",
+      "verification": "UX E2E",
+      "parent": "29"
+    },
+    {
+      "section": "4.9 Citation, Evidence Panel & Source Preview UX",
+      "id": "NEX-PRD40-CIT-FR-007",
+      "priority": "MUST",
+      "requirement": "사용자-facing citation 순서/번호 변경이 source identity를 바꾸지 않도록 stable citation/source ref를 내부적으로 유지해야 한다.",
+      "verification": "Trace Test",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.9 Citation, Evidence Panel & Source Preview UX",
+      "id": "NEX-PRD40-CIT-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Citation 선택 시 원문 주변 context를 policy-safe 범위에서 preview할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.10 Artifact Generation, Provenance & History",
+      "id": "NEX-PRD40-ART-FR-001",
+      "priority": "MUST",
+      "requirement": "생성 Artifact는 artifact_id/version/status와 source request/execution refs를 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "29/31"
+    },
+    {
+      "section": "4.10 Artifact Generation, Provenance & History",
+      "id": "NEX-PRD40-ART-FR-002",
+      "priority": "MUST",
+      "requirement": "Evidence-grounded Artifact는 evidence_bundle_ref/bundle_hash/retrieval_profile/policy_version을 provenance에 보존해야 한다.",
+      "verification": "Audit Test",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.10 Artifact Generation, Provenance & History",
+      "id": "NEX-PRD40-ART-FR-003",
+      "priority": "MUST",
+      "requirement": "Artifact provenance는 prompt_version/model_version/response_schema_version을 포함하여 생성 조건을 재현할 수 있어야 한다.",
+      "verification": "Repro Test",
+      "parent": "28/29"
+    },
+    {
+      "section": "4.10 Artifact Generation, Provenance & History",
+      "id": "NEX-PRD40-ART-FR-004",
+      "priority": "MUST",
+      "requirement": "Artifact section 또는 claim-level citation은 stable citation IDs와 source locator로 추적 가능해야 한다.",
+      "verification": "Trace E2E",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.10 Artifact Generation, Provenance & History",
+      "id": "NEX-PRD40-ART-FR-005",
+      "priority": "MUST",
+      "requirement": "Artifact가 PARTIAL/INSUFFICIENT/CONFLICT evidence에서 생성된 경우 해당 quality/caveat/unresolved issue를 metadata와 사용자-visible content에 유지해야 한다.",
+      "verification": "Quality E2E",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.10 Artifact Generation, Provenance & History",
+      "id": "NEX-PRD40-ART-FR-006",
+      "priority": "MUST",
+      "requirement": "Generated Artifact와 Enterprise OS authoritative Business Object를 구분하여 draft/recommendation이 실제 transaction 완료로 오인되지 않게 해야 한다.",
+      "verification": "UX/State Test",
+      "parent": "29/31"
+    },
+    {
+      "section": "4.10 Artifact Generation, Provenance & History",
+      "id": "NEX-PRD40-ART-FR-007",
+      "priority": "MUST",
+      "requirement": "Artifact preview/download/export는 current Project/Data Classification/Export permission을 재검증해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.10 Artifact Generation, Provenance & History",
+      "id": "NEX-PRD40-ART-FR-008",
+      "priority": "MUST",
+      "requirement": "Interaction history는 CX chunk/vector 원문을 대량 복제하지 않고 artifact/evidence bundle/citation refs와 summary를 우선 저장해야 한다.",
+      "verification": "Data Test",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.10 Artifact Generation, Provenance & History",
+      "id": "NEX-PRD40-ART-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Artifact version history는 이전 Evidence Bundle과 새 Evidence Bundle lineage를 비교 가능하게 표시할 수 있어야 한다.",
+      "verification": "Version UX",
+      "parent": "29"
+    },
+    {
+      "section": "4.11 Follow-up, Freshness & Revalidation",
+      "id": "NEX-PRD40-FUP-FR-001",
+      "priority": "MUST",
+      "requirement": "후속 질문은 이전 Evidence Bundle을 맹목적으로 재사용하지 않고 current authority/freshness policy를 확인해야 한다.",
+      "verification": "Follow-up Security",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.11 Follow-up, Freshness & Revalidation",
+      "id": "NEX-PRD40-FUP-FR-002",
+      "priority": "MUST",
+      "requirement": "Source document/relation evidence가 삭제/revoke/stale되면 follow-up retrieval과 source preview에 즉시 반영되어야 한다.",
+      "verification": "Lifecycle Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.11 Follow-up, Freshness & Revalidation",
+      "id": "NEX-PRD40-FUP-FR-003",
+      "priority": "MUST",
+      "requirement": "Artifact 재생성은 prior bundle을 reference할 수 있으나 현재 evidence quality/permission을 확인한 새 execution/provenance를 생성해야 한다.",
+      "verification": "Repro/Lifecycle",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.11 Follow-up, Freshness & Revalidation",
+      "id": "NEX-PRD40-FUP-FR-004",
+      "priority": "MUST",
+      "requirement": "User가 filter/project scope를 변경하면 기존 retrieval result와 새 result를 별도 bundle/version으로 추적해야 한다.",
+      "verification": "Version Test",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.11 Follow-up, Freshness & Revalidation",
+      "id": "NEX-PRD40-FUP-FR-005",
+      "priority": "MUST",
+      "requirement": "Cache key는 principal/authority/scope/classification/policy/version 또는 authority_hash를 포함하여 stale 권한 누출을 방지해야 한다.",
+      "verification": "Cache Security",
+      "parent": "27"
+    },
+    {
+      "section": "4.11 Follow-up, Freshness & Revalidation",
+      "id": "NEX-PRD40-FUP-FR-006",
+      "priority": "MUST",
+      "requirement": "Graph profile/embedding/reranker 변경이 결과에 영향을 주면 retrieval_profile/version lineage를 Artifact provenance에 남겨야 한다.",
+      "verification": "Trace Test",
+      "parent": "27/28"
+    },
+    {
+      "section": "4.11 Follow-up, Freshness & Revalidation",
+      "id": "NEX-PRD40-FUP-FR-007",
+      "priority": "SHOULD",
+      "requirement": "사용자는 “최신 근거로 다시 생성” action을 통해 explicit re-retrieval을 요청할 수 있어야 한다.",
+      "verification": "UX Test",
+      "parent": "29"
+    },
+    {
+      "section": "5 Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD40-TST-NFR-001",
+      "priority": "MUST",
+      "requirement": "Changed PRD40 code는 statement coverage 목표 95% 이상, branch coverage 목표 85% 이상을 유지해야 한다.",
+      "verification": "Coverage",
+      "parent": "33/36"
+    },
+    {
+      "section": "5 Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD40-TST-NFR-002",
+      "priority": "MUST",
+      "requirement": "PostgreSQL integration tests는 독립 test DB를 초기화하여 permission/retrieval/evidence/artifact state를 재현해야 한다.",
+      "verification": "pytest",
+      "parent": "33"
+    },
+    {
+      "section": "5 Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD40-TST-NFR-003",
+      "priority": "MUST",
+      "requirement": "Playwright E2E는 SUFFICIENT/PARTIAL/INSUFFICIENT/CONFLICT, citation click, graph provenance, artifact preview/export를 검증해야 한다.",
+      "verification": "Playwright",
+      "parent": "29/33"
+    },
+    {
+      "section": "5 Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD40-TST-NFR-004",
+      "priority": "MUST",
+      "requirement": "Security regression은 Org/Project/Classification boundary, revoked RoleBinding, inaccessible relation evidence, source preview revoke, fabricated citation을 포함해야 한다.",
+      "verification": "Security Regression",
+      "parent": "27/33"
+    },
+    {
+      "section": "5 Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD40-TST-NFR-005",
+      "priority": "MUST",
+      "requirement": "Prompt injection fixture는 evidence 내부 instruction이 system/policy/tool/authority를 변경하지 못하는지 검증해야 한다.",
+      "verification": "Adversarial Test",
+      "parent": "29/33"
+    },
+    {
+      "section": "5 Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD40-TST-NFR-006",
+      "priority": "MUST",
+      "requirement": "MO가 allowed set 밖 citation ID 또는 schema-violating output을 반환할 때 server-side validator가 사용자 노출/Artifact 확정을 차단해야 한다.",
+      "verification": "Negative Contract",
+      "parent": "28/29/33"
+    },
+    {
+      "section": "5 Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD40-TST-NFR-007",
+      "priority": "MUST",
+      "requirement": "CX BM25/vector/graph degraded variant와 MO unavailable variant가 typed diagnostics/failure로 처리되는지 검증해야 한다.",
+      "verification": "Fault Injection",
+      "parent": "27/28/32/33"
+    },
+    {
+      "section": "5 Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD40-TST-NFR-008",
+      "priority": "MUST",
+      "requirement": "Graph 2-hop disabled, unauthorized edge existence, low-confidence relation, ambiguous entity를 boundary/robustness test로 검증해야 한다.",
+      "verification": "Graph Regression",
+      "parent": "27/33"
+    },
+    {
+      "section": "5 Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD40-TST-NFR-009",
+      "priority": "MUST",
+      "requirement": "Evidence Bundle hash/citation/source locator/artifact provenance가 동일 fixture에서 reproducible한지 Golden test를 제공해야 한다.",
+      "verification": "Golden Repro",
+      "parent": "27/29/33"
+    },
+    {
+      "section": "5 Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD40-TST-NFR-010",
+      "priority": "MUST",
+      "requirement": "Release Gate는 fabricated citation, unauthorized evidence/edge leakage, hidden INSUFFICIENT/CONFLICT, provenance break를 Critical Blocker로 처리해야 한다.",
+      "verification": "Release Gate",
+      "parent": "33"
+    },
+    {
+      "section": "5 Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD40-TST-NFR-011",
+      "priority": "SHOULD",
+      "requirement": "Retrieval benchmark는 lexical/vector/graph source별 recall/precision과 permission-safe quality를 versioned dataset으로 추적할 수 있어야 한다.",
+      "verification": "Benchmark",
+      "parent": "27/33"
+    },
+    {
+      "section": "5 Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD40-TST-NFR-012",
+      "priority": "SHOULD",
+      "requirement": "Artifact generation latency는 retrieval/model/validation/rendering 단계별로 분해해 baseline을 측정할 수 있어야 한다.",
+      "verification": "Performance Test",
+      "parent": "28/29/33"
+    }
+  ],
+  "tasks": [
+    {
+      "task": "T40-01",
+      "area": "Evidence Gate",
+      "deliverable": "Repository/contract evidence checklist + provisional physical mapping",
+      "depends": "-",
+      "evidence": "Gate"
+    },
+    {
+      "task": "T40-02",
+      "area": "Fixture",
+      "deliverable": "Synthetic Project A request + document/evidence/relation fixtures",
+      "depends": "T40-01",
+      "evidence": "JSON"
+    },
+    {
+      "task": "T40-03",
+      "area": "Intent/Plan",
+      "deliverable": "Evidence-grounded read/analyze/draft WorkIntent + plan fixture",
+      "depends": "T40-02",
+      "evidence": "Unit"
+    },
+    {
+      "task": "T40-04",
+      "area": "Quality Policy",
+      "deliverable": "SUFFICIENT/PARTIAL/INSUFFICIENT/CONFLICT decision policy",
+      "depends": "T40-02",
+      "evidence": "Policy Test"
+    },
+    {
+      "task": "T40-05",
+      "area": "OA",
+      "deliverable": "Current authority context + project/classification test matrix",
+      "depends": "T40-03",
+      "evidence": "Security"
+    },
+    {
+      "task": "T40-06",
+      "area": "CX Retrieval",
+      "deliverable": "BM25 + pgvector permission-safe retrieval contract",
+      "depends": "T40-05",
+      "evidence": "Integration"
+    },
+    {
+      "task": "T40-07",
+      "area": "Graph-lite",
+      "deliverable": "Optional entity-link + 1-hop accessible relation evidence expansion",
+      "depends": "T40-06",
+      "evidence": "Graph Test"
+    },
+    {
+      "task": "T40-08",
+      "area": "Evidence Bundle",
+      "deliverable": "Bundle schema/hash/quality/citation/source locator",
+      "depends": "T40-06~07",
+      "evidence": "Contract"
+    },
+    {
+      "task": "T40-09",
+      "area": "Degraded Retrieval",
+      "deliverable": "BM25-only / graph disabled / provider fault diagnostics",
+      "depends": "T40-06~08",
+      "evidence": "Fault"
+    },
+    {
+      "task": "T40-10",
+      "area": "AE Context",
+      "deliverable": "Policy-safe context + citation allow-list + quality state",
+      "depends": "T40-08",
+      "evidence": "Contract"
+    },
+    {
+      "task": "T40-11",
+      "area": "Prompt Guard",
+      "deliverable": "Retrieved content as untrusted data; injection isolation",
+      "depends": "T40-10",
+      "evidence": "Adversarial"
+    },
+    {
+      "task": "T40-12",
+      "area": "MO Output",
+      "deliverable": "Structured answer/draft schema with allowed citation IDs",
+      "depends": "T40-10~11",
+      "evidence": "Integration"
+    },
+    {
+      "task": "T40-13",
+      "area": "Citation Validator",
+      "deliverable": "Reject unknown IDs / unsupported citation structure",
+      "depends": "T40-12",
+      "evidence": "Negative"
+    },
+    {
+      "task": "T40-14",
+      "area": "Quality Renderer",
+      "deliverable": "PARTIAL/INSUFFICIENT/CONFLICT user-safe rendering",
+      "depends": "T40-04,13",
+      "evidence": "Playwright"
+    },
+    {
+      "task": "T40-15",
+      "area": "Evidence Panel",
+      "deliverable": "Source locator / classification / relation provenance UI",
+      "depends": "T40-08",
+      "evidence": "Playwright"
+    },
+    {
+      "task": "T40-16",
+      "area": "Source Preview",
+      "deliverable": "Current permission recheck + revoke behavior",
+      "depends": "T40-05,15",
+      "evidence": "Security"
+    },
+    {
+      "task": "T40-17",
+      "area": "Artifact",
+      "deliverable": "Artifact version + bundle/prompt/model provenance",
+      "depends": "T40-12~14",
+      "evidence": "Contract"
+    },
+    {
+      "task": "T40-18",
+      "area": "History",
+      "deliverable": "Interaction/artifact refs without chunk/vector duplication",
+      "depends": "T40-17",
+      "evidence": "Data"
+    },
+    {
+      "task": "T40-19",
+      "area": "Follow-up",
+      "deliverable": "Freshness/current-authority revalidation + new bundle lineage",
+      "depends": "T40-08,17",
+      "evidence": "E2E"
+    },
+    {
+      "task": "T40-20",
+      "area": "Fault Matrix",
+      "deliverable": "revocation / stale / conflict / insufficient / degraded faults",
+      "depends": "T40-09,16,19",
+      "evidence": "Fault"
+    },
+    {
+      "task": "T40-21",
+      "area": "Security Matrix",
+      "deliverable": "scope leakage / edge-existence / export / injection tests",
+      "depends": "T40-05~20",
+      "evidence": "Security"
+    },
+    {
+      "task": "T40-22",
+      "area": "Golden E2E",
+      "deliverable": "Playwright/API complete evidence-grounded draft flow",
+      "depends": "T40-01~21",
+      "evidence": "Golden"
+    },
+    {
+      "task": "T40-23",
+      "area": "Release",
+      "deliverable": "Permanent regression + acceptance evidence + canary smoke",
+      "depends": "T40-22",
+      "evidence": "Release"
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "AC40-01",
+      "category": "Business",
+      "condition": "Synthetic Project A evidence-grounded analysis/draft request completes with traceable Artifact.",
+      "evidence": "E2E Trace",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-02",
+      "category": "Permission",
+      "condition": "Unauthorized org/project/classification document exposure is 0.",
+      "evidence": "Security Evidence",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-03",
+      "category": "Permission",
+      "condition": "Revoked RoleBinding is reflected in new retrieval/source preview.",
+      "evidence": "Lifecycle Trace",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-04",
+      "category": "Retrieval",
+      "condition": "BM25+pgvector permission-safe candidates and final recheck pass.",
+      "evidence": "Retrieval Trace",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-05",
+      "category": "Graph",
+      "condition": "Optional 1-hop adds only directly related accessible relation evidence.",
+      "evidence": "Graph Trace",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-06",
+      "category": "Graph",
+      "condition": "Unauthorized supporting evidence causes edge existence to be hidden.",
+      "evidence": "Negative Security",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-07",
+      "category": "Graph",
+      "condition": "2-hop traversal remains disabled in default profile.",
+      "evidence": "Boundary Test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-08",
+      "category": "Evidence",
+      "condition": "Bundle contains exact quality/citation/source/provenance/hash fields.",
+      "evidence": "Schema/Hash",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-09",
+      "category": "Quality",
+      "condition": "SUFFICIENT allows grounded draft with citations.",
+      "evidence": "Golden Variant",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-10",
+      "category": "Quality",
+      "condition": "PARTIAL shows caveat/missing information and does not claim completeness.",
+      "evidence": "Golden Variant",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-11",
+      "category": "Quality",
+      "condition": "INSUFFICIENT does not produce authoritative conclusion.",
+      "evidence": "Negative E2E",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-12",
+      "category": "Quality",
+      "condition": "CONFLICT shows conflicting evidence/citations without silent tie-break.",
+      "evidence": "Conflict E2E",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-13",
+      "category": "Citation",
+      "condition": "Every user-visible citation maps to allowed CX citation ID/source locator.",
+      "evidence": "Citation Trace",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-14",
+      "category": "Citation",
+      "condition": "Unknown/fabricated citation ID is rejected before final Artifact.",
+      "evidence": "Negative Contract",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-15",
+      "category": "Citation",
+      "condition": "Graph relation citation includes supporting relation evidence.",
+      "evidence": "Graph UX",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-16",
+      "category": "Source",
+      "condition": "Citation preview rechecks current permission and denies after revoke.",
+      "evidence": "Security E2E",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-17",
+      "category": "Generation",
+      "condition": "Retrieved document instruction cannot change system/policy/tool authority.",
+      "evidence": "Injection Test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-18",
+      "category": "Generation",
+      "condition": "MO cannot change CX evidence_quality or create permission decisions.",
+      "evidence": "Boundary Test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-19",
+      "category": "Generation",
+      "condition": "MO failure returns explicit typed failure/evidence-only behavior, not fabricated answer.",
+      "evidence": "Fault Test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-20",
+      "category": "Artifact",
+      "condition": "Artifact provenance stores evidence_bundle_ref/hash + prompt/model versions.",
+      "evidence": "Audit/Repro",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-21",
+      "category": "Artifact",
+      "condition": "Generated draft is not displayed as Enterprise OS transaction/business completion.",
+      "evidence": "UX State",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-22",
+      "category": "Artifact",
+      "condition": "PARTIAL/INSUFFICIENT/CONFLICT status remains visible in Artifact metadata/content.",
+      "evidence": "Artifact E2E",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-23",
+      "category": "History",
+      "condition": "Interaction history stores refs/summary without copying raw vector/index.",
+      "evidence": "Data Inspection",
+      "critical": "NO"
+    },
+    {
+      "id": "AC40-24",
+      "category": "Follow-up",
+      "condition": "Follow-up revalidates current authority/freshness and creates new bundle when needed.",
+      "evidence": "Follow-up E2E",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-25",
+      "category": "Degraded",
+      "condition": "Graph disabled/CX degraded profile is visible and core policy behavior remains correct.",
+      "evidence": "Fault Variant",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-26",
+      "category": "Security",
+      "condition": "Raw token/secret/private key absent from prompt/audit/evidence/test artifacts.",
+      "evidence": "Security Scan",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-27",
+      "category": "Trace",
+      "condition": "request→bundle→citation→prompt/model→artifact chain reconstructs by correlation refs.",
+      "evidence": "Trace Drill",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-28",
+      "category": "Quality",
+      "condition": "Changed code reaches 95/85 coverage target and mandatory fault suite passes.",
+      "evidence": "CI Evidence",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-29",
+      "category": "Release",
+      "condition": "Fabricated citation, evidence leakage, hidden conflict/insufficiency or provenance break blocks release.",
+      "evidence": "Release Gate",
+      "critical": "YES"
+    },
+    {
+      "id": "AC40-30",
+      "category": "Repo",
+      "condition": "Any touched existing component has Repository Evidence linked before physical mapping is frozen.",
+      "evidence": "Evidence Gate",
+      "critical": "YES"
+    }
+  ],
+  "open_decisions": [
+    {
+      "id": "OD-40-01",
+      "topic": "Production user story/domain",
+      "decision": "Which concrete business review/report is first pilot for evidence-grounded work?",
+      "status": "PENDING"
+    },
+    {
+      "id": "OD-40-02",
+      "topic": "Retrieval profile",
+      "decision": "Default BM25/vector weights, top-k, reranker and graph-enabled profile after benchmark",
+      "status": "PENDING"
+    },
+    {
+      "id": "OD-40-03",
+      "topic": "Evidence threshold",
+      "decision": "Numeric/heuristic rules behind SUFFICIENT/PARTIAL/INSUFFICIENT/CONFLICT",
+      "status": "PENDING"
+    },
+    {
+      "id": "OD-40-04",
+      "topic": "Artifact service",
+      "decision": "Authoritative Artifact storage/service and version contract physical mapping",
+      "status": "PENDING"
+    },
+    {
+      "id": "OD-40-05",
+      "topic": "Claim citation policy",
+      "decision": "Which claim types require mandatory citations vs inference/recommendation labeling",
+      "status": "PENDING"
+    },
+    {
+      "id": "OD-40-06",
+      "topic": "Repository mapping",
+      "decision": "Actual CX/AE/MO repository modules, DB tables, endpoints and migration state",
+      "status": "PENDING"
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CXEvidenceContext v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "context_id",
+    "context_role",
+    "tenant_id",
+    "evidence_bundle_ref",
+    "authority_hash",
+    "policy_version",
+    "context_text"
+  ],
+  "properties": {
+    "context_id": {
+      "type": "string"
+    },
+    "context_role": {
+      "const": "AGENT_CONTEXT_BUILDER_INPUT"
+    },
+    "tenant_id": {
+      "type": "string"
+    },
+    "request_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "evidence_bundle_ref": {
+      "type": "string"
+    },
+    "authority_hash": {
+      "type": "string"
+    },
+    "policy_version": {
+      "type": "string"
+    },
+    "context_text": {
+      "type": "string"
+    },
+    "citation_map": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "diagnostics": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "project_scope_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "expires_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

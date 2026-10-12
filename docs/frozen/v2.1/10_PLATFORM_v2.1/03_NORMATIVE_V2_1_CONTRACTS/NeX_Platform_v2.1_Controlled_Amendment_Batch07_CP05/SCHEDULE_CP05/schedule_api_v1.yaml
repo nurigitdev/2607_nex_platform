@@ -1,0 +1,181 @@
+openapi: 3.1.0
+info:
+  title: NeX-WC Schedule API v1.1
+  version: 1.1.0
+security:
+  - bearerAuth: []
+paths:
+  /api/v2/command/schedule/create:
+    post:
+      operationId: createSchedule
+      summary: Create ScheduleSpec after current OA authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateScheduleRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/ScheduleResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v2/command/schedule/update:
+    post:
+      operationId: updateSchedule
+      summary: Update ScheduleSpec using expected_version and current OA authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateScheduleRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/ScheduleResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v2/command/schedule/enable:
+    post:
+      operationId: enableSchedule
+      summary: Enable ScheduleSpec using expected_version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScheduleStateChangeRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/ScheduleResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v2/command/schedule/disable:
+    post:
+      operationId: disableSchedule
+      summary: Disable ScheduleSpec using expected_version; future materialization must be zero
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScheduleStateChangeRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/ScheduleResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v2/query/schedule/get:
+    post:
+      operationId: getSchedule
+      summary: Get authorized ScheduleSpec
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GetScheduleRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/ScheduleResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v2/query/schedule/list:
+    post:
+      operationId: listSchedules
+      summary: List ScheduleSpecs visible under current tenant/project authority
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ListSchedulesRequest' }
+      responses:
+        '200':
+          description: Authorized ScheduleSpec list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScheduleListResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
+  schemas:
+    AuthorityContext:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, principal_ref, business_actor_ref, authorization_decision_ref, correlation_id, requested_at]
+      properties:
+        tenant_id: { type: string, minLength: 1 }
+        principal_ref: { type: string, minLength: 1 }
+        business_actor_ref: { type: string, minLength: 1 }
+        authorization_decision_ref: { type: string, minLength: 1 }
+        correlation_id: { type: string, minLength: 1 }
+        project_scope_ref: { type: [string, 'null'] }
+        requested_at: { type: string, format: date-time }
+    CreateScheduleRequest:
+      type: object
+      additionalProperties: false
+      required: [authority, schedule]
+      properties:
+        authority: { $ref: '#/components/schemas/AuthorityContext' }
+        schedule: { $ref: './schedule-spec-v1.schema.json' }
+    UpdateScheduleRequest:
+      type: object
+      additionalProperties: false
+      required: [authority, expected_version, schedule]
+      properties:
+        authority: { $ref: '#/components/schemas/AuthorityContext' }
+        expected_version: { type: integer, minimum: 1 }
+        schedule: { $ref: './schedule-spec-v1.schema.json' }
+    ScheduleStateChangeRequest:
+      type: object
+      additionalProperties: false
+      required: [authority, schedule_id, expected_version]
+      properties:
+        authority: { $ref: '#/components/schemas/AuthorityContext' }
+        schedule_id: { type: string, minLength: 1 }
+        expected_version: { type: integer, minimum: 1 }
+    GetScheduleRequest:
+      type: object
+      additionalProperties: false
+      required: [authority, schedule_id]
+      properties:
+        authority: { $ref: '#/components/schemas/AuthorityContext' }
+        schedule_id: { type: string, minLength: 1 }
+    ListSchedulesRequest:
+      type: object
+      additionalProperties: false
+      required: [authority]
+      properties:
+        authority: { $ref: '#/components/schemas/AuthorityContext' }
+        project_id: { type: [string, 'null'] }
+        enabled: { type: [boolean, 'null'] }
+    ScheduleResponse:
+      type: object
+      additionalProperties: false
+      required: [schedule, audit_event_id]
+      properties:
+        schedule: { $ref: './schedule-spec-v1.schema.json' }
+        audit_event_id: { type: string, minLength: 1 }
+    ScheduleListResponse:
+      type: object
+      additionalProperties: false
+      required: [items, audit_event_id]
+      properties:
+        items:
+          type: array
+          items: { $ref: './schedule-spec-v1.schema.json' }
+        audit_event_id: { type: string, minLength: 1 }
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code, message, correlation_id]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        correlation_id: { type: string }
+  responses:
+    ScheduleResponse:
+      description: Authorized schedule result with audit identity
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ScheduleResponse' }
+    Forbidden:
+      description: Current authorization denied
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Version/materialization conflict
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

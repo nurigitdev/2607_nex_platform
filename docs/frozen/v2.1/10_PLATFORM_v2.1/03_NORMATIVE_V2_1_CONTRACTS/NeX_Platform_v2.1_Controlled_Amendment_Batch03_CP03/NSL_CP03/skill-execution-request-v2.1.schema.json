@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:ae:nsl:skill-execution-request:v2.1",
+  "title": "SkillExecutionRequest v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "agent_execution_id",
+    "executable_step_id",
+    "nsl_execution_id",
+    "business_operation_id",
+    "skill_id",
+    "exact_skill_version",
+    "compiled_inputs",
+    "mode",
+    "correlation_id",
+    "principal_context_ref",
+    "data_policy_ref"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "executable_plan_id": {
+      "type": "string"
+    },
+    "executable_step_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nsl_execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "business_operation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "skill_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "exact_skill_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime_contract_ref": {
+      "type": "string"
+    },
+    "compiled_inputs": {
+      "type": "object"
+    },
+    "explicit_resource_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "principal_context_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "data_policy_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "causation_id": {
+      "type": "string"
+    },
+    "agent_context_ref": {
+      "type": "string"
+    },
+    "agent_context_hash": {
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "NEW",
+        "RESUME"
+      ]
+    },
+    "resume_token_ref": {
+      "type": "string"
+    },
+    "approval_evidence_ref": {
+      "type": "string"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "RESUME"
+          }
+        },
+        "required": [
+          "mode"
+        ]
+      },
+      "then": {
+        "required": [
+          "resume_token_ref",
+          "approval_evidence_ref"
+        ],
+        "properties": {
+          "resume_token_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "approval_evidence_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  ]
+}

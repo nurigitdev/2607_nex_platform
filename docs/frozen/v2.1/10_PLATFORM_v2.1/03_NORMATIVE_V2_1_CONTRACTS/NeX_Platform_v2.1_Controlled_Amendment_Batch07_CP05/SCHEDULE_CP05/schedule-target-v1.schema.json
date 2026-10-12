@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ScheduleTarget v1.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "target_type",
+    "work_class",
+    "required_capability"
+  ],
+  "properties": {
+    "target_type": {
+      "const": "WORK_ITEM"
+    },
+    "work_class": {
+      "enum": [
+        "QUERY",
+        "ANALYSIS",
+        "DOCUMENT",
+        "BUSINESS_TRANSACTION",
+        "COORDINATION",
+        "EXPERT_REVIEW",
+        "REPORTING",
+        "OPERATIONAL"
+      ]
+    },
+    "required_capability": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "required_agent_type": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "CA",
+        "PA",
+        "EA",
+        null
+      ]
+    },
+    "organization_scope_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 160
+    },
+    "project_scope_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 160
+    },
+    "routing_policy_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 256
+    },
+    "work_payload_template_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 256
+    },
+    "priority": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1000
+    },
+    "due_offset_seconds": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "required_agent_type"
+        ],
+        "properties": {
+          "required_agent_type": {
+            "const": "PA"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "project_scope_ref"
+        ],
+        "properties": {
+          "project_scope_ref": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+﻿Probe,PASS,Detail
+E11-S00,True,JSON Schema structural PASS=65
+E11-P00,True,Python Protocol compile PASS=12
+E11-R01,True,AgentResult validates
+E11-R02,True,Required Workspace ResultDelivery validates
+E11-R03,True,Optional Notification delivery validates
+E11-R04,True,Notification cannot be completion-critical
+E11-R05,True,SENDING requires current preflight ref
+E11-R06,True,SENDING without preflight rejected
+E11-R07,True,UNKNOWN_DELIVERY with reconciliation validates
+E11-R08,True,UNKNOWN_DELIVERY without reconciliation rejected
+E11-R09,True,ACKNOWLEDGED validates
+E11-R10,True,ACKNOWLEDGED without acknowledged_at rejected
+E11-R11,True,AS_OF_NOW publication ALLOW preflight validates
+E11-R12,True,ALLOW with incomplete visibility check rejected
+E11-R13,True,Publication reconciliation case validates
+E11-R14,True,Publication reconciliation rejects UNKNOWN_COMMIT_STATE
+E11-R15,True,Not-delivered outcome maps to same-identity retry
+E11-R16,True,Not-delivered cannot map to mark ACK
+E11-R17,True,PUBLISH_RESULT RuntimeJob validates
+E11-R18,True,PUBLISH_RESULT requires delivery identity
+E11-R19,True,RECONCILE_PUBLICATION RuntimeJob validates
+E11-R20,True,Notification trace refs validate without changing UX state
+E11-R21,True,Same AgentResult/target yields stable publication identity
+E11-R22,True,Unknown delivery reconciles first
+E11-R23,True,Required PENDING blocks finalization
+E11-R24,True,Required ACK + optional non-ACK allows finalization
+E11-R25,True,One semantic delivery per result/target
+E11-R26,True,Publication reconciliation reason is isolated
+E11-R27,True,Publication preflight persisted
+E11-G01,True,Step4 business reconciliation semantic unchanged
+E11-G02,True,COMMITTED still maps to DO_NOT_RETRY
+E11-G03,True,Publication protocol is isolated from BusinessOperationId/NSL WRITE control

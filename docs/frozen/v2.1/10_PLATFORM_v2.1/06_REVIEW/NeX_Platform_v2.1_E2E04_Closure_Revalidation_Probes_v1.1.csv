@@ -1,0 +1,12 @@
+﻿Probe,Check,PASS,Detail
+E04-R01,CA-targeted child WorkItem,True,
+E04-R02,Routing matches required_agent_type=CA,True,
+E04-R03,PA candidate rejected for CA-targeted work,True,'CA' was expected
+E04-R04,Claim handoff valid,True,
+E04-R05,Agent WorkResult v2.1 with claim lineage,True,
+E04-R06,Agent WorkResult missing claim_ref rejected,True,'claim_ref' is a required property
+E04-R07,WORK_RESULT_SUBMITTED v2.1 valid,True,
+E04-R08,Agent result event missing source execution rejected,True,'source_execution_ref' is a required property
+E04-X01,Result→event identity/claim lineage preserved,True,
+E04-X02,Claim/Assignment do not equal result-resume event,True,
+E04-X03,WorkResultSubmittedV21 publisher protocol present,True,

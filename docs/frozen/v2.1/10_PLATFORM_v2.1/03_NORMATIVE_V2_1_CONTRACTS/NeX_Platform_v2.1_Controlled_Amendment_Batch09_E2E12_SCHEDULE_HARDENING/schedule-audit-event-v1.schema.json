@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:schema:wc:schedule-audit-event:1.0",
+  "title": "ScheduleAuditEvent v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "audit_event_id",
+    "tenant_id",
+    "action",
+    "actor_type",
+    "actor_ref",
+    "authorization_decision_ref",
+    "correlation_id",
+    "schedule_id",
+    "occurred_at"
+  ],
+  "properties": {
+    "audit_event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "action": {
+      "enum": [
+        "CREATE",
+        "UPDATE",
+        "ENABLE",
+        "DISABLE",
+        "GET",
+        "LIST",
+        "MATERIALIZE",
+        "SKIP",
+        "MATERIALIZATION_FAILED"
+      ]
+    },
+    "actor_type": {
+      "enum": [
+        "HUMAN",
+        "AGENT",
+        "SERVICE_ACCOUNT"
+      ]
+    },
+    "actor_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "authorization_decision_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schedule_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schedule_version": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "occurrence_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "work_item_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "project_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "outcome": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

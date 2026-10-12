@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:ae:reconciliation-outcome:v2.1",
+  "title": "AE ReconciliationOutcome v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "outcome_id",
+    "reconciliation_id",
+    "tenant_id",
+    "status",
+    "authoritative_query_ref",
+    "decided_at",
+    "evidence_refs"
+  ],
+  "properties": {
+    "outcome_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reconciliation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "CONFIRMED_COMMITTED",
+        "CONFIRMED_NOT_COMMITTED",
+        "STILL_UNKNOWN",
+        "CONFLICT"
+      ]
+    },
+    "authoritative_query_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "observed_business_reference": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "observed_provider_transaction_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "retry_safety": {
+      "enum": [
+        "SAFE_TO_RETRY",
+        "UNSAFE_TO_RETRY",
+        "REQUIRES_RECONCILIATION"
+      ]
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "decided_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "CONFIRMED_COMMITTED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "retry_safety": {
+            "const": "UNSAFE_TO_RETRY"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "STILL_UNKNOWN"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "retry_safety": {
+            "const": "REQUIRES_RECONCILIATION"
+          }
+        }
+      }
+    }
+  ]
+}

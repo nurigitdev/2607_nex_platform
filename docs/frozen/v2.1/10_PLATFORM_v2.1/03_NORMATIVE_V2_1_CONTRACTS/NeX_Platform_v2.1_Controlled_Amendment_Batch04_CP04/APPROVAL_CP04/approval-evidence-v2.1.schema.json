@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:nsl:approval-evidence:v2.1",
+  "title": "NSL ApprovalEvidence v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "nsl_execution_id",
+    "business_operation_id",
+    "approval_id",
+    "approval_request_id",
+    "skill_semantic_hash",
+    "decision",
+    "approver_id",
+    "decided_at",
+    "payload_hash",
+    "write_intent_hash",
+    "evidence_integrity",
+    "oa_decision_ref"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nsl_execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "business_operation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "approval_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "approval_request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "skill_semantic_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decision": {
+      "enum": [
+        "APPROVED",
+        "REJECTED"
+      ]
+    },
+    "approver_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decided_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "payload_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "write_intent_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence_integrity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "approval_work_item_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "oa_decision_ref": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

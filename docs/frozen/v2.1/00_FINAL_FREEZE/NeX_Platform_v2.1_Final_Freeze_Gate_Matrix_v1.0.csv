@@ -1,0 +1,16 @@
+﻿Gate,Requirement,Verdict,Final Evidence
+F-G01,E2E Core 12 Scenario PASS,PASS,E2E-01~12 final scenario matrices: 12/12 PASS
+F-G02,Required Fault Variants PASS,PASS,FV-01~FV-10 replay/semantic checks on Platform v1.8: 10/10 PASS
+F-G03,E2E-P0 = 0,PASS,Step 8 Consolidated Issue Register v1.1: open P0 = 0
+F-G04,E2E-P1 = 0,PASS,Step 8 Consolidated Issue Register v1.1: open P1 = 0
+F-G05,E2E-PCG = 0,PASS,Step 8 Consolidated Issue Register v1.1: open PCG = 0
+F-G06,Platform document consistency remains CLOSED,PASS,Final Consistency Closure Review v1.2; 32/32 probes; 32/32 semantic sweep; 18/18 DOCX render QA
+F-G07,Agent v2.1 Frozen semantics unchanged,PASS,Frozen baseline SHA 31/31; Platform Integration/Freeze authority copies byte-identical
+F-G08,NSL v0.2 Frozen semantics unchanged,PASS,Frozen baseline SHA 31/31; Platform Integration/Freeze authority copies byte-identical
+F-G09,SoR ownership matrix has no dual owner,PASS,AE=Agent identity/runtime; WC=Work/Claim/ApprovalWorkItem/Schedule; OA=current authorization; EOS=business transaction; WA=post-work only
+F-G10,Identity chain traceable,PASS,Frozen correlation→AgentExecution→ExecutableStep→NSLExecution→BusinessOperation→WriteNode→ToolInvocation→BusinessReference→StepResult→AgentResult→PublicationOperation plus Platform Work/Claim/Runtime/Approval/Schedule identities
+F-G11,Approval domains remain separated,PASS,ApprovalWorkItem.approval_domain = AGENT_FORMAL | NSL_WRITE with separate request/binding contracts
+F-G12,No blind WRITE retry,PASS,COMMITTED→DO_NOT_RETRY; UNKNOWN_COMMIT_STATE→RECONCILE_FIRST
+F-G13,Package/governance/current-policy controls fail closed,PASS,OA DENY/trust mismatch/revoked package/current kill-switch/current authority checks all block
+F-G14,Schedule→WorkItem→Claim→Agent contract PASS,PASS,E2E-12 PASS; duplicate scanner/misfire replay PASS; direct Schedule→AgentExecution prohibited
+F-G15,WA remains post-work assetization only,PASS,ADR/Unified Ledger explicitly: WA != Scheduler; WA = post-work assetization

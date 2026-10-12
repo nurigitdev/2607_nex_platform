@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:nsl:reconciliation-evidence:v2.1",
+  "title": "NSLReconciliationEvidence v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "evidence_id",
+    "tenant_id",
+    "nsl_execution_id",
+    "business_operation_id",
+    "idempotency_key",
+    "payload_hash",
+    "write_intent_hash",
+    "tool_id",
+    "tool_invocation_id",
+    "commit_state",
+    "detected_at"
+  ],
+  "properties": {
+    "evidence_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nsl_execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "business_operation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payload_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "write_intent_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tool_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tool_invocation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "commit_state": {
+      "const": "UNKNOWN_COMMIT_STATE"
+    },
+    "operation_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "provider_transaction_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "business_reference": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "verification_hint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "failure_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "detected_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

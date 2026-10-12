@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ApprovalDecision v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "approval_work_item_id",
+    "decision",
+    "decided_by",
+    "decision_version",
+    "authorized_by_oa",
+    "decided_at",
+    "oa_decision_ref"
+  ],
+  "properties": {
+    "approval_work_item_id": {
+      "type": "string"
+    },
+    "decision": {
+      "enum": [
+        "APPROVE",
+        "REJECT"
+      ]
+    },
+    "decided_by": {
+      "type": "string"
+    },
+    "decision_comment": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "decision_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "authorized_by_oa": {
+      "const": true
+    },
+    "oa_decision_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decided_at": {
+      "type": "string"
+    }
+  }
+}

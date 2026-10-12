@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ApprovalWorkItem v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "approval_work_item_id",
+    "approval_domain",
+    "source_ref",
+    "tenant_id",
+    "status",
+    "created_at",
+    "resume_target_ref"
+  ],
+  "properties": {
+    "approval_work_item_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "approval_domain": {
+      "enum": [
+        "AGENT_FORMAL",
+        "NSL_WRITE"
+      ]
+    },
+    "source_ref": {
+      "type": "string"
+    },
+    "tenant_id": {
+      "type": "string"
+    },
+    "agent_execution_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "executable_step_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "nsl_execution_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "business_operation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "approval_request_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "target_approver_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "target_role_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "target_org_scope_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "target_project_scope_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "display_summary_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "protected_evidence_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "enum": [
+        "PENDING",
+        "APPROVED",
+        "REJECTED",
+        "EXPIRED",
+        "CANCELLED"
+      ]
+    },
+    "decision": {
+      "enum": [
+        "APPROVE",
+        "REJECT",
+        null
+      ]
+    },
+    "decision_comment": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "expires_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "decided_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "decided_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "resume_target_ref": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "approval_domain": {
+            "const": "NSL_WRITE"
+          }
+        },
+        "required": [
+          "approval_domain"
+        ]
+      },
+      "then": {
+        "required": [
+          "agent_execution_id",
+          "executable_step_id",
+          "nsl_execution_id",
+          "business_operation_id",
+          "approval_request_id",
+          "protected_evidence_ref"
+        ],
+        "properties": {
+          "agent_execution_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "executable_step_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "nsl_execution_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "business_operation_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "approval_request_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "protected_evidence_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "approval_domain": {
+            "const": "AGENT_FORMAL"
+          }
+        },
+        "required": [
+          "approval_domain"
+        ]
+      },
+      "then": {
+        "required": [
+          "agent_execution_id",
+          "executable_step_id",
+          "business_operation_id",
+          "protected_evidence_ref"
+        ],
+        "properties": {
+          "agent_execution_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "executable_step_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "business_operation_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "protected_evidence_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  ]
+}

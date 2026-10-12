@@ -1,0 +1,5 @@
+﻿Scenario,Title,Verdict,Closure Summary
+E2E-02,Golden A WRITE with NSL Approval,PASS,Approval/Resume/Idempotency/Package trust typed chain closed; negative safety probes pass.
+E2E-03,Agent FORMAL_APPROVAL + NSL WRITE Approval,PASS,Distinct approval domains and domain-specific bindings enforced.
+E2E-06,EA-Trust ALLOW + OA DENY,PASS,Typed operation trust binding; OA DENY and fingerprint mismatch return false/block before provider WRITE.
+E2E-07,Package Trust Failure,PASS,Revoked package cannot produce ADMITTED decision or VerifiedSkillArtifact.

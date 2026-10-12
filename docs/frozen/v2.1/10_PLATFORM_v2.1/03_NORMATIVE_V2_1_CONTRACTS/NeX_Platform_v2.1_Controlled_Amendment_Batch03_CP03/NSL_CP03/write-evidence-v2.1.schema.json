@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:nsl:write-evidence:v2.1",
+  "title": "WriteEvidence v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "nsl_execution_id",
+    "business_operation_id",
+    "write_node_id",
+    "tool_invocation_id",
+    "idempotency_key",
+    "payload_hash",
+    "write_intent_hash",
+    "state"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string"
+    },
+    "nsl_execution_id": {
+      "type": "string"
+    },
+    "business_operation_id": {
+      "type": "string"
+    },
+    "write_node_id": {
+      "type": "string"
+    },
+    "tool_id": {
+      "type": "string"
+    },
+    "tool_invocation_id": {
+      "type": "string"
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "payload_hash": {
+      "type": "string"
+    },
+    "write_intent_hash": {
+      "type": "string"
+    },
+    "approval_request_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "state": {
+      "enum": [
+        "WRITE_REQUESTED",
+        "COMMITTED",
+        "NOT_COMMITTED",
+        "UNKNOWN_COMMIT_STATE"
+      ]
+    },
+    "provider_transaction_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "business_reference": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

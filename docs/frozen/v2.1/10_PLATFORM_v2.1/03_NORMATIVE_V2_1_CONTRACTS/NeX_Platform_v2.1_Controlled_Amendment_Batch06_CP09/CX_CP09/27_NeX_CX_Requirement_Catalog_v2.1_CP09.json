@@ -1,0 +1,685 @@
+{
+  "document": "27_NeX_CX_SRS_and_Detailed_Design_v2.0",
+  "version": "2.1-CP09",
+  "date": "2026-09-28",
+  "service": "NeX-CX",
+  "counts": {
+    "MUST": 72,
+    "SHOULD": 10,
+    "total": 84
+  },
+  "requirements": [
+    {
+      "section": "4.1 Ingestion",
+      "id": "NEX-CX-ING-FR-001",
+      "priority": "MUST",
+      "requirement": "CX는 PDF/DOCX/PPTX/XLSX/MD/HWP/HWPX 등 승인된 파일 유형의 ingestion 요청을 비동기 Job으로 처리해야 한다.",
+      "verification": "E2E/Job Test",
+      "parent": "Platform v1.1"
+    },
+    {
+      "section": "4.1 Ingestion",
+      "id": "NEX-CX-ING-FR-002",
+      "priority": "MUST",
+      "requirement": "Ingestion 요청은 explicit TenantId, authenticated Principal과 server-resolved Business Actor/RoleBinding/EAC 또는 이에 준하는 authority reference를 가져야 하며 client가 Tenant/권한 필드를 임의 지정해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "26/OA"
+    },
+    {
+      "section": "4.1 Ingestion",
+      "id": "NEX-CX-ING-FR-003",
+      "priority": "MUST",
+      "requirement": "문서 저장 전 checksum을 계산하고 동일 binary 중복 여부를 판정할 수 있어야 한다.",
+      "verification": "Unit/Integration",
+      "parent": "PCX"
+    },
+    {
+      "section": "4.1 Ingestion",
+      "id": "NEX-CX-ING-FR-004",
+      "priority": "MUST",
+      "requirement": "원본 file record에는 tenant_id, owner_actor_ref, source_system, source_uri, org_scope_ref, project_scope_ref, classification_code, classification_rank, policy_version을 저장해야 한다.",
+      "verification": "Schema Test",
+      "parent": "26/OA"
+    },
+    {
+      "section": "4.1 Ingestion",
+      "id": "NEX-CX-ING-FR-005",
+      "priority": "MUST",
+      "requirement": "TenantId, Data Classification과 Org/Project Scope는 CX가 임의 추론·상향·하향하지 않고 authoritative security context 또는 명시적 정책 결과로 결정해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/OA"
+    },
+    {
+      "section": "4.1 Ingestion",
+      "id": "NEX-CX-ING-FR-006",
+      "priority": "MUST",
+      "requirement": "권한/분류 metadata가 필수인 source에서 해당 값이 누락되면 ingestion은 fail-closed 또는 QUARANTINED 상태로 전환해야 한다.",
+      "verification": "Negative Test",
+      "parent": "09/26"
+    },
+    {
+      "section": "4.1 Ingestion",
+      "id": "NEX-CX-ING-FR-007",
+      "priority": "MUST",
+      "requirement": "Extractor 결과 원문 text와 구조정보는 원본 문서의 security envelope를 상속해야 한다.",
+      "verification": "Invariant Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.1 Ingestion",
+      "id": "NEX-CX-ING-FR-008",
+      "priority": "MUST",
+      "requirement": "Ingestion Job은 RECEIVED→STORED→EXTRACTED→CHUNKED→METADATA_ENRICHED→BM25_INDEXED→EMBEDDED→READY 상태를 추적해야 한다.",
+      "verification": "State Test",
+      "parent": "Platform v1.1"
+    },
+    {
+      "section": "4.1 Ingestion",
+      "id": "NEX-CX-ING-FR-009",
+      "priority": "MUST",
+      "requirement": "부분 실패 시 READY로 표시해서는 안 되며 재처리 가능한 실패 단계와 error_code를 기록해야 한다.",
+      "verification": "Fault Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.1 Ingestion",
+      "id": "NEX-CX-ING-FR-010",
+      "priority": "SHOULD",
+      "requirement": "대용량 문서는 extractor/chunk/index 단계의 재시작 가능 checkpoint를 지원해야 한다.",
+      "verification": "Fault Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.2 Chunking",
+      "id": "NEX-CX-CHK-FR-001",
+      "priority": "MUST",
+      "requirement": "Chunk는 document_id와 함께 chunk_index, heading_path, page/slide/sheet locator, char offsets 또는 source locator를 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "PCX"
+    },
+    {
+      "section": "4.2 Chunking",
+      "id": "NEX-CX-CHK-FR-002",
+      "priority": "MUST",
+      "requirement": "기본 chunk profile은 heading-aware 1000 token target / 200 overlap을 지원하되 profile은 versioned configuration으로 관리해야 한다.",
+      "verification": "Unit Test",
+      "parent": "PCX"
+    },
+    {
+      "section": "4.2 Chunking",
+      "id": "NEX-CX-CHK-FR-003",
+      "priority": "MUST",
+      "requirement": "모든 chunk는 document의 org_scope_ref, project_scope_ref, classification_code/rank를 기본 상속해야 한다.",
+      "verification": "Invariant Test",
+      "parent": "26/OA"
+    },
+    {
+      "section": "4.2 Chunking",
+      "id": "NEX-CX-CHK-FR-004",
+      "priority": "MUST",
+      "requirement": "문서 내부 일부 영역이 더 높은 classification을 갖는 경우 chunk-level classification은 document보다 낮아질 수 없고 max sensitivity 규칙을 적용해야 한다.",
+      "verification": "Security Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.2 Chunking",
+      "id": "NEX-CX-CHK-FR-005",
+      "priority": "MUST",
+      "requirement": "prev_chunk_id/next_chunk_id 또는 동등한 adjacency link를 유지하여 evidence 확장 시 원문 문맥을 복원할 수 있어야 한다.",
+      "verification": "Unit Test",
+      "parent": "PCX"
+    },
+    {
+      "section": "4.2 Chunking",
+      "id": "NEX-CX-CHK-FR-006",
+      "priority": "MUST",
+      "requirement": "Table/Code/List 등 구조형 블록은 가능한 한 논리 단위가 과도하게 분할되지 않도록 block-aware chunking을 지원해야 한다.",
+      "verification": "Quality Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.2 Chunking",
+      "id": "NEX-CX-CHK-FR-007",
+      "priority": "SHOULD",
+      "requirement": "Chunking profile 변경 시 기존 index를 파괴하지 않고 새 profile version으로 재구축할 수 있어야 한다.",
+      "verification": "Migration Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.3 Metadata / Taxonomy",
+      "id": "NEX-CX-META-FR-001",
+      "priority": "MUST",
+      "requirement": "CX는 document/chunk metadata에 title, document_type, author/source, created/modified time, org, project, classification, taxonomy tags, language를 저장할 수 있어야 한다.",
+      "verification": "Schema Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.3 Metadata / Taxonomy",
+      "id": "NEX-CX-META-FR-002",
+      "priority": "MUST",
+      "requirement": "Taxonomy는 고객사별 변경을 고려하여 fixed enum이 아니라 taxonomy_term + taxonomy_version 구조로 관리해야 한다.",
+      "verification": "Schema Test",
+      "parent": "CX"
+    },
+    {
+      "section": "4.3 Metadata / Taxonomy",
+      "id": "NEX-CX-META-FR-003",
+      "priority": "MUST",
+      "requirement": "LLM 기반 metadata/taxonomy 추론 결과는 inferred=true, model_ref, confidence, evidence_ref를 기록하고 authoritative security metadata를 덮어쓰지 못해야 한다.",
+      "verification": "Security/Quality",
+      "parent": "09/27"
+    },
+    {
+      "section": "4.3 Metadata / Taxonomy",
+      "id": "NEX-CX-META-FR-004",
+      "priority": "MUST",
+      "requirement": "Security-critical metadata의 source는 OA/Enterprise OS/source connector/manual-approved 중 하나로 provenance를 기록해야 한다.",
+      "verification": "Audit Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.3 Metadata / Taxonomy",
+      "id": "NEX-CX-META-FR-005",
+      "priority": "MUST",
+      "requirement": "Metadata 수정은 index invalidation/reindex 필요 여부를 계산하고 security scope 변경은 즉시 retrieval에서 반영되어야 한다.",
+      "verification": "Integration Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.3 Metadata / Taxonomy",
+      "id": "NEX-CX-META-FR-006",
+      "priority": "SHOULD",
+      "requirement": "향후 ontology/Graph 관계를 추가할 수 있도록 taxonomy term에 parent/relationship extension point를 제공해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "Roadmap"
+    },
+    {
+      "section": "4.4 BM25",
+      "id": "NEX-CX-BM25-FR-001",
+      "priority": "MUST",
+      "requirement": "CX는 한국어 형태소 분석을 적용한 BM25 lexical retrieval을 지원해야 한다.",
+      "verification": "Retrieval Test",
+      "parent": "PCX"
+    },
+    {
+      "section": "4.4 BM25",
+      "id": "NEX-CX-BM25-FR-002",
+      "priority": "MUST",
+      "requirement": "BM25 index 문서는 chunk_id와 security filter key(org/project/classification/status)를 연결할 수 있어야 한다.",
+      "verification": "Schema/Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.4 BM25",
+      "id": "NEX-CX-BM25-FR-003",
+      "priority": "MUST",
+      "requirement": "권한이 없는 chunk가 최종 candidate/evidence에 포함되지 않도록 filter predicate를 query plan에 반영해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/27"
+    },
+    {
+      "section": "4.4 BM25",
+      "id": "NEX-CX-BM25-FR-004",
+      "priority": "SHOULD",
+      "requirement": "Analyzer/tokenizer profile은 versioned하고 전체 reindex 없이 profile coexistence를 지원할 수 있어야 한다.",
+      "verification": "Migration Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.5 pgvector",
+      "id": "NEX-CX-VEC-FR-001",
+      "priority": "MUST",
+      "requirement": "CX는 PostgreSQL pgvector 기반 dense retrieval을 지원해야 한다.",
+      "verification": "Integration Test",
+      "parent": "Platform v1.1"
+    },
+    {
+      "section": "4.5 pgvector",
+      "id": "NEX-CX-VEC-FR-002",
+      "priority": "MUST",
+      "requirement": "Embedding record는 chunk_id, model_id, model_version, dimension, embedding_profile, created_at을 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "PCX"
+    },
+    {
+      "section": "4.5 pgvector",
+      "id": "NEX-CX-VEC-FR-003",
+      "priority": "MUST",
+      "requirement": "Qwen3 Embedding-4B 등 선택 모델을 profile로 등록하고 dimension별 별도 table/partition 또는 동등한 안전한 구조를 사용해야 한다.",
+      "verification": "Integration Test",
+      "parent": "PCX"
+    },
+    {
+      "section": "4.5 pgvector",
+      "id": "NEX-CX-VEC-FR-004",
+      "priority": "MUST",
+      "requirement": "Vector candidate query에도 org/project/classification/status filter를 적용해야 하며 unauthorized vector를 application post-filter에만 의존해서는 안 된다.",
+      "verification": "Security/SQL Plan",
+      "parent": "26/27"
+    },
+    {
+      "section": "4.5 pgvector",
+      "id": "NEX-CX-VEC-FR-005",
+      "priority": "MUST",
+      "requirement": "Embedding 실패 chunk는 READY 검색대상에 포함하지 않거나 lexical-only degraded 상태를 명시적으로 표시해야 한다.",
+      "verification": "Fault Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.5 pgvector",
+      "id": "NEX-CX-VEC-FR-006",
+      "priority": "SHOULD",
+      "requirement": "HNSW/IVFFlat 등 ANN index는 초기 데이터량/갱신 패턴을 측정해 선택하고 exact search fallback을 제공할 수 있어야 한다.",
+      "verification": "Performance Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 Permission-aware Retrieval",
+      "id": "NEX-CX-PERM-FR-001",
+      "priority": "MUST",
+      "requirement": "Retrieval 요청 시 CX는 explicit TenantId와 OA의 current authority/PDP 결과 또는 signed/server-to-server authority context를 사용해야 하며 Principal ID나 Org/Project Scope만으로 Tenant/권한을 자체 추론해서는 안 된다.",
+      "verification": "Architecture/Security",
+      "parent": "26/OA"
+    },
+    {
+      "section": "4.6 Permission-aware Retrieval",
+      "id": "NEX-CX-PERM-FR-002",
+      "priority": "MUST",
+      "requirement": "Permission filter는 TenantId hard partition을 먼저 적용하고, 그 안에서 RoleBinding의 Org Scope, Project Scope, Capability Scope와 Resource Data Classification을 결합해야 한다.",
+      "verification": "Authorization Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.6 Permission-aware Retrieval",
+      "id": "NEX-CX-PERM-FR-003",
+      "priority": "MUST",
+      "requirement": "Resource classification_rank는 요청 authority의 clearance/policy ceiling을 초과할 수 없다.",
+      "verification": "Authorization Test",
+      "parent": "26/27"
+    },
+    {
+      "section": "4.6 Permission-aware Retrieval",
+      "id": "NEX-CX-PERM-FR-004",
+      "priority": "MUST",
+      "requirement": "Org Scope는 EXACT, SUBTREE, ALL 또는 policy-defined scope operator로 평가할 수 있어야 한다.",
+      "verification": "Policy Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.6 Permission-aware Retrieval",
+      "id": "NEX-CX-PERM-FR-005",
+      "priority": "MUST",
+      "requirement": "Project Scope는 explicit project set, assigned WorkItem-derived project, policy-defined project group을 지원할 수 있어야 한다.",
+      "verification": "Policy Test",
+      "parent": "21~25/26"
+    },
+    {
+      "section": "4.6 Permission-aware Retrieval",
+      "id": "NEX-CX-PERM-FR-006",
+      "priority": "MUST",
+      "requirement": "여러 RoleBinding이 활성인 경우 허용 scope union은 가능하지만 개별 binding의 risk/classification ceiling을 교차 조합하여 권한을 증폭해서는 안 된다.",
+      "verification": "Negative Security",
+      "parent": "26"
+    },
+    {
+      "section": "4.6 Permission-aware Retrieval",
+      "id": "NEX-CX-PERM-FR-007",
+      "priority": "MUST",
+      "requirement": "RoleBinding revoke/expire, employee suspension/termination, project assignment 변경은 bounded propagation 내 신규 retrieval에 반영되어야 한다.",
+      "verification": "Lifecycle Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.6 Permission-aware Retrieval",
+      "id": "NEX-CX-PERM-FR-008",
+      "priority": "MUST",
+      "requirement": "Authority/policy 정보가 누락되거나 검증 실패한 검색은 fail-closed해야 한다.",
+      "verification": "Negative Test",
+      "parent": "09/26"
+    },
+    {
+      "section": "4.6 Permission-aware Retrieval",
+      "id": "NEX-CX-PERM-FR-009",
+      "priority": "MUST",
+      "requirement": "Cache key에는 tenant_id, principal/actor, effective role bindings, org/project scopes, classification ceiling, policy_version 또는 authority_hash가 포함되어야 한다.",
+      "verification": "Security Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 Permission-aware Retrieval",
+      "id": "NEX-CX-PERM-FR-010",
+      "priority": "MUST",
+      "requirement": "검색 결과를 AE에 반환하기 직전 최종 permission recheck를 수행하여 stale candidate/cache 누출을 차단해야 한다.",
+      "verification": "Security Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.7 Hybrid / Reranking",
+      "id": "NEX-CX-HYB-FR-001",
+      "priority": "MUST",
+      "requirement": "Hybrid retrieval은 BM25와 vector 후보를 독립 생성한 뒤 permission-safe candidate set에서 fusion해야 한다.",
+      "verification": "E2E Retrieval",
+      "parent": "27"
+    },
+    {
+      "section": "4.7 Hybrid / Reranking",
+      "id": "NEX-CX-HYB-FR-002",
+      "priority": "MUST",
+      "requirement": "기본 fusion은 RRF 또는 versioned weighted fusion을 지원해야 하며 score normalization 정책을 기록해야 한다.",
+      "verification": "Unit/Quality",
+      "parent": "27"
+    },
+    {
+      "section": "4.7 Hybrid / Reranking",
+      "id": "NEX-CX-HYB-FR-003",
+      "priority": "MUST",
+      "requirement": "Reranker 사용 시 rerank 입력 역시 permission-safe candidate만 사용해야 한다.",
+      "verification": "Security Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.7 Hybrid / Reranking",
+      "id": "NEX-CX-HYB-FR-004",
+      "priority": "MUST",
+      "requirement": "query filters(document type, date, taxonomy, project 등)는 permission predicate와 AND로 결합되어야 한다.",
+      "verification": "Query Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.7 Hybrid / Reranking",
+      "id": "NEX-CX-HYB-FR-005",
+      "priority": "MUST",
+      "requirement": "검색 결과에는 retrieval_profile, model/profile versions, score components를 audit/debug 목적으로 남길 수 있어야 한다.",
+      "verification": "Audit Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.7 Hybrid / Reranking",
+      "id": "NEX-CX-HYB-FR-006",
+      "priority": "SHOULD",
+      "requirement": "권한 필터로 후보가 부족해질 경우 unauthorized 후보를 채우지 말고 insufficient_evidence 상태를 반환해야 한다.",
+      "verification": "Negative Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.8 Evidence Bundle",
+      "id": "NEX-CX-EV-FR-001",
+      "priority": "MUST",
+      "requirement": "CX는 최종 검색 결과를 Evidence Bundle 객체로 구성해야 한다.",
+      "verification": "Contract Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.8 Evidence Bundle",
+      "id": "NEX-CX-EV-FR-002",
+      "priority": "MUST",
+      "requirement": "Evidence Bundle은 tenant_id, query_id, authority_hash, policy_version, retrieval_profile, evidence_items, insufficiency flags를 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.8 Evidence Bundle",
+      "id": "NEX-CX-EV-FR-003",
+      "priority": "MUST",
+      "requirement": "각 evidence item은 document_id, chunk_id, source_locator, excerpt 또는 controlled text, scores, metadata, citation label, security envelope hash를 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.8 Evidence Bundle",
+      "id": "NEX-CX-EV-FR-004",
+      "priority": "MUST",
+      "requirement": "Evidence Bundle 생성 직전에 모든 item의 current permission을 재검증해야 한다.",
+      "verification": "Security Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.8 Evidence Bundle",
+      "id": "NEX-CX-EV-FR-005",
+      "priority": "MUST",
+      "requirement": "Evidence Bundle은 원본 document/chunk의 classification을 낮춰 표시해서는 안 된다.",
+      "verification": "Invariant Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.8 Evidence Bundle",
+      "id": "NEX-CX-EV-FR-006",
+      "priority": "MUST",
+      "requirement": "Bundle에는 검색 근거가 부족하거나 서로 충돌하는 경우 이를 표시할 수 있는 evidence_quality/coverage/conflict 상태가 있어야 한다.",
+      "verification": "Quality Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.8 Evidence Bundle",
+      "id": "NEX-CX-EV-FR-007",
+      "priority": "MUST",
+      "requirement": "Evidence Bundle 식별자와 content_hash를 저장하여 이후 AE 응답/Artifact가 어떤 근거를 사용했는지 재현 가능해야 한다.",
+      "verification": "Audit/Repro",
+      "parent": "11/27"
+    },
+    {
+      "section": "4.8 Evidence Bundle",
+      "id": "NEX-CX-EV-FR-008",
+      "priority": "SHOULD",
+      "requirement": "중복/근접 chunk는 diversity 규칙으로 축약하되 citation/source trace를 잃어서는 안 된다.",
+      "verification": "Quality Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.9 AE Context",
+      "id": "NEX-CX-AE-FR-001",
+      "priority": "MUST",
+      "requirement": "CX는 AE에 raw DB row나 vector를 노출하지 않고 versioned CX Evidence Context(AE Context v2.1)를 반환해야 한다. 이 객체는 Frozen AgentContext 자체가 아니라 Agent Context Builder의 bounded evidence input이다.",
+      "verification": "Contract Test",
+      "parent": "AE/CX"
+    },
+    {
+      "section": "4.9 AE Context",
+      "id": "NEX-CX-AE-FR-002",
+      "priority": "MUST",
+      "requirement": "CX Evidence Context는 tenant_id, user_request_ref, evidence_bundle_ref, authority_hash, policy_version, selected evidence, policy-safe context text, citation map, retrieval diagnostics를 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.9 AE Context",
+      "id": "NEX-CX-AE-FR-003",
+      "priority": "MUST",
+      "requirement": "CX Evidence Context는 downstream Agent/LLM에게 Tenant/권한 밖 원문을 포함해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "26/27"
+    },
+    {
+      "section": "4.9 AE Context",
+      "id": "NEX-CX-AE-FR-004",
+      "priority": "MUST",
+      "requirement": "Prompt package에 포함되는 context는 token budget 내에서 evidence priority와 source diversity를 고려하여 구성해야 한다.",
+      "verification": "Quality Test",
+      "parent": "AE/MO"
+    },
+    {
+      "section": "4.9 AE Context",
+      "id": "NEX-CX-AE-FR-005",
+      "priority": "MUST",
+      "requirement": "AE가 후속 질문을 요청할 때 이전 Evidence Bundle을 맹목적으로 재사용하지 않고 current authority를 재검증해야 한다.",
+      "verification": "Security Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.9 AE Context",
+      "id": "NEX-CX-AE-FR-006",
+      "priority": "SHOULD",
+      "requirement": "CX Evidence Context는 generation과 Agent Context Builder의 evidence input으로 재사용할 수 있으며, deterministic Skill에는 명시적으로 bound된 read-only evidence/resource input만 전달해야 한다. CX 객체 전체를 AgentContext 또는 NSL runtime_context로 직접 복사해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "11~18"
+    },
+    {
+      "section": "4.10 Operations",
+      "id": "NEX-CX-OPS-FR-001",
+      "priority": "MUST",
+      "requirement": "CX는 별도 nex_cx_db를 사용하고 OA/AE/MO/AG DB를 직접 조회해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "Platform v1.1"
+    },
+    {
+      "section": "4.10 Operations",
+      "id": "NEX-CX-OPS-FR-002",
+      "priority": "MUST",
+      "requirement": "CX→OA 권한 확인, CX→MO embedding/reranker provider, AE→CX retrieval API는 명시적 service contract를 사용해야 한다.",
+      "verification": "Integration Test",
+      "parent": "Platform"
+    },
+    {
+      "section": "4.10 Operations",
+      "id": "NEX-CX-OPS-FR-003",
+      "priority": "MUST",
+      "requirement": "PostgreSQL Job Queue + Python Worker를 기본 실행 구조로 사용하고 초기 구현에서 Redis/Celery/Kafka를 필수 의존성으로 두지 않는다.",
+      "verification": "Architecture Test",
+      "parent": "Platform v1.1"
+    },
+    {
+      "section": "4.10 Operations",
+      "id": "NEX-CX-OPS-FR-004",
+      "priority": "MUST",
+      "requirement": "AG가 조회할 /admin/jobs/summary, /admin/jobs, /admin/workers, health/metrics contract를 제공해야 한다.",
+      "verification": "Integration Test",
+      "parent": "AG"
+    },
+    {
+      "section": "4.10 Operations",
+      "id": "NEX-CX-OPS-FR-005",
+      "priority": "MUST",
+      "requirement": "문서 삭제 또는 access revoke 시 BM25/vector/cache/evidence 참조에서 논리 삭제가 즉시 반영되고 물리 삭제는 retention policy에 따라 수행되어야 한다.",
+      "verification": "Lifecycle Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.10 Operations",
+      "id": "NEX-CX-OPS-FR-006",
+      "priority": "SHOULD",
+      "requirement": "Index rebuild는 blue/green 또는 profile-version 방식으로 검색 중단 없이 전환할 수 있어야 한다.",
+      "verification": "Operation Test",
+      "parent": "27"
+    },
+    {
+      "section": "5 NFR",
+      "id": "NEX-CX-SEC-NFR-001",
+      "priority": "MUST",
+      "requirement": "검색 권한 판정에 LLM을 사용해서는 안 되며 deterministic PDP/policy result만 사용해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "26"
+    },
+    {
+      "section": "5 NFR",
+      "id": "NEX-CX-SEC-NFR-002",
+      "priority": "MUST",
+      "requirement": "SQL/Vector/BM25 candidate generation, rerank, Evidence Bundle, AE Context 각 경계에서 unauthorized data leakage negative test를 수행해야 한다.",
+      "verification": "Security Test",
+      "parent": "27"
+    },
+    {
+      "section": "5 NFR",
+      "id": "NEX-CX-SEC-NFR-003",
+      "priority": "MUST",
+      "requirement": "검색 로그에는 tenant_id, authority_hash, policy_ref를 남기고 raw access token/EAC secret을 저장하지 않아야 한다.",
+      "verification": "Security Scan",
+      "parent": "26"
+    },
+    {
+      "section": "5 NFR",
+      "id": "NEX-CX-SEC-NFR-004",
+      "priority": "MUST",
+      "requirement": "문서 text/log/trace에 포함된 개인정보 및 민감정보는 고객 retention/redaction 정책을 적용할 수 있어야 한다.",
+      "verification": "Privacy Test",
+      "parent": "09"
+    },
+    {
+      "section": "5 NFR",
+      "id": "NEX-CX-REL-NFR-001",
+      "priority": "MUST",
+      "requirement": "OA/PDP 확인 실패 시 permission-sensitive retrieval은 fail-closed해야 한다.",
+      "verification": "Fault Test",
+      "parent": "26"
+    },
+    {
+      "section": "5 NFR",
+      "id": "NEX-CX-REL-NFR-002",
+      "priority": "MUST",
+      "requirement": "Embedding provider 장애 시 정책이 허용하는 경우 BM25-only degraded search를 명시적으로 반환할 수 있어야 하며 silent quality downgrade를 금지한다.",
+      "verification": "Fault Test",
+      "parent": "MO"
+    },
+    {
+      "section": "5 NFR",
+      "id": "NEX-CX-REL-NFR-003",
+      "priority": "MUST",
+      "requirement": "BM25와 vector 결과 일부 실패 시 partial/degraded 상태를 diagnostics에 표시해야 한다.",
+      "verification": "Fault Test",
+      "parent": "27"
+    },
+    {
+      "section": "5 NFR",
+      "id": "NEX-CX-PERF-NFR-001",
+      "priority": "MUST",
+      "requirement": "초기 100명 규모 운영에서 permission filter가 적용된 p95 retrieval latency를 측정하고 baseline SLA를 수립해야 한다.",
+      "verification": "Load Test",
+      "parent": "Phase4 SLA"
+    },
+    {
+      "section": "5 NFR",
+      "id": "NEX-CX-PERF-NFR-002",
+      "priority": "SHOULD",
+      "requirement": "scope predicate용 org/project/classification/status column은 복합 index/partition 전략을 성능시험으로 검증해야 한다.",
+      "verification": "SQL Plan",
+      "parent": "27"
+    },
+    {
+      "section": "5 NFR",
+      "id": "NEX-CX-TST-NFR-001",
+      "priority": "MUST",
+      "requirement": "Statement coverage 95% 이상, branch coverage 85% 이상을 목표로 한다.",
+      "verification": "Coverage",
+      "parent": "Project quality"
+    },
+    {
+      "section": "5 NFR",
+      "id": "NEX-CX-TST-NFR-002",
+      "priority": "MUST",
+      "requirement": "PostgreSQL test DB를 테스트별 초기화하고 permission regression suite를 자동화해야 한다.",
+      "verification": "pytest",
+      "parent": "Project quality"
+    },
+    {
+      "section": "5 NFR",
+      "id": "NEX-CX-TST-NFR-003",
+      "priority": "MUST",
+      "requirement": "Boundary/robustness/worst-case test로 empty scope, huge scope, revoked binding, classification boundary, stale cache를 검증해야 한다.",
+      "verification": "Test Design",
+      "parent": "Project quality"
+    },
+    {
+      "section": "5 NFR",
+      "id": "NEX-CX-TST-NFR-004",
+      "priority": "MUST",
+      "requirement": "AE 화면/검색 UI는 Playwright E2E로 citation, insufficient evidence, permission denied 동작을 검증해야 한다.",
+      "verification": "Playwright",
+      "parent": "Project quality"
+    },
+    {
+      "section": "Permission / Tenant",
+      "id": "NEX-CX-PERM-FR-011",
+      "priority": "MUST",
+      "requirement": "TenantId는 Org Scope/Project Scope와 독립된 hard partition이며 ingestion/retrieval/cache/evidence/context 조회에서 tenant mismatch는 fail-closed해야 한다.",
+      "verification": "Tenant Isolation Test",
+      "parent": "26/OA"
+    },
+    {
+      "section": "AE Context",
+      "id": "NEX-CX-AE-FR-007",
+      "priority": "MUST",
+      "requirement": "CX Evidence Context는 AgentContext의 Source of Truth가 아니며 AE Agent Context Builder 입력으로만 사용해야 한다.",
+      "verification": "Contract/Architecture Test",
+      "parent": "29/Agent v2.1"
+    }
+  ]
+}

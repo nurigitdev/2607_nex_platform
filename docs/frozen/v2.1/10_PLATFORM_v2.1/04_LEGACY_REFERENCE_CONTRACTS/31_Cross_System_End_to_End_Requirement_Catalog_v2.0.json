@@ -1,0 +1,726 @@
+{
+  "document": "31_Cross_System_End_to_End_Flow_Design_v2.0",
+  "date": "2026-09-04",
+  "requirements": [
+    {
+      "id": "NEX-E2E-001",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "모든 E2E 흐름은 Work/Runtime/Business Transaction/Knowledge/Evidence의 Source of Truth를 명시하고 서비스 간 DB 직접 write를 금지해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "00/05/07/08"
+    },
+    {
+      "id": "NEX-E2E-002",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "모든 E2E 요청은 correlation_id를 유지하고 causation_id로 parent/child 또는 prior action을 연결해야 한다.",
+      "verification": "Trace Test",
+      "parent": "08/11/12"
+    },
+    {
+      "id": "NEX-E2E-003",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "Interactive와 Background 실행은 동일 Unified Runtime contract를 사용하되 authority source와 execution mode를 구분해야 한다.",
+      "verification": "E2E Test",
+      "parent": "11/12/26/29"
+    },
+    {
+      "id": "NEX-E2E-004",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "LLM output은 WorkIntent/Plan/structured candidate로만 사용하고 Stable ID, 권한, 실제 assignee, approval result, business commit을 authority로 만들지 않아야 한다.",
+      "verification": "Adversarial Test",
+      "parent": "11/12"
+    },
+    {
+      "id": "NEX-E2E-005",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "R3+ side effect 직전과 WAITING_* Resume 직후 current OA authorization/kill switch를 재평가해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/11/12"
+    },
+    {
+      "id": "NEX-E2E-006",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "Cross-service write를 distributed 2PC로 가정하지 않고 idempotency, explicit commit state, event/outbox, reconciliation으로 연결해야 한다.",
+      "verification": "Fault Test",
+      "parent": "12/17"
+    },
+    {
+      "id": "NEX-E2E-007",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "각 서비스의 technical completion을 downstream business completion과 동일시하지 않아야 한다.",
+      "verification": "State Test",
+      "parent": "11/14/29/30"
+    },
+    {
+      "id": "NEX-E2E-008",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "Evidence/Artifact/Result는 authoritative business refs와 source evidence refs를 함께 유지하여 재현 가능한 trace를 제공해야 한다.",
+      "verification": "Trace Test",
+      "parent": "27/29"
+    },
+    {
+      "id": "NEX-E2E-009",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "서비스 간 contract version/hash 또는 immutable asset version을 provenance에 보존해야 한다.",
+      "verification": "Contract Test",
+      "parent": "12/17/26-30"
+    },
+    {
+      "id": "NEX-E2E-010",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "Failure/timeout/duplicate/out-of-order event를 정상 설계의 일부로 취급하고 silent success로 변환하지 않아야 한다.",
+      "verification": "Fault Test",
+      "parent": "00/12/30"
+    },
+    {
+      "id": "NEX-E2E-011",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "E2E security context는 client/LLM/RAG/A2A가 제시한 role/permission field가 아니라 server-side OA/PDP와 authoritative PIP를 사용해야 한다.",
+      "verification": "Security Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-E2E-012",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "Data Classification과 Org/Project Scope는 CX Evidence, Artifact export, Notification/Audit view까지 일관되게 적용되어야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/27/29/30"
+    },
+    {
+      "id": "NEX-E2E-013",
+      "flow": "ALL",
+      "priority": "SHOULD",
+      "requirement": "E2E 상태 projection은 source object version/ref/hash를 포함하고 stale 상태를 표시할 수 있어야 한다.",
+      "verification": "Fault/UI Test",
+      "parent": "29/30"
+    },
+    {
+      "id": "NEX-E2E-014",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "E2E audit는 raw token/secret을 저장하지 않고 stable refs/hash/reason code 중심으로 구성해야 한다.",
+      "verification": "Security Scan",
+      "parent": "26/27/30"
+    },
+    {
+      "id": "NEX-E2E-015",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "각 E2E flow는 happy path뿐 아니라 clarification/block/approval/retry/reconciliation/revocation 중 관련 failure path를 Acceptance에 포함해야 한다.",
+      "verification": "Acceptance Inspection",
+      "parent": "00"
+    },
+    {
+      "id": "NEX-E2E-016",
+      "flow": "E2E-01",
+      "priority": "MUST",
+      "requirement": "자연어 요청은 AE에서 AgentSession/AgentExecution과 연결되고 WorkIntent structured contract를 거쳐야 한다.",
+      "verification": "E2E",
+      "parent": "11/29"
+    },
+    {
+      "id": "NEX-E2E-017",
+      "flow": "E2E-01",
+      "priority": "MUST",
+      "requirement": "필요 Context는 CX permission-aware Evidence Bundle/AE Context로 제공하고 evidence 부족은 명시해야 한다.",
+      "verification": "E2E",
+      "parent": "27/29"
+    },
+    {
+      "id": "NEX-E2E-018",
+      "flow": "E2E-01",
+      "priority": "MUST",
+      "requirement": "Plan Compiler는 exact Capability/Certified Skill version, stable EntityRef, gate/idempotency contract를 고정해야 한다.",
+      "verification": "Contract",
+      "parent": "12/17"
+    },
+    {
+      "id": "NEX-E2E-019",
+      "flow": "E2E-01",
+      "priority": "MUST",
+      "requirement": "Controlled transaction은 NSL/Canonical Capability 경계를 통해서만 Enterprise OS에 반영되어야 한다.",
+      "verification": "Security/E2E",
+      "parent": "16/17/EOS"
+    },
+    {
+      "id": "NEX-E2E-020",
+      "flow": "E2E-01",
+      "priority": "MUST",
+      "requirement": "Business commit 이후 authoritative business_ref와 verification evidence가 Result에 포함되어야 한다.",
+      "verification": "E2E",
+      "parent": "17/29"
+    },
+    {
+      "id": "NEX-E2E-021",
+      "flow": "E2E-01",
+      "priority": "MUST",
+      "requirement": "Transaction 실패/UNKNOWN_COMMIT은 성공 메시지로 format하지 않고 failure/reconciliation 상태를 사용자에게 표현해야 한다.",
+      "verification": "Fault/UI",
+      "parent": "12/17/29"
+    },
+    {
+      "id": "NEX-E2E-022",
+      "flow": "E2E-02",
+      "priority": "MUST",
+      "requirement": "사람이 Coworker에게 위임한 업무는 필요한 경우 WC WorkItem으로 등록되어 회사 업무 SoR과 실행을 연결해야 한다.",
+      "verification": "E2E",
+      "parent": "14/29"
+    },
+    {
+      "id": "NEX-E2E-023",
+      "flow": "E2E-02",
+      "priority": "MUST",
+      "requirement": "Requester, Accountable Owner, Routing Target, Actual Assignment, Claim을 서로 다른 개념으로 유지해야 한다.",
+      "verification": "State",
+      "parent": "14"
+    },
+    {
+      "id": "NEX-E2E-024",
+      "flow": "E2E-02",
+      "priority": "MUST",
+      "requirement": "AE Background execution은 WC Assignment/Eligibility/Claim 이후 시작되어야 한다.",
+      "verification": "Concurrency",
+      "parent": "11/14"
+    },
+    {
+      "id": "NEX-E2E-025",
+      "flow": "E2E-02",
+      "priority": "MUST",
+      "requirement": "사용자 Prompt와 WC WorkItem에서 생성된 execution은 동일 intent/plan/runtime contract로 처리되어야 한다.",
+      "verification": "E2E",
+      "parent": "11/12/29"
+    },
+    {
+      "id": "NEX-E2E-026",
+      "flow": "E2E-02",
+      "priority": "MUST",
+      "requirement": "Runtime result 제출과 WorkItem closure는 분리되어야 하며 WC closure authority가 종료를 결정해야 한다.",
+      "verification": "State",
+      "parent": "14/29"
+    },
+    {
+      "id": "NEX-E2E-027",
+      "flow": "E2E-02",
+      "priority": "SHOULD",
+      "requirement": "Workspace는 WorkItem, AgentExecution, Result, Artifact의 관계를 사용자가 추적할 수 있도록 표시해야 한다.",
+      "verification": "UI",
+      "parent": "29"
+    },
+    {
+      "id": "NEX-E2E-028",
+      "flow": "E2E-03",
+      "priority": "MUST",
+      "requirement": "내부 Coworker 협업은 direct agent-to-agent state mutation이 아니라 WC Child WorkItem을 기본 경로로 사용해야 한다.",
+      "verification": "Architecture",
+      "parent": "00/14"
+    },
+    {
+      "id": "NEX-E2E-029",
+      "flow": "E2E-03",
+      "priority": "MUST",
+      "requirement": "DELEGATE_WORK는 required_capability, org/project scope, required result contract를 유지해야 한다.",
+      "verification": "Contract",
+      "parent": "12/14"
+    },
+    {
+      "id": "NEX-E2E-030",
+      "flow": "E2E-03",
+      "priority": "MUST",
+      "requirement": "Planner가 actual assignee를 임의 결정하지 않고 WC eligibility/assignment 정책이 담당해야 한다.",
+      "verification": "Security/State",
+      "parent": "12/14"
+    },
+    {
+      "id": "NEX-E2E-031",
+      "flow": "E2E-03",
+      "priority": "MUST",
+      "requirement": "Parent runtime은 child 처리 동안 WAITING_DEPENDENCY checkpoint 후 worker를 해제해야 한다.",
+      "verification": "Runtime",
+      "parent": "11/12/14"
+    },
+    {
+      "id": "NEX-E2E-032",
+      "flow": "E2E-03",
+      "priority": "MUST",
+      "requirement": "WORK_RESULT_SUBMITTED event는 event_id dedup 및 child result schema validation 후 parent resume를 유발해야 한다.",
+      "verification": "Fault/E2E",
+      "parent": "14/12"
+    },
+    {
+      "id": "NEX-E2E-033",
+      "flow": "E2E-03",
+      "priority": "MUST",
+      "requirement": "External independent agent에만 A2A adapter를 사용하며 remote COMPLETED를 WC CLOSED로 직접 매핑하지 않아야 한다.",
+      "verification": "Integration",
+      "parent": "14/08"
+    },
+    {
+      "id": "NEX-E2E-034",
+      "flow": "E2E-04",
+      "priority": "MUST",
+      "requirement": "Background WorkItem processing은 employee browser token을 재사용하지 않고 SERVICE_ACCOUNT + Employee-bound EAC를 사용해야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/11"
+    },
+    {
+      "id": "NEX-E2E-035",
+      "flow": "E2E-04",
+      "priority": "MUST",
+      "requirement": "WC Claim/Lease와 AE Job Lease는 각각 work assignment와 worker coordination을 표현하며 business idempotency와 구분되어야 한다.",
+      "verification": "Concurrency/Fault",
+      "parent": "12/14"
+    },
+    {
+      "id": "NEX-E2E-036",
+      "flow": "E2E-04",
+      "priority": "MUST",
+      "requirement": "장기 background execution은 WAITING 상태에서 worker를 점유하거나 busy polling하지 않아야 한다.",
+      "verification": "Runtime",
+      "parent": "11/12"
+    },
+    {
+      "id": "NEX-E2E-037",
+      "flow": "E2E-04",
+      "priority": "MUST",
+      "requirement": "Resume 시 checkpoint가 보존한 과거 policy snapshot을 권한 grant로 재사용하지 않고 current EAC를 rebuild해야 한다.",
+      "verification": "Security",
+      "parent": "26/12"
+    },
+    {
+      "id": "NEX-E2E-038",
+      "flow": "E2E-04",
+      "priority": "MUST",
+      "requirement": "duplicate queue/event delivery는 execution/result/business side effect의 중복을 만들지 않도록 dedup/idempotency를 적용해야 한다.",
+      "verification": "Fault",
+      "parent": "12/14/17"
+    },
+    {
+      "id": "NEX-E2E-039",
+      "flow": "E2E-04",
+      "priority": "SHOULD",
+      "requirement": "Background completion/input/gate/escalation 상태는 AE notification과 WC work state를 혼동하지 않고 사용자에게 전달되어야 한다.",
+      "verification": "UI/E2E",
+      "parent": "29"
+    },
+    {
+      "id": "NEX-E2E-040",
+      "flow": "E2E-05",
+      "priority": "MUST",
+      "requirement": "Confirmation, Formal Approval, OA Step-up Authentication은 서로 다른 security/business objects로 유지되어야 한다.",
+      "verification": "Security",
+      "parent": "26/29/16"
+    },
+    {
+      "id": "NEX-E2E-041",
+      "flow": "E2E-05",
+      "priority": "MUST",
+      "requirement": "Gate 대기는 Unified Runtime이 checkpoint/resume으로 소유하고 NSL language/runtime은 장기 wait를 소유하지 않아야 한다.",
+      "verification": "Architecture",
+      "parent": "12/16/17"
+    },
+    {
+      "id": "NEX-E2E-042",
+      "flow": "E2E-05",
+      "priority": "MUST",
+      "requirement": "Gate proof는 trusted provider에서 조회하고 actor/execution/skill/step/payload/write-intent binding을 검증해야 한다.",
+      "verification": "Security E2E",
+      "parent": "17"
+    },
+    {
+      "id": "NEX-E2E-043",
+      "flow": "E2E-05",
+      "priority": "MUST",
+      "requirement": "Gate 만족 후 Resume에서 RoleBinding/Policy/Capability/Skill status가 변경되었으면 이전 approval UI 상태와 무관하게 재평가해야 한다.",
+      "verification": "Security",
+      "parent": "26/12/17"
+    },
+    {
+      "id": "NEX-E2E-044",
+      "flow": "E2E-05",
+      "priority": "MUST",
+      "requirement": "Write는 stable idempotency key와 expected_version/commit semantics를 사용해야 한다.",
+      "verification": "Fault",
+      "parent": "12/17"
+    },
+    {
+      "id": "NEX-E2E-045",
+      "flow": "E2E-05",
+      "priority": "MUST",
+      "requirement": "UNKNOWN_COMMIT_STATE는 RECONCILIATION_REQUIRED로 전환하고 blind retry하지 않아야 한다.",
+      "verification": "Fault",
+      "parent": "12/17"
+    },
+    {
+      "id": "NEX-E2E-046",
+      "flow": "E2E-06",
+      "priority": "MUST",
+      "requirement": "Project/NVT 선택은 Stable EntityRef로 resolve되어야 하며 LLM이 Project ID를 생성해서는 안 된다.",
+      "verification": "Contract",
+      "parent": "11/12"
+    },
+    {
+      "id": "NEX-E2E-047",
+      "flow": "E2E-06",
+      "priority": "MUST",
+      "requirement": "Expense/Voucher 생성은 Enterprise OS canonical command를 통해 authoritative transaction을 생성해야 한다.",
+      "verification": "E2E",
+      "parent": "00/EOS/17"
+    },
+    {
+      "id": "NEX-E2E-048",
+      "flow": "E2E-06",
+      "priority": "MUST",
+      "requirement": "Voucher/Approval/Ledger/P&L 각 상태는 해당 Business SoR이 소유하고 AE/WC가 자체 계산값으로 덮어쓰지 않아야 한다.",
+      "verification": "Architecture",
+      "parent": "00/EOS"
+    },
+    {
+      "id": "NEX-E2E-049",
+      "flow": "E2E-06",
+      "priority": "MUST",
+      "requirement": "Ledger/P&L 결과는 transaction/business refs와 project attribution을 통해 추적 가능해야 한다.",
+      "verification": "Trace",
+      "parent": "00/EOS"
+    },
+    {
+      "id": "NEX-E2E-050",
+      "flow": "E2E-06",
+      "priority": "MUST",
+      "requirement": "Artifact/WorkResult가 비용처리 완료를 표시할 때 authoritative Voucher/Ledger state를 참조해야 한다.",
+      "verification": "UI/E2E",
+      "parent": "29/00"
+    },
+    {
+      "id": "NEX-E2E-051",
+      "flow": "E2E-06",
+      "priority": "SHOULD",
+      "requirement": "Common Work/Project 미지정 처리 정책은 upstream canonical policy에 의해 명시적으로 resolve되고 audit되어야 한다.",
+      "verification": "Policy",
+      "parent": "00/ADR"
+    },
+    {
+      "id": "NEX-E2E-052",
+      "flow": "E2E-07",
+      "priority": "MUST",
+      "requirement": "Manufacturing risk signal은 monitor/event 또는 사람 입력에서 authoritative business context를 거쳐 WorkItem으로 승격되어야 한다.",
+      "verification": "E2E",
+      "parent": "00/14"
+    },
+    {
+      "id": "NEX-E2E-053",
+      "flow": "E2E-07",
+      "priority": "MUST",
+      "requirement": "Manufacturing Coworker가 Procurement 협업을 요청할 때 Child WorkItem causation과 required procurement capability를 보존해야 한다.",
+      "verification": "E2E",
+      "parent": "12/14"
+    },
+    {
+      "id": "NEX-E2E-054",
+      "flow": "E2E-07",
+      "priority": "MUST",
+      "requirement": "Procurement Coworker는 WC claim 후 자신의 current RoleBinding/Scope로 실행해야 하며 parent authority를 상속해 확대해서는 안 된다.",
+      "verification": "Security",
+      "parent": "26/14"
+    },
+    {
+      "id": "NEX-E2E-055",
+      "flow": "E2E-07",
+      "priority": "MUST",
+      "requirement": "Procurement result는 required result schema/Artifact/Evidence 검증 후 parent execution에 import되어야 한다.",
+      "verification": "Contract/E2E",
+      "parent": "12/14/29"
+    },
+    {
+      "id": "NEX-E2E-056",
+      "flow": "E2E-07",
+      "priority": "MUST",
+      "requirement": "Child failure/rejection/cancel은 parent의 replan/escalate 정책 입력이 되어야 하며 silent completion이 되어서는 안 된다.",
+      "verification": "Fault",
+      "parent": "11/14"
+    },
+    {
+      "id": "NEX-E2E-057",
+      "flow": "E2E-07",
+      "priority": "MUST",
+      "requirement": "최종 Human Review는 parent 결과와 child provenance를 함께 확인할 수 있어야 한다.",
+      "verification": "UI/Trace",
+      "parent": "29/14"
+    },
+    {
+      "id": "NEX-E2E-058",
+      "flow": "E2E-08",
+      "priority": "MUST",
+      "requirement": "Artifact, Evidence Bundle, Business Object, WorkResult를 서로 다른 object/ref로 유지해야 한다.",
+      "verification": "Architecture",
+      "parent": "27/29"
+    },
+    {
+      "id": "NEX-E2E-059",
+      "flow": "E2E-08",
+      "priority": "MUST",
+      "requirement": "Citation은 사용자 answer/artifact section에서 CX source evidence/locator까지 추적 가능해야 한다.",
+      "verification": "Trace",
+      "parent": "27/29"
+    },
+    {
+      "id": "NEX-E2E-060",
+      "flow": "E2E-08",
+      "priority": "MUST",
+      "requirement": "Graph-lite relation을 사용한 evidence는 relation provenance와 accessible relation evidence를 보존해야 한다.",
+      "verification": "Security/Trace",
+      "parent": "27"
+    },
+    {
+      "id": "NEX-E2E-061",
+      "flow": "E2E-08",
+      "priority": "MUST",
+      "requirement": "Federated audit는 correlation/causation/execution/work/plan/skill/business refs를 연결하되 각 서비스 Audit SoR을 침범하지 않아야 한다.",
+      "verification": "Trace",
+      "parent": "30"
+    },
+    {
+      "id": "NEX-E2E-062",
+      "flow": "E2E-08",
+      "priority": "MUST",
+      "requirement": "Artifact export/download 시 current Project/Data Classification permission을 재검증해야 한다.",
+      "verification": "Security",
+      "parent": "26/27/29"
+    },
+    {
+      "id": "NEX-E2E-063",
+      "flow": "E2E-08",
+      "priority": "SHOULD",
+      "requirement": "Audit drill-down은 policy→runtime→plan→skill→business→artifact/evidence chain을 재구성할 수 있어야 한다.",
+      "verification": "Ops/E2E",
+      "parent": "30"
+    },
+    {
+      "id": "NEX-E2E-064",
+      "flow": "E2E-09",
+      "priority": "MUST",
+      "requirement": "Periodic report는 reportable interaction/WorkResult/WorkActivity source만 사용하고 source refs를 유지해야 한다.",
+      "verification": "E2E",
+      "parent": "29/00"
+    },
+    {
+      "id": "NEX-E2E-065",
+      "flow": "E2E-09",
+      "priority": "MUST",
+      "requirement": "보고서 초안은 Human Review 전 authoritative submitted report로 간주되지 않아야 한다.",
+      "verification": "State",
+      "parent": "00/29"
+    },
+    {
+      "id": "NEX-E2E-066",
+      "flow": "E2E-09",
+      "priority": "MUST",
+      "requirement": "보고서 생성에 사용한 CX evidence/model/prompt/version provenance를 보존해야 한다.",
+      "verification": "Trace",
+      "parent": "27/28/29"
+    },
+    {
+      "id": "NEX-E2E-067",
+      "flow": "E2E-09",
+      "priority": "MUST",
+      "requirement": "업무/Project/기간 aggregation은 authoritative structured values를 우선하고 LLM이 business numeric을 임의 재계산하지 않아야 한다.",
+      "verification": "Test",
+      "parent": "29/00"
+    },
+    {
+      "id": "NEX-E2E-068",
+      "flow": "E2E-09",
+      "priority": "MUST",
+      "requirement": "데이터 접근권한 또는 source lifecycle 변경 시 stale report generation/export를 차단하거나 caveat를 표시해야 한다.",
+      "verification": "Security/Fault",
+      "parent": "26/29"
+    },
+    {
+      "id": "NEX-E2E-069",
+      "flow": "E2E-09",
+      "priority": "SHOULD",
+      "requirement": "Daily/Weekly/Monthly report execution과 submission 상태는 background job progress 및 user notification에서 구분되어야 한다.",
+      "verification": "UI",
+      "parent": "29/30"
+    },
+    {
+      "id": "NEX-E2E-070",
+      "flow": "E2E-10",
+      "priority": "MUST",
+      "requirement": "WorkResult와 Verified Business Outcome을 구분하고 technical success만으로 performance evidence를 확정하지 않아야 한다.",
+      "verification": "State",
+      "parent": "11/14"
+    },
+    {
+      "id": "NEX-E2E-071",
+      "flow": "E2E-10",
+      "priority": "MUST",
+      "requirement": "Performance evidence는 WorkItem, AgentExecution, Plan/Skill version, Artifact/Evidence, authoritative business result refs를 연결해야 한다.",
+      "verification": "Trace",
+      "parent": "11/14/17/29"
+    },
+    {
+      "id": "NEX-E2E-072",
+      "flow": "E2E-10",
+      "priority": "MUST",
+      "requirement": "Plan/Skill certification 통계는 verified outcome과 correction/replan/escalation/exception을 포함해야 한다.",
+      "verification": "Governance",
+      "parent": "11/17/30"
+    },
+    {
+      "id": "NEX-E2E-073",
+      "flow": "E2E-10",
+      "priority": "MUST",
+      "requirement": "AG governance projection은 source metrics/evidence를 참조하되 Plan/Skill/WorkResult definition을 자체 소유하지 않아야 한다.",
+      "verification": "Architecture",
+      "parent": "30"
+    },
+    {
+      "id": "NEX-E2E-074",
+      "flow": "E2E-10",
+      "priority": "MUST",
+      "requirement": "평가/보고용 Evidence는 data classification/retention/purpose policy를 적용해야 한다.",
+      "verification": "Security",
+      "parent": "26/30"
+    },
+    {
+      "id": "NEX-E2E-075",
+      "flow": "E2E-10",
+      "priority": "SHOULD",
+      "requirement": "사용자는 성과 지표가 어떤 WorkResult/Business Evidence에서 산출되었는지 drill-down할 수 있어야 한다.",
+      "verification": "UI/Trace",
+      "parent": "29/30"
+    },
+    {
+      "id": "NEX-E2E-076",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "E2E integration test는 서비스별 isolated test DB와 mock/stub만으로 끝나지 않고 최소 Golden Slice에서 실제 contract 조합을 검증해야 한다.",
+      "verification": "Integration Gate",
+      "parent": "00/33 future"
+    },
+    {
+      "id": "NEX-E2E-077",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "각 cross-service event consumer는 at-least-once delivery와 event_id dedup을 가정해야 한다.",
+      "verification": "Fault",
+      "parent": "12/14"
+    },
+    {
+      "id": "NEX-E2E-078",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "E2E timeout budget은 interactive latency와 background completion SLA를 분리하여 측정해야 한다.",
+      "verification": "Performance",
+      "parent": "28/29/30"
+    },
+    {
+      "id": "NEX-E2E-079",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "서비스 장애/Degraded 상태는 caller에 typed status로 전달되고 허용되지 않은 fallback으로 보안/정확도 semantics를 바꾸지 않아야 한다.",
+      "verification": "Fault/Security",
+      "parent": "27/28/30"
+    },
+    {
+      "id": "NEX-E2E-080",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "Cross-service retry는 operation semantics와 idempotency guarantee를 확인한 경우에만 수행해야 한다.",
+      "verification": "Fault",
+      "parent": "12/17"
+    },
+    {
+      "id": "NEX-E2E-081",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "E2E observability는 service latency뿐 아니라 wait age, queue age, reconciliation backlog, permission deny, evidence quality를 연결해 볼 수 있어야 한다.",
+      "verification": "Ops",
+      "parent": "27-30"
+    },
+    {
+      "id": "NEX-E2E-082",
+      "flow": "ALL",
+      "priority": "SHOULD",
+      "requirement": "E2E trace sample은 개인정보/민감정보 원문 없이도 재현 가능한 reference/hash 중심 export를 지원할 수 있어야 한다.",
+      "verification": "Privacy",
+      "parent": "26/30"
+    },
+    {
+      "id": "NEX-E2E-083",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "Kill Switch activation은 신규 실행뿐 아니라 Resume/R3+ side-effect 경계에서 bounded propagation 내 강제되어야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/30"
+    },
+    {
+      "id": "NEX-E2E-084",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "AG outage가 이미 배포된 runtime policy를 무효화하거나 정상 business execution을 즉시 중단시키는 hot-path dependency가 되어서는 안 된다.",
+      "verification": "Fault",
+      "parent": "30"
+    },
+    {
+      "id": "NEX-E2E-085",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "Version mismatch/schema drift는 silent coercion하지 않고 contract incompatibility로 명시되어야 한다.",
+      "verification": "Contract",
+      "parent": "12/17/27-30"
+    },
+    {
+      "id": "NEX-E2E-086",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "Golden Slice A와 B는 Requirement→Component→API/Event→Entity→Test→Acceptance trace chain을 가져야 한다.",
+      "verification": "Traceability",
+      "parent": "00"
+    },
+    {
+      "id": "NEX-E2E-087",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "Golden Slice A/B failure injection에는 role revoke, duplicate event, provider timeout, unknown commit, stale artifact/evidence를 포함해야 한다.",
+      "verification": "Fault E2E",
+      "parent": "00/12/17"
+    },
+    {
+      "id": "NEX-E2E-088",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "E2E test 결과는 correlation trace와 authoritative terminal state를 증거로 남겨야 한다.",
+      "verification": "Acceptance",
+      "parent": "00"
+    },
+    {
+      "id": "NEX-E2E-089",
+      "flow": "ALL",
+      "priority": "SHOULD",
+      "requirement": "Cross-system contract compatibility matrix를 release gate로 자동 검사할 수 있도록 machine-readable version metadata를 제공해야 한다.",
+      "verification": "CI/Contract",
+      "parent": "31"
+    },
+    {
+      "id": "NEX-E2E-090",
+      "flow": "ALL",
+      "priority": "MUST",
+      "requirement": "31번 Horizontal Baseline과 충돌하는 하위 서비스 문서의 obsolete Next Step/flow 설명은 후속 문서 정합성 정리 대상으로 표시해야 한다.",
+      "verification": "Consistency Gate",
+      "parent": "00"
+    }
+  ]
+}

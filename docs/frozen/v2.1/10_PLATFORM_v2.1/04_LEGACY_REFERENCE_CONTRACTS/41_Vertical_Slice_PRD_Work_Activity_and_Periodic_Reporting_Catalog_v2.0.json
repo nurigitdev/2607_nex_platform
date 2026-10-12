@@ -1,0 +1,1488 @@
+{
+  "document": "41_Vertical_Slice_PRD_Work_Activity_and_Periodic_Reporting_v2.0",
+  "version": "v2.0",
+  "date": "2026-09-04",
+  "repository_evidence_status": "PENDING",
+  "counts": {
+    "MUST": 120,
+    "SHOULD": 13
+  },
+  "implementation_tasks": 24,
+  "acceptance_criteria": 34,
+  "requirements": [
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD41-SCP-FR-001",
+      "priority": "MUST",
+      "requirement": "PRD41의 핵심 사용자 가치는 실제 수행 Event를 NeX-WA WorkActivity/Timeline으로 자동 자산화하고 reportable 사실을 일/주/월 보고 초안으로 생성하여 Human Review 후 Submit하며, 검증된 업무결과를 Performance Evidence로 drill-down 가능하게 만드는 것이다.",
+      "verification": "Business E2E",
+      "parent": "00/03/31/36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD41-SCP-FR-002",
+      "priority": "MUST",
+      "requirement": "본 PRD는 Work Activity/Labor/MM/Reporting, AE, WC, Horizontal E2E의 상위 Baseline을 재정의하지 않고 Work Activity와 Periodic Reporting 구현 경계만 Vertical Slice로 내린다.",
+      "verification": "Trace Review",
+      "parent": "22/29/31/36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD41-SCP-FR-003",
+      "priority": "MUST",
+      "requirement": "Repository Evidence가 미확인된 기존 component의 실제 repo/path/class/table/endpoint 이름은 확정하지 않고 logical contract/task 수준으로 유지해야 한다.",
+      "verification": "Evidence Gate",
+      "parent": "36/02/10"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD41-SCP-FR-004",
+      "priority": "MUST",
+      "requirement": "기존 코드의 KEEP/REFACTOR/REPLACE 판단은 repo/branch/commit/schema/API/test/runtime evidence 확인 전 NOT ASSESSED 또는 PROVISIONAL을 유지해야 한다.",
+      "verification": "Implementation Review",
+      "parent": "35/36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD41-SCP-FR-005",
+      "priority": "MUST",
+      "requirement": "NeX-WA는 WorkActivity/WorkAsset/Timeline/PeriodicWorkReport/PerformanceEvidence projection의 authoritative post-work owner이며 WC/AE/NSL/EOS의 원 domain state를 소유하지 않아야 한다.",
+      "verification": "Architecture Test",
+      "parent": "03/31/36/39"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD41-SCP-FR-006",
+      "priority": "MUST",
+      "requirement": "Periodic Reporting의 기본 경로는 Auto Draft→Human Review→Submit이며 Draft는 제출된 공식 보고로 간주하지 않아야 한다.",
+      "verification": "State E2E",
+      "parent": "29/31/36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD41-SCP-FR-007",
+      "priority": "MUST",
+      "requirement": "Performance Evidence는 평가 근거자료이지 자동 성과점수가 아니며 Prompt/Agent 사용량/Token/Runtime을 직원 성과점수로 직접 환산해서는 안 된다.",
+      "verification": "Governance Test",
+      "parent": "00v2.1/03/31"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD41-SCP-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Quarterly/Executive aggregation은 구조적으로 확장 가능하되 PRD41 Release Gate는 Daily/Weekly/Monthly까지를 필수범위로 제한할 수 있다.",
+      "verification": "Scope Review",
+      "parent": "00v2.1/36"
+    },
+    {
+      "section": "4.2 Source Event Capture & Idempotent Projection",
+      "id": "NEX-PRD41-EVT-FR-001",
+      "priority": "MUST",
+      "requirement": "WA는 AE Interaction/AgentExecution, WC WorkItem/WorkResult, NSL SkillExecution/RuntimeResult, EOS Approval/Business Result, Artifact/Evidence 이벤트 또는 stable refs를 source로 수집할 수 있어야 한다.",
+      "verification": "Integration Test",
+      "parent": "22/31/39/40"
+    },
+    {
+      "section": "4.2 Source Event Capture & Idempotent Projection",
+      "id": "NEX-PRD41-EVT-FR-002",
+      "priority": "MUST",
+      "requirement": "각 source event는 source_service, event_id, event_type, occurred_at, correlation_id, causation_id 및 가능한 canonical object refs를 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "08/31/32"
+    },
+    {
+      "section": "4.2 Source Event Capture & Idempotent Projection",
+      "id": "NEX-PRD41-EVT-FR-003",
+      "priority": "MUST",
+      "requirement": "WA ingestion은 at-least-once delivery에서 동일 source_service+event_id를 중복 WorkActivity로 생성하지 않아야 한다.",
+      "verification": "Fault Test",
+      "parent": "32/39"
+    },
+    {
+      "section": "4.2 Source Event Capture & Idempotent Projection",
+      "id": "NEX-PRD41-EVT-FR-004",
+      "priority": "MUST",
+      "requirement": "Out-of-order event를 허용하되 occurred_at/source sequence와 reference dependency를 사용해 Timeline projection을 안정화해야 한다.",
+      "verification": "Ordering Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.2 Source Event Capture & Idempotent Projection",
+      "id": "NEX-PRD41-EVT-FR-005",
+      "priority": "MUST",
+      "requirement": "Projection 실패나 지연은 source 업무의 Commit/Result/Closure를 block해서는 안 된다.",
+      "verification": "Failure Isolation",
+      "parent": "31/32/39"
+    },
+    {
+      "section": "4.2 Source Event Capture & Idempotent Projection",
+      "id": "NEX-PRD41-EVT-FR-006",
+      "priority": "MUST",
+      "requirement": "WA는 source event의 raw secret/token/credential/private reasoning을 저장하지 않고 필요한 stable ref/summary/hash/classification만 보존해야 한다.",
+      "verification": "Security Scan",
+      "parent": "26/29/39"
+    },
+    {
+      "section": "4.2 Source Event Capture & Idempotent Projection",
+      "id": "NEX-PRD41-EVT-FR-007",
+      "priority": "MUST",
+      "requirement": "Interaction source는 reportable metadata가 false이거나 privacy/business policy상 제외 대상이면 기본적으로 보고 원천에서 제외해야 한다.",
+      "verification": "Policy Test",
+      "parent": "29/31"
+    },
+    {
+      "section": "4.2 Source Event Capture & Idempotent Projection",
+      "id": "NEX-PRD41-EVT-FR-008",
+      "priority": "MUST",
+      "requirement": "WorkItem/Result source는 revision/closure history를 overwrite하지 않고 version/ref 기반으로 Activity/Asset에 연결해야 한다.",
+      "verification": "Trace Test",
+      "parent": "14/31"
+    },
+    {
+      "section": "4.2 Source Event Capture & Idempotent Projection",
+      "id": "NEX-PRD41-EVT-FR-009",
+      "priority": "MUST",
+      "requirement": "NSL source는 exact skill/version과 RuntimeResult/evidence ref를 보존하되 skill_node journal을 WA가 복제하여 SoR로 만들지 않아야 한다.",
+      "verification": "Boundary Test",
+      "parent": "17/29"
+    },
+    {
+      "section": "4.2 Source Event Capture & Idempotent Projection",
+      "id": "NEX-PRD41-EVT-FR-010",
+      "priority": "MUST",
+      "requirement": "EOS source는 authoritative business object/status/value ref를 사용하며 WA가 business transaction 값을 재계산하거나 확정해서는 안 된다.",
+      "verification": "SoR Test",
+      "parent": "18~21/31"
+    },
+    {
+      "section": "4.2 Source Event Capture & Idempotent Projection",
+      "id": "NEX-PRD41-EVT-FR-011",
+      "priority": "SHOULD",
+      "requirement": "CX Evidence source는 Evidence Bundle/Citation refs를 사용할 수 있으나 문서 chunk/vector 전문을 WA에 대량 복제하지 않아야 한다.",
+      "verification": "Data Test",
+      "parent": "27/29/40"
+    },
+    {
+      "section": "4.2 Source Event Capture & Idempotent Projection",
+      "id": "NEX-PRD41-EVT-FR-012",
+      "priority": "MUST",
+      "requirement": "Manual/Field/Meeting 등 자동 관찰이 어려운 활동은 명시적인 Manual Entry source로 추가할 수 있으나 입력 actor/time/project/provenance를 추적해야 한다.",
+      "verification": "Manual Entry Test",
+      "parent": "22"
+    },
+    {
+      "section": "4.3 WorkActivity / Timeline Model",
+      "id": "NEX-PRD41-ACT-FR-001",
+      "priority": "MUST",
+      "requirement": "WorkActivity는 work_activity_id, activity_type, source_type/ref/event_id, actor/employee/coworker refs, project_ref(optional), occurred/start/end time, reportable, classification, correlation/causation을 표현해야 한다.",
+      "verification": "Schema Test",
+      "parent": "22/31"
+    },
+    {
+      "section": "4.3 WorkActivity / Timeline Model",
+      "id": "NEX-PRD41-ACT-FR-002",
+      "priority": "MUST",
+      "requirement": "Activity Type은 최소 PROMPT, SKILL_EXECUTION, ARTIFACT_CREATE/EDIT, DOCUMENT_REVIEW, APPROVAL, MANUAL_WORK, FIELD_WORK, OTHER를 표현할 수 있어야 한다.",
+      "verification": "Schema Test",
+      "parent": "22"
+    },
+    {
+      "section": "4.3 WorkActivity / Timeline Model",
+      "id": "NEX-PRD41-ACT-FR-003",
+      "priority": "MUST",
+      "requirement": "WorkItem/AgentExecution/PlanStep/Skill/Result/Artifact/Evidence/Business object refs는 Activity에 복수 trace ref로 연결 가능해야 한다.",
+      "verification": "Trace Test",
+      "parent": "22/23/31"
+    },
+    {
+      "section": "4.3 WorkActivity / Timeline Model",
+      "id": "NEX-PRD41-ACT-FR-004",
+      "priority": "MUST",
+      "requirement": "Work Timeline은 사전 Schedule이 아니라 실제 수행된 post-work event의 append-oriented view여야 한다.",
+      "verification": "Architecture Test",
+      "parent": "00v2.1/03"
+    },
+    {
+      "section": "4.3 WorkActivity / Timeline Model",
+      "id": "NEX-PRD41-ACT-FR-005",
+      "priority": "MUST",
+      "requirement": "Timeline은 source correction/revision이 발생해도 과거 event를 삭제·재작성하기보다 correction/superseding link를 보존해야 한다.",
+      "verification": "Audit Test",
+      "parent": "14/23/31"
+    },
+    {
+      "section": "4.3 WorkActivity / Timeline Model",
+      "id": "NEX-PRD41-ACT-FR-006",
+      "priority": "MUST",
+      "requirement": "WorkActivity의 observed_duration은 시스템 관찰값이며 confirmed human effort로 자동 승격되어서는 안 된다.",
+      "verification": "Invariant Test",
+      "parent": "22"
+    },
+    {
+      "section": "4.3 WorkActivity / Timeline Model",
+      "id": "NEX-PRD41-ACT-FR-007",
+      "priority": "MUST",
+      "requirement": "AgentExecution duration, LLM latency, Skill CPU/GPU 실행시간은 Human Effort 또는 MM으로 자동 환산되어서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "22/03"
+    },
+    {
+      "section": "4.3 WorkActivity / Timeline Model",
+      "id": "NEX-PRD41-ACT-FR-008",
+      "priority": "MUST",
+      "requirement": "동일 correlation chain에 속한 여러 Activity는 시간순 및 causation 순으로 drill-down할 수 있어야 한다.",
+      "verification": "UI/Trace Test",
+      "parent": "31/39"
+    },
+    {
+      "section": "4.3 WorkActivity / Timeline Model",
+      "id": "NEX-PRD41-ACT-FR-009",
+      "priority": "MUST",
+      "requirement": "Activity source가 삭제/retention 대상이 되어도 법적/audit 정책이 허용하는 범위에서 stable ref/hash와 tombstone provenance를 유지할 수 있어야 한다.",
+      "verification": "Retention Test",
+      "parent": "23/29/34"
+    },
+    {
+      "section": "4.3 WorkActivity / Timeline Model",
+      "id": "NEX-PRD41-ACT-FR-010",
+      "priority": "SHOULD",
+      "requirement": "사용자는 자신의 Timeline을 period/project/work class/activity type/status로 필터링할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "29/41"
+    },
+    {
+      "section": "4.3 WorkActivity / Timeline Model",
+      "id": "NEX-PRD41-ACT-FR-011",
+      "priority": "MUST",
+      "requirement": "Manager/team Timeline 조회는 OA current role/org/project/data classification scope를 적용해야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/41"
+    },
+    {
+      "section": "4.3 WorkActivity / Timeline Model",
+      "id": "NEX-PRD41-ACT-FR-012",
+      "priority": "MUST",
+      "requirement": "WA Activity projection의 상태는 source authoritative state와 충돌할 경우 source 재조회/refresh를 통해 정정 가능해야 한다.",
+      "verification": "Fault Test",
+      "parent": "31/34"
+    },
+    {
+      "section": "4.4 Project Attribution & Reportable Classification",
+      "id": "NEX-PRD41-ATR-FR-001",
+      "priority": "MUST",
+      "requirement": "Project Attribution은 WorkItem Project, Business Transaction Project, Workspace Current Project, Parent/Requester Work Project를 우선 활용하고 불확실할 때만 candidate+Human Confirm을 사용해야 한다.",
+      "verification": "Policy Test",
+      "parent": "00v2.1/22"
+    },
+    {
+      "section": "4.4 Project Attribution & Reportable Classification",
+      "id": "NEX-PRD41-ATR-FR-002",
+      "priority": "MUST",
+      "requirement": "Project가 불확실한 Activity를 자동으로 Common Work에 귀속하지 않고 UNASSIGNED/PENDING_ATTRIBUTION으로 유지할 수 있어야 한다.",
+      "verification": "Negative Test",
+      "parent": "22"
+    },
+    {
+      "section": "4.4 Project Attribution & Reportable Classification",
+      "id": "NEX-PRD41-ATR-FR-003",
+      "priority": "MUST",
+      "requirement": "사용자는 자신의 Activity Project Attribution을 current policy 범위에서 확인/수정할 수 있어야 하며 변경 이력을 보존해야 한다.",
+      "verification": "UI/Audit Test",
+      "parent": "22/29"
+    },
+    {
+      "section": "4.4 Project Attribution & Reportable Classification",
+      "id": "NEX-PRD41-ATR-FR-004",
+      "priority": "MUST",
+      "requirement": "Multi-project Activity는 필요 시 명시적 split/attribution을 지원하되 합계가 원 Activity 범위를 초과하지 않도록 검증해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "22"
+    },
+    {
+      "section": "4.4 Project Attribution & Reportable Classification",
+      "id": "NEX-PRD41-ATR-FR-005",
+      "priority": "MUST",
+      "requirement": "reportable=true는 Activity가 Periodic Report 후보라는 의미이며 Performance Evidence 확정이나 Work completion을 의미하지 않아야 한다.",
+      "verification": "State Test",
+      "parent": "29/31"
+    },
+    {
+      "section": "4.4 Project Attribution & Reportable Classification",
+      "id": "NEX-PRD41-ATR-FR-006",
+      "priority": "MUST",
+      "requirement": "reportable 분류는 source contract/policy/user override를 조합하되 LLM 자유문장만으로 최종 포함 여부를 확정해서는 안 된다.",
+      "verification": "Determinism Test",
+      "parent": "29/31"
+    },
+    {
+      "section": "4.4 Project Attribution & Reportable Classification",
+      "id": "NEX-PRD41-ATR-FR-007",
+      "priority": "MUST",
+      "requirement": "민감/개인/비업무 interaction은 reportable 후보에서 제외하거나 masked reference로만 사용해야 한다.",
+      "verification": "Privacy Test",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.4 Project Attribution & Reportable Classification",
+      "id": "NEX-PRD41-ATR-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Activity Type/Work Class별 기본 reportable policy를 versioned configuration으로 관리할 수 있어야 한다.",
+      "verification": "Policy Test",
+      "parent": "30/41"
+    },
+    {
+      "section": "4.4 Project Attribution & Reportable Classification",
+      "id": "NEX-PRD41-ATR-FR-009",
+      "priority": "MUST",
+      "requirement": "Activity가 이미 제출된 보고서에 포함된 후 Attribution이 변경되면 기존 제출보고를 silent rewrite하지 않고 supersede/correction path를 사용해야 한다.",
+      "verification": "Version Test",
+      "parent": "31/41"
+    },
+    {
+      "section": "4.4 Project Attribution & Reportable Classification",
+      "id": "NEX-PRD41-ATR-FR-010",
+      "priority": "MUST",
+      "requirement": "Project/reportable 변경은 correlation/source refs를 유지하며 audit 가능한 actor/reason/timestamp를 가져야 한다.",
+      "verification": "Audit Test",
+      "parent": "23/41"
+    },
+    {
+      "section": "4.5 WorkAsset Builder & Trace Aggregation",
+      "id": "NEX-PRD41-AST-FR-001",
+      "priority": "MUST",
+      "requirement": "WorkAsset은 관련 WorkActivity, WorkResult, Artifact, Evidence, business refs와 contributor/project/correlation을 묶는 post-work aggregate여야 한다.",
+      "verification": "Schema Test",
+      "parent": "00v2.1/03/22"
+    },
+    {
+      "section": "4.5 WorkAsset Builder & Trace Aggregation",
+      "id": "NEX-PRD41-AST-FR-002",
+      "priority": "MUST",
+      "requirement": "WorkAsset grouping은 WorkItem/correlation/business object 등 deterministic key를 우선하고 LLM이 임의로 별개의 업무를 하나로 합치지 않아야 한다.",
+      "verification": "Determinism Test",
+      "parent": "22/31"
+    },
+    {
+      "section": "4.5 WorkAsset Builder & Trace Aggregation",
+      "id": "NEX-PRD41-AST-FR-003",
+      "priority": "MUST",
+      "requirement": "WorkAsset은 Human/Coworker/Expert/System contribution refs를 구분하여 보존하되 이를 자동 성과점수로 환산하지 않아야 한다.",
+      "verification": "Governance Test",
+      "parent": "03/41"
+    },
+    {
+      "section": "4.5 WorkAsset Builder & Trace Aggregation",
+      "id": "NEX-PRD41-AST-FR-004",
+      "priority": "MUST",
+      "requirement": "WorkAsset은 source Artifact/Evidence의 content를 복제하기보다 stable ref/version/hash/provenance를 보존해야 한다.",
+      "verification": "Data Test",
+      "parent": "23/27/40"
+    },
+    {
+      "section": "4.5 WorkAsset Builder & Trace Aggregation",
+      "id": "NEX-PRD41-AST-FR-005",
+      "priority": "MUST",
+      "requirement": "WorkAsset은 source WorkItem RESULT_SUBMITTED/CLOSED, EOS business result 등 verified outcome refs를 별도 필드로 보존할 수 있어야 한다.",
+      "verification": "Trace Test",
+      "parent": "14/31"
+    },
+    {
+      "section": "4.5 WorkAsset Builder & Trace Aggregation",
+      "id": "NEX-PRD41-AST-FR-006",
+      "priority": "MUST",
+      "requirement": "WorkAsset은 source correction/revision/follow-up을 history로 연결하고 최신 상태만 남겨 과거 근거를 손실해서는 안 된다.",
+      "verification": "Revision Test",
+      "parent": "14/23"
+    },
+    {
+      "section": "4.5 WorkAsset Builder & Trace Aggregation",
+      "id": "NEX-PRD41-AST-FR-007",
+      "priority": "MUST",
+      "requirement": "WorkAsset 생성/갱신은 source event dedup/idempotency를 적용하고 동일 aggregate가 중복 생성되지 않아야 한다.",
+      "verification": "Fault Test",
+      "parent": "32/41"
+    },
+    {
+      "section": "4.5 WorkAsset Builder & Trace Aggregation",
+      "id": "NEX-PRD41-AST-FR-008",
+      "priority": "SHOULD",
+      "requirement": "WorkAsset은 Project/Work Class/Period/Contributor별 검색·집계를 위한 read model을 제공할 수 있어야 한다.",
+      "verification": "Performance Test",
+      "parent": "22/41"
+    },
+    {
+      "section": "4.5 WorkAsset Builder & Trace Aggregation",
+      "id": "NEX-PRD41-AST-FR-009",
+      "priority": "MUST",
+      "requirement": "WA rebuild 시 동일 source refs를 기준으로 WorkAsset identity와 provenance를 재현할 수 있어야 한다.",
+      "verification": "Recovery Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.6 Period Source Snapshot & Deterministic Fact Set",
+      "id": "NEX-PRD41-PER-FR-001",
+      "priority": "MUST",
+      "requirement": "Daily/Weekly/Monthly report generation은 owner_ref, period_type, period_start/end, timezone, source_cutoff_at을 명시한 PeriodSourceSnapshot을 먼저 생성해야 한다.",
+      "verification": "Schema Test",
+      "parent": "31/36"
+    },
+    {
+      "section": "4.6 Period Source Snapshot & Deterministic Fact Set",
+      "id": "NEX-PRD41-PER-FR-002",
+      "priority": "MUST",
+      "requirement": "Snapshot은 포함된 Activity/Asset/Result/Artifact/Evidence refs와 source version/hash를 보존하여 보고 생성 시점을 재현할 수 있어야 한다.",
+      "verification": "Audit/Repro Test",
+      "parent": "23/31"
+    },
+    {
+      "section": "4.6 Period Source Snapshot & Deterministic Fact Set",
+      "id": "NEX-PRD41-PER-FR-003",
+      "priority": "MUST",
+      "requirement": "Period Fact Set은 reportable Activity/WorkResult/Evidence만 대상으로 하고 비보고 Activity를 silent 포함해서는 안 된다.",
+      "verification": "E2E Test",
+      "parent": "29/31/36"
+    },
+    {
+      "section": "4.6 Period Source Snapshot & Deterministic Fact Set",
+      "id": "NEX-PRD41-PER-FR-004",
+      "priority": "MUST",
+      "requirement": "Project/Work Class/Result/Status/Contributor 집계는 structured source 값을 사용해 deterministic하게 계산해야 한다.",
+      "verification": "Deterministic Test",
+      "parent": "31/36"
+    },
+    {
+      "section": "4.6 Period Source Snapshot & Deterministic Fact Set",
+      "id": "NEX-PRD41-PER-FR-005",
+      "priority": "MUST",
+      "requirement": "금액, 승인상태, Work closure, business result 등 authoritative 값은 source service 값으로 렌더링하고 LLM이 재계산/변경해서는 안 된다.",
+      "verification": "Invariant Test",
+      "parent": "29/31/36"
+    },
+    {
+      "section": "4.6 Period Source Snapshot & Deterministic Fact Set",
+      "id": "NEX-PRD41-PER-FR-006",
+      "priority": "MUST",
+      "requirement": "Confirmed Effort가 존재하는 경우만 time/MM 관련 fact에 사용할 수 있으며 observed/runtime duration을 대체값으로 사용해서는 안 된다.",
+      "verification": "Effort Test",
+      "parent": "22"
+    },
+    {
+      "section": "4.6 Period Source Snapshot & Deterministic Fact Set",
+      "id": "NEX-PRD41-PER-FR-007",
+      "priority": "MUST",
+      "requirement": "source가 누락/지연/권한불가/충돌할 경우 PeriodSourceQuality를 COMPLETE/PARTIAL/STALE/CONFLICT 등 typed state로 표시할 수 있어야 한다.",
+      "verification": "Quality Test",
+      "parent": "31/40/41"
+    },
+    {
+      "section": "4.6 Period Source Snapshot & Deterministic Fact Set",
+      "id": "NEX-PRD41-PER-FR-008",
+      "priority": "MUST",
+      "requirement": "PARTIAL/STALE/CONFLICT 상태를 보고 Narrative에서 숨기거나 COMPLETE로 승격해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "40/41"
+    },
+    {
+      "section": "4.6 Period Source Snapshot & Deterministic Fact Set",
+      "id": "NEX-PRD41-PER-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Period Fact Set은 source coverage ratio와 excluded_count/by_reason 같은 운영 진단 정보를 제공할 수 있어야 한다.",
+      "verification": "Observability Test",
+      "parent": "30/41"
+    },
+    {
+      "section": "4.6 Period Source Snapshot & Deterministic Fact Set",
+      "id": "NEX-PRD41-PER-FR-010",
+      "priority": "MUST",
+      "requirement": "동일 source_cutoff/definition/version으로 재생성한 Fact Set은 동등한 structured 값과 hash를 재현해야 한다.",
+      "verification": "Repro Test",
+      "parent": "33/41"
+    },
+    {
+      "section": "4.6 Period Source Snapshot & Deterministic Fact Set",
+      "id": "NEX-PRD41-PER-FR-011",
+      "priority": "MUST",
+      "requirement": "월 경계/주 경계/timezone 처리 기준은 versioned policy로 관리하고 동일 Activity가 중복 period에 들어가지 않도록 해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "41"
+    },
+    {
+      "section": "4.6 Period Source Snapshot & Deterministic Fact Set",
+      "id": "NEX-PRD41-PER-FR-012",
+      "priority": "MUST",
+      "requirement": "Report Definition/Profile 변경은 기존 Submitted Report를 재작성하지 않고 새 draft/revision을 생성해야 한다.",
+      "verification": "Version Test",
+      "parent": "33/41"
+    },
+    {
+      "section": "4.7 Periodic Report Draft / Human Review / Submit",
+      "id": "NEX-PRD41-RPT-FR-001",
+      "priority": "MUST",
+      "requirement": "Report Composer는 WA Fact Set을 입력으로 사용하고 Narrative/Highlight를 생성하되 structured fact field를 수정하지 못해야 한다.",
+      "verification": "Contract Test",
+      "parent": "29/31/36"
+    },
+    {
+      "section": "4.7 Periodic Report Draft / Human Review / Submit",
+      "id": "NEX-PRD41-RPT-FR-002",
+      "priority": "MUST",
+      "requirement": "AE가 model generation을 사용할 경우 prompt purpose/template/output schema는 versioned asset으로 관리되고 MO는 structured execution만 담당해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "28/29"
+    },
+    {
+      "section": "4.7 Periodic Report Draft / Human Review / Submit",
+      "id": "NEX-PRD41-RPT-FR-003",
+      "priority": "MUST",
+      "requirement": "MO 장애 시 policy가 허용하면 Fact-only Draft를 생성하거나 typed degraded 상태를 표시하고 보고 생성 전체를 무조건 실패시켜서는 안 된다.",
+      "verification": "Fault Test",
+      "parent": "28/32/41"
+    },
+    {
+      "section": "4.7 Periodic Report Draft / Human Review / Submit",
+      "id": "NEX-PRD41-RPT-FR-004",
+      "priority": "MUST",
+      "requirement": "Report Draft는 최소 DRAFT 상태로 저장되며 사용자 확인 전 SUBMITTED로 표시되어서는 안 된다.",
+      "verification": "State Test",
+      "parent": "29/31"
+    },
+    {
+      "section": "4.7 Periodic Report Draft / Human Review / Submit",
+      "id": "NEX-PRD41-RPT-FR-005",
+      "priority": "MUST",
+      "requirement": "Human Review UI는 source Fact/Activity/WorkResult/Artifact/Evidence로 drill-down할 수 있어야 한다.",
+      "verification": "Playwright E2E",
+      "parent": "29/31/41"
+    },
+    {
+      "section": "4.7 Periodic Report Draft / Human Review / Submit",
+      "id": "NEX-PRD41-RPT-FR-006",
+      "priority": "MUST",
+      "requirement": "사용자는 Draft에서 narrative를 수정하고 reportable item을 include/exclude할 수 있어야 하며 변경 이력을 보존해야 한다.",
+      "verification": "UI/Audit Test",
+      "parent": "29/41"
+    },
+    {
+      "section": "4.7 Periodic Report Draft / Human Review / Submit",
+      "id": "NEX-PRD41-RPT-FR-007",
+      "priority": "MUST",
+      "requirement": "Human Review에서 structured authoritative fact를 수정하려면 source correction flow로 이동해야 하고 단순 narrative edit로 값을 덮어써서는 안 된다.",
+      "verification": "Integrity Test",
+      "parent": "31/41"
+    },
+    {
+      "section": "4.7 Periodic Report Draft / Human Review / Submit",
+      "id": "NEX-PRD41-RPT-FR-008",
+      "priority": "MUST",
+      "requirement": "Report Submit은 explicit user action 또는 policy-authorized submit action이어야 하며 chat 문장을 제출 승인으로 해석해서는 안 된다.",
+      "verification": "Security/UI Test",
+      "parent": "29/41"
+    },
+    {
+      "section": "4.7 Periodic Report Draft / Human Review / Submit",
+      "id": "NEX-PRD41-RPT-FR-009",
+      "priority": "MUST",
+      "requirement": "Submitted Report는 immutable revision/source_snapshot_hash/submitted_by/submitted_at을 가져야 한다.",
+      "verification": "Version Test",
+      "parent": "23/41"
+    },
+    {
+      "section": "4.7 Periodic Report Draft / Human Review / Submit",
+      "id": "NEX-PRD41-RPT-FR-010",
+      "priority": "MUST",
+      "requirement": "source correction이 제출 후 발생하면 기존 report를 silent mutate하지 않고 SUPERSEDED 또는 corrected revision path를 제공해야 한다.",
+      "verification": "Revision Test",
+      "parent": "31/41"
+    },
+    {
+      "section": "4.7 Periodic Report Draft / Human Review / Submit",
+      "id": "NEX-PRD41-RPT-FR-011",
+      "priority": "MUST",
+      "requirement": "Daily/Weekly/Monthly Report의 generation job state와 Report business state(DRAFT/SUBMITTED 등)는 분리되어야 한다.",
+      "verification": "State Test",
+      "parent": "31/32"
+    },
+    {
+      "section": "4.7 Periodic Report Draft / Human Review / Submit",
+      "id": "NEX-PRD41-RPT-FR-012",
+      "priority": "SHOULD",
+      "requirement": "Report recipient FYI/ACK/REVIEW는 WC report recipient/review pattern과 연계할 수 있으나 Formal Approval과 혼동해서는 안 된다.",
+      "verification": "Integration Test",
+      "parent": "14/38/41"
+    },
+    {
+      "section": "4.8 Performance Evidence Package",
+      "id": "NEX-PRD41-PEV-FR-001",
+      "priority": "MUST",
+      "requirement": "Performance Evidence는 technical activity volume이 아니라 WorkItem/WorkResult, Human Review/Closure, authoritative business result, Artifact/Evidence 등 verified outcome refs를 중심으로 구성해야 한다.",
+      "verification": "Governance E2E",
+      "parent": "31/41"
+    },
+    {
+      "section": "4.8 Performance Evidence Package",
+      "id": "NEX-PRD41-PEV-FR-002",
+      "priority": "MUST",
+      "requirement": "AgentExecution SUCCEEDED만으로 Performance Evidence를 VERIFIED_OUTCOME으로 확정해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "11/31"
+    },
+    {
+      "section": "4.8 Performance Evidence Package",
+      "id": "NEX-PRD41-PEV-FR-003",
+      "priority": "MUST",
+      "requirement": "Prompt 횟수, Agent 사용량, Token 수, model latency, skill runtime time을 직원 성과점수로 직접 환산해서는 안 된다.",
+      "verification": "Governance Test",
+      "parent": "00v2.1/03/41"
+    },
+    {
+      "section": "4.8 Performance Evidence Package",
+      "id": "NEX-PRD41-PEV-FR-004",
+      "priority": "MUST",
+      "requirement": "Evidence Package는 owner/period/project/work class, WorkItem/Result refs, Artifact/Evidence refs, business refs, Plan/Skill version, review/closure refs를 연결할 수 있어야 한다.",
+      "verification": "Schema/Trace Test",
+      "parent": "23/31"
+    },
+    {
+      "section": "4.8 Performance Evidence Package",
+      "id": "NEX-PRD41-PEV-FR-005",
+      "priority": "MUST",
+      "requirement": "Human/Coworker/Expert contribution은 source refs로 구분하여 표시할 수 있어야 하며 Agent 산출을 Human 단독 성과로 자동 귀속해서는 안 된다.",
+      "verification": "Attribution Test",
+      "parent": "03/41"
+    },
+    {
+      "section": "4.8 Performance Evidence Package",
+      "id": "NEX-PRD41-PEV-FR-006",
+      "priority": "MUST",
+      "requirement": "Revision/correction/replan/escalation/exception은 성과 근거에서 숨기지 않고 context evidence로 연결할 수 있어야 한다.",
+      "verification": "Quality Test",
+      "parent": "31/33"
+    },
+    {
+      "section": "4.8 Performance Evidence Package",
+      "id": "NEX-PRD41-PEV-FR-007",
+      "priority": "MUST",
+      "requirement": "Performance Evidence의 생성은 automated HR rating/compensation decision을 수행하지 않으며 최종 평가는 Human/HR policy 영역으로 남겨야 한다.",
+      "verification": "Scope/Governance Test",
+      "parent": "03/41"
+    },
+    {
+      "section": "4.8 Performance Evidence Package",
+      "id": "NEX-PRD41-PEV-FR-008",
+      "priority": "MUST",
+      "requirement": "사용자는 Evidence summary에서 원 WorkResult/Business Object/Artifact/Evidence까지 drill-down할 수 있어야 한다.",
+      "verification": "UI Trace Test",
+      "parent": "31/41"
+    },
+    {
+      "section": "4.8 Performance Evidence Package",
+      "id": "NEX-PRD41-PEV-FR-009",
+      "priority": "MUST",
+      "requirement": "Manager/Reviewer가 타인의 Performance Evidence를 조회할 때 current OA role/org/project/purpose policy를 재검증해야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/41"
+    },
+    {
+      "section": "4.8 Performance Evidence Package",
+      "id": "NEX-PRD41-PEV-FR-010",
+      "priority": "SHOULD",
+      "requirement": "Evidence Package는 verified_outcome_count/revision_count/exception_count 같은 설명용 metric을 포함할 수 있으나 점수/등급으로 자동 변환하지 않아야 한다.",
+      "verification": "Governance Review",
+      "parent": "41"
+    },
+    {
+      "section": "4.8 Performance Evidence Package",
+      "id": "NEX-PRD41-PEV-FR-011",
+      "priority": "MUST",
+      "requirement": "Performance Evidence export는 source classification 중 가장 제한적인 effective classification/policy를 적용해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/41"
+    },
+    {
+      "section": "4.8 Performance Evidence Package",
+      "id": "NEX-PRD41-PEV-FR-012",
+      "priority": "MUST",
+      "requirement": "Evidence Package가 source correction 이후 stale해지면 stale/superseded 상태를 표시하고 재생성/재검토 path를 제공해야 한다.",
+      "verification": "Lifecycle Test",
+      "parent": "31/41"
+    },
+    {
+      "section": "4.9 Human Effort / MM Read-only Reporting Boundary",
+      "id": "NEX-PRD41-EFF-FR-001",
+      "priority": "MUST",
+      "requirement": "Observed Activity, Estimated Effort, Confirmed Effort, Man-Month, LaborAllocation, Ledger는 서로 다른 상태/객체로 취급해야 한다.",
+      "verification": "Invariant Test",
+      "parent": "22"
+    },
+    {
+      "section": "4.9 Human Effort / MM Read-only Reporting Boundary",
+      "id": "NEX-PRD41-EFF-FR-002",
+      "priority": "MUST",
+      "requirement": "PRD41 Report는 Confirmed Effort가 존재할 때만 확정 Human Effort를 표시하고 Estimated/Observed 값은 명시적으로 구분해야 한다.",
+      "verification": "UI Test",
+      "parent": "22/41"
+    },
+    {
+      "section": "4.9 Human Effort / MM Read-only Reporting Boundary",
+      "id": "NEX-PRD41-EFF-FR-003",
+      "priority": "MUST",
+      "requirement": "AgentExecution duration/LLM/Skill runtime time은 Confirmed Effort나 MM으로 자동 변환해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "22"
+    },
+    {
+      "section": "4.9 Human Effort / MM Read-only Reporting Boundary",
+      "id": "NEX-PRD41-EFF-FR-004",
+      "priority": "MUST",
+      "requirement": "Project Attribution이 미확정인 Activity는 확정 Project MM/Labor metric에 포함해서는 안 된다.",
+      "verification": "Boundary Test",
+      "parent": "22"
+    },
+    {
+      "section": "4.9 Human Effort / MM Read-only Reporting Boundary",
+      "id": "NEX-PRD41-EFF-FR-005",
+      "priority": "MUST",
+      "requirement": "MM 계산이 보고에 표시되는 경우 회사의 effective standard working-hours policy를 사용한 deterministic source result만 사용해야 한다.",
+      "verification": "Policy Test",
+      "parent": "22"
+    },
+    {
+      "section": "4.9 Human Effort / MM Read-only Reporting Boundary",
+      "id": "NEX-PRD41-EFF-FR-006",
+      "priority": "MUST",
+      "requirement": "Labor Cost를 보고에 표시하는 경우 LABOR Ledger/authoritative source를 사용하고 LLM이 Rate/Cost를 계산해서는 안 된다.",
+      "verification": "Financial Integrity Test",
+      "parent": "20/22/31"
+    },
+    {
+      "section": "4.9 Human Effort / MM Read-only Reporting Boundary",
+      "id": "NEX-PRD41-EFF-FR-007",
+      "priority": "SHOULD",
+      "requirement": "PRD41은 LaborAllocation 생성/Posting 자체를 구현범위로 삼지 않고 이미 확정된 결과를 reporting input으로 소비할 수 있다.",
+      "verification": "Scope Review",
+      "parent": "22/36"
+    },
+    {
+      "section": "4.9 Human Effort / MM Read-only Reporting Boundary",
+      "id": "NEX-PRD41-EFF-FR-008",
+      "priority": "MUST",
+      "requirement": "Effort/MM/Labor metric의 source policy/version과 drill-down refs를 보고 provenance에 보존해야 한다.",
+      "verification": "Audit Test",
+      "parent": "22/23"
+    },
+    {
+      "section": "4.10 Security / Privacy / Retention",
+      "id": "NEX-PRD41-SEC-FR-001",
+      "priority": "MUST",
+      "requirement": "Employee own activity, manager team activity, performance evidence, labor cost는 서로 다른 permission scope/capability로 통제할 수 있어야 한다.",
+      "verification": "Security Matrix",
+      "parent": "22/26"
+    },
+    {
+      "section": "4.10 Security / Privacy / Retention",
+      "id": "NEX-PRD41-SEC-FR-002",
+      "priority": "MUST",
+      "requirement": "Report generation/view/submit/export 시 current OA authority를 확인하고 client-supplied role/scope를 authority로 신뢰하지 않아야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.10 Security / Privacy / Retention",
+      "id": "NEX-PRD41-SEC-FR-003",
+      "priority": "MUST",
+      "requirement": "WorkActivity/Report/Performance Evidence는 source Data Classification을 보존하고 다중 source aggregate는 policy가 정한 가장 제한적인 effective classification을 적용해야 한다.",
+      "verification": "Classification Test",
+      "parent": "26/27/41"
+    },
+    {
+      "section": "4.10 Security / Privacy / Retention",
+      "id": "NEX-PRD41-SEC-FR-004",
+      "priority": "MUST",
+      "requirement": "Raw prompt/private reasoning/secret/credential/HR sensitive raw text는 reporting을 위해 불필요하게 WA에 복제해서는 안 된다.",
+      "verification": "Privacy Scan",
+      "parent": "22/26/29"
+    },
+    {
+      "section": "4.10 Security / Privacy / Retention",
+      "id": "NEX-PRD41-SEC-FR-005",
+      "priority": "MUST",
+      "requirement": "Source preview/export는 current permission과 retention/purpose policy를 재검증해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/29/40"
+    },
+    {
+      "section": "4.10 Security / Privacy / Retention",
+      "id": "NEX-PRD41-SEC-FR-006",
+      "priority": "MUST",
+      "requirement": "Submitted Report와 Performance Evidence는 business/audit/legal hold와 user privacy 요구를 함께 고려한 retention policy를 적용해야 한다.",
+      "verification": "Retention Test",
+      "parent": "23/29/34"
+    },
+    {
+      "section": "4.10 Security / Privacy / Retention",
+      "id": "NEX-PRD41-SEC-FR-007",
+      "priority": "MUST",
+      "requirement": "Performance Evidence는 HR/Manager purpose 외 광범위 조직 사용자에게 기본 노출되어서는 안 된다.",
+      "verification": "Least Privilege Test",
+      "parent": "26/41"
+    },
+    {
+      "section": "4.10 Security / Privacy / Retention",
+      "id": "NEX-PRD41-SEC-FR-008",
+      "priority": "MUST",
+      "requirement": "Narrative generation에 전달되는 source text는 prompt injection/untrusted content로 취급하고 system/control instruction으로 승격해서는 안 된다.",
+      "verification": "Adversarial Test",
+      "parent": "27/29/40"
+    },
+    {
+      "section": "4.10 Security / Privacy / Retention",
+      "id": "NEX-PRD41-SEC-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Sensitive source title/summary는 notification/dashboard에서 masking할 수 있어야 한다.",
+      "verification": "Privacy UI Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.10 Security / Privacy / Retention",
+      "id": "NEX-PRD41-SEC-FR-010",
+      "priority": "MUST",
+      "requirement": "Report/Performance Evidence download/share는 Workspace 조회권한과 별개의 explicit export capability/policy를 적용해야 한다.",
+      "verification": "Security E2E",
+      "parent": "29/41"
+    },
+    {
+      "section": "4.11 AE Workspace / Timeline / Reporting UX",
+      "id": "NEX-PRD41-UX-FR-001",
+      "priority": "MUST",
+      "requirement": "AE Workspace는 사용자의 Work Timeline을 WA projection으로 표시하되 source WorkItem/Execution/Artifact 상태를 자체 authoritative state로 재정의하지 않아야 한다.",
+      "verification": "Architecture/UI Test",
+      "parent": "29/41"
+    },
+    {
+      "section": "4.11 AE Workspace / Timeline / Reporting UX",
+      "id": "NEX-PRD41-UX-FR-002",
+      "priority": "MUST",
+      "requirement": "Report 화면은 Daily/Weekly/Monthly period 선택, Draft/Submitted 상태, source coverage/quality, project/work class grouping을 표시해야 한다.",
+      "verification": "Playwright E2E",
+      "parent": "29/41"
+    },
+    {
+      "section": "4.11 AE Workspace / Timeline / Reporting UX",
+      "id": "NEX-PRD41-UX-FR-003",
+      "priority": "MUST",
+      "requirement": "사용자는 각 report item에서 Activity→WorkItem/Execution→Result→Artifact/Evidence/Business ref로 drill-down할 수 있어야 한다.",
+      "verification": "Trace UI Test",
+      "parent": "23/31"
+    },
+    {
+      "section": "4.11 AE Workspace / Timeline / Reporting UX",
+      "id": "NEX-PRD41-UX-FR-004",
+      "priority": "MUST",
+      "requirement": "Draft UI는 structured fact와 editable narrative를 시각적으로 구분하여 사용자가 authoritative 값과 문장 편집을 혼동하지 않게 해야 한다.",
+      "verification": "UX Test",
+      "parent": "29/41"
+    },
+    {
+      "section": "4.11 AE Workspace / Timeline / Reporting UX",
+      "id": "NEX-PRD41-UX-FR-005",
+      "priority": "MUST",
+      "requirement": "Human Review에서 exclude/edit/source correction action의 차이를 명확하게 제공해야 한다.",
+      "verification": "UX Test",
+      "parent": "41"
+    },
+    {
+      "section": "4.11 AE Workspace / Timeline / Reporting UX",
+      "id": "NEX-PRD41-UX-FR-006",
+      "priority": "MUST",
+      "requirement": "Report 생성 완료, review 필요, submit 완료, stale/superseded 상태는 notification에서 구분되어야 한다.",
+      "verification": "Notification E2E",
+      "parent": "29/41"
+    },
+    {
+      "section": "4.11 AE Workspace / Timeline / Reporting UX",
+      "id": "NEX-PRD41-UX-FR-007",
+      "priority": "MUST",
+      "requirement": "Performance Evidence View는 자동 점수/등급 UI를 기본 제공하지 않고 source evidence와 verified outcome 중심으로 표시해야 한다.",
+      "verification": "Governance UX",
+      "parent": "03/41"
+    },
+    {
+      "section": "4.11 AE Workspace / Timeline / Reporting UX",
+      "id": "NEX-PRD41-UX-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Manager View는 팀/기간/Project별 Evidence aggregation을 제공할 수 있으나 drill-down 시 각 source permission을 다시 적용해야 한다.",
+      "verification": "UI/Security Test",
+      "parent": "26/41"
+    },
+    {
+      "section": "4.12 Reliability / Rebuild / Operations",
+      "id": "NEX-PRD41-REL-FR-001",
+      "priority": "MUST",
+      "requirement": "WA projection worker 장애는 source business flow를 block하지 않아야 하며 backlog/lag를 durable queue에서 복구할 수 있어야 한다.",
+      "verification": "Fault Test",
+      "parent": "32/34/39"
+    },
+    {
+      "section": "4.12 Reliability / Rebuild / Operations",
+      "id": "NEX-PRD41-REL-FR-002",
+      "priority": "MUST",
+      "requirement": "Projection job은 lease/heartbeat/reclaim을 사용하되 동일 source event 중복 반영은 event idempotency로 별도 방지해야 한다.",
+      "verification": "Reliability Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.12 Reliability / Rebuild / Operations",
+      "id": "NEX-PRD41-REL-FR-003",
+      "priority": "MUST",
+      "requirement": "WA lag 후 rebuild는 source refs/events를 다시 읽어 Activity/Asset을 재구성할 수 있어야 하며 Submitted Report를 silent mutate하지 않아야 한다.",
+      "verification": "Recovery Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.12 Reliability / Rebuild / Operations",
+      "id": "NEX-PRD41-REL-FR-004",
+      "priority": "MUST",
+      "requirement": "Report generation job은 owner+period+report_definition/source_snapshot identity에 대한 idempotency를 가져 중복 draft/report를 만들지 않아야 한다.",
+      "verification": "Idempotency Test",
+      "parent": "32/41"
+    },
+    {
+      "section": "4.12 Reliability / Rebuild / Operations",
+      "id": "NEX-PRD41-REL-FR-005",
+      "priority": "MUST",
+      "requirement": "Late source가 Draft 생성 후 도착하면 Draft를 stale/refresh-needed로 표시하거나 새 source snapshot을 생성해야 한다.",
+      "verification": "Late Event Test",
+      "parent": "32/41"
+    },
+    {
+      "section": "4.12 Reliability / Rebuild / Operations",
+      "id": "NEX-PRD41-REL-FR-006",
+      "priority": "MUST",
+      "requirement": "Late source가 Submitted Report 후 도착하면 existing report를 변경하지 않고 new revision/supersede candidate를 생성해야 한다.",
+      "verification": "Version Fault Test",
+      "parent": "31/41"
+    },
+    {
+      "section": "4.12 Reliability / Rebuild / Operations",
+      "id": "NEX-PRD41-REL-FR-007",
+      "priority": "MUST",
+      "requirement": "MO narrative generation failure는 structured Fact Set과 기존 Draft source snapshot을 손상시키지 않아야 한다.",
+      "verification": "Failure Isolation",
+      "parent": "28/32"
+    },
+    {
+      "section": "4.12 Reliability / Rebuild / Operations",
+      "id": "NEX-PRD41-REL-FR-008",
+      "priority": "MUST",
+      "requirement": "AG는 WA projection lag/backlog/rebuild failure/report job failure/stale report count를 관찰할 수 있어야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.12 Reliability / Rebuild / Operations",
+      "id": "NEX-PRD41-REL-FR-009",
+      "priority": "SHOULD",
+      "requirement": "초기 Pilot에서 projection_lag_p95, report_generation_latency, source_coverage, submit_lead_time 기준선을 측정할 수 있어야 한다.",
+      "verification": "Performance Baseline",
+      "parent": "30/33"
+    },
+    {
+      "section": "4.12 Reliability / Rebuild / Operations",
+      "id": "NEX-PRD41-REL-FR-010",
+      "priority": "MUST",
+      "requirement": "Critical duplicate activity, hidden source gap, unauthorized export, fabricated effort/score, submitted report mutation은 release blocker여야 한다.",
+      "verification": "Release Gate",
+      "parent": "33/34"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD41-NFR-001",
+      "priority": "MUST",
+      "requirement": "변경 코드 statement coverage 목표 95% 이상, branch coverage 목표 85% 이상을 적용해야 한다.",
+      "verification": "Coverage",
+      "parent": "Project Quality"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD41-NFR-002",
+      "priority": "MUST",
+      "requirement": "PostgreSQL integration tests는 isolated/reset test DB에서 수행하고 event/projection/report idempotency를 검증해야 한다.",
+      "verification": "pytest",
+      "parent": "Project Quality"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD41-NFR-003",
+      "priority": "MUST",
+      "requirement": "AE Timeline/Report/Performance Evidence UI는 Playwright E2E로 검증해야 한다.",
+      "verification": "Playwright",
+      "parent": "29/33"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD41-NFR-004",
+      "priority": "MUST",
+      "requirement": "PRD41은 duplicate/out-of-order/late event, WA outage/rebuild, MO outage, OA deny, stale source, submitted-report correction fault variant를 permanent regression으로 유지해야 한다.",
+      "verification": "Regression Suite",
+      "parent": "32/33/34"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD41-NFR-005",
+      "priority": "MUST",
+      "requirement": "Raw source text/secret가 기본 metric/log에 노출되지 않도록 privacy-safe observability를 적용해야 한다.",
+      "verification": "Security Scan",
+      "parent": "26/30"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD41-NFR-006",
+      "priority": "MUST",
+      "requirement": "Report/Performance Evidence trace는 owner/period→snapshot→factset→report→source Activity/Result/Artifact/Business ref로 재구성 가능해야 한다.",
+      "verification": "Trace Acceptance",
+      "parent": "23/31/33"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD41-NFR-007",
+      "priority": "MUST",
+      "requirement": "Performance Evidence가 automatic employee score로 사용되지 않음을 automated policy/regression test로 검증해야 한다.",
+      "verification": "Governance Regression",
+      "parent": "03/41"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD41-NFR-008",
+      "priority": "SHOULD",
+      "requirement": "Daily/Weekly/Monthly report generation 부하와 WA query pagination/index baseline을 측정할 수 있어야 한다.",
+      "verification": "Load Test",
+      "parent": "22/33"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD41-NFR-009",
+      "priority": "MUST",
+      "requirement": "Critical Security/Reporting/Performance Evidence test 실패는 flaky quarantine/waiver로 우회해서는 안 된다.",
+      "verification": "Release Gate",
+      "parent": "33"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD41-NFR-010",
+      "priority": "MUST",
+      "requirement": "Repository Evidence가 확인되지 않은 existing component에 physical mapping/disposition을 freeze하지 않아야 한다.",
+      "verification": "Evidence Gate",
+      "parent": "36/02/10"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T41-01",
+      "area": "Repository Evidence Gate",
+      "task": "02/10 evidence 확인 후 WA/AE/WC/NSL/EOS 실제 repo/module/schema/API mapping",
+      "deliverable": "Repo map + disposition update",
+      "priority": "P0"
+    },
+    {
+      "id": "T41-02",
+      "area": "Canonical Event Mapping",
+      "task": "AE/WC/NSL/EOS/Artifact/CX source event→WA Activity mapping table 확정",
+      "deliverable": "Event mapping contract",
+      "priority": "P0"
+    },
+    {
+      "id": "T41-03",
+      "area": "WA Ingestion Envelope",
+      "task": "event_id/correlation/causation/classification/source refs contract",
+      "deliverable": "JSON Schema + tests",
+      "priority": "P0"
+    },
+    {
+      "id": "T41-04",
+      "area": "Projection Dedup",
+      "task": "at-least-once duplicate/out-of-order 처리",
+      "deliverable": "Dedup/inbox implementation",
+      "priority": "P0"
+    },
+    {
+      "id": "T41-05",
+      "area": "WorkActivity Model",
+      "task": "activity/source/actor/project/reportable/trace fields 구현",
+      "deliverable": "Schema + repository",
+      "priority": "P1"
+    },
+    {
+      "id": "T41-06",
+      "area": "Timeline Projection",
+      "task": "append-oriented timeline + correction/supersede linkage",
+      "deliverable": "Timeline service",
+      "priority": "P1"
+    },
+    {
+      "id": "T41-07",
+      "area": "Project Attribution",
+      "task": "priority rules + unassigned + human correction",
+      "deliverable": "Attribution policy/service",
+      "priority": "P1"
+    },
+    {
+      "id": "T41-08",
+      "area": "Reportable Policy",
+      "task": "source/work class/activity별 reportable policy + user override",
+      "deliverable": "Policy + audit",
+      "priority": "P1"
+    },
+    {
+      "id": "T41-09",
+      "area": "WorkAsset Builder",
+      "task": "Activity+Result+Artifact+Evidence grouping + contributor refs",
+      "deliverable": "Builder + idempotency",
+      "priority": "P1"
+    },
+    {
+      "id": "T41-10",
+      "area": "Period Source Snapshot",
+      "task": "owner/period/timezone/cutoff/source manifest/hash",
+      "deliverable": "Snapshot schema/service",
+      "priority": "P1"
+    },
+    {
+      "id": "T41-11",
+      "area": "Deterministic Fact Set",
+      "task": "project/work class/result/confirmed effort aggregation",
+      "deliverable": "FactSet builder",
+      "priority": "P1"
+    },
+    {
+      "id": "T41-12",
+      "area": "Source Quality",
+      "task": "COMPLETE/PARTIAL/STALE/CONFLICT + coverage diagnostics",
+      "deliverable": "Quality evaluator",
+      "priority": "P1"
+    },
+    {
+      "id": "T41-13",
+      "area": "Report Job",
+      "task": "Daily/Weekly/Monthly generation job + idempotency/progress",
+      "deliverable": "WA report job",
+      "priority": "P1"
+    },
+    {
+      "id": "T41-14",
+      "area": "AE Report Composer",
+      "task": "versioned prompt/output schema + MO structured narrative",
+      "deliverable": "AE/MO adapter",
+      "priority": "P1"
+    },
+    {
+      "id": "T41-15",
+      "area": "Narrative Fact Validator",
+      "task": "LLM output authoritative facts 불변 검증",
+      "deliverable": "Validator",
+      "priority": "P1"
+    },
+    {
+      "id": "T41-16",
+      "area": "Report Draft Store",
+      "task": "DRAFT/source snapshot/factset/prompt/model provenance",
+      "deliverable": "PeriodicWorkReport model",
+      "priority": "P1"
+    },
+    {
+      "id": "T41-17",
+      "area": "Human Review UI",
+      "task": "fact vs narrative 구분, include/exclude/edit/source correction",
+      "deliverable": "AE Workspace view",
+      "priority": "P1"
+    },
+    {
+      "id": "T41-18",
+      "area": "Submit/Versioning",
+      "task": "SUBMITTED immutable revision + supersede/correction",
+      "deliverable": "Submit API/state",
+      "priority": "P1"
+    },
+    {
+      "id": "T41-19",
+      "area": "Performance Evidence Builder",
+      "task": "verified outcome + result/artifact/evidence/business refs package",
+      "deliverable": "Evidence package",
+      "priority": "P2"
+    },
+    {
+      "id": "T41-20",
+      "area": "Evidence Drill-down",
+      "task": "report/evidence→source activity/work/result/business/artifact trace",
+      "deliverable": "UI/API",
+      "priority": "P2"
+    },
+    {
+      "id": "T41-21",
+      "area": "Effort/MM Read-only",
+      "task": "Confirmed Effort/MM/Labor source read-only rendering + provenance",
+      "deliverable": "Metrics view",
+      "priority": "P2"
+    },
+    {
+      "id": "T41-22",
+      "area": "Security/Export",
+      "task": "OA permission, classification propagation, masked notification/export",
+      "deliverable": "Security integration",
+      "priority": "P0"
+    },
+    {
+      "id": "T41-23",
+      "area": "Recovery/Observability",
+      "task": "projection lag/rebuild/report stale metrics + AG view",
+      "deliverable": "Runbook/metrics",
+      "priority": "P1"
+    },
+    {
+      "id": "T41-24",
+      "area": "Acceptance & Release",
+      "task": "fault/security/Playwright/95-85/regression/acceptance package",
+      "deliverable": "Release evidence",
+      "priority": "P0"
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "AC41-01",
+      "area": "Capture",
+      "criterion": "AE reportable interaction event가 중복 없이 WorkActivity로 projection된다.",
+      "verification": "WA Integration",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-02",
+      "area": "Capture",
+      "criterion": "WC WorkItem/WorkResult가 Activity/Asset source refs로 연결된다.",
+      "verification": "WC/WA E2E",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-03",
+      "area": "Capture",
+      "criterion": "AE AgentExecution/PlanStep refs가 WorkActivity trace에 연결된다.",
+      "verification": "Trace Test",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-04",
+      "area": "Capture",
+      "criterion": "NSL exact Skill/RuntimeResult ref가 Activity에 연결되고 NSL journal은 복제되지 않는다.",
+      "verification": "Boundary Test",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-05",
+      "area": "Capture",
+      "criterion": "Artifact/Evidence refs가 WorkAsset에 연결되고 content 대량복제가 없다.",
+      "verification": "Data Test",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-06",
+      "area": "Reliability",
+      "criterion": "동일 source event 2회 전달 시 WorkActivity는 1개다.",
+      "verification": "Dedup Fault",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-07",
+      "area": "Reliability",
+      "criterion": "Out-of-order event 후 Timeline이 occurred/source sequence 기준으로 올바르게 재구성된다.",
+      "verification": "Ordering Fault",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-08",
+      "area": "Attribution",
+      "criterion": "WorkItem/Business Project가 있으면 우선 Attribution된다.",
+      "verification": "Policy Test",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-09",
+      "area": "Attribution",
+      "criterion": "모호한 Project는 자동 Common 귀속되지 않고 user confirmation을 요구한다.",
+      "verification": "Negative/UI",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-10",
+      "area": "Reporting",
+      "criterion": "reportable=false Activity는 Fact Set/Report에서 제외된다.",
+      "verification": "Policy E2E",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-11",
+      "area": "Reporting",
+      "criterion": "Daily report Draft가 source snapshot/Fact Set 기반으로 생성된다.",
+      "verification": "E2E",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-12",
+      "area": "Reporting",
+      "criterion": "Weekly report Draft가 정확한 period boundary로 생성된다.",
+      "verification": "Boundary E2E",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-13",
+      "area": "Reporting",
+      "criterion": "Monthly report Draft가 정확한 period boundary로 생성된다.",
+      "verification": "Boundary E2E",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-14",
+      "area": "Facts",
+      "criterion": "Structured numeric/status/project/result 값은 source와 일치하며 model이 변경하지 못한다.",
+      "verification": "Determinism",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-15",
+      "area": "Quality",
+      "criterion": "PARTIAL/STALE/CONFLICT source 상태가 Report에서 caveat로 노출된다.",
+      "verification": "Quality E2E",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-16",
+      "area": "Degraded",
+      "criterion": "MO unavailable 시 Fact-only Draft 또는 typed degraded가 생성된다.",
+      "verification": "Fault E2E",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-17",
+      "area": "Review",
+      "criterion": "사용자는 narrative를 수정하고 item include/exclude할 수 있으며 history가 남는다.",
+      "verification": "Playwright",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-18",
+      "area": "Review",
+      "criterion": "authoritative fact edit 시 source correction flow로 이동한다.",
+      "verification": "Integrity UI",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-19",
+      "area": "Submit",
+      "criterion": "사용자 명시 submit 전 report는 SUBMITTED가 아니다.",
+      "verification": "State Test",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-20",
+      "area": "Submit",
+      "criterion": "Submitted report는 immutable revision/source_snapshot_hash/submitted_by/time을 가진다.",
+      "verification": "Version Test",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-21",
+      "area": "Late Source",
+      "criterion": "Submit 후 late source가 와도 기존 report는 변하지 않고 correction/supersede 후보가 생성된다.",
+      "verification": "Fault/Version",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-22",
+      "area": "Trace",
+      "criterion": "Report item에서 source Activity→WorkItem/Execution→Result→Artifact/Evidence/Business object로 drill-down된다.",
+      "verification": "Trace UI",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-23",
+      "area": "Performance",
+      "criterion": "Performance Evidence는 verified WorkResult/business outcome 중심으로 생성된다.",
+      "verification": "Governance E2E",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-24",
+      "area": "Performance",
+      "criterion": "AgentExecution SUCCEEDED만으로 verified performance evidence가 생성되지 않는다.",
+      "verification": "Negative Test",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-25",
+      "area": "Performance",
+      "criterion": "Prompt count/token/runtime을 automatic score로 계산하는 path가 존재하지 않는다.",
+      "verification": "Governance Regression",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-26",
+      "area": "Performance",
+      "criterion": "Revision/correction/escalation이 Evidence context에서 숨겨지지 않는다.",
+      "verification": "Quality Test",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-27",
+      "area": "Effort",
+      "criterion": "Observed/Agent runtime duration은 Confirmed Effort로 자동 사용되지 않는다.",
+      "verification": "Negative Test",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-28",
+      "area": "Effort",
+      "criterion": "Confirmed Effort가 있을 때만 effort/MM fact가 표시되고 source policy/version이 추적된다.",
+      "verification": "Effort E2E",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-29",
+      "area": "Security",
+      "criterion": "Manager가 권한 밖 employee/activity/performance evidence를 조회할 수 없다.",
+      "verification": "Security E2E",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-30",
+      "area": "Security",
+      "criterion": "다중 source report/export에 effective classification/permission이 적용된다.",
+      "verification": "Security E2E",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-31",
+      "area": "Recovery",
+      "criterion": "WA outage 후 backlog/rebuild로 Activity/Asset이 복구되고 source business flow는 계속된다.",
+      "verification": "Recovery Test",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-32",
+      "area": "Idempotency",
+      "criterion": "동일 owner/period/source snapshot report job retry가 중복 Report를 만들지 않는다.",
+      "verification": "Idempotency",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-33",
+      "area": "UX",
+      "criterion": "Timeline/Report/Performance Evidence 및 notifications가 Playwright E2E를 통과한다.",
+      "verification": "Playwright",
+      "release_blocker": true
+    },
+    {
+      "id": "AC41-34",
+      "area": "Release",
+      "criterion": "Critical duplicate/stale-hidden/unauthorized-export/fabricated-effort/auto-score regression이 모두 PASS하고 Repository Evidence link가 있다.",
+      "verification": "Release Gate",
+      "release_blocker": true
+    }
+  ]
+}

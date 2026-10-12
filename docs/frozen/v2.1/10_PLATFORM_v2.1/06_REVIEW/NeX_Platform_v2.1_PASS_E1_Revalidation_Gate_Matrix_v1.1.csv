@@ -1,0 +1,9 @@
+﻿Gate,Check,Verdict,Evidence
+E1-G01,TenantId explicit,PASS,Unchanged; EAC/Agent/WC/NSL contracts require tenant_id.
+E1-G02,TenantId != OrgScope != ProjectScope,PASS,Unchanged; tenant remains explicit first-class identity.
+E1-G03,Principal != Business Actor,PASS,Unchanged; OA EAC requires separate identities.
+E1-G04,AgentIdentity SoR = AE Agent Registry,PASS,Agent Registry persistence/service contract now added and identity schema hardened.
+E1-G05,WorkItem / Claim SoR = WC,PASS,WC remains work/claim owner; exact ClaimExecutionHandoff added.
+E1-G06,Current authorization SoR = OA,PASS,Unchanged.
+E1-G07,Background Agent starts only after successful Claim,PASS,WC ClaimExecutionHandoff v2.1 → AE ExecutionTrigger v2.1(CLAIMED_WORKITEM) now machine-readable.
+E1-G08,PA project 1:1 logical identity preserved,PASS,PA non-null project_id + partial unique ACTIVE PA index per tenant/project + service invariant.

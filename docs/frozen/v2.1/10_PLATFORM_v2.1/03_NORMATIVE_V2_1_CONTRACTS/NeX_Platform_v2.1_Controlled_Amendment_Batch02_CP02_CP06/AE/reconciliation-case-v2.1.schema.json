@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:ae:reconciliation-case:v2.1",
+  "title": "AE ReconciliationCase v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "reconciliation_id",
+    "tenant_id",
+    "agent_execution_id",
+    "executable_step_id",
+    "nsl_execution_id",
+    "business_operation_id",
+    "idempotency_key_ref",
+    "target_system",
+    "reason",
+    "state",
+    "attempt_no",
+    "evidence_ref",
+    "correlation_id",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "reconciliation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "executable_step_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nsl_execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "business_operation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "idempotency_key_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target_system": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operation_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "business_object_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reason": {
+      "const": "UNKNOWN_COMMIT_STATE"
+    },
+    "state": {
+      "enum": [
+        "PENDING",
+        "CHECKING",
+        "RESOLVED_COMMITTED",
+        "RESOLVED_NOT_COMMITTED",
+        "STILL_UNKNOWN",
+        "CONFLICT",
+        "ESCALATED"
+      ]
+    },
+    "attempt_no": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "first_detected_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "next_check_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "deadline_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "evidence_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "latest_outcome_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

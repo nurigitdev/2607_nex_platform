@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex.local/schemas/work-intent-v1.schema.json",
+  "title": "NeX WorkIntent v1",
+  "description": "Understand-stage immutable structured interpretation. LLM may propose selectors/candidates but never authoritative stable business IDs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "work_intent_id",
+    "execution_id",
+    "goal",
+    "work_class",
+    "capability_hints",
+    "entity_selectors",
+    "parameter_candidates",
+    "completion_criteria",
+    "clarification_state",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "work_intent_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_type",
+        "source_ref"
+      ],
+      "properties": {
+        "source_type": {
+          "enum": [
+            "PROMPT",
+            "WORKITEM"
+          ]
+        },
+        "source_ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "work_class": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "capability_hints": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "entity_selectors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "selector_id",
+          "entity_type",
+          "mention"
+        ],
+        "properties": {
+          "selector_id": {
+            "type": "string",
+            "pattern": "^E[1-9][0-9]*$"
+          },
+          "entity_type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mention": {
+            "type": "string",
+            "minLength": 1
+          },
+          "constraints": {
+            "type": "object"
+          },
+          "required": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      }
+    },
+    "parameter_candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "value",
+          "source"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {},
+          "value_type": {
+            "enum": [
+              "STRING",
+              "INTEGER",
+              "NUMBER",
+              "BOOLEAN",
+              "DATE",
+              "DATETIME",
+              "OBJECT",
+              "ARRAY",
+              "UNKNOWN"
+            ]
+          },
+          "source": {
+            "enum": [
+              "USER_INPUT",
+              "WORKITEM",
+              "CONTEXT",
+              "MODEL_CANDIDATE",
+              "DEFAULT_CANDIDATE"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "completion_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "criterion_id",
+          "description"
+        ],
+        "properties": {
+          "criterion_id": {
+            "type": "string",
+            "pattern": "^C[1-9][0-9]*$"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "result_contract_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "clarification_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "questions"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "NOT_REQUIRED",
+            "REQUIRED",
+            "RESOLVED"
+          ]
+        },
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "question_id",
+              "prompt",
+              "reason"
+            ],
+            "properties": {
+              "question_id": {
+                "type": "string",
+                "pattern": "^Q[1-9][0-9]*$"
+              },
+              "prompt": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "enum": [
+                  "MISSING",
+                  "AMBIGUOUS",
+                  "CONFLICTING",
+                  "OTHER"
+                ]
+              },
+              "target_selector_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "target_parameter": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intent_confidence": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Observability/evaluation only; never a permission/risk bypass signal."
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prompt_template_ref",
+        "model_profile",
+        "input_context_hash"
+      ],
+      "properties": {
+        "prompt_template_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input_context_hash": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

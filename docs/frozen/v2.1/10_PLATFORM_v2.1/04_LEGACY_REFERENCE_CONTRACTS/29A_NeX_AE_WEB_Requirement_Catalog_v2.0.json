@@ -1,0 +1,1611 @@
+{
+  "document": "29A_NeX_AE_WEB_SRS_and_Detailed_Design_v2.0",
+  "date": "2026-09-04",
+  "status": "Late Re-baseline Supplement",
+  "counts": {
+    "MUST": 181,
+    "SHOULD": 19
+  },
+  "requirements": [
+    {
+      "section": "4.1 Late Re-Baseline / Frozen Boundary",
+      "id": "NEX-AEWEB-BASE-001",
+      "priority": "MUST",
+      "requirement": "29A는 누락된 Phase 3 NeX-AE-WEB baseline을 보완하는 Late Re-baseline Supplement로 정의하고 29의 Unified Runtime/AgentSession/서비스 경계를 재정의해서는 안 된다.",
+      "verification": "Architecture Trace",
+      "parent": "00/29"
+    },
+    {
+      "section": "4.1 Late Re-Baseline / Frozen Boundary",
+      "id": "NEX-AEWEB-BASE-002",
+      "priority": "MUST",
+      "requirement": "29A는 37~41 Vertical Slice에서 확정된 사용자 UX 요구를 AE-WEB baseline으로 상향 흡수해야 한다.",
+      "verification": "Trace Review",
+      "parent": "37~41"
+    },
+    {
+      "section": "4.1 Late Re-Baseline / Frozen Boundary",
+      "id": "NEX-AEWEB-BASE-003",
+      "priority": "MUST",
+      "requirement": "11/12의 WorkIntent/AgentPlan/ExecutablePlan/Runtime state 의미는 Frozen이며 AE-WEB은 user-safe projection만 제공해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.1 Late Re-Baseline / Frozen Boundary",
+      "id": "NEX-AEWEB-BASE-004",
+      "priority": "MUST",
+      "requirement": "Job Agent 용어는 신규 UI/contract에서 사용하지 않고 Coworker Agent/Coworker Profile/Role Context로 통일해야 한다.",
+      "verification": "Terminology Scan",
+      "parent": "29"
+    },
+    {
+      "section": "4.1 Late Re-Baseline / Frozen Boundary",
+      "id": "NEX-AEWEB-BASE-005",
+      "priority": "MUST",
+      "requirement": "기존 2026-08 AE-WEB 내부 상세 구성도는 화면 구조 baseline으로 보존하되 v2.0 target에서 Human Gate/Coworker/Evidence/WA를 추가해야 한다.",
+      "verification": "Design Review",
+      "parent": "Baseline Image"
+    },
+    {
+      "section": "4.1 Late Re-Baseline / Frozen Boundary",
+      "id": "NEX-AEWEB-BASE-006",
+      "priority": "MUST",
+      "requirement": "Baseline 그림의 /auth/login, /query, /skill/execute, /artifact/render, /inbox/refresh endpoint 명칭은 historical/provisional 예시로 취급하고 Repository Evidence 확인 전 physical endpoint로 freeze하지 않아야 한다.",
+      "verification": "Evidence Gate",
+      "parent": "36"
+    },
+    {
+      "section": "4.1 Late Re-Baseline / Frozen Boundary",
+      "id": "NEX-AEWEB-BASE-007",
+      "priority": "MUST",
+      "requirement": "AE-WEB은 타 서비스 DB를 직접 조회/수정하지 않고 AE-API/service contract를 통해 authoritative data를 소비해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "29/31"
+    },
+    {
+      "section": "4.1 Late Re-Baseline / Frozen Boundary",
+      "id": "NEX-AEWEB-BASE-008",
+      "priority": "SHOULD",
+      "requirement": "29A 이후 UX baseline 변경은 versioned design decision과 Playwright regression 영향을 함께 기록할 수 있어야 한다.",
+      "verification": "Governance Review",
+      "parent": "30/33"
+    },
+    {
+      "section": "4.2 Workspace Shell / Navigation",
+      "id": "NEX-AEWEB-WS-001",
+      "priority": "MUST",
+      "requirement": "AE-WEB은 직무별 별도 App 대신 공통 Unified Workspace shell을 제공해야 한다.",
+      "verification": "Playwright",
+      "parent": "29"
+    },
+    {
+      "section": "4.2 Workspace Shell / Navigation",
+      "id": "NEX-AEWEB-WS-002",
+      "priority": "MUST",
+      "requirement": "Desktop 기본 Workspace는 Left Context / Center Work / Right Result-Evidence의 3-Panel 구조를 유지해야 한다.",
+      "verification": "Visual E2E",
+      "parent": "Baseline/29"
+    },
+    {
+      "section": "4.2 Workspace Shell / Navigation",
+      "id": "NEX-AEWEB-WS-003",
+      "priority": "MUST",
+      "requirement": "NeX-WA Views는 별도 제품 App이 아니라 동일 Workspace의 Activity/Timeline/Report/Performance Evidence view로 통합해야 한다.",
+      "verification": "UX Test",
+      "parent": "41"
+    },
+    {
+      "section": "4.2 Workspace Shell / Navigation",
+      "id": "NEX-AEWEB-WS-004",
+      "priority": "MUST",
+      "requirement": "Panel resize/collapse는 사용자 view preference일 뿐 권한/scope/context semantics를 변경해서는 안 된다.",
+      "verification": "UI/Security",
+      "parent": "29"
+    },
+    {
+      "section": "4.2 Workspace Shell / Navigation",
+      "id": "NEX-AEWEB-WS-005",
+      "priority": "MUST",
+      "requirement": "사용자는 현재 Project/Role Context, 활성 WorkItem/Execution, Human Action Required를 Workspace 어디서든 식별할 수 있어야 한다.",
+      "verification": "Playwright",
+      "parent": "29/37~41"
+    },
+    {
+      "section": "4.2 Workspace Shell / Navigation",
+      "id": "NEX-AEWEB-WS-006",
+      "priority": "MUST",
+      "requirement": "Workspace routing은 deep link로 WorkItem/Execution/Artifact/Evidence/Activity/Report를 열 수 있어야 하며 current permission을 재검증해야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.2 Workspace Shell / Navigation",
+      "id": "NEX-AEWEB-WS-007",
+      "priority": "MUST",
+      "requirement": "브라우저 새로고침/재접속 후 persisted server state를 기준으로 Workspace를 복원하고 stale local state를 authority로 사용해서는 안 된다.",
+      "verification": "Reconnect Test",
+      "parent": "29/32"
+    },
+    {
+      "section": "4.2 Workspace Shell / Navigation",
+      "id": "NEX-AEWEB-WS-008",
+      "priority": "MUST",
+      "requirement": "Background Coworker execution은 Workspace/browser session 종료와 독립적으로 지속되고 재접속 시 상태를 복원해야 한다.",
+      "verification": "E2E Test",
+      "parent": "11/29"
+    },
+    {
+      "section": "4.2 Workspace Shell / Navigation",
+      "id": "NEX-AEWEB-WS-009",
+      "priority": "SHOULD",
+      "requirement": "사용자는 last active project/view/panel preference를 저장할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.2 Workspace Shell / Navigation",
+      "id": "NEX-AEWEB-WS-010",
+      "priority": "MUST",
+      "requirement": "Workspace는 사용자에게 raw hidden prompt/private reasoning/chain-of-thought를 노출하지 않아야 한다.",
+      "verification": "Security Inspection",
+      "parent": "29"
+    },
+    {
+      "section": "4.3 Work Profile / Role / Context Selector",
+      "id": "NEX-AEWEB-CTX-001",
+      "priority": "MUST",
+      "requirement": "상단 HR/GA/Finance/Accounting/Procurement/Manufacturing/Planning 영역은 여러 Coworker Agent 선택이 아니라 Active Role/Work Profile Context 전환으로 정의해야 한다.",
+      "verification": "Architecture UX",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.3 Work Profile / Role / Context Selector",
+      "id": "NEX-AEWEB-CTX-002",
+      "priority": "MUST",
+      "requirement": "Employee<->Persistent Coworker Profile 1:1 원칙을 UI가 위반하거나 여러 Coworker identity가 있는 것처럼 표현해서는 안 된다.",
+      "verification": "Invariant Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.3 Work Profile / Role / Context Selector",
+      "id": "NEX-AEWEB-CTX-003",
+      "priority": "MUST",
+      "requirement": "Role Context 전환은 server-side eligible RoleBinding 확인 후 적용되어야 한다.",
+      "verification": "Security Test",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.3 Work Profile / Role / Context Selector",
+      "id": "NEX-AEWEB-CTX-004",
+      "priority": "MUST",
+      "requirement": "Role Context에 따라 Suggested Actions/Skill Pack/default filters를 변경할 수 있으나 authority/capability 결정은 server-side current policy가 담당해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.3 Work Profile / Role / Context Selector",
+      "id": "NEX-AEWEB-CTX-005",
+      "priority": "MUST",
+      "requirement": "Project Context 전환은 AgentSession context version에 반영되고 후속 request에서 server-side 검증되어야 한다.",
+      "verification": "E2E Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.3 Work Profile / Role / Context Selector",
+      "id": "NEX-AEWEB-CTX-006",
+      "priority": "MUST",
+      "requirement": "Role/Project가 변경되면 진행 중 execution의 기존 authority를 자동 확장해서는 안 되며 신규 action/resume에서 reauthorization해야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/38/39"
+    },
+    {
+      "section": "4.3 Work Profile / Role / Context Selector",
+      "id": "NEX-AEWEB-CTX-007",
+      "priority": "SHOULD",
+      "requirement": "Profile Context별 quick action/visible panel preference를 저장할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.3 Work Profile / Role / Context Selector",
+      "id": "NEX-AEWEB-CTX-008",
+      "priority": "MUST",
+      "requirement": "현재 Role/Project/Data Scope가 사용자-visible summary로 표시되더라도 client 표시값을 PDP input authority로 신뢰해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.4 Left Context Panel",
+      "id": "NEX-AEWEB-LEFT-001",
+      "priority": "MUST",
+      "requirement": "Left Panel은 Project/Document tree, Conversation History, Filters, Recent Artifact를 baseline으로 제공해야 한다.",
+      "verification": "Playwright",
+      "parent": "Baseline"
+    },
+    {
+      "section": "4.4 Left Context Panel",
+      "id": "NEX-AEWEB-LEFT-002",
+      "priority": "MUST",
+      "requirement": "Project tree는 NVT/Mother/Child 등 canonical Project hierarchy ref를 표시할 수 있어야 한다.",
+      "verification": "Integration Test",
+      "parent": "Enterprise OS/29"
+    },
+    {
+      "section": "4.4 Left Context Panel",
+      "id": "NEX-AEWEB-LEFT-003",
+      "priority": "MUST",
+      "requirement": "Document item은 CX/File/Artifact ref와 classification-aware access를 사용하고 원문 권한을 우회해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.4 Left Context Panel",
+      "id": "NEX-AEWEB-LEFT-004",
+      "priority": "MUST",
+      "requirement": "Conversation History와 Work Activity Timeline을 서로 다른 view로 구분해야 한다.",
+      "verification": "UX Test",
+      "parent": "29/41"
+    },
+    {
+      "section": "4.4 Left Context Panel",
+      "id": "NEX-AEWEB-LEFT-005",
+      "priority": "MUST",
+      "requirement": "Conversation History는 사람<->Agent interaction 중심, WA Timeline은 실제 수행된 work event 중심으로 표시해야 한다.",
+      "verification": "UX Test",
+      "parent": "41"
+    },
+    {
+      "section": "4.4 Left Context Panel",
+      "id": "NEX-AEWEB-LEFT-006",
+      "priority": "MUST",
+      "requirement": "Recent Artifact는 artifact status/version/source refs를 표시할 수 있어야 한다.",
+      "verification": "Trace UI",
+      "parent": "29/40"
+    },
+    {
+      "section": "4.4 Left Context Panel",
+      "id": "NEX-AEWEB-LEFT-007",
+      "priority": "MUST",
+      "requirement": "Filter는 period/project/work type/status/creator 등 view filtering만 수행하고 SoR state를 변경해서는 안 된다.",
+      "verification": "UI Test",
+      "parent": "29/41"
+    },
+    {
+      "section": "4.4 Left Context Panel",
+      "id": "NEX-AEWEB-LEFT-008",
+      "priority": "MUST",
+      "requirement": "분류등급/권한이 변경된 Document/Artifact는 history에 ref가 남아도 preview content는 current permission에 따라 숨겨야 한다.",
+      "verification": "Lifecycle Security",
+      "parent": "26/27/40"
+    },
+    {
+      "section": "4.4 Left Context Panel",
+      "id": "NEX-AEWEB-LEFT-009",
+      "priority": "SHOULD",
+      "requirement": "Context Panel은 selected item을 Center prompt/runtime context candidate로 전달할 수 있어야 하며 server-side context validation을 거쳐야 한다.",
+      "verification": "E2E Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.4 Left Context Panel",
+      "id": "NEX-AEWEB-LEFT-010",
+      "priority": "MUST",
+      "requirement": "대용량 document text/vector/index를 AE-WEB/browser state에 복제하지 않아야 한다.",
+      "verification": "Data Test",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.5 Work Inbox",
+      "id": "NEX-AEWEB-INBOX-001",
+      "priority": "MUST",
+      "requirement": "Center 상단 Work Inbox는 NeX-WC authoritative WorkItem projection을 사용해야 한다.",
+      "verification": "Integration Test",
+      "parent": "14/29"
+    },
+    {
+      "section": "4.5 Work Inbox",
+      "id": "NEX-AEWEB-INBOX-002",
+      "priority": "MUST",
+      "requirement": "최소 My Work, Coworker Work, Waiting for Others, Waiting for Me, Approval Required, Blocked, Completed view를 지원해야 한다.",
+      "verification": "Playwright",
+      "parent": "29/38/39"
+    },
+    {
+      "section": "4.5 Work Inbox",
+      "id": "NEX-AEWEB-INBOX-003",
+      "priority": "MUST",
+      "requirement": "WC의 ASSIGNED/ACKNOWLEDGED/IN_PROGRESS/BLOCKED/RESULT_SUBMITTED/REVISION_REQUESTED/CLOSED state를 손실 없이 user-safe 상태로 표시해야 한다.",
+      "verification": "State Test",
+      "parent": "14/29"
+    },
+    {
+      "section": "4.5 Work Inbox",
+      "id": "NEX-AEWEB-INBOX-004",
+      "priority": "MUST",
+      "requirement": "Runtime SUCCEEDED를 WorkItem CLOSED와 동일한 UI 상태로 표시해서는 안 된다.",
+      "verification": "Invariant Test",
+      "parent": "11/29"
+    },
+    {
+      "section": "4.5 Work Inbox",
+      "id": "NEX-AEWEB-INBOX-005",
+      "priority": "MUST",
+      "requirement": "Parent/Child WorkItem 관계와 causation을 탐색 가능하게 표시해야 한다.",
+      "verification": "E2E Test",
+      "parent": "39"
+    },
+    {
+      "section": "4.5 Work Inbox",
+      "id": "NEX-AEWEB-INBOX-006",
+      "priority": "MUST",
+      "requirement": "Child actual assignee는 WC Assignment/Claim 결과를 표시할 뿐 AE-WEB에서 임의로 지정/변경해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "39"
+    },
+    {
+      "section": "4.5 Work Inbox",
+      "id": "NEX-AEWEB-INBOX-007",
+      "priority": "MUST",
+      "requirement": "WAITING_DEPENDENCY item은 관련 Child WorkItem 또는 external dependency로 deep link할 수 있어야 한다.",
+      "verification": "E2E Test",
+      "parent": "39"
+    },
+    {
+      "section": "4.5 Work Inbox",
+      "id": "NEX-AEWEB-INBOX-008",
+      "priority": "MUST",
+      "requirement": "WorkItem detail은 goal/requester/accountable owner/project/due/priority/completion criteria/result/artifact/evidence refs를 contract 범위에서 표시해야 한다.",
+      "verification": "Contract UI",
+      "parent": "14/29"
+    },
+    {
+      "section": "4.5 Work Inbox",
+      "id": "NEX-AEWEB-INBOX-009",
+      "priority": "MUST",
+      "requirement": "Result submit/revision/closure action은 WC canonical action/authority를 사용해야 한다.",
+      "verification": "Integration Test",
+      "parent": "14"
+    },
+    {
+      "section": "4.5 Work Inbox",
+      "id": "NEX-AEWEB-INBOX-010",
+      "priority": "MUST",
+      "requirement": "Inbox refresh 중 duplicate/out-of-order events가 중복 WorkItem card를 만들지 않아야 한다.",
+      "verification": "Fault Test",
+      "parent": "32/39"
+    },
+    {
+      "section": "4.5 Work Inbox",
+      "id": "NEX-AEWEB-INBOX-011",
+      "priority": "SHOULD",
+      "requirement": "사용자는 Inbox filter/sort/pinned view preference를 저장할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.5 Work Inbox",
+      "id": "NEX-AEWEB-INBOX-012",
+      "priority": "MUST",
+      "requirement": "외부 A2A 상태가 존재해도 internal user-facing work state는 WC WorkItem/correlation chain 기준으로 표현해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "39"
+    },
+    {
+      "section": "4.6 Conversation / Prompt / Upload",
+      "id": "NEX-AEWEB-CONV-001",
+      "priority": "MUST",
+      "requirement": "Center Main은 Interactive Prompt/Conversation과 Background Work progress를 동일 Workspace에서 구분해 보여줘야 한다.",
+      "verification": "Playwright",
+      "parent": "29"
+    },
+    {
+      "section": "4.6 Conversation / Prompt / Upload",
+      "id": "NEX-AEWEB-CONV-002",
+      "priority": "MUST",
+      "requirement": "Prompt submit은 AgentSession/request/correlation/execution refs를 server response와 연결해야 한다.",
+      "verification": "Trace Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.6 Conversation / Prompt / Upload",
+      "id": "NEX-AEWEB-CONV-003",
+      "priority": "MUST",
+      "requirement": "사용자는 text 입력, 지원되는 첨부, 선택적 음성 입력 등 Workspace input affordance를 제공받을 수 있어야 한다.",
+      "verification": "UX Test",
+      "parent": "Baseline"
+    },
+    {
+      "section": "4.6 Conversation / Prompt / Upload",
+      "id": "NEX-AEWEB-CONV-004",
+      "priority": "MUST",
+      "requirement": "첨부 파일은 upload progress와 실패/재시도 상태를 표시하고 Runtime payload에 binary를 직접 복제하지 않아야 한다.",
+      "verification": "E2E Test",
+      "parent": "29/32"
+    },
+    {
+      "section": "4.6 Conversation / Prompt / Upload",
+      "id": "NEX-AEWEB-CONV-005",
+      "priority": "MUST",
+      "requirement": "Clarification 요청은 필요한 field/allowed input/reason을 구조적으로 표시해야 한다.",
+      "verification": "E2E Test",
+      "parent": "11/29"
+    },
+    {
+      "section": "4.6 Conversation / Prompt / Upload",
+      "id": "NEX-AEWEB-CONV-006",
+      "priority": "MUST",
+      "requirement": "사용자 일반 채팅 문장을 Formal Approval/Confirmation으로 자동 해석해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "38"
+    },
+    {
+      "section": "4.6 Conversation / Prompt / Upload",
+      "id": "NEX-AEWEB-CONV-007",
+      "priority": "MUST",
+      "requirement": "Streaming response는 presentation이며 execution authority/commit state를 생성하지 않아야 한다.",
+      "verification": "Security Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.6 Conversation / Prompt / Upload",
+      "id": "NEX-AEWEB-CONV-008",
+      "priority": "MUST",
+      "requirement": "Browser disconnect 후 재접속 시 persisted message/result/stream completion 상태를 복원할 수 있어야 한다.",
+      "verification": "Reconnect Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.6 Conversation / Prompt / Upload",
+      "id": "NEX-AEWEB-CONV-009",
+      "priority": "SHOULD",
+      "requirement": "Quick Skill/Suggested Action은 현재 Role Context/known capability를 기반으로 제안할 수 있으나 direct arbitrary skill source 실행을 허용해서는 안 된다.",
+      "verification": "Security UX",
+      "parent": "29/17"
+    },
+    {
+      "section": "4.6 Conversation / Prompt / Upload",
+      "id": "NEX-AEWEB-CONV-010",
+      "priority": "MUST",
+      "requirement": "Prompt 입력에 포함된 secret/credential은 policy에 따라 차단/마스킹할 수 있어야 한다.",
+      "verification": "Security Test",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.7 Runtime / Canonical Plan / Progress UX",
+      "id": "NEX-AEWEB-RUN-001",
+      "priority": "MUST",
+      "requirement": "사용자는 current execution의 user-safe Intent Summary와 Canonical/Executable Plan Summary를 확인할 수 있어야 한다.",
+      "verification": "Playwright",
+      "parent": "29/37/39"
+    },
+    {
+      "section": "4.7 Runtime / Canonical Plan / Progress UX",
+      "id": "NEX-AEWEB-RUN-002",
+      "priority": "MUST",
+      "requirement": "Plan Summary는 목표/주요 단계/협업/Human Gate/예상 결과를 표시하되 sensitive internal field와 hidden reasoning을 노출하지 않아야 한다.",
+      "verification": "Security UI",
+      "parent": "29"
+    },
+    {
+      "section": "4.7 Runtime / Canonical Plan / Progress UX",
+      "id": "NEX-AEWEB-RUN-003",
+      "priority": "MUST",
+      "requirement": "DIRECT/CERTIFIED/KNOWN/DYNAMIC routing 유형은 운영 trace로 보존하되 사용자에게 필수 노출 정보로 취급하지 않아야 한다.",
+      "verification": "Inspection",
+      "parent": "12/29"
+    },
+    {
+      "section": "4.7 Runtime / Canonical Plan / Progress UX",
+      "id": "NEX-AEWEB-RUN-004",
+      "priority": "MUST",
+      "requirement": "현재 step, 완료 step, next step, wait reason, recent activity를 구분해 표시해야 한다.",
+      "verification": "Playwright",
+      "parent": "29"
+    },
+    {
+      "section": "4.7 Runtime / Canonical Plan / Progress UX",
+      "id": "NEX-AEWEB-RUN-005",
+      "priority": "MUST",
+      "requirement": "WAITING_INPUT/WAITING_CONFIRMATION/WAITING_APPROVAL/WAITING_DEPENDENCY/BLOCKED/ESCALATED/RECONCILIATION_REQUIRED를 서로 다른 상태로 표시해야 한다.",
+      "verification": "State E2E",
+      "parent": "29/38/39"
+    },
+    {
+      "section": "4.7 Runtime / Canonical Plan / Progress UX",
+      "id": "NEX-AEWEB-RUN-006",
+      "priority": "MUST",
+      "requirement": "FAILED/ESCALATED/RECONCILIATION_REQUIRED는 user-safe reason과 next action을 제공하고 단순 red error toast로 축약하지 않아야 한다.",
+      "verification": "Fault E2E",
+      "parent": "32/29"
+    },
+    {
+      "section": "4.7 Runtime / Canonical Plan / Progress UX",
+      "id": "NEX-AEWEB-RUN-007",
+      "priority": "MUST",
+      "requirement": "Replan 발생 시 사용자-safe 변경 이유와 current plan version을 표시할 수 있어야 한다.",
+      "verification": "E2E Test",
+      "parent": "12/29"
+    },
+    {
+      "section": "4.7 Runtime / Canonical Plan / Progress UX",
+      "id": "NEX-AEWEB-RUN-008",
+      "priority": "MUST",
+      "requirement": "Cancel action은 current Runtime/WorkItem/side-effect state를 조회한 canonical cancel contract를 사용해야 한다.",
+      "verification": "Fault Test",
+      "parent": "29/32"
+    },
+    {
+      "section": "4.7 Runtime / Canonical Plan / Progress UX",
+      "id": "NEX-AEWEB-RUN-009",
+      "priority": "MUST",
+      "requirement": "장기 Background execution은 부정확한 ETA보다 현재 단계/대기원인/최근 Activity를 우선 표시해야 한다.",
+      "verification": "UX Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.7 Runtime / Canonical Plan / Progress UX",
+      "id": "NEX-AEWEB-RUN-010",
+      "priority": "MUST",
+      "requirement": "RECONCILIATION_REQUIRED에서는 성공/실패를 단정하지 않고 operation/business ref와 확인 중 상태를 표시해야 한다.",
+      "verification": "Reliability UX",
+      "parent": "32/37/38"
+    },
+    {
+      "section": "4.7 Runtime / Canonical Plan / Progress UX",
+      "id": "NEX-AEWEB-RUN-011",
+      "priority": "SHOULD",
+      "requirement": "progress event가 stream으로 지연될 때 polling/reconnect fallback을 제공할 수 있어야 한다.",
+      "verification": "Fault Test",
+      "parent": "29/32"
+    },
+    {
+      "section": "4.7 Runtime / Canonical Plan / Progress UX",
+      "id": "NEX-AEWEB-RUN-012",
+      "priority": "MUST",
+      "requirement": "UI progress projection이 authoritative runtime state보다 앞서거나 commit success를 추측해서는 안 된다.",
+      "verification": "Invariant Test",
+      "parent": "31/32"
+    },
+    {
+      "section": "4.8 Human Gate / Approval UX",
+      "id": "NEX-AEWEB-GATE-001",
+      "priority": "MUST",
+      "requirement": "HUMAN_CONFIRMATION, FORMAL_APPROVAL, OA STEP-UP을 서로 다른 UI object와 action으로 표현해야 한다.",
+      "verification": "E2E Test",
+      "parent": "29/38"
+    },
+    {
+      "section": "4.8 Human Gate / Approval UX",
+      "id": "NEX-AEWEB-GATE-002",
+      "priority": "MUST",
+      "requirement": "Confirmation card는 capability/target/structured input/예상 영향/risk/evidence summary를 표시해야 한다.",
+      "verification": "Security UI",
+      "parent": "37"
+    },
+    {
+      "section": "4.8 Human Gate / Approval UX",
+      "id": "NEX-AEWEB-GATE-003",
+      "priority": "MUST",
+      "requirement": "Formal Approval view는 Enterprise OS Approval object/state/approver/history를 authoritative source로 표시해야 한다.",
+      "verification": "Integration Test",
+      "parent": "38"
+    },
+    {
+      "section": "4.8 Human Gate / Approval UX",
+      "id": "NEX-AEWEB-GATE-004",
+      "priority": "MUST",
+      "requirement": "WAITING_APPROVAL 상태에서 Checkpoint/Worker Release가 일어났음을 일반 사용자에게 구현 세부로 강제 노출하지 않되, 업무가 안전하게 대기 중임을 명확히 표시해야 한다.",
+      "verification": "UX Test",
+      "parent": "38"
+    },
+    {
+      "section": "4.8 Human Gate / Approval UX",
+      "id": "NEX-AEWEB-GATE-005",
+      "priority": "MUST",
+      "requirement": "Approval 완료 후 Resume 시 current OA reauthorization 결과가 deny이면 과거 approved UI를 근거로 write를 허용해서는 안 된다.",
+      "verification": "Security E2E",
+      "parent": "38"
+    },
+    {
+      "section": "4.8 Human Gate / Approval UX",
+      "id": "NEX-AEWEB-GATE-006",
+      "priority": "MUST",
+      "requirement": "Reject/Cancel/Expire/Invalidate 상태에서 protected write가 실행되지 않았음을 결과/상태에 일관되게 표시해야 한다.",
+      "verification": "Negative E2E",
+      "parent": "38"
+    },
+    {
+      "section": "4.8 Human Gate / Approval UX",
+      "id": "NEX-AEWEB-GATE-007",
+      "priority": "MUST",
+      "requirement": "Gate proof는 UI가 생성하는 boolean이 아니라 trusted backend object ref로 취급해야 한다.",
+      "verification": "Security Boundary",
+      "parent": "17/38"
+    },
+    {
+      "section": "4.8 Human Gate / Approval UX",
+      "id": "NEX-AEWEB-GATE-008",
+      "priority": "MUST",
+      "requirement": "고위험 preview에는 classification/redaction policy를 적용해야 한다.",
+      "verification": "Privacy Test",
+      "parent": "26/38"
+    },
+    {
+      "section": "4.8 Human Gate / Approval UX",
+      "id": "NEX-AEWEB-GATE-009",
+      "priority": "MUST",
+      "requirement": "before/after business preview는 canonical read가 지원하는 범위에서만 표시하고 추정값을 authoritative preview로 표현해서는 안 된다.",
+      "verification": "Integrity Test",
+      "parent": "37/38"
+    },
+    {
+      "section": "4.8 Human Gate / Approval UX",
+      "id": "NEX-AEWEB-GATE-010",
+      "priority": "MUST",
+      "requirement": "Approval Required는 Work Inbox/Notification/Runtime Progress에서 동일 canonical target을 가리켜야 한다.",
+      "verification": "Trace E2E",
+      "parent": "38"
+    },
+    {
+      "section": "4.8 Human Gate / Approval UX",
+      "id": "NEX-AEWEB-GATE-011",
+      "priority": "SHOULD",
+      "requirement": "Approver 전용 화면/모바일 affordance가 추가되어도 동일 approval object/authority contract를 사용해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "38"
+    },
+    {
+      "section": "4.8 Human Gate / Approval UX",
+      "id": "NEX-AEWEB-GATE-012",
+      "priority": "MUST",
+      "requirement": "Approval state와 OA authentication step-up state를 하나의 “승인됨” 배지로 합치지 않아야 한다.",
+      "verification": "UX Invariant",
+      "parent": "26/38"
+    },
+    {
+      "section": "4.9 Coworker Collaboration UX",
+      "id": "NEX-AEWEB-COW-001",
+      "priority": "MUST",
+      "requirement": "DELEGATE_WORK는 Parent Plan Step과 WC Child WorkItem을 연결하여 표시해야 한다.",
+      "verification": "Trace Test",
+      "parent": "39"
+    },
+    {
+      "section": "4.9 Coworker Collaboration UX",
+      "id": "NEX-AEWEB-COW-002",
+      "priority": "MUST",
+      "requirement": "사용자는 협조 요청 capability/부서 범위/Child 상태/actual assignee를 확인할 수 있어야 한다.",
+      "verification": "E2E Test",
+      "parent": "39"
+    },
+    {
+      "section": "4.9 Coworker Collaboration UX",
+      "id": "NEX-AEWEB-COW-003",
+      "priority": "MUST",
+      "requirement": "Planner/UI가 특정 Coworker를 직접 지정한 것처럼 표현해서는 안 되며 WC assignment 결과를 표시해야 한다.",
+      "verification": "Invariant Test",
+      "parent": "39"
+    },
+    {
+      "section": "4.9 Coworker Collaboration UX",
+      "id": "NEX-AEWEB-COW-004",
+      "priority": "MUST",
+      "requirement": "Parent execution이 WAITING_DEPENDENCY인 동안 Child progress를 polling storm 없이 event/projection 기반으로 갱신해야 한다.",
+      "verification": "Reliability Test",
+      "parent": "32/39"
+    },
+    {
+      "section": "4.9 Coworker Collaboration UX",
+      "id": "NEX-AEWEB-COW-005",
+      "priority": "MUST",
+      "requirement": "WORK_RESULT_SUBMITTED duplicate event가 중복 parent resume/result card를 만들지 않아야 한다.",
+      "verification": "Fault Test",
+      "parent": "39"
+    },
+    {
+      "section": "4.9 Coworker Collaboration UX",
+      "id": "NEX-AEWEB-COW-006",
+      "priority": "MUST",
+      "requirement": "Parent Resume 후 aggregate result와 Child result refs를 함께 탐색할 수 있어야 한다.",
+      "verification": "Trace UI",
+      "parent": "39"
+    },
+    {
+      "section": "4.9 Coworker Collaboration UX",
+      "id": "NEX-AEWEB-COW-007",
+      "priority": "MUST",
+      "requirement": "Child Result schema invalid/block/revision 요청 상태를 user-safe reason과 함께 표시해야 한다.",
+      "verification": "Fault E2E",
+      "parent": "39"
+    },
+    {
+      "section": "4.9 Coworker Collaboration UX",
+      "id": "NEX-AEWEB-COW-008",
+      "priority": "MUST",
+      "requirement": "Parent/Child causation chain은 WA Timeline과 연계하여 실제 협업 Activity로 표시할 수 있어야 한다.",
+      "verification": "WA Trace UI",
+      "parent": "39/41"
+    },
+    {
+      "section": "4.9 Coworker Collaboration UX",
+      "id": "NEX-AEWEB-COW-009",
+      "priority": "SHOULD",
+      "requirement": "사용자는 자신의 Parent Work에서 관련 Child Work를 compact summary로 collapse/expand할 수 있어야 한다.",
+      "verification": "UX Test",
+      "parent": "39"
+    },
+    {
+      "section": "4.9 Coworker Collaboration UX",
+      "id": "NEX-AEWEB-COW-010",
+      "priority": "MUST",
+      "requirement": "Internal Coworker collaboration은 WC WorkItem을 SoR로 유지하고 AE-WEB local state가 별도 delegation SoR가 되어서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "14/39"
+    },
+    {
+      "section": "4.10 Result / Artifact / Business Object",
+      "id": "NEX-AEWEB-RES-001",
+      "priority": "MUST",
+      "requirement": "Right Panel은 Result, Artifact, Business Object를 서로 다른 object/status로 표시해야 한다.",
+      "verification": "UX Test",
+      "parent": "29/37/40"
+    },
+    {
+      "section": "4.10 Result / Artifact / Business Object",
+      "id": "NEX-AEWEB-RES-002",
+      "priority": "MUST",
+      "requirement": "Generated Draft/Artifact를 Enterprise OS committed business object와 동일하게 표현해서는 안 된다.",
+      "verification": "State Test",
+      "parent": "37/40"
+    },
+    {
+      "section": "4.10 Result / Artifact / Business Object",
+      "id": "NEX-AEWEB-RES-003",
+      "priority": "MUST",
+      "requirement": "Artifact에는 id/version/status/source execution refs를 표시할 수 있어야 한다.",
+      "verification": "Trace UI",
+      "parent": "29/40"
+    },
+    {
+      "section": "4.10 Result / Artifact / Business Object",
+      "id": "NEX-AEWEB-RES-004",
+      "priority": "MUST",
+      "requirement": "Business Object는 canonical owner/service와 current authoritative status를 표시해야 한다.",
+      "verification": "Integration UI",
+      "parent": "31/37"
+    },
+    {
+      "section": "4.10 Result / Artifact / Business Object",
+      "id": "NEX-AEWEB-RES-005",
+      "priority": "MUST",
+      "requirement": "Artifact preview/download/export는 current Project/Data Classification/Export permission을 재검증해야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/40"
+    },
+    {
+      "section": "4.10 Result / Artifact / Business Object",
+      "id": "NEX-AEWEB-RES-006",
+      "priority": "MUST",
+      "requirement": "Result View는 business refs/artifact refs/evidence refs/work refs/trace refs를 drill-down할 수 있어야 한다.",
+      "verification": "Trace Test",
+      "parent": "29/31"
+    },
+    {
+      "section": "4.10 Result / Artifact / Business Object",
+      "id": "NEX-AEWEB-RES-007",
+      "priority": "MUST",
+      "requirement": "Ledger/P&L projection lag를 business commit failure와 동일하게 표현하지 않고 typed pending/projection state로 표시해야 한다.",
+      "verification": "Reliability UX",
+      "parent": "37"
+    },
+    {
+      "section": "4.10 Result / Artifact / Business Object",
+      "id": "NEX-AEWEB-RES-008",
+      "priority": "MUST",
+      "requirement": "UNKNOWN_COMMIT_STATE에서는 Result를 완료로 표시하지 않고 RECONCILIATION_REQUIRED 상태로 유지해야 한다.",
+      "verification": "Fault E2E",
+      "parent": "32/37"
+    },
+    {
+      "section": "4.10 Result / Artifact / Business Object",
+      "id": "NEX-AEWEB-RES-009",
+      "priority": "SHOULD",
+      "requirement": "Artifact version comparison은 provenance/evidence lineage와 함께 표시할 수 있어야 한다.",
+      "verification": "Version UX",
+      "parent": "40"
+    },
+    {
+      "section": "4.10 Result / Artifact / Business Object",
+      "id": "NEX-AEWEB-RES-010",
+      "priority": "MUST",
+      "requirement": "Download history는 user action audit ref를 보존하되 content secret를 로그에 복제하지 않아야 한다.",
+      "verification": "Audit/Privacy",
+      "parent": "29"
+    },
+    {
+      "section": "4.11 Evidence / Citation / Provenance UX",
+      "id": "NEX-AEWEB-EVD-001",
+      "priority": "MUST",
+      "requirement": "Evidence Panel은 CX Evidence Bundle/AE Context를 읽기 전용 contract로 사용해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "27/40"
+    },
+    {
+      "section": "4.11 Evidence / Citation / Provenance UX",
+      "id": "NEX-AEWEB-EVD-002",
+      "priority": "MUST",
+      "requirement": "Citation은 CX citation_map/source locator를 기준으로 표시하고 LLM이 임의 source를 만든 것처럼 보여서는 안 된다.",
+      "verification": "Citation E2E",
+      "parent": "40"
+    },
+    {
+      "section": "4.11 Evidence / Citation / Provenance UX",
+      "id": "NEX-AEWEB-EVD-003",
+      "priority": "MUST",
+      "requirement": "Evidence item은 document/title/page/heading/evidence quality/project/classification을 policy-safe 범위에서 표시해야 한다.",
+      "verification": "Playwright",
+      "parent": "40"
+    },
+    {
+      "section": "4.11 Evidence / Citation / Provenance UX",
+      "id": "NEX-AEWEB-EVD-004",
+      "priority": "MUST",
+      "requirement": "SUFFICIENT/PARTIAL/INSUFFICIENT/CONFLICT 상태를 사용자에게 명시적으로 표시해야 한다.",
+      "verification": "Quality E2E",
+      "parent": "40"
+    },
+    {
+      "section": "4.11 Evidence / Citation / Provenance UX",
+      "id": "NEX-AEWEB-EVD-005",
+      "priority": "MUST",
+      "requirement": "INSUFFICIENT에서는 authoritative conclusion이 없는 이유와 추가 자료/검색/clarification action을 제공해야 한다.",
+      "verification": "UX E2E",
+      "parent": "40"
+    },
+    {
+      "section": "4.11 Evidence / Citation / Provenance UX",
+      "id": "NEX-AEWEB-EVD-006",
+      "priority": "MUST",
+      "requirement": "CONFLICT에서는 상충 citation/source를 함께 보여주고 하나를 임의 정답으로 선택한 UI를 제공해서는 안 된다.",
+      "verification": "Conflict E2E",
+      "parent": "40"
+    },
+    {
+      "section": "4.11 Evidence / Citation / Provenance UX",
+      "id": "NEX-AEWEB-EVD-007",
+      "priority": "MUST",
+      "requirement": "1-Hop Graph-lite relation은 supporting source citation과 함께 표시하고 edge 단독을 사실 근거로 표현해서는 안 된다.",
+      "verification": "Graph UX",
+      "parent": "27/40"
+    },
+    {
+      "section": "4.11 Evidence / Citation / Provenance UX",
+      "id": "NEX-AEWEB-EVD-008",
+      "priority": "MUST",
+      "requirement": "Citation click/source preview는 current permission/freshness를 재검증해야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/40"
+    },
+    {
+      "section": "4.11 Evidence / Citation / Provenance UX",
+      "id": "NEX-AEWEB-EVD-009",
+      "priority": "MUST",
+      "requirement": "권한 revoke 후에도 provenance ref는 보존할 수 있으나 원문/edge detail은 더 이상 노출하지 않아야 한다.",
+      "verification": "Lifecycle Security",
+      "parent": "40"
+    },
+    {
+      "section": "4.11 Evidence / Citation / Provenance UX",
+      "id": "NEX-AEWEB-EVD-010",
+      "priority": "MUST",
+      "requirement": "Evidence-grounded Artifact는 evidence bundle/hash/retrieval profile/policy/prompt/model version provenance를 표시/보존해야 한다.",
+      "verification": "Trace Test",
+      "parent": "40"
+    },
+    {
+      "section": "4.11 Evidence / Citation / Provenance UX",
+      "id": "NEX-AEWEB-EVD-011",
+      "priority": "SHOULD",
+      "requirement": "사용자는 최신 근거로 다시 생성/re-retrieval action을 요청할 수 있어야 한다.",
+      "verification": "UX Test",
+      "parent": "40"
+    },
+    {
+      "section": "4.11 Evidence / Citation / Provenance UX",
+      "id": "NEX-AEWEB-EVD-012",
+      "priority": "MUST",
+      "requirement": "Evidence text를 browser/local storage/interaction DB에 대량 복제하지 않아야 한다.",
+      "verification": "Data Test",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.12 NeX-WA WorkActivity / Timeline Views",
+      "id": "NEX-AEWEB-WA-001",
+      "priority": "MUST",
+      "requirement": "Workspace는 NeX-WA WorkActivity/Timeline view를 제공해야 한다.",
+      "verification": "Playwright",
+      "parent": "41"
+    },
+    {
+      "section": "4.12 NeX-WA WorkActivity / Timeline Views",
+      "id": "NEX-AEWEB-WA-002",
+      "priority": "MUST",
+      "requirement": "Timeline은 Interaction History와 별개로 실제 수행된 post-work event의 append-oriented view여야 한다.",
+      "verification": "UX/Architecture",
+      "parent": "41"
+    },
+    {
+      "section": "4.12 NeX-WA WorkActivity / Timeline Views",
+      "id": "NEX-AEWEB-WA-003",
+      "priority": "MUST",
+      "requirement": "Activity는 source service/event/ref, actor/coworker/project/time/activity type/result/artifact/evidence refs를 표시할 수 있어야 한다.",
+      "verification": "Trace UI",
+      "parent": "41"
+    },
+    {
+      "section": "4.12 NeX-WA WorkActivity / Timeline Views",
+      "id": "NEX-AEWEB-WA-004",
+      "priority": "MUST",
+      "requirement": "WA는 source WorkItem/Execution/Skill/Business state를 재정의하지 않고 projection임을 UI/contract에서 유지해야 한다.",
+      "verification": "Invariant Test",
+      "parent": "41"
+    },
+    {
+      "section": "4.12 NeX-WA WorkActivity / Timeline Views",
+      "id": "NEX-AEWEB-WA-005",
+      "priority": "MUST",
+      "requirement": "Parent/Child 협업과 Skill/Result/Artifact를 correlation/causation timeline으로 drill-down할 수 있어야 한다.",
+      "verification": "Trace E2E",
+      "parent": "39/41"
+    },
+    {
+      "section": "4.12 NeX-WA WorkActivity / Timeline Views",
+      "id": "NEX-AEWEB-WA-006",
+      "priority": "MUST",
+      "requirement": "Activity source correction/revision은 삭제 대신 correction/supersede context를 표시할 수 있어야 한다.",
+      "verification": "Audit UI",
+      "parent": "41"
+    },
+    {
+      "section": "4.12 NeX-WA WorkActivity / Timeline Views",
+      "id": "NEX-AEWEB-WA-007",
+      "priority": "MUST",
+      "requirement": "Observed Duration과 Confirmed Human Effort를 구분하여 표시해야 한다.",
+      "verification": "UX Invariant",
+      "parent": "41"
+    },
+    {
+      "section": "4.12 NeX-WA WorkActivity / Timeline Views",
+      "id": "NEX-AEWEB-WA-008",
+      "priority": "MUST",
+      "requirement": "Agent/LLM/Skill runtime time을 Human Effort/MM으로 자동 표시해서는 안 된다.",
+      "verification": "Negative UI",
+      "parent": "41"
+    },
+    {
+      "section": "4.12 NeX-WA WorkActivity / Timeline Views",
+      "id": "NEX-AEWEB-WA-009",
+      "priority": "MUST",
+      "requirement": "Project Attribution 미확정 Activity는 UNASSIGNED/PENDING 상태를 표시할 수 있어야 한다.",
+      "verification": "Boundary UI",
+      "parent": "41"
+    },
+    {
+      "section": "4.12 NeX-WA WorkActivity / Timeline Views",
+      "id": "NEX-AEWEB-WA-010",
+      "priority": "MUST",
+      "requirement": "WA projection lag/outage 시 업무 원본 상태를 막지 않고 Timeline에 delayed/stale indicator를 표시할 수 있어야 한다.",
+      "verification": "Fault UX",
+      "parent": "39/41"
+    },
+    {
+      "section": "4.12 NeX-WA WorkActivity / Timeline Views",
+      "id": "NEX-AEWEB-WA-011",
+      "priority": "SHOULD",
+      "requirement": "사용자는 Timeline을 period/project/work class/activity type/status로 필터링할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "41"
+    },
+    {
+      "section": "4.12 NeX-WA WorkActivity / Timeline Views",
+      "id": "NEX-AEWEB-WA-012",
+      "priority": "MUST",
+      "requirement": "Manager/team Timeline 조회는 current OA scope/purpose permission을 적용해야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/41"
+    },
+    {
+      "section": "4.13 Daily / Weekly / Monthly Reporting UX",
+      "id": "NEX-AEWEB-RPT-001",
+      "priority": "MUST",
+      "requirement": "WA Reporting view는 Daily/Weekly/Monthly period selector를 제공해야 한다.",
+      "verification": "Playwright",
+      "parent": "41"
+    },
+    {
+      "section": "4.13 Daily / Weekly / Monthly Reporting UX",
+      "id": "NEX-AEWEB-RPT-002",
+      "priority": "MUST",
+      "requirement": "Report는 DRAFT/IN_REVIEW/SUBMITTED/SUPERSEDED/CANCELLED 상태를 구분해 표시해야 한다.",
+      "verification": "State UI",
+      "parent": "41"
+    },
+    {
+      "section": "4.13 Daily / Weekly / Monthly Reporting UX",
+      "id": "NEX-AEWEB-RPT-003",
+      "priority": "MUST",
+      "requirement": "Draft UI는 deterministic structured fact와 editable narrative를 시각적으로 구분해야 한다.",
+      "verification": "UX Test",
+      "parent": "41"
+    },
+    {
+      "section": "4.13 Daily / Weekly / Monthly Reporting UX",
+      "id": "NEX-AEWEB-RPT-004",
+      "priority": "MUST",
+      "requirement": "사용자는 각 report item에서 Activity→WorkItem/Execution→Result→Artifact/Evidence/Business ref로 drill-down할 수 있어야 한다.",
+      "verification": "Trace UI",
+      "parent": "41"
+    },
+    {
+      "section": "4.13 Daily / Weekly / Monthly Reporting UX",
+      "id": "NEX-AEWEB-RPT-005",
+      "priority": "MUST",
+      "requirement": "Human Review는 narrative edit, include/exclude, source correction action을 구분해야 한다.",
+      "verification": "UX Test",
+      "parent": "41"
+    },
+    {
+      "section": "4.13 Daily / Weekly / Monthly Reporting UX",
+      "id": "NEX-AEWEB-RPT-006",
+      "priority": "MUST",
+      "requirement": "authoritative structured fact 수정은 source correction flow로 안내하고 narrative edit로 덮어쓰지 않아야 한다.",
+      "verification": "Integrity E2E",
+      "parent": "41"
+    },
+    {
+      "section": "4.13 Daily / Weekly / Monthly Reporting UX",
+      "id": "NEX-AEWEB-RPT-007",
+      "priority": "MUST",
+      "requirement": "Report Submit은 explicit user/policy-authorized action이어야 하고 chat 문장을 submit 승인으로 해석해서는 안 된다.",
+      "verification": "Security UX",
+      "parent": "41"
+    },
+    {
+      "section": "4.13 Daily / Weekly / Monthly Reporting UX",
+      "id": "NEX-AEWEB-RPT-008",
+      "priority": "MUST",
+      "requirement": "Submitted Report는 immutable revision/source snapshot/submitted by/time를 표시할 수 있어야 한다.",
+      "verification": "Version UI",
+      "parent": "41"
+    },
+    {
+      "section": "4.13 Daily / Weekly / Monthly Reporting UX",
+      "id": "NEX-AEWEB-RPT-009",
+      "priority": "MUST",
+      "requirement": "Late source/correction 발생 시 submitted report를 silent mutate하지 않고 stale/superseded/new revision path를 표시해야 한다.",
+      "verification": "Lifecycle UX",
+      "parent": "41"
+    },
+    {
+      "section": "4.13 Daily / Weekly / Monthly Reporting UX",
+      "id": "NEX-AEWEB-RPT-010",
+      "priority": "SHOULD",
+      "requirement": "MO narrative 장애 시 Fact-only Draft 또는 explicit degraded 상태를 보여줄 수 있어야 한다.",
+      "verification": "Fault UX",
+      "parent": "41"
+    },
+    {
+      "section": "4.14 Performance Evidence UX",
+      "id": "NEX-AEWEB-PEV-001",
+      "priority": "MUST",
+      "requirement": "Performance Evidence View는 WorkResult/Human Review/Closure/authoritative business result/Artifact/Evidence 등 verified outcome refs를 중심으로 표시해야 한다.",
+      "verification": "Governance UX",
+      "parent": "41"
+    },
+    {
+      "section": "4.14 Performance Evidence UX",
+      "id": "NEX-AEWEB-PEV-002",
+      "priority": "MUST",
+      "requirement": "Prompt 횟수, Token, Agent 사용량, Model latency, Skill runtime time을 employee score/rating으로 표시해서는 안 된다.",
+      "verification": "Release Blocker",
+      "parent": "41"
+    },
+    {
+      "section": "4.14 Performance Evidence UX",
+      "id": "NEX-AEWEB-PEV-003",
+      "priority": "MUST",
+      "requirement": "Performance Evidence는 “평가 근거”로 표현하고 자동 HR rating/compensation decision UI를 제공하지 않아야 한다.",
+      "verification": "Scope Test",
+      "parent": "41"
+    },
+    {
+      "section": "4.14 Performance Evidence UX",
+      "id": "NEX-AEWEB-PEV-004",
+      "priority": "MUST",
+      "requirement": "Human/Coworker/Expert contribution을 source refs로 구분할 수 있어야 하며 Agent 산출을 Human 단독성과로 자동 귀속해서는 안 된다.",
+      "verification": "Attribution UX",
+      "parent": "41"
+    },
+    {
+      "section": "4.14 Performance Evidence UX",
+      "id": "NEX-AEWEB-PEV-005",
+      "priority": "MUST",
+      "requirement": "Revision/correction/replan/escalation/exception context를 숨기지 않고 evidence context로 표시할 수 있어야 한다.",
+      "verification": "Quality UX",
+      "parent": "41"
+    },
+    {
+      "section": "4.14 Performance Evidence UX",
+      "id": "NEX-AEWEB-PEV-006",
+      "priority": "MUST",
+      "requirement": "Evidence summary에서 원 WorkResult/Business Object/Artifact/Evidence로 drill-down할 수 있어야 한다.",
+      "verification": "Trace UI",
+      "parent": "41"
+    },
+    {
+      "section": "4.14 Performance Evidence UX",
+      "id": "NEX-AEWEB-PEV-007",
+      "priority": "MUST",
+      "requirement": "Manager/Reviewer view는 current OA role/org/project/purpose policy를 재검증해야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/41"
+    },
+    {
+      "section": "4.14 Performance Evidence UX",
+      "id": "NEX-AEWEB-PEV-008",
+      "priority": "SHOULD",
+      "requirement": "verified_outcome_count/revision_count/exception_count 같은 설명 metric은 제공할 수 있으나 점수/등급으로 자동 환산하지 않아야 한다.",
+      "verification": "Governance Review",
+      "parent": "41"
+    },
+    {
+      "section": "4.15 Notification / Error / Clarification / Reconciliation",
+      "id": "NEX-AEWEB-NTF-001",
+      "priority": "MUST",
+      "requirement": "Notification Center는 NEED_INPUT/NEED_CONFIRMATION/NEED_APPROVAL/DEPENDENCY_UPDATE/COMPLETED/FAILED/ESCALATED/RECONCILIATION_REQUIRED를 구분해야 한다.",
+      "verification": "E2E Test",
+      "parent": "29/32"
+    },
+    {
+      "section": "4.15 Notification / Error / Clarification / Reconciliation",
+      "id": "NEX-AEWEB-NTF-002",
+      "priority": "MUST",
+      "requirement": "Notification은 canonical target ref와 deep link를 가져야 한다.",
+      "verification": "Contract Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.15 Notification / Error / Clarification / Reconciliation",
+      "id": "NEX-AEWEB-NTF-003",
+      "priority": "MUST",
+      "requirement": "duplicate runtime/event delivery가 중복 notification을 만들지 않도록 dedup해야 한다.",
+      "verification": "Fault Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.15 Notification / Error / Clarification / Reconciliation",
+      "id": "NEX-AEWEB-NTF-004",
+      "priority": "MUST",
+      "requirement": "stale notification action은 current target state를 재조회하여 무효화해야 한다.",
+      "verification": "E2E Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.15 Notification / Error / Clarification / Reconciliation",
+      "id": "NEX-AEWEB-NTF-005",
+      "priority": "MUST",
+      "requirement": "Error UI는 user-safe reason/error category/retryability/next action을 제공해야 한다.",
+      "verification": "Fault UX",
+      "parent": "32"
+    },
+    {
+      "section": "4.15 Notification / Error / Clarification / Reconciliation",
+      "id": "NEX-AEWEB-NTF-006",
+      "priority": "MUST",
+      "requirement": "Clarification UI는 missing fields와 allowed inputs를 구조화해 표시해야 한다.",
+      "verification": "E2E Test",
+      "parent": "11/29"
+    },
+    {
+      "section": "4.15 Notification / Error / Clarification / Reconciliation",
+      "id": "NEX-AEWEB-NTF-007",
+      "priority": "MUST",
+      "requirement": "RECONCILIATION_REQUIRED는 blind retry 버튼 대신 operation/business status 확인 흐름을 제공해야 한다.",
+      "verification": "Reliability UX",
+      "parent": "32"
+    },
+    {
+      "section": "4.15 Notification / Error / Clarification / Reconciliation",
+      "id": "NEX-AEWEB-NTF-008",
+      "priority": "MUST",
+      "requirement": "Notification payload/toast에 raw secret/full sensitive source text를 포함하지 않아야 한다.",
+      "verification": "Privacy Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.15 Notification / Error / Clarification / Reconciliation",
+      "id": "NEX-AEWEB-NTF-009",
+      "priority": "SHOULD",
+      "requirement": "type/severity/channel별 notification preference를 제공할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.15 Notification / Error / Clarification / Reconciliation",
+      "id": "NEX-AEWEB-NTF-010",
+      "priority": "MUST",
+      "requirement": "읽음/미읽음/처리됨 notification state를 Runtime/WorkItem/Approval state와 혼동해서는 안 된다.",
+      "verification": "Data Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.16 Common Web Modules / Upload / Background UX",
+      "id": "NEX-AEWEB-WEB-001",
+      "priority": "MUST",
+      "requirement": "Baseline의 Login/Security, Session Keep-Alive, Upload Progress, Background Progress, Toast, Settings, Error/Clarify 모듈을 v2.0 공통 Web Module로 계승해야 한다.",
+      "verification": "Design Review",
+      "parent": "Baseline"
+    },
+    {
+      "section": "4.16 Common Web Modules / Upload / Background UX",
+      "id": "NEX-AEWEB-WEB-002",
+      "priority": "MUST",
+      "requirement": "Login/Session module은 OA session/authentication contract를 사용하고 AE application session과 분리해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.16 Common Web Modules / Upload / Background UX",
+      "id": "NEX-AEWEB-WEB-003",
+      "priority": "MUST",
+      "requirement": "Password/MFA/step-up 관련 화면은 OA 정책/contract를 사용하고 AE-WEB 자체 credential SoR를 만들지 않아야 한다.",
+      "verification": "Security Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.16 Common Web Modules / Upload / Background UX",
+      "id": "NEX-AEWEB-WEB-004",
+      "priority": "MUST",
+      "requirement": "파일 업로드는 상태/progress/checksum or job ref를 표시할 수 있어야 하고 실패 시 재시도 경계를 제공해야 한다.",
+      "verification": "E2E Test",
+      "parent": "27/32"
+    },
+    {
+      "section": "4.16 Common Web Modules / Upload / Background UX",
+      "id": "NEX-AEWEB-WEB-005",
+      "priority": "MUST",
+      "requirement": "Background task progress는 service job/runtime status를 읽어 표시하고 browser thread에서 장기 업무를 직접 수행하지 않아야 한다.",
+      "verification": "Architecture Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.16 Common Web Modules / Upload / Background UX",
+      "id": "NEX-AEWEB-WEB-006",
+      "priority": "MUST",
+      "requirement": "Toast는 상태 변화 보조수단이며 Human Gate/Block/Reconciliation 같은 중요 action을 toast만으로 처리해서는 안 된다.",
+      "verification": "UX Test",
+      "parent": "29/38"
+    },
+    {
+      "section": "4.16 Common Web Modules / Upload / Background UX",
+      "id": "NEX-AEWEB-WEB-007",
+      "priority": "MUST",
+      "requirement": "Settings는 theme/language/notification/view preference 등을 다룰 수 있으나 authority/security policy를 변경하는 경로가 되어서는 안 된다.",
+      "verification": "Security UX",
+      "parent": "29"
+    },
+    {
+      "section": "4.16 Common Web Modules / Upload / Background UX",
+      "id": "NEX-AEWEB-WEB-008",
+      "priority": "SHOULD",
+      "requirement": "dark/light/system theme와 reduced-motion preference를 지원할 수 있어야 한다.",
+      "verification": "Accessibility Test",
+      "parent": "29A"
+    },
+    {
+      "section": "4.16 Common Web Modules / Upload / Background UX",
+      "id": "NEX-AEWEB-WEB-009",
+      "priority": "MUST",
+      "requirement": "Background completion은 notification와 persisted result link를 통해 복원 가능해야 한다.",
+      "verification": "E2E Test",
+      "parent": "29/32"
+    },
+    {
+      "section": "4.16 Common Web Modules / Upload / Background UX",
+      "id": "NEX-AEWEB-WEB-010",
+      "priority": "MUST",
+      "requirement": "공통 Web Module 오류가 Business commit/result state를 임의로 변경해서는 안 된다.",
+      "verification": "Fault Test",
+      "parent": "31/32"
+    },
+    {
+      "section": "4.17 AE-API / Streaming / View Model Integration",
+      "id": "NEX-AEWEB-API-001",
+      "priority": "MUST",
+      "requirement": "AE-WEB은 owner service와 직접 DB 통신하지 않고 AE-API/service facade를 기본 backend boundary로 사용해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "29/31"
+    },
+    {
+      "section": "4.17 AE-API / Streaming / View Model Integration",
+      "id": "NEX-AEWEB-API-002",
+      "priority": "MUST",
+      "requirement": "Workspace View Model은 Context/Work/Runtime/Gate/Result/Evidence/WA summary를 stable refs와 source owner metadata로 구성해야 한다.",
+      "verification": "Contract Test",
+      "parent": "29A"
+    },
+    {
+      "section": "4.17 AE-API / Streaming / View Model Integration",
+      "id": "NEX-AEWEB-API-003",
+      "priority": "MUST",
+      "requirement": "View Model은 foreign authoritative state를 AE local copy로 승격하지 않아야 한다.",
+      "verification": "Invariant Test",
+      "parent": "31"
+    },
+    {
+      "section": "4.17 AE-API / Streaming / View Model Integration",
+      "id": "NEX-AEWEB-API-004",
+      "priority": "MUST",
+      "requirement": "interactive response/progress는 stream 또는 equivalent incremental transport를 지원할 수 있어야 하며 reconnect sequence를 가져야 한다.",
+      "verification": "E2E Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.17 AE-API / Streaming / View Model Integration",
+      "id": "NEX-AEWEB-API-005",
+      "priority": "MUST",
+      "requirement": "stream delta 누락/중복/out-of-order는 persisted final state re-fetch로 수렴해야 한다.",
+      "verification": "Fault Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.17 AE-API / Streaming / View Model Integration",
+      "id": "NEX-AEWEB-API-006",
+      "priority": "MUST",
+      "requirement": "background work는 browser access token을 장기 보관/재사용하지 않아야 한다.",
+      "verification": "Security Test",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.17 AE-API / Streaming / View Model Integration",
+      "id": "NEX-AEWEB-API-007",
+      "priority": "MUST",
+      "requirement": "deep link/preview/export API는 current authority를 재검증해야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.17 AE-API / Streaming / View Model Integration",
+      "id": "NEX-AEWEB-API-008",
+      "priority": "MUST",
+      "requirement": "client-supplied role/project/classification/approval/commit state를 authority로 신뢰해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "26/31"
+    },
+    {
+      "section": "4.17 AE-API / Streaming / View Model Integration",
+      "id": "NEX-AEWEB-API-009",
+      "priority": "MUST",
+      "requirement": "API error는 typed error code/retryability/current state ref를 제공하여 UI가 추측하지 않게 해야 한다.",
+      "verification": "Contract Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.17 AE-API / Streaming / View Model Integration",
+      "id": "NEX-AEWEB-API-010",
+      "priority": "SHOULD",
+      "requirement": "BFF/facade aggregation cache를 사용할 경우 authority/context/version key를 포함해야 한다.",
+      "verification": "Cache Security",
+      "parent": "26/27"
+    },
+    {
+      "section": "4.17 AE-API / Streaming / View Model Integration",
+      "id": "NEX-AEWEB-API-011",
+      "priority": "MUST",
+      "requirement": "Artifact/File 다운로드가 direct signed URL을 사용할 경우 scope/expiry/audit 정책을 적용해야 한다.",
+      "verification": "Security Test",
+      "parent": "29/34"
+    },
+    {
+      "section": "4.17 AE-API / Streaming / View Model Integration",
+      "id": "NEX-AEWEB-API-012",
+      "priority": "MUST",
+      "requirement": "Repository Evidence 확인 전 baseline endpoint/path 이름을 구현 hard-code requirement로 간주하지 않아야 한다.",
+      "verification": "Evidence Gate",
+      "parent": "36"
+    },
+    {
+      "section": "4.18 Security / Privacy / Export / Accessibility",
+      "id": "NEX-AEWEB-SEC-001",
+      "priority": "MUST",
+      "requirement": "모든 user-visible data는 current OA authority, Org/Project Scope, Data Classification policy를 적용해야 한다.",
+      "verification": "Security Matrix",
+      "parent": "26"
+    },
+    {
+      "section": "4.18 Security / Privacy / Export / Accessibility",
+      "id": "NEX-AEWEB-SEC-002",
+      "priority": "MUST",
+      "requirement": "민감 title/summary/notification은 policy에 따라 masking할 수 있어야 한다.",
+      "verification": "Privacy UI",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.18 Security / Privacy / Export / Accessibility",
+      "id": "NEX-AEWEB-SEC-003",
+      "priority": "MUST",
+      "requirement": "source preview/download/export는 단순 Workspace read와 별도의 explicit export permission을 요구할 수 있어야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/40/41"
+    },
+    {
+      "section": "4.18 Security / Privacy / Export / Accessibility",
+      "id": "NEX-AEWEB-SEC-004",
+      "priority": "MUST",
+      "requirement": "브라우저 localStorage/sessionStorage에 access token 외 민감 raw business/evidence data를 불필요하게 장기 저장하지 않아야 한다.",
+      "verification": "Web Security",
+      "parent": "29A"
+    },
+    {
+      "section": "4.18 Security / Privacy / Export / Accessibility",
+      "id": "NEX-AEWEB-SEC-005",
+      "priority": "MUST",
+      "requirement": "Prompt Injection source text를 UI가 system instruction처럼 렌더링하거나 실행 action으로 변환해서는 안 된다.",
+      "verification": "Adversarial Test",
+      "parent": "40"
+    },
+    {
+      "section": "4.18 Security / Privacy / Export / Accessibility",
+      "id": "NEX-AEWEB-SEC-006",
+      "priority": "MUST",
+      "requirement": "권한 없는 graph relation/source 존재를 UI badge/count/preview로 암시해서는 안 된다.",
+      "verification": "Leakage Test",
+      "parent": "27/40"
+    },
+    {
+      "section": "4.18 Security / Privacy / Export / Accessibility",
+      "id": "NEX-AEWEB-SEC-007",
+      "priority": "MUST",
+      "requirement": "Keyboard-only 사용으로 주요 navigation, Prompt, Gate, Inbox, Evidence, Report submit을 수행할 수 있어야 한다.",
+      "verification": "Accessibility E2E",
+      "parent": "29A"
+    },
+    {
+      "section": "4.18 Security / Privacy / Export / Accessibility",
+      "id": "NEX-AEWEB-SEC-008",
+      "priority": "MUST",
+      "requirement": "Focus order/visible focus/semantic labels/table headers/modal focus trap 등 기본 접근성 요구를 충족해야 한다.",
+      "verification": "A11y Audit",
+      "parent": "29A"
+    },
+    {
+      "section": "4.18 Security / Privacy / Export / Accessibility",
+      "id": "NEX-AEWEB-SEC-009",
+      "priority": "SHOULD",
+      "requirement": "주요 status는 색상만으로 구분하지 않고 icon/text를 함께 제공해야 한다.",
+      "verification": "A11y Test",
+      "parent": "29A"
+    },
+    {
+      "section": "4.18 Security / Privacy / Export / Accessibility",
+      "id": "NEX-AEWEB-SEC-010",
+      "priority": "MUST",
+      "requirement": "Critical security/gate/evidence/WA view는 responsive layout에서도 action/meaning이 누락되지 않아야 한다.",
+      "verification": "Responsive E2E",
+      "parent": "29A"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release",
+      "id": "NEX-AEWEB-NFR-001",
+      "priority": "MUST",
+      "requirement": "AE-WEB 변경 코드 statement coverage 목표 95% 이상, branch coverage 목표 85% 이상을 적용해야 한다.",
+      "verification": "Coverage",
+      "parent": "Project Quality"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release",
+      "id": "NEX-AEWEB-NFR-002",
+      "priority": "MUST",
+      "requirement": "Critical user journeys는 Playwright로 browser E2E 자동화해야 한다.",
+      "verification": "Playwright",
+      "parent": "33"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release",
+      "id": "NEX-AEWEB-NFR-003",
+      "priority": "MUST",
+      "requirement": "Golden A Direct Voucher의 Prompt→Plan→Confirmation→Result UI를 permanent regression으로 유지해야 한다.",
+      "verification": "Golden E2E",
+      "parent": "37"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release",
+      "id": "NEX-AEWEB-NFR-004",
+      "priority": "MUST",
+      "requirement": "Approval WAITING_APPROVAL→Approval Event→Resume UI를 permanent regression으로 유지해야 한다.",
+      "verification": "Golden E2E",
+      "parent": "38"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release",
+      "id": "NEX-AEWEB-NFR-005",
+      "priority": "MUST",
+      "requirement": "Golden B Parent/Child/Coworker/Resume/WA Timeline UX를 permanent regression으로 유지해야 한다.",
+      "verification": "Golden E2E",
+      "parent": "39"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release",
+      "id": "NEX-AEWEB-NFR-006",
+      "priority": "MUST",
+      "requirement": "Evidence SUFFICIENT/PARTIAL/INSUFFICIENT/CONFLICT/Citation/Preview UX를 permanent regression으로 유지해야 한다.",
+      "verification": "Golden E2E",
+      "parent": "40"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release",
+      "id": "NEX-AEWEB-NFR-007",
+      "priority": "MUST",
+      "requirement": "WA Timeline/Daily/Weekly/Monthly/Performance Evidence UX를 permanent regression으로 유지해야 한다.",
+      "verification": "Golden E2E",
+      "parent": "41"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release",
+      "id": "NEX-AEWEB-NFR-008",
+      "priority": "MUST",
+      "requirement": "Duplicate/out-of-order/reconnect/stale-notification/current-authz fault variant를 브라우저 E2E에 포함해야 한다.",
+      "verification": "Fault Injection",
+      "parent": "32/33"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release",
+      "id": "NEX-AEWEB-NFR-009",
+      "priority": "MUST",
+      "requirement": "Critical Security/Human Gate/Evidence/Performance Evidence test 실패는 flaky quarantine/waiver로 Release를 우회해서는 안 된다.",
+      "verification": "Release Gate",
+      "parent": "33"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release",
+      "id": "NEX-AEWEB-NFR-010",
+      "priority": "MUST",
+      "requirement": "Workspace core interactive view는 초기 100명 규모 Pilot에서 p95 user-perceived latency baseline을 측정해야 한다.",
+      "verification": "Performance Test",
+      "parent": "29/33"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release",
+      "id": "NEX-AEWEB-NFR-011",
+      "priority": "SHOULD",
+      "requirement": "first render/first stream delta/work inbox refresh/source preview latency를 분리 계측할 수 있어야 한다.",
+      "verification": "Observability",
+      "parent": "29A"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release",
+      "id": "NEX-AEWEB-NFR-012",
+      "priority": "MUST",
+      "requirement": "Repository Evidence 확인 전 existing frontend framework/component/API의 KEEP/REFACTOR/REPLACE disposition을 freeze하지 않아야 한다.",
+      "verification": "Evidence Gate",
+      "parent": "36"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release",
+      "id": "NEX-AEWEB-NFR-013",
+      "priority": "MUST",
+      "requirement": "UI logging/telemetry에는 raw secret/private reasoning/full evidence text를 포함하지 않아야 한다.",
+      "verification": "Privacy Scan",
+      "parent": "26/30"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release",
+      "id": "NEX-AEWEB-NFR-014",
+      "priority": "MUST",
+      "requirement": "Accessibility/keyboard/responsive critical path를 Release Candidate에서 검증해야 한다.",
+      "verification": "A11y Gate",
+      "parent": "29A"
+    }
+  ]
+}

@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:schema:agent:agent-plan:1.0",
+  "title": "NeX AgentPlan v1",
+  "description": "Immutable logical plan produced by Direct Compiler, LLM Plan Builder or Plan Template Binder. It must be validated before deterministic compilation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "plan_id",
+    "execution_id",
+    "work_intent_id",
+    "plan_version",
+    "plan_kind",
+    "goal",
+    "completion_criteria",
+    "steps",
+    "planner_provenance"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "plan_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "execution_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "work_intent_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "plan_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "plan_kind": {
+      "enum": [
+        "ONE_STEP",
+        "DYNAMIC",
+        "TEMPLATE_BOUND"
+      ]
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "completion_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "$ref": "urn:nex:schema:agent:plan-step:1.0"
+      }
+    },
+    "supersedes_plan_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "replan_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 700
+    },
+    "planner_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "planner_type",
+        "prompt_template_id",
+        "prompt_template_version",
+        "model_profile",
+        "generated_at"
+      ],
+      "properties": {
+        "planner_type": {
+          "enum": [
+            "DIRECT_COMPILER",
+            "LLM_PLAN_BUILDER",
+            "PLAN_TEMPLATE_BINDER"
+          ]
+        },
+        "prompt_template_id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "prompt_template_version": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "model_profile": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "model_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 256
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "input_context_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-fA-F0-9]{32,128}$"
+        },
+        "capability_catalog_snapshot_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 256
+        }
+      }
+    }
+  }
+}

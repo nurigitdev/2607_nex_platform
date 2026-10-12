@@ -1,0 +1,1360 @@
+{
+  "document": "39_Vertical_Slice_PRD_Golden_B_Semi_Autonomous_Collaboration_v2.0",
+  "version": "v2.0",
+  "date": "2026-09-04",
+  "repository_evidence_status": "PENDING",
+  "scenario_id": "GSB-COLLAB-001",
+  "counts": {
+    "MUST": 102,
+    "SHOULD": 13
+  },
+  "requirements": [
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD39-SCP-FR-001",
+      "priority": "MUST",
+      "requirement": "PRD39의 핵심 사용자 가치는 Manufacturing risk/work request가 Procurement Coworker 협업으로 전달되고 Parent가 결과를 안전하게 재개·집계하여 Human Review까지 완료하는 것이다.",
+      "verification": "Business E2E",
+      "parent": "00/31/36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD39-SCP-FR-002",
+      "priority": "MUST",
+      "requirement": "본 PRD는 11/12/14/31~36의 Architecture/Runtime/Reliability/Test Baseline을 재정의하지 않고 Golden Slice B 구현 경계만 얇은 Vertical Slice로 내린다.",
+      "verification": "Trace Review",
+      "parent": "36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD39-SCP-FR-003",
+      "priority": "MUST",
+      "requirement": "Repository Evidence가 미확인된 기존 component의 실제 repo/path/class/table/endpoint 이름은 확정하지 않고 logical contract/task 수준으로 유지해야 한다.",
+      "verification": "Evidence Gate",
+      "parent": "36/02/10"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD39-SCP-FR-004",
+      "priority": "MUST",
+      "requirement": "기존 코드의 KEEP/REFACTOR/REPLACE 판단은 repo/branch/commit/schema/API/test/runtime evidence 확인 전 NOT ASSESSED 또는 PROVISIONAL을 유지해야 한다.",
+      "verification": "Implementation Review",
+      "parent": "35/36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD39-SCP-FR-005",
+      "priority": "MUST",
+      "requirement": "Golden B에서 Enterprise Work의 Source of Truth는 NeX-WC WorkItem이며 AgentExecution/WA projection은 이를 대체하지 않아야 한다.",
+      "verification": "Architecture Test",
+      "parent": "00/14/31"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD39-SCP-FR-006",
+      "priority": "MUST",
+      "requirement": "Interactive/Background execution orchestration은 NeX-AE Unified Runtime이 소유하고 실제 Parent/Child Work lifecycle은 NeX-WC가 소유해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "11/12/14/29"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD39-SCP-FR-007",
+      "priority": "MUST",
+      "requirement": "NeX-WA는 Work Activity/Timeline projection을 소유하되 WC/AE/Enterprise OS authoritative state를 직접 변경해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "22/31/33/36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD39-SCP-FR-008",
+      "priority": "SHOULD",
+      "requirement": "CX/MO/A2A는 Golden B core collaboration의 hard dependency가 아니라 필요 시 사용하는 선택적 intelligence/external-agent path로 유지해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "27/28/31"
+    },
+    {
+      "section": "4.2 Trigger & Parent Work Intake",
+      "id": "NEX-PRD39-TRG-FR-001",
+      "priority": "MUST",
+      "requirement": "Golden fixture는 Manufacturing risk signal 또는 사용자 work request를 Parent WorkItem/Parent AgentExecution의 시작 원인으로 표현할 수 있어야 한다.",
+      "verification": "Fixture/E2E",
+      "parent": "00/31/33"
+    },
+    {
+      "section": "4.2 Trigger & Parent Work Intake",
+      "id": "NEX-PRD39-TRG-FR-002",
+      "priority": "MUST",
+      "requirement": "Trigger는 correlation_id/causation_id와 project/org context를 가져야 하며 raw untrusted actor/role 값을 authority source로 사용해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "09/26/31"
+    },
+    {
+      "section": "4.2 Trigger & Parent Work Intake",
+      "id": "NEX-PRD39-TRG-FR-003",
+      "priority": "MUST",
+      "requirement": "기존 Parent WorkItem이 존재하면 AE는 stable work_item_ref를 사용하고, 존재하지 않으면 WC canonical create command를 통해 Parent를 생성해야 한다.",
+      "verification": "Integration Test",
+      "parent": "14/31"
+    },
+    {
+      "section": "4.2 Trigger & Parent Work Intake",
+      "id": "NEX-PRD39-TRG-FR-004",
+      "priority": "MUST",
+      "requirement": "Parent WorkItem 생성은 idempotency key를 지원하여 동일 trigger retry가 중복 Parent를 만들지 않아야 한다.",
+      "verification": "Fault Test",
+      "parent": "14/32"
+    },
+    {
+      "section": "4.2 Trigger & Parent Work Intake",
+      "id": "NEX-PRD39-TRG-FR-005",
+      "priority": "MUST",
+      "requirement": "Parent WorkItem은 requester/accountable owner/routing context/project/work_class/correlation refs를 구조화하여 저장해야 한다.",
+      "verification": "Schema Test",
+      "parent": "14"
+    },
+    {
+      "section": "4.2 Trigger & Parent Work Intake",
+      "id": "NEX-PRD39-TRG-FR-006",
+      "priority": "MUST",
+      "requirement": "AE는 Parent WorkItem state를 직접 DB write하지 않고 WC canonical API를 사용해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "14/31"
+    },
+    {
+      "section": "4.2 Trigger & Parent Work Intake",
+      "id": "NEX-PRD39-TRG-FR-007",
+      "priority": "MUST",
+      "requirement": "Parent AgentExecution과 Parent WorkItem은 별도 aggregate로 유지하고 execution success와 work closure를 동일 상태로 간주하지 않아야 한다.",
+      "verification": "State Test",
+      "parent": "11/14/31"
+    },
+    {
+      "section": "4.2 Trigger & Parent Work Intake",
+      "id": "NEX-PRD39-TRG-FR-008",
+      "priority": "SHOULD",
+      "requirement": "사용자/운영 UI는 trigger, Parent WorkItem, current execution의 관계를 stable refs로 drill-down할 수 있어야 한다.",
+      "verification": "UX/Trace",
+      "parent": "29/30"
+    },
+    {
+      "section": "4.3 WorkIntent, Canonical Plan & DELEGATE_WORK",
+      "id": "NEX-PRD39-PLAN-FR-001",
+      "priority": "MUST",
+      "requirement": "AE Unified Runtime은 trigger/context를 WorkIntent로 구조화하고 Manufacturing risk 대응 목표, constraints, entity selectors, completion criteria를 포함해야 한다.",
+      "verification": "Intent Contract",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.3 WorkIntent, Canonical Plan & DELEGATE_WORK",
+      "id": "NEX-PRD39-PLAN-FR-002",
+      "priority": "MUST",
+      "requirement": "Stable Project/Material/Vendor/Employee ID는 LLM이 생성하지 않고 Canonical Resolver/owner API가 결정해야 한다.",
+      "verification": "Adversarial Test",
+      "parent": "07/11/31"
+    },
+    {
+      "section": "4.3 WorkIntent, Canonical Plan & DELEGATE_WORK",
+      "id": "NEX-PRD39-PLAN-FR-003",
+      "priority": "MUST",
+      "requirement": "Planner는 협업 필요 시 AgentPlan에 DELEGATE_WORK step과 required_capability, org/project scope, required_result_contract를 제안해야 한다.",
+      "verification": "Plan Contract",
+      "parent": "11/12/14"
+    },
+    {
+      "section": "4.3 WorkIntent, Canonical Plan & DELEGATE_WORK",
+      "id": "NEX-PRD39-PLAN-FR-004",
+      "priority": "MUST",
+      "requirement": "Planner는 실제 Procurement Coworker/employee ID를 hard-code하거나 LLM output으로 최종 assignment하지 않아야 한다.",
+      "verification": "Routing Security",
+      "parent": "11/12/14"
+    },
+    {
+      "section": "4.3 WorkIntent, Canonical Plan & DELEGATE_WORK",
+      "id": "NEX-PRD39-PLAN-FR-005",
+      "priority": "MUST",
+      "requirement": "Plan Validator는 required capability, dependency, result schema, risk/gate requirement가 known Registry/Policy와 양립 가능한지 검증해야 한다.",
+      "verification": "Semantic Validation",
+      "parent": "11/12/17"
+    },
+    {
+      "section": "4.3 WorkIntent, Canonical Plan & DELEGATE_WORK",
+      "id": "NEX-PRD39-PLAN-FR-006",
+      "priority": "MUST",
+      "requirement": "Plan Compiler는 logical DELEGATE_WORK를 immutable ExecutablePlan step과 WC Child Work routing contract로 컴파일해야 한다.",
+      "verification": "Compiler Test",
+      "parent": "12/14"
+    },
+    {
+      "section": "4.3 WorkIntent, Canonical Plan & DELEGATE_WORK",
+      "id": "NEX-PRD39-PLAN-FR-007",
+      "priority": "MUST",
+      "requirement": "ExecutablePlan은 exact plan_version, parent execution/work refs, plan_step_id, child creation idempotency key를 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.3 WorkIntent, Canonical Plan & DELEGATE_WORK",
+      "id": "NEX-PRD39-PLAN-FR-008",
+      "priority": "MUST",
+      "requirement": "Known/Certified Plan을 사용하더라도 current capability/status/policy validation을 우회해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "11/30"
+    },
+    {
+      "section": "4.3 WorkIntent, Canonical Plan & DELEGATE_WORK",
+      "id": "NEX-PRD39-PLAN-FR-009",
+      "priority": "SHOULD",
+      "requirement": "CX/MO를 사용한 risk analysis/evidence enrichment 결과는 Plan의 optional context로 참조할 수 있으나 Stable ID/authority/actual assignee를 결정해서는 안 된다.",
+      "verification": "Boundary Test",
+      "parent": "27/28/31"
+    },
+    {
+      "section": "4.4 WC Parent/Child Creation, Routing & Assignment",
+      "id": "NEX-PRD39-WC-FR-001",
+      "priority": "MUST",
+      "requirement": "DELEGATE_WORK 실행은 WC canonical WORKITEM.CREATE_CHILD command로 변환되어야 한다.",
+      "verification": "Integration Test",
+      "parent": "12/14/31"
+    },
+    {
+      "section": "4.4 WC Parent/Child Creation, Routing & Assignment",
+      "id": "NEX-PRD39-WC-FR-002",
+      "priority": "MUST",
+      "requirement": "Child WorkItem은 parent_work_item_id, parent_execution_id, parent_plan_step_id causation을 보존해야 한다.",
+      "verification": "Trace Test",
+      "parent": "14/31"
+    },
+    {
+      "section": "4.4 WC Parent/Child Creation, Routing & Assignment",
+      "id": "NEX-PRD39-WC-FR-003",
+      "priority": "MUST",
+      "requirement": "Child creation은 stable business idempotency key를 사용하여 retry 시 duplicate child가 생성되지 않아야 한다.",
+      "verification": "Fault Test",
+      "parent": "14/32"
+    },
+    {
+      "section": "4.4 WC Parent/Child Creation, Routing & Assignment",
+      "id": "NEX-PRD39-WC-FR-004",
+      "priority": "MUST",
+      "requirement": "Child WorkItem은 required_capability, required_result_contract, org/project scope, priority/due context를 명시할 수 있어야 한다.",
+      "verification": "Schema Test",
+      "parent": "14"
+    },
+    {
+      "section": "4.4 WC Parent/Child Creation, Routing & Assignment",
+      "id": "NEX-PRD39-WC-FR-005",
+      "priority": "MUST",
+      "requirement": "WC Routing Resolver는 capability ownership/eligibility와 org/project scope를 사용해 candidate pool을 결정해야 한다.",
+      "verification": "Routing Test",
+      "parent": "14/26"
+    },
+    {
+      "section": "4.4 WC Parent/Child Creation, Routing & Assignment",
+      "id": "NEX-PRD39-WC-FR-006",
+      "priority": "MUST",
+      "requirement": "Client/LLM supplied assignee/role을 authority로 신뢰해서는 안 되고 actual assignment는 WC policy/server-side resolver가 결정해야 한다.",
+      "verification": "Adversarial Test",
+      "parent": "14/26"
+    },
+    {
+      "section": "4.4 WC Parent/Child Creation, Routing & Assignment",
+      "id": "NEX-PRD39-WC-FR-007",
+      "priority": "MUST",
+      "requirement": "Unroutable Child는 명시적 UNROUTABLE/BLOCKED 상태와 reason evidence를 가져야 하며 임의 default assignee에 할당되어서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "14/30"
+    },
+    {
+      "section": "4.4 WC Parent/Child Creation, Routing & Assignment",
+      "id": "NEX-PRD39-WC-FR-008",
+      "priority": "MUST",
+      "requirement": "Parent는 Child state/result를 projection으로 조회할 수 있으나 Child state를 직접 overwrite해서는 안 된다.",
+      "verification": "SoR Test",
+      "parent": "14"
+    },
+    {
+      "section": "4.4 WC Parent/Child Creation, Routing & Assignment",
+      "id": "NEX-PRD39-WC-FR-009",
+      "priority": "MUST",
+      "requirement": "Child assignment/routing decision은 policy_version/candidate evidence를 audit 가능하게 보존해야 한다.",
+      "verification": "Audit Test",
+      "parent": "14/30"
+    },
+    {
+      "section": "4.4 WC Parent/Child Creation, Routing & Assignment",
+      "id": "NEX-PRD39-WC-FR-010",
+      "priority": "SHOULD",
+      "requirement": "동일 business object/operation에 이미 open Child WorkItem이 있는 경우 duplicate policy로 기존 work 연결 또는 명시적 중복 허용을 결정할 수 있어야 한다.",
+      "verification": "Duplicate Policy",
+      "parent": "14"
+    },
+    {
+      "section": "4.5 Parent WAITING_DEPENDENCY, Checkpoint & Worker Release",
+      "id": "NEX-PRD39-WAIT-FR-001",
+      "priority": "MUST",
+      "requirement": "Child creation response를 받은 Parent Runtime은 child result가 필요한 경우 WAITING_DEPENDENCY로 전환해야 한다.",
+      "verification": "Runtime Test",
+      "parent": "11/12/14"
+    },
+    {
+      "section": "4.5 Parent WAITING_DEPENDENCY, Checkpoint & Worker Release",
+      "id": "NEX-PRD39-WAIT-FR-002",
+      "priority": "MUST",
+      "requirement": "Parent suspend transaction은 checkpoint + execution_wait + WAITING_DEPENDENCY + trace/outbox를 durable하게 기록해야 한다.",
+      "verification": "Transaction Test",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.5 Parent WAITING_DEPENDENCY, Checkpoint & Worker Release",
+      "id": "NEX-PRD39-WAIT-FR-003",
+      "priority": "MUST",
+      "requirement": "Checkpoint는 executable plan/version, current/next step, child_work_item_ref, wait condition, completed outputs, stable refs를 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.5 Parent WAITING_DEPENDENCY, Checkpoint & Worker Release",
+      "id": "NEX-PRD39-WAIT-FR-004",
+      "priority": "MUST",
+      "requirement": "Checkpoint는 long-lived user access/refresh token이나 영구 authority grant를 저장해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "12/26"
+    },
+    {
+      "section": "4.5 Parent WAITING_DEPENDENCY, Checkpoint & Worker Release",
+      "id": "NEX-PRD39-WAIT-FR-005",
+      "priority": "MUST",
+      "requirement": "WAITING_DEPENDENCY 전환 후 Parent worker는 release되어야 하며 Child 결과를 polling하며 장시간 점유해서는 안 된다.",
+      "verification": "Worker Test",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.5 Parent WAITING_DEPENDENCY, Checkpoint & Worker Release",
+      "id": "NEX-PRD39-WAIT-FR-006",
+      "priority": "MUST",
+      "requirement": "execution_wait는 expected WORK_RESULT_SUBMITTED와 child_work_item_id/result contract를 stable condition으로 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "12/14"
+    },
+    {
+      "section": "4.5 Parent WAITING_DEPENDENCY, Checkpoint & Worker Release",
+      "id": "NEX-PRD39-WAIT-FR-007",
+      "priority": "MUST",
+      "requirement": "동일 parent execution/child dependency에 active wait/resume가 중복 생성되지 않도록 uniqueness/dedup key를 가져야 한다.",
+      "verification": "Concurrency Test",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.5 Parent WAITING_DEPENDENCY, Checkpoint & Worker Release",
+      "id": "NEX-PRD39-WAIT-FR-008",
+      "priority": "SHOULD",
+      "requirement": "WAITING_DEPENDENCY 상태와 child progress는 AE Workspace에서 user-safe projection으로 표시할 수 있어야 한다.",
+      "verification": "UX Test",
+      "parent": "29/14"
+    },
+    {
+      "section": "4.6 Background Coworker Claim, Lease & Execution",
+      "id": "NEX-PRD39-CLM-FR-001",
+      "priority": "MUST",
+      "requirement": "Assigned/eligible Procurement Child Work는 atomic claim/lease를 통해 하나의 active claimant만 획득해야 한다.",
+      "verification": "Concurrency Test",
+      "parent": "14/32"
+    },
+    {
+      "section": "4.6 Background Coworker Claim, Lease & Execution",
+      "id": "NEX-PRD39-CLM-FR-002",
+      "priority": "MUST",
+      "requirement": "WC WorkClaim lease와 AE service Job lease는 서로 다른 identity/metric으로 추적되어야 한다.",
+      "verification": "Trace Test",
+      "parent": "14/32"
+    },
+    {
+      "section": "4.6 Background Coworker Claim, Lease & Execution",
+      "id": "NEX-PRD39-CLM-FR-003",
+      "priority": "MUST",
+      "requirement": "Child background execution은 employee browser token을 재사용하지 않고 AE service principal + employee/coworker-bound current execution authority를 사용해야 한다.",
+      "verification": "Security E2E",
+      "parent": "12/26"
+    },
+    {
+      "section": "4.6 Background Coworker Claim, Lease & Execution",
+      "id": "NEX-PRD39-CLM-FR-004",
+      "priority": "MUST",
+      "requirement": "Worker claim 성공 시 actual coworker_ref/worker/claim refs를 WorkAssignment/Execution/Audit에 연결할 수 있어야 한다.",
+      "verification": "Trace Test",
+      "parent": "14/31"
+    },
+    {
+      "section": "4.6 Background Coworker Claim, Lease & Execution",
+      "id": "NEX-PRD39-CLM-FR-005",
+      "priority": "MUST",
+      "requirement": "Worker crash/lease expiry 후 reclaim이 가능해야 하며 stale worker completion은 current lease token/version 검사로 거부되어야 한다.",
+      "verification": "Fault Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.6 Background Coworker Claim, Lease & Execution",
+      "id": "NEX-PRD39-CLM-FR-006",
+      "priority": "MUST",
+      "requirement": "Claim reclaim은 이미 발생했을 수 있는 business effect를 재실행할 권한을 의미하지 않으며 stable idempotency/commit state를 따라야 한다.",
+      "verification": "Idempotency Fault",
+      "parent": "17/32"
+    },
+    {
+      "section": "4.6 Background Coworker Claim, Lease & Execution",
+      "id": "NEX-PRD39-CLM-FR-007",
+      "priority": "MUST",
+      "requirement": "Background execution 시작 시 WorkItem state/claim state와 AgentExecution state를 각각 owner service에서 독립 추적해야 한다.",
+      "verification": "State Test",
+      "parent": "11/14"
+    },
+    {
+      "section": "4.6 Background Coworker Claim, Lease & Execution",
+      "id": "NEX-PRD39-CLM-FR-008",
+      "priority": "MUST",
+      "requirement": "Child execution의 queue/worker error는 retry classification에 따라 RETRY_WITH_BACKOFF/DO_NOT_RETRY/RECONCILE_FIRST/REPLAN_OR_ESCALATE 중 명시적 결정을 가져야 한다.",
+      "verification": "Fault Classification",
+      "parent": "32"
+    },
+    {
+      "section": "4.6 Background Coworker Claim, Lease & Execution",
+      "id": "NEX-PRD39-CLM-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Procurement Child workload는 interactive/resume workload와 capacity isolation 또는 reserved concurrency를 가질 수 있어야 한다.",
+      "verification": "Load Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.7 OA Current Authority & Security Boundary",
+      "id": "NEX-PRD39-OA-FR-001",
+      "priority": "MUST",
+      "requirement": "Child execution 시작 전 OA는 Principal/Service Principal, Business Actor/Coworker, RoleBinding, Org Scope, Project Scope, Data Classification, capability/risk/kill switch를 current 기준으로 평가해야 한다.",
+      "verification": "Security Golden",
+      "parent": "26/30/31"
+    },
+    {
+      "section": "4.7 OA Current Authority & Security Boundary",
+      "id": "NEX-PRD39-OA-FR-002",
+      "priority": "MUST",
+      "requirement": "Background execution EAC는 short-lived/server-built이고 child work/capability/scope에 bound되어야 한다.",
+      "verification": "Security Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.7 OA Current Authority & Security Boundary",
+      "id": "NEX-PRD39-OA-FR-003",
+      "priority": "MUST",
+      "requirement": "Client/LLM가 제공한 role/scope/clearance를 current authority source로 사용해서는 안 된다.",
+      "verification": "Adversarial Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.7 OA Current Authority & Security Boundary",
+      "id": "NEX-PRD39-OA-FR-004",
+      "priority": "MUST",
+      "requirement": "RoleBinding revoke/expire, employee suspension, project assignment change는 신규 Child execution 또는 protected step에 반영되어야 한다.",
+      "verification": "Lifecycle Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.7 OA Current Authority & Security Boundary",
+      "id": "NEX-PRD39-OA-FR-005",
+      "priority": "MUST",
+      "requirement": "R3+ side effect가 존재하는 Child step은 invoke 직전 current PDP/gate/kill switch/idempotency를 재검증해야 한다.",
+      "verification": "Security/Fault",
+      "parent": "12/17/26"
+    },
+    {
+      "section": "4.7 OA Current Authority & Security Boundary",
+      "id": "NEX-PRD39-OA-FR-006",
+      "priority": "MUST",
+      "requirement": "OA/PDP unavailable 또는 authority ambiguity 시 protected execution은 fail-closed해야 한다.",
+      "verification": "Fault Test",
+      "parent": "26/32"
+    },
+    {
+      "section": "4.7 OA Current Authority & Security Boundary",
+      "id": "NEX-PRD39-OA-FR-007",
+      "priority": "MUST",
+      "requirement": "Authorization denial은 WorkResult success로 위장되지 않고 BLOCKED/ESCALATED/REPLAN policy로 처리되어야 한다.",
+      "verification": "State Test",
+      "parent": "11/14"
+    },
+    {
+      "section": "4.7 OA Current Authority & Security Boundary",
+      "id": "NEX-PRD39-OA-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Read-only analysis child step은 policy가 허용하는 범위에서 reduced capability로 계속할 수 있으나 unauthorized data access는 허용하지 않아야 한다.",
+      "verification": "Policy Test",
+      "parent": "26/27"
+    },
+    {
+      "section": "4.8 NSL / Canonical Capability & Child WorkResult",
+      "id": "NEX-PRD39-RES-FR-001",
+      "priority": "MUST",
+      "requirement": "Child ExecutablePlan의 LOCAL_SKILL step은 exact CertifiedSkillVersion으로 compile되어야 하며 arbitrary NSL source/latest resolution을 실행하지 않아야 한다.",
+      "verification": "NSL Contract",
+      "parent": "12/17"
+    },
+    {
+      "section": "4.8 NSL / Canonical Capability & Child WorkResult",
+      "id": "NEX-PRD39-RES-FR-002",
+      "priority": "MUST",
+      "requirement": "NSL ExecutionContext는 exact skill/version, execution/work/step refs, authority/scope refs, typed inputs, idempotency key를 받아야 한다.",
+      "verification": "Schema Test",
+      "parent": "17/29"
+    },
+    {
+      "section": "4.8 NSL / Canonical Capability & Child WorkResult",
+      "id": "NEX-PRD39-RES-FR-003",
+      "priority": "MUST",
+      "requirement": "NSL Runtime preflight는 signature/hash/runtime compatibility/current capability contract/current PDP를 다시 검증해야 한다.",
+      "verification": "Security Test",
+      "parent": "17/30"
+    },
+    {
+      "section": "4.8 NSL / Canonical Capability & Child WorkResult",
+      "id": "NEX-PRD39-RES-FR-004",
+      "priority": "MUST",
+      "requirement": "Child business effect가 존재하면 COMMITTED/NOT_COMMITTED/UNKNOWN_COMMIT_STATE를 구분하고 UNKNOWN은 success/report/blind retry를 금지해야 한다.",
+      "verification": "Reliability Test",
+      "parent": "17/32"
+    },
+    {
+      "section": "4.8 NSL / Canonical Capability & Child WorkResult",
+      "id": "NEX-PRD39-RES-FR-005",
+      "priority": "MUST",
+      "requirement": "Child result는 required_result_contract schema를 만족하는 Structured WorkResult를 생성해야 한다.",
+      "verification": "Contract Test",
+      "parent": "14/31"
+    },
+    {
+      "section": "4.8 NSL / Canonical Capability & Child WorkResult",
+      "id": "NEX-PRD39-RES-FR-006",
+      "priority": "MUST",
+      "requirement": "WorkResult에는 최소 status, summary/structured data, business_refs, artifact/evidence refs, execution/skill refs, correlation refs를 포함할 수 있어야 한다.",
+      "verification": "Schema Test",
+      "parent": "14/23"
+    },
+    {
+      "section": "4.8 NSL / Canonical Capability & Child WorkResult",
+      "id": "NEX-PRD39-RES-FR-007",
+      "priority": "MUST",
+      "requirement": "Invalid/missing required result schema는 WORK_RESULT_SUBMITTED를 Parent continuation에 유효한 성공 결과로 사용하지 못하게 해야 한다.",
+      "verification": "Negative Contract",
+      "parent": "14/31/33"
+    },
+    {
+      "section": "4.8 NSL / Canonical Capability & Child WorkResult",
+      "id": "NEX-PRD39-RES-FR-008",
+      "priority": "MUST",
+      "requirement": "Result formatting LLM이 authoritative business value/status를 임의 재계산하거나 변경해서는 안 된다.",
+      "verification": "Deterministic Rendering",
+      "parent": "29/31"
+    },
+    {
+      "section": "4.8 NSL / Canonical Capability & Child WorkResult",
+      "id": "NEX-PRD39-RES-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Child가 CX evidence를 사용했다면 Evidence Bundle/Citation refs를 result provenance로 유지할 수 있어야 한다.",
+      "verification": "Trace Test",
+      "parent": "27/29"
+    },
+    {
+      "section": "4.9 WORK_RESULT_SUBMITTED Event, Dedup & Resume Scheduling",
+      "id": "NEX-PRD39-EVT-FR-001",
+      "priority": "MUST",
+      "requirement": "Child WorkResult 제출은 WC canonical result submit command를 사용하며 result version/history를 overwrite보다 append/version 방식으로 보존해야 한다.",
+      "verification": "WC Integration",
+      "parent": "14"
+    },
+    {
+      "section": "4.9 WORK_RESULT_SUBMITTED Event, Dedup & Resume Scheduling",
+      "id": "NEX-PRD39-EVT-FR-002",
+      "priority": "MUST",
+      "requirement": "WORK_RESULT_SUBMITTED canonical event는 stable event_id, child_work_item_id, result_ref/version, parent causation, correlation/causation refs를 가져야 한다.",
+      "verification": "Event Contract",
+      "parent": "14/31"
+    },
+    {
+      "section": "4.9 WORK_RESULT_SUBMITTED Event, Dedup & Resume Scheduling",
+      "id": "NEX-PRD39-EVT-FR-003",
+      "priority": "MUST",
+      "requirement": "WC result commit과 event outbox 기록은 가능한 범위에서 동일 local transaction 또는 recovery-safe boundary를 사용해야 한다.",
+      "verification": "Transaction Test",
+      "parent": "14/32"
+    },
+    {
+      "section": "4.9 WORK_RESULT_SUBMITTED Event, Dedup & Resume Scheduling",
+      "id": "NEX-PRD39-EVT-FR-004",
+      "priority": "MUST",
+      "requirement": "AE event inbox는 event_id를 idempotently insert/dedup하여 duplicate delivery가 여러 Parent resume를 만들지 않게 해야 한다.",
+      "verification": "Fault/DB",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.9 WORK_RESULT_SUBMITTED Event, Dedup & Resume Scheduling",
+      "id": "NEX-PRD39-EVT-FR-005",
+      "priority": "MUST",
+      "requirement": "Event 처리 시 expected child/result contract와 current execution_wait가 일치하는지 검증해야 한다.",
+      "verification": "Contract Test",
+      "parent": "12/14"
+    },
+    {
+      "section": "4.9 WORK_RESULT_SUBMITTED Event, Dedup & Resume Scheduling",
+      "id": "NEX-PRD39-EVT-FR-006",
+      "priority": "MUST",
+      "requirement": "Out-of-order event가 wait 생성보다 먼저 도착해도 inbox가 이를 durable하게 보존하여 lost wake-up이 없어야 한다.",
+      "verification": "Race Test",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.9 WORK_RESULT_SUBMITTED Event, Dedup & Resume Scheduling",
+      "id": "NEX-PRD39-EVT-FR-007",
+      "priority": "MUST",
+      "requirement": "matching event 처리 + wait SATISFIED + resume job enqueue는 duplicate resume를 막는 transactional boundary를 가져야 한다.",
+      "verification": "Concurrency Test",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.9 WORK_RESULT_SUBMITTED Event, Dedup & Resume Scheduling",
+      "id": "NEX-PRD39-EVT-FR-008",
+      "priority": "MUST",
+      "requirement": "Child Result가 revision/rejected/cancelled 상태이면 Parent continuation policy가 success aggregate로 오해하지 않아야 한다.",
+      "verification": "State Test",
+      "parent": "14"
+    },
+    {
+      "section": "4.9 WORK_RESULT_SUBMITTED Event, Dedup & Resume Scheduling",
+      "id": "NEX-PRD39-EVT-FR-009",
+      "priority": "MUST",
+      "requirement": "Duplicate result submit 자체도 business/result idempotency policy에 따라 duplicate version/side effect를 만들지 않아야 한다.",
+      "verification": "Fault Test",
+      "parent": "14/32"
+    },
+    {
+      "section": "4.9 WORK_RESULT_SUBMITTED Event, Dedup & Resume Scheduling",
+      "id": "NEX-PRD39-EVT-FR-010",
+      "priority": "SHOULD",
+      "requirement": "Event delivery latency/dedup count/resume enqueue latency를 운영 metric으로 제공할 수 있어야 한다.",
+      "verification": "Monitoring",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.10 Parent Resume, Aggregate, Human Review & Closure",
+      "id": "NEX-PRD39-PAR-FR-001",
+      "priority": "MUST",
+      "requirement": "Parent Resume Job은 checkpoint/executable plan/result refs를 복원하고 과거 user token을 재사용하지 않아야 한다.",
+      "verification": "Resume Test",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.10 Parent Resume, Aggregate, Human Review & Closure",
+      "id": "NEX-PRD39-PAR-FR-002",
+      "priority": "MUST",
+      "requirement": "Parent Resume 전 OA current reauthorization을 수행하여 RoleBinding/Policy/Capability/Skill/KillSwitch 변화가 continuation에 반영되어야 한다.",
+      "verification": "Security Golden",
+      "parent": "26/32"
+    },
+    {
+      "section": "4.10 Parent Resume, Aggregate, Human Review & Closure",
+      "id": "NEX-PRD39-PAR-FR-003",
+      "priority": "MUST",
+      "requirement": "Current reauthorization이 deny되면 Child의 historical result는 보존하되 Parent는 BLOCKED/REPLAN/ESCALATE해야 하며 unauthorized downstream side effect를 실행해서는 안 된다.",
+      "verification": "Security Fault",
+      "parent": "26/32"
+    },
+    {
+      "section": "4.10 Parent Resume, Aggregate, Human Review & Closure",
+      "id": "NEX-PRD39-PAR-FR-004",
+      "priority": "MUST",
+      "requirement": "Parent는 required result schema와 business/evidence refs를 validation한 후에만 downstream aggregate step을 실행해야 한다.",
+      "verification": "Integration Test",
+      "parent": "12/14"
+    },
+    {
+      "section": "4.10 Parent Resume, Aggregate, Human Review & Closure",
+      "id": "NEX-PRD39-PAR-FR-005",
+      "priority": "MUST",
+      "requirement": "Aggregate step은 Child result를 요약/결합하되 authoritative status/value를 임의 변경하지 않아야 한다.",
+      "verification": "Deterministic Test",
+      "parent": "11/29"
+    },
+    {
+      "section": "4.10 Parent Resume, Aggregate, Human Review & Closure",
+      "id": "NEX-PRD39-PAR-FR-006",
+      "priority": "MUST",
+      "requirement": "Parent AgentExecution SUCCEEDED와 Parent WorkItem RESULT_SUBMITTED/CLOSED는 분리되어야 하며 closure authority는 WC policy가 결정해야 한다.",
+      "verification": "State/Closure Test",
+      "parent": "14/31"
+    },
+    {
+      "section": "4.10 Parent Resume, Aggregate, Human Review & Closure",
+      "id": "NEX-PRD39-PAR-FR-007",
+      "priority": "MUST",
+      "requirement": "Human Review가 필요한 경우 AE Workspace는 Parent/Child result refs, evidence, business refs, unresolved caveat를 표시해야 한다.",
+      "verification": "UX E2E",
+      "parent": "29/31"
+    },
+    {
+      "section": "4.10 Parent Resume, Aggregate, Human Review & Closure",
+      "id": "NEX-PRD39-PAR-FR-008",
+      "priority": "MUST",
+      "requirement": "Revision 요청 시 기존 Parent/Child Result history를 보존하고 explicit WorkRevisionRequest 또는 follow-up work path를 사용해야 한다.",
+      "verification": "Revision Test",
+      "parent": "14"
+    },
+    {
+      "section": "4.10 Parent Resume, Aggregate, Human Review & Closure",
+      "id": "NEX-PRD39-PAR-FR-009",
+      "priority": "MUST",
+      "requirement": "Work closure action은 current authenticated authority와 closure policy를 적용하고 Agent completion만으로 자동 추론하지 않아야 한다.",
+      "verification": "Security/State",
+      "parent": "14/26"
+    },
+    {
+      "section": "4.10 Parent Resume, Aggregate, Human Review & Closure",
+      "id": "NEX-PRD39-PAR-FR-010",
+      "priority": "SHOULD",
+      "requirement": "Human Review 이후 follow-up action은 기존 CLOSED WorkItem reopen보다 FOLLOW_UP WorkItem으로 생성할 수 있어야 한다.",
+      "verification": "Lifecycle Test",
+      "parent": "14"
+    },
+    {
+      "section": "4.11 NeX-WA Work Activity / Timeline Projection",
+      "id": "NEX-PRD39-WA-FR-001",
+      "priority": "MUST",
+      "requirement": "NeX-WA는 Parent/Child WorkItem refs, AgentExecution/PlanStep/Skill refs, actor/coworker/project refs를 가진 WorkActivity event/projection을 저장해야 한다.",
+      "verification": "WA Integration",
+      "parent": "22/31/33"
+    },
+    {
+      "section": "4.11 NeX-WA Work Activity / Timeline Projection",
+      "id": "NEX-PRD39-WA-FR-002",
+      "priority": "MUST",
+      "requirement": "WA는 execution start/wait/resume/skill/result/review 등 activity type과 timestamp/timeline을 추적 가능하게 저장해야 한다.",
+      "verification": "Schema Test",
+      "parent": "22"
+    },
+    {
+      "section": "4.11 NeX-WA Work Activity / Timeline Projection",
+      "id": "NEX-PRD39-WA-FR-003",
+      "priority": "MUST",
+      "requirement": "WA ingestion은 at-least-once/duplicate delivery에 대해 event/ref idempotency를 가져야 한다.",
+      "verification": "Fault Test",
+      "parent": "22/32"
+    },
+    {
+      "section": "4.11 NeX-WA Work Activity / Timeline Projection",
+      "id": "NEX-PRD39-WA-FR-004",
+      "priority": "MUST",
+      "requirement": "WA projection 실패/지연은 Golden B business flow의 commit/result/resume를 block해서는 안 된다.",
+      "verification": "Failure Isolation",
+      "parent": "22/31"
+    },
+    {
+      "section": "4.11 NeX-WA Work Activity / Timeline Projection",
+      "id": "NEX-PRD39-WA-FR-005",
+      "priority": "MUST",
+      "requirement": "WA lag가 발생하면 source event/evidence를 기반으로 missing activity를 detect/rebuild할 수 있어야 한다.",
+      "verification": "Recovery Test",
+      "parent": "22/32/34"
+    },
+    {
+      "section": "4.11 NeX-WA Work Activity / Timeline Projection",
+      "id": "NEX-PRD39-WA-FR-006",
+      "priority": "MUST",
+      "requirement": "WA는 WC WorkItem state, AE AgentExecution state, NSL execution evidence, EOS business state를 authoritative value로 overwrite해서는 안 된다.",
+      "verification": "SoR Test",
+      "parent": "22/31"
+    },
+    {
+      "section": "4.11 NeX-WA Work Activity / Timeline Projection",
+      "id": "NEX-PRD39-WA-FR-007",
+      "priority": "MUST",
+      "requirement": "Periodic reporting은 reportable WorkActivity/WorkResult/Evidence만 사용하고 source refs를 보존해야 한다.",
+      "verification": "Reporting E2E",
+      "parent": "22/29/31"
+    },
+    {
+      "section": "4.11 NeX-WA Work Activity / Timeline Projection",
+      "id": "NEX-PRD39-WA-FR-008",
+      "priority": "MUST",
+      "requirement": "WA Activity는 correlation_id/causation_id/work_item/execution refs를 통해 Golden B 전체 trace와 연결되어야 한다.",
+      "verification": "Trace Test",
+      "parent": "22/23/31"
+    },
+    {
+      "section": "4.11 NeX-WA Work Activity / Timeline Projection",
+      "id": "NEX-PRD39-WA-FR-009",
+      "priority": "SHOULD",
+      "requirement": "운영자는 activity projection lag/backlog/rebuild status를 AG에서 관찰할 수 있어야 한다.",
+      "verification": "Monitoring",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.12 Optional CX/MO Intelligence & External A2A Boundary",
+      "id": "NEX-PRD39-OPT-FR-001",
+      "priority": "MUST",
+      "requirement": "Golden B core pass는 CX availability를 필수조건으로 두지 않아야 하며, 비정형 근거가 필요한 Plan/Child step에서만 permission-aware Evidence retrieval을 사용할 수 있어야 한다.",
+      "verification": "Degraded E2E",
+      "parent": "27/31/33"
+    },
+    {
+      "section": "4.12 Optional CX/MO Intelligence & External A2A Boundary",
+      "id": "NEX-PRD39-OPT-FR-002",
+      "priority": "MUST",
+      "requirement": "CX를 사용할 경우 BM25/pgvector/1-Hop Graph-lite 결과는 current OA scope/data classification filter와 Evidence Bundle provenance를 따라야 한다.",
+      "verification": "Security/Evidence",
+      "parent": "27"
+    },
+    {
+      "section": "4.12 Optional CX/MO Intelligence & External A2A Boundary",
+      "id": "NEX-PRD39-OPT-FR-003",
+      "priority": "MUST",
+      "requirement": "MO는 structured intent/plan/expert reasoning을 제공할 수 있으나 actual assignment/authority/business completion을 결정해서는 안 된다.",
+      "verification": "Boundary Test",
+      "parent": "28/31"
+    },
+    {
+      "section": "4.12 Optional CX/MO Intelligence & External A2A Boundary",
+      "id": "NEX-PRD39-OPT-FR-004",
+      "priority": "MUST",
+      "requirement": "MO unavailable 시 deterministic known plan/routing이 가능한 경로는 명시적 degraded policy에 따라 계속할 수 있고, 불가능하면 typed failure를 반환해야 한다.",
+      "verification": "Fault Test",
+      "parent": "28/32"
+    },
+    {
+      "section": "4.12 Optional CX/MO Intelligence & External A2A Boundary",
+      "id": "NEX-PRD39-OPT-FR-005",
+      "priority": "MUST",
+      "requirement": "Internal Coworker collaboration은 WC WorkItem이 기본이며 A2A는 external/independent agent adapter에만 사용해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "00/08/14"
+    },
+    {
+      "section": "4.12 Optional CX/MO Intelligence & External A2A Boundary",
+      "id": "NEX-PRD39-OPT-FR-006",
+      "priority": "SHOULD",
+      "requirement": "A2A external variant를 추가하더라도 external task/result는 Parent WorkItem SoR와 correlation chain에 subordinate되어야 한다.",
+      "verification": "Integration Test",
+      "parent": "08/14/31"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD39-NFR-001",
+      "priority": "MUST",
+      "requirement": "모든 Parent/Child create/route/claim/result/resume/close action은 authenticated principal/effective authority와 audit trace를 가져야 한다.",
+      "verification": "Security E2E",
+      "parent": "09/26/14"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD39-NFR-002",
+      "priority": "MUST",
+      "requirement": "Raw secret/token/credential은 WorkItem/Result/Activity/Timeline/notification에 저장되어서는 안 된다.",
+      "verification": "Security Scan",
+      "parent": "26/14/22"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD39-NFR-003",
+      "priority": "MUST",
+      "requirement": "Golden B는 10+ concurrent child claim worker race에서 동일 WorkItem active claim이 하나임을 검증해야 한다.",
+      "verification": "Concurrency Test",
+      "parent": "14/32/33"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD39-NFR-004",
+      "priority": "MUST",
+      "requirement": "Worker crash/reclaim, duplicate child/result/event, event-before-wait, role/skill revoke, bad result, WA lag를 mandatory fault suite로 유지해야 한다.",
+      "verification": "Fault Injection",
+      "parent": "31/32/33"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD39-NFR-005",
+      "priority": "MUST",
+      "requirement": "User-facing projection/cache가 WC/AE/OA current state와 충돌하면 authoritative source를 재조회해야 한다.",
+      "verification": "Fault/UI",
+      "parent": "29/31"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD39-NFR-006",
+      "priority": "MUST",
+      "requirement": "Golden B trace는 trigger→intent/plan→parent/child→claim/execution→skill/result→event→resume→WA→review/closure를 correlation chain으로 재구성할 수 있어야 한다.",
+      "verification": "Trace Acceptance",
+      "parent": "23/31/33"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD39-NFR-007",
+      "priority": "MUST",
+      "requirement": "변경 코드 statement coverage 목표 95% 이상, branch coverage 목표 85% 이상을 적용해야 한다.",
+      "verification": "Coverage",
+      "parent": "Project Quality"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD39-NFR-008",
+      "priority": "MUST",
+      "requirement": "PostgreSQL integration tests는 isolated/reset test DB에서 수행해야 한다.",
+      "verification": "pytest",
+      "parent": "Project Quality"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD39-NFR-009",
+      "priority": "MUST",
+      "requirement": "AE Workspace Parent/Child progress/result/review는 Playwright E2E로 검증해야 한다.",
+      "verification": "Playwright",
+      "parent": "29/33"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD39-NFR-010",
+      "priority": "MUST",
+      "requirement": "Critical Security/Reliability/Golden B test 실패는 release blocker이며 flaky quarantine/waiver로 우회해서는 안 된다.",
+      "verification": "Release Gate",
+      "parent": "33/34"
+    },
+    {
+      "section": "5. Non-Functional / Test / Release Requirements",
+      "id": "NEX-PRD39-NFR-011",
+      "priority": "SHOULD",
+      "requirement": "Golden B p95 child route/claim/resume latency와 WA projection lag baseline을 측정하여 후속 SLA에 사용해야 한다.",
+      "verification": "Performance Baseline",
+      "parent": "32/33"
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "T39-01",
+      "area": "Repository Evidence",
+      "deliverable": "Touched existing components의 repo/branch/commit/schema/API/test evidence 수집",
+      "depends": "36 INC-0",
+      "evidence": "evidence manifest"
+    },
+    {
+      "task_id": "T39-02",
+      "area": "Golden Fixture",
+      "deliverable": "Manufacturing risk/Parent/Procurement capability/result schema synthetic fixture",
+      "depends": "T39-01 logical-only allowed",
+      "evidence": "fixture JSON"
+    },
+    {
+      "task_id": "T39-03",
+      "area": "Intent / Plan",
+      "deliverable": "WorkIntent + DELEGATE_WORK Canonical AgentPlan fixture",
+      "depends": "11/12",
+      "evidence": "schema + unit"
+    },
+    {
+      "task_id": "T39-04",
+      "area": "Plan Compiler",
+      "deliverable": "DELEGATE_WORK → immutable ExecutablePlan/WC routing contract",
+      "depends": "T39-03",
+      "evidence": "compiler test"
+    },
+    {
+      "task_id": "T39-05",
+      "area": "Parent Work",
+      "deliverable": "WC Parent create/select idempotency + causation",
+      "depends": "14",
+      "evidence": "integration"
+    },
+    {
+      "task_id": "T39-06",
+      "area": "Child Work",
+      "deliverable": "WORKITEM.CREATE_CHILD + required capability/result contract",
+      "depends": "T39-04/05",
+      "evidence": "contract + DB"
+    },
+    {
+      "task_id": "T39-07",
+      "area": "Routing",
+      "deliverable": "Eligibility/assignment resolver; no LLM assignee",
+      "depends": "T39-06",
+      "evidence": "routing tests"
+    },
+    {
+      "task_id": "T39-08",
+      "area": "Parent Suspend",
+      "deliverable": "WAITING_DEPENDENCY checkpoint + execution_wait + worker release",
+      "depends": "T39-06",
+      "evidence": "runtime/fault"
+    },
+    {
+      "task_id": "T39-09",
+      "area": "Claim / Lease",
+      "deliverable": "WC WorkClaim + service Job claim/lease distinction",
+      "depends": "T39-07",
+      "evidence": "concurrency"
+    },
+    {
+      "task_id": "T39-10",
+      "area": "Background Context",
+      "deliverable": "Service principal + employee/coworker-bound current authority",
+      "depends": "T39-09",
+      "evidence": "security E2E"
+    },
+    {
+      "task_id": "T39-11",
+      "area": "OA Adapter",
+      "deliverable": "Child current EAC/PDP + scope/classification/kill switch",
+      "depends": "T39-10",
+      "evidence": "authorization tests"
+    },
+    {
+      "task_id": "T39-12",
+      "area": "NSL Adapter",
+      "deliverable": "Exact CertifiedSkillVersion / ExecutionContext / preflight",
+      "depends": "T39-11",
+      "evidence": "NSL integration"
+    },
+    {
+      "task_id": "T39-13",
+      "area": "Child Result",
+      "deliverable": "required result schema + business/evidence/trace refs",
+      "depends": "T39-12",
+      "evidence": "contract tests"
+    },
+    {
+      "task_id": "T39-14",
+      "area": "WC Result/Event",
+      "deliverable": "Versioned Result + WORK_RESULT_SUBMITTED outbox",
+      "depends": "T39-13",
+      "evidence": "transaction/event"
+    },
+    {
+      "task_id": "T39-15",
+      "area": "Event Inbox",
+      "deliverable": "event_id dedup + event-before-wait buffering + wait match",
+      "depends": "T39-14",
+      "evidence": "fault/concurrency"
+    },
+    {
+      "task_id": "T39-16",
+      "area": "Parent Resume",
+      "deliverable": "one resume job + checkpoint restore + current OA reauth",
+      "depends": "T39-15",
+      "evidence": "resume/security"
+    },
+    {
+      "task_id": "T39-17",
+      "area": "Aggregate",
+      "deliverable": "result validation + deterministic aggregate + caveat propagation",
+      "depends": "T39-16",
+      "evidence": "unit/E2E"
+    },
+    {
+      "task_id": "T39-18",
+      "area": "Human Review",
+      "deliverable": "AE Workspace Parent/Child/Result/Evidence review UX",
+      "depends": "T39-17",
+      "evidence": "Playwright"
+    },
+    {
+      "task_id": "T39-19",
+      "area": "Closure / Revision",
+      "deliverable": "WC closure authority + revision/follow-up path",
+      "depends": "T39-18",
+      "evidence": "state tests"
+    },
+    {
+      "task_id": "T39-20",
+      "area": "NeX-WA",
+      "deliverable": "Activity ingestion/projection/timeline + idempotency",
+      "depends": "T39-09~19",
+      "evidence": "WA integration"
+    },
+    {
+      "task_id": "T39-21",
+      "area": "WA Recovery",
+      "deliverable": "projection lag/backlog/missing event detect + rebuild",
+      "depends": "T39-20",
+      "evidence": "recovery test"
+    },
+    {
+      "task_id": "T39-22",
+      "area": "Optional Intelligence",
+      "deliverable": "CX/MO optional evidence/reasoning seam; core degraded path",
+      "depends": "T39-03/12",
+      "evidence": "degraded tests"
+    },
+    {
+      "task_id": "T39-23",
+      "area": "Fault Matrix",
+      "deliverable": "unroutable/duplicate/crash/revoke/bad-result/event-race/WA-lag",
+      "depends": "T39-05~22",
+      "evidence": "fault injection"
+    },
+    {
+      "task_id": "T39-24",
+      "area": "Release Evidence",
+      "deliverable": "Golden normal+fault+trace+95/85+canary/smoke package",
+      "depends": "T39-23",
+      "evidence": "Acceptance Package"
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC39-001",
+      "category": "Business",
+      "condition": "Manufacturing risk/work request가 Parent WorkItem/Execution으로 생성 또는 선택된다.",
+      "evidence": "WC+AE trace",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-002",
+      "category": "Plan",
+      "condition": "AE가 WorkIntent→Canonical AgentPlan→ExecutablePlan 경계를 유지하고 DELEGATE_WORK를 생성한다.",
+      "evidence": "plan schemas",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-003",
+      "category": "Routing",
+      "condition": "Planner가 actual Procurement Coworker를 고정하지 않고 WC policy가 actual assignment를 결정한다.",
+      "evidence": "routing audit",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-004",
+      "category": "Child",
+      "condition": "Child WorkItem이 Parent/execution/plan-step causation과 required capability/result contract를 보존한다.",
+      "evidence": "WC records",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-005",
+      "category": "Idempotency",
+      "condition": "동일 delegate retry가 duplicate Child WorkItem을 생성하지 않는다.",
+      "evidence": "fault test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-006",
+      "category": "Unroutable",
+      "condition": "Eligible candidate가 없으면 명시적 UNROUTABLE/BLOCKED가 되고 임의 assignee로 진행하지 않는다.",
+      "evidence": "negative test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-007",
+      "category": "Wait",
+      "condition": "Parent는 Child 처리 중 WAITING_DEPENDENCY checkpoint를 저장하고 worker를 release한다.",
+      "evidence": "runtime metrics",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-008",
+      "category": "No Polling",
+      "condition": "Parent worker가 Child 결과를 polling/busy-wait하지 않는다.",
+      "evidence": "worker inspection",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-009",
+      "category": "Claim",
+      "condition": "10+ concurrent claimant에서도 동일 Child WorkItem active claim은 하나다.",
+      "evidence": "concurrency test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-010",
+      "category": "Crash/Reclaim",
+      "condition": "Child worker crash/lease expiry 후 reclaim되며 stale completion은 거부된다.",
+      "evidence": "fault evidence",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-011",
+      "category": "Identity",
+      "condition": "Background Coworker는 browser user token을 재사용하지 않고 service principal 기반 current authority를 사용한다.",
+      "evidence": "security trace",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-012",
+      "category": "OA",
+      "condition": "Child execution current authority가 RoleBinding/Org/Project/Data Classification/PDP/KillSwitch를 반영한다.",
+      "evidence": "OA decision evidence",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-013",
+      "category": "Skill",
+      "condition": "LOCAL_SKILL은 exact CertifiedSkillVersion만 실행하고 arbitrary/latest NSL resolution을 하지 않는다.",
+      "evidence": "NSL preflight",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-014",
+      "category": "Result",
+      "condition": "Child WorkResult가 required_result_contract와 business/evidence/trace refs를 만족한다.",
+      "evidence": "schema validation",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-015",
+      "category": "Bad Result",
+      "condition": "잘못된/누락된 Child Result는 Parent aggregate/resume success path를 차단한다.",
+      "evidence": "negative contract",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-016",
+      "category": "Event",
+      "condition": "WORK_RESULT_SUBMITTED event가 stable event_id/result/parent causation을 갖는다.",
+      "evidence": "event payload",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-017",
+      "category": "Dedup",
+      "condition": "동일 result event가 2회 이상 전달되어도 Parent resume는 정확히 1회 생성된다.",
+      "evidence": "event dedup count",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-018",
+      "category": "Race",
+      "condition": "Event가 wait보다 먼저 도착해도 lost wake-up 없이 이후 wait와 match된다.",
+      "evidence": "race fault test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-019",
+      "category": "Resume",
+      "condition": "Parent Resume 전 current OA reauthorization이 수행된다.",
+      "evidence": "OA resume decision",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-020",
+      "category": "Revoke",
+      "condition": "WAIT 중 parent role/skill/capability가 revoke되면 downstream side effect 없이 BLOCK/REPLAN/ESCALATE된다.",
+      "evidence": "security fault",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-021",
+      "category": "Aggregate",
+      "condition": "Parent aggregate는 authoritative Child result를 임의 변경하지 않고 trace refs를 보존한다.",
+      "evidence": "aggregate test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-022",
+      "category": "Review",
+      "condition": "AE Workspace에서 Parent/Child/Result/Evidence/caveat를 확인하고 Human Review할 수 있다.",
+      "evidence": "Playwright",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-023",
+      "category": "Closure",
+      "condition": "AgentExecution SUCCEEDED만으로 WorkItem CLOSED가 되지 않고 WC closure policy/authority를 거친다.",
+      "evidence": "state test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-024",
+      "category": "Revision",
+      "condition": "보완 요청이 result history를 파괴하지 않고 revision/follow-up work path로 처리된다.",
+      "evidence": "revision test",
+      "critical": "NO"
+    },
+    {
+      "id": "AC39-025",
+      "category": "WA",
+      "condition": "NeX-WA가 Parent/Child execution/step/result/event를 traceable WorkActivity로 projection한다.",
+      "evidence": "WA records",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-026",
+      "category": "WA Lag",
+      "condition": "WA outage/lag가 core business flow를 block하지 않고 복구 후 missing activity가 rebuild된다.",
+      "evidence": "recovery evidence",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-027",
+      "category": "Optional CX",
+      "condition": "CX unavailable이어도 CX가 필요하지 않은 Golden B core collaboration은 계속 수행된다.",
+      "evidence": "degraded E2E",
+      "critical": "NO"
+    },
+    {
+      "id": "AC39-028",
+      "category": "Trace",
+      "condition": "Trigger→Plan→Parent/Child→Claim→OA→NSL→Result→Event→Resume→WA→Review/Closure를 하나의 correlation chain으로 재구성할 수 있다.",
+      "evidence": "trace package",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-029",
+      "category": "Fault Suite",
+      "condition": "unroutable, duplicate child/result/event, crash/reclaim, bad result, revoked auth, event race, WA lag mandatory variants가 모두 PASS한다.",
+      "evidence": "fault suite",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-030",
+      "category": "Quality",
+      "condition": "변경 코드 95% statement / 85% branch 목표와 affected regression/Playwright가 통과한다.",
+      "evidence": "CI evidence",
+      "critical": "YES"
+    },
+    {
+      "id": "AC39-031",
+      "category": "Release",
+      "condition": "Critical blocker 0, Acceptance Evidence Package, canary/smoke/rollback readiness가 확보된다.",
+      "evidence": "release package",
+      "critical": "YES"
+    }
+  ],
+  "open_decisions": [
+    {
+      "id": "OD-39-01",
+      "topic": "Golden B Business Fixture",
+      "decision": "실제 pilot에서 사용할 Manufacturing shortage/risk signal의 canonical source/event schema 확정",
+      "status": "PENDING REPOSITORY/PILOT EVIDENCE"
+    },
+    {
+      "id": "OD-39-02",
+      "topic": "Procurement Capability",
+      "decision": "실제 required procurement capability/Certified Skill identity/version 확정",
+      "status": "PENDING REGISTRY EVIDENCE"
+    },
+    {
+      "id": "OD-39-03",
+      "topic": "Child Result Contract",
+      "decision": "실제 Procurement WorkResult schema와 business refs/evidence requirements 확정",
+      "status": "PENDING WC/DOMAIN CONTRACT"
+    },
+    {
+      "id": "OD-39-04",
+      "topic": "NeX-WA Physical Contract",
+      "decision": "WA ingestion API/event/table/projection implementation mapping 확정",
+      "status": "PENDING REPOSITORY EVIDENCE"
+    },
+    {
+      "id": "OD-39-05",
+      "topic": "Parent Closure Policy",
+      "decision": "Golden B pilot의 human review/closure authority와 revision rule 확정",
+      "status": "PENDING BUSINESS POLICY"
+    },
+    {
+      "id": "OD-39-06",
+      "topic": "Optional CX/MO",
+      "decision": "Golden B pilot에서 CX Evidence/MO reasoning을 어느 step에서 활성화할지 확정",
+      "status": "PENDING PILOT EVIDENCE"
+    }
+  ]
+}

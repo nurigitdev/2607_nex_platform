@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:ae:nsl:approval-resume:v2.1",
+  "title": "NSL Approval Resume Bridge v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "agent_execution_id",
+    "executable_step_id",
+    "nsl_execution_id",
+    "business_operation_id",
+    "approval_request_id",
+    "nsl_checkpoint_version",
+    "event_id",
+    "correlation_id",
+    "approval_work_item_ref",
+    "approval_evidence_ref",
+    "resume_token_ref"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "executable_step_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nsl_execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "business_operation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "approval_request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nsl_checkpoint_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "approval_work_item_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "approval_evidence_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "approval_evidence_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "oa_decision_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "resume_token_ref": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

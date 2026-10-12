@@ -1,0 +1,4 @@
+﻿Scenario,Title,FinalVerdict,OpenIssueCount
+E2E-01,User → IA → READ Skill → Result,PASS,0
+E2E-04,CA Delegation through WC,PASS,0
+E2E-05,PA Project Work Execution,PASS,0
