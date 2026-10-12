@@ -1,8 +1,12 @@
 # P4-CA01 Candidate Contract Files
 
-These files are candidate controlled-amendment outputs for the project-neutral IA PROMPT issue.
+These files are the accepted controlled-amendment outputs for the project-neutral IA PROMPT issue.
 
-They are NOT yet Frozen authority until the controlled-amendment review and focused revalidation pass.
+**Status:** APPROVED / FOCUSED REVALIDATION PASS / P4-CA01 AUTHORITY
+
+The directory name is retained for history. Authority is granted by
+`P4_CA01_Project_Neutral_PROMPT_ReFreeze_Addendum_v1.0.md`; the original Frozen
+files remain unchanged.
 
 Required validation:
 
@@ -20,4 +24,6 @@ value-object construction. Focused probes SHALL cover both the JSON Schema and
 the Python value object so an `Optional[str]` annotation cannot weaken
 CLAIMED_WORKITEM or PA rules at runtime.
 
-After acceptance, update amendment manifests/hashes and issue a re-freeze addendum without silently overwriting the prior Frozen hash history.
+Acceptance evidence and hashes are recorded in
+`P4_CA01_Controlled_Amendment_Manifest_v1.0.csv`. The prior Frozen hash history
+is preserved rather than overwritten.

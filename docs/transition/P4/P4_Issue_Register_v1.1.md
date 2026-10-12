@@ -7,7 +7,7 @@
 |---|---:|---|---|---|
 | P4-ISSUE-001 | P1 | No standalone AgentExecution machine schema | Frozen Agent state/phase is authoritative; P4 defines physical persistence only. | RESOLVED_FOR_P4 |
 | P4-ISSUE-002 | P1 | IA provisioning/resolution | Use canonical `ae_agent_identity`; add only principal→IA assignment. | RESOLVED_FOR_P4 |
-| P4-ISSUE-003 | P0 | PROMPT requires project_id before Project resolution | P4-CA01: PROMPT+IA allows null; claimed work/PA still require Project. | BLOCKS_IMPLEMENTATION_UNTIL_CA01 |
+| P4-ISSUE-003 | P0 | PROMPT requires project_id before Project resolution | P4-CA01: PROMPT+IA allows null; claimed work/PA still require Project. | CLOSED_BY_P4_CA01 |
 | P4-ISSUE-004 | P1 | Publication ACK needs current authority evidence | AgentResult implemented; workspace delivery stays PENDING; no SUCCEEDED. | BOUNDED_DEFERRED |
 | P4-ISSUE-005 | P1 | Complete AgentResult persistence | Implement complete envelope plus normalized columns. | RESOLVED_DESIGN |
 | P4-ISSUE-006 | P1 | Result/delivery atomicity | Persist AgentResult + required PENDING delivery atomically. | RESOLVED_P4_BOUNDARY |
@@ -73,10 +73,12 @@ FINALIZE
 Open P0:
 
 ```text
-P4-ISSUE-003 — P4-CA01 Controlled Amendment
+none
 ```
 
-No canonical P4 PROMPT implementation begins until this gate closes.
+P4-CA01 closed on 2026-10-13 with focused E1/E2E-01 contract-impact probes,
+manifest verification, and a re-freeze addendum. Canonical P4 PROMPT source
+implementation may begin.
 
 Before P4-S7 begins, P4-ISSUE-026 SHALL also close with cited Frozen evidence
 and state-transition tests for every AgentResult status.

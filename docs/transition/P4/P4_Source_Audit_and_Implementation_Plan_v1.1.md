@@ -1,9 +1,11 @@
 # P4 Source Audit and Implementation Plan v1.1
 
-**Status:** PRE-IMPLEMENTATION BASELINE
+**Status:** P4-CA01 CLOSED / READY FOR P4-S1
 **Supersedes:** `P4_Source_Audit_and_Implementation_Plan_v1.0.md`
 
 ## 1. Mandatory Pre-Step — P4-CA01
+
+**Completion:** PASS — closed 2026-10-13
 
 Before source implementation:
 
@@ -11,6 +13,10 @@ Before source implementation:
 2. validate amended ExecutionTrigger schema/protocol;
 3. run focused E1 + E2E-01 + trigger probes;
 4. publish amendment/re-freeze addendum.
+
+All four steps are complete. Evidence is recorded in
+`P4_CA01_Project_Neutral_PROMPT_ReFreeze_Addendum_v1.0.md` and the associated
+manifest and executable closure report.
 
 ## 2. Target Domain
 

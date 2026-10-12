@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:nex:schema:ae:execution-trigger:2.1",
-  "title": "NeX ExecutionTrigger v2.1 — P4-CA01 candidate",
+  "title": "NeX ExecutionTrigger v2.1 — P4-CA01 amendment",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -1,8 +1,8 @@
 # P4 Transition Implementation Baseline
 
 **Current baseline:** `README_v1.1.md`
-**Status:** ARCHITECTURE-CLOSED / PRE-IMPLEMENTATION
-**Implementation gate:** P4-CA01 focused revalidation and approval
+**Status:** ARCHITECTURE-CLOSED / P4-CA01 CLOSED / READY FOR P4-S1
+**Implementation gate:** OPEN — P4-CA01 focused revalidation passed 2026-10-13
 
 Read `README_v1.1.md` first and follow its authority and reading order.
 

@@ -1,6 +1,6 @@
 # P4-CA01 — Project-Neutral IA PROMPT Controlled Amendment Proposal v1.0
 
-**Status:** CONTROLLED AMENDMENT REQUIRED BEFORE P4 CANONICAL ADMISSION
+**Status:** APPROVED / CLOSED / RE-FROZEN 2026-10-13
 **Target:** NeX Platform v2.1 Frozen `ExecutionTrigger v2.1`
 
 ## 1. Problem
@@ -134,3 +134,17 @@ P4-CA01 decision
 ```
 
 > **P4-CA01 is a prerequisite to canonical P4 PROMPT admission.**
+
+## 9. Closure Record
+
+The controlled amendment and focused E1/E2E-01 impact probes passed on
+2026-10-13. The original Frozen files were not modified. The accepted assets,
+hashes, limitations, and authority order are recorded in:
+
+```text
+P4_CA01_Project_Neutral_PROMPT_ReFreeze_Addendum_v1.0.md
+P4_CA01_Controlled_Amendment_Manifest_v1.0.csv
+reports/p4/p4_ca01_project_neutral_prompt_closure.json
+```
+
+P4-ISSUE-003 is closed and canonical P4 source implementation is admitted.
