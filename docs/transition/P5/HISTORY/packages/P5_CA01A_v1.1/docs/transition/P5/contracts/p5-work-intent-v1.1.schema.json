@@ -1,0 +1,499 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:transition:p5:work-intent:1.1",
+  "title": "NeX P5 WorkIntent v1.1 Transition Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "work_intent_id",
+    "intent_revision",
+    "execution_id",
+    "source",
+    "execution_mode",
+    "compatibility_execution_mode",
+    "goal",
+    "work_class",
+    "required_capability_hints",
+    "entity_selectors",
+    "parameter_candidates",
+    "completion_criteria",
+    "clarification",
+    "confidence",
+    "provenance",
+    "intent_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.1"
+    },
+    "work_intent_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "intent_revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "supersedes_work_intent_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "execution_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_type",
+        "source_ref",
+        "actor_ref",
+        "received_at"
+      ],
+      "properties": {
+        "source_type": {
+          "const": "PROMPT"
+        },
+        "source_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "actor_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "received_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "execution_mode": {
+      "const": "INTERACTIVE"
+    },
+    "compatibility_execution_mode": {
+      "enum": [
+        "GENERAL_ANSWER",
+        "GROUNDED_ANSWER",
+        "DOCUMENT_SUMMARY",
+        "DOCUMENT_GENERATION"
+      ]
+    },
+    "project_ref": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/resourceRef"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "intent_label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "work_class": {
+      "enum": [
+        "QUERY",
+        "ANALYSIS",
+        "DOCUMENT",
+        "REPORTING"
+      ]
+    },
+    "required_capability_hints": {
+      "type": "array",
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/capabilityId"
+      }
+    },
+    "entity_selectors": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/entitySelector"
+      }
+    },
+    "parameter_candidates": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/parameterCandidate"
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/constraint"
+      }
+    },
+    "completion_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/$defs/completionCriterion"
+      }
+    },
+    "clarification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reasons",
+        "questions"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "NOT_REQUIRED",
+            "REQUIRED",
+            "RESOLVED"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "AMBIGUOUS_INTENT",
+              "AMBIGUOUS_ENTITY",
+              "MISSING_REQUIRED_PARAMETER",
+              "CONFLICTING_CONSTRAINT",
+              "UNRESOLVED_PROJECT",
+              "UNSUPPORTED_REQUEST",
+              "OTHER"
+            ]
+          }
+        },
+        "questions": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        }
+      }
+    },
+    "confidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "overall"
+      ],
+      "properties": {
+        "overall": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "intent": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "entities": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "parameters": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resolver_type",
+        "intent_decision_schema_version",
+        "intent_decision_hash",
+        "input_context_hash"
+      ],
+      "properties": {
+        "resolver_type": {
+          "enum": [
+            "DETERMINISTIC_POLICY",
+            "LLM_CANDIDATE"
+          ]
+        },
+        "intent_decision_schema_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "intent_decision_hash": {
+          "$ref": "#/$defs/sha256Digest"
+        },
+        "input_context_hash": {
+          "$ref": "#/$defs/semanticHash"
+        },
+        "prompt_binding_key": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200
+        },
+        "prompt_template_version_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "prompt_content_sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha256Digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rendered_prompt_hash": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha256Digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model_profile": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "model_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 256
+        }
+      }
+    },
+    "intent_hash": {
+      "$ref": "#/$defs/semanticHash"
+    }
+  },
+  "$defs": {
+    "semanticHash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "sha256Digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "capabilityId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*(\\.[A-Z][A-Z0-9_]*)+$",
+      "maxLength": 160
+    },
+    "resourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "system",
+        "resource_type",
+        "resource_id"
+      ],
+      "properties": {
+        "system": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "resource_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "resource_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        }
+      }
+    },
+    "entitySelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selector_id",
+        "entity_type",
+        "raw_text",
+        "required",
+        "confidence"
+      ],
+      "properties": {
+        "selector_id": {
+          "type": "string",
+          "pattern": "^E[0-9]{1,3}$"
+        },
+        "entity_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "raw_text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "attributes": {
+          "type": "object"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "parameterCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "value",
+        "value_type",
+        "source",
+        "confidence"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+        },
+        "value": {},
+        "value_type": {
+          "enum": [
+            "STRING",
+            "INTEGER",
+            "DECIMAL",
+            "BOOLEAN",
+            "DATE",
+            "DATETIME",
+            "MONEY",
+            "DURATION",
+            "ENUM",
+            "JSON",
+            "NULL"
+          ]
+        },
+        "source": {
+          "enum": [
+            "USER_INPUT",
+            "CONTEXT",
+            "MODEL_CANDIDATE",
+            "DEFAULT_CANDIDATE"
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "constraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "constraint_type",
+        "description"
+      ],
+      "properties": {
+        "constraint_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      }
+    },
+    "completionCriterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "criterion_id",
+        "description",
+        "required"
+      ],
+      "properties": {
+        "criterion_id": {
+          "type": "string",
+          "pattern": "^C[0-9]{1,3}$"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "result_contract_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 256
+        }
+      }
+    }
+  }
+}

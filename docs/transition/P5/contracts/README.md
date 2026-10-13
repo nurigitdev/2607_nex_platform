@@ -1,30 +1,53 @@
-# P5 Transition Machine Contracts
+# P5 Transition Machine Contracts v1.1
 
-**Status:** P5-CA01 REVIEWED TRANSITION CONTRACTS
-**Authority:** P5 implementation-facing interpretation; not a modification of the Frozen v2.1 set
+**Status:** P5-CA01A REVIEWED TRANSITION CONTRACTS
 
-These schemas freeze the exact machine shape used by P5 implementation:
+These schemas are the P5 v1.1 implementation-facing transition shapes:
 
-- `p5-work-intent-v1.schema.json`
-- `p5-agent-context-v1.schema.json`
-- `p5-capability-snapshot-v1.schema.json`
-- `p5-agent-plan-v1.schema.json`
-- `p5-plan-validation-result-v1.schema.json`
-- `p5-executable-plan-v1.schema.json`
-- `p5-step-result-v1.schema.json`
+- `p5-work-intent-v1.1.schema.json`
+- `p5-agent-context-v1.1.schema.json`
+- `p5-capability-snapshot-v1.1.schema.json`
+- `p5-agent-plan-v1.1.schema.json`
+- `p5-plan-validation-result-v1.1.schema.json`
+- `p5-executable-plan-v1.1.schema.json`
+- `p5-step-result-v1.1.schema.json`
 
-Authority order:
+Authority:
 
 ```text
 Frozen Agent/Platform semantics
-> approved P4-CA01 project-neutral PROMPT amendment
-> P5-CA01 decisions and these transition schemas
+> P5-CA01/CA01A decisions
+> P5 v1.1 transition schemas
 > legacy 99_* reference schemas
 ```
 
-The schemas intentionally expose future Frozen vocabulary such as
-`DELEGATE_WORK` and `LOCAL_SKILL`. P5 scope guards still reject execution of
-those paths. Schema visibility is not runtime availability.
+## CA01A contract rules
 
-All `*_hash` values use `sha256:<64 lowercase hex>`. The canonical semantic
-projection and exclusions are defined by P5-CA01 DEC-11.
+```text
+LogicalPlanStepId = S1...
+CompiledStepKey   = E1...
+ExecutableStepId  = UUID
+```
+
+Dependencies in ExecutablePlan use `CompiledStepKey`.
+Runtime persistence uses UUID `ExecutableStepId`.
+
+Semantic ExecutablePlan hashing excludes runtime UUIDs.
+
+Hash representation:
+
+```text
+legacy/existing *_sha256 digest = bare 64 hex
+P5 semantic *_hash              = sha256:<64 hex>
+```
+
+PlanValidationResult includes one required `runtime_directive` matching its status.
+
+P5 StepResult requires:
+
+```text
+business_operation_id = null
+operation_fingerprint = null
+```
+
+Schema visibility of future vocabulary is not runtime availability.

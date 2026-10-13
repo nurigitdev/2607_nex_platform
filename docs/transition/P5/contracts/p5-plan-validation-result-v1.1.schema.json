@@ -1,0 +1,281 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:transition:p5:plan-validation-result:1.1",
+  "title": "NeX P5 PlanValidationResult v1.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "validation_result_id",
+    "agent_plan_ref",
+    "execution_id",
+    "validator_version",
+    "status",
+    "runtime_directive",
+    "validated_context_ref",
+    "issues",
+    "topological_step_order",
+    "validated_at",
+    "result_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.1"
+    },
+    "validation_result_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "agent_plan_ref": {
+      "$ref": "#/$defs/versionedHashRef"
+    },
+    "execution_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "validator_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "status": {
+      "enum": [
+        "VALID",
+        "REPLAN_REQUIRED",
+        "CONTEXT_REFRESH_REQUIRED",
+        "CLARIFICATION_REQUIRED",
+        "BLOCKED",
+        "INVALID_TERMINAL",
+        "RETRYABLE_VALIDATION_FAILURE"
+      ]
+    },
+    "runtime_directive": {
+      "enum": [
+        "PROCEED_TO_COMPILE",
+        "WAIT_FOR_INPUT",
+        "BLOCK_REPLAN_REQUIRED",
+        "BLOCK_CONTEXT_REFRESH_REQUIRED",
+        "BLOCK_EXECUTION",
+        "FAIL_VALIDATION",
+        "RETRY_VALIDATION_BOUNDED"
+      ]
+    },
+    "validated_context_ref": {
+      "$ref": "#/$defs/versionedHashRef"
+    },
+    "issues": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{2,127}$"
+          },
+          "severity": {
+            "enum": [
+              "INFO",
+              "WARNING",
+              "ERROR"
+            ]
+          },
+          "step_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^S[0-9]{1,3}$"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 256
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 700
+          },
+          "recommended_runtime_directive": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64
+          }
+        }
+      }
+    },
+    "topological_step_order": {
+      "type": "array",
+      "maxItems": 12,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^S[0-9]{1,3}$"
+      }
+    },
+    "validated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "result_hash": {
+      "$ref": "#/$defs/semanticHash"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "VALID"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "runtime_directive": {
+            "const": "PROCEED_TO_COMPILE"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "CLARIFICATION_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "runtime_directive": {
+            "const": "WAIT_FOR_INPUT"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "REPLAN_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "runtime_directive": {
+            "const": "BLOCK_REPLAN_REQUIRED"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "CONTEXT_REFRESH_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "runtime_directive": {
+            "const": "BLOCK_CONTEXT_REFRESH_REQUIRED"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "BLOCKED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "runtime_directive": {
+            "const": "BLOCK_EXECUTION"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "INVALID_TERMINAL"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "runtime_directive": {
+            "const": "FAIL_VALIDATION"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "RETRYABLE_VALIDATION_FAILURE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "runtime_directive": {
+            "const": "RETRY_VALIDATION_BOUNDED"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "semanticHash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "sha256Digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "versionedHashRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "hash"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "hash": {
+          "$ref": "#/$defs/semanticHash"
+        }
+      }
+    }
+  }
+}

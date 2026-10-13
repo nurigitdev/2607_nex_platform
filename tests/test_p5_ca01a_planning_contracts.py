@@ -17,12 +17,15 @@ HASH_A = "sha256:" + "a" * 64
 HASH_B = "sha256:" + "b" * 64
 HASH_C = "sha256:" + "c" * 64
 HASH_D = "sha256:" + "d" * 64
+BARE_A = "a" * 64
 UUID_1 = "11111111-1111-4111-8111-111111111111"
 UUID_2 = "22222222-2222-4222-8222-222222222222"
 UUID_3 = "33333333-3333-4333-8333-333333333333"
 UUID_4 = "44444444-4444-4444-8444-444444444444"
 UUID_5 = "55555555-5555-4555-8555-555555555555"
 UUID_6 = "66666666-6666-4666-8666-666666666666"
+UUID_7 = "77777777-7777-4777-8777-777777777777"
+UUID_8 = "88888888-8888-4888-8888-888888888888"
 NOW = "2026-10-13T04:00:00Z"
 
 
@@ -42,7 +45,7 @@ def _versioned(ref_id: str, version: int, digest: str) -> dict[str, object]:
 
 def _work_intent() -> dict[str, object]:
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "work_intent_id": UUID_2,
         "intent_revision": 1,
         "supersedes_work_intent_id": None,
@@ -76,7 +79,7 @@ def _work_intent() -> dict[str, object]:
         "provenance": {
             "resolver_type": "DETERMINISTIC_POLICY",
             "intent_decision_schema_version": "ae_intent_decision.v1",
-            "intent_decision_hash": HASH_A,
+            "intent_decision_hash": BARE_A,
             "input_context_hash": HASH_B,
             "prompt_binding_key": None,
             "prompt_template_version_id": None,
@@ -91,7 +94,7 @@ def _work_intent() -> dict[str, object]:
 
 def _agent_context() -> dict[str, object]:
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "context_id": UUID_3,
         "context_generation": 1,
         "execution_id": UUID_1,
@@ -140,7 +143,7 @@ def _agent_context() -> dict[str, object]:
 
 def _capability_snapshot() -> dict[str, object]:
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "tenant_id": "tenant-a",
         "capability_snapshot_id": UUID_4,
         "snapshot_version": 1,
@@ -175,10 +178,9 @@ def _capability_snapshot() -> dict[str, object]:
 
 def _agent_plan() -> dict[str, object]:
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "agent_plan_id": UUID_5,
         "agent_plan_version": 1,
-        "supersedes_agent_plan_id": None,
         "execution_id": UUID_1,
         "work_intent_ref": _versioned(UUID_2, 1, HASH_C),
         "agent_context_ref": _versioned(UUID_3, 1, HASH_D),
@@ -256,12 +258,13 @@ def _agent_plan() -> dict[str, object]:
 
 def _validation_result() -> dict[str, object]:
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "validation_result_id": UUID_6,
         "agent_plan_ref": _versioned(UUID_5, 1, HASH_B),
         "execution_id": UUID_1,
         "validator_version": "p5-plan-validator/1.0",
         "status": "VALID",
+        "runtime_directive": "PROCEED_TO_COMPILE",
         "validated_context_ref": _versioned(UUID_3, 1, HASH_D),
         "issues": [],
         "topological_step_order": ["S1", "S2"],
@@ -272,7 +275,7 @@ def _validation_result() -> dict[str, object]:
 
 def _executable_plan() -> dict[str, object]:
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "executable_plan_id": UUID_6,
         "executable_plan_version": 1,
         "execution_id": UUID_1,
@@ -286,14 +289,15 @@ def _executable_plan() -> dict[str, object]:
         "authority_snapshot_ref": "OA:EAC:decision-1",
         "steps": [
             {
-                "executable_step_id": "E1",
+                "compiled_step_key": "E1",
+                "executable_step_id": UUID_7,
                 "step_index": 0,
                 "logical_step_ref": "S1",
                 "injected_for_logical_step_ref": None,
                 "step_type": "CANONICAL_CAPABILITY",
                 "executor_kind": "P4_CHAT_RAG_COMPATIBILITY",
                 "title": "Run compatibility chat",
-                "depends_on": [],
+                "depends_on_compiled_step_keys": [],
                 "required_capability": "AE.CHAT.COMPATIBILITY",
                 "capability_version": "p5.1",
                 "compiled_input_bindings": [],
@@ -303,20 +307,21 @@ def _executable_plan() -> dict[str, object]:
                 "step_contract_hash": HASH_A,
             },
             {
-                "executable_step_id": "E2",
+                "compiled_step_key": "E2",
+                "executable_step_id": UUID_8,
                 "step_index": 1,
                 "logical_step_ref": "S2",
                 "injected_for_logical_step_ref": None,
                 "step_type": "REPORT",
                 "executor_kind": "DETERMINISTIC_REPORT",
                 "title": "Project interactive response",
-                "depends_on": ["E1"],
+                "depends_on_compiled_step_keys": ["E1"],
                 "required_capability": "AE.RESULT.REPORT",
                 "capability_version": "p5.1",
                 "compiled_input_bindings": [
                     {
                         "target_name": "source_result",
-                        "binding_type": "EXECUTABLE_STEP_OUTPUT",
+                        "binding_type": "COMPILED_STEP_OUTPUT",
                         "source_ref": "E1:$",
                         "binding_hash": HASH_B,
                     }
@@ -331,14 +336,26 @@ def _executable_plan() -> dict[str, object]:
             {
                 "criterion_id": "C1",
                 "required": True,
-                "required_terminal_step_refs": ["E2"],
+                "required_terminal_compiled_step_keys": ["E2"],
             }
         ],
         "logical_step_mapping": [
-            {"logical_step_id": "S1", "executable_step_ids": ["E1"]},
-            {"logical_step_id": "S2", "executable_step_ids": ["E2"]},
+            {
+                "logical_step_id": "S1",
+                "compiled_step_keys": ["E1"],
+                "executable_step_ids": [UUID_7],
+            },
+            {
+                "logical_step_id": "S2",
+                "compiled_step_keys": ["E2"],
+                "executable_step_ids": [UUID_8],
+            },
         ],
-        "runtime_constraints": {"max_parallel_steps": 1, "max_steps_per_run_slice": 1},
+        "runtime_constraints": {
+            "max_parallel_steps": 1,
+            "max_auto_replan": 0,
+            "max_steps_per_run_slice": 1,
+        },
         "compiled_at": NOW,
         "executable_plan_hash": HASH_D,
     }
@@ -347,25 +364,26 @@ def _executable_plan() -> dict[str, object]:
 @pytest.mark.parametrize(
     ("schema_name", "factory"),
     [
-        ("p5-work-intent-v1.schema.json", _work_intent),
-        ("p5-agent-context-v1.schema.json", _agent_context),
-        ("p5-capability-snapshot-v1.schema.json", _capability_snapshot),
-        ("p5-agent-plan-v1.schema.json", _agent_plan),
-        ("p5-plan-validation-result-v1.schema.json", _validation_result),
-        ("p5-executable-plan-v1.schema.json", _executable_plan),
+        ("p5-work-intent-v1.1.schema.json", _work_intent),
+        ("p5-agent-context-v1.1.schema.json", _agent_context),
+        ("p5-capability-snapshot-v1.1.schema.json", _capability_snapshot),
+        ("p5-agent-plan-v1.1.schema.json", _agent_plan),
+        ("p5-plan-validation-result-v1.1.schema.json", _validation_result),
+        ("p5-executable-plan-v1.1.schema.json", _executable_plan),
     ],
 )
-def test_ca01_transition_contract_examples_validate(schema_name, factory):
+def test_ca01a_transition_contract_examples_validate(schema_name, factory):
     _validator(schema_name).validate(factory())
 
 
-def test_ca01_step_result_contract_accepts_terminal_result_only():
+def test_ca01a_step_result_contract_accepts_terminal_result_only():
     result = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "step_result_id": UUID_1,
         "execution_id": UUID_2,
         "executable_plan_id": UUID_3,
-        "executable_step_id": "E1",
+        "executable_step_id": UUID_7,
+        "compiled_step_key": "E1",
         "logical_step_ref": "S1",
         "attempt_no": 1,
         "status": "SUCCEEDED",
@@ -381,15 +399,15 @@ def test_ca01_step_result_contract_accepts_terminal_result_only():
         "completed_at": NOW,
         "result_hash": HASH_A,
     }
-    validator = _validator("p5-step-result-v1.schema.json")
+    validator = _validator("p5-step-result-v1.1.schema.json")
     validator.validate(result)
     result["status"] = "WAITING"
     with pytest.raises(ValidationError):
         validator.validate(result)
 
 
-def test_ca01_work_intent_accepts_project_neutral_prompt_and_rejects_event():
-    validator = _validator("p5-work-intent-v1.schema.json")
+def test_ca01a_work_intent_accepts_project_neutral_prompt_and_rejects_event():
+    validator = _validator("p5-work-intent-v1.1.schema.json")
     intent = _work_intent()
     validator.validate(intent)
     invalid = deepcopy(intent)
@@ -398,8 +416,8 @@ def test_ca01_work_intent_accepts_project_neutral_prompt_and_rejects_event():
         validator.validate(invalid)
 
 
-def test_ca01_plan_rejects_legacy_plan_kind_and_more_than_twelve_steps():
-    validator = _validator("p5-agent-plan-v1.schema.json")
+def test_ca01a_plan_rejects_legacy_plan_kind_and_more_than_twelve_steps():
+    validator = _validator("p5-agent-plan-v1.1.schema.json")
     plan = _agent_plan()
     legacy = deepcopy(plan)
     legacy["plan_kind"] = "ONE_STEP"
@@ -419,44 +437,165 @@ def test_ca01_plan_rejects_legacy_plan_kind_and_more_than_twelve_steps():
         validator.validate(oversized)
 
 
-def test_ca01_document_set_includes_prompt_governance_and_slice_ownership():
+def test_ca01a_document_set_includes_prompt_governance_and_slice_ownership():
     readme = (P5 / "README.md").read_text(encoding="utf-8")
     prompt_design = (
-        P5 / "P5_LLM_Prompt_Template_Registry_and_Governance_Design_v1.0.md"
+        P5 / "P5_LLM_Prompt_Template_Registry_and_Governance_Design_v1.1.md"
     ).read_text(encoding="utf-8")
     implementation = (
-        P5 / "P5_Source_Audit_and_Implementation_Plan_v1.0.md"
+        P5 / "P5_Source_Audit_and_Implementation_Plan_v1.1.md"
     ).read_text(encoding="utf-8")
-    issues = (P5 / "P5_Issue_Register_v1.0.md").read_text(encoding="utf-8")
+    issues = (P5 / "P5_Issue_Register_v1.1.md").read_text(encoding="utf-8")
 
-    assert "P5_LLM_Prompt_Template_Registry_and_Governance_Design_v1.0.md" in readme
-    assert "P5_LLM_Prompt_Registry_Traceability_v1.0.md" in readme
-    assert "every LLM-dependent stage enabled" in prompt_design
-    assert "Prompt Registry Hardening" in implementation
-    assert "P5-ISSUE-017" in issues and "CLOSED_DESIGN" in issues
+    assert "P5_LLM_Prompt_Template_Registry_and_Governance_Design_v1.1.md" in readme
+    assert "P5_LLM_Prompt_Registry_Traceability_v1.1.md" in readme
+    assert "Binding pointer mutation and durable history are one transaction" in prompt_design
+    assert "atomic binding history/pointer transaction" in implementation
+    assert "P5-ISSUE-025" in issues and "CLOSED_CA01A" in issues
 
 
-def test_ca01_documents_use_frozen_validation_and_local_skill_boundaries():
+def test_ca01a_documents_fix_identity_validation_and_local_skill_boundaries():
     readme = (P5 / "README.md").read_text(encoding="utf-8")
-    architecture = (P5 / "P5_Architecture_Decisions_v1.0.md").read_text(
+    architecture = (P5 / "P5_Architecture_Decisions_v1.1.md").read_text(
         encoding="utf-8"
     )
     srs = (
-        P5 / "P5_Agent_Planning_and_Execution_Foundation_SRS_v1.0.md"
+        P5 / "P5_Agent_Planning_and_Execution_Foundation_SRS_v1.1.md"
     ).read_text(encoding="utf-8")
     traceability = (
-        P5 / "P5_Intent_Context_Plan_Compiler_Traceability_v1.0.md"
+        P5 / "P5_Intent_Context_Plan_Compiler_Traceability_v1.1.md"
     ).read_text(encoding="utf-8")
 
     assert "validation status=VALID" in readme
-    assert "compile-ready but non-runnable" not in architecture
-    assert "before an\nExecutablePlan or READY step is materialized" in architecture
-    assert "contracts/p5-plan-validation-result-v1.schema.json" in srs
-    assert "lossy `PASS/FAIL` field" in srs
+    assert "P5-DEC-21" in architecture
+    assert "Runtime ExecutableStep identity is UUID" in architecture
+    assert "Every result SHALL include a required `runtime_directive`" in srs
+    assert "ExecutableStepId      = UUID" in srs
     assert "Validation PASS/FAIL" not in traceability
 
 
-def test_ca01_frozen_source_manifest_hashes_match_read_only_inputs():
+@pytest.mark.parametrize(
+    ("status", "runtime_directive"),
+    [
+        ("VALID", "PROCEED_TO_COMPILE"),
+        ("CLARIFICATION_REQUIRED", "WAIT_FOR_INPUT"),
+        ("REPLAN_REQUIRED", "BLOCK_REPLAN_REQUIRED"),
+        ("CONTEXT_REFRESH_REQUIRED", "BLOCK_CONTEXT_REFRESH_REQUIRED"),
+        ("BLOCKED", "BLOCK_EXECUTION"),
+        ("INVALID_TERMINAL", "FAIL_VALIDATION"),
+        ("RETRYABLE_VALIDATION_FAILURE", "RETRY_VALIDATION_BOUNDED"),
+    ],
+)
+def test_ca01a_validation_status_has_exact_runtime_directive(
+    status, runtime_directive
+):
+    validator = _validator("p5-plan-validation-result-v1.1.schema.json")
+    result = _validation_result()
+    result["status"] = status
+    result["runtime_directive"] = runtime_directive
+    validator.validate(result)
+
+    result["runtime_directive"] = "BLOCK_EXECUTION"
+    if runtime_directive == "BLOCK_EXECUTION":
+        result["runtime_directive"] = "PROCEED_TO_COMPILE"
+    with pytest.raises(ValidationError):
+        validator.validate(result)
+
+
+def test_ca01a_step_result_rejects_write_identity():
+    validator = _validator("p5-step-result-v1.1.schema.json")
+    result = {
+        "schema_version": "1.1",
+        "step_result_id": UUID_1,
+        "execution_id": UUID_2,
+        "executable_plan_id": UUID_3,
+        "executable_step_id": UUID_7,
+        "compiled_step_key": "E1",
+        "logical_step_ref": "S1",
+        "attempt_no": 1,
+        "status": "SUCCEEDED",
+        "result_contract_ref": "contract://nex/ae/chat-result/v1",
+        "result_payload": {"result_ref": "AE:CHAT:result-1"},
+        "external_refs": [],
+        "artifact_refs": [],
+        "evidence_refs": [],
+        "error_ref": None,
+        "business_operation_id": None,
+        "operation_fingerprint": None,
+        "started_at": NOW,
+        "completed_at": NOW,
+        "result_hash": HASH_A,
+    }
+    validator.validate(result)
+
+    result["business_operation_id"] = UUID_8
+    with pytest.raises(ValidationError):
+        validator.validate(result)
+
+    result["business_operation_id"] = None
+    result["operation_fingerprint"] = HASH_B
+    with pytest.raises(ValidationError):
+        validator.validate(result)
+
+
+def test_ca01a_executable_plan_separates_compiled_key_from_runtime_uuid():
+    validator = _validator("p5-executable-plan-v1.1.schema.json")
+    plan = _executable_plan()
+    validator.validate(plan)
+    assert plan["steps"][0]["compiled_step_key"] == "E1"
+    assert plan["steps"][0]["executable_step_id"] == UUID_7
+
+    invalid = deepcopy(plan)
+    invalid["steps"][0]["executable_step_id"] = "E1"
+    with pytest.raises(ValidationError):
+        validator.validate(invalid)
+
+
+def test_ca01a_distinguishes_bare_digests_from_semantic_hash_refs():
+    validator = _validator("p5-work-intent-v1.1.schema.json")
+    intent = _work_intent()
+    validator.validate(intent)
+
+    prefixed_legacy_digest = deepcopy(intent)
+    prefixed_legacy_digest["provenance"]["intent_decision_hash"] = HASH_A
+    with pytest.raises(ValidationError):
+        validator.validate(prefixed_legacy_digest)
+
+    bare_semantic_hash = deepcopy(intent)
+    bare_semantic_hash["intent_hash"] = BARE_A
+    with pytest.raises(ValidationError):
+        validator.validate(bare_semantic_hash)
+
+
+def test_ca01a_history_is_noncanonical_and_v11_contracts_are_current():
+    history = P5 / "HISTORY" / "v1.0"
+    assert (history / "README.md").is_file()
+    assert (
+        history / "P5_Agent_Planning_and_Execution_Foundation_SRS_v1.0.md"
+    ).is_file()
+    assert len(list((history / "contracts").glob("*v1.schema.json"))) == 7
+    assert not list(CONTRACTS.glob("*v1.schema.json"))
+    assert len(list(CONTRACTS.glob("*v1.1.schema.json"))) == 7
+    assert "Implementation SHALL NOT resolve schemas" in (
+        P5 / "HISTORY" / "README.md"
+    ).read_text(encoding="utf-8")
+
+
+def test_ca01a_received_package_manifest_matches_archived_bytes():
+    package = P5 / "HISTORY" / "packages" / "P5_CA01A_v1.1"
+    manifest = package / "P5_CA01A_v1.1_MANIFEST.csv"
+    with manifest.open(newline="", encoding="utf-8") as stream:
+        rows = list(csv.DictReader(stream))
+
+    assert len(rows) == 21
+    for row in rows:
+        artifact = package / row["path"]
+        assert artifact.is_file()
+        assert artifact.stat().st_size == int(row["size_bytes"])
+        assert hashlib.sha256(artifact.read_bytes()).hexdigest() == row["sha256"]
+
+
+def test_ca01a_frozen_source_manifest_hashes_match_read_only_inputs():
     manifest = P5 / "P5_CA01_Frozen_Source_Manifest_v1.0.csv"
     with manifest.open(newline="", encoding="utf-8") as stream:
         rows = list(csv.DictReader(stream))
