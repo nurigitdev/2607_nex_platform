@@ -5,7 +5,7 @@ import argparse
 import json
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -161,7 +161,11 @@ def run_p5_s5_postgres_smoke(
         )
 
 
-def _execute_postgres_smoke(database_url: str) -> dict[str, Any]:
+def _execute_postgres_smoke(
+    database_url: str,
+    *,
+    verifier: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
     engine = create_engine(
         sqlalchemy_database_url(database_url), future=True, pool_pre_ping=True
     )
@@ -320,6 +324,21 @@ def _execute_postgres_smoke(database_url: str) -> dict[str, Any]:
             tenant_id=tenant_id,
             executable_plan_id=compiled["executable_plan_id"],
         )
+        verification = (
+            dict(
+                verifier(
+                    {
+                        "factory": factory,
+                        "tenant_id": tenant_id,
+                        "execution": execution,
+                        "executable_plan": saved,
+                        "now": now,
+                    }
+                )
+            )
+            if verifier is not None
+            else {}
+        )
         with engine.connect() as connection:
             database, role = connection.execute(
                 text("SELECT current_database(), current_user")
@@ -358,6 +377,7 @@ def _execute_postgres_smoke(database_url: str) -> dict[str, Any]:
             "private_prompt_absent": marker
             not in json.dumps(saved, ensure_ascii=False, sort_keys=True),
             "provider_not_required": True,
+            **dict(verification.get("checks") or {}),
         }
     finally:
         try:
@@ -378,8 +398,12 @@ def _execute_postgres_smoke(database_url: str) -> dict[str, Any]:
         "row_counts": {
             "executable_plan": plan_count,
             "executable_step": step_count,
+            **dict(verification.get("row_counts") or {}),
         },
-        "cleanup_counts": cleanup_counts,
+        "cleanup_counts": {
+            **dict(verification.get("cleanup_counts") or {}),
+            **cleanup_counts,
+        },
     }
 
 

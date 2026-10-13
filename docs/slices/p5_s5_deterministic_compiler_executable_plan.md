@@ -81,4 +81,5 @@ UUID  = durable ExecutableStep runtime identity
 
 - P5-S6 owns dependency-aware step claiming, AgentExecution phase transition,
   and execution scheduling.
-- P5-S7 and later slices own StepResult and AgentResult materialization.
+- P5-S6 owns StepResult materialization; P5-S7 owns executor dispatch and P5-S8
+  owns AgentResult materialization.

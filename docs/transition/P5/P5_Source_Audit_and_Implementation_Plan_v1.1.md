@@ -4,7 +4,7 @@
 
 **Supersedes:** v1.0
 
-**Implementation state:** IN PROGRESS — P5-S1..P5-S4 COMPLETE
+**Implementation state:** IN PROGRESS — P5-S1..P5-S6 COMPLETE
 
 ## 1. Entry baseline
 
@@ -162,6 +162,8 @@ authority; the validator does not create compile rows or call a planner.
 
 ### P5-S5 — Deterministic Compiler / ExecutablePlan
 
+**Status:** COMPLETE — 2026-10-14
+
 Implement `S-key → E-key → UUID` mapping.
 
 Semantic hash excludes UUID.
@@ -169,6 +171,8 @@ Semantic hash excludes UUID.
 Generalize P4 table safely.
 
 ### P5-S6 — Multi-Step Engine / StepResult
+
+**Status:** COMPLETE — 2026-10-14
 
 Persist StepResult with:
 
@@ -178,6 +182,13 @@ CompiledStepKey E*
 LogicalPlanStepId S*
 WRITE fields null
 ```
+
+Implemented scheduling reuses the P4 RuntimeJob queue with deterministic
+per-step dedup keys. Exactly one READY/RUNNING step is active, dependencies are
+resolved from immutable terminal StepResults, downstream non-success is
+materialized as BLOCKED without executor invocation, and a terminal plan moves
+AgentExecution to `RESULT_VERIFY`. S6 deliberately does not execute Chat/RAG or
+report logic; executor dispatch begins in P5-S7.
 
 ### P5-S7 — Executors
 
