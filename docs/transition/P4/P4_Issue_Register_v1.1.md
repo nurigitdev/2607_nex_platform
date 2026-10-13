@@ -30,7 +30,7 @@
 | P4-ISSUE-023 | P1 | Weekly Digest scope creep | Remove from P4. | CLOSED |
 | P4-ISSUE-024 | P1 | new IA per login/prompt | persistent canonical IA + assignment; login does not mint IA. | RESOLVED_FOR_P4 |
 | P4-ISSUE-025 | P1 | cannot reach SUCCEEDED without ACK | End P4 at AgentResult + PENDING delivery / RESULT_PUBLISH phase. | RESOLVED_P4_BOUNDARY |
-| P4-ISSUE-026 | P1 | Exact pre-terminal AgentExecution state for BLOCKED/FAILED/CANCELLED AgentResult is not explicit in the P4 baseline. | Confirm the direct Frozen mapping before P4-S7; do not infer that every non-success result must remain RUNNING merely because delivery is PENDING. | OPEN_BEFORE_P4_S7 |
+| P4-ISSUE-026 | P1 | Exact pre-terminal AgentExecution state for BLOCKED/FAILED/CANCELLED AgentResult is not explicit in the P4 baseline. | Success-capable results remain `RUNNING / RESULT_PUBLISH` until required ACK. `BLOCKED`, `FAILED`, and `CANCELLED` results transition directly to the matching terminal execution state with `FINALIZE`; their PENDING workspace delivery remains durable but is not a success barrier. See the P4-S7 state-mapping closure. | CLOSED_BY_P4_S7_STATE_MAPPING |
 
 ## Frozen AgentExecution Reference
 
@@ -80,5 +80,7 @@ P4-CA01 closed on 2026-10-13 with focused E1/E2E-01 contract-impact probes,
 manifest verification, and a re-freeze addendum. Canonical P4 PROMPT source
 implementation may begin.
 
-Before P4-S7 begins, P4-ISSUE-026 SHALL also close with cited Frozen evidence
-and state-transition tests for every AgentResult status.
+P4-ISSUE-026 closed before P4-S7 source implementation. The cited Frozen
+evidence and exact mapping are recorded in
+`P4_ISSUE_026_AgentResult_State_Mapping_Closure_v1.0.md`; P4-S7 verifies every
+AgentResult status with state-transition tests.

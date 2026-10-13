@@ -138,14 +138,18 @@ Later publication phase SHALL enqueue publication jobs from durable pending deli
 
 P4 MUST reject transition to AgentExecution `SUCCEEDED`.
 
-After result creation the execution remains in the exact Frozen pre-terminal publication state/phase, expected to be:
+After a success-capable result is created, the execution remains in the exact
+Frozen pre-terminal publication state/phase:
 
 ```text
 state = RUNNING
 phase = RESULT_PUBLISH
 ```
 
-unless the Frozen runtime document defines a more precise equivalent.
+`BLOCKED`, `FAILED`, and `CANCELLED` AgentResult statuses instead transition
+directly to the matching terminal AgentExecution state with phase `FINALIZE`
+and `completed_at` recorded. This mapping is closed by
+`P4_ISSUE_026_AgentResult_State_Mapping_Closure_v1.0.md`.
 
 Legacy Chat completion remains independently user-visible.
 
