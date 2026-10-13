@@ -3,9 +3,12 @@ from __future__ import annotations
 import hashlib
 
 import pytest
+from nex_runtime.prompts import sha256_text as prompt_sha256_text
 from nex_runtime.semantic_hashes import (
+    canonical_json,
     hash_ref_from_sha256,
     semantic_sha256_hash_ref,
+    sha256_text,
     sha256_from_hash_ref,
     validate_hash_ref,
     validate_sha256_digest,
@@ -30,6 +33,21 @@ def test_semantic_hash_uses_canonical_json_and_unicode_bytes() -> None:
     assert first == second
     assert validate_hash_ref(first) == first
     assert validate_sha256_digest(sha256_from_hash_ref(first)) == first[7:]
+
+
+def test_bare_and_semantic_hashes_share_one_canonical_sha256_primitive() -> None:
+    value = {"b": "한글", "a": [2, 1]}
+    canonical = canonical_json(value)
+    digest = sha256_text(canonical)
+
+    assert canonical == '{"a":[2,1],"b":"한글"}'
+    assert semantic_sha256_hash_ref(value) == hash_ref_from_sha256(digest)
+    assert prompt_sha256_text is sha256_text
+
+
+def test_sha256_text_rejects_non_text_input() -> None:
+    with pytest.raises(TypeError, match="value must be a string"):
+        sha256_text(b"P5")  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(

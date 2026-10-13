@@ -8,7 +8,11 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
+from nex_runtime.semantic_hashes import (
+    canonical_json,
+    semantic_sha256_hash_ref,
+    validate_hash_ref,
+)
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -207,7 +211,7 @@ class SqlAlchemyAgentPlanRepository:
             "capability_snapshot_id": normalized["capability_snapshot_ref"]["id"],
             "plan_kind": normalized["plan_kind"],
             "plan_hash": normalized["plan_hash"],
-            "plan_json": _canonical_json(normalized),
+            "plan_json": canonical_json(normalized),
             "created_at": created_at,
         }
         try:
@@ -274,7 +278,7 @@ def validate_agent_plan_contract(value: Mapping[str, Any]) -> dict[str, Any]:
 
 def _validate_plan(value: Mapping[str, Any]) -> dict[str, Any]:
     try:
-        record = json.loads(_canonical_json(dict(value)))
+        record = json.loads(canonical_json(dict(value)))
     except (TypeError, ValueError) as exc:
         raise _invalid("AgentPlan must be canonical JSON.") from exc
     fields = {
@@ -713,16 +717,6 @@ def _required_datetime(field: str, value: object) -> str:
     if parsed.tzinfo is None:
         raise _invalid(f"{field} must include a timezone offset.")
     return parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
-
-
-def _canonical_json(value: Any) -> str:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    )
 
 
 def _json_value(value: Any) -> dict[str, Any]:

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass
 from typing import Any, Mapping
+
+from nex_runtime.semantic_hashes import canonical_json, sha256_text
 
 
 INTENT_DECISION_SCHEMA_VERSION = "ae_intent_decision.v1"
@@ -155,13 +155,7 @@ def _task_category_for_mode(mode: str) -> str:
 
 
 def _decision_hash(decision: Mapping[str, Any]) -> str:
-    payload = json.dumps(
-        dict(decision),
-        ensure_ascii=True,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return sha256_text(canonical_json(dict(decision)))
 
 
 def _required_text(value: Any, field_name: str) -> str:

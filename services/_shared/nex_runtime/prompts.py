@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import string
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -12,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from nex_runtime.auth import DEFAULT_SERVICE_SCOPE
 from nex_runtime.problem import problem_response
+from nex_runtime.semantic_hashes import sha256_text
 from nex_runtime.service_token_admission import (
     AdmittedServiceClaims,
     admit_service_token_from_request,
@@ -314,10 +314,6 @@ def register_prompt_registry_routes(
                 type_uri="https://nex-platform.local/problems/prompt-render-event-not-found",
             )
         return event
-
-
-def sha256_text(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def _authorize_prompt_request(

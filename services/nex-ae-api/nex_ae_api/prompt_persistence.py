@@ -7,8 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from nex_runtime.prompts import sha256_text
-from nex_runtime.semantic_hashes import validate_sha256_digest
+from nex_runtime.semantic_hashes import sha256_text, validate_sha256_digest
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker

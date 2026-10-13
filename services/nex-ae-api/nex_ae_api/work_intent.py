@@ -9,6 +9,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from nex_runtime.semantic_hashes import (
+    canonical_json,
     semantic_sha256_hash_ref,
     validate_hash_ref,
     validate_sha256_digest,
@@ -194,7 +195,7 @@ class SqlAlchemyWorkIntentRepository:
             ],
             "work_class": normalized["work_class"],
             "intent_hash": normalized["intent_hash"],
-            "intent_json": _canonical_json(normalized),
+            "intent_json": canonical_json(normalized),
             "created_at": created_at,
         }
         try:
@@ -299,7 +300,7 @@ def _build_provenance(
 
 
 def _validate_work_intent(value: Mapping[str, Any]) -> dict[str, Any]:
-    record = json.loads(_canonical_json(dict(value)))
+    record = json.loads(canonical_json(dict(value)))
     if record.get("schema_version") != WORK_INTENT_SCHEMA_VERSION:
         raise _invalid("WorkIntent schema_version must be 1.1.")
     _require_uuid("work_intent_id", record.get("work_intent_id"))
@@ -412,16 +413,6 @@ def _load_work_intent_by_revision(
 
 def _json_value(value: Any) -> dict[str, Any]:
     return json.loads(value) if isinstance(value, str) else dict(value)
-
-
-def _canonical_json(value: Any) -> str:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    )
 
 
 def _require_uuid(field: str, value: object) -> str:
