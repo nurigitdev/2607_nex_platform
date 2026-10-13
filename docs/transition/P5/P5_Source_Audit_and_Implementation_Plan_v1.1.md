@@ -4,7 +4,7 @@
 
 **Supersedes:** v1.0
 
-**Implementation state:** IN PROGRESS — P5-S1..P5-S3 COMPLETE
+**Implementation state:** IN PROGRESS — P5-S1..P5-S4 COMPLETE
 
 ## 1. Entry baseline
 
@@ -143,6 +143,8 @@ representation of the logical Capability Catalog Snapshot.
 
 ### P5-S4 — Plan Validator
 
+**Status:** COMPLETE — 2026-10-13
+
 Implement all validation rules plus exact CA01A runtime mapping.
 
 Important:
@@ -152,6 +154,11 @@ REPLAN_REQUIRED does NOT call planner again.
 CONTEXT_REFRESH_REQUIRED does NOT enter auto-refresh loop.
 RETRYABLE_VALIDATION_FAILURE is bounded technical retry only.
 ```
+
+Implemented validation is deterministic and LLM-free. Validation persistence
+and the mapped AgentExecution state/phase transition share one transaction and
+use execution-version CAS. Only `VALID / PROCEED_TO_COMPILE` grants compile
+authority; the validator does not create compile rows or call a planner.
 
 ### P5-S5 — Deterministic Compiler / ExecutablePlan
 

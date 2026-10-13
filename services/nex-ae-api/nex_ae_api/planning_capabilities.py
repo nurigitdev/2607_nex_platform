@@ -184,6 +184,12 @@ class SqlAlchemyCapabilitySnapshotRepository:
             ) from exc
 
 
+def validate_capability_snapshot_contract(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    return _validate_snapshot(value)
+
+
 def _validate_snapshot(value: Mapping[str, Any]) -> dict[str, Any]:
     try:
         record = json.loads(_canonical_json(dict(value)))

@@ -286,7 +286,7 @@ def test_repository_requires_exact_lineage_and_contiguous_versions() -> None:
         lambda plan: plan.update(schema_version="1.0"),
         lambda plan: plan.update(agent_plan_id="bad"),
         lambda plan: plan.update(agent_plan_version=True),
-        lambda plan: plan.update(plan_kind="DYNAMIC"),
+        lambda plan: plan.update(plan_kind="UNKNOWN"),
         lambda plan: plan.update(goal=""),
         lambda plan: plan.update(completion_criteria=[]),
         lambda plan: plan.update(steps=[]),
@@ -374,7 +374,7 @@ def test_validator_accepts_all_optional_binding_and_provenance_fields() -> None:
         ),
         lambda plan: plan["steps"][0].update(private=True),
         lambda plan: plan["steps"][0].update(step_id="bad"),
-        lambda plan: plan["steps"][0].update(step_type="DELEGATE_WORK"),
+        lambda plan: plan["steps"][0].update(step_type="UNKNOWN"),
         lambda plan: plan["steps"][0].update(depends_on="S1"),
         lambda plan: plan["steps"][0].update(depends_on=["S1", "S1"]),
         lambda plan: plan["steps"][0].update(
@@ -397,7 +397,7 @@ def test_validator_accepts_all_optional_binding_and_provenance_fields() -> None:
         lambda plan: plan["steps"][1].update(
             report={"report_kind": "ARTIFACT", "source_step_refs": []}
         ),
-        lambda plan: plan["planner_provenance"].update(builder_type="DYNAMIC_BUILDER"),
+        lambda plan: plan["planner_provenance"].update(builder_type="UNKNOWN"),
         lambda plan: plan["planner_provenance"].update(route_decision_ref=""),
         lambda plan: plan["planner_provenance"].update(template_ref=""),
         lambda plan: plan["planner_provenance"].update(

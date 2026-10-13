@@ -267,6 +267,11 @@ class SqlAlchemyAgentPlanRepository:
             ) from exc
 
 
+def validate_agent_plan_contract(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a canonical contract-valid plan without granting execution authority."""
+    return _validate_plan(value)
+
+
 def _validate_plan(value: Mapping[str, Any]) -> dict[str, Any]:
     try:
         record = json.loads(_canonical_json(dict(value)))
@@ -299,8 +304,13 @@ def _validate_plan(value: Mapping[str, Any]) -> dict[str, Any]:
         "capability_snapshot_ref",
     ):
         _validate_versioned_ref(field, record[field])
-    if record["plan_kind"] not in {"DIRECT", "KNOWN_TEMPLATE"}:
-        raise _invalid("P5 deterministic AgentPlan kind is invalid.")
+    if record["plan_kind"] not in {
+        "DIRECT",
+        "CERTIFIED_BINDING",
+        "KNOWN_TEMPLATE",
+        "DYNAMIC",
+    }:
+        raise _invalid("AgentPlan kind is invalid.")
     _required_text("goal", record["goal"], 1000)
     criteria = record["completion_criteria"]
     steps = record["steps"]
@@ -381,8 +391,13 @@ def _validate_step(value: object) -> None:
         raise _invalid("AgentPlan step fields are invalid.")
     if _STEP_ID.fullmatch(str(value["step_id"])) is None:
         raise _invalid("AgentPlan step ID is invalid.")
-    if value["step_type"] not in {"LOCAL_CAPABILITY", "AGGREGATE", "REPORT"}:
-        raise _invalid("AgentPlan step type is unavailable in P5.")
+    if value["step_type"] not in {
+        "LOCAL_CAPABILITY",
+        "DELEGATE_WORK",
+        "AGGREGATE",
+        "REPORT",
+    }:
+        raise _invalid("AgentPlan step type is invalid.")
     _required_text("title", value["title"], 160)
     _required_text("objective", value["objective"], 700)
     for field in ("depends_on", "input_bindings", "completion_criteria"):
@@ -498,8 +513,13 @@ def _validate_provenance(value: object) -> None:
         or not set(value).issubset(required | optional)
     ):
         raise _invalid("AgentPlan planner provenance is invalid.")
-    if value["builder_type"] not in {"DIRECT_BINDER", "TEMPLATE_BINDER"}:
-        raise _invalid("AgentPlan deterministic builder type is invalid.")
+    if value["builder_type"] not in {
+        "DIRECT_BINDER",
+        "CERTIFIED_BINDER",
+        "TEMPLATE_BINDER",
+        "DYNAMIC_BUILDER",
+    }:
+        raise _invalid("AgentPlan builder type is invalid.")
     _required_text("route_decision_ref", value["route_decision_ref"], 256)
     for field, maximum in (
         ("template_ref", 256),
