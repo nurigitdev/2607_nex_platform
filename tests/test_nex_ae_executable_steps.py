@@ -210,6 +210,20 @@ def _claim(jobs, *, worker="worker-a", now=NOW):
     )
 
 
+def test_transition_sql_casts_completed_at_for_postgresql_only() -> None:
+    outcome = CompatibilityStepOutcome(
+        state="SUCCEEDED",
+        legacy_interaction_id=INTERACTION_ID,
+    )
+
+    postgresql_sql = step_module._transition_sql(outcome, "postgresql")
+    sqlite_sql = step_module._transition_sql(outcome, "sqlite")
+
+    assert "ELSE CAST(:now AS TIMESTAMPTZ) END" in postgresql_sql
+    assert "ELSE :now END" in sqlite_sql
+    assert "TIMESTAMPTZ" not in sqlite_sql
+
+
 def test_repository_creates_one_canonical_step_per_execution() -> None:
     _, steps, _, _ = _components()
     created = _create_step(steps)

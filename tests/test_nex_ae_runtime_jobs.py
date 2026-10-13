@@ -154,6 +154,21 @@ def test_enqueue_is_frozen_compatible_project_neutral_and_idempotent() -> None:
     assert queue.get(TENANT, JOB_ID) == created
 
 
+def test_dedup_compares_run_after_as_an_instant_across_database_timezones() -> None:
+    existing = _enqueue(_queue())
+    params = {
+        "job_type": existing["job_type"],
+        "execution_id": existing["execution_id"],
+        "executable_step_id": existing["executable_step_id"],
+        "run_after": "2026-10-13T12:00:00+09:00",
+        "correlation_id": existing["correlation_id"],
+        "causation_id": existing["causation_id"],
+    }
+    shifted = {**existing, "run_after": "2026-10-13T03:00:00Z"}
+
+    runtime_module._require_same_job(shifted, params, existing["payload"])
+
+
 def test_continue_job_uses_same_execution_and_stable_step_reference() -> None:
     queue = _queue()
     continued = _enqueue(

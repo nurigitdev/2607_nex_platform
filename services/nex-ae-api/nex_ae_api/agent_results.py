@@ -791,6 +791,8 @@ def _timestamp(field: str, value: object) -> str:
 
 
 def _datetime_value(value: object) -> str:
+    if isinstance(value, datetime) and value.tzinfo is not None:
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
     if hasattr(value, "isoformat"):
         return value.isoformat().replace("+00:00", "Z")  # type: ignore[union-attr]
     return str(value)

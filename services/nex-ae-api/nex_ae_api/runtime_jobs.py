@@ -640,11 +640,15 @@ def _require_same_job(
         "job_type",
         "execution_id",
         "executable_step_id",
-        "run_after",
         "correlation_id",
         "causation_id",
     )
-    if any(_comparable(existing[key]) != _comparable(params[key]) for key in keys) or existing["payload"] != payload:
+    if (
+        any(_comparable(existing[key]) != _comparable(params[key]) for key in keys)
+        or _parse_timestamp("run_after", existing["run_after"])
+        != _parse_timestamp("run_after", params["run_after"])
+        or existing["payload"] != payload
+    ):
         raise RuntimeJobError(
             "ae.runtime_job_dedup_conflict",
             "RuntimeJob dedup key was reused with different semantics.",

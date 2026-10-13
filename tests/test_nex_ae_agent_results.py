@@ -224,6 +224,14 @@ def _validate(schema_path: Path, payload: dict) -> None:
     validator.validate(payload)
 
 
+def test_database_timestamps_are_canonicalized_to_utc() -> None:
+    database_value = datetime.fromisoformat("2026-10-13T13:00:00+09:00")
+    sqlite_value = datetime.fromisoformat("2026-10-13T04:00:00")
+
+    assert result_module._datetime_value(database_value) == NOW
+    assert result_module._datetime_value(sqlite_value) == "2026-10-13T04:00:00"
+
+
 def test_builds_complete_schema_valid_reference_only_result_and_fixed_hash() -> None:
     result = _result()
 

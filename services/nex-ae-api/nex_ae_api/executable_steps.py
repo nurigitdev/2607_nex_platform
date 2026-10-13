@@ -265,7 +265,10 @@ class SqlAlchemyExecutableStepRepository:
                 )
         try:
             with self._session_factory() as session:
-                updated = session.execute(text(_transition_sql(outcome)), params)
+                dialect_name = session.get_bind().dialect.name
+                updated = session.execute(
+                    text(_transition_sql(outcome, dialect_name)), params
+                )
                 if int(updated.rowcount or 0) == 0:
                     existing = _load_step(
                         session, params["tenant_id"], params["executable_step_id"]
@@ -648,11 +651,17 @@ _STEP_SELECT_SQL = """
 """
 
 
-def _transition_sql(outcome: CompatibilityStepOutcome | None) -> str:
+def _transition_sql(
+    outcome: CompatibilityStepOutcome | None,
+    dialect_name: str,
+) -> str:
     if outcome is None:
         assignments = "invocation_started_at = :now"
     else:
-        assignments = """
+        completed_at = (
+            "CAST(:now AS TIMESTAMPTZ)" if dialect_name == "postgresql" else ":now"
+        )
+        assignments = f"""
             retrieval_package_ref = COALESCE(:retrieval_package_ref, retrieval_package_ref),
             retrieval_package_hash = COALESCE(:retrieval_package_hash, retrieval_package_hash),
             cx_generation_id = COALESCE(:cx_generation_id, cx_generation_id),
@@ -660,7 +669,8 @@ def _transition_sql(outcome: CompatibilityStepOutcome | None) -> str:
             generated_response_id = COALESCE(:generated_response_id, generated_response_id),
             result_ref = COALESCE(:result_ref, result_ref),
             error_ref = COALESCE(:error_ref, error_ref),
-            completed_at = CASE WHEN :target_state = 'WAITING' THEN NULL ELSE :now END
+            completed_at = CASE WHEN :target_state = 'WAITING'
+                                THEN NULL ELSE {completed_at} END
         """
     lineage_guard = (
         " AND legacy_interaction_id = :legacy_interaction_id"
