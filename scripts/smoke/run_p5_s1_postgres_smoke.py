@@ -91,8 +91,7 @@ def run_p5_s1_postgres_smoke(
         )
         evidence = _execute_postgres_smoke(database_url)
         migration_current = (
-            bool(migration.planned)
-            and migration.planned[-1] == "2101_ae_work_intent"
+            "2101_ae_work_intent" in migration.planned
             and len(migration.planned)
             == len(migration.applied) + len(migration.skipped)
         )

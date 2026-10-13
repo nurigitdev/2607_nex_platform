@@ -4,7 +4,7 @@
 
 **Supersedes:** v1.0
 
-**Implementation state:** IN PROGRESS — P5-S1 COMPLETE
+**Implementation state:** IN PROGRESS — P5-S1..P5-S2 COMPLETE
 
 ## 1. Entry baseline
 
@@ -126,6 +126,8 @@ Implement:
 - exact prompt provenance.
 
 ### P5-S2 — AgentContext
+
+**Status:** COMPLETE — 2026-10-13
 
 Implement immutable generation/context hash/trusted resolver boundary.
 
