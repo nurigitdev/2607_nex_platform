@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:transition:p5:plan-validation-result:1.0",
+  "title": "NeX P5 PlanValidationResult v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "validation_result_id",
+    "agent_plan_ref",
+    "execution_id",
+    "validator_version",
+    "status",
+    "validated_context_ref",
+    "issues",
+    "topological_step_order",
+    "validated_at",
+    "result_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "validation_result_id": {"type": "string", "format": "uuid"},
+    "agent_plan_ref": {"$ref": "#/$defs/versionedHashRef"},
+    "execution_id": {"type": "string", "format": "uuid"},
+    "validator_version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "status": {
+      "enum": [
+        "VALID",
+        "REPLAN_REQUIRED",
+        "CONTEXT_REFRESH_REQUIRED",
+        "CLARIFICATION_REQUIRED",
+        "BLOCKED",
+        "INVALID_TERMINAL",
+        "RETRYABLE_VALIDATION_FAILURE"
+      ]
+    },
+    "validated_context_ref": {"$ref": "#/$defs/versionedHashRef"},
+    "issues": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "severity", "message"],
+        "properties": {
+          "code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,127}$"},
+          "severity": {"enum": ["INFO", "WARNING", "ERROR"]},
+          "step_id": {"type": ["string", "null"], "pattern": "^S[0-9]{1,3}$"},
+          "field_path": {"type": ["string", "null"], "maxLength": 256},
+          "message": {"type": "string", "minLength": 1, "maxLength": 700},
+          "recommended_runtime_directive": {"type": ["string", "null"], "maxLength": 64}
+        }
+      }
+    },
+    "topological_step_order": {
+      "type": "array",
+      "maxItems": 12,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^S[0-9]{1,3}$"}
+    },
+    "validated_at": {"type": "string", "format": "date-time"},
+    "result_hash": {"$ref": "#/$defs/hash"}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "versionedHashRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "hash"],
+      "properties": {
+        "id": {"type": "string", "format": "uuid"},
+        "version": {"type": "integer", "minimum": 1},
+        "hash": {"$ref": "#/$defs/hash"}
+      }
+    }
+  }
+}
