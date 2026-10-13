@@ -8,6 +8,7 @@ from nex_ae_api.multi_step_engine import (
     MultiStepEngineError,
     SqlAlchemyMultiStepEngine,
     StepTerminalOutcome,
+    StepWaitingOutcome,
 )
 from nex_ae_api.runtime_jobs import RuntimeJobClaim, SqlAlchemyRuntimeJobQueue
 from nex_ae_api.step_results import (
@@ -63,6 +64,9 @@ def _factory(*, seed=True):
                 step_type TEXT, executor_kind TEXT, state TEXT NOT NULL,
                 version INTEGER NOT NULL, dependency_json TEXT, input_binding_json TEXT,
                 output_contract_ref TEXT, step_contract_hash TEXT,
+                legacy_interaction_id TEXT, retrieval_package_ref TEXT,
+                retrieval_package_hash TEXT, cx_generation_id TEXT, cx_job_id TEXT,
+                generated_response_id TEXT,
                 invocation_started_at TEXT, completed_at TEXT, result_ref TEXT,
                 error_ref TEXT, updated_at TEXT, PRIMARY KEY (tenant_id, executable_step_id))""",
             """CREATE TABLE ae_step_result (
@@ -120,14 +124,15 @@ def _factory(*, seed=True):
                         executable_plan_id, logical_step_id, compiled_step_key,
                         step_index, step_type, executor_kind, state, version,
                         dependency_json, input_binding_json, output_contract_ref,
-                        step_contract_hash, updated_at
+                        step_contract_hash, legacy_interaction_id, updated_at
                     ) VALUES
                     (:t, :s1, :e, :p, 'S1', 'E1', 0, 'CANONICAL_CAPABILITY',
                      'P4_CHAT_RAG_COMPATIBILITY', 'READY', 1, '[]', '[]',
-                     'contract://nex/ae/chat-result/v1', :h1, :now),
+                     'contract://nex/ae/chat-result/v1', :h1, 'interaction-1', :now),
                     (:t, :s2, :e, :p, 'S2', 'E2', 1, 'REPORT',
                      'DETERMINISTIC_REPORT', 'PENDING', 1, '[\"E1\"]', '[]',
-                     'contract://nex/ae/interactive-response/v1', :h2, :now)"""),
+                     'contract://nex/ae/interactive-response/v1', :h2,
+                     'interaction-1', :now)"""),
                 {
                     "t": TENANT,
                     "e": EXECUTION_ID,
@@ -915,3 +920,274 @@ def test_advance_returns_for_active_step_and_rejects_deadlock(monkeypatch) -> No
             id_factory=lambda: RESULT_1_ID,
         )
     assert exc_info.value.error_code == "ae.multi_step_dependency_deadlock"
+
+
+def test_waiting_step_resumes_without_rescheduling_or_reexecution() -> None:
+    factory = _factory()
+    engine, queue = _runtime(
+        factory,
+        engine_ids=(JOB_1_ID, JOB_2_ID, RESULT_1_ID),
+        queue_ids=(LEASE_1, ATTEMPT_1, LEASE_2, ATTEMPT_2),
+    )
+    engine.schedule_next(tenant_id=TENANT, execution_id=EXECUTION_ID, now=NOW)
+    start_claim = _claim(queue)
+    engine.begin_claim(tenant_id=TENANT, claim=start_claim, now=NOW)
+    waiting = engine.record_waiting(
+        tenant_id=TENANT,
+        claim=start_claim,
+        outcome=StepWaitingOutcome(
+            retrieval_package_ref="retrieval-1",
+            retrieval_package_hash="sha256:" + "d" * 64,
+            cx_generation_id="generation-1",
+            cx_job_id="cx-job-1",
+        ),
+        now=LATER,
+    )
+    queue.complete(
+        tenant_id=TENANT,
+        runtime_job_id=start_claim.job["runtime_job_id"],
+        worker_id="worker-1",
+        lease_token=start_claim.job["lease_token"],
+        now=LATER,
+    )
+    assert waiting["state"] == "WAITING"
+    assert (
+        engine.schedule_next(tenant_id=TENANT, execution_id=EXECUTION_ID, now=LATER)
+        is None
+    )
+
+    continuation = engine.enqueue_waiting_continuation(
+        tenant_id=TENANT,
+        execution_id=EXECUTION_ID,
+        executable_step_id=STEP_1_ID,
+        continuation_refs={
+            "cx_job_ref": "cx-job-1",
+            "cx_generation_ref": "generation-1",
+            "generated_response_ref": "response-1",
+            "status": "COMPLETED",
+        },
+        now=LATER,
+    )
+    assert continuation["job_type"] == "CONTINUE_EXECUTION"
+    continue_claim = _claim(queue, now=LATER)
+    resumed = engine.begin_claim(tenant_id=TENANT, claim=continue_claim, now=LATER)
+    assert resumed.step["state"] == "WAITING"
+    result = engine.record_outcome(
+        tenant_id=TENANT,
+        claim=continue_claim,
+        outcome=_success(
+            "contract://nex/ae/chat-result/v1",
+            "chat-1",
+            started=LATER,
+            completed=LAST,
+        ),
+    )
+    queue.complete(
+        tenant_id=TENANT,
+        runtime_job_id=continue_claim.job["runtime_job_id"],
+        worker_id="worker-1",
+        lease_token=continue_claim.job["lease_token"],
+        now=LAST,
+    )
+
+    assert result["status"] == "SUCCEEDED"
+    with factory() as session:
+        state = session.execute(
+            text(
+                "SELECT state FROM ae_executable_step "
+                "WHERE executable_step_id = :step_id"
+            ),
+            {"step_id": STEP_2_ID},
+        ).scalar_one()
+    assert state == "READY"
+
+
+def test_waiting_and_continuation_guards() -> None:
+    factory = _factory()
+    engine, queue = _runtime(
+        factory,
+        engine_ids=(JOB_1_ID, JOB_2_ID),
+        queue_ids=(LEASE_1, ATTEMPT_1),
+    )
+    engine.schedule_next(tenant_id=TENANT, execution_id=EXECUTION_ID, now=NOW)
+    claim = _claim(queue)
+    engine.begin_claim(tenant_id=TENANT, claim=claim, now=NOW)
+
+    with pytest.raises(MultiStepEngineError, match="cx_job_id"):
+        engine.record_waiting(
+            tenant_id=TENANT,
+            claim=claim,
+            outcome=StepWaitingOutcome(),
+            now=NOW,
+        )
+    with factory.begin() as session:
+        session.execute(
+            text(
+                "UPDATE ae_executable_step SET state = 'WAITING', cx_job_id = 'cx-job-1' "
+                "WHERE executable_step_id = :step_id"
+            ),
+            {"step_id": STEP_1_ID},
+        )
+    with pytest.raises(MultiStepEngineError) as exc_info:
+        engine.enqueue_waiting_continuation(
+            tenant_id=TENANT,
+            execution_id=EXECUTION_ID,
+            executable_step_id=STEP_1_ID,
+            continuation_refs={"cx_job_ref": "other"},
+            now=NOW,
+        )
+    assert exc_info.value.error_code == "ae.multi_step_continuation_lineage_mismatch"
+
+    with pytest.raises(MultiStepEngineError, match="requires cx_job_ref"):
+        engine.enqueue_waiting_continuation(
+            tenant_id=TENANT,
+            execution_id=EXECUTION_ID,
+            executable_step_id=STEP_1_ID,
+            continuation_refs={"status": "COMPLETED"},
+            now=NOW,
+        )
+
+
+def test_waiting_step_requires_continuation_job() -> None:
+    factory = _factory()
+    queue, claim = _manual_claim(factory)
+    with factory.begin() as session:
+        session.execute(
+            text(
+                "UPDATE ae_executable_step SET state = 'WAITING', "
+                "cx_job_id = 'cx-job-1' WHERE executable_step_id = :step_id"
+            ),
+            {"step_id": STEP_1_ID},
+        )
+    engine = SqlAlchemyMultiStepEngine(factory, queue)
+
+    with pytest.raises(MultiStepEngineError) as exc_info:
+        engine.begin_claim(tenant_id=TENANT, claim=claim, now=NOW)
+    assert exc_info.value.error_code == "ae.multi_step_continuation_required"
+
+
+def test_record_waiting_rejects_missing_and_mismatched_steps() -> None:
+    factory = _factory()
+    queue, claim = _manual_claim(factory)
+    engine = SqlAlchemyMultiStepEngine(factory, queue)
+    with factory.begin() as session:
+        session.execute(
+            text("DELETE FROM ae_executable_step WHERE executable_step_id = :step_id"),
+            {"step_id": STEP_1_ID},
+        )
+    with pytest.raises(MultiStepEngineError) as exc_info:
+        engine.record_waiting(
+            tenant_id=TENANT,
+            claim=claim,
+            outcome=StepWaitingOutcome(cx_job_id="cx-job-1"),
+            now=NOW,
+        )
+    assert exc_info.value.error_code == "ae.multi_step_step_not_found"
+
+    factory = _factory()
+    queue, claim = _manual_claim(factory)
+    engine = SqlAlchemyMultiStepEngine(factory, queue)
+    with pytest.raises(MultiStepEngineError) as exc_info:
+        engine.record_waiting(
+            tenant_id=TENANT,
+            claim=claim,
+            outcome=StepWaitingOutcome(cx_job_id="cx-job-1"),
+            now=NOW,
+        )
+    assert exc_info.value.error_code == "ae.multi_step_waiting_mismatch"
+
+
+def test_waiting_transition_detects_conflict_and_disappearance(monkeypatch) -> None:
+    running = {
+        **_step(state="RUNNING"),
+        "executor_kind": "P4_CHAT_RAG_COMPATIBILITY",
+    }
+    engine = SqlAlchemyMultiStepEngine(
+        lambda: _FakeSession(), object(), id_factory=lambda: RESULT_1_ID
+    )
+    monkeypatch.setattr(multi_step, "_load_step", lambda *a, **k: running)
+    with pytest.raises(MultiStepEngineError) as exc_info:
+        engine.record_waiting(
+            tenant_id=TENANT,
+            claim=_running_claim(),
+            outcome=StepWaitingOutcome(cx_job_id="cx-job-1"),
+            now=NOW,
+        )
+    assert exc_info.value.error_code == "ae.multi_step_waiting_conflict"
+
+    class _OneSession(_FakeSession):
+        def execute(self, *_args, **_kwargs):
+            return _RowCount(1)
+
+    loads = iter((running, None))
+    monkeypatch.setattr(multi_step, "_load_step", lambda *a, **k: next(loads))
+    disappeared = SqlAlchemyMultiStepEngine(lambda: _OneSession(), object())
+    with pytest.raises(MultiStepEngineError) as exc_info:
+        disappeared.record_waiting(
+            tenant_id=TENANT,
+            claim=_running_claim(),
+            outcome=StepWaitingOutcome(cx_job_id="cx-job-1"),
+            now=NOW,
+        )
+    assert exc_info.value.error_code == "ae.multi_step_step_not_found"
+    assert exc_info.value.retryable is True
+
+
+@pytest.mark.parametrize("method", ["waiting", "continuation"])
+def test_waiting_methods_map_store_failures(monkeypatch, method) -> None:
+    factory = _factory()
+    engine = SqlAlchemyMultiStepEngine(factory, SqlAlchemyRuntimeJobQueue(factory))
+    monkeypatch.setattr(
+        multi_step,
+        "_load_step",
+        lambda *a, **k: (_ for _ in ()).throw(SQLAlchemyError("store")),
+    )
+    if method == "waiting":
+        action = lambda: engine.record_waiting(
+            tenant_id=TENANT,
+            claim=_running_claim(),
+            outcome=StepWaitingOutcome(cx_job_id="cx-job-1"),
+            now=NOW,
+        )
+    else:
+        action = lambda: engine.enqueue_waiting_continuation(
+            tenant_id=TENANT,
+            execution_id=EXECUTION_ID,
+            executable_step_id=STEP_1_ID,
+            continuation_refs={"cx_job_ref": "cx-job-1"},
+            now=NOW,
+        )
+    with pytest.raises(MultiStepEngineError) as exc_info:
+        action()
+    assert exc_info.value.error_code == "ae.multi_step_store_unavailable"
+
+
+def test_continuation_rejects_nonwaiting_step_and_invalid_ref_shapes() -> None:
+    factory = _factory()
+    engine = SqlAlchemyMultiStepEngine(factory, SqlAlchemyRuntimeJobQueue(factory))
+    with pytest.raises(MultiStepEngineError) as exc_info:
+        engine.enqueue_waiting_continuation(
+            tenant_id=TENANT,
+            execution_id=EXECUTION_ID,
+            executable_step_id=STEP_1_ID,
+            continuation_refs={"cx_job_ref": "cx-job-1"},
+            now=NOW,
+        )
+    assert exc_info.value.error_code == "ae.multi_step_continuation_mismatch"
+
+    with pytest.raises(MultiStepEngineError, match="must be an object"):
+        engine.enqueue_waiting_continuation(
+            tenant_id=TENANT,
+            execution_id=EXECUTION_ID,
+            executable_step_id=STEP_1_ID,
+            continuation_refs=[],
+            now=NOW,
+        )
+    with pytest.raises(MultiStepEngineError, match="fields are invalid"):
+        engine.enqueue_waiting_continuation(
+            tenant_id=TENANT,
+            execution_id=EXECUTION_ID,
+            executable_step_id=STEP_1_ID,
+            continuation_refs={"unknown": "value"},
+            now=NOW,
+        )

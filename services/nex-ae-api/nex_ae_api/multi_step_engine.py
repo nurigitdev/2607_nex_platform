@@ -22,7 +22,7 @@ from nex_ae_api.step_results import (
 )
 
 TERMINAL_STATES = frozenset({"SUCCEEDED", "FAILED", "BLOCKED", "CANCELLED"})
-ACTIVE_STATES = frozenset({"READY", "RUNNING"})
+ACTIVE_STATES = frozenset({"READY", "RUNNING", "WAITING"})
 
 
 @dataclass
@@ -59,6 +59,14 @@ class StepTerminalOutcome:
     artifact_refs: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
     error_ref: str | None = None
+
+
+@dataclass(frozen=True)
+class StepWaitingOutcome:
+    retrieval_package_ref: str | None = None
+    retrieval_package_hash: str | None = None
+    cx_generation_id: str | None = None
+    cx_job_id: str | None = None
 
 
 class SqlAlchemyMultiStepEngine:
@@ -108,7 +116,7 @@ class SqlAlchemyMultiStepEngine:
                         "ae.multi_step_parallelism_violation",
                         "P5 permits only one active ExecutableStep.",
                     )
-                if active and active[0]["state"] == "RUNNING":
+                if active and active[0]["state"] in {"RUNNING", "WAITING"}:
                     session.commit()
                     return None
                 if not active:
@@ -179,7 +187,7 @@ class SqlAlchemyMultiStepEngine:
                         dependency_results=(),
                         existing_result=existing,
                     )
-                if step["state"] not in {"READY", "RUNNING"}:
+                if step["state"] not in {"READY", "RUNNING", "WAITING"}:
                     raise MultiStepEngineError(
                         "ae.multi_step_step_not_runnable",
                         "Claimed ExecutableStep is not runnable.",
@@ -189,6 +197,14 @@ class SqlAlchemyMultiStepEngine:
                     raise MultiStepEngineError(
                         "ae.multi_step_dependency_not_satisfied",
                         "ExecutableStep dependencies are not successful.",
+                    )
+                if (
+                    step["state"] == "WAITING"
+                    and job["job_type"] != "CONTINUE_EXECUTION"
+                ):
+                    raise MultiStepEngineError(
+                        "ae.multi_step_continuation_required",
+                        "A waiting ExecutableStep requires CONTINUE_EXECUTION.",
                     )
                 if step["state"] == "READY":
                     updated = session.execute(
@@ -290,7 +306,7 @@ class SqlAlchemyMultiStepEngine:
                         )
                     session.commit()
                     return existing
-                if step["state"] != "RUNNING":
+                if step["state"] not in {"RUNNING", "WAITING"}:
                     raise MultiStepEngineError(
                         "ae.multi_step_step_not_running",
                         "Only a running ExecutableStep can terminalize.",
@@ -301,7 +317,7 @@ class SqlAlchemyMultiStepEngine:
                         "version = version + 1, result_ref = :result_ref, "
                         "error_ref = :error_ref, completed_at = :completed_at, "
                         "updated_at = :completed_at WHERE tenant_id = :tenant_id "
-                        "AND executable_step_id = :step_id AND state = 'RUNNING' "
+                        "AND executable_step_id = :step_id AND state = :expected_state "
                         "AND version = :version"
                     ),
                     {
@@ -309,6 +325,7 @@ class SqlAlchemyMultiStepEngine:
                         "step_id": step_id,
                         "version": step["version"],
                         "state": outcome.status,
+                        "expected_state": step["state"],
                         "result_ref": f"AE:STEP_RESULT:{proposed['step_result_id']}",
                         "error_ref": outcome.error_ref,
                         "completed_at": proposed["completed_at"],
@@ -335,6 +352,136 @@ class SqlAlchemyMultiStepEngine:
             raise
         except StepResultError as exc:
             raise _from_step_result_error(exc) from exc
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
+    def record_waiting(
+        self,
+        *,
+        tenant_id: str,
+        claim: RuntimeJobClaim,
+        outcome: StepWaitingOutcome,
+        now: str,
+    ) -> dict[str, Any]:
+        tenant = _required_text("tenant_id", tenant_id, 128)
+        job, _ = _validate_claim(claim, tenant)
+        step_id = _required_uuid("executable_step_id", job["executable_step_id"])
+        try:
+            with self._session_factory() as session:
+                step = _load_step(session, tenant, step_id, lock=True)
+                if step is None:
+                    raise MultiStepEngineError(
+                        "ae.multi_step_step_not_found",
+                        "Waiting outcome has no ExecutableStep.",
+                    )
+                if (
+                    step["agent_execution_id"] != job["execution_id"]
+                    or step["executor_kind"] != "P4_CHAT_RAG_COMPATIBILITY"
+                    or step["state"] != "RUNNING"
+                ):
+                    raise MultiStepEngineError(
+                        "ae.multi_step_waiting_mismatch",
+                        "Only the running compatibility step can enter WAITING.",
+                    )
+                params = {
+                    "tenant_id": tenant,
+                    "step_id": step_id,
+                    "version": step["version"],
+                    "retrieval_package_ref": _optional_text(
+                        "retrieval_package_ref", outcome.retrieval_package_ref, 256
+                    ),
+                    "retrieval_package_hash": _optional_text(
+                        "retrieval_package_hash", outcome.retrieval_package_hash, 256
+                    ),
+                    "cx_generation_id": _optional_text(
+                        "cx_generation_id", outcome.cx_generation_id, 256
+                    ),
+                    "cx_job_id": _required_text("cx_job_id", outcome.cx_job_id, 256),
+                    "now": now,
+                }
+                updated = session.execute(
+                    text(
+                        "UPDATE ae_executable_step SET state = 'WAITING', "
+                        "version = version + 1, "
+                        "retrieval_package_ref = :retrieval_package_ref, "
+                        "retrieval_package_hash = :retrieval_package_hash, "
+                        "cx_generation_id = :cx_generation_id, cx_job_id = :cx_job_id, "
+                        "updated_at = :now WHERE tenant_id = :tenant_id "
+                        "AND executable_step_id = :step_id AND state = 'RUNNING' "
+                        "AND version = :version"
+                    ),
+                    params,
+                )
+                if int(updated.rowcount or 0) != 1:
+                    raise MultiStepEngineError(
+                        "ae.multi_step_waiting_conflict",
+                        "ExecutableStep changed before entering WAITING.",
+                        True,
+                    )
+                saved = _load_step(session, tenant, step_id, lock=False)
+                if saved is None:
+                    raise MultiStepEngineError(
+                        "ae.multi_step_step_not_found",
+                        "Waiting ExecutableStep disappeared after transition.",
+                        True,
+                    )
+                session.commit()
+                return saved
+        except MultiStepEngineError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
+    def enqueue_waiting_continuation(
+        self,
+        *,
+        tenant_id: str,
+        execution_id: str,
+        executable_step_id: str,
+        continuation_refs: Mapping[str, str | None],
+        now: str,
+    ) -> dict[str, Any]:
+        tenant = _required_text("tenant_id", tenant_id, 128)
+        execution = _required_uuid("execution_id", execution_id)
+        step_id = _required_uuid("executable_step_id", executable_step_id)
+        refs = _continuation_refs(continuation_refs)
+        try:
+            with self._session_factory() as session:
+                step = _load_step(session, tenant, step_id, lock=False)
+                runtime = _load_runtime(session, tenant, execution, lock=False)
+                if (
+                    step is None
+                    or runtime is None
+                    or step["agent_execution_id"] != execution
+                    or step["state"] != "WAITING"
+                    or step["executor_kind"] != "P4_CHAT_RAG_COMPATIBILITY"
+                ):
+                    raise MultiStepEngineError(
+                        "ae.multi_step_continuation_mismatch",
+                        "Continuation requires its waiting compatibility step.",
+                    )
+                if step["cx_job_id"] != refs.get("cx_job_ref"):
+                    raise MultiStepEngineError(
+                        "ae.multi_step_continuation_lineage_mismatch",
+                        "Continuation CX job lineage differs from the waiting step.",
+                    )
+                session.commit()
+            continuation_hash = semantic_sha256_hash_ref(refs).removeprefix("sha256:")
+            return self._runtime_jobs.enqueue_unique(
+                tenant_id=tenant,
+                runtime_job_id=_required_uuid("runtime_job_id", self._id_factory()),
+                job_type="CONTINUE_EXECUTION",
+                execution_id=execution,
+                executable_step_id=step_id,
+                dedup_key=f"p5:resume:{step_id}:{continuation_hash}",
+                run_after=now,
+                payload={"continuation_refs": refs},
+                correlation_id=runtime["correlation_id"],
+                causation_id=step_id,
+                now=now,
+            )
+        except MultiStepEngineError:
+            raise
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
 
@@ -569,7 +716,10 @@ def _load_steps(
             text(
                 "SELECT tenant_id, executable_step_id, agent_execution_id, "
                 "executable_plan_id, logical_step_id, compiled_step_key, step_index, "
-                "step_type, executor_kind, state, version, dependency_json, "
+                "step_type, executor_kind, state, version, legacy_interaction_id, "
+                "retrieval_package_ref, retrieval_package_hash, cx_generation_id, "
+                "cx_job_id, generated_response_id, result_ref, error_ref, "
+                "dependency_json, "
                 "input_binding_json, output_contract_ref, step_contract_hash, "
                 "invocation_started_at, completed_at FROM ae_executable_step "
                 "WHERE tenant_id = :tenant_id AND executable_plan_id = :plan_id "
@@ -592,7 +742,10 @@ def _load_step(
             text(
                 "SELECT tenant_id, executable_step_id, agent_execution_id, "
                 "executable_plan_id, logical_step_id, compiled_step_key, step_index, "
-                "step_type, executor_kind, state, version, dependency_json, "
+                "step_type, executor_kind, state, version, legacy_interaction_id, "
+                "retrieval_package_ref, retrieval_package_hash, cx_generation_id, "
+                "cx_job_id, generated_response_id, result_ref, error_ref, "
+                "dependency_json, "
                 "input_binding_json, output_contract_ref, step_contract_hash, "
                 "invocation_started_at, completed_at FROM ae_executable_step "
                 "WHERE tenant_id = :tenant_id AND executable_step_id = :step_id"
@@ -729,6 +882,29 @@ def _required_text(field: str, value: object, maximum: int) -> str:
     if not isinstance(value, str) or not value.strip() or len(value.strip()) > maximum:
         raise _invalid(f"{field} must be a non-empty bounded string.")
     return value.strip()
+
+
+def _optional_text(field: str, value: object, maximum: int) -> str | None:
+    return None if value is None else _required_text(field, value, maximum)
+
+
+def _continuation_refs(value: Mapping[str, str | None]) -> dict[str, str | None]:
+    if not isinstance(value, Mapping):
+        raise _invalid("continuation_refs must be an object.")
+    allowed = {
+        "cx_job_ref",
+        "cx_generation_ref",
+        "generated_response_ref",
+        "status",
+    }
+    if not value or not set(value).issubset(allowed):
+        raise _invalid("continuation_refs fields are invalid.")
+    refs = {
+        str(key): _optional_text(str(key), item, 256) for key, item in value.items()
+    }
+    if refs.get("cx_job_ref") is None:
+        raise _invalid("continuation_refs requires cx_job_ref.")
+    return refs
 
 
 def _json_list(value: Any) -> list[Any]:

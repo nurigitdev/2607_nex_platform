@@ -136,8 +136,9 @@ No WC, WRITE, NSL or false AgentExecution `SUCCEEDED`.
 | P5-S4 | COMPLETE | LLM-free deterministic validator, exact seven-status runtime mapping, immutable validation persistence, atomic AgentExecution CAS transition, PostgreSQL smoke |
 | P5-S5 | COMPLETE | Deterministic `S-key -> E-key -> UUID` compilation, UUID-independent semantic hashes, generalized durable ExecutablePlan/ExecutableStep persistence, PostgreSQL smoke |
 | P5-S6 | COMPLETE | Persisted dependency-aware START/CONTINUE scheduling, one-active-step execution authority, immutable terminal StepResult, deterministic failure blocking, restart/dedup safety, PostgreSQL smoke |
+| P5-S7 | COMPLETE | Existing Chat/RAG compatibility execution with WAITING/CONTINUE resume, deterministic report/aggregate projection, fail-closed dispatch, restart safety, PostgreSQL smoke |
 | P5-S1..S4 hash audit | COMPLETE | One canonical JSON serializer and SHA-256 text primitive now own P5 digest calculation; bare and prefixed representations remain contract-compatible |
-| P5-S7..P5-S9 | NOT STARTED | Continue in the approved implementation order |
+| P5-S8..P5-S9 | NOT STARTED | Continue in the approved implementation order |
 
 As-Built records:
 
@@ -148,3 +149,4 @@ As-Built records:
 - `../../slices/p5_s1_s4_hash_utility_consolidation.md`
 - `../../slices/p5_s5_deterministic_compiler_executable_plan.md`
 - `../../slices/p5_s6_multi_step_engine_step_result.md`
+- `../../slices/p5_s7_step_executors.md`

@@ -4,7 +4,7 @@
 
 **Supersedes:** v1.0
 
-**Implementation state:** IN PROGRESS — P5-S1..P5-S6 COMPLETE
+**Implementation state:** IN PROGRESS — P5-S1..P5-S7 COMPLETE
 
 ## 1. Entry baseline
 
@@ -192,7 +192,16 @@ report logic; executor dispatch begins in P5-S7.
 
 ### P5-S7 — Executors
 
+**Status:** COMPLETE — 2026-10-14
+
 Compatibility executor + deterministic report/aggregate executor.
+
+The compatibility executor preserves the existing asynchronous Chat/RAG
+boundary: a fresh call may enter `WAITING`, and a reference-only continuation
+terminalizes it without callback reinvocation. Report and aggregate executors
+are deterministic projections over successful immutable StepResults and do
+not make an unplanned LLM call. Executor errors fail closed into bounded
+terminal results, while restart after result persistence does not reexecute.
 
 ### P5-S8 — Plan-level finalization
 
