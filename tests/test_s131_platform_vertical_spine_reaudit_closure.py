@@ -5,8 +5,19 @@ from pathlib import Path
 import run_s131_platform_vertical_spine_reaudit_closure as closure
 
 
+SERVICE_DATABASES = ("nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo")
+
+
+def _migration_inventory_total(root: Path) -> int:
+    return sum(
+        len(tuple((root / "database" / service / "migrations").glob("*.sql")))
+        for service in SERVICE_DATABASES
+    )
+
+
 def test_repository_closure_passes_and_hands_off_to_s132() -> None:
     result = closure.run_s131_platform_vertical_spine_reaudit_closure()
+    migration_inventory_total = _migration_inventory_total(closure.ROOT)
 
     assert result["status"] == "PASS", result
     assert all(result["checks"].values())
@@ -17,7 +28,7 @@ def test_repository_closure_passes_and_hands_off_to_s132() -> None:
         "check_count": 11,
         "passed_check_count": 11,
         "http_edge_count": 11,
-        "migration_count": 96,
+        "migration_count": migration_inventory_total,
         "trace_client_count": 13,
         "p0_gap_count": 8,
         "p1_gap_count": 4,
