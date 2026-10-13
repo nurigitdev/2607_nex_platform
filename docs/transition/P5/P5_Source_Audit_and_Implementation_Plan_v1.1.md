@@ -4,7 +4,7 @@
 
 **Supersedes:** v1.0
 
-**Implementation state:** IN PROGRESS — P5-S1..P5-S2 COMPLETE
+**Implementation state:** IN PROGRESS — P5-S1..P5-S3 COMPLETE
 
 ## 1. Entry baseline
 
@@ -47,7 +47,7 @@ Immutable generation `ae_agent_context`.
 ### 2103 — Capability Snapshot + AgentPlan + Validation
 
 ```text
-ae_capability_catalog_snapshot
+ae_capability_snapshot
 ae_agent_plan
 ae_plan_validation
 ```
@@ -133,7 +133,13 @@ Implement immutable generation/context hash/trusted resolver boundary.
 
 ### P5-S3 — Capability Snapshot + deterministic profiles
 
+**Status:** COMPLETE — 2026-10-13
+
 Implement exact-version capability snapshot and DIRECT/KNOWN_TEMPLATE plans.
+
+Implemented physical tables use the concise names `ae_capability_snapshot`,
+`ae_agent_plan`, and `ae_plan_validation`; the first remains the durable
+representation of the logical Capability Catalog Snapshot.
 
 ### P5-S4 — Plan Validator
 

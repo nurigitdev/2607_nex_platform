@@ -35,7 +35,8 @@ def test_agent_context_table_and_constraint_names_fit_postgres_limit() -> None:
     assert all(len(name) <= 63 for name in names)
 
 
-def test_ae_migration_inventory_ends_with_p5_s2_context() -> None:
-    migrations = load_migrations("nex-ae-api")
+def test_ae_migration_inventory_contains_ordered_p5_s2_context() -> None:
+    versions = [item.version for item in load_migrations("nex-ae-api")]
+    intent_index = versions.index("2101_ae_work_intent")
 
-    assert migrations[-1].version == "2102_ae_agent_context"
+    assert versions[intent_index + 1] == "2102_ae_agent_context"

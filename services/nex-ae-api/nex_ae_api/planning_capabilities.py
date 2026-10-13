@@ -1,0 +1,402 @@
+from __future__ import annotations
+
+import json
+import re
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
+from uuid import UUID
+
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
+
+CAPABILITY_SNAPSHOT_SCHEMA_VERSION = "1.1"
+CAPABILITY_VERSION = "p5.1"
+CHAT_CAPABILITY_ID = "AE.CHAT.COMPATIBILITY"
+REPORT_CAPABILITY_ID = "AE.RESULT.REPORT"
+_CAPABILITY_ID = re.compile(r"^[A-Z][A-Z0-9_]*(\.[A-Z][A-Z0-9_]*)+$")
+
+DEFAULT_P5_CAPABILITIES: tuple[dict[str, Any], ...] = (
+    {
+        "capability_id": CHAT_CAPABILITY_ID,
+        "capability_version": CAPABILITY_VERSION,
+        "status": "ACTIVE",
+        "allowed_logical_step_types": ["LOCAL_CAPABILITY"],
+        "executable_step_type": "CANONICAL_CAPABILITY",
+        "executor_kind": "P4_CHAT_RAG_COMPATIBILITY",
+        "input_contract_ref": "contract://nex/ae/chat-request/v1",
+        "output_contract_ref": "contract://nex/ae/chat-result/v1",
+        "operation_semantics": "GENERATE",
+    },
+    {
+        "capability_id": REPORT_CAPABILITY_ID,
+        "capability_version": CAPABILITY_VERSION,
+        "status": "ACTIVE",
+        "allowed_logical_step_types": ["REPORT"],
+        "executable_step_type": "REPORT",
+        "executor_kind": "DETERMINISTIC_REPORT",
+        "input_contract_ref": "contract://nex/ae/step-result/v1",
+        "output_contract_ref": "contract://nex/ae/interactive-response/v1",
+        "operation_semantics": "REPORT",
+    },
+)
+
+
+@dataclass(frozen=True)
+class CapabilitySnapshotError(Exception):
+    error_code: str
+    detail: str
+    retryable: bool = False
+
+    def __str__(self) -> str:
+        return self.detail
+
+
+def build_capability_snapshot(
+    *,
+    tenant_id: str,
+    capability_snapshot_id: str,
+    snapshot_version: int,
+    created_at: str,
+    capabilities: Sequence[Mapping[str, Any]] = DEFAULT_P5_CAPABILITIES,
+) -> dict[str, Any]:
+    normalized = [_validate_capability(item) for item in capabilities]
+    if not normalized:
+        raise _invalid("Capability snapshot must contain at least one capability.")
+    if len(normalized) > 64:
+        raise _invalid("Capability snapshot cannot exceed 64 capabilities.")
+    identities = [
+        (item["capability_id"], item["capability_version"]) for item in normalized
+    ]
+    if len(set(identities)) != len(identities):
+        raise _invalid("Capability snapshot contains duplicate exact versions.")
+    snapshot: dict[str, Any] = {
+        "schema_version": CAPABILITY_SNAPSHOT_SCHEMA_VERSION,
+        "tenant_id": _required_text("tenant_id", tenant_id, 128),
+        "capability_snapshot_id": _required_uuid(
+            "capability_snapshot_id", capability_snapshot_id
+        ),
+        "snapshot_version": _bounded_int(
+            "snapshot_version", snapshot_version, 1, 9999
+        ),
+        "capabilities": sorted(
+            normalized,
+            key=lambda item: (item["capability_id"], item["capability_version"]),
+        ),
+        "created_at": _required_datetime("created_at", created_at),
+    }
+    snapshot["snapshot_hash"] = semantic_sha256_hash_ref(snapshot)
+    return snapshot
+
+
+def capability_by_exact_version(
+    snapshot: Mapping[str, Any], capability_id: str, capability_version: str
+) -> dict[str, Any]:
+    normalized = _validate_snapshot(snapshot)
+    matches = [
+        item
+        for item in normalized["capabilities"]
+        if item["capability_id"] == capability_id
+        and item["capability_version"] == capability_version
+    ]
+    if len(matches) != 1:
+        raise CapabilitySnapshotError(
+            "ae.capability_exact_version_unavailable",
+            "The exact capability version is unavailable.",
+        )
+    return matches[0]
+
+
+class SqlAlchemyCapabilitySnapshotRepository:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def save(self, snapshot: Mapping[str, Any]) -> dict[str, Any]:
+        normalized = _validate_snapshot(snapshot)
+        params = {
+            "tenant_id": normalized["tenant_id"],
+            "capability_snapshot_id": normalized["capability_snapshot_id"],
+            "snapshot_version": normalized["snapshot_version"],
+            "snapshot_hash": normalized["snapshot_hash"],
+            "snapshot_json": _canonical_json(normalized),
+            "created_at": normalized["created_at"],
+        }
+        try:
+            with self._session_factory() as session:
+                session.execute(
+                    text(_snapshot_insert_sql(_dialect_name(session))), params
+                )
+                saved = _load_snapshot(
+                    session,
+                    normalized["tenant_id"],
+                    normalized["capability_snapshot_id"],
+                )
+                if saved is None:
+                    conflict = _load_snapshot_by_version(
+                        session,
+                        normalized["tenant_id"],
+                        normalized["snapshot_version"],
+                    )
+                    if conflict is not None:
+                        raise CapabilitySnapshotError(
+                            "ae.capability_snapshot_version_conflict",
+                            "A different snapshot owns this tenant version.",
+                        )
+                    raise CapabilitySnapshotError(
+                        "ae.capability_snapshot_write_conflict",
+                        "Capability snapshot could not be reloaded.",
+                        True,
+                    )
+                if saved != normalized:
+                    raise CapabilitySnapshotError(
+                        "ae.capability_snapshot_immutable_conflict",
+                        "Capability snapshot identity exists with different content.",
+                    )
+                session.commit()
+                return saved
+        except CapabilitySnapshotError:
+            raise
+        except SQLAlchemyError as exc:
+            raise CapabilitySnapshotError(
+                "ae.capability_snapshot_store_unavailable",
+                "AE capability snapshot store is unavailable.",
+                True,
+            ) from exc
+
+    def get(
+        self, *, tenant_id: str, capability_snapshot_id: str
+    ) -> dict[str, Any] | None:
+        tenant_id = _required_text("tenant_id", tenant_id, 128)
+        capability_snapshot_id = _required_uuid(
+            "capability_snapshot_id", capability_snapshot_id
+        )
+        try:
+            with self._session_factory() as session:
+                return _load_snapshot(session, tenant_id, capability_snapshot_id)
+        except SQLAlchemyError as exc:
+            raise CapabilitySnapshotError(
+                "ae.capability_snapshot_store_unavailable",
+                "AE capability snapshot store is unavailable.",
+                True,
+            ) from exc
+
+
+def _validate_snapshot(value: Mapping[str, Any]) -> dict[str, Any]:
+    try:
+        record = json.loads(_canonical_json(dict(value)))
+    except (TypeError, ValueError) as exc:
+        raise _invalid("Capability snapshot must be canonical JSON.") from exc
+    if set(record) != {
+        "schema_version",
+        "tenant_id",
+        "capability_snapshot_id",
+        "snapshot_version",
+        "capabilities",
+        "snapshot_hash",
+        "created_at",
+    }:
+        raise _invalid("Capability snapshot fields do not match v1.1.")
+    if record["schema_version"] != CAPABILITY_SNAPSHOT_SCHEMA_VERSION:
+        raise _invalid("Capability snapshot schema_version must be 1.1.")
+    _required_text("tenant_id", record["tenant_id"], 128)
+    _required_uuid("capability_snapshot_id", record["capability_snapshot_id"])
+    _bounded_int("snapshot_version", record["snapshot_version"], 1, 9999)
+    if not isinstance(record["capabilities"], list) or not 1 <= len(
+        record["capabilities"]
+    ) <= 64:
+        raise _invalid("Capability snapshot capabilities must contain 1..64 items.")
+    normalized = [_validate_capability(item) for item in record["capabilities"]]
+    identities = [
+        (item["capability_id"], item["capability_version"]) for item in normalized
+    ]
+    if len(set(identities)) != len(identities):
+        raise _invalid("Capability snapshot contains duplicate exact versions.")
+    if normalized != sorted(
+        normalized,
+        key=lambda item: (item["capability_id"], item["capability_version"]),
+    ):
+        raise _invalid("Capability snapshot capabilities must be canonically ordered.")
+    _required_datetime("created_at", record["created_at"])
+    try:
+        validate_hash_ref(record["snapshot_hash"])
+    except ValueError as exc:
+        raise _invalid("Capability snapshot hash is invalid.") from exc
+    expected = semantic_sha256_hash_ref(
+        {key: item for key, item in record.items() if key != "snapshot_hash"}
+    )
+    if record["snapshot_hash"] != expected:
+        raise _invalid("Capability snapshot hash does not match its content.")
+    return record
+
+
+def _validate_capability(value: Mapping[str, Any]) -> dict[str, Any]:
+    fields = {
+        "capability_id",
+        "capability_version",
+        "status",
+        "allowed_logical_step_types",
+        "executable_step_type",
+        "executor_kind",
+        "input_contract_ref",
+        "output_contract_ref",
+        "operation_semantics",
+    }
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise _invalid("Capability fields do not match v1.1.")
+    capability_id = _required_text("capability_id", value["capability_id"], 160)
+    if _CAPABILITY_ID.fullmatch(capability_id) is None:
+        raise _invalid("Capability ID is invalid.")
+    step_types = value["allowed_logical_step_types"]
+    if (
+        not isinstance(step_types, list | tuple)
+        or not step_types
+        or any(
+            item not in {"LOCAL_CAPABILITY", "AGGREGATE", "REPORT"}
+            for item in step_types
+        )
+        or len(set(step_types)) != len(step_types)
+    ):
+        raise _invalid("Capability logical step types are invalid.")
+    executable_type = value["executable_step_type"]
+    if executable_type not in {"CANONICAL_CAPABILITY", "AGGREGATE", "REPORT"}:
+        raise _invalid("Capability executable step type is invalid.")
+    executor_kind = value["executor_kind"]
+    if executor_kind not in {
+        "P4_CHAT_RAG_COMPATIBILITY",
+        "DETERMINISTIC_AGGREGATE",
+        "DETERMINISTIC_REPORT",
+    }:
+        raise _invalid("Capability executor kind is invalid.")
+    semantics = value["operation_semantics"]
+    if semantics not in {"READ", "GENERATE", "AGGREGATE", "REPORT"}:
+        raise _invalid("Capability operation semantics are invalid.")
+    if value["status"] != "ACTIVE":
+        raise _invalid("Capability status must be ACTIVE.")
+    return {
+        "capability_id": capability_id,
+        "capability_version": _required_text(
+            "capability_version", value["capability_version"], 64
+        ),
+        "status": "ACTIVE",
+        "allowed_logical_step_types": list(step_types),
+        "executable_step_type": executable_type,
+        "executor_kind": executor_kind,
+        "input_contract_ref": _required_text(
+            "input_contract_ref", value["input_contract_ref"], 256
+        ),
+        "output_contract_ref": _required_text(
+            "output_contract_ref", value["output_contract_ref"], 256
+        ),
+        "operation_semantics": semantics,
+    }
+
+
+def _snapshot_insert_sql(dialect_name: str) -> str:
+    snapshot_json = (
+        "CAST(:snapshot_json AS jsonb)"
+        if dialect_name == "postgresql"
+        else ":snapshot_json"
+    )
+    return f"""
+        INSERT INTO ae_capability_snapshot (
+            tenant_id, capability_snapshot_id, snapshot_version,
+            snapshot_hash, snapshot_json, created_at
+        ) VALUES (
+            :tenant_id, :capability_snapshot_id, :snapshot_version,
+            :snapshot_hash, {snapshot_json}, :created_at
+        ) ON CONFLICT DO NOTHING
+    """
+
+
+def _load_snapshot(
+    session: Session, tenant_id: str, snapshot_id: str
+) -> dict[str, Any] | None:
+    row = session.execute(
+        text(
+            """
+            SELECT snapshot_json FROM ae_capability_snapshot
+            WHERE tenant_id = :tenant_id
+              AND capability_snapshot_id = :snapshot_id
+            """
+        ),
+        {"tenant_id": tenant_id, "snapshot_id": snapshot_id},
+    ).mappings().first()
+    return None if row is None else _json_value(row["snapshot_json"])
+
+
+def _load_snapshot_by_version(
+    session: Session, tenant_id: str, version: int
+) -> dict[str, Any] | None:
+    row = session.execute(
+        text(
+            """
+            SELECT snapshot_json FROM ae_capability_snapshot
+            WHERE tenant_id = :tenant_id AND snapshot_version = :version
+            """
+        ),
+        {"tenant_id": tenant_id, "version": version},
+    ).mappings().first()
+    return None if row is None else _json_value(row["snapshot_json"])
+
+
+def _required_uuid(field: str, value: object) -> str:
+    if not isinstance(value, str):
+        raise _invalid(f"{field} must be a UUID string.")
+    try:
+        UUID(value)
+    except ValueError as exc:
+        raise _invalid(f"{field} must be a UUID string.") from exc
+    return value
+
+
+def _required_text(field: str, value: object, maximum: int) -> str:
+    if not isinstance(value, str) or not value.strip() or len(value) > maximum:
+        raise _invalid(f"{field} must be a non-empty string up to {maximum} characters.")
+    return value.strip()
+
+
+def _bounded_int(field: str, value: object, minimum: int, maximum: int) -> int:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not minimum <= value <= maximum
+    ):
+        raise _invalid(f"{field} must be between {minimum} and {maximum}.")
+    return value
+
+
+def _required_datetime(field: str, value: object) -> str:
+    if not isinstance(value, str):
+        raise _invalid(f"{field} must be an RFC 3339 date-time string.")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise _invalid(f"{field} must be an RFC 3339 date-time string.") from exc
+    if parsed.tzinfo is None:
+        raise _invalid(f"{field} must include a timezone offset.")
+    return parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _canonical_json(value: Any) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+def _json_value(value: Any) -> dict[str, Any]:
+    return json.loads(value) if isinstance(value, str) else dict(value)
+
+
+def _dialect_name(session: Session) -> str:
+    return session.get_bind().dialect.name
+
+
+def _invalid(detail: str) -> CapabilitySnapshotError:
+    return CapabilitySnapshotError("ae.capability_snapshot_invalid", detail)

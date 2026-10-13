@@ -50,8 +50,8 @@ def test_new_database_identifiers_remain_below_postgresql_limit() -> None:
     assert max(map(len, identifiers)) < 63
 
 
-def test_ae_migration_inventory_ends_with_p5_s1_work_intent() -> None:
-    migrations = load_migrations("nex-ae-api")
+def test_ae_migration_inventory_contains_ordered_p5_s1_pair() -> None:
+    versions = [item.version for item in load_migrations("nex-ae-api")]
+    prompt_index = versions.index("2100_ae_prompt_registry_hardening")
 
-    assert migrations[-2].version == "2100_ae_prompt_registry_hardening"
-    assert migrations[-1].version == "2101_ae_work_intent"
+    assert versions[prompt_index + 1] == "2101_ae_work_intent"

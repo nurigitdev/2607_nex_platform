@@ -132,9 +132,11 @@ No WC, WRITE, NSL or false AgentExecution `SUCCEEDED`.
 |---|---|---|
 | P5-S1 | COMPLETE | WorkIntent adapter/persistence, shared semantic hash utility, immutable prompt versions, atomic binding history/pointer activation, exact provenance, PostgreSQL smoke |
 | P5-S2 | COMPLETE | Trusted resolver boundary, immutable AgentContext generations, exact WorkIntent/AgentExecution lineage, PostgreSQL smoke |
-| P5-S3..P5-S9 | NOT STARTED | Continue in the approved implementation order |
+| P5-S3 | COMPLETE | Tenant-scoped immutable capability snapshot, exact capability versions, deterministic DIRECT/KNOWN_TEMPLATE profiles, immutable AgentPlan lineage, PostgreSQL smoke |
+| P5-S4..P5-S9 | NOT STARTED | Continue in the approved implementation order |
 
 As-Built records:
 
 - `../../slices/p5_s1_work_intent_prompt_registry_hardening.md`
 - `../../slices/p5_s2_agent_context.md`
+- `../../slices/p5_s3_capability_snapshot_deterministic_plans.md`
