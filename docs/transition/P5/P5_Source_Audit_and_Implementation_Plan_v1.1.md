@@ -4,7 +4,7 @@
 
 **Supersedes:** v1.0
 
-**Implementation state:** NOT STARTED
+**Implementation state:** IN PROGRESS — P5-S1 COMPLETE
 
 ## 1. Entry baseline
 
@@ -113,6 +113,8 @@ Tests must prove representation conversion does not rehash.
 ## 5. Slice plan
 
 ### P5-S1 — WorkIntent + Prompt Registry hardening
+
+**Status:** COMPLETE — 2026-10-13
 
 Implement:
 

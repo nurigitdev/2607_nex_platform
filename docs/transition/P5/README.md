@@ -1,6 +1,6 @@
 # P5 Transition Implementation Baseline
 
-**Status:** P5-CA01A REVIEWED PRE-IMPLEMENTATION BASELINE — v1.1
+**Status:** P5 IMPLEMENTATION IN PROGRESS — v1.1
 
 **Phase:** P5 — Agent Planning & Execution Foundation
 
@@ -123,3 +123,15 @@ PROMPT
 ```
 
 No WC, WRITE, NSL or false AgentExecution `SUCCEEDED`.
+
+---
+
+## 6. Implementation Status
+
+| Slice | Status | Result |
+|---|---|---|
+| P5-S1 | COMPLETE | WorkIntent adapter/persistence, shared semantic hash utility, immutable prompt versions, atomic binding history/pointer activation, exact provenance, PostgreSQL smoke |
+| P5-S2..P5-S9 | NOT STARTED | Continue in the approved implementation order |
+
+The P5-S1 As-Built record is
+`../../slices/p5_s1_work_intent_prompt_registry_hardening.md`.
