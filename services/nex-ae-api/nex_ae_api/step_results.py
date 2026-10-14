@@ -17,8 +17,18 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-STEP_RESULT_SCHEMA_VERSION = "1.1"
+P5_STEP_RESULT_SCHEMA_VERSION = "1.1"
+P6_STEP_RESULT_SCHEMA_VERSION = "1.2"
+STEP_RESULT_SCHEMA_VERSION = P5_STEP_RESULT_SCHEMA_VERSION
 TERMINAL_RESULT_STATUSES = frozenset({"SUCCEEDED", "FAILED", "BLOCKED", "CANCELLED"})
+STEP_RESULT_EXECUTOR_KINDS = frozenset(
+    {
+        "P4_CHAT_RAG_COMPATIBILITY",
+        "DETERMINISTIC_AGGREGATE",
+        "DETERMINISTIC_REPORT",
+        "LOCAL_SKILL",
+    }
+)
 _COMPILED_STEP_KEY = re.compile(r"^E[0-9]{1,3}$")
 _LOGICAL_STEP_ID = re.compile(r"^S[0-9]{1,3}$")
 
@@ -51,9 +61,16 @@ def build_step_result(
     artifact_refs: Sequence[str] = (),
     evidence_refs: Sequence[str] = (),
     error_ref: str | None = None,
+    executor_kind: str | None = None,
+    business_operation_id: str | None = None,
 ) -> dict[str, Any]:
+    schema_version = (
+        P5_STEP_RESULT_SCHEMA_VERSION
+        if executor_kind is None
+        else P6_STEP_RESULT_SCHEMA_VERSION
+    )
     result: dict[str, Any] = {
-        "schema_version": STEP_RESULT_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "step_result_id": _required_uuid("step_result_id", step_result_id),
         "execution_id": _required_uuid("execution_id", execution_id),
         "executable_plan_id": _required_uuid("executable_plan_id", executable_plan_id),
@@ -70,11 +87,13 @@ def build_step_result(
         "artifact_refs": _references("artifact_refs", artifact_refs, 64),
         "evidence_refs": _references("evidence_refs", evidence_refs, 128),
         "error_ref": _optional_text("error_ref", error_ref, 256),
-        "business_operation_id": None,
+        "business_operation_id": business_operation_id,
         "operation_fingerprint": None,
         "started_at": _timestamp("started_at", started_at),
         "completed_at": _timestamp("completed_at", completed_at),
     }
+    if executor_kind is not None:
+        result["executor_kind"] = executor_kind
     if _parse_timestamp(result["completed_at"]) < _parse_timestamp(
         result["started_at"]
     ):
@@ -125,11 +144,15 @@ def validate_step_result_contract(value: Mapping[str, Any]) -> dict[str, Any]:
         "completed_at",
         "result_hash",
     }
+    schema_version = result.get("schema_version")
     optional = {"error_ref"}
+    if schema_version == P6_STEP_RESULT_SCHEMA_VERSION:
+        required.add("executor_kind")
     if (
         not required.issubset(result)
         or not set(result).issubset(required | optional)
-        or result["schema_version"] != STEP_RESULT_SCHEMA_VERSION
+        or schema_version
+        not in {P5_STEP_RESULT_SCHEMA_VERSION, P6_STEP_RESULT_SCHEMA_VERSION}
     ):
         raise _invalid("StepResult fields or schema version are invalid.")
     for field in (
@@ -149,11 +172,19 @@ def validate_step_result_contract(value: Mapping[str, Any]) -> dict[str, Any]:
     _references("artifact_refs", result["artifact_refs"], 64)
     _references("evidence_refs", result["evidence_refs"], 128)
     _optional_text("error_ref", result.get("error_ref"), 256)
-    if (
-        result["business_operation_id"] is not None
-        or result["operation_fingerprint"] is not None
-    ):
-        raise _invalid("P5 StepResult WRITE identity must remain null.")
+    if result["operation_fingerprint"] is not None:
+        raise _invalid("StepResult operation fingerprint must remain null.")
+    if schema_version == P5_STEP_RESULT_SCHEMA_VERSION:
+        if result["business_operation_id"] is not None:
+            raise _invalid("P5 StepResult WRITE identity must remain null.")
+    else:
+        executor_kind = result["executor_kind"]
+        if executor_kind not in STEP_RESULT_EXECUTOR_KINDS:
+            raise _invalid("P6 StepResult executor_kind is invalid.")
+        if executor_kind == "LOCAL_SKILL":
+            _required_uuid("business_operation_id", result["business_operation_id"])
+        elif result["business_operation_id"] is not None:
+            raise _invalid("Non-LOCAL_SKILL StepResult identity must remain null.")
     started = _timestamp("started_at", result["started_at"])
     completed = _timestamp("completed_at", result["completed_at"])
     if _parse_timestamp(completed) < _parse_timestamp(started):
@@ -324,6 +355,8 @@ def _require_step_lineage(
         "logical_step_id": result["logical_step_ref"],
         "state": result["status"],
     }
+    if result["schema_version"] == P6_STEP_RESULT_SCHEMA_VERSION:
+        expected["executor_kind"] = result["executor_kind"]
     if any(str(step.get(key)) != str(value) for key, value in expected.items()):
         raise StepResultError(
             "ae.step_result_lineage_mismatch",
@@ -338,7 +371,7 @@ def _load_step_lineage(
         session.execute(
             text(
                 "SELECT agent_execution_id, executable_plan_id, compiled_step_key, "
-                "logical_step_id, state FROM ae_executable_step "
+                "logical_step_id, state, executor_kind FROM ae_executable_step "
                 "WHERE tenant_id = :tenant_id AND executable_step_id = :step_id"
             ),
             {"tenant_id": tenant_id, "step_id": executable_step_id},
@@ -366,8 +399,9 @@ def _result_params(tenant_id: str, result: Mapping[str, Any]) -> dict[str, Any]:
         "artifact_refs": canonical_json(result["artifact_refs"]),
         "evidence_refs": canonical_json(result["evidence_refs"]),
         "error_ref": result.get("error_ref"),
-        "business_operation_id": None,
+        "business_operation_id": result["business_operation_id"],
         "operation_fingerprint": None,
+        "executor_kind": result.get("executor_kind"),
         "started_at": result["started_at"],
         "completed_at": result["completed_at"],
         "result_hash": result["result_hash"],
@@ -383,7 +417,7 @@ def _insert_sql(dialect_name: str) -> str:
             executable_step_id, compiled_step_key, logical_step_id, attempt_no,
             status, result_contract_ref, result_payload, external_refs,
             artifact_refs, evidence_refs, error_ref, business_operation_id,
-            operation_fingerprint, started_at, completed_at, result_hash,
+            operation_fingerprint, executor_kind, started_at, completed_at, result_hash,
             result_json
         ) VALUES (
             :tenant_id, :step_result_id, :agent_execution_id,
@@ -391,6 +425,7 @@ def _insert_sql(dialect_name: str) -> str:
             :logical_step_id, :attempt_no, :status, :result_contract_ref,
             {result_payload}, {external_refs}, {artifact_refs}, {evidence_refs},
             :error_ref, :business_operation_id, :operation_fingerprint,
+            :executor_kind,
             :started_at, :completed_at, :result_hash, {result_json}
         ) ON CONFLICT DO NOTHING
     """.format(

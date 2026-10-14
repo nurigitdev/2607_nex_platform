@@ -56,6 +56,7 @@ def _factory(*, schema=True, seed=True):
                         tenant_id TEXT NOT NULL, executable_step_id TEXT NOT NULL,
                         agent_execution_id TEXT NOT NULL, executable_plan_id TEXT,
                         compiled_step_key TEXT, logical_step_id TEXT, state TEXT NOT NULL,
+                        executor_kind TEXT,
                         PRIMARY KEY (tenant_id, executable_step_id))"""))
             connection.execute(text("""CREATE TABLE ae_step_result (
                         tenant_id TEXT NOT NULL, step_result_id TEXT NOT NULL,
@@ -66,7 +67,8 @@ def _factory(*, schema=True, seed=True):
                         result_payload TEXT NOT NULL, external_refs TEXT NOT NULL,
                         artifact_refs TEXT NOT NULL, evidence_refs TEXT NOT NULL,
                         error_ref TEXT, business_operation_id TEXT,
-                        operation_fingerprint TEXT, started_at TEXT NOT NULL,
+                        operation_fingerprint TEXT, executor_kind TEXT,
+                        started_at TEXT NOT NULL,
                         completed_at TEXT NOT NULL, result_hash TEXT NOT NULL,
                         result_json TEXT NOT NULL, created_at TEXT,
                         PRIMARY KEY (tenant_id, step_result_id),
@@ -75,7 +77,8 @@ def _factory(*, schema=True, seed=True):
                 connection.execute(
                     text(
                         "INSERT INTO ae_executable_step VALUES "
-                        "(:t, :s, :e, :p, 'E1', 'S1', 'SUCCEEDED')"
+                        "(:t, :s, :e, :p, 'E1', 'S1', 'SUCCEEDED', "
+                        "'P4_CHAT_RAG_COMPATIBILITY')"
                     ),
                     {"t": TENANT, "s": STEP_ID, "e": EXECUTION_ID, "p": PLAN_ID},
                 )

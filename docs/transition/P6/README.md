@@ -1,6 +1,6 @@
 # P6 Transition Implementation Baseline v1.1
 
-**Status:** P6-S2 COMPLETE; P6-S3 NEXT
+**Status:** P6-S3 COMPLETE; P6-S4 NEXT
 **Phase:** P6 — NSL READ Integration
 **Implementation Baseline:** NSL v0.1 As-Built
 **Target Contract:** Frozen NSL v0.2 READ-compatible integration subset
@@ -72,6 +72,7 @@ Frozen Platform v2.1 / Agent v2.1 / NSL v0.2
 17. `../../slices/p6_s1_db_protected_tenant_dispatcher.md`
 18. `../../slices/p6_s1a_runtime_dispatch_semantic_hardening.md`
 19. `../../slices/p6_s2_skill_artifact_gateway.md`
+20. `../../slices/p6_s3_nsl_step_execution_binding.md`
 
 ## 5. CA01A Non-Negotiable Rules
 
@@ -204,9 +205,28 @@ P6-S2 implemented:
 - actual `nex_ae_test` PostgreSQL acceptance with 14/14 checks and zero
   residue.
 
-The next authorized Slice is P6-S3.
+## 11. P6-S3 Result
 
-## 11. Exit Shape
+P6-S3 implemented:
+
+- one immutable, tenant-scoped `ae_nsl_step_execution` row per executable
+  step, with separately allocated NSL execution and BusinessOperation IDs;
+- bounded context projection and canonical `SkillExecutionRequest` validation,
+  persistence, hashing, restart replay, and private-material rejection;
+- exact persisted AgentContext, compiled Skill selector, and verified artifact
+  lineage checks before binding;
+- StepResult readers/writers that preserve historical schema 1.1 while adding
+  schema 1.2 and non-null BusinessOperation ID only for `LOCAL_SKILL`;
+- actual `nex_ae_test` PostgreSQL acceptance with 20/20 checks and zero
+  residue; and
+- an AE Slice Gate with statement 98.67% and branch 96.95% coverage.
+
+S3 deliberately accepts the planned `LOCAL_SKILL_UNAVAILABLE` boundary for
+request binding but does not make it executable. The next authorized Slice is
+P6-S4, which activates `executor_kind=LOCAL_SKILL` only after checking every
+required runtime dependency.
+
+## 12. Exit Shape
 
 ```text
 PROMPT

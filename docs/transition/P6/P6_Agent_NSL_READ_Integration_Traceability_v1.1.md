@@ -1,6 +1,6 @@
 # P6 Agent ↔ NSL READ Integration Traceability v1.1
 
-**Status:** P6-S2 ARTIFACT GATEWAY EVIDENCE ADDED; P6-S3 NEXT
+**Status:** P6-S3 REQUEST/IDENTITY EVIDENCE ADDED; P6-S4 NEXT
 
 ## 1. Identity chain
 
@@ -228,3 +228,36 @@ references and hashes. Raw package, NSO, signature and verification-journal
 content remain outside AE persistence. Actual `nex_ae_test` evidence passed
 14/14 checks with restart-style reload, tenant isolation, fail-closed negative
 paths, zero forbidden residue and cleanup to zero rows.
+
+## 12. P6-S3 request and identity binding evidence
+
+```text
+source:
+  database/nex-ae-api/migrations/2202_ae_nsl_step_execution.sql
+  services/nex-ae-api/nex_ae_api/nsl_step_executions.py
+  services/nex-ae-api/nex_ae_api/step_results.py
+
+tests:
+  tests/test_p6_s3_nsl_step_execution.py
+  tests/test_p6_s3_postgres_smoke.py
+
+protected runner:
+  scripts/smoke/run_p6_s3_postgres_smoke.py
+```
+
+Trace boundary:
+
+```text
+planned LOCAL_SKILL step
+-> exact persisted VerifiedSkillArtifact
+-> trusted bounded AgentContext projection
+-> stable NSLExecutionId + BusinessOperationId
+-> canonical SkillExecutionRequest hash
+-> immutable request-bound ae_nsl_step_execution row
+-> restart/retry reload of the same identities
+```
+
+Actual `nex_ae_test` evidence passed 20/20 checks, including migration
+currency, P5 upstream lineage creation, binding insert/select, restart replay,
+immutable-conflict rejection, distinct stable IDs and cleanup to zero rows.
+S3 does not activate the executor or invoke NSL; those remain S4 and S5.

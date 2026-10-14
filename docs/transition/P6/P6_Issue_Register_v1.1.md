@@ -1,6 +1,6 @@
 # P6 NSL READ Integration Issue Register v1.1
 
-**Status:** P6-S2 COMPLETE; P6-S3 NEXT
+**Status:** P6-S3 COMPLETE; P6-S4 NEXT
 
 | ID | Sev | Issue | v1.1 Decision | Status |
 |---|---:|---|---|---|
@@ -15,8 +15,8 @@
 | P6-ISSUE-009 | P1 | Dispatcher fairness authority ambiguous | one DB-protected leader; each round rebuilds from durable state | CLOSED |
 | P6-ISSUE-010 | P1 | Backpressure semantics incomplete | active/depth/batch caps plus explicit retryable DELAY/REJECT errors | CLOSED |
 | P6-ISSUE-011 | P1 | VerifiedNspPackage != canonical VerifiedSkillArtifact | Exact gateway projection, current governance admission, and bounded persistence implemented | CLOSED |
-| P6-ISSUE-012 | P1 | v0.1 job lacks Agent/Plan/Step/BOI/correlation fields | Exhaustive adapter map and AE binding contract fixed | CONTRACT_CLOSED_S3_S5_IMPL |
-| P6-ISSUE-013 | P1 | Full AgentContext copy risk | Bounded context projection schema and rejection rules fixed | CONTRACT_CLOSED_S3_IMPL |
+| P6-ISSUE-012 | P1 | v0.1 job lacks Agent/Plan/Step/BOI/correlation fields | Durable AE binding/request implemented; S5 maps the bounded request to v0.1 | BINDING_CLOSED_S5_ADAPTER |
+| P6-ISSUE-013 | P1 | Full AgentContext copy risk | Bounded projection persistence and recursive private-material rejection implemented | CLOSED |
 | P6-ISSUE-014 | P1 | Exhaustive NSL status mapping missing | All eight v0.1 statuses mapped | CLOSED |
 | P6-ISSUE-015 | P1 | Blind replay unsafe | no arbitrary Agent Runtime replay API | DESIGN_CLOSED |
 | P6-ISSUE-016 | P2 | Process-isolation profile not selected | `NSL_V01_PROCESS_ISOLATED` selected; S5 implements adapter | CONTRACT_CLOSED_S5_IMPL |
@@ -29,5 +29,6 @@
 
 ## Gate
 
-The P6-CA01 gate and P6-S0 through P6-S2 foundations are closed. P6-S3 may
-begin. `LOCAL_SKILL` execution remains fail-closed until P6-S4.
+The P6-CA01 gate and P6-S0 through P6-S3 foundations are closed. P6-S4 may
+begin. `LOCAL_SKILL` execution remains fail-closed until that Slice verifies
+and registers the complete executor dependency set.

@@ -205,7 +205,10 @@ def _static_evidence(root: Path) -> dict[str, Any]:
             "nsl_wc_runtime_coupling_absent": not nsl_wc_hits,
             "direct_provider_client_absent": not provider_hits,
             "step_result_write_identity_fail_closed": (
-                '"business_operation_id": None' in step_result
+                'P5_STEP_RESULT_SCHEMA_VERSION = "1.1"' in step_result
+                and "if executor_kind is None" in step_result
+                and "schema_version == P5_STEP_RESULT_SCHEMA_VERSION"
+                in step_result
                 and '"operation_fingerprint": None' in step_result
                 and 'result["business_operation_id"] is not None' in step_result
                 and 'result["operation_fingerprint"] is not None' in step_result

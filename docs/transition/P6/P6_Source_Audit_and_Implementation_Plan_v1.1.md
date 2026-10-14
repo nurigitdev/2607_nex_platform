@@ -1,6 +1,6 @@
 # P6 Source Audit and Implementation Plan v1.1
 
-**Status:** P6-S2 COMPLETE; P6-S3 READY
+**Status:** P6-S3 COMPLETE; P6-S4 READY
 **Supersedes:** v1.0
 
 ## 1. Entry Sequence
@@ -20,9 +20,9 @@ P6 v1.1 document-set acceptance
 ```
 
 P6-CA01 is closed by
-`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 through P6-S2 are
+`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 through P6-S3 are
 closed by their matching records in `docs/slices/`. The next implementation
-Slice is P6-S3.
+Slice is P6-S4.
 
 ## 2. Refactoring-First Rule
 
@@ -162,6 +162,8 @@ As-Built notes:
 
 ## 6. P6-S3 — NSLStepExecutionBinding + Request
 
+**Status: COMPLETE**
+
 Create durable AE-owned binding before backend call.
 
 Recommended migration/table:
@@ -191,6 +193,21 @@ state/result refs
 Implement `SkillExecutionRequest`.
 
 Implement StepResult reader/writer evolution to schema 1.2.
+
+As-Built notes:
+
+- migration `2202_ae_nsl_step_execution` adds the short-named binding table,
+  step cardinality and runtime-ID uniqueness, bounded JSON identity checks,
+  and additive StepResult 1.2 storage support;
+- `nsl_step_executions.py` validates and persists one canonical request and
+  context projection while rejecting full AgentContext/private material;
+- exact tenant, ExecutableStep, AgentContext, Skill/version and verified
+  artifact lineage is checked before the binding transaction commits;
+- restart/retry reloads the same NSL execution and BusinessOperation IDs, and
+  any changed immutable request fails closed;
+- historical StepResult 1.1 remains unchanged; StepResult 1.2 requires a
+  BusinessOperation ID only for `LOCAL_SKILL`; and
+- actual `nex_ae_test` acceptance passed all 20 checks with zero residue.
 
 ## 7. P6-S4 — LOCAL_SKILL Activation
 
@@ -282,14 +299,12 @@ Closure also proves v0.1 external AE gaps for actual dispatch/consume and determ
 
 ## 11. Recommended Migrations
 
-Exact numbers follow current inventory.
-
-Candidate:
+Current inventory:
 
 ```text
 2200 runtime worker/dispatcher indexes/operational support
-2201 NSL step execution binding
-2202 StepResult schema 1.2 support
+2201 verified NSL Skill artifact
+2202 NSL step execution binding + StepResult schema 1.2 support
 2203 timeline projection support only if needed
 ```
 

@@ -78,6 +78,7 @@ def _factory(*, seed=True):
                 result_payload TEXT NOT NULL, external_refs TEXT NOT NULL,
                 artifact_refs TEXT NOT NULL, evidence_refs TEXT NOT NULL,
                 error_ref TEXT, business_operation_id TEXT, operation_fingerprint TEXT,
+                executor_kind TEXT,
                 started_at TEXT NOT NULL, completed_at TEXT NOT NULL,
                 result_hash TEXT NOT NULL, result_json TEXT NOT NULL, created_at TEXT,
                 PRIMARY KEY (tenant_id, step_result_id),
