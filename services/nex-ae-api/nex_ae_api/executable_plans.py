@@ -20,12 +20,16 @@ from sqlalchemy.orm import Session, sessionmaker
 from nex_ae_api.agent_plans import validate_agent_plan_contract
 from nex_ae_api.plan_validation import validate_plan_validation_result
 from nex_ae_api.planning_capabilities import (
+    LOCAL_SKILL_EXECUTOR_KIND,
     REPORT_CAPABILITY_ID,
     validate_capability_snapshot_contract,
+    validate_local_skill_binding,
 )
 
 EXECUTABLE_PLAN_SCHEMA_VERSION = "1.1"
+P6_EXECUTABLE_PLAN_SCHEMA_VERSION = "1.2"
 COMPILER_VERSION = "p5.1"
+P6_COMPILER_VERSION = "p6.1"
 _LOGICAL_STEP_ID = re.compile(r"^S[0-9]{1,3}$")
 _COMPILED_STEP_KEY = re.compile(r"^E[0-9]{1,3}$")
 
@@ -49,7 +53,7 @@ def compile_executable_plan(
     executable_plan_id: str | None = None,
     executable_plan_version: int = 1,
     compiled_at: str | None = None,
-    compiler_version: str = COMPILER_VERSION,
+    compiler_version: str | None = None,
     id_factory: Callable[[], str] | None = None,
     clock: Callable[[], datetime] | None = None,
 ) -> dict[str, Any]:
@@ -80,6 +84,9 @@ def compile_executable_plan(
         )
         for index, logical_step_id in enumerate(order)
     ]
+    has_local_skill = any(
+        step["executor_kind"] == LOCAL_SKILL_EXECUTOR_KIND for step in compiled_steps
+    )
     plan_id = _required_uuid("executable_plan_id", executable_plan_id or ids())
     compiled_time = _required_datetime(
         "compiled_at",
@@ -90,7 +97,11 @@ def compile_executable_plan(
         .replace("+00:00", "Z"),
     )
     executable_plan: dict[str, Any] = {
-        "schema_version": EXECUTABLE_PLAN_SCHEMA_VERSION,
+        "schema_version": (
+            P6_EXECUTABLE_PLAN_SCHEMA_VERSION
+            if has_local_skill
+            else EXECUTABLE_PLAN_SCHEMA_VERSION
+        ),
         "executable_plan_id": plan_id,
         "executable_plan_version": _bounded_int(
             "executable_plan_version", executable_plan_version, 1, 99
@@ -105,7 +116,12 @@ def compile_executable_plan(
         "validation_result_ref": _versioned_ref(
             validation["validation_result_id"], 1, validation["result_hash"]
         ),
-        "compiler_version": _required_text("compiler_version", compiler_version, 64),
+        "compiler_version": _required_text(
+            "compiler_version",
+            compiler_version
+            or (P6_COMPILER_VERSION if has_local_skill else COMPILER_VERSION),
+            64,
+        ),
         "policy_snapshot_ref": _policy_snapshot_ref(context),
         "authority_snapshot_ref": _optional_text(
             "authority_snapshot_ref", context.get("authority_ref"), 256
@@ -191,7 +207,8 @@ def validate_executable_plan_contract(
     if (
         not required.issubset(record)
         or not set(record).issubset(required | optional)
-        or record["schema_version"] != EXECUTABLE_PLAN_SCHEMA_VERSION
+        or record["schema_version"]
+        not in {EXECUTABLE_PLAN_SCHEMA_VERSION, P6_EXECUTABLE_PLAN_SCHEMA_VERSION}
     ):
         raise _invalid("ExecutablePlan fields or schema version are invalid.")
     _required_uuid("executable_plan_id", record["executable_plan_id"])
@@ -209,6 +226,13 @@ def validate_executable_plan_contract(
     for field in optional:
         _optional_text(field, record.get(field), 256)
     _validate_compiled_steps(record["steps"])
+    has_local_skill = any(
+        step["executor_kind"] == LOCAL_SKILL_EXECUTOR_KIND for step in record["steps"]
+    )
+    if has_local_skill != (
+        record["schema_version"] == P6_EXECUTABLE_PLAN_SCHEMA_VERSION
+    ):
+        raise _invalid("ExecutablePlan version does not match LOCAL_SKILL content.")
     _validate_completion_criteria(record["completion_criteria"], record["steps"])
     _validate_logical_mapping(record["logical_step_mapping"], record["steps"])
     if record["runtime_constraints"] != {
@@ -366,6 +390,10 @@ def _compile_step(
             else None
         ),
     }
+    if capability["executor_kind"] == LOCAL_SKILL_EXECUTOR_KIND:
+        semantic_step["skill_binding"] = dict(capability["local_skill_binding"])
+        semantic_step["timeout_policy_ref"] = "policy://nex/ae/local-skill-timeout/v1"
+        semantic_step["retry_policy_ref"] = "policy://nex/ae/local-skill-retry/v1"
     if logical_step["output_contract_ref"] != semantic_step["output_contract_ref"]:
         raise _invalid("AgentPlan output contract differs from exact capability.")
     step = {
@@ -526,6 +554,7 @@ def _validate_compiled_steps(value: object) -> None:
             "capability_version",
             "timeout_policy_ref",
             "retry_policy_ref",
+            "skill_binding",
         }
         if (
             not isinstance(step, Mapping)
@@ -559,6 +588,7 @@ def _validate_compiled_steps(value: object) -> None:
             "P4_CHAT_RAG_COMPATIBILITY",
             "DETERMINISTIC_AGGREGATE",
             "DETERMINISTIC_REPORT",
+            LOCAL_SKILL_EXECUTOR_KIND,
             "LOCAL_SKILL_UNAVAILABLE",
             "DELEGATE_WORK_UNAVAILABLE",
         }:
@@ -584,6 +614,25 @@ def _validate_compiled_steps(value: object) -> None:
                 _required_text(field, step[field], maximum)
             else:
                 _optional_text(field, step.get(field), maximum)
+        local_binding = step.get("skill_binding")
+        if step["executor_kind"] == LOCAL_SKILL_EXECUTOR_KIND:
+            if step["step_type"] != "LOCAL_SKILL":
+                raise _invalid("LOCAL_SKILL executor requires LOCAL_SKILL step type.")
+            try:
+                normalized_binding = validate_local_skill_binding(local_binding)
+            except Exception as exc:
+                raise _invalid(
+                    "ExecutableStep LOCAL_SKILL binding is invalid."
+                ) from exc
+            if (
+                normalized_binding != local_binding
+                or normalized_binding["skill_id"] != step.get("required_capability")
+                or normalized_binding["exact_skill_version"]
+                != step.get("capability_version")
+            ):
+                raise _invalid("ExecutableStep LOCAL_SKILL selector is inconsistent.")
+        elif local_binding is not None:
+            raise _invalid("Non-LOCAL_SKILL step cannot carry a Skill binding.")
         try:
             validate_hash_ref(step["step_contract_hash"])
         except ValueError as exc:
@@ -836,6 +885,11 @@ def _step_params(
         "capability_version": step.get("capability_version"),
         "dependency_json": canonical_json(step["depends_on_compiled_step_keys"]),
         "input_binding_json": canonical_json(step["compiled_input_bindings"]),
+        "skill_binding_json": (
+            canonical_json(step["skill_binding"])
+            if step.get("skill_binding") is not None
+            else None
+        ),
         "output_contract_ref": step["output_contract_ref"],
         "step_contract_hash": step["step_contract_hash"],
         "now": plan["compiled_at"],
@@ -870,20 +924,25 @@ def _step_insert_sql(dialect_name: str) -> str:
         if dialect_name == "postgresql"
         else ":input_binding_json"
     )
+    skill_binding = (
+        "CAST(:skill_binding_json AS jsonb)"
+        if dialect_name == "postgresql"
+        else ":skill_binding_json"
+    )
     return f"""
         INSERT INTO ae_executable_step (
             tenant_id, executable_step_id, agent_execution_id, step_kind, state,
             version, legacy_interaction_id, correlation_id, causation_id,
             executable_plan_id, logical_step_id, compiled_step_key, step_index,
             step_type, executor_kind, required_capability, capability_version,
-            dependency_json, input_binding_json, output_contract_ref,
+            dependency_json, input_binding_json, skill_binding_json, output_contract_ref,
             step_contract_hash, created_at, updated_at
         ) VALUES (
             :tenant_id, :executable_step_id, :agent_execution_id, :step_kind, :state,
             1, :legacy_interaction_id, :correlation_id, :causation_id,
             :executable_plan_id, :logical_step_id, :compiled_step_key, :step_index,
             :step_type, :executor_kind, :required_capability, :capability_version,
-            {dependencies}, {bindings}, :output_contract_ref,
+            {dependencies}, {bindings}, {skill_binding}, :output_contract_ref,
             :step_contract_hash, :now, :now
         ) ON CONFLICT DO NOTHING
     """
@@ -934,6 +993,7 @@ def _load_steps(
                    executable_plan_id, logical_step_id, compiled_step_key,
                    step_index, step_type, executor_kind, required_capability,
                    capability_version, dependency_json, input_binding_json,
+                   skill_binding_json,
                    output_contract_ref, step_contract_hash
             FROM ae_executable_step
             WHERE tenant_id = :tenant_id AND executable_plan_id = :plan_id
@@ -960,6 +1020,7 @@ def _load_steps(
             "capability_version": row["capability_version"],
             "dependencies": _json_list(row["dependency_json"]),
             "compiled_input_bindings": _json_list(row["input_binding_json"]),
+            "skill_binding": _json_optional_object(row["skill_binding_json"]),
             "output_contract_ref": row["output_contract_ref"],
             "step_contract_hash": row["step_contract_hash"],
         }
@@ -989,6 +1050,7 @@ def _require_persisted_steps(
             "capability_version": expected.get("capability_version"),
             "dependencies": expected["depends_on_compiled_step_keys"],
             "compiled_input_bindings": expected["compiled_input_bindings"],
+            "skill_binding": expected.get("skill_binding"),
             "output_contract_ref": expected["output_contract_ref"],
             "step_contract_hash": expected["step_contract_hash"],
         }
@@ -1089,6 +1151,13 @@ def _json_value(value: Any) -> dict[str, Any]:
 def _json_list(value: Any) -> list[Any]:
     decoded = json.loads(value) if isinstance(value, str) else value
     return list(decoded)
+
+
+def _json_optional_object(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    decoded = json.loads(value) if isinstance(value, str) else value
+    return dict(decoded)
 
 
 def _dialect_name(session: Session) -> str:

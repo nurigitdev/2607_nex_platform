@@ -66,7 +66,8 @@ def store():
                 step_type TEXT, executor_kind TEXT, required_capability TEXT,
                 capability_version TEXT, correlation_id TEXT NOT NULL,
                 causation_id TEXT, compiled_step_key TEXT, logical_step_id TEXT,
-                state TEXT NOT NULL, PRIMARY KEY (tenant_id, executable_step_id)
+                state TEXT NOT NULL, skill_binding_json TEXT,
+                PRIMARY KEY (tenant_id, executable_step_id)
             )
         """)
         )
@@ -117,7 +118,7 @@ def store():
                 INSERT INTO ae_executable_step VALUES (
                     :t, :s, :e, :p, 'LOCAL_SKILL', 'LOCAL_SKILL_UNAVAILABLE',
                     'FINANCE.PROJECT_BUDGET_CHECK', '1.0.0',
-                    'p6-golden-correlation', 'p6-golden-prompt', 'E1', 'S1', 'READY'
+                    'p6-golden-correlation', 'p6-golden-prompt', 'E1', 'S1', 'READY', NULL
                 )
             """),
             {"t": TENANT, "s": STEP_ID, "e": EXECUTION_ID, "p": PLAN_ID},
@@ -521,6 +522,49 @@ def test_repository_rejects_non_local_step_and_context_mismatch(store) -> None:
     with pytest.raises(NSLStepExecutionError) as caught:
         _bind(_repository(factory), context_projection=context)
     assert caught.value.error_code == "ae.nsl_binding_context_mismatch"
+
+
+def test_active_local_skill_binding_requires_exact_runtime_artifact_lineage(
+    store,
+) -> None:
+    engine, factory = store
+    artifact = _example("p6-golden-verified-artifact-v1.json")
+    skill_binding = {
+        "skill_id": artifact["skill_id"],
+        "exact_skill_version": artifact["skill_version"],
+        "skill_semantic_hash": artifact["skill_semantic_hash"],
+        "runtime_contract_ref": artifact["runtime_contract_ref"],
+        "trust_policy_id": artifact["trust_evidence"]["trust_policy_id"],
+        "backend_profile": "NSL_V01_PROCESS_ISOLATED",
+        "package_requirement": "SIGNED_TRUSTED_ACTIVE",
+    }
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE ae_executable_step SET executor_kind = 'LOCAL_SKILL'")
+        )
+    with pytest.raises(NSLStepExecutionError, match="exact compiled binding"):
+        _bind(_repository(factory))
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE ae_executable_step SET executor_kind = 'LOCAL_SKILL', "
+                "skill_binding_json = :binding"
+            ),
+            {"binding": json.dumps(skill_binding, sort_keys=True)},
+        )
+    assert _bind(_repository(factory))["binding"]["state"] == "REQUEST_BOUND"
+
+    changed = {**skill_binding, "runtime_contract_ref": "contract://wrong/v1"}
+    with engine.begin() as connection:
+        connection.execute(text("DELETE FROM ae_nsl_step_execution"))
+        connection.execute(
+            text("UPDATE ae_executable_step SET skill_binding_json = :binding"),
+            {"binding": json.dumps(changed, sort_keys=True)},
+        )
+    with pytest.raises(NSLStepExecutionError) as caught:
+        _bind(_repository(factory))
+    assert caught.value.error_code == "ae.nsl_binding_artifact_mismatch"
 
 
 def test_p6_step_result_v12_writer_reader_and_p5_compatibility(store) -> None:

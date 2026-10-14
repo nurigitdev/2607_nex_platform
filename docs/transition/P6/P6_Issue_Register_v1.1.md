@@ -1,6 +1,6 @@
 # P6 NSL READ Integration Issue Register v1.1
 
-**Status:** P6-S3 COMPLETE; P6-S4 NEXT
+**Status:** P6-S4 COMPLETE; P6-S5 NEXT
 
 | ID | Sev | Issue | v1.1 Decision | Status |
 |---|---:|---|---|---|
@@ -8,8 +8,8 @@
 | P6-ISSUE-002 | P0 | READ BusinessOperationId vs P5 null rule | StepResult v1.2 schema fixes LOCAL_SKILL READ non-null BOI and null fingerprint | CONTRACT_CLOSED |
 | P6-ISSUE-003 | P0 | Exact SkillExecutionRequest machine schema missing | Source-backed P6 schema and Golden example validated | CLOSED |
 | P6-ISSUE-004 | P1 | NSLExecutionId ownership ambiguous | AE allocates/persists; NSL owns lifecycle semantics | DESIGN_CLOSED |
-| P6-ISSUE-005 | P1 | P5 cannot execute LOCAL_SKILL | CA01 contract closed; S4 activates executor | OPEN_S4 |
-| P6-ISSUE-006 | P1 | No production AE worker | S0 lifecycle plus S1 DB dispatcher assignment source; execution handler remains S4 | FOUNDATION_CLOSED |
+| P6-ISSUE-005 | P1 | P5 cannot execute LOCAL_SKILL | S4 activates exact LOCAL_SKILL compilation and dependency-complete registration | CLOSED |
+| P6-ISSUE-006 | P1 | No production AE worker | S0/S1 worker-dispatch foundation plus S4 executable registry composition | CLOSED |
 | P6-ISSUE-007 | P1 | No tenant dispatcher | S1 DB-leased, fenced, bounded dispatcher | CLOSED |
 | P6-ISSUE-008 | P1 | Worker may claim unsupported executor | capability filter + lease CAS in one transaction | CLOSED |
 | P6-ISSUE-009 | P1 | Dispatcher fairness authority ambiguous | one DB-protected leader; each round rebuilds from durable state | CLOSED |
@@ -29,6 +29,7 @@
 
 ## Gate
 
-The P6-CA01 gate and P6-S0 through P6-S3 foundations are closed. P6-S4 may
-begin. `LOCAL_SKILL` execution remains fail-closed until that Slice verifies
-and registers the complete executor dependency set.
+The P6-CA01 gate and P6-S0 through P6-S4 are closed. `LOCAL_SKILL` registration
+is fail-closed unless the complete executor dependency set is composed. P6-S5
+is the next authorized Slice and owns the first process-isolated NSL READ
+backend invocation.

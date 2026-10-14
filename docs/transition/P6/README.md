@@ -1,6 +1,6 @@
 # P6 Transition Implementation Baseline v1.1
 
-**Status:** P6-S3 COMPLETE; P6-S4 NEXT
+**Status:** P6-S4 COMPLETE; P6-S5 NEXT
 **Phase:** P6 — NSL READ Integration
 **Implementation Baseline:** NSL v0.1 As-Built
 **Target Contract:** Frozen NSL v0.2 READ-compatible integration subset
@@ -73,6 +73,7 @@ Frozen Platform v2.1 / Agent v2.1 / NSL v0.2
 18. `../../slices/p6_s1a_runtime_dispatch_semantic_hardening.md`
 19. `../../slices/p6_s2_skill_artifact_gateway.md`
 20. `../../slices/p6_s3_nsl_step_execution_binding.md`
+21. `../../slices/p6_s4_local_skill_executor_activation.md`
 
 ## 5. CA01A Non-Negotiable Rules
 
@@ -221,12 +222,30 @@ P6-S3 implemented:
   residue; and
 - an AE Slice Gate with statement 98.67% and branch 96.95% coverage.
 
-S3 deliberately accepts the planned `LOCAL_SKILL_UNAVAILABLE` boundary for
-request binding but does not make it executable. The next authorized Slice is
-P6-S4, which activates `executor_kind=LOCAL_SKILL` only after checking every
-required runtime dependency.
+S3 deliberately accepted the planned `LOCAL_SKILL_UNAVAILABLE` boundary for
+request binding without making it executable. P6-S4 subsequently activated
+`executor_kind=LOCAL_SKILL` only after checking every required runtime
+dependency.
 
-## 12. Exit Shape
+## 12. P6-S4 Result
+
+P6-S4 implemented:
+
+- additive capability snapshot and executable plan schema 1.2 for exact
+  local-Skill bindings while preserving P5 schema 1.1;
+- deterministic `LOCAL_SKILL` compilation with exact Skill, semantic,
+  contract, trust, package, and backend-profile binding;
+- fail-closed executor registration only when artifact gateway, binding
+  repository, request builder, selected backend, and result mapper exist;
+- worker startup capability/backend declarations derived from the composed
+  executor registry;
+- migration `2203_ae_local_skill_activation` with no new table; and
+- actual `nex_ae_test` acceptance with 19/19 checks and zero residue.
+
+S4 does not invoke the NSL runtime. P6-S5 is the next authorized Slice and
+owns the process-isolated NSL READ adapter and execution orchestration.
+
+## 13. Exit Shape
 
 ```text
 PROMPT

@@ -14,6 +14,12 @@ from nex_ae_api.multi_step_engine import (
     StepTerminalOutcome,
     StepWaitingOutcome,
 )
+from nex_ae_api.planning_capabilities import (
+    LOCAL_SKILL_BACKEND_PROFILE,
+    LOCAL_SKILL_EXECUTOR_KIND,
+    CapabilitySnapshotError,
+    validate_local_skill_binding,
+)
 from nex_ae_api.runtime_jobs import RuntimeJobClaim, SqlAlchemyRuntimeJobQueue
 
 EXECUTOR_KINDS = frozenset(
@@ -66,6 +72,85 @@ class P5StepExecutor(Protocol):
         *,
         continuation_result: Any | None = None,
     ) -> P5ExecutorOutcome: ...
+
+
+@dataclass(frozen=True)
+class LocalSkillExecutorDependencies:
+    artifact_gateway: object
+    binding_repository: object
+    request_builder: Callable[..., Mapping[str, Any]]
+    backend: object
+    result_mapper: Callable[..., P5ExecutorOutcome]
+
+
+class P6LocalSkillExecutor:
+    def __init__(
+        self,
+        *,
+        dependencies: LocalSkillExecutorDependencies,
+        handler: Callable[
+            [StepExecutionContext, LocalSkillExecutorDependencies], P5ExecutorOutcome
+        ],
+    ) -> None:
+        self._dependencies = validate_local_skill_executor_dependencies(dependencies)
+        if not callable(handler):
+            raise _local_skill_unavailable("LOCAL_SKILL handler is unavailable.")
+        self._handler = handler
+
+    @property
+    def backend_profile(self) -> str:
+        return LOCAL_SKILL_BACKEND_PROFILE
+
+    def execute(
+        self,
+        context: StepExecutionContext,
+        *,
+        continuation_result: Any | None = None,
+    ) -> P5ExecutorOutcome:
+        _require_executor(context.step, LOCAL_SKILL_EXECUTOR_KIND)
+        if context.step.get("step_type") != "LOCAL_SKILL":
+            raise _invalid("LOCAL_SKILL executor requires a LOCAL_SKILL step.")
+        if continuation_result is not None:
+            raise _invalid("LOCAL_SKILL READ cannot consume continuation input in P6.")
+        try:
+            validate_local_skill_binding(context.step.get("skill_binding"))
+        except CapabilitySnapshotError as exc:
+            raise _invalid("LOCAL_SKILL compiled binding is invalid.") from exc
+        outcome = self._handler(context, self._dependencies)
+        if not isinstance(outcome, P5ExecutorOutcome):
+            raise _invalid("LOCAL_SKILL handler returned an invalid outcome.")
+        return outcome
+
+
+def validate_local_skill_executor_dependencies(
+    value: object,
+) -> LocalSkillExecutorDependencies:
+    if not isinstance(value, LocalSkillExecutorDependencies):
+        raise _local_skill_unavailable("LOCAL_SKILL dependencies are unavailable.")
+    requirements = (
+        (value.artifact_gateway, "resolve_verified", "artifact gateway"),
+        (value.binding_repository, "bind_request", "binding repository"),
+        (value.backend, "execute", "selected backend"),
+    )
+    for dependency, method, label in requirements:
+        if dependency is None or not callable(getattr(dependency, method, None)):
+            raise _local_skill_unavailable(
+                f"LOCAL_SKILL {label} dependency is unavailable."
+            )
+    if not callable(value.request_builder):
+        raise _local_skill_unavailable(
+            "LOCAL_SKILL request builder dependency is unavailable."
+        )
+    if not callable(value.result_mapper):
+        raise _local_skill_unavailable(
+            "LOCAL_SKILL result mapper dependency is unavailable."
+        )
+    backend_profile = getattr(value.backend, "backend_profile", None)
+    if backend_profile != LOCAL_SKILL_BACKEND_PROFILE:
+        raise _local_skill_unavailable(
+            "LOCAL_SKILL selected backend profile is unsupported."
+        )
+    return value
 
 
 class P5CompatibilityChatExecutor:
@@ -204,10 +289,33 @@ class P5DeterministicProjectionExecutor:
 
 class P5StepExecutorRegistry:
     def __init__(self, executors: Mapping[str, P5StepExecutor]) -> None:
-        unknown = set(executors) - EXECUTOR_KINDS
+        unknown = set(executors) - PLATFORM_EXECUTOR_KINDS
         if unknown:
             raise _invalid("Executor registry contains an unsupported kind.")
+        local_skill = executors.get(LOCAL_SKILL_EXECUTOR_KIND)
+        if local_skill is not None and not isinstance(
+            local_skill, P6LocalSkillExecutor
+        ):
+            raise _local_skill_unavailable(
+                "LOCAL_SKILL registry entry lacks verified dependency composition."
+            )
         self._executors = dict(executors)
+
+    @property
+    def registered_kinds(self) -> tuple[str, ...]:
+        return tuple(sorted(self._executors))
+
+    @property
+    def backend_profiles(self) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                {
+                    executor.backend_profile
+                    for executor in self._executors.values()
+                    if isinstance(executor, P6LocalSkillExecutor)
+                }
+            )
+        )
 
     def execute(
         self,
@@ -407,6 +515,28 @@ def default_p5_executor_registry(
     )
 
 
+def default_p6_executor_registry(
+    callback: Callable[[StepExecutionContext], Any],
+    *,
+    local_skill_dependencies: LocalSkillExecutorDependencies,
+    local_skill_handler: Callable[
+        [StepExecutionContext, LocalSkillExecutorDependencies], P5ExecutorOutcome
+    ],
+) -> P5StepExecutorRegistry:
+    projection = P5DeterministicProjectionExecutor()
+    return P5StepExecutorRegistry(
+        {
+            "P4_CHAT_RAG_COMPATIBILITY": P5CompatibilityChatExecutor(callback),
+            "DETERMINISTIC_REPORT": projection,
+            "DETERMINISTIC_AGGREGATE": projection,
+            LOCAL_SKILL_EXECUTOR_KIND: P6LocalSkillExecutor(
+                dependencies=local_skill_dependencies,
+                handler=local_skill_handler,
+            ),
+        }
+    )
+
+
 def _resolve_binding(
     binding: Mapping[str, Any], dependencies: Mapping[str, Mapping[str, Any]]
 ) -> dict[str, Any]:
@@ -496,3 +626,7 @@ def _required_text(field: str, value: object, maximum: int) -> str:
 
 def _invalid(detail: str) -> P5StepExecutorError:
     return P5StepExecutorError("ae.p5_executor_invalid", detail)
+
+
+def _local_skill_unavailable(detail: str) -> P5StepExecutorError:
+    return P5StepExecutorError("ae.local_skill_dependency_unavailable", detail)

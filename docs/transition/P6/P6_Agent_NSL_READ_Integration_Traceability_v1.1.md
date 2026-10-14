@@ -1,6 +1,6 @@
 # P6 Agent ↔ NSL READ Integration Traceability v1.1
 
-**Status:** P6-S3 REQUEST/IDENTITY EVIDENCE ADDED; P6-S4 NEXT
+**Status:** P6-S4 LOCAL_SKILL ACTIVATION EVIDENCE ADDED; P6-S5 NEXT
 
 ## 1. Identity chain
 
@@ -261,3 +261,36 @@ Actual `nex_ae_test` evidence passed 20/20 checks, including migration
 currency, P5 upstream lineage creation, binding insert/select, restart replay,
 immutable-conflict rejection, distinct stable IDs and cleanup to zero rows.
 S3 does not activate the executor or invoke NSL; those remain S4 and S5.
+
+## 13. P6-S4 LOCAL_SKILL activation evidence
+
+```text
+source:
+  database/nex-ae-api/migrations/2203_ae_local_skill_activation.sql
+  services/nex-ae-api/nex_ae_api/planning_capabilities.py
+  services/nex-ae-api/nex_ae_api/executable_plans.py
+  services/nex-ae-api/nex_ae_api/step_executors.py
+
+tests:
+  tests/test_p6_s4_local_skill_activation.py
+  tests/test_p6_s4_postgres_smoke.py
+
+protected runner:
+  scripts/smoke/run_p6_s4_postgres_smoke.py
+```
+
+Trace boundary:
+
+```text
+exact LOCAL_SKILL capability descriptor
+-> P6 capability snapshot 1.2
+-> deterministic executable plan 1.2
+-> persisted exact skill_binding_json
+-> dependency-complete P6LocalSkillExecutor
+-> registry-derived worker capability/backend readiness
+```
+
+Actual `nex_ae_test` evidence passed 19/19 checks, including migration
+currency, real snapshot/plan/step insert and reload, exact local-Skill binding,
+startup readiness, partial-composition rejection, no backend invocation, and
+cleanup to zero rows. P6-S5 owns the first NSL READ backend invocation.

@@ -719,8 +719,8 @@ def _load_steps(
                 "step_type, executor_kind, state, version, legacy_interaction_id, "
                 "retrieval_package_ref, retrieval_package_hash, cx_generation_id, "
                 "cx_job_id, generated_response_id, result_ref, error_ref, "
-                "dependency_json, "
-                "input_binding_json, output_contract_ref, step_contract_hash, "
+                "dependency_json, input_binding_json, skill_binding_json, "
+                "output_contract_ref, step_contract_hash, "
                 "invocation_started_at, completed_at FROM ae_executable_step "
                 "WHERE tenant_id = :tenant_id AND executable_plan_id = :plan_id "
                 "ORDER BY step_index"
@@ -745,8 +745,8 @@ def _load_step(
                 "step_type, executor_kind, state, version, legacy_interaction_id, "
                 "retrieval_package_ref, retrieval_package_hash, cx_generation_id, "
                 "cx_job_id, generated_response_id, result_ref, error_ref, "
-                "dependency_json, "
-                "input_binding_json, output_contract_ref, step_contract_hash, "
+                "dependency_json, input_binding_json, skill_binding_json, "
+                "output_contract_ref, step_contract_hash, "
                 "invocation_started_at, completed_at FROM ae_executable_step "
                 "WHERE tenant_id = :tenant_id AND executable_step_id = :step_id"
                 + suffix
@@ -765,6 +765,16 @@ def _step_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
     value["step_index"] = int(value["step_index"])
     value["dependencies"] = _json_list(value.pop("dependency_json"))
     value["compiled_input_bindings"] = _json_list(value.pop("input_binding_json"))
+    skill_binding = value.pop("skill_binding_json")
+    value["skill_binding"] = (
+        None
+        if skill_binding is None
+        else dict(
+            json.loads(skill_binding)
+            if isinstance(skill_binding, str)
+            else skill_binding
+        )
+    )
     for field in (
         "executable_step_id",
         "agent_execution_id",

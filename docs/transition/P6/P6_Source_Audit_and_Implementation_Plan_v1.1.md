@@ -1,6 +1,6 @@
 # P6 Source Audit and Implementation Plan v1.1
 
-**Status:** P6-S3 COMPLETE; P6-S4 READY
+**Status:** P6-S4 COMPLETE; P6-S5 READY
 **Supersedes:** v1.0
 
 ## 1. Entry Sequence
@@ -20,9 +20,9 @@ P6 v1.1 document-set acceptance
 ```
 
 P6-CA01 is closed by
-`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 through P6-S3 are
+`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 through P6-S4 are
 closed by their matching records in `docs/slices/`. The next implementation
-Slice is P6-S4.
+Slice is P6-S5.
 
 ## 2. Refactoring-First Rule
 
@@ -211,6 +211,8 @@ As-Built notes:
 
 ## 7. P6-S4 — LOCAL_SKILL Activation
 
+**Status: COMPLETE**
+
 Extend capability snapshot/compiler/executor registry:
 
 ```text
@@ -227,6 +229,21 @@ Register only when all dependencies are available:
 - result mapper.
 
 No direct Plan→NSL.
+
+As-Built notes:
+
+- P5-only snapshots/plans remain schema 1.1, while exact `LOCAL_SKILL`
+  snapshots/plans use additive schema 1.2 and compiler `p6.1`;
+- the compiled step persists an exact Skill/version/semantic/runtime/trust/
+  package/backend binding;
+- registry construction rejects partial dependencies, raw local executor
+  injection, backend-profile drift, and invalid runtime binding state;
+- the worker check consumes executor kinds and backend profiles from the
+  composed registry rather than a parallel declaration;
+- migration `2203_ae_local_skill_activation` adds no table and preserves
+  historical P5 rows; and
+- actual `nex_ae_test` acceptance passed all 19 checks with zero residue and
+  proved that S4 does not invoke the backend.
 
 ## 8. P6-S5 — NSL READ Backend Integration
 
@@ -305,7 +322,8 @@ Current inventory:
 2200 runtime worker/dispatcher indexes/operational support
 2201 verified NSL Skill artifact
 2202 NSL step execution binding + StepResult schema 1.2 support
-2203 timeline projection support only if needed
+2203 LOCAL_SKILL capability/compiler/executable-step activation
+2204 timeline projection support only if needed
 ```
 
 No cross-service FK.

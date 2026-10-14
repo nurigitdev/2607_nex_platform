@@ -63,6 +63,7 @@ def _factory(*, seed=True):
                 logical_step_id TEXT, compiled_step_key TEXT, step_index INTEGER,
                 step_type TEXT, executor_kind TEXT, state TEXT NOT NULL,
                 version INTEGER NOT NULL, dependency_json TEXT, input_binding_json TEXT,
+                skill_binding_json TEXT,
                 output_contract_ref TEXT, step_contract_hash TEXT,
                 legacy_interaction_id TEXT, retrieval_package_ref TEXT,
                 retrieval_package_hash TEXT, cx_generation_id TEXT, cx_job_id TEXT,

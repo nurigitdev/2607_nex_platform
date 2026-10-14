@@ -1,6 +1,6 @@
 # P6 — NSL READ Integration SRS v1.1
 
-**Document Status:** P6-S3 REQUEST/IDENTITY BINDING COMPLETE; P6-S4 NEXT
+**Document Status:** P6-S4 LOCAL_SKILL ACTIVATION COMPLETE; P6-S5 NEXT
 **Supersedes:** v1.0
 **Implementation Baseline:** NSL v0.1 As-Built
 **Target Contract:** Frozen NSL v0.2 READ-compatible subset
@@ -33,8 +33,8 @@ P6 SHALL NOT implement NSL WRITE.
 # 2. Entry Gate
 
 P6-CA01 is closed by
-`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 through P6-S3 are
-closed by their matching records in `docs/slices/`. P6-S4 is the next
+`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 through P6-S4 are
+closed by their matching records in `docs/slices/`. P6-S5 is the next
 authorized implementation Slice.
 
 ```text
@@ -262,6 +262,12 @@ executor_kind = LOCAL_SKILL
 Compiler binds exact skill/version/runtime contract but does not verify package bytes or execute NSL.
 
 Runtime identities NSLExecutionId/BusinessOperationId do not become deterministic plan-hash inputs.
+
+P6-S4 activates this compiler/executor shape with additive snapshot and plan
+schema 1.2. Registration requires the complete Artifact Gateway, binding
+repository, request builder, selected backend, and result mapper dependency
+set. P5 schema 1.1 remains unchanged. Actual backend invocation begins only in
+P6-S5.
 
 # 13. Skill Artifact Gateway
 

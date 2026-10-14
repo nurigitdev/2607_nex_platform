@@ -18,10 +18,16 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 CAPABILITY_SNAPSHOT_SCHEMA_VERSION = "1.1"
+P6_CAPABILITY_SNAPSHOT_SCHEMA_VERSION = "1.2"
 CAPABILITY_VERSION = "p5.1"
 CHAT_CAPABILITY_ID = "AE.CHAT.COMPATIBILITY"
 REPORT_CAPABILITY_ID = "AE.RESULT.REPORT"
+LOCAL_SKILL_EXECUTOR_KIND = "LOCAL_SKILL"
+LOCAL_SKILL_STEP_TYPE = "LOCAL_SKILL"
+LOCAL_SKILL_BACKEND_PROFILE = "NSL_V01_PROCESS_ISOLATED"
+LOCAL_SKILL_PACKAGE_REQUIREMENT = "SIGNED_TRUSTED_ACTIVE"
 _CAPABILITY_ID = re.compile(r"^[A-Z][A-Z0-9_]*(\.[A-Z][A-Z0-9_]*)+$")
+_SELECTOR = re.compile(r"^[\x21-\x7e]{1,256}$")
 
 DEFAULT_P5_CAPABILITIES: tuple[dict[str, Any], ...] = (
     {
@@ -77,15 +83,20 @@ def build_capability_snapshot(
     ]
     if len(set(identities)) != len(identities):
         raise _invalid("Capability snapshot contains duplicate exact versions.")
+    schema_version = (
+        P6_CAPABILITY_SNAPSHOT_SCHEMA_VERSION
+        if any(
+            item["executor_kind"] == LOCAL_SKILL_EXECUTOR_KIND for item in normalized
+        )
+        else CAPABILITY_SNAPSHOT_SCHEMA_VERSION
+    )
     snapshot: dict[str, Any] = {
-        "schema_version": CAPABILITY_SNAPSHOT_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "tenant_id": _required_text("tenant_id", tenant_id, 128),
         "capability_snapshot_id": _required_uuid(
             "capability_snapshot_id", capability_snapshot_id
         ),
-        "snapshot_version": _bounded_int(
-            "snapshot_version", snapshot_version, 1, 9999
-        ),
+        "snapshot_version": _bounded_int("snapshot_version", snapshot_version, 1, 9999),
         "capabilities": sorted(
             normalized,
             key=lambda item: (item["capability_id"], item["capability_version"]),
@@ -94,6 +105,41 @@ def build_capability_snapshot(
     }
     snapshot["snapshot_hash"] = semantic_sha256_hash_ref(snapshot)
     return snapshot
+
+
+def build_local_skill_capability(
+    *,
+    skill_id: str,
+    exact_skill_version: str,
+    skill_semantic_hash: str,
+    input_contract_ref: str,
+    output_contract_ref: str,
+    runtime_contract_ref: str,
+    trust_policy_id: str,
+    backend_profile: str = LOCAL_SKILL_BACKEND_PROFILE,
+) -> dict[str, Any]:
+    """Build one exact, READ-only P6 capability descriptor."""
+    capability = {
+        "capability_id": skill_id,
+        "capability_version": exact_skill_version,
+        "status": "ACTIVE",
+        "allowed_logical_step_types": ["LOCAL_CAPABILITY"],
+        "executable_step_type": LOCAL_SKILL_STEP_TYPE,
+        "executor_kind": LOCAL_SKILL_EXECUTOR_KIND,
+        "input_contract_ref": input_contract_ref,
+        "output_contract_ref": output_contract_ref,
+        "operation_semantics": "READ",
+        "local_skill_binding": {
+            "skill_id": skill_id,
+            "exact_skill_version": exact_skill_version,
+            "skill_semantic_hash": skill_semantic_hash,
+            "runtime_contract_ref": runtime_contract_ref,
+            "trust_policy_id": trust_policy_id,
+            "backend_profile": backend_profile,
+            "package_requirement": LOCAL_SKILL_PACKAGE_REQUIREMENT,
+        },
+    }
+    return _validate_capability(capability)
 
 
 def capability_by_exact_version(
@@ -209,16 +255,28 @@ def _validate_snapshot(value: Mapping[str, Any]) -> dict[str, Any]:
         "created_at",
     }:
         raise _invalid("Capability snapshot fields do not match v1.1.")
-    if record["schema_version"] != CAPABILITY_SNAPSHOT_SCHEMA_VERSION:
-        raise _invalid("Capability snapshot schema_version must be 1.1.")
+    schema_version = record["schema_version"]
+    if schema_version not in {
+        CAPABILITY_SNAPSHOT_SCHEMA_VERSION,
+        P6_CAPABILITY_SNAPSHOT_SCHEMA_VERSION,
+    }:
+        raise _invalid("Capability snapshot schema_version must be 1.1 or 1.2.")
     _required_text("tenant_id", record["tenant_id"], 128)
     _required_uuid("capability_snapshot_id", record["capability_snapshot_id"])
     _bounded_int("snapshot_version", record["snapshot_version"], 1, 9999)
-    if not isinstance(record["capabilities"], list) or not 1 <= len(
-        record["capabilities"]
-    ) <= 64:
+    if (
+        not isinstance(record["capabilities"], list)
+        or not 1 <= len(record["capabilities"]) <= 64
+    ):
         raise _invalid("Capability snapshot capabilities must contain 1..64 items.")
     normalized = [_validate_capability(item) for item in record["capabilities"]]
+    has_local_skill = any(
+        item["executor_kind"] == LOCAL_SKILL_EXECUTOR_KIND for item in normalized
+    )
+    if has_local_skill != (schema_version == P6_CAPABILITY_SNAPSHOT_SCHEMA_VERSION):
+        raise _invalid(
+            "Capability snapshot version does not match LOCAL_SKILL content."
+        )
     identities = [
         (item["capability_id"], item["capability_version"]) for item in normalized
     ]
@@ -254,8 +312,11 @@ def _validate_capability(value: Mapping[str, Any]) -> dict[str, Any]:
         "output_contract_ref",
         "operation_semantics",
     }
-    if not isinstance(value, Mapping) or set(value) != fields:
+    if not isinstance(value, Mapping) or not fields.issubset(value):
         raise _invalid("Capability fields do not match v1.1.")
+    has_local_binding = "local_skill_binding" in value
+    if set(value) != fields | ({"local_skill_binding"} if has_local_binding else set()):
+        raise _invalid("Capability fields do not match a supported contract.")
     capability_id = _required_text("capability_id", value["capability_id"], 160)
     if _CAPABILITY_ID.fullmatch(capability_id) is None:
         raise _invalid("Capability ID is invalid.")
@@ -271,13 +332,19 @@ def _validate_capability(value: Mapping[str, Any]) -> dict[str, Any]:
     ):
         raise _invalid("Capability logical step types are invalid.")
     executable_type = value["executable_step_type"]
-    if executable_type not in {"CANONICAL_CAPABILITY", "AGGREGATE", "REPORT"}:
+    if executable_type not in {
+        "CANONICAL_CAPABILITY",
+        "AGGREGATE",
+        "REPORT",
+        LOCAL_SKILL_STEP_TYPE,
+    }:
         raise _invalid("Capability executable step type is invalid.")
     executor_kind = value["executor_kind"]
     if executor_kind not in {
         "P4_CHAT_RAG_COMPATIBILITY",
         "DETERMINISTIC_AGGREGATE",
         "DETERMINISTIC_REPORT",
+        LOCAL_SKILL_EXECUTOR_KIND,
     }:
         raise _invalid("Capability executor kind is invalid.")
     semantics = value["operation_semantics"]
@@ -285,7 +352,7 @@ def _validate_capability(value: Mapping[str, Any]) -> dict[str, Any]:
         raise _invalid("Capability operation semantics are invalid.")
     if value["status"] != "ACTIVE":
         raise _invalid("Capability status must be ACTIVE.")
-    return {
+    normalized = {
         "capability_id": capability_id,
         "capability_version": _required_text(
             "capability_version", value["capability_version"], 64
@@ -301,6 +368,67 @@ def _validate_capability(value: Mapping[str, Any]) -> dict[str, Any]:
             "output_contract_ref", value["output_contract_ref"], 256
         ),
         "operation_semantics": semantics,
+    }
+    if executor_kind == LOCAL_SKILL_EXECUTOR_KIND:
+        if not has_local_binding:
+            raise _invalid("LOCAL_SKILL capability requires an exact Skill binding.")
+        if executable_type != LOCAL_SKILL_STEP_TYPE or semantics != "READ":
+            raise _invalid("LOCAL_SKILL capability must be a READ LOCAL_SKILL step.")
+        binding = validate_local_skill_binding(value["local_skill_binding"])
+        if (
+            binding["skill_id"] != capability_id
+            or binding["exact_skill_version"] != normalized["capability_version"]
+        ):
+            raise _invalid(
+                "LOCAL_SKILL capability and Skill selector must match exactly."
+            )
+        normalized["local_skill_binding"] = binding
+    elif has_local_binding or executable_type == LOCAL_SKILL_STEP_TYPE:
+        raise _invalid("Only LOCAL_SKILL may carry an exact Skill binding.")
+    return normalized
+
+
+def validate_local_skill_binding(value: object) -> dict[str, str]:
+    fields = {
+        "skill_id",
+        "exact_skill_version",
+        "skill_semantic_hash",
+        "runtime_contract_ref",
+        "trust_policy_id",
+        "backend_profile",
+        "package_requirement",
+    }
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise _invalid("LOCAL_SKILL binding fields are invalid.")
+    skill_id = _required_text("skill_id", value["skill_id"], 160)
+    if _CAPABILITY_ID.fullmatch(skill_id) is None:
+        raise _invalid("LOCAL_SKILL skill_id is invalid.")
+    exact_version = _required_text(
+        "exact_skill_version", value["exact_skill_version"], 64
+    )
+    if _SELECTOR.fullmatch(exact_version) is None:
+        raise _invalid("LOCAL_SKILL exact version is invalid.")
+    try:
+        semantic_hash = validate_hash_ref(value["skill_semantic_hash"])
+    except ValueError as exc:
+        raise _invalid("LOCAL_SKILL semantic hash is invalid.") from exc
+    backend_profile = _required_text("backend_profile", value["backend_profile"], 128)
+    if backend_profile != LOCAL_SKILL_BACKEND_PROFILE:
+        raise _invalid("LOCAL_SKILL backend profile is unsupported in P6.")
+    if value["package_requirement"] != LOCAL_SKILL_PACKAGE_REQUIREMENT:
+        raise _invalid("LOCAL_SKILL package requirement must fail closed.")
+    return {
+        "skill_id": skill_id,
+        "exact_skill_version": exact_version,
+        "skill_semantic_hash": semantic_hash,
+        "runtime_contract_ref": _required_text(
+            "runtime_contract_ref", value["runtime_contract_ref"], 256
+        ),
+        "trust_policy_id": _required_text(
+            "trust_policy_id", value["trust_policy_id"], 256
+        ),
+        "backend_profile": backend_profile,
+        "package_requirement": LOCAL_SKILL_PACKAGE_REQUIREMENT,
     }
 
 
@@ -324,31 +452,39 @@ def _snapshot_insert_sql(dialect_name: str) -> str:
 def _load_snapshot(
     session: Session, tenant_id: str, snapshot_id: str
 ) -> dict[str, Any] | None:
-    row = session.execute(
-        text(
-            """
+    row = (
+        session.execute(
+            text(
+                """
             SELECT snapshot_json FROM ae_capability_snapshot
             WHERE tenant_id = :tenant_id
               AND capability_snapshot_id = :snapshot_id
             """
-        ),
-        {"tenant_id": tenant_id, "snapshot_id": snapshot_id},
-    ).mappings().first()
+            ),
+            {"tenant_id": tenant_id, "snapshot_id": snapshot_id},
+        )
+        .mappings()
+        .first()
+    )
     return None if row is None else _json_value(row["snapshot_json"])
 
 
 def _load_snapshot_by_version(
     session: Session, tenant_id: str, version: int
 ) -> dict[str, Any] | None:
-    row = session.execute(
-        text(
-            """
+    row = (
+        session.execute(
+            text(
+                """
             SELECT snapshot_json FROM ae_capability_snapshot
             WHERE tenant_id = :tenant_id AND snapshot_version = :version
             """
-        ),
-        {"tenant_id": tenant_id, "version": version},
-    ).mappings().first()
+            ),
+            {"tenant_id": tenant_id, "version": version},
+        )
+        .mappings()
+        .first()
+    )
     return None if row is None else _json_value(row["snapshot_json"])
 
 
@@ -364,7 +500,9 @@ def _required_uuid(field: str, value: object) -> str:
 
 def _required_text(field: str, value: object, maximum: int) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > maximum:
-        raise _invalid(f"{field} must be a non-empty string up to {maximum} characters.")
+        raise _invalid(
+            f"{field} must be a non-empty string up to {maximum} characters."
+        )
     return value.strip()
 
 

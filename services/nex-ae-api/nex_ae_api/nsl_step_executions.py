@@ -17,6 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.planning_capabilities import validate_local_skill_binding
 from nex_ae_api.skill_artifacts import validate_verified_skill_artifact
 
 BACKEND_PROFILE = "NSL_V01_PROCESS_ISOLATED"
@@ -601,6 +602,7 @@ def _load_step_lineage(
             text(
                 "SELECT tenant_id, executable_step_id, agent_execution_id, executable_plan_id, "
                 "step_type, executor_kind, required_capability, capability_version, "
+                "skill_binding_json, "
                 "correlation_id, causation_id FROM ae_executable_step "
                 "WHERE tenant_id = :tenant_id AND executable_step_id = :step_id"
             ),
@@ -613,8 +615,18 @@ def _load_step_lineage(
         None
         if row is None
         else {
-            key: (str(value) if key.endswith("_id") and value is not None else value)
-            for key, value in row.items()
+            **{
+                key: (
+                    str(value) if key.endswith("_id") and value is not None else value
+                )
+                for key, value in row.items()
+                if key != "skill_binding_json"
+            },
+            "skill_binding": (
+                None
+                if row["skill_binding_json"] is None
+                else _json_object("LOCAL_SKILL binding", row["skill_binding_json"])
+            ),
         }
     )
 
@@ -661,6 +673,24 @@ def _require_artifact_selector(
         raise NSLStepExecutionError(
             "ae.nsl_binding_artifact_mismatch",
             "Verified Skill artifact does not match the exact compiled step selector.",
+        )
+    if lineage["executor_kind"] != "LOCAL_SKILL":
+        return
+    try:
+        binding = validate_local_skill_binding(lineage["skill_binding"])
+    except Exception as exc:
+        raise _invalid(
+            "Active LOCAL_SKILL step lacks its exact compiled binding."
+        ) from exc
+    if (
+        binding["skill_semantic_hash"] != artifact["skill_semantic_hash"]
+        or binding["runtime_contract_ref"] != artifact["runtime_contract_ref"]
+        or binding["trust_policy_id"] != artifact["trust_evidence"]["trust_policy_id"]
+        or binding["backend_profile"] != BACKEND_PROFILE
+    ):
+        raise NSLStepExecutionError(
+            "ae.nsl_binding_artifact_mismatch",
+            "Verified Skill artifact does not match the compiled runtime binding.",
         )
 
 
