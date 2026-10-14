@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:transition:p6:nsl-result-summary:1.0",
+  "title": "NeX P6 NSLResultSummary v1 Transition Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "nsl_execution_id",
+    "business_operation_id",
+    "skill_id",
+    "skill_version",
+    "skill_semantic_hash",
+    "verified_artifact_ref",
+    "package_hash",
+    "trust_evidence_ref",
+    "execution_status",
+    "completeness",
+    "result_ref",
+    "result_hash",
+    "evidence_refs",
+    "resource_summary",
+    "error_code",
+    "error_ref",
+    "pre_write_eligibility",
+    "commit_state",
+    "verification_status",
+    "retry_safety",
+    "completed_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "nsl_execution_id": {"$ref": "#/$defs/uuid"},
+    "business_operation_id": {"$ref": "#/$defs/uuid"},
+    "skill_id": {"$ref": "#/$defs/selector"},
+    "skill_version": {"$ref": "#/$defs/selector"},
+    "skill_semantic_hash": {"$ref": "#/$defs/hashRef"},
+    "verified_artifact_ref": {"$ref": "#/$defs/ref"},
+    "package_hash": {"$ref": "#/$defs/hashRef"},
+    "trust_evidence_ref": {"$ref": "#/$defs/ref"},
+    "execution_status": {
+      "enum": [
+        "CREATED",
+        "RUNNING",
+        "COMPLETED",
+        "FAILED",
+        "TOOL_ERROR",
+        "VALIDATION_ERROR",
+        "LIMIT_EXCEEDED",
+        "CANCELLED"
+      ]
+    },
+    "completeness": {"enum": ["COMPLETE", "PARTIAL", "UNKNOWN"]},
+    "result_ref": {"anyOf": [{"$ref": "#/$defs/ref"}, {"type": "null"}]},
+    "result_hash": {"anyOf": [{"$ref": "#/$defs/hashRef"}, {"type": "null"}]},
+    "evidence_refs": {
+      "type": "array",
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/ref"}
+    },
+    "resource_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool_calls",
+        "loop_iterations",
+        "emitted_rows",
+        "max_collection_size_seen"
+      ],
+      "properties": {
+        "tool_calls": {"type": "integer", "minimum": 0},
+        "loop_iterations": {"type": "integer", "minimum": 0},
+        "emitted_rows": {"type": "integer", "minimum": 0},
+        "max_collection_size_seen": {"type": "integer", "minimum": 0}
+      }
+    },
+    "error_code": {"anyOf": [{"$ref": "#/$defs/boundedText"}, {"type": "null"}]},
+    "error_ref": {"anyOf": [{"$ref": "#/$defs/ref"}, {"type": "null"}]},
+    "pre_write_eligibility": {"const": null},
+    "commit_state": {"const": null},
+    "verification_status": {"const": null},
+    "retry_safety": {"const": null},
+    "completed_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"execution_status": {"const": "COMPLETED"}}},
+      "then": {
+        "properties": {
+          "result_ref": {"$ref": "#/$defs/ref"},
+          "result_hash": {"$ref": "#/$defs/hashRef"},
+          "error_code": {"const": null},
+          "error_ref": {"const": null},
+          "completed_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "execution_status": {
+            "enum": ["FAILED", "TOOL_ERROR", "VALIDATION_ERROR", "LIMIT_EXCEEDED"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result_ref": {"const": null},
+          "result_hash": {"const": null},
+          "error_code": {"$ref": "#/$defs/boundedText"},
+          "error_ref": {"$ref": "#/$defs/ref"},
+          "completed_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"execution_status": {"const": "CANCELLED"}}},
+      "then": {
+        "properties": {
+          "result_ref": {"const": null},
+          "result_hash": {"const": null},
+          "completed_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"execution_status": {"enum": ["CREATED", "RUNNING"]}}},
+      "then": {
+        "properties": {
+          "result_ref": {"const": null},
+          "result_hash": {"const": null},
+          "error_code": {"const": null},
+          "error_ref": {"const": null},
+          "completed_at": {"const": null}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid"},
+    "boundedText": {"type": "string", "minLength": 1, "maxLength": 256},
+    "ref": {"type": "string", "minLength": 1, "maxLength": 512},
+    "selector": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[\\x21-\\x7e]+$"
+    },
+    "hashRef": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

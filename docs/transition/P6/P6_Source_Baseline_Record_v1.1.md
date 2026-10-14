@@ -7,10 +7,10 @@
 ```text
 Repository: nurigitdev/2607_nex_platform
 Branch: transition/p4-agent-runtime-foundation
-Current reviewed HEAD: fdd99bc840735d2c2784984ebcdec9003d10cc4b
+Current reviewed HEAD before P6-CA01 edits: 380efb339cb9e3119a32e9229cbcb5f0075d5f0f
 P5 implementation closure commit: c9d4bccfecdf...
 P5 JobQueue/RuntimeJob decision commit: e112606eedbd...
-P6 v1.0 + CA01A document commit: fdd99bc84073...
+P6 v1.1 consolidation commit: 380efb339cb9...
 ```
 
 ## NSL
@@ -56,8 +56,9 @@ documents covering:
 ## Codex Source Availability Gate
 
 The exact NSL checkout is now materialized and verified in the Codex workspace.
-P6-CA01 SHALL refresh and record the checkout SHA and working-tree state again
-at closure time so later source drift cannot be hidden by this earlier check.
+P6-CA01 refreshed the checkout SHA and working-tree state at closure time and
+recorded an exact match with `803f22a...` in
+`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`.
 
 A path such as `/home/tprover/2608_nsl` is an environment detail, not a normative architecture path.
 
@@ -67,4 +68,14 @@ A path such as `/home/tprover/2608_nsl` is an environment detail, not a normativ
 Executable NSL baseline = v0.1
 Frozen target contract  = v0.2
 P6 capability scope     = READ
+```
+
+## P6-CA01 Refresh Result
+
+```text
+Source availability gate: PASS
+NSL baseline drift: none
+Platform baseline recorded before CA01 edits: 380efb339cb9...
+Golden signed READ package selected: yes
+Process-isolated Golden execution: PASS
 ```

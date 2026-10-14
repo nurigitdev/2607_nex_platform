@@ -1,6 +1,6 @@
 # P6 Agent ↔ NSL READ Integration Traceability v1.1
 
-**Status:** P6-CA01A CONSOLIDATED TRACEABILITY BASELINE
+**Status:** P6-CA01 SOURCE-BACKED TRACEABILITY BASELINE
 
 ## 1. Identity chain
 
@@ -119,3 +119,15 @@ VerificationStatus
 ```
 
 Future phases extend rather than rename P6 identities.
+
+## 8. P6-CA01 evidence
+
+```text
+P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md
+contracts/*.schema.json
+contracts/examples/p6-golden-*.json
+tests/test_p6_ca01_read_contracts.py
+```
+
+This evidence closes contract traceability only. Runtime implementation and
+PostgreSQL evidence remain assigned to P6-S0 through P6-S7.

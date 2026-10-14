@@ -1,6 +1,6 @@
 # P6 Transition Implementation Baseline v1.1
 
-**Status:** P6-CA01A CONSOLIDATED PRE-IMPLEMENTATION BASELINE
+**Status:** P6-CA01 SOURCE-BACKED CONTRACT CLOSED; P6-S0 NEXT
 **Phase:** P6 — NSL READ Integration
 **Implementation Baseline:** NSL v0.1 As-Built
 **Target Contract:** Frozen NSL v0.2 READ-compatible integration subset
@@ -63,9 +63,11 @@ Frozen Platform v2.1 / Agent v2.1 / NSL v0.2
 8. `P6_Issue_Register_v1.1.md`
 9. `P6_Agent_NSL_READ_Integration_Traceability_v1.1.md`
 10. `P6_CA01_v0.1_AsBuilt_to_v0.2_READ_Contract_Closure_Plan_v1.1.md`
-11. `P6_Source_Baseline_Record_v1.1.md`
-12. current Platform P5 As-Built and exact NSL v0.1 source checkout
-13. `P6_Source_Audit_and_Implementation_Plan_v1.1.md`
+11. `P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`
+12. `contracts/README.md` and the six machine-readable transition contracts
+13. `P6_Source_Baseline_Record_v1.1.md`
+14. current Platform P5 As-Built and exact NSL v0.1 source checkout
+15. `P6_Source_Audit_and_Implementation_Plan_v1.1.md`
 
 ## 5. CA01A Non-Negotiable Rules
 
@@ -128,10 +130,25 @@ nurigitdev/2608_nsl
 
 P6-CA01 in the Codex implementation workspace must independently verify/materialize its actual checkout SHA before closure. A specific filesystem path is not normative.
 
-Current workspace evidence records a clean NSL v0.1 checkout at the expected
-`803f22a...` baseline. P6-CA01 must refresh that evidence at execution time.
+P6-CA01 refreshed the workspace evidence and confirmed a clean NSL v0.1
+checkout at the expected `803f22a...` baseline. The source-backed closure and
+Golden READ fixture are recorded in the CA01 closure document.
 
-## 7. Exit Shape
+## 7. P6-CA01 Result
+
+P6-CA01 closed:
+
+- the six transition schemas and validated Golden examples;
+- identity/cardinality and StepResult v1.2 rules;
+- exhaustive v0.1 request/status mappings;
+- the bounded context and artifact/trust projections;
+- the `NSL_V01_PROCESS_ISOLATED` production profile;
+- worker/atomic-claim inputs and timeline source limits; and
+- the source-backed signed Golden READ fixture.
+
+The next authorized Slice is P6-S0.
+
+## 8. Exit Shape
 
 ```text
 PROMPT

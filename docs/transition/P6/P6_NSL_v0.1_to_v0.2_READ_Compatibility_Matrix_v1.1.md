@@ -1,6 +1,6 @@
 # P6 NSL v0.1 → v0.2 READ Compatibility Matrix v1.1
 
-**Status:** P6-CA01A CONSOLIDATED COMPATIBILITY BASELINE
+**Status:** P6-CA01 SOURCE-BACKED COMPATIBILITY BASELINE
 
 | Concern | NSL v0.1 As-Built | Frozen v0.2 target | P6 v1.1 decision |
 |---|---|---|---|

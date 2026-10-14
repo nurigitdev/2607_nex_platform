@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "artifact_ref": "AE:NSL_ARTIFACT:finance-project-budget-check:1.0.0",
+  "backend_artifact_handle": "nsp+sha256://9e538ec352bddc4ba4a43ac1510759c02491f74f52c50bf4f817f94c9925622e/FINANCE.PROJECT_BUDGET_CHECK@1.0.0",
+  "skill_id": "FINANCE.PROJECT_BUDGET_CHECK",
+  "skill_version": "1.0.0",
+  "skill_semantic_hash": "sha256:ba75f7b96d08f0a8bff6ff1917b127c36cf2a0c96f1d29b7dc883674a4678b56",
+  "package_id": "nsp:9e538ec352bddc4ba4a43ac1510759c02491f74f52c50bf4f817f94c9925622e",
+  "package_hash": "sha256:9e538ec352bddc4ba4a43ac1510759c02491f74f52c50bf4f817f94c9925622e",
+  "publisher_id": "publisher.p6-golden",
+  "signing_key_id": "publisher.p6-golden-1",
+  "runtime_contract_ref": "contract://nex/nsl/read-runtime/v0.1",
+  "trust_evidence": {
+    "evidence_ref": "NSL:PACKAGE_TRUST:9e538ec352bd",
+    "evidence_hash": "sha256:f69ecf1dfd7bb544569eb6b1a97680f65c5cf6e34666a9103d198a59cbabf445",
+    "verified_at": "2026-10-14T07:00:00Z",
+    "trust_policy_id": "nsl.production.ed25519.v1",
+    "trust_status": "VALID",
+    "governance_status": "ACTIVE",
+    "governance_decision_ref": "AG:NSL_PACKAGE_ADMISSION:p6-golden"
+  },
+  "artifact_admission_decision_ref": "AG:NSL_ARTIFACT_ADMISSION:p6-golden",
+  "artifact_admission_decision_hash": "sha256:7e16de59db7beda0c14793af2d368997cd0944fa2bf8c75d5ab6a07c3b9aa786",
+  "artifact_hash": "sha256:7ef8f1aec82370e43c70909be26ea72d9889c4af66afd7f31948d4bc84700e52"
+}

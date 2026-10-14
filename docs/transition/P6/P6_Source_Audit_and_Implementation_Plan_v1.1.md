@@ -1,6 +1,6 @@
 # P6 Source Audit and Implementation Plan v1.1
 
-**Status:** P6-CA01A CONSOLIDATED IMPLEMENTATION BASELINE
+**Status:** P6-CA01 CONTRACT CLOSED; P6-S0 READY
 **Supersedes:** v1.0
 
 ## 1. Entry Sequence
@@ -19,7 +19,9 @@ P6 v1.1 document-set acceptance
 → P6-S7 E2E-01 IA READ Closure
 ```
 
-No feature Slice starts before CA01 closes.
+P6-CA01 is closed by
+`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. The next implementation
+Slice is P6-S0.
 
 ## 2. Refactoring-First Rule
 

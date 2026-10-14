@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:transition:p6:context-projection:1.0",
+  "title": "NeX P6 Bounded NSL Context Projection v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "agent_context_ref",
+    "agent_context_hash",
+    "runtime_context_entries",
+    "explicit_resource_refs",
+    "verified_principal",
+    "authority",
+    "data_policy",
+    "projection_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "agent_context_ref": {"$ref": "#/$defs/ref"},
+    "agent_context_hash": {"$ref": "#/$defs/hashRef"},
+    "runtime_context_entries": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "value", "classification", "source_ref"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*){0,7}$"
+          },
+          "value": {},
+          "classification": {"$ref": "#/$defs/classification"},
+          "source_ref": {"$ref": "#/$defs/ref"}
+        }
+      }
+    },
+    "explicit_resource_refs": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/ref"}
+    },
+    "verified_principal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tenant_id",
+        "subject_id",
+        "actor_type",
+        "roles",
+        "scopes",
+        "auth_context_ref",
+        "verification",
+        "on_behalf_of"
+      ],
+      "properties": {
+        "tenant_id": {"$ref": "#/$defs/boundedText"},
+        "subject_id": {"$ref": "#/$defs/boundedText"},
+        "actor_type": {"$ref": "#/$defs/boundedText"},
+        "roles": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/boundedText"}
+        },
+        "scopes": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/boundedText"}
+        },
+        "auth_context_ref": {"$ref": "#/$defs/ref"},
+        "verification": {"const": "VERIFIED"},
+        "on_behalf_of": {"anyOf": [{"$ref": "#/$defs/boundedText"}, {"type": "null"}]}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["effective_role_bindings", "org_scope", "project_scope"],
+      "properties": {
+        "effective_role_bindings": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/boundedText"}
+        },
+        "org_scope": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/boundedText"}
+        },
+        "project_scope": {
+          "type": ["array", "null"],
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/boundedText"}
+        }
+      }
+    },
+    "data_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_ref",
+        "max_trace_classification",
+        "snapshot_retention_days",
+        "audit_retention_days"
+      ],
+      "properties": {
+        "policy_ref": {"$ref": "#/$defs/ref"},
+        "max_trace_classification": {"$ref": "#/$defs/classification"},
+        "snapshot_retention_days": {"type": "integer", "minimum": 0, "maximum": 3650},
+        "audit_retention_days": {"type": "integer", "minimum": 0, "maximum": 3650}
+      }
+    },
+    "projection_hash": {"$ref": "#/$defs/hashRef"}
+  },
+  "$defs": {
+    "boundedText": {"type": "string", "minLength": 1, "maxLength": 256},
+    "ref": {"type": "string", "minLength": 1, "maxLength": 512},
+    "hashRef": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "classification": {"enum": ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED"]}
+  }
+}

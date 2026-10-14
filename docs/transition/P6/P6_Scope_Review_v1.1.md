@@ -1,6 +1,6 @@
 # P6 NSL READ Integration Scope Review v1.1
 
-**Status:** P6-CA01A CONSOLIDATED SCOPE
+**Status:** P6-CA01 SOURCE-BACKED SCOPE; IMPLEMENTATION PENDING
 **Supersedes:** v1.0
 
 ## 1. P6 is not NSL v0.2 implementation
@@ -22,13 +22,15 @@ LOCAL_SKILL ExecutableStep
 
 Worker/dispatcher/timeline work makes this path operationally valid.
 
-## 3. No P6 Slice before CA01
+## 3. P6-CA01 Gate
 
 CA01A withdrew the previous S0/S1 early-start allowance.
 
 ```text
 CA01A → CA01 → S0 → S1 → ... → S7
 ```
+
+CA01 is now closed. S0 is the next authorized implementation Slice.
 
 ## 4. BusinessOperationId is in scope
 
@@ -70,7 +72,9 @@ No new timeline SoR unless S6 audit proves a required event cannot be projected.
 
 ## 8. Source availability
 
-P6-CA01 must inspect the exact NSL checkout SHA in the implementation workspace. A particular local path is not a product-level requirement.
+P6-CA01 inspected the exact NSL checkout and recorded SHA
+`803f22aadc3946a48b05472c80b60fe11d9d9554`. A particular local path is not a
+product-level requirement.
 
 ## 9. WRITE remains out
 
@@ -78,7 +82,10 @@ P6 does not implement approval, WRITE, IdempotencyKey, CommitState, Verification
 
 ## 10. Closure statement
 
-> **P6 NSL READ Integration — source-backed v0.2-compatible contract + AE worker/dispatcher + verified artifact + NSL READ + StepResult v1.2 E2E CLOSED**
+> **P6 NSL READ Integration scope — source-backed v0.2-compatible contract + AE worker/dispatcher + verified artifact + NSL READ + StepResult v1.2 E2E**
+
+The contract boundary is closed by CA01; worker/dispatcher/backend/E2E
+implementation remains pending in S0-S7.
 
 Not:
 

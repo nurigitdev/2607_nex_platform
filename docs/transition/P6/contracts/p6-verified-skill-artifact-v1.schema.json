@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:transition:p6:verified-skill-artifact:1.0",
+  "title": "NeX P6 VerifiedSkillArtifact v1 Transition Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_ref",
+    "backend_artifact_handle",
+    "skill_id",
+    "skill_version",
+    "skill_semantic_hash",
+    "package_id",
+    "package_hash",
+    "publisher_id",
+    "signing_key_id",
+    "runtime_contract_ref",
+    "trust_evidence",
+    "artifact_admission_decision_ref",
+    "artifact_admission_decision_hash",
+    "artifact_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "artifact_ref": {"$ref": "#/$defs/ref"},
+    "backend_artifact_handle": {"$ref": "#/$defs/ref"},
+    "skill_id": {"$ref": "#/$defs/selector"},
+    "skill_version": {"$ref": "#/$defs/selector"},
+    "skill_semantic_hash": {"$ref": "#/$defs/hashRef"},
+    "package_id": {"$ref": "#/$defs/ref"},
+    "package_hash": {"$ref": "#/$defs/hashRef"},
+    "publisher_id": {"$ref": "#/$defs/boundedText"},
+    "signing_key_id": {"$ref": "#/$defs/boundedText"},
+    "runtime_contract_ref": {"$ref": "#/$defs/ref"},
+    "trust_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_ref",
+        "evidence_hash",
+        "verified_at",
+        "trust_policy_id",
+        "trust_status",
+        "governance_status",
+        "governance_decision_ref"
+      ],
+      "properties": {
+        "evidence_ref": {"$ref": "#/$defs/ref"},
+        "evidence_hash": {"$ref": "#/$defs/hashRef"},
+        "verified_at": {"type": "string", "format": "date-time"},
+        "trust_policy_id": {"$ref": "#/$defs/boundedText"},
+        "trust_status": {"const": "VALID"},
+        "governance_status": {"const": "ACTIVE"},
+        "governance_decision_ref": {"$ref": "#/$defs/ref"}
+      }
+    },
+    "artifact_admission_decision_ref": {"$ref": "#/$defs/ref"},
+    "artifact_admission_decision_hash": {"$ref": "#/$defs/hashRef"},
+    "artifact_hash": {"$ref": "#/$defs/hashRef"}
+  },
+  "$defs": {
+    "boundedText": {"type": "string", "minLength": 1, "maxLength": 256},
+    "ref": {"type": "string", "minLength": 1, "maxLength": 512},
+    "selector": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[\\x21-\\x7e]+$"
+    },
+    "hashRef": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

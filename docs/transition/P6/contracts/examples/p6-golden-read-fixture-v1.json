@@ -1,0 +1,52 @@
+{
+  "fixture_id": "P6-GOLDEN-READ-001",
+  "schema_version": "1.0",
+  "source": {
+    "repository": "nurigitdev/2608_nsl",
+    "commit": "803f22aadc3946a48b05472c80b60fe11d9d9554",
+    "skill_source_path": "examples/project_budget_check.ns",
+    "skill_source_sha256": "9151a3e27f7284ee305489f256cca91d1e1c4d550d82d80dd765af1e5a72e103",
+    "tool_contract_path": "examples/project_budget_check_cli/tools.json",
+    "input_path": "examples/project_budget_check_cli/input.json",
+    "context_path": "examples/project_budget_check_cli/context.json",
+    "provider_fixture_path": "examples/project_budget_check_cli/fixtures/success.json"
+  },
+  "signed_package": {
+    "signing_profile": "P6_TEST_ONLY_ED25519_BYTES_1_THROUGH_32",
+    "signing_key_id": "publisher.p6-golden-1",
+    "public_key_hex": "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664",
+    "nso_sha256": "35c8201ff8e55f22cd55f3fa677182a800b5452099a79cfe9e450792bb33337c",
+    "skill_semantic_hash": "sha256:ba75f7b96d08f0a8bff6ff1917b127c36cf2a0c96f1d29b7dc883674a4678b56",
+    "package_hash": "sha256:9e538ec352bddc4ba4a43ac1510759c02491f74f52c50bf4f817f94c9925622e",
+    "package_bytes_sha256": "a2099c4c7e5194a450e3a38d4c0cd022f9c23c2272bc2cbcad4c16b2ddf69cd2",
+    "package_size_bytes": 10944
+  },
+  "skill": {
+    "skill_id": "FINANCE.PROJECT_BUDGET_CHECK",
+    "skill_version": "1.0.0",
+    "risk": "READ_VALIDATE",
+    "required_tools": [
+      "PROJECT.LIST_PARENT_PROJECTS@1.0.0",
+      "PROJECT.LIST_CHILD_PROJECTS@1.0.0"
+    ]
+  },
+  "expected": {
+    "isolation_status": "COMPLETED",
+    "runtime_status": "COMPLETED",
+    "completeness": "COMPLETE",
+    "check_status": "PASS",
+    "tool_calls": 2,
+    "loop_iterations": 1,
+    "emitted_rows": 1,
+    "parent_project": "PARENT-001",
+    "budget_krw": "100000000",
+    "spent_krw": "87500000",
+    "remaining_krw": "12500000"
+  },
+  "evidence_profile": {
+    "worker_evidence_policy": "SNAPSHOT_REQUIRED",
+    "audit_required": true,
+    "protected_snapshot_required": true,
+    "raw_audit_copy_to_ae": false
+  }
+}

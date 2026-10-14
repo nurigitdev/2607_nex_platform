@@ -1,6 +1,6 @@
 # P6 Architecture Decisions v1.1
 
-**Status:** P6-CA01A CONSOLIDATED DESIGN BASELINE
+**Status:** P6-CA01 SOURCE-BACKED DESIGN BASELINE
 **Supersedes:** v1.0
 
 ## P6-DEC-01 — Version-neutral phase name

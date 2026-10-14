@@ -1,6 +1,6 @@
 # P6 — NSL READ Integration SRS v1.1
 
-**Document Status:** P6-CA01A CONSOLIDATED PRE-IMPLEMENTATION BASELINE
+**Document Status:** P6-CA01 SOURCE-BACKED CONTRACT BASELINE; IMPLEMENTATION PENDING
 **Supersedes:** v1.0
 **Implementation Baseline:** NSL v0.1 As-Built
 **Target Contract:** Frozen NSL v0.2 READ-compatible subset
@@ -32,7 +32,9 @@ P6 SHALL NOT implement NSL WRITE.
 
 # 2. Entry Gate
 
-No P6 feature Slice begins before P6-CA01 closes.
+P6-CA01 is closed by
+`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 is the next
+authorized implementation Slice.
 
 ```text
 CA01A
