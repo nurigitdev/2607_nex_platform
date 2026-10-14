@@ -539,6 +539,70 @@ class SqlAlchemyNSLStepExecutionRepository:
                 True,
             ) from exc
 
+    def mark_invocation_started(
+        self, *, tenant_id: str, executable_step_id: str, now: str
+    ) -> dict[str, dict[str, Any]]:
+        tenant = _text("tenant_id", tenant_id, 128)
+        step_id = _uuid("executable_step_id", executable_step_id)
+        observed = _timestamp("now", now)
+        try:
+            with self._session_factory() as session:
+                existing = _load_bundle(session, tenant, step_id)
+                if existing is None:
+                    raise NSLStepExecutionError(
+                        "ae.nsl_binding_not_found",
+                        "NSL invocation requires a durable request binding.",
+                    )
+                binding = existing["binding"]
+                if binding["state"] == "RUNNING":
+                    return existing
+                if binding["state"] != "REQUEST_BOUND":
+                    raise NSLStepExecutionError(
+                        "ae.nsl_binding_state_conflict",
+                        "NSL invocation cannot start from the current binding state.",
+                    )
+                running = validate_nsl_step_execution_binding(
+                    {
+                        **binding,
+                        "state": "RUNNING",
+                        "invocation_started_at": observed,
+                        "updated_at": observed,
+                    }
+                )
+                result = session.execute(
+                    text(_mark_running_sql(_dialect_name(session))),
+                    {
+                        "tenant_id": tenant,
+                        "step_id": step_id,
+                        "request_hash": running["request_hash"],
+                        "binding_json": canonical_json(running),
+                        "now": observed,
+                    },
+                )
+                if result.rowcount != 1:
+                    raise NSLStepExecutionError(
+                        "ae.nsl_binding_state_conflict",
+                        "NSL invocation start lost its request-bound state.",
+                        True,
+                    )
+                saved = _load_bundle(session, tenant, step_id)
+                if saved is None or saved["binding"] != running:
+                    raise NSLStepExecutionError(
+                        "ae.nsl_binding_write_conflict",
+                        "Running NSL binding could not be reloaded.",
+                        True,
+                    )
+                session.commit()
+                return saved
+        except NSLStepExecutionError:
+            raise
+        except SQLAlchemyError as exc:
+            raise NSLStepExecutionError(
+                "ae.nsl_binding_store_unavailable",
+                "AE NSL step execution binding store is unavailable.",
+                True,
+            ) from exc
+
 
 def nsl_step_execution_table_sql(dialect_name: str) -> tuple[str, ...]:
     json_type = "TEXT" if dialect_name == "sqlite" else "JSONB"
@@ -786,6 +850,21 @@ def _insert_sql(dialect_name: str) -> str:
         request_json=json_value.format(name="request_json"),
         context_json=json_value.format(name="context_projection_json"),
     )
+
+
+def _mark_running_sql(dialect_name: str) -> str:
+    binding_json = (
+        "CAST(:binding_json AS JSONB)"
+        if dialect_name == "postgresql"
+        else ":binding_json"
+    )
+    return f"""
+        UPDATE ae_nsl_step_execution
+        SET state = 'RUNNING', binding_json = {binding_json},
+            invocation_started_at = :now, updated_at = :now
+        WHERE tenant_id = :tenant_id AND executable_step_id = :step_id
+          AND state = 'REQUEST_BOUND' AND request_hash = :request_hash
+    """
 
 
 def _load_bundle(

@@ -1,6 +1,6 @@
 # P6 Source Audit and Implementation Plan v1.1
 
-**Status:** P6-S4 COMPLETE; P6-S5 READY
+**Status:** P6-S5 COMPLETE; P6-S6 READY
 **Supersedes:** v1.0
 
 ## 1. Entry Sequence
@@ -20,9 +20,9 @@ P6 v1.1 document-set acceptance
 ```
 
 P6-CA01 is closed by
-`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 through P6-S4 are
+`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 through P6-S5 are
 closed by their matching records in `docs/slices/`. The next implementation
-Slice is P6-S5.
+Slice is P6-S6.
 
 ## 2. Refactoring-First Rule
 
@@ -247,6 +247,8 @@ As-Built notes:
 
 ## 8. P6-S5 — NSL READ Backend Integration
 
+**Status: COMPLETE**
+
 Canonical Slice name is version-neutral.
 
 Implement:
@@ -266,6 +268,22 @@ Use stable `nsl.api` contracts.
 Backend selection is explicit configuration, not silent auto-detection.
 
 Selected CA01 process profile must prove crash/timeout containment.
+
+As-Built:
+
+- `NSLReadBackend` and explicit `V01ReadBackendAdapter` map the durable P6
+  request/context/artifact bundle to stable `nsl.api` job fields;
+- `V01ProcessEntrypoint` runs the v0.1 worker in the selected spawned-process
+  boundary and bridges ordered progress plus audit/snapshot evidence;
+- timeout, crash, target and malformed-protocol failures are contained and
+  persisted without leaking child exception text;
+- immutable attempt evidence is stored in `ae_nsl_backend_run`, while existing
+  queue, lease and request-binding authorities remain unchanged;
+- actual `nex_ae_test` acceptance executed exact clean NSL revision
+  `803f22aadc3946a48b05472c80b60fe11d9d9554` and the signed golden READ with
+  zero residue; and
+- S5 does not create result-summary, StepResult or timeline state. Those
+  remain P6-S6.
 
 ## 9. P6-S6 — Result / Timeline Integration
 
@@ -323,7 +341,8 @@ Current inventory:
 2201 verified NSL Skill artifact
 2202 NSL step execution binding + StepResult schema 1.2 support
 2203 LOCAL_SKILL capability/compiler/executable-step activation
-2204 timeline projection support only if needed
+2204 process-isolated NSL backend attempt evidence
+2205 timeline projection support only if P6-S6 source audit proves it needed
 ```
 
 No cross-service FK.

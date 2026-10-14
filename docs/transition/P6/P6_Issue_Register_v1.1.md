@@ -1,6 +1,6 @@
 # P6 NSL READ Integration Issue Register v1.1
 
-**Status:** P6-S4 COMPLETE; P6-S5 NEXT
+**Status:** P6-S5 COMPLETE; P6-S6 NEXT
 
 | ID | Sev | Issue | v1.1 Decision | Status |
 |---|---:|---|---|---|
@@ -15,11 +15,11 @@
 | P6-ISSUE-009 | P1 | Dispatcher fairness authority ambiguous | one DB-protected leader; each round rebuilds from durable state | CLOSED |
 | P6-ISSUE-010 | P1 | Backpressure semantics incomplete | active/depth/batch caps plus explicit retryable DELAY/REJECT errors | CLOSED |
 | P6-ISSUE-011 | P1 | VerifiedNspPackage != canonical VerifiedSkillArtifact | Exact gateway projection, current governance admission, and bounded persistence implemented | CLOSED |
-| P6-ISSUE-012 | P1 | v0.1 job lacks Agent/Plan/Step/BOI/correlation fields | Durable AE binding/request implemented; S5 maps the bounded request to v0.1 | BINDING_CLOSED_S5_ADAPTER |
+| P6-ISSUE-012 | P1 | v0.1 job lacks Agent/Plan/Step/BOI/correlation fields | Durable AE binding retains platform lineage while the S5 adapter maps only bounded v0.1 job fields | CLOSED |
 | P6-ISSUE-013 | P1 | Full AgentContext copy risk | Bounded projection persistence and recursive private-material rejection implemented | CLOSED |
 | P6-ISSUE-014 | P1 | Exhaustive NSL status mapping missing | All eight v0.1 statuses mapped | CLOSED |
 | P6-ISSUE-015 | P1 | Blind replay unsafe | no arbitrary Agent Runtime replay API | DESIGN_CLOSED |
-| P6-ISSUE-016 | P2 | Process-isolation profile not selected | `NSL_V01_PROCESS_ISOLATED` selected; S5 implements adapter | CONTRACT_CLOSED_S5_IMPL |
+| P6-ISSUE-016 | P2 | Process-isolation profile not selected | `NSL_V01_PROCESS_ISOLATED` proves timeout, crash and protocol containment | CLOSED |
 | P6-ISSUE-017 | P2 | Golden READ fixture not selected | Exact signed `FINANCE.PROJECT_BUDGET_CHECK@1.0.0` fixture selected and executed | CLOSED |
 | P6-ISSUE-018 | P1 | Timeline could overclaim historical state | deterministic projection; unknown optional history remains null | DESIGN_CLOSED_S6_IMPL |
 | P6-ISSUE-019 | P1 | Old trace sees one job/step only | S6 complete retained-evidence timeline | OPEN_S6 |
@@ -29,7 +29,7 @@
 
 ## Gate
 
-The P6-CA01 gate and P6-S0 through P6-S4 are closed. `LOCAL_SKILL` registration
-is fail-closed unless the complete executor dependency set is composed. P6-S5
-is the next authorized Slice and owns the first process-isolated NSL READ
-backend invocation.
+The P6-CA01 gate and P6-S0 through P6-S5 are closed. The exact NSL v0.1 source
+now executes through an explicit process-isolated backend with durable attempt
+evidence. P6-S6 is the next authorized Slice and owns result-summary,
+StepResult and timeline projection only.

@@ -1,6 +1,6 @@
 # P6 Agent ↔ NSL READ Integration Traceability v1.1
 
-**Status:** P6-S4 LOCAL_SKILL ACTIVATION EVIDENCE ADDED; P6-S5 NEXT
+**Status:** P6-S5 NSL READ BACKEND EVIDENCE ADDED; P6-S6 NEXT
 
 ## 1. Identity chain
 
@@ -294,3 +294,39 @@ Actual `nex_ae_test` evidence passed 19/19 checks, including migration
 currency, real snapshot/plan/step insert and reload, exact local-Skill binding,
 startup readiness, partial-composition rejection, no backend invocation, and
 cleanup to zero rows. P6-S5 owns the first NSL READ backend invocation.
+
+## 14. P6-S5 NSL READ backend evidence
+
+```text
+source:
+  database/nex-ae-api/migrations/2204_ae_nsl_backend_run.sql
+  services/nex-ae-api/nex_ae_api/nsl_read_backends.py
+  services/nex-ae-api/nex_ae_api/nsl_step_executions.py
+
+tests:
+  tests/test_p6_s5_nsl_read_backend.py
+  tests/test_p6_s5_postgres_smoke.py
+
+protected runner:
+  scripts/smoke/run_p6_s5_postgres_smoke.py
+```
+
+Trace boundary:
+
+```text
+durable NSLStepExecutionBinding
+-> exact VerifiedSkillArtifact
+-> bounded SkillExecutionRequest and ContextProjection
+-> stable nsl.api SkillExecutionJob
+-> spawned v0.1 SkillExecutionWorker
+-> terminal RuntimeResultEnvelope
+-> ordered progress and audit/snapshot evidence bridge
+-> immutable ae_nsl_backend_run attempt record
+```
+
+Actual `nex_ae_test` evidence passed 26/26 checks against 43 current
+migrations and exact clean NSL revision `803f22aadc3946a48b05472c80b60fe11d9d9554`.
+It executed the signed golden READ package, retained one restart-safe attempt,
+bridged four progress events and 26 evidence references, isolated a real
+timeout and non-zero child crash, preserved the parent DB session, and cleaned
+all S5 rows. P6-S6 owns result summary, StepResult and timeline projection.

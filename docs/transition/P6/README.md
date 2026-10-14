@@ -1,6 +1,6 @@
 # P6 Transition Implementation Baseline v1.1
 
-**Status:** P6-S4 COMPLETE; P6-S5 NEXT
+**Status:** P6-S5 COMPLETE; P6-S6 NEXT
 **Phase:** P6 — NSL READ Integration
 **Implementation Baseline:** NSL v0.1 As-Built
 **Target Contract:** Frozen NSL v0.2 READ-compatible integration subset
@@ -245,7 +245,25 @@ P6-S4 implemented:
 S4 does not invoke the NSL runtime. P6-S5 is the next authorized Slice and
 owns the process-isolated NSL READ adapter and execution orchestration.
 
-## 13. Exit Shape
+## 13. P6-S5 Result
+
+P6-S5 implemented:
+
+- explicit `NSLReadBackend` and `V01ReadBackendAdapter` boundaries;
+- exact platform-to-v0.1 job mapping without collapsing platform identities;
+- spawned-process execution through stable `nsl.api` worker contracts;
+- timeout, crash, target-error and malformed-protocol containment;
+- ordered progress and audit/snapshot evidence bridging;
+- immutable attempt-scoped `ae_nsl_backend_run` persistence through migration
+  `2204_ae_nsl_backend_run`; and
+- source-backed actual PostgreSQL acceptance with 26/26 checks and zero
+  residue.
+
+The adapter was proven against the exact clean NSL v0.1 revision and signed
+golden package. It does not map the terminal envelope into platform result or
+timeline records. P6-S6 is the next authorized Slice for that work.
+
+## 14. Exit Shape
 
 ```text
 PROMPT
