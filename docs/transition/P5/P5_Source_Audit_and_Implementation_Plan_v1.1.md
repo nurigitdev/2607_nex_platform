@@ -4,7 +4,7 @@
 
 **Supersedes:** v1.0
 
-**Implementation state:** IN PROGRESS — P5-S1..P5-S8 COMPLETE
+**Implementation state:** COMPLETE — P5-S1..P5-S9 COMPLETE
 
 ## 1. Entry baseline
 
@@ -218,7 +218,16 @@ execution remains `RUNNING / RESULT_PUBLISH` until a later publication ACK.
 
 ### P5-S9 — Closure
 
+**Status:** COMPLETE — 2026-10-14
+
 Full regression, PostgreSQL smoke, restart/dedup tests, zero NSL audit.
+
+The protected closure reuses two complementary real-PostgreSQL scenarios:
+the S6 restart/dedup proof and the complete S8 WorkIntent-to-AgentResult
+journey. It also verifies the migration/runtime/As-Built inventory, rejects
+direct NSL/WC/provider coupling, requires zero tenant residue, and preserves
+the required delivery ACK barrier. Full repository regression and contract
+validation close the implementation phase.
 
 ## 6. Mandatory P5-S1 fault tests
 

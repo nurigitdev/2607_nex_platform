@@ -1,6 +1,6 @@
 # P5 Transition Implementation Baseline
 
-**Status:** P5 IMPLEMENTATION IN PROGRESS — v1.1
+**Status:** P5 IMPLEMENTATION COMPLETE — v1.1
 
 **Phase:** P5 — Agent Planning & Execution Foundation
 
@@ -139,7 +139,7 @@ No WC, WRITE, NSL or false AgentExecution `SUCCEEDED`.
 | P5-S7 | COMPLETE | Existing Chat/RAG compatibility execution with WAITING/CONTINUE resume, deterministic report/aggregate projection, fail-closed dispatch, restart safety, PostgreSQL smoke |
 | P5-S8 | COMPLETE | Exact required StepResult verification, reference-only plan AgentResult, deterministic restart identity, atomic required PENDING WORKSPACE_RESULT delivery, PostgreSQL smoke |
 | P5-S1..S4 hash audit | COMPLETE | One canonical JSON serializer and SHA-256 text primitive now own P5 digest calculation; bare and prefixed representations remain contract-compatible |
-| P5-S9 | NOT STARTED | Final P5 closure and Full Gate |
+| P5-S9 | COMPLETE | Actual PostgreSQL restart/dedup and complete-journey acceptance, zero NSL/WC/direct-provider audit, ACK barrier, zero residue, canonical closure, Full Gate |
 
 As-Built records:
 
@@ -152,3 +152,4 @@ As-Built records:
 - `../../slices/p5_s6_multi_step_engine_step_result.md`
 - `../../slices/p5_s7_step_executors.md`
 - `../../slices/p5_s8_plan_finalization.md`
+- `../../slices/p5_s9_planning_execution_foundation_closure.md`

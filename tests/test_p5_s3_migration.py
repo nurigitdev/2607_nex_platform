@@ -3,7 +3,9 @@ from pathlib import Path
 from run_migrations import load_migrations
 
 ROOT = Path(__file__).resolve().parents[1]
-MIGRATION = ROOT / "database/nex-ae-api/migrations/2103_ae_capability_plan_validation.sql"
+MIGRATION = (
+    ROOT / "database/nex-ae-api/migrations/2103_ae_capability_plan_validation.sql"
+)
 
 
 def test_p5_s3_migration_has_exact_version_and_immutable_plan_storage() -> None:
@@ -38,7 +40,7 @@ def test_p5_s3_migration_reserves_exact_validation_mapping_for_s4() -> None:
         assert directive in sql
 
 
-def test_p5_s3_names_fit_postgres_and_migration_is_latest() -> None:
+def test_p5_s3_names_fit_postgres_and_migration_is_ordered() -> None:
     sql = MIGRATION.read_text(encoding="utf-8")
     names = [
         "ae_capability_snapshot",
@@ -61,4 +63,10 @@ def test_p5_s3_names_fit_postgres_and_migration_is_latest() -> None:
 
     assert all(name in sql for name in names)
     assert all(len(name) <= 63 for name in names)
-    assert load_migrations("nex-ae-api")[-1].version == "2103_ae_capability_plan_validation"
+    versions = [migration.version for migration in load_migrations("nex-ae-api")]
+    target = "2103_ae_capability_plan_validation"
+    target_index = versions.index(target)
+
+    assert versions == sorted(versions)
+    assert target_index > 0
+    assert target_index < len(versions) - 1
