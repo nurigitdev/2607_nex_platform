@@ -33,7 +33,12 @@ from nex_ae_api.agent_runtime_operations import (
     SqlAlchemyAgentRuntimeOperationsSource,
 )
 from nex_ae_api.runtime_jobs import RuntimeJobError, SqlAlchemyRuntimeJobQueue
-from nex_runtime import load_env_file, redact_database_url
+from nex_runtime import (
+    SqlAlchemyWorkerHeartbeatStore,
+    WorkerHeartbeatEmitter,
+    load_env_file,
+    redact_database_url,
+)
 from run_migrations import MigrationError, run_service_migrations
 from run_p5_s5_postgres_smoke import _execute_postgres_smoke as _execute_p5_fixture
 
@@ -149,6 +154,9 @@ def _verify_dispatcher(context: Mapping[str, Any]) -> dict[str, Any]:
     )
     executor_backends = {kind: TEST_BACKEND for kind in executor_kinds}
     queue = SqlAlchemyRuntimeJobQueue(factory)
+    heartbeat_store = SqlAlchemyWorkerHeartbeatStore(factory)
+    capability_worker_id = f"p6-s1a-local-{tenant_id[-12:]}"
+    reconciliation_id = f"agent-reconciliation:{execution_id}"
     leader = SqlAlchemyAgentRuntimeDispatcher(
         factory,
         config=leader_config,
@@ -269,10 +277,36 @@ def _verify_dispatcher(context: Mapping[str, Any]) -> dict[str, Any]:
             now=_at(base_time, 5.3),
         )
 
+        known_waiting_job = enqueue(
+            "known-waiting", str(steps[0]["executable_step_id"])
+        )
         malformed_job = enqueue("malformed", None)
+        with factory.begin() as session:
+            session.execute(
+                text(
+                    "UPDATE ae_runtime_job SET reconciliation_id = :reconciliation_id "
+                    "WHERE tenant_id = :tenant_id AND runtime_job_id = :runtime_job_id"
+                ),
+                {
+                    "reconciliation_id": reconciliation_id,
+                    "tenant_id": tenant_id,
+                    "runtime_job_id": malformed_job["runtime_job_id"],
+                },
+            )
+        WorkerHeartbeatEmitter(
+            service_id="nex-ae-api",
+            worker_id=capability_worker_id,
+            worker_type="ae.agent_runtime.worker",
+            store=heartbeat_store,
+            started_at=_at(base_time, 5.3),
+            metadata={"supported_executor_kinds": ["LOCAL_SKILL"]},
+        ).emit(status="IDLE", observed_at=_at(base_time, 5.4))
         reconciliation = standby_dispatcher.reconcile_malformed_jobs(
-            supported_executor_kinds=executor_kinds,
-            observed_at=_at(base_time, 5.4),
+            observed_at=_at(base_time, 5.4)
+        )
+        issue = standby_dispatcher.get_job_issue(
+            tenant_id=tenant_id,
+            runtime_job_id=str(malformed_job["runtime_job_id"]),
         )
         snapshot = SqlAlchemyAgentRuntimeOperationsSource(
             factory, queue_name=queue_name
@@ -314,6 +348,25 @@ def _verify_dispatcher(context: Mapping[str, Any]) -> dict[str, Any]:
             "malformed_dead_lettered": reconciliation["reconciled_count"] == 1
             and queue.get(tenant_id, malformed_job["runtime_job_id"])["state"]
             == "DEAD_LETTER",
+            "dispatch_issue_separate_from_reconciliation": issue is not None
+            and issue["issue_id"] != reconciliation_id
+            and queue.get(tenant_id, malformed_job["runtime_job_id"])[
+                "reconciliation_id"
+            ]
+            == reconciliation_id,
+            "known_executor_preserved": queue.get(
+                tenant_id, known_waiting_job["runtime_job_id"]
+            )["state"]
+            == "QUEUED"
+            and standby_dispatcher.get_job_issue(
+                tenant_id=tenant_id,
+                runtime_job_id=str(known_waiting_job["runtime_job_id"]),
+            )
+            is None,
+            "no_capable_worker_observed": snapshot["capability"]["operational_state"]
+            == "NO_CAPABLE_WORKER"
+            and snapshot["capability"]["executor_counts"].get(executor_kinds[0], 0)
+            >= 1,
             "operations_read_only": snapshot["mutation_authority"] is False
             and snapshot["privacy"]["runtime_job_ids_included"] is False,
             "postgres_plan_observed": "Plan" in explain_text,
@@ -359,6 +412,16 @@ def _verify_dispatcher(context: Mapping[str, Any]) -> dict[str, Any]:
                         "DELETE FROM ae_rt_dispatch_lease WHERE queue_name = :queue_name"
                     ),
                     {"queue_name": queue_name},
+                ).rowcount
+                or 0
+            )
+            cleanup["heartbeats"] = int(
+                session.execute(
+                    text(
+                        "DELETE FROM service_worker_heartbeats "
+                        "WHERE service_id = 'nex-ae-api' AND worker_id = :worker_id"
+                    ),
+                    {"worker_id": capability_worker_id},
                 ).rowcount
                 or 0
             )

@@ -23,6 +23,7 @@ EXECUTOR_KINDS = frozenset(
         "DETERMINISTIC_REPORT",
     }
 )
+PLATFORM_EXECUTOR_KINDS = frozenset((*EXECUTOR_KINDS, "LOCAL_SKILL"))
 
 
 @dataclass

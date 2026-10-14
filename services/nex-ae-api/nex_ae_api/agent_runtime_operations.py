@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 from fastapi import FastAPI, Header, Request
@@ -13,6 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from nex_ae_api.route_auth import authorize_ae_operations_request
+from nex_ae_api.step_executors import PLATFORM_EXECUTOR_KINDS
 
 AE_RUNTIME_OPERATIONS_PATH = "/internal/v1/operations/agent-runtime"
 AE_RUNTIME_OPERATIONS_SCHEMA_VERSION = "ae_agent_runtime_operations.v1"
@@ -88,6 +90,25 @@ class SqlAlchemyAgentRuntimeOperationsSource:
                     .mappings()
                     .all()
                 )
+                worker_capabilities = (
+                    session.execute(
+                        text(_WORKER_CAPABILITIES_SQL),
+                        {
+                            "service_id": "nex-ae-api",
+                            "worker_type": "ae.agent_runtime.worker",
+                        },
+                    )
+                    .mappings()
+                    .all()
+                )
+                runnable_executors = (
+                    session.execute(
+                        text(_RUNNABLE_EXECUTOR_COUNTS_SQL),
+                        {"now": now},
+                    )
+                    .mappings()
+                    .all()
+                )
                 job_types = session.execute(text(_JOB_TYPE_COUNTS_SQL)).mappings().all()
                 timing_rows = (
                     session.execute(
@@ -118,6 +139,8 @@ class SqlAlchemyAgentRuntimeOperationsSource:
                     issues=issues,
                     leadership=leadership,
                     workers=workers,
+                    worker_capabilities=worker_capabilities,
+                    runnable_executors=runnable_executors,
                     job_types=job_types,
                     timing_rows=timing_rows,
                     step_rows=step_rows,
@@ -178,6 +201,8 @@ def _build_snapshot(
     issues: list[Mapping[str, Any]],
     leadership: Mapping[str, Any],
     workers: list[Mapping[str, Any]],
+    worker_capabilities: list[Mapping[str, Any]],
+    runnable_executors: list[Mapping[str, Any]],
     job_types: list[Mapping[str, Any]],
     timing_rows: list[Mapping[str, Any]],
     step_rows: list[Mapping[str, Any]],
@@ -196,6 +221,11 @@ def _build_snapshot(
         lease_until is not None
         and released_at is None
         and _as_datetime(lease_until) > _parse_timestamp(observed_at)
+    )
+    capability = _capability_projection(
+        observed_at=observed_at,
+        workers=worker_capabilities,
+        runnable_executors=runnable_executors,
     )
     return {
         "schema_version": AE_RUNTIME_OPERATIONS_SCHEMA_VERSION,
@@ -245,6 +275,7 @@ def _build_snapshot(
             },
             "heartbeat_count": sum(int(row["worker_count"]) for row in workers),
         },
+        "capability": capability,
         "issues": {
             "open_count": sum(int(row["issue_count"]) for row in issues),
             "reason_counts": {
@@ -303,6 +334,55 @@ def _average_duration_ms(
 
 def _count(value: Mapping[str, Any], key: str) -> int:
     return int(value.get(key) or 0)
+
+
+def _capability_projection(
+    *,
+    observed_at: str,
+    workers: list[Mapping[str, Any]],
+    runnable_executors: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    cutoff = _parse_timestamp(observed_at) - timedelta(seconds=60)
+    capable: set[str] = set()
+    for row in workers:
+        if row.get("status") not in {"IDLE", "BUSY"}:
+            continue
+        if _as_datetime(row.get("last_seen_at")) <= cutoff:
+            continue
+        metadata = _metadata_object(row.get("metadata"))
+        executor_kinds = metadata.get("supported_executor_kinds", ())
+        if isinstance(executor_kinds, list | tuple):
+            capable.update(
+                str(value)
+                for value in executor_kinds
+                if isinstance(value, str) and value in PLATFORM_EXECUTOR_KINDS
+            )
+    gaps = {
+        str(row["executor_kind"]): int(row["runnable_count"])
+        for row in runnable_executors
+        if row.get("executor_kind") in PLATFORM_EXECUTOR_KINDS
+        and row.get("executor_kind") not in capable
+    }
+    gap_count = sum(gaps.values())
+    return {
+        "operational_state": "NO_CAPABLE_WORKER" if gap_count else "CAPABLE",
+        "no_capable_worker_count": gap_count,
+        "executor_counts": dict(sorted(gaps.items())),
+        "active_executor_kinds": sorted(capable),
+        "bounded_executor_labels": True,
+    }
+
+
+def _metadata_object(value: object) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError):
+            return {}
+        return parsed if isinstance(parsed, Mapping) else {}
+    return {}
 
 
 def _required_text(value: object, field_name: str) -> str:
@@ -397,6 +477,24 @@ _WORKER_COUNTS_SQL = """
     WHERE service_id = :service_id AND worker_type = :worker_type
     GROUP BY status
     ORDER BY status
+"""
+
+_WORKER_CAPABILITIES_SQL = """
+    SELECT status, last_seen_at, metadata
+    FROM service_worker_heartbeats
+    WHERE service_id = :service_id AND worker_type = :worker_type
+"""
+
+_RUNNABLE_EXECUTOR_COUNTS_SQL = """
+    SELECT step.executor_kind, count(*) AS runnable_count
+    FROM ae_runtime_job AS job
+    JOIN ae_executable_step AS step
+      ON step.tenant_id = job.tenant_id
+     AND step.executable_step_id = job.executable_step_id
+    WHERE ((job.state = 'QUEUED' AND job.run_after <= :now)
+           OR (job.state = 'RUNNING' AND job.lease_until <= :now))
+    GROUP BY step.executor_kind
+    ORDER BY step.executor_kind
 """
 
 _JOB_TYPE_COUNTS_SQL = """

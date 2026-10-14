@@ -4,6 +4,11 @@
 **Date:** 2026-10-14
 **Next:** P6-S2 Skill Artifact Gateway
 
+**Semantic amendment:** P6-S1A separates dispatch issue identity from Agent
+Reconciliation identity and distinguishes platform-unknown executors from
+temporarily unsupported worker capabilities. See
+`p6_s1a_runtime_dispatch_semantic_hardening.md`.
+
 ## Scope
 
 P6-S1 connects the P6-S0 worker port to durable AE RuntimeJob selection without

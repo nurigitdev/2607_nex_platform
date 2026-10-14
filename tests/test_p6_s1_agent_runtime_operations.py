@@ -34,6 +34,7 @@ def operations_source():
                 """
                 CREATE TABLE ae_runtime_job (
                     tenant_id TEXT, runtime_job_id TEXT, job_type TEXT,
+                    executable_step_id TEXT,
                     state TEXT, attempt_no INTEGER, run_after TEXT,
                     lease_until TEXT, created_at TEXT
                 )
@@ -73,7 +74,8 @@ def operations_source():
             text(
                 """
                 CREATE TABLE service_worker_heartbeats (
-                    service_id TEXT, worker_type TEXT, status TEXT
+                    service_id TEXT, worker_id TEXT, worker_type TEXT,
+                    status TEXT, last_seen_at TEXT, metadata TEXT
                 )
                 """
             )
@@ -82,6 +84,7 @@ def operations_source():
             text(
                 """
                 CREATE TABLE ae_executable_step (
+                    tenant_id TEXT, executable_step_id TEXT, executor_kind TEXT,
                     invocation_started_at TEXT, completed_at TEXT
                 )
                 """
@@ -100,12 +103,12 @@ def operations_source():
             text(
                 """
                 INSERT INTO ae_runtime_job VALUES
-                ('private-a','job-a','START_EXECUTION','QUEUED',0,'2026-10-14T00:59:00Z',NULL,'2026-10-14T00:58:00Z'),
-                ('private-b','job-b','START_EXECUTION','RUNNING',1,'2026-10-14T00:58:00Z','2026-10-14T01:01:00Z','2026-10-14T00:57:00Z'),
-                ('private-c','job-c','CONTINUE_EXECUTION','QUEUED',2,'2026-10-14T00:59:30Z',NULL,'2026-10-14T00:56:00Z'),
-                ('private-d','job-d','START_EXECUTION','QUEUED',0,'2026-10-14T02:00:00Z',NULL,'2026-10-14T00:55:00Z'),
-                ('private-e','job-e','START_EXECUTION','FAILED',1,'2026-10-14T00:50:00Z',NULL,'2026-10-14T00:54:00Z'),
-                ('private-f','job-f','START_EXECUTION','DEAD_LETTER',1,'2026-10-14T00:50:00Z',NULL,'2026-10-14T00:53:00Z')
+                ('private-a','job-a','START_EXECUTION','step-a','QUEUED',0,'2026-10-14T00:59:00Z',NULL,'2026-10-14T00:58:00Z'),
+                ('private-b','job-b','START_EXECUTION','step-b','RUNNING',1,'2026-10-14T00:58:00Z','2026-10-14T01:01:00Z','2026-10-14T00:57:00Z'),
+                ('private-c','job-c','CONTINUE_EXECUTION','step-c','QUEUED',2,'2026-10-14T00:59:30Z',NULL,'2026-10-14T00:56:00Z'),
+                ('private-d','job-d','START_EXECUTION','step-d','QUEUED',0,'2026-10-14T02:00:00Z',NULL,'2026-10-14T00:55:00Z'),
+                ('private-e','job-e','START_EXECUTION','step-e','FAILED',1,'2026-10-14T00:50:00Z',NULL,'2026-10-14T00:54:00Z'),
+                ('private-f','job-f','START_EXECUTION','step-f','DEAD_LETTER',1,'2026-10-14T00:50:00Z',NULL,'2026-10-14T00:53:00Z')
                 """
             )
         )
@@ -130,14 +133,21 @@ def operations_source():
         connection.execute(
             text(
                 "INSERT INTO service_worker_heartbeats VALUES "
-                "('nex-ae-api','ae.agent_runtime.worker','IDLE'),"
-                "('nex-ae-api','ae.agent_runtime.worker','BUSY')"
+                "('nex-ae-api','worker-local','ae.agent_runtime.worker','IDLE',"
+                "'2026-10-14T00:59:50Z','{\"supported_executor_kinds\":[\"LOCAL_SKILL\"]}'),"
+                "('nex-ae-api','worker-stale','ae.agent_runtime.worker','BUSY',"
+                "'2026-10-14T00:58:00Z','{\"supported_executor_kinds\":[\"DETERMINISTIC_REPORT\"]}')"
             )
         )
         connection.execute(
             text(
                 "INSERT INTO ae_executable_step VALUES "
-                "('2026-10-14T00:58:00Z','2026-10-14T00:58:02Z')"
+                "('private-a','step-a','LOCAL_SKILL','2026-10-14T00:58:00Z','2026-10-14T00:58:02Z'),"
+                "('private-b','step-b','LOCAL_SKILL',NULL,NULL),"
+                "('private-c','step-c','DETERMINISTIC_REPORT',NULL,NULL),"
+                "('private-d','step-d','DETERMINISTIC_AGGREGATE',NULL,NULL),"
+                "('private-e','step-e','LOCAL_SKILL',NULL,NULL),"
+                "('private-f','step-f','LOCAL_SKILL',NULL,NULL)"
             )
         )
         connection.execute(
@@ -204,6 +214,13 @@ def test_sqlalchemy_projection_emits_bounded_privacy_safe_metrics(
     assert snapshot["workers"] == {
         "status_counts": {"BUSY": 1, "IDLE": 1},
         "heartbeat_count": 2,
+    }
+    assert snapshot["capability"] == {
+        "operational_state": "NO_CAPABLE_WORKER",
+        "no_capable_worker_count": 1,
+        "executor_counts": {"DETERMINISTIC_REPORT": 1},
+        "active_executor_kinds": ["LOCAL_SKILL"],
+        "bounded_executor_labels": True,
     }
     assert snapshot["issues"] == {
         "open_count": 1,
@@ -304,6 +321,13 @@ def test_empty_projection_and_timestamp_validation(operations_source) -> None:
         "execution": None,
     }
     assert snapshot["workers"]["heartbeat_count"] == 0
+    assert snapshot["capability"] == {
+        "operational_state": "CAPABLE",
+        "no_capable_worker_count": 0,
+        "executor_counts": {},
+        "active_executor_kinds": [],
+        "bounded_executor_labels": True,
+    }
 
     for invalid in ("not-a-timestamp", 7, "2026-10-14T01:00:00"):
         with pytest.raises(AgentRuntimeOperationsError) as exc_info:
@@ -338,3 +362,39 @@ def test_projection_preserves_domain_error(
     with pytest.raises(AgentRuntimeOperationsError) as exc_info:
         operations_source.snapshot(observed_at="2026-10-14T01:00:00Z")
     assert exc_info.value is expected
+
+
+def test_capability_metadata_is_bounded_and_malformed_values_are_ignored() -> None:
+    assert operations_module._metadata_object({"value": 1}) == {"value": 1}
+    assert operations_module._metadata_object("not-json") == {}
+    assert operations_module._metadata_object("[1,2]") == {}
+    assert operations_module._metadata_object(None) == {}
+
+    projection = operations_module._capability_projection(
+        observed_at="2026-10-14T01:00:00Z",
+        workers=[
+            {
+                "status": "STOPPED",
+                "last_seen_at": "2026-10-14T00:59:59Z",
+                "metadata": {"supported_executor_kinds": ["DETERMINISTIC_REPORT"]},
+            },
+            {
+                "status": "IDLE",
+                "last_seen_at": "2026-10-14T00:59:59Z",
+                "metadata": {"supported_executor_kinds": ["LOCAL_SKILL", "UNKNOWN"]},
+            },
+            {
+                "status": "IDLE",
+                "last_seen_at": "2026-10-14T00:59:59Z",
+                "metadata": {"supported_executor_kinds": "LOCAL_SKILL"},
+            },
+        ],
+        runnable_executors=[
+            {"executor_kind": "LOCAL_SKILL", "runnable_count": 1},
+            {"executor_kind": "DETERMINISTIC_REPORT", "runnable_count": 2},
+            {"executor_kind": "UNKNOWN", "runnable_count": 50},
+        ],
+    )
+    assert projection["active_executor_kinds"] == ["LOCAL_SKILL"]
+    assert projection["executor_counts"] == {"DETERMINISTIC_REPORT": 2}
+    assert projection["no_capable_worker_count"] == 2

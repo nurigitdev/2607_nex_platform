@@ -70,6 +70,7 @@ Frozen Platform v2.1 / Agent v2.1 / NSL v0.2
 15. `P6_Source_Audit_and_Implementation_Plan_v1.1.md`
 16. `../../slices/p6_s0_ae_runtime_worker_foundation.md`
 17. `../../slices/p6_s1_db_protected_tenant_dispatcher.md`
+18. `../../slices/p6_s1a_runtime_dispatch_semantic_hardening.md`
 
 ## 5. CA01A Non-Negotiable Rules
 
@@ -181,6 +182,12 @@ P6-S1 implemented:
   failover, stale-leader fencing, lease reclaim and zero residue.
 
 The next authorized Slice is P6-S2.
+
+P6-S1A then hardened the completed dispatcher semantics without adding a
+migration: dispatch issue IDs no longer occupy `RuntimeJob.reconciliation_id`,
+platform-known P5 executors remain queued when the active Agent Runtime worker
+pool lacks their capability, and the protected operations projection exposes
+that demand as `NO_CAPABLE_WORKER`.
 
 ## 10. Exit Shape
 

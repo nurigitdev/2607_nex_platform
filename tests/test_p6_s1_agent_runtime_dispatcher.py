@@ -527,7 +527,7 @@ def test_backpressure_reject_delay_future_and_idempotency(runtime_store) -> None
 def test_malformed_jobs_follow_explicit_dead_letter_issue_path(runtime_store) -> None:
     engine, factory = runtime_store
     queue = _queue(factory)
-    _add_job(
+    missing_id = _add_job(
         engine,
         queue,
         tenant_id="tenant-a",
@@ -554,15 +554,48 @@ def test_malformed_jobs_follow_explicit_dead_letter_issue_path(runtime_store) ->
         engine,
         queue,
         tenant_id="tenant-d",
-        suffix="unsupported",
-        executor_kind="DETERMINISTIC_REPORT",
+        suffix="unknown-executor",
+        executor_kind="UNREGISTERED_EXECUTOR",
     )
-    valid = _add_job(engine, queue, tenant_id="tenant-e", suffix="valid")
-    dispatcher = _dispatcher(factory, malformed_reconcile_batch=8)
+    known_jobs = [
+        _add_job(
+            engine,
+            queue,
+            tenant_id=f"tenant-known-{index}",
+            suffix=executor_kind.lower(),
+            executor_kind=executor_kind,
+        )
+        for index, executor_kind in enumerate(
+            (
+                "DETERMINISTIC_REPORT",
+                "DETERMINISTIC_AGGREGATE",
+                "P4_CHAT_RAG_COMPATIBILITY",
+            ),
+            start=1,
+        )
+    ]
+    valid = _add_job(
+        engine,
+        queue,
+        tenant_id="tenant-e",
+        suffix="valid",
+        executor_kind="LOCAL_SKILL",
+    )
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE ae_runtime_job SET reconciliation_id = :reconciliation_id "
+                "WHERE tenant_id = :tenant_id AND runtime_job_id = :runtime_job_id"
+            ),
+            {
+                "reconciliation_id": "agent-reconciliation-1",
+                "tenant_id": missing_id["tenant_id"],
+                "runtime_job_id": missing_id["runtime_job_id"],
+            },
+        )
+    dispatcher = _dispatcher(factory, malformed_reconcile_batch=16)
 
-    result = dispatcher.reconcile_malformed_jobs(
-        supported_executor_kinds=("LOCAL_SKILL",), observed_at=NOW
-    )
+    result = dispatcher.reconcile_malformed_jobs(observed_at=NOW)
     assert result == {
         "schema_version": "ae_agent_runtime_reconciliation.v1",
         "status": "COMPLETED",
@@ -586,13 +619,35 @@ def test_malformed_jobs_follow_explicit_dead_letter_issue_path(runtime_store) ->
             .scalars()
             .all()
         )
-    assert dict(states) == {"DEAD_LETTER": 4, "QUEUED": 1}
+    assert dict(states) == {"DEAD_LETTER": 4, "QUEUED": 4}
     assert issues == [
         "EXECUTOR_KIND_MISSING",
         "EXECUTOR_UNSUPPORTED",
         "STEP_ID_MISSING",
         "STEP_NOT_FOUND",
     ]
+    assert (
+        queue.get("tenant-a", missing_id["runtime_job_id"])["reconciliation_id"]
+        == "agent-reconciliation-1"
+    )
+    issue = dispatcher.get_job_issue(
+        tenant_id="tenant-a", runtime_job_id=missing_id["runtime_job_id"]
+    )
+    assert issue is not None
+    assert issue["issue_id"] == "issue-0"
+    assert issue["issue_id"] != "agent-reconciliation-1"
+    assert issue["reason_code"] == "STEP_ID_MISSING"
+    assert (
+        dispatcher.get_job_issue(
+            tenant_id="tenant-e", runtime_job_id=valid["runtime_job_id"]
+        )
+        is None
+    )
+    for known_job in known_jobs:
+        assert (
+            queue.get(known_job["tenant_id"], known_job["runtime_job_id"])["state"]
+            == "QUEUED"
+        )
     assert queue.get("tenant-e", valid["runtime_job_id"])["state"] == "QUEUED"
 
 
@@ -602,6 +657,11 @@ def test_store_failures_are_translated() -> None:
     with pytest.raises(AgentRuntimeDispatcherError) as exc_info:
         dispatcher.acquire_leadership(observed_at=NOW)
     assert exc_info.value.error_code == "ae.agent_runtime_dispatcher.store_unavailable"
+    with pytest.raises(AgentRuntimeDispatcherError) as issue_error:
+        dispatcher.get_job_issue(tenant_id="tenant-a", runtime_job_id="job-a")
+    assert issue_error.value.error_code == (
+        "ae.agent_runtime_dispatcher.store_unavailable"
+    )
     engine.dispose()
 
 
@@ -611,6 +671,10 @@ def test_error_helpers_and_additional_config_guards(runtime_store) -> None:
         AgentRuntimeDispatcherConfig(leadership_lease_seconds=True)
     with pytest.raises(AgentRuntimeDispatcherError):
         SqlAlchemyAgentRuntimeDispatcher(runtime_store[1], executor_backends={})
+    with pytest.raises(AgentRuntimeDispatcherError):
+        SqlAlchemyAgentRuntimeDispatcher(
+            runtime_store[1], executor_backends={"UNKNOWN": "backend"}
+        )
     with pytest.raises(AgentRuntimeDispatcherError):
         _dispatcher(runtime_store[1]).discover_runnable_tenants(
             supported_executor_kinds="LOCAL_SKILL",  # type: ignore[arg-type]
@@ -712,10 +776,7 @@ def test_reconciliation_expires_malformed_running_attempt(runtime_store) -> None
     )
     assert claim is not None
     dispatcher = _dispatcher(factory)
-    result = dispatcher.reconcile_malformed_jobs(
-        supported_executor_kinds=("LOCAL_SKILL",),
-        observed_at="2026-10-14T01:00:02Z",
-    )
+    result = dispatcher.reconcile_malformed_jobs(observed_at="2026-10-14T01:00:02Z")
     assert result["reconciled_count"] == 1
     assert queue.get("tenant-a", job["runtime_job_id"])["state"] == "DEAD_LETTER"
     assert (
@@ -734,9 +795,7 @@ def test_each_dispatcher_store_operation_translates_database_failure() -> None:
             supported_executor_kinds=("LOCAL_SKILL",), observed_at=NOW
         ),
         lambda: dispatcher.active_claim_counts(observed_at=NOW),
-        lambda: dispatcher.reconcile_malformed_jobs(
-            supported_executor_kinds=("LOCAL_SKILL",), observed_at=NOW
-        ),
+        lambda: dispatcher.reconcile_malformed_jobs(observed_at=NOW),
     )
     for operation in operations:
         with pytest.raises(AgentRuntimeDispatcherError) as exc_info:
@@ -971,9 +1030,6 @@ def test_malformed_reconciliation_tolerates_lost_compare_and_swap() -> None:
         lambda: session,  # type: ignore[arg-type]
         id_factory=lambda: "issue-racing",
     )
-    result = dispatcher.reconcile_malformed_jobs(
-        supported_executor_kinds=("LOCAL_SKILL",),
-        observed_at=NOW,
-    )
+    result = dispatcher.reconcile_malformed_jobs(observed_at=NOW)
     assert result["reconciled_count"] == 0
     assert session.committed is True

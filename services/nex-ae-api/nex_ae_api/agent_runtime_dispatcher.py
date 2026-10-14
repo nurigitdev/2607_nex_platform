@@ -18,6 +18,7 @@ from nex_ae_api.agent_runtime_worker import (
     AgentRuntimeAssignment,
 )
 from nex_ae_api.runtime_jobs import SqlAlchemyRuntimeJobQueue
+from nex_ae_api.step_executors import PLATFORM_EXECUTOR_KINDS
 
 AE_RUNTIME_QUEUE_NAME = "ae-runtime"
 LOCAL_SKILL_EXECUTOR = "LOCAL_SKILL"
@@ -175,6 +176,8 @@ class SqlAlchemyAgentRuntimeDispatcher:
             if executor_backends is None
             else executor_backends
         )
+        if not set(self._executor_backends).issubset(PLATFORM_EXECUTOR_KINDS):
+            raise _invalid("executor_backends contains an unknown platform executor.")
 
     def acquire_leadership(self, *, observed_at: str) -> dict[str, Any] | None:
         now = _timestamp(observed_at, "observed_at")
@@ -420,12 +423,8 @@ class SqlAlchemyAgentRuntimeDispatcher:
     def reconcile_malformed_jobs(
         self,
         *,
-        supported_executor_kinds: Sequence[str],
         observed_at: str,
     ) -> dict[str, Any]:
-        executors = _normalized_values(
-            supported_executor_kinds, "supported_executor_kinds"
-        )
         now = _timestamp(observed_at, "observed_at")
         try:
             with self._session_factory() as session:
@@ -435,13 +434,13 @@ class SqlAlchemyAgentRuntimeDispatcher:
                     else ""
                 )
                 statement = text(_MALFORMED_SELECT_SQL + lock_suffix).bindparams(
-                    bindparam("executor_kinds", expanding=True)
+                    bindparam("platform_executor_kinds", expanding=True)
                 )
                 rows = (
                     session.execute(
                         statement,
                         {
-                            "executor_kinds": list(executors),
+                            "platform_executor_kinds": sorted(PLATFORM_EXECUTOR_KINDS),
                             "now": now,
                             "limit": self.config.malformed_reconcile_batch,
                         },
@@ -471,7 +470,6 @@ class SqlAlchemyAgentRuntimeDispatcher:
                             "runtime_job_id": row["runtime_job_id"],
                             "expected_state": row["state"],
                             "expected_lease_token": row["lease_token"],
-                            "issue_id": issue_id,
                             "now": now,
                         },
                     )
@@ -499,6 +497,40 @@ class SqlAlchemyAgentRuntimeDispatcher:
                 }
         except SQLAlchemyError as exc:
             raise _unavailable("malformed RuntimeJob reconciliation failed") from exc
+
+    def get_job_issue(
+        self,
+        *,
+        tenant_id: str,
+        runtime_job_id: str,
+    ) -> dict[str, Any] | None:
+        params = {
+            "tenant_id": _required_text(tenant_id, "tenant_id"),
+            "runtime_job_id": _required_text(runtime_job_id, "runtime_job_id"),
+        }
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(text(_ISSUE_SELECT_SQL), params).mappings().first()
+                )
+                if row is None:
+                    return None
+                return {
+                    "issue_id": str(row["issue_id"]),
+                    "tenant_id": str(row["tenant_id"]),
+                    "runtime_job_id": str(row["runtime_job_id"]),
+                    "reason_code": str(row["reason_code"]),
+                    "observed_executor_kind": (
+                        None
+                        if row["observed_executor_kind"] is None
+                        else str(row["observed_executor_kind"])
+                    ),
+                    "issue_state": str(row["issue_state"]),
+                    "detected_at": _datetime_value(row["detected_at"]),
+                    "acknowledged_at": _datetime_or_none(row["acknowledged_at"]),
+                }
+        except SQLAlchemyError as exc:
+            raise _unavailable("malformed RuntimeJob issue lookup failed") from exc
 
     def _eligible_executors(
         self,
@@ -763,7 +795,7 @@ _MALFORMED_SELECT_SQL = """
         job.executable_step_id IS NULL
         OR step.executable_step_id IS NULL
         OR step.executor_kind IS NULL
-        OR step.executor_kind NOT IN :executor_kinds
+        OR step.executor_kind NOT IN :platform_executor_kinds
       )
     ORDER BY CASE WHEN job.state = 'RUNNING' THEN 0 ELSE 1 END,
              job.run_after, job.created_at, job.runtime_job_id
@@ -781,11 +813,18 @@ _EXPIRE_ATTEMPT_SQL = """
 _DEAD_LETTER_JOB_SQL = """
     UPDATE ae_runtime_job
     SET state = 'DEAD_LETTER', lease_owner = NULL, lease_token = NULL,
-        lease_until = NULL, reconciliation_id = :issue_id, updated_at = :now
+        lease_until = NULL, updated_at = :now
     WHERE tenant_id = :tenant_id AND runtime_job_id = :runtime_job_id
       AND state = :expected_state
       AND (lease_token = :expected_lease_token OR
            (lease_token IS NULL AND :expected_lease_token IS NULL))
+"""
+
+_ISSUE_SELECT_SQL = """
+    SELECT issue_id, tenant_id, runtime_job_id, reason_code,
+           observed_executor_kind, issue_state, detected_at, acknowledged_at
+    FROM ae_rt_job_issue
+    WHERE tenant_id = :tenant_id AND runtime_job_id = :runtime_job_id
 """
 
 _ISSUE_INSERT_SQL = """
