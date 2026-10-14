@@ -59,14 +59,15 @@ Legacy `99_*` schemas remain reference only.
 3. `P5_CA01A_Planning_Contract_Identity_Hash_Runtime_Mapping_and_Prompt_Atomicity_Closure_v1.0.md`
 4. `contracts/README.md` and `contracts/*v1.1.schema.json`
 5. `P5_Architecture_Decisions_v1.1.md`
-6. `P5_Agent_Planning_and_Execution_Foundation_SRS_v1.1.md`
-7. `P5_Scope_Review_v1.1.md`
-8. `P5_LLM_Prompt_Template_Registry_and_Governance_Design_v1.1.md`
-9. `P5_Issue_Register_v1.1.md`
-10. `P5_Intent_Context_Plan_Compiler_Traceability_v1.1.md`
-11. `P5_LLM_Prompt_Registry_Traceability_v1.1.md`
-12. current P4 As-Built source
-13. `P5_Source_Audit_and_Implementation_Plan_v1.1.md`
+6. `P5_JobQueue_Agent_RuntimeJob_Separation_and_Operations_Decision_v1.0.md`
+7. `P5_Agent_Planning_and_Execution_Foundation_SRS_v1.1.md`
+8. `P5_Scope_Review_v1.1.md`
+9. `P5_LLM_Prompt_Template_Registry_and_Governance_Design_v1.1.md`
+10. `P5_Issue_Register_v1.1.md`
+11. `P5_Intent_Context_Plan_Compiler_Traceability_v1.1.md`
+12. `P5_LLM_Prompt_Registry_Traceability_v1.1.md`
+13. current P4 As-Built source
+14. `P5_Source_Audit_and_Implementation_Plan_v1.1.md`
 
 The Frozen source manifest from CA01 remains:
 
