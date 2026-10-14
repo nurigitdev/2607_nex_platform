@@ -4,7 +4,7 @@
 
 **Supersedes:** v1.0
 
-**Implementation state:** IN PROGRESS — P5-S1..P5-S7 COMPLETE
+**Implementation state:** IN PROGRESS — P5-S1..P5-S8 COMPLETE
 
 ## 1. Entry baseline
 
@@ -205,7 +205,16 @@ terminal results, while restart after result persistence does not reexecute.
 
 ### P5-S8 — Plan-level finalization
 
+**Status:** COMPLETE — 2026-10-14
+
 Required StepResults → completion verification → AgentResult → PENDING delivery.
+
+The finalizer validates the exact persisted E-key result set and required
+completion criteria, creates a reference-only AgentResult with deterministic
+restart identity, and atomically creates the required PENDING
+`WORKSPACE_RESULT` delivery. The repository rechecks `RESULT_VERIFY`, latest
+plan identity, and DB StepResult hashes in the write transaction. Successful
+execution remains `RUNNING / RESULT_PUBLISH` until a later publication ACK.
 
 ### P5-S9 — Closure
 

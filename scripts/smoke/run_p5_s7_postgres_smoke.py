@@ -5,7 +5,7 @@ import argparse
 import json
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -121,7 +121,11 @@ def run_p5_s7_postgres_smoke(
         )
 
 
-def _verify_executor_runtime(fixture: Mapping[str, Any]) -> dict[str, Any]:
+def _verify_executor_runtime(
+    fixture: Mapping[str, Any],
+    *,
+    finalizer: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
     factory = fixture["factory"]
     tenant_id = str(fixture["tenant_id"])
     execution = dict(fixture["execution"])
@@ -250,6 +254,19 @@ def _verify_executor_runtime(fixture: Mapping[str, Any]) -> dict[str, Any]:
         attempt_count = p5_s6._tenant_count(
             session, "ae_runtime_job_attempt", tenant_id
         )
+    finalization = (
+        dict(
+            finalizer(
+                {
+                    **fixture,
+                    "compatibility_execution": compatibility,
+                    "report_execution": report,
+                }
+            )
+        )
+        if finalizer is not None
+        else {}
+    )
 
     checks = {
         "compatibility_waited": waiting.disposition == "WAITING"
@@ -284,6 +301,7 @@ def _verify_executor_runtime(fixture: Mapping[str, Any]) -> dict[str, Any]:
             for item in (waiting, compatibility, report)
         ),
         "restart_does_not_reexecute": no_more_work is None and phase == "RESULT_VERIFY",
+        **dict(finalization.get("checks") or {}),
     }
     cleanup = p5_s6._cleanup_runtime_rows(factory, tenant_id)
     checks["runtime_cleanup_complete"] = cleanup["runtime_remaining"] == 0
@@ -293,8 +311,12 @@ def _verify_executor_runtime(fixture: Mapping[str, Any]) -> dict[str, Any]:
             "step_result": result_count,
             "runtime_job": job_count,
             "runtime_job_attempt": attempt_count,
+            **dict(finalization.get("row_counts") or {}),
         },
-        "cleanup_counts": cleanup,
+        "cleanup_counts": {
+            **dict(finalization.get("cleanup_counts") or {}),
+            **cleanup,
+        },
     }
 
 

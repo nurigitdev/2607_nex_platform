@@ -78,11 +78,11 @@ def build_agent_result(
     citation_refs: Iterable[str] = (),
 ) -> dict[str, Any]:
     tenant_id = _required("tenant_id", execution.get("tenant_id"))
-    execution_id = _required(
-        "agent_execution_id", execution.get("agent_execution_id")
-    )
+    execution_id = _required("agent_execution_id", execution.get("agent_execution_id"))
     if execution.get("agent_type") != "IA" or execution.get("project_id") is not None:
-        raise _invalid("P4 AgentResult assembly requires a project-neutral IA execution.")
+        raise _invalid(
+            "P4 AgentResult assembly requires a project-neutral IA execution."
+        )
     if (
         str(step.get("tenant_id")) != tenant_id
         or str(step.get("agent_execution_id")) != execution_id
@@ -91,12 +91,17 @@ def build_agent_result(
     interaction_id = _required(
         "legacy_interaction_id", step.get("legacy_interaction_id")
     )
-    if _required("interaction_id", legacy_result.get("interaction_id")) != interaction_id:
+    if (
+        _required("interaction_id", legacy_result.get("interaction_id"))
+        != interaction_id
+    ):
         raise _invalid("Legacy result does not match the compatibility step.")
 
     status, quality, warnings = _legacy_status_quality(legacy_result)
     if step.get("state") != _TERMINAL_STEP_BY_RESULT[status]:
-        raise _invalid("AgentResult status does not match terminal ExecutableStep state.")
+        raise _invalid(
+            "AgentResult status does not match terminal ExecutableStep state."
+        )
 
     structured_result = _structured_result_refs(step)
     artifact_refs = _artifact_references(legacy_result.get("artifact_refs", ()))
@@ -209,13 +214,16 @@ def validate_agent_result(result: Mapping[str, Any]) -> None:
         raise _invalid("P4 requires the Frozen v2.1 IA AgentResult contract.")
     if result.get("status") not in AGENT_RESULT_STATUSES:
         raise _invalid("AgentResult status is outside the Frozen vocabulary.")
-    if any(result.get(field) is not None for field in (
-        "source_work_item_ref",
-        "source_claim_ref",
-        "source_claim_generation",
-        "source_claimant_agent_id",
-        "source_assignment_ref",
-    )):
+    if any(
+        result.get(field) is not None
+        for field in (
+            "source_work_item_ref",
+            "source_claim_ref",
+            "source_claim_generation",
+            "source_claimant_agent_id",
+            "source_assignment_ref",
+        )
+    ):
         raise _invalid("P4 IA AgentResult cannot contain WC claim lineage.")
     if _contains_private_content(result):
         raise AgentResultError(
@@ -239,6 +247,42 @@ class SqlAlchemyAgentResultRepository:
         result: Mapping[str, Any],
         delivery_id: str,
     ) -> AgentResultAggregate:
+        return self._persist_with_pending_delivery(
+            result=result,
+            delivery_id=delivery_id,
+            plan_authority=None,
+        )
+
+    def persist_plan_with_pending_delivery(
+        self,
+        *,
+        result: Mapping[str, Any],
+        delivery_id: str,
+        executable_plan_id: str,
+        step_result_hashes: Mapping[str, str],
+        input_result_set_hash: str,
+    ) -> AgentResultAggregate:
+        return self._persist_with_pending_delivery(
+            result=result,
+            delivery_id=delivery_id,
+            plan_authority={
+                "executable_plan_id": _required(
+                    "executable_plan_id", executable_plan_id
+                ),
+                "step_result_hashes": dict(step_result_hashes),
+                "input_result_set_hash": _required(
+                    "input_result_set_hash", input_result_set_hash
+                ),
+            },
+        )
+
+    def _persist_with_pending_delivery(
+        self,
+        *,
+        result: Mapping[str, Any],
+        delivery_id: str,
+        plan_authority: Mapping[str, Any] | None,
+    ) -> AgentResultAggregate:
         validate_agent_result(result)
         params = _result_params(result)
         params["delivery_id"] = _required("delivery_id", delivery_id)
@@ -252,14 +296,24 @@ class SqlAlchemyAgentResultRepository:
                     session, params["tenant_id"], params["agent_execution_id"]
                 )
                 if existing is not None:
-                    aggregate = _existing_aggregate(session, execution, existing, result)
+                    aggregate = _existing_aggregate(
+                        session, execution, existing, result
+                    )
                     session.commit()
                     return aggregate
 
-                step = _load_terminal_step(
-                    session, params["tenant_id"], params["agent_execution_id"]
-                )
-                _require_step_status(step, params["status"])
+                if plan_authority is None:
+                    step = _load_terminal_step(
+                        session, params["tenant_id"], params["agent_execution_id"]
+                    )
+                    _require_step_status(step, params["status"])
+                else:
+                    _require_plan_authority(
+                        session,
+                        execution=execution,
+                        result=result,
+                        authority=plan_authority,
+                    )
                 delivery = _pending_delivery(result, execution, params["delivery_id"])
                 session.execute(
                     text(_result_insert_sql(_dialect_name(session))), params
@@ -275,7 +329,9 @@ class SqlAlchemyAgentResultRepository:
                         "result_id": params["result_id"],
                         "state": destination[0],
                         "phase": destination[1],
-                        "completed_at": params["created_at"] if destination[2] else None,
+                        "completed_at": (
+                            params["created_at"] if destination[2] else None
+                        ),
                         "updated_at": params["created_at"],
                     },
                 )
@@ -303,9 +359,7 @@ class SqlAlchemyAgentResultRepository:
                 True,
             ) from exc
 
-    def get(
-        self, tenant_id: str, result_id: str
-    ) -> AgentResultAggregate | None:
+    def get(self, tenant_id: str, result_id: str) -> AgentResultAggregate | None:
         try:
             with self._session_factory() as session:
                 result = _load_result(session, tenant_id, result_id)
@@ -330,9 +384,7 @@ class SqlAlchemyAgentResultRepository:
                 True,
             ) from exc
 
-    def _insert_delivery(
-        self, session: Session, delivery: Mapping[str, Any]
-    ) -> None:
+    def _insert_delivery(self, session: Session, delivery: Mapping[str, Any]) -> None:
         session.execute(text(_DELIVERY_INSERT_SQL), delivery)
 
 
@@ -422,9 +474,10 @@ def _input_result_set_hash(step: Mapping[str, Any]) -> str:
             "state",
         )
     }
-    return "sha256:" + hashlib.sha256(
-        _canonical_json(projection).encode("utf-8")
-    ).hexdigest()
+    return (
+        "sha256:"
+        + hashlib.sha256(_canonical_json(projection).encode("utf-8")).hexdigest()
+    )
 
 
 def _pending_delivery(
@@ -454,9 +507,7 @@ def _pending_delivery(
         "external_delivery_ref": None,
         "latest_preflight_ref": None,
         "publication_reconciliation_ref": None,
-        "correlation_id": _required(
-            "correlation_id", execution.get("correlation_id")
-        ),
+        "correlation_id": _required("correlation_id", execution.get("correlation_id")),
         "causation_id": execution.get("causation_id"),
         "created_at": created_at,
         "updated_at": created_at,
@@ -491,7 +542,77 @@ def _require_step_status(step: Mapping[str, Any], result_status: str) -> None:
             "AgentResult requires its terminal compatibility step.",
         )
     if step.get("state") != _TERMINAL_STEP_BY_RESULT[result_status]:
-        raise _invalid("AgentResult status does not match terminal ExecutableStep state.")
+        raise _invalid(
+            "AgentResult status does not match terminal ExecutableStep state."
+        )
+
+
+def _require_plan_authority(
+    session: Session,
+    *,
+    execution: Mapping[str, Any],
+    result: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> None:
+    if execution.get("state") != "RUNNING" or execution.get("phase") != "RESULT_VERIFY":
+        raise AgentResultError(
+            "ae.agent_result_plan_not_ready",
+            "P5 AgentResult requires RUNNING / RESULT_VERIFY authority.",
+        )
+    plan_id = _required("executable_plan_id", authority.get("executable_plan_id"))
+    plan_exists = session.execute(
+        text(
+            "SELECT 1 FROM ae_executable_plan WHERE tenant_id = :tenant_id "
+            "AND executable_plan_id = :plan_id "
+            "AND agent_execution_id = :execution_id "
+            "AND NOT EXISTS (SELECT 1 FROM ae_executable_plan newer "
+            "WHERE newer.tenant_id = :tenant_id "
+            "AND newer.agent_execution_id = :execution_id "
+            "AND newer.executable_plan_version > "
+            "ae_executable_plan.executable_plan_version)"
+        ),
+        {
+            "tenant_id": result["tenant_id"],
+            "plan_id": plan_id,
+            "execution_id": result["agent_execution_id"],
+        },
+    ).first()
+    if plan_exists is None:
+        raise AgentResultError(
+            "ae.agent_result_plan_not_found",
+            "P5 AgentResult requires its exact persisted ExecutablePlan.",
+        )
+    expected_hashes = authority.get("step_result_hashes")
+    if not isinstance(expected_hashes, Mapping) or not expected_hashes:
+        raise _invalid("P5 AgentResult requires a StepResult hash set.")
+    rows = (
+        session.execute(
+            text(
+                "SELECT compiled_step_key, result_hash FROM ae_step_result "
+                "WHERE tenant_id = :tenant_id AND executable_plan_id = :plan_id"
+            ),
+            {"tenant_id": result["tenant_id"], "plan_id": plan_id},
+        )
+        .mappings()
+        .all()
+    )
+    stored_hashes = {str(row["compiled_step_key"]): row["result_hash"] for row in rows}
+    if stored_hashes != dict(expected_hashes):
+        raise AgentResultError(
+            "ae.agent_result_step_set_conflict",
+            "Persisted StepResult set changed before AgentResult finalization.",
+            True,
+        )
+    provenance_value = result.get("provenance")
+    provenance = provenance_value if isinstance(provenance_value, Mapping) else {}
+    input_hash = provenance.get("input_result_set_hash")
+    if (
+        input_hash != authority.get("input_result_set_hash")
+        or provenance.get("executable_plan_id") != plan_id
+    ):
+        raise _invalid(
+            "P5 AgentResult provenance does not match finalization authority."
+        )
 
 
 def _existing_aggregate(
@@ -500,10 +621,9 @@ def _existing_aggregate(
     existing: dict[str, Any],
     candidate: Mapping[str, Any],
 ) -> AgentResultAggregate:
-    if (
-        existing["result_id"] != str(candidate.get("result_id"))
-        or existing["result_hash"] != candidate.get("result_hash")
-    ):
+    if existing["result_id"] != str(candidate.get("result_id")) or existing[
+        "result_hash"
+    ] != candidate.get("result_hash"):
         raise AgentResultError(
             "ae.agent_result_semantic_conflict",
             "AgentExecution already has a different immutable AgentResult.",
@@ -602,63 +722,75 @@ def _load_execution_for_update(
     session: Session, tenant_id: str, execution_id: str
 ) -> dict[str, Any]:
     suffix = " FOR UPDATE" if _dialect_name(session) == "postgresql" else ""
-    row = session.execute(
-        text(
-            """
+    row = (
+        session.execute(
+            text("""
             SELECT tenant_id, agent_execution_id, agent_id, agent_type,
                    project_id, workspace_id, state, phase, version, result_id,
                    correlation_id, causation_id, completed_at
             FROM ae_agent_execution
             WHERE tenant_id = :tenant_id
               AND agent_execution_id = :agent_execution_id
-            """ + suffix
-        ),
-        {"tenant_id": tenant_id, "agent_execution_id": execution_id},
-    ).mappings().first()
+            """ + suffix),
+            {"tenant_id": tenant_id, "agent_execution_id": execution_id},
+        )
+        .mappings()
+        .first()
+    )
     return {} if row is None else _row_dict(row)
 
 
 def _load_terminal_step(
     session: Session, tenant_id: str, execution_id: str
 ) -> dict[str, Any]:
-    row = session.execute(
-        text(
-            """
+    row = (
+        session.execute(
+            text("""
             SELECT tenant_id, executable_step_id, agent_execution_id, state
             FROM ae_executable_step
             WHERE tenant_id = :tenant_id
               AND agent_execution_id = :agent_execution_id
               AND step_kind = 'P4_CHAT_RAG_COMPATIBILITY'
-            """
-        ),
-        {"tenant_id": tenant_id, "agent_execution_id": execution_id},
-    ).mappings().first()
+            """),
+            {"tenant_id": tenant_id, "agent_execution_id": execution_id},
+        )
+        .mappings()
+        .first()
+    )
     return {} if row is None else _row_dict(row)
 
 
 def _load_result_by_execution(
     session: Session, tenant_id: str, execution_id: str
 ) -> dict[str, Any] | None:
-    row = session.execute(
-        text(
-            _RESULT_SELECT_SQL
-            + " WHERE tenant_id = :tenant_id AND agent_execution_id = :execution_id"
-        ),
-        {"tenant_id": tenant_id, "execution_id": execution_id},
-    ).mappings().first()
+    row = (
+        session.execute(
+            text(
+                _RESULT_SELECT_SQL
+                + " WHERE tenant_id = :tenant_id AND agent_execution_id = :execution_id"
+            ),
+            {"tenant_id": tenant_id, "execution_id": execution_id},
+        )
+        .mappings()
+        .first()
+    )
     return None if row is None else _result_from_row(row)
 
 
 def _load_result(
     session: Session, tenant_id: str, result_id: str
 ) -> dict[str, Any] | None:
-    row = session.execute(
-        text(
-            _RESULT_SELECT_SQL
-            + " WHERE tenant_id = :tenant_id AND result_id = :result_id"
-        ),
-        {"tenant_id": tenant_id, "result_id": result_id},
-    ).mappings().first()
+    row = (
+        session.execute(
+            text(
+                _RESULT_SELECT_SQL
+                + " WHERE tenant_id = :tenant_id AND result_id = :result_id"
+            ),
+            {"tenant_id": tenant_id, "result_id": result_id},
+        )
+        .mappings()
+        .first()
+    )
     return None if row is None else _result_from_row(row)
 
 
@@ -681,9 +813,9 @@ def _result_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
 def _load_delivery(
     session: Session, tenant_id: str, result_id: str
 ) -> dict[str, Any] | None:
-    row = session.execute(
-        text(
-            """
+    row = (
+        session.execute(
+            text("""
             SELECT tenant_id, delivery_id, result_id, agent_execution_id,
                    target_type, target_ref, required, state,
                    publication_operation_id, idempotency_key_ref, attempt_no,
@@ -693,10 +825,12 @@ def _load_delivery(
             FROM ae_result_delivery
             WHERE tenant_id = :tenant_id AND result_id = :result_id
               AND target_type = 'WORKSPACE_RESULT'
-            """
-        ),
-        {"tenant_id": tenant_id, "result_id": result_id},
-    ).mappings().first()
+            """),
+            {"tenant_id": tenant_id, "result_id": result_id},
+        )
+        .mappings()
+        .first()
+    )
     if row is None:
         return None
     delivery = _row_dict(row)
