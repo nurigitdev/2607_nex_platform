@@ -1,6 +1,6 @@
 # P6 NSL READ Integration Issue Register v1.1
 
-**Status:** P6-CA01 CONTRACT CLOSED; IMPLEMENTATION REGISTER
+**Status:** P6-S0 COMPLETE; P6-S1 NEXT
 
 | ID | Sev | Issue | v1.1 Decision | Status |
 |---|---:|---|---|---|
@@ -9,7 +9,7 @@
 | P6-ISSUE-003 | P0 | Exact SkillExecutionRequest machine schema missing | Source-backed P6 schema and Golden example validated | CLOSED |
 | P6-ISSUE-004 | P1 | NSLExecutionId ownership ambiguous | AE allocates/persists; NSL owns lifecycle semantics | DESIGN_CLOSED |
 | P6-ISSUE-005 | P1 | P5 cannot execute LOCAL_SKILL | CA01 contract closed; S4 activates executor | OPEN_S4 |
-| P6-ISSUE-006 | P1 | No production AE worker | S0 after CA01 | OPEN_S0 |
+| P6-ISSUE-006 | P1 | No production AE worker | S0 worker lifecycle/entrypoint closed; S1 composes DB dispatcher assignment source | FOUNDATION_CLOSED_S1_COMPOSITION |
 | P6-ISSUE-007 | P1 | No tenant dispatcher | S1 single-leader bounded dispatcher | OPEN_S1 |
 | P6-ISSUE-008 | P1 | Worker may claim unsupported executor | capability filter + lease CAS in one claim transaction | DESIGN_CLOSED_S1_IMPL |
 | P6-ISSUE-009 | P1 | Dispatcher fairness authority ambiguous | one DB-protected active leader; restart rebuilds from DB | DESIGN_CLOSED_S1_IMPL |
@@ -29,5 +29,6 @@
 
 ## Gate
 
-The P6-CA01 gate is closed. P6-S0 may begin; implementation issues retain their
-explicit S0-S7 ownership and are not closed by contract design alone.
+The P6-CA01 gate and P6-S0 worker foundation are closed. P6-S1 may begin;
+dispatcher composition, fairness and capability-aware claim remain explicitly
+open and are not claimed by the S0 lifecycle foundation.

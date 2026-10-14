@@ -1,6 +1,6 @@
 # P6 Transition Implementation Baseline v1.1
 
-**Status:** P6-CA01 SOURCE-BACKED CONTRACT CLOSED; P6-S0 NEXT
+**Status:** P6-S0 COMPLETE; P6-S1 NEXT
 **Phase:** P6 — NSL READ Integration
 **Implementation Baseline:** NSL v0.1 As-Built
 **Target Contract:** Frozen NSL v0.2 READ-compatible integration subset
@@ -68,6 +68,7 @@ Frozen Platform v2.1 / Agent v2.1 / NSL v0.2
 13. `P6_Source_Baseline_Record_v1.1.md`
 14. current Platform P5 As-Built and exact NSL v0.1 source checkout
 15. `P6_Source_Audit_and_Implementation_Plan_v1.1.md`
+16. `../../slices/p6_s0_ae_runtime_worker_foundation.md`
 
 ## 5. CA01A Non-Negotiable Rules
 
@@ -146,9 +147,27 @@ P6-CA01 closed:
 - worker/atomic-claim inputs and timeline source limits; and
 - the source-backed signed Golden READ fixture.
 
-The next authorized Slice is P6-S0.
+## 8. P6-S0 Result
 
-## 8. Exit Shape
+P6-S0 implemented the dedicated AE Agent Runtime worker foundation:
+
+- exact source-backed capability profile and deterministic profile hash;
+- fail-closed configured-executor/backend startup validation;
+- independently runnable `--check` entrypoint;
+- PostgreSQL-backed readiness and heartbeat lifecycle;
+- bounded polling, active-claim accounting, graceful drain and signal adapter;
+- lease-safe handler failure that leaves RuntimeJob settlement to its authority;
+- restart-safe execution with no process-local work authority; and
+- actual `nex_ae_test` RuntimeJob/attempt/heartbeat acceptance with zero residue.
+
+The process execution entrypoint intentionally remains fail-closed until P6-S1
+composes the DB-protected tenant dispatcher and capability-aware assignment
+source. P6-S0 does not introduce a static production tenant selector or weaken
+the S1 atomic-claim boundary.
+
+The next authorized Slice is P6-S1.
+
+## 9. Exit Shape
 
 ```text
 PROMPT

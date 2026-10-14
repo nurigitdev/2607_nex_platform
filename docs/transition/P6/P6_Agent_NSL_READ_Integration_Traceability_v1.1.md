@@ -1,6 +1,6 @@
 # P6 Agent ↔ NSL READ Integration Traceability v1.1
 
-**Status:** P6-CA01 SOURCE-BACKED TRACEABILITY BASELINE
+**Status:** P6-S0 WORKER FOUNDATION EVIDENCE ADDED; P6-S1 NEXT
 
 ## 1. Identity chain
 
@@ -131,3 +131,32 @@ tests/test_p6_ca01_read_contracts.py
 
 This evidence closes contract traceability only. Runtime implementation and
 PostgreSQL evidence remain assigned to P6-S0 through P6-S7.
+
+## 9. P6-S0 worker evidence
+
+```text
+source:
+  services/nex-ae-api/nex_ae_api/agent_runtime_worker.py
+
+tests:
+  tests/test_p6_s0_agent_runtime_worker.py
+  tests/test_p6_s0_postgres_smoke.py
+
+protected runner:
+  scripts/smoke/run_p6_s0_postgres_smoke.py
+```
+
+Trace boundary:
+
+```text
+worker capability profile/hash
+→ startup implementation admission
+→ PostgreSQL heartbeat STARTING/IDLE/BUSY/STOPPING/STOPPED
+→ injected RuntimeJob assignment
+→ active-claim accounting
+→ lease-authority-preserving handler success/failure
+→ restart with no process-local work authority
+```
+
+P6-S0 does not claim tenant discovery, dispatcher leadership, fairness,
+capability-aware SQL candidate filtering or atomic claim. Those remain P6-S1.
