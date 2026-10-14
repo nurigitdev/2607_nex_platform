@@ -249,7 +249,10 @@ def test_config_environment_defaults_and_validation() -> None:
 
 def test_assignment_validation_is_capability_and_tenant_safe() -> None:
     profile = _profile()
-    assert validate_agent_runtime_assignment(_assignment(), profile).runtime_job_id == JOB_ID
+    assert (
+        validate_agent_runtime_assignment(_assignment(), profile).runtime_job_id
+        == JOB_ID
+    )
 
     failures = (
         _assignment(executor_kind="UNKNOWN"),
@@ -416,8 +419,9 @@ def test_bounded_worker_executes_then_idles_and_stops_cleanly() -> None:
     result = run_bounded_agent_runtime_worker(
         config=config,
         assignment_source=source,
-        handler=lambda assignment: handled.append(assignment.runtime_job_id)
-        or {"outcome": "DONE"},
+        handler=lambda assignment: (
+            handled.append(assignment.runtime_job_id) or {"outcome": "DONE"}
+        ),
         lifecycle=lifecycle,
         max_cycles=2,
         clock=IncrementingClock(),
@@ -548,9 +552,7 @@ def test_bounded_worker_continues_after_untyped_failure_and_sleeps() -> None:
     )
 
     assert result["failed_count"] == 1
-    assert result["executions"][0]["error_code"] == (
-        "ae.agent_runtime_worker.invalid"
-    )
+    assert result["executions"][0]["error_code"] == ("ae.agent_runtime_worker.invalid")
     assert result["idle_cycle_count"] == 1
     assert sleeps == []
 
@@ -587,7 +589,7 @@ def test_worker_check_and_cli_are_fail_closed_until_composition_exists() -> None
 
     output = io.StringIO()
     assert main([], environ={}, stdout=output) == 2
-    assert "assignment_source_unavailable" in output.getvalue()
+    assert "execution_handler_unavailable" in output.getvalue()
 
     output = io.StringIO()
     assert (
@@ -610,14 +612,22 @@ def test_worker_check_and_cli_are_fail_closed_until_composition_exists() -> None
         )
         == 2
     )
-    assert "config_invalid" not in output.getvalue() or '"status": "FAIL"' in output.getvalue()
+    assert (
+        "config_invalid" not in output.getvalue()
+        or '"status": "FAIL"' in output.getvalue()
+    )
 
 
 def test_signal_adapter_requests_shutdown_and_restores_handlers(monkeypatch) -> None:
     installed: dict[int, Any] = {}
     restored: dict[int, Any] = {}
-    previous = {worker_module.signal.SIGINT: "old-int", worker_module.signal.SIGTERM: "old-term"}
-    monkeypatch.setattr(worker_module.signal, "getsignal", lambda signum: previous[signum])
+    previous = {
+        worker_module.signal.SIGINT: "old-int",
+        worker_module.signal.SIGTERM: "old-term",
+    }
+    monkeypatch.setattr(
+        worker_module.signal, "getsignal", lambda signum: previous[signum]
+    )
 
     def set_handler(signum, handler):
         if callable(handler):

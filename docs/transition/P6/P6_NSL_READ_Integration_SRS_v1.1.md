@@ -1,6 +1,6 @@
 # P6 — NSL READ Integration SRS v1.1
 
-**Document Status:** P6-S0 WORKER FOUNDATION COMPLETE; P6-S1 NEXT
+**Document Status:** P6-S1 DISPATCHER FOUNDATION COMPLETE; P6-S2 NEXT
 **Supersedes:** v1.0
 **Implementation Baseline:** NSL v0.1 As-Built
 **Target Contract:** Frozen NSL v0.2 READ-compatible subset
@@ -33,8 +33,8 @@ P6 SHALL NOT implement NSL WRITE.
 # 2. Entry Gate
 
 P6-CA01 is closed by
-`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 is closed by
-`../../slices/p6_s0_ae_runtime_worker_foundation.md`. P6-S1 is the next
+`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 and P6-S1 are
+closed by their matching records in `docs/slices/`. P6-S2 is the next
 authorized implementation Slice.
 
 ```text

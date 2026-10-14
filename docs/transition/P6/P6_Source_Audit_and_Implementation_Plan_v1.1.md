@@ -1,6 +1,6 @@
 # P6 Source Audit and Implementation Plan v1.1
 
-**Status:** P6-S0 COMPLETE; P6-S1 READY
+**Status:** P6-S1 COMPLETE; P6-S2 READY
 **Supersedes:** v1.0
 
 ## 1. Entry Sequence
@@ -20,9 +20,9 @@ P6 v1.1 document-set acceptance
 ```
 
 P6-CA01 is closed by
-`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 is closed by
-`../../slices/p6_s0_ae_runtime_worker_foundation.md`. The next implementation
-Slice is P6-S1.
+`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 and P6-S1 are
+closed by their matching records in `docs/slices/`. The next implementation
+Slice is P6-S2.
 
 ## 2. Refactoring-First Rule
 
@@ -67,12 +67,14 @@ As-Built notes:
 - no new shared JobQueue or database table was introduced;
 - `agent_runtime_worker.py` owns process lifecycle and injected assignment
   execution without absorbing dispatcher policy;
-- the CLI admits configuration checks but rejects execution until P6-S1
-  composes the DB-backed assignment source; and
+- the CLI admits configuration checks and P6-S1 composes the DB-backed
+  assignment source, while execution remains fail-closed until P6-S4; and
 - actual `nex_ae_test` acceptance passed with migration currency, one durable
   lease/attempt, persisted heartbeat, restart idempotency and zero residue.
 
 ## 4. P6-S1 — Dispatcher / Runtime Operations
+
+**Status: COMPLETE**
 
 Implement:
 
@@ -113,6 +115,19 @@ Define exact config and API behavior for:
 - caps/backpressure;
 - bounded operational metric emission; and
 - AG protected read access without RuntimeJob mutation authority.
+
+As-Built notes:
+
+- migration `2200_ae_runtime_dispatch` adds the short-named durable leader
+  lease and malformed-job issue tables plus runnable/executor indexes;
+- the leader lease uses a monotonic fencing token and all leader-owned claims
+  re-check that token in the capability-aware lease CAS transaction;
+- `DELAY` rejects admission with retryable
+  `ae.runtime_job_backpressure_delayed` plus `retry_after_seconds`; `REJECT`
+  uses retryable `ae.runtime_job_backpressure_rejected`;
+- malformed runnable jobs are dead-lettered with a bounded reason ledger;
+- AG receives only bounded aggregate GET data and no mutation authority; and
+- actual `nex_ae_test` acceptance passed all 19 checks with zero residue.
 
 ## 5. P6-S2 — Skill Artifact Gateway
 

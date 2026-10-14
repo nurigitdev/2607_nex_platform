@@ -384,9 +384,7 @@ def build_agent_runtime_worker_profile(
     worker_id: str,
     declared_at: str,
     supported_executor_kinds: Sequence[str] = (LOCAL_SKILL_EXECUTOR,),
-    supported_backend_profiles: Sequence[str] = (
-        NSL_V01_PROCESS_ISOLATED_BACKEND,
-    ),
+    supported_backend_profiles: Sequence[str] = (NSL_V01_PROCESS_ISOLATED_BACKEND,),
     max_concurrent_claims: int = 1,
     evidence_policy: str = SNAPSHOT_REQUIRED,
     process_isolation_required: bool = True,
@@ -473,7 +471,9 @@ def validate_agent_runtime_worker_startup(
 ) -> dict[str, Any]:
     profile = validate_agent_runtime_worker_profile(config.profile.to_record())
     available_executors = set(
-        _normalized_values(available_executor_kinds, "available_executor_kinds", allow_empty=True)
+        _normalized_values(
+            available_executor_kinds, "available_executor_kinds", allow_empty=True
+        )
     )
     available_backends = set(
         _normalized_values(
@@ -671,9 +671,7 @@ def run_bounded_agent_runtime_worker(
                     handler_result=result,
                 )
             )
-            lifecycle.finish_assignment(
-                runtime_job_id, observed_at=observed_clock()
-            )
+            lifecycle.finish_assignment(runtime_job_id, observed_at=observed_clock())
         except Exception as exc:  # noqa: BLE001 - worker boundary contains handlers.
             error_code = _safe_error_code(exc)
             lifecycle.fail_assignment(
@@ -843,7 +841,12 @@ def main(
             ),
             "detail": str(exc),
         }
-        print(_summary_line(record) if args.summary else json.dumps(record, sort_keys=True), file=output)
+        print(
+            _summary_line(record)
+            if args.summary
+            else json.dumps(record, sort_keys=True),
+            file=output,
+        )
         return 2
     if not args.check:
         record = {
@@ -852,8 +855,8 @@ def main(
             "mode": config.mode,
             "worker_id": config.profile.worker_id,
             "profile_hash": config.profile.profile_hash,
-            "failure_code": "ae.agent_runtime_worker.assignment_source_unavailable",
-            "detail": "P6-S1 dispatcher composition is required before process execution.",
+            "failure_code": "ae.agent_runtime_worker.execution_handler_unavailable",
+            "detail": "P6-S4 LOCAL_SKILL handler composition is required before process execution.",
         }
     else:
         record = build_agent_runtime_worker_check(
@@ -861,7 +864,10 @@ def main(
             available_executor_kinds=available_executor_kinds,
             available_backend_profiles=available_backend_profiles,
         )
-    print(_summary_line(record) if args.summary else json.dumps(record, sort_keys=True), file=output)
+    print(
+        _summary_line(record) if args.summary else json.dumps(record, sort_keys=True),
+        file=output,
+    )
     return 0 if record["status"] == "PASS" else 2
 
 
@@ -958,7 +964,11 @@ def _bounded_int(
     minimum: int,
     maximum: int,
 ) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not minimum <= value <= maximum
+    ):
         raise _invalid(f"{field_name} must be between {minimum} and {maximum}.")
     return value
 

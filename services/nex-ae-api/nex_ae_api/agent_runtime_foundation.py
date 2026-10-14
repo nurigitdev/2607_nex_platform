@@ -15,6 +15,10 @@ from nex_ae_api.agent_execution import (
 )
 from nex_ae_api.agent_identity import SqlAlchemyAgentIdentityRegistry
 from nex_ae_api.agent_results import SqlAlchemyAgentResultRepository
+from nex_ae_api.agent_runtime_dispatcher import (
+    SqlAlchemyAgentRuntimeDispatcher,
+    load_agent_runtime_dispatcher_config,
+)
 from nex_ae_api.chat_application import ChatApplicationService
 from nex_ae_api.executable_steps import (
     CompatibilityChatRuntime,
@@ -43,6 +47,7 @@ class AgentRuntimeFoundation:
     compatibility: CompatibilityChatRuntime | None
     results: SqlAlchemyAgentResultRepository | None
     traces: SqlAlchemyAgentRuntimeTraceSource | None
+    dispatcher: SqlAlchemyAgentRuntimeDispatcher | None
     unavailable_reason: str | None = None
 
 
@@ -50,14 +55,10 @@ class SqlAlchemyAgentRuntimeTraceSource:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
 
-    def get(
-        self, *, tenant_id: str, agent_execution_id: str
-    ) -> dict[str, Any] | None:
+    def get(self, *, tenant_id: str, agent_execution_id: str) -> dict[str, Any] | None:
         scope = {
             "tenant_id": _required("tenant_id", tenant_id),
-            "agent_execution_id": _required(
-                "agent_execution_id", agent_execution_id
-            ),
+            "agent_execution_id": _required("agent_execution_id", agent_execution_id),
         }
         try:
             with self._session_factory() as session:
@@ -123,9 +124,10 @@ class SqlAlchemyAgentRuntimeTraceSource:
                         """,
                         {**scope, "result_id": result["result_id"]},
                     )
-                attempt_counts = _one(
-                    session,
-                    """
+                attempt_counts = (
+                    _one(
+                        session,
+                        """
                     SELECT count(*) AS total,
                            sum(CASE WHEN outcome = 'LEASE_EXPIRED' THEN 1 ELSE 0 END)
                                AS lease_expired
@@ -133,11 +135,16 @@ class SqlAlchemyAgentRuntimeTraceSource:
                     WHERE tenant_id = :tenant_id
                       AND runtime_job_id = :runtime_job_id
                     """,
-                    {
-                        **scope,
-                        "runtime_job_id": None if job is None else job["runtime_job_id"],
-                    },
-                ) if job is not None else None
+                        {
+                            **scope,
+                            "runtime_job_id": None
+                            if job is None
+                            else job["runtime_job_id"],
+                        },
+                    )
+                    if job is not None
+                    else None
+                )
                 return build_agent_runtime_trace(
                     execution=execution,
                     job=job,
@@ -192,9 +199,7 @@ def build_agent_runtime_trace(
         "generated_response_id": _string(
             None if step is None else step.get("generated_response_id")
         ),
-        "agent_result_id": _string(
-            None if result is None else result.get("result_id")
-        ),
+        "agent_result_id": _string(None if result is None else result.get("result_id")),
         "result_delivery_id": _string(
             None if delivery is None else delivery.get("delivery_id")
         ),
@@ -272,6 +277,7 @@ def attach_agent_runtime_foundation(
             compatibility=None,
             results=None,
             traces=None,
+            dispatcher=None,
             unavailable_reason="persistence_not_configured",
         )
         app.state.ae_agent_runtime = foundation
@@ -279,7 +285,18 @@ def attach_agent_runtime_foundation(
 
     identities = SqlAlchemyAgentIdentityRegistry(session_factory)
     executions = SqlAlchemyAgentExecutionRepository(session_factory)
-    jobs = SqlAlchemyRuntimeJobQueue(session_factory)
+    dispatcher_config = load_agent_runtime_dispatcher_config(environ)
+    jobs = SqlAlchemyRuntimeJobQueue(
+        session_factory,
+        max_runnable_depth=dispatcher_config.max_runnable_depth,
+        admission_policy=dispatcher_config.admission_policy,
+        admission_delay_seconds=dispatcher_config.admission_delay_seconds,
+    )
+    dispatcher = SqlAlchemyAgentRuntimeDispatcher(
+        session_factory,
+        config=dispatcher_config,
+        queue=jobs,
+    )
     steps = SqlAlchemyExecutableStepRepository(session_factory)
     foundation = AgentRuntimeFoundation(
         mode=mode,
@@ -299,6 +316,7 @@ def attach_agent_runtime_foundation(
         ),
         results=SqlAlchemyAgentResultRepository(session_factory),
         traces=SqlAlchemyAgentRuntimeTraceSource(session_factory),
+        dispatcher=dispatcher,
     )
     app.state.ae_agent_runtime = foundation
     return foundation

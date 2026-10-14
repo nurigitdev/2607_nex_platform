@@ -1,6 +1,6 @@
 # P6 Agent ↔ NSL READ Integration Traceability v1.1
 
-**Status:** P6-S0 WORKER FOUNDATION EVIDENCE ADDED; P6-S1 NEXT
+**Status:** P6-S1 DISPATCHER EVIDENCE ADDED; P6-S2 NEXT
 
 ## 1. Identity chain
 
@@ -159,4 +159,39 @@ worker capability profile/hash
 ```
 
 P6-S0 does not claim tenant discovery, dispatcher leadership, fairness,
-capability-aware SQL candidate filtering or atomic claim. Those remain P6-S1.
+capability-aware SQL candidate filtering or atomic claim. P6-S1 closes those
+boundaries with the evidence below.
+
+## 10. P6-S1 dispatcher evidence
+
+```text
+source:
+  database/nex-ae-api/migrations/2200_ae_runtime_dispatch.sql
+  services/nex-ae-api/nex_ae_api/agent_runtime_dispatcher.py
+  services/nex-ae-api/nex_ae_api/agent_runtime_operations.py
+  services/nex-ae-api/nex_ae_api/runtime_jobs.py
+
+tests:
+  tests/test_p6_s1_agent_runtime_dispatcher.py
+  tests/test_p6_s1_agent_runtime_operations.py
+  tests/test_p6_s1_postgres_smoke.py
+
+protected runner:
+  scripts/smoke/run_p6_s1_postgres_smoke.py
+```
+
+Trace boundary:
+
+```text
+DB leader lease + fencing token
+→ bounded durable tenant snapshot
+→ worker executor/backend eligibility
+→ executor-filtered RuntimeJob lease CAS
+→ bounded assignment source
+→ worker lifecycle
+```
+
+Actual `nex_ae_test` evidence passed 19/19 checks, including concurrent leader
+exclusivity, failover, stale-leader fencing, capability filtering, lease
+reclaim, malformed-job reconciliation, AG read-only projection and zero
+residue. No remote provider is involved in this Slice.

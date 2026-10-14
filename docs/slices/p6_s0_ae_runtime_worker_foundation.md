@@ -36,7 +36,8 @@ dispatcher assignment source.
   does not invent RuntimeJob settlement outside the existing queue authority.
 - Added restart-safe bounded execution with no process-local pending-work SoR.
 - Added an executable `python -m nex_ae_api.agent_runtime_worker --check`
-  entrypoint. Execution is rejected until P6-S1 composes its dispatcher source.
+  entrypoint. P6-S1 now composes the dispatcher source; process execution stays
+  fail-closed until P6-S4 provides the `LOCAL_SKILL` handler.
 
 ## PostgreSQL Acceptance
 
@@ -87,7 +88,7 @@ The five skipped tests are pre-existing environment-protected suites. The
 P6-S0 protected PostgreSQL runner was separately enabled and passed against the
 actual `nex_ae_test` database as recorded above.
 
-## Deferred to P6-S1
+## Closed by P6-S1
 
 - DB-protected dispatcher leadership;
 - runnable tenant discovery;
@@ -96,4 +97,6 @@ actual `nex_ae_test` database as recorded above.
 - claim eligibility and lease CAS in one transaction;
 - backpressure and malformed-job reconciliation.
 
-No static production tenant selector was introduced as a shortcut.
+No static production tenant selector was introduced as a shortcut. See
+`p6_s1_db_protected_tenant_dispatcher.md` for implementation and PostgreSQL
+evidence.

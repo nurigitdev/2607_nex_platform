@@ -1,6 +1,6 @@
 # P6 Transition Implementation Baseline v1.1
 
-**Status:** P6-S0 COMPLETE; P6-S1 NEXT
+**Status:** P6-S1 COMPLETE; P6-S2 NEXT
 **Phase:** P6 — NSL READ Integration
 **Implementation Baseline:** NSL v0.1 As-Built
 **Target Contract:** Frozen NSL v0.2 READ-compatible integration subset
@@ -69,6 +69,7 @@ Frozen Platform v2.1 / Agent v2.1 / NSL v0.2
 14. current Platform P5 As-Built and exact NSL v0.1 source checkout
 15. `P6_Source_Audit_and_Implementation_Plan_v1.1.md`
 16. `../../slices/p6_s0_ae_runtime_worker_foundation.md`
+17. `../../slices/p6_s1_db_protected_tenant_dispatcher.md`
 
 ## 5. CA01A Non-Negotiable Rules
 
@@ -160,14 +161,28 @@ P6-S0 implemented the dedicated AE Agent Runtime worker foundation:
 - restart-safe execution with no process-local work authority; and
 - actual `nex_ae_test` RuntimeJob/attempt/heartbeat acceptance with zero residue.
 
-The process execution entrypoint intentionally remains fail-closed until P6-S1
-composes the DB-protected tenant dispatcher and capability-aware assignment
-source. P6-S0 does not introduce a static production tenant selector or weaken
-the S1 atomic-claim boundary.
+P6-S1 now composes the DB-protected tenant dispatcher and capability-aware
+assignment source. Process execution remains fail-closed until P6-S4 provides
+the `LOCAL_SKILL` handler.
 
-The next authorized Slice is P6-S1.
+## 9. P6-S1 Result
 
-## 9. Exit Shape
+P6-S1 implemented:
+
+- one DB-lease-protected dispatcher leader per queue with fencing tokens;
+- bounded oldest-runnable tenant discovery and one visit per tenant per round;
+- global, per-tenant, round and runnable-depth capacity controls;
+- capability-aware RuntimeJob claim with the executor filter and lease CAS in
+  one transaction;
+- explicit retryable `DELAY` and `REJECT` admission errors;
+- malformed-job dead-letter reconciliation with a durable issue ledger;
+- a bounded, privacy-safe, AG-only read operations projection; and
+- actual `nex_ae_test` PostgreSQL acceptance with migration currency, leader
+  failover, stale-leader fencing, lease reclaim and zero residue.
+
+The next authorized Slice is P6-S2.
+
+## 10. Exit Shape
 
 ```text
 PROMPT

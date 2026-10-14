@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from uuid import uuid4
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -18,6 +18,7 @@ RUNTIME_JOB_STATES = frozenset(
 RUNTIME_ATTEMPT_OUTCOMES = frozenset(
     {"RUNNING", "DONE", "FAILED", "LEASE_EXPIRED", "CANCELLED"}
 )
+RUNTIME_ADMISSION_POLICIES = frozenset({"REJECT", "DELAY"})
 _PRIVATE_PAYLOAD_KEYS = frozenset(
     {"content", "message_text", "prompt", "raw_content", "response"}
 )
@@ -28,6 +29,7 @@ class RuntimeJobError(Exception):
     error_code: str
     detail: str
     retryable: bool = False
+    retry_after_seconds: int | None = None
 
     def __str__(self) -> str:
         return self.detail
@@ -37,6 +39,7 @@ class RuntimeJobError(Exception):
 class RuntimeJobClaim:
     job: dict[str, Any]
     attempt: dict[str, Any]
+    executor_kind: str | None = None
 
 
 class SqlAlchemyRuntimeJobQueue:
@@ -45,9 +48,19 @@ class SqlAlchemyRuntimeJobQueue:
         session_factory: sessionmaker[Session],
         *,
         id_factory: Callable[[], str] | None = None,
+        max_runnable_depth: int | None = None,
+        admission_policy: str = "DELAY",
+        admission_delay_seconds: int = 5,
     ) -> None:
         self._session_factory = session_factory
         self._id_factory = id_factory or (lambda: str(uuid4()))
+        self._max_runnable_depth = _optional_positive_int(
+            "max_runnable_depth", max_runnable_depth
+        )
+        self._admission_policy = _admission_policy(admission_policy)
+        self._admission_delay_seconds = _positive_int(
+            "admission_delay_seconds", admission_delay_seconds
+        )
 
     def enqueue_unique(
         self,
@@ -65,7 +78,9 @@ class SqlAlchemyRuntimeJobQueue:
         causation_id: str | None = None,
     ) -> dict[str, Any]:
         if job_type not in P4_RUNTIME_JOB_TYPES:
-            raise _invalid("P4 RuntimeJob type must be START_EXECUTION or CONTINUE_EXECUTION.")
+            raise _invalid(
+                "P4 RuntimeJob type must be START_EXECUTION or CONTINUE_EXECUTION."
+            )
         normalized_payload = _payload(payload)
         params = {
             "tenant_id": _required("tenant_id", tenant_id),
@@ -84,15 +99,33 @@ class SqlAlchemyRuntimeJobQueue:
         }
         try:
             with self._session_factory() as session:
-                if not _execution_exists(session, params["tenant_id"], params["execution_id"]):
+                if self._max_runnable_depth is not None:
+                    _lock_runtime_admission(session)
+                    existing = _load_by_dedup(
+                        session, params["tenant_id"], params["dedup_key"]
+                    )
+                    if existing is not None:
+                        _require_same_job(existing, params, normalized_payload)
+                        return existing
+                    params["run_after"] = _apply_admission_policy(
+                        session,
+                        run_after=params["run_after"],
+                        now=params["now"],
+                        max_runnable_depth=self._max_runnable_depth,
+                        admission_policy=self._admission_policy,
+                        admission_delay_seconds=self._admission_delay_seconds,
+                    )
+                if not _execution_exists(
+                    session, params["tenant_id"], params["execution_id"]
+                ):
                     raise RuntimeJobError(
                         "ae.runtime_job_execution_not_found",
                         "RuntimeJob requires an existing AgentExecution in the same tenant.",
                     )
-                inserted = session.execute(
-                    text(_insert_sql(session)), params
+                inserted = session.execute(text(_insert_sql(session)), params)
+                saved = _load_by_dedup(
+                    session, params["tenant_id"], params["dedup_key"]
                 )
-                saved = _load_by_dedup(session, params["tenant_id"], params["dedup_key"])
                 if saved is None:
                     raise RuntimeJobError(
                         "ae.runtime_job_write_conflict",
@@ -178,6 +211,94 @@ class SqlAlchemyRuntimeJobQueue:
                     )
                 session.commit()
                 return RuntimeJobClaim(job=job, attempt=attempt)
+        except RuntimeJobError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
+    def claim_capability_aware(
+        self,
+        *,
+        tenant_id: str,
+        worker_id: str,
+        supported_executor_kinds: Sequence[str],
+        lease_seconds: int,
+        now: str,
+        queue_name: str | None = None,
+        dispatcher_id: str | None = None,
+        fencing_token: int | None = None,
+    ) -> RuntimeJobClaim | None:
+        tenant = _required("tenant_id", tenant_id)
+        worker = _required("worker_id", worker_id)
+        executor_kinds = _executor_kinds(supported_executor_kinds)
+        if (
+            isinstance(lease_seconds, bool)
+            or not isinstance(lease_seconds, int)
+            or lease_seconds < 1
+        ):
+            raise _invalid("lease_seconds must be a positive integer.")
+        leadership = _leadership_params(
+            queue_name=queue_name,
+            dispatcher_id=dispatcher_id,
+            fencing_token=fencing_token,
+        )
+        observed_at = _timestamp("now", now)
+        lease_until = _format_timestamp(
+            _parse_timestamp("now", observed_at) + timedelta(seconds=lease_seconds)
+        )
+        try:
+            with self._session_factory() as session:
+                candidate = _select_capability_runnable(
+                    session,
+                    tenant_id=tenant,
+                    executor_kinds=executor_kinds,
+                    now=observed_at,
+                    leadership=leadership,
+                )
+                if candidate is None:
+                    return None
+                if candidate["state"] == "RUNNING":
+                    _expire_attempt(session, candidate, observed_at)
+                attempt_no = int(candidate["attempt_no"]) + 1
+                lease_token = _required("lease_token", self._id_factory())
+                attempt_id = _required("attempt_id", self._id_factory())
+                params: dict[str, Any] = {
+                    "tenant_id": tenant,
+                    "runtime_job_id": str(candidate["runtime_job_id"]),
+                    "expected_state": candidate["state"],
+                    "expected_lease_token": candidate["lease_token"],
+                    "worker_id": worker,
+                    "lease_token": lease_token,
+                    "lease_until": lease_until,
+                    "attempt_no": attempt_no,
+                    "attempt_id": attempt_id,
+                    "now": observed_at,
+                    "executor_kinds": list(executor_kinds),
+                    **leadership,
+                }
+                statement = text(
+                    _CAPABILITY_CLAIM_SQL
+                    + (_LEADERSHIP_CLAIM_PREDICATE if leadership else "")
+                ).bindparams(bindparam("executor_kinds", expanding=True))
+                updated = session.execute(statement, params)
+                if int(updated.rowcount or 0) == 0:
+                    session.rollback()
+                    return None
+                session.execute(text(_ATTEMPT_INSERT_SQL), params)
+                job = _load_job(session, tenant, params["runtime_job_id"])
+                attempt = _load_attempt(session, attempt_id)
+                if job is None or attempt is None:
+                    raise RuntimeJobError(
+                        "ae.runtime_job_write_conflict",
+                        "Capability-aware RuntimeJob claim could not be reloaded.",
+                        True,
+                    )
+                session.commit()
+                return RuntimeJobClaim(
+                    job=job,
+                    attempt=attempt,
+                    executor_kind=str(candidate["executor_kind"]),
+                )
         except RuntimeJobError:
             raise
         except SQLAlchemyError as exc:
@@ -321,9 +442,9 @@ class SqlAlchemyRuntimeJobQueue:
         }
         try:
             with self._session_factory() as session:
-                rows = session.execute(
-                    text(_ATTEMPTS_SELECT_SQL), params
-                ).mappings().all()
+                rows = (
+                    session.execute(text(_ATTEMPTS_SELECT_SQL), params).mappings().all()
+                )
                 return tuple(_attempt_from_row(row) for row in rows)
         except RuntimeJobError:
             raise
@@ -370,7 +491,10 @@ class SqlAlchemyRuntimeJobQueue:
                 }
                 updated_attempt = session.execute(text(_ATTEMPT_FINISH_SQL), params)
                 updated_job = session.execute(text(_FINISH_SQL), params)
-                if int(updated_attempt.rowcount or 0) != 1 or int(updated_job.rowcount or 0) != 1:
+                if (
+                    int(updated_attempt.rowcount or 0) != 1
+                    or int(updated_job.rowcount or 0) != 1
+                ):
                     raise RuntimeJobError(
                         "ae.runtime_job_write_conflict",
                         "RuntimeJob lease changed while recording its outcome.",
@@ -392,7 +516,11 @@ class SqlAlchemyRuntimeJobQueue:
 
 
 def _insert_sql(session: Session) -> str:
-    payload = "CAST(:payload_json AS JSONB)" if session.get_bind().dialect.name == "postgresql" else ":payload_json"
+    payload = (
+        "CAST(:payload_json AS JSONB)"
+        if session.get_bind().dialect.name == "postgresql"
+        else ":payload_json"
+    )
     return _INSERT_SQL.replace(":payload_expression", payload)
 
 
@@ -418,6 +546,37 @@ _CLAIM_SQL = """
            (lease_token IS NULL AND :expected_lease_token IS NULL))
       AND ((state = 'QUEUED' AND run_after <= :now)
            OR (state = 'RUNNING' AND lease_until <= :now))
+"""
+
+_CAPABILITY_CLAIM_SQL = """
+    UPDATE ae_runtime_job
+    SET state = 'RUNNING', lease_owner = :worker_id, lease_token = :lease_token,
+        lease_until = :lease_until, attempt_no = :attempt_no, updated_at = :now
+    WHERE tenant_id = :tenant_id AND runtime_job_id = :runtime_job_id
+      AND state = :expected_state
+      AND (lease_token = :expected_lease_token OR
+           (lease_token IS NULL AND :expected_lease_token IS NULL))
+      AND ((state = 'QUEUED' AND run_after <= :now)
+           OR (state = 'RUNNING' AND lease_until <= :now))
+      AND EXISTS (
+          SELECT 1
+          FROM ae_executable_step AS step
+          WHERE step.tenant_id = ae_runtime_job.tenant_id
+            AND step.executable_step_id = ae_runtime_job.executable_step_id
+            AND step.executor_kind IN :executor_kinds
+      )
+"""
+
+_LEADERSHIP_CLAIM_PREDICATE = """
+      AND EXISTS (
+          SELECT 1
+          FROM ae_rt_dispatch_lease AS leadership
+          WHERE leadership.queue_name = :queue_name
+            AND leadership.owner_id = :dispatcher_id
+            AND leadership.fencing_token = :fencing_token
+            AND leadership.released_at IS NULL
+            AND leadership.lease_until > :now
+      )
 """
 
 _ATTEMPT_INSERT_SQL = """
@@ -476,35 +635,48 @@ _ATTEMPTS_SELECT_SQL = """
 
 
 def _execution_exists(session: Session, tenant_id: str, execution_id: str) -> bool:
-    return session.execute(
-        text(
-            "SELECT 1 FROM ae_agent_execution "
-            "WHERE tenant_id = :tenant_id AND agent_execution_id = :execution_id"
-        ),
-        {"tenant_id": tenant_id, "execution_id": execution_id},
-    ).first() is not None
+    return (
+        session.execute(
+            text(
+                "SELECT 1 FROM ae_agent_execution "
+                "WHERE tenant_id = :tenant_id AND agent_execution_id = :execution_id"
+            ),
+            {"tenant_id": tenant_id, "execution_id": execution_id},
+        ).first()
+        is not None
+    )
 
 
 def _load_by_dedup(
     session: Session, tenant_id: str, dedup_key: str
 ) -> dict[str, Any] | None:
-    row = session.execute(
-        text(_JOB_SELECT + " WHERE tenant_id = :tenant_id AND dedup_key = :dedup_key"),
-        {"tenant_id": tenant_id, "dedup_key": dedup_key},
-    ).mappings().first()
+    row = (
+        session.execute(
+            text(
+                _JOB_SELECT + " WHERE tenant_id = :tenant_id AND dedup_key = :dedup_key"
+            ),
+            {"tenant_id": tenant_id, "dedup_key": dedup_key},
+        )
+        .mappings()
+        .first()
+    )
     return None if row is None else _job_from_row(row)
 
 
 def _load_job(
     session: Session, tenant_id: str, runtime_job_id: str
 ) -> dict[str, Any] | None:
-    row = session.execute(
-        text(
-            _JOB_SELECT
-            + " WHERE tenant_id = :tenant_id AND runtime_job_id = :runtime_job_id"
-        ),
-        {"tenant_id": tenant_id, "runtime_job_id": runtime_job_id},
-    ).mappings().first()
+    row = (
+        session.execute(
+            text(
+                _JOB_SELECT
+                + " WHERE tenant_id = :tenant_id AND runtime_job_id = :runtime_job_id"
+            ),
+            {"tenant_id": tenant_id, "runtime_job_id": runtime_job_id},
+        )
+        .mappings()
+        .first()
+    )
     return None if row is None else _job_from_row(row)
 
 
@@ -512,25 +684,34 @@ def _load_job_for_update(
     session: Session, tenant_id: str, runtime_job_id: str
 ) -> dict[str, Any] | None:
     suffix = " FOR UPDATE" if session.get_bind().dialect.name == "postgresql" else ""
-    row = session.execute(
-        text(
-            _JOB_SELECT
-            + " WHERE tenant_id = :tenant_id AND runtime_job_id = :runtime_job_id"
-            + suffix
-        ),
-        {"tenant_id": tenant_id, "runtime_job_id": runtime_job_id},
-    ).mappings().first()
+    row = (
+        session.execute(
+            text(
+                _JOB_SELECT
+                + " WHERE tenant_id = :tenant_id AND runtime_job_id = :runtime_job_id"
+                + suffix
+            ),
+            {"tenant_id": tenant_id, "runtime_job_id": runtime_job_id},
+        )
+        .mappings()
+        .first()
+    )
     return None if row is None else _job_from_row(row)
 
 
 def _select_runnable(
     session: Session, tenant_id: str, now: str
 ) -> Mapping[str, Any] | None:
-    suffix = " FOR UPDATE SKIP LOCKED" if session.get_bind().dialect.name == "postgresql" else ""
-    return session.execute(
-        text(
-            _JOB_SELECT
-            + """
+    suffix = (
+        " FOR UPDATE SKIP LOCKED"
+        if session.get_bind().dialect.name == "postgresql"
+        else ""
+    )
+    return (
+        session.execute(
+            text(
+                _JOB_SELECT
+                + """
             WHERE tenant_id = :tenant_id
               AND ((state = 'QUEUED' AND run_after <= :now)
                    OR (state = 'RUNNING' AND lease_until <= :now))
@@ -538,10 +719,83 @@ def _select_runnable(
                      run_after, created_at, runtime_job_id
             LIMIT 1
             """
-            + suffix
-        ),
-        {"tenant_id": tenant_id, "now": now},
-    ).mappings().first()
+                + suffix
+            ),
+            {"tenant_id": tenant_id, "now": now},
+        )
+        .mappings()
+        .first()
+    )
+
+
+def _select_capability_runnable(
+    session: Session,
+    *,
+    tenant_id: str,
+    executor_kinds: tuple[str, ...],
+    now: str,
+    leadership: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    dialect = session.get_bind().dialect.name
+    leadership_join = ""
+    leadership_predicate = ""
+    if leadership:
+        leadership_join = (
+            " JOIN ae_rt_dispatch_lease AS leadership"
+            " ON leadership.queue_name = :queue_name"
+        )
+        leadership_predicate = (
+            " AND leadership.owner_id = :dispatcher_id"
+            " AND leadership.fencing_token = :fencing_token"
+            " AND leadership.released_at IS NULL"
+            " AND leadership.lease_until > :now"
+        )
+    lock_suffix = (
+        " FOR UPDATE OF job, step SKIP LOCKED" if dialect == "postgresql" else ""
+    )
+    statement = text(
+        """
+        SELECT job.tenant_id, job.runtime_job_id, job.job_type,
+               job.execution_id, job.executable_step_id, job.wait_id,
+               job.reconciliation_id, job.result_delivery_id,
+               job.publication_reconciliation_id, job.state, job.dedup_key,
+               job.attempt_no, job.run_after, job.lease_owner,
+               job.lease_token, job.lease_until, job.payload_json,
+               job.correlation_id, job.causation_id, job.created_at,
+               job.updated_at, step.executor_kind
+        FROM ae_runtime_job AS job
+        JOIN ae_executable_step AS step
+          ON step.tenant_id = job.tenant_id
+         AND step.executable_step_id = job.executable_step_id
+        """
+        + leadership_join
+        + """
+        WHERE job.tenant_id = :tenant_id
+          AND step.executor_kind IN :executor_kinds
+          AND ((job.state = 'QUEUED' AND job.run_after <= :now)
+               OR (job.state = 'RUNNING' AND job.lease_until <= :now))
+        """
+        + leadership_predicate
+        + """
+        ORDER BY CASE WHEN job.state = 'RUNNING' THEN 0 ELSE 1 END,
+                 job.run_after, job.created_at, job.runtime_job_id
+        LIMIT 1
+        """
+        + lock_suffix
+    ).bindparams(bindparam("executor_kinds", expanding=True))
+    return (
+        session.execute(
+            statement,
+            {
+                "tenant_id": tenant_id,
+                "executor_kinds": list(executor_kinds),
+                "now": now,
+                **leadership,
+            },
+        )
+        .mappings()
+        .first()
+    )
 
 
 def _expire_attempt(session: Session, candidate: Mapping[str, Any], now: str) -> None:
@@ -572,23 +826,29 @@ def _expire_attempt(session: Session, candidate: Mapping[str, Any], now: str) ->
 
 
 def _load_attempt(session: Session, attempt_id: str) -> dict[str, Any] | None:
-    row = session.execute(
-        text(
-            """
+    row = (
+        session.execute(
+            text(
+                """
             SELECT attempt_id, tenant_id, runtime_job_id, attempt_no, worker_id,
                    lease_token, started_at, ended_at, outcome, error_ref,
                    retry_disposition_ref
             FROM ae_runtime_job_attempt WHERE attempt_id = :attempt_id
             """
-        ),
-        {"attempt_id": attempt_id},
-    ).mappings().first()
+            ),
+            {"attempt_id": attempt_id},
+        )
+        .mappings()
+        .first()
+    )
     return None if row is None else _attempt_from_row(row)
 
 
 def _job_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
     raw_payload = row["payload_json"]
-    payload = json.loads(raw_payload) if isinstance(raw_payload, str) else dict(raw_payload)
+    payload = (
+        json.loads(raw_payload) if isinstance(raw_payload, str) else dict(raw_payload)
+    )
     return {
         "schema_version": "2.1",
         "tenant_id": row["tenant_id"],
@@ -689,7 +949,9 @@ def _reject_private_payload(value: Any) -> None:
     if isinstance(value, Mapping):
         for key, nested in value.items():
             if str(key).strip().lower() in _PRIVATE_PAYLOAD_KEYS:
-                raise _invalid("RuntimeJob payload must contain references, not raw content.")
+                raise _invalid(
+                    "RuntimeJob payload must contain references, not raw content."
+                )
             _reject_private_payload(nested)
     elif isinstance(value, (list, tuple)):
         for item in value:
@@ -727,7 +989,11 @@ def _optional(field: str, value: object) -> str | None:
 
 
 def _datetime_value(value: Any) -> str:
-    return value.isoformat().replace("+00:00", "Z") if hasattr(value, "isoformat") else str(value)
+    return (
+        value.isoformat().replace("+00:00", "Z")
+        if hasattr(value, "isoformat")
+        else str(value)
+    )
 
 
 def _datetime_or_none(value: Any) -> str | None:
@@ -740,6 +1006,95 @@ def _string_or_none(value: Any) -> str | None:
 
 def _comparable(value: Any) -> Any:
     return None if value is None else str(value)
+
+
+def _lock_runtime_admission(session: Session) -> None:
+    if session.get_bind().dialect.name == "postgresql":
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('ae-runtime-admission'))")
+        )
+
+
+def _apply_admission_policy(
+    session: Session,
+    *,
+    run_after: str,
+    now: str,
+    max_runnable_depth: int,
+    admission_policy: str,
+    admission_delay_seconds: int,
+) -> str:
+    if _parse_timestamp("run_after", run_after) > _parse_timestamp("now", now):
+        return run_after
+    depth = int(
+        session.execute(
+            text(
+                "SELECT count(*) FROM ae_runtime_job "
+                "WHERE state = 'QUEUED' AND run_after <= :now"
+            ),
+            {"now": now},
+        ).scalar_one()
+    )
+    if depth < max_runnable_depth:
+        return run_after
+    if admission_policy == "DELAY":
+        raise RuntimeJobError(
+            "ae.runtime_job_backpressure_delayed",
+            "RuntimeJob admission is delayed because runnable capacity is exhausted.",
+            True,
+            admission_delay_seconds,
+        )
+    raise RuntimeJobError(
+        "ae.runtime_job_backpressure_rejected",
+        "RuntimeJob admission is rejected because runnable capacity is exhausted.",
+        True,
+    )
+
+
+def _executor_kinds(values: Sequence[str]) -> tuple[str, ...]:
+    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+        raise _invalid("supported_executor_kinds must be an array of strings.")
+    normalized = tuple(sorted({_required("executor_kind", value) for value in values}))
+    if not normalized:
+        raise _invalid("supported_executor_kinds must not be empty.")
+    return normalized
+
+
+def _leadership_params(
+    *,
+    queue_name: str | None,
+    dispatcher_id: str | None,
+    fencing_token: int | None,
+) -> dict[str, Any]:
+    values = (queue_name, dispatcher_id, fencing_token)
+    if all(value is None for value in values):
+        return {}
+    if any(value is None for value in values):
+        raise _invalid(
+            "queue_name, dispatcher_id, and fencing_token must be provided together."
+        )
+    return {
+        "queue_name": _required("queue_name", queue_name),
+        "dispatcher_id": _required("dispatcher_id", dispatcher_id),
+        "fencing_token": _positive_int("fencing_token", fencing_token),
+    }
+
+
+def _admission_policy(value: object) -> str:
+    policy = _required("admission_policy", value).upper()
+    if policy not in RUNTIME_ADMISSION_POLICIES:
+        raise _invalid("admission_policy must be REJECT or DELAY.")
+    return policy
+
+
+def _positive_int(field: str, value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise _invalid(f"{field} must be a positive integer.")
+    return value
+
+
+def _optional_positive_int(field: str, value: object) -> int | None:
+    return None if value is None else _positive_int(field, value)
 
 
 def _invalid(detail: str) -> RuntimeJobError:

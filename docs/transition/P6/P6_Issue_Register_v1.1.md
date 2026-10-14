@@ -1,6 +1,6 @@
 # P6 NSL READ Integration Issue Register v1.1
 
-**Status:** P6-S0 COMPLETE; P6-S1 NEXT
+**Status:** P6-S1 COMPLETE; P6-S2 NEXT
 
 | ID | Sev | Issue | v1.1 Decision | Status |
 |---|---:|---|---|---|
@@ -9,11 +9,11 @@
 | P6-ISSUE-003 | P0 | Exact SkillExecutionRequest machine schema missing | Source-backed P6 schema and Golden example validated | CLOSED |
 | P6-ISSUE-004 | P1 | NSLExecutionId ownership ambiguous | AE allocates/persists; NSL owns lifecycle semantics | DESIGN_CLOSED |
 | P6-ISSUE-005 | P1 | P5 cannot execute LOCAL_SKILL | CA01 contract closed; S4 activates executor | OPEN_S4 |
-| P6-ISSUE-006 | P1 | No production AE worker | S0 worker lifecycle/entrypoint closed; S1 composes DB dispatcher assignment source | FOUNDATION_CLOSED_S1_COMPOSITION |
-| P6-ISSUE-007 | P1 | No tenant dispatcher | S1 single-leader bounded dispatcher | OPEN_S1 |
-| P6-ISSUE-008 | P1 | Worker may claim unsupported executor | capability filter + lease CAS in one claim transaction | DESIGN_CLOSED_S1_IMPL |
-| P6-ISSUE-009 | P1 | Dispatcher fairness authority ambiguous | one DB-protected active leader; restart rebuilds from DB | DESIGN_CLOSED_S1_IMPL |
-| P6-ISSUE-010 | P1 | Backpressure semantics incomplete | bounded active claims/depth/batch; S1 fixes concrete error behavior | OPEN_S1 |
+| P6-ISSUE-006 | P1 | No production AE worker | S0 lifecycle plus S1 DB dispatcher assignment source; execution handler remains S4 | FOUNDATION_CLOSED |
+| P6-ISSUE-007 | P1 | No tenant dispatcher | S1 DB-leased, fenced, bounded dispatcher | CLOSED |
+| P6-ISSUE-008 | P1 | Worker may claim unsupported executor | capability filter + lease CAS in one transaction | CLOSED |
+| P6-ISSUE-009 | P1 | Dispatcher fairness authority ambiguous | one DB-protected leader; each round rebuilds from durable state | CLOSED |
+| P6-ISSUE-010 | P1 | Backpressure semantics incomplete | active/depth/batch caps plus explicit retryable DELAY/REJECT errors | CLOSED |
 | P6-ISSUE-011 | P1 | VerifiedNspPackage != canonical VerifiedSkillArtifact | Exact gateway projection and evidence/ref boundary fixed | CONTRACT_CLOSED_S2_IMPL |
 | P6-ISSUE-012 | P1 | v0.1 job lacks Agent/Plan/Step/BOI/correlation fields | Exhaustive adapter map and AE binding contract fixed | CONTRACT_CLOSED_S3_S5_IMPL |
 | P6-ISSUE-013 | P1 | Full AgentContext copy risk | Bounded context projection schema and rejection rules fixed | CONTRACT_CLOSED_S3_IMPL |
@@ -29,6 +29,6 @@
 
 ## Gate
 
-The P6-CA01 gate and P6-S0 worker foundation are closed. P6-S1 may begin;
-dispatcher composition, fairness and capability-aware claim remain explicitly
-open and are not claimed by the S0 lifecycle foundation.
+The P6-CA01 gate, P6-S0 worker foundation and P6-S1 dispatcher foundation are
+closed. P6-S2 may begin. `LOCAL_SKILL` execution remains fail-closed until
+P6-S4 and is not claimed by P6-S1.

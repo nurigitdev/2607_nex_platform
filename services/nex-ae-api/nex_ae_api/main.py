@@ -9,11 +9,17 @@ from nex_runtime import (
 from nex_runtime.compatibility import register_generation_compatibility_routes
 from nex_runtime.prompts import register_prompt_registry_routes
 from nex_runtime.recovery import register_generation_recovery_policy_routes
+
+from nex_ae_api.agent_runtime_foundation import attach_agent_runtime_foundation
+from nex_ae_api.agent_runtime_operations import (
+    SqlAlchemyAgentRuntimeOperationsSource,
+    UnavailableAgentRuntimeOperationsSource,
+    register_agent_runtime_operations_routes,
+)
 from nex_ae_api.analytics import (
     DEFAULT_PROMPT_ANALYTICS_STORE,
     register_prompt_analytics_routes,
 )
-from nex_ae_api.agent_runtime_foundation import attach_agent_runtime_foundation
 from nex_ae_api.artifacts import register_artifact_handoff_routes
 from nex_ae_api.auth_sessions import register_auth_session_routes
 from nex_ae_api.chat import register_chat_routes
@@ -33,8 +39,8 @@ from nex_ae_api.trace_projection import (
     SqlAlchemyAeTraceProjectionSource,
     register_ae_trace_projection_routes,
 )
-from nex_ae_api.uploads import register_upload_routes
 from nex_ae_api.upload_progress import register_upload_progress_routes
+from nex_ae_api.uploads import register_upload_routes
 from nex_ae_api.workspace import register_workspace_routes
 
 SERVICE_SPEC = SERVICE_SPECS["nex-ae-api"]
@@ -80,6 +86,21 @@ AE_AGENT_RUNTIME = attach_agent_runtime_foundation(
     app,
     SERVICE_PERSISTENCE,
     application=app.state.ae_chat_application_service,
+)
+register_agent_runtime_operations_routes(
+    app,
+    source=(
+        SqlAlchemyAgentRuntimeOperationsSource(
+            SERVICE_PERSISTENCE.api_session_factory,
+            queue_name=(
+                AE_AGENT_RUNTIME.dispatcher.config.queue_name
+                if AE_AGENT_RUNTIME.dispatcher is not None
+                else "ae-runtime"
+            ),
+        )
+        if SERVICE_PERSISTENCE.api_session_factory is not None
+        else UnavailableAgentRuntimeOperationsSource()
+    ),
 )
 register_generation_feedback_routes(app)
 register_repaired_response_handoff_routes(app)
