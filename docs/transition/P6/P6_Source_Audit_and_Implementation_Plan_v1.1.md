@@ -1,6 +1,6 @@
 # P6 Source Audit and Implementation Plan v1.1
 
-**Status:** P6-S1 COMPLETE; P6-S2 READY
+**Status:** P6-S2 COMPLETE; P6-S3 READY
 **Supersedes:** v1.0
 
 ## 1. Entry Sequence
@@ -20,9 +20,9 @@ P6 v1.1 document-set acceptance
 ```
 
 P6-CA01 is closed by
-`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 and P6-S1 are
+`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 through P6-S2 are
 closed by their matching records in `docs/slices/`. The next implementation
-Slice is P6-S2.
+Slice is P6-S3.
 
 ## 2. Refactoring-First Rule
 
@@ -131,6 +131,8 @@ As-Built notes:
 
 ## 5. P6-S2 — Skill Artifact Gateway
 
+**Status: COMPLETE**
+
 After CA01 schemas.
 
 Implement:
@@ -146,6 +148,17 @@ exact skill/version
 No crypto duplication in AE.
 
 Production profile rejects unsigned/untrusted package.
+
+As-Built notes:
+
+- `skill_artifacts.py` uses a structural port compatible with the public NSL
+  v0.1 verified-package resolver and does not duplicate package cryptography;
+- exact selector, semantic hash, package hash, signer, trust policy, evidence,
+  and admission identities are rechecked fail-closed;
+- shared canonical semantic hashes produce the bounded transition artifact;
+- migration `2201_ae_nsl_artifact` persists immutable tenant-scoped artifact
+  projections and no package/signature bytes or verification journal; and
+- actual `nex_ae_test` acceptance passed all 14 checks with zero residue.
 
 ## 6. P6-S3 — NSLStepExecutionBinding + Request
 

@@ -1,6 +1,6 @@
 # P6 Agent ↔ NSL READ Integration Traceability v1.1
 
-**Status:** P6-S1 DISPATCHER EVIDENCE ADDED; P6-S2 NEXT
+**Status:** P6-S2 ARTIFACT GATEWAY EVIDENCE ADDED; P6-S3 NEXT
 
 ## 1. Identity chain
 
@@ -195,3 +195,36 @@ Actual `nex_ae_test` evidence passed 19/19 checks, including concurrent leader
 exclusivity, failover, stale-leader fencing, capability filtering, lease
 reclaim, malformed-job reconciliation, AG read-only projection and zero
 residue. No remote provider is involved in this Slice.
+
+## 11. P6-S2 Skill Artifact Gateway evidence
+
+```text
+source:
+  database/nex-ae-api/migrations/2201_ae_nsl_artifact.sql
+  services/nex-ae-api/nex_ae_api/skill_artifacts.py
+
+tests:
+  tests/test_p6_s2_skill_artifacts.py
+  tests/test_p6_s2_postgres_smoke.py
+
+protected runner:
+  scripts/smoke/run_p6_s2_postgres_smoke.py
+```
+
+Trace boundary:
+
+```text
+exact Skill ID/version + expected semantic hash
+-> public NSL verified-package resolver shape
+-> exact package hash + verified signing key
+-> tenant-scoped current trust/admission source
+-> VALID + ACTIVE + ADMITTED
+-> bounded canonical VerifiedSkillArtifact
+-> immutable ae_nsl_artifact row
+```
+
+The persisted artifact retains only opaque package/evidence/admission
+references and hashes. Raw package, NSO, signature and verification-journal
+content remain outside AE persistence. Actual `nex_ae_test` evidence passed
+14/14 checks with restart-style reload, tenant isolation, fail-closed negative
+paths, zero forbidden residue and cleanup to zero rows.

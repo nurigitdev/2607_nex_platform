@@ -1,6 +1,6 @@
 # P6 Transition Implementation Baseline v1.1
 
-**Status:** P6-S1 COMPLETE; P6-S2 NEXT
+**Status:** P6-S2 COMPLETE; P6-S3 NEXT
 **Phase:** P6 — NSL READ Integration
 **Implementation Baseline:** NSL v0.1 As-Built
 **Target Contract:** Frozen NSL v0.2 READ-compatible integration subset
@@ -71,6 +71,7 @@ Frozen Platform v2.1 / Agent v2.1 / NSL v0.2
 16. `../../slices/p6_s0_ae_runtime_worker_foundation.md`
 17. `../../slices/p6_s1_db_protected_tenant_dispatcher.md`
 18. `../../slices/p6_s1a_runtime_dispatch_semantic_hardening.md`
+19. `../../slices/p6_s2_skill_artifact_gateway.md`
 
 ## 5. CA01A Non-Negotiable Rules
 
@@ -181,15 +182,31 @@ P6-S1 implemented:
 - actual `nex_ae_test` PostgreSQL acceptance with migration currency, leader
   failover, stale-leader fencing, lease reclaim and zero residue.
 
-The next authorized Slice is P6-S2.
-
 P6-S1A then hardened the completed dispatcher semantics without adding a
 migration: dispatch issue IDs no longer occupy `RuntimeJob.reconciliation_id`,
 platform-known P5 executors remain queued when the active Agent Runtime worker
 pool lacks their capability, and the protected operations projection exposes
 that demand as `NO_CAPABLE_WORKER`.
 
-## 10. Exit Shape
+## 10. P6-S2 Result
+
+P6-S2 implemented:
+
+- a structural resolver port compatible with the public NSL v0.1
+  `VerifiedPackageSkillResolver`;
+- exact Skill/version, semantic hash, package hash, and signing-key binding;
+- a separate tenant-scoped current trust/admission source;
+- production fail-closed handling for unsigned, untrusted, inactive, rejected,
+  mismatched, or future-dated evidence;
+- shared canonical hashes for bounded trust, admission, and artifact records;
+- immutable tenant-scoped `ae_nsl_artifact` persistence without raw package,
+  NSO, signature, or verification-journal content; and
+- actual `nex_ae_test` PostgreSQL acceptance with 14/14 checks and zero
+  residue.
+
+The next authorized Slice is P6-S3.
+
+## 11. Exit Shape
 
 ```text
 PROMPT
