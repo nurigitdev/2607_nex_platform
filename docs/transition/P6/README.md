@@ -1,129 +1,137 @@
-# P6 Transition Implementation Baseline
+# P6 Transition Implementation Baseline v1.1
 
-**Status:** PRE-IMPLEMENTATION DOCUMENT SET  
-**Phase:** P6 — NSL READ Integration  
-**Implementation Baseline:** NSL v0.1 As-Built (`nurigitdev/2608_nsl`, commit `803f22aadc39...`)  
-**Target Contract:** Frozen NSL v0.2 READ-compatible integration subset  
-**Predecessor:** P5 Agent Planning & Execution Foundation — IMPLEMENTATION COMPLETE  
-**Target location:** `docs/transition/P6/`
+**Status:** P6-CA01A CONSOLIDATED PRE-IMPLEMENTATION BASELINE
+**Phase:** P6 — NSL READ Integration
+**Implementation Baseline:** NSL v0.1 As-Built
+**Target Contract:** Frozen NSL v0.2 READ-compatible integration subset
+**Predecessor:** P5 Agent Planning & Execution Foundation — IMPLEMENTATION COMPLETE
 
----
+## 1. Naming
 
-## 1. Naming Decision
-
-The primary SRS filename is:
+Stable SRS name:
 
 ```text
-P6_NSL_READ_Integration_SRS_v1.0.md
+P6_NSL_READ_Integration_SRS_v1.1.md
 ```
-
-rather than:
 
 ```text
-P6_NSL_v0.1_READ_Integration_SRS_v1.0.md
-P6_NSL_v0.2_READ_Integration_SRS_v1.0.md
+Current executable backend = NSL v0.1
+AE-facing target contract  = Frozen NSL v0.2 READ-compatible subset
 ```
 
-Reason:
+## 2. Canonical Entry Sequence
+
+CA01A supersedes the v1.0 partial-parallel rule.
 
 ```text
-Current executable runtime = NSL v0.1
-Frozen product target      = NSL v0.2
-P6 capability scope        = READ integration
+P6 document-set review
+→ P6-CA01A design consistency closure
+→ P6-CA01 source-backed contract closure
+→ P6-S0 AE Runtime Worker Foundation
+→ P6-S1 Tenant Dispatcher / Operations
+→ P6-S2 Skill Artifact Gateway
+→ P6-S3 Request / Identity Binding
+→ P6-S4 LOCAL_SKILL Executor
+→ P6-S5 NSL READ Backend Integration
+→ P6-S6 Result / Timeline Integration
+→ P6-S7 E2E-01 IA READ Closure
 ```
 
-P6 SHALL define an AE-facing contract compatible with the Frozen v0.2 integration model while allowing the first runtime backend to be the current v0.1 implementation through an explicit adapter.
+**No P6 feature Slice begins before P6-CA01 closes.**
 
-A future switch from the v0.1 backend to a v0.2 READ backend SHALL NOT require renaming P6 identities or changing the AE planning/runtime contract.
-
----
-
-## 2. P6 Target Shape
+## 3. Authority
 
 ```text
-AgentPlan
-→ Plan Validator
-→ Deterministic Compiler
-→ ExecutableStep(type=LOCAL_SKILL)
-→ AE RuntimeJob
-→ AE Runtime Worker
-→ LOCAL_SKILL Executor
-→ Skill Artifact Gateway
-→ VerifiedSkillArtifact
-→ SkillExecutionRequest
-→ NSL READ Backend
-→ NSLResultSummary
-→ StepResult
-→ AgentResult
+Frozen Platform v2.1 / Agent v2.1 / NSL v0.2
+> approved source-backed P6-CA01 outputs
+> P6-CA01A Pre-Implementation Design Consistency Closure v1.0
+> this P6 v1.1 consolidated transition set
+> P6 v1.0 historical transition docs
+> P4/P5 historical transition docs
+> implementation convenience
 ```
 
----
+## 4. Required Reading Order
 
-## 3. Version Boundary
+1. Frozen baseline and Agent↔NSL Integration Contract
+2. `P6_CA01A_Pre_Implementation_Design_Consistency_Closure_v1.0.md`
+3. `P6_Pre_Architecture_Decision_Agent_Runtime_Worker_Dispatch_Replay_Timeline_LOCAL_SKILL_v1.1.md`
+4. `P6_Architecture_Decisions_v1.1.md`
+5. `P6_NSL_v0.1_to_v0.2_READ_Compatibility_Matrix_v1.1.md`
+6. `P6_NSL_READ_Integration_SRS_v1.1.md`
+7. `P6_Scope_Review_v1.1.md`
+8. `P6_Issue_Register_v1.1.md`
+9. `P6_Agent_NSL_READ_Integration_Traceability_v1.1.md`
+10. `P6_CA01_v0.1_AsBuilt_to_v0.2_READ_Contract_Closure_Plan_v1.1.md`
+11. `P6_Source_Baseline_Record_v1.1.md`
+12. current Platform P5 As-Built and exact NSL v0.1 source checkout
+13. `P6_Source_Audit_and_Implementation_Plan_v1.1.md`
 
-### NSL v0.1 provides today
+## 5. CA01A Non-Negotiable Rules
 
-- READ execution semantics;
-- exact Tool Contract validation;
-- CHECK/EMIT;
-- principal/data-policy boundary;
-- audit/snapshot/replay;
-- NSP package build/verification/signature;
-- exact skill ID/version resolution from verified NSP;
-- framework-neutral `SkillExecutionWorker`;
-- `SkillExecutionJob` / `RuntimeResultEnvelope`;
-- process isolation and high coverage.
+```text
+AE allocates/persists:
+  NSLExecutionId
+  BusinessOperationId
 
-### Frozen NSL v0.2 adds/changes contract surface
+NSL Runtime owns:
+  lifecycle semantics for supplied NSLExecutionId
+```
 
-- `SkillExecutionRequest` identity model;
-- explicit `AgentExecutionId != NSLExecutionId`;
-- `BusinessOperationId` on every invocation, including READ;
-- explicit Agent/Plan/Step IDs;
-- deterministic context projection;
-- `PackageTrustEvidence` / `VerifiedSkillArtifact`;
-- additive v0.2 Runtime result fields;
-- future Approval/WRITE/Commit/Verification semantics.
+```text
+one LOCAL_SKILL step
+→ one durable NSLStepExecutionBinding
+→ UNIQUE (tenant_id, executable_step_id)
+→ binding committed before backend call
+```
 
-P6 implements only the READ-compatible subset.
+```text
+P5 StepResult = schema 1.1 historical
+P6 StepResult = schema 1.2 current
 
----
+non-NSL:
+  business_operation_id = null
+  operation_fingerprint = null
 
-## 4. Required Read Order
+LOCAL_SKILL READ:
+  business_operation_id = stable non-null
+  operation_fingerprint = null
+```
 
-1. `P6_Pre_Architecture_Decision_Agent_Runtime_Worker_Dispatch_Replay_Timeline_LOCAL_SKILL_v1.0.md`
-2. `README.md`
-3. `P6_Architecture_Decisions_v1.0.md`
-4. `P6_NSL_v0.1_to_v0.2_READ_Compatibility_Matrix_v1.0.md`
-5. `P6_NSL_READ_Integration_SRS_v1.0.md`
-6. `P6_Scope_Review_v1.0.md`
-7. `P6_Issue_Register_v1.0.md`
-8. `P6_Agent_NSL_READ_Integration_Traceability_v1.0.md`
-9. `P6_CA01_v0.1_AsBuilt_to_v0.2_READ_Contract_Closure_Plan_v1.0.md`
-10. `P6_Source_Audit_and_Implementation_Plan_v1.0.md`
+```text
+eligible RuntimeJob selection
++ executor capability filter
++ lease CAS
+= one claim transaction
+```
 
-Frozen authority remains above all transition documents.
+```text
+one DB-protected dispatcher leader per AE Runtime queue
+bounded round
+oldest runnable work + tenant_id tie-break
+```
 
----
+```text
+timeline = deterministic read projection
+no invented state history
+unknown optional fields = null
+```
 
-## 5. Pre-Implementation Gate
+## 6. Source Availability Gate
 
-Before NSL integration feature code begins, P6-CA01 SHALL close:
+Current NSL v0.1 source baseline:
 
-- exact v0.1 API mapping;
-- exact v0.2 READ request/result subset;
-- `NSLExecutionId` allocation/stability;
-- READ `BusinessOperationId` allocation/stability;
-- Verified NSP / `VerifiedSkillArtifact` mapping;
-- typed compiled-input/context projection;
-- result mapping;
-- P5 StepResult amendment needed for READ BusinessOperationId traceability.
+```text
+nurigitdev/2608_nsl
+803f22aadc3946a48b05472c80b60fe11d9d9554
+```
 
-P6-S0/S1 worker/dispatcher foundations MAY be implemented only after this document set is accepted; P6-S2+ SHALL not begin before P6-CA01 closes.
+P6-CA01 in the Codex implementation workspace must independently verify/materialize its actual checkout SHA before closure. A specific filesystem path is not normative.
 
----
+Current workspace evidence records a clean NSL v0.1 checkout at the expected
+`803f22a...` baseline. P6-CA01 must refresh that evidence at execution time.
 
-## 6. P6 Exit Shape
+## 7. Exit Shape
 
 ```text
 PROMPT
@@ -135,20 +143,14 @@ PROMPT
 → ExecutablePlan
 → LOCAL_SKILL ExecutableStep
 → AE RuntimeJob
-→ AE Worker
+→ capability-aware AE Worker
 → VerifiedSkillArtifact
+→ durable NSLStepExecutionBinding
 → SkillExecutionRequest
-→ NSL READ
+→ NSL READ Backend
 → NSLResultSummary
-→ StepResult
+→ StepResult v1.2
 → AgentResult
 ```
 
-with:
-
-- no NSL WRITE;
-- no WC;
-- no blind RuntimeJob replay;
-- exact execution timeline;
-- real PostgreSQL worker/restart evidence;
-- P5 regression PASS.
+No NSL WRITE, WC, blind replay or false publication success.
