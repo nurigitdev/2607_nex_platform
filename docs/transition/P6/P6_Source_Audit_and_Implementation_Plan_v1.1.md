@@ -1,6 +1,6 @@
 # P6 Source Audit and Implementation Plan v1.1
 
-**Status:** P6-S6 COMPLETE; P6-S7 READY
+**Status:** P6 IMPLEMENTATION COMPLETE
 **Supersedes:** v1.0
 
 ## 1. Entry Sequence
@@ -19,10 +19,8 @@ P6 v1.1 document-set acceptance
 → P6-S7 E2E-01 IA READ Closure
 ```
 
-P6-CA01 is closed by
-`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 through P6-S6 are
-closed by their matching records in `docs/slices/`. The next implementation
-Slice is P6-S7.
+P6-CA01 and P6-S0 through P6-S7 are closed by their matching transition and
+Slice records. No further P6 implementation Slice is authorized by this plan.
 
 ## 2. Refactoring-First Rule
 
@@ -329,6 +327,8 @@ As-Built:
 
 ## 10. P6-S7 — E2E-01 IA READ Closure
 
+**Status: COMPLETE**
+
 Protected PostgreSQL journey:
 
 1. IA prompt/AgentExecution;
@@ -351,6 +351,21 @@ Protected PostgreSQL journey:
 18. zero residue.
 
 Closure also proves v0.1 external AE gaps for actual dispatch/consume and deterministic-result separation.
+
+As-Built:
+
+- a canonical S7 handler composes exact artifact resolution, durable request
+  binding, process-isolated NSL READ and bounded result integration;
+- the DB-protected dispatcher and bounded Agent Runtime worker consume the
+  LOCAL_SKILL RuntimeJob, while the existing P5 worker executes the dependent
+  deterministic report;
+- the existing finalization authority persists one AgentResult and one
+  required PENDING ResultDelivery atomically;
+- restart replay preserves result IDs/hashes and timeline output, while a
+  completed RuntimeJob is not dispatched again;
+- actual PostgreSQL/source-backed evidence passed 23/23 checks and cleaned all
+  Slice rows; and
+- no S7 migration was required.
 
 ## 11. Recommended Migrations
 

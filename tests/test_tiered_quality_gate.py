@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 import run_tiered_quality_gate as gate
 
 
@@ -15,6 +14,8 @@ def _minimal_root(tmp_path: Path) -> Path:
         "tests/test_focused.py",
         "tests/test_nex_ae_web_static.py",
         "tests/test_ae_web_runtime_audit.py",
+        "tests/test_p5_plan.py",
+        "tests/test_p6_runtime.py",
         "tests/test_platform_alpha.py",
         "tests/test_s97_example_closure.py",
         "scripts/smoke/run_current_smoke.py",
@@ -110,6 +111,21 @@ def test_ae_web_slice_profile_selects_browser_regression_without_python_service(
     assert not any(
         item.startswith("--cov=services/nex-ae-api") for item in pytest_command
     )
+
+
+def test_ae_api_slice_profile_includes_transition_runtime_regression(
+    tmp_path: Path,
+) -> None:
+    root = _minimal_root(tmp_path)
+
+    plan = gate.build_slice_plan(
+        root=root,
+        python_bin="python-test",
+        service="nex-ae-api",
+    )
+
+    assert "tests/test_p5_plan.py" in plan.commands[0]
+    assert "tests/test_p6_runtime.py" in plan.commands[0]
 
 
 def test_platform_slice_profile_requires_explicit_changed_coverage_scope(

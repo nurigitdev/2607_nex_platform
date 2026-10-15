@@ -1,6 +1,6 @@
 # P6 Transition Implementation Baseline v1.1
 
-**Status:** P6-S6 COMPLETE; P6-S7 NEXT
+**Status:** P6 IMPLEMENTATION COMPLETE
 **Phase:** P6 — NSL READ Integration
 **Implementation Baseline:** NSL v0.1 As-Built
 **Target Contract:** Frozen NSL v0.2 READ-compatible integration subset
@@ -244,8 +244,8 @@ P6-S4 implemented:
 - migration `2203_ae_local_skill_activation` with no new table; and
 - actual `nex_ae_test` acceptance with 19/19 checks and zero residue.
 
-S4 does not invoke the NSL runtime. P6-S5 is the next authorized Slice and
-owns the process-isolated NSL READ adapter and execution orchestration.
+S4 does not invoke the NSL runtime. P6-S5 subsequently completed the
+process-isolated NSL READ adapter and execution orchestration.
 
 ## 13. P6-S5 Result
 
@@ -283,11 +283,31 @@ P6-S6 implemented:
 - actual `nex_ae_test` acceptance with 20/20 checks, 21 timeline events and
   zero residue.
 
-The final AE Slice Gate passed 3708 tests with statement 98.66% and branch
-96.88% coverage. P6-S7 is the next authorized Slice and owns the complete IA
-READ journey through `AgentResult` while `ResultDelivery` remains pending.
+The S6 AE Slice Gate passed 3708 tests with statement 98.66% and branch 96.88%
+coverage. P6-S7 subsequently completed the IA READ journey through
+`AgentResult` while `ResultDelivery` remains pending.
 
-## 15. Exit Shape
+## 15. P6-S7 Result
+
+P6-S7 implemented and proved:
+
+- canonical verified-artifact, durable request, process-isolated READ and
+  result-integration composition for the `LOCAL_SKILL` handler;
+- actual dispatcher leadership, capability-aware claim and bounded Agent
+  Runtime worker consumption;
+- dependent deterministic report execution through the existing P5 engine;
+- atomic `AgentResult` plus required `ResultDelivery(PENDING)` finalization;
+- deterministic timeline reconstruction, restart replay and worker dedup;
+- no raw NSL runtime result in the deterministic AgentResult; and
+- actual `nex_ae_test` acceptance with 23/23 checks, 29 timeline events and
+  zero residue against exact NSL revision `803f22a...`.
+
+The corrected AE Slice Gate includes `test_p5_*` and `test_p6_*` by default.
+It passed 3812 tests with statement 98.66% and branch 96.88% coverage; the new
+S7 runtime module is 100% statement and branch covered. P6 adds no migration
+after `2204_ae_nsl_backend_run`.
+
+## 16. Exit Shape
 
 ```text
 PROMPT

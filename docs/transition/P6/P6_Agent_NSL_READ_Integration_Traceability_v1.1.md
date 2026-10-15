@@ -1,6 +1,6 @@
 # P6 Agent ↔ NSL READ Integration Traceability v1.1
 
-**Status:** P6-S6 RESULT/TIMELINE EVIDENCE ADDED; P6-S7 NEXT
+**Status:** P6-S7 E2E-01 EVIDENCE COMPLETE
 
 ## 1. Identity chain
 
@@ -367,3 +367,39 @@ It persisted one StepResult v1.2, projected 21 ordered events with three
 explicit source gaps, reproduced the same projection after repository restart,
 excluded raw runtime/private content, and cleaned all S6/P5 rows. Source audit
 proved that migration `2205` and a separate timeline SoR are not required.
+
+## 16. P6-S7 IA READ end-to-end evidence
+
+```text
+source:
+  services/nex-ae-api/nex_ae_api/p6_ia_read_runtime.py
+
+tests:
+  tests/test_p6_s7_ia_read_runtime.py
+  tests/test_p6_s7_postgres_smoke.py
+
+protected runner:
+  scripts/smoke/run_p6_s7_postgres_smoke.py
+```
+
+Trace boundary:
+
+```text
+IA prompt/planning records
+-> LOCAL_SKILL RuntimeJob
+-> DB-leased dispatcher and capability-aware assignment
+-> bounded Agent Runtime worker
+-> exact artifact/request/NSL READ/result composition
+-> LOCAL_SKILL StepResult v1.2
+-> dependent deterministic StepResult
+-> AgentResult + ResultDelivery(PENDING)
+-> deterministic timeline and restart dedup
+```
+
+Actual `nex_ae_test` evidence passed 23/23 checks against 43 current
+migrations and exact NSL revision `803f22aadc3946a48b05472c80b60fe11d9d9554`.
+It retained two RuntimeJobs/attempts and StepResults, one NSL execution,
+AgentResult and pending delivery, projected 29 events, reproduced result and
+timeline state after restart, excluded raw runtime content and cleaned all
+rows. The AE/P5/P6 gate passed 3812 tests with statement 98.66% and branch
+96.88% coverage.

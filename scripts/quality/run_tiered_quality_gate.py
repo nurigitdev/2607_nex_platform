@@ -2,15 +2,15 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass
 import json
 import os
-from pathlib import Path
 import re
 import subprocess
 import sys
 import time
-from typing import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 FULL_GATE_PATH = "scripts/quality/run_quality_gate.sh"
@@ -36,7 +36,12 @@ SERVICE_PROFILES = {
         coverage_targets=("services/nex-ag/nex_ag",),
     ),
     "nex-ae-api": ServiceProfile(
-        test_patterns=("test_nex_ae_*.py", "test_ae_*.py"),
+        test_patterns=(
+            "test_nex_ae_*.py",
+            "test_ae_*.py",
+            "test_p5_*.py",
+            "test_p6_*.py",
+        ),
         coverage_targets=("services/nex-ae-api/nex_ae_api",),
     ),
     "nex-ae-web": ServiceProfile(

@@ -1,6 +1,6 @@
 # P6 NSL READ Integration Issue Register v1.1
 
-**Status:** P6-S6 COMPLETE; P6-S7 NEXT
+**Status:** P6 IMPLEMENTATION COMPLETE; ALL REGISTERED ISSUES CLOSED OR RESOLVED
 
 | ID | Sev | Issue | v1.1 Decision | Status |
 |---|---:|---|---|---|
@@ -25,12 +25,12 @@
 | P6-ISSUE-019 | P1 | Old trace sees one job/step only | ten-source complete-retained-evidence timeline with versioned ordering and projection hash | CLOSED |
 | P6-ISSUE-020 | P0 | Exact NSL checkout must be verified in the Codex workspace | CA01 refreshed clean exact `803f22a...` checkout | CLOSED |
 | P6-ISSUE-021 | P2 | v0.2 backend may arrive mid-P6 | backend port permits explicit swap; no auto-detection | RESOLVED_DESIGN |
-| P6-ISSUE-022 | P2 | v0.1 AE-004/AE-008 external gaps | S7 closes dispatch/consume and result/explanation separation | OPEN_S7 |
+| P6-ISSUE-022 | P2 | v0.1 AE-004/AE-008 external gaps | S7 actual dispatcher/worker consumption and deterministic-result separation evidence | CLOSED |
 
 ## Gate
 
-The P6-CA01 gate and P6-S0 through P6-S6 are closed. Exact NSL v0.1 terminal
-evidence now produces a bounded result summary, LOCAL_SKILL StepResult v1.2
-and deterministic timeline projection without a new timeline source of
-record. P6-S7 is the next authorized Slice and owns the protected IA READ
-end-to-end closure.
+The P6-CA01 gate and P6-S0 through P6-S7 are closed. Actual dispatcher and
+worker consumption now carries one protected IA READ through exact artifact
+resolution, NSL execution, dependent deterministic projection, AgentResult,
+pending ResultDelivery, deterministic timeline, restart dedup and zero
+residue. No registered P6 implementation issue remains open.

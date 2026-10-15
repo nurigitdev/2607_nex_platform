@@ -1,6 +1,6 @@
 # P6 — NSL READ Integration SRS v1.1
 
-**Document Status:** P6-S6 RESULT/TIMELINE COMPLETE; P6-S7 NEXT
+**Document Status:** P6 IMPLEMENTATION COMPLETE
 **Supersedes:** v1.0
 **Implementation Baseline:** NSL v0.1 As-Built
 **Target Contract:** Frozen NSL v0.2 READ-compatible subset
@@ -32,10 +32,8 @@ P6 SHALL NOT implement NSL WRITE.
 
 # 2. Entry Gate
 
-P6-CA01 is closed by
-`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 through P6-S6 are
-closed by their matching records in `docs/slices/`. P6-S7 is the next
-authorized implementation Slice.
+P6-CA01 and P6-S0 through P6-S7 are closed by their matching transition and
+Slice records. The protected E2E-01 IA READ exit gate is complete.
 
 ```text
 CA01A
