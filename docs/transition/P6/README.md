@@ -307,7 +307,22 @@ It passed 3812 tests with statement 98.66% and branch 96.88% coverage; the new
 S7 runtime module is 100% statement and branch covered. P6 adds no migration
 after `2204_ae_nsl_backend_run`.
 
-## 16. Exit Shape
+## 16. P6 Full Gate Closure
+
+The post-P6 repository-wide Full Gate passed at revision `284a6d76`:
+
+- 14592 passed, 34 protected tests skipped, zero failures and zero errors;
+- statement coverage 97.27% and branch coverage 96.74%;
+- 174 schemas, 236 examples, 204 negative examples and 7 OpenAPI documents
+  validated; and
+- repeated actual `nex_ae_test` plus source-backed NSL acceptance passed all
+  23 checks with zero residue.
+
+The skipped fifth-Slice Checkpoint Gate is explicitly waived. Canonical
+evidence and raw-report hashes are recorded in
+`docs/slices/p6_full_gate_closure_evidence.md`.
+
+## 17. Exit Shape
 
 ```text
 PROMPT

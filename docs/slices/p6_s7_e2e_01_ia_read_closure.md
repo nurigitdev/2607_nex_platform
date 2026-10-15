@@ -96,6 +96,10 @@ remaining rows after cleanup: 0
 
 Remote embedding, reranking and generation providers were not required.
 
+The post-closure repository-wide Full Gate and repeated protected PostgreSQL/
+NSL acceptance are recorded in
+`docs/slices/p6_full_gate_closure_evidence.md`.
+
 ## Closure
 
 P6-ISSUE-022 is closed. The v0.1 external dispatch/consume gap is backed by an
