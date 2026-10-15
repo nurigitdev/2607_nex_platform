@@ -1,6 +1,6 @@
 # P6 — NSL READ Integration SRS v1.1
 
-**Document Status:** P6-S5 NSL READ BACKEND COMPLETE; P6-S6 NEXT
+**Document Status:** P6-S6 RESULT/TIMELINE COMPLETE; P6-S7 NEXT
 **Supersedes:** v1.0
 **Implementation Baseline:** NSL v0.1 As-Built
 **Target Contract:** Frozen NSL v0.2 READ-compatible subset
@@ -33,8 +33,8 @@ P6 SHALL NOT implement NSL WRITE.
 # 2. Entry Gate
 
 P6-CA01 is closed by
-`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 through P6-S5 are
-closed by their matching records in `docs/slices/`. P6-S6 is the next
+`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 through P6-S6 are
+closed by their matching records in `docs/slices/`. P6-S7 is the next
 authorized implementation Slice.
 
 ```text
@@ -570,6 +570,20 @@ Do not infer unavailable state transitions.
 Projection gaps are explicit metadata.
 
 No independent timeline SoR unless S6 source audit proves a required transition cannot be represented.
+
+## 25.1 P6-S6 As-Built Decision
+
+The S6 source audit proved that the required complete-retained-evidence
+timeline can be reconstructed from existing canonical AE records. Migration
+`2205` and an independent timeline source of record are therefore not
+required.
+
+The implemented projection versions its phase/source ordering, hashes the
+complete projection, exposes unavailable transition history as explicit gaps,
+and excludes raw prompts, runtime envelopes, result payloads and credentials.
+Terminal NSL evidence maps through `NSLResultSummary` and
+`StepExecutionOutcome` into LOCAL_SKILL `StepResult v1.2` without changing
+historical P5 StepResult schema 1.1.
 
 # 26. Process Isolation
 

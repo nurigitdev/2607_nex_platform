@@ -247,6 +247,50 @@ def test_engine_executes_two_steps_in_persisted_dependency_order() -> None:
     assert phase == "RESULT_VERIFY"
 
 
+def test_engine_persists_local_skill_outcome_as_step_result_v12() -> None:
+    factory = _factory()
+    with factory.begin() as session:
+        session.execute(
+            text(
+                "UPDATE ae_executable_step SET step_type = 'LOCAL_SKILL', "
+                "executor_kind = 'LOCAL_SKILL' WHERE tenant_id = :tenant_id "
+                "AND executable_step_id = :step_id"
+            ),
+            {"tenant_id": TENANT, "step_id": STEP_1_ID},
+        )
+    engine, queue = _runtime(
+        factory,
+        engine_ids=(JOB_1_ID, RESULT_1_ID, JOB_2_ID),
+        queue_ids=(LEASE_1, ATTEMPT_1),
+    )
+    engine.schedule_next(tenant_id=TENANT, execution_id=EXECUTION_ID, now=NOW)
+    claim = _claim(queue)
+    engine.begin_claim(tenant_id=TENANT, claim=claim, now=NOW)
+
+    result = engine.record_outcome(
+        tenant_id=TENANT,
+        claim=claim,
+        outcome=StepTerminalOutcome(
+            status="SUCCEEDED",
+            result_contract_ref="contract://nex/ae/nsl-read-result/v1",
+            result_payload={
+                "nsl_result_summary_ref": "AE:NSL_RESULT_SUMMARY:test",
+                "nsl_execution_id": "66666666-6666-4666-8666-666666666666",
+                "execution_status": "COMPLETED",
+            },
+            executor_kind="LOCAL_SKILL",
+            business_operation_id="77777777-7777-4777-8777-777777777777",
+            started_at=NOW,
+            completed_at=LATER,
+        ),
+    )
+
+    assert result["schema_version"] == "1.2"
+    assert result["executor_kind"] == "LOCAL_SKILL"
+    assert result["business_operation_id"] == ("77777777-7777-4777-8777-777777777777")
+    assert result["operation_fingerprint"] is None
+
+
 def test_engine_propagates_failed_dependency_without_running_downstream() -> None:
     factory = _factory()
     engine, queue = _runtime(

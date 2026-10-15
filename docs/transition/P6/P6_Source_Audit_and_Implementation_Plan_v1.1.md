@@ -1,6 +1,6 @@
 # P6 Source Audit and Implementation Plan v1.1
 
-**Status:** P6-S5 COMPLETE; P6-S6 READY
+**Status:** P6-S6 COMPLETE; P6-S7 READY
 **Supersedes:** v1.0
 
 ## 1. Entry Sequence
@@ -20,9 +20,9 @@ P6 v1.1 document-set acceptance
 ```
 
 P6-CA01 is closed by
-`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 through P6-S5 are
+`P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md`. P6-S0 through P6-S6 are
 closed by their matching records in `docs/slices/`. The next implementation
-Slice is P6-S6.
+Slice is P6-S7.
 
 ## 2. Refactoring-First Rule
 
@@ -282,10 +282,12 @@ As-Built:
 - actual `nex_ae_test` acceptance executed exact clean NSL revision
   `803f22aadc3946a48b05472c80b60fe11d9d9554` and the signed golden READ with
   zero residue; and
-- S5 does not create result-summary, StepResult or timeline state. Those
-  remain P6-S6.
+- S5 did not create result-summary, StepResult or timeline state. Those were
+  assigned to and completed by P6-S6.
 
 ## 9. P6-S6 — Result / Timeline Integration
+
+**Status: COMPLETE**
 
 Implement:
 
@@ -306,6 +308,24 @@ Timeline:
 - no raw content.
 
 Do not add timeline SoR unless source audit proves a required event cannot be represented.
+
+As-Built:
+
+- terminal `RuntimeResultEnvelope` evidence is mapped into a bounded
+  `NSLResultSummary`, stable `StepExecutionOutcome` and durable LOCAL_SKILL
+  `StepResult v1.2`;
+- exact replay is idempotent while changed terminal summary evidence fails
+  closed;
+- P5 StepResult schema 1.1 behavior remains unchanged;
+- the timeline is a deterministic protected read projection over existing
+  AgentExecution, plan/step, RuntimeJob/attempt, NSL binding/run, StepResult,
+  AgentResult and ResultDelivery records;
+- missing historical transitions and v0.1 progress timestamps are explicit
+  projection gaps;
+- source audit proved migration `2205` and a separate timeline SoR are not
+  required; and
+- actual `nex_ae_test` acceptance passed 20/20 checks with 21 projected events,
+  restart determinism and zero residue.
 
 ## 10. P6-S7 — E2E-01 IA READ Closure
 
@@ -342,7 +362,7 @@ Current inventory:
 2202 NSL step execution binding + StepResult schema 1.2 support
 2203 LOCAL_SKILL capability/compiler/executable-step activation
 2204 process-isolated NSL backend attempt evidence
-2205 timeline projection support only if P6-S6 source audit proves it needed
+2205 NOT REQUIRED: P6-S6 projects from existing canonical records/evidence
 ```
 
 No cross-service FK.

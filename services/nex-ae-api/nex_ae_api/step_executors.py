@@ -55,6 +55,9 @@ class P5ExecutorOutcome:
     retrieval_package_hash: str | None = None
     cx_generation_id: str | None = None
     cx_job_id: str | None = None
+    business_operation_id: str | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -463,8 +466,14 @@ class P5StepExecutionWorker:
                 artifact_refs=outcome.artifact_refs,
                 evidence_refs=outcome.evidence_refs,
                 error_ref=outcome.error_ref,
-                started_at=now,
-                completed_at=now,
+                executor_kind=(
+                    LOCAL_SKILL_EXECUTOR_KIND
+                    if context.step.get("executor_kind") == LOCAL_SKILL_EXECUTOR_KIND
+                    else None
+                ),
+                business_operation_id=outcome.business_operation_id,
+                started_at=outcome.started_at or now,
+                completed_at=outcome.completed_at or now,
             ),
         )
         job = self._complete(tenant_id, claim, now)

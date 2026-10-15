@@ -59,6 +59,8 @@ class StepTerminalOutcome:
     artifact_refs: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
     error_ref: str | None = None
+    executor_kind: str | None = None
+    business_operation_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -290,6 +292,8 @@ class SqlAlchemyMultiStepEngine:
                     artifact_refs=outcome.artifact_refs,
                     evidence_refs=outcome.evidence_refs,
                     error_ref=outcome.error_ref,
+                    executor_kind=outcome.executor_kind,
+                    business_operation_id=outcome.business_operation_id,
                     started_at=outcome.started_at,
                     completed_at=outcome.completed_at,
                 )

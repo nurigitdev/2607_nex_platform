@@ -1,6 +1,6 @@
 # P6 Transition Implementation Baseline v1.1
 
-**Status:** P6-S5 COMPLETE; P6-S6 NEXT
+**Status:** P6-S6 COMPLETE; P6-S7 NEXT
 **Phase:** P6 — NSL READ Integration
 **Implementation Baseline:** NSL v0.1 As-Built
 **Target Contract:** Frozen NSL v0.2 READ-compatible integration subset
@@ -74,6 +74,8 @@ Frozen Platform v2.1 / Agent v2.1 / NSL v0.2
 19. `../../slices/p6_s2_skill_artifact_gateway.md`
 20. `../../slices/p6_s3_nsl_step_execution_binding.md`
 21. `../../slices/p6_s4_local_skill_executor_activation.md`
+22. `../../slices/p6_s5_nsl_read_backend_integration.md`
+23. `../../slices/p6_s6_result_timeline_integration.md`
 
 ## 5. CA01A Non-Negotiable Rules
 
@@ -260,10 +262,32 @@ P6-S5 implemented:
   residue.
 
 The adapter was proven against the exact clean NSL v0.1 revision and signed
-golden package. It does not map the terminal envelope into platform result or
-timeline records. P6-S6 is the next authorized Slice for that work.
+golden package. P6-S6 subsequently maps its terminal envelope into platform
+result and timeline records.
 
-## 14. Exit Shape
+## 14. P6-S6 Result
+
+P6-S6 implemented:
+
+- bounded `NSLResultSummary` mapping from exact binding, artifact and backend
+  attempt evidence;
+- exhaustive terminal status mapping and false-success rejection for process
+  isolation failures;
+- compare-and-set binding terminalization with stable summary reference/hash;
+- `StepExecutionOutcome` integration into the existing multi-step engine and
+  durable LOCAL_SKILL `StepResult v1.2`;
+- deterministic complete-retained-evidence timeline reconstruction over ten
+  existing AE source families;
+- explicit projection-gap metadata instead of fabricated transition history;
+- no migration or independent timeline source of record; and
+- actual `nex_ae_test` acceptance with 20/20 checks, 21 timeline events and
+  zero residue.
+
+The final AE Slice Gate passed 3708 tests with statement 98.66% and branch
+96.88% coverage. P6-S7 is the next authorized Slice and owns the complete IA
+READ journey through `AgentResult` while `ResultDelivery` remains pending.
+
+## 15. Exit Shape
 
 ```text
 PROMPT

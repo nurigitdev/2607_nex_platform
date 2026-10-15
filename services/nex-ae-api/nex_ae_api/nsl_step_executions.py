@@ -603,6 +603,95 @@ class SqlAlchemyNSLStepExecutionRepository:
                 True,
             ) from exc
 
+    def mark_result_terminal(
+        self,
+        *,
+        tenant_id: str,
+        executable_step_id: str,
+        state: str,
+        result_summary_ref: str,
+        result_summary_hash: str,
+        completed_at: str,
+    ) -> dict[str, dict[str, Any]]:
+        tenant = _text("tenant_id", tenant_id, 128)
+        step_id = _uuid("executable_step_id", executable_step_id)
+        if state not in _TERMINAL_STATES:
+            raise _invalid("NSL result terminal state is invalid.")
+        summary_ref = _ref("result_summary_ref", result_summary_ref)
+        summary_hash = _hash("result_summary_hash", result_summary_hash)
+        completed = _timestamp("completed_at", completed_at)
+        try:
+            with self._session_factory() as session:
+                existing = _load_bundle(session, tenant, step_id)
+                if existing is None:
+                    raise NSLStepExecutionError(
+                        "ae.nsl_binding_not_found",
+                        "NSL result requires a durable request binding.",
+                    )
+                binding = existing["binding"]
+                if binding["state"] in _TERMINAL_STATES:
+                    expected = {
+                        "state": state,
+                        "result_summary_ref": summary_ref,
+                        "result_summary_hash": summary_hash,
+                        "completed_at": completed,
+                    }
+                    if any(binding[key] != value for key, value in expected.items()):
+                        raise NSLStepExecutionError(
+                            "ae.nsl_binding_terminal_conflict",
+                            "NSL binding already has different terminal evidence.",
+                        )
+                    return existing
+                if binding["state"] != "RUNNING":
+                    raise NSLStepExecutionError(
+                        "ae.nsl_binding_state_conflict",
+                        "NSL result cannot terminalize the current binding state.",
+                    )
+                terminal = validate_nsl_step_execution_binding(
+                    {
+                        **binding,
+                        "state": state,
+                        "result_summary_ref": summary_ref,
+                        "result_summary_hash": summary_hash,
+                        "completed_at": completed,
+                        "updated_at": completed,
+                    }
+                )
+                result = session.execute(
+                    text(_mark_terminal_sql(_dialect_name(session))),
+                    {
+                        "tenant_id": tenant,
+                        "step_id": step_id,
+                        "request_hash": terminal["request_hash"],
+                        "state": state,
+                        "binding_json": canonical_json(terminal),
+                        "completed_at": completed,
+                    },
+                )
+                if result.rowcount != 1:
+                    raise NSLStepExecutionError(
+                        "ae.nsl_binding_terminal_conflict",
+                        "NSL binding state changed before terminal evidence was stored.",
+                        True,
+                    )
+                saved = _load_bundle(session, tenant, step_id)
+                if saved is None or saved["binding"] != terminal:
+                    raise NSLStepExecutionError(
+                        "ae.nsl_binding_write_conflict",
+                        "Terminal NSL binding could not be reloaded.",
+                        True,
+                    )
+                session.commit()
+                return saved
+        except NSLStepExecutionError:
+            raise
+        except SQLAlchemyError as exc:
+            raise NSLStepExecutionError(
+                "ae.nsl_binding_store_unavailable",
+                "AE NSL step execution binding store is unavailable.",
+                True,
+            ) from exc
+
 
 def nsl_step_execution_table_sql(dialect_name: str) -> tuple[str, ...]:
     json_type = "TEXT" if dialect_name == "sqlite" else "JSONB"
@@ -864,6 +953,21 @@ def _mark_running_sql(dialect_name: str) -> str:
             invocation_started_at = :now, updated_at = :now
         WHERE tenant_id = :tenant_id AND executable_step_id = :step_id
           AND state = 'REQUEST_BOUND' AND request_hash = :request_hash
+    """
+
+
+def _mark_terminal_sql(dialect_name: str) -> str:
+    binding_json = (
+        "CAST(:binding_json AS JSONB)"
+        if dialect_name == "postgresql"
+        else ":binding_json"
+    )
+    return f"""
+        UPDATE ae_nsl_step_execution
+        SET state = :state, binding_json = {binding_json},
+            completed_at = :completed_at, updated_at = :completed_at
+        WHERE tenant_id = :tenant_id AND executable_step_id = :step_id
+          AND state = 'RUNNING' AND request_hash = :request_hash
     """
 
 

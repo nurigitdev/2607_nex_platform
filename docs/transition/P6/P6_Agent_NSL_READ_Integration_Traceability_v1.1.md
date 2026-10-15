@@ -1,6 +1,6 @@
 # P6 Agent ↔ NSL READ Integration Traceability v1.1
 
-**Status:** P6-S5 NSL READ BACKEND EVIDENCE ADDED; P6-S6 NEXT
+**Status:** P6-S6 RESULT/TIMELINE EVIDENCE ADDED; P6-S7 NEXT
 
 ## 1. Identity chain
 
@@ -329,4 +329,41 @@ migrations and exact clean NSL revision `803f22aadc3946a48b05472c80b60fe11d9d955
 It executed the signed golden READ package, retained one restart-safe attempt,
 bridged four progress events and 26 evidence references, isolated a real
 timeout and non-zero child crash, preserved the parent DB session, and cleaned
-all S5 rows. P6-S6 owns result summary, StepResult and timeline projection.
+all S5 rows. P6-S6 subsequently closed result summary, StepResult and timeline
+projection with the evidence below.
+
+## 15. P6-S6 result and timeline evidence
+
+```text
+source:
+  services/nex-ae-api/nex_ae_api/nsl_result_integration.py
+  services/nex-ae-api/nex_ae_api/agent_execution_timeline.py
+  services/nex-ae-api/nex_ae_api/nsl_step_executions.py
+  services/nex-ae-api/nex_ae_api/multi_step_engine.py
+  services/nex-ae-api/nex_ae_api/step_executors.py
+
+tests:
+  tests/test_p6_s6_result_timeline_integration.py
+  tests/test_p6_s6_postgres_smoke.py
+
+protected runner:
+  scripts/smoke/run_p6_s6_postgres_smoke.py
+```
+
+Trace boundary:
+
+```text
+terminal ae_nsl_backend_run evidence
+-> bounded NSLResultSummary
+-> terminal ae_nsl_step_execution summary ref/hash
+-> StepExecutionOutcome
+-> LOCAL_SKILL StepResult v1.2
+-> deterministic timeline over retained canonical AE sources
+```
+
+Actual `nex_ae_test` evidence passed 20/20 checks against 43 current
+migrations and exact clean NSL revision `803f22aadc3946a48b05472c80b60fe11d9d9554`.
+It persisted one StepResult v1.2, projected 21 ordered events with three
+explicit source gaps, reproduced the same projection after repository restart,
+excluded raw runtime/private content, and cleaned all S6/P5 rows. Source audit
+proved that migration `2205` and a separate timeline SoR are not required.

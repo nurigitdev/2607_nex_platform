@@ -1,6 +1,6 @@
 # P6 NSL READ Integration Issue Register v1.1
 
-**Status:** P6-S5 COMPLETE; P6-S6 NEXT
+**Status:** P6-S6 COMPLETE; P6-S7 NEXT
 
 | ID | Sev | Issue | v1.1 Decision | Status |
 |---|---:|---|---|---|
@@ -21,15 +21,16 @@
 | P6-ISSUE-015 | P1 | Blind replay unsafe | no arbitrary Agent Runtime replay API | DESIGN_CLOSED |
 | P6-ISSUE-016 | P2 | Process-isolation profile not selected | `NSL_V01_PROCESS_ISOLATED` proves timeout, crash and protocol containment | CLOSED |
 | P6-ISSUE-017 | P2 | Golden READ fixture not selected | Exact signed `FINANCE.PROJECT_BUDGET_CHECK@1.0.0` fixture selected and executed | CLOSED |
-| P6-ISSUE-018 | P1 | Timeline could overclaim historical state | deterministic projection; unknown optional history remains null | DESIGN_CLOSED_S6_IMPL |
-| P6-ISSUE-019 | P1 | Old trace sees one job/step only | S6 complete retained-evidence timeline | OPEN_S6 |
+| P6-ISSUE-018 | P1 | Timeline could overclaim historical state | deterministic projection; unavailable history is an explicit projection gap | CLOSED |
+| P6-ISSUE-019 | P1 | Old trace sees one job/step only | ten-source complete-retained-evidence timeline with versioned ordering and projection hash | CLOSED |
 | P6-ISSUE-020 | P0 | Exact NSL checkout must be verified in the Codex workspace | CA01 refreshed clean exact `803f22a...` checkout | CLOSED |
 | P6-ISSUE-021 | P2 | v0.2 backend may arrive mid-P6 | backend port permits explicit swap; no auto-detection | RESOLVED_DESIGN |
 | P6-ISSUE-022 | P2 | v0.1 AE-004/AE-008 external gaps | S7 closes dispatch/consume and result/explanation separation | OPEN_S7 |
 
 ## Gate
 
-The P6-CA01 gate and P6-S0 through P6-S5 are closed. The exact NSL v0.1 source
-now executes through an explicit process-isolated backend with durable attempt
-evidence. P6-S6 is the next authorized Slice and owns result-summary,
-StepResult and timeline projection only.
+The P6-CA01 gate and P6-S0 through P6-S6 are closed. Exact NSL v0.1 terminal
+evidence now produces a bounded result summary, LOCAL_SKILL StepResult v1.2
+and deterministic timeline projection without a new timeline source of
+record. P6-S7 is the next authorized Slice and owns the protected IA READ
+end-to-end closure.
