@@ -17,10 +17,15 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.nsl_backend_profiles import (
+    DEFAULT_NSL_V01_BACKEND_PROFILE,
+    NSL_V01_PROCESS_ISOLATED_BACKEND,
+    normalize_nsl_backend_profile,
+)
 from nex_ae_api.planning_capabilities import validate_local_skill_binding
 from nex_ae_api.skill_artifacts import validate_verified_skill_artifact
 
-BACKEND_PROFILE = "NSL_V01_PROCESS_ISOLATED"
+BACKEND_PROFILE = DEFAULT_NSL_V01_BACKEND_PROFILE
 CONTEXT_PROJECTION_SCHEMA_VERSION = "1.0"
 SKILL_EXECUTION_REQUEST_SCHEMA_VERSION = "1.0"
 NSL_STEP_BINDING_SCHEMA_VERSION = "1.0"
@@ -371,10 +376,11 @@ def validate_nsl_step_execution_binding(value: Mapping[str, Any]) -> dict[str, A
         _hash(field, binding[field])
     for field in ("verified_artifact_ref", "request_ref"):
         _ref(field, binding[field])
-    if (
-        binding["backend_profile"] != BACKEND_PROFILE
-        or binding["state"] not in _BINDING_STATES
-    ):
+    try:
+        normalize_nsl_backend_profile(binding["backend_profile"])
+    except ValueError as exc:
+        raise _invalid("NSLStepExecutionBinding backend profile is invalid.") from exc
+    if binding["state"] not in _BINDING_STATES:
         raise _invalid("NSLStepExecutionBinding backend profile or state is invalid.")
     state = binding["state"]
     for field in ("allocated_at", "created_at", "updated_at"):
@@ -444,6 +450,7 @@ class SqlAlchemyNSLStepExecutionRepository:
                     )
                 artifact = validate_verified_skill_artifact(artifact)
                 _require_artifact_selector(lineage, artifact)
+                backend_profile = _lineage_backend_profile(lineage)
                 context_id = _require_agent_context(session, tenant, lineage, context)
                 existing = _load_bundle(session, tenant, step_id)
                 if existing is not None:
@@ -458,7 +465,13 @@ class SqlAlchemyNSLStepExecutionRepository:
                             "business_operation_id"
                         ],
                     )
-                    _require_replay(existing, expected_request, context, artifact)
+                    _require_replay(
+                        existing,
+                        expected_request,
+                        context,
+                        artifact,
+                        backend_profile,
+                    )
                     return existing
 
                 nsl_execution_id = _uuid("nsl_execution_id", self._id_factory())
@@ -491,7 +504,7 @@ class SqlAlchemyNSLStepExecutionRepository:
                         "verified_artifact_hash": artifact["artifact_hash"],
                         "request_ref": request_ref,
                         "request_hash": semantic_sha256_hash_ref(request),
-                        "backend_profile": BACKEND_PROFILE,
+                        "backend_profile": backend_profile,
                         "state": "REQUEST_BOUND",
                         "result_summary_ref": None,
                         "result_summary_hash": None,
@@ -512,7 +525,7 @@ class SqlAlchemyNSLStepExecutionRepository:
                         "NSL step execution binding could not be reloaded.",
                         True,
                     )
-                _require_replay(saved, request, context, artifact)
+                _require_replay(saved, request, context, artifact, backend_profile)
                 session.commit()
                 return saved
         except NSLStepExecutionError:
@@ -839,12 +852,23 @@ def _require_artifact_selector(
         binding["skill_semantic_hash"] != artifact["skill_semantic_hash"]
         or binding["runtime_contract_ref"] != artifact["runtime_contract_ref"]
         or binding["trust_policy_id"] != artifact["trust_evidence"]["trust_policy_id"]
-        or binding["backend_profile"] != BACKEND_PROFILE
     ):
         raise NSLStepExecutionError(
             "ae.nsl_binding_artifact_mismatch",
             "Verified Skill artifact does not match the compiled runtime binding.",
         )
+
+
+def _lineage_backend_profile(lineage: Mapping[str, Any]) -> str:
+    if lineage["executor_kind"] != "LOCAL_SKILL":
+        return NSL_V01_PROCESS_ISOLATED_BACKEND
+    try:
+        binding = validate_local_skill_binding(lineage["skill_binding"])
+    except Exception as exc:
+        raise _invalid(
+            "Active LOCAL_SKILL step lacks its exact compiled binding."
+        ) from exc
+    return binding["backend_profile"]
 
 
 def _require_agent_context(
@@ -1006,6 +1030,7 @@ def _require_replay(
     request: Mapping[str, Any],
     context: Mapping[str, Any],
     artifact: Mapping[str, Any],
+    backend_profile: str,
 ) -> None:
     binding = saved["binding"]
     if (
@@ -1014,6 +1039,7 @@ def _require_replay(
         or binding["request_hash"] != semantic_sha256_hash_ref(request)
         or binding["verified_artifact_ref"] != artifact["artifact_ref"]
         or binding["verified_artifact_hash"] != artifact["artifact_hash"]
+        or binding["backend_profile"] != backend_profile
     ):
         raise NSLStepExecutionError(
             "ae.nsl_binding_immutable_conflict",

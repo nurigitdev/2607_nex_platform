@@ -26,6 +26,10 @@ from nex_runtime import (
 )
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
+from nex_ae_api.nsl_backend_profiles import (
+    NSL_V01_BACKEND_PROFILES,
+    NSL_V01_PROCESS_ISOLATED_BACKEND,
+)
 from nex_ae_api.runtime_jobs import RuntimeJobClaim
 
 AE_AGENT_RUNTIME_WORKER_PROFILE_SCHEMA_VERSION = "1.0"
@@ -38,7 +42,6 @@ AE_AGENT_RUNTIME_WORKER_CHECK_SCHEMA_VERSION = "ae_agent_runtime_worker_check.v1
 AE_AGENT_RUNTIME_WORKER_SERVICE_ID = "nex-ae-api"
 AE_AGENT_RUNTIME_WORKER_TYPE = "ae.agent_runtime.worker"
 LOCAL_SKILL_EXECUTOR = "LOCAL_SKILL"
-NSL_V01_PROCESS_ISOLATED_BACKEND = "NSL_V01_PROCESS_ISOLATED"
 SNAPSHOT_REQUIRED = "SNAPSHOT_REQUIRED"
 
 WORKER_MODES = frozenset({"disabled", "enabled"})
@@ -438,6 +441,8 @@ def validate_agent_runtime_worker_profile(
     backends = _normalized_values(
         value["supported_backend_profiles"], "supported_backend_profiles"
     )
+    if not set(backends).issubset(NSL_V01_BACKEND_PROFILES):
+        raise _invalid("worker backend profile is unsupported.")
     evidence_policy = _required_text(value["evidence_policy"], "evidence_policy")
     if evidence_policy not in EVIDENCE_POLICIES:
         raise _invalid("worker evidence policy is unsupported.")

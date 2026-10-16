@@ -6,6 +6,7 @@ from typing import Any
 
 from nex_ae_api.agent_runtime_worker import AgentRuntimeAssignment
 from nex_ae_api.multi_step_engine import StepExecutionContext
+from nex_ae_api.nsl_backend_profiles import normalize_nsl_backend_profile
 from nex_ae_api.nsl_read_backends import NSLReadBackendError, NSLReadExecutionService
 from nex_ae_api.nsl_result_integration import (
     NSLResultIntegrationError,
@@ -13,7 +14,6 @@ from nex_ae_api.nsl_result_integration import (
 )
 from nex_ae_api.nsl_step_executions import NSLStepExecutionError
 from nex_ae_api.planning_capabilities import (
-    LOCAL_SKILL_BACKEND_PROFILE,
     LOCAL_SKILL_EXECUTOR_KIND,
     CapabilitySnapshotError,
     validate_local_skill_binding,
@@ -64,9 +64,7 @@ class P6LocalSkillReadHandler:
                 context.step.get("executable_step_id"),
                 64,
             )
-            attempt_no = _positive_int(
-                "attempt_no", context.attempt.get("attempt_no")
-            )
+            attempt_no = _positive_int("attempt_no", context.attempt.get("attempt_no"))
             binding = validate_local_skill_binding(context.step.get("skill_binding"))
             invocation = dependencies.request_builder(context=context)
             if not isinstance(invocation, LocalSkillInvocation):
@@ -100,7 +98,9 @@ class P6LocalSkillReadHandler:
             integration = self._result_integration.finalize_bound(
                 tenant_id=tenant_id,
                 executable_step_id=step_id,
-                attempt_no=_positive_int("backend attempt_no", backend_run.get("attempt_no")),
+                attempt_no=_positive_int(
+                    "backend attempt_no", backend_run.get("attempt_no")
+                ),
             )
             outcome = dependencies.result_mapper(integration.outcome)
             if not isinstance(outcome, P5ExecutorOutcome):
@@ -137,8 +137,12 @@ class AgentRuntimeStepAssignmentHandler:
             raise _invalid("Agent Runtime assignment is invalid.")
         if assignment.executor_kind != LOCAL_SKILL_EXECUTOR_KIND:
             raise _invalid("Agent Runtime assignment executor is unsupported.")
-        if assignment.backend_profile != LOCAL_SKILL_BACKEND_PROFILE:
-            raise _invalid("Agent Runtime assignment backend profile is unsupported.")
+        try:
+            normalize_nsl_backend_profile(assignment.backend_profile)
+        except ValueError as exc:
+            raise _invalid(
+                "Agent Runtime assignment backend profile is unsupported."
+            ) from exc
         execution = self._worker.run_claim(
             tenant_id=assignment.tenant_id,
             claim=assignment.claim,

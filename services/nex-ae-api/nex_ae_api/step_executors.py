@@ -14,8 +14,8 @@ from nex_ae_api.multi_step_engine import (
     StepTerminalOutcome,
     StepWaitingOutcome,
 )
+from nex_ae_api.nsl_backend_profiles import normalize_nsl_backend_profile
 from nex_ae_api.planning_capabilities import (
-    LOCAL_SKILL_BACKEND_PROFILE,
     LOCAL_SKILL_EXECUTOR_KIND,
     CapabilitySnapshotError,
     validate_local_skill_binding,
@@ -102,7 +102,7 @@ class P6LocalSkillExecutor:
 
     @property
     def backend_profile(self) -> str:
-        return LOCAL_SKILL_BACKEND_PROFILE
+        return str(self._dependencies.backend.backend_profile)
 
     def execute(
         self,
@@ -116,9 +116,13 @@ class P6LocalSkillExecutor:
         if continuation_result is not None:
             raise _invalid("LOCAL_SKILL READ cannot consume continuation input in P6.")
         try:
-            validate_local_skill_binding(context.step.get("skill_binding"))
+            binding = validate_local_skill_binding(context.step.get("skill_binding"))
         except CapabilitySnapshotError as exc:
             raise _invalid("LOCAL_SKILL compiled binding is invalid.") from exc
+        if binding["backend_profile"] != self.backend_profile:
+            raise _local_skill_unavailable(
+                "LOCAL_SKILL compiled binding has no matching configured backend."
+            )
         outcome = self._handler(context, self._dependencies)
         if not isinstance(outcome, P5ExecutorOutcome):
             raise _invalid("LOCAL_SKILL handler returned an invalid outcome.")
@@ -148,11 +152,12 @@ def validate_local_skill_executor_dependencies(
         raise _local_skill_unavailable(
             "LOCAL_SKILL result mapper dependency is unavailable."
         )
-    backend_profile = getattr(value.backend, "backend_profile", None)
-    if backend_profile != LOCAL_SKILL_BACKEND_PROFILE:
+    try:
+        normalize_nsl_backend_profile(getattr(value.backend, "backend_profile", None))
+    except ValueError as exc:
         raise _local_skill_unavailable(
             "LOCAL_SKILL selected backend profile is unsupported."
-        )
+        ) from exc
     return value
 
 

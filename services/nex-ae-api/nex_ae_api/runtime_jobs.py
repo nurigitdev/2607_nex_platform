@@ -40,6 +40,7 @@ class RuntimeJobClaim:
     job: dict[str, Any]
     attempt: dict[str, Any]
     executor_kind: str | None = None
+    backend_profile: str | None = None
 
 
 class SqlAlchemyRuntimeJobQueue:
@@ -222,6 +223,7 @@ class SqlAlchemyRuntimeJobQueue:
         tenant_id: str,
         worker_id: str,
         supported_executor_kinds: Sequence[str],
+        supported_backend_profiles: Sequence[str] | None = None,
         lease_seconds: int,
         now: str,
         queue_name: str | None = None,
@@ -231,6 +233,11 @@ class SqlAlchemyRuntimeJobQueue:
         tenant = _required("tenant_id", tenant_id)
         worker = _required("worker_id", worker_id)
         executor_kinds = _executor_kinds(supported_executor_kinds)
+        backend_profiles = (
+            None
+            if supported_backend_profiles is None
+            else _backend_profiles(supported_backend_profiles)
+        )
         if (
             isinstance(lease_seconds, bool)
             or not isinstance(lease_seconds, int)
@@ -252,6 +259,7 @@ class SqlAlchemyRuntimeJobQueue:
                     session,
                     tenant_id=tenant,
                     executor_kinds=executor_kinds,
+                    backend_profiles=backend_profiles,
                     now=observed_at,
                     leadership=leadership,
                 )
@@ -298,6 +306,11 @@ class SqlAlchemyRuntimeJobQueue:
                     job=job,
                     attempt=attempt,
                     executor_kind=str(candidate["executor_kind"]),
+                    backend_profile=(
+                        None
+                        if candidate["backend_profile"] is None
+                        else str(candidate["backend_profile"])
+                    ),
                 )
         except RuntimeJobError:
             raise
@@ -733,6 +746,7 @@ def _select_capability_runnable(
     *,
     tenant_id: str,
     executor_kinds: tuple[str, ...],
+    backend_profiles: tuple[str, ...] | None,
     now: str,
     leadership: Mapping[str, Any],
 ) -> Mapping[str, Any] | None:
@@ -753,6 +767,21 @@ def _select_capability_runnable(
     lock_suffix = (
         " FOR UPDATE OF job, step SKIP LOCKED" if dialect == "postgresql" else ""
     )
+    backend_expression = (
+        "step.skill_binding_json ->> 'backend_profile'"
+        if dialect == "postgresql"
+        else "json_extract(step.skill_binding_json, '$.backend_profile')"
+    )
+    backend_selection = (
+        f", {backend_expression} AS backend_profile"
+        if backend_profiles is not None
+        else ", NULL AS backend_profile"
+    )
+    backend_predicate = (
+        f" AND {backend_expression} IN :backend_profiles"
+        if backend_profiles is not None
+        else ""
+    )
     statement = text(
         """
         SELECT job.tenant_id, job.runtime_job_id, job.job_type,
@@ -763,6 +792,9 @@ def _select_capability_runnable(
                job.lease_token, job.lease_until, job.payload_json,
                job.correlation_id, job.causation_id, job.created_at,
                job.updated_at, step.executor_kind
+        """
+        + backend_selection
+        + """
         FROM ae_runtime_job AS job
         JOIN ae_executable_step AS step
           ON step.tenant_id = job.tenant_id
@@ -772,6 +804,9 @@ def _select_capability_runnable(
         + """
         WHERE job.tenant_id = :tenant_id
           AND step.executor_kind IN :executor_kinds
+        """
+        + backend_predicate
+        + """
           AND ((job.state = 'QUEUED' AND job.run_after <= :now)
                OR (job.state = 'RUNNING' AND job.lease_until <= :now))
         """
@@ -783,12 +818,19 @@ def _select_capability_runnable(
         """
         + lock_suffix
     ).bindparams(bindparam("executor_kinds", expanding=True))
+    if backend_profiles is not None:
+        statement = statement.bindparams(bindparam("backend_profiles", expanding=True))
     return (
         session.execute(
             statement,
             {
                 "tenant_id": tenant_id,
                 "executor_kinds": list(executor_kinds),
+                **(
+                    {"backend_profiles": list(backend_profiles)}
+                    if backend_profiles is not None
+                    else {}
+                ),
                 "now": now,
                 **leadership,
             },
@@ -1057,6 +1099,17 @@ def _executor_kinds(values: Sequence[str]) -> tuple[str, ...]:
     normalized = tuple(sorted({_required("executor_kind", value) for value in values}))
     if not normalized:
         raise _invalid("supported_executor_kinds must not be empty.")
+    return normalized
+
+
+def _backend_profiles(values: Sequence[str]) -> tuple[str, ...]:
+    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+        raise _invalid("supported_backend_profiles must be an array of strings.")
+    normalized = tuple(
+        sorted({_required("backend_profile", value) for value in values})
+    )
+    if not normalized:
+        raise _invalid("supported_backend_profiles must not be empty.")
     return normalized
 
 

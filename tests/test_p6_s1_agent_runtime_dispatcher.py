@@ -8,13 +8,16 @@ import nex_ae_api.agent_runtime_dispatcher as dispatcher_module
 import nex_ae_api.runtime_jobs as runtime_job_module
 import pytest
 from nex_ae_api.agent_runtime_dispatcher import (
-    NSL_V01_PROCESS_ISOLATED_BACKEND,
     AgentRuntimeDispatcherConfig,
     AgentRuntimeDispatcherError,
     SqlAlchemyAgentRuntimeAssignmentSource,
     SqlAlchemyAgentRuntimeDispatcher,
     agent_runtime_dispatcher_table_sql,
     load_agent_runtime_dispatcher_config,
+)
+from nex_ae_api.nsl_backend_profiles import (
+    NSL_V01_IN_PROCESS_BACKEND,
+    NSL_V01_PROCESS_ISOLATED_BACKEND,
 )
 from nex_ae_api.runtime_jobs import RuntimeJobError, SqlAlchemyRuntimeJobQueue
 from sqlalchemy import create_engine, text
@@ -53,6 +56,7 @@ def runtime_store():
                     tenant_id TEXT NOT NULL,
                     executable_step_id TEXT NOT NULL,
                     executor_kind TEXT NULL,
+                    skill_binding_json TEXT NULL,
                     PRIMARY KEY (tenant_id, executable_step_id)
                 )
                 """
@@ -134,6 +138,7 @@ def _add_job(
     executable_step_id: str | None = None,
     insert_step: bool = True,
     run_after: str = NOW,
+    backend_profile: str = NSL_V01_PROCESS_ISOLATED_BACKEND,
 ) -> dict[str, Any]:
     execution_id = f"execution-{tenant_id}-{suffix}"
     step_id = executable_step_id
@@ -146,8 +151,20 @@ def _add_job(
         )
         if insert_step and step_id is not None:
             connection.execute(
-                text("INSERT INTO ae_executable_step VALUES (:tenant, :step, :kind)"),
-                {"tenant": tenant_id, "step": step_id, "kind": executor_kind},
+                text(
+                    "INSERT INTO ae_executable_step VALUES "
+                    "(:tenant, :step, :kind, :binding)"
+                ),
+                {
+                    "tenant": tenant_id,
+                    "step": step_id,
+                    "kind": executor_kind,
+                    "binding": (
+                        '{"backend_profile":"' + backend_profile + '"}'
+                        if executor_kind == "LOCAL_SKILL"
+                        else None
+                    ),
+                },
             )
     return queue.enqueue_unique(
         tenant_id=tenant_id,
@@ -160,6 +177,56 @@ def _add_job(
         correlation_id=f"correlation-{tenant_id}-{suffix}",
         now=NOW,
         payload={"fixture_ref": f"fixture-{suffix}"},
+    )
+
+
+def test_dispatch_claims_only_exact_worker_backend_profile(runtime_store) -> None:
+    engine, factory = runtime_store
+    queue = _queue(factory)
+    in_process = _add_job(
+        engine,
+        queue,
+        tenant_id="tenant-dual",
+        suffix="in-process",
+        backend_profile=NSL_V01_IN_PROCESS_BACKEND,
+    )
+    isolated = _add_job(
+        engine,
+        queue,
+        tenant_id="tenant-dual",
+        suffix="isolated",
+    )
+    dispatcher = _dispatcher(factory, per_tenant_active_claim_cap=2)
+
+    isolated_round = dispatcher.dispatch_round(
+        worker_id="worker-isolated",
+        supported_executor_kinds=("LOCAL_SKILL",),
+        supported_backend_profiles=(NSL_V01_PROCESS_ISOLATED_BACKEND,),
+        lease_seconds=60,
+        observed_at=NOW,
+    )
+
+    assert [
+        assignment.runtime_job_id for assignment in isolated_round["assignments"]
+    ] == [isolated["runtime_job_id"]]
+    assert isolated_round["assignments"][0].backend_profile == (
+        NSL_V01_PROCESS_ISOLATED_BACKEND
+    )
+    assert queue.get("tenant-dual", in_process["runtime_job_id"])["state"] == "QUEUED"
+
+    in_process_round = dispatcher.dispatch_round(
+        worker_id="worker-in-process",
+        supported_executor_kinds=("LOCAL_SKILL",),
+        supported_backend_profiles=(NSL_V01_IN_PROCESS_BACKEND,),
+        lease_seconds=60,
+        observed_at=NOW,
+    )
+
+    assert [
+        assignment.runtime_job_id for assignment in in_process_round["assignments"]
+    ] == [in_process["runtime_job_id"]]
+    assert in_process_round["assignments"][0].backend_profile == (
+        NSL_V01_IN_PROCESS_BACKEND
     )
 
 

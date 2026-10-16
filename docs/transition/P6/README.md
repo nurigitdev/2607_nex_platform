@@ -83,6 +83,7 @@ Frozen Platform v2.1 / Agent v2.1 / NSL v0.2
 25. `../../slices/p6_full_gate_closure_evidence.md`
 26. `P6_CA02_In_Process_NSL_Runtime_Profile_Clarification_v1.0.md`
 27. `../../slices/p6_ca02_s1_nsl_dependency_wheel_admission.md`
+28. `../../slices/p6_ca02_s2_dual_profile_compatibility.md`
 
 ## 5. CA01A Non-Negotiable Rules
 
@@ -348,7 +349,26 @@ No database migration, PostgreSQL smoke or remote provider was required. The
 existing process-isolated runtime remains active until a later Slice composes
 and advertises `NSL_V01_IN_PROCESS` readiness.
 
-## 18. Exit Shape
+## 18. P6-CA02-S2 Result
+
+P6-CA02-S2 established dual-profile contract and persistence compatibility:
+
+- new LOCAL_SKILL capability compilation defaults to `NSL_V01_IN_PROCESS`;
+- historical `NSL_V01_PROCESS_ISOLATED` bindings remain readable and are not
+  rewritten;
+- migration `2205_ae_nsl_dual_profile` admits both exact values in durable NSL
+  step bindings;
+- binding replay, RuntimeJob claim and executor composition preserve the exact
+  compiled profile and fail closed instead of falling back; and
+- unsupported-profile work remains queued for a capable worker.
+
+Actual `nex_ae_test` smoke passed all 9 checks for separate in-process and
+process-isolated round trips with zero residue. The NeX-AE Slice Gate passed
+3,824 tests with 98.64% statement and 96.84% branch coverage; contract
+validation remained green. In-process adapter implementation and worker
+readiness advertisement remain the next Slice boundary.
+
+## 19. Exit Shape
 
 ```text
 PROMPT

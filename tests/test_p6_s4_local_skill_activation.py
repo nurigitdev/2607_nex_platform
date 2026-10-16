@@ -80,6 +80,7 @@ def _local_capability(**overrides):
         "output_contract_ref": "contract://nex/p6/step-result/v1.2",
         "runtime_contract_ref": "contract://nex/nsl/read-runtime/v1",
         "trust_policy_id": "p6-signed-active-v1",
+        "backend_profile": "NSL_V01_PROCESS_ISOLATED",
     }
     return build_local_skill_capability(**{**values, **overrides})
 

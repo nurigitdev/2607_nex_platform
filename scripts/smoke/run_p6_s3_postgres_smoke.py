@@ -22,6 +22,7 @@ for path in (
     sys.path.insert(0, str(path))
 
 import run_p5_s5_postgres_smoke as p5_s5
+from nex_ae_api.nsl_backend_profiles import NSL_V01_PROCESS_ISOLATED_BACKEND
 from nex_ae_api.nsl_step_executions import (
     NSLStepExecutionError,
     SqlAlchemyNSLStepExecutionRepository,
@@ -126,7 +127,12 @@ def run_p6_s3_postgres_smoke(
         )
 
 
-def _verify_nsl_binding(fixture: Mapping[str, Any]) -> dict[str, Any]:
+def _verify_nsl_binding(
+    fixture: Mapping[str, Any],
+    *,
+    backend_profile: str = NSL_V01_PROCESS_ISOLATED_BACKEND,
+    activate_executor: bool = False,
+) -> dict[str, Any]:
     factory = fixture["factory"]
     tenant_id = str(fixture["tenant_id"])
     execution = dict(fixture["execution"])
@@ -138,20 +144,41 @@ def _verify_nsl_binding(fixture: Mapping[str, Any]) -> dict[str, Any]:
     artifacts.save(tenant_id=tenant_id, artifact=artifact)
 
     with factory.begin() as session:
-        session.execute(
-            text(
+        update = (
+            "UPDATE ae_executable_step SET step_kind = 'LOCAL_SKILL', "
+            "step_type = 'LOCAL_SKILL', executor_kind = 'LOCAL_SKILL', "
+            "required_capability = :skill_id, capability_version = :skill_version, "
+            "skill_binding_json = CAST(:skill_binding AS JSONB) "
+            "WHERE tenant_id = :tenant_id AND executable_step_id = :step_id"
+            if activate_executor
+            else (
                 "UPDATE ae_executable_step SET step_kind = 'LOCAL_SKILL_UNAVAILABLE', "
                 "step_type = 'LOCAL_SKILL', executor_kind = 'LOCAL_SKILL_UNAVAILABLE', "
                 "required_capability = :skill_id, capability_version = :skill_version "
                 "WHERE tenant_id = :tenant_id AND executable_step_id = :step_id"
-            ),
-            {
-                "tenant_id": tenant_id,
-                "step_id": step["executable_step_id"],
-                "skill_id": artifact["skill_id"],
-                "skill_version": artifact["skill_version"],
-            },
+            )
         )
+        parameters = {
+            "tenant_id": tenant_id,
+            "step_id": step["executable_step_id"],
+            "skill_id": artifact["skill_id"],
+            "skill_version": artifact["skill_version"],
+        }
+        if activate_executor:
+            parameters["skill_binding"] = json.dumps(
+                {
+                    "skill_id": artifact["skill_id"],
+                    "exact_skill_version": artifact["skill_version"],
+                    "skill_semantic_hash": artifact["skill_semantic_hash"],
+                    "runtime_contract_ref": artifact["runtime_contract_ref"],
+                    "trust_policy_id": artifact["trust_evidence"]["trust_policy_id"],
+                    "backend_profile": backend_profile,
+                    "package_requirement": "SIGNED_TRUSTED_ACTIVE",
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        session.execute(text(update), parameters)
         context = (
             session.execute(
                 text(
@@ -262,6 +289,9 @@ def _verify_nsl_binding(fixture: Mapping[str, Any]) -> dict[str, Any]:
         "request_hash_bound": int(row["hash_matches"]) == 1,
         "immutable_replay_rejected": changed_rejected,
         "pre_s4_executor_not_activated": bound["binding"]["state"] == "REQUEST_BOUND",
+        "exact_backend_profile_persisted": (
+            bound["binding"]["backend_profile"] == backend_profile
+        ),
     }
     with factory.begin() as session:
         deleted_binding = int(

@@ -55,6 +55,11 @@ canonical NSL v0.1 `RuntimeResultEnvelope` bytes kept behind `result_ref`.
   P6 StepResult `1.2` through explicit version dispatch.
 - P6 writers emit `1.2` only for the new implementation path.
 - Historical `1.1` records are not mutated or backfilled.
+- New LOCAL_SKILL compilation selects `NSL_V01_IN_PROCESS`; historical
+  `NSL_V01_PROCESS_ISOLATED` bindings remain valid and retain their exact
+  persisted profile across retry and restart.
+- Backend profile resolution is fail-closed. There is no implicit profile
+  fallback or persistence rewrite.
 - For `LOCAL_SKILL`, `business_operation_id` is a UUID and
   `operation_fingerprint` is null.
 - For non-NSL executors, both values remain null.

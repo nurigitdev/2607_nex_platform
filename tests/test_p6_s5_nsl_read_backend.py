@@ -830,6 +830,22 @@ def test_execution_service_and_repositories_fail_closed(store) -> None:
             runs=runs,
         )
 
+    in_process_backend = types.SimpleNamespace(
+        backend_profile="NSL_V01_IN_PROCESS", execute=lambda **_kwargs: {}
+    )
+    in_process_service = NSLReadExecutionService(
+        bindings=bindings,
+        artifacts=artifacts,
+        backend=in_process_backend,
+        runs=runs,
+    )
+    with pytest.raises(NSLReadBackendError) as mismatch:
+        in_process_service.execute_bound(
+            tenant_id=TENANT, executable_step_id=STEP_ID, attempt_no=1
+        )
+    assert mismatch.value.error_code == "ae.nsl_backend_profile_mismatch"
+    assert mismatch.value.retryable is True
+
 
 def test_mark_invocation_started_is_idempotent_and_state_guarded(store) -> None:
     engine, _factory, bindings, _artifacts = store

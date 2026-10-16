@@ -26,6 +26,7 @@ from nex_ae_api.agent_runtime_worker import (
     build_agent_runtime_worker_check,
     build_agent_runtime_worker_profile,
 )
+from nex_ae_api.nsl_backend_profiles import NSL_V01_PROCESS_ISOLATED_BACKEND
 from nex_ae_api.planning_capabilities import (
     DEFAULT_P5_CAPABILITIES,
     build_local_skill_capability,
@@ -189,6 +190,7 @@ def _local_capability() -> dict[str, Any]:
         output_contract_ref="contract://nex/p6/step-result/v1.2",
         runtime_contract_ref="contract://nex/nsl/read-runtime/v0.1",
         trust_policy_id="nsl.production.ed25519.v1",
+        backend_profile=NSL_V01_PROCESS_ISOLATED_BACKEND,
     )
 
 

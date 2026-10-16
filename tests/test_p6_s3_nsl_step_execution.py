@@ -413,6 +413,7 @@ def test_repository_persists_one_restart_safe_binding_per_step(store) -> None:
     assert first["binding"]["state"] == "REQUEST_BOUND"
     assert first["binding"]["nsl_execution_id"] == NSL_ID
     assert first["binding"]["business_operation_id"] == BOI
+    assert first["binding"]["backend_profile"] == "NSL_V01_PROCESS_ISOLATED"
     assert first["request"] == _example("p6-golden-skill-execution-request-v1.json")
     with engine.connect() as connection:
         assert (
@@ -421,6 +422,48 @@ def test_repository_persists_one_restart_safe_binding_per_step(store) -> None:
             ).scalar_one()
             == 1
         )
+
+
+def test_repository_persists_exact_compiled_profile_and_rejects_profile_rewrite(
+    store,
+) -> None:
+    engine, factory = store
+    artifact = _example("p6-golden-verified-artifact-v1.json")
+    binding = {
+        "skill_id": artifact["skill_id"],
+        "exact_skill_version": artifact["skill_version"],
+        "skill_semantic_hash": artifact["skill_semantic_hash"],
+        "runtime_contract_ref": artifact["runtime_contract_ref"],
+        "trust_policy_id": artifact["trust_evidence"]["trust_policy_id"],
+        "backend_profile": "NSL_V01_IN_PROCESS",
+        "package_requirement": "SIGNED_TRUSTED_ACTIVE",
+    }
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE ae_executable_step SET executor_kind = 'LOCAL_SKILL', "
+                "skill_binding_json = :binding"
+            ),
+            {"binding": json.dumps(binding, sort_keys=True)},
+        )
+
+    saved = _bind(_repository(factory))
+    restarted = SqlAlchemyNSLStepExecutionRepository(factory).get(
+        tenant_id=TENANT, executable_step_id=STEP_ID
+    )
+
+    assert saved == restarted
+    assert saved["binding"]["backend_profile"] == "NSL_V01_IN_PROCESS"
+
+    binding["backend_profile"] = "NSL_V01_PROCESS_ISOLATED"
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE ae_executable_step SET skill_binding_json = :binding"),
+            {"binding": json.dumps(binding, sort_keys=True)},
+        )
+    with pytest.raises(NSLStepExecutionError) as caught:
+        _bind(SqlAlchemyNSLStepExecutionRepository(factory))
+    assert caught.value.error_code == "ae.nsl_binding_immutable_conflict"
 
 
 def test_repository_rejects_cross_tenant_lineage_and_immutable_replay(store) -> None:

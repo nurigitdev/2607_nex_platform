@@ -45,7 +45,9 @@
     "verified_artifact_hash": {"$ref": "#/$defs/hashRef"},
     "request_ref": {"$ref": "#/$defs/ref"},
     "request_hash": {"$ref": "#/$defs/hashRef"},
-    "backend_profile": {"const": "NSL_V01_PROCESS_ISOLATED"},
+    "backend_profile": {
+      "enum": ["NSL_V01_IN_PROCESS", "NSL_V01_PROCESS_ISOLATED"]
+    },
     "state": {
       "enum": [
         "ALLOCATED",

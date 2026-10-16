@@ -13,9 +13,11 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-from nex_ae_api.agent_runtime_worker import (
-    NSL_V01_PROCESS_ISOLATED_BACKEND,
-    AgentRuntimeAssignment,
+from nex_ae_api.agent_runtime_worker import AgentRuntimeAssignment
+from nex_ae_api.nsl_backend_profiles import (
+    DEFAULT_NSL_V01_BACKEND_PROFILE,
+    NSL_V01_BACKEND_PROFILES,
+    normalize_nsl_backend_profile,
 )
 from nex_ae_api.runtime_jobs import SqlAlchemyRuntimeJobQueue
 from nex_ae_api.step_executors import PLATFORM_EXECUTOR_KINDS
@@ -23,7 +25,7 @@ from nex_ae_api.step_executors import PLATFORM_EXECUTOR_KINDS
 AE_RUNTIME_QUEUE_NAME = "ae-runtime"
 LOCAL_SKILL_EXECUTOR = "LOCAL_SKILL"
 DEFAULT_EXECUTOR_BACKENDS = {
-    LOCAL_SKILL_EXECUTOR: NSL_V01_PROCESS_ISOLATED_BACKEND,
+    LOCAL_SKILL_EXECUTOR: DEFAULT_NSL_V01_BACKEND_PROFILE,
 }
 DISPATCHER_SCHEMA_VERSION = "ae_agent_runtime_dispatcher.v1"
 DISPATCH_ROUND_SCHEMA_VERSION = "ae_agent_runtime_dispatch_round.v1"
@@ -279,6 +281,9 @@ class SqlAlchemyAgentRuntimeDispatcher:
         eligible = self._eligible_executors(
             supported_executor_kinds, supported_backend_profiles
         )
+        backends = _normalized_values(
+            supported_backend_profiles, "supported_backend_profiles"
+        )
         limit = self.config.dispatch_batch_size
         if assignment_limit is not None:
             limit = min(
@@ -316,6 +321,7 @@ class SqlAlchemyAgentRuntimeDispatcher:
             )
         tenants = self.discover_runnable_tenants(
             supported_executor_kinds=eligible,
+            supported_backend_profiles=backends,
             observed_at=now,
         )
         assignments: list[AgentRuntimeAssignment] = []
@@ -333,6 +339,7 @@ class SqlAlchemyAgentRuntimeDispatcher:
                 tenant_id=tenant_id,
                 worker_id=worker,
                 supported_executor_kinds=eligible,
+                supported_backend_profiles=backends,
                 lease_seconds=lease_duration,
                 now=now,
                 queue_name=self.config.queue_name,
@@ -341,7 +348,12 @@ class SqlAlchemyAgentRuntimeDispatcher:
             )
             if claim is None or claim.executor_kind is None:
                 continue
-            backend = self._executor_backends[claim.executor_kind]
+            try:
+                backend = normalize_nsl_backend_profile(claim.backend_profile)
+            except ValueError as exc:
+                raise _invalid(
+                    "Claimed LOCAL_SKILL job lacks a supported persisted backend profile."
+                ) from exc
             assignments.append(
                 AgentRuntimeAssignment(
                     tenant_id=tenant_id,
@@ -365,28 +377,42 @@ class SqlAlchemyAgentRuntimeDispatcher:
         self,
         *,
         supported_executor_kinds: Sequence[str],
+        supported_backend_profiles: Sequence[str] | None = None,
         observed_at: str,
     ) -> tuple[dict[str, Any], ...]:
         executors = _normalized_values(
             supported_executor_kinds, "supported_executor_kinds"
         )
-        statement = text(_RUNNABLE_TENANTS_SQL).bindparams(
-            bindparam("executor_kinds", expanding=True)
+        backends = (
+            None
+            if supported_backend_profiles is None
+            else _normalized_values(
+                supported_backend_profiles, "supported_backend_profiles"
+            )
         )
         try:
             with self._session_factory() as session:
-                rows = (
-                    session.execute(
-                        statement,
-                        {
-                            "executor_kinds": list(executors),
-                            "now": _timestamp(observed_at, "observed_at"),
-                            "limit": self.config.tenant_snapshot_limit,
-                        },
+                statement = text(
+                    _runnable_tenants_sql(
+                        session.get_bind().dialect.name,
+                        filter_backends=backends is not None,
                     )
-                    .mappings()
-                    .all()
-                )
+                ).bindparams(bindparam("executor_kinds", expanding=True))
+                if backends is not None:
+                    statement = statement.bindparams(
+                        bindparam("backend_profiles", expanding=True)
+                    )
+                params = {
+                    "executor_kinds": list(executors),
+                    "now": _timestamp(observed_at, "observed_at"),
+                    "limit": self.config.tenant_snapshot_limit,
+                    **(
+                        {"backend_profiles": list(backends)}
+                        if backends is not None
+                        else {}
+                    ),
+                }
+                rows = session.execute(statement, params).mappings().all()
                 return tuple(
                     {
                         "tenant_id": str(row["tenant_id"]),
@@ -546,7 +572,14 @@ class SqlAlchemyAgentRuntimeDispatcher:
         eligible = tuple(
             executor
             for executor in executors
-            if self._executor_backends.get(executor) in backends
+            if (
+                executor == LOCAL_SKILL_EXECUTOR
+                and bool(backends.intersection(NSL_V01_BACKEND_PROFILES))
+            )
+            or (
+                executor != LOCAL_SKILL_EXECUTOR
+                and self._executor_backends.get(executor) in backends
+            )
         )
         if not eligible:
             raise AgentRuntimeDispatcherError(
@@ -768,6 +801,22 @@ _RUNNABLE_TENANTS_SQL = """
     ORDER BY oldest_runnable_at, job.tenant_id
     LIMIT :limit
 """
+
+
+def _runnable_tenants_sql(dialect_name: str, *, filter_backends: bool) -> str:
+    if not filter_backends:
+        return _RUNNABLE_TENANTS_SQL
+    backend_expression = (
+        "step.skill_binding_json ->> 'backend_profile'"
+        if dialect_name == "postgresql"
+        else "json_extract(step.skill_binding_json, '$.backend_profile')"
+    )
+    return _RUNNABLE_TENANTS_SQL.replace(
+        "WHERE step.executor_kind IN :executor_kinds",
+        "WHERE step.executor_kind IN :executor_kinds "
+        f"AND {backend_expression} IN :backend_profiles",
+    )
+
 
 _ACTIVE_CLAIMS_SQL = """
     SELECT tenant_id, count(*) AS active_count

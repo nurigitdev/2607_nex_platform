@@ -17,14 +17,18 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.nsl_backend_profiles import (
+    NSL_V01_PROCESS_ISOLATED_BACKEND,
+    normalize_nsl_backend_profile,
+)
 from nex_ae_api.nsl_step_executions import (
-    BACKEND_PROFILE,
     SqlAlchemyNSLStepExecutionRepository,
     validate_context_projection,
     validate_skill_execution_request,
 )
 from nex_ae_api.skill_artifacts import validate_verified_skill_artifact
 
+BACKEND_PROFILE = NSL_V01_PROCESS_ISOLATED_BACKEND
 BACKEND_RUN_SCHEMA_VERSION = "1.0"
 V01_CHILD_REQUEST_FORMAT = "NEX-P6-NSL-V01-CHILD-REQUEST"
 V01_CHILD_RESPONSE_FORMAT = "NEX-P6-NSL-V01-CHILD-RESPONSE"
@@ -385,8 +389,10 @@ def validate_nsl_backend_run(value: Mapping[str, Any]) -> dict[str, Any]:
     if record["nsl_execution_id"] == record["business_operation_id"]:
         raise _invalid("NSL backend run identities must remain distinct.")
     _bounded_int("attempt_no", record["attempt_no"], 1, 10_000)
-    if record["backend_profile"] != BACKEND_PROFILE:
-        raise _invalid("NSL backend run profile is invalid.")
+    try:
+        normalize_nsl_backend_profile(record["backend_profile"])
+    except ValueError as exc:
+        raise _invalid("NSL backend run profile is invalid.") from exc
     isolation_status = record["isolation_status"]
     if isolation_status not in ISOLATION_STATUSES:
         raise _invalid("NSL backend run isolation status is invalid.")
@@ -515,8 +521,14 @@ class NSLReadExecutionService:
             raise _dependency("NSL READ service requires an artifact repository.")
         if not isinstance(backend, NSLReadBackend):
             raise _dependency("NSL READ service requires a configured backend.")
-        if backend.backend_profile != BACKEND_PROFILE:
-            raise _dependency("NSL READ service backend profile is unsupported.")
+        try:
+            self.backend_profile = normalize_nsl_backend_profile(
+                backend.backend_profile
+            )
+        except ValueError as exc:
+            raise _dependency(
+                "NSL READ service backend profile is unsupported."
+            ) from exc
         if not all(callable(getattr(runs, method, None)) for method in ("get", "save")):
             raise _dependency("NSL READ service requires a run evidence repository.")
         self._bindings = bindings
@@ -537,6 +549,12 @@ class NSLReadExecutionService:
                 "NSL READ requires a durable step execution binding.",
             )
         binding = bundle["binding"]
+        if binding["backend_profile"] != self.backend_profile:
+            raise NSLReadBackendError(
+                "ae.nsl_backend_profile_mismatch",
+                "Persisted NSL binding does not match the configured backend profile.",
+                True,
+            )
         existing = self._runs.get(
             tenant_id=tenant_id,
             nsl_execution_id=binding["nsl_execution_id"],

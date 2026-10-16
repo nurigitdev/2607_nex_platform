@@ -17,6 +17,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.nsl_backend_profiles import (
+    DEFAULT_NSL_V01_BACKEND_PROFILE,
+    NSL_V01_BACKEND_PROFILES,
+    normalize_nsl_backend_profile,
+)
+
 CAPABILITY_SNAPSHOT_SCHEMA_VERSION = "1.1"
 P6_CAPABILITY_SNAPSHOT_SCHEMA_VERSION = "1.2"
 CAPABILITY_VERSION = "p5.1"
@@ -24,7 +30,8 @@ CHAT_CAPABILITY_ID = "AE.CHAT.COMPATIBILITY"
 REPORT_CAPABILITY_ID = "AE.RESULT.REPORT"
 LOCAL_SKILL_EXECUTOR_KIND = "LOCAL_SKILL"
 LOCAL_SKILL_STEP_TYPE = "LOCAL_SKILL"
-LOCAL_SKILL_BACKEND_PROFILE = "NSL_V01_PROCESS_ISOLATED"
+LOCAL_SKILL_BACKEND_PROFILE = DEFAULT_NSL_V01_BACKEND_PROFILE
+LOCAL_SKILL_BACKEND_PROFILES = NSL_V01_BACKEND_PROFILES
 LOCAL_SKILL_PACKAGE_REQUIREMENT = "SIGNED_TRUSTED_ACTIVE"
 _CAPABILITY_ID = re.compile(r"^[A-Z][A-Z0-9_]*(\.[A-Z][A-Z0-9_]*)+$")
 _SELECTOR = re.compile(r"^[\x21-\x7e]{1,256}$")
@@ -413,8 +420,10 @@ def validate_local_skill_binding(value: object) -> dict[str, str]:
     except ValueError as exc:
         raise _invalid("LOCAL_SKILL semantic hash is invalid.") from exc
     backend_profile = _required_text("backend_profile", value["backend_profile"], 128)
-    if backend_profile != LOCAL_SKILL_BACKEND_PROFILE:
-        raise _invalid("LOCAL_SKILL backend profile is unsupported in P6.")
+    try:
+        backend_profile = normalize_nsl_backend_profile(backend_profile)
+    except ValueError as exc:
+        raise _invalid("LOCAL_SKILL backend profile is unsupported in P6.") from exc
     if value["package_requirement"] != LOCAL_SKILL_PACKAGE_REQUIREMENT:
         raise _invalid("LOCAL_SKILL package requirement must fail closed.")
     return {
