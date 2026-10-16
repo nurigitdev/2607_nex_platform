@@ -94,6 +94,7 @@ class P6LocalSkillReadHandler:
                 tenant_id=tenant_id,
                 executable_step_id=step_id,
                 attempt_no=attempt_no,
+                expected_backend_profile=binding["backend_profile"],
             )
             integration = self._result_integration.finalize_bound(
                 tenant_id=tenant_id,

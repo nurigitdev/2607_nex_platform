@@ -155,6 +155,7 @@ def test_local_skill_read_handler_composes_exact_durable_path() -> None:
             "tenant_id": TENANT,
             "executable_step_id": STEP_ID,
             "attempt_no": 3,
+            "expected_backend_profile": "NSL_V01_PROCESS_ISOLATED",
         }
     ]
     assert results.calls[0]["attempt_no"] == 3

@@ -5,7 +5,7 @@ import argparse
 import json
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -132,6 +132,7 @@ def _verify_nsl_binding(
     *,
     backend_profile: str = NSL_V01_PROCESS_ISOLATED_BACKEND,
     activate_executor: bool = False,
+    post_bind_verifier: Callable[[Mapping[str, Any]], Mapping[str, bool]] | None = None,
 ) -> dict[str, Any]:
     factory = fixture["factory"]
     tenant_id = str(fixture["tenant_id"])
@@ -293,6 +294,19 @@ def _verify_nsl_binding(
             bound["binding"]["backend_profile"] == backend_profile
         ),
     }
+    if post_bind_verifier is not None:
+        checks.update(
+            post_bind_verifier(
+                {
+                    "factory": factory,
+                    "tenant_id": tenant_id,
+                    "step_id": step["executable_step_id"],
+                    "repository": repository,
+                    "artifact_repository": artifacts,
+                    "bound": bound,
+                }
+            )
+        )
     with factory.begin() as session:
         deleted_binding = int(
             session.execute(

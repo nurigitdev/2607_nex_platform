@@ -40,6 +40,7 @@ P6 document-set review
 → P6-CA02-S1 Dependency Compatibility / Wheel Admission
 → P6-CA02-S2 Dual-Profile Contract / Persistence Compatibility
 → P6-CA02-S3 In-Process NSL READ Backend Adapter
+→ P6-CA02-S4 Profile-Aware Backend Routing
 ```
 
 **No P6 feature Slice begins before P6-CA01 closes.**
@@ -87,6 +88,7 @@ Frozen Platform v2.1 / Agent v2.1 / NSL v0.2
 27. `../../slices/p6_ca02_s1_nsl_dependency_wheel_admission.md`
 28. `../../slices/p6_ca02_s2_dual_profile_compatibility.md`
 29. `../../slices/p6_ca02_s3_in_process_nsl_read_backend.md`
+30. `../../slices/p6_ca02_s4_profile_aware_backend_routing.md`
 
 ## 5. CA01A Non-Negotiable Rules
 
@@ -390,7 +392,26 @@ validation remained green. No database migration, PostgreSQL, or remote model
 provider was required. Worker readiness advertisement and default profile
 activation remain the next Slice boundary.
 
-## 20. Exit Shape
+## 20. P6-CA02-S4 Result
+
+P6-CA02-S4 connected the exact durable profile to the matching runtime backend:
+
+- one fail-closed router supports both admitted P6 backend profiles;
+- supported-but-unconfigured and unknown profiles never fall back;
+- compiled, persisted, replayed, and newly returned run profiles must agree;
+- one `LOCAL_SKILL` executor and its registry now project the exact configured
+  backend profile set; and
+- historical single-backend construction remains compatible.
+
+Actual `nex_ae_test` smoke passed all 5 aggregate checks across separate
+in-process and process-isolated persisted journeys with zero residue. The
+NeX-AE Slice Gate passed 3,864 tests with 98.62% statement and 96.83% branch
+coverage; the new smoke scope reached 100% statement and branch coverage and
+contract validation remained green. No migration or remote provider was
+required. Worker composition, readiness coupling, and controlled default
+activation remain the next Slice boundary.
+
+## 21. Exit Shape
 
 ```text
 PROMPT

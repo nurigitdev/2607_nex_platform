@@ -843,7 +843,7 @@ def test_execution_service_and_repositories_fail_closed(store) -> None:
         in_process_service.execute_bound(
             tenant_id=TENANT, executable_step_id=STEP_ID, attempt_no=1
         )
-    assert mismatch.value.error_code == "ae.nsl_backend_profile_mismatch"
+    assert mismatch.value.error_code == "ae.nsl_backend_profile_unavailable"
     assert mismatch.value.retryable is True
 
 

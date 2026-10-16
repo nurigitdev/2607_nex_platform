@@ -102,7 +102,16 @@ class P6LocalSkillExecutor:
 
     @property
     def backend_profile(self) -> str:
-        return str(self._dependencies.backend.backend_profile)
+        profiles = self.backend_profiles
+        if len(profiles) != 1:
+            raise _local_skill_unavailable(
+                "LOCAL_SKILL executor has multiple configured backend profiles."
+            )
+        return profiles[0]
+
+    @property
+    def backend_profiles(self) -> tuple[str, ...]:
+        return _local_skill_backend_profiles(self._dependencies.backend)
 
     def execute(
         self,
@@ -119,7 +128,7 @@ class P6LocalSkillExecutor:
             binding = validate_local_skill_binding(context.step.get("skill_binding"))
         except CapabilitySnapshotError as exc:
             raise _invalid("LOCAL_SKILL compiled binding is invalid.") from exc
-        if binding["backend_profile"] != self.backend_profile:
+        if binding["backend_profile"] not in self.backend_profiles:
             raise _local_skill_unavailable(
                 "LOCAL_SKILL compiled binding has no matching configured backend."
             )
@@ -137,7 +146,6 @@ def validate_local_skill_executor_dependencies(
     requirements = (
         (value.artifact_gateway, "resolve_verified", "artifact gateway"),
         (value.binding_repository, "bind_request", "binding repository"),
-        (value.backend, "execute", "selected backend"),
     )
     for dependency, method, label in requirements:
         if dependency is None or not callable(getattr(dependency, method, None)):
@@ -152,13 +160,50 @@ def validate_local_skill_executor_dependencies(
         raise _local_skill_unavailable(
             "LOCAL_SKILL result mapper dependency is unavailable."
         )
+    _local_skill_backend_profiles(value.backend)
+    return value
+
+
+def _local_skill_backend_profiles(backend: object) -> tuple[str, ...]:
+    routed_profiles = getattr(backend, "backend_profiles", None)
+    if routed_profiles is not None:
+        if (
+            not isinstance(routed_profiles, Sequence)
+            or isinstance(routed_profiles, (str, bytes))
+            or not routed_profiles
+            or not callable(getattr(backend, "resolve", None))
+        ):
+            raise _local_skill_unavailable(
+                "LOCAL_SKILL backend router is unavailable."
+            )
+        try:
+            profiles = tuple(
+                normalize_nsl_backend_profile(profile)
+                for profile in routed_profiles
+            )
+        except ValueError as exc:
+            raise _local_skill_unavailable(
+                "LOCAL_SKILL routed backend profile is unsupported."
+            ) from exc
+        if len(set(profiles)) != len(profiles):
+            raise _local_skill_unavailable(
+                "LOCAL_SKILL routed backend profiles must be unique."
+            )
+        return tuple(sorted(profiles))
+    if not callable(getattr(backend, "execute", None)):
+        raise _local_skill_unavailable(
+            "LOCAL_SKILL selected backend dependency is unavailable."
+        )
     try:
-        normalize_nsl_backend_profile(getattr(value.backend, "backend_profile", None))
+        return (
+            normalize_nsl_backend_profile(
+                getattr(backend, "backend_profile", None)
+            ),
+        )
     except ValueError as exc:
         raise _local_skill_unavailable(
             "LOCAL_SKILL selected backend profile is unsupported."
         ) from exc
-    return value
 
 
 class P5CompatibilityChatExecutor:
@@ -318,9 +363,10 @@ class P5StepExecutorRegistry:
         return tuple(
             sorted(
                 {
-                    executor.backend_profile
+                    profile
                     for executor in self._executors.values()
                     if isinstance(executor, P6LocalSkillExecutor)
+                    for profile in executor.backend_profiles
                 }
             )
         )

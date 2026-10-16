@@ -94,6 +94,61 @@ class NSLReadBackend(Protocol):
     ) -> dict[str, Any]: ...
 
 
+class NSLReadBackendRouter:
+    """Resolve an exact configured backend without cross-profile fallback."""
+
+    def __init__(self, backends: Mapping[str, NSLReadBackend]) -> None:
+        if not isinstance(backends, Mapping) or not backends:
+            raise _dependency("NSL READ backend router requires configured backends.")
+        configured: dict[str, NSLReadBackend] = {}
+        for raw_profile, backend in backends.items():
+            try:
+                profile = normalize_nsl_backend_profile(raw_profile)
+            except ValueError as exc:
+                raise _dependency(
+                    "NSL READ backend router profile is unsupported."
+                ) from exc
+            if not isinstance(backend, NSLReadBackend):
+                raise _dependency(
+                    "NSL READ backend router contains an invalid backend."
+                )
+            try:
+                backend_profile = normalize_nsl_backend_profile(
+                    backend.backend_profile
+                )
+            except ValueError as exc:
+                raise _dependency(
+                    "NSL READ routed backend profile is unsupported."
+                ) from exc
+            if backend_profile != profile:
+                raise _dependency(
+                    "NSL READ backend router key does not match its backend profile."
+                )
+            configured[profile] = backend
+        self._backends = configured
+
+    @property
+    def backend_profiles(self) -> tuple[str, ...]:
+        return tuple(sorted(self._backends))
+
+    def resolve(self, backend_profile: object) -> NSLReadBackend:
+        try:
+            profile = normalize_nsl_backend_profile(backend_profile)
+        except ValueError as exc:
+            raise NSLReadBackendError(
+                "ae.nsl_backend_profile_unsupported",
+                "Persisted NSL backend profile is unsupported.",
+            ) from exc
+        backend = self._backends.get(profile)
+        if backend is None:
+            raise NSLReadBackendError(
+                "ae.nsl_backend_profile_unavailable",
+                "Persisted NSL binding has no exactly matching configured backend.",
+                True,
+            )
+        return backend
+
+
 @runtime_checkable
 class IsolatedRuntime(Protocol):
     timeout_ms: int
@@ -637,7 +692,7 @@ class NSLReadExecutionService:
         *,
         bindings: SqlAlchemyNSLStepExecutionRepository,
         artifacts: object,
-        backend: NSLReadBackend,
+        backend: NSLReadBackend | NSLReadBackendRouter,
         runs: SqlAlchemyNSLBackendRunRepository,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
@@ -648,26 +703,46 @@ class NSLReadExecutionService:
             raise _dependency("NSL READ service requires a binding repository.")
         if not callable(getattr(artifacts, "get", None)):
             raise _dependency("NSL READ service requires an artifact repository.")
-        if not isinstance(backend, NSLReadBackend):
+        if isinstance(backend, NSLReadBackendRouter):
+            router = backend
+        elif isinstance(backend, NSLReadBackend):
+            try:
+                profile = normalize_nsl_backend_profile(backend.backend_profile)
+            except ValueError as exc:
+                raise _dependency(
+                    "NSL READ service backend profile is unsupported."
+                ) from exc
+            router = NSLReadBackendRouter({profile: backend})
+        else:
             raise _dependency("NSL READ service requires a configured backend.")
-        try:
-            self.backend_profile = normalize_nsl_backend_profile(
-                backend.backend_profile
-            )
-        except ValueError as exc:
-            raise _dependency(
-                "NSL READ service backend profile is unsupported."
-            ) from exc
         if not all(callable(getattr(runs, method, None)) for method in ("get", "save")):
             raise _dependency("NSL READ service requires a run evidence repository.")
         self._bindings = bindings
         self._artifacts = artifacts
-        self._backend = backend
+        self._backend_router = router
         self._runs = runs
         self._clock = clock or (lambda: datetime.now(UTC))
 
+    @property
+    def backend_profiles(self) -> tuple[str, ...]:
+        return self._backend_router.backend_profiles
+
+    @property
+    def backend_profile(self) -> str:
+        profiles = self.backend_profiles
+        if len(profiles) != 1:
+            raise _dependency(
+                "NSL READ service has multiple configured backend profiles."
+            )
+        return profiles[0]
+
     def execute_bound(
-        self, *, tenant_id: str, executable_step_id: str, attempt_no: int
+        self,
+        *,
+        tenant_id: str,
+        executable_step_id: str,
+        attempt_no: int,
+        expected_backend_profile: str | None = None,
     ) -> dict[str, Any]:
         bundle = self._bindings.get(
             tenant_id=tenant_id, executable_step_id=executable_step_id
@@ -678,17 +753,33 @@ class NSLReadExecutionService:
                 "NSL READ requires a durable step execution binding.",
             )
         binding = bundle["binding"]
-        if binding["backend_profile"] != self.backend_profile:
-            raise NSLReadBackendError(
-                "ae.nsl_backend_profile_mismatch",
-                "Persisted NSL binding does not match the configured backend profile.",
-                True,
-            )
+        binding_profile = binding["backend_profile"]
+        if expected_backend_profile is not None:
+            try:
+                expected_profile = normalize_nsl_backend_profile(
+                    expected_backend_profile
+                )
+            except ValueError as exc:
+                raise NSLReadBackendError(
+                    "ae.nsl_backend_profile_unsupported",
+                    "Expected NSL backend profile is unsupported.",
+                ) from exc
+            if binding_profile != expected_profile:
+                raise NSLReadBackendError(
+                    "ae.nsl_backend_profile_mismatch",
+                    "Compiled and persisted NSL backend profiles do not match.",
+                )
+        selected_backend = self._backend_router.resolve(binding_profile)
         existing = self._runs.get(
             tenant_id=tenant_id,
             nsl_execution_id=binding["nsl_execution_id"],
             attempt_no=attempt_no,
         )
+        if existing is not None and existing["backend_profile"] != binding_profile:
+            raise NSLReadBackendError(
+                "ae.nsl_backend_profile_mismatch",
+                "Persisted NSL backend run does not match its binding profile.",
+            )
         if existing is not None:
             return existing
         artifact = self._artifacts.get(
@@ -705,13 +796,18 @@ class NSLReadExecutionService:
             executable_step_id=executable_step_id,
             now=started_at,
         )
-        record = self._backend.execute(
+        record = selected_backend.execute(
             request=running["request"],
             context_projection=running["context_projection"],
             artifact=artifact,
             attempt_no=attempt_no,
             started_at=running["binding"]["invocation_started_at"],
         )
+        if record.get("backend_profile") != binding_profile:
+            raise NSLReadBackendError(
+                "ae.nsl_backend_profile_mismatch",
+                "NSL backend run does not match its routed binding profile.",
+            )
         return self._runs.save(record=record)
 
 
