@@ -404,7 +404,9 @@ def test_registry_worker_startup_and_local_dispatch_use_complete_dependencies() 
         local_skill_handler=handler,
     )
     profile = build_agent_runtime_worker_profile(
-        worker_id="worker-p6-s4", declared_at=NOW
+        worker_id="worker-p6-s4",
+        declared_at=NOW,
+        supported_backend_profiles=registry.backend_profiles,
     )
     check = build_agent_runtime_worker_check(
         AgentRuntimeWorkerConfig(mode="enabled", profile=profile),

@@ -3,24 +3,49 @@ from __future__ import annotations
 import base64
 import csv
 import hashlib
+import importlib
+import importlib.metadata
 import io
+import json
 import re
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from email.parser import Parser
 from pathlib import Path, PurePosixPath
 from typing import Any
+from urllib.parse import unquote, urlparse
 from zipfile import BadZipFile, ZipFile
 
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name, parse_wheel_filename
 from packaging.version import InvalidVersion, Version
 
+from .semantic_hashes import semantic_sha256_hash_ref
+
 NSL_WHEEL_ADMISSION_SCHEMA_VERSION = "nsl_wheel_admission.v1"
 NSL_WHEEL_LOCK_SCHEMA_VERSION = "nsl_wheel_lock.v1"
+NSL_INSTALLED_PACKAGE_READINESS_SCHEMA_VERSION = "nsl_installed_package_readiness.v1"
 NSL_DISTRIBUTION = "nex-skill-language"
 NSL_PUBLIC_API_PATH = "nsl/api/__init__.py"
 _GIT_REVISION = re.compile(r"^[0-9a-f]{40}$")
 _HASH_REF = re.compile(r"^sha256:[0-9a-f]{64}$")
+_NSL_WHEEL_LOCK_FIELDS = frozenset(
+    {
+        "schema_version",
+        "repository",
+        "distribution",
+        "package_version",
+        "source_revision",
+        "wheel_filename",
+        "wheel_sha256",
+        "requires_python",
+        "requirements",
+        "platform_cryptography_requirement",
+        "locked_cryptography_version",
+        "platform_lock_sha256",
+        "public_api_symbols",
+    }
+)
 
 
 class NslPackageAdmissionError(ValueError):
@@ -202,6 +227,137 @@ def validate_nsl_wheel_lock(
     expected = nsl_wheel_lock_projection(admission, repository=repository)
     if lock != expected:
         raise NslPackageAdmissionError("NSL wheel lock does not match admission")
+
+
+def inspect_installed_nsl_package(
+    lock: Mapping[str, Any],
+    *,
+    platform_lock_path: Path,
+    distribution_loader: Callable[[str], Any] | None = None,
+    version_loader: Callable[[str], str] | None = None,
+    module_loader: Callable[[str], Any] | None = None,
+) -> dict[str, Any]:
+    """Verify that the admitted NSL wheel is the active in-process package."""
+
+    normalized = _validate_runtime_wheel_lock(lock)
+    load_distribution = distribution_loader or importlib.metadata.distribution
+    load_version = version_loader or importlib.metadata.version
+    load_module = module_loader or importlib.import_module
+    try:
+        distribution = load_distribution(normalized["distribution"])
+        installed_version = str(distribution.version)
+        direct_url = json.loads(distribution.read_text("direct_url.json") or "")
+        if not isinstance(direct_url, Mapping):
+            raise TypeError("installed NSL direct URL evidence must be an object")
+        cryptography_version = load_version("cryptography")
+        api = load_module("nsl.api")
+    except (
+        importlib.metadata.PackageNotFoundError,
+        ImportError,
+        AttributeError,
+        json.JSONDecodeError,
+        OSError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        raise NslPackageAdmissionError(
+            "installed NSL package readiness evidence is unavailable"
+        ) from exc
+
+    errors: list[str] = []
+    try:
+        platform_lock_sha256 = _sha256_ref(platform_lock_path.read_bytes())
+    except OSError as exc:
+        raise NslPackageAdmissionError(
+            "Platform dependency lock is unavailable"
+        ) from exc
+    if platform_lock_sha256 != normalized["platform_lock_sha256"]:
+        errors.append("Platform dependency lock digest does not match NSL lock")
+    if installed_version != normalized["package_version"]:
+        errors.append("installed NSL package version does not match lock")
+    if cryptography_version != normalized["locked_cryptography_version"]:
+        errors.append("installed cryptography version does not match lock")
+
+    archive_info = direct_url.get("archive_info")
+    hashes = archive_info.get("hashes") if isinstance(archive_info, Mapping) else None
+    archive_digest = hashes.get("sha256") if isinstance(hashes, Mapping) else None
+    expected_digest = normalized["wheel_sha256"].removeprefix("sha256:")
+    if archive_digest != expected_digest:
+        errors.append("installed NSL wheel digest does not match lock")
+    parsed_url = urlparse(str(direct_url.get("url", "")))
+    wheel_filename = Path(unquote(parsed_url.path)).name
+    if parsed_url.scheme != "file" or wheel_filename != normalized["wheel_filename"]:
+        errors.append("installed NSL wheel origin does not match lock")
+
+    api_file = getattr(api, "__file__", None)
+    try:
+        distribution_root = Path(distribution.locate_file("")).resolve()
+        api_path = Path(api_file).resolve()
+        imported_from_distribution = api_path.is_relative_to(distribution_root)
+    except (OSError, TypeError, ValueError):
+        imported_from_distribution = False
+    if not imported_from_distribution:
+        errors.append("NSL public API is not imported from installed distribution")
+    public_api_symbols = normalized["public_api_symbols"]
+    missing_symbols = sorted(
+        symbol for symbol in public_api_symbols if not hasattr(api, symbol)
+    )
+    if missing_symbols:
+        errors.append("installed NSL public API does not match lock")
+    if errors:
+        raise NslPackageAdmissionError("; ".join(errors))
+
+    return {
+        "schema_version": NSL_INSTALLED_PACKAGE_READINESS_SCHEMA_VERSION,
+        "status": "PASS",
+        "distribution": normalized["distribution"],
+        "package_version": installed_version,
+        "source_revision": normalized["source_revision"],
+        "wheel_filename": normalized["wheel_filename"],
+        "wheel_sha256": normalized["wheel_sha256"],
+        "locked_cryptography_version": cryptography_version,
+        "platform_lock_sha256": platform_lock_sha256,
+        "public_api_symbols": list(public_api_symbols),
+        "public_api_complete": True,
+        "runtime_import_origin": "installed_distribution",
+        "admission_lock_hash": semantic_sha256_hash_ref(normalized),
+        "in_process_profile_admissible": True,
+    }
+
+
+def _validate_runtime_wheel_lock(lock: Mapping[str, Any]) -> dict[str, Any]:
+    if not isinstance(lock, Mapping) or set(lock) != _NSL_WHEEL_LOCK_FIELDS:
+        raise NslPackageAdmissionError("NSL wheel lock fields are invalid")
+    normalized = dict(lock)
+    if normalized["schema_version"] != NSL_WHEEL_LOCK_SCHEMA_VERSION:
+        raise NslPackageAdmissionError("NSL wheel lock schema version is invalid")
+    if canonicalize_name(str(normalized["distribution"])) != NSL_DISTRIBUTION:
+        raise NslPackageAdmissionError("NSL wheel lock distribution is invalid")
+    try:
+        Version(str(normalized["package_version"]))
+        Version(str(normalized["locked_cryptography_version"]))
+    except InvalidVersion as exc:
+        raise NslPackageAdmissionError("NSL wheel lock version is invalid") from exc
+    if not _GIT_REVISION.fullmatch(str(normalized["source_revision"])):
+        raise NslPackageAdmissionError("NSL wheel lock source revision is invalid")
+    for field in ("wheel_sha256", "platform_lock_sha256"):
+        if not _HASH_REF.fullmatch(str(normalized[field])):
+            raise NslPackageAdmissionError(f"NSL wheel lock {field} is invalid")
+    wheel_filename = normalized["wheel_filename"]
+    if (
+        not isinstance(wheel_filename, str)
+        or Path(wheel_filename).name != wheel_filename
+    ):
+        raise NslPackageAdmissionError("NSL wheel lock filename is invalid")
+    symbols = normalized["public_api_symbols"]
+    if (
+        not isinstance(symbols, list)
+        or not symbols
+        or any(not isinstance(item, str) or not item for item in symbols)
+        or len(set(symbols)) != len(symbols)
+    ):
+        raise NslPackageAdmissionError("NSL wheel lock public API symbols are invalid")
+    return normalized
 
 
 def _validate_member_paths(names: tuple[str, ...]) -> None:

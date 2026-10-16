@@ -10,6 +10,7 @@ from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Protocol, TextIO
 
 from nex_runtime import (
@@ -24,10 +25,17 @@ from nex_runtime import (
     WorkerHeartbeatStore,
     worker_heartbeat_is_stale,
 )
+from nex_runtime.nsl_package_admission import (
+    NSL_INSTALLED_PACKAGE_READINESS_SCHEMA_VERSION,
+    NslPackageAdmissionError,
+    inspect_installed_nsl_package,
+)
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
 from nex_ae_api.nsl_backend_profiles import (
+    DEFAULT_NSL_V01_BACKEND_PROFILE,
     NSL_V01_BACKEND_PROFILES,
+    NSL_V01_IN_PROCESS_BACKEND,
     NSL_V01_PROCESS_ISOLATED_BACKEND,
 )
 from nex_ae_api.runtime_jobs import RuntimeJobClaim
@@ -61,6 +69,17 @@ WORKER_LEASE_SECONDS_ENV = "NEX_AE_AGENT_WORKER_LEASE_SECONDS"
 WORKER_POLL_INTERVAL_SECONDS_ENV = "NEX_AE_AGENT_WORKER_POLL_INTERVAL_SECONDS"
 WORKER_HEARTBEAT_STALE_AFTER_SECONDS_ENV = (
     "NEX_AE_AGENT_WORKER_HEARTBEAT_STALE_AFTER_SECONDS"
+)
+WORKER_NSL_WHEEL_LOCK_ENV = "NEX_AE_AGENT_WORKER_NSL_WHEEL_LOCK"
+
+DEFAULT_NSL_WHEEL_LOCK = (
+    Path(__file__).resolve().parents[3] / "deployment" / "locks" / "nsl-v0.1-wheel.json"
+)
+DEFAULT_PLATFORM_PYTHON_LOCK = (
+    Path(__file__).resolve().parents[3]
+    / "deployment"
+    / "locks"
+    / "python-production.lock"
 )
 
 WorkerClock = Callable[[], str]
@@ -387,19 +406,25 @@ def build_agent_runtime_worker_profile(
     worker_id: str,
     declared_at: str,
     supported_executor_kinds: Sequence[str] = (LOCAL_SKILL_EXECUTOR,),
-    supported_backend_profiles: Sequence[str] = (NSL_V01_PROCESS_ISOLATED_BACKEND,),
+    supported_backend_profiles: Sequence[str] = (DEFAULT_NSL_V01_BACKEND_PROFILE,),
     max_concurrent_claims: int = 1,
     evidence_policy: str = SNAPSHOT_REQUIRED,
-    process_isolation_required: bool = True,
+    process_isolation_required: bool | None = None,
 ) -> AgentRuntimeWorkerProfile:
+    normalized_backends = _normalized_values(
+        supported_backend_profiles, "supported_backend_profiles"
+    )
+    resolved_isolation = (
+        NSL_V01_PROCESS_ISOLATED_BACKEND in normalized_backends
+        if process_isolation_required is None
+        else _required_bool(process_isolation_required, "process_isolation_required")
+    )
     profile = AgentRuntimeWorkerProfile(
         worker_id=_required_text(worker_id, "worker_id"),
         supported_executor_kinds=_normalized_values(
             supported_executor_kinds, "supported_executor_kinds"
         ),
-        supported_backend_profiles=_normalized_values(
-            supported_backend_profiles, "supported_backend_profiles"
-        ),
+        supported_backend_profiles=normalized_backends,
         max_concurrent_claims=_bounded_int(
             max_concurrent_claims,
             "max_concurrent_claims",
@@ -407,9 +432,7 @@ def build_agent_runtime_worker_profile(
             maximum=MAX_CONCURRENT_CLAIMS,
         ),
         evidence_policy=_required_text(evidence_policy, "evidence_policy"),
-        process_isolation_required=_required_bool(
-            process_isolation_required, "process_isolation_required"
-        ),
+        process_isolation_required=resolved_isolation,
         declared_at=_timestamp(declared_at, "declared_at"),
     )
     validate_agent_runtime_worker_profile(profile.to_record())
@@ -473,6 +496,7 @@ def validate_agent_runtime_worker_startup(
     *,
     available_executor_kinds: Sequence[str],
     available_backend_profiles: Sequence[str],
+    in_process_package_readiness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     profile = validate_agent_runtime_worker_profile(config.profile.to_record())
     available_executors = set(
@@ -496,6 +520,14 @@ def validate_agent_runtime_worker_startup(
             "ae.agent_runtime_worker.executor_unavailable",
             "Configured Agent Runtime executor implementation is unavailable.",
         )
+    package_status = "NOT_CONFIGURED"
+    if NSL_V01_IN_PROCESS_BACKEND in profile["supported_backend_profiles"]:
+        package_status = _in_process_package_status(in_process_package_readiness)
+        if config.mode == "enabled" and package_status != "PASS":
+            raise AgentRuntimeWorkerError(
+                "ae.agent_runtime_worker.nsl_package_unready",
+                "Admitted in-process NSL package readiness is unavailable.",
+            )
     if config.mode == "enabled" and missing_backends:
         raise AgentRuntimeWorkerError(
             "ae.agent_runtime_worker.backend_unavailable",
@@ -510,6 +542,7 @@ def validate_agent_runtime_worker_startup(
         "configured_backend_profiles": profile["supported_backend_profiles"],
         "missing_executor_kinds": missing_executors,
         "missing_backend_profiles": missing_backends,
+        "in_process_package_status": package_status,
         "startup_ready": config.mode == "enabled"
         and not missing_executors
         and not missing_backends,
@@ -607,6 +640,7 @@ def run_bounded_agent_runtime_worker(
     lifecycle: AgentRuntimeWorkerLifecycle,
     available_executor_kinds: Sequence[str],
     available_backend_profiles: Sequence[str],
+    in_process_package_readiness: Mapping[str, Any] | None = None,
     max_cycles: int,
     shutdown_token: AgentRuntimeShutdownToken | None = None,
     stop_on_failure: bool = True,
@@ -627,6 +661,7 @@ def run_bounded_agent_runtime_worker(
         config,
         available_executor_kinds=available_executor_kinds,
         available_backend_profiles=available_backend_profiles,
+        in_process_package_readiness=in_process_package_readiness,
     )
     if config.mode != "enabled":
         raise AgentRuntimeWorkerError(
@@ -729,18 +764,22 @@ def load_agent_runtime_worker_config(
     env = os.environ if environ is None else environ
     mode = str(env.get(WORKER_MODE_ENV, "disabled")).strip().lower()
     worker_id = str(env.get(WORKER_ID_ENV, "ae-agent-runtime-worker-1")).strip()
+    backend_profiles = _csv_values(
+        env.get(WORKER_BACKEND_PROFILES_ENV),
+        (DEFAULT_NSL_V01_BACKEND_PROFILE,),
+    )
     profile = build_agent_runtime_worker_profile(
         worker_id=worker_id,
         declared_at=declared_at or _utc_now(),
         supported_executor_kinds=_csv_values(
             env.get(WORKER_EXECUTOR_KINDS_ENV), (LOCAL_SKILL_EXECUTOR,)
         ),
-        supported_backend_profiles=_csv_values(
-            env.get(WORKER_BACKEND_PROFILES_ENV),
-            (NSL_V01_PROCESS_ISOLATED_BACKEND,),
-        ),
+        supported_backend_profiles=backend_profiles,
         max_concurrent_claims=_env_int(
             env, WORKER_MAX_CONCURRENT_CLAIMS_ENV, default=1
+        ),
+        process_isolation_required=(
+            NSL_V01_PROCESS_ISOLATED_BACKEND in backend_profiles
         ),
     )
     return AgentRuntimeWorkerConfig(
@@ -793,12 +832,14 @@ def build_agent_runtime_worker_check(
     *,
     available_executor_kinds: Sequence[str] = (),
     available_backend_profiles: Sequence[str] = (),
+    in_process_package_readiness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     try:
         startup = validate_agent_runtime_worker_startup(
             config,
             available_executor_kinds=available_executor_kinds,
             available_backend_profiles=available_backend_profiles,
+            in_process_package_readiness=in_process_package_readiness,
         )
     except AgentRuntimeWorkerError as exc:
         return {
@@ -825,6 +866,7 @@ def main(
     stdout: TextIO | None = None,
     available_executor_kinds: Sequence[str] = (),
     available_backend_profiles: Sequence[str] = (),
+    in_process_package_readiness: Mapping[str, Any] | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(description="NeX AE Agent Runtime worker")
     parser.add_argument(
@@ -847,9 +889,11 @@ def main(
             "detail": str(exc),
         }
         print(
-            _summary_line(record)
-            if args.summary
-            else json.dumps(record, sort_keys=True),
+            (
+                _summary_line(record)
+                if args.summary
+                else json.dumps(record, sort_keys=True)
+            ),
             file=output,
         )
         return 2
@@ -864,16 +908,78 @@ def main(
             "detail": "P6-S4 LOCAL_SKILL handler composition is required before process execution.",
         }
     else:
+        if (
+            NSL_V01_IN_PROCESS_BACKEND in config.profile.supported_backend_profiles
+            and in_process_package_readiness is None
+        ):
+            in_process_package_readiness = load_in_process_nsl_package_readiness(
+                environ
+            )
         record = build_agent_runtime_worker_check(
             config,
             available_executor_kinds=available_executor_kinds,
             available_backend_profiles=available_backend_profiles,
+            in_process_package_readiness=in_process_package_readiness,
         )
     print(
         _summary_line(record) if args.summary else json.dumps(record, sort_keys=True),
         file=output,
     )
     return 0 if record["status"] == "PASS" else 2
+
+
+def load_in_process_nsl_package_readiness(
+    environ: Mapping[str, str] | None = None,
+    *,
+    lock_path: Path | None = None,
+) -> dict[str, Any]:
+    env = os.environ if environ is None else environ
+    configured_path = env.get(WORKER_NSL_WHEEL_LOCK_ENV)
+    resolved_path = (
+        lock_path
+        if lock_path is not None
+        else (
+            Path(configured_path).expanduser()
+            if configured_path
+            else DEFAULT_NSL_WHEEL_LOCK
+        )
+    )
+    try:
+        lock = json.loads(resolved_path.read_text(encoding="utf-8"))
+        if not isinstance(lock, Mapping):
+            raise NslPackageAdmissionError("NSL wheel lock must be an object")
+        return inspect_installed_nsl_package(
+            lock,
+            platform_lock_path=DEFAULT_PLATFORM_PYTHON_LOCK,
+        )
+    except (
+        json.JSONDecodeError,
+        NslPackageAdmissionError,
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        return {
+            "schema_version": NSL_INSTALLED_PACKAGE_READINESS_SCHEMA_VERSION,
+            "status": "FAIL",
+            "failure_code": "ae.agent_runtime_worker.nsl_package_unready",
+            "detail": str(exc),
+            "in_process_profile_admissible": False,
+        }
+
+
+def _in_process_package_status(value: Mapping[str, Any] | None) -> str:
+    if not isinstance(value, Mapping):
+        return "MISSING"
+    if (
+        value.get("schema_version") != NSL_INSTALLED_PACKAGE_READINESS_SCHEMA_VERSION
+        or value.get("status") != "PASS"
+        or value.get("distribution") != "nex-skill-language"
+        or value.get("in_process_profile_admissible") is not True
+    ):
+        return "FAIL"
+    return "PASS"
 
 
 def _readiness_record(
@@ -911,9 +1017,9 @@ def _execution_record(
         "executor_kind": assignment.executor_kind,
         "backend_profile": assignment.backend_profile,
         "status": status,
-        "handler_result": deepcopy(dict(handler_result))
-        if handler_result is not None
-        else None,
+        "handler_result": (
+            deepcopy(dict(handler_result)) if handler_result is not None else None
+        ),
         "error_code": error_code,
     }
 

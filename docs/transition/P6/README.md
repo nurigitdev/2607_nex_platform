@@ -411,7 +411,27 @@ contract validation remained green. No migration or remote provider was
 required. Worker composition, readiness coupling, and controlled default
 activation remain the next Slice boundary.
 
-## 21. Exit Shape
+## 21. P6-CA02-S5 Result
+
+P6-CA02-S5 activated the admitted in-process runtime as the initial worker
+profile and made package readiness a startup prerequisite:
+
+- environment-loaded workers now default to `NSL_V01_IN_PROCESS`;
+- worker process-isolation requirements are inferred from the selected profile
+  set;
+- wheel version/digest/origin, Platform dependency lock, `cryptography`
+  version and the stable `nsl.api` surface are checked fail-closed;
+- enabled workers advertise the in-process capability only after readiness
+  passes; and
+- explicit process-isolated and dual-profile configurations remain valid.
+
+Protected smoke used the actual installed `nex-skill-language 0.1.0` wheel and
+passed all 8 readiness/default/compatibility checks. The final NeX-AE Slice
+Gate passed 3,880 tests with 98.61% statement and 96.83% branch coverage;
+contract validation remained green. No database migration, PostgreSQL, or
+remote model provider was required.
+
+## 22. Exit Shape
 
 ```text
 PROMPT

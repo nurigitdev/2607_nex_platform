@@ -27,6 +27,7 @@ from nex_ae_api.agent_runtime_worker import (
     validate_agent_runtime_worker_profile,
     validate_agent_runtime_worker_startup,
 )
+from nex_ae_api.nsl_backend_profiles import NSL_V01_IN_PROCESS_BACKEND
 from nex_ae_api.runtime_jobs import RuntimeJobClaim
 from nex_runtime import (
     BUSY,
@@ -70,6 +71,8 @@ def _profile(**overrides: Any):
     values = {
         "worker_id": "ae-runtime-worker-1",
         "declared_at": NOW,
+        "supported_backend_profiles": (NSL_V01_PROCESS_ISOLATED_BACKEND,),
+        "process_isolation_required": True,
     }
     return build_agent_runtime_worker_profile(**{**values, **overrides})
 
@@ -212,9 +215,8 @@ def test_config_environment_defaults_and_validation() -> None:
     config = load_agent_runtime_worker_config({}, declared_at=NOW)
     assert config.mode == "disabled"
     assert config.profile.supported_executor_kinds == (LOCAL_SKILL_EXECUTOR,)
-    assert config.profile.supported_backend_profiles == (
-        NSL_V01_PROCESS_ISOLATED_BACKEND,
-    )
+    assert config.profile.supported_backend_profiles == (NSL_V01_IN_PROCESS_BACKEND,)
+    assert config.profile.process_isolation_required is False
 
     configured = load_agent_runtime_worker_config(
         {
@@ -595,7 +597,12 @@ def test_worker_check_and_cli_are_fail_closed_until_composition_exists() -> None
     assert (
         main(
             ["--check"],
-            environ={"NEX_AE_AGENT_WORKER_MODE": "enabled"},
+            environ={
+                "NEX_AE_AGENT_WORKER_MODE": "enabled",
+                "NEX_AE_AGENT_WORKER_BACKEND_PROFILES": (
+                    NSL_V01_PROCESS_ISOLATED_BACKEND
+                ),
+            },
             stdout=output,
             **_available(),
         )
