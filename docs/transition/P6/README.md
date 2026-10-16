@@ -451,7 +451,28 @@ providers were not required. Canonical evidence is recorded in
 `docs/slices/p6_ca02_checkpoint_gate_evidence.md`. The repository-wide Full
 Gate remains required at P6-CA02 closure or before P7 entry.
 
-## 23. Exit Shape
+## 23. P6-CA02-S6 Result
+
+P6-CA02-S6 hardened timeout, crash, and RuntimeJob lease recovery without a
+schema change:
+
+- multi-step begin, waiting, and terminal mutations now fence on the exact
+  persisted job/attempt lease inside the mutation transaction;
+- stale attempts cannot persist StepResult or WAITING state after reclaim;
+- the P5 worker uses its actual post-execution observation time for lease
+  authority and settlement;
+- in-process timeout remains an NSL cooperative deadline, while process-
+  isolated timeout and crash remain distinct retryable evidence; and
+- worker disappearance is recovered through `LEASE_EXPIRED ->` a new attempt,
+  without synthesizing backend success.
+
+Actual `nex_ae_test` smoke passed all 19 checks with migration
+`2205_ae_nsl_dual_profile` current and zero residue. The final NeX-AE Slice
+Gate passed 3,890 tests with 98.62% statement and 96.84% branch coverage; the
+new protected smoke scope reached 100% statement and branch coverage, and
+contract validation remained green. No remote model provider was required.
+
+## 24. Exit Shape
 
 ```text
 PROMPT

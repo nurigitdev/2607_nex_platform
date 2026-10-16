@@ -810,11 +810,14 @@ def _running_claim() -> RuntimeJobClaim:
             "execution_id": EXECUTION_ID,
             "executable_step_id": STEP_1_ID,
             "state": "RUNNING",
+            "lease_owner": "worker-1",
             "lease_token": LEASE_1,
         },
         attempt={
+            "attempt_id": ATTEMPT_1,
             "runtime_job_id": JOB_1_ID,
             "attempt_no": 1,
+            "worker_id": "worker-1",
             "outcome": "RUNNING",
             "lease_token": LEASE_1,
         },
@@ -841,6 +844,7 @@ def test_begin_and_record_detect_compare_and_swap_conflicts(monkeypatch) -> None
     queue = object()
     engine = SqlAlchemyMultiStepEngine(factory, queue, id_factory=lambda: RESULT_1_ID)
     monkeypatch.setattr(multi_step, "_load_step", lambda *a, **k: _step())
+    monkeypatch.setattr(multi_step, "_require_claim_authority", lambda *a: None)
     monkeypatch.setattr(multi_step, "load_step_result_by_step", lambda *a: None)
     monkeypatch.setattr(multi_step, "_dependency_results", lambda *a: [])
     with pytest.raises(MultiStepEngineError) as exc_info:
@@ -863,6 +867,8 @@ def test_begin_and_record_detect_compare_and_swap_conflicts(monkeypatch) -> None
 def test_engine_maps_sqlalchemy_store_failures(monkeypatch, method) -> None:
     factory = _factory()
     engine = SqlAlchemyMultiStepEngine(factory, SqlAlchemyRuntimeJobQueue(factory))
+    if method != "schedule":
+        monkeypatch.setattr(multi_step, "_require_claim_authority", lambda *a: None)
     if method == "schedule":
         monkeypatch.setattr(
             multi_step,
@@ -903,6 +909,7 @@ def test_engine_maps_sqlalchemy_store_failures(monkeypatch, method) -> None:
 def test_engine_preserves_step_result_errors(monkeypatch, method) -> None:
     factory = _factory()
     engine = SqlAlchemyMultiStepEngine(factory, SqlAlchemyRuntimeJobQueue(factory))
+    monkeypatch.setattr(multi_step, "_require_claim_authority", lambda *a: None)
     if method == "begin":
         monkeypatch.setattr(
             multi_step,
@@ -1151,6 +1158,7 @@ def test_waiting_transition_detects_conflict_and_disappearance(monkeypatch) -> N
     engine = SqlAlchemyMultiStepEngine(
         lambda: _FakeSession(), object(), id_factory=lambda: RESULT_1_ID
     )
+    monkeypatch.setattr(multi_step, "_require_claim_authority", lambda *a: None)
     monkeypatch.setattr(multi_step, "_load_step", lambda *a, **k: running)
     with pytest.raises(MultiStepEngineError) as exc_info:
         engine.record_waiting(
@@ -1183,6 +1191,8 @@ def test_waiting_transition_detects_conflict_and_disappearance(monkeypatch) -> N
 def test_waiting_methods_map_store_failures(monkeypatch, method) -> None:
     factory = _factory()
     engine = SqlAlchemyMultiStepEngine(factory, SqlAlchemyRuntimeJobQueue(factory))
+    if method == "waiting":
+        monkeypatch.setattr(multi_step, "_require_claim_authority", lambda *a: None)
     monkeypatch.setattr(
         multi_step,
         "_load_step",

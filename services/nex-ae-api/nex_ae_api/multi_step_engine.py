@@ -168,6 +168,7 @@ class SqlAlchemyMultiStepEngine:
         step_id = _required_uuid("executable_step_id", job["executable_step_id"])
         try:
             with self._session_factory() as session:
+                _require_claim_authority(session, tenant, job, attempt, now)
                 step = _load_step(session, tenant, step_id, lock=True)
                 if step is None:
                     raise MultiStepEngineError(
@@ -259,6 +260,7 @@ class SqlAlchemyMultiStepEngine:
         tenant_id: str,
         claim: RuntimeJobClaim,
         outcome: StepTerminalOutcome,
+        observed_at: str | None = None,
     ) -> dict[str, Any]:
         tenant = _required_text("tenant_id", tenant_id, 128)
         job, attempt = _validate_claim(claim, tenant)
@@ -266,6 +268,13 @@ class SqlAlchemyMultiStepEngine:
         result = None
         try:
             with self._session_factory() as session:
+                _require_claim_authority(
+                    session,
+                    tenant,
+                    job,
+                    attempt,
+                    outcome.completed_at if observed_at is None else observed_at,
+                )
                 step = _load_step(session, tenant, step_id, lock=True)
                 if step is None:
                     raise MultiStepEngineError(
@@ -368,10 +377,11 @@ class SqlAlchemyMultiStepEngine:
         now: str,
     ) -> dict[str, Any]:
         tenant = _required_text("tenant_id", tenant_id, 128)
-        job, _ = _validate_claim(claim, tenant)
+        job, attempt = _validate_claim(claim, tenant)
         step_id = _required_uuid("executable_step_id", job["executable_step_id"])
         try:
             with self._session_factory() as session:
+                _require_claim_authority(session, tenant, job, attempt, now)
                 step = _load_step(session, tenant, step_id, lock=True)
                 if step is None:
                     raise MultiStepEngineError(
@@ -666,12 +676,61 @@ def _validate_claim(
         or job.get("job_type") not in {"START_EXECUTION", "CONTINUE_EXECUTION"}
         or job.get("state") != "RUNNING"
         or not job.get("executable_step_id")
+        or not job.get("lease_owner")
         or attempt.get("runtime_job_id") != job.get("runtime_job_id")
+        or not attempt.get("attempt_id")
+        or attempt.get("worker_id") != job.get("lease_owner")
         or attempt.get("outcome") != "RUNNING"
         or attempt.get("lease_token") != job.get("lease_token")
     ):
         raise _invalid("RuntimeJob claim is invalid for multi-step execution.")
     return job, attempt
+
+
+def _require_claim_authority(
+    session: Session,
+    tenant_id: str,
+    job: Mapping[str, Any],
+    attempt: Mapping[str, Any],
+    observed_at: str,
+) -> None:
+    now = _required_text("observed_at", observed_at, 64)
+    suffix = " FOR UPDATE OF job" if _dialect_name(session) == "postgresql" else ""
+    row = session.execute(
+        text(
+            "SELECT job.runtime_job_id FROM ae_runtime_job AS job "
+            "JOIN ae_runtime_job_attempt AS attempt "
+            "ON attempt.tenant_id = job.tenant_id "
+            "AND attempt.runtime_job_id = job.runtime_job_id "
+            "AND attempt.attempt_no = job.attempt_no "
+            "WHERE job.tenant_id = :tenant_id "
+            "AND job.runtime_job_id = :runtime_job_id "
+            "AND job.state = 'RUNNING' "
+            "AND job.attempt_no = :attempt_no "
+            "AND job.lease_owner = :worker_id "
+            "AND job.lease_token = :lease_token "
+            "AND job.lease_until > :observed_at "
+            "AND attempt.attempt_id = :attempt_id "
+            "AND attempt.worker_id = :worker_id "
+            "AND attempt.lease_token = :lease_token "
+            "AND attempt.outcome = 'RUNNING'" + suffix
+        ),
+        {
+            "tenant_id": tenant_id,
+            "runtime_job_id": job["runtime_job_id"],
+            "attempt_no": int(attempt["attempt_no"]),
+            "attempt_id": attempt["attempt_id"],
+            "worker_id": job["lease_owner"],
+            "lease_token": job["lease_token"],
+            "observed_at": now,
+        },
+    ).first()
+    if row is None:
+        raise MultiStepEngineError(
+            "ae.multi_step_stale_runtime_job_lease",
+            "Step mutation requires the current unexpired RuntimeJob lease.",
+            True,
+        )
 
 
 def _load_runtime(

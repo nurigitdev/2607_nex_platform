@@ -408,10 +408,12 @@ class P5StepExecutionWorker:
         claim: RuntimeJobClaim,
         continuation_result: Any | None = None,
     ) -> P5WorkerExecution:
-        now = self._now()
-        context = self._engine.begin_claim(tenant_id=tenant_id, claim=claim, now=now)
+        started_at = self._now()
+        context = self._engine.begin_claim(
+            tenant_id=tenant_id, claim=claim, now=started_at
+        )
         if context.already_terminal:
-            job = self._complete(tenant_id, claim, now)
+            job = self._complete(tenant_id, claim, self._now())
             return P5WorkerExecution(
                 disposition="ALREADY_TERMINAL",
                 step=context.step,
@@ -435,14 +437,16 @@ class P5StepExecutionWorker:
                 claim=claim,
                 context=context,
                 outcome=outcome,
-                now=now,
+                started_at=started_at,
+                observed_at=self._now(),
             )
         return self._record_failure(
             tenant_id=tenant_id,
             claim=claim,
             context=context,
             error=error,
-            now=now,
+            started_at=started_at,
+            observed_at=self._now(),
         )
 
     def _record_failure(
@@ -452,7 +456,8 @@ class P5StepExecutionWorker:
         claim: RuntimeJobClaim,
         context: StepExecutionContext,
         error: P5StepExecutorError,
-        now: str,
+        started_at: str,
+        observed_at: str,
     ) -> P5WorkerExecution:
         result = self._engine.record_outcome(
             tenant_id=tenant_id,
@@ -466,11 +471,12 @@ class P5StepExecutionWorker:
                 ),
                 result_payload={"failure_code": error.error_code},
                 error_ref=error.error_code,
-                started_at=now,
-                completed_at=now,
+                started_at=started_at,
+                completed_at=observed_at,
             ),
+            observed_at=observed_at,
         )
-        job = self._fail(tenant_id, claim, now, error.error_code)
+        job = self._fail(tenant_id, claim, observed_at, error.error_code)
         return P5WorkerExecution(
             disposition="TERMINAL",
             step=context.step,
@@ -485,7 +491,8 @@ class P5StepExecutionWorker:
         claim: RuntimeJobClaim,
         context: StepExecutionContext,
         outcome: P5ExecutorOutcome,
-        now: str,
+        started_at: str,
+        observed_at: str,
     ) -> P5WorkerExecution:
         if outcome.state == "WAITING":
             step = self._engine.record_waiting(
@@ -497,9 +504,9 @@ class P5StepExecutionWorker:
                     cx_generation_id=outcome.cx_generation_id,
                     cx_job_id=outcome.cx_job_id,
                 ),
-                now=now,
+                now=observed_at,
             )
-            job = self._complete(tenant_id, claim, now)
+            job = self._complete(tenant_id, claim, observed_at)
             return P5WorkerExecution(
                 disposition="WAITING",
                 step=step,
@@ -523,11 +530,12 @@ class P5StepExecutionWorker:
                     else None
                 ),
                 business_operation_id=outcome.business_operation_id,
-                started_at=outcome.started_at or now,
-                completed_at=outcome.completed_at or now,
+                started_at=outcome.started_at or started_at,
+                completed_at=outcome.completed_at or observed_at,
             ),
+            observed_at=observed_at,
         )
-        job = self._complete(tenant_id, claim, now)
+        job = self._complete(tenant_id, claim, observed_at)
         return P5WorkerExecution(
             disposition="TERMINAL",
             step=context.step,
