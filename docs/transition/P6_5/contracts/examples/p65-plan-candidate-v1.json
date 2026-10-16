@@ -1,0 +1,40 @@
+{
+  "schema_version": "p65.plan_candidate.v1",
+  "suggested_plan_kind": "DYNAMIC",
+  "goal": "권한이 확인된 예산 자료를 조회하고 예산, 집행, 잔액을 요약한다.",
+  "logical_steps": [
+    {
+      "step_id": "S1",
+      "step_type": "LOCAL_CAPABILITY",
+      "title": "예산 현황 조회",
+      "objective": "권한이 확인된 프로젝트 예산 현황을 읽는다.",
+      "depends_on": [],
+      "capability_hint": "FINANCE.PROJECT_BUDGET_CHECK",
+      "completion_criteria": [
+        "예산, 집행, 잔액이 검증된 결과로 반환된다."
+      ]
+    },
+    {
+      "step_id": "S2",
+      "step_type": "REPORT",
+      "title": "조회 결과 요약",
+      "objective": "검증된 조회 결과를 사용자에게 전달할 한국어 요약으로 투영한다.",
+      "depends_on": [
+        "S1"
+      ],
+      "capability_hint": null,
+      "completion_criteria": [
+        "예산, 집행, 잔액이 포함된 요약이 생성된다."
+      ]
+    }
+  ],
+  "completion_mapping": [
+    {
+      "criterion_id": "C1",
+      "terminal_step_refs": [
+        "S2"
+      ]
+    }
+  ],
+  "confidence": 0.91
+}

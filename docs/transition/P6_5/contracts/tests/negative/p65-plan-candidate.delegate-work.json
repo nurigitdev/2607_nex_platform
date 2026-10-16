@@ -1,0 +1,27 @@
+{
+  "schema_version": "p65.plan_candidate.v1",
+  "suggested_plan_kind": "DYNAMIC",
+  "goal": "작업을 다른 Agent에게 위임한다.",
+  "logical_steps": [
+    {
+      "step_id": "S1",
+      "step_type": "DELEGATE_WORK",
+      "title": "작업 위임",
+      "objective": "WC를 통해 작업을 위임한다.",
+      "depends_on": [],
+      "capability_hint": null,
+      "completion_criteria": [
+        "작업이 위임된다."
+      ]
+    }
+  ],
+  "completion_mapping": [
+    {
+      "criterion_id": "C1",
+      "terminal_step_refs": [
+        "S1"
+      ]
+    }
+  ],
+  "confidence": 0.95
+}
