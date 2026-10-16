@@ -38,6 +38,8 @@ P6 document-set review
 → P6 Full Gate Closure
 → P6-CA02 In-Process Runtime Profile Clarification
 → P6-CA02-S1 Dependency Compatibility / Wheel Admission
+→ P6-CA02-S2 Dual-Profile Contract / Persistence Compatibility
+→ P6-CA02-S3 In-Process NSL READ Backend Adapter
 ```
 
 **No P6 feature Slice begins before P6-CA01 closes.**
@@ -84,6 +86,7 @@ Frozen Platform v2.1 / Agent v2.1 / NSL v0.2
 26. `P6_CA02_In_Process_NSL_Runtime_Profile_Clarification_v1.0.md`
 27. `../../slices/p6_ca02_s1_nsl_dependency_wheel_admission.md`
 28. `../../slices/p6_ca02_s2_dual_profile_compatibility.md`
+29. `../../slices/p6_ca02_s3_in_process_nsl_read_backend.md`
 
 ## 5. CA01A Non-Negotiable Rules
 
@@ -368,7 +371,26 @@ process-isolated round trips with zero residue. The NeX-AE Slice Gate passed
 validation remained green. In-process adapter implementation and worker
 readiness advertisement remain the next Slice boundary.
 
-## 19. Exit Shape
+## 19. P6-CA02-S3 Result
+
+P6-CA02-S3 implemented the actual in-process NSL v0.1 READ adapter without
+changing P6 identity, request, result, or persistence contracts:
+
+- the adapter uses only the stable `nsl.api` boundary;
+- every execution creates a fresh progress sink and worker session;
+- target and protocol failures are contained in existing backend-run evidence;
+- timeout semantics are explicitly cooperative, not hard process isolation;
+- the admitted wheel `0.1.0` and `cryptography 46.0.7` executed from the
+  installed Platform environment; and
+- historical process-isolated behavior remains available.
+
+Protected installed-wheel smoke passed all 10 checks. The NeX-AE Slice Gate
+passed 3,840 tests with 98.61% statement and 96.82% branch coverage; contract
+validation remained green. No database migration, PostgreSQL, or remote model
+provider was required. Worker readiness advertisement and default profile
+activation remain the next Slice boundary.
+
+## 20. Exit Shape
 
 ```text
 PROMPT

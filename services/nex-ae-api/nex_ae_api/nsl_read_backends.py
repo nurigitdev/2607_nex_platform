@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from nex_ae_api.nsl_backend_profiles import (
+    NSL_V01_IN_PROCESS_BACKEND,
     NSL_V01_PROCESS_ISOLATED_BACKEND,
     normalize_nsl_backend_profile,
 )
@@ -285,6 +287,133 @@ class V01ReadBackendAdapter:
         }
         record["record_hash"] = semantic_sha256_hash_ref(record)
         return validate_nsl_backend_run(record)
+
+
+class V01InProcessReadBackendAdapter:
+    backend_profile = NSL_V01_IN_PROCESS_BACKEND
+    timeout_semantics = "NSL_COOPERATIVE_DEADLINE"
+
+    def __init__(
+        self,
+        session_factory: Callable[..., V01WorkerSession],
+        *,
+        api: object | None = None,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        if not callable(session_factory):
+            raise _dependency("v0.1 in-process worker session factory is unavailable.")
+        self._session_factory = session_factory
+        self._api = _validated_v01_public_api(api or _load_v01_public_api())
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def execute(
+        self,
+        *,
+        request: Mapping[str, Any],
+        context_projection: Mapping[str, Any],
+        artifact: Mapping[str, Any],
+        attempt_no: int,
+        started_at: str,
+    ) -> dict[str, Any]:
+        normalized_request = validate_skill_execution_request(request)
+        normalized_context = validate_context_projection(context_projection)
+        normalized_artifact = validate_verified_skill_artifact(artifact)
+        attempt = _bounded_int("attempt_no", attempt_no, 1, 10_000)
+        started = _timestamp("started_at", started_at)
+        job = build_v01_skill_execution_job(
+            request=normalized_request,
+            context_projection=normalized_context,
+            artifact=normalized_artifact,
+        )
+        try:
+            response = _execute_v01_in_process_session(
+                api=self._api,
+                session_factory=self._session_factory,
+                artifact_handle=normalized_artifact["backend_artifact_handle"],
+                job=job,
+            )
+        except NSLReadBackendError:
+            return _failed_backend_run(
+                request=normalized_request,
+                artifact=normalized_artifact,
+                attempt_no=attempt,
+                started_at=started,
+                completed_at=_clock_timestamp(self._clock),
+                isolation_status="PROTOCOL_ERROR",
+                error_code="IN_PROCESS_RUNTIME_PROTOCOL_ERROR",
+                exit_code=0,
+                retryable=False,
+                backend_profile=self.backend_profile,
+            )
+        except Exception:  # noqa: BLE001 - NSL target is an execution boundary
+            return _failed_backend_run(
+                request=normalized_request,
+                artifact=normalized_artifact,
+                attempt_no=attempt,
+                started_at=started,
+                completed_at=_clock_timestamp(self._clock),
+                isolation_status="TARGET_ERROR",
+                error_code="IN_PROCESS_RUNTIME_TARGET_ERROR",
+                exit_code=0,
+                retryable=False,
+                backend_profile=self.backend_profile,
+            )
+        completed = _clock_timestamp(self._clock)
+        try:
+            response = _validate_v01_worker_response(
+                response,
+                request=normalized_request,
+                artifact=normalized_artifact,
+            )
+        except NSLReadBackendError:
+            return _failed_backend_run(
+                request=normalized_request,
+                artifact=normalized_artifact,
+                attempt_no=attempt,
+                started_at=started,
+                completed_at=completed,
+                isolation_status="PROTOCOL_ERROR",
+                error_code="IN_PROCESS_RUNTIME_PROTOCOL_ERROR",
+                exit_code=0,
+                retryable=False,
+                backend_profile=self.backend_profile,
+            )
+        envelope = response["runtime_result_envelope"]
+        runtime_status = envelope["runtime_result"]["status"]
+        record = {
+            "schema_version": BACKEND_RUN_SCHEMA_VERSION,
+            "tenant_id": normalized_request["tenant_id"],
+            "executable_step_id": normalized_request["executable_step_id"],
+            "nsl_execution_id": normalized_request["nsl_execution_id"],
+            "business_operation_id": normalized_request["business_operation_id"],
+            "attempt_no": attempt,
+            "backend_profile": self.backend_profile,
+            "isolation_status": "COMPLETED",
+            "runtime_status": runtime_status,
+            "runtime_result_envelope": envelope,
+            "progress_events": response["progress_events"],
+            "evidence_refs": _canonical_refs(
+                [
+                    *response["evidence_refs"],
+                    _backend_run_ref(normalized_request["nsl_execution_id"], attempt),
+                ]
+            ),
+            "error_code": None,
+            "exit_code": 0,
+            "retryable": False,
+            "started_at": started,
+            "completed_at": completed,
+        }
+        record["record_hash"] = semantic_sha256_hash_ref(record)
+        return validate_nsl_backend_run(record)
+
+
+def build_v01_in_process_backend(
+    session_factory: Callable[..., V01WorkerSession],
+    *,
+    clock: Callable[[], datetime] | None = None,
+) -> V01InProcessReadBackendAdapter:
+    return V01InProcessReadBackendAdapter(session_factory, clock=clock)
 
 
 def build_v01_process_isolated_backend(
@@ -643,6 +772,22 @@ def _decode_child_response(
     if type(payload) is not bytes or len(payload) > maximum_bytes:
         raise _invalid("v0.1 child response payload is invalid.")
     response = _canonical_bytes_object(payload, "v0.1 child response")
+    return _validate_v01_worker_response(
+        response,
+        request=request,
+        artifact=artifact,
+    )
+
+
+def _validate_v01_worker_response(
+    value: object,
+    *,
+    request: Mapping[str, Any],
+    artifact: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise _invalid("v0.1 worker response must be an object.")
+    response = _canonical_mapping("v0.1 worker response", value)
     if set(response) != {
         "format",
         "schema_version",
@@ -680,6 +825,71 @@ def _decode_child_response(
         "runtime_result_envelope": envelope,
         "progress_events": progress,
         "evidence_refs": refs,
+    }
+
+
+def _load_v01_public_api() -> object:
+    try:
+        return importlib.import_module("nsl.api")
+    except ImportError as exc:
+        raise _dependency("Configured NSL v0.1 package is unavailable.") from exc
+
+
+def _validated_v01_public_api(api: object) -> object:
+    progress = getattr(api, "InMemoryProgressSink", None)
+    job_type = getattr(api, "SkillExecutionJob", None)
+    worker_type = getattr(api, "SkillExecutionWorker", None)
+    if (
+        not callable(progress)
+        or not isinstance(job_type, type)
+        or not callable(getattr(job_type, "from_data", None))
+        or not isinstance(worker_type, type)
+    ):
+        raise _dependency("Configured NSL v0.1 public API is incomplete.")
+    return api
+
+
+def _execute_v01_in_process_session(
+    *,
+    api: object,
+    session_factory: Callable[..., V01WorkerSession],
+    artifact_handle: str,
+    job: Mapping[str, Any],
+) -> dict[str, Any]:
+    progress = api.InMemoryProgressSink()
+    session = session_factory(artifact_handle, progress)
+    worker = getattr(session, "worker", None)
+    if not isinstance(worker, api.SkillExecutionWorker):
+        raise _invalid("v0.1 in-process session returned an invalid worker.")
+    evidence_reader = getattr(session, "evidence_refs", None)
+    if not callable(evidence_reader):
+        raise _invalid("v0.1 in-process session lacks an evidence bridge.")
+    try:
+        execution_job = api.SkillExecutionJob.from_data(job)
+    except Exception as exc:
+        raise _invalid("v0.1 in-process job contract is invalid.") from exc
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+    else:
+        raise _invalid("v0.1 in-process execution requires a synchronous worker loop.")
+    envelope = asyncio.run(worker.execute(execution_job))
+    to_data = getattr(envelope, "to_data", None)
+    if not callable(to_data):
+        raise _invalid("v0.1 in-process worker returned an invalid result envelope.")
+    try:
+        progress_events = [event.to_data() for event in progress.events]
+        evidence_refs = list(evidence_reader())
+        runtime_result_envelope = to_data()
+    except Exception as exc:
+        raise _invalid("v0.1 in-process evidence bridge is invalid.") from exc
+    return {
+        "format": V01_CHILD_RESPONSE_FORMAT,
+        "schema_version": "1.0",
+        "runtime_result_envelope": runtime_result_envelope,
+        "progress_events": progress_events,
+        "evidence_refs": evidence_refs,
     }
 
 
@@ -801,6 +1011,7 @@ def _failed_backend_run(
     error_code: str,
     exit_code: object,
     retryable: bool,
+    backend_profile: str = BACKEND_PROFILE,
 ) -> dict[str, Any]:
     record = {
         "schema_version": BACKEND_RUN_SCHEMA_VERSION,
@@ -809,7 +1020,7 @@ def _failed_backend_run(
         "nsl_execution_id": request["nsl_execution_id"],
         "business_operation_id": request["business_operation_id"],
         "attempt_no": attempt_no,
-        "backend_profile": BACKEND_PROFILE,
+        "backend_profile": backend_profile,
         "isolation_status": isolation_status,
         "runtime_status": None,
         "runtime_result_envelope": None,
