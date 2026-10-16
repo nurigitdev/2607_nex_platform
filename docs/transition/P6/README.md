@@ -35,6 +35,9 @@ P6 document-set review
 → P6-S5 NSL READ Backend Integration
 → P6-S6 Result / Timeline Integration
 → P6-S7 E2E-01 IA READ Closure
+→ P6 Full Gate Closure
+→ P6-CA02 In-Process Runtime Profile Clarification
+→ P6-CA02-S1 Dependency Compatibility / Wheel Admission
 ```
 
 **No P6 feature Slice begins before P6-CA01 closes.**
@@ -76,6 +79,10 @@ Frozen Platform v2.1 / Agent v2.1 / NSL v0.2
 21. `../../slices/p6_s4_local_skill_executor_activation.md`
 22. `../../slices/p6_s5_nsl_read_backend_integration.md`
 23. `../../slices/p6_s6_result_timeline_integration.md`
+24. `../../slices/p6_s7_e2e_01_ia_read_closure.md`
+25. `../../slices/p6_full_gate_closure_evidence.md`
+26. `P6_CA02_In_Process_NSL_Runtime_Profile_Clarification_v1.0.md`
+27. `../../slices/p6_ca02_s1_nsl_dependency_wheel_admission.md`
 
 ## 5. CA01A Non-Negotiable Rules
 
@@ -322,7 +329,26 @@ The skipped fifth-Slice Checkpoint Gate is explicitly waived. Canonical
 evidence and raw-report hashes are recorded in
 `docs/slices/p6_full_gate_closure_evidence.md`.
 
-## 17. Exit Shape
+## 17. P6-CA02-S1 Result
+
+P6-CA02-S1 closed the package admission prerequisite for the in-process
+profile without activating that profile:
+
+- NSL and Platform now share a proven `cryptography 46.0.7` resolution;
+- NSL revision `3b4cb198...` passed all 1,225 NSL tests at 99.25% combined
+  statement/branch coverage;
+- two independent builds from the exact clean `git archive` produced the same
+  admitted wheel digest;
+- wheel METADATA, RECORD integrity and required `nsl.api` imports are
+  fail-closed admission inputs; and
+- `deployment/locks/nsl-v0.1-wheel.json` pins source, wheel and Platform lock
+  lineage.
+
+No database migration, PostgreSQL smoke or remote provider was required. The
+existing process-isolated runtime remains active until a later Slice composes
+and advertises `NSL_V01_IN_PROCESS` readiness.
+
+## 18. Exit Shape
 
 ```text
 PROMPT

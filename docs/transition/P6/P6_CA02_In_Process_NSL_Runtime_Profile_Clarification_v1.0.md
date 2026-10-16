@@ -101,6 +101,36 @@ overlapping range를 검증하고 lock/wheel을 다시 생성해야 한다. NSL 
 version, source revision, wheel digest와 dependency lock digest는 worker readiness
 evidence에 포함하며, package 누락 또는 revision 불일치는 fail-closed 한다.
 
+### 3.2 P6-CA02-S1 Admission Closure
+
+P6-CA02-S1에서 dependency 충돌과 wheel admission 선행조건을 다음처럼
+해소했다.
+
+```text
+NeX Platform: cryptography>=46,<47
+NSL v0.1:     cryptography>=46,<50
+admitted lock: cryptography==46.0.7
+```
+
+NSL 전체 1,225개 테스트는 Platform의 `cryptography 46.0.7` 환경에서
+통과했다. 승인된 NSL source revision은
+`3b4cb198888570a857e6fb0d3aa077930bb23504`이며, 해당 clean revision의
+`git archive`로 wheel을 두 번 독립 빌드하여 동일 digest를 확인했다.
+
+```text
+wheel: nex_skill_language-0.1.0-py3-none-any.whl
+sha256:290a202f540ec98291842e9281a28288cc7ac112525b6c0f02c10b8721aef21f
+```
+
+`deployment/locks/nsl-v0.1-wheel.json`은 package version, source revision,
+wheel digest, dependency 요구 범위, Platform dependency lock digest와
+필수 `nsl.api` symbol을 고정한다. wheel METADATA/RECORD 무결성, lock에
+고정된 cryptography version, wheel에서 직접 설치한 public API import 중
+하나라도 불일치하면 admission은 실패한다.
+
+이 Slice는 package/dependency admission만 닫는다. 기본 runtime profile의
+`NSL_V01_IN_PROCESS` 전환과 worker readiness 연결은 후속 Slice 책임이다.
+
 ## 4. Initial Execution Model
 
 한 `LOCAL_SKILL` 실행 내부는 우선 순차적으로 처리한다.
