@@ -77,6 +77,29 @@ P6.5 semantic generation boundary:
   output digest, never the prompt, output text, service token, provider URL,
   or API key.
 
+P6.5 live INTENT candidate boundary:
+
+- `nex_ae_api.intent_candidate_generation.LiveIntentCandidateService` resolves
+  the exact `ae.intent_resolution.default` binding, sends the untrusted user
+  input through the thin MO client, validates the closed
+  `p65.intent_candidate.v1` payload, and delegates canonical decision creation
+  to `IntentPolicy` before building a WorkIntent.
+- Candidate fields cannot establish tenant, principal, project, role,
+  permission, capability-version, provider, or execution authority. Candidate
+  selectors and parameters remain suggestions and are not copied into the
+  WorkIntent.
+- `shadow` mode never creates a WorkIntent. `required` mode needs an exact
+  calibration selected by semantic stage, MO alias, and model revision from
+  `NEX_AE_P65_SEMANTIC_CALIBRATION_POLICIES_JSON`; missing calibration fails
+  closed.
+- `authorized_resource_context_available` is a boolean trusted input only. It
+  communicates that an admitted resource set exists without disclosing or
+  granting a project/resource identity; S3 remains responsible for trusted
+  context resolution.
+- `scripts/smoke/run_p65_s2_live_intent_candidate_smoke.py` is opt-in through
+  `NEX_AE_P65_S2_LIVE_SMOKE=1` and records only hashes, bounded model lineage,
+  confidence/threshold, directive, and deterministic WorkIntent evidence.
+
 Workspace state:
 
 - AE owns workspace state, default runtime controls, chat document identity, and

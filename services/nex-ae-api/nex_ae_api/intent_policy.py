@@ -86,6 +86,57 @@ def resolve_intent_decision(payload: Mapping[str, Any]) -> dict[str, Any]:
     return decision
 
 
+def resolve_validated_intent_candidate(
+    candidate: Mapping[str, Any],
+    *,
+    trusted_execution_mode: str | None = None,
+    retrieval_enabled: bool = False,
+) -> dict[str, Any]:
+    candidate_mode = _canonical_mode(candidate.get("suggested_execution_mode"))
+    if trusted_execution_mode is not None:
+        resolved_mode = _canonical_mode(trusted_execution_mode)
+        if candidate_mode != resolved_mode:
+            raise IntentPolicyError(
+                422,
+                "ae.intent_candidate_mode_conflict",
+                "IntentCandidate cannot override the trusted execution mode.",
+            )
+    else:
+        resolved_mode = candidate_mode
+        if resolved_mode == "GENERAL_ANSWER" and retrieval_enabled:
+            resolved_mode = "GROUNDED_ANSWER"
+
+    confidence = candidate.get("confidence")
+    if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
+        raise IntentPolicyError(
+            422,
+            "ae.intent_candidate_confidence_invalid",
+            "IntentCandidate confidence must be numeric.",
+        )
+    confidence = float(confidence)
+    if not 0.0 <= confidence <= 1.0:
+        raise IntentPolicyError(
+            422,
+            "ae.intent_candidate_confidence_invalid",
+            "IntentCandidate confidence must be between zero and one.",
+        )
+
+    decision = {
+        "intent_decision_schema_version": INTENT_DECISION_SCHEMA_VERSION,
+        "intent_label": _required_text(candidate.get("intent_label"), "intent_label"),
+        "task_category": _task_category_for_mode(resolved_mode),
+        "execution_mode": resolved_mode,
+        "decision_source": "LLM_CANDIDATE_VALIDATED",
+        "confidence": confidence,
+        "retrieval_required": resolved_mode != "GENERAL_ANSWER",
+        "template_required": resolved_mode == "DOCUMENT_GENERATION",
+        "matched_rule": None,
+        "raw_prompt_included": False,
+    }
+    decision["decision_hash"] = _decision_hash(decision)
+    return decision
+
+
 def classify_runtime_intent(user_message: str) -> dict[str, Any]:
     normalized = _required_text(user_message, "user_message").casefold()
     for task_category, intent_label, terms, mode, confidence in _INTENT_RULES:

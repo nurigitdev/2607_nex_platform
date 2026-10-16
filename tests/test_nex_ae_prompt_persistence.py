@@ -14,6 +14,7 @@ from nex_ae_api.prompts import (
     AE_DOCUMENT_SUMMARY_BINDING,
     AE_GENERAL_ANSWER_BINDING,
     AE_GROUNDED_CHAT_BINDING,
+    AE_INTENT_RESOLUTION_BINDING,
     AE_PROMPT_SEEDS,
     seed_ae_prompt_registry,
 )
@@ -110,20 +111,21 @@ def _create_schema(connection) -> None:
     """))
 
 
-def test_registry_seeds_four_bindings_idempotently_and_survives_restart() -> None:
+def test_registry_seeds_five_bindings_idempotently_and_survives_restart() -> None:
     factory = session_factory()
     first = SqlAlchemyAePromptRegistryStore(factory)
     seeded = seed_ae_prompt_registry(first)
     repeated = seed_ae_prompt_registry(first)
     restarted = SqlAlchemyAePromptRegistryStore(factory)
 
-    assert len(seeded) == 4
+    assert len(seeded) == 5
     assert [item["binding_key"] for item in restarted.list_bindings()] == sorted(
         [
             AE_GENERAL_ANSWER_BINDING,
             AE_GROUNDED_CHAT_BINDING,
             AE_DOCUMENT_SUMMARY_BINDING,
             AE_DOCUMENT_GENERATION_BINDING,
+            AE_INTENT_RESOLUTION_BINDING,
         ]
     )
     assert [item["prompt_binding_id"] for item in repeated] == [

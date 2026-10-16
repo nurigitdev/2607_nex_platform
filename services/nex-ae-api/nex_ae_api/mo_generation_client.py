@@ -14,7 +14,7 @@ from nex_ae_api.service_auth import (
     resolve_ae_outbound_service_token,
 )
 from nex_runtime import resolve_service_endpoint
-from nex_runtime.semantic_hashes import hash_ref_from_sha256, sha256_text
+from nex_runtime.semantic_hashes import sha256_text
 
 
 AE_MO_GENERATION_CLIENT_SCHEMA_VERSION = "ae_mo_generation_client.v1"
@@ -461,7 +461,7 @@ def _generation_result(
         deployment_id=_bounded_text(payload.get("deployment_id"), "deployment_id"),
         provider_type=_bounded_text(payload.get("provider_type"), "provider_type"),
         output_text=output_text,
-        provider_output_sha256=hash_ref_from_sha256(sha256_text(output_text)),
+        provider_output_sha256=sha256_text(output_text),
         provider_output_size_bytes=len(output_bytes),
         finish_reason=_bounded_text(payload.get("finish_reason"), "finish_reason"),
         input_tokens=input_tokens,

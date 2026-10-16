@@ -53,9 +53,7 @@ class FakeClient:
             deployment_id="vllm-generation-http",
             provider_type="vllm-openai-compatible",
             output_text=self.output_text,
-            provider_output_sha256=(
-                "sha256:" + hashlib.sha256(output_bytes).hexdigest()
-            ),
+            provider_output_sha256=hashlib.sha256(output_bytes).hexdigest(),
             provider_output_size_bytes=len(output_bytes),
             finish_reason="STOP",
             input_tokens=10,

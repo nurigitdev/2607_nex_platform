@@ -110,8 +110,11 @@ def run_p65_s1_ae_mo_generation_live_smoke(
             and candidate.get("contract") == "p65-s1"
         ),
         "output_digest_recorded": (
-            result.provider_output_sha256.startswith("sha256:")
-            and len(result.provider_output_sha256) == 71
+            len(result.provider_output_sha256) == 64
+            and all(
+                character in "0123456789abcdef"
+                for character in result.provider_output_sha256
+            )
             and result.provider_output_size_bytes > 0
         ),
         "correlation_preserved": (

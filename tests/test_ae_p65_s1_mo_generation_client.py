@@ -177,8 +177,7 @@ def test_generate_candidate_enforces_closed_wire_shape(
     assert result.model_ref == "Qwen3.5-4B"
     assert result.output_text == '{"intent_label":"ANSWER"}'
     assert result.provider_output_sha256 == (
-        "sha256:"
-        + hashlib.sha256(result.output_text.encode()).hexdigest()
+        hashlib.sha256(result.output_text.encode()).hexdigest()
     )
     assert result.provider_output_size_bytes == len(result.output_text.encode())
     assert "intent_label" not in repr(result)
