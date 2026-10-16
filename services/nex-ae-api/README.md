@@ -125,6 +125,33 @@ P6.5 live CONTEXT candidate boundary:
   `NEX_AE_P65_S3_LIVE_SMOKE=1` and records only safe hashes, prompt/model
   lineage, confidence/threshold, directive, and trusted-resolution checks.
 
+P6.5 live PLAN candidate boundary:
+
+- `nex_ae_api.plan_candidate_generation.LivePlanCandidateService` resolves the
+  exact `ae.plan_builder.default/v1` binding and sends only bounded WorkIntent,
+  AgentContext summary, and capability-catalog projections through the thin MO
+  client. Exact capability versions, executor kinds, package trust, identity,
+  and authority are never model inputs.
+- The model returns only closed `p65.plan_candidate.v1` logical steps. AE
+  rejects unknown fields, private or authority-bearing data, prompt-control
+  language, invalid or parallel dependency graphs, non-terminal completion
+  mappings, unsupported plan kinds, and unknown or ambiguous capabilities.
+- The trusted binder resolves each `LOCAL_CAPABILITY` hint to exactly one
+  version from the captured CapabilitySnapshot, resolves `REPORT` to the
+  deterministic report capability, preserves exact WorkIntent/AgentContext/
+  CapabilitySnapshot lineage, and emits a canonical immutable AgentPlan.
+- `LOCAL_SKILL` remains an executor kind, never an LLM-authored logical step.
+  An exact P6 Skill descriptor may be selected through its capability ID and
+  is then bound by AE. `AGGREGATE` remains schema-known but fails closed until
+  a deterministic aggregate capability is admitted by the P5 validator.
+- `shadow` mode never creates AgentPlan. Required mode needs exact
+  `PLAN + model_profile + model_ref` calibration and maps low confidence to
+  `REPLAN_REQUIRED`. S4 adds no migration or chat-route orchestration; S5 owns
+  persistence, resume, PlanValidation/compile composition, and runtime wiring.
+- `scripts/smoke/run_p65_s4_live_plan_candidate_smoke.py` is opt-in through
+  `NEX_AE_P65_S4_LIVE_SMOKE=1` and records only safe hashes, prompt/model
+  lineage, calibration, exact-binding checks, plan kind/count, and directive.
+
 Workspace state:
 
 - AE owns workspace state, default runtime controls, chat document identity, and

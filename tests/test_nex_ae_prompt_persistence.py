@@ -16,6 +16,7 @@ from nex_ae_api.prompts import (
     AE_GENERAL_ANSWER_BINDING,
     AE_GROUNDED_CHAT_BINDING,
     AE_INTENT_RESOLUTION_BINDING,
+    AE_PLAN_BUILDER_BINDING,
     AE_PROMPT_SEEDS,
     seed_ae_prompt_registry,
 )
@@ -128,6 +129,7 @@ def test_registry_seeds_configured_bindings_idempotently_and_survives_restart() 
             AE_DOCUMENT_GENERATION_BINDING,
             AE_INTENT_RESOLUTION_BINDING,
             AE_CONTEXT_CANDIDATE_BINDING,
+            AE_PLAN_BUILDER_BINDING,
         ]
     )
     assert [item["prompt_binding_id"] for item in repeated] == [
