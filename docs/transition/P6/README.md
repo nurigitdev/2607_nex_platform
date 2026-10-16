@@ -431,7 +431,27 @@ Gate passed 3,880 tests with 98.61% statement and 96.83% branch coverage;
 contract validation remained green. No database migration, PostgreSQL, or
 remote model provider was required.
 
-## 22. Exit Shape
+## 22. P6-CA02 S1-S5 Checkpoint Gate
+
+The fifth-Slice Checkpoint Gate passed after P6-CA02-S5:
+
+- 13,965 non-closure tests passed with zero failures or errors;
+- statement coverage was 98.99% and branch coverage was 97.60%;
+- 174 schemas, 236 examples, 204 negative examples and 7 OpenAPI documents
+  passed contract validation;
+- P6-CA02-S2 and S4 connected directly to `nex_ae_test`, confirmed migration
+  `2205_ae_nsl_dual_profile`, exercised both exact profiles and left zero
+  residue; and
+- P6-CA02-S3 and S5 used the actual installed NSL wheel and passed 10/10 and
+  8/8 checks respectively.
+
+The 33 conditional skips belong to unrelated protected environments; none of
+the four explicitly selected P6-CA02 smokes was skipped. Remote model
+providers were not required. Canonical evidence is recorded in
+`docs/slices/p6_ca02_checkpoint_gate_evidence.md`. The repository-wide Full
+Gate remains required at P6-CA02 closure or before P7 entry.
+
+## 23. Exit Shape
 
 ```text
 PROMPT
