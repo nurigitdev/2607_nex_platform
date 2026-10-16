@@ -39,8 +39,6 @@ SERVICE_PROFILES = {
         test_patterns=(
             "test_nex_ae_*.py",
             "test_ae_*.py",
-            "test_p5_*.py",
-            "test_p6_*.py",
         ),
         coverage_targets=("services/nex-ae-api/nex_ae_api",),
     ),

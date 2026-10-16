@@ -32,7 +32,7 @@ from test_nex_ae_multi_step_engine import (
     _success,
 )
 from test_nex_ae_step_executors import _sync_result
-from test_p6_s5_nsl_read_backend import (
+from test_ae_p6_s5_nsl_read_backend import (
     _IsolationResult,
     _adapter as _isolated_adapter,
     _execute as _execute_isolated,

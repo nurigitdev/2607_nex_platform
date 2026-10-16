@@ -126,7 +126,7 @@ Future phases extend rather than rename P6 identities.
 P6_CA01_Source_Backed_READ_Contract_Closure_v1.0.md
 contracts/*.schema.json
 contracts/examples/p6-golden-*.json
-tests/test_p6_ca01_read_contracts.py
+tests/test_ae_p6_ca01_read_contracts.py
 ```
 
 This evidence closes contract traceability only. Runtime implementation and
@@ -139,8 +139,8 @@ source:
   services/nex-ae-api/nex_ae_api/agent_runtime_worker.py
 
 tests:
-  tests/test_p6_s0_agent_runtime_worker.py
-  tests/test_p6_s0_postgres_smoke.py
+  tests/test_ae_p6_s0_agent_runtime_worker.py
+  tests/test_ae_p6_s0_postgres_smoke.py
 
 protected runner:
   scripts/smoke/run_p6_s0_postgres_smoke.py
@@ -172,9 +172,9 @@ source:
   services/nex-ae-api/nex_ae_api/runtime_jobs.py
 
 tests:
-  tests/test_p6_s1_agent_runtime_dispatcher.py
-  tests/test_p6_s1_agent_runtime_operations.py
-  tests/test_p6_s1_postgres_smoke.py
+  tests/test_ae_p6_s1_agent_runtime_dispatcher.py
+  tests/test_ae_p6_s1_agent_runtime_operations.py
+  tests/test_ae_p6_s1_postgres_smoke.py
 
 protected runner:
   scripts/smoke/run_p6_s1_postgres_smoke.py
@@ -204,8 +204,8 @@ source:
   services/nex-ae-api/nex_ae_api/skill_artifacts.py
 
 tests:
-  tests/test_p6_s2_skill_artifacts.py
-  tests/test_p6_s2_postgres_smoke.py
+  tests/test_ae_p6_s2_skill_artifacts.py
+  tests/test_ae_p6_s2_postgres_smoke.py
 
 protected runner:
   scripts/smoke/run_p6_s2_postgres_smoke.py
@@ -238,8 +238,8 @@ source:
   services/nex-ae-api/nex_ae_api/step_results.py
 
 tests:
-  tests/test_p6_s3_nsl_step_execution.py
-  tests/test_p6_s3_postgres_smoke.py
+  tests/test_ae_p6_s3_nsl_step_execution.py
+  tests/test_ae_p6_s3_postgres_smoke.py
 
 protected runner:
   scripts/smoke/run_p6_s3_postgres_smoke.py
@@ -272,8 +272,8 @@ source:
   services/nex-ae-api/nex_ae_api/step_executors.py
 
 tests:
-  tests/test_p6_s4_local_skill_activation.py
-  tests/test_p6_s4_postgres_smoke.py
+  tests/test_ae_p6_s4_local_skill_activation.py
+  tests/test_ae_p6_s4_postgres_smoke.py
 
 protected runner:
   scripts/smoke/run_p6_s4_postgres_smoke.py
@@ -304,8 +304,8 @@ source:
   services/nex-ae-api/nex_ae_api/nsl_step_executions.py
 
 tests:
-  tests/test_p6_s5_nsl_read_backend.py
-  tests/test_p6_s5_postgres_smoke.py
+  tests/test_ae_p6_s5_nsl_read_backend.py
+  tests/test_ae_p6_s5_postgres_smoke.py
 
 protected runner:
   scripts/smoke/run_p6_s5_postgres_smoke.py
@@ -343,8 +343,8 @@ source:
   services/nex-ae-api/nex_ae_api/step_executors.py
 
 tests:
-  tests/test_p6_s6_result_timeline_integration.py
-  tests/test_p6_s6_postgres_smoke.py
+  tests/test_ae_p6_s6_result_timeline_integration.py
+  tests/test_ae_p6_s6_postgres_smoke.py
 
 protected runner:
   scripts/smoke/run_p6_s6_postgres_smoke.py
@@ -375,8 +375,8 @@ source:
   services/nex-ae-api/nex_ae_api/p6_ia_read_runtime.py
 
 tests:
-  tests/test_p6_s7_ia_read_runtime.py
-  tests/test_p6_s7_postgres_smoke.py
+  tests/test_ae_p6_s7_ia_read_runtime.py
+  tests/test_ae_p6_s7_postgres_smoke.py
 
 protected runner:
   scripts/smoke/run_p6_s7_postgres_smoke.py

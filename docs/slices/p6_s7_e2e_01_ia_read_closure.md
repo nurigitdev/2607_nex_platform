@@ -46,8 +46,8 @@ finalization service atomically creates AgentResult and required pending
 ResultDelivery. Timeline state remains a projection over retained canonical
 records.
 
-The AE Slice Gate profile now includes `test_p5_*` and `test_p6_*`; otherwise
-transition runtime modules were measured without their tests.
+The AE Slice Gate profile includes the owner-scoped `test_ae_*` namespace;
+P5/P6 transition tests now follow `test_ae_p5_*` and `test_ae_p6_*`.
 
 ## Persistence
 

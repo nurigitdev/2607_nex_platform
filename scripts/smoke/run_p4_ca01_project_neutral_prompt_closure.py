@@ -24,7 +24,7 @@ FROZEN_SCHEMA = FROZEN_ROOT / "execution-trigger-v2.1.schema.json"
 FROZEN_PROTOCOL = FROZEN_ROOT / "execution_trigger_v2_1.py"
 CANDIDATE_SCHEMA = CANDIDATE_ROOT / "execution-trigger-v2.1.schema.json"
 CANDIDATE_PROTOCOL = CANDIDATE_ROOT / "execution_trigger_v2_1.py"
-MANIFEST = Path("docs/transition/P4/P4_CA01_Controlled_Amendment_Manifest_v1.0.csv")
+MANIFEST = Path("docs/transition/P4/P4_CA01_Controlled_Amendment_Manifest_v1.1.csv")
 
 EXPECTED_FROZEN_HASHES = {
     str(FROZEN_SCHEMA): "f8b50623e5754fee52a335d7d9fd68a05b094e90af7f4874e22674325777ff27",

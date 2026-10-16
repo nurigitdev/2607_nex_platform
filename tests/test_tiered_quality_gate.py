@@ -14,8 +14,9 @@ def _minimal_root(tmp_path: Path) -> Path:
         "tests/test_focused.py",
         "tests/test_nex_ae_web_static.py",
         "tests/test_ae_web_runtime_audit.py",
-        "tests/test_p5_plan.py",
-        "tests/test_p6_runtime.py",
+        "tests/test_ae_p4_contract.py",
+        "tests/test_ae_p5_plan.py",
+        "tests/test_ae_p6_runtime.py",
         "tests/test_platform_alpha.py",
         "tests/test_s97_example_closure.py",
         "scripts/smoke/run_current_smoke.py",
@@ -113,7 +114,7 @@ def test_ae_web_slice_profile_selects_browser_regression_without_python_service(
     )
 
 
-def test_ae_api_slice_profile_includes_transition_runtime_regression(
+def test_ae_api_slice_profile_includes_owned_transition_runtime_regression(
     tmp_path: Path,
 ) -> None:
     root = _minimal_root(tmp_path)
@@ -124,8 +125,13 @@ def test_ae_api_slice_profile_includes_transition_runtime_regression(
         service="nex-ae-api",
     )
 
-    assert "tests/test_p5_plan.py" in plan.commands[0]
-    assert "tests/test_p6_runtime.py" in plan.commands[0]
+    assert gate.SERVICE_PROFILES["nex-ae-api"].test_patterns == (
+        "test_nex_ae_*.py",
+        "test_ae_*.py",
+    )
+    assert "tests/test_ae_p4_contract.py" in plan.commands[0]
+    assert "tests/test_ae_p5_plan.py" in plan.commands[0]
+    assert "tests/test_ae_p6_runtime.py" in plan.commands[0]
 
 
 def test_platform_slice_profile_requires_explicit_changed_coverage_scope(
