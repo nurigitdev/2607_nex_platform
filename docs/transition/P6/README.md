@@ -41,6 +41,9 @@ P6 document-set review
 → P6-CA02-S2 Dual-Profile Contract / Persistence Compatibility
 → P6-CA02-S3 In-Process NSL READ Backend Adapter
 → P6-CA02-S4 Profile-Aware Backend Routing
+→ P6-CA02-S5 Worker Readiness / Default Activation
+→ P6-CA02-S6 Timeout / Crash / Lease Recovery
+→ P6-CA02-S7 Dual-Profile Parity / PostgreSQL E2E
 ```
 
 **No P6 feature Slice begins before P6-CA01 closes.**
@@ -89,6 +92,10 @@ Frozen Platform v2.1 / Agent v2.1 / NSL v0.2
 28. `../../slices/p6_ca02_s2_dual_profile_compatibility.md`
 29. `../../slices/p6_ca02_s3_in_process_nsl_read_backend.md`
 30. `../../slices/p6_ca02_s4_profile_aware_backend_routing.md`
+31. `../../slices/p6_ca02_s5_worker_readiness_default_activation.md`
+32. `../../slices/p6_ca02_checkpoint_gate_evidence.md`
+33. `../../slices/p6_ca02_s6_timeout_crash_lease_recovery.md`
+34. `../../slices/p6_ca02_s7_dual_profile_parity_postgres_e2e.md`
 
 ## 5. CA01A Non-Negotiable Rules
 
@@ -472,7 +479,30 @@ Gate passed 3,890 tests with 98.62% statement and 96.84% branch coverage; the
 new protected smoke scope reached 100% statement and branch coverage, and
 contract validation remained green. No remote model provider was required.
 
-## 24. Exit Shape
+## 24. P6-CA02-S7 Result
+
+P6-CA02-S7 proved contract parity between the initial in-process profile and
+the optional process-isolated compatibility profile through the complete
+durable IA READ path:
+
+- each profile completed dispatcher, worker, NSL READ, result integration,
+  StepResult v1.2, AgentResult, restart, and cleanup behavior;
+- request, runtime result, result summary, and StepResult stable semantics
+  matched across profiles;
+- execution identities and tenant-scoped opaque refs differed only where
+  expected and retained exact lineage inside each journey;
+- Runtime imports resolved from the admitted installed wheel rather than the
+  source checkout; and
+- historical P6-S7 source admission now follows the canonical wheel lock
+  instead of an obsolete duplicated SHA.
+
+Actual `nex_ae_test` smoke passed 10/10 checks and all 5 parity dimensions for
+both profiles with zero residue. The final NeX-AE Slice Gate passed 3,905 tests
+with 98.64% statement and 96.90% branch coverage; both changed smoke scopes
+reached 100% statement and branch coverage, and contract validation remained
+green. No migration or remote model provider was required.
+
+## 25. Exit Shape
 
 ```text
 PROMPT

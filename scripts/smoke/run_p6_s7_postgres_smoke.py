@@ -23,6 +23,7 @@ for path in (
     sys.path.insert(0, str(path))
 
 import run_p5_s5_postgres_smoke as p5_s5
+import run_p6_ca02_s3_in_process_smoke as p6_ca02_s3
 import run_p6_s0_postgres_smoke as p6_s0
 import run_p6_s2_postgres_smoke as p6_s2
 import run_p6_s5_postgres_smoke as p6_s5
@@ -35,19 +36,27 @@ from nex_ae_api.agent_runtime_dispatcher import (
 from nex_ae_api.agent_runtime_worker import (
     AgentRuntimeWorkerConfig,
     build_agent_runtime_worker_profile,
+    load_in_process_nsl_package_readiness,
     run_bounded_agent_runtime_worker,
 )
 from nex_ae_api.multi_step_engine import MultiStepEngineError, SqlAlchemyMultiStepEngine
+from nex_ae_api.nsl_backend_profiles import (
+    NSL_V01_IN_PROCESS_BACKEND,
+    NSL_V01_PROCESS_ISOLATED_BACKEND,
+    normalize_nsl_backend_profile,
+)
 from nex_ae_api.nsl_read_backends import (
     NSLReadBackendError,
     NSLReadExecutionService,
     SqlAlchemyNSLBackendRunRepository,
     V01ProcessEntrypoint,
+    build_v01_in_process_backend,
     build_v01_process_isolated_backend,
 )
 from nex_ae_api.nsl_result_integration import (
     NSLResultIntegrationError,
     NSLResultIntegrationService,
+    build_nsl_result_summary,
     to_p5_executor_outcome,
 )
 from nex_ae_api.nsl_step_executions import (
@@ -76,6 +85,7 @@ from nex_ae_api.step_executors import (
     P5StepExecutorError,
     default_p6_executor_registry,
 )
+from nex_ae_api.step_results import load_step_result_by_step
 from nex_runtime import (
     SqlAlchemyWorkerHeartbeatStore,
     load_env_file,
@@ -90,7 +100,7 @@ DATABASE_ENV = "NEX_AE_TEST_DATABASE_URL"
 NSL_SOURCE_ENV = "NEX_AE_P6_S7_NSL_SOURCE"
 EXPECTED_DATABASE = "nex_ae_test"
 EXPECTED_ROLE = "nex_ae_user"
-REQUIRED_MIGRATION = "2204_ae_nsl_backend_run"
+REQUIRED_MIGRATION = "2205_ae_nsl_dual_profile"
 
 
 def run_p6_s7_postgres_smoke(
@@ -117,51 +127,19 @@ def run_p6_s7_postgres_smoke(
     if not nsl_source_value:
         return _failure("nsl_source_missing", f"{NSL_SOURCE_ENV} is required.")
     try:
-        nsl_source = p6_s5._verified_nsl_source(Path(nsl_source_value))
+        nsl_source = Path(nsl_source_value).resolve(strict=True)
+        nsl_lock = json.loads(p6_ca02_s3.DEFAULT_LOCK.read_text(encoding="utf-8"))
+        p6_ca02_s3._installed_package_evidence(nsl_source, nsl_lock)
     except (OSError, RuntimeError, ValueError) as exc:
         return _failure("nsl_source_invalid", str(exc))
-    if str(nsl_source) not in sys.path:
-        sys.path.insert(0, str(nsl_source))
-
-    original_snapshot_builder = p5_s5.build_capability_snapshot
-    original_plan_builder = p5_s5.build_deterministic_agent_plan
     try:
         migration = run_service_migrations(
             "nex-ae-api", database_url=database_url, profile="test"
         )
-
-        def build_snapshot(**kwargs: Any) -> dict[str, Any]:
-            return original_snapshot_builder(
-                **kwargs,
-                capabilities=(
-                    *p6_s5.DEFAULT_P5_CAPABILITIES,
-                    p6_s5._local_capability(),
-                ),
-            )
-
-        def build_plan(**kwargs: Any) -> dict[str, Any]:
-            plan = original_plan_builder(**kwargs)
-            plan["steps"][0].update(
-                {
-                    "title": "Run exact local Skill",
-                    "objective": "Execute deterministic NSL READ.",
-                    "required_capability": p6_s5.SKILL_ID,
-                    "capability_version_constraint": p6_s5.SKILL_VERSION,
-                    "output_contract_ref": "contract://nex/p6/step-result/v1.2",
-                }
-            )
-            plan["plan_hash"] = semantic_sha256_hash_ref(
-                {key: value for key, value in plan.items() if key != "plan_hash"}
-            )
-            return plan
-
-        p5_s5.build_capability_snapshot = build_snapshot
-        p5_s5.build_deterministic_agent_plan = build_plan
-        evidence = p5_s5._execute_postgres_smoke(
-            database_url,
-            verifier=lambda fixture: _verify_ia_read_closure(
-                fixture, nsl_source=nsl_source
-            ),
+        evidence = execute_p6_s7_postgres_profile(
+            database_url=database_url,
+            nsl_source=nsl_source,
+            backend_profile=NSL_V01_PROCESS_ISOLATED_BACKEND,
         )
         evidence.update(
             {
@@ -170,14 +148,14 @@ def run_p6_s7_postgres_smoke(
                 "profile": "test",
                 "database_env": DATABASE_ENV,
                 "redacted_database_url": redact_database_url(database_url),
-                "nsl_source_revision": p6_s5.EXPECTED_NSL_SHA,
+                "nsl_source_revision": nsl_lock["source_revision"],
                 "migration": {
                     "planned_count": len(migration.planned),
                     "applied_count": len(migration.applied),
                     "skipped_count": len(migration.skipped),
-                    "latest_version": migration.planned[-1]
-                    if migration.planned
-                    else None,
+                    "latest_version": (
+                        migration.planned[-1] if migration.planned else None
+                    ),
                 },
             }
         )
@@ -222,14 +200,82 @@ def run_p6_s7_postgres_smoke(
             "execution_failed",
             p5_s5._redact_detail(str(exc), database_url=database_url),
         )
+
+
+def execute_p6_s7_postgres_profile(
+    *, database_url: str, nsl_source: Path, backend_profile: str
+) -> dict[str, Any]:
+    profile = normalize_nsl_backend_profile(backend_profile)
+    original_snapshot_builder = p5_s5.build_capability_snapshot
+    original_plan_builder = p5_s5.build_deterministic_agent_plan
+    parity_contract: dict[str, Any] = {}
+
+    def build_snapshot(**kwargs: Any) -> dict[str, Any]:
+        local_capability = p6_s5.build_local_skill_capability(
+            skill_id=p6_s5.SKILL_ID,
+            exact_skill_version=p6_s5.SKILL_VERSION,
+            skill_semantic_hash=p6_s5.SEMANTIC_HASH,
+            input_contract_ref="contract://nex/p6/skill-execution-request/v1",
+            output_contract_ref="contract://nex/p6/step-result/v1.2",
+            runtime_contract_ref="contract://nex/nsl/read-runtime/v0.1",
+            trust_policy_id="nsl.production.ed25519.v1",
+            backend_profile=profile,
+        )
+        return original_snapshot_builder(
+            **kwargs,
+            capabilities=(
+                *p6_s5.DEFAULT_P5_CAPABILITIES,
+                local_capability,
+            ),
+        )
+
+    def build_plan(**kwargs: Any) -> dict[str, Any]:
+        plan = original_plan_builder(**kwargs)
+        plan["steps"][0].update(
+            {
+                "title": "Run exact local Skill",
+                "objective": "Execute deterministic NSL READ.",
+                "required_capability": p6_s5.SKILL_ID,
+                "capability_version_constraint": p6_s5.SKILL_VERSION,
+                "output_contract_ref": "contract://nex/p6/step-result/v1.2",
+            }
+        )
+        plan["plan_hash"] = semantic_sha256_hash_ref(
+            {key: value for key, value in plan.items() if key != "plan_hash"}
+        )
+        return plan
+
+    def verify(fixture: Mapping[str, Any]) -> dict[str, Any]:
+        result = _verify_ia_read_closure(
+            fixture,
+            nsl_source=nsl_source,
+            backend_profile=profile,
+        )
+        parity_contract.update(result.pop("parity_contract"))
+        return result
+
+    try:
+        p5_s5.build_capability_snapshot = build_snapshot
+        p5_s5.build_deterministic_agent_plan = build_plan
+        evidence = p5_s5._execute_postgres_smoke(
+            database_url,
+            verifier=verify,
+        )
+        evidence["backend_profile"] = profile
+        evidence["parity_contract"] = parity_contract
+        return evidence
     finally:
         p5_s5.build_capability_snapshot = original_snapshot_builder
         p5_s5.build_deterministic_agent_plan = original_plan_builder
 
 
 def _verify_ia_read_closure(
-    fixture: Mapping[str, Any], *, nsl_source: Path
+    fixture: Mapping[str, Any],
+    *,
+    nsl_source: Path,
+    backend_profile: str = NSL_V01_PROCESS_ISOLATED_BACKEND,
 ) -> dict[str, Any]:
+    profile_name = normalize_nsl_backend_profile(backend_profile)
     factory = fixture["factory"]
     tenant_id = str(fixture["tenant_id"])
     execution = dict(fixture["execution"])
@@ -249,10 +295,15 @@ def _verify_ia_read_closure(
         admission_source=p6_s2._AdmissionSource(golden),
         repository=artifacts,
     )
-    backend = build_v01_process_isolated_backend(
-        V01ProcessEntrypoint(p6_s5._GoldenWorkerFactory(str(nsl_source))),
-        timeout_ms=30_000,
-    )
+    if profile_name == NSL_V01_IN_PROCESS_BACKEND:
+        backend = build_v01_in_process_backend(
+            p6_ca02_s3._InstalledWheelWorkerFactory(nsl_source, golden)
+        )
+    else:
+        backend = build_v01_process_isolated_backend(
+            V01ProcessEntrypoint(p6_s5._GoldenWorkerFactory(str(nsl_source))),
+            timeout_ms=30_000,
+        )
     read_execution = NSLReadExecutionService(
         bindings=bindings,
         artifacts=artifacts,
@@ -315,12 +366,18 @@ def _verify_ia_read_closure(
         profile = build_agent_runtime_worker_profile(
             worker_id=worker_id,
             declared_at=_utc_now(),
+            supported_backend_profiles=(profile_name,),
         )
         config = AgentRuntimeWorkerConfig(
             mode="enabled",
             profile=profile,
             lease_seconds=60,
             poll_interval_seconds=0,
+        )
+        in_process_readiness = (
+            load_in_process_nsl_package_readiness()
+            if profile_name == NSL_V01_IN_PROCESS_BACKEND
+            else None
         )
         heartbeat_store = SqlAlchemyWorkerHeartbeatStore(factory)
         first_run = run_bounded_agent_runtime_worker(
@@ -334,6 +391,7 @@ def _verify_ia_read_closure(
             ),
             available_executor_kinds=registry.registered_kinds,
             available_backend_profiles=registry.backend_profiles,
+            in_process_package_readiness=in_process_readiness,
             max_cycles=1,
         )
         local_result = first_run["executions"][0]["handler_result"]
@@ -350,7 +408,9 @@ def _verify_ia_read_closure(
             now=_utc_now(),
         )
         if second_job is None or second_claim is None:
-            raise RuntimeError("P6-S7 deterministic finalization step was not claimable")
+            raise RuntimeError(
+                "P6-S7 deterministic finalization step was not claimable"
+            )
         final_execution = step_worker.run_claim(
             tenant_id=tenant_id,
             claim=second_claim,
@@ -392,6 +452,7 @@ def _verify_ia_read_closure(
             ),
             available_executor_kinds=registry.registered_kinds,
             available_backend_profiles=registry.backend_profiles,
+            in_process_package_readiness=in_process_readiness,
             max_cycles=1,
         )
         with factory() as session:
@@ -408,6 +469,40 @@ def _verify_ia_read_closure(
                     "ae_result_delivery",
                 )
             }
+            local_step_result = load_step_result_by_step(
+                session, tenant_id, local_step["executable_step_id"]
+            )
+        binding_bundle = bindings.get(
+            tenant_id=tenant_id,
+            executable_step_id=local_step["executable_step_id"],
+        )
+        if binding_bundle is None or local_step_result is None:
+            raise RuntimeError("P6-S7 parity evidence is incomplete")
+        binding = binding_bundle["binding"]
+        request = binding_bundle["request"]
+        artifact = artifacts.get(
+            tenant_id=tenant_id,
+            artifact_ref=binding["verified_artifact_ref"],
+        )
+        backend_run = runs.get(
+            tenant_id=tenant_id,
+            nsl_execution_id=binding["nsl_execution_id"],
+            attempt_no=1,
+        )
+        if artifact is None or backend_run is None:
+            raise RuntimeError("P6-S7 parity artifact or backend run is incomplete")
+        result_summary = build_nsl_result_summary(
+            binding=binding,
+            artifact=artifact,
+            backend_run=backend_run,
+        )
+        parity_contract = _dual_profile_parity_contract(
+            request=request,
+            binding=binding,
+            backend_run=backend_run,
+            result_summary=result_summary,
+            step_result=local_step_result,
+        )
         serialized_result = canonical_json(aggregate.result)
         checks = {
             "dispatcher_worker_consumed_local_skill": first_job is not None
@@ -464,9 +559,14 @@ def _verify_ia_read_closure(
                 "ae_result_delivery": 1,
             },
             "local_skill_lineage": local_step["executor_kind"] == "LOCAL_SKILL",
+            "selected_backend_profile_exact": binding["backend_profile"]
+            == backend_run["backend_profile"]
+            == profile_name,
+            "identity_lineage_preserved": parity_contract["identity_lineage_preserved"],
         }
         return {
             "checks": checks,
+            "parity_contract": parity_contract,
             "row_counts": {
                 **counts,
                 "timeline_events": len(timeline["events"]),
@@ -486,6 +586,106 @@ def _verify_ia_read_closure(
             worker_id=worker_id,
             queue_name=queue_name,
         )
+
+
+def _dual_profile_parity_contract(
+    *,
+    request: Mapping[str, Any],
+    binding: Mapping[str, Any],
+    backend_run: Mapping[str, Any],
+    result_summary: Mapping[str, Any],
+    step_result: Mapping[str, Any],
+) -> dict[str, Any]:
+    runtime_result = dict(backend_run["runtime_result_envelope"]["runtime_result"])
+    runtime_result.pop("execution_id", None)
+    request_projection_fields = (
+        "schema_version",
+        "skill_id",
+        "exact_skill_version",
+        "expected_semantic_hash",
+        "runtime_contract_ref",
+        "compiled_inputs",
+        "input_provenance",
+        "explicit_resource_refs",
+        "mode",
+    )
+    summary_projection_fields = (
+        "schema_version",
+        "skill_id",
+        "skill_version",
+        "skill_semantic_hash",
+        "package_hash",
+        "trust_evidence_ref",
+        "execution_status",
+        "completeness",
+        "resource_summary",
+        "error_code",
+        "pre_write_eligibility",
+        "commit_state",
+        "verification_status",
+        "retry_safety",
+    )
+    result_payload = dict(step_result["result_payload"])
+    step_projection = {
+        "schema_version": step_result["schema_version"],
+        "compiled_step_key": step_result["compiled_step_key"],
+        "logical_step_ref": step_result["logical_step_ref"],
+        "attempt_no": step_result["attempt_no"],
+        "status": step_result["status"],
+        "result_contract_ref": step_result["result_contract_ref"],
+        "result_payload": {
+            "execution_status": result_payload["execution_status"],
+        },
+        "external_refs": list(step_result["external_refs"]),
+        "artifact_ref_classes": sorted(
+            {_reference_class(item) for item in step_result["artifact_refs"]}
+        ),
+        "evidence_ref_classes": sorted(
+            {_reference_class(item) for item in step_result["evidence_refs"]}
+        ),
+        "error_present": step_result.get("error_ref") is not None,
+        "executor_kind": step_result["executor_kind"],
+    }
+    nsl_execution_id = request["nsl_execution_id"]
+    business_operation_id = request["business_operation_id"]
+    identity_lineage_preserved = (
+        binding["nsl_execution_id"]
+        == backend_run["nsl_execution_id"]
+        == result_summary["nsl_execution_id"]
+        == result_payload["nsl_execution_id"]
+        == nsl_execution_id
+        and binding["business_operation_id"]
+        == backend_run["business_operation_id"]
+        == result_summary["business_operation_id"]
+        == step_result["business_operation_id"]
+        == business_operation_id
+        and request["agent_execution_id"] != nsl_execution_id
+        and nsl_execution_id != business_operation_id
+        and binding["verified_artifact_ref"] == result_summary["verified_artifact_ref"]
+        and list(step_result["artifact_refs"]) == [binding["verified_artifact_ref"]]
+    )
+    return {
+        "request_fields": sorted(request),
+        "request_projection": {
+            field: request[field] for field in request_projection_fields
+        },
+        "result_summary_fields": sorted(result_summary),
+        "result_summary_projection": {
+            **{field: result_summary[field] for field in summary_projection_fields},
+            "verified_artifact_ref_class": _reference_class(
+                result_summary["verified_artifact_ref"]
+            ),
+        },
+        "runtime_result_projection": runtime_result,
+        "step_result_fields": sorted(step_result),
+        "step_result_projection": step_projection,
+        "identity_lineage_preserved": identity_lineage_preserved,
+    }
+
+
+def _reference_class(value: object) -> str:
+    parts = str(value).split(":")
+    return ":".join(parts[:2]) if len(parts) > 1 else str(value)
 
 
 def _context_projection(
