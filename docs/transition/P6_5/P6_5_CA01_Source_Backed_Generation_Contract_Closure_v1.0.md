@@ -269,8 +269,13 @@ response_format = {"type":"json_object"}
 reasoning_mode = disabled
 temperature = 0.0
 stream = false
-max_output_tokens = 768 / 1536 / 2048 for INTENT / CONTEXT / PLAN
+max_output_tokens = 768 / 1024 / 1024 for INTENT / CONTEXT / PLAN
 ```
+
+P6.5-S1 source reconciliation fixed CONTEXT and PLAN at 1024 because the
+active `general-llm-default` MO route contract admits at most 1024 output
+tokens. Raising either bound requires a versioned MO catalog/alias lifecycle
+change; AE must not silently exceed the admitted route contract.
 
 AE never accepts caller-supplied provider URL, endpoint, model path, API key,
 or exact provider model. Response provenance maps as follows:

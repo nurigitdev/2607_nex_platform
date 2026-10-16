@@ -57,6 +57,26 @@ Prompt registry seed:
 - `ae.grounded_chat.default` records the grounded chat system prompt for debug
   and later prompt analytics lineage.
 
+P6.5 semantic generation boundary:
+
+- `nex_ae_api.mo_generation_client.HttpAeMoGenerationClient` is the thin
+  AE-to-MO port for semantic candidate generation. It calls only
+  `POST /api/v1/generations` and `GET /api/v1/provider-route-health`; AE never
+  receives a provider endpoint, model path, or provider API key.
+- The client fixes structured output, disabled reasoning, zero temperature,
+  non-streaming execution, correlation headers, OA service-token audience
+  `nex-mo`, and bounded stage limits. S1 does not wire this port into the
+  existing Chat/RAG route; S2-S5 own semantic-stage orchestration.
+- Required-mode readiness accepts only the configured generation alias with a
+  live `READY` route backed by `active_preflight` evidence. Configure the
+  logical alias with `NEX_AE_MO_GENERATION_ALIAS` and keep
+  `NEX_AE_MO_GENERATION_TIMEOUT_SECONDS` at or above MO's complete retry
+  budget.
+- `scripts/smoke/run_p65_s1_ae_mo_generation_live_smoke.py` is opt-in through
+  `NEX_AE_P65_S1_LIVE_SMOKE=1`. It records safe model/route lineage and an
+  output digest, never the prompt, output text, service token, provider URL,
+  or API key.
+
 Workspace state:
 
 - AE owns workspace state, default runtime controls, chat document identity, and
