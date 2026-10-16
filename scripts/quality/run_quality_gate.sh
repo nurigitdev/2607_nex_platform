@@ -819,3 +819,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_s150_protected_acceptance.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s150_production_release_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_p5_planning_execution_foundation_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_p6_ca02_s8_runtime_profile_acceptance.py --summary

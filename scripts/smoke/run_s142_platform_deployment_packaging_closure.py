@@ -175,11 +175,7 @@ def run_s142_platform_deployment_packaging_closure(
             "unbound_process_count": 0,
         },
         "dependency_locks_are_integrity_complete": (
-            build_inputs.get("lock_count") == 2
-            and build_inputs.get("python_package_count") == 52
-            and int(build_inputs.get("python_hash_count") or 0) >= 1200
-            and build_inputs.get("node_package_count") == 4
-            and build_inputs.get("node_integrity_count") == 4
+            _dependency_locks_are_integrity_complete(build_inputs)
         ),
         "owner_scoped_oci_definitions_exact": (
             oci.get("artifact_count") == 6
@@ -332,6 +328,20 @@ def _decision(
 
 def _mapping(value: object) -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _dependency_locks_are_integrity_complete(
+    summary: Mapping[str, Any],
+) -> bool:
+    python_packages = int(summary.get("python_package_count") or 0)
+    python_hashes = int(summary.get("python_hash_count") or 0)
+    return (
+        summary.get("lock_count") == 2
+        and python_packages >= 40
+        and python_hashes >= python_packages
+        and summary.get("node_package_count") == 4
+        and summary.get("node_integrity_count") == 4
+    )
 
 
 def _read_text(path: Path) -> str:

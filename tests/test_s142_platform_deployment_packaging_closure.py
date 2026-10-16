@@ -74,6 +74,27 @@ def test_helpers_cover_mapping_text_summary_decision_and_noncanonical_root(
     assert closure._read_text(tmp_path / "missing.md") == ""
 
 
+def test_dependency_lock_integrity_tracks_inventory_growth() -> None:
+    base = {
+        "lock_count": 2,
+        "python_package_count": 53,
+        "python_hash_count": 1274,
+        "node_package_count": 4,
+        "node_integrity_count": 4,
+    }
+
+    assert closure._dependency_locks_are_integrity_complete(base)
+    assert closure._dependency_locks_are_integrity_complete(
+        {**base, "python_package_count": 54, "python_hash_count": 1290}
+    )
+    assert not closure._dependency_locks_are_integrity_complete(
+        {**base, "python_hash_count": 52}
+    )
+    assert not closure._dependency_locks_are_integrity_complete(
+        {**base, "python_package_count": 39}
+    )
+
+
 def test_summary_and_main_branches(monkeypatch, capsys) -> None:
     passing = {
         "status": "PASS",

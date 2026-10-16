@@ -44,6 +44,7 @@ P6 document-set review
 → P6-CA02-S5 Worker Readiness / Default Activation
 → P6-CA02-S6 Timeout / Crash / Lease Recovery
 → P6-CA02-S7 Dual-Profile Parity / PostgreSQL E2E
+→ P6-CA02-S8 Runtime-Profile Acceptance / P7 Entry Closure
 ```
 
 **No P6 feature Slice begins before P6-CA01 closes.**
@@ -96,6 +97,7 @@ Frozen Platform v2.1 / Agent v2.1 / NSL v0.2
 32. `../../slices/p6_ca02_checkpoint_gate_evidence.md`
 33. `../../slices/p6_ca02_s6_timeout_crash_lease_recovery.md`
 34. `../../slices/p6_ca02_s7_dual_profile_parity_postgres_e2e.md`
+35. `../../slices/p6_ca02_s8_runtime_profile_acceptance_p7_entry_closure.md`
 
 ## 5. CA01A Non-Negotiable Rules
 
@@ -502,7 +504,28 @@ with 98.64% statement and 96.90% branch coverage; both changed smoke scopes
 reached 100% statement and branch coverage, and contract validation remained
 green. No migration or remote model provider was required.
 
-## 25. Exit Shape
+## 25. P6-CA02-S8 Result
+
+P6-CA02-S8 accepted the runtime-profile baseline for P7:
+
+- the installed-wheel readiness gate passed 8/8 checks;
+- timeout, crash, stale-lease rejection, and recovery passed 19/19 checks on
+  actual `nex_ae_test` PostgreSQL;
+- both runtime profiles passed the complete durable IA READ journey with
+  10/10 checks, 5/5 parity dimensions, and zero residue;
+- the NSL source gate passed 1,225 tests at 99.47% statement and 98.56%
+  branch coverage;
+- the repository Full Gate passed 14,710 tests at 97.26% statement and
+  96.71% branch coverage; and
+- the final protected S8 acceptance passed all 12 checks.
+
+P7 entry is accepted with `NSL_V01_IN_PROCESS` as the initial profile and
+`NSL_V01_PROCESS_ISOLATED` as an explicit optional compatibility profile.
+Both continue to share one fail-closed AE request, identity, persistence,
+result, and timeline contract. No migration or remote model provider was
+required for closure.
+
+## 26. Exit Shape
 
 ```text
 PROMPT
