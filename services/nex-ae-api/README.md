@@ -100,6 +100,31 @@ P6.5 live INTENT candidate boundary:
   `NEX_AE_P65_S2_LIVE_SMOKE=1` and records only hashes, bounded model lineage,
   confidence/threshold, directive, and deterministic WorkIntent evidence.
 
+P6.5 live CONTEXT candidate boundary:
+
+- `nex_ae_api.context_candidate_generation.LiveContextCandidateService`
+  resolves the exact `ae.context_candidate_extraction.default` binding, sends
+  only the closed WorkIntent/base-context projection through the thin MO
+  client, and validates `p65.context_candidate_set.v1` before any hint reaches
+  context resolution.
+- Context candidates are untrusted suggestions. They may provide bounded
+  entity, retrieval, resource-selector, and parameter hints, but cannot set
+  tenant, principal, owner, project, role, permission, classification, or
+  resource-admission authority.
+- `TrustedContextResolver` remains the sole canonical resolution boundary. It
+  receives a normalized `ContextCandidateHints` projection while the resulting
+  AgentContext contains only trusted resolution output and never embeds the
+  candidate payload or candidate hash.
+- `shadow` mode records `SHADOW_ONLY` without creating AgentContext. Required
+  mode needs exact `CONTEXT + model_profile + model_ref` calibration, maps low
+  confidence to `CONTEXT_REFRESH_REQUIRED`, and fails closed on malformed
+  output, model-lineage drift, or trusted-resolver failure.
+- S3 introduces no migration or route orchestration. Candidate persistence,
+  resume, and chat-route composition remain assigned to P6.5-S5.
+- `scripts/smoke/run_p65_s3_live_context_candidate_smoke.py` is opt-in through
+  `NEX_AE_P65_S3_LIVE_SMOKE=1` and records only safe hashes, prompt/model
+  lineage, confidence/threshold, directive, and trusted-resolution checks.
+
 Workspace state:
 
 - AE owns workspace state, default runtime controls, chat document identity, and

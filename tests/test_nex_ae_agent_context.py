@@ -9,6 +9,7 @@ import pytest
 from jsonschema import Draft202012Validator, FormatChecker
 from nex_ae_api.agent_context import (
     AgentContextError,
+    ContextCandidateHints,
     SqlAlchemyAgentContextRepository,
     TrustedContextResolution,
     build_agent_context,
@@ -241,6 +242,59 @@ def test_builder_uses_trusted_resolver_and_builds_contract_valid_private_context
     assert context["project_ref"] is None
     assert context["context_hash"].startswith("sha256:")
     assert "private prompt" not in json.dumps(context, ensure_ascii=False)
+
+
+def test_builder_passes_normalized_candidate_hints_only_to_trusted_resolver() -> None:
+    source = {"candidate_key": "E1", "selector_value": "budget"}
+    hints = ContextCandidateHints(
+        candidate_hash=HASH_A,
+        entity_candidates=(source,),
+        retrieval_hints=(),
+        resource_selectors=(),
+        parameter_candidates=(),
+        confidence=0.9,
+    )
+    resolver = Resolver(_resolution())
+
+    context = _context(resolver=resolver, candidate_hints=hints)
+    source["selector_value"] = "changed"
+
+    assert resolver.requests[0].candidate_hints.entity_candidates[0][
+        "selector_value"
+    ] == "budget"
+    assert "candidate_hints" not in context
+
+
+@pytest.mark.parametrize(
+    "hints",
+    [
+        "unsupported",
+        ContextCandidateHints("bad", (), (), (), (), 0.9),
+        ContextCandidateHints(HASH_A, (), (), (), (), True),
+        ContextCandidateHints(HASH_A, [], (), (), (), 0.9),
+        ContextCandidateHints(HASH_A, ("not-an-object",), (), (), (), 0.9),
+        ContextCandidateHints(
+            HASH_A,
+            ({"candidate_key": "E1", "tenant_id": "invented"},),
+            (),
+            (),
+            (),
+            0.9,
+        ),
+        ContextCandidateHints(
+            HASH_A,
+            ({"candidate_key": "E1", "value": object()},),
+            (),
+            (),
+            (),
+            0.9,
+        ),
+    ],
+)
+def test_builder_rejects_invalid_or_authority_bearing_candidate_hints(hints) -> None:
+    with pytest.raises(AgentContextError) as raised:
+        _context(candidate_hints=hints)
+    assert raised.value.error_code == "ae.agent_context_invalid"
 
 
 def test_compatibility_policy_digest_conversion_does_not_rehash() -> None:

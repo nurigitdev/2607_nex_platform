@@ -33,6 +33,34 @@ _FORBIDDEN_PRIVATE_KEYS = frozenset(
         "reasoning_content",
     }
 )
+_FORBIDDEN_CANDIDATE_AUTHORITY_KEYS = frozenset(
+    {
+        "approval_authority",
+        "classification",
+        "classification_authority",
+        "data_classification",
+        "data_classification_authority",
+        "owner",
+        "owner_id",
+        "owner_subject_id",
+        "permission",
+        "permission_grants",
+        "permissions",
+        "principal",
+        "principal_authority",
+        "principal_id",
+        "project",
+        "project_authority",
+        "project_id",
+        "project_ref",
+        "role",
+        "role_bindings",
+        "roles",
+        "tenant",
+        "tenant_authority",
+        "tenant_id",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -46,6 +74,16 @@ class AgentContextError(Exception):
 
 
 @dataclass(frozen=True)
+class ContextCandidateHints:
+    candidate_hash: str
+    entity_candidates: tuple[Mapping[str, Any], ...]
+    retrieval_hints: tuple[Mapping[str, Any], ...]
+    resource_selectors: tuple[Mapping[str, Any], ...]
+    parameter_candidates: tuple[Mapping[str, Any], ...]
+    confidence: float
+
+
+@dataclass(frozen=True)
 class ContextBuildRequest:
     tenant_id: str
     principal_id: str
@@ -55,6 +93,7 @@ class ContextBuildRequest:
     conversation_id: str
     interaction_id: str
     work_intent_ref: Mapping[str, Any]
+    candidate_hints: ContextCandidateHints | None = None
 
 
 @dataclass(frozen=True)
@@ -107,6 +146,7 @@ def build_agent_context(
     work_intent: Mapping[str, Any],
     runtime_policy_ref: Mapping[str, Any],
     resolver: TrustedContextResolver,
+    candidate_hints: ContextCandidateHints | None = None,
     context_id: str | None = None,
     context_generation: int = 1,
     built_at: str | None = None,
@@ -143,6 +183,7 @@ def build_agent_context(
         .replace("+00:00", "Z"),
     )
     policy_ref = _runtime_policy_ref(runtime_policy_ref)
+    normalized_hints = _context_candidate_hints(candidate_hints)
     request = ContextBuildRequest(
         tenant_id=identity["tenant_id"],
         principal_id=identity["principal_id"],
@@ -152,6 +193,7 @@ def build_agent_context(
         conversation_id=interaction["conversation_id"],
         interaction_id=interaction["interaction_id"],
         work_intent_ref=work_intent_ref,
+        candidate_hints=normalized_hints,
     )
     resolution = resolver.resolve(request)
     if not isinstance(resolution, TrustedContextResolution):
@@ -722,6 +764,67 @@ def _reject_private_material(value: Any) -> None:
     elif isinstance(value, list | tuple):
         for item in value:
             _reject_private_material(item)
+
+
+def _context_candidate_hints(
+    value: ContextCandidateHints | None,
+) -> ContextCandidateHints | None:
+    if value is None:
+        return None
+    if not isinstance(value, ContextCandidateHints):
+        raise _invalid("Context candidate hints use an unsupported projection.")
+    try:
+        candidate_hash = validate_hash_ref(value.candidate_hash)
+    except ValueError as exc:
+        raise _invalid("Context candidate hint hash is invalid.") from exc
+    confidence = value.confidence
+    if (
+        isinstance(confidence, bool)
+        or not isinstance(confidence, (int, float))
+        or not 0.0 <= float(confidence) <= 1.0
+    ):
+        raise _invalid("Context candidate hint confidence is invalid.")
+    collections = (
+        ("entity_candidates", value.entity_candidates, 32),
+        ("retrieval_hints", value.retrieval_hints, 16),
+        ("resource_selectors", value.resource_selectors, 32),
+        ("parameter_candidates", value.parameter_candidates, 32),
+    )
+    normalized: dict[str, tuple[Mapping[str, Any], ...]] = {}
+    for field_name, records, maximum in collections:
+        if not isinstance(records, tuple) or len(records) > maximum:
+            raise _invalid(f"Context candidate {field_name} is invalid.")
+        copied: list[Mapping[str, Any]] = []
+        for record in records:
+            if not isinstance(record, Mapping):
+                raise _invalid(f"Context candidate {field_name} is invalid.")
+            _reject_candidate_authority(record)
+            try:
+                copied.append(json.loads(canonical_json(record)))
+            except (TypeError, ValueError) as exc:
+                raise _invalid(
+                    f"Context candidate {field_name} is not canonical JSON."
+                ) from exc
+        normalized[field_name] = tuple(copied)
+    return ContextCandidateHints(
+        candidate_hash=candidate_hash,
+        entity_candidates=normalized["entity_candidates"],
+        retrieval_hints=normalized["retrieval_hints"],
+        resource_selectors=normalized["resource_selectors"],
+        parameter_candidates=normalized["parameter_candidates"],
+        confidence=float(confidence),
+    )
+
+
+def _reject_candidate_authority(value: Any) -> None:
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if str(key).casefold() in _FORBIDDEN_CANDIDATE_AUTHORITY_KEYS:
+                raise _invalid("Context candidate hints contain authority data.")
+            _reject_candidate_authority(item)
+    elif isinstance(value, list | tuple):
+        for item in value:
+            _reject_candidate_authority(item)
 
 
 def _bounded_text_list(

@@ -14,6 +14,7 @@ from nex_ae_api.prompt_persistence import (
 )
 from nex_ae_api.prompts import (
     AE_GENERAL_ANSWER_BINDING,
+    AE_PROMPT_SEEDS,
     DEFAULT_AE_PROMPT_STORE,
     build_default_ae_prompt_store,
     seed_ae_prompt_registry,
@@ -215,7 +216,7 @@ def test_default_prompt_store_uses_sql_persistence_and_seeds_registry() -> None:
     store = build_default_ae_prompt_store(app)
 
     assert isinstance(store, SqlAlchemyAePromptRegistryStore)
-    assert len(store.list_bindings()) == 5
+    assert len(store.list_bindings()) == len(AE_PROMPT_SEEDS)
     plain_app = build_service_app(SERVICE_SPECS["nex-ae-api"])
     assert build_default_ae_prompt_store(plain_app) is DEFAULT_AE_PROMPT_STORE
 
