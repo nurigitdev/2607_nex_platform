@@ -240,6 +240,30 @@ class SqlAlchemyCapabilitySnapshotRepository:
                 True,
             ) from exc
 
+    def get_latest(self, *, tenant_id: str) -> dict[str, Any] | None:
+        tenant_id = _required_text("tenant_id", tenant_id, 128)
+        try:
+            with self._session_factory() as session:
+                row = session.execute(
+                    text(
+                        "SELECT snapshot_json FROM ae_capability_snapshot "
+                        "WHERE tenant_id = :tenant_id "
+                        "ORDER BY snapshot_version DESC, created_at DESC LIMIT 1"
+                    ),
+                    {"tenant_id": tenant_id},
+                ).mappings().first()
+                if row is None:
+                    return None
+                return _validate_snapshot(_json_value(row["snapshot_json"]))
+        except CapabilitySnapshotError:
+            raise
+        except SQLAlchemyError as exc:
+            raise CapabilitySnapshotError(
+                "ae.capability_snapshot_store_unavailable",
+                "AE capability snapshot store is unavailable.",
+                True,
+            ) from exc
+
 
 def validate_capability_snapshot_contract(
     value: Mapping[str, Any],

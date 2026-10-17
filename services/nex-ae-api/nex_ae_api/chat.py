@@ -544,6 +544,40 @@ def register_chat_routes(
                     )
                     return saved_no_answer
 
+            semantic_admission = _admit_semantic_candidate_pipeline(
+                request=request,
+                payload=payload,
+                runtime_policy=runtime_policy,
+                retrieval_package=retrieval_package,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            if semantic_admission is not None and semantic_admission.mode == "required":
+                planning_record = chat_store.save(
+                    {
+                        **pending_record,
+                        "status": "PENDING",
+                        "generation": {
+                            "semantic_planning": semantic_admission.to_wire(),
+                        },
+                        "retrieval": retrieval_summary(retrieval_package),
+                        "updated_at": _utc_now(),
+                    }
+                )
+                observe_workspace_chat_state(emitter, planning_record)
+                append_workspace_chat_activity(
+                    binding,
+                    workspace_store=workspace_store,
+                    activity_type="chat.agent-runtime.admitted",
+                    status="PENDING",
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+                return JSONResponse(
+                    status_code=202,
+                    content=jsonable_encoder(planning_record),
+                )
+
             if retrieval_package is not None:
                 cx_payload = attach_retrieval_package_to_generation_payload(
                     cx_payload,
@@ -2436,6 +2470,56 @@ def user_message_from_payload(payload: dict[str, Any]) -> str:
             detail="user_message is required.",
         )
     return user_message.strip()
+
+
+def _admit_semantic_candidate_pipeline(
+    *,
+    request: Request,
+    payload: Mapping[str, Any],
+    runtime_policy: Mapping[str, Any],
+    retrieval_package: Mapping[str, Any] | None,
+    request_id: str,
+    trace_id: str,
+) -> Any | None:
+    runtime = getattr(request.app.state, "ae_semantic_candidate_admission", None)
+    if runtime is None or getattr(runtime, "mode", "disabled") == "disabled":
+        return None
+    try:
+        result = runtime.admit_chat(
+            payload=payload,
+            runtime_policy=runtime_policy,
+            retrieval_package=retrieval_package,
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+    except Exception as exc:
+        if getattr(runtime, "mode", None) == "shadow":
+            return None
+        status_code = getattr(exc, "status_code", None)
+        error_code = getattr(exc, "error_code", None)
+        retryable = bool(getattr(exc, "retryable", False))
+        if not isinstance(status_code, int):
+            status_code = 503 if retryable else 409
+        if not isinstance(error_code, str) or not error_code:
+            error_code = "SEMANTIC_ADMISSION_FAILED"
+        detail = getattr(exc, "detail", None)
+        if not isinstance(detail, str) or not detail:
+            detail = "AE semantic candidate admission failed."
+        raise ChatInteractionError(
+            status_code=status_code,
+            error_code=error_code,
+            detail=detail,
+            retryable=retryable,
+        ) from exc
+    if result.status in {"COMPILED", "DISABLED", "SHADOW_ONLY", "SHADOW_SKIPPED"}:
+        return result
+    if getattr(runtime, "mode", None) == "shadow":
+        return result
+    raise ChatInteractionError(
+        status_code=409,
+        error_code="SEMANTIC_ADMISSION_BLOCKED",
+        detail=f"Semantic admission stopped with directive {result.directive}.",
+    )
 
 
 def chat_owner_scope_from_payload(payload: dict[str, Any]) -> tuple[str, str]:

@@ -389,13 +389,16 @@ def _load_template_version_by_key(
     row = session.execute(
         text(
             """
-            SELECT prompt_template_version_id, prompt_template_id, version,
-                   role, segment_order, content, content_sha256,
-                   model_capability, metadata, status, created_at
-            FROM ae_prompt_template_versions
-            WHERE prompt_template_id = :prompt_template_id
-              AND version = :version AND role = :role
-              AND segment_order = :segment_order
+            SELECT v.prompt_template_version_id, v.prompt_template_id, v.version,
+                   v.role, v.segment_order, v.content, v.content_sha256,
+                   v.model_capability, v.metadata, v.status, v.created_at,
+                   t.service_id, t.purpose
+            FROM ae_prompt_template_versions v
+            JOIN ae_prompt_templates t
+              ON t.prompt_template_id = v.prompt_template_id
+            WHERE v.prompt_template_id = :prompt_template_id
+              AND v.version = :version AND v.role = :role
+              AND v.segment_order = :segment_order
             """
         ),
         record,
@@ -410,11 +413,14 @@ def _load_template_version(
     row = session.execute(
         text(
             """
-            SELECT prompt_template_version_id, prompt_template_id, version,
-                   role, segment_order, content, content_sha256,
-                   model_capability, metadata, status, created_at
-            FROM ae_prompt_template_versions
-            WHERE prompt_template_version_id = :version_id
+            SELECT v.prompt_template_version_id, v.prompt_template_id, v.version,
+                   v.role, v.segment_order, v.content, v.content_sha256,
+                   v.model_capability, v.metadata, v.status, v.created_at,
+                   t.service_id, t.purpose
+            FROM ae_prompt_template_versions v
+            JOIN ae_prompt_templates t
+              ON t.prompt_template_id = v.prompt_template_id
+            WHERE v.prompt_template_version_id = :version_id
             """
         ),
         {"version_id": version_id},

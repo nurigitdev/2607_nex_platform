@@ -138,6 +138,8 @@ def test_registry_seeds_configured_bindings_idempotently_and_survives_restart() 
     binding = restarted.get_binding(AE_GROUNDED_CHAT_BINDING)
     version = restarted.get_template_version(binding["prompt_template_version_id"])
     assert version["version"] == "v1"
+    assert version["service_id"] == "nex-ae-api"
+    assert version["purpose"] == "grounded_chat"
     assert version["metadata"]["retrieval_required"] is True
     assert restarted.get_binding("missing") is None
     assert restarted.get_template_version("missing") is None

@@ -34,6 +34,9 @@ from nex_ae_api.repaired_response_decisions import (
 from nex_ae_api.repaired_responses import register_repaired_response_handoff_routes
 from nex_ae_api.retrieval import register_retrieval_routes
 from nex_ae_api.runtime_policy_api import register_runtime_policy_routes
+from nex_ae_api.semantic_candidate_admission import (
+    attach_semantic_candidate_admission,
+)
 from nex_ae_api.trace_projection import (
     InMemoryAeTraceProjectionSource,
     SqlAlchemyAeTraceProjectionSource,
@@ -86,6 +89,12 @@ AE_AGENT_RUNTIME = attach_agent_runtime_foundation(
     app,
     SERVICE_PERSISTENCE,
     application=app.state.ae_chat_application_service,
+)
+AE_SEMANTIC_CANDIDATE_ADMISSION = attach_semantic_candidate_admission(
+    app,
+    SERVICE_PERSISTENCE,
+    AE_AGENT_RUNTIME,
+    prompt_store=AE_PROMPT_STORE,
 )
 register_agent_runtime_operations_routes(
     app,

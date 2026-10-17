@@ -203,7 +203,7 @@ class LiveIntentCandidateService:
         _require_matching_model(readiness, generation)
         candidate = parse_intent_candidate(generation.output_text)
         candidate_hash = semantic_sha256_hash_ref(candidate)
-        decision = _resolve_decision(
+        decision = resolve_intent_candidate(
             candidate,
             trusted_execution_mode=trusted_execution_mode,
             retrieval_enabled=retrieval_enabled,
@@ -441,7 +441,7 @@ def _result(
     )
 
 
-def _resolve_decision(
+def resolve_intent_candidate(
     candidate: Mapping[str, Any],
     *,
     trusted_execution_mode: str | None,

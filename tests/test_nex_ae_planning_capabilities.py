@@ -153,6 +153,7 @@ def test_repository_is_idempotent_immutable_versioned_and_restart_safe() -> None
     assert repository.get(tenant_id=TENANT, capability_snapshot_id=SNAPSHOT_ID) is None
     assert repository.save(snapshot) == snapshot
     assert repository.save(snapshot) == snapshot
+    assert repository.get_latest(tenant_id=TENANT) == snapshot
     assert (
         SqlAlchemyCapabilitySnapshotRepository(factory).get(
             tenant_id=TENANT, capability_snapshot_id=SNAPSHOT_ID
@@ -173,6 +174,18 @@ def test_repository_is_idempotent_immutable_versioned_and_restart_safe() -> None
     with pytest.raises(CapabilitySnapshotError) as version:
         repository.save(_snapshot(capability_snapshot_id=OTHER_ID))
     assert version.value.error_code == "ae.capability_snapshot_version_conflict"
+
+
+def test_repository_latest_lookup_handles_empty_and_store_failure() -> None:
+    assert SqlAlchemyCapabilitySnapshotRepository(_factory()).get_latest(
+        tenant_id=TENANT
+    ) is None
+    with pytest.raises(CapabilitySnapshotError) as unavailable:
+        SqlAlchemyCapabilitySnapshotRepository(
+            _factory(with_schema=False)
+        ).get_latest(tenant_id=TENANT)
+    assert unavailable.value.error_code == "ae.capability_snapshot_store_unavailable"
+    assert unavailable.value.retryable is True
 
 
 def test_repository_wraps_store_failures_and_validates_lookup_identity() -> None:

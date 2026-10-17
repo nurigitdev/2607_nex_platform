@@ -267,14 +267,7 @@ class LiveContextCandidateService:
                 policy=policy,
             )
 
-        hints = ContextCandidateHints(
-            candidate_hash=candidate_hash,
-            entity_candidates=tuple(candidate["entity_candidates"]),
-            retrieval_hints=tuple(candidate["retrieval_hints"]),
-            resource_selectors=tuple(candidate["resource_selectors"]),
-            parameter_candidates=tuple(candidate["parameter_candidates"]),
-            confidence=float(candidate["confidence"]),
-        )
+        hints = context_candidate_hints(candidate, candidate_hash=candidate_hash)
         try:
             agent_context = build_agent_context(
                 tenant_id=tenant_id,
@@ -352,6 +345,26 @@ def parse_context_candidate_set(output_text: str) -> dict[str, Any]:
     }
     _reject_prompt_injection(normalized)
     return normalized
+
+
+def context_candidate_hints(
+    candidate: Mapping[str, Any], *, candidate_hash: str
+) -> ContextCandidateHints:
+    normalized = parse_context_candidate_set(canonical_json(candidate))
+    try:
+        normalized_hash = validate_hash_ref(candidate_hash)
+    except ValueError as exc:
+        raise _request_error("CONTEXT candidate hash is invalid.") from exc
+    if normalized_hash != semantic_sha256_hash_ref(normalized):
+        raise _request_error("CONTEXT candidate hash does not match its content.")
+    return ContextCandidateHints(
+        candidate_hash=normalized_hash,
+        entity_candidates=tuple(normalized["entity_candidates"]),
+        retrieval_hints=tuple(normalized["retrieval_hints"]),
+        resource_selectors=tuple(normalized["resource_selectors"]),
+        parameter_candidates=tuple(normalized["parameter_candidates"]),
+        confidence=float(normalized["confidence"]),
+    )
 
 
 def _entity_candidates(value: object) -> list[dict[str, Any]]:
