@@ -277,21 +277,28 @@ def _run(service: LiveContextCandidateService, **overrides):
     return service.generate_and_resolve(**values)
 
 
-def test_prompt_registry_seeds_exact_context_binding_v1() -> None:
+def test_prompt_registry_preserves_v1_and_activates_exact_context_binding_v2() -> None:
     store = _store()
     binding = store.get_binding(AE_CONTEXT_CANDIDATE_BINDING)
     version = store.get_template_version(binding["prompt_template_version_id"])
 
     assert binding["purpose"] == "context_candidate_extraction"
-    assert version["version"] == "v1"
+    assert version["version"] == "v2"
     assert version["role"] == "system"
     assert version["metadata"] == {
         "phase": "P6.5",
-        "slice": "P6.5-S3",
+        "slice": "P6.5-S7",
         "candidate_schema": "p65.context_candidate_set.v1",
         "authority": "untrusted_candidate_only",
+        "hardening": "parameter_candidate_exact_shape",
     }
     assert "Never infer admission" in version["content"]
+    assert "exactly name, value, and confidence" in version["content"]
+    assert sorted(
+        item["version"]
+        for item in store.template_versions.values()
+        if item["prompt_template_id"] == version["prompt_template_id"]
+    ) == ["v1", "v2"]
 
 
 def test_required_mode_passes_bounded_hints_to_trusted_resolver() -> None:
@@ -678,15 +685,15 @@ def test_missing_incompatible_and_invalid_digest_prompt_fail_closed() -> None:
     assert raised.value.error_code == "PROVIDER_NOT_READY"
 
 
-def test_in_flight_binding_switch_keeps_captured_v1_snapshot() -> None:
+def test_in_flight_binding_switch_keeps_captured_v2_snapshot() -> None:
     base = _store()
     seed = next(
         item for item in AE_PROMPT_SEEDS if item.binding_key == AE_CONTEXT_CANDIDATE_BINDING
     )
-    v2_seed = replace(seed, version="v2", content=seed.content + " Version two.")
-    template = build_prompt_template(v2_seed)
-    version = base.save_template_version(build_prompt_template_version(v2_seed, template))
-    v2_binding = build_prompt_binding(v2_seed, version)
+    v3_seed = replace(seed, version="v3", content=seed.content + " Version three.")
+    template = build_prompt_template(v3_seed)
+    version = base.save_template_version(build_prompt_template_version(v3_seed, template))
+    v3_binding = build_prompt_binding(v3_seed, version)
 
     class SwitchingStore:
         def __init__(self, delegate):
@@ -694,7 +701,7 @@ def test_in_flight_binding_switch_keeps_captured_v1_snapshot() -> None:
 
         def get_binding(self, key):
             captured = dict(self.delegate.get_binding(key))
-            self.delegate.save_binding(v2_binding)
+            self.delegate.save_binding(v3_binding)
             return captured
 
         def get_template_version(self, version_id):
@@ -705,7 +712,7 @@ def test_in_flight_binding_switch_keeps_captured_v1_snapshot() -> None:
 
     result = _run(_service(store=SwitchingStore(base)))
 
-    assert result.prompt_provenance["prompt_template_version"] == "v1"
+    assert result.prompt_provenance["prompt_template_version"] == "v2"
     assert base.get_binding(AE_CONTEXT_CANDIDATE_BINDING)[
         "prompt_template_version_id"
     ] == version["prompt_template_version_id"]

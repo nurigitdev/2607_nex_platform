@@ -6,6 +6,7 @@ Document set:
 2. `P6_5_Remote_Generation_Provider_Integration_Acceptance_SRS_v1.0.md`
 3. `P6_5_Implementation_Slice_Plan_v1.0.md`
 4. `P6_5_CA01_Source_Backed_Generation_Contract_Closure_v1.0.md`
+5. `P6_5_Final_AsBuilt_Baseline_and_P7_Handoff_v1.0.md`
 
 Recommended repository location:
 

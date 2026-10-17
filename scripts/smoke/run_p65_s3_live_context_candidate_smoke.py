@@ -179,7 +179,7 @@ def run_p65_s3_live_context_candidate_smoke(
         "exact_prompt_binding_captured": (
             result.prompt_provenance.get("prompt_binding_key")
             == AE_CONTEXT_CANDIDATE_BINDING
-            and result.prompt_provenance.get("prompt_template_version") == "v1"
+            and result.prompt_provenance.get("prompt_template_version") == "v2"
         ),
         "model_specific_calibration_selected": (
             result.admission_policy_ref is not None

@@ -1,0 +1,149 @@
+{
+  "actual_postgres": true,
+  "actual_remote_provider": true,
+  "checks": {
+    "actual_database_identity": true,
+    "actual_live_provider_ready": true,
+    "candidate_hashes_recorded": true,
+    "canonical_rows_are_singletons": true,
+    "database_zero_residue": true,
+    "exact_prompt_versions_recorded": true,
+    "extended_local_skill_result_delivery": true,
+    "migration_current": true,
+    "minimum_golden_journey_compiled": true,
+    "model_revision_consistent": true,
+    "owner_private_candidate_payloads": true,
+    "private_storage_zero_residue": true,
+    "restart_reuses_candidates": true,
+    "three_actual_provider_calls": true
+  },
+  "cleanup_counts": {
+    "ae_agent_context": 1,
+    "ae_agent_execution": 1,
+    "ae_agent_identity": 1,
+    "ae_agent_plan": 1,
+    "ae_capability_snapshot": 1,
+    "ae_conversation_events": 0,
+    "ae_conversation_messages": 0,
+    "ae_conversations": 1,
+    "ae_executable_plan": 1,
+    "ae_executable_step": 2,
+    "ae_ia_principal_assignment": 1,
+    "ae_plan_validation": 1,
+    "ae_semantic_candidate": 3,
+    "ae_work_intent": 1,
+    "ae_workspace_activities": 0,
+    "ae_workspaces": 1,
+    "remaining": 0
+  },
+  "database": "nex_ae_test",
+  "database_env": "NEX_AE_TEST_DATABASE_URL",
+  "deployment_id": "vllm-generation-http",
+  "lineage": {
+    "agent_context_id": "16f31952-9c06-5b89-a1c9-4aaf00bd2556",
+    "agent_execution_id": "f5480daf-afe7-4737-921f-ff91ed7385fe",
+    "agent_plan_id": "817e94b3-b834-514f-af51-1a9fcacc829e",
+    "agent_result_count": 1,
+    "candidate_hashes": [
+      "sha256:610f04721dbbe013d689e853b3fb77c6c716cfc1da5ff3d4a45fbf5fba4555f0",
+      "sha256:61c18190d4789ac50427d8e6bcc3eaf15f3f13131d9fd016e1ee9497b5f8a534",
+      "sha256:ec02f682367b1f9ae3d48b91a02dab1fce9379877bbcee979c4d966edcd9c830"
+    ],
+    "executable_plan_hash": "sha256:24aad10cd796081481f36489a8600649161e0be2bad1620e968510dcff36cd2f",
+    "executable_plan_id": "210d7351-b4b9-5a8d-ae6f-e0bca346f32c",
+    "result_delivery_count": 1,
+    "step_result_count": 2,
+    "work_intent_id": "235aab3f-91e3-544e-a6db-5dea33040627"
+  },
+  "migration": {
+    "applied_count": 0,
+    "latest_version": "2300_ae_semantic_candidate",
+    "planned_count": 45,
+    "skipped_count": 45
+  },
+  "model_ref": "Qwen3.5-4B",
+  "nsl_revision": "3b4cb198888570a857e6fb0d3aa077930bb23504",
+  "nsl_wheel_sha256": "sha256:290a202f540ec98291842e9281a28288cc7ac112525b6c0f02c10b8721aef21f",
+  "platform_revision": "205acb57b54da712800d77fced6d57e22b1886d6",
+  "profile": "test",
+  "prompt_registry_versions": [
+    {
+      "binding_key": "ae.context_candidate_extraction.default",
+      "version": "v2"
+    },
+    {
+      "binding_key": "ae.intent_resolution.default",
+      "version": "v1"
+    },
+    {
+      "binding_key": "ae.plan_builder.default",
+      "version": "v1"
+    }
+  ],
+  "provider_call_counts": {
+    "generation": 3,
+    "readiness": 4,
+    "semantic_stages": [
+      "INTENT",
+      "CONTEXT",
+      "PLAN"
+    ]
+  },
+  "provider_mode": "live",
+  "provider_profile": "general-llm-default",
+  "redacted_database_url": "postgresql+psycopg://nex_ae_user:***@127.0.0.1:5432/nex_ae_test",
+  "redaction": {
+    "excluded": [
+      "database_password",
+      "provider_endpoint",
+      "api_key",
+      "service_token",
+      "raw_prompt",
+      "raw_provider_output",
+      "candidate_payload",
+      "hidden_reasoning",
+      "tenant_id",
+      "owner_subject_id"
+    ],
+    "status": "PASS"
+  },
+  "role": "nex_ae_user",
+  "row_counts": {
+    "ae_agent_context": 1,
+    "ae_agent_execution": 1,
+    "ae_agent_plan": 1,
+    "ae_executable_plan": 1,
+    "ae_executable_step": 2,
+    "ae_plan_validation": 1,
+    "ae_semantic_candidate": 3,
+    "ae_work_intent": 1
+  },
+  "runtime_cleanup_counts": {
+    "ae_agent_result": 1,
+    "ae_nsl_artifact": 1,
+    "ae_nsl_backend_run": 1,
+    "ae_nsl_step_execution": 1,
+    "ae_result_delivery": 1,
+    "ae_runtime_job": 2,
+    "ae_runtime_job_attempt": 2,
+    "ae_step_result": 2,
+    "dispatcher_lease": 1,
+    "heartbeat": 1,
+    "s7_remaining": 0
+  },
+  "runtime_row_counts": {
+    "ae_agent_result": 1,
+    "ae_nsl_artifact": 1,
+    "ae_nsl_backend_run": 1,
+    "ae_nsl_step_execution": 1,
+    "ae_result_delivery": 1,
+    "ae_runtime_job": 2,
+    "ae_runtime_job_attempt": 2,
+    "ae_step_result": 2,
+    "timeline_events": 29,
+    "timeline_gaps": 3
+  },
+  "slice": "P6.5-S7",
+  "smoke_schema_version": "p65_s7_postgres_live_e2e.v1",
+  "status": "PASS"
+}

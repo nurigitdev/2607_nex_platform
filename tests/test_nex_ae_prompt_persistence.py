@@ -16,6 +16,7 @@ from nex_ae_api.prompts import (
     AE_GENERAL_ANSWER_BINDING,
     AE_GROUNDED_CHAT_BINDING,
     AE_INTENT_RESOLUTION_BINDING,
+    AE_HISTORICAL_PROMPT_SEEDS,
     AE_PLAN_BUILDER_BINDING,
     AE_PROMPT_SEEDS,
     seed_ae_prompt_registry,
@@ -141,8 +142,49 @@ def test_registry_seeds_configured_bindings_idempotently_and_survives_restart() 
     assert version["service_id"] == "nex-ae-api"
     assert version["purpose"] == "grounded_chat"
     assert version["metadata"]["retrieval_required"] is True
+    context_binding = restarted.get_binding(AE_CONTEXT_CANDIDATE_BINDING)
+    context_version = restarted.get_template_version(
+        context_binding["prompt_template_version_id"]
+    )
+    assert context_version["version"] == "v2"
+    assert context_version["metadata"]["hardening"] == (
+        "parameter_candidate_exact_shape"
+    )
     assert restarted.get_binding("missing") is None
     assert restarted.get_template_version("missing") is None
+
+
+def test_startup_upgrades_existing_context_v1_binding_with_history() -> None:
+    factory = session_factory()
+    store = SqlAlchemyAePromptRegistryStore(factory)
+    seed_prompt_registry(store, AE_HISTORICAL_PROMPT_SEEDS)
+
+    before = store.get_binding(AE_CONTEXT_CANDIDATE_BINDING)
+    assert store.get_template_version(before["prompt_template_version_id"])[
+        "version"
+    ] == "v1"
+
+    seed_ae_prompt_registry(store)
+
+    after = store.get_binding(AE_CONTEXT_CANDIDATE_BINDING)
+    assert store.get_template_version(after["prompt_template_version_id"])[
+        "version"
+    ] == "v2"
+    with factory() as session:
+        history = session.execute(
+            text(
+                "SELECT old_prompt_template_version_id, "
+                "new_prompt_template_version_id, correlation_id "
+                "FROM ae_prompt_binding_history"
+            )
+        ).mappings().one()
+    assert history["old_prompt_template_version_id"] == before[
+        "prompt_template_version_id"
+    ]
+    assert history["new_prompt_template_version_id"] == after[
+        "prompt_template_version_id"
+    ]
+    assert history["correlation_id"] == "p65-s7-context-prompt-v2"
 
 
 def test_render_event_is_durable_idempotent_and_excludes_raw_user_prompt() -> None:
