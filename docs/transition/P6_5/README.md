@@ -8,6 +8,9 @@ Document set:
 4. `P6_5_CA01_Source_Backed_Generation_Contract_Closure_v1.0.md`
 5. `P6_5_Final_AsBuilt_Baseline_and_P7_Handoff_v1.0.md`
 
+Pre-Architecture Decision / SRS are historical pre-implementation baselines.
+Current authoritative closure is `P6_5_Final_AsBuilt_Baseline_and_P7_Handoff_v1.0.md`.
+
 Recommended repository location:
 
 ```text
