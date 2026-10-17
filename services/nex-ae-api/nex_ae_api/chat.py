@@ -121,6 +121,7 @@ from nex_ae_api.workspace_chat_orchestration import (
 )
 from nex_ae_api.workspace_chat_observability import observe_workspace_chat_state
 from nex_ae_api.chat_application import ChatApplicationService
+from nex_ae_api.semantic_candidate_admission import SemanticCandidateAdmissionError
 
 AE_CHAT_RETRIEVAL_QUALITY_WARNING_CONTRACT_VERSION = (
     "ae_chat_retrieval_quality_warning.v1"
@@ -362,6 +363,9 @@ class ChatInteractionError(Exception):
     error_code: str
     detail: str
     retryable: bool = False
+    failure_directive: str | None = None
+    failed_stage: str | None = None
+    retry_after_seconds: float | None = None
 
 
 DEFAULT_CHAT_STORE = ChatInteractionStore()
@@ -1890,18 +1894,25 @@ def build_failed_chat_interaction_record(
     pending_record: dict[str, Any],
     failure: Any,
 ) -> dict[str, Any]:
+    failure_record = {
+        "failure_schema_version": "ae_chat_execution_failure.v1",
+        "error_code": failure.error_code,
+        "failed_stage": (
+            getattr(failure, "failed_stage", None)
+            or "workspace_chat_orchestration"
+        ),
+        "retryable": bool(getattr(failure, "retryable", False)),
+        "raw_error_detail_included": False,
+    }
+    directive = getattr(failure, "failure_directive", None)
+    if isinstance(directive, str) and directive:
+        failure_record["directive"] = directive
     return {
         **pending_record,
         "status": "FAILED",
         "cx_status": "FAILED",
         "generation": pending_record.get("generation"),
-        "failure": {
-            "failure_schema_version": "ae_chat_execution_failure.v1",
-            "error_code": failure.error_code,
-            "failed_stage": "workspace_chat_orchestration",
-            "retryable": bool(getattr(failure, "retryable", False)),
-            "raw_error_detail_included": False,
-        },
+        "failure": failure_record,
         "updated_at": _utc_now(),
     }
 
@@ -2492,24 +2503,27 @@ def _admit_semantic_candidate_pipeline(
             request_id=request_id,
             trace_id=trace_id,
         )
+    except SemanticCandidateAdmissionError as exc:
+        if getattr(runtime, "mode", None) == "shadow":
+            return None
+        raise ChatInteractionError(
+            status_code=exc.status_code,
+            error_code=exc.error_code,
+            detail="AE semantic candidate admission failed.",
+            retryable=exc.retryable,
+            failure_directive=exc.directive,
+            failed_stage=exc.semantic_stage,
+            retry_after_seconds=exc.retry_after_seconds,
+        ) from exc
     except Exception as exc:
         if getattr(runtime, "mode", None) == "shadow":
             return None
-        status_code = getattr(exc, "status_code", None)
-        error_code = getattr(exc, "error_code", None)
-        retryable = bool(getattr(exc, "retryable", False))
-        if not isinstance(status_code, int):
-            status_code = 503 if retryable else 409
-        if not isinstance(error_code, str) or not error_code:
-            error_code = "SEMANTIC_ADMISSION_FAILED"
-        detail = getattr(exc, "detail", None)
-        if not isinstance(detail, str) or not detail:
-            detail = "AE semantic candidate admission failed."
         raise ChatInteractionError(
-            status_code=status_code,
-            error_code=error_code,
-            detail=detail,
-            retryable=retryable,
+            status_code=409,
+            error_code="SEMANTIC_ADMISSION_FAILED",
+            detail="AE semantic candidate admission failed.",
+            retryable=False,
+            failure_directive="BLOCKED",
         ) from exc
     if result.status in {"COMPILED", "DISABLED", "SHADOW_ONLY", "SHADOW_SKIPPED"}:
         return result
@@ -3027,6 +3041,16 @@ def _chat_problem_response(
         | WorkspaceChatOrchestrationError
     ),
 ) -> JSONResponse:
+    details: dict[str, Any] = {}
+    directive = getattr(exc, "failure_directive", None)
+    if isinstance(directive, str) and directive:
+        details["directive"] = directive
+    failed_stage = getattr(exc, "failed_stage", None)
+    if isinstance(failed_stage, str) and failed_stage:
+        details["semantic_stage"] = failed_stage
+    retry_after = getattr(exc, "retry_after_seconds", None)
+    if isinstance(retry_after, int | float) and not isinstance(retry_after, bool):
+        details["retry_after_seconds"] = float(retry_after)
     return problem_response(
         request,
         status_code=exc.status_code,
@@ -3035,6 +3059,7 @@ def _chat_problem_response(
         detail=exc.detail,
         retryable=getattr(exc, "retryable", False),
         type_uri="https://nex-platform.local/problems/chat-interaction-failed",
+        details=details,
     )
 
 

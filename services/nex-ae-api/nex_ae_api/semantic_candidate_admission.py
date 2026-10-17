@@ -52,6 +52,9 @@ from nex_ae_api.semantic_candidate_evidence import (
     build_semantic_candidate_payload,
     candidate_payload_metadata_from_evidence,
 )
+from nex_ae_api.semantic_candidate_failures import (
+    project_semantic_candidate_failure,
+)
 from nex_ae_api.semantic_candidates import SemanticCalibrationRegistry
 from nex_ae_api.work_intent import (
     SqlAlchemyWorkIntentRepository,
@@ -67,6 +70,9 @@ class SemanticCandidateAdmissionError(Exception):
     error_code: str
     detail: str
     retryable: bool = False
+    directive: str = "BLOCKED"
+    semantic_stage: str | None = None
+    retry_after_seconds: float | None = None
 
     def __str__(self) -> str:
         return self.detail
@@ -587,53 +593,69 @@ class DeterministicCandidateAdmissionService:
                 )
             return existing, candidate, None, True
 
-        result = invoke()
-        if result.admission_policy_ref is None:
-            raise _error(
-                503,
-                "SEMANTIC_CALIBRATION_REQUIRED",
-                "Durable semantic admission needs an exact calibration policy.",
+        try:
+            result = invoke()
+            if result.admission_policy_ref is None:
+                raise _error(
+                    503,
+                    "SEMANTIC_CALIBRATION_REQUIRED",
+                    "Durable semantic admission needs an exact calibration policy.",
+                )
+            payload = build_semantic_candidate_payload(
+                candidate_id=candidate_id, candidate=result.candidate
             )
-        payload = build_semantic_candidate_payload(
-            candidate_id=candidate_id, candidate=result.candidate
-        )
-        if f"sha256:{payload['content_sha256']}" != result.candidate_hash:
-            raise _error(
-                409,
-                "CANDIDATE_HASH_MISMATCH",
-                "Semantic stage candidate hash does not match its payload.",
+            if f"sha256:{payload['content_sha256']}" != result.candidate_hash:
+                raise _error(
+                    409,
+                    "CANDIDATE_HASH_MISMATCH",
+                    "Semantic stage candidate hash does not match its payload.",
+                )
+            saved_ref = self.candidate_storage.save(
+                payload,
+                tenant_id=request.tenant_id,
+                owner_subject_id=request.owner_subject_id,
             )
-        saved_ref = self.candidate_storage.save(
-            payload,
-            tenant_id=request.tenant_id,
-            owner_subject_id=request.owner_subject_id,
-        )
-        if saved_ref != payload["storage_ref"]:
-            raise _error(
-                409,
-                "CANDIDATE_STORAGE_REF_MISMATCH",
-                "Semantic candidate storage returned an inconsistent reference.",
+            if saved_ref != payload["storage_ref"]:
+                raise _error(
+                    409,
+                    "CANDIDATE_STORAGE_REF_MISMATCH",
+                    "Semantic candidate storage returned an inconsistent reference.",
+                )
+            evidence = build_semantic_candidate_evidence(
+                tenant_id=request.tenant_id,
+                owner_subject_id=request.owner_subject_id,
+                candidate_id=candidate_id,
+                execution_id=execution_id,
+                semantic_stage=semantic_stage,
+                candidate_revision=1,
+                candidate_payload=payload,
+                provider_output_sha256=result.provider_output_sha256,
+                input_context_hash=result.input_context_hash,
+                prompt_provenance=result.prompt_provenance,
+                model_provenance=result.model_provenance,
+                request_id=request.request_id,
+                trace_id=request.trace_id,
+                admission_policy_ref=result.admission_policy_ref,
+                directive=result.directive,
+                failure_code=result.failure_code,
+                created_at=now,
             )
-        evidence = build_semantic_candidate_evidence(
-            tenant_id=request.tenant_id,
-            owner_subject_id=request.owner_subject_id,
-            candidate_id=candidate_id,
-            execution_id=execution_id,
-            semantic_stage=semantic_stage,
-            candidate_revision=1,
-            candidate_payload=payload,
-            provider_output_sha256=result.provider_output_sha256,
-            input_context_hash=result.input_context_hash,
-            prompt_provenance=result.prompt_provenance,
-            model_provenance=result.model_provenance,
-            request_id=request.request_id,
-            trace_id=request.trace_id,
-            admission_policy_ref=result.admission_policy_ref,
-            directive=result.directive,
-            failure_code=result.failure_code,
-            created_at=now,
-        )
-        saved = self.evidence.save(evidence)
+            saved = self.evidence.save(evidence)
+        except Exception as exc:
+            failure = project_semantic_candidate_failure(
+                exc, semantic_stage=semantic_stage
+            )
+            if failure is None:
+                raise
+            raise SemanticCandidateAdmissionError(
+                status_code=failure.status_code,
+                error_code=failure.error_code,
+                detail=failure.detail,
+                retryable=failure.retryable,
+                directive=failure.directive,
+                semantic_stage=failure.semantic_stage,
+                retry_after_seconds=failure.retry_after_seconds,
+            ) from exc
         return saved, dict(result.candidate), result, False
 
 
