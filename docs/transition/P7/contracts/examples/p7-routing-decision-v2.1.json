@@ -1,0 +1,34 @@
+{
+  "schema_version": "2.1",
+  "routing_decision_id": "route-p7-golden-001",
+  "work_item_id": "work-p7-golden-001",
+  "tenant_id": "tenant-a",
+  "required_capability": "FINANCE.PROJECT_BUDGET_CHECK",
+  "required_agent_type": "PA",
+  "organization_scope_ref": "org-finance",
+  "project_scope_ref": "project-alpha",
+  "target_type": "CAPABILITY_POOL",
+  "target_ref": "project-analysis",
+  "candidate_set": [
+    {
+      "candidate_type": "AGENT",
+      "candidate_ref": "agent-pa-project-alpha",
+      "eligible": true,
+      "reason_codes": [
+        "AGENT_ACTIVE",
+        "TYPE_MATCH",
+        "PROJECT_MATCH",
+        "CAPABILITY_MATCH"
+      ],
+      "load_score": 0,
+      "availability": "AVAILABLE",
+      "agent_type": "PA"
+    }
+  ],
+  "decision": "ROUTED",
+  "reason_codes": [
+    "EXACT_ELIGIBLE_AGENT"
+  ],
+  "policy_version": "p7-routing-v1",
+  "decided_at": "2026-10-18T01:00:01Z"
+}

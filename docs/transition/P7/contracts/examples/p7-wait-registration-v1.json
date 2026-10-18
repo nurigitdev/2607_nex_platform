@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "wait_id": "wait-p7-golden-001",
+  "tenant_id": "tenant-a",
+  "agent_execution_id": "execution-parent-001",
+  "executable_step_id": "step-delegate-001",
+  "wait_type": "WORK_RESULT",
+  "external_ref": "work-p7-golden-001",
+  "result_contract_ref": "contract://nex/wc/project-budget-analysis/v1",
+  "state": "RESUME_QUEUED",
+  "matched_event_id": "event-p7-golden-001",
+  "resume_runtime_job_id": "runtime-job-resume-001",
+  "version": 3,
+  "created_at": "2026-10-18T01:00:00Z",
+  "satisfied_at": "2026-10-18T01:00:11Z",
+  "updated_at": "2026-10-18T01:00:12Z"
+}

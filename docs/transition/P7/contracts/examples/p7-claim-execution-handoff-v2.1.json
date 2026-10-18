@@ -1,0 +1,15 @@
+{
+  "schema_version": "2.1",
+  "handoff_id": "handoff-p7-golden-001",
+  "tenant_id": "tenant-a",
+  "work_item_ref": "work-p7-golden-001",
+  "claim_ref": "claim-p7-golden-001",
+  "claim_generation": 1,
+  "claimant_agent_ref": "agent-pa-project-alpha",
+  "claimant_agent_type": "PA",
+  "project_id": "project-alpha",
+  "assignment_ref": "assignment-p7-golden-001",
+  "correlation_id": "corr-p7-golden-001",
+  "causation_id": "route-p7-golden-001",
+  "occurred_at": "2026-10-18T01:00:02Z"
+}

@@ -1,0 +1,442 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:schema:wc:work-item:2.1",
+  "title": "NeX WorkItem v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "work_item_id",
+    "title",
+    "goal",
+    "work_class",
+    "state",
+    "requester",
+    "accountable_owner",
+    "routing_target",
+    "completion_policy",
+    "closure_policy",
+    "trace",
+    "created_at",
+    "version"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.1"
+    },
+    "work_item_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "display_no": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 80
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 12000
+    },
+    "work_class": {
+      "enum": [
+        "QUERY",
+        "ANALYSIS",
+        "DOCUMENT",
+        "BUSINESS_TRANSACTION",
+        "COORDINATION",
+        "EXPERT_REVIEW",
+        "REPORTING",
+        "OPERATIONAL"
+      ]
+    },
+    "priority": {
+      "enum": [
+        "LOW",
+        "NORMAL",
+        "HIGH",
+        "URGENT"
+      ]
+    },
+    "state": {
+      "enum": [
+        "CREATED",
+        "ROUTED",
+        "ASSIGNED",
+        "ACKNOWLEDGED",
+        "IN_PROGRESS",
+        "BLOCKED",
+        "WAITING_INPUT",
+        "RESULT_SUBMITTED",
+        "REVISION_REQUESTED",
+        "CLOSED",
+        "CANCELLED"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_type"
+      ],
+      "properties": {
+        "source_type": {
+          "enum": [
+            "HUMAN",
+            "AGENT_PLAN_STEP",
+            "EXTERNAL_A2A",
+            "SYSTEM",
+            "FOLLOW_UP",
+            "SCHEDULE"
+          ]
+        },
+        "source_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 256
+        },
+        "parent_work_item_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "parent_execution_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "parent_plan_step_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 64
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "source_type"
+            ],
+            "properties": {
+              "source_type": {
+                "const": "SCHEDULE"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "source_ref"
+            ],
+            "properties": {
+              "source_ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            }
+          }
+        }
+      ]
+    },
+    "requester": {
+      "$ref": "#/$defs/entityRef"
+    },
+    "accountable_owner": {
+      "$ref": "#/$defs/entityRef"
+    },
+    "routing_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_type"
+      ],
+      "properties": {
+        "target_type": {
+          "enum": [
+            "PERSON",
+            "COWORKER_AGENT",
+            "ORG_UNIT",
+            "ROLE",
+            "CAPABILITY_POOL",
+            "EXPERT_POOL",
+            "EXTERNAL_AGENT"
+          ]
+        },
+        "target_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 160
+        },
+        "required_capability": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 160
+        },
+        "organization_scope_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 160
+        },
+        "project_scope_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 160
+        },
+        "required_agent_type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "CA",
+            "PA",
+            "EA",
+            null
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "required_agent_type"
+            ],
+            "properties": {
+              "required_agent_type": {
+                "const": "PA"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "project_scope_ref"
+            ],
+            "properties": {
+              "project_scope_ref": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "project_ref": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/entityRef"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "business_object_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entityRef"
+      }
+    },
+    "artifact_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entityRef"
+      }
+    },
+    "completion_policy": {
+      "enum": [
+        "OWNER_SUBMITS",
+        "ALL_ASSIGNEES_SUBMIT",
+        "ANY_ASSIGNEE_SUBMITS",
+        "ALL_REQUIRED_CHILDREN",
+        "MANUAL"
+      ]
+    },
+    "closure_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority_type"
+      ],
+      "properties": {
+        "authority_type": {
+          "enum": [
+            "REQUESTER",
+            "ACCOUNTABLE_OWNER",
+            "DESIGNATED_REVIEWER",
+            "POLICY_ROLE",
+            "MANUAL"
+          ]
+        },
+        "authority_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 160
+        },
+        "required_review": {
+          "type": "boolean",
+          "default": false
+        },
+        "allow_agent_auto_close": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "due_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "correlation_id"
+      ],
+      "properties": {
+        "correlation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "causation_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "execution_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        }
+      }
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "entityRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity_type",
+        "entity_id"
+      ],
+      "properties": {
+        "entity_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "entity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "version": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 80
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "routing_target": {
+            "required": [
+              "required_agent_type"
+            ],
+            "properties": {
+              "required_agent_type": {
+                "const": "PA"
+              }
+            }
+          }
+        },
+        "required": [
+          "routing_target"
+        ]
+      },
+      "then": {
+        "required": [
+          "project_ref"
+        ],
+        "properties": {
+          "project_ref": {
+            "$ref": "#/$defs/entityRef"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:schema:wc:event:work-result-submitted:2.1",
+  "title": "WORK_RESULT_SUBMITTED Event v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_name",
+    "tenant_id",
+    "work_item_id",
+    "result_id",
+    "revision_no",
+    "result_type",
+    "technical_outcome",
+    "business_outcome",
+    "submitted_by",
+    "resume_match_ref",
+    "correlation_id",
+    "occurred_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.1"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "event_name": {
+      "const": "WORK_RESULT_SUBMITTED"
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "work_item_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "result_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "revision_no": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "result_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "result_schema_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "technical_outcome": {
+      "enum": [
+        "SUCCEEDED",
+        "PARTIAL",
+        "FAILED",
+        "UNKNOWN"
+      ]
+    },
+    "business_outcome": {
+      "enum": [
+        "VERIFIED",
+        "REVISED",
+        "REJECTED",
+        "PENDING_VERIFICATION",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "source_execution_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "claim_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "claim_generation": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "assignment_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "submitted_by": {
+      "$ref": "#/$defs/entityRef"
+    },
+    "resume_match_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "entityRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity_type",
+        "entity_id"
+      ],
+      "properties": {
+        "entity_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "entity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "version": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 80
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "submitted_by": {
+            "properties": {
+              "entity_type": {
+                "const": "AGENT"
+              }
+            },
+            "required": [
+              "entity_type"
+            ]
+          }
+        },
+        "required": [
+          "submitted_by"
+        ]
+      },
+      "then": {
+        "required": [
+          "source_execution_ref",
+          "claim_ref",
+          "claim_generation",
+          "assignment_ref"
+        ],
+        "properties": {
+          "source_execution_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "claim_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "claim_generation": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "assignment_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  ]
+}

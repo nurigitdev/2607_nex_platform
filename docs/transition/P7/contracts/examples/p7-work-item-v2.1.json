@@ -1,0 +1,58 @@
+{
+  "schema_version": "2.1",
+  "tenant_id": "tenant-a",
+  "work_item_id": "work-p7-golden-001",
+  "display_no": "P7-001",
+  "title": "Project budget analysis",
+  "goal": "Read the admitted project budget data and produce a bounded analysis.",
+  "description": null,
+  "work_class": "ANALYSIS",
+  "priority": "NORMAL",
+  "state": "CREATED",
+  "source": {
+    "source_type": "AGENT_PLAN_STEP",
+    "source_ref": "delegate-p7-golden-001",
+    "parent_work_item_id": null,
+    "parent_execution_id": "execution-parent-001",
+    "parent_plan_step_id": "step-delegate-001"
+  },
+  "requester": {
+    "entity_type": "OA_USER",
+    "entity_id": "employee-100"
+  },
+  "accountable_owner": {
+    "entity_type": "OA_USER",
+    "entity_id": "employee-100"
+  },
+  "routing_target": {
+    "target_type": "CAPABILITY_POOL",
+    "target_ref": "project-analysis",
+    "required_capability": "FINANCE.PROJECT_BUDGET_CHECK",
+    "organization_scope_ref": "org-finance",
+    "project_scope_ref": "project-alpha",
+    "required_agent_type": "PA"
+  },
+  "project_ref": {
+    "entity_type": "PROJECT",
+    "entity_id": "project-alpha",
+    "version": 1
+  },
+  "business_object_refs": [],
+  "artifact_refs": [],
+  "completion_policy": "OWNER_SUBMITS",
+  "closure_policy": {
+    "authority_type": "ACCOUNTABLE_OWNER",
+    "authority_ref": "employee-100",
+    "required_review": false,
+    "allow_agent_auto_close": false
+  },
+  "due_at": null,
+  "trace": {
+    "correlation_id": "corr-p7-golden-001",
+    "causation_id": "execution-parent-001",
+    "execution_id": "execution-parent-001"
+  },
+  "version": 1,
+  "created_at": "2026-10-18T01:00:00Z",
+  "updated_at": "2026-10-18T01:00:00Z"
+}

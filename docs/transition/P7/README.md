@@ -1,6 +1,6 @@
 # P7 WC and Background Agent Work Transition Baseline
 
-**Status:** PRE-IMPLEMENTATION BASELINE / P7-CA01 REQUIRED
+**Status:** P7-CA01 CLOSED / P7-S1 AUTHORIZED
 **Phase:** P7 - Work Coordination + CA/PA/EA Background Agent Work
 **Predecessor:** P6.5 Remote Generation Provider Integration Acceptance - CLOSED
 **Successor:** P8 Controlled WRITE / Approval / Enterprise OS - NOT ACTIVATED
@@ -40,14 +40,14 @@ Read the P7 documents in this order:
 4. `P7_Source_Audit_WC_CA_PA_EA_Background_Work_v1.0.md`
 5. `P7_WC_and_Background_Agent_Work_SRS_v1.0.md`
 6. `P7_Implementation_Slice_Plan_v1.0.md`
-7. the source-backed P7-CA01 closure and machine-readable contracts after they
-   are created
-8. per-Slice As-Built records and the P7 Final As-Built baseline after
+7. `P7_CA01_Source_Backed_WC_Background_Agent_Contract_Closure_v1.0.md`
+8. `contracts/README.md` and the P7 machine-readable contracts
+9. per-Slice As-Built records and the P7 Final As-Built baseline after
    implementation
 
 The Pre-Architecture Decision, Source Audit, SRS, and Slice Plan are
-pre-implementation baselines. They do not supersede Frozen v2.1 contracts or a
-future approved source-backed P7-CA01 closure.
+pre-implementation baselines. They do not supersede Frozen v2.1 contracts or
+the approved source-backed P7-CA01 closure.
 
 ## 3. Authority
 
@@ -72,13 +72,18 @@ Current status:
 ```text
 P6.5 closure and Full Gate                    = PASS
 P7 architecture/source/SRS/slice review       = COMPLETE
-P7-CA01 source-backed contract closure        = NOT STARTED
-P7 feature implementation                     = NOT AUTHORIZED YET
+P7-CA01 source-backed contract closure        = CLOSED
+P7 feature implementation                     = P7-S1 AUTHORIZED
 NeX-WC service and migration history           = ABSENT
-NeX-WC PostgreSQL dev/test roles and databases = TO BE CONFIRMED
+NeX-WC PostgreSQL dev/test roles and databases = CONNECTIVITY CONFIRMED
 ```
 
 No P7 feature Slice begins before P7-CA01 closes all P0/P1 contract ambiguity.
+
+P7-CA01 additionally freezes the common runtime reuse boundary: WC domain
+records remain service-owned, while technical delivery, retry, dead-letter,
+replay, heartbeat, log, and job-control behavior reuse
+`services/_shared/nex_runtime`. P7 does not introduce another generic JobQueue.
 
 ## 5. Canonical Implementation Sequence
 
