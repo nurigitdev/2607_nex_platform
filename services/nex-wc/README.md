@@ -30,3 +30,6 @@ require `X-NeX-Tenant-Id` so WorkItem identity is always tenant-scoped.
 
 Routing uses `NEX_WC_AE_BASE_URL` and `NEX_WC_TO_AE_SERVICE_TOKEN`. Claim
 authorization uses `NEX_WC_OA_BASE_URL` and `NEX_WC_TO_OA_SERVICE_TOKEN`.
+Committed handoff events are bridged into the service-local common JobQueue as
+`WC_EVENT_DELIVERY`; delivery to AE reuses `NEX_WC_AE_BASE_URL` and
+`NEX_WC_TO_AE_SERVICE_TOKEN`.

@@ -2110,6 +2110,32 @@ paths:
       responses:
         "200": {description: Exact active project PA}
         "404": {description: Active PA not found}
+  /internal/v1/work-handoffs:
+    post:
+      operationId: admitAeClaimExecutionHandoff
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [event_id, event_type, requester_ref, handoff]
+              properties:
+                event_id: {type: string, minLength: 1}
+                event_type: {const: CLAIM_EXECUTION_HANDOFF}
+                requester_ref: {type: string, minLength: 1}
+                handoff:
+                  type: object
+                  x-nex-canonical-json-schema: docs/transition/P7/contracts/p7-claim-execution-handoff-v2.1.schema.json
+      responses:
+        "200": {description: Idempotent CLAIMED_WORKITEM AgentExecution admission}
+        "401": {description: Missing or invalid service token}
+        "403": {description: Caller is not nex-wc}
+        "409": {description: Handoff semantics or Agent scope conflict}
+        "503": {description: AE Agent Runtime persistence unavailable}
 components:
   securitySchemes:
     serviceBearer:

@@ -19,7 +19,7 @@ from .problem import problem_response, request_id_from_headers, trace_id_from_he
 
 SERVICE_LOG_SCHEMA_VERSION = "service_log_entry.v1"
 SERVICE_LOG_SEVERITIES = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
-SERVICE_IDS = ("nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo")
+SERVICE_IDS = ("nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo", "nex-wc")
 DEFAULT_SERVICE_LOG_LIMIT = 50
 MAX_SERVICE_LOG_LIMIT = 500
 MAX_SERVICE_LOG_MESSAGE_LENGTH = 512

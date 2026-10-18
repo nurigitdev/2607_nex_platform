@@ -443,10 +443,16 @@ class InMemoryCoordinationRepository:
             self._assignments[key] = assignment
             self._claims.setdefault(key, []).append(claim)
             self._outbox[(tenant_id, identifiers["outbox_id"])] = {
+                "tenant_id": tenant_id,
+                "outbox_id": identifiers["outbox_id"],
                 "event_id": identifiers["event_id"],
+                "work_item_id": work_item_id,
                 "event_type": "CLAIM_EXECUTION_HANDOFF",
                 "event_payload": handoff,
                 "delivery_state": "PENDING",
+                "enqueued_job_id": None,
+                "created_at": now,
+                "updated_at": now,
             }
             _transition_record(record, state="ASSIGNED", updated_at=now)
             return {
@@ -458,6 +464,78 @@ class InMemoryCoordinationRepository:
                 "outbox_id": identifiers["outbox_id"],
                 "event_id": identifiers["event_id"],
             }
+
+    def list_pending_handoffs(self, *, limit: int) -> list[dict[str, Any]]:
+        with self._lock:
+            pending = [
+                copy.deepcopy(row)
+                for row in self._outbox.values()
+                if row["event_type"] == "CLAIM_EXECUTION_HANDOFF"
+                and row["delivery_state"] == "PENDING"
+            ]
+        return sorted(pending, key=lambda row: (row["created_at"], row["outbox_id"]))[
+            :limit
+        ]
+
+    def mark_handoff_enqueued(
+        self, *, outbox_id: str, event_id: str, job_id: str, updated_at: str
+    ) -> dict[str, Any]:
+        with self._lock:
+            row = next(
+                (
+                    value
+                    for (_, stored_outbox_id), value in self._outbox.items()
+                    if stored_outbox_id == outbox_id and value["event_id"] == event_id
+                ),
+                None,
+            )
+            if row is None or row["delivery_state"] not in {"PENDING", "ENQUEUED"}:
+                raise CoordinationError(
+                    "wc.handoff_outbox_conflict", "Handoff outbox enqueue state changed."
+                )
+            if row["enqueued_job_id"] not in {None, job_id}:
+                raise CoordinationError(
+                    "wc.handoff_outbox_conflict", "Handoff outbox job identity changed."
+                )
+            row["delivery_state"] = "ENQUEUED"
+            row["enqueued_job_id"] = job_id
+            row["updated_at"] = updated_at
+            return copy.deepcopy(row)
+
+    def load_handoff_event(self, *, outbox_id: str, event_id: str) -> dict[str, Any]:
+        with self._lock:
+            for (tenant_id, stored_outbox_id), row in self._outbox.items():
+                if stored_outbox_id == outbox_id and row["event_id"] == event_id:
+                    work = self._work_items._records[(tenant_id, row["work_item_id"])]
+                    return {
+                        **copy.deepcopy(row),
+                        "requester_ref": work["work_item"]["requester"]["entity_id"],
+                    }
+        raise CoordinationError("wc.handoff_outbox_not_found", "Handoff outbox was not found.", 404)
+
+    def mark_handoff_delivered(
+        self, *, outbox_id: str, event_id: str, job_id: str, updated_at: str
+    ) -> dict[str, Any]:
+        with self._lock:
+            row = next(
+                (
+                    value
+                    for (_, stored_outbox_id), value in self._outbox.items()
+                    if stored_outbox_id == outbox_id and value["event_id"] == event_id
+                ),
+                None,
+            )
+            if row is None or row["delivery_state"] not in {"ENQUEUED", "DELIVERED"}:
+                raise CoordinationError(
+                    "wc.handoff_outbox_conflict", "Handoff outbox delivery state changed."
+                )
+            if row["enqueued_job_id"] != job_id:
+                raise CoordinationError(
+                    "wc.handoff_outbox_conflict", "Handoff outbox job identity changed."
+                )
+            row["delivery_state"] = "DELIVERED"
+            row["updated_at"] = updated_at
+            return copy.deepcopy(row)
 
 
 class SqlAlchemyCoordinationRepository:
@@ -614,6 +692,129 @@ class SqlAlchemyCoordinationRepository:
         except SQLAlchemyError as exc:
             raise _store_unavailable() from exc
 
+    def list_pending_handoffs(self, *, limit: int) -> list[dict[str, Any]]:
+        try:
+            with self._session_factory() as session:
+                rows = session.execute(
+                    text(
+                        """
+                        SELECT tenant_id, outbox_id, event_id, work_item_id,
+                               event_type, event_payload, delivery_state,
+                               enqueued_job_id, created_at, updated_at
+                        FROM wc_event_outbox
+                        WHERE event_type = 'CLAIM_EXECUTION_HANDOFF'
+                          AND delivery_state = 'PENDING'
+                        ORDER BY created_at, outbox_id
+                        LIMIT :limit
+                        """
+                    ),
+                    {"limit": limit},
+                ).mappings().all()
+                return [_outbox_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _store_unavailable() from exc
+
+    def mark_handoff_enqueued(
+        self, *, outbox_id: str, event_id: str, job_id: str, updated_at: str
+    ) -> dict[str, Any]:
+        return self._transition_handoff_outbox(
+            outbox_id=outbox_id,
+            event_id=event_id,
+            job_id=job_id,
+            source_states=("PENDING", "ENQUEUED"),
+            target_state="ENQUEUED",
+            updated_at=updated_at,
+        )
+
+    def load_handoff_event(self, *, outbox_id: str, event_id: str) -> dict[str, Any]:
+        try:
+            with self._session_factory() as session:
+                row = session.execute(
+                    text(
+                        """
+                        SELECT o.tenant_id, o.outbox_id, o.event_id, o.work_item_id,
+                               o.event_type, o.event_payload, o.delivery_state,
+                               o.enqueued_job_id, o.created_at, o.updated_at,
+                               w.work_item -> 'requester' ->> 'entity_id' AS requester_ref
+                        FROM wc_event_outbox AS o
+                        JOIN wc_work_item AS w
+                          ON w.tenant_id = o.tenant_id
+                         AND w.work_item_id = o.work_item_id
+                        WHERE o.outbox_id = :outbox_id AND o.event_id = :event_id
+                        """
+                    ),
+                    {"outbox_id": outbox_id, "event_id": event_id},
+                ).mappings().first()
+                if row is None:
+                    raise CoordinationError(
+                        "wc.handoff_outbox_not_found", "Handoff outbox was not found.", 404
+                    )
+                return {**_outbox_from_row(row), "requester_ref": row["requester_ref"]}
+        except CoordinationError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _store_unavailable() from exc
+
+    def mark_handoff_delivered(
+        self, *, outbox_id: str, event_id: str, job_id: str, updated_at: str
+    ) -> dict[str, Any]:
+        return self._transition_handoff_outbox(
+            outbox_id=outbox_id,
+            event_id=event_id,
+            job_id=job_id,
+            source_states=("ENQUEUED", "DELIVERED"),
+            target_state="DELIVERED",
+            updated_at=updated_at,
+        )
+
+    def _transition_handoff_outbox(
+        self,
+        *,
+        outbox_id: str,
+        event_id: str,
+        job_id: str,
+        source_states: tuple[str, str],
+        target_state: str,
+        updated_at: str,
+    ) -> dict[str, Any]:
+        try:
+            with self._session_factory() as session:
+                row = session.execute(
+                    text(
+                        """
+                        UPDATE wc_event_outbox
+                        SET delivery_state = :target_state,
+                            enqueued_job_id = COALESCE(enqueued_job_id, :job_id),
+                            updated_at = :updated_at
+                        WHERE outbox_id = :outbox_id AND event_id = :event_id
+                          AND delivery_state IN (:source_state_1, :source_state_2)
+                          AND (enqueued_job_id IS NULL OR enqueued_job_id = :job_id)
+                        RETURNING tenant_id, outbox_id, event_id, work_item_id,
+                                  event_type, event_payload, delivery_state,
+                                  enqueued_job_id, created_at, updated_at
+                        """
+                    ),
+                    {
+                        "outbox_id": outbox_id,
+                        "event_id": event_id,
+                        "job_id": job_id,
+                        "source_state_1": source_states[0],
+                        "source_state_2": source_states[1],
+                        "target_state": target_state,
+                        "updated_at": updated_at,
+                    },
+                ).mappings().first()
+                if row is None:
+                    raise CoordinationError(
+                        "wc.handoff_outbox_conflict", "Handoff outbox state changed."
+                    )
+                session.commit()
+                return _outbox_from_row(row)
+        except CoordinationError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _store_unavailable() from exc
+
 
 def _load_work_item(session: Session, tenant_id: str, work_item_id: str) -> dict[str, Any] | None:
     row = session.execute(
@@ -733,6 +934,21 @@ def _handoff(
         "correlation_id": work_item["trace"]["correlation_id"],
         "causation_id": work_item["trace"].get("causation_id"),
         "occurred_at": now,
+    }
+
+
+def _outbox_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "tenant_id": row["tenant_id"],
+        "outbox_id": str(row["outbox_id"]),
+        "event_id": str(row["event_id"]),
+        "work_item_id": str(row["work_item_id"]),
+        "event_type": row["event_type"],
+        "event_payload": dict(row["event_payload"]),
+        "delivery_state": row["delivery_state"],
+        "enqueued_job_id": row["enqueued_job_id"],
+        "created_at": _time(row["created_at"]) if isinstance(row["created_at"], datetime) else str(row["created_at"]),
+        "updated_at": _time(row["updated_at"]) if isinstance(row["updated_at"], datetime) else str(row["updated_at"]),
     }
 
 

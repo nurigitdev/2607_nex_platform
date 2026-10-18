@@ -25,6 +25,7 @@ from nex_ae_api.analytics import (
 from nex_ae_api.artifacts import register_artifact_handoff_routes
 from nex_ae_api.auth_sessions import register_auth_session_routes
 from nex_ae_api.chat import register_chat_routes
+from nex_ae_api.claim_handoff_api import register_claim_handoff_routes
 from nex_ae_api.documents import register_document_library_routes
 from nex_ae_api.generation_feedback import register_generation_feedback_routes
 from nex_ae_api.mvp_acceptance_api import register_ae_mvp_acceptance_routes
@@ -91,6 +92,10 @@ AE_AGENT_RUNTIME = attach_agent_runtime_foundation(
     app,
     SERVICE_PERSISTENCE,
     application=app.state.ae_chat_application_service,
+)
+register_claim_handoff_routes(
+    app,
+    admission=AE_AGENT_RUNTIME.admission,
 )
 register_agent_registry_routes(
     app,

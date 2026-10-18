@@ -100,10 +100,27 @@ def _session_factory(*, with_schema: bool = True):
                     correlation_id TEXT NOT NULL,
                     causation_id TEXT,
                     received_at TEXT NOT NULL,
+                    work_item_ref TEXT,
+                    claim_ref TEXT,
+                    claim_generation INTEGER,
+                    assignment_ref TEXT,
+                    requester_ref TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     PRIMARY KEY (tenant_id, agent_execution_id),
                     UNIQUE (tenant_id, trigger_id)
+                )
+            """))
+            connection.execute(text("""
+                CREATE TABLE ae_claim_handoff_inbox (
+                    tenant_id TEXT NOT NULL,
+                    event_id TEXT NOT NULL,
+                    handoff_id TEXT NOT NULL,
+                    handoff_semantic_hash TEXT NOT NULL,
+                    agent_execution_id TEXT NOT NULL,
+                    received_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, event_id),
+                    UNIQUE (tenant_id, handoff_id)
                 )
             """))
             connection.execute(
@@ -204,6 +221,11 @@ def test_required_admission_is_canonical_project_neutral_and_idempotent() -> Non
         "correlation_id": "correlation-a",
         "causation_id": None,
         "received_at": NOW,
+        "work_item_ref": None,
+        "claim_ref": None,
+        "claim_generation": None,
+        "assignment_ref": None,
+        "requester_ref": PRINCIPAL,
         "created_at": NOW,
         "updated_at": NOW,
     }

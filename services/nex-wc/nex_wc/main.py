@@ -17,6 +17,7 @@ from nex_wc.coordination import (
 )
 from nex_wc.coordination_api import register_coordination_routes
 from nex_wc.coordination_clients import HttpAgentCandidateSource, HttpAuthorizationSource
+from nex_wc.handoff_delivery import HttpClaimHandoffClient
 from nex_wc.work_items import (
     InMemoryWorkItemRepository,
     SqlAlchemyWorkItemRepository,
@@ -57,6 +58,12 @@ COORDINATION = WorkCoordinationService(
     ),
 )
 app.state.wc_coordination = COORDINATION
+HANDOFF_CLIENT = HttpClaimHandoffClient(
+    base_url=os.getenv("NEX_WC_AE_BASE_URL", "http://127.0.0.1:8103"),
+    service_token=os.getenv("NEX_WC_TO_AE_SERVICE_TOKEN", ""),
+)
+app.state.wc_handoff_outbox_store = COORDINATION_REPOSITORY
+app.state.wc_handoff_delivery_client = HANDOFF_CLIENT
 
 register_service_job_control_routes(
     app,

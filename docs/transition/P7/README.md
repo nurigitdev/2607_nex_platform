@@ -1,6 +1,6 @@
 # P7 WC and Background Agent Work Transition Baseline
 
-**Status:** P7-S3 CLOSED / P7-S4 AUTHORIZED
+**Status:** P7-S4 CLOSED / P7-S5 AUTHORIZED
 **Phase:** P7 - Work Coordination + CA/PA/EA Background Agent Work
 **Predecessor:** P6.5 Remote Generation Provider Integration Acceptance - CLOSED
 **Successor:** P8 Controlled WRITE / Approval / Enterprise OS - NOT ACTIVATED
@@ -73,8 +73,9 @@ Current status:
 P6.5 closure and Full Gate                    = PASS
 P7 architecture/source/SRS/slice review       = COMPLETE
 P7-CA01 source-backed contract closure        = CLOSED
-P7 feature implementation                     = P7-S3 CLOSED / P7-S4 AUTHORIZED
+P7 feature implementation                     = P7-S4 CLOSED / P7-S5 AUTHORIZED
 NeX-WC service and migration history           = ACTIVE THROUGH 1001
+NeX-AE P7 migration history                    = ACTIVE THROUGH 2401
 NeX-WC PostgreSQL dev/test roles and databases = CONNECTIVITY CONFIRMED
 ```
 

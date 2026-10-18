@@ -15,6 +15,7 @@ from nex_ae_api.agent_identity import (
     AgentIdentityRepositoryError,
     SqlAlchemyAgentIdentityRegistry,
 )
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
 AGENT_RUNTIME_MODE_ENV = "NEX_AE_AGENT_RUNTIME_MODE"
 AGENT_RUNTIME_MODES = frozenset({"disabled", "shadow", "required"})
@@ -191,6 +192,65 @@ class SqlAlchemyAgentExecutionRepository:
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
 
+    def admit_claimed_work(
+        self,
+        *,
+        event_id: str,
+        handoff_semantic_hash: str,
+        trigger: ExecutionTriggerV21,
+        principal_id: str,
+        agent_execution_id: str,
+        now: str,
+    ) -> dict[str, Any]:
+        if trigger.source_type != "CLAIMED_WORKITEM" or trigger.agent_type not in {
+            "CA",
+            "PA",
+            "EA",
+        }:
+            raise _invalid("P7 claimed-work admission requires a background Agent.")
+        params = {
+            **trigger.to_dict(),
+            "event_id": _required_text("event_id", event_id),
+            "handoff_semantic_hash": _required_text(
+                "handoff_semantic_hash", handoff_semantic_hash
+            ),
+            "principal_id": _required_text("principal_id", principal_id),
+            "agent_execution_id": _required_text(
+                "agent_execution_id", agent_execution_id
+            ),
+            "workspace_id": None,
+            "conversation_id": None,
+            "legacy_interaction_id": None,
+            "now": _required_text("now", now),
+        }
+        try:
+            with self._session_factory() as session:
+                _require_claimed_work_scope(session, params)
+                inserted = session.execute(text(_EXECUTION_INSERT_SQL), params)
+                saved = _load_by_trigger(session, trigger.tenant_id, trigger.trigger_id)
+                if saved is None:
+                    raise AgentExecutionError(
+                        "ae.agent_execution_write_conflict",
+                        "AgentExecution could not be reloaded after admission.",
+                        True,
+                    )
+                if int(inserted.rowcount or 0) == 0:
+                    _require_same_admission(saved, params)
+                session.execute(text(_CLAIM_HANDOFF_INBOX_INSERT_SQL), params)
+                receipt = _load_claim_handoff_receipt(
+                    session,
+                    tenant_id=trigger.tenant_id,
+                    event_id=event_id,
+                    handoff_id=trigger.trigger_id,
+                )
+                _require_same_handoff_receipt(receipt, params, saved)
+                session.commit()
+                return saved
+        except AgentExecutionError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
     def get(self, tenant_id: str, agent_execution_id: str) -> dict[str, Any] | None:
         try:
             with self._session_factory() as session:
@@ -341,6 +401,67 @@ class AgentExecutionAdmissionService:
                 )
             raise
 
+    def admit_claimed_work(
+        self,
+        *,
+        event_id: str,
+        requester_ref: str,
+        handoff: Mapping[str, Any],
+    ) -> AgentRuntimeAdmission:
+        if self._mode != "required":
+            raise AgentExecutionError(
+                "ae.background_agent_runtime_disabled",
+                "Claimed WorkItem admission requires required Agent Runtime mode.",
+            )
+        normalized = _validate_claim_handoff(handoff)
+        try:
+            identity = self._identities.get_agent(
+                tenant_id=normalized["tenant_id"],
+                agent_id=normalized["claimant_agent_ref"],
+            )
+            if identity is None or (
+                identity.get("status"),
+                identity.get("agent_type"),
+                identity.get("project_id"),
+            ) != (
+                "ACTIVE",
+                normalized["claimant_agent_type"],
+                normalized["project_id"],
+            ):
+                raise AgentExecutionError(
+                    "ae.claimed_work_identity_forbidden",
+                    "Claimed work requires the exact active tenant/project Agent.",
+                )
+            now = self._clock().astimezone(UTC).isoformat().replace("+00:00", "Z")
+            trigger = ExecutionTriggerV21(
+                trigger_id=normalized["handoff_id"],
+                source_type="CLAIMED_WORKITEM",
+                source_ref=normalized["work_item_ref"],
+                tenant_id=normalized["tenant_id"],
+                agent_type=normalized["claimant_agent_type"],
+                agent_id=normalized["claimant_agent_ref"],
+                project_id=normalized["project_id"],
+                correlation_id=normalized["correlation_id"],
+                causation_id=normalized.get("causation_id"),
+                received_at=normalized["occurred_at"],
+                work_item_ref=normalized["work_item_ref"],
+                claim_ref=normalized["claim_ref"],
+                claim_generation=normalized["claim_generation"],
+                assignment_ref=normalized["assignment_ref"],
+                requester_ref=_required_text("requester_ref", requester_ref),
+            )
+            execution = self._executions.admit_claimed_work(
+                event_id=_required_text("event_id", event_id),
+                handoff_semantic_hash=semantic_sha256_hash_ref(normalized),
+                trigger=trigger,
+                principal_id=requester_ref,
+                agent_execution_id=self._id_factory(),
+                now=now,
+            )
+            return AgentRuntimeAdmission(mode=self._mode, execution=execution)
+        except (AgentIdentityRepositoryError, AgentExecutionError):
+            raise
+
 
 _EXECUTION_INSERT_SQL = """
     INSERT INTO ae_agent_execution (
@@ -348,14 +469,26 @@ _EXECUTION_INSERT_SQL = """
         trigger_schema_version, trigger_id, source_type, source_ref, project_id,
         workspace_id, conversation_id, legacy_interaction_id, state, phase,
         version, result_id, correlation_id, causation_id, received_at,
-        created_at, updated_at
+        work_item_ref, claim_ref, claim_generation, assignment_ref,
+        requester_ref, created_at, updated_at
     ) VALUES (
         :tenant_id, :agent_execution_id, :agent_id, :agent_type, :principal_id,
         :schema_version, :trigger_id, :source_type, :source_ref, :project_id,
         :workspace_id, :conversation_id, :legacy_interaction_id,
         'QUEUED', 'INTAKE', 1, NULL, :correlation_id, :causation_id,
-        :received_at, :now, :now
+        :received_at, :work_item_ref, :claim_ref, :claim_generation,
+        :assignment_ref, :requester_ref, :now, :now
     ) ON CONFLICT (tenant_id, trigger_id) DO NOTHING
+"""
+
+_CLAIM_HANDOFF_INBOX_INSERT_SQL = """
+    INSERT INTO ae_claim_handoff_inbox (
+        tenant_id, event_id, handoff_id, handoff_semantic_hash,
+        agent_execution_id, received_at
+    ) VALUES (
+        :tenant_id, :event_id, :trigger_id, :handoff_semantic_hash,
+        :agent_execution_id, :now
+    ) ON CONFLICT DO NOTHING
 """
 
 _EXECUTION_TRANSITION_SQL = """
@@ -421,6 +554,34 @@ def _require_admission_scope(session: Session, params: Mapping[str, Any]) -> Non
         )
 
 
+def _require_claimed_work_scope(
+    session: Session, params: Mapping[str, Any]
+) -> None:
+    identity = session.execute(
+        text(
+            """
+            SELECT agent_type, status, project_id
+            FROM ae_agent_identity
+            WHERE tenant_id = :tenant_id AND agent_id = :agent_id
+            """
+        ),
+        params,
+    ).mappings().first()
+    if identity is None or (
+        identity["agent_type"],
+        identity["status"],
+        identity["project_id"],
+    ) != (
+        params["agent_type"],
+        "ACTIVE",
+        params["project_id"],
+    ):
+        raise AgentExecutionError(
+            "ae.claimed_work_identity_forbidden",
+            "Claimed work requires the exact active tenant/project Agent.",
+        )
+
+
 def _load_by_trigger(
     session: Session,
     tenant_id: str,
@@ -448,12 +609,50 @@ def _load_execution(
     return None if row is None else _execution_from_row(row)
 
 
+def _load_claim_handoff_receipt(
+    session: Session,
+    *,
+    tenant_id: str,
+    event_id: str,
+    handoff_id: str,
+) -> dict[str, Any] | None:
+    row = session.execute(
+        text(
+            """
+            SELECT tenant_id, event_id, handoff_id, handoff_semantic_hash,
+                   agent_execution_id, received_at
+            FROM ae_claim_handoff_inbox
+            WHERE tenant_id = :tenant_id
+              AND (event_id = :event_id OR handoff_id = :handoff_id)
+            ORDER BY CASE WHEN event_id = :event_id THEN 0 ELSE 1 END
+            LIMIT 1
+            """
+        ),
+        {
+            "tenant_id": tenant_id,
+            "event_id": event_id,
+            "handoff_id": handoff_id,
+        },
+    ).mappings().first()
+    if row is None:
+        return None
+    return {
+        "tenant_id": row["tenant_id"],
+        "event_id": str(row["event_id"]),
+        "handoff_id": str(row["handoff_id"]),
+        "handoff_semantic_hash": row["handoff_semantic_hash"],
+        "agent_execution_id": str(row["agent_execution_id"]),
+        "received_at": _datetime_value(row["received_at"]),
+    }
+
+
 _EXECUTION_SELECT_SQL = """
     SELECT tenant_id, agent_execution_id, agent_id, agent_type, principal_id,
            trigger_schema_version, trigger_id, source_type, source_ref,
            project_id, workspace_id, conversation_id, legacy_interaction_id,
            state, phase, version, result_id, correlation_id, causation_id,
-           received_at, created_at, updated_at
+           received_at, work_item_ref, claim_ref, claim_generation,
+           assignment_ref, requester_ref, created_at, updated_at
     FROM ae_agent_execution
 """
 
@@ -480,6 +679,13 @@ def _execution_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
         "correlation_id": row["correlation_id"],
         "causation_id": row["causation_id"],
         "received_at": _datetime_value(row["received_at"]),
+        "work_item_ref": _string_or_none(row["work_item_ref"]),
+        "claim_ref": _string_or_none(row["claim_ref"]),
+        "claim_generation": (
+            None if row["claim_generation"] is None else int(row["claim_generation"])
+        ),
+        "assignment_ref": _string_or_none(row["assignment_ref"]),
+        "requester_ref": _string_or_none(row["requester_ref"]),
         "created_at": _datetime_value(row["created_at"]),
         "updated_at": _datetime_value(row["updated_at"]),
     }
@@ -500,12 +706,94 @@ def _require_same_admission(
         "legacy_interaction_id",
         "correlation_id",
         "causation_id",
+        "work_item_ref",
+        "claim_ref",
+        "claim_generation",
+        "assignment_ref",
+        "requester_ref",
     )
     if any(_comparable(existing[key]) != _comparable(params[key]) for key in keys):
         raise AgentExecutionError(
             "ae.agent_execution_trigger_conflict",
             "ExecutionTrigger identity was reused with different semantics.",
         )
+
+
+def _require_same_handoff_receipt(
+    receipt: Mapping[str, Any] | None,
+    params: Mapping[str, Any],
+    execution: Mapping[str, Any],
+) -> None:
+    if receipt is None:
+        raise AgentExecutionError(
+            "ae.claim_handoff_write_conflict",
+            "Claim handoff receipt could not be reloaded after admission.",
+            True,
+        )
+    expected = {
+        "event_id": params["event_id"],
+        "handoff_id": params["trigger_id"],
+        "handoff_semantic_hash": params["handoff_semantic_hash"],
+        "agent_execution_id": execution["agent_execution_id"],
+    }
+    if any(
+        _comparable(receipt[key]) != _comparable(value)
+        for key, value in expected.items()
+    ):
+        raise AgentExecutionError(
+            "ae.claim_handoff_conflict",
+            "Claim handoff identity was reused with different semantics.",
+        )
+
+
+_CLAIM_HANDOFF_FIELDS = frozenset(
+    {
+        "schema_version",
+        "handoff_id",
+        "tenant_id",
+        "work_item_ref",
+        "claim_ref",
+        "claim_generation",
+        "claimant_agent_ref",
+        "claimant_agent_type",
+        "project_id",
+        "assignment_ref",
+        "correlation_id",
+        "causation_id",
+        "occurred_at",
+    }
+)
+
+
+def _validate_claim_handoff(value: Mapping[str, Any]) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise _invalid("ClaimExecutionHandoff must be an object.")
+    if set(value) - _CLAIM_HANDOFF_FIELDS:
+        raise _invalid("ClaimExecutionHandoff contains unsupported fields.")
+    normalized = dict(value)
+    if normalized.get("schema_version") != "2.1":
+        raise _invalid("ClaimExecutionHandoff schema_version must be 2.1.")
+    for field in (
+        "handoff_id",
+        "tenant_id",
+        "work_item_ref",
+        "claim_ref",
+        "claimant_agent_ref",
+        "project_id",
+        "assignment_ref",
+        "correlation_id",
+        "occurred_at",
+    ):
+        normalized[field] = _required_text(field, normalized.get(field))
+    if normalized.get("claimant_agent_type") not in {"CA", "PA", "EA"}:
+        raise _invalid("ClaimExecutionHandoff claimant_agent_type is invalid.")
+    generation = normalized.get("claim_generation")
+    if isinstance(generation, bool) or not isinstance(generation, int) or generation < 1:
+        raise _invalid("ClaimExecutionHandoff claim_generation is invalid.")
+    normalized["causation_id"] = _optional_non_empty(
+        "causation_id", normalized.get("causation_id")
+    )
+    return normalized
 
 
 def _comparable(value: Any) -> Any:
