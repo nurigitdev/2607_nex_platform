@@ -1,0 +1,99 @@
+openapi: 3.1.0
+info:
+  title: NeX Work Coordination API
+  version: 2.1.0-p7-s1
+servers:
+  - url: http://127.0.0.1:8106
+paths:
+  /health:
+    get:
+      operationId: getWcHealth
+      responses:
+        "200": {description: Healthy}
+  /ready:
+    get:
+      operationId: getWcReadiness
+      responses:
+        "200": {description: Ready}
+        "503": {description: Not ready}
+  /version:
+    get:
+      operationId: getWcVersion
+      responses:
+        "200": {description: Version metadata}
+  /api/v1/work-items:
+    post:
+      operationId: createWcWorkItem
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/WorkItemCreateRequest"}
+      responses:
+        "201": {description: WorkItem created}
+        "200": {description: Idempotent existing WorkItem}
+        "400": {description: Invalid delegation}
+        "401": {description: Invalid service token}
+        "409": {description: Idempotency conflict}
+        "503": {description: WC persistence unavailable}
+  /api/v1/work-items/{work_item_id}:
+    get:
+      operationId: getWcWorkItem
+      security: [{serviceBearer: []}]
+      parameters:
+        - {$ref: "#/components/parameters/WorkItemId"}
+        - {$ref: "#/components/parameters/TenantIdHeader"}
+      responses:
+        "200": {description: Tenant-scoped WorkItem}
+        "404": {description: WorkItem not found in tenant}
+  /api/v1/work-items/{work_item_id}/status:
+    get:
+      operationId: getWcWorkItemStatus
+      security: [{serviceBearer: []}]
+      parameters:
+        - {$ref: "#/components/parameters/WorkItemId"}
+        - {$ref: "#/components/parameters/TenantIdHeader"}
+      responses:
+        "200": {description: WorkItem status projection}
+        "404": {description: WorkItem not found in tenant}
+components:
+  securitySchemes:
+    serviceBearer:
+      type: http
+      scheme: bearer
+  parameters:
+    WorkItemId:
+      name: work_item_id
+      in: path
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 128}
+    TenantIdHeader:
+      name: X-NeX-Tenant-Id
+      in: header
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 128}
+  schemas:
+    WorkItemCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [delegation_spec, requester, accountable_owner]
+      properties:
+        delegation_spec: {type: object}
+        title: {type: string, minLength: 1, maxLength: 300}
+        description: {type: [string, "null"], maxLength: 12000}
+        requester: {$ref: "#/components/schemas/EntityRef"}
+        accountable_owner: {$ref: "#/components/schemas/EntityRef"}
+        closure_policy: {type: object}
+        priority: {enum: [LOW, NORMAL, HIGH, URGENT]}
+        due_at: {type: [string, "null"], format: date-time}
+    EntityRef:
+      type: object
+      additionalProperties: false
+      required: [entity_type, entity_id]
+      properties:
+        entity_type: {type: string, minLength: 1, maxLength: 80}
+        entity_id: {type: string, minLength: 1, maxLength: 160}
+        version: {type: [string, integer, "null"]}
+        status: {type: [string, "null"], maxLength: 80}

@@ -74,6 +74,13 @@ SERVICE_SPECS: dict[str, ServiceSpec] = {
         database_env="NEX_MO_DATABASE_URL",
         default_port=8105,
     ),
+    "nex-wc": ServiceSpec(
+        service_id="nex-wc",
+        package_name="nex_wc",
+        display_name="NeX Work Coordination",
+        database_env="NEX_WC_DATABASE_URL",
+        default_port=8106,
+    ),
 }
 
 

@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SERVICES = ["nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo"]
+SERVICES = ["nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo", "nex-wc"]
 
 
 def main() -> int:

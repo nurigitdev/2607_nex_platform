@@ -285,6 +285,7 @@ def ag_job_control_token_env(service_id: str) -> str:
         "nex-ae-api": "AE",
         "nex-cx": "CX",
         "nex-mo": "MO",
+        "nex-wc": "WC",
     }
     return f"NEX_AG_TO_{suffix_by_service[service_id]}_SERVICE_TOKEN"
 
