@@ -10,9 +10,9 @@ from nex_runtime.compatibility import register_generation_compatibility_routes
 from nex_runtime.prompts import register_prompt_registry_routes
 from nex_runtime.recovery import register_generation_recovery_policy_routes
 
-from nex_ae_api.agent_runtime_foundation import attach_agent_runtime_foundation
 from nex_ae_api.agent_identity import SqlAlchemyAgentIdentityRegistry
 from nex_ae_api.agent_registry_api import register_agent_registry_routes
+from nex_ae_api.agent_runtime_foundation import attach_agent_runtime_foundation
 from nex_ae_api.agent_runtime_operations import (
     SqlAlchemyAgentRuntimeOperationsSource,
     UnavailableAgentRuntimeOperationsSource,
@@ -47,6 +47,8 @@ from nex_ae_api.trace_projection import (
 )
 from nex_ae_api.upload_progress import register_upload_progress_routes
 from nex_ae_api.uploads import register_upload_routes
+from nex_ae_api.work_result_event_api import register_work_result_event_routes
+from nex_ae_api.work_result_events import SqlAlchemyWorkResultEventService
 from nex_ae_api.workspace import register_workspace_routes
 
 SERVICE_SPEC = SERVICE_SPECS["nex-ae-api"]
@@ -97,6 +99,17 @@ register_claim_handoff_routes(
     app,
     admission=AE_AGENT_RUNTIME.admission,
 )
+AE_WORK_RESULT_EVENTS = (
+    SqlAlchemyWorkResultEventService(
+        SERVICE_PERSISTENCE.api_session_factory,
+        runtime_jobs=AE_AGENT_RUNTIME.jobs,
+    )
+    if SERVICE_PERSISTENCE.api_session_factory is not None
+    and AE_AGENT_RUNTIME.jobs is not None
+    else None
+)
+app.state.ae_work_result_events = AE_WORK_RESULT_EVENTS
+register_work_result_event_routes(app, admission=AE_WORK_RESULT_EVENTS)
 register_agent_registry_routes(
     app,
     registry=(

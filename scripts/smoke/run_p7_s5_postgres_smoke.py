@@ -109,9 +109,7 @@ def run_p7_s5_postgres_smoke(
             == "1001_wc_assignment_claim",
             **evidence["checks"],
         }
-        evidence["status"] = (
-            "PASS" if all(evidence["checks"].values()) else "FAIL"
-        )
+        evidence["status"] = "PASS" if all(evidence["checks"].values()) else "FAIL"
         return evidence
     except Exception as exc:  # noqa: BLE001 - protected smoke boundary
         detail = p5_s5._redact_detail(str(exc), database_url=ae_url)
@@ -120,7 +118,10 @@ def run_p7_s5_postgres_smoke(
 
 
 def _verify_delegate_wait(
-    fixture: Mapping[str, Any], *, wc_url: str
+    fixture: Mapping[str, Any],
+    *,
+    wc_url: str,
+    continuation_verifier=None,
 ) -> dict[str, Any]:
     ae_factory = fixture["factory"]
     tenant_id = str(fixture["tenant_id"])
@@ -194,9 +195,7 @@ def _verify_delegate_wait(
     wc_engine = create_engine(
         sqlalchemy_database_url(wc_url), future=True, pool_pre_ping=True
     )
-    wc_factory = sessionmaker(
-        bind=wc_engine, autoflush=False, expire_on_commit=False
-    )
+    wc_factory = sessionmaker(bind=wc_engine, autoflush=False, expire_on_commit=False)
     verification: dict[str, Any] | None = None
     cleanup_counts: dict[str, int] = {}
     try:
@@ -256,13 +255,17 @@ def _verify_delegate_wait(
             wc_identity = session.execute(
                 text("SELECT current_database(), current_user")
             ).one()
-            work_ids = session.execute(
-                text(
-                    "SELECT work_item_id FROM wc_work_item "
-                    "WHERE tenant_id = :tenant_id"
-                ),
-                {"tenant_id": tenant_id},
-            ).scalars().all()
+            work_ids = (
+                session.execute(
+                    text(
+                        "SELECT work_item_id FROM wc_work_item "
+                        "WHERE tenant_id = :tenant_id"
+                    ),
+                    {"tenant_id": tenant_id},
+                )
+                .scalars()
+                .all()
+            )
             work_count = len(work_ids)
         checks = {
             "delegate_worker_waited": result.disposition == "WAITING"
@@ -277,12 +280,29 @@ def _verify_delegate_wait(
             == ("nex_wc_test", "nex_wc_user"),
         }
         checks["delegate_worker_waited"] = checks["delegate_worker_waited"] and (
-            result.step["state"] == "WAITING"
-            and result.runtime_job["state"] == "DONE"
+            result.step["state"] == "WAITING" and result.runtime_job["state"] == "DONE"
+        )
+        continuation = (
+            {}
+            if continuation_verifier is None
+            else dict(
+                continuation_verifier(
+                    {
+                        **dict(fixture),
+                        "wc_factory": wc_factory,
+                        "work_item_id": str(wait.external_ref),
+                        "wait_id": str(wait.wait_id),
+                    }
+                )
+            )
         )
         verification = {
-            "checks": checks,
-            "row_counts": {"wait_registration": 1, "wc_work_item": work_count},
+            "checks": {**checks, **dict(continuation.get("checks") or {})},
+            "row_counts": {
+                "wait_registration": 1,
+                "wc_work_item": work_count,
+                **dict(continuation.get("row_counts") or {}),
+            },
             "cleanup_counts": cleanup_counts,
         }
     finally:
@@ -290,10 +310,21 @@ def _verify_delegate_wait(
             _cleanup_delegate_runtime_rows(ae_factory, tenant_id=tenant_id)
         )
         with wc_factory.begin() as session:
+            for table in (
+                "wc_work_result",
+                "wc_event_outbox",
+                "wc_claim",
+                "wc_assignment",
+                "wc_routing_decision",
+            ):
+                session.execute(
+                    text(f"DELETE FROM {table} WHERE tenant_id = :tenant_id"),
+                    {"tenant_id": tenant_id},
+                )
             cleanup_counts["wc_work_item"] = int(
                 session.execute(
-                text("DELETE FROM wc_work_item WHERE tenant_id = :tenant_id"),
-                {"tenant_id": tenant_id},
+                    text("DELETE FROM wc_work_item WHERE tenant_id = :tenant_id"),
+                    {"tenant_id": tenant_id},
                 ).rowcount
                 or 0
             )

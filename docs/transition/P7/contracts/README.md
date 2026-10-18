@@ -17,11 +17,12 @@ p7-work-result-v2.1.schema.json
 p7-work-result-submitted-v2.1.schema.json
 ```
 
-P7 adds two implementation-facing transition contracts:
+P7 adds three implementation-facing transition contracts:
 
 ```text
 p7-delegation-spec-v1.schema.json
 p7-wait-registration-v1.schema.json
+p7-plan-candidate-v1.schema.json
 ```
 
 `DelegationSpec` carries semantic work requirements only. It cannot carry an
@@ -30,6 +31,10 @@ execution identity allocated by WC/AE.
 
 `WaitRegistration` is AE-owned durable dependency state. It does not replace a
 WC WorkItem or the AE RuntimeJob that eventually resumes execution.
+
+`PlanCandidate` is the admitted planning candidate boundary used by the P7
+claimed-work planning source. It does not grant routing, claim, assignment, or
+execution authority.
 
 ## Initial Runtime Profile
 

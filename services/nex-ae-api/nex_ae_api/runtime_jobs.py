@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 P4_RUNTIME_JOB_TYPES = frozenset({"START_EXECUTION", "CONTINUE_EXECUTION"})
+RUNTIME_JOB_TYPES = P4_RUNTIME_JOB_TYPES | {"RESUME_EXECUTION"}
 RUNTIME_JOB_STATES = frozenset(
     {"QUEUED", "RUNNING", "DONE", "FAILED", "CANCELLED", "DEAD_LETTER"}
 )
@@ -68,20 +69,30 @@ class SqlAlchemyRuntimeJobQueue:
         *,
         tenant_id: str,
         runtime_job_id: str,
-        job_type: Literal["START_EXECUTION", "CONTINUE_EXECUTION"],
+        job_type: Literal["START_EXECUTION", "CONTINUE_EXECUTION", "RESUME_EXECUTION"],
         execution_id: str,
         dedup_key: str,
         run_after: str,
         correlation_id: str,
         now: str,
         executable_step_id: str | None = None,
+        wait_id: str | None = None,
         payload: Mapping[str, Any] | None = None,
         causation_id: str | None = None,
     ) -> dict[str, Any]:
-        if job_type not in P4_RUNTIME_JOB_TYPES:
+        if job_type not in RUNTIME_JOB_TYPES:
             raise _invalid(
-                "P4 RuntimeJob type must be START_EXECUTION or CONTINUE_EXECUTION."
+                "RuntimeJob type must be START_EXECUTION, CONTINUE_EXECUTION, "
+                "or RESUME_EXECUTION."
             )
+        normalized_wait_id = _optional("wait_id", wait_id)
+        if job_type == "RESUME_EXECUTION":
+            if executable_step_id is None or normalized_wait_id is None:
+                raise _invalid(
+                    "RESUME_EXECUTION requires executable_step_id and wait_id."
+                )
+        elif normalized_wait_id is not None:
+            raise _invalid("Only RESUME_EXECUTION may reference wait_id.")
         normalized_payload = _payload(payload)
         params = {
             "tenant_id": _required("tenant_id", tenant_id),
@@ -89,6 +100,7 @@ class SqlAlchemyRuntimeJobQueue:
             "job_type": job_type,
             "execution_id": _required("execution_id", execution_id),
             "executable_step_id": _optional("executable_step_id", executable_step_id),
+            "wait_id": normalized_wait_id,
             "dedup_key": _required("dedup_key", dedup_key),
             "run_after": _timestamp("run_after", run_after),
             "payload_json": json.dumps(
@@ -100,47 +112,90 @@ class SqlAlchemyRuntimeJobQueue:
         }
         try:
             with self._session_factory() as session:
-                if self._max_runnable_depth is not None:
-                    _lock_runtime_admission(session)
-                    existing = _load_by_dedup(
-                        session, params["tenant_id"], params["dedup_key"]
-                    )
-                    if existing is not None:
-                        _require_same_job(existing, params, normalized_payload)
-                        return existing
-                    params["run_after"] = _apply_admission_policy(
-                        session,
-                        run_after=params["run_after"],
-                        now=params["now"],
-                        max_runnable_depth=self._max_runnable_depth,
-                        admission_policy=self._admission_policy,
-                        admission_delay_seconds=self._admission_delay_seconds,
-                    )
-                if not _execution_exists(
-                    session, params["tenant_id"], params["execution_id"]
-                ):
-                    raise RuntimeJobError(
-                        "ae.runtime_job_execution_not_found",
-                        "RuntimeJob requires an existing AgentExecution in the same tenant.",
-                    )
-                inserted = session.execute(text(_insert_sql(session)), params)
-                saved = _load_by_dedup(
-                    session, params["tenant_id"], params["dedup_key"]
+                saved = self._enqueue_prepared(
+                    session, params=params, payload=normalized_payload
                 )
-                if saved is None:
-                    raise RuntimeJobError(
-                        "ae.runtime_job_write_conflict",
-                        "RuntimeJob could not be reloaded after enqueue.",
-                        True,
-                    )
-                if int(inserted.rowcount or 0) == 0:
-                    _require_same_job(saved, params, normalized_payload)
                 session.commit()
                 return saved
         except RuntimeJobError:
             raise
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
+
+    def enqueue_resume_in_session(
+        self,
+        session: Session,
+        *,
+        tenant_id: str,
+        runtime_job_id: str,
+        execution_id: str,
+        executable_step_id: str,
+        wait_id: str,
+        dedup_key: str,
+        run_after: str,
+        correlation_id: str,
+        now: str,
+        payload: Mapping[str, Any],
+        causation_id: str,
+    ) -> dict[str, Any]:
+        normalized_payload = _payload(payload)
+        params = {
+            "tenant_id": _required("tenant_id", tenant_id),
+            "runtime_job_id": _required("runtime_job_id", runtime_job_id),
+            "job_type": "RESUME_EXECUTION",
+            "execution_id": _required("execution_id", execution_id),
+            "executable_step_id": _required("executable_step_id", executable_step_id),
+            "wait_id": _required("wait_id", wait_id),
+            "dedup_key": _required("dedup_key", dedup_key),
+            "run_after": _timestamp("run_after", run_after),
+            "payload_json": json.dumps(
+                normalized_payload, sort_keys=True, separators=(",", ":")
+            ),
+            "correlation_id": _required("correlation_id", correlation_id),
+            "causation_id": _required("causation_id", causation_id),
+            "now": _timestamp("now", now),
+        }
+        return self._enqueue_prepared(
+            session, params=params, payload=normalized_payload
+        )
+
+    def _enqueue_prepared(
+        self,
+        session: Session,
+        *,
+        params: dict[str, Any],
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        if self._max_runnable_depth is not None:
+            _lock_runtime_admission(session)
+            existing = _load_by_dedup(session, params["tenant_id"], params["dedup_key"])
+            if existing is not None:
+                _require_same_job(existing, params, payload)
+                return existing
+            params["run_after"] = _apply_admission_policy(
+                session,
+                run_after=params["run_after"],
+                now=params["now"],
+                max_runnable_depth=self._max_runnable_depth,
+                admission_policy=self._admission_policy,
+                admission_delay_seconds=self._admission_delay_seconds,
+            )
+        if not _execution_exists(session, params["tenant_id"], params["execution_id"]):
+            raise RuntimeJobError(
+                "ae.runtime_job_execution_not_found",
+                "RuntimeJob requires an existing AgentExecution in the same tenant.",
+            )
+        inserted = session.execute(text(_insert_sql(session)), params)
+        saved = _load_by_dedup(session, params["tenant_id"], params["dedup_key"])
+        if saved is None:
+            raise RuntimeJobError(
+                "ae.runtime_job_write_conflict",
+                "RuntimeJob could not be reloaded after enqueue.",
+                True,
+            )
+        if int(inserted.rowcount or 0) == 0:
+            _require_same_job(saved, params, payload)
+        return saved
 
     def get(self, tenant_id: str, runtime_job_id: str) -> dict[str, Any] | None:
         try:
@@ -540,11 +595,12 @@ def _insert_sql(session: Session) -> str:
 _INSERT_SQL = """
     INSERT INTO ae_runtime_job (
         tenant_id, runtime_job_id, job_type, execution_id, executable_step_id,
+        wait_id,
         state, dedup_key, attempt_no, run_after, payload_json, correlation_id,
         causation_id, created_at, updated_at
     ) VALUES (
         :tenant_id, :runtime_job_id, :job_type, :execution_id,
-        :executable_step_id, 'QUEUED', :dedup_key, 0, :run_after,
+        :executable_step_id, :wait_id, 'QUEUED', :dedup_key, 0, :run_after,
         :payload_expression, :correlation_id, :causation_id, :now, :now
     ) ON CONFLICT (tenant_id, dedup_key) DO NOTHING
 """
@@ -947,6 +1003,8 @@ def _require_same_job(
     )
     if (
         any(_comparable(existing[key]) != _comparable(params[key]) for key in keys)
+        or _comparable(existing.get("wait_id"))
+        != _comparable(params.get("wait_id"))
         or _parse_timestamp("run_after", existing["run_after"])
         != _parse_timestamp("run_after", params["run_after"])
         or existing["payload"] != payload
