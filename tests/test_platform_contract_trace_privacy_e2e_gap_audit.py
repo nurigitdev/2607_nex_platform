@@ -16,7 +16,7 @@ def test_repository_contract_trace_privacy_audit_tracks_named_e2e_execution() ->
         "schemas": 174,
         "examples": 236,
         "negative_examples": 204,
-        "openapi": 7,
+        "openapi": 8,
     }
     assert result["findings"]["golden_scenario_contract_count"] == 10
     assert result["findings"]["executable_named_golden_scenario_count"] == 10
@@ -78,7 +78,7 @@ def test_read_text_and_summary_branches(tmp_path: Path) -> None:
             "schemas": 159,
             "examples": 217,
             "negative_examples": 187,
-            "openapi": 7,
+            "openapi": 8,
         },
         "findings": {
             "trace_propagating_http_client_count": 13,
@@ -88,7 +88,7 @@ def test_read_text_and_summary_branches(tmp_path: Path) -> None:
     }
     assert audit.summary_line(passing) == (
         "platform_contract_trace_privacy_e2e_gap=pass "
-        "contracts=159/217/187/7 trace_clients=13 named_e2e=0/10 next=1311"
+        "contracts=159/217/187/8 trace_clients=13 named_e2e=0/10 next=1311"
     )
     assert audit.summary_line({"status": "FAIL", "issues": [1]}) == (
         "platform_contract_trace_privacy_e2e_gap=fail issues=1"

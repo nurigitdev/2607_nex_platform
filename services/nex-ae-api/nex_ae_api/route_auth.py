@@ -1,28 +1,29 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-
 from nex_runtime import (
-    AdmittedServiceClaims,
     DEFAULT_SERVICE_SCOPE,
     DEFAULT_USER_SCOPE,
+    AdmittedServiceClaims,
     admit_service_token_from_request,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
 )
+
 from nex_ae_api.auth_guard import (
     BrowserAuthError,
     BrowserUserAuthContext,
     build_browser_user_auth_context,
 )
 from nex_ae_api.auth_sessions import (
-    BrowserSessionFacadeError,
     SESSION_COOKIE_NAME,
+    BrowserSessionFacadeError,
     validate_browser_session_credentials,
 )
 from nex_ae_api.oa_session_client import OaUserSessionClient
@@ -159,6 +160,35 @@ def authorize_ae_operations_request(
             type_uri="https://nex-platform.local/problems/authorization-failed",
         )
     return None
+
+
+def authorize_ae_internal_service_request(
+    request: Request,
+    authorization: str | None,
+    *,
+    allowed_service_ids: Sequence[str],
+    error_code: str,
+    title: str,
+    detail: str,
+) -> AdmittedServiceClaims | JSONResponse:
+    admitted = admit_service_token_from_request(
+        request,
+        authorization,
+        expected_audience="nex-ae-api",
+        required_scopes=(DEFAULT_SERVICE_SCOPE,),
+    )
+    if isinstance(admitted, JSONResponse):
+        return admitted
+    if admitted.service_id not in frozenset(allowed_service_ids):
+        return problem_response(
+            request,
+            status_code=403,
+            error_code=error_code,
+            title=title,
+            detail=detail,
+            retryable=False,
+        )
+    return admitted
 
 
 def _looks_like_service_authorization(authorization: str | None) -> bool:

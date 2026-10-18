@@ -69,6 +69,9 @@ class StepWaitingOutcome:
     retrieval_package_hash: str | None = None
     cx_generation_id: str | None = None
     cx_job_id: str | None = None
+    wait_id: str | None = None
+    external_ref: str | None = None
+    result_contract_ref: str | None = None
 
 
 class SqlAlchemyMultiStepEngine:
@@ -390,42 +393,88 @@ class SqlAlchemyMultiStepEngine:
                     )
                 if (
                     step["agent_execution_id"] != job["execution_id"]
-                    or step["executor_kind"] != "P4_CHAT_RAG_COMPATIBILITY"
                     or step["state"] != "RUNNING"
+                    or step["executor_kind"]
+                    not in {"P4_CHAT_RAG_COMPATIBILITY", "WC_DELEGATE_WORK"}
                 ):
                     raise MultiStepEngineError(
                         "ae.multi_step_waiting_mismatch",
-                        "Only the running compatibility step can enter WAITING.",
+                        "Only an eligible running step can enter WAITING.",
                     )
-                params = {
-                    "tenant_id": tenant,
-                    "step_id": step_id,
-                    "version": step["version"],
-                    "retrieval_package_ref": _optional_text(
-                        "retrieval_package_ref", outcome.retrieval_package_ref, 256
-                    ),
-                    "retrieval_package_hash": _optional_text(
-                        "retrieval_package_hash", outcome.retrieval_package_hash, 256
-                    ),
-                    "cx_generation_id": _optional_text(
-                        "cx_generation_id", outcome.cx_generation_id, 256
-                    ),
-                    "cx_job_id": _required_text("cx_job_id", outcome.cx_job_id, 256),
-                    "now": now,
-                }
-                updated = session.execute(
-                    text(
-                        "UPDATE ae_executable_step SET state = 'WAITING', "
-                        "version = version + 1, "
-                        "retrieval_package_ref = :retrieval_package_ref, "
-                        "retrieval_package_hash = :retrieval_package_hash, "
-                        "cx_generation_id = :cx_generation_id, cx_job_id = :cx_job_id, "
-                        "updated_at = :now WHERE tenant_id = :tenant_id "
-                        "AND executable_step_id = :step_id AND state = 'RUNNING' "
-                        "AND version = :version"
-                    ),
-                    params,
-                )
+                if step["executor_kind"] == "P4_CHAT_RAG_COMPATIBILITY":
+                    params = {
+                        "tenant_id": tenant,
+                        "step_id": step_id,
+                        "version": step["version"],
+                        "retrieval_package_ref": _optional_text(
+                            "retrieval_package_ref",
+                            outcome.retrieval_package_ref,
+                            256,
+                        ),
+                        "retrieval_package_hash": _optional_text(
+                            "retrieval_package_hash",
+                            outcome.retrieval_package_hash,
+                            256,
+                        ),
+                        "cx_generation_id": _optional_text(
+                            "cx_generation_id", outcome.cx_generation_id, 256
+                        ),
+                        "cx_job_id": _required_text(
+                            "cx_job_id", outcome.cx_job_id, 256
+                        ),
+                        "now": now,
+                    }
+                    updated = session.execute(
+                        text(
+                            "UPDATE ae_executable_step SET state = 'WAITING', "
+                            "version = version + 1, "
+                            "retrieval_package_ref = :retrieval_package_ref, "
+                            "retrieval_package_hash = :retrieval_package_hash, "
+                            "cx_generation_id = :cx_generation_id, "
+                            "cx_job_id = :cx_job_id, updated_at = :now "
+                            "WHERE tenant_id = :tenant_id "
+                            "AND executable_step_id = :step_id "
+                            "AND state = 'RUNNING' AND version = :version"
+                        ),
+                        params,
+                    )
+                else:
+                    params = {
+                        "tenant_id": tenant,
+                        "execution_id": step["agent_execution_id"],
+                        "step_id": step_id,
+                        "version": step["version"],
+                        "wait_id": _required_uuid("wait_id", outcome.wait_id),
+                        "external_ref": _required_uuid(
+                            "external_ref", outcome.external_ref
+                        ),
+                        "result_contract_ref": _required_text(
+                            "result_contract_ref",
+                            outcome.result_contract_ref,
+                            256,
+                        ),
+                        "now": now,
+                    }
+                    _require_delegate_wait(session, params)
+                    runtime = _load_runtime(
+                        session, tenant, step["agent_execution_id"], lock=True
+                    )
+                    if runtime is None:
+                        raise MultiStepEngineError(
+                            "ae.multi_step_execution_not_found",
+                            "Delegated step lost its AgentExecution.",
+                        )
+                    updated = session.execute(
+                        text(
+                            "UPDATE ae_executable_step SET state = 'WAITING', "
+                            "version = version + 1, updated_at = :now "
+                            "WHERE tenant_id = :tenant_id "
+                            "AND executable_step_id = :step_id "
+                            "AND state = 'RUNNING' AND version = :version"
+                        ),
+                        params,
+                    )
+                    _move_to_dependency_wait(session, runtime, now)
                 if int(updated.rowcount or 0) != 1:
                     raise MultiStepEngineError(
                         "ae.multi_step_waiting_conflict",
@@ -896,6 +945,60 @@ def _enter_step_execution(
         raise MultiStepEngineError(
             "ae.multi_step_execution_conflict",
             "AgentExecution changed before step execution.",
+            True,
+        )
+
+
+def _require_delegate_wait(session: Session, params: Mapping[str, Any]) -> None:
+    row = session.execute(
+        text(
+            "SELECT wait_id FROM ae_wait_registration "
+            "WHERE tenant_id = :tenant_id "
+            "AND wait_id = :wait_id "
+            "AND agent_execution_id = :execution_id "
+            "AND executable_step_id = :step_id "
+            "AND wait_type = 'WORK_RESULT' "
+            "AND external_ref = :external_ref "
+            "AND result_contract_ref = :result_contract_ref "
+            "AND state = 'PENDING'"
+        ),
+        params,
+    ).first()
+    if row is None:
+        raise MultiStepEngineError(
+            "ae.multi_step_wait_registration_mismatch",
+            "DELEGATE_WORK requires its exact pending WaitRegistration.",
+        )
+
+
+def _move_to_dependency_wait(
+    session: Session, runtime: Mapping[str, Any], now: str
+) -> None:
+    if runtime["state"] != "RUNNING" or runtime["phase"] != "STEP_EXECUTION":
+        raise MultiStepEngineError(
+            "ae.multi_step_dependency_wait_mismatch",
+            "DELEGATE_WORK requires active step execution authority.",
+        )
+    updated = session.execute(
+        text(
+            "UPDATE ae_agent_execution SET state = 'WAITING_DEPENDENCY', "
+            "version = version + 1, updated_at = :now "
+            "WHERE tenant_id = :tenant_id "
+            "AND agent_execution_id = :execution_id "
+            "AND state = 'RUNNING' AND phase = 'STEP_EXECUTION' "
+            "AND version = :version"
+        ),
+        {
+            "tenant_id": runtime["tenant_id"],
+            "execution_id": runtime["agent_execution_id"],
+            "version": runtime["version"],
+            "now": now,
+        },
+    )
+    if int(updated.rowcount or 0) != 1:
+        raise MultiStepEngineError(
+            "ae.multi_step_dependency_wait_conflict",
+            "AgentExecution changed before dependency wait.",
             True,
         )
 

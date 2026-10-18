@@ -8,6 +8,14 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+from nex_runtime.prompts import PromptRegistryError, render_prompt_from_binding
+from nex_runtime.semantic_hashes import (
+    canonical_json,
+    semantic_sha256_hash_ref,
+    validate_hash_ref,
+    validate_sha256_digest,
+)
+
 from nex_ae_api.agent_plans import AgentPlanError, validate_agent_plan_contract
 from nex_ae_api.mo_generation_client import (
     AeMoGenerationClient,
@@ -27,16 +35,9 @@ from nex_ae_api.semantic_candidates import (
     SemanticCalibrationRegistry,
     SemanticCandidateStageError,
 )
-from nex_runtime.prompts import PromptRegistryError, render_prompt_from_binding
-from nex_runtime.semantic_hashes import (
-    canonical_json,
-    semantic_sha256_hash_ref,
-    validate_hash_ref,
-    validate_sha256_digest,
-)
-
 
 PLAN_CANDIDATE_SCHEMA_VERSION = "p65.plan_candidate.v1"
+P7_PLAN_CANDIDATE_SCHEMA_VERSION = "p7.plan_candidate.v1"
 PLAN_GENERATION_INPUT_SCHEMA_VERSION = "p65.plan_generation_input.v1"
 
 _TOP_LEVEL_KEYS = {
@@ -47,7 +48,7 @@ _TOP_LEVEL_KEYS = {
     "completion_mapping",
     "confidence",
 }
-_STEP_KEYS = {
+_STEP_REQUIRED_KEYS = {
     "step_id",
     "step_type",
     "title",
@@ -56,9 +57,11 @@ _STEP_KEYS = {
     "capability_hint",
     "completion_criteria",
 }
+_STEP_OPTIONAL_KEYS = {"delegation"}
 _COMPLETION_KEYS = {"criterion_id", "terminal_step_refs"}
 _PLAN_KINDS = {"DIRECT", "KNOWN_TEMPLATE", "DYNAMIC"}
 _STEP_TYPES = {"LOCAL_CAPABILITY", "AGGREGATE", "REPORT"}
+_P7_STEP_TYPES = {*_STEP_TYPES, "DELEGATE_WORK"}
 _ACTIVE_PLAN_KINDS = {"DIRECT", "KNOWN_TEMPLATE"}
 _CAPABILITY_ID = re.compile(r"^[A-Z][A-Z0-9_]*(\.[A-Z][A-Z0-9_]*)+$")
 _STEP_ID = re.compile(r"^S[0-9]{1,3}$")
@@ -69,6 +72,31 @@ _EXECUTION_MODES = {
     "GROUNDED_ANSWER",
     "DOCUMENT_SUMMARY",
     "DOCUMENT_GENERATION",
+}
+_DELEGATION_KEYS = {
+    "work_class",
+    "required_agent_type",
+    "project_scope_ref",
+    "result_contract_ref",
+    "completion_policy",
+}
+_DELEGATION_WORK_CLASSES = {
+    "QUERY",
+    "ANALYSIS",
+    "DOCUMENT",
+    "BUSINESS_TRANSACTION",
+    "COORDINATION",
+    "EXPERT_REVIEW",
+    "REPORTING",
+    "OPERATIONAL",
+}
+_DELEGATION_AGENT_TYPES = {"CA", "PA", "EA"}
+_DELEGATION_COMPLETION_POLICIES = {
+    "OWNER_SUBMITS",
+    "ALL_ASSIGNEES_SUBMIT",
+    "ANY_ASSIGNEE_SUBMITS",
+    "ALL_REQUIRED_CHILDREN",
+    "MANUAL",
 }
 _AUTHORITY_KEYS = {
     "approval",
@@ -306,16 +334,22 @@ def parse_plan_candidate(output_text: str) -> dict[str, Any]:
     _reject_authority_and_private_fields(value)
     if set(value) != _TOP_LEVEL_KEYS:
         raise _schema_error("PLAN candidate fields do not match the contract.")
-    if value.get("schema_version") != PLAN_CANDIDATE_SCHEMA_VERSION:
+    schema_version = value.get("schema_version")
+    if schema_version not in {
+        PLAN_CANDIDATE_SCHEMA_VERSION,
+        P7_PLAN_CANDIDATE_SCHEMA_VERSION,
+    }:
         raise _schema_error("PLAN candidate schema version is unsupported.")
     plan_kind = value.get("suggested_plan_kind")
     if plan_kind not in _PLAN_KINDS:
         raise _schema_error("PLAN candidate plan kind is invalid.")
     normalized = {
-        "schema_version": PLAN_CANDIDATE_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "suggested_plan_kind": plan_kind,
         "goal": _candidate_text(value.get("goal"), "goal", 1000),
-        "logical_steps": _logical_steps(value.get("logical_steps")),
+        "logical_steps": _logical_steps(
+            value.get("logical_steps"), schema_version=str(schema_version)
+        ),
         "completion_mapping": _completion_mapping(
             value.get("completion_mapping")
         ),
@@ -378,6 +412,7 @@ def bind_plan_candidate(
             step,
             capability_snapshot=snapshot,
             work_intent=work_intent,
+            agent_context=agent_context,
         )
         for step in normalized_candidate["logical_steps"]
     ]
@@ -416,7 +451,13 @@ def bind_plan_candidate(
         ],
         "planning_constraints": {
             "max_plan_steps": 12,
-            "max_delegation_depth": 0,
+            "max_delegation_depth": (
+                1
+                if any(
+                    step["step_type"] == "DELEGATE_WORK" for step in steps
+                )
+                else 0
+            ),
             "max_parallel_steps": 1,
         },
         "steps": steps,
@@ -453,12 +494,18 @@ def bind_plan_candidate(
         raise _schema_error("Bound PLAN candidate is not a canonical AgentPlan.") from exc
 
 
-def _logical_steps(value: object) -> list[dict[str, Any]]:
+def _logical_steps(
+    value: object, *, schema_version: str
+) -> list[dict[str, Any]]:
     records = _bounded_list(value, "logical_steps", 12, require_one=True)
     normalized: list[dict[str, Any]] = []
     step_ids: set[str] = set()
     for record in records:
-        if not isinstance(record, dict) or set(record) != _STEP_KEYS:
+        if (
+            not isinstance(record, dict)
+            or not _STEP_REQUIRED_KEYS.issubset(record)
+            or not set(record).issubset(_STEP_REQUIRED_KEYS | _STEP_OPTIONAL_KEYS)
+        ):
             raise _schema_error("PLAN logical step fields are invalid.")
         step_id = record.get("step_id")
         if not isinstance(step_id, str) or _STEP_ID.fullmatch(step_id) is None:
@@ -467,22 +514,32 @@ def _logical_steps(value: object) -> list[dict[str, Any]]:
             raise _schema_error("PLAN logical step IDs must be unique.")
         step_ids.add(step_id)
         step_type = record.get("step_type")
-        if step_type not in _STEP_TYPES:
+        allowed_types = (
+            _P7_STEP_TYPES
+            if schema_version == P7_PLAN_CANDIDATE_SCHEMA_VERSION
+            else _STEP_TYPES
+        )
+        if step_type not in allowed_types:
             raise _schema_error("PLAN logical step type is invalid.")
         capability_hint = record.get("capability_hint")
-        if step_type == "LOCAL_CAPABILITY":
+        if step_type in {"LOCAL_CAPABILITY", "DELEGATE_WORK"}:
             if (
                 not isinstance(capability_hint, str)
                 or len(capability_hint) > 160
                 or _CAPABILITY_ID.fullmatch(capability_hint) is None
             ):
                 raise _schema_error(
-                    "PLAN LOCAL_CAPABILITY requires a valid capability hint."
+                    f"PLAN {step_type} requires a valid capability hint."
                 )
         elif capability_hint is not None:
             raise _schema_error(
                 "PLAN REPORT and AGGREGATE cannot carry capability hints."
             )
+        delegation = record.get("delegation")
+        if step_type == "DELEGATE_WORK":
+            delegation = _candidate_delegation(delegation)
+        elif delegation is not None:
+            raise _schema_error("Only DELEGATE_WORK may carry delegation metadata.")
         normalized.append(
             {
                 "step_id": step_id,
@@ -502,6 +559,7 @@ def _logical_steps(value: object) -> list[dict[str, Any]]:
                     text_maximum=500,
                     require_one=True,
                 ),
+                **({"delegation": delegation} if delegation is not None else {}),
             }
         )
     return normalized
@@ -587,6 +645,7 @@ def _bind_step(
     *,
     capability_snapshot: Mapping[str, Any],
     work_intent: Mapping[str, Any],
+    agent_context: Mapping[str, Any],
 ) -> dict[str, Any]:
     step_type = step["step_type"]
     if step_type == "AGGREGATE":
@@ -609,6 +668,17 @@ def _bind_step(
         version = capability["capability_version"]
         aggregation = None
         report = None
+        delegation = None
+        output_contract_ref = capability["output_contract_ref"]
+    elif step_type == "DELEGATE_WORK":
+        metadata = _candidate_delegation(step.get("delegation"))
+        _require_project_scope(agent_context, metadata["project_scope_ref"])
+        required_capability = step["capability_hint"]
+        version = None
+        aggregation = None
+        report = None
+        delegation = metadata
+        output_contract_ref = metadata["result_contract_ref"]
     else:
         try:
             capability = capability_by_exact_version(
@@ -631,6 +701,8 @@ def _bind_step(
             "report_kind": _report_kind(work_intent),
             "source_step_refs": list(step["depends_on"]),
         }
+        delegation = None
+        output_contract_ref = capability["output_contract_ref"]
     input_bindings = [
         {
             "target_name": f"source_{index}",
@@ -649,11 +721,51 @@ def _bind_step(
         "required_capability": required_capability,
         "capability_version_constraint": version,
         "input_bindings": input_bindings,
-        "output_contract_ref": capability["output_contract_ref"],
+        "output_contract_ref": output_contract_ref,
         "completion_criteria": list(step["completion_criteria"]),
         "aggregation": aggregation,
         "report": report,
+        **({"delegation": delegation} if delegation is not None else {}),
     }
+
+
+def _candidate_delegation(value: object) -> dict[str, Any]:
+    if not isinstance(value, Mapping) or set(value) != _DELEGATION_KEYS:
+        raise _schema_error("PLAN delegation metadata is invalid.")
+    work_class = value.get("work_class")
+    agent_type = value.get("required_agent_type")
+    completion_policy = value.get("completion_policy")
+    if work_class not in _DELEGATION_WORK_CLASSES:
+        raise _schema_error("PLAN delegation work class is invalid.")
+    if agent_type not in _DELEGATION_AGENT_TYPES:
+        raise _schema_error("PLAN delegation agent type is invalid.")
+    if completion_policy not in _DELEGATION_COMPLETION_POLICIES:
+        raise _schema_error("PLAN delegation completion policy is invalid.")
+    return {
+        "work_class": work_class,
+        "required_agent_type": agent_type,
+        "project_scope_ref": _candidate_text(
+            value.get("project_scope_ref"), "project_scope_ref", 160
+        ),
+        "result_contract_ref": _candidate_text(
+            value.get("result_contract_ref"), "result_contract_ref", 256
+        ),
+        "completion_policy": completion_policy,
+    }
+
+
+def _require_project_scope(
+    agent_context: Mapping[str, Any], project_scope_ref: str
+) -> None:
+    project = agent_context.get("project_ref")
+    if (
+        not isinstance(project, Mapping)
+        or project.get("resource_type") != "PROJECT"
+        or project.get("resource_id") != project_scope_ref
+    ):
+        raise _schema_error(
+            "PLAN delegation project must match the trusted AgentContext project."
+        )
 
 
 def _work_intent_projection(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -758,6 +870,12 @@ def _agent_context_projection(
             if isinstance(item, Mapping) and item.get("entity_type")
         }
     )
+    project = value.get("project_ref")
+    project_scope_ref = None
+    if isinstance(project, Mapping) and project.get("resource_type") == "PROJECT":
+        project_scope_ref = _bounded_text(
+            project.get("resource_id"), "project_scope_ref", 160
+        )
     return {
         "tenant_id": tenant_id,
         "context_hash": context_hash,
@@ -768,6 +886,11 @@ def _agent_context_projection(
             "evidence_available": bool(evidence_refs),
             "conflict_count": len(conflicts),
             "degradation_count": len(degradations),
+            **(
+                {"project_scope_ref": project_scope_ref}
+                if project_scope_ref is not None
+                else {}
+            ),
         },
     }
 

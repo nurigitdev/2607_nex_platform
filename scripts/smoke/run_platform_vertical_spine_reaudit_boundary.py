@@ -102,7 +102,7 @@ TOKEN_REQUIREMENTS = (
     TokenRequirement(
         "service_runner",
         "scripts/dev/run_all_services.py",
-        'SERVICES = ["nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo"]',
+        'SERVICES = ["nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo", "nex-wc"]',
     ),
     TokenRequirement(
         "vertical_acceptance",
@@ -156,7 +156,7 @@ def run_platform_vertical_spine_reaudit_boundary(
         "required_paths_present": all(item["present"] for item in paths),
         "required_tokens_present": all(item["present"] for item in tokens),
         "s130_handoff_ready": _group_present(tokens, "s130_handoff"),
-        "five_service_and_web_entries_present": all(
+        "six_service_and_web_entries_present": all(
             _group_present(tokens, group)
             for group in (
                 "oa_entry",
@@ -202,7 +202,7 @@ def run_platform_vertical_spine_reaudit_boundary(
         "boundary": BOUNDARY,
         "decision": {
             "owner": "platform_integration",
-            "audit_scope": "oa_to_ae_web_api_to_cx_to_mo_to_ag",
+            "audit_scope": "oa_to_ae_web_api_to_cx_to_mo_to_ag_and_wc",
             "repository_state_is_primary_evidence": True,
             "refactor_before_feature_when_needed": True,
             "cross_service_http_api_only": True,
@@ -215,7 +215,7 @@ def run_platform_vertical_spine_reaudit_boundary(
             "decision_status": "FROZEN",
         },
         "baseline_findings": {
-            "backend_service_shell_count": 5,
+            "backend_service_shell_count": 6,
             "ae_web_shell_present": True,
             "service_runner_present": _group_present(tokens, "service_runner"),
             "golden_scenario_contract_count": 10,

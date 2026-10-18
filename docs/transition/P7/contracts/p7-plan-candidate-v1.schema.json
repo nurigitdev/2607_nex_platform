@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/contracts/p7-plan-candidate-v1.schema.json",
+  "title": "P7 PlanCandidate v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suggested_plan_kind",
+    "goal",
+    "logical_steps",
+    "completion_mapping",
+    "confidence"
+  ],
+  "properties": {
+    "schema_version": {"const": "p7.plan_candidate.v1"},
+    "suggested_plan_kind": {
+      "enum": ["DIRECT", "KNOWN_TEMPLATE", "DYNAMIC"]
+    },
+    "goal": {"type": "string", "minLength": 1, "maxLength": 1000},
+    "logical_steps": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {"$ref": "#/$defs/logical_step"}
+    },
+    "completion_mapping": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["criterion_id", "terminal_step_refs"],
+        "properties": {
+          "criterion_id": {"type": "string", "pattern": "^C[0-9]{1,3}$"},
+          "terminal_step_refs": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 12,
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^S[0-9]{1,3}$"}
+          }
+        }
+      }
+    },
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+  },
+  "$defs": {
+    "logical_step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "step_type",
+        "title",
+        "objective",
+        "depends_on",
+        "capability_hint",
+        "completion_criteria"
+      ],
+      "properties": {
+        "step_id": {"type": "string", "pattern": "^S[0-9]{1,3}$"},
+        "step_type": {
+          "enum": ["LOCAL_CAPABILITY", "DELEGATE_WORK", "AGGREGATE", "REPORT"]
+        },
+        "title": {"type": "string", "minLength": 1, "maxLength": 160},
+        "objective": {"type": "string", "minLength": 1, "maxLength": 700},
+        "depends_on": {
+          "type": "array",
+          "maxItems": 11,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^S[0-9]{1,3}$"}
+        },
+        "capability_hint": {
+          "type": ["string", "null"],
+          "maxLength": 160,
+          "pattern": "^[A-Z][A-Z0-9_]*(\\.[A-Z][A-Z0-9_]*)+$"
+        },
+        "completion_criteria": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {"type": "string", "minLength": 1, "maxLength": 500}
+        },
+        "delegation": {"$ref": "#/$defs/delegation"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"step_type": {"const": "DELEGATE_WORK"}}},
+          "then": {
+            "required": ["delegation"],
+            "properties": {"capability_hint": {"type": "string"}}
+          },
+          "else": {"not": {"required": ["delegation"]}}
+        }
+      ]
+    },
+    "delegation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "work_class",
+        "required_agent_type",
+        "project_scope_ref",
+        "result_contract_ref",
+        "completion_policy"
+      ],
+      "properties": {
+        "work_class": {
+          "enum": [
+            "QUERY",
+            "ANALYSIS",
+            "DOCUMENT",
+            "BUSINESS_TRANSACTION",
+            "COORDINATION",
+            "EXPERT_REVIEW",
+            "REPORTING",
+            "OPERATIONAL"
+          ]
+        },
+        "required_agent_type": {"enum": ["CA", "PA", "EA"]},
+        "project_scope_ref": {"type": "string", "minLength": 1, "maxLength": 160},
+        "result_contract_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+        "completion_policy": {
+          "enum": [
+            "OWNER_SUBMITS",
+            "ALL_ASSIGNEES_SUBMIT",
+            "ANY_ASSIGNEE_SUBMITS",
+            "ALL_REQUIRED_CHILDREN",
+            "MANUAL"
+          ]
+        }
+      }
+    }
+  }
+}

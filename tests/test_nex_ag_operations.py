@@ -7197,7 +7197,7 @@ def test_operations_dashboard_snapshot_reports_degraded_sources_and_failure_even
     }
     assert projection["rollup_summary"]["source_statuses"]["jobs"] == {
         "READY": 2,
-        "NOT_CONFIGURED": 3,
+        "NOT_CONFIGURED": 4,
     }
     assert projection["log_source_statuses"]["nex-cx"] == {
         "status": "READY",
@@ -9728,6 +9728,7 @@ def test_service_log_query_policy_projection_reports_query_and_retention_contrac
         "nex-cx",
         "nex-mo",
         "nex-oa",
+        "nex-wc",
     ]
     assert policy["query"]["default_limit"] == 50
     assert policy["query"]["max_limit"] == 500
@@ -9850,7 +9851,7 @@ def test_service_log_retention_dry_run_projection_reports_degraded_sources() -> 
     assert projection["source_statuses"]["nex-cx"]["candidate_count"] == 0
     assert projection["source_statuses"]["nex-ag"]["status"] == "NOT_CONFIGURED"
     assert projection["summary"]["source_statuses"] == {
-        "NOT_CONFIGURED": 4,
+        "NOT_CONFIGURED": 5,
         "READY": 1,
     }
     assert projection["retention_candidates"] == []
@@ -9947,7 +9948,7 @@ def test_service_log_retention_history_projection_reports_degraded_sources() -> 
     }
     assert projection["source_statuses"]["nex-ag"]["status"] == "NOT_CONFIGURED"
     assert projection["summary"]["source_statuses"] == {
-        "NOT_CONFIGURED": 4,
+        "NOT_CONFIGURED": 5,
         "READY": 1,
     }
     assert projection["summary"]["scanned_history_count"] == 2

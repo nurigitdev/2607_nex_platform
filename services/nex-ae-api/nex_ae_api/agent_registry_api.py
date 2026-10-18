@@ -4,13 +4,13 @@ from typing import Any
 
 from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse
+from nex_runtime import problem_response
 
-from nex_runtime import DEFAULT_SERVICE_SCOPE, problem_response
-from nex_runtime.auth import validate_authorization_header
 from nex_ae_api.agent_identity import (
     AgentIdentityRepositoryError,
     SqlAlchemyAgentIdentityRegistry,
 )
+from nex_ae_api.route_auth import authorize_ae_internal_service_request
 
 
 def register_agent_registry_routes(
@@ -145,31 +145,15 @@ def register_agent_registry_routes(
 def _authorize(
     request: Request, authorization: str | None, *, write: bool = False
 ) -> JSONResponse | None:
-    result = validate_authorization_header(
+    result = authorize_ae_internal_service_request(
+        request,
         authorization,
-        expected_audience="nex-ae-api",
-        required_scopes=(DEFAULT_SERVICE_SCOPE,),
+        allowed_service_ids=("nex-ag",) if write else ("nex-ag", "nex-wc"),
+        error_code="AE_AGENT_REGISTRY_CALLER_DENIED",
+        title="AE Agent Registry caller denied",
+        detail="The calling service is not authorized for this registry operation.",
     )
-    if not result.ok or result.claims is None:
-        return problem_response(
-            request,
-            status_code=401,
-            error_code=result.error_code or "AE_AGENT_REGISTRY_AUTH_FAILED",
-            title="AE Agent Registry authorization failed",
-            detail=result.detail or "AE Agent Registry authorization failed.",
-            retryable=False,
-        )
-    allowed = {"nex-ag"} if write else {"nex-ag", "nex-wc"}
-    if result.claims.service_id not in allowed:
-        return problem_response(
-            request,
-            status_code=403,
-            error_code="AE_AGENT_REGISTRY_CALLER_DENIED",
-            title="AE Agent Registry caller denied",
-            detail="The calling service is not authorized for this registry operation.",
-            retryable=False,
-        )
-    return None
+    return result if isinstance(result, JSONResponse) else None
 
 
 def _problem(request: Request, exc: AgentIdentityRepositoryError) -> JSONResponse:

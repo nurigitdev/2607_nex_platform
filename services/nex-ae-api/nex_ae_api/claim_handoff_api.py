@@ -4,10 +4,10 @@ from typing import Any, Protocol
 
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
+from nex_runtime import problem_response
 
 from nex_ae_api.agent_execution import AgentExecutionError, AgentRuntimeAdmission
-from nex_runtime import DEFAULT_SERVICE_SCOPE, problem_response
-from nex_runtime.auth import validate_authorization_header
+from nex_ae_api.route_auth import authorize_ae_internal_service_request
 
 
 class ClaimedWorkAdmission(Protocol):
@@ -69,27 +69,12 @@ def register_claim_handoff_routes(
 
 
 def _authorize(request: Request, authorization: str | None) -> JSONResponse | None:
-    result = validate_authorization_header(
+    result = authorize_ae_internal_service_request(
+        request,
         authorization,
-        expected_audience="nex-ae-api",
-        required_scopes=(DEFAULT_SERVICE_SCOPE,),
+        allowed_service_ids=("nex-wc",),
+        error_code="AE_CLAIM_HANDOFF_CALLER_DENIED",
+        title="AE claim handoff caller denied",
+        detail="Only nex-wc may deliver a ClaimExecutionHandoff.",
     )
-    if not result.ok or result.claims is None:
-        return problem_response(
-            request,
-            status_code=401,
-            error_code=result.error_code or "AE_CLAIM_HANDOFF_AUTH_FAILED",
-            title="AE claim handoff authorization failed",
-            detail=result.detail or "AE claim handoff authorization failed.",
-            retryable=False,
-        )
-    if result.claims.service_id != "nex-wc":
-        return problem_response(
-            request,
-            status_code=403,
-            error_code="AE_CLAIM_HANDOFF_CALLER_DENIED",
-            title="AE claim handoff caller denied",
-            detail="Only nex-wc may deliver a ClaimExecutionHandoff.",
-            retryable=False,
-        )
-    return None
+    return result if isinstance(result, JSONResponse) else None

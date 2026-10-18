@@ -15,7 +15,6 @@ from nex_runtime import (
     build_subject_ref,
 )
 
-
 ROOT = Path(__file__).resolve().parents[1]
 P7 = ROOT / "docs" / "transition" / "P7"
 CONTRACTS = P7 / "contracts"
@@ -33,6 +32,7 @@ FROZEN_WC = (
 )
 
 PAIRS = (
+    ("p7-plan-candidate-v1.schema.json", "p7-plan-candidate-v1.json"),
     ("p7-work-item-v2.1.schema.json", "p7-work-item-v2.1.json"),
     ("p7-routing-decision-v2.1.schema.json", "p7-routing-decision-v2.1.json"),
     (

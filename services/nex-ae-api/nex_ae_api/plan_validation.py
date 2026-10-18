@@ -433,7 +433,7 @@ def _evaluate_plan(
     order, graph_issue = _topological_order(plan["steps"])
     if graph_issue is not None:
         return "INVALID_TERMINAL", [graph_issue], []
-    semantic_issue = _validate_plan_semantics(plan, order)
+    semantic_issue = _validate_plan_semantics(plan, order, agent_context)
     if semantic_issue is not None:
         status = (
             "BLOCKED"
@@ -507,7 +507,9 @@ def _topological_order(
 
 
 def _validate_plan_semantics(
-    plan: Mapping[str, Any], order: Sequence[str]
+    plan: Mapping[str, Any],
+    order: Sequence[str],
+    agent_context: Mapping[str, Any],
 ) -> dict[str, Any] | None:
     steps = {str(step["step_id"]): step for step in plan["steps"]}
     order_index = {step_id: index for index, step_id in enumerate(order)}
@@ -528,13 +530,21 @@ def _validate_plan_semantics(
             )
     for step_id, step in steps.items():
         if step["step_type"] == "DELEGATE_WORK":
-            return _issue(
-                "EXECUTOR_NOT_AVAILABLE",
-                "ERROR",
-                "DELEGATE_WORK is unavailable in P5.",
-                step_id=step_id,
-                field_path="steps.step_type",
-            )
+            project = agent_context.get("project_ref")
+            delegation = step["delegation"]
+            if (
+                not isinstance(project, Mapping)
+                or project.get("resource_type") != "PROJECT"
+                or project.get("resource_id")
+                != delegation["project_scope_ref"]
+            ):
+                return _issue(
+                    "DELEGATION_PROJECT_SCOPE_MISMATCH",
+                    "ERROR",
+                    "DELEGATE_WORK project must match trusted AgentContext scope.",
+                    step_id=step_id,
+                    field_path="steps.delegation.project_scope_ref",
+                )
         for binding in step["input_bindings"]:
             if binding["source_type"] != "STEP_OUTPUT":
                 continue
@@ -616,6 +626,8 @@ def _validate_capabilities(
                 "No deterministic aggregate capability is registered in P5.",
                 step_id=step_id,
             )
+        elif step["step_type"] == "DELEGATE_WORK":
+            continue
         else:
             return _issue(
                 "EXECUTOR_NOT_AVAILABLE",

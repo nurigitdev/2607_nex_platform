@@ -36,7 +36,7 @@ def test_run_traceable_mock_flow_links_trace_across_services() -> None:
     assert evidence["ae"]["cx_generation_id"] == evidence["cx"]["cx_generation_id"]
     assert evidence["cx"]["mo_generation_id"] == evidence["mo"]["mo_generation_id"]
     assert evidence["mo_embedding"]["alias"] == "mock-embedding-default"
-    assert evidence["ag"]["summary"]["total"] == 5
+    assert evidence["ag"]["summary"]["total"] == 6
 
 
 def test_assert_trace_evidence_reports_mismatch() -> None:

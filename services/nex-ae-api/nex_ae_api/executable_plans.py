@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from nex_runtime.semantic_hashes import (
     canonical_json,
@@ -28,8 +28,11 @@ from nex_ae_api.planning_capabilities import (
 
 EXECUTABLE_PLAN_SCHEMA_VERSION = "1.1"
 P6_EXECUTABLE_PLAN_SCHEMA_VERSION = "1.2"
+P7_EXECUTABLE_PLAN_SCHEMA_VERSION = "1.3"
 COMPILER_VERSION = "p5.1"
 P6_COMPILER_VERSION = "p6.1"
+P7_COMPILER_VERSION = "p7.1"
+WC_DELEGATE_WORK_EXECUTOR_KIND = "WC_DELEGATE_WORK"
 _LOGICAL_STEP_ID = re.compile(r"^S[0-9]{1,3}$")
 _COMPILED_STEP_KEY = re.compile(r"^E[0-9]{1,3}$")
 
@@ -81,11 +84,17 @@ def compile_executable_plan(
             key_by_logical=key_by_logical,
             capability_snapshot=snapshot,
             executable_step_id=ids(),
+            execution_id=plan["execution_id"],
+            agent_plan_version=plan["agent_plan_version"],
         )
         for index, logical_step_id in enumerate(order)
     ]
     has_local_skill = any(
         step["executor_kind"] == LOCAL_SKILL_EXECUTOR_KIND for step in compiled_steps
+    )
+    has_delegate_work = any(
+        step["executor_kind"] == WC_DELEGATE_WORK_EXECUTOR_KIND
+        for step in compiled_steps
     )
     plan_id = _required_uuid("executable_plan_id", executable_plan_id or ids())
     compiled_time = _required_datetime(
@@ -98,9 +107,13 @@ def compile_executable_plan(
     )
     executable_plan: dict[str, Any] = {
         "schema_version": (
-            P6_EXECUTABLE_PLAN_SCHEMA_VERSION
-            if has_local_skill
-            else EXECUTABLE_PLAN_SCHEMA_VERSION
+            P7_EXECUTABLE_PLAN_SCHEMA_VERSION
+            if has_delegate_work
+            else (
+                P6_EXECUTABLE_PLAN_SCHEMA_VERSION
+                if has_local_skill
+                else EXECUTABLE_PLAN_SCHEMA_VERSION
+            )
         ),
         "executable_plan_id": plan_id,
         "executable_plan_version": _bounded_int(
@@ -119,7 +132,11 @@ def compile_executable_plan(
         "compiler_version": _required_text(
             "compiler_version",
             compiler_version
-            or (P6_COMPILER_VERSION if has_local_skill else COMPILER_VERSION),
+            or (
+                P7_COMPILER_VERSION
+                if has_delegate_work
+                else (P6_COMPILER_VERSION if has_local_skill else COMPILER_VERSION)
+            ),
             64,
         ),
         "policy_snapshot_ref": _policy_snapshot_ref(context),
@@ -208,7 +225,11 @@ def validate_executable_plan_contract(
         not required.issubset(record)
         or not set(record).issubset(required | optional)
         or record["schema_version"]
-        not in {EXECUTABLE_PLAN_SCHEMA_VERSION, P6_EXECUTABLE_PLAN_SCHEMA_VERSION}
+        not in {
+            EXECUTABLE_PLAN_SCHEMA_VERSION,
+            P6_EXECUTABLE_PLAN_SCHEMA_VERSION,
+            P7_EXECUTABLE_PLAN_SCHEMA_VERSION,
+        }
     ):
         raise _invalid("ExecutablePlan fields or schema version are invalid.")
     _required_uuid("executable_plan_id", record["executable_plan_id"])
@@ -229,10 +250,21 @@ def validate_executable_plan_contract(
     has_local_skill = any(
         step["executor_kind"] == LOCAL_SKILL_EXECUTOR_KIND for step in record["steps"]
     )
-    if has_local_skill != (
-        record["schema_version"] == P6_EXECUTABLE_PLAN_SCHEMA_VERSION
-    ):
-        raise _invalid("ExecutablePlan version does not match LOCAL_SKILL content.")
+    has_delegate_work = any(
+        step["executor_kind"] == WC_DELEGATE_WORK_EXECUTOR_KIND
+        for step in record["steps"]
+    )
+    expected_version = (
+        P7_EXECUTABLE_PLAN_SCHEMA_VERSION
+        if has_delegate_work
+        else (
+            P6_EXECUTABLE_PLAN_SCHEMA_VERSION
+            if has_local_skill
+            else EXECUTABLE_PLAN_SCHEMA_VERSION
+        )
+    )
+    if record["schema_version"] != expected_version:
+        raise _invalid("ExecutablePlan version does not match its executor content.")
     _validate_completion_criteria(record["completion_criteria"], record["steps"])
     _validate_logical_mapping(record["logical_step_mapping"], record["steps"])
     if record["runtime_constraints"] != {
@@ -350,6 +382,8 @@ def _compile_step(
     key_by_logical: Mapping[str, str],
     capability_snapshot: Mapping[str, Any],
     executable_step_id: str,
+    execution_id: str,
+    agent_plan_version: int,
 ) -> dict[str, Any]:
     logical_id = str(logical_step["step_id"])
     capability = _resolve_capability(logical_step, capability_snapshot)
@@ -394,6 +428,14 @@ def _compile_step(
         semantic_step["skill_binding"] = dict(capability["local_skill_binding"])
         semantic_step["timeout_policy_ref"] = "policy://nex/ae/local-skill-timeout/v1"
         semantic_step["retry_policy_ref"] = "policy://nex/ae/local-skill-retry/v1"
+    if capability["executor_kind"] == WC_DELEGATE_WORK_EXECUTOR_KIND:
+        semantic_step["delegation"] = _compile_delegation(
+            logical_step,
+            execution_id=execution_id,
+            agent_plan_version=agent_plan_version,
+        )
+        semantic_step["timeout_policy_ref"] = "policy://nex/ae/wc-delegate-timeout/v1"
+        semantic_step["retry_policy_ref"] = "policy://nex/ae/wc-delegate-retry/v1"
     if logical_step["output_contract_ref"] != semantic_step["output_contract_ref"]:
         raise _invalid("AgentPlan output contract differs from exact capability.")
     step = {
@@ -409,7 +451,16 @@ def _resolve_capability(
 ) -> Mapping[str, Any]:
     logical_type = str(logical_step["step_type"])
     if logical_type == "DELEGATE_WORK":
-        raise _invalid("DELEGATE_WORK executor is unavailable in P5.")
+        delegation = logical_step.get("delegation")
+        if not isinstance(delegation, Mapping):
+            raise _invalid("DELEGATE_WORK metadata is unavailable.")
+        return {
+            "capability_id": logical_step["required_capability"],
+            "capability_version": "delegation.v1",
+            "executable_step_type": "DELEGATE_WORK",
+            "executor_kind": WC_DELEGATE_WORK_EXECUTOR_KIND,
+            "output_contract_ref": delegation["result_contract_ref"],
+        }
     capability_id = logical_step.get("required_capability")
     version = logical_step.get("capability_version_constraint")
     if capability_id is None and logical_type == "REPORT":
@@ -424,6 +475,35 @@ def _resolve_capability(
     if len(matches) != 1:
         raise _invalid("Exact executable capability is unavailable or ambiguous.")
     return matches[0]
+
+
+def _compile_delegation(
+    logical_step: Mapping[str, Any],
+    *,
+    execution_id: str,
+    agent_plan_version: int,
+) -> dict[str, Any]:
+    metadata = logical_step["delegation"]
+    identity = (
+        "https://nex-platform.local/ae/delegations/"
+        f"{execution_id}/{agent_plan_version}/{logical_step['step_id']}"
+    )
+    return {
+        "schema_version": "1.0",
+        "delegation_id": str(uuid5(NAMESPACE_URL, identity)),
+        "delegation_revision": agent_plan_version,
+        "goal": logical_step["objective"],
+        "work_class": metadata["work_class"],
+        "required_agent_type": metadata["required_agent_type"],
+        "required_capability": logical_step["required_capability"],
+        "project_ref": {
+            "entity_type": "PROJECT",
+            "entity_id": metadata["project_scope_ref"],
+        },
+        "project_scope_ref": metadata["project_scope_ref"],
+        "result_contract_ref": metadata["result_contract_ref"],
+        "completion_policy": metadata["completion_policy"],
+    }
 
 
 def _compile_binding(
@@ -528,6 +608,79 @@ def _policy_snapshot_ref(context: Mapping[str, Any]) -> str | None:
     return f"policy-snapshot:{hash_ref}"
 
 
+def validate_compiled_delegation(value: object) -> dict[str, Any]:
+    fields = {
+        "schema_version",
+        "delegation_id",
+        "delegation_revision",
+        "goal",
+        "work_class",
+        "required_agent_type",
+        "required_capability",
+        "project_ref",
+        "project_scope_ref",
+        "result_contract_ref",
+        "completion_policy",
+    }
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise _invalid("Compiled delegation fields are invalid.")
+    record = json.loads(canonical_json(dict(value)))
+    if record["schema_version"] != "1.0":
+        raise _invalid("Compiled delegation schema version is invalid.")
+    _required_uuid("delegation_id", record["delegation_id"])
+    _bounded_int("delegation_revision", record["delegation_revision"], 1, 99)
+    for field, maximum in (
+        ("goal", 700),
+        ("required_capability", 160),
+        ("project_scope_ref", 160),
+        ("result_contract_ref", 256),
+    ):
+        _required_text(field, record[field], maximum)
+    if record["work_class"] not in {
+        "QUERY",
+        "ANALYSIS",
+        "DOCUMENT",
+        "BUSINESS_TRANSACTION",
+        "COORDINATION",
+        "EXPERT_REVIEW",
+        "REPORTING",
+        "OPERATIONAL",
+    }:
+        raise _invalid("Compiled delegation work class is invalid.")
+    if record["required_agent_type"] not in {"CA", "PA", "EA"}:
+        raise _invalid("Compiled delegation agent type is invalid.")
+    if record["completion_policy"] not in {
+        "OWNER_SUBMITS",
+        "ALL_ASSIGNEES_SUBMIT",
+        "ANY_ASSIGNEE_SUBMITS",
+        "ALL_REQUIRED_CHILDREN",
+        "MANUAL",
+    }:
+        raise _invalid("Compiled delegation completion policy is invalid.")
+    project = record["project_ref"]
+    if (
+        not isinstance(project, Mapping)
+        or set(project) != {"entity_type", "entity_id"}
+        or project["entity_type"] != "PROJECT"
+        or project["entity_id"] != record["project_scope_ref"]
+    ):
+        raise _invalid("Compiled delegation project lineage is invalid.")
+    return record
+
+
+def _validate_compiled_delegation(
+    step: Mapping[str, Any], value: object
+) -> None:
+    delegation = validate_compiled_delegation(value)
+    if (
+        step["step_type"] != "DELEGATE_WORK"
+        or step.get("required_capability") != delegation["required_capability"]
+        or step.get("capability_version") != "delegation.v1"
+        or step["output_contract_ref"] != delegation["result_contract_ref"]
+    ):
+        raise _invalid("ExecutableStep delegation selector is inconsistent.")
+
+
 def _validate_compiled_steps(value: object) -> None:
     if not isinstance(value, list) or not 1 <= len(value) <= 12:
         raise _invalid("ExecutablePlan steps are invalid.")
@@ -555,6 +708,7 @@ def _validate_compiled_steps(value: object) -> None:
             "timeout_policy_ref",
             "retry_policy_ref",
             "skill_binding",
+            "delegation",
         }
         if (
             not isinstance(step, Mapping)
@@ -591,6 +745,7 @@ def _validate_compiled_steps(value: object) -> None:
             LOCAL_SKILL_EXECUTOR_KIND,
             "LOCAL_SKILL_UNAVAILABLE",
             "DELEGATE_WORK_UNAVAILABLE",
+            WC_DELEGATE_WORK_EXECUTOR_KIND,
         }:
             raise _invalid("ExecutableStep executor kind is invalid.")
         _required_text("title", step["title"], 160)
@@ -633,6 +788,11 @@ def _validate_compiled_steps(value: object) -> None:
                 raise _invalid("ExecutableStep LOCAL_SKILL selector is inconsistent.")
         elif local_binding is not None:
             raise _invalid("Non-LOCAL_SKILL step cannot carry a Skill binding.")
+        delegation = step.get("delegation")
+        if step["executor_kind"] == WC_DELEGATE_WORK_EXECUTOR_KIND:
+            _validate_compiled_delegation(step, delegation)
+        elif delegation is not None:
+            raise _invalid("Only WC_DELEGATE_WORK may carry delegation metadata.")
         try:
             validate_hash_ref(step["step_contract_hash"])
         except ValueError as exc:

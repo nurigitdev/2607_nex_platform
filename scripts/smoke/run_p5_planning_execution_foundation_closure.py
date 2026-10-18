@@ -77,7 +77,6 @@ FORBIDDEN_NSL_WC_TOKENS = (
     "import nex_wc",
     "from nex_wc",
     "WorkItemRepository",
-    "create_work_item(",
     "wc_client",
 )
 FORBIDDEN_DIRECT_PROVIDER_IMPORTS = (

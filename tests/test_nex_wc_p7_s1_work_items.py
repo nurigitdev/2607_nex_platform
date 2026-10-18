@@ -7,8 +7,6 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator, FormatChecker
-from sqlalchemy.exc import SQLAlchemyError
-
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
 from nex_wc.work_item_api import register_work_item_routes
 from nex_wc.work_items import (
@@ -20,7 +18,7 @@ from nex_wc.work_items import (
     validate_delegation_spec,
 )
 from run_migrations import load_migrations, service_database_env
-
+from sqlalchemy.exc import SQLAlchemyError
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -156,6 +154,25 @@ def test_s1_identity_excludes_goal_but_includes_revision():
     revision = validate_delegation_spec(_spec(delegation_revision=2))
     assert delegation_identity(first) == delegation_identity(changed_goal)
     assert delegation_identity(first) != delegation_identity(revision)
+
+
+def test_s5_identity_uses_stable_delegation_and_accepts_expected_work_item_id():
+    service = _service()
+    expected = "99999999-9999-4999-8999-999999999995"
+    created = service.create({**_payload(), "work_item_id": expected})
+    changed_runtime_lineage = validate_delegation_spec(
+        _spec(
+            parent_executable_plan_id="new-runtime-plan-id",
+            parent_executable_step_id="new-runtime-step-id",
+        )
+    )
+
+    assert created["work_item"]["work_item_id"] == expected
+    assert delegation_identity(validate_delegation_spec(_spec())) == delegation_identity(
+        changed_runtime_lineage
+    )
+    with pytest.raises(WorkItemError, match="UUID"):
+        service.create({**_payload(), "work_item_id": "not-a-uuid"})
 
 
 def test_s1_http_routes_are_protected_and_tenant_scoped():

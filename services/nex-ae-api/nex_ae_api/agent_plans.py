@@ -32,6 +32,28 @@ _PROFILE = {
     "DOCUMENT_SUMMARY": ("KNOWN_TEMPLATE", "INTERACTIVE_RESPONSE"),
     "DOCUMENT_GENERATION": ("KNOWN_TEMPLATE", "ARTIFACT"),
 }
+_DELEGATION_WORK_CLASSES = frozenset(
+    {
+        "QUERY",
+        "ANALYSIS",
+        "DOCUMENT",
+        "BUSINESS_TRANSACTION",
+        "COORDINATION",
+        "EXPERT_REVIEW",
+        "REPORTING",
+        "OPERATIONAL",
+    }
+)
+_DELEGATION_AGENT_TYPES = frozenset({"CA", "PA", "EA"})
+_DELEGATION_COMPLETION_POLICIES = frozenset(
+    {
+        "OWNER_SUBMITS",
+        "ALL_ASSIGNEES_SUBMIT",
+        "ANY_ASSIGNEE_SUBMITS",
+        "ALL_REQUIRED_CHILDREN",
+        "MANUAL",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -327,12 +349,19 @@ def _validate_plan(value: Mapping[str, Any]) -> dict[str, Any]:
     for item in steps:
         _validate_step(item)
     constraints = record["planning_constraints"]
-    if constraints != {
-        "max_plan_steps": 12,
-        "max_delegation_depth": 0,
-        "max_parallel_steps": 1,
+    if not isinstance(constraints, Mapping) or set(constraints) != {
+        "max_plan_steps",
+        "max_delegation_depth",
+        "max_parallel_steps",
     }:
         raise _invalid("AgentPlan planning constraints are invalid.")
+    has_delegation = any(step["step_type"] == "DELEGATE_WORK" for step in steps)
+    if constraints != {
+        "max_plan_steps": 12,
+        "max_delegation_depth": 1 if has_delegation else 0,
+        "max_parallel_steps": 1,
+    }:
+        raise _invalid("AgentPlan planning constraints do not match its steps.")
     provenance = record["planner_provenance"]
     _validate_provenance(provenance)
     try:
@@ -386,7 +415,7 @@ def _validate_step(value: object) -> None:
         "output_contract_ref",
         "completion_criteria",
     }
-    optional = {"aggregation", "report"}
+    optional = {"aggregation", "report", "delegation"}
     if (
         not isinstance(value, Mapping)
         or not required.issubset(value)
@@ -438,6 +467,39 @@ def _validate_step(value: object) -> None:
         _required_text("step completion criterion", criterion, 500)
     _validate_aggregation(value.get("aggregation"))
     _validate_report(value.get("report"))
+    delegation = value.get("delegation")
+    if value["step_type"] == "DELEGATE_WORK":
+        if required_capability is None or version_constraint is not None:
+            raise _invalid(
+                "DELEGATE_WORK requires a capability without a local version binding."
+            )
+        _validate_delegation(delegation, value["output_contract_ref"])
+    elif delegation is not None:
+        raise _invalid("Only DELEGATE_WORK may carry delegation metadata.")
+
+
+def _validate_delegation(value: object, output_contract_ref: object) -> None:
+    fields = {
+        "work_class",
+        "required_agent_type",
+        "project_scope_ref",
+        "result_contract_ref",
+        "completion_policy",
+    }
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise _invalid("AgentPlan delegation metadata is invalid.")
+    if value["work_class"] not in _DELEGATION_WORK_CLASSES:
+        raise _invalid("AgentPlan delegation work class is invalid.")
+    if value["required_agent_type"] not in _DELEGATION_AGENT_TYPES:
+        raise _invalid("AgentPlan delegation agent type is invalid.")
+    _required_text("project_scope_ref", value["project_scope_ref"], 160)
+    result_contract_ref = _required_text(
+        "result_contract_ref", value["result_contract_ref"], 256
+    )
+    if result_contract_ref != output_contract_ref:
+        raise _invalid("AgentPlan delegation result contract is inconsistent.")
+    if value["completion_policy"] not in _DELEGATION_COMPLETION_POLICIES:
+        raise _invalid("AgentPlan delegation completion policy is invalid.")
 
 
 def _validate_input_binding(value: object) -> None:

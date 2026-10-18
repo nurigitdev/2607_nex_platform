@@ -101,6 +101,15 @@ def _factory(*, seed=True):
                 started_at TEXT NOT NULL, ended_at TEXT, outcome TEXT NOT NULL,
                 error_ref TEXT, retry_disposition_ref TEXT,
                 UNIQUE (tenant_id, runtime_job_id, attempt_no))""",
+            """CREATE TABLE ae_wait_registration (
+                wait_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
+                agent_execution_id TEXT NOT NULL, executable_step_id TEXT NOT NULL,
+                wait_type TEXT NOT NULL, external_ref TEXT NOT NULL,
+                result_contract_ref TEXT NOT NULL, state TEXT NOT NULL,
+                version INTEGER NOT NULL, created_at TEXT NOT NULL,
+                satisfied_at TEXT,
+                PRIMARY KEY (tenant_id, wait_id),
+                UNIQUE (tenant_id, agent_execution_id, executable_step_id, wait_type))""",
         ):
             connection.execute(text(ddl))
         if seed:
@@ -1008,7 +1017,6 @@ def test_waiting_step_resumes_without_rescheduling_or_reexecution() -> None:
         engine.schedule_next(tenant_id=TENANT, execution_id=EXECUTION_ID, now=LATER)
         is None
     )
-
     continuation = engine.enqueue_waiting_continuation(
         tenant_id=TENANT,
         execution_id=EXECUTION_ID,
@@ -1053,6 +1061,68 @@ def test_waiting_step_resumes_without_rescheduling_or_reexecution() -> None:
             {"step_id": STEP_2_ID},
         ).scalar_one()
     assert state == "READY"
+
+
+def test_delegate_wait_atomically_moves_parent_to_waiting_dependency() -> None:
+    factory = _factory()
+    with factory() as session:
+        session.execute(
+            text(
+                "UPDATE ae_executable_step SET step_type = 'DELEGATE_WORK', "
+                "executor_kind = 'WC_DELEGATE_WORK' "
+                "WHERE tenant_id = :tenant_id AND executable_step_id = :step_id"
+            ),
+            {"tenant_id": TENANT, "step_id": STEP_1_ID},
+        )
+        session.commit()
+    engine, queue = _runtime(
+        factory,
+        engine_ids=(JOB_1_ID,),
+        queue_ids=(LEASE_1, ATTEMPT_1),
+    )
+    engine.schedule_next(tenant_id=TENANT, execution_id=EXECUTION_ID, now=NOW)
+    claim = _claim(queue)
+    engine.begin_claim(tenant_id=TENANT, claim=claim, now=NOW)
+    with factory() as session:
+        session.execute(
+            text(
+                "INSERT INTO ae_wait_registration VALUES "
+                "(:wait_id, :tenant_id, :execution_id, :step_id, "
+                "'WORK_RESULT', :external_ref, :contract_ref, 'PENDING', 1, :now, NULL)"
+            ),
+            {
+                "wait_id": RESULT_1_ID,
+                "tenant_id": TENANT,
+                "execution_id": EXECUTION_ID,
+                "step_id": STEP_1_ID,
+                "external_ref": BLOCKED_ID,
+                "contract_ref": "contract://nex/wc/work-result/v1",
+                "now": NOW,
+            },
+        )
+        session.commit()
+
+    waiting = engine.record_waiting(
+        tenant_id=TENANT,
+        claim=claim,
+        outcome=StepWaitingOutcome(
+            wait_id=RESULT_1_ID,
+            external_ref=BLOCKED_ID,
+            result_contract_ref="contract://nex/wc/work-result/v1",
+        ),
+        now=LATER,
+    )
+
+    with factory() as session:
+        runtime = session.execute(
+            text(
+                "SELECT state, phase FROM ae_agent_execution "
+                "WHERE tenant_id = :tenant_id AND agent_execution_id = :execution_id"
+            ),
+            {"tenant_id": TENANT, "execution_id": EXECUTION_ID},
+        ).one()
+    assert waiting["state"] == "WAITING"
+    assert tuple(runtime) == ("WAITING_DEPENDENCY", "STEP_EXECUTION")
 
 
 def test_waiting_and_continuation_guards() -> None:

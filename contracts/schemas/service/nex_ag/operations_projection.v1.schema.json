@@ -849,7 +849,8 @@
         "nex-ag",
         "nex-ae-api",
         "nex-cx",
-        "nex-mo"
+        "nex-mo",
+        "nex-wc"
       ]
     },
     "trace_id": {

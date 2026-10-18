@@ -7,14 +7,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from threading import RLock
 from typing import Any, Protocol
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
-
-from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
-
 
 WORK_CLASSES = frozenset(
     {
@@ -185,6 +183,7 @@ class WorkItemService:
         if not isinstance(payload, Mapping):
             raise _invalid("request body must be an object")
         unknown = set(payload) - {
+            "work_item_id",
             "delegation_spec",
             "title",
             "description",
@@ -195,7 +194,7 @@ class WorkItemService:
             "due_at",
         }
         if unknown:
-            raise _invalid(f"unsupported request field: {sorted(unknown)[0]}")
+            raise _invalid(f"unsupported request field: {min(unknown)}")
         spec = validate_delegation_spec(payload.get("delegation_spec"))
         requester = _entity_ref(payload.get("requester"), "requester")
         owner = _entity_ref(payload.get("accountable_owner"), "accountable_owner")
@@ -213,7 +212,10 @@ class WorkItemService:
         priority = str(payload.get("priority") or "NORMAL")
         if priority not in {"LOW", "NORMAL", "HIGH", "URGENT"}:
             raise _invalid("priority is invalid")
-        work_item_id = self._id_factory()
+        work_item_id = _uuid(
+            "work_item_id",
+            payload.get("work_item_id") or self._id_factory(),
+        )
         identity = delegation_identity(spec)
         idempotency_key = semantic_sha256_hash_ref(identity)
         delegation_hash = semantic_sha256_hash_ref(spec)
@@ -306,9 +308,7 @@ class WorkItemService:
 def delegation_identity(spec: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "tenant_id": spec["tenant_id"],
-        "parent_agent_execution_id": spec["parent_agent_execution_id"],
-        "parent_executable_plan_id": spec["parent_executable_plan_id"],
-        "parent_executable_step_id": spec["parent_executable_step_id"],
+        "delegation_id": spec["delegation_id"],
         "delegation_revision": spec["delegation_revision"],
     }
 
@@ -320,9 +320,9 @@ def validate_delegation_spec(value: object) -> dict[str, Any]:
     unknown = set(spec) - DELEGATION_FIELDS
     missing = REQUIRED_DELEGATION_FIELDS - set(spec)
     if unknown:
-        raise _invalid(f"unsupported DelegationSpec field: {sorted(unknown)[0]}")
+        raise _invalid(f"unsupported DelegationSpec field: {min(unknown)}")
     if missing:
-        raise _invalid(f"missing DelegationSpec field: {sorted(missing)[0]}")
+        raise _invalid(f"missing DelegationSpec field: {min(missing)}")
     if spec["schema_version"] != "1.0":
         raise _invalid("DelegationSpec schema_version must be 1.0")
     for name, maximum in (
@@ -410,6 +410,13 @@ def _required_text(field: str, value: object, maximum: int) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > maximum:
         raise _invalid(f"{field} must contain 1 to {maximum} characters")
     return value
+
+
+def _uuid(field: str, value: object) -> str:
+    try:
+        return str(UUID(str(value)))
+    except (TypeError, ValueError) as exc:
+        raise _invalid(f"{field} must be a UUID") from exc
 
 
 def _invalid(detail: str) -> WorkItemError:

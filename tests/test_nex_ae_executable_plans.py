@@ -677,6 +677,8 @@ def test_context_and_capability_fail_closed_helpers() -> None:
             key_by_logical={"S2": "E2"},
             capability_snapshot=_snapshot(),
             executable_step_id=STEP_2_ID,
+            execution_id=EXECUTION_ID,
+            agent_plan_version=1,
         )
 
 

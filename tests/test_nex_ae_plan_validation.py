@@ -294,20 +294,12 @@ def test_validator_checks_required_entities_and_exact_snapshot() -> None:
     assert _validate(snapshot=snapshot)["status"] == "REPLAN_REQUIRED"
 
 
-def test_validator_blocks_future_profiles_and_unavailable_executors() -> None:
+def test_validator_blocks_future_planner_profiles() -> None:
     dynamic = _plan()
     dynamic["plan_kind"] = "DYNAMIC"
     dynamic["planner_provenance"]["builder_type"] = "DYNAMIC_BUILDER"
     _rehash_plan(dynamic)
     assert _validate(plan=dynamic)["status"] == "BLOCKED"
-
-    delegated = _plan("GENERAL_ANSWER")
-    delegated["steps"][0]["step_type"] = "DELEGATE_WORK"
-    _rehash_plan(delegated)
-    result = _validate(plan=delegated, intent=_work_intent("GENERAL_ANSWER"))
-    assert result["status"] == "BLOCKED"
-    assert result["issues"][0]["code"] == "EXECUTOR_NOT_AVAILABLE"
-
 
 @pytest.mark.parametrize(
     ("mutator", "code"),

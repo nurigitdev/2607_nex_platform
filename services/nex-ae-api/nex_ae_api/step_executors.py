@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
 from nex_ae_api.chat_application import ChatApplicationService
+from nex_ae_api.delegated_work import DelegatedWorkError, delegation_dispatch
+from nex_ae_api.executable_plans import WC_DELEGATE_WORK_EXECUTOR_KIND
 from nex_ae_api.executable_steps import ExecutableStepError, compatibility_outcome
 from nex_ae_api.multi_step_engine import (
     SqlAlchemyMultiStepEngine,
@@ -29,7 +31,9 @@ EXECUTOR_KINDS = frozenset(
         "DETERMINISTIC_REPORT",
     }
 )
-PLATFORM_EXECUTOR_KINDS = frozenset((*EXECUTOR_KINDS, "LOCAL_SKILL"))
+PLATFORM_EXECUTOR_KINDS = frozenset(
+    (*EXECUTOR_KINDS, "LOCAL_SKILL", WC_DELEGATE_WORK_EXECUTOR_KIND)
+)
 
 
 @dataclass
@@ -58,6 +62,8 @@ class P5ExecutorOutcome:
     business_operation_id: str | None = None
     started_at: str | None = None
     completed_at: str | None = None
+    wait_id: str | None = None
+    wait_external_ref: str | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +90,13 @@ class LocalSkillExecutorDependencies:
     request_builder: Callable[..., Mapping[str, Any]]
     backend: object
     result_mapper: Callable[..., P5ExecutorOutcome]
+
+
+@dataclass(frozen=True)
+class DelegateWorkExecutorDependencies:
+    runtime_repository: object
+    wait_repository: object
+    work_item_client: object
 
 
 class P6LocalSkillExecutor:
@@ -138,6 +151,67 @@ class P6LocalSkillExecutor:
         return outcome
 
 
+class P7DelegateWorkExecutor:
+    def __init__(
+        self,
+        *,
+        dependencies: DelegateWorkExecutorDependencies,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._dependencies = validate_delegate_work_executor_dependencies(
+            dependencies
+        )
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def execute(
+        self,
+        context: StepExecutionContext,
+        *,
+        continuation_result: Any | None = None,
+    ) -> P5ExecutorOutcome:
+        _require_executor(context.step, WC_DELEGATE_WORK_EXECUTOR_KIND)
+        if context.step.get("step_type") != "DELEGATE_WORK":
+            raise _invalid("WC_DELEGATE_WORK requires a DELEGATE_WORK step.")
+        if continuation_result is not None:
+            raise _invalid("Fresh DELEGATE_WORK cannot consume continuation input.")
+        created_at = self._clock().astimezone(UTC).isoformat().replace(
+            "+00:00", "Z"
+        )
+        try:
+            runtime = self._dependencies.runtime_repository.load(
+                tenant_id=context.job["tenant_id"],
+                agent_execution_id=context.step["agent_execution_id"],
+                executable_plan_id=context.step["executable_plan_id"],
+                executable_step_id=context.step["executable_step_id"],
+            )
+            dispatch = delegation_dispatch(runtime, created_at=created_at)
+            wait = self._dependencies.wait_repository.register(**dispatch["wait"])
+            response = self._dependencies.work_item_client.create_work_item(
+                dispatch["work_item_request"]
+            )
+        except DelegatedWorkError as exc:
+            raise P5StepExecutorError(
+                exc.error_code, exc.detail, exc.retryable
+            ) from exc
+        work_item = response.get("work_item")
+        expected_work_item_id = wait["external_ref"]
+        if (
+            not isinstance(work_item, Mapping)
+            or work_item.get("tenant_id") != wait["tenant_id"]
+            or work_item.get("work_item_id") != expected_work_item_id
+            or work_item.get("state") != "CREATED"
+        ):
+            raise _invalid("WC returned a mismatched delegated WorkItem.")
+        return P5ExecutorOutcome(
+            state="WAITING",
+            result_contract_ref=wait["result_contract_ref"],
+            result_payload={},
+            external_refs=(f"WC:WORK_ITEM:{expected_work_item_id}",),
+            wait_id=wait["wait_id"],
+            wait_external_ref=expected_work_item_id,
+        )
+
+
 def validate_local_skill_executor_dependencies(
     value: object,
 ) -> LocalSkillExecutorDependencies:
@@ -161,6 +235,24 @@ def validate_local_skill_executor_dependencies(
             "LOCAL_SKILL result mapper dependency is unavailable."
         )
     _local_skill_backend_profiles(value.backend)
+    return value
+
+
+def validate_delegate_work_executor_dependencies(
+    value: object,
+) -> DelegateWorkExecutorDependencies:
+    if not isinstance(value, DelegateWorkExecutorDependencies):
+        raise _delegate_unavailable("DELEGATE_WORK dependencies are unavailable.")
+    requirements = (
+        (value.runtime_repository, "load", "runtime repository"),
+        (value.wait_repository, "register", "wait repository"),
+        (value.work_item_client, "create_work_item", "WC client"),
+    )
+    for dependency, method, label in requirements:
+        if dependency is None or not callable(getattr(dependency, method, None)):
+            raise _delegate_unavailable(
+                f"DELEGATE_WORK {label} dependency is unavailable."
+            )
     return value
 
 
@@ -352,6 +444,11 @@ class P5StepExecutorRegistry:
             raise _local_skill_unavailable(
                 "LOCAL_SKILL registry entry lacks verified dependency composition."
             )
+        delegate = executors.get(WC_DELEGATE_WORK_EXECUTOR_KIND)
+        if delegate is not None and not isinstance(delegate, P7DelegateWorkExecutor):
+            raise _delegate_unavailable(
+                "WC_DELEGATE_WORK registry entry lacks verified composition."
+            )
         self._executors = dict(executors)
 
     @property
@@ -503,6 +600,9 @@ class P5StepExecutionWorker:
                     retrieval_package_hash=outcome.retrieval_package_hash,
                     cx_generation_id=outcome.cx_generation_id,
                     cx_job_id=outcome.cx_job_id,
+                    wait_id=outcome.wait_id,
+                    external_ref=outcome.wait_external_ref,
+                    result_contract_ref=outcome.result_contract_ref,
                 ),
                 now=observed_at,
             )
@@ -605,6 +705,34 @@ def default_p6_executor_registry(
     )
 
 
+def default_p7_executor_registry(
+    callback: Callable[[StepExecutionContext], Any],
+    *,
+    local_skill_dependencies: LocalSkillExecutorDependencies,
+    local_skill_handler: Callable[
+        [StepExecutionContext, LocalSkillExecutorDependencies], P5ExecutorOutcome
+    ],
+    delegate_work_dependencies: DelegateWorkExecutorDependencies,
+    clock: Callable[[], datetime] | None = None,
+) -> P5StepExecutorRegistry:
+    projection = P5DeterministicProjectionExecutor()
+    return P5StepExecutorRegistry(
+        {
+            "P4_CHAT_RAG_COMPATIBILITY": P5CompatibilityChatExecutor(callback),
+            "DETERMINISTIC_REPORT": projection,
+            "DETERMINISTIC_AGGREGATE": projection,
+            LOCAL_SKILL_EXECUTOR_KIND: P6LocalSkillExecutor(
+                dependencies=local_skill_dependencies,
+                handler=local_skill_handler,
+            ),
+            WC_DELEGATE_WORK_EXECUTOR_KIND: P7DelegateWorkExecutor(
+                dependencies=delegate_work_dependencies,
+                clock=clock,
+            ),
+        }
+    )
+
+
 def _resolve_binding(
     binding: Mapping[str, Any], dependencies: Mapping[str, Mapping[str, Any]]
 ) -> dict[str, Any]:
@@ -698,3 +826,7 @@ def _invalid(detail: str) -> P5StepExecutorError:
 
 def _local_skill_unavailable(detail: str) -> P5StepExecutorError:
     return P5StepExecutorError("ae.local_skill_dependency_unavailable", detail)
+
+
+def _delegate_unavailable(detail: str) -> P5StepExecutorError:
+    return P5StepExecutorError("ae.delegate_work_dependency_unavailable", detail)

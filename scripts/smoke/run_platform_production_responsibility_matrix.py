@@ -21,13 +21,14 @@ from run_platform_production_deferral_inventory import (  # noqa: E402
 
 SCHEMA_VERSION = "platform_production_responsibility_matrix.v1"
 PLAN_PATH = "docs/48_platform_production_readiness_plan.md"
-OWNER_IDS = ("platform_integration", "OA", "AE", "CX", "MO", "AG")
+OWNER_IDS = ("platform_integration", "OA", "AE", "CX", "MO", "AG", "WC")
 DATABASE_OWNER_BY_SERVICE = {
     "nex-oa": "OA",
     "nex-ae-api": "AE",
     "nex-cx": "CX",
     "nex-mo": "MO",
     "nex-ag": "AG",
+    "nex-wc": "WC",
 }
 
 
@@ -58,7 +59,7 @@ ASSIGNMENTS = (
     ResponsibilityAssignment(
         "production_secret_injection_rotation",
         ("platform_integration",),
-        ("OA", "AE", "CX", "MO", "AG"),
+        ("OA", "AE", "CX", "MO", "AG", "WC"),
         ("platform_integration",),
         ("S143",),
     ),
@@ -78,8 +79,8 @@ ASSIGNMENTS = (
     ),
     ResponsibilityAssignment(
         "production_postgresql_backup_ha_dr",
-        ("OA", "AE", "CX", "MO", "AG"),
-        ("OA", "AE", "CX", "MO", "AG"),
+        ("OA", "AE", "CX", "MO", "AG", "WC"),
+        ("OA", "AE", "CX", "MO", "AG", "WC"),
         ("platform_integration",),
         ("S145",),
     ),
@@ -100,7 +101,7 @@ ASSIGNMENTS = (
     ResponsibilityAssignment(
         "production_monitoring_paging_slo_approval",
         ("AG", "platform_integration"),
-        ("OA", "AE", "CX", "MO", "AG"),
+        ("OA", "AE", "CX", "MO", "AG", "WC"),
         ("platform_integration",),
         ("S148", "S150"),
     ),
@@ -150,9 +151,9 @@ def run_platform_production_responsibility_matrix(
         "all_assignments_complete": all(
             all(values.values()) for values in assignment_checks.values()
         ),
-        "all_six_owners_accountable": accountable_owners == valid_owners,
-        "all_six_owners_responsible": responsible_owners == valid_owners,
-        "five_database_owners_exact": (
+        "all_seven_owners_accountable": accountable_owners == valid_owners,
+        "all_seven_owners_responsible": responsible_owners == valid_owners,
+        "six_database_owners_exact": (
             set(database_ownership) == set(DATABASE_OWNER_BY_SERVICE)
             and all(
                 item["owner"] is not None and item["database_env"]

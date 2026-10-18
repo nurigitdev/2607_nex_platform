@@ -1,0 +1,30 @@
+{
+  "schema_version": "p7.plan_candidate.v1",
+  "suggested_plan_kind": "DIRECT",
+  "goal": "Prepare project margin evidence.",
+  "logical_steps": [
+    {
+      "step_id": "S1",
+      "step_type": "DELEGATE_WORK",
+      "title": "Delegate project margin analysis",
+      "objective": "Prepare project margin evidence.",
+      "depends_on": [],
+      "capability_hint": "FINANCE.PROJECT_MARGIN_READ",
+      "completion_criteria": ["A bounded WorkResult is accepted."],
+      "delegation": {
+        "work_class": "ANALYSIS",
+        "required_agent_type": "PA",
+        "project_scope_ref": "project-p7-golden-001",
+        "result_contract_ref": "urn:nex:result:project-margin:1",
+        "completion_policy": "OWNER_SUBMITS"
+      }
+    }
+  ],
+  "completion_mapping": [
+    {
+      "criterion_id": "C1",
+      "terminal_step_refs": ["S1"]
+    }
+  ],
+  "confidence": 0.95
+}
