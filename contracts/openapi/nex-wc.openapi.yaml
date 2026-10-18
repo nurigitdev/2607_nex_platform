@@ -58,6 +58,39 @@ paths:
       responses:
         "200": {description: WorkItem status projection}
         "404": {description: WorkItem not found in tenant}
+  /api/v1/work-items/{work_item_id}/route:
+    post:
+      operationId: routeWcWorkItem
+      security: [{serviceBearer: []}]
+      parameters:
+        - {$ref: "#/components/parameters/WorkItemId"}
+        - {$ref: "#/components/parameters/TenantIdHeader"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ExpectedVersion"}
+      responses:
+        "200": {description: Durable deterministic RoutingDecision}
+        "409": {description: WorkItem version or state conflict}
+        "503": {description: AE Agent Registry unavailable}
+  /api/v1/work-items/{work_item_id}/claim:
+    post:
+      operationId: claimWcWorkItem
+      security: [{serviceBearer: []}]
+      parameters:
+        - {$ref: "#/components/parameters/WorkItemId"}
+        - {$ref: "#/components/parameters/TenantIdHeader"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ExpectedVersion"}
+      responses:
+        "200": {description: "Atomic Assignment, Claim, lease, and handoff"}
+        "403": {description: Fresh OA work:claim authorization denied}
+        "409": {description: Claim authority conflict}
+        "503": {description: "AE, OA, or WC persistence unavailable"}
 components:
   securitySchemes:
     serviceBearer:
@@ -75,6 +108,12 @@ components:
       required: true
       schema: {type: string, minLength: 1, maxLength: 128}
   schemas:
+    ExpectedVersion:
+      type: object
+      additionalProperties: false
+      required: [expected_version]
+      properties:
+        expected_version: {type: integer, minimum: 1}
     WorkItemCreateRequest:
       type: object
       additionalProperties: false
