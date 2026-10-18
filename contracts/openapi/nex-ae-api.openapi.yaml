@@ -2038,6 +2038,78 @@ paths:
           description: Service or user claim is missing or invalid.
         "403":
           description: User claim does not include the admin role.
+  /internal/v1/tenants/{tenant_id}/agents:
+    post:
+      operationId: registerAeBackgroundAgent
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - {name: tenant_id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agent_type, profile_ref]
+              properties:
+                agent_type: {enum: [CA, PA, EA]}
+                profile_ref: {type: string}
+                project_id: {type: [string, "null"]}
+      responses:
+        "201": {description: Background AgentIdentity registered}
+        "409": {description: Active PA or identity conflict}
+    get:
+      operationId: listAeBackgroundAgents
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - {name: tenant_id, in: path, required: true, schema: {type: string}}
+        - {name: agent_type, in: query, schema: {enum: [CA, PA, EA]}}
+        - {name: status, in: query, schema: {enum: [ACTIVE, SUSPENDED, RETIRED]}}
+        - {name: project_id, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Metadata-safe AgentIdentity list}
+  /internal/v1/tenants/{tenant_id}/agents/{agent_id}:
+    get:
+      operationId: getAeBackgroundAgent
+      security: [{serviceBearer: []}]
+      parameters:
+        - {name: tenant_id, in: path, required: true, schema: {type: string}}
+        - {name: agent_id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: AgentIdentity projection}
+        "404": {description: AgentIdentity not found}
+  /internal/v1/tenants/{tenant_id}/agents/{agent_id}/status:
+    patch:
+      operationId: setAeBackgroundAgentStatus
+      security: [{serviceBearer: []}]
+      parameters:
+        - {name: tenant_id, in: path, required: true, schema: {type: string}}
+        - {name: agent_id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, expected_version]
+              properties:
+                status: {enum: [ACTIVE, SUSPENDED, RETIRED]}
+                expected_version: {type: integer, minimum: 1}
+      responses:
+        "200": {description: AgentIdentity status changed}
+        "409": {description: Version or active PA conflict}
+  /internal/v1/tenants/{tenant_id}/projects/{project_id}/active-pa:
+    get:
+      operationId: resolveAeActiveProjectAgent
+      security: [{serviceBearer: []}]
+      parameters:
+        - {name: tenant_id, in: path, required: true, schema: {type: string}}
+        - {name: project_id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: Exact active project PA}
+        "404": {description: Active PA not found}
 components:
   securitySchemes:
     serviceBearer:

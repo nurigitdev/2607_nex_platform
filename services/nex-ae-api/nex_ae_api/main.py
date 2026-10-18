@@ -11,6 +11,8 @@ from nex_runtime.prompts import register_prompt_registry_routes
 from nex_runtime.recovery import register_generation_recovery_policy_routes
 
 from nex_ae_api.agent_runtime_foundation import attach_agent_runtime_foundation
+from nex_ae_api.agent_identity import SqlAlchemyAgentIdentityRegistry
+from nex_ae_api.agent_registry_api import register_agent_registry_routes
 from nex_ae_api.agent_runtime_operations import (
     SqlAlchemyAgentRuntimeOperationsSource,
     UnavailableAgentRuntimeOperationsSource,
@@ -89,6 +91,14 @@ AE_AGENT_RUNTIME = attach_agent_runtime_foundation(
     app,
     SERVICE_PERSISTENCE,
     application=app.state.ae_chat_application_service,
+)
+register_agent_registry_routes(
+    app,
+    registry=(
+        SqlAlchemyAgentIdentityRegistry(SERVICE_PERSISTENCE.api_session_factory)
+        if SERVICE_PERSISTENCE.api_session_factory is not None
+        else None
+    ),
 )
 AE_SEMANTIC_CANDIDATE_ADMISSION = attach_semantic_candidate_admission(
     app,
