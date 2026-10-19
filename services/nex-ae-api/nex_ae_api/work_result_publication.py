@@ -159,7 +159,7 @@ class SqlAlchemyWcWorkResultPublisher:
             agent_result=record["agent_result"],
             execution=record,
             planning_source=record["planning_source"],
-            submitted_at=timestamp,
+            submitted_at=record["created_at"],
         )
         status = self._client.status(
             tenant_id=tenant_id, work_item_id=record["work_item_ref"]
@@ -324,7 +324,7 @@ def _load_publication(
             "execution.work_item_ref, execution.claim_ref, "
             "execution.claim_generation, execution.assignment_ref, "
             "execution.correlation_id, execution.causation_id, "
-            "inbox.planning_source_json "
+            "inbox.planning_source_json, delivery.created_at "
             "FROM ae_result_delivery AS delivery "
             "JOIN ae_agent_result AS result ON result.tenant_id = delivery.tenant_id "
             "AND result.result_id = delivery.result_id "
@@ -344,6 +344,7 @@ def _load_publication(
     record = dict(row)
     for key in ("delivery_id", "result_id", "agent_execution_id", "agent_id"):
         record[key] = str(record[key])
+    record["created_at"] = _datetime_value(record["created_at"])
     result_value = record.pop("result_envelope_json")
     source_value = record.pop("planning_source_json")
     record["agent_result"] = (
@@ -414,3 +415,10 @@ def _invalid_response() -> WorkResultPublicationError:
         "WC did not acknowledge the exact WorkResult identity and hash.",
         False,
     )
+
+
+def _datetime_value(value: object) -> str:
+    if isinstance(value, datetime):
+        normalized = value.astimezone(UTC) if value.tzinfo is not None else value
+        return normalized.isoformat().replace("+00:00", "Z")
+    return str(value)

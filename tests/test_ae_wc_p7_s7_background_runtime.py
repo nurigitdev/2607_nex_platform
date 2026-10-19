@@ -423,7 +423,7 @@ def _publisher_sessions():
                 target_type TEXT NOT NULL, target_ref TEXT NOT NULL,
                 state TEXT NOT NULL, attempt_no INTEGER NOT NULL,
                 external_delivery_ref TEXT, latest_preflight_ref TEXT,
-                updated_at TEXT, acknowledged_at TEXT,
+                created_at TEXT, updated_at TEXT, acknowledged_at TEXT,
                 PRIMARY KEY (tenant_id, delivery_id)
             )
         """))
@@ -464,7 +464,7 @@ def _publisher_sessions():
                 INSERT INTO ae_result_delivery VALUES (
                     :tenant_id, :delivery_id, :result_id, :execution_id,
                     'WC_WORK_RESULT', :work_item_id, 'PENDING', 0,
-                    NULL, NULL, :now, NULL
+                    NULL, NULL, :now, :now, NULL
                 )
             """),
             {

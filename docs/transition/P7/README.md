@@ -1,6 +1,6 @@
 # P7 WC and Background Agent Work Transition Baseline
 
-**Status:** P7-S7 CLOSED / P7-S8 AUTHORIZED
+**Status:** P7-S8 CLOSED / P7-S9 AUTHORIZED
 **Phase:** P7 - Work Coordination + CA/PA/EA Background Agent Work
 **Predecessor:** P6.5 Remote Generation Provider Integration Acceptance - CLOSED
 **Successor:** P8 Controlled WRITE / Approval / Enterprise OS - NOT ACTIVATED
@@ -73,10 +73,11 @@ Current status:
 P6.5 closure and Full Gate                    = PASS
 P7 architecture/source/SRS/slice review       = COMPLETE
 P7-CA01 source-backed contract closure        = CLOSED
-P7 feature implementation                     = P7-S7 CLOSED / P7-S8 AUTHORIZED
+P7 feature implementation                     = P7-S8 CLOSED / P7-S9 AUTHORIZED
 P7-S1 through P7-S5 Checkpoint Gate            = PASS
 P7-S6 through P7-S7 AE/WC Slice Gates          = PASS
 P7-S7 PostgreSQL + live provider + NSL E2E     = PASS (43/43)
+P7-S8 PostgreSQL failure/restart smoke          = PASS (26/26)
 NeX-WC service and migration history           = ACTIVE THROUGH 1002
 NeX-AE P7 migration history                    = ACTIVE THROUGH 2405
 NeX-WC PostgreSQL dev/test roles and databases = CONNECTIVITY CONFIRMED
@@ -94,6 +95,13 @@ claimed-work planning projection. CA/PA/EA planning reuses the existing
 P5/P6.5 semantic admission and P6 RuntimeJob/NSL execution path. Persisting an
 AgentResult alone is not success: exact WC WorkResult acknowledgement remains
 the child completion barrier before parent resume.
+
+P7-S8 activates expired Claim reclaim with monotonically increasing
+generation, rejects stale handoff delivery, stabilizes WorkResult publication
+semantics across accepted-but-response-lost retries, and consumes
+`RESUME_EXECUTION` through the existing multi-step worker. A process crash
+after parent StepResult commit is recovered by RuntimeJob lease expiry without
+creating a second result or consuming the WorkResult event twice.
 
 ## 5. Canonical Implementation Sequence
 

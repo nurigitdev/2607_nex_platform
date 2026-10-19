@@ -206,11 +206,21 @@ class SqlAlchemyMultiStepEngine:
                     )
                 if (
                     step["state"] == "WAITING"
-                    and job["job_type"] != "CONTINUE_EXECUTION"
+                    and not (
+                        (
+                            job["job_type"] == "CONTINUE_EXECUTION"
+                            and step["executor_kind"]
+                            == "P4_CHAT_RAG_COMPATIBILITY"
+                        )
+                        or (
+                            job["job_type"] == "RESUME_EXECUTION"
+                            and step["executor_kind"] == "WC_DELEGATE_WORK"
+                        )
+                    )
                 ):
                     raise MultiStepEngineError(
                         "ae.multi_step_continuation_required",
-                        "A waiting ExecutableStep requires CONTINUE_EXECUTION.",
+                        "A waiting ExecutableStep requires its exact continuation job type.",
                     )
                 if step["state"] == "READY":
                     updated = session.execute(
@@ -241,7 +251,10 @@ class SqlAlchemyMultiStepEngine:
                         "ae.multi_step_execution_not_found",
                         "Claimed step lost its AgentExecution.",
                     )
-                _enter_step_execution(session, runtime, now)
+                if job["job_type"] == "RESUME_EXECUTION":
+                    _enter_external_resume(session, runtime, step or {}, job, now)
+                else:
+                    _enter_step_execution(session, runtime, now)
                 session.commit()
                 return StepExecutionContext(
                     job=job,
@@ -354,6 +367,14 @@ class SqlAlchemyMultiStepEngine:
                         True,
                     )
                 result = persist_step_result_in_session(session, tenant, proposed)
+                if job["job_type"] == "RESUME_EXECUTION":
+                    _consume_external_wait(
+                        session,
+                        tenant_id=tenant,
+                        job=job,
+                        step=step,
+                        completed_at=proposed["completed_at"],
+                    )
                 _advance_plan_after_result(
                     session,
                     tenant_id=tenant,
@@ -722,7 +743,8 @@ def _validate_claim(
     attempt = dict(claim.attempt)
     if (
         job.get("tenant_id") != tenant_id
-        or job.get("job_type") not in {"START_EXECUTION", "CONTINUE_EXECUTION"}
+        or job.get("job_type")
+        not in {"START_EXECUTION", "CONTINUE_EXECUTION", "RESUME_EXECUTION"}
         or job.get("state") != "RUNNING"
         or not job.get("executable_step_id")
         or not job.get("lease_owner")
@@ -734,6 +756,124 @@ def _validate_claim(
     ):
         raise _invalid("RuntimeJob claim is invalid for multi-step execution.")
     return job, attempt
+
+
+def _enter_external_resume(
+    session: Session,
+    runtime: Mapping[str, Any],
+    step: Mapping[str, Any],
+    job: Mapping[str, Any],
+    now: str,
+) -> None:
+    payload = job.get("payload")
+    if (
+        step.get("state") != "WAITING"
+        or step.get("executor_kind") != "WC_DELEGATE_WORK"
+        or not isinstance(payload, Mapping)
+        or not job.get("wait_id")
+        or not payload.get("event_id")
+    ):
+        raise MultiStepEngineError(
+            "ae.multi_step_resume_authority_invalid",
+            "RESUME_EXECUTION lacks its exact delegated wait authority.",
+        )
+    wait = session.execute(
+        text(
+            "SELECT state, matched_event_id, resume_runtime_job_id "
+            "FROM ae_wait_registration WHERE tenant_id = :tenant_id "
+            "AND wait_id = :wait_id AND agent_execution_id = :execution_id "
+            "AND executable_step_id = :step_id AND wait_type = 'WORK_RESULT'"
+        ),
+        {
+            "tenant_id": runtime["tenant_id"],
+            "wait_id": job["wait_id"],
+            "execution_id": runtime["agent_execution_id"],
+            "step_id": step["executable_step_id"],
+        },
+    ).mappings().first()
+    if wait is None or (
+        wait["state"],
+        str(wait["matched_event_id"]),
+        str(wait["resume_runtime_job_id"]),
+    ) != (
+        "RESUME_QUEUED",
+        str(payload["event_id"]),
+        str(job["runtime_job_id"]),
+    ):
+        raise MultiStepEngineError(
+            "ae.multi_step_resume_authority_mismatch",
+            "RESUME_EXECUTION differs from its matched durable wait.",
+        )
+    if runtime["state"] == "RUNNING" and runtime["phase"] == "STEP_EXECUTION":
+        return
+    if runtime["state"] != "WAITING_DEPENDENCY" or runtime["phase"] != "STEP_EXECUTION":
+        raise MultiStepEngineError(
+            "ae.multi_step_resume_parent_unavailable",
+            "Parent AgentExecution is not eligible for delegated resume.",
+        )
+    updated = session.execute(
+        text(
+            "UPDATE ae_agent_execution SET state = 'RUNNING', "
+            "version = version + 1, updated_at = :now "
+            "WHERE tenant_id = :tenant_id AND agent_execution_id = :execution_id "
+            "AND state = 'WAITING_DEPENDENCY' AND phase = 'STEP_EXECUTION' "
+            "AND version = :version"
+        ),
+        {
+            "tenant_id": runtime["tenant_id"],
+            "execution_id": runtime["agent_execution_id"],
+            "version": runtime["version"],
+            "now": now,
+        },
+    )
+    if int(updated.rowcount or 0) != 1:
+        raise MultiStepEngineError(
+            "ae.multi_step_resume_parent_conflict",
+            "Parent AgentExecution changed while resuming.",
+            True,
+        )
+
+
+def _consume_external_wait(
+    session: Session,
+    *,
+    tenant_id: str,
+    job: Mapping[str, Any],
+    step: Mapping[str, Any],
+    completed_at: str,
+) -> None:
+    payload = job.get("payload")
+    if not isinstance(payload, Mapping):
+        raise MultiStepEngineError(
+            "ae.multi_step_resume_authority_invalid",
+            "RESUME_EXECUTION payload is unavailable.",
+        )
+    updated = session.execute(
+        text(
+            "UPDATE ae_wait_registration SET state = 'CONSUMED', "
+            "updated_at = :now, version = version + 1 "
+            "WHERE tenant_id = :tenant_id AND wait_id = :wait_id "
+            "AND agent_execution_id = :execution_id "
+            "AND executable_step_id = :step_id AND state = 'RESUME_QUEUED' "
+            "AND matched_event_id = :event_id "
+            "AND resume_runtime_job_id = :runtime_job_id"
+        ),
+        {
+            "tenant_id": tenant_id,
+            "wait_id": job["wait_id"],
+            "execution_id": step["agent_execution_id"],
+            "step_id": step["executable_step_id"],
+            "event_id": payload.get("event_id"),
+            "runtime_job_id": job["runtime_job_id"],
+            "now": completed_at,
+        },
+    )
+    if int(updated.rowcount or 0) != 1:
+        raise MultiStepEngineError(
+            "ae.multi_step_resume_consume_conflict",
+            "Delegated wait changed before StepResult commit.",
+            True,
+        )
 
 
 def _require_claim_authority(

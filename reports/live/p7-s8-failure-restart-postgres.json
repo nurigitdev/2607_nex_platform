@@ -1,0 +1,78 @@
+{
+  "actual_postgres": true,
+  "actual_remote_provider": false,
+  "captured_at": "2026-10-19",
+  "checks": {
+    "actual_database_identity": true,
+    "ae_database_identity": true,
+    "ae_migration_current": true,
+    "atomic_idempotent_restart": true,
+    "cleanup_complete": true,
+    "current_handoff_restart_idempotent": true,
+    "delegate_runtime_cleanup_complete": true,
+    "delegate_worker_waited": true,
+    "dependency_states": true,
+    "expired_claim_reclaimed_once": true,
+    "migrations_recorded": true,
+    "parent_waiting_dependency": true,
+    "private_prompt_absent": true,
+    "provider_not_required": true,
+    "result_event_ack_loss_idempotent": true,
+    "resume_crash_recovered": true,
+    "resume_exactly_once_semantics": true,
+    "s_e_uuid_lineage": true,
+    "semantic_hash_deterministic": true,
+    "stable_external_identity": true,
+    "stale_handoff_failed_closed": true,
+    "wait_persisted_before_completion": true,
+    "wc_database_identity": true,
+    "wc_migration_current": true,
+    "wc_work_item_created_once": true,
+    "work_result_restart_idempotent": true
+  },
+  "checks_passed": 26,
+  "checks_total": 26,
+  "cleanup": {
+    "delegate_runtime_remaining": 0,
+    "owned_rows_remaining": 0
+  },
+  "failure_matrix": {
+    "claim_lease_expiry": "RECOVERED",
+    "event_ack_loss": "DEDUPLICATED",
+    "handoff_ack_loss": "DEDUPLICATED",
+    "resume_post_commit_crash": "LEASE_RECOVERED",
+    "stale_handoff": "REJECTED",
+    "work_result_replay": "DEDUPLICATED"
+  },
+  "migration": {
+    "ae_applied_this_run": 0,
+    "ae_latest": "2405_ae_claimed_planning_source",
+    "wc_applied_this_run": 0,
+    "wc_latest": "1002_wc_work_result"
+  },
+  "profile": "test",
+  "quality_gates": {
+    "ae": {
+      "branch_coverage": 96.14,
+      "passed": 4499,
+      "skipped_protected_smokes": 15,
+      "statement_coverage": 98.29
+    },
+    "wc": {
+      "branch_coverage": 94.12,
+      "passed": 166,
+      "statement_coverage": 96.74
+    }
+  },
+  "row_counts": {
+    "ae_external_event_inbox": 1,
+    "ae_parent_step_result": 1,
+    "ae_resume_attempt": 2,
+    "ae_resume_runtime_job": 1,
+    "wc_claim": 2,
+    "wc_work_result": 1
+  },
+  "slice": "P7-S8",
+  "smoke_schema_version": "p7_s8_postgres_failure_smoke.v1",
+  "status": "PASS"
+}

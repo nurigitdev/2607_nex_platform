@@ -23,6 +23,7 @@ from nex_ae_api.planning_capabilities import (
     validate_local_skill_binding,
 )
 from nex_ae_api.runtime_jobs import RuntimeJobClaim, SqlAlchemyRuntimeJobQueue
+from nex_ae_api.work_result_events import validate_work_result_event
 
 EXECUTOR_KINDS = frozenset(
     {
@@ -81,6 +82,10 @@ class P5StepExecutor(Protocol):
         *,
         continuation_result: Any | None = None,
     ) -> P5ExecutorOutcome: ...
+
+
+class ContinuationSource(Protocol):
+    def resolve(self, claim: RuntimeJobClaim) -> Mapping[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -173,7 +178,7 @@ class P7DelegateWorkExecutor:
         if context.step.get("step_type") != "DELEGATE_WORK":
             raise _invalid("WC_DELEGATE_WORK requires a DELEGATE_WORK step.")
         if continuation_result is not None:
-            raise _invalid("Fresh DELEGATE_WORK cannot consume continuation input.")
+            return _delegated_result_outcome(context, continuation_result)
         created_at = self._clock().astimezone(UTC).isoformat().replace(
             "+00:00", "Z"
         )
@@ -491,11 +496,13 @@ class P5StepExecutionWorker:
         engine: SqlAlchemyMultiStepEngine,
         jobs: SqlAlchemyRuntimeJobQueue,
         executors: P5StepExecutorRegistry,
+        continuation_source: ContinuationSource | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._engine = engine
         self._jobs = jobs
         self._executors = executors
+        self._continuation_source = continuation_source
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def run_claim(
@@ -517,6 +524,15 @@ class P5StepExecutionWorker:
                 step_result=context.existing_result,
                 runtime_job=job,
             )
+        if (
+            continuation_result is None
+            and claim.job.get("job_type") == "RESUME_EXECUTION"
+        ):
+            if self._continuation_source is None:
+                raise _invalid(
+                    "RESUME_EXECUTION requires a durable continuation source."
+                )
+            continuation_result = self._continuation_source.resolve(claim)
         try:
             outcome = self._executors.execute(
                 context, continuation_result=continuation_result
@@ -668,6 +684,53 @@ class P5StepExecutionWorker:
 
     def _now(self) -> str:
         return self._clock().astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _delegated_result_outcome(
+    context: StepExecutionContext, continuation_result: object
+) -> P5ExecutorOutcome:
+    event = validate_work_result_event(continuation_result)
+    job = context.job
+    payload = job.get("payload")
+    if (
+        job.get("job_type") != "RESUME_EXECUTION"
+        or not isinstance(payload, Mapping)
+        or str(payload.get("event_id")) != event["event_id"]
+        or str(payload.get("result_id")) != event["result_id"]
+        or str(payload.get("external_ref")) != event["work_item_id"]
+        or context.step.get("output_contract_ref") != event["result_schema_ref"]
+    ):
+        raise _invalid(
+            "Delegated WorkResult continuation differs from RuntimeJob authority."
+        )
+    status = {
+        "SUCCEEDED": "SUCCEEDED",
+        "PARTIAL": "SUCCEEDED",
+        "FAILED": "FAILED",
+        "UNKNOWN": "BLOCKED",
+    }[event["technical_outcome"]]
+    error_ref = (
+        None
+        if status == "SUCCEEDED"
+        else f"wc-work-result://{event['technical_outcome'].lower()}"
+    )
+    return P5ExecutorOutcome(
+        state=status,
+        result_contract_ref=event["result_schema_ref"],
+        result_payload={
+            "work_item_ref": event["work_item_id"],
+            "work_result_ref": event["result_id"],
+            "work_result_event_ref": event["event_id"],
+            "technical_outcome": event["technical_outcome"],
+            "business_outcome": event["business_outcome"],
+        },
+        external_refs=(
+            f"WC:WORK_ITEM:{event['work_item_id']}",
+            f"WC:WORK_RESULT:{event['result_id']}",
+        ),
+        evidence_refs=(f"WC:WORK_RESULT_EVENT:{event['event_id']}",),
+        error_ref=error_ref,
+    )
 
 
 def default_p5_executor_registry(

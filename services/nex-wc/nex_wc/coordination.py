@@ -10,13 +10,12 @@ from threading import RLock
 from typing import Any, Protocol
 from uuid import uuid4
 
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from nex_wc.work_items import InMemoryWorkItemRepository
-
 
 DEFAULT_ROUTING_POLICY_VERSION = "p7-routing-policy.v1"
 DEFAULT_CAPABILITY_PROFILES = {
@@ -234,10 +233,13 @@ class WorkCoordinationService:
         record = self._required_work_item(tenant_id, work_item_id)
         item = record["work_item"]
         route = record.get("latest_routing_decision")
-        if item["version"] != expected_version or item["state"] != "ROUTED":
+        if item["version"] != expected_version or item["state"] not in {
+            "ROUTED",
+            "ASSIGNED",
+        }:
             raise CoordinationError(
                 "wc.work_item_claim_conflict",
-                "WorkItem is not at the expected ROUTED version.",
+                "WorkItem is not at an expected claimable version.",
             )
         if not isinstance(route, Mapping) or route.get("decision") != "ROUTED":
             raise CoordinationError(
@@ -411,9 +413,40 @@ class InMemoryCoordinationRepository:
             routes = self._routes.get(key, [])
             if record is None or not routes:
                 raise CoordinationError("wc.work_item_claim_conflict", "Claim source is missing.")
-            if record["version"] != expected_version or record["state"] != "ROUTED":
+            if record["version"] != expected_version or record["state"] not in {
+                "ROUTED",
+                "ASSIGNED",
+            }:
                 raise CoordinationError("wc.work_item_claim_conflict", "WorkItem claim version conflict.")
-            active = [claim for claim in self._claims.get(key, []) if claim["state"] == "ACTIVE"]
+            active = [
+                claim
+                for claim in self._claims.get(key, [])
+                if claim["state"] == "ACTIVE"
+            ]
+            if record["state"] == "ASSIGNED":
+                if len(active) != 1 or _parse_time(active[0]["lease_expires_at"]) > _parse_time(now):
+                    raise CoordinationError(
+                        "wc.active_claim_exists", "An unexpired active claim already exists."
+                    )
+                expired = active[0]
+                expired["state"] = "EXPIRED"
+                assignment = self._assignments.get(key)
+                if assignment is None or assignment["assignment_id"] != expired["assignment_id"]:
+                    raise CoordinationError(
+                        "wc.claim_recovery_conflict", "Expired claim assignment is unavailable."
+                    )
+                assignment["status"] = "RELEASED"
+                for outbox in self._outbox.values():
+                    if (
+                        outbox["work_item_id"] == work_item_id
+                        and outbox["event_type"] == "CLAIM_EXECUTION_HANDOFF"
+                        and outbox["event_payload"].get("claim_ref")
+                        == expired["claim_id"]
+                        and outbox["delivery_state"] in {"PENDING", "ENQUEUED"}
+                    ):
+                        outbox["delivery_state"] = "FAILED"
+                        outbox["updated_at"] = now
+                active = []
             if active:
                 raise CoordinationError("wc.active_claim_exists", "An active claim already exists.")
             generation = max((claim["claim_generation"] for claim in self._claims.get(key, [])), default=0) + 1
@@ -521,6 +554,12 @@ class InMemoryCoordinationRepository:
                         "planning_source": _planning_source(
                             work["work_item"], work["delegation_spec"]
                         ),
+                        **_in_memory_handoff_authority(
+                            self,
+                            tenant_id=tenant_id,
+                            work_item_id=row["work_item_id"],
+                            handoff=row["event_payload"],
+                        ),
                     }
         raise CoordinationError("wc.handoff_outbox_not_found", "Handoff outbox was not found.", 404)
 
@@ -624,11 +663,68 @@ class SqlAlchemyCoordinationRepository:
         try:
             with self._session_factory() as session:
                 record = _lock_work_item(session, tenant_id, work_item_id)
-                if record is None or record["version"] != expected_version or record["state"] != "ROUTED":
+                if (
+                    record is None
+                    or record["version"] != expected_version
+                    or record["state"] not in {"ROUTED", "ASSIGNED"}
+                ):
                     raise CoordinationError("wc.work_item_claim_conflict", "WorkItem claim version conflict.")
                 route = _load_latest_route(session, tenant_id, work_item_id, lock=True)
                 if route is None or route["decision"] != "ROUTED" or route.get("target_ref") != selected_agent.get("agent_id"):
                     raise CoordinationError("wc.routing_decision_not_claimable", "Routing decision changed before claim.")
+                if record["state"] == "ASSIGNED":
+                    expired = session.execute(
+                        text(
+                            "UPDATE wc_claim SET state = 'EXPIRED', updated_at = :now "
+                            "WHERE tenant_id = :tenant_id AND work_item_id = :work_item_id "
+                            "AND state = 'ACTIVE' AND lease_expires_at <= :now "
+                            "RETURNING claim_id, assignment_id"
+                        ),
+                        {
+                            "tenant_id": tenant_id,
+                            "work_item_id": work_item_id,
+                            "now": now,
+                        },
+                    ).mappings().first()
+                    if expired is None:
+                        raise CoordinationError(
+                            "wc.active_claim_exists",
+                            "An unexpired active claim already exists.",
+                        )
+                    assignment = session.execute(
+                        text(
+                            "UPDATE wc_assignment SET status = 'RELEASED', updated_at = :now "
+                            "WHERE tenant_id = :tenant_id AND assignment_id = :assignment_id "
+                            "AND status = 'ACTIVE'"
+                        ),
+                        {
+                            "tenant_id": tenant_id,
+                            "assignment_id": expired["assignment_id"],
+                            "now": now,
+                        },
+                    )
+                    if int(assignment.rowcount or 0) != 1:
+                        raise CoordinationError(
+                            "wc.claim_recovery_conflict",
+                            "Expired claim assignment changed before reclaim.",
+                            retryable=True,
+                        )
+                    session.execute(
+                        text(
+                            "UPDATE wc_event_outbox SET delivery_state = 'FAILED', "
+                            "updated_at = :now WHERE tenant_id = :tenant_id "
+                            "AND work_item_id = :work_item_id "
+                            "AND event_type = 'CLAIM_EXECUTION_HANDOFF' "
+                            "AND event_payload ->> 'claim_ref' = :claim_id "
+                            "AND delivery_state IN ('PENDING', 'ENQUEUED')"
+                        ),
+                        {
+                            "tenant_id": tenant_id,
+                            "work_item_id": work_item_id,
+                            "claim_id": str(expired["claim_id"]),
+                            "now": now,
+                        },
+                    )
                 generation = int(
                     session.execute(
                         text("""
@@ -757,11 +853,26 @@ class SqlAlchemyCoordinationRepository:
                                o.event_type, o.event_payload, o.delivery_state,
                                o.enqueued_job_id, o.created_at, o.updated_at,
                                w.delegation_spec, w.work_item,
+                               claim.state AS claim_state,
+                               claim.claim_generation,
+                               claim.lease_expires_at,
+                               assignment.status AS assignment_status,
+                               active.claim_id AS active_claim_id,
                                w.work_item -> 'requester' ->> 'entity_id' AS requester_ref
                         FROM wc_event_outbox AS o
                         JOIN wc_work_item AS w
-                          ON w.tenant_id = o.tenant_id
+                         ON w.tenant_id = o.tenant_id
                          AND w.work_item_id = o.work_item_id
+                        LEFT JOIN wc_claim AS claim
+                          ON claim.tenant_id = o.tenant_id
+                         AND claim.claim_id::text = o.event_payload ->> 'claim_ref'
+                        LEFT JOIN wc_assignment AS assignment
+                          ON assignment.tenant_id = claim.tenant_id
+                         AND assignment.assignment_id = claim.assignment_id
+                        LEFT JOIN wc_claim AS active
+                          ON active.tenant_id = o.tenant_id
+                         AND active.work_item_id = o.work_item_id
+                         AND active.state = 'ACTIVE'
                         WHERE o.outbox_id = :outbox_id AND o.event_id = :event_id
                         """
                     ),
@@ -776,6 +887,23 @@ class SqlAlchemyCoordinationRepository:
                     "requester_ref": row["requester_ref"],
                     "planning_source": _planning_source(
                         dict(row["work_item"]), dict(row["delegation_spec"])
+                    ),
+                    "claim_state": row["claim_state"],
+                    "claim_generation": (
+                        None
+                        if row["claim_generation"] is None
+                        else int(row["claim_generation"])
+                    ),
+                    "claim_lease_expires_at": (
+                        None
+                        if row["lease_expires_at"] is None
+                        else _time(row["lease_expires_at"])
+                    ),
+                    "assignment_status": row["assignment_status"],
+                    "active_claim_id": (
+                        None
+                        if row["active_claim_id"] is None
+                        else str(row["active_claim_id"])
                     ),
                 }
         except CoordinationError:
@@ -943,6 +1071,50 @@ def _transition_record(record: dict[str, Any], *, state: str, updated_at: str) -
     record["work_item"]["updated_at"] = updated_at
 
 
+def _in_memory_handoff_authority(
+    repository: InMemoryCoordinationRepository,
+    *,
+    tenant_id: str,
+    work_item_id: str,
+    handoff: Mapping[str, Any],
+) -> dict[str, Any]:
+    key = (tenant_id, work_item_id)
+    claim = next(
+        (
+            item
+            for item in repository._claims.get(key, ())
+            if item["claim_id"] == handoff.get("claim_ref")
+        ),
+        None,
+    )
+    active = next(
+        (
+            item
+            for item in repository._claims.get(key, ())
+            if item["state"] == "ACTIVE"
+        ),
+        None,
+    )
+    assignment = repository._assignments.get(key)
+    return {
+        "claim_state": None if claim is None else claim["state"],
+        "claim_generation": (
+            None if claim is None else int(claim["claim_generation"])
+        ),
+        "claim_lease_expires_at": (
+            None if claim is None else claim["lease_expires_at"]
+        ),
+        "assignment_status": (
+            None
+            if assignment is None
+            or claim is None
+            or assignment["assignment_id"] != claim["assignment_id"]
+            else assignment["status"]
+        ),
+        "active_claim_id": None if active is None else active["claim_id"],
+    }
+
+
 def _handoff(
     work_item: Mapping[str, Any],
     agent: Mapping[str, Any],
@@ -1008,6 +1180,27 @@ def _required(field: str, value: object) -> str:
 
 def _time(value: datetime) -> str:
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _parse_time(value: object) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise CoordinationError(
+            "wc.coordination_store_invalid",
+            "Stored claim lease timestamp is invalid.",
+        )
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise CoordinationError(
+            "wc.coordination_store_invalid",
+            "Stored claim lease timestamp is invalid.",
+        ) from exc
+    if parsed.tzinfo is None:
+        raise CoordinationError(
+            "wc.coordination_store_invalid",
+            "Stored claim lease timestamp lacks a timezone.",
+        )
+    return parsed.astimezone(UTC)
 
 
 def _store_unavailable() -> CoordinationError:

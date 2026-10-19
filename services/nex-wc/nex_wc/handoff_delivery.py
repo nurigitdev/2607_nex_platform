@@ -21,7 +21,6 @@ from nex_runtime import (
     validate_common_job,
 )
 
-
 WC_EVENT_DELIVERY_JOB_TYPE = "WC_EVENT_DELIVERY"
 WC_OUTBOX_SUBJECT_TYPE = "WC_OUTBOX"
 WC_HANDOFF_WORKER_TYPE = "wc.claim_handoff.delivery.worker"
@@ -145,6 +144,8 @@ def run_handoff_delivery_job(
             "Stored handoff planning source is invalid.",
             False,
         )
+    observed_at = (clock or (lambda: datetime.now(UTC)))()
+    _require_current_claim_authority(event, handoff, observed_at)
     envelope = {
         "event_id": event_id,
         "event_type": "CLAIM_EXECUTION_HANDOFF",
@@ -157,7 +158,7 @@ def run_handoff_delivery_job(
         outbox_id=outbox_id,
         event_id=event_id,
         job_id=str(normalized["job_id"]),
-        updated_at=_time((clock or (lambda: datetime.now(UTC)))()),
+        updated_at=_time(observed_at),
     )
     return {
         "event_id": event_id,
@@ -188,7 +189,10 @@ def run_handoff_delivery_worker_once(
         heartbeat_emitter=heartbeat_emitter,
         service_log_emitter=service_log_emitter,
         handler=lambda job: run_handoff_delivery_job(
-            job, store=store, client=client
+            job,
+            store=store,
+            client=client,
+            clock=(None if clock is None else lambda: _datetime(clock())),
         ),
         clock=clock,
     )
@@ -255,5 +259,54 @@ def _required(value: Mapping[str, Any], field: str) -> str:
     return item.strip()
 
 
+def _require_current_claim_authority(
+    event: Mapping[str, Any],
+    handoff: Mapping[str, Any],
+    observed_at: datetime,
+) -> None:
+    claim_ref = _required(handoff, "claim_ref")
+    lease_expires_at = event.get("claim_lease_expires_at")
+    try:
+        lease_expiry = datetime.fromisoformat(
+            str(lease_expires_at).replace("Z", "+00:00")
+        )
+    except (TypeError, ValueError) as exc:
+        raise HandoffDeliveryError(
+            "wc.handoff_claim_authority_invalid",
+            "Stored handoff claim authority is invalid.",
+            False,
+        ) from exc
+    if lease_expiry.tzinfo is None:
+        raise HandoffDeliveryError(
+            "wc.handoff_claim_authority_invalid",
+            "Stored handoff claim lease lacks a timezone.",
+            False,
+        )
+    if (
+        event.get("delivery_state") not in {"ENQUEUED", "DELIVERED"}
+        or event.get("claim_state") != "ACTIVE"
+        or event.get("assignment_status") != "ACTIVE"
+        or str(event.get("active_claim_id")) != claim_ref
+        or event.get("claim_generation") != handoff.get("claim_generation")
+    ):
+        raise HandoffDeliveryError(
+            "wc.handoff_claim_stale",
+            "Handoff no longer has current Claim and Assignment authority.",
+            False,
+        )
+    if lease_expiry.astimezone(UTC) <= observed_at.astimezone(UTC):
+        raise HandoffDeliveryError(
+            "wc.handoff_claim_expired",
+            "Handoff Claim lease expired before delivery.",
+            False,
+        )
+
+
 def _time(value: datetime) -> str:
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _datetime(value: object) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
