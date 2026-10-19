@@ -1,0 +1,87 @@
+{
+  "actual_postgres": true,
+  "actual_remote_provider": true,
+  "captured_at": "2026-10-19",
+  "checks_passed": 51,
+  "checks_total": 51,
+  "cleanup": {
+    "ae_wc_owned_rows_remaining": 0,
+    "delegate_runtime_remaining": 0,
+    "oa_owned_rows_remaining": 0
+  },
+  "database_identity": {
+    "ae": "nex_ae_test/nex_ae_user",
+    "oa": "nex_oa_test/nex_oa_user",
+    "wc": "nex_wc_test/nex_wc_user"
+  },
+  "hash_safe_lineage": {
+    "work_item": "sha256:5be4cc3404bc55a4b88c1ac0c47971807aef2fd5424fd2e9041251d7777bdd84",
+    "work_result": "sha256:981703a6202a154a6f53f221a9d6f4f4cbbe2e9c6136088a3ef50a1476f1bb55"
+  },
+  "migration_heads": {
+    "nex-ae-api": "2405_ae_claimed_planning_source",
+    "nex-oa": "1376_oa_trace_projection_index",
+    "nex-wc": "1002_wc_work_result"
+  },
+  "nsl": {
+    "backend_profile": "NSL_V01_IN_PROCESS",
+    "source_revision": "3b4cb198888570a857e6fb0d3aa077930bb23504"
+  },
+  "oa_authorization": {
+    "bootstrap_calls": 1,
+    "effective_authorization_calls": 2
+  },
+  "profile": "test",
+  "prompt_registry_versions": {
+    "ae.context_candidate_extraction.default": "v2",
+    "ae.intent_resolution.default": "v1",
+    "ae.plan_builder.default": "v1"
+  },
+  "provider": {
+    "deployment_id": "vllm-generation-http",
+    "mode": "live",
+    "model_ref": "Qwen3.5-4B",
+    "profile": "general-llm-default",
+    "semantic_stages": [
+      "INTENT",
+      "CONTEXT",
+      "PLAN"
+    ]
+  },
+  "quality_gates": {
+    "ae": {
+      "branch_coverage": 96.14,
+      "passed": 4513,
+      "skipped_protected_smokes": 16,
+      "statement_coverage": 98.29
+    },
+    "full": {
+      "branch_coverage": 96.27,
+      "passed": 15386,
+      "skipped_protected_smokes": 47,
+      "statement_coverage": 96.87
+    },
+    "wc_p7": {
+      "branch_coverage": 94.12,
+      "passed": 181,
+      "statement_coverage": 96.74
+    }
+  },
+  "row_counts": {
+    "ae_agent_execution": 2,
+    "ae_nsl_backend_run": 1,
+    "ae_parent_step_result": 2,
+    "ae_resume_runtime_job": 1,
+    "ae_runtime_job": 5,
+    "wc_work_result": 1
+  },
+  "runtime": {
+    "claim_generation": 1,
+    "parent_finalization_restart_idempotent": true,
+    "publication_restart_idempotent": true
+  },
+  "slice": "P7-S9",
+  "smoke_schema_version": "p7_s9_postgres_live_golden_b.v1",
+  "source_revision_under_test": "b25051aef96e6626936eb2eb46a8b61466ad4c6b",
+  "status": "PASS"
+}

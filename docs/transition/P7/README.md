@@ -1,6 +1,6 @@
 # P7 WC and Background Agent Work Transition Baseline
 
-**Status:** P7-S8 CLOSED / P7-S9 AUTHORIZED
+**Status:** P7 CLOSED / P8 ENTRY AUTHORIZED
 **Phase:** P7 - Work Coordination + CA/PA/EA Background Agent Work
 **Predecessor:** P6.5 Remote Generation Provider Integration Acceptance - CLOSED
 **Successor:** P8 Controlled WRITE / Approval / Enterprise OS - NOT ACTIVATED
@@ -42,8 +42,8 @@ Read the P7 documents in this order:
 6. `P7_Implementation_Slice_Plan_v1.0.md`
 7. `P7_CA01_Source_Backed_WC_Background_Agent_Contract_Closure_v1.0.md`
 8. `contracts/README.md` and the P7 machine-readable contracts
-9. per-Slice As-Built records and the P7 Final As-Built baseline after
-   implementation
+9. per-Slice As-Built records
+10. `P7_Final_AsBuilt_Baseline_and_P8_Handoff_v1.0.md`
 
 The Pre-Architecture Decision, Source Audit, SRS, and Slice Plan are
 pre-implementation baselines. They do not supersede Frozen v2.1 contracts or
@@ -73,13 +73,16 @@ Current status:
 P6.5 closure and Full Gate                    = PASS
 P7 architecture/source/SRS/slice review       = COMPLETE
 P7-CA01 source-backed contract closure        = CLOSED
-P7 feature implementation                     = P7-S8 CLOSED / P7-S9 AUTHORIZED
+P7 feature implementation                     = CLOSED THROUGH P7-S9
 P7-S1 through P7-S5 Checkpoint Gate            = PASS
 P7-S6 through P7-S7 AE/WC Slice Gates          = PASS
 P7-S7 PostgreSQL + live provider + NSL E2E     = PASS (43/43)
 P7-S8 PostgreSQL failure/restart smoke          = PASS (26/26)
+P7-S9 PostgreSQL + live provider Golden B       = PASS (51/51)
+Repository Full Gate                           = PASS
 NeX-WC service and migration history           = ACTIVE THROUGH 1002
 NeX-AE P7 migration history                    = ACTIVE THROUGH 2405
+NeX-OA migration history                       = ACTIVE THROUGH 1376
 NeX-WC PostgreSQL dev/test roles and databases = CONNECTIVITY CONFIRMED
 ```
 
@@ -102,6 +105,14 @@ semantics across accepted-but-response-lost retries, and consumes
 `RESUME_EXECUTION` through the existing multi-step worker. A process crash
 after parent StepResult commit is recovered by RuntimeJob lease expiry without
 creating a second result or consuming the WorkResult event twice.
+
+P7-S9 closes the Golden B journey against the actual AE, WC, and OA test
+databases, live MO generation, and the admitted in-process NSL runtime. OA
+authorizes both claim and result submission, WC acknowledges one WorkResult,
+AE consumes one `RESUME_EXECUTION`, and the parent completes its deterministic
+report and AgentResult exactly once. Prompt versions, claim generation, model
+profile, migration heads, and hash-safe lineage are recorded without retaining
+credentials, raw prompts, or provider output.
 
 ## 5. Canonical Implementation Sequence
 
@@ -212,7 +223,7 @@ across actual AE/WC/OA PostgreSQL boundaries, live MO generation, admitted NSL
 READ execution, WC result delivery, parent resume, restart/replay, Full Gate,
 and zero owned test residue.
 
-The closure artifact is expected to be:
+The closure artifact is:
 
 ```text
 P7_Final_AsBuilt_Baseline_and_P8_Handoff_v1.0.md

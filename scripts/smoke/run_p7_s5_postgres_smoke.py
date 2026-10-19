@@ -30,7 +30,10 @@ from nex_ae_api.delegated_work import (
     SqlAlchemyDelegationRuntimeRepository,
     SqlAlchemyWaitRegistrationRepository,
 )
-from nex_ae_api.executable_plans import WC_DELEGATE_WORK_EXECUTOR_KIND
+from nex_ae_api.executable_plans import (
+    WC_DELEGATE_WORK_EXECUTOR_KIND,
+    executable_plan_semantic_projection,
+)
 from nex_ae_api.multi_step_engine import SqlAlchemyMultiStepEngine
 from nex_ae_api.runtime_jobs import SqlAlchemyRuntimeJobQueue
 from nex_ae_api.step_executors import (
@@ -40,6 +43,7 @@ from nex_ae_api.step_executors import (
     P7DelegateWorkExecutor,
 )
 from nex_runtime import load_env_file, redact_database_url, sqlalchemy_database_url
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from nex_wc.work_items import SqlAlchemyWorkItemRepository, WorkItemService
 from run_migrations import run_service_migrations
 
@@ -166,15 +170,27 @@ def _verify_delegate_wait(
     )
     plan["schema_version"] = "1.3"
     plan["compiler_version"] = "p7.1"
+    step["step_contract_hash"] = semantic_sha256_hash_ref(
+        {
+            key: value
+            for key, value in step.items()
+            if key not in {"executable_step_id", "step_contract_hash"}
+        }
+    )
+    plan["executable_plan_hash"] = semantic_sha256_hash_ref(
+        executable_plan_semantic_projection(plan)
+    )
     with ae_factory.begin() as session:
         session.execute(
             text(
                 "UPDATE ae_executable_plan SET plan_json = CAST(:plan_json AS jsonb), "
-                "compiler_version = 'p7.1' WHERE tenant_id = :tenant_id "
+                "compiler_version = 'p7.1', plan_hash = :plan_hash "
+                "WHERE tenant_id = :tenant_id "
                 "AND executable_plan_id = :plan_id"
             ),
             {
                 "plan_json": json.dumps(plan, sort_keys=True),
+                "plan_hash": plan["executable_plan_hash"],
                 "tenant_id": tenant_id,
                 "plan_id": plan["executable_plan_id"],
             },
@@ -184,12 +200,14 @@ def _verify_delegate_wait(
                 "UPDATE ae_executable_step SET step_kind = 'WC_DELEGATE_WORK', "
                 "step_type = 'DELEGATE_WORK', executor_kind = 'WC_DELEGATE_WORK', "
                 "required_capability = :capability, capability_version = 'delegation.v1', "
-                "output_contract_ref = :contract_ref WHERE tenant_id = :tenant_id "
+                "output_contract_ref = :contract_ref, step_contract_hash = :step_hash "
+                "WHERE tenant_id = :tenant_id "
                 "AND executable_step_id = :step_id"
             ),
             {
                 "capability": delegation["required_capability"],
                 "contract_ref": delegation["result_contract_ref"],
+                "step_hash": step["step_contract_hash"],
                 "tenant_id": tenant_id,
                 "step_id": step["executable_step_id"],
             },

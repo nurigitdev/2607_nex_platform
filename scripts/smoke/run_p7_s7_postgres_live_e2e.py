@@ -187,8 +187,7 @@ def run_p7_s7_postgres_live_e2e(
         checks = {
             "ae_migration_current": ae_migration.planned[-1]
             == "2405_ae_claimed_planning_source",
-            "wc_migration_current": wc_migration.planned[-1]
-            == "1002_wc_work_result",
+            "wc_migration_current": wc_migration.planned[-1] == "1002_wc_work_result",
             **dict(execution.get("checks") or {}),
         }
         evidence = {
@@ -223,7 +222,13 @@ def run_p7_s7_postgres_live_e2e(
 
 
 def _execute_live_e2e(
-    *, ae_url: str, wc_url: str, nsl_source: Path, runtime_environ: dict[str, str]
+    *,
+    ae_url: str,
+    wc_url: str,
+    nsl_source: Path,
+    runtime_environ: dict[str, str],
+    authorization_source=None,
+    parent_resume_verifier=None,
 ) -> dict[str, object]:
     original_environ = dict(os.environ)
     os.environ.clear()
@@ -245,7 +250,10 @@ def _execute_live_e2e(
                 request_id=f"p7-s7-readiness-{uuid4().hex}",
                 trace_id=uuid4().hex,
             )
-            if readiness.readiness_status != "READY" or readiness.source != "active_preflight":
+            if (
+                readiness.readiness_status != "READY"
+                or readiness.source != "active_preflight"
+            ):
                 raise RuntimeError("actual MO provider readiness is not READY")
             try:
                 evidence = p5_s5._execute_postgres_smoke(
@@ -261,20 +269,22 @@ def _execute_live_e2e(
                                 "집행액, 잔액을 근거와 함께 한국어로 요약한다."
                             )
                         },
-                        continuation_verifier=lambda continued: _verify_background_runtime(
-                            continued,
-                            client=client,
-                            readiness=readiness,
-                            nsl_source=nsl_source,
+                        continuation_verifier=lambda continued: (
+                            _verify_background_runtime(
+                                continued,
+                                client=client,
+                                readiness=readiness,
+                                nsl_source=nsl_source,
+                                authorization_source=authorization_source,
+                                parent_resume_verifier=parent_resume_verifier,
+                            )
                         ),
                     ),
                 )
             except Exception as exc:
                 stages = ",".join(client.generation_stages) or "none"
                 code = str(getattr(exc, "error_code", type(exc).__name__))
-                shape = json.dumps(
-                    client.candidate_shapes.get("PLAN"), sort_keys=True
-                )
+                shape = json.dumps(client.candidate_shapes.get("PLAN"), sort_keys=True)
                 raise RuntimeError(
                     f"live semantic stage failure after [{stages}]: {code}; "
                     f"plan_shape={shape}"
@@ -305,6 +315,8 @@ def _verify_background_runtime(
     client,
     readiness,
     nsl_source: Path,
+    authorization_source=None,
+    parent_resume_verifier=None,
 ) -> dict[str, object]:
     ae_factory = fixture["factory"]
     wc_factory = fixture["wc_factory"]
@@ -338,7 +350,7 @@ def _verify_background_runtime(
     coordination = WorkCoordinationService(
         SqlAlchemyCoordinationRepository(wc_factory),
         candidate_source=p7_s6._Candidates(candidate),
-        authorization_source=p7_s6._Authorization(),
+        authorization_source=authorization_source or p7_s6._Authorization(),
         policy=RoutingPolicy({CAPABILITY: (PROFILE,)}),
         clock=lambda: now_dt,
     )
@@ -378,9 +390,7 @@ def _verify_background_runtime(
     )
     current_snapshot = capabilities.get_latest(tenant_id=tenant_id)
     snapshot_version = (
-        1
-        if current_snapshot is None
-        else int(current_snapshot["snapshot_version"]) + 1
+        1 if current_snapshot is None else int(current_snapshot["snapshot_version"]) + 1
     )
     capabilities.save(
         p65_s7.build_capability_snapshot(
@@ -463,6 +473,9 @@ def _verify_background_runtime(
                 work_item_id=work_item_id,
                 wait_id=wait_id,
                 now=now,
+                parent_execution=parent,
+                authorization_source=authorization_source,
+                parent_resume_verifier=parent_resume_verifier,
             ),
         )
     with ae_factory.begin() as session:
@@ -513,6 +526,9 @@ def _publish_and_resume(
     work_item_id: str,
     wait_id: str,
     now: str,
+    parent_execution=None,
+    authorization_source=None,
+    parent_resume_verifier=None,
 ) -> dict[str, object]:
     ae_factory = fixture["factory"]
     tenant_id = str(fixture["tenant_id"])
@@ -521,7 +537,7 @@ def _publish_and_resume(
     result_repository = SqlAlchemyWorkResultRepository(wc_factory)
     results = WorkResultService(
         result_repository,
-        authorization_source=p7_s6._Authorization(),
+        authorization_source=authorization_source or p7_s6._Authorization(),
         clock=lambda: datetime.fromisoformat(now.replace("Z", "+00:00")),
     )
     client = _DirectWcResultClient(items=items, results=results)
@@ -583,6 +599,22 @@ def _publish_and_resume(
             ),
             {"tenant_id": tenant_id, "wait_id": wait_id},
         ).one()
+    parent_completion = (
+        {}
+        if parent_resume_verifier is None
+        else dict(
+            parent_resume_verifier(
+                {
+                    **dict(fixture),
+                    "wc_factory": wc_factory,
+                    "work_item_id": work_item_id,
+                    "wait_id": wait_id,
+                    "result_event": loaded["event_payload"],
+                    "parent_execution": parent_execution,
+                }
+            )
+        )
+    )
     return {
         "checks": {
             "wc_result_exact_ack": published["delivery_state"] == "ACKNOWLEDGED",
@@ -592,8 +624,18 @@ def _publish_and_resume(
             "parent_resume_event_matched": admitted_event["inbox_state"] == "MATCHED"
             and tuple(wait) == ("RESUME_QUEUED",),
             "duplicate_result_event_idempotent": duplicate_event["created"] is False,
+            **dict(parent_completion.get("checks") or {}),
         },
-        "row_counts": {"wc_work_result": 1, "ae_result_event": 1},
+        "row_counts": {
+            "wc_work_result": 1,
+            "ae_result_event": 1,
+            **dict(parent_completion.get("row_counts") or {}),
+        },
+        **{
+            key: value
+            for key, value in parent_completion.items()
+            if key not in {"checks", "row_counts"}
+        },
     }
 
 
@@ -634,8 +676,7 @@ def _candidate_shape(
             for item in steps
         ]
         shape["logical_step_types"] = [
-            item.get("step_type") if isinstance(item, dict) else None
-            for item in steps
+            item.get("step_type") if isinstance(item, dict) else None for item in steps
         ]
     mappings = value.get("completion_mapping")
     if isinstance(mappings, list):

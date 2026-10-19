@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable, Mapping
 import json
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +34,6 @@ from run_platform_production_transition_dependency_plan import (
 from run_platform_runtime_deployment_coupling_audit import (
     run_platform_runtime_deployment_coupling_audit,
 )
-
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_VERSION = "s141_platform_production_readiness_closure.v1"
@@ -145,8 +144,7 @@ def run_s141_platform_production_readiness_closure(
         "all_slice_canonical_runbook_documents_present": all(
             document_presence.values()
         ),
-        "closure_registered_once_in_full_gate": quality_gate.count(CLOSURE_RUNNER)
-        == 1,
+        "closure_registered_once_in_full_gate": quality_gate.count(CLOSURE_RUNNER) == 1,
         "plan_marks_s141_complete": all(
             token in plan
             for token in (
@@ -208,8 +206,16 @@ def run_s141_platform_production_readiness_closure(
         },
         "production_responsibility_baseline_exact": (
             responsibility_summary.get("control_count") == 9
-            and responsibility_summary.get("owner_count") == 6
-            and responsibility_summary.get("database_owner_count") == 5
+            and responsibility_summary.get("owner_count") == 7
+            and responsibility_summary.get("database_owner_count") == 6
+            and all(
+                _mapping(responsibility.get("checks")).get(check) is True
+                for check in (
+                    "all_seven_owners_accountable",
+                    "all_seven_owners_responsible",
+                    "six_database_owners_exact",
+                )
+            )
         ),
         "operational_gaps_remain_open": (
             operations_summary.get("gap_count") == 12
@@ -234,17 +240,13 @@ def run_s141_platform_production_readiness_closure(
             and contract_summary.get("decision_state_count") == 2
         ),
         "no_production_execution_claimed": (
-            _mapping(boundary.get("decision")).get(
-                "production_deployment_approved"
-            )
+            _mapping(boundary.get("decision")).get("production_deployment_approved")
             is False
             and _mapping(configuration.get("decision")).get(
                 "production_admission_complete"
             )
             is False
-            and _mapping(operations.get("decision")).get(
-                "production_admission_blocked"
-            )
+            and _mapping(operations.get("decision")).get("production_admission_blocked")
             is True
             and _mapping(transition.get("decision")).get(
                 "production_deployment_performed"
