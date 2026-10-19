@@ -44,7 +44,11 @@ class _Agents:
 
 class _Authorization:
     def effective_authorization(self, **kwargs):
-        return {"active": True, "scopes": ["work:claim"], "revision_hash": "b" * 64}
+        return {
+            "active": True,
+            "scopes": ["work:delegate", "work:claim"],
+            "revision_hash": "b" * 64,
+        }
 
 
 def _payload():
@@ -101,6 +105,7 @@ def test_s3_actual_postgres_atomic_claim_restart_and_zero_residue():
     try:
         item = WorkItemService(
             SqlAlchemyWorkItemRepository(sessions),
+            authorization_source=_Authorization(),
             id_factory=lambda: next(ids),
             clock=lambda: NOW,
         ).create(_payload())["work_item"]
@@ -177,6 +182,7 @@ def test_s3_actual_postgres_repository_conflicts_are_fail_closed():
 
         item = WorkItemService(
             SqlAlchemyWorkItemRepository(sessions),
+            authorization_source=_Authorization(),
             id_factory=lambda: "11111111-1111-4111-8111-111111111134",
             clock=lambda: NOW,
         ).create(_payload())["work_item"]

@@ -33,7 +33,9 @@ replay, and zero owned residue.
   seven responsibility owners. The responsibility audit itself already
   enforced those current values.
 
-No new table or migration was introduced.
+The original P7-S9 Slice introduced no new table or migration. P7-CA02 later
+added the additive `1003_wc_work_item_authorization` migration and reran this
+same Golden B journey without changing its execution topology.
 
 ## Protected Acceptance
 
@@ -46,13 +48,14 @@ AE database / role       = nex_ae_test / nex_ae_user
 WC database / role       = nex_wc_test / nex_wc_user
 OA database / role       = nex_oa_test / nex_oa_user
 AE migration head        = 2405_ae_claimed_planning_source
-WC migration head        = 1002_wc_work_result
+WC migration head        = 1003_wc_work_item_authorization
 OA migration head        = 1376_oa_trace_projection_index
 generation model         = Qwen3.5-4B
 semantic stages          = INTENT, CONTEXT, PLAN
 NSL source revision      = 3b4cb198888570a857e6fb0d3aa077930bb23504
 claim generation         = 1
-OA bootstrap/read calls  = 1 / 2
+OA bootstrap/read calls  = 1 / 3
+OA authorization gates   = work:delegate / work:claim / work:result:submit
 checks                    = 51 / 51
 owned residue             = 0
 ```
@@ -62,7 +65,9 @@ The generated background plan contains `LOCAL_SKILL` followed by
 then completes its own deterministic report. Replaying publication and parent
 finalization returns the committed state without a second result.
 
-Sanitized evidence is stored in
+The CA02 rerun preserves 51/51 checks while adding the create-time
+`work:delegate` gate to the existing claim and result-submit checks. Sanitized
+evidence is stored in
 `reports/live/p7-s9-postgres-live-golden-b.json`.
 
 ## Verification
@@ -76,8 +81,8 @@ Sanitized evidence is stored in
 - Authoritative WC/P7 Gate: `181 passed`; statement `96.74%`; branch `94.12%`.
 - Contract validation: 174 schemas, 236 examples, 204 negative examples, and
   8 OpenAPI documents.
-- Repository Full Gate: `15,386 passed`, `47 skipped`; statement `96.87%`;
-  branch `96.27%`.
+- P7-CA02 Repository Full Gate: `15,407 passed`, `48 skipped`; statement
+  `96.83%`; branch `96.22%`.
 
 The Full Gate initially exposed only a stale S141 hardcoded five-database
 expectation after WC became the sixth service database owner. The current

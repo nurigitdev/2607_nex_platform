@@ -91,7 +91,7 @@ class _Authorization:
     def effective_authorization(self, **kwargs):
         return {
             "active": True,
-            "scopes": ["work:claim", "work:result:submit"],
+            "scopes": ["work:delegate", "work:claim", "work:result:submit"],
             "revision_hash": "a" * 64,
         }
 
@@ -125,9 +125,11 @@ def _work_payload():
 
 def _wc_runtime():
     work_repository = InMemoryWorkItemRepository()
-    item = WorkItemService(work_repository, clock=lambda: NOW_DT).create(
-        _work_payload()
-    )["work_item"]
+    item = WorkItemService(
+        work_repository,
+        authorization_source=_Authorization(),
+        clock=lambda: NOW_DT,
+    ).create(_work_payload())["work_item"]
     ids = iter(
         (
             "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb6",

@@ -15,13 +15,13 @@
     "wc": "nex_wc_test/nex_wc_user"
   },
   "hash_safe_lineage": {
-    "work_item": "sha256:5be4cc3404bc55a4b88c1ac0c47971807aef2fd5424fd2e9041251d7777bdd84",
-    "work_result": "sha256:981703a6202a154a6f53f221a9d6f4f4cbbe2e9c6136088a3ef50a1476f1bb55"
+    "work_item": "sha256:19cea53256b54273d95c1987180c7c007fa94901504f2fd6918274712ac3014e",
+    "work_result": "sha256:1209e9671bb18d2674597a8d8eb5a1b4dbc55ed053b3bc2999f3328f94830ea0"
   },
   "migration_heads": {
     "nex-ae-api": "2405_ae_claimed_planning_source",
     "nex-oa": "1376_oa_trace_projection_index",
-    "nex-wc": "1002_wc_work_result"
+    "nex-wc": "1003_wc_work_item_authorization"
   },
   "nsl": {
     "backend_profile": "NSL_V01_IN_PROCESS",
@@ -29,7 +29,12 @@
   },
   "oa_authorization": {
     "bootstrap_calls": 1,
-    "effective_authorization_calls": 2
+    "effective_authorization_calls": 3,
+    "gates": [
+      "work:delegate",
+      "work:claim",
+      "work:result:submit"
+    ]
   },
   "profile": "test",
   "prompt_registry_versions": {
@@ -56,10 +61,10 @@
       "statement_coverage": 98.29
     },
     "full": {
-      "branch_coverage": 96.27,
-      "passed": 15386,
-      "skipped_protected_smokes": 47,
-      "statement_coverage": 96.87
+      "branch_coverage": 96.22,
+      "passed": 15407,
+      "skipped_protected_smokes": 48,
+      "statement_coverage": 96.83
     },
     "wc_p7": {
       "branch_coverage": 94.12,
@@ -82,6 +87,6 @@
   },
   "slice": "P7-S9",
   "smoke_schema_version": "p7_s9_postgres_live_golden_b.v1",
-  "source_revision_under_test": "b25051aef96e6626936eb2eb46a8b61466ad4c6b",
+  "source_revision_under_test": "1918d9bc2c8f65818079cd3102a500b08623faba+ca02-working-tree",
   "status": "PASS"
 }

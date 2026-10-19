@@ -23,6 +23,15 @@ from sqlalchemy.exc import SQLAlchemyError
 ROOT = Path(__file__).resolve().parents[1]
 
 
+class _Authorization:
+    def effective_authorization(self, **_kwargs):
+        return {
+            "active": True,
+            "scopes": ["work:delegate"],
+            "revision_hash": "a" * 64,
+        }
+
+
 def _spec(**overrides):
     value = {
         "schema_version": "1.0",
@@ -60,6 +69,7 @@ def _payload(**overrides):
 def _service():
     return WorkItemService(
         InMemoryWorkItemRepository(),
+        authorization_source=_Authorization(),
         id_factory=lambda: "11111111-1111-4111-8111-111111111111",
         clock=lambda: datetime(2026, 10, 18, 1, 2, 3, tzinfo=UTC),
     )
@@ -270,7 +280,9 @@ def test_s1_more_create_boundaries(changes):
 
 
 def test_s1_default_factories_and_error_text_are_usable():
-    service = WorkItemService(InMemoryWorkItemRepository())
+    service = WorkItemService(
+        InMemoryWorkItemRepository(), authorization_source=_Authorization()
+    )
     created = service.create(_payload())
     assert created["work_item"]["work_item_id"]
     assert str(WorkItemError("code", "detail")) == "detail"

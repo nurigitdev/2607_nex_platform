@@ -97,7 +97,7 @@ class _Authorization:
     def __init__(self, **overrides):
         self.value = {
             "active": True,
-            "scopes": ["work:claim"],
+            "scopes": ["work:delegate", "work:claim"],
             "revision_hash": "a" * 64,
         }
         self.value.update(overrides)
@@ -110,6 +110,7 @@ def _runtime(*, candidates=None, authorization=None):
     work_repo = InMemoryWorkItemRepository()
     work_items = WorkItemService(
         work_repo,
+        authorization_source=_Authorization(),
         id_factory=lambda: "11111111-1111-4111-8111-111111111131",
         clock=lambda: NOW,
     )
@@ -265,6 +266,7 @@ def test_s3_in_memory_repository_conflict_guards_are_explicit():
 
     item = WorkItemService(
         work_repo,
+        authorization_source=_Authorization(),
         id_factory=lambda: "11111111-1111-4111-8111-111111111132",
         clock=lambda: NOW,
     ).create(_payload())["work_item"]

@@ -42,9 +42,9 @@ def test_s5_smoke_composes_two_migrations_and_redacted_evidence(monkeypatch):
             skipped=("2403_ae_delegate_work_activation",),
         ),
         "nex-wc": SimpleNamespace(
-            planned=("1001_wc_assignment_claim",),
+            planned=("1003_wc_work_item_authorization",),
             applied=(),
-            skipped=("1001_wc_assignment_claim",),
+            skipped=("1003_wc_work_item_authorization",),
         ),
     }
     monkeypatch.setattr(

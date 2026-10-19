@@ -14,6 +14,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_wc.authorization import (
+    AuthorizationSource,
+    AuthorizationSubjectDenied,
+    require_active_scope,
+)
+
 WORK_CLASSES = frozenset(
     {
         "QUERY",
@@ -172,10 +178,12 @@ class WorkItemService:
         self,
         repository: WorkItemRepository,
         *,
+        authorization_source: AuthorizationSource,
         id_factory: Callable[[], str] | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._repository = repository
+        self._authorization_source = authorization_source
         self._id_factory = id_factory or (lambda: str(uuid4()))
         self._clock = clock or (lambda: datetime.now(UTC))
 
@@ -199,7 +207,6 @@ class WorkItemService:
         requester = _entity_ref(payload.get("requester"), "requester")
         owner = _entity_ref(payload.get("accountable_owner"), "accountable_owner")
         closure = _closure_policy(payload.get("closure_policy"))
-        now = self._clock().astimezone(UTC).isoformat().replace("+00:00", "Z")
         title_value = payload["title"] if "title" in payload else spec["goal"][:300]
         title = str(title_value).strip()
         if not title or len(title) > 300:
@@ -219,6 +226,29 @@ class WorkItemService:
         identity = delegation_identity(spec)
         idempotency_key = semantic_sha256_hash_ref(identity)
         delegation_hash = semantic_sha256_hash_ref(spec)
+        subject_id = requester["entity_id"]
+        try:
+            authorization = self._authorization_source.effective_authorization(
+                tenant_id=spec["tenant_id"], subject_id=subject_id
+            )
+            revision_hash = require_active_scope(
+                authorization,
+                required_scope="work:delegate",
+            )
+        except AuthorizationSubjectDenied as exc:
+            raise WorkItemError(
+                "wc.work_item_authorization_denied",
+                "Requester lacks active work:delegate authority.",
+                403,
+            ) from exc
+        except Exception as exc:
+            raise WorkItemError(
+                "wc.work_item_authorization_unavailable",
+                "OA effective authorization is unavailable.",
+                503,
+                True,
+            ) from exc
+        now = self._clock().astimezone(UTC).isoformat().replace("+00:00", "Z")
         work_item = {
             "schema_version": "2.1",
             "tenant_id": spec["tenant_id"],
@@ -276,6 +306,9 @@ class WorkItemService:
             "delegation_revision": spec["delegation_revision"],
             "project_id": spec["project_ref"]["entity_id"],
             "required_agent_type": spec["required_agent_type"],
+            "create_authorization_revision_hash": revision_hash,
+            "create_authorization_checked_at": now,
+            "create_authorized_subject_id": subject_id,
             "version": 1,
             "created_at": now,
             "updated_at": now,
@@ -351,7 +384,9 @@ def validate_delegation_spec(value: object) -> dict[str, Any]:
     if project["entity_type"] != "PROJECT":
         raise _invalid("project_ref.entity_type must be PROJECT")
     if project["entity_id"] != spec["project_scope_ref"]:
-        raise _invalid("project_ref and project_scope_ref must identify the same project")
+        raise _invalid(
+            "project_ref and project_scope_ref must identify the same project"
+        )
     spec["project_ref"] = project
     causation_id = spec.get("causation_id")
     if causation_id is not None:
@@ -432,6 +467,14 @@ def _require_same_semantics(
             "The delegation identity already exists with different semantics.",
             409,
         )
+    existing_requester = existing.get("work_item", {}).get("requester", {})
+    candidate_requester = candidate.get("work_item", {}).get("requester", {})
+    if existing_requester.get("entity_id") != candidate_requester.get("entity_id"):
+        raise WorkItemError(
+            "wc.work_item_idempotency_conflict",
+            "The delegation identity belongs to a different requester.",
+            409,
+        )
 
 
 def _load_by_semantic_key(
@@ -464,6 +507,13 @@ def _record_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
         "delegation_revision": int(row["delegation_revision"]),
         "project_id": row["project_id"],
         "required_agent_type": row["required_agent_type"],
+        "create_authorization_revision_hash": row["create_authorization_revision_hash"],
+        "create_authorization_checked_at": (
+            None
+            if row["create_authorization_checked_at"] is None
+            else str(row["create_authorization_checked_at"])
+        ),
+        "create_authorized_subject_id": row["create_authorized_subject_id"],
         "version": int(row["version"]),
         "created_at": str(row["created_at"]),
         "updated_at": str(row["updated_at"]),
@@ -474,7 +524,9 @@ _SELECT_COLUMNS = """
     tenant_id, work_item_id, idempotency_key, delegation_semantic_hash,
     delegation_spec, work_item, state, source_type, parent_execution_id,
     parent_plan_id, parent_step_id, delegation_revision, project_id,
-    required_agent_type, version, created_at, updated_at
+    required_agent_type, create_authorization_revision_hash,
+    create_authorization_checked_at, create_authorized_subject_id,
+    version, created_at, updated_at
 """
 
 _INSERT_SQL = """
@@ -482,13 +534,16 @@ _INSERT_SQL = """
         tenant_id, work_item_id, idempotency_key, delegation_semantic_hash,
         delegation_spec, work_item, state, source_type, parent_execution_id,
         parent_plan_id, parent_step_id, delegation_revision, project_id,
-        required_agent_type, version, created_at, updated_at
+        required_agent_type, create_authorization_revision_hash,
+        create_authorization_checked_at, create_authorized_subject_id,
+        version, created_at, updated_at
     ) VALUES (
         :tenant_id, :work_item_id, :idempotency_key, :delegation_semantic_hash,
         CAST(:delegation_spec AS JSONB), CAST(:work_item AS JSONB), :state,
         :source_type, :parent_execution_id, :parent_plan_id, :parent_step_id,
-        :delegation_revision, :project_id, :required_agent_type, :version,
-        :created_at, :updated_at
+        :delegation_revision, :project_id, :required_agent_type,
+        :create_authorization_revision_hash, :create_authorization_checked_at,
+        :create_authorized_subject_id, :version, :created_at, :updated_at
     ) ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
 """
 

@@ -16,6 +16,15 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+class _Authorization:
+    def effective_authorization(self, **_kwargs):
+        return {
+            "active": True,
+            "scopes": ["work:delegate"],
+            "revision_hash": "a" * 64,
+        }
+
+
 def _payload(goal: str = "Produce a margin report"):
     return {
         "delegation_spec": {
@@ -54,6 +63,7 @@ def test_s1_actual_postgres_upsert_select_restart_and_zero_residue():
     try:
         service = WorkItemService(
             SqlAlchemyWorkItemRepository(sessions),
+            authorization_source=_Authorization(),
             id_factory=lambda: "77777777-7777-4777-8777-777777777771",
             clock=lambda: datetime(2026, 10, 18, 2, 0, tzinfo=UTC),
         )
@@ -63,7 +73,10 @@ def test_s1_actual_postgres_upsert_select_restart_and_zero_residue():
         assert repeated["created"] is False
         assert repeated["work_item"]["work_item_id"] == created["work_item"]["work_item_id"]
 
-        restarted = WorkItemService(SqlAlchemyWorkItemRepository(sessions))
+        restarted = WorkItemService(
+            SqlAlchemyWorkItemRepository(sessions),
+            authorization_source=_Authorization(),
+        )
         loaded = restarted.get(
             tenant_id=tenant_id,
             work_item_id=created["work_item"]["work_item_id"],

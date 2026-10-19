@@ -15,6 +15,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_wc.authorization import (
+    AuthorizationSource,
+    AuthorizationSubjectDenied,
+    require_active_scope,
+)
 from nex_wc.work_items import InMemoryWorkItemRepository
 
 DEFAULT_ROUTING_POLICY_VERSION = "p7-routing-policy.v1"
@@ -42,12 +47,6 @@ class AgentCandidateSource(Protocol):
     ) -> Sequence[Mapping[str, Any]]: ...
 
     def get_agent(self, *, tenant_id: str, agent_id: str) -> Mapping[str, Any] | None: ...
-
-
-class AuthorizationSource(Protocol):
-    def effective_authorization(
-        self, *, tenant_id: str, subject_id: str
-    ) -> Mapping[str, Any]: ...
 
 
 class CoordinationRepository(Protocol):
@@ -264,6 +263,16 @@ class WorkCoordinationService:
             authorization = self._authorization_source.effective_authorization(
                 tenant_id=tenant_id, subject_id=subject_id
             )
+            revision_hash = require_active_scope(
+                authorization,
+                required_scope="work:claim",
+            )
+        except AuthorizationSubjectDenied as exc:
+            raise CoordinationError(
+                "wc.claim_authorization_denied",
+                "Requester lacks active work:claim authority.",
+                403,
+            ) from exc
         except Exception as exc:
             raise CoordinationError(
                 "wc.oa_authorization_unavailable",
@@ -271,25 +280,6 @@ class WorkCoordinationService:
                 503,
                 True,
             ) from exc
-        scopes = authorization.get("scopes")
-        if (
-            authorization.get("active") is not True
-            or not isinstance(scopes, Sequence)
-            or isinstance(scopes, (str, bytes))
-        ):
-            raise CoordinationError(
-                "wc.claim_authorization_denied",
-                "Requester membership is not active.",
-                403,
-            )
-        if "work:claim" not in scopes:
-            raise CoordinationError(
-                "wc.claim_authorization_denied",
-                "Requester lacks work:claim.",
-                403,
-            )
-        revision_hash = authorization.get("revision_hash")
-        _required("authorization revision_hash", revision_hash)
         now_dt = self._clock().astimezone(UTC)
         now = _time(now_dt)
         lease_token = self._token_factory()

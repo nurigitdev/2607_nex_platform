@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX Work Coordination API
-  version: 2.1.0-p7-s1
+  version: 2.1.0-p7-ca02
 servers:
   - url: http://127.0.0.1:8106
 paths:
@@ -24,6 +24,10 @@ paths:
   /api/v1/work-items:
     post:
       operationId: createWcWorkItem
+      description: >-
+        Creates or idempotently resolves delegated work only after a fresh OA
+        effective-authorization check confirms active work:delegate authority
+        for requester.entity_id.
       security: [{serviceBearer: []}]
       x-nex-required-scopes: [service:call]
       requestBody:
@@ -36,8 +40,9 @@ paths:
         "200": {description: Idempotent existing WorkItem}
         "400": {description: Invalid delegation}
         "401": {description: Invalid service token}
+        "403": {description: Fresh OA work:delegate authorization denied}
         "409": {description: Idempotency conflict}
-        "503": {description: WC persistence unavailable}
+        "503": {description: OA authorization or WC persistence unavailable}
   /api/v1/work-items/{work_item_id}:
     get:
       operationId: getWcWorkItem
@@ -91,6 +96,33 @@ paths:
         "403": {description: Fresh OA work:claim authorization denied}
         "409": {description: Claim authority conflict}
         "503": {description: "AE, OA, or WC persistence unavailable"}
+  /api/v1/work-items/{work_item_id}/results:
+    post:
+      operationId: submitWcWorkResult
+      description: >-
+        Accepts an immutable Agent WorkResult from nex-ae-api only after fresh
+        OA work:result:submit authorization and exact Claim, Assignment, and
+        WorkItem version validation.
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      x-nex-allowed-service-ids: [nex-ae-api]
+      parameters:
+        - {$ref: "#/components/parameters/WorkItemId"}
+        - {$ref: "#/components/parameters/TenantIdHeader"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/WorkResultSubmitRequest"}
+      responses:
+        "201": {description: WorkResult created and acknowledged}
+        "200": {description: Idempotent WorkResult replay acknowledged}
+        "400": {description: Invalid WorkResult or request shape}
+        "401": {description: Invalid service token}
+        "403": {description: Caller or fresh OA work:result:submit authorization denied}
+        "404": {description: WorkItem not found}
+        "409": {description: "Stale Claim, Assignment, version, or semantic conflict"}
+        "503": {description: OA authorization or WC persistence unavailable}
 components:
   securitySchemes:
     serviceBearer:
@@ -127,6 +159,52 @@ components:
         closure_policy: {type: object}
         priority: {enum: [LOW, NORMAL, HIGH, URGENT]}
         due_at: {type: [string, "null"], format: date-time}
+    WorkResultSubmitRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_version, work_result]
+      properties:
+        expected_version: {type: integer, minimum: 1}
+        work_result: {$ref: "#/components/schemas/WorkResult"}
+    WorkResult:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - tenant_id
+        - result_id
+        - work_item_id
+        - revision_no
+        - result_type
+        - technical_outcome
+        - business_outcome
+        - submitted_by
+        - trace
+        - submitted_at
+      properties:
+        schema_version: {const: "2.1"}
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        result_id: {type: string, minLength: 1, maxLength: 128}
+        work_item_id: {type: string, format: uuid}
+        revision_no: {type: integer, minimum: 1}
+        result_type: {type: string, minLength: 1, maxLength: 120}
+        summary: {type: [string, "null"], maxLength: 4000}
+        payload: {type: [object, "null"]}
+        schema_ref: {type: [string, "null"], maxLength: 512}
+        technical_outcome: {enum: [SUCCEEDED, PARTIAL, FAILED, UNKNOWN]}
+        business_outcome:
+          enum: [VERIFIED, REVISED, REJECTED, PENDING_VERIFICATION, NOT_APPLICABLE]
+        artifact_refs: {type: array, items: {$ref: "#/components/schemas/EntityRef"}}
+        evidence_refs: {type: array, items: {$ref: "#/components/schemas/EntityRef"}}
+        business_object_refs: {type: array, items: {$ref: "#/components/schemas/EntityRef"}}
+        source_execution_ref: {type: [string, "null"], maxLength: 128}
+        source_plan_ref: {type: [string, "null"], maxLength: 128}
+        claim_ref: {type: [string, "null"], maxLength: 128}
+        claim_generation: {type: [integer, "null"], minimum: 1}
+        assignment_ref: {type: [string, "null"], maxLength: 128}
+        submitted_by: {enum: [AGENT]}
+        trace: {type: object}
+        submitted_at: {type: string, format: date-time}
     EntityRef:
       type: object
       additionalProperties: false

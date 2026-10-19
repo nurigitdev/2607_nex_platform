@@ -35,12 +35,21 @@ class _Client:
     def get(self, *_args, **_kwargs):
         self.gets += 1
         authorization: object = {
-            "scopes": ["work:claim", "work:result:submit"],
+            "scopes": ["work:delegate", "work:claim", "work:result:submit"],
             "revision_hash": "a" * 64,
         }
         if not self.valid_authorization:
             authorization = []
         return _Response({"authorization": authorization})
+
+
+class _Authorization:
+    def effective_authorization(self, **_kwargs):
+        return {
+            "active": True,
+            "scopes": ["work:delegate"],
+            "revision_hash": "a" * 64,
+        }
 
 
 def _environment() -> dict[str, str]:
@@ -93,7 +102,7 @@ def test_s9_composes_three_migrations_and_sanitized_evidence(monkeypatch) -> Non
     )
     heads = {
         "nex-ae-api": "2405_ae_claimed_planning_source",
-        "nex-wc": "1002_wc_work_result",
+        "nex-wc": "1003_wc_work_item_authorization",
         "nex-oa": "1303_oa_mvp_acceptance",
     }
     monkeypatch.setattr(
@@ -162,11 +171,19 @@ def test_oa_api_source_bootstraps_once_and_reads_each_authorization() -> None:
     second = source.effective_authorization(
         tenant_id="tenant-a", subject_id="employee-100"
     )
+    third = source.effective_authorization(
+        tenant_id="tenant-a", subject_id="employee-100"
+    )
 
-    assert first == second
+    assert first == second == third
     assert first["active"] is True
     assert client.posts == source.bootstrap_calls == 1
-    assert client.gets == source.authorization_calls == 2
+    assert client.gets == source.authorization_calls == 3
+    assert source.observed_gates == [
+        "work:delegate",
+        "work:claim",
+        "work:result:submit",
+    ]
     assert source.tenant_ids == ("tenant-a",)
 
 
@@ -311,7 +328,9 @@ def _patch_parent_completion_dependencies(monkeypatch, *, claims, executions) ->
     monkeypatch.setattr(smoke, "SqlAlchemyRuntimeJobQueue", lambda *_args: queue)
     monkeypatch.setattr(smoke, "SqlAlchemyMultiStepEngine", lambda *_args: engine)
     monkeypatch.setattr(smoke, "SqlAlchemyWorkItemRepository", lambda *_args: object())
-    monkeypatch.setattr(smoke, "WorkItemService", lambda *_args: object())
+    monkeypatch.setattr(
+        smoke, "WorkItemService", lambda *_args, **_kwargs: object()
+    )
     monkeypatch.setattr(
         smoke, "SqlAlchemyDelegationRuntimeRepository", lambda *_args: object()
     )
@@ -334,6 +353,7 @@ def _parent_fixture() -> dict[str, object]:
     return {
         "factory": object(),
         "wc_factory": object(),
+        "authorization_source": _Authorization(),
         "tenant_id": "tenant-a",
         "parent_execution": {
             "agent_execution_id": "00000000-0000-4000-8000-000000000001"

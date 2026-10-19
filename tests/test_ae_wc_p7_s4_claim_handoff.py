@@ -150,7 +150,11 @@ class _Agents:
 
 class _Authorization:
     def effective_authorization(self, **kwargs):
-        return {"active": True, "scopes": ["work:claim"], "revision_hash": "d" * 64}
+        return {
+            "active": True,
+            "scopes": ["work:delegate", "work:claim"],
+            "revision_hash": "d" * 64,
+        }
 
 
 def _work_payload():
@@ -183,6 +187,7 @@ def _claimed_work():
     work_repository = InMemoryWorkItemRepository()
     item = WorkItemService(
         work_repository,
+        authorization_source=_Authorization(),
         id_factory=lambda: "11111111-1111-4111-8111-111111111114",
         clock=lambda: NOW_DT,
     ).create(_work_payload())["work_item"]

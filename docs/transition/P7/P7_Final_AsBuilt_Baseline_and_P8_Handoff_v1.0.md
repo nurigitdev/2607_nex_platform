@@ -1,6 +1,6 @@
 # P7 Final As-Built Baseline and P8 Handoff v1.0
 
-**Status:** FINAL / P7 CLOSED / P8 ENTRY AUTHORIZED
+**Status:** FINAL / P7 CLOSED / P7-CA02 CLOSED / P8 ENTRY AUTHORIZED
 **Phase Closed:** P7 - Work Coordination + CA/PA/EA Background Work
 **Next Phase:** P8 - Controlled WRITE / Approval / Enterprise OS
 **Observed Date:** 2026-10-19
@@ -14,13 +14,16 @@ closed authority chain is:
 
 ```text
 DELEGATE_WORK
+-> fresh OA work:delegate authorization
 -> WC WorkItem
 -> deterministic route
+-> fresh OA work:claim authorization
 -> atomic Claim / assignment
 -> CLAIMED_WORKITEM AgentExecution
 -> existing P5/P6.5 planning admission
 -> existing P6 RuntimeJob / in-process NSL READ
 -> AgentResult / ResultDelivery
+-> fresh OA work:result:submit authorization
 -> acknowledged WC WorkResult
 -> AE event inbox / RESUME_EXECUTION
 -> parent deterministic continuation
@@ -49,6 +52,8 @@ P7 closes with:
   records;
 - AE CA/PA/EA registry support and `CLAIMED_WORKITEM` admission;
 - `WC_DELEGATE_WORK` compilation and `DELEGATE_WORK` execution;
+- fresh OA `work:delegate` admission for WorkItem create and replay, with
+  metadata-safe revision evidence and requester-bound idempotency;
 - durable WaitRegistration and exactly-once semantic resume;
 - claim generation reclaim and stale-authority rejection;
 - ACK-bound child success and immutable WorkResult retry semantics;
@@ -60,7 +65,7 @@ Current migration heads are:
 
 ```text
 NeX-AE = 2405_ae_claimed_planning_source
-NeX-WC = 1002_wc_work_result
+NeX-WC = 1003_wc_work_item_authorization
 NeX-OA = 1376_oa_trace_projection_index
 ```
 
@@ -75,7 +80,7 @@ provider mode/profile/model = live / general-llm-default / Qwen3.5-4B
 semantic stages             = INTENT / CONTEXT / PLAN
 prompt bindings             = intent v1 / context v2 / plan v1
 OA membership bootstrap     = 1
-OA effective auth reads     = 2
+OA effective auth reads     = 3 (delegate / claim / result submit)
 WorkResult                  = 1
 RESUME_EXECUTION            = 1
 parent StepResults          = 2
@@ -92,10 +97,12 @@ content, and hidden reasoning are absent from evidence.
 | --- | --- |
 | Protected P7-S9 Golden B | `16 passed`; 51/51 checks; statement/branch `100%` |
 | P7-S8 recovery smoke | 26/26 checks; zero residue |
+| P7-CA02 denied PostgreSQL smoke | 23/23 checks; zero WorkItem/Claim/Assignment/child execution mutation |
+| P7-CA02 affected regression | `196 passed, 8 skipped`; new authorization module statement/branch `100%` |
 | AE Slice Gate | `4,513 passed, 16 skipped`; statement `98.29%`; branch `96.14%` |
 | WC/P7 Gate | `181 passed`; statement `96.74%`; branch `94.12%` |
 | Contract validation | 174 schemas, 236 examples, 204 negative examples, 8 OpenAPI documents |
-| Repository Full Gate | `15,386 passed, 47 skipped`; statement `96.87%`; branch `96.27%` |
+| Repository Full Gate | `15,407 passed, 48 skipped`; statement `96.83%`; branch `96.22%` |
 
 The P7-S9 runner is protected and remains skipped in ordinary broad regression.
 Its actual database/provider execution is separate, explicit, and recorded in
@@ -113,8 +120,10 @@ P8 may build additively on these invariants:
 6. One satisfied wait creates at most one `RESUME_EXECUTION` RuntimeJob.
 7. Retry and restart preserve semantic IDs and do not duplicate results.
 8. OA authorization remains fail-closed at claim and result boundaries.
-9. Cross-service integration uses authenticated contracts, not shared tables.
-10. P8 WRITE, approval, verification, reconciliation, and Enterprise OS
+9. WorkItem create and replay require fresh OA `work:delegate`; a different
+   requester cannot reuse an existing delegation identity.
+10. Cross-service integration uses authenticated contracts, not shared tables.
+11. P8 WRITE, approval, verification, reconciliation, and Enterprise OS
     semantics must not be backfilled into P7 records by convenience.
 
 ## 7. Deferred Scope
@@ -123,5 +132,20 @@ P7 did not activate NSL WRITE, approval, Enterprise OS transactions, schedules,
 human/external-agent execution, multi-child parallel fan-out, Kafka, or
 multi-host WC HA. Those capabilities require their own source-backed contract
 closure and acceptance in P8 or a later phase.
+
+## 8. P7-CA02 Closure and Deferral
+
+P7-CA02 distinguishes OA subject denial from OA dependency failure across the
+shared WC authorization boundary. Inactive/missing membership and malformed
+subject authorization fail as non-retryable `403`; network, timeout, 5xx, and
+service-trust failures remain retryable `503`. The protected negative path
+performed one actual OA authorization read and created zero WC WorkItem,
+Claim, Assignment, handoff, child AgentExecution, and child RuntimeJob rows.
+
+P7-FR-101 detailed metadata-safe WC operations projection into AG is
+`DEFERRED`. P7 retains canonical health/ready/version, service logging, and job
+control baselines, but does not claim a dedicated WC counts/routing/lease/
+outbox/result projection API. That read-only integration requires a separate
+source-backed Slice and must not be inferred from generic AG dashboards.
 
 P7 is closed. P8 entry is authorized only on the baseline above.

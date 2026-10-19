@@ -49,9 +49,9 @@ def test_s8_smoke_composes_current_migrations_and_redacted_evidence(
             skipped=("2405_ae_claimed_planning_source",),
         ),
         "nex-wc": SimpleNamespace(
-            planned=("1002_wc_work_result",),
+            planned=("1003_wc_work_item_authorization",),
             applied=(),
-            skipped=("1002_wc_work_result",),
+            skipped=("1003_wc_work_item_authorization",),
         ),
     }
     monkeypatch.setattr(
@@ -81,7 +81,7 @@ def test_s8_smoke_composes_current_migrations_and_redacted_evidence(
     assert evidence["status"] == "PASS"
     assert evidence["actual_postgres"] is True
     assert evidence["migration"]["ae_latest"] == "2405_ae_claimed_planning_source"
-    assert evidence["migration"]["wc_latest"] == "1002_wc_work_result"
+    assert evidence["migration"]["wc_latest"] == "1003_wc_work_item_authorization"
     assert "test-secret" not in str(evidence["redacted_database_urls"])
     assert "checks=3/3" in smoke.summary_line(evidence)
 

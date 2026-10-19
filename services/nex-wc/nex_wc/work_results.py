@@ -14,7 +14,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-from nex_wc.coordination import AuthorizationSource, InMemoryCoordinationRepository
+from nex_wc.authorization import (
+    AuthorizationSource,
+    AuthorizationSubjectDenied,
+    require_active_scope,
+)
+from nex_wc.coordination import InMemoryCoordinationRepository
 
 WORK_RESULT_FIELDS = frozenset(
     {
@@ -456,9 +461,7 @@ class SqlAlchemyWorkResultRepository:
                     revision_no=params["revision_no"],
                 )
                 if existing is not None:
-                    _require_same_result(
-                        existing, result_hash, params["work_item_id"]
-                    )
+                    _require_same_result(existing, result_hash, params["work_item_id"])
                     session.commit()
                     return _acceptance(existing, created=False)
                 _require_commit_authority(context, result, expected_version)
@@ -536,6 +539,16 @@ class WorkResultService:
             authorization = self._authorization_source.effective_authorization(
                 tenant_id=tenant, subject_id=requester
             )
+            revision_hash = require_active_scope(
+                authorization,
+                required_scope="work:result:submit",
+            )
+        except AuthorizationSubjectDenied as exc:
+            raise WorkResultError(
+                "wc.work_result_authorization_denied",
+                "Requester lacks active work:result:submit authority.",
+                403,
+            ) from exc
         except Exception as exc:
             raise WorkResultError(
                 "wc.work_result_authorization_unavailable",
@@ -543,21 +556,6 @@ class WorkResultService:
                 503,
                 True,
             ) from exc
-        scopes = authorization.get("scopes")
-        if (
-            authorization.get("active") is not True
-            or not isinstance(scopes, Sequence)
-            or isinstance(scopes, (str, bytes))
-            or "work:result:submit" not in scopes
-        ):
-            raise WorkResultError(
-                "wc.work_result_authorization_denied",
-                "Requester lacks active work:result:submit authority.",
-                403,
-            )
-        revision_hash = _required(
-            "authorization revision_hash", authorization.get("revision_hash"), 256
-        )
         now = _time(self._clock())
         return self._repository.commit_result(
             work_result=result,

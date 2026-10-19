@@ -58,7 +58,11 @@ class _Agents:
 
 class _Authorization:
     def effective_authorization(self, **kwargs):
-        return {"active": True, "scopes": ["work:claim"], "revision_hash": "e" * 64}
+        return {
+            "active": True,
+            "scopes": ["work:delegate", "work:claim"],
+            "revision_hash": "e" * 64,
+        }
 
 
 class _DirectClient:
@@ -170,6 +174,7 @@ def test_s4_actual_postgres_wc_job_to_ae_execution_restart_and_zero_residue():
         )
         item = WorkItemService(
             SqlAlchemyWorkItemRepository(wc_sessions),
+            authorization_source=_Authorization(),
             id_factory=lambda: next(work_ids),
             clock=lambda: NOW_DT,
         ).create(_payload())["work_item"]

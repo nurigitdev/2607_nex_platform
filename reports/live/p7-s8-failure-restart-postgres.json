@@ -48,7 +48,7 @@
     "ae_applied_this_run": 0,
     "ae_latest": "2405_ae_claimed_planning_source",
     "wc_applied_this_run": 0,
-    "wc_latest": "1002_wc_work_result"
+    "wc_latest": "1003_wc_work_item_authorization"
   },
   "profile": "test",
   "quality_gates": {

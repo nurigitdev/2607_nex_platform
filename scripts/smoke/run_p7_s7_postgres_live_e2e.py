@@ -187,7 +187,8 @@ def run_p7_s7_postgres_live_e2e(
         checks = {
             "ae_migration_current": ae_migration.planned[-1]
             == "2405_ae_claimed_planning_source",
-            "wc_migration_current": wc_migration.planned[-1] == "1002_wc_work_result",
+            "wc_migration_current": wc_migration.planned[-1]
+            == "1003_wc_work_item_authorization",
             **dict(execution.get("checks") or {}),
         }
         evidence = {
@@ -269,6 +270,7 @@ def _execute_live_e2e(
                                 "집행액, 잔액을 근거와 함께 한국어로 요약한다."
                             )
                         },
+                        authorization_source=authorization_source,
                         continuation_verifier=lambda continued: (
                             _verify_background_runtime(
                                 continued,
@@ -533,11 +535,15 @@ def _publish_and_resume(
     ae_factory = fixture["factory"]
     tenant_id = str(fixture["tenant_id"])
     aggregate = fixture["aggregate"]
-    items = WorkItemService(SqlAlchemyWorkItemRepository(wc_factory))
+    effective_authorization_source = authorization_source or p7_s6._Authorization()
+    items = WorkItemService(
+        SqlAlchemyWorkItemRepository(wc_factory),
+        authorization_source=effective_authorization_source,
+    )
     result_repository = SqlAlchemyWorkResultRepository(wc_factory)
     results = WorkResultService(
         result_repository,
-        authorization_source=authorization_source or p7_s6._Authorization(),
+        authorization_source=effective_authorization_source,
         clock=lambda: datetime.fromisoformat(now.replace("Z", "+00:00")),
     )
     client = _DirectWcResultClient(items=items, results=results)
@@ -611,6 +617,7 @@ def _publish_and_resume(
                     "wait_id": wait_id,
                     "result_event": loaded["event_payload"],
                     "parent_execution": parent_execution,
+                    "authorization_source": effective_authorization_source,
                 }
             )
         )

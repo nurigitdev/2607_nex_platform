@@ -43,21 +43,24 @@ app = build_service_app(
     service_token_admission=SERVICE_TOKEN_ADMISSION,
 )
 SERVICE_PERSISTENCE = attach_service_persistence_runtime(app, SERVICE_SPEC)
+AUTHORIZATION_SOURCE = HttpAuthorizationSource(
+    base_url=os.getenv("NEX_WC_OA_BASE_URL", "http://127.0.0.1:8101"),
+    service_token=os.getenv("NEX_WC_TO_OA_SERVICE_TOKEN", ""),
+)
 WORK_ITEM_REPOSITORY = (
     SqlAlchemyWorkItemRepository(SERVICE_PERSISTENCE.api_session_factory)
     if SERVICE_PERSISTENCE.api_session_factory is not None
     else InMemoryWorkItemRepository()
 )
-WORK_ITEMS = WorkItemService(WORK_ITEM_REPOSITORY)
+WORK_ITEMS = WorkItemService(
+    WORK_ITEM_REPOSITORY,
+    authorization_source=AUTHORIZATION_SOURCE,
+)
 app.state.wc_work_items = WORK_ITEMS
 COORDINATION_REPOSITORY = (
     SqlAlchemyCoordinationRepository(SERVICE_PERSISTENCE.api_session_factory)
     if SERVICE_PERSISTENCE.api_session_factory is not None
     else InMemoryCoordinationRepository(WORK_ITEM_REPOSITORY)
-)
-AUTHORIZATION_SOURCE = HttpAuthorizationSource(
-    base_url=os.getenv("NEX_WC_OA_BASE_URL", "http://127.0.0.1:8101"),
-    service_token=os.getenv("NEX_WC_TO_OA_SERVICE_TOKEN", ""),
 )
 COORDINATION = WorkCoordinationService(
     COORDINATION_REPOSITORY,

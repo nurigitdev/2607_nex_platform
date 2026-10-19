@@ -1,0 +1,40 @@
+{
+  "actual_postgres": true,
+  "actual_remote_provider": false,
+  "authorization": {
+    "effective_authorization_calls": 1,
+    "granted": false,
+    "scope": "work:delegate"
+  },
+  "captured_at": "2026-10-19",
+  "checks_passed": 23,
+  "checks_total": 23,
+  "cleanup": {
+    "ae_owned_rows_remaining": 0,
+    "oa_owned_rows_remaining": 0,
+    "wc_owned_rows_remaining": 0
+  },
+  "database_identity": {
+    "ae": "nex_ae_test/nex_ae_user",
+    "oa": "nex_oa_test/nex_oa_user",
+    "wc": "nex_wc_test/nex_wc_user"
+  },
+  "migration_heads": {
+    "nex-ae-api": "2405_ae_claimed_planning_source",
+    "nex-oa": "1376_oa_trace_projection_index",
+    "nex-wc": "1003_wc_work_item_authorization"
+  },
+  "profile": "test",
+  "row_counts_after_denial": {
+    "ae_child_agent_execution": 0,
+    "ae_child_runtime_job": 0,
+    "ae_handoff": 0,
+    "wc_assignment": 0,
+    "wc_claim": 0,
+    "wc_work_item": 0
+  },
+  "slice": "P7-CA02",
+  "smoke_schema_version": "p7_ca02_work_delegate_denied_postgres.v1",
+  "source_revision_under_test": "1918d9bc2c8f65818079cd3102a500b08623faba+ca02-working-tree",
+  "status": "PASS"
+}

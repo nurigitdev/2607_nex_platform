@@ -6,6 +6,15 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+from nex_wc.authorization import AuthorizationSubjectDenied
+
+_OA_SUBJECT_DENIAL_CODES = frozenset(
+    {
+        "oa.authorization_membership_inactive",
+        "oa.authorization_membership_not_found",
+    }
+)
+
 
 class HttpAgentCandidateSource:
     def __init__(
@@ -66,10 +75,11 @@ class HttpAuthorizationSource:
             f"{quote(tenant_id, safe='')}/subjects/{quote(subject_id, safe='')}/authorization",
             service_token=self._service_token,
             timeout_seconds=self._timeout_seconds,
+            subject_denial_codes=_OA_SUBJECT_DENIAL_CODES,
         )
         authorization = payload.get("authorization")
         if not isinstance(authorization, dict):
-            raise RuntimeError("OA authorization response is invalid")
+            raise AuthorizationSubjectDenied("OA authorization response is malformed.")
         return {**authorization, "active": True}
 
 
@@ -78,19 +88,31 @@ class HttpSourceNotFound(RuntimeError):
 
 
 def _get_json(
-    url: str, *, service_token: str, timeout_seconds: float
+    url: str,
+    *,
+    service_token: str,
+    timeout_seconds: float,
+    subject_denial_codes: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
     if not service_token.strip():
         raise RuntimeError("service token is not configured")
     request = Request(
         url,
         method="GET",
-        headers={"Authorization": f"Bearer {service_token}", "Accept": "application/json"},
+        headers={
+            "Authorization": f"Bearer {service_token}",
+            "Accept": "application/json",
+        },
     )
     try:
         with urlopen(request, timeout=timeout_seconds) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
+        error_code = _http_problem_error_code(exc)
+        if error_code in subject_denial_codes:
+            raise AuthorizationSubjectDenied(
+                "OA denied the subject authorization request."
+            ) from exc
         if exc.code == 404:
             raise HttpSourceNotFound("source record was not found") from exc
         raise RuntimeError(f"source request failed with HTTP {exc.code}") from exc
@@ -99,3 +121,14 @@ def _get_json(
     if not isinstance(payload, dict):
         raise RuntimeError("source response must be an object")
     return payload
+
+
+def _http_problem_error_code(exc: HTTPError) -> str | None:
+    try:
+        payload = json.loads(exc.read().decode("utf-8"))
+    except (AttributeError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    error_code = payload.get("error_code")
+    return error_code if isinstance(error_code, str) else None

@@ -27,6 +27,7 @@ for path in (
 
 import run_p5_s5_postgres_smoke as p5_s5
 from nex_ae_api.delegated_work import (
+    DelegatedWorkError,
     SqlAlchemyDelegationRuntimeRepository,
     SqlAlchemyWaitRegistrationRepository,
 )
@@ -44,7 +45,11 @@ from nex_ae_api.step_executors import (
 )
 from nex_runtime import load_env_file, redact_database_url, sqlalchemy_database_url
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
-from nex_wc.work_items import SqlAlchemyWorkItemRepository, WorkItemService
+from nex_wc.work_items import (
+    SqlAlchemyWorkItemRepository,
+    WorkItemError,
+    WorkItemService,
+)
 from run_migrations import run_service_migrations
 
 SCHEMA_VERSION = "p7_s5_postgres_smoke.v1"
@@ -58,7 +63,23 @@ class _DirectWorkItemClient:
         self._service = service
 
     def create_work_item(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
-        return self._service.create(payload)
+        try:
+            return self._service.create(payload)
+        except WorkItemError as exc:
+            raise DelegatedWorkError(
+                exc.error_code,
+                exc.detail,
+                exc.retryable,
+            ) from exc
+
+
+class _Authorization:
+    def effective_authorization(self, **_kwargs):
+        return {
+            "active": True,
+            "scopes": ["work:delegate"],
+            "revision_hash": "a" * 64,
+        }
 
 
 def run_p7_s5_postgres_smoke(
@@ -110,7 +131,7 @@ def run_p7_s5_postgres_smoke(
             "ae_migration_current": ae_migration.planned[-1]
             == "2403_ae_delegate_work_activation",
             "wc_migration_current": wc_migration.planned[-1]
-            == "1001_wc_assignment_claim",
+            == "1003_wc_work_item_authorization",
             **evidence["checks"],
         }
         evidence["status"] = "PASS" if all(evidence["checks"].values()) else "FAIL"
@@ -127,6 +148,8 @@ def _verify_delegate_wait(
     wc_url: str,
     continuation_verifier=None,
     delegation_overrides: Mapping[str, Any] | None = None,
+    authorization_source=None,
+    expect_authorization_denied: bool = False,
 ) -> dict[str, Any]:
     ae_factory = fixture["factory"]
     tenant_id = str(fixture["tenant_id"])
@@ -220,7 +243,10 @@ def _verify_delegate_wait(
     verification: dict[str, Any] | None = None
     cleanup_counts: dict[str, int] = {}
     try:
-        work_items = WorkItemService(SqlAlchemyWorkItemRepository(wc_factory))
+        work_items = WorkItemService(
+            SqlAlchemyWorkItemRepository(wc_factory),
+            authorization_source=authorization_source or _Authorization(),
+        )
         queue = SqlAlchemyRuntimeJobQueue(ae_factory)
         engine = SqlAlchemyMultiStepEngine(ae_factory, queue)
         executor = P7DelegateWorkExecutor(
@@ -253,6 +279,16 @@ def _verify_delegate_wait(
         if claim is None:
             raise RuntimeError("P7-S5 RuntimeJob was not claimable")
         result = worker.run_claim(tenant_id=tenant_id, claim=claim)
+        if expect_authorization_denied:
+            verification = _authorization_denied_evidence(
+                ae_factory=ae_factory,
+                wc_factory=wc_factory,
+                tenant_id=tenant_id,
+                parent_execution_id=str(execution["agent_execution_id"]),
+                result=result,
+                cleanup_counts=cleanup_counts,
+            )
+            return verification
         with ae_factory() as session:
             parent = session.execute(
                 text(
@@ -349,13 +385,134 @@ def _verify_delegate_wait(
                 ).rowcount
                 or 0
             )
+            cleanup_counts["wc_remaining"] = sum(
+                int(
+                    session.execute(
+                        text(
+                            f"SELECT count(*) FROM {table} WHERE tenant_id = :tenant_id"
+                        ),
+                        {"tenant_id": tenant_id},
+                    ).scalar_one()
+                )
+                for table in (
+                    "wc_work_result",
+                    "wc_event_outbox",
+                    "wc_claim",
+                    "wc_assignment",
+                    "wc_routing_decision",
+                    "wc_work_item",
+                )
+            )
         wc_engine.dispose()
+        if verification is not None:
+            verification["checks"]["delegate_runtime_cleanup_complete"] = (
+                cleanup_counts["delegate_runtime_remaining"] == 0
+                and cleanup_counts["wc_remaining"] == 0
+            )
     if verification is None:
         raise RuntimeError("P7-S5 verification did not produce evidence")
     verification["checks"]["delegate_runtime_cleanup_complete"] = (
         cleanup_counts["delegate_runtime_remaining"] == 0
+        and cleanup_counts["wc_remaining"] == 0
     )
     return verification
+
+
+def _authorization_denied_evidence(
+    *,
+    ae_factory,
+    wc_factory,
+    tenant_id: str,
+    parent_execution_id: str,
+    result,
+    cleanup_counts: dict[str, int],
+) -> dict[str, Any]:
+    with wc_factory() as session:
+        wc_identity = tuple(
+            session.execute(text("SELECT current_database(), current_user")).one()
+        )
+        wc_counts = {
+            table: int(
+                session.execute(
+                    text(f"SELECT count(*) FROM {table} WHERE tenant_id = :tenant_id"),
+                    {"tenant_id": tenant_id},
+                ).scalar_one()
+            )
+            for table in (
+                "wc_work_item",
+                "wc_assignment",
+                "wc_claim",
+                "wc_event_outbox",
+            )
+        }
+        handoff_count = int(
+            session.execute(
+                text(
+                    "SELECT count(*) FROM wc_event_outbox "
+                    "WHERE tenant_id = :tenant_id "
+                    "AND event_type = 'CLAIM_EXECUTION_HANDOFF'"
+                ),
+                {"tenant_id": tenant_id},
+            ).scalar_one()
+        )
+    with ae_factory() as session:
+        child_execution_count = int(
+            session.execute(
+                text(
+                    "SELECT count(*) FROM ae_agent_execution "
+                    "WHERE tenant_id = :tenant_id "
+                    "AND source_type = 'CLAIMED_WORKITEM'"
+                ),
+                {"tenant_id": tenant_id},
+            ).scalar_one()
+        )
+        child_runtime_job_count = int(
+            session.execute(
+                text(
+                    "SELECT count(*) FROM ae_runtime_job AS job "
+                    "JOIN ae_agent_execution AS execution "
+                    "ON execution.tenant_id = job.tenant_id "
+                    "AND CAST(execution.agent_execution_id AS TEXT) = job.execution_id "
+                    "WHERE job.tenant_id = :tenant_id "
+                    "AND execution.source_type = 'CLAIMED_WORKITEM'"
+                ),
+                {"tenant_id": tenant_id},
+            ).scalar_one()
+        )
+        parent_count = int(
+            session.execute(
+                text(
+                    "SELECT count(*) FROM ae_agent_execution "
+                    "WHERE tenant_id = :tenant_id "
+                    "AND agent_execution_id = :execution_id"
+                ),
+                {"tenant_id": tenant_id, "execution_id": parent_execution_id},
+            ).scalar_one()
+        )
+    failure_code = (
+        None if result.step_result is None else result.step_result.get("error_ref")
+    )
+    return {
+        "checks": {
+            "delegate_authorization_denied_at_create": result.disposition == "TERMINAL"
+            and failure_code == "wc.work_item_authorization_denied",
+            "wc_database_identity": wc_identity == ("nex_wc_test", "nex_wc_user"),
+            "parent_execution_preserved": parent_count == 1,
+            "no_wc_work_item_mutation": wc_counts["wc_work_item"] == 0,
+            "no_wc_claim_or_assignment": wc_counts["wc_claim"] == 0
+            and wc_counts["wc_assignment"] == 0,
+            "no_claim_handoff": handoff_count == 0,
+            "no_child_agent_execution": child_execution_count == 0,
+            "no_child_runtime_job": child_runtime_job_count == 0,
+        },
+        "row_counts": {
+            **wc_counts,
+            "claim_execution_handoff": handoff_count,
+            "child_agent_execution": child_execution_count,
+            "child_runtime_job": child_runtime_job_count,
+        },
+        "cleanup_counts": cleanup_counts,
+    }
 
 
 def _cleanup_delegate_runtime_rows(factory, *, tenant_id: str) -> dict[str, int]:

@@ -261,7 +261,10 @@ def _verify_failure_recovery(fixture: Mapping[str, object]) -> dict[str, object]
         raise RuntimeError("P7-S8 current claim handoff was not admitted")
     child_execution_id = str(admitted_handoff.execution["agent_execution_id"])
 
-    items = WorkItemService(SqlAlchemyWorkItemRepository(wc_factory))
+    items = WorkItemService(
+        SqlAlchemyWorkItemRepository(wc_factory),
+        authorization_source=p7_s6._Authorization(),
+    )
     result_repository = SqlAlchemyWorkResultRepository(wc_factory)
     results = WorkResultService(
         result_repository,
@@ -471,8 +474,7 @@ def _verify_failure_recovery(fixture: Mapping[str, object]) -> dict[str, object]
         and recovered.runtime_job["state"] == "DONE",
         "resume_exactly_once_semantics": step_result_count == 1
         and wait_state == "CONSUMED"
-        and [attempt["outcome"] for attempt in attempts]
-        == ["LEASE_EXPIRED", "DONE"],
+        and [attempt["outcome"] for attempt in attempts] == ["LEASE_EXPIRED", "DONE"],
     }
     return {
         "checks": checks,

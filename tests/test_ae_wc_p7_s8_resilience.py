@@ -84,7 +84,7 @@ class _Authorization:
     def effective_authorization(self, **_kwargs):
         return {
             "active": True,
-            "scopes": ["work:claim"],
+            "scopes": ["work:delegate", "work:claim"],
             "revision_hash": "a" * 64,
         }
 
@@ -122,9 +122,11 @@ def _work_payload() -> dict[str, object]:
 def test_expired_claim_reclaim_increments_generation_and_blocks_stale_handoff() -> None:
     clock = [NOW_DT]
     work_repository = InMemoryWorkItemRepository()
-    item = WorkItemService(work_repository, clock=lambda: clock[0]).create(
-        _work_payload()
-    )["work_item"]
+    item = WorkItemService(
+        work_repository,
+        authorization_source=_Authorization(),
+        clock=lambda: clock[0],
+    ).create(_work_payload())["work_item"]
     ids = iter(
         f"00000000-0000-4000-8000-{value:012d}" for value in range(1, 30)
     )

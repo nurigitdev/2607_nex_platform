@@ -37,7 +37,7 @@ def test_p7_s7_live_e2e_composes_migrations_and_redacted_evidence(
             planned=(
                 "2405_ae_claimed_planning_source"
                 if service == "nex-ae-api"
-                else "1002_wc_work_result",
+                else "1003_wc_work_item_authorization",
             ),
             applied=(),
         ),

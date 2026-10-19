@@ -93,11 +93,22 @@ NSL_SOURCE_ENV = "NEX_AE_P65_S7_NSL_SOURCE"
 
 
 class _OaApiAuthorizationSource:
-    def __init__(self, client: TestClient) -> None:
+    def __init__(
+        self,
+        client: TestClient,
+        *,
+        scopes: tuple[str, ...] = (
+            "work:delegate",
+            "work:claim",
+            "work:result:submit",
+        ),
+    ) -> None:
         self._client = client
+        self._scopes = scopes
         self._seeded: set[tuple[str, str]] = set()
         self.authorization_calls = 0
         self.bootstrap_calls = 0
+        self.observed_gates: list[str] = []
 
     @property
     def tenant_ids(self) -> tuple[str, ...]:
@@ -115,7 +126,7 @@ class _OaApiAuthorizationSource:
                     "tenant_display_name": "P7 Golden B Tenant",
                     "subject_display_name": "P7 Golden B Employee",
                     "roles": ["employee"],
-                    "scopes": ["work:claim", "work:result:submit"],
+                    "scopes": list(self._scopes),
                 },
             )
             response.raise_for_status()
@@ -131,6 +142,12 @@ class _OaApiAuthorizationSource:
         authorization = response.json().get("authorization")
         if not isinstance(authorization, dict):
             raise RuntimeError("OA authorization response is invalid")
+        gates = ("work:delegate", "work:claim", "work:result:submit")
+        self.observed_gates.append(
+            gates[self.authorization_calls]
+            if self.authorization_calls < len(gates)
+            else "unexpected"
+        )
         self.authorization_calls += 1
         return {**authorization, "active": True}
 
@@ -281,15 +298,24 @@ def _execute_golden_b(
                     oa_observation["database"] == "nex_oa_test"
                     and oa_observation["role"] == "nex_oa_user"
                 ),
-                "oa_authorization_used_for_claim_and_result": (
+                "oa_authorization_used_for_all_three_gates": (
                     source.bootstrap_calls == 1
-                    and source.authorization_calls == 2
+                    and source.authorization_calls == 3
+                    and source.observed_gates
+                    == ["work:delegate", "work:claim", "work:result:submit"]
                     and oa_observation["membership_count"] == 1
                 ),
             }
             result["oa_authorization"] = {
                 "bootstrap_calls": source.bootstrap_calls,
                 "effective_authorization_calls": source.authorization_calls,
+                "work_delegate_gate_calls": source.observed_gates.count(
+                    "work:delegate"
+                ),
+                "work_claim_gate_calls": source.observed_gates.count("work:claim"),
+                "work_result_submit_gate_calls": source.observed_gates.count(
+                    "work:result:submit"
+                ),
             }
     finally:
         if source is not None:
@@ -328,7 +354,10 @@ def _complete_parent_report(fixture: Mapping[str, object]) -> dict[str, object]:
     now_dt = datetime.fromisoformat(now.replace("Z", "+00:00"))
     queue = SqlAlchemyRuntimeJobQueue(factory)
     engine = SqlAlchemyMultiStepEngine(factory, queue)
-    work_items = WorkItemService(SqlAlchemyWorkItemRepository(wc_factory))
+    work_items = WorkItemService(
+        SqlAlchemyWorkItemRepository(wc_factory),
+        authorization_source=fixture["authorization_source"],
+    )
     delegate = P7DelegateWorkExecutor(
         dependencies=DelegateWorkExecutorDependencies(
             runtime_repository=SqlAlchemyDelegationRuntimeRepository(factory),
