@@ -1,0 +1,57 @@
+{
+  "actual_postgres": true,
+  "actual_remote_provider": false,
+  "authorization": {
+    "effective_authorization_calls": 4,
+    "scope": "work:delegate",
+    "source_profile": "deterministic_test_double"
+  },
+  "captured_at": "2026-10-19",
+  "checks": {
+    "authorization_checked_for_every_request": true,
+    "authorization_checked_timestamp_preserved_after_restart": true,
+    "authorization_revision_preserved_after_restart": true,
+    "authorization_subject_preserved_after_restart": true,
+    "database_identity_confirmed": true,
+    "different_requester_conflict_non_retryable": true,
+    "different_requester_replay_returns_409": true,
+    "existing_requester_remains_original": true,
+    "migration_1003_current": true,
+    "owned_residue_zero": true,
+    "same_requester_replay_returns_existing": true,
+    "semantic_conflict_still_rejected": true,
+    "single_work_item_row_preserved": true
+  },
+  "checks_passed": 13,
+  "checks_total": 13,
+  "cleanup": {
+    "wc_owned_rows_remaining": 0
+  },
+  "database_identity": {
+    "database": "nex_wc_test",
+    "role": "nex_wc_user"
+  },
+  "final_closure_commit": "67a47f91f0c7c77e816f18c8d3939d3450968b09",
+  "migration_head": "1003_wc_work_item_authorization",
+  "profile": "test",
+  "row_counts_after_conflicts": {
+    "wc_work_item": 1
+  },
+  "slice": "P7-CA02A",
+  "source_revision_under_test": "67a47f91f0c7c77e816f18c8d3939d3450968b09",
+  "status": "PASS",
+  "test_harness_sha256": "9e0f6212adcbbf0607921c8c3ff6085c6f954692b419a4a6fb352b43a84240e0",
+  "tested_tree_digest": "git-tree:cee757fed13b5d2c2be14536763b75d79b325648",
+  "verification": {
+    "affected_regression": {
+      "passed": 199,
+      "skipped": 5
+    },
+    "full_gate": {
+      "branch_coverage_percent": 96.22,
+      "passed": 15407,
+      "skipped": 48,
+      "statement_coverage_percent": 96.83
+    }
+  }
+}

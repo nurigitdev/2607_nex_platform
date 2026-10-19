@@ -99,6 +99,9 @@ content, and hidden reasoning are absent from evidence.
 | P7-S8 recovery smoke | 26/26 checks; zero residue |
 | P7-CA02 denied PostgreSQL smoke | 23/23 checks; zero WorkItem/Claim/Assignment/child execution mutation |
 | P7-CA02 affected regression | `196 passed, 8 skipped`; new authorization module statement/branch `100%` |
+| P7-CA02A PostgreSQL replay/evidence | `1 passed, 0 skipped`; restart evidence 3/3; requester replay `409`; zero residue |
+| P7-CA02A affected regression | `199 passed, 5 skipped` |
+| P7-CA02A repository Full Gate | `15,407 passed, 48 skipped`; statement `96.83%`; branch `96.22%` |
 | AE Slice Gate | `4,513 passed, 16 skipped`; statement `98.29%`; branch `96.14%` |
 | WC/P7 Gate | `181 passed`; statement `96.74%`; branch `94.12%` |
 | Contract validation | 174 schemas, 236 examples, 204 negative examples, 8 OpenAPI documents |
@@ -147,5 +150,11 @@ P7-FR-101 detailed metadata-safe WC operations projection into AG is
 control baselines, but does not claim a dedicated WC counts/routing/lease/
 outbox/result projection API. That read-only integration requires a separate
 source-backed Slice and must not be inferred from generic AG dashboards.
+
+P7-CA02A subsequently confirmed the authorization evidence and requester-safe
+replay behavior through the actual `nex_wc_test` persistence adapter. Evidence
+provenance is anchored to CA02 closure commit `67a47f91` and Git tree
+`cee757fed13b5d2c2be14536763b75d79b325648`; the CA02A Slice changes no
+production runtime semantics.
 
 P7 is closed. P8 entry is authorized only on the baseline above.

@@ -4,11 +4,13 @@ import os
 from datetime import UTC, datetime
 
 import pytest
+from nex_wc.work_items import (
+    SqlAlchemyWorkItemRepository,
+    WorkItemError,
+    WorkItemService,
+)
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-
-from nex_wc.work_items import SqlAlchemyWorkItemRepository, WorkItemError, WorkItemService
-
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("NEX_WC_TEST_DATABASE_URL"),
@@ -17,7 +19,11 @@ pytestmark = pytest.mark.skipif(
 
 
 class _Authorization:
-    def effective_authorization(self, **_kwargs):
+    def __init__(self) -> None:
+        self.calls: list[dict[str, str]] = []
+
+    def effective_authorization(self, **kwargs):
+        self.calls.append(dict(kwargs))
         return {
             "active": True,
             "scopes": ["work:delegate"],
@@ -25,7 +31,11 @@ class _Authorization:
         }
 
 
-def _payload(goal: str = "Produce a margin report"):
+def _payload(
+    goal: str = "Produce a margin report",
+    *,
+    requester: str = "ia-pg",
+):
     return {
         "delegation_spec": {
             "schema_version": "1.0",
@@ -46,7 +56,7 @@ def _payload(goal: str = "Produce a margin report"):
             "correlation_id": "p7-s1-pg-trace",
             "causation_id": None,
         },
-        "requester": {"entity_type": "AGENT", "entity_id": "ia-pg"},
+        "requester": {"entity_type": "AGENT", "entity_id": requester},
         "accountable_owner": {"entity_type": "USER", "entity_id": "user-pg"},
     }
 
@@ -61,9 +71,11 @@ def test_s1_actual_postgres_upsert_select_restart_and_zero_residue():
             {"tenant_id": tenant_id},
         )
     try:
+        authorization = _Authorization()
+        repository = SqlAlchemyWorkItemRepository(sessions)
         service = WorkItemService(
-            SqlAlchemyWorkItemRepository(sessions),
-            authorization_source=_Authorization(),
+            repository,
+            authorization_source=authorization,
             id_factory=lambda: "77777777-7777-4777-8777-777777777771",
             clock=lambda: datetime(2026, 10, 18, 2, 0, tzinfo=UTC),
         )
@@ -71,20 +83,80 @@ def test_s1_actual_postgres_upsert_select_restart_and_zero_residue():
         repeated = service.create(_payload())
         assert created["created"] is True
         assert repeated["created"] is False
-        assert repeated["work_item"]["work_item_id"] == created["work_item"]["work_item_id"]
+        assert (
+            repeated["work_item"]["work_item_id"]
+            == created["work_item"]["work_item_id"]
+        )
+        assert authorization.calls == [
+            {"tenant_id": tenant_id, "subject_id": "ia-pg"},
+            {"tenant_id": tenant_id, "subject_id": "ia-pg"},
+        ]
 
+        restarted_repository = SqlAlchemyWorkItemRepository(sessions)
         restarted = WorkItemService(
-            SqlAlchemyWorkItemRepository(sessions),
-            authorization_source=_Authorization(),
+            restarted_repository,
+            authorization_source=authorization,
         )
         loaded = restarted.get(
             tenant_id=tenant_id,
             work_item_id=created["work_item"]["work_item_id"],
         )
         assert loaded["goal"] == "Produce a margin report"
+        persisted = restarted_repository.get(
+            tenant_id=tenant_id,
+            work_item_id=created["work_item"]["work_item_id"],
+        )
+        assert persisted is not None
+        assert persisted["create_authorization_revision_hash"] == "a" * 64
+        assert datetime.fromisoformat(
+            persisted["create_authorization_checked_at"]
+        ) == datetime(2026, 10, 18, 2, 0, tzinfo=UTC)
+        assert persisted["create_authorized_subject_id"] == "ia-pg"
+
+        with pytest.raises(WorkItemError) as requester_conflict:
+            restarted.create(_payload(requester="ia-other"))
+        assert (
+            requester_conflict.value.error_code == "wc.work_item_idempotency_conflict"
+        )
+        assert requester_conflict.value.status_code == 409
+        assert requester_conflict.value.retryable is False
+
         with pytest.raises(WorkItemError) as conflict:
             restarted.create(_payload("Conflicting semantic goal"))
         assert conflict.value.error_code == "wc.work_item_idempotency_conflict"
+        assert authorization.calls[-2:] == [
+            {"tenant_id": tenant_id, "subject_id": "ia-other"},
+            {"tenant_id": tenant_id, "subject_id": "ia-pg"},
+        ]
+
+        with engine.begin() as connection:
+            database_identity = connection.execute(
+                text("SELECT current_database(), current_user")
+            ).one()
+            work_items = (
+                connection.execute(
+                    text(
+                        "SELECT work_item, create_authorization_revision_hash, "
+                        "create_authorized_subject_id FROM wc_work_item "
+                        "WHERE tenant_id = :tenant_id"
+                    ),
+                    {"tenant_id": tenant_id},
+                )
+                .mappings()
+                .all()
+            )
+            migration_present = connection.execute(
+                text(
+                    "SELECT count(*) FROM schema_migrations "
+                    "WHERE version = '1003_wc_work_item_authorization'"
+                )
+            ).scalar_one()
+        assert tuple(database_identity) == ("nex_wc_test", "nex_wc_user")
+        assert len(work_items) == 1
+        assert work_items[0]["work_item"]["requester"]["entity_id"] == "ia-pg"
+        assert work_items[0]["create_authorization_revision_hash"] == "a" * 64
+        assert work_items[0]["create_authorized_subject_id"] == "ia-pg"
+        assert migration_present == 1
     finally:
         with engine.begin() as connection:
             connection.execute(

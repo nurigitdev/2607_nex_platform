@@ -1,6 +1,6 @@
 # P7 WC and Background Agent Work Transition Baseline
 
-**Status:** P7 CLOSED / P7-CA02 CLOSED / P8 ENTRY AUTHORIZED
+**Status:** P7 CLOSED / P7-CA02A VERIFIED / P8 ENTRY AUTHORIZED
 **Phase:** P7 - Work Coordination + CA/PA/EA Background Agent Work
 **Predecessor:** P6.5 Remote Generation Provider Integration Acceptance - CLOSED
 **Successor:** P8 Controlled WRITE / Approval / Enterprise OS - NOT ACTIVATED
@@ -44,7 +44,8 @@ Read the P7 documents in this order:
 8. `contracts/README.md` and the P7 machine-readable contracts
 9. per-Slice As-Built records
 10. `P7_CA02_Work_Delegation_Authorization_and_Final_Contract_Closure_v1.0.md`
-11. `P7_Final_AsBuilt_Baseline_and_P8_Handoff_v1.0.md`
+11. `../../slices/p7_ca02a_postgresql_replay_evidence_closure.md`
+12. `P7_Final_AsBuilt_Baseline_and_P8_Handoff_v1.0.md`
 
 The Pre-Architecture Decision, Source Audit, SRS, and Slice Plan are
 pre-implementation baselines. They do not supersede Frozen v2.1 contracts or
@@ -83,6 +84,7 @@ P7-S9 PostgreSQL + live provider Golden B       = PASS (51/51)
 P7-CA02 delegation authorization amendment      = CLOSED
 P7-CA02 negative PostgreSQL smoke                = PASS (23/23)
 P7-CA02 Golden B authorization rerun             = PASS (51/51)
+P7-CA02A PostgreSQL replay/evidence closure       = PASS (1/1)
 Repository Full Gate                           = PASS
 NeX-WC service and migration history           = ACTIVE THROUGH 1003
 NeX-AE P7 migration history                    = ACTIVE THROUGH 2405
@@ -143,6 +145,7 @@ P7-CA01  Source-Backed WC / Agent / Claim / Wait / Result Contract Closure
 -> P7-S8 Failure / Restart / Idempotency Hardening
 -> P7-S9 Actual PostgreSQL + Remote Provider Golden B E2E
 -> P7-CA02 Work Delegation Authorization / Final Contract Closure
+-> P7-CA02A PostgreSQL Replay and Evidence Closure
 -> Repository Full Gate
 -> P7 Final As-Built / P8 Handoff
 ```

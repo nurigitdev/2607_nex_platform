@@ -14,6 +14,7 @@
     "oa": "nex_oa_test/nex_oa_user",
     "wc": "nex_wc_test/nex_wc_user"
   },
+  "final_closure_commit": "67a47f91f0c7c77e816f18c8d3939d3450968b09",
   "hash_safe_lineage": {
     "work_item": "sha256:19cea53256b54273d95c1987180c7c007fa94901504f2fd6918274712ac3014e",
     "work_result": "sha256:1209e9671bb18d2674597a8d8eb5a1b4dbc55ed053b3bc2999f3328f94830ea0"
@@ -87,6 +88,7 @@
   },
   "slice": "P7-S9",
   "smoke_schema_version": "p7_s9_postgres_live_golden_b.v1",
-  "source_revision_under_test": "1918d9bc2c8f65818079cd3102a500b08623faba+ca02-working-tree",
-  "status": "PASS"
+  "source_revision_under_test": "67a47f91f0c7c77e816f18c8d3939d3450968b09",
+  "status": "PASS",
+  "tested_tree_digest": "git-tree:cee757fed13b5d2c2be14536763b75d79b325648"
 }

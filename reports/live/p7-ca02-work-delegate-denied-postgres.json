@@ -19,6 +19,7 @@
     "oa": "nex_oa_test/nex_oa_user",
     "wc": "nex_wc_test/nex_wc_user"
   },
+  "final_closure_commit": "67a47f91f0c7c77e816f18c8d3939d3450968b09",
   "migration_heads": {
     "nex-ae-api": "2405_ae_claimed_planning_source",
     "nex-oa": "1376_oa_trace_projection_index",
@@ -35,6 +36,7 @@
   },
   "slice": "P7-CA02",
   "smoke_schema_version": "p7_ca02_work_delegate_denied_postgres.v1",
-  "source_revision_under_test": "1918d9bc2c8f65818079cd3102a500b08623faba+ca02-working-tree",
-  "status": "PASS"
+  "source_revision_under_test": "67a47f91f0c7c77e816f18c8d3939d3450968b09",
+  "status": "PASS",
+  "tested_tree_digest": "git-tree:cee757fed13b5d2c2be14536763b75d79b325648"
 }

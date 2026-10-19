@@ -1190,3 +1190,23 @@ Then:
 ```
 
 If any source-backed fact differs from this document, stop and create a short CA02 implementation note identifying the discrepancy before changing semantics.
+
+---
+
+## 31. P7-CA02A Verification Closure
+
+P7-CA02A closed three post-implementation verification gaps without changing
+production runtime semantics:
+
+1. actual `nex_wc_test` restart-read now proves preservation of
+   `create_authorization_revision_hash`, `create_authorization_checked_at`, and
+   `create_authorized_subject_id`;
+2. actual PostgreSQL idempotent replay by a different authorized requester now
+   proves non-retryable `409`, one unchanged WorkItem row, and preservation of
+   the original requester;
+3. final protected evidence now records the tested source revision, Git tree
+   digest, and final CA02 closure commit separately.
+
+The authoritative CA02 implementation revision is
+`67a47f91f0c7c77e816f18c8d3939d3450968b09`, with tested Git tree
+`cee757fed13b5d2c2be14536763b75d79b325648`.
