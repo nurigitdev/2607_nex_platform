@@ -176,8 +176,13 @@ components:
         - work_item_id
         - revision_no
         - result_type
+        - schema_ref
         - technical_outcome
         - business_outcome
+        - source_execution_ref
+        - claim_ref
+        - claim_generation
+        - assignment_ref
         - submitted_by
         - trace
         - submitted_at
@@ -189,22 +194,39 @@ components:
         revision_no: {type: integer, minimum: 1}
         result_type: {type: string, minLength: 1, maxLength: 120}
         summary: {type: [string, "null"], maxLength: 4000}
-        payload: {type: [object, "null"]}
-        schema_ref: {type: [string, "null"], maxLength: 512}
+        payload: {}
+        schema_ref: {type: string, minLength: 1, maxLength: 512}
         technical_outcome: {enum: [SUCCEEDED, PARTIAL, FAILED, UNKNOWN]}
         business_outcome:
           enum: [VERIFIED, REVISED, REJECTED, PENDING_VERIFICATION, NOT_APPLICABLE]
         artifact_refs: {type: array, items: {$ref: "#/components/schemas/EntityRef"}}
         evidence_refs: {type: array, items: {$ref: "#/components/schemas/EntityRef"}}
         business_object_refs: {type: array, items: {$ref: "#/components/schemas/EntityRef"}}
-        source_execution_ref: {type: [string, "null"], maxLength: 128}
+        source_execution_ref: {type: string, minLength: 1, maxLength: 128}
         source_plan_ref: {type: [string, "null"], maxLength: 128}
-        claim_ref: {type: [string, "null"], maxLength: 128}
-        claim_generation: {type: [integer, "null"], minimum: 1}
-        assignment_ref: {type: [string, "null"], maxLength: 128}
-        submitted_by: {enum: [AGENT]}
-        trace: {type: object}
+        claim_ref: {type: string, format: uuid}
+        claim_generation: {type: integer, minimum: 1}
+        assignment_ref: {type: string, format: uuid}
+        submitted_by: {$ref: "#/components/schemas/SubmittedByAgentRef"}
+        trace: {$ref: "#/components/schemas/WorkResultTrace"}
         submitted_at: {type: string, format: date-time}
+    SubmittedByAgentRef:
+      type: object
+      additionalProperties: false
+      required: [entity_type, entity_id]
+      properties:
+        entity_type: {const: AGENT}
+        entity_id: {type: string, format: uuid}
+        version: {type: [string, integer, "null"]}
+        status: {type: [string, "null"], maxLength: 80}
+    WorkResultTrace:
+      type: object
+      additionalProperties: false
+      required: [correlation_id]
+      properties:
+        correlation_id: {type: string, minLength: 1, maxLength: 128}
+        causation_id: {type: [string, "null"], minLength: 1, maxLength: 128}
+        request_id: {type: [string, "null"], minLength: 1, maxLength: 128}
     EntityRef:
       type: object
       additionalProperties: false

@@ -1,10 +1,31 @@
 # P7 Final As-Built Baseline and P8 Handoff v1.0
 
-**Status:** FINAL / P7 CLOSED / P7-CA02 CLOSED / P8 ENTRY AUTHORIZED
+**Status:** FINAL / P7 CLOSED / P7-CA02 CLOSED / P7-CA02A VERIFIED / P7-CA02B CLOSED / P8 ENTRY AUTHORIZED
 **Phase Closed:** P7 - Work Coordination + CA/PA/EA Background Work
 **Next Phase:** P8 - Controlled WRITE / Approval / Enterprise OS
 **Observed Date:** 2026-10-19
 **Platform Branch:** `transition/p4-agent-runtime-foundation`
+
+## Final Baseline Identity
+
+P7 runtime implementation:
+
+- Commit: `67a47f91f0c7c77e816f18c8d3939d3450968b09`
+- Tree: `cee757fed13b5d2c2be14536763b75d79b325648`
+
+P7 CA02A verification closure baseline:
+
+- Commit: `00fc75c6e0d822b18c9954c803e4c5eaf5fa6794`
+- Tree: `53ecc42313520858c7e6f5bece7bbc038026f14c`
+
+CA02A changed verification, test, documentation, and evidence only. It did not
+change P7 production runtime semantics.
+
+P7 CA02B contract closure:
+
+- Reference: the Git commit containing this finalized section
+- P8 entry: that commit or a verified descendant
+- Resolution: Git history or external release attestation; no self-embedded hash
 
 ## 1. Closed Objective
 
@@ -102,10 +123,13 @@ content, and hidden reasoning are absent from evidence.
 | P7-CA02A PostgreSQL replay/evidence | `1 passed, 0 skipped`; restart evidence 3/3; requester replay `409`; zero residue |
 | P7-CA02A affected regression | `199 passed, 5 skipped` |
 | P7-CA02A repository Full Gate | `15,407 passed, 48 skipped`; statement `96.83%`; branch `96.22%` |
+| P7-CA02B semantic parity | `35 passed`; Frozen/runtime/OpenAPI P7 submission profile aligned |
+| P7-CA02B affected regression | `263 passed, 6 skipped`; protected PostgreSQL tests remained opt-in |
+| P7-CA02B repository Full Gate | `15,442 passed, 48 skipped`; statement `96.83%`; branch `96.22%`; AE Web `331 passed` |
 | AE Slice Gate | `4,513 passed, 16 skipped`; statement `98.29%`; branch `96.14%` |
 | WC/P7 Gate | `181 passed`; statement `96.74%`; branch `94.12%` |
 | Contract validation | 174 schemas, 236 examples, 204 negative examples, 8 OpenAPI documents |
-| Repository Full Gate | `15,407 passed, 48 skipped`; statement `96.83%`; branch `96.22%` |
+| Historical repository Full Gate before CA02B | `15,407 passed, 48 skipped`; statement `96.83%`; branch `96.22%` |
 
 The P7-S9 runner is protected and remains skipped in ordinary broad regression.
 Its actual database/provider execution is separate, explicit, and recorded in
@@ -156,5 +180,12 @@ replay behavior through the actual `nex_wc_test` persistence adapter. Evidence
 provenance is anchored to CA02 closure commit `67a47f91` and Git tree
 `cee757fed13b5d2c2be14536763b75d79b325648`; the CA02A Slice changes no
 production runtime semantics.
+
+P7-CA02B freezes the WC WorkResult OpenAPI as the narrower P7 Agent submission
+profile of the generic Frozen WorkResult v2.1 envelope. It aligns the
+Agent-only submitter reference, effective authority-lineage required fields,
+UUID identities, unrestricted JSON payload, and strict trace shape with the
+existing runtime validator. It changes no production runtime semantics and
+preserves accepted PostgreSQL and live-provider evidence.
 
 P7 is closed. P8 entry is authorized only on the baseline above.

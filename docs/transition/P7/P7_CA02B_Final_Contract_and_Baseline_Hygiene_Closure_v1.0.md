@@ -1,11 +1,12 @@
 # P7-CA02B — Final Contract & Baseline Hygiene Closure v1.0
 
-**Status:** CONTROLLED CLOSURE AMENDMENT / IMPLEMENTATION REQUIRED
+**Status:** CLOSED / CONTRACT FREEZE APPROVED / P8 ENTRY AUTHORIZED
 **Phase:** P7 Final Contract Freeze Hygiene
 **Purpose:** Close the remaining contract/document baseline hygiene items before P8 design proceeds
 **Predecessor:** P7-CA02 CLOSED / P7-CA02A VERIFIED / Repository Full Gate PASS
-**Current Repository HEAD:** `00fc75c6e0d822b18c9954c803e4c5eaf5fa6794`
-**Current Repository Tree:** `53ecc42313520858c7e6f5bece7bbc038026f14c`
+**CA02A Verification Commit:** `00fc75c6e0d822b18c9954c803e4c5eaf5fa6794`
+**CA02A Verification Tree:** `53ecc42313520858c7e6f5bece7bbc038026f14c`
+**CA02B Design Hardening Commit:** `d8d041383b4c402f87f7b4c966d7af46090e2ec9`
 **P7 Runtime Implementation Commit:** `67a47f91f0c7c77e816f18c8d3939d3450968b09`
 **P7 Runtime Implementation Tree:** `cee757fed13b5d2c2be14536763b75d79b325648`
 **Date:** 2026-10-19
@@ -529,25 +530,25 @@ record why OpenAPI alignment exposed a runtime defect.
 P7-CA02B SHALL close only when:
 
 ```text
-[ ] WC OpenAPI submitted_by matches runtime object shape
-[ ] submitted_by.entity_type = AGENT enforced
-[ ] all effective runtime-required WorkResult fields are OpenAPI-required
-[ ] payload shape reconciled source-backed
-[ ] EntityRef constraints reconciled
-[ ] trace shape, required correlation_id, bounds, and additionalProperties reconciled
-[ ] P7 submission profile is documented as a narrower Frozen profile
-[ ] WorkResult wrapper parity verified
-[ ] runtime/OpenAPI semantic parity tests PASS
-[ ] contract validation PASS
-[ ] Final As-Built header includes CA02A VERIFIED
-[ ] Final As-Built records runtime commit/tree
-[ ] Final As-Built records CA02A verification commit/tree with precise terminology
-[ ] Final As-Built identifies the non-self-referential CA02B closure ref
-[ ] Final As-Built records CA02B Full Gate results separately
-[ ] README status matches Final As-Built
-[ ] README read order includes CA02B amendment and closure Slice
-[ ] Repository Full Gate PASS
-[ ] no production runtime semantic change
+[x] WC OpenAPI submitted_by matches runtime object shape
+[x] submitted_by.entity_type = AGENT enforced
+[x] all effective runtime-required WorkResult fields are OpenAPI-required
+[x] payload shape reconciled source-backed
+[x] EntityRef constraints reconciled
+[x] trace shape, required correlation_id, bounds, and additionalProperties reconciled
+[x] P7 submission profile is documented as a narrower Frozen profile
+[x] WorkResult wrapper parity verified
+[x] runtime/OpenAPI semantic parity tests PASS
+[x] contract validation PASS
+[x] Final As-Built header includes CA02A VERIFIED
+[x] Final As-Built records runtime commit/tree
+[x] Final As-Built records CA02A verification commit/tree with precise terminology
+[x] Final As-Built identifies the non-self-referential CA02B closure ref
+[x] Final As-Built records CA02B Full Gate results separately
+[x] README status matches Final As-Built
+[x] README read order includes CA02B amendment and closure Slice
+[x] Repository Full Gate PASS
+[x] no production runtime semantic change
 ```
 
 ---
@@ -625,3 +626,25 @@ Then:
 Do not modify Frozen v2.1 source documents.
 
 Do not change production runtime semantics merely to make OpenAPI validation pass.
+
+---
+
+## 17. Implementation Closure
+
+P7-CA02B aligned only the public WC OpenAPI submission profile, parity tests,
+and final P7 closure documents. No production runtime source, database schema,
+persistence behavior, or provider integration changed.
+
+```text
+semantic parity tests = 35 passed
+affected regression  = 263 passed, 6 skipped
+contract validation  = 174 schemas, 236 examples, 204 negative, 8 OpenAPI
+repository Full Gate = 15,442 passed, 48 skipped
+statement coverage   = 96.83% (threshold 95%)
+branch coverage      = 96.22% (threshold 85%; P7 policy 94% satisfied)
+AE Web tests         = 331 passed, 0 failed, 0 skipped
+```
+
+The skipped tests are existing opt-in protected smokes. No CA02B-required test
+was skipped. PostgreSQL and remote-provider evidence were not rerun because
+CA02B changed neither production runtime nor persistence source.
