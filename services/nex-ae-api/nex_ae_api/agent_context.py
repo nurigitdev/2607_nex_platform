@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from nex_runtime.semantic_hashes import (
     canonical_json,
@@ -89,10 +89,13 @@ class ContextBuildRequest:
     principal_id: str
     agent_id: str
     execution_id: str
-    workspace_id: str
-    conversation_id: str
-    interaction_id: str
+    workspace_id: str | None
+    conversation_id: str | None
+    interaction_id: str | None
     work_intent_ref: Mapping[str, Any]
+    agent_type: str = "IA"
+    source_type: str = "IA_PROMPT"
+    source_ref: str | None = None
     candidate_hints: ContextCandidateHints | None = None
 
 
@@ -146,6 +149,9 @@ def build_agent_context(
     work_intent: Mapping[str, Any],
     runtime_policy_ref: Mapping[str, Any],
     resolver: TrustedContextResolver,
+    agent_type: str = "IA",
+    source_type: str = "IA_PROMPT",
+    source_ref: str | None = None,
     candidate_hints: ContextCandidateHints | None = None,
     context_id: str | None = None,
     context_generation: int = 1,
@@ -159,13 +165,27 @@ def build_agent_context(
             "principal_id", principal_id, maximum=200
         ),
         "agent_id": _required_uuid("agent_id", agent_id),
-        "agent_type": "IA",
+        "agent_type": _agent_type(agent_type),
     }
-    interaction = {
-        "workspace_id": _required_uuid("workspace_id", workspace_id),
-        "conversation_id": _required_uuid("conversation_id", conversation_id),
-        "interaction_id": _required_uuid("interaction_id", interaction_id),
-    }
+    if identity["agent_type"] == "IA":
+        if source_type != "IA_PROMPT" or source_ref is not None:
+            raise _invalid("IA AgentContext requires the IA_PROMPT source profile.")
+        interaction: dict[str, Any] | None = {
+            "workspace_id": _required_uuid("workspace_id", workspace_id),
+            "conversation_id": _required_uuid("conversation_id", conversation_id),
+            "interaction_id": _required_uuid("interaction_id", interaction_id),
+        }
+        source: dict[str, str] | None = None
+    else:
+        if source_type != "CLAIMED_WORKITEM":
+            raise _invalid("Background AgentContext requires CLAIMED_WORKITEM.")
+        source = {
+            "source_type": "CLAIMED_WORKITEM",
+            "source_ref": _required_text(
+                "source_ref", source_ref, maximum=200
+            ),
+        }
+        interaction = None
     execution_id = _required_uuid("execution_id", execution_id)
     work_intent_ref = _work_intent_ref(work_intent, execution_id=execution_id)
     generation = _bounded_int(
@@ -189,9 +209,12 @@ def build_agent_context(
         principal_id=identity["principal_id"],
         agent_id=identity["agent_id"],
         execution_id=execution_id,
-        workspace_id=interaction["workspace_id"],
-        conversation_id=interaction["conversation_id"],
-        interaction_id=interaction["interaction_id"],
+        agent_type=identity["agent_type"],
+        source_type=(source["source_type"] if source is not None else "IA_PROMPT"),
+        source_ref=(source["source_ref"] if source is not None else interaction["interaction_id"]),
+        workspace_id=(interaction["workspace_id"] if interaction is not None else None),
+        conversation_id=(interaction["conversation_id"] if interaction is not None else None),
+        interaction_id=(interaction["interaction_id"] if interaction is not None else None),
         work_intent_ref=work_intent_ref,
         candidate_hints=normalized_hints,
     )
@@ -206,7 +229,6 @@ def build_agent_context(
         "execution_id": execution_id,
         "work_intent_ref": work_intent_ref,
         "identity": identity,
-        "interaction": interaction,
         "project_ref": _resource_ref(resolution.project_ref, nullable=True),
         "authority_ref": _optional_text(
             "authority_ref", resolution.authority_ref, maximum=256
@@ -250,6 +272,17 @@ def build_agent_context(
         },
         "built_at": resolved_built_at,
     }
+    if interaction is not None:
+        context["interaction"] = interaction
+    else:
+        context["source"] = source
+    if identity["agent_type"] == "IA" and context["project_ref"] is not None:
+        raise _invalid("IA AgentContext must remain project-neutral.")
+    if identity["agent_type"] != "IA" and (
+        not isinstance(context["project_ref"], Mapping)
+        or context["project_ref"].get("resource_type") != "PROJECT"
+    ):
+        raise _invalid("Background AgentContext requires a trusted project scope.")
     _require_maximum("resolved_entities", context["resolved_entities"], 32)
     _require_maximum("retrieval_refs", context["retrieval_refs"], 64)
     _require_maximum("evidence_refs", context["evidence_refs"], 128)
@@ -276,7 +309,15 @@ class SqlAlchemyAgentContextRepository:
         tenant_id = _required_text("tenant_id", tenant_id, maximum=128)
         normalized = _validate_agent_context(agent_context)
         identity = normalized["identity"]
-        interaction = normalized["interaction"]
+        interaction = normalized.get("interaction")
+        source = normalized.get("source")
+        if interaction is None:
+            source_ref = str(source["source_ref"])
+            interaction = {
+                "workspace_id": _compatibility_uuid(source_ref, "workspace"),
+                "conversation_id": _compatibility_uuid(source_ref, "conversation"),
+                "interaction_id": _compatibility_uuid(source_ref, "interaction"),
+            }
         work_intent_ref = normalized["work_intent_ref"]
         if identity["tenant_id"] != tenant_id:
             raise _invalid("AgentContext tenant identity does not match storage scope.")
@@ -295,6 +336,7 @@ class SqlAlchemyAgentContextRepository:
             "interaction_id": interaction["interaction_id"],
             "context_hash": normalized["context_hash"],
             "context_json": canonical_json(normalized),
+            "context_record": normalized,
             "built_at": normalized["built_at"],
         }
         try:
@@ -373,7 +415,6 @@ def _validate_agent_context(value: Mapping[str, Any]) -> dict[str, Any]:
             "execution_id",
             "work_intent_ref",
             "identity",
-            "interaction",
             "project_ref",
             "resolved_entities",
             "retrieval_refs",
@@ -386,7 +427,7 @@ def _validate_agent_context(value: Mapping[str, Any]) -> dict[str, Any]:
             "context_hash",
             "built_at",
         },
-        optional={"authority_ref"},
+        optional={"authority_ref", "interaction", "source"},
     )
     _required_uuid("context_id", record.get("context_id"))
     _bounded_int(
@@ -401,8 +442,9 @@ def _validate_agent_context(value: Mapping[str, Any]) -> dict[str, Any]:
     )
     identity = record.get("identity")
     interaction = record.get("interaction")
-    if not isinstance(identity, dict) or identity.get("agent_type") != "IA":
-        raise _invalid("AgentContext identity must describe an IA.")
+    source = record.get("source")
+    if not isinstance(identity, dict):
+        raise _invalid("AgentContext identity is required.")
     _require_object_fields(
         "identity",
         identity,
@@ -411,16 +453,29 @@ def _validate_agent_context(value: Mapping[str, Any]) -> dict[str, Any]:
     _required_text("tenant_id", identity.get("tenant_id"), maximum=128)
     _required_text("principal_id", identity.get("principal_id"), maximum=200)
     _required_uuid("agent_id", identity.get("agent_id"))
-    if not isinstance(interaction, dict):
-        raise _invalid("AgentContext interaction is required.")
-    _require_object_fields(
-        "interaction",
-        interaction,
-        required={"workspace_id", "conversation_id", "interaction_id"},
-    )
-    for field in ("workspace_id", "conversation_id", "interaction_id"):
-        _required_uuid(field, interaction.get(field))
-    _resource_ref(record.get("project_ref"), nullable=True)
+    agent_type = _agent_type(identity.get("agent_type"))
+    if agent_type == "IA":
+        if not isinstance(interaction, dict) or source is not None:
+            raise _invalid("IA AgentContext requires only interaction lineage.")
+        _require_object_fields(
+            "interaction",
+            interaction,
+            required={"workspace_id", "conversation_id", "interaction_id"},
+        )
+        for field in ("workspace_id", "conversation_id", "interaction_id"):
+            _required_uuid(field, interaction.get(field))
+    else:
+        if interaction is not None or not isinstance(source, Mapping):
+            raise _invalid("Background AgentContext requires only source lineage.")
+        _require_object_fields(
+            "source", source, required={"source_type", "source_ref"}
+        )
+        if source.get("source_type") != "CLAIMED_WORKITEM":
+            raise _invalid("Background AgentContext source type is invalid.")
+        _required_text("source_ref", source.get("source_ref"), maximum=200)
+    project_ref = _resource_ref(record.get("project_ref"), nullable=True)
+    if (agent_type == "IA") != (project_ref is None):
+        raise _invalid("AgentContext project scope does not match its Agent type.")
     _optional_text("authority_ref", record.get("authority_ref"), maximum=256)
     for field, maximum in (
         ("resolved_entities", 32),
@@ -495,6 +550,21 @@ def _work_intent_ref(
             "version": work_intent.get("intent_revision"),
             "hash": work_intent.get("intent_hash"),
         },
+    )
+
+
+def _agent_type(value: object) -> str:
+    if value not in {"IA", "CA", "PA", "EA"}:
+        raise _invalid("AgentContext agent_type is invalid.")
+    return str(value)
+
+
+def _compatibility_uuid(source_ref: str, kind: str) -> str:
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            f"nex:p7:agent-context-compatibility:{kind}:{source_ref}",
+        )
     )
 
 
@@ -646,15 +716,19 @@ def _require_persisted_lineage(session: Session, params: Mapping[str, Any]) -> N
             "ae.agent_context_work_intent_mismatch",
             "AgentContext does not reference the exact persisted WorkIntent.",
         )
+    identity = params["context_record"]["identity"]
+    execution_columns = (
+        "principal_id, agent_id, agent_type, workspace_id, conversation_id, "
+        "legacy_interaction_id"
+        if identity["agent_type"] == "IA"
+        else "principal_id, agent_id, agent_type, source_type, work_item_ref, "
+        "project_id, workspace_id, conversation_id, legacy_interaction_id"
+    )
     execution = session.execute(
         text(
-            """
-            SELECT principal_id, agent_id, agent_type, workspace_id,
-                   conversation_id, legacy_interaction_id
-            FROM ae_agent_execution
-            WHERE tenant_id = :tenant_id
-              AND agent_execution_id = :agent_execution_id
-            """
+            f"SELECT {execution_columns} FROM ae_agent_execution "
+            "WHERE tenant_id = :tenant_id "
+            "AND agent_execution_id = :agent_execution_id"
         ),
         params,
     ).mappings().first()
@@ -663,14 +737,26 @@ def _require_persisted_lineage(session: Session, params: Mapping[str, Any]) -> N
             "ae.agent_context_execution_not_found",
             "AgentContext AgentExecution was not found.",
         )
-    expected = (
-        ("principal_id", params["principal_id"]),
-        ("agent_id", params["agent_id"]),
-        ("agent_type", "IA"),
-        ("workspace_id", params["workspace_id"]),
-        ("conversation_id", params["conversation_id"]),
-        ("legacy_interaction_id", params["interaction_id"]),
-    )
+    source = params["context_record"].get("source")
+    if identity["agent_type"] == "IA":
+        expected = (
+            ("principal_id", params["principal_id"]),
+            ("agent_id", params["agent_id"]),
+            ("agent_type", "IA"),
+            ("workspace_id", params["workspace_id"]),
+            ("conversation_id", params["conversation_id"]),
+            ("legacy_interaction_id", params["interaction_id"]),
+        )
+    else:
+        project_ref = params["context_record"]["project_ref"]
+        expected = (
+            ("principal_id", params["principal_id"]),
+            ("agent_id", params["agent_id"]),
+            ("agent_type", identity["agent_type"]),
+            ("source_type", "CLAIMED_WORKITEM"),
+            ("work_item_ref", source["source_ref"]),
+            ("project_id", project_ref["resource_id"]),
+        )
     if any(str(execution[field]) != str(value) for field, value in expected):
         raise AgentContextError(
             "ae.agent_context_execution_scope_mismatch",

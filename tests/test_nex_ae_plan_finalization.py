@@ -311,6 +311,39 @@ def test_builder_rejects_project_and_verification_drift() -> None:
         )
 
 
+def test_builder_rejects_unsupported_and_incomplete_background_lineage() -> None:
+    plan = _compiled()
+    results = _step_results(plan=plan)
+    verification = verify_plan_completion(executable_plan=plan, step_results=results)
+    result_id, _ = derive_plan_result_ids(
+        tenant_id=TENANT,
+        execution_id=EXECUTION_ID,
+        input_result_set_hash=verification.input_result_set_hash,
+    )
+    with pytest.raises(P5PlanFinalizationError, match="supported Agent"):
+        build_plan_agent_result(
+            execution={**_execution(), "agent_type": "UNSUPPORTED"},
+            executable_plan=plan,
+            step_results=results,
+            verification=verification,
+            result_id=result_id,
+            created_at=NOW,
+        )
+    with pytest.raises(P5PlanFinalizationError, match="source lineage"):
+        build_plan_agent_result(
+            execution={
+                **_execution(project_id="project-p7"),
+                "agent_type": "PA",
+                "source_type": "CLAIMED_WORKITEM",
+            },
+            executable_plan=plan,
+            step_results=results,
+            verification=verification,
+            result_id=result_id,
+            created_at=NOW,
+        )
+
+
 def test_service_persists_agent_result_delivery_and_replays_idempotently() -> None:
     factory = _factory()
     service = SqlAlchemyP5PlanFinalizationService(factory)

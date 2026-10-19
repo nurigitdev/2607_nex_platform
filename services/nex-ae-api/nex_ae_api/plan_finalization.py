@@ -138,12 +138,21 @@ def build_plan_agent_result(
     execution_id = _required_uuid(
         "agent_execution_id", execution.get("agent_execution_id")
     )
-    if (
-        execution.get("agent_type") != "IA"
-        or execution.get("project_id") is not None
-        or plan["execution_id"] != execution_id
+    agent_type = execution.get("agent_type")
+    if agent_type not in {"IA", "CA", "PA", "EA"} or plan["execution_id"] != execution_id:
+        raise _invalid("AgentResult requires an exact supported Agent plan lineage.")
+    background = agent_type != "IA"
+    if not background and execution.get("project_id") is not None:
+        raise _invalid("IA AgentResult must remain project-neutral.")
+    if background and (
+            execution.get("source_type") != "CLAIMED_WORKITEM"
+            or not execution.get("project_id")
+            or not execution.get("work_item_ref")
+            or not execution.get("claim_ref")
+            or not execution.get("claim_generation")
+            or not execution.get("assignment_ref")
     ):
-        raise _invalid("P5 AgentResult requires a project-neutral IA plan lineage.")
+        raise _invalid("AgentResult execution source lineage is incomplete.")
     results = {
         item["compiled_step_key"]: validate_step_result_contract(item)
         for item in step_results
@@ -176,18 +185,20 @@ def build_plan_agent_result(
         "tenant_id": tenant_id,
         "result_id": _required_uuid("result_id", result_id),
         "agent_execution_id": execution_id,
-        "agent_type": "IA",
+        "agent_type": agent_type,
         "agent_id": _required_uuid("agent_id", execution.get("agent_id")),
-        "project_id": None,
+        "project_id": execution.get("project_id"),
         "work_intent_ref": _versioned_ref("WORK_INTENT", plan["work_intent_ref"]),
         "agent_context_ref": _versioned_ref("AGENT_CONTEXT", plan["agent_context_ref"]),
         "agent_plan_ref": _versioned_ref("AGENT_PLAN", plan["agent_plan_ref"]),
         "executable_plan_ref": _plan_ref(plan),
-        "source_work_item_ref": None,
-        "source_claim_ref": None,
-        "source_claim_generation": None,
-        "source_claimant_agent_id": None,
-        "source_assignment_ref": None,
+        "source_work_item_ref": execution.get("work_item_ref"),
+        "source_claim_ref": execution.get("claim_ref"),
+        "source_claim_generation": execution.get("claim_generation"),
+        "source_claimant_agent_id": (
+            execution.get("agent_id") if background else None
+        ),
+        "source_assignment_ref": execution.get("assignment_ref"),
         "status": verification.status,
         "quality": "COMPLETE" if verification.status == "SUCCEEDED" else None,
         "completion_verification_refs": list(verification.completion_verification_refs),
@@ -214,7 +225,11 @@ def build_plan_agent_result(
             "step_result_count": len(results),
         },
         "provenance": {
-            "result_assembler_version": "p5-plan-result/1.0",
+            "result_assembler_version": (
+                "p7-background-plan-result/1.0"
+                if background
+                else "p5-plan-result/1.0"
+            ),
             "executable_plan_id": plan["executable_plan_id"],
             "executable_plan_hash": plan["executable_plan_hash"],
             "input_result_set_hash": verification.input_result_set_hash,
@@ -322,9 +337,10 @@ def _load_execution(
     row = (
         session.execute(
             text(
-                "SELECT tenant_id, agent_execution_id, agent_id, agent_type, project_id, "
-                "workspace_id, state, phase, version, result_id, correlation_id, "
-                "causation_id FROM ae_agent_execution WHERE tenant_id = :tenant_id "
+                "SELECT tenant_id, agent_execution_id, agent_id, agent_type, "
+                "project_id, workspace_id, state, phase, version, result_id, "
+                "correlation_id, causation_id "
+                "FROM ae_agent_execution WHERE tenant_id = :tenant_id "
                 "AND agent_execution_id = :execution_id"
             ),
             {"tenant_id": tenant_id, "execution_id": execution_id},
@@ -332,7 +348,26 @@ def _load_execution(
         .mappings()
         .first()
     )
-    return None if row is None else _row_dict(row)
+    if row is None:
+        return None
+    execution = _row_dict(row)
+    if execution["agent_type"] == "IA":
+        return execution
+    background = (
+        session.execute(
+            text(
+                "SELECT source_type, work_item_ref, claim_ref, claim_generation, "
+                "assignment_ref, requester_ref FROM ae_agent_execution "
+                "WHERE tenant_id = :tenant_id AND agent_execution_id = :execution_id"
+            ),
+            {"tenant_id": tenant_id, "execution_id": execution_id},
+        )
+        .mappings()
+        .first()
+    )
+    if background is not None:
+        execution.update(_row_dict(background))
+    return execution
 
 
 def _load_latest_plan(
@@ -378,7 +413,15 @@ def _union_result_refs(
 
 def _row_dict(row: Mapping[str, Any]) -> dict[str, Any]:
     result = dict(row)
-    for field in ("agent_execution_id", "agent_id", "workspace_id", "result_id"):
+    for field in (
+        "agent_execution_id",
+        "agent_id",
+        "workspace_id",
+        "result_id",
+        "work_item_ref",
+        "claim_ref",
+        "assignment_ref",
+    ):
         if result.get(field) is not None:
             result[field] = str(result[field])
     return result

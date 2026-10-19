@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from datetime import UTC, datetime
 from urllib.error import HTTPError, URLError
@@ -95,7 +96,8 @@ def _ae_sessions():
             CREATE TABLE ae_claim_handoff_inbox (
                 tenant_id TEXT NOT NULL, event_id TEXT NOT NULL,
                 handoff_id TEXT NOT NULL, handoff_semantic_hash TEXT NOT NULL,
-                agent_execution_id TEXT NOT NULL, received_at TEXT NOT NULL,
+                agent_execution_id TEXT NOT NULL, planning_source_json TEXT,
+                received_at TEXT NOT NULL,
                 PRIMARY KEY (tenant_id, event_id),
                 UNIQUE (tenant_id, handoff_id)
             )
@@ -219,6 +221,7 @@ class _DirectAdmissionClient:
             event_id=envelope["event_id"],
             requester_ref=envelope["requester_ref"],
             handoff=envelope["handoff"],
+            planning_source=envelope["planning_source"],
         )
         return {"agent_execution_id": admitted.execution["agent_execution_id"]}
 
@@ -260,6 +263,9 @@ def test_s4_outbox_bridge_worker_and_claimed_admission_are_idempotent():
     assert admitted["work_item_ref"] == claimed["work_item"]["work_item_id"]
     assert admitted["claim_generation"] == 1
     assert admitted["requester_ref"] == REQUESTER
+    assert executions.get_claimed_planning_source(
+        TENANT, EXECUTION_ID
+    ) == claimed["planning_source"]
 
     repeated = run_handoff_delivery_job(
         execution.job,
@@ -272,13 +278,25 @@ def test_s4_outbox_bridge_worker_and_claimed_admission_are_idempotent():
         assert session.execute(text("SELECT count(*) FROM ae_agent_execution")).scalar_one() == 1
         assert session.execute(text("SELECT count(*) FROM ae_claim_handoff_inbox")).scalar_one() == 1
 
+    with sessions.begin() as session:
+        session.execute(
+            text(
+                "UPDATE ae_claim_handoff_inbox "
+                "SET planning_source_json = NULL"
+            )
+        )
+    assert executions.get_claimed_planning_source(TENANT, EXECUTION_ID) is None
+
 
 def test_s4_claimed_admission_fails_closed_for_semantic_and_identity_drift():
     sessions, identities, _, admission = _ae_admission()
     _, claimed = _claimed_work()
     handoff = claimed["handoff"]
     first = admission.admit_claimed_work(
-        event_id=claimed["event_id"], requester_ref=REQUESTER, handoff=handoff
+        event_id=claimed["event_id"],
+        requester_ref=REQUESTER,
+        handoff=handoff,
+        planning_source=claimed["planning_source"],
     )
     assert first.execution["agent_execution_id"] == EXECUTION_ID
 
@@ -287,6 +305,7 @@ def test_s4_claimed_admission_fails_closed_for_semantic_and_identity_drift():
             event_id=claimed["event_id"],
             requester_ref=REQUESTER,
             handoff={**handoff, "claim_ref": "different-claim"},
+            planning_source=claimed["planning_source"],
         )
     assert semantic_conflict.value.error_code == "ae.agent_execution_trigger_conflict"
 
@@ -301,8 +320,79 @@ def test_s4_claimed_admission_fails_closed_for_semantic_and_identity_drift():
             event_id="88888888-8888-4888-8888-888888888884",
             requester_ref=REQUESTER,
             handoff={**handoff, "handoff_id": "99999999-9999-4999-8999-999999999994"},
+            planning_source=claimed["planning_source"],
         )
     assert identity_conflict.value.error_code == "ae.claimed_work_identity_forbidden"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        lambda source: source.update(unexpected=True),
+        lambda source: source.update(schema_version="unsupported"),
+        lambda source: source.update(project_ref={"entity_type": "TENANT", "entity_id": PROJECT}),
+        lambda source: source.update(artifact_refs="not-an-array"),
+        lambda source: source.update(artifact_refs=[{"entity_type": "ARTIFACT"}]),
+        lambda source: source.update(
+            artifact_refs=[
+                {
+                    "entity_type": "ARTIFACT",
+                    "entity_id": "artifact-1",
+                    "claim_ref": "must-not-cross-planning-boundary",
+                }
+            ]
+        ),
+        lambda source: source.update(source_ref="different-work-item"),
+    ),
+)
+def test_s4_claimed_planning_source_validation_fails_closed(mutation):
+    _, _, _, admission = _ae_admission()
+    _, claimed = _claimed_work()
+    source = copy.deepcopy(claimed["planning_source"])
+    mutation(source)
+
+    with pytest.raises(AgentExecutionError):
+        admission.admit_claimed_work(
+            event_id=claimed["event_id"],
+            requester_ref=REQUESTER,
+            handoff=claimed["handoff"],
+            planning_source=source,
+        )
+
+
+def test_s4_claimed_planning_source_reload_failures_are_typed():
+    sessions, _, repository, admission = _ae_admission()
+    _, claimed = _claimed_work()
+    admission.admit_claimed_work(
+        event_id=claimed["event_id"],
+        requester_ref=REQUESTER,
+        handoff=claimed["handoff"],
+        planning_source=claimed["planning_source"],
+    )
+    assert repository.get_claimed_planning_source(TENANT, "missing") is None
+    with sessions.begin() as session:
+        session.execute(
+            text(
+                "UPDATE ae_claim_handoff_inbox "
+                "SET planning_source_json = '{invalid-json'"
+            )
+        )
+    with pytest.raises(AgentExecutionError) as malformed:
+        repository.get_claimed_planning_source(TENANT, EXECUTION_ID)
+    assert malformed.value.retryable is True
+
+    unavailable = SqlAlchemyAgentExecutionRepository(
+        sessionmaker(bind=create_engine("sqlite+pysqlite://"), expire_on_commit=False)
+    )
+    with pytest.raises(AgentExecutionError) as store:
+        unavailable.get_claimed_planning_source(TENANT, EXECUTION_ID)
+    assert store.value.retryable is True
+
+    enriched = copy.deepcopy(claimed["planning_source"])
+    enriched["project_ref"].update(version=1, status="ACTIVE")
+    assert execution_module._validate_claimed_planning_source(enriched)[
+        "project_ref"
+    ]["version"] == 1
 
 
 def _claimed_trigger(**overrides):
@@ -344,6 +434,7 @@ def test_s4_repository_and_receipt_failures_are_typed(monkeypatch):
         repository.admit_claimed_work(
             event_id="event",
             handoff_semantic_hash="sha256:" + "a" * 64,
+            planning_source={},
             trigger=prompt_trigger,
             principal_id=REQUESTER,
             agent_execution_id=EXECUTION_ID,
@@ -357,6 +448,7 @@ def test_s4_repository_and_receipt_failures_are_typed(monkeypatch):
             event_id=claimed["event_id"],
             requester_ref=REQUESTER,
             handoff=claimed["handoff"],
+            planning_source=claimed["planning_source"],
         )
     assert missing_execution.value.error_code == "ae.agent_execution_write_conflict"
 
@@ -372,6 +464,7 @@ def test_s4_repository_and_receipt_failures_are_typed(monkeypatch):
             event_id=claimed["event_id"],
             requester_ref=REQUESTER,
             handoff=claimed["handoff"],
+            planning_source=claimed["planning_source"],
         )
     assert missing_receipt.value.error_code == "ae.claim_handoff_write_conflict"
 
@@ -382,6 +475,7 @@ def test_s4_repository_and_receipt_failures_are_typed(monkeypatch):
         unavailable.admit_claimed_work(
             event_id="event",
             handoff_semantic_hash="sha256:" + "a" * 64,
+            planning_source=claimed["planning_source"],
             trigger=_claimed_trigger(),
             principal_id=REQUESTER,
             agent_execution_id=EXECUTION_ID,
@@ -428,9 +522,13 @@ def test_s4_repository_and_receipt_failures_are_typed(monkeypatch):
 )
 def test_s4_handoff_contract_validation_fails_closed(handoff):
     _, _, _, admission = _ae_admission()
+    _, claimed = _claimed_work()
     with pytest.raises(AgentExecutionError):
         admission.admit_claimed_work(
-            event_id="event", requester_ref=REQUESTER, handoff=handoff
+            event_id="event",
+            requester_ref=REQUESTER,
+            handoff=handoff,
+            planning_source=claimed["planning_source"],
         )
 
 
@@ -447,6 +545,7 @@ def test_s4_background_admission_requires_required_mode():
             event_id=claimed["event_id"],
             requester_ref=REQUESTER,
             handoff=claimed["handoff"],
+            planning_source=claimed["planning_source"],
         )
     assert error.value.error_code == "ae.background_agent_runtime_disabled"
 
@@ -591,6 +690,23 @@ def test_s4_delivery_job_and_outbox_state_fail_closed():
     ):
         with pytest.raises(HandoffDeliveryError):
             run_handoff_delivery_job(changed, store=store, client=_Client())
+
+    class _MissingPlanningSourceStore:
+        def __getattr__(self, name):
+            return getattr(store, name)
+
+        def load_handoff_event(self, **kwargs):
+            event = store.load_handoff_event(**kwargs)
+            event.pop("planning_source")
+            return event
+
+    with pytest.raises(HandoffDeliveryError) as missing_source:
+        run_handoff_delivery_job(
+            job,
+            store=_MissingPlanningSourceStore(),
+            client=_Client(),
+        )
+    assert missing_source.value.error_code == "wc.handoff_planning_source_invalid"
 
     key = (TENANT, claimed["outbox_id"])
     store._outbox[key]["event_type"] = "OTHER"

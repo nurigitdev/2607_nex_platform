@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
@@ -197,6 +198,7 @@ class SqlAlchemyAgentExecutionRepository:
         *,
         event_id: str,
         handoff_semantic_hash: str,
+        planning_source: Mapping[str, Any],
         trigger: ExecutionTriggerV21,
         principal_id: str,
         agent_execution_id: str,
@@ -213,6 +215,12 @@ class SqlAlchemyAgentExecutionRepository:
             "event_id": _required_text("event_id", event_id),
             "handoff_semantic_hash": _required_text(
                 "handoff_semantic_hash", handoff_semantic_hash
+            ),
+            "planning_source_json": json.dumps(
+                _validate_claimed_planning_source(planning_source),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
             ),
             "principal_id": _required_text("principal_id", principal_id),
             "agent_execution_id": _required_text(
@@ -236,7 +244,10 @@ class SqlAlchemyAgentExecutionRepository:
                     )
                 if int(inserted.rowcount or 0) == 0:
                     _require_same_admission(saved, params)
-                session.execute(text(_CLAIM_HANDOFF_INBOX_INSERT_SQL), params)
+                session.execute(
+                    text(_claim_handoff_inbox_insert_sql(session.get_bind().dialect.name)),
+                    params,
+                )
                 receipt = _load_claim_handoff_receipt(
                     session,
                     tenant_id=trigger.tenant_id,
@@ -256,6 +267,32 @@ class SqlAlchemyAgentExecutionRepository:
             with self._session_factory() as session:
                 return _load_execution(session, tenant_id, agent_execution_id)
         except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
+    def get_claimed_planning_source(
+        self, tenant_id: str, agent_execution_id: str
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = session.execute(
+                    text(
+                        "SELECT planning_source_json FROM ae_claim_handoff_inbox "
+                        "WHERE tenant_id = :tenant_id "
+                        "AND agent_execution_id = :agent_execution_id"
+                    ),
+                    {
+                        "tenant_id": tenant_id,
+                        "agent_execution_id": agent_execution_id,
+                    },
+                ).mappings().first()
+                if row is None or row["planning_source_json"] is None:
+                    return None
+                value = row["planning_source_json"]
+                decoded = json.loads(value) if isinstance(value, str) else dict(value)
+                return _validate_claimed_planning_source(decoded)
+        except AgentExecutionError:
+            raise
+        except (SQLAlchemyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise _unavailable() from exc
 
     def transition(
@@ -407,6 +444,7 @@ class AgentExecutionAdmissionService:
         event_id: str,
         requester_ref: str,
         handoff: Mapping[str, Any],
+        planning_source: Mapping[str, Any],
     ) -> AgentRuntimeAdmission:
         if self._mode != "required":
             raise AgentExecutionError(
@@ -414,6 +452,16 @@ class AgentExecutionAdmissionService:
                 "Claimed WorkItem admission requires required Agent Runtime mode.",
             )
         normalized = _validate_claim_handoff(handoff)
+        normalized_planning_source = _validate_claimed_planning_source(
+            planning_source
+        )
+        if (
+            normalized_planning_source["source_ref"]
+            != normalized["work_item_ref"]
+            or normalized_planning_source["project_ref"]["entity_id"]
+            != normalized["project_id"]
+        ):
+            raise _invalid("Claim handoff planning source lineage is invalid.")
         try:
             identity = self._identities.get_agent(
                 tenant_id=normalized["tenant_id"],
@@ -453,6 +501,7 @@ class AgentExecutionAdmissionService:
             execution = self._executions.admit_claimed_work(
                 event_id=_required_text("event_id", event_id),
                 handoff_semantic_hash=semantic_sha256_hash_ref(normalized),
+                planning_source=normalized_planning_source,
                 trigger=trigger,
                 principal_id=requester_ref,
                 agent_execution_id=self._id_factory(),
@@ -481,13 +530,19 @@ _EXECUTION_INSERT_SQL = """
     ) ON CONFLICT (tenant_id, trigger_id) DO NOTHING
 """
 
-_CLAIM_HANDOFF_INBOX_INSERT_SQL = """
+def _claim_handoff_inbox_insert_sql(dialect_name: str) -> str:
+    planning_source = (
+        "CAST(:planning_source_json AS JSONB)"
+        if dialect_name == "postgresql"
+        else ":planning_source_json"
+    )
+    return f"""
     INSERT INTO ae_claim_handoff_inbox (
         tenant_id, event_id, handoff_id, handoff_semantic_hash,
-        agent_execution_id, received_at
+        agent_execution_id, planning_source_json, received_at
     ) VALUES (
         :tenant_id, :event_id, :trigger_id, :handoff_semantic_hash,
-        :agent_execution_id, :now
+        :agent_execution_id, {planning_source}, :now
     ) ON CONFLICT DO NOTHING
 """
 
@@ -620,7 +675,7 @@ def _load_claim_handoff_receipt(
         text(
             """
             SELECT tenant_id, event_id, handoff_id, handoff_semantic_hash,
-                   agent_execution_id, received_at
+                   agent_execution_id, planning_source_json, received_at
             FROM ae_claim_handoff_inbox
             WHERE tenant_id = :tenant_id
               AND (event_id = :event_id OR handoff_id = :handoff_id)
@@ -642,6 +697,11 @@ def _load_claim_handoff_receipt(
         "handoff_id": str(row["handoff_id"]),
         "handoff_semantic_hash": row["handoff_semantic_hash"],
         "agent_execution_id": str(row["agent_execution_id"]),
+        "planning_source": _validate_claimed_planning_source(
+            json.loads(row["planning_source_json"])
+            if isinstance(row["planning_source_json"], str)
+            else dict(row["planning_source_json"])
+        ),
         "received_at": _datetime_value(row["received_at"]),
     }
 
@@ -735,6 +795,7 @@ def _require_same_handoff_receipt(
         "handoff_id": params["trigger_id"],
         "handoff_semantic_hash": params["handoff_semantic_hash"],
         "agent_execution_id": execution["agent_execution_id"],
+        "planning_source": json.loads(params["planning_source_json"]),
     }
     if any(
         _comparable(receipt[key]) != _comparable(value)
@@ -796,7 +857,73 @@ def _validate_claim_handoff(value: Mapping[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+_PLANNING_SOURCE_FIELDS = frozenset(
+    {
+        "schema_version",
+        "source_type",
+        "source_ref",
+        "goal",
+        "work_class",
+        "required_capability",
+        "project_ref",
+        "artifact_refs",
+        "evidence_refs",
+        "completion_policy",
+        "result_contract_ref",
+    }
+)
+
+
+def _validate_claimed_planning_source(value: object) -> dict[str, Any]:
+    if not isinstance(value, Mapping) or set(value) != _PLANNING_SOURCE_FIELDS:
+        raise _invalid("Claimed planning source fields are invalid.")
+    normalized = dict(value)
+    if (
+        normalized.get("schema_version")
+        != "p7.claimed_work_planning_source.v1"
+        or normalized.get("source_type") != "CLAIMED_WORKITEM"
+    ):
+        raise _invalid("Claimed planning source version or type is invalid.")
+    for field in (
+        "source_ref",
+        "goal",
+        "work_class",
+        "required_capability",
+        "completion_policy",
+        "result_contract_ref",
+    ):
+        normalized[field] = _required_text(field, normalized.get(field))
+    project = normalized.get("project_ref")
+    if (
+        not isinstance(project, Mapping)
+        or set(project) - {"entity_type", "entity_id", "version", "status"}
+        or project.get("entity_type") != "PROJECT"
+    ):
+        raise _invalid("Claimed planning source project_ref is invalid.")
+    normalized["project_ref"] = {
+        "entity_type": "PROJECT",
+        "entity_id": _required_text("project_ref.entity_id", project.get("entity_id")),
+        **({"version": project.get("version")} if "version" in project else {}),
+        **({"status": project.get("status")} if "status" in project else {}),
+    }
+    for field in ("artifact_refs", "evidence_refs"):
+        refs = normalized.get(field)
+        if not isinstance(refs, list) or len(refs) > 128:
+            raise _invalid(f"Claimed planning source {field} is invalid.")
+        for item in refs:
+            if (
+                not isinstance(item, Mapping)
+                or set(item) - {"entity_type", "entity_id", "version", "status"}
+                or not isinstance(item.get("entity_type"), str)
+                or not isinstance(item.get("entity_id"), str)
+            ):
+                raise _invalid(f"Claimed planning source {field} is invalid.")
+    return normalized
+
+
 def _comparable(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return semantic_sha256_hash_ref(value)
     return None if value is None else str(value)
 
 

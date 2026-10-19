@@ -17,6 +17,7 @@ class ClaimedWorkAdmission(Protocol):
         event_id: str,
         requester_ref: str,
         handoff: dict[str, Any],
+        planning_source: dict[str, Any],
     ) -> AgentRuntimeAdmission: ...
 
 
@@ -51,6 +52,7 @@ def register_claim_handoff_routes(
                 event_id=payload.get("event_id"),
                 requester_ref=payload.get("requester_ref"),
                 handoff=payload.get("handoff"),
+                planning_source=payload.get("planning_source"),
             )
             return {
                 "schema_version": "ae_claim_handoff_admission.v1",

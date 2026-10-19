@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from jsonschema import Draft202012Validator, FormatChecker, ValidationError
+from referencing import Registry, Resource
 from nex_runtime import (
     InMemoryJobQueue,
     JobRetryPolicy,
@@ -33,6 +34,10 @@ FROZEN_WC = (
 
 PAIRS = (
     ("p7-plan-candidate-v1.schema.json", "p7-plan-candidate-v1.json"),
+    (
+        "p7-claimed-work-planning-envelope-v1.schema.json",
+        "p7-claimed-work-planning-envelope-v1.json",
+    ),
     ("p7-work-item-v2.1.schema.json", "p7-work-item-v2.1.json"),
     ("p7-routing-decision-v2.1.schema.json", "p7-routing-decision-v2.1.json"),
     (
@@ -124,7 +129,17 @@ def _load(path: Path) -> dict[str, object]:
 def _validator(schema_name: str) -> Draft202012Validator:
     schema = _load(CONTRACTS / schema_name)
     Draft202012Validator.check_schema(schema)
-    return Draft202012Validator(schema, format_checker=FormatChecker())
+    resources = []
+    for path in CONTRACTS.glob("*.schema.json"):
+        candidate = _load(path)
+        if "$id" in candidate:
+            resources.append((str(candidate["$id"]), Resource.from_contents(candidate)))
+    registry = Registry().with_resources(resources)
+    return Draft202012Validator(
+        schema,
+        format_checker=FormatChecker(),
+        registry=registry,
+    )
 
 
 def _all_keys(value: object) -> set[str]:
@@ -188,6 +203,18 @@ def test_p7_frozen_contract_semantic_lineage_rules_fail_closed() -> None:
         _validator("p7-work-result-submitted-v2.1.schema.json").validate(
             invalid_event
         )
+
+
+def test_p7_claimed_work_planning_source_stays_outside_frozen_handoff() -> None:
+    envelope = _load(EXAMPLES / "p7-claimed-work-planning-envelope-v1.json")
+    frozen_handoff = copy.deepcopy(envelope["handoff"])
+    frozen_handoff["planning_source"] = envelope["planning_source"]
+
+    with pytest.raises(ValidationError):
+        _validator("p7-claim-execution-handoff-v2.1.schema.json").validate(
+            frozen_handoff
+        )
+    _validator("p7-claimed-work-planning-envelope-v1.schema.json").validate(envelope)
 
 
 def test_p7_result_event_matches_wait_external_identity() -> None:

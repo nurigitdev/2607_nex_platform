@@ -901,7 +901,7 @@ def _require_compile_authority(
     execution = (
         session.execute(
             text("""
-            SELECT state, phase, legacy_interaction_id, correlation_id, causation_id
+            SELECT *
             FROM ae_agent_execution
             WHERE tenant_id = :tenant_id AND agent_execution_id = :execution_id
             """),
@@ -910,11 +910,24 @@ def _require_compile_authority(
         .mappings()
         .first()
     )
+    source_type = None if execution is None else execution.get("source_type")
+    if source_type is None and execution is not None:
+        source_type = (
+            "PROMPT" if execution.get("legacy_interaction_id") is not None else None
+        )
     if (
         execution is None
         or execution["state"] != "RUNNING"
         or execution["phase"] != "PLAN_COMPILE"
-        or execution["legacy_interaction_id"] is None
+        or (
+            source_type == "PROMPT"
+            and execution["legacy_interaction_id"] is None
+        )
+        or (
+            source_type == "CLAIMED_WORKITEM"
+            and execution.get("work_item_ref") is None
+        )
+        or source_type not in {"PROMPT", "CLAIMED_WORKITEM"}
     ):
         raise ExecutablePlanError(
             "ae.executable_plan_authority_missing",
@@ -1032,7 +1045,9 @@ def _step_params(
         "agent_execution_id": plan["execution_id"],
         "step_kind": step["executor_kind"],
         "state": "READY" if not step["depends_on_compiled_step_keys"] else "PENDING",
-        "legacy_interaction_id": str(runtime["legacy_interaction_id"]),
+        "legacy_interaction_id": str(
+            runtime["legacy_interaction_id"] or runtime["work_item_ref"]
+        ),
         "correlation_id": runtime["correlation_id"],
         "causation_id": runtime["causation_id"],
         "executable_plan_id": plan["executable_plan_id"],

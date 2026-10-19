@@ -1,10 +1,10 @@
 # P7 WC and Background Agent Work Transition Baseline
 
-**Status:** P7-S6 CLOSED / P7-S7 AUTHORIZED
+**Status:** P7-S7 CLOSED / P7-S8 AUTHORIZED
 **Phase:** P7 - Work Coordination + CA/PA/EA Background Agent Work
 **Predecessor:** P6.5 Remote Generation Provider Integration Acceptance - CLOSED
 **Successor:** P8 Controlled WRITE / Approval / Enterprise OS - NOT ACTIVATED
-**Date:** 2026-10-17
+**Date:** 2026-10-19
 
 ## 1. Purpose
 
@@ -73,11 +73,12 @@ Current status:
 P6.5 closure and Full Gate                    = PASS
 P7 architecture/source/SRS/slice review       = COMPLETE
 P7-CA01 source-backed contract closure        = CLOSED
-P7 feature implementation                     = P7-S6 CLOSED / P7-S7 AUTHORIZED
+P7 feature implementation                     = P7-S7 CLOSED / P7-S8 AUTHORIZED
 P7-S1 through P7-S5 Checkpoint Gate            = PASS
-P7-S6 AE/WC Slice Gates                        = PASS
+P7-S6 through P7-S7 AE/WC Slice Gates          = PASS
+P7-S7 PostgreSQL + live provider + NSL E2E     = PASS (43/43)
 NeX-WC service and migration history           = ACTIVE THROUGH 1002
-NeX-AE P7 migration history                    = ACTIVE THROUGH 2404
+NeX-AE P7 migration history                    = ACTIVE THROUGH 2405
 NeX-WC PostgreSQL dev/test roles and databases = CONNECTIVITY CONFIRMED
 ```
 
@@ -87,6 +88,12 @@ P7-CA01 additionally freezes the common runtime reuse boundary: WC domain
 records remain service-owned, while technical delivery, retry, dead-letter,
 replay, heartbeat, log, and job-control behavior reuse
 `services/_shared/nex_runtime`. P7 does not introduce another generic JobQueue.
+
+P7-S7 keeps the Frozen Claim handoff unchanged and carries a separate bounded
+claimed-work planning projection. CA/PA/EA planning reuses the existing
+P5/P6.5 semantic admission and P6 RuntimeJob/NSL execution path. Persisting an
+AgentResult alone is not success: exact WC WorkResult acknowledgement remains
+the child completion barrier before parent resume.
 
 ## 5. Canonical Implementation Sequence
 

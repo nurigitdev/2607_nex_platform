@@ -104,9 +104,16 @@ def run_p7_s6_postgres_smoke(
             ),
         )
         checks = {
-            "ae_migration_current": ae_migration.planned[-1]
-            == "2404_ae_work_result_resume",
-            "wc_migration_current": wc_migration.planned[-1] == "1002_wc_work_result",
+            "ae_migration_current": (
+                "2404_ae_work_result_resume" in ae_migration.planned
+                and len(ae_migration.planned)
+                == len(ae_migration.applied) + len(ae_migration.skipped)
+            ),
+            "wc_migration_current": (
+                "1002_wc_work_result" in wc_migration.planned
+                and len(wc_migration.planned)
+                == len(wc_migration.applied) + len(wc_migration.skipped)
+            ),
             **dict(evidence.get("checks") or {}),
         }
         evidence.update(

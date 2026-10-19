@@ -96,7 +96,6 @@ FORBIDDEN_IMPLEMENTATION_TOKENS = (
     "MOCK_ENTERPRISE_OS",
     "PUBLISH_RESULT",
     "ProjectAuthority",
-    "WC_WORK_RESULT",
 )
 FORBIDDEN_PROVIDER_IMPORTS = (
     "import httpx",

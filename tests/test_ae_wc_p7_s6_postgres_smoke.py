@@ -44,10 +44,14 @@ def test_s6_protected_smoke_skips_and_rejects_non_test_targets():
 def test_s6_smoke_composes_current_migrations_and_redacted_evidence(monkeypatch):
     migrations = {
         "nex-ae-api": SimpleNamespace(
-            planned=("2404_ae_work_result_resume",), applied=(), skipped=()
+            planned=("2404_ae_work_result_resume",),
+            applied=(),
+            skipped=("2404_ae_work_result_resume",),
         ),
         "nex-wc": SimpleNamespace(
-            planned=("1002_wc_work_result",), applied=(), skipped=()
+            planned=("1002_wc_work_result",),
+            applied=(),
+            skipped=("1002_wc_work_result",),
         ),
     }
     monkeypatch.setattr(

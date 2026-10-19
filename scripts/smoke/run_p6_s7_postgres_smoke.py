@@ -274,6 +274,9 @@ def _verify_ia_read_closure(
     *,
     nsl_source: Path,
     backend_profile: str = NSL_V01_PROCESS_ISOLATED_BACKEND,
+    publication_verifier=None,
+    expected_runtime_job_count: int = 2,
+    expected_runtime_attempt_count: int = 2,
 ) -> dict[str, Any]:
     profile_name = normalize_nsl_backend_profile(backend_profile)
     factory = fixture["factory"]
@@ -549,8 +552,8 @@ def _verify_ia_read_closure(
             and restart_run["idle_cycle_count"] == 1,
             "canonical_cardinality": counts
             == {
-                "ae_runtime_job": 2,
-                "ae_runtime_job_attempt": 2,
+                "ae_runtime_job": expected_runtime_job_count,
+                "ae_runtime_job_attempt": expected_runtime_attempt_count,
                 "ae_nsl_artifact": 1,
                 "ae_nsl_step_execution": 1,
                 "ae_nsl_backend_run": 1,
@@ -564,13 +567,28 @@ def _verify_ia_read_closure(
             == profile_name,
             "identity_lineage_preserved": parity_contract["identity_lineage_preserved"],
         }
+        publication = (
+            {}
+            if publication_verifier is None
+            else dict(
+                publication_verifier(
+                    {
+                        **dict(fixture),
+                        "aggregate": aggregate,
+                        "worker_id": worker_id,
+                        "queue_name": queue_name,
+                    }
+                )
+            )
+        )
         return {
-            "checks": checks,
+            "checks": {**checks, **dict(publication.get("checks") or {})},
             "parity_contract": parity_contract,
             "row_counts": {
                 **counts,
                 "timeline_events": len(timeline["events"]),
                 "timeline_gaps": len(timeline["projection_gaps"]),
+                **dict(publication.get("row_counts") or {}),
             },
             "cleanup_counts": _cleanup_s7_rows(
                 factory,

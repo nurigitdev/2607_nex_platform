@@ -388,7 +388,18 @@ def bind_plan_candidate(
     if snapshot["tenant_id"] != context_projection["tenant_id"]:
         raise _request_error("Capability snapshot tenant does not match AgentContext.")
     if normalized_candidate["goal"] != work_projection["goal"]:
-        raise _schema_error("PLAN candidate goal must match the canonical WorkIntent.")
+        source = work_intent.get("source")
+        if (
+            not isinstance(source, Mapping)
+            or source.get("source_type") != "CLAIMED_WORKITEM"
+        ):
+            raise _schema_error(
+                "PLAN candidate goal must match the canonical WorkIntent."
+            )
+        normalized_candidate = {
+            **normalized_candidate,
+            "goal": work_projection["goal"],
+        }
     plan_kind = normalized_candidate["suggested_plan_kind"]
     if plan_kind not in _ACTIVE_PLAN_KINDS:
         raise _schema_error("PLAN candidate kind is not active in the P6.5 runtime.")

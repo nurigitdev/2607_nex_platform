@@ -166,6 +166,99 @@ def build_work_intent_from_decision(
     return work_intent
 
 
+def build_work_intent_from_claimed_work(
+    *,
+    execution_id: str,
+    actor_ref: str,
+    received_at: str,
+    planning_source: Mapping[str, Any],
+    intent_decision: Mapping[str, Any],
+    input_context_hash: str,
+    work_intent_id: str,
+    prompt_provenance: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    _require_uuid("execution_id", execution_id)
+    _require_uuid("work_intent_id", work_intent_id)
+    _require_text("actor_ref", actor_ref, maximum=200)
+    _require_datetime("received_at", received_at)
+    validate_hash_ref(input_context_hash)
+    source = _claimed_planning_source(planning_source)
+    if intent_decision.get("intent_decision_schema_version") != "ae_intent_decision.v1":
+        raise _invalid("IntentDecision schema version is unsupported.")
+    if intent_decision.get("raw_prompt_included") is not False:
+        raise _invalid("IntentDecision must not include the raw prompt.")
+    compatibility_mode = intent_decision.get("execution_mode")
+    if compatibility_mode not in _MODE_PROFILE:
+        raise _invalid("IntentDecision execution_mode is unsupported.")
+    confidence = intent_decision.get("confidence")
+    if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
+        raise _invalid("IntentDecision confidence must be numeric.")
+    confidence = float(confidence)
+    if not 0.0 <= confidence <= 1.0:
+        raise _invalid("IntentDecision confidence must be between zero and one.")
+    decision_hash = validate_sha256_digest(intent_decision.get("decision_hash"))
+    provenance = _build_provenance(
+        schema_version="ae_intent_decision.v1",
+        decision_hash=decision_hash,
+        input_context_hash=input_context_hash,
+        prompt_provenance=prompt_provenance,
+    )
+    result: dict[str, Any] = {
+        "schema_version": WORK_INTENT_SCHEMA_VERSION,
+        "work_intent_id": work_intent_id,
+        "intent_revision": 1,
+        "supersedes_work_intent_id": None,
+        "execution_id": execution_id,
+        "source": {
+            "source_type": "CLAIMED_WORKITEM",
+            "source_ref": source["source_ref"],
+            "actor_ref": actor_ref,
+            "received_at": received_at,
+        },
+        "execution_mode": "BACKGROUND",
+        "compatibility_execution_mode": compatibility_mode,
+        "project_ref": {
+            "system": "nex-wc",
+            "resource_type": "PROJECT",
+            "resource_id": source["project_ref"]["entity_id"],
+        },
+        "intent_label": _require_text(
+            "intent_label", intent_decision.get("intent_label"), maximum=160
+        ),
+        "goal": source["goal"],
+        "work_class": source["work_class"],
+        "required_capability_hints": [source["required_capability"]],
+        "entity_selectors": [],
+        "parameter_candidates": [],
+        "constraints": [
+            f"completion_policy={source['completion_policy']}",
+            f"result_contract_ref={source['result_contract_ref']}",
+        ],
+        "completion_criteria": [
+            {
+                "criterion_id": "C1",
+                "description": "Submit the claimed WorkItem result contract.",
+                "required": True,
+                "result_contract_ref": source["result_contract_ref"],
+            }
+        ],
+        "clarification": {
+            "status": "NOT_REQUIRED",
+            "reasons": [],
+            "questions": [],
+        },
+        "confidence": {
+            "overall": confidence,
+            "intent": confidence,
+            "entities": None,
+            "parameters": None,
+        },
+        "provenance": provenance,
+    }
+    result["intent_hash"] = semantic_sha256_hash_ref(result)
+    return _validate_work_intent(result)
+
+
 class SqlAlchemyWorkIntentRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
@@ -309,10 +402,16 @@ def _validate_work_intent(value: Mapping[str, Any]) -> dict[str, Any]:
         record.get("intent_revision"), record.get("supersedes_work_intent_id")
     )
     source = record.get("source")
-    if not isinstance(source, dict) or source.get("source_type") != "PROMPT":
-        raise _invalid("WorkIntent source must be PROMPT.")
-    if record.get("execution_mode") != "INTERACTIVE":
-        raise _invalid("WorkIntent execution_mode must be INTERACTIVE.")
+    if not isinstance(source, dict) or source.get("source_type") not in {
+        "PROMPT",
+        "CLAIMED_WORKITEM",
+    }:
+        raise _invalid("WorkIntent source is unsupported.")
+    expected_mode = (
+        "INTERACTIVE" if source.get("source_type") == "PROMPT" else "BACKGROUND"
+    )
+    if record.get("execution_mode") != expected_mode:
+        raise _invalid("WorkIntent execution_mode does not match its source.")
     if record.get("compatibility_execution_mode") not in _MODE_PROFILE:
         raise _invalid("WorkIntent compatibility execution mode is unsupported.")
     validate_hash_ref(record.get("intent_hash"))
@@ -322,6 +421,48 @@ def _validate_work_intent(value: Mapping[str, Any]) -> dict[str, Any]:
     if record["intent_hash"] != expected_hash:
         raise _invalid("WorkIntent intent_hash does not match its semantic content.")
     return record
+
+
+def _claimed_planning_source(value: Mapping[str, Any]) -> dict[str, Any]:
+    required = {
+        "schema_version",
+        "source_type",
+        "source_ref",
+        "goal",
+        "work_class",
+        "required_capability",
+        "project_ref",
+        "artifact_refs",
+        "evidence_refs",
+        "completion_policy",
+        "result_contract_ref",
+    }
+    if not isinstance(value, Mapping) or set(value) != required:
+        raise _invalid("Claimed planning source fields are invalid.")
+    result = dict(value)
+    if (
+        result.get("schema_version") != "p7.claimed_work_planning_source.v1"
+        or result.get("source_type") != "CLAIMED_WORKITEM"
+    ):
+        raise _invalid("Claimed planning source version or type is invalid.")
+    _require_text("source_ref", result.get("source_ref"), maximum=200)
+    _require_text("goal", result.get("goal"), maximum=4000)
+    _require_text("work_class", result.get("work_class"), maximum=64)
+    _require_text(
+        "required_capability", result.get("required_capability"), maximum=160
+    )
+    _require_text(
+        "result_contract_ref", result.get("result_contract_ref"), maximum=512
+    )
+    project = result.get("project_ref")
+    if (
+        not isinstance(project, Mapping)
+        or project.get("entity_type") != "PROJECT"
+        or not isinstance(project.get("entity_id"), str)
+        or not project["entity_id"].strip()
+    ):
+        raise _invalid("Claimed planning source project_ref is invalid.")
+    return result
 
 
 def _validate_revision(revision: object, supersedes: object) -> None:

@@ -572,3 +572,96 @@ def test_resumed_candidate_lineage_conflict_fails_closed() -> None:
         conflicting.admit_and_compile(_request())
     assert raised.value.error_code == "CANDIDATE_EVIDENCE_LINEAGE_CONFLICT"
     assert first.status == "COMPILED"
+
+
+def test_claimed_workitem_reuses_candidate_validation_and_compile_pipeline() -> None:
+    service, client, admission, intents, contexts, plans, validations, executables = (
+        _components()
+    )
+    source = {
+        "schema_version": "p7.claimed_work_planning_source.v1",
+        "source_type": "CLAIMED_WORKITEM",
+        "source_ref": "70000000-0000-4000-8000-000000000657",
+        "goal": "Analyze the authorized project evidence.",
+        "work_class": "ANALYSIS",
+        "required_capability": "AE.CHAT.COMPATIBILITY",
+        "project_ref": {
+            "entity_type": "PROJECT",
+            "entity_id": "project-p7-s7",
+        },
+        "artifact_refs": [],
+        "evidence_refs": [],
+        "completion_policy": "OWNER_SUBMITS",
+        "result_contract_ref": "urn:nex:result:background-analysis:1",
+    }
+    service.executions.record.update(
+        {
+            "tenant_id": "tenant-a",
+            "agent_execution_id": EXECUTION_ID,
+            "agent_id": AGENT_ID,
+            "agent_type": "PA",
+            "source_type": "CLAIMED_WORKITEM",
+            "source_ref": source["source_ref"],
+            "work_item_ref": source["source_ref"],
+            "project_id": "project-p7-s7",
+            "requester_ref": "user-a",
+            "received_at": NOW,
+        }
+    )
+
+    class ClaimedResolver:
+        def resolve(self, request):
+            assert request.agent_type == "PA"
+            assert request.source_type == "CLAIMED_WORKITEM"
+            assert request.source_ref == source["source_ref"]
+            return TrustedContextResolution(
+                project_ref={
+                    "system": "nex-wc",
+                    "resource_type": "PROJECT",
+                    "resource_id": "project-p7-s7",
+                },
+                authority_ref=f"WC:WORK_ITEM:{source['source_ref']}",
+                resolved_entities=(),
+                retrieval_refs=(),
+                evidence_refs=(),
+                conflicts=(),
+                degradations=(),
+                context_manifest=(
+                    {
+                        "kind": "CLAIMED_WORKITEM_REF",
+                        "source_ref": f"WC:WORK_ITEM:{source['source_ref']}",
+                        "source_version": "sha256:" + "7" * 64,
+                        "content_hash": "sha256:" + "8" * 64,
+                        "as_of": NOW,
+                    },
+                ),
+                budget_tokens=4096,
+                estimated_used_tokens=128,
+            )
+
+    result = service.admit_and_compile(
+        replace(
+            _request(),
+            context_resolver=ClaimedResolver(),
+            planning_source_type="CLAIMED_WORKITEM",
+            existing_execution_id=EXECUTION_ID,
+            agent_type="PA",
+            project_id="project-p7-s7",
+            source_ref=source["source_ref"],
+            planning_source=source,
+        )
+    )
+
+    assert result.status == "COMPILED"
+    assert client.calls == ["INTENT", "CONTEXT", "PLAN"]
+    assert admission.calls == 0
+    work_intent = next(iter(intents.records.values()))
+    assert work_intent["source"]["source_type"] == "CLAIMED_WORKITEM"
+    assert work_intent["goal"] == source["goal"]
+    assert work_intent["project_ref"]["resource_id"] == "project-p7-s7"
+    context = next(iter(contexts.records.values()))
+    assert context["identity"]["agent_type"] == "PA"
+    assert context["source"]["source_ref"] == source["source_ref"]
+    assert len(plans.records) == 1
+    assert validations.save_calls == 1
+    assert len(executables.records) == 1

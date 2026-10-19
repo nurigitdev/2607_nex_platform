@@ -70,6 +70,7 @@ class _DirectClient:
             event_id=envelope["event_id"],
             requester_ref=envelope["requester_ref"],
             handoff=envelope["handoff"],
+            planning_source=envelope["planning_source"],
         )
         return {"agent_execution_id": result.execution["agent_execution_id"]}
 

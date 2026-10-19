@@ -210,21 +210,38 @@ def validate_agent_result(result: Mapping[str, Any]) -> None:
     }
     if not required.issubset(result):
         raise _invalid("AgentResult is missing a Frozen-required field.")
-    if result.get("schema_version") != "2.1" or result.get("agent_type") != "IA":
-        raise _invalid("P4 requires the Frozen v2.1 IA AgentResult contract.")
+    agent_type = result.get("agent_type")
+    if result.get("schema_version") != "2.1" or agent_type not in {
+        "IA",
+        "CA",
+        "PA",
+        "EA",
+    }:
+        raise _invalid("AgentResult requires the Frozen v2.1 Agent contract.")
     if result.get("status") not in AGENT_RESULT_STATUSES:
         raise _invalid("AgentResult status is outside the Frozen vocabulary.")
-    if any(
-        result.get(field) is not None
-        for field in (
-            "source_work_item_ref",
-            "source_claim_ref",
-            "source_claim_generation",
-            "source_claimant_agent_id",
-            "source_assignment_ref",
-        )
+    claim_fields = (
+        "source_work_item_ref",
+        "source_claim_ref",
+        "source_claim_generation",
+        "source_claimant_agent_id",
+        "source_assignment_ref",
+    )
+    if agent_type == "IA":
+        if result.get("project_id") is not None or any(
+            result.get(field) is not None for field in claim_fields
+        ):
+            raise _invalid("P4 IA AgentResult cannot contain WC claim lineage.")
+    elif (
+        not isinstance(result.get("project_id"), str)
+        or not result["project_id"].strip()
+        or any(result.get(field) is None for field in claim_fields)
+        or result.get("source_claimant_agent_id") != result.get("agent_id")
+        or isinstance(result.get("source_claim_generation"), bool)
+        or not isinstance(result.get("source_claim_generation"), int)
+        or result["source_claim_generation"] < 1
     ):
-        raise _invalid("P4 IA AgentResult cannot contain WC claim lineage.")
+        raise _invalid("Background AgentResult requires complete WC claim lineage.")
     if _contains_private_content(result):
         raise AgentResultError(
             "ae.agent_result_private_content_forbidden",
@@ -289,7 +306,10 @@ class SqlAlchemyAgentResultRepository:
         try:
             with self._session_factory() as session:
                 execution = _load_execution_for_update(
-                    session, params["tenant_id"], params["agent_execution_id"]
+                    session,
+                    params["tenant_id"],
+                    params["agent_execution_id"],
+                    include_claim_lineage=params["agent_type"] != "IA",
                 )
                 _require_execution_lineage(execution, result)
                 existing = _load_result_by_execution(
@@ -342,7 +362,10 @@ class SqlAlchemyAgentResultRepository:
                         True,
                     )
                 saved_execution = _load_execution_for_update(
-                    session, params["tenant_id"], params["agent_execution_id"]
+                    session,
+                    params["tenant_id"],
+                    params["agent_execution_id"],
+                    include_claim_lineage=params["agent_type"] != "IA",
                 )
                 session.commit()
                 return AgentResultAggregate(
@@ -367,7 +390,10 @@ class SqlAlchemyAgentResultRepository:
                     return None
                 delivery = _load_delivery(session, tenant_id, result_id)
                 execution = _load_execution_for_update(
-                    session, tenant_id, result["agent_execution_id"]
+                    session,
+                    tenant_id,
+                    result["agent_execution_id"],
+                    include_claim_lineage=result["agent_type"] != "IA",
                 )
                 if delivery is None:
                     raise AgentResultError(
@@ -483,10 +509,15 @@ def _input_result_set_hash(step: Mapping[str, Any]) -> str:
 def _pending_delivery(
     result: Mapping[str, Any], execution: Mapping[str, Any], delivery_id: str
 ) -> dict[str, Any]:
-    target_ref = _required("workspace_id", execution.get("workspace_id"))
+    background = result.get("agent_type") in {"CA", "PA", "EA"}
+    target_type = "WC_WORK_RESULT" if background else "WORKSPACE_RESULT"
+    target_ref = _required(
+        "work_item_ref" if background else "workspace_id",
+        execution.get("work_item_ref" if background else "workspace_id"),
+    )
     publication_operation_id, idempotency_key_ref = derive_publication_identity(
         result_id=str(result["result_id"]),
-        target_type="WORKSPACE_RESULT",
+        target_type=target_type,
         target_ref=target_ref,
         result_hash_value=str(result["result_hash"]),
     )
@@ -497,7 +528,7 @@ def _pending_delivery(
         "delivery_id": delivery_id,
         "result_id": str(result["result_id"]),
         "agent_execution_id": str(result["agent_execution_id"]),
-        "target_type": "WORKSPACE_RESULT",
+        "target_type": target_type,
         "target_ref": target_ref,
         "required": True,
         "state": "PENDING",
@@ -522,12 +553,26 @@ def _require_execution_lineage(
         raise AgentResultError(
             "ae.agent_result_execution_not_found", "AgentExecution was not found."
         )
+    agent_type = result.get("agent_type")
     if (
-        execution.get("agent_type") != "IA"
+        execution.get("agent_type") != agent_type
         or str(execution.get("agent_id")) != str(result.get("agent_id"))
-        or execution.get("project_id") is not None
+        or execution.get("project_id") != result.get("project_id")
     ):
-        raise _invalid("AgentResult does not match a project-neutral IA execution.")
+        raise _invalid("AgentResult does not match its AgentExecution identity.")
+    if agent_type in {"CA", "PA", "EA"}:
+        claim_pairs = (
+            ("work_item_ref", "source_work_item_ref"),
+            ("claim_ref", "source_claim_ref"),
+            ("claim_generation", "source_claim_generation"),
+            ("agent_id", "source_claimant_agent_id"),
+            ("assignment_ref", "source_assignment_ref"),
+        )
+        if execution.get("source_type") != "CLAIMED_WORKITEM" or any(
+            str(execution.get(execution_field)) != str(result.get(result_field))
+            for execution_field, result_field in claim_pairs
+        ):
+            raise _invalid("Background AgentResult claim lineage does not match execution.")
     if execution.get("state") == "SUCCEEDED":
         raise AgentResultError(
             "ae.agent_result_delivery_ack_required",
@@ -719,15 +764,25 @@ _EXECUTION_RESULT_UPDATE_SQL = """
 
 
 def _load_execution_for_update(
-    session: Session, tenant_id: str, execution_id: str
+    session: Session,
+    tenant_id: str,
+    execution_id: str,
+    *,
+    include_claim_lineage: bool = False,
 ) -> dict[str, Any]:
     suffix = " FOR UPDATE" if _dialect_name(session) == "postgresql" else ""
+    claim_columns = """
+                   source_type,
+                   work_item_ref, claim_ref, claim_generation, assignment_ref,
+                   requester_ref,
+    """ if include_claim_lineage else ""
     row = (
         session.execute(
-            text("""
+            text(f"""
             SELECT tenant_id, agent_execution_id, agent_id, agent_type,
-                   project_id, workspace_id, state, phase, version, result_id,
-                   correlation_id, causation_id, completed_at
+                   {claim_columns}
+                   project_id, workspace_id, state, phase, version,
+                   result_id, correlation_id, causation_id, completed_at
             FROM ae_agent_execution
             WHERE tenant_id = :tenant_id
               AND agent_execution_id = :agent_execution_id
@@ -824,7 +879,6 @@ def _load_delivery(
                    causation_id, created_at, updated_at, acknowledged_at
             FROM ae_result_delivery
             WHERE tenant_id = :tenant_id AND result_id = :result_id
-              AND target_type = 'WORKSPACE_RESULT'
             """),
             {"tenant_id": tenant_id, "result_id": result_id},
         )

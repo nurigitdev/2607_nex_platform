@@ -165,6 +165,8 @@ def _execute_postgres_smoke(
     database_url: str,
     *,
     verifier: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
+    expected_plan_count: int = 1,
+    expected_step_count: int = 2,
 ) -> dict[str, Any]:
     engine = create_engine(
         sqlalchemy_database_url(database_url), future=True, pool_pre_ping=True
@@ -369,8 +371,8 @@ def _execute_postgres_smoke(
             and [step["step_contract_hash"] for step in saved["steps"]]
             == [step["step_contract_hash"] for step in compiled_again["steps"]],
             "atomic_idempotent_restart": saved == repeated == loaded
-            and plan_count == 1
-            and step_count == 2,
+            and plan_count == expected_plan_count
+            and step_count == expected_step_count,
             "dependency_states": [step["state"] for step in steps]
             == ["READY", "PENDING"]
             and steps[1]["dependencies"] == ["E1"],

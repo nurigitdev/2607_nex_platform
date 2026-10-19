@@ -717,6 +717,31 @@ def test_direct_one_step_plan_and_document_artifact_report_kind() -> None:
     assert document_plan["steps"][1]["report"]["report_kind"] == "ARTIFACT"
 
 
+def test_claimed_workitem_binds_provider_goal_to_canonical_wc_goal() -> None:
+    work_intent = deepcopy(_work_intent())
+    work_intent["source"] = {
+        "source_type": "CLAIMED_WORKITEM",
+        "source_ref": "work-item-p7-s7",
+        "actor_ref": f"OA:SUBJECT:{PRINCIPAL_ID}",
+        "received_at": RECEIVED_AT,
+    }
+    work_intent["intent_hash"] = semantic_sha256_hash_ref(
+        {key: value for key, value in work_intent.items() if key != "intent_hash"}
+    )
+    candidate = _candidate(goal="Provider paraphrase without execution authority.")
+
+    plan = _bind(
+        candidate,
+        work_intent=work_intent,
+        agent_context=_agent_context(work_intent),
+    )
+
+    assert plan["goal"] == work_intent["goal"]
+    assert plan["planner_provenance"]["route_decision_ref"] == (
+        "semantic-candidate://plan/" + semantic_sha256_hash_ref(candidate)
+    )
+
+
 def test_invalid_prompt_snapshot_and_request_inputs_fail_closed() -> None:
     empty = PromptRegistryStore()
     with pytest.raises(PlanCandidateStageError) as raised:

@@ -58,6 +58,7 @@ from nex_ae_api.semantic_candidate_failures import (
 from nex_ae_api.semantic_candidates import SemanticCalibrationRegistry
 from nex_ae_api.work_intent import (
     SqlAlchemyWorkIntentRepository,
+    build_work_intent_from_claimed_work,
     build_work_intent_from_decision,
     planning_mode,
 )
@@ -98,6 +99,12 @@ class SemanticCandidateAdmissionRequest:
     authorized_resource_context_available: bool = True
     trusted_execution_mode: str | None = None
     causation_id: str | None = None
+    planning_source_type: str = "IA_PROMPT"
+    existing_execution_id: str | None = None
+    agent_type: str = "IA"
+    project_id: str | None = None
+    source_ref: str | None = None
+    planning_source: Mapping[str, Any] | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -298,28 +305,48 @@ class DeterministicCandidateAdmissionService:
                 directive="USE_COMPATIBILITY_PATH",
                 agent_execution_id=None,
             )
-        admitted = self.admission.admit_prompt(
-            tenant_id=request.tenant_id,
-            principal_id=request.owner_subject_id,
-            profile_ref=request.profile_ref,
-            trigger_id=request.interaction_id,
-            interaction_id=request.interaction_id,
-            workspace_id=request.workspace_id,
-            conversation_id=request.conversation_id,
-            correlation_id=request.correlation_id,
-            causation_id=request.causation_id,
-            project_id=None,
-        )
-        execution = admitted.execution
-        if execution is None:
-            return SemanticCandidateAdmissionResult(
-                mode=self.mode,
-                status="SHADOW_SKIPPED",
-                directive="USE_COMPATIBILITY_PATH",
-                agent_execution_id=None,
-                shadow_error_code=admitted.shadow_error_code,
+        if request.planning_source_type == "IA_PROMPT":
+            admitted = self.admission.admit_prompt(
+                tenant_id=request.tenant_id,
+                principal_id=request.owner_subject_id,
+                profile_ref=request.profile_ref,
+                trigger_id=request.interaction_id,
+                interaction_id=request.interaction_id,
+                workspace_id=request.workspace_id,
+                conversation_id=request.conversation_id,
+                correlation_id=request.correlation_id,
+                causation_id=request.causation_id,
+                project_id=None,
+            )
+            execution = admitted.execution
+            if execution is None:
+                return SemanticCandidateAdmissionResult(
+                    mode=self.mode,
+                    status="SHADOW_SKIPPED",
+                    directive="USE_COMPATIBILITY_PATH",
+                    agent_execution_id=None,
+                    shadow_error_code=admitted.shadow_error_code,
+                )
+        elif request.planning_source_type == "CLAIMED_WORKITEM":
+            execution = self.executions.get(
+                request.tenant_id,
+                _request_text_value(
+                    "existing_execution_id", request.existing_execution_id, 64
+                ),
+            )
+            _require_claimed_execution(execution, request)
+        else:
+            raise _error(
+                422,
+                "PLANNING_SOURCE_UNSUPPORTED",
+                "Planning source type is unsupported.",
             )
         execution_id = str(execution["agent_execution_id"])
+        source_ref = (
+            f"AE:INTERACTION:{request.interaction_id}"
+            if request.planning_source_type == "IA_PROMPT"
+            else f"WC:WORK_ITEM:{request.source_ref}"
+        )
         now = _timestamp(self.clock())
         ids = _AdmissionIds(execution_id)
         stages: list[SemanticStageProjection] = []
@@ -332,7 +359,7 @@ class DeterministicCandidateAdmissionService:
             invoke=lambda: self.intent_stage.generate_and_resolve(
                 user_prompt=request.user_prompt,
                 execution_id=execution_id,
-                source_ref=f"AE:INTERACTION:{request.interaction_id}",
+                source_ref=source_ref,
                 actor_ref=f"OA:SUBJECT:{request.owner_subject_id}",
                 received_at=str(execution["received_at"]),
                 request_id=request.request_id,
@@ -354,7 +381,23 @@ class DeterministicCandidateAdmissionService:
             tenant_id=request.tenant_id, work_intent_id=ids.work_intent
         )
         if work_intent is None:
-            if intent_result is not None and intent_result.work_intent is not None:
+            if request.planning_source_type == "CLAIMED_WORKITEM":
+                intent_decision = resolve_intent_candidate(
+                    intent_candidate,
+                    trusted_execution_mode=request.trusted_execution_mode,
+                    retrieval_enabled=request.retrieval_enabled,
+                )
+                work_intent = build_work_intent_from_claimed_work(
+                    execution_id=execution_id,
+                    actor_ref=f"OA:SUBJECT:{request.owner_subject_id}",
+                    received_at=str(execution["received_at"]),
+                    planning_source=request.planning_source or {},
+                    intent_decision=intent_decision,
+                    input_context_hash=intent_evidence["input_context_hash"],
+                    work_intent_id=ids.work_intent,
+                    prompt_provenance=_work_intent_provenance(intent_evidence),
+                )
+            elif intent_result is not None and intent_result.work_intent is not None:
                 work_intent = dict(intent_result.work_intent)
             else:
                 intent_decision = resolve_intent_candidate(
@@ -364,7 +407,7 @@ class DeterministicCandidateAdmissionService:
                 )
                 work_intent = build_work_intent_from_decision(
                     execution_id=execution_id,
-                    source_ref=f"AE:INTERACTION:{request.interaction_id}",
+                    source_ref=source_ref,
                     actor_ref=f"OA:SUBJECT:{request.owner_subject_id}",
                     received_at=str(execution["received_at"]),
                     intent_decision=intent_decision,
@@ -393,6 +436,9 @@ class DeterministicCandidateAdmissionService:
                 workspace_id=request.workspace_id,
                 conversation_id=request.conversation_id,
                 interaction_id=request.interaction_id,
+                agent_type=request.agent_type,
+                source_type=request.planning_source_type,
+                source_ref=request.source_ref,
                 runtime_policy_ref=request.runtime_policy_ref,
                 resolver=request.context_resolver,
                 request_id=request.request_id,
@@ -423,6 +469,9 @@ class DeterministicCandidateAdmissionService:
                     workspace_id=request.workspace_id,
                     conversation_id=request.conversation_id,
                     interaction_id=request.interaction_id,
+                    agent_type=request.agent_type,
+                    source_type=request.planning_source_type,
+                    source_ref=request.source_ref,
                     work_intent=work_intent,
                     runtime_policy_ref=request.runtime_policy_ref,
                     resolver=request.context_resolver,
@@ -755,6 +804,52 @@ def _require_stage_lineage(
             "CANDIDATE_EVIDENCE_LINEAGE_CONFLICT",
             "Semantic candidate evidence lineage does not match the request.",
         )
+
+
+def _require_claimed_execution(
+    execution: Mapping[str, Any] | None,
+    request: SemanticCandidateAdmissionRequest,
+) -> None:
+    if execution is None:
+        raise _error(
+            404,
+            "CLAIMED_EXECUTION_NOT_FOUND",
+            "Claimed-work AgentExecution was not found.",
+        )
+    expected = {
+        "tenant_id": request.tenant_id,
+        "agent_type": request.agent_type,
+        "project_id": request.project_id,
+        "source_type": "CLAIMED_WORKITEM",
+        "source_ref": request.source_ref,
+        "work_item_ref": request.source_ref,
+        "requester_ref": request.owner_subject_id,
+    }
+    if request.agent_type not in {"CA", "PA", "EA"} or any(
+        str(execution.get(field)) != str(value) for field, value in expected.items()
+    ):
+        raise _error(
+            409,
+            "CLAIMED_EXECUTION_LINEAGE_CONFLICT",
+            "Claimed-work planning source does not match AgentExecution authority.",
+        )
+    source = request.planning_source
+    if (
+        not isinstance(source, Mapping)
+        or source.get("source_type") != "CLAIMED_WORKITEM"
+        or source.get("source_ref") != request.source_ref
+    ):
+        raise _error(
+            409,
+            "CLAIMED_PLANNING_SOURCE_CONFLICT",
+            "Claimed-work planning projection is missing or inconsistent.",
+        )
+
+
+def _request_text_value(field: str, value: object, maximum: int) -> str:
+    if not isinstance(value, str) or not value.strip() or len(value.strip()) > maximum:
+        raise _error(422, "PLANNING_REQUEST_INVALID", f"{field} is invalid.")
+    return value.strip()
 
 
 def _prompt_provenance(evidence: Mapping[str, Any]) -> dict[str, Any]:

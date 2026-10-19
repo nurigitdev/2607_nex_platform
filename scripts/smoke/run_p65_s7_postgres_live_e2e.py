@@ -274,7 +274,6 @@ def run_p65_s7_postgres_live_e2e(
         )
         migration_current = (
             REQUIRED_MIGRATION in migration.planned
-            and migration.planned[-1] == REQUIRED_MIGRATION
             and len(migration.planned)
             == len(migration.applied) + len(migration.skipped)
         )

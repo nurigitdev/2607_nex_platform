@@ -120,6 +120,24 @@ def _context(*, resolver=None, **overrides) -> dict:
     return build_agent_context(**{**values, **overrides})
 
 
+def _background_context(**overrides) -> dict:
+    return _context(
+        agent_type="PA",
+        source_type="CLAIMED_WORKITEM",
+        source_ref="work-item-p7",
+        resolver=Resolver(
+            _resolution(
+                project_ref={
+                    "system": "nex-wc",
+                    "resource_type": "PROJECT",
+                    "resource_id": "project-p7",
+                }
+            )
+        ),
+        **overrides,
+    )
+
+
 def _factory(*, with_schema: bool = True, seed_lineage: bool = True):
     engine = create_engine("sqlite+pysqlite://", future=True)
     if with_schema:
@@ -242,6 +260,96 @@ def test_builder_uses_trusted_resolver_and_builds_contract_valid_private_context
     assert context["project_ref"] is None
     assert context["context_hash"].startswith("sha256:")
     assert "private prompt" not in json.dumps(context, ensure_ascii=False)
+
+
+def test_builder_keeps_interactive_and_background_source_profiles_disjoint() -> None:
+    with pytest.raises(AgentContextError, match="IA_PROMPT"):
+        _context(source_type="CLAIMED_WORKITEM", source_ref="work-item")
+    with pytest.raises(AgentContextError, match="CLAIMED_WORKITEM"):
+        _context(agent_type="PA", source_type="IA_PROMPT")
+    with pytest.raises(AgentContextError, match="project-neutral"):
+        _context(
+            resolver=Resolver(
+                _resolution(
+                    project_ref={
+                        "system": "nex-wc",
+                        "resource_type": "PROJECT",
+                        "resource_id": "project-p7",
+                    }
+                )
+            )
+        )
+    with pytest.raises(AgentContextError, match="project scope"):
+        _context(
+            agent_type="PA",
+            source_type="CLAIMED_WORKITEM",
+            source_ref="work-item-p7",
+        )
+
+    background = _background_context()
+    assert background["source"] == {
+        "source_type": "CLAIMED_WORKITEM",
+        "source_ref": "work-item-p7",
+    }
+    assert "interaction" not in background
+
+    invalid_identity = copy.deepcopy(background)
+    invalid_identity["identity"]["agent_type"] = "UNSUPPORTED"
+    with pytest.raises(AgentContextError, match="agent_type"):
+        module._validate_agent_context(invalid_identity)
+
+    invalid_source = copy.deepcopy(background)
+    invalid_source["source"]["source_type"] = "PROMPT"
+    with pytest.raises(AgentContextError, match="source type"):
+        module._validate_agent_context(invalid_source)
+
+    mixed_lineage = copy.deepcopy(background)
+    mixed_lineage["interaction"] = {
+        "workspace_id": WORKSPACE_ID,
+        "conversation_id": CONVERSATION_ID,
+        "interaction_id": INTERACTION_ID,
+    }
+    with pytest.raises(AgentContextError, match="only source"):
+        module._validate_agent_context(mixed_lineage)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda value: value.update(identity=None),
+        lambda value: value["source"].pop("source_ref"),
+        lambda value: value.update(project_ref=None),
+    ],
+)
+def test_background_context_validator_rejects_incomplete_authority_lineage(
+    mutation,
+) -> None:
+    value = _background_context()
+    mutation(value)
+
+    with pytest.raises(AgentContextError):
+        module._validate_agent_context(value)
+
+
+def test_candidate_authority_scan_descends_into_sequence_values() -> None:
+    module._reject_candidate_authority(({"nested": ["safe"]},))
+
+    with pytest.raises(AgentContextError, match="authority"):
+        module._reject_candidate_authority(({"nested": [{"tenant_id": TENANT}]},))
+
+
+def test_repository_projects_background_source_into_compatibility_columns(
+    monkeypatch,
+) -> None:
+    repository = SqlAlchemyAgentContextRepository(_factory())
+    monkeypatch.setattr(module, "_require_persisted_lineage", lambda *args: None)
+
+    saved = repository.save(
+        tenant_id=TENANT,
+        agent_context=_background_context(),
+    )
+
+    assert saved["source"]["source_ref"] == "work-item-p7"
 
 
 def test_builder_passes_normalized_candidate_hints_only_to_trusted_resolver() -> None:

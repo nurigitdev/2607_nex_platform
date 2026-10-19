@@ -1,0 +1,36 @@
+{
+  "event_id": "d944e2c7-d3a0-4afb-a52e-ea7dc827e85e",
+  "event_type": "CLAIM_EXECUTION_HANDOFF",
+  "requester_ref": "subject-0001",
+  "handoff": {
+    "schema_version": "2.1",
+    "handoff_id": "36be56f9-c6a4-46d7-a641-c9265cd804dc",
+    "tenant_id": "tenant-0001",
+    "work_item_ref": "27d628cb-0c77-42fb-9862-c2be2011a5b1",
+    "claim_ref": "0e3d0c79-eb2f-436b-9ef6-529942425d3d",
+    "claim_generation": 1,
+    "claimant_agent_ref": "agent-0001",
+    "claimant_agent_type": "PA",
+    "project_id": "project-0001",
+    "assignment_ref": "c31d15c7-460b-462e-b597-7c40079a5214",
+    "correlation_id": "corr-0001",
+    "causation_id": "cause-0001",
+    "occurred_at": "2026-10-19T00:00:00Z"
+  },
+  "planning_source": {
+    "schema_version": "p7.claimed_work_planning_source.v1",
+    "source_type": "CLAIMED_WORKITEM",
+    "source_ref": "27d628cb-0c77-42fb-9862-c2be2011a5b1",
+    "goal": "Prepare a grounded project status summary.",
+    "work_class": "ANALYSIS",
+    "required_capability": "LOCAL_SKILL",
+    "project_ref": {
+      "entity_type": "PROJECT",
+      "entity_id": "project-0001"
+    },
+    "artifact_refs": [],
+    "evidence_refs": [],
+    "completion_policy": "OWNER_SUBMITS",
+    "result_contract_ref": "contract://wc/work-result/v1"
+  }
+}

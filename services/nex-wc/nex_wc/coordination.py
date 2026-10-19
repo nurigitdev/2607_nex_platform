@@ -438,7 +438,14 @@ class InMemoryCoordinationRepository:
                 "authorization_revision_hash": authorization["revision_hash"],
             }
             handoff = _handoff(
-                record["work_item"], selected_agent, identifiers, generation, now
+                record["work_item"],
+                selected_agent,
+                identifiers,
+                generation,
+                now,
+            )
+            planning_source = _planning_source(
+                record["work_item"], record["delegation_spec"]
             )
             self._assignments[key] = assignment
             self._claims.setdefault(key, []).append(claim)
@@ -461,6 +468,7 @@ class InMemoryCoordinationRepository:
                 "assignment": copy.deepcopy(assignment),
                 "claim": copy.deepcopy(claim),
                 "handoff": handoff,
+                "planning_source": planning_source,
                 "outbox_id": identifiers["outbox_id"],
                 "event_id": identifiers["event_id"],
             }
@@ -510,6 +518,9 @@ class InMemoryCoordinationRepository:
                     return {
                         **copy.deepcopy(row),
                         "requester_ref": work["work_item"]["requester"]["entity_id"],
+                        "planning_source": _planning_source(
+                            work["work_item"], work["delegation_spec"]
+                        ),
                     }
         raise CoordinationError("wc.handoff_outbox_not_found", "Handoff outbox was not found.", 404)
 
@@ -647,7 +658,16 @@ class SqlAlchemyCoordinationRepository:
                 }
                 session.execute(text(_ASSIGNMENT_INSERT_SQL), params)
                 session.execute(text(_CLAIM_INSERT_SQL), params)
-                handoff = _handoff(record["work_item"], selected_agent, identifiers, generation, now)
+                handoff = _handoff(
+                    record["work_item"],
+                    selected_agent,
+                    identifiers,
+                    generation,
+                    now,
+                )
+                planning_source = _planning_source(
+                    record["work_item"], record["delegation_spec"]
+                )
                 session.execute(
                     text(_OUTBOX_INSERT_SQL),
                     {
@@ -682,6 +702,7 @@ class SqlAlchemyCoordinationRepository:
                         "authorization_revision_hash": authorization["revision_hash"],
                     },
                     "handoff": handoff,
+                    "planning_source": planning_source,
                     "outbox_id": identifiers["outbox_id"],
                     "event_id": identifiers["event_id"],
                 }
@@ -735,6 +756,7 @@ class SqlAlchemyCoordinationRepository:
                         SELECT o.tenant_id, o.outbox_id, o.event_id, o.work_item_id,
                                o.event_type, o.event_payload, o.delivery_state,
                                o.enqueued_job_id, o.created_at, o.updated_at,
+                               w.delegation_spec, w.work_item,
                                w.work_item -> 'requester' ->> 'entity_id' AS requester_ref
                         FROM wc_event_outbox AS o
                         JOIN wc_work_item AS w
@@ -749,7 +771,13 @@ class SqlAlchemyCoordinationRepository:
                     raise CoordinationError(
                         "wc.handoff_outbox_not_found", "Handoff outbox was not found.", 404
                     )
-                return {**_outbox_from_row(row), "requester_ref": row["requester_ref"]}
+                return {
+                    **_outbox_from_row(row),
+                    "requester_ref": row["requester_ref"],
+                    "planning_source": _planning_source(
+                        dict(row["work_item"]), dict(row["delegation_spec"])
+                    ),
+                }
         except CoordinationError:
             raise
         except SQLAlchemyError as exc:
@@ -819,7 +847,7 @@ class SqlAlchemyCoordinationRepository:
 def _load_work_item(session: Session, tenant_id: str, work_item_id: str) -> dict[str, Any] | None:
     row = session.execute(
         text("""
-            SELECT tenant_id, work_item_id, work_item, state, version
+            SELECT tenant_id, work_item_id, delegation_spec, work_item, state, version
             FROM wc_work_item
             WHERE tenant_id = :tenant_id AND work_item_id = :work_item_id
         """),
@@ -831,6 +859,7 @@ def _load_work_item(session: Session, tenant_id: str, work_item_id: str) -> dict
     return {
         "tenant_id": row["tenant_id"],
         "work_item_id": str(row["work_item_id"]),
+        "delegation_spec": dict(row["delegation_spec"]),
         "work_item": dict(row["work_item"]),
         "state": row["state"],
         "version": int(row["version"]),
@@ -841,7 +870,7 @@ def _load_work_item(session: Session, tenant_id: str, work_item_id: str) -> dict
 def _lock_work_item(session: Session, tenant_id: str, work_item_id: str) -> dict[str, Any] | None:
     row = session.execute(
         text("""
-            SELECT tenant_id, work_item_id, work_item, state, version
+            SELECT tenant_id, work_item_id, delegation_spec, work_item, state, version
             FROM wc_work_item
             WHERE tenant_id = :tenant_id AND work_item_id = :work_item_id
             FOR UPDATE
@@ -853,6 +882,7 @@ def _lock_work_item(session: Session, tenant_id: str, work_item_id: str) -> dict
     return {
         "tenant_id": row["tenant_id"],
         "work_item_id": str(row["work_item_id"]),
+        "delegation_spec": dict(row["delegation_spec"]),
         "work_item": dict(row["work_item"]),
         "state": row["state"],
         "version": int(row["version"]),
@@ -934,6 +964,24 @@ def _handoff(
         "correlation_id": work_item["trace"]["correlation_id"],
         "causation_id": work_item["trace"].get("causation_id"),
         "occurred_at": now,
+    }
+
+
+def _planning_source(
+    work_item: Mapping[str, Any], delegation_spec: Mapping[str, Any]
+) -> dict[str, Any]:
+    return {
+        "schema_version": "p7.claimed_work_planning_source.v1",
+        "source_type": "CLAIMED_WORKITEM",
+        "source_ref": work_item["work_item_id"],
+        "goal": work_item["goal"],
+        "work_class": work_item["work_class"],
+        "required_capability": work_item["routing_target"]["required_capability"],
+        "project_ref": work_item["project_ref"],
+        "artifact_refs": work_item.get("artifact_refs", []),
+        "evidence_refs": [],
+        "completion_policy": work_item["completion_policy"],
+        "result_contract_ref": delegation_spec["result_contract_ref"],
     }
 
 

@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/contracts/p7-claimed-work-planning-envelope-v1.schema.json",
+  "title": "P7 Claimed Work Planning Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "requester_ref",
+    "handoff",
+    "planning_source"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "event_type": {
+      "const": "CLAIM_EXECUTION_HANDOFF"
+    },
+    "requester_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "handoff": {
+      "$ref": "urn:nex:schema:wc:claim-execution-handoff:2.1"
+    },
+    "planning_source": {
+      "$ref": "#/$defs/planningSource"
+    }
+  },
+  "$defs": {
+    "entityRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_type", "entity_id"],
+      "properties": {
+        "entity_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entity_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": ["string", "integer", "null"]
+        },
+        "status": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "planningSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "source_type",
+        "source_ref",
+        "goal",
+        "work_class",
+        "required_capability",
+        "project_ref",
+        "artifact_refs",
+        "evidence_refs",
+        "completion_policy",
+        "result_contract_ref"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "p7.claimed_work_planning_source.v1"
+        },
+        "source_type": {
+          "const": "CLAIMED_WORKITEM"
+        },
+        "source_ref": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "goal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "work_class": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required_capability": {
+          "type": "string",
+          "minLength": 1
+        },
+        "project_ref": {
+          "$ref": "#/$defs/entityRef"
+        },
+        "artifact_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entityRef"
+          }
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entityRef"
+          }
+        },
+        "completion_policy": {
+          "enum": [
+            "OWNER_SUBMITS",
+            "ALL_ASSIGNEES_SUBMIT",
+            "ANY_ASSIGNEE_SUBMITS",
+            "ALL_REQUIRED_CHILDREN",
+            "MANUAL"
+          ]
+        },
+        "result_contract_ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

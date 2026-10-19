@@ -122,6 +122,7 @@ def _verify_delegate_wait(
     *,
     wc_url: str,
     continuation_verifier=None,
+    delegation_overrides: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     ae_factory = fixture["factory"]
     tenant_id = str(fixture["tenant_id"])
@@ -149,6 +150,8 @@ def _verify_delegate_wait(
         "result_contract_ref": "urn:nex:result:project-margin:1",
         "completion_policy": "OWNER_SUBMITS",
     }
+    if delegation_overrides:
+        delegation.update(dict(delegation_overrides))
     step.update(
         {
             "step_type": "DELEGATE_WORK",
@@ -340,6 +343,9 @@ def _verify_delegate_wait(
 def _cleanup_delegate_runtime_rows(factory, *, tenant_id: str) -> dict[str, int]:
     counts: dict[str, int] = {}
     tables = (
+        "ae_external_event_inbox",
+        "ae_claim_handoff_inbox",
+        "ae_semantic_candidate",
         "ae_step_result",
         "ae_wait_registration",
         "ae_runtime_job_attempt",

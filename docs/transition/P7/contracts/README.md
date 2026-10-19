@@ -17,12 +17,13 @@ p7-work-result-v2.1.schema.json
 p7-work-result-submitted-v2.1.schema.json
 ```
 
-P7 adds three implementation-facing transition contracts:
+P7 adds four implementation-facing transition contracts:
 
 ```text
 p7-delegation-spec-v1.schema.json
 p7-wait-registration-v1.schema.json
 p7-plan-candidate-v1.schema.json
+p7-claimed-work-planning-envelope-v1.schema.json
 ```
 
 `DelegationSpec` carries semantic work requirements only. It cannot carry an
@@ -35,6 +36,11 @@ WC WorkItem or the AE RuntimeJob that eventually resumes execution.
 `PlanCandidate` is the admitted planning candidate boundary used by the P7
 claimed-work planning source. It does not grant routing, claim, assignment, or
 execution authority.
+
+`ClaimedWorkPlanningEnvelope` transports the byte-for-byte Frozen
+`ClaimExecutionHandoff` beside a bounded WorkItem planning projection. The
+projection supplies planning input only; the Frozen handoff remains the sole
+claim and assignment authority and is not extended with P7-local fields.
 
 ## Initial Runtime Profile
 

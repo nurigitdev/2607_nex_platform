@@ -251,6 +251,63 @@ def test_builds_complete_schema_valid_reference_only_result_and_fixed_hash() -> 
         assert private_value not in serialized
 
 
+def _background_result(**overrides):
+    value = {
+        **_result(),
+        "agent_type": "PA",
+        "project_id": "project-p7",
+        "source_work_item_ref": "work-item-p7",
+        "source_claim_ref": "claim-p7",
+        "source_claim_generation": 1,
+        "source_claimant_agent_id": AGENT_ID,
+        "source_assignment_ref": "assignment-p7",
+        **overrides,
+    }
+    value["result_hash"] = result_hash(value)
+    return value
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    (
+        {"project_id": None},
+        {"source_claim_ref": None},
+        {"source_claimant_agent_id": "different-agent"},
+        {"source_claim_generation": True},
+        {"source_claim_generation": 0},
+    ),
+)
+def test_background_result_requires_complete_exact_claim_lineage(overrides) -> None:
+    with pytest.raises(AgentResultError, match="complete WC claim lineage"):
+        validate_agent_result(_background_result(**overrides))
+
+
+def test_background_result_execution_lineage_rejects_source_and_claim_drift() -> None:
+    result = _background_result()
+    execution = {
+        "agent_type": "PA",
+        "agent_id": AGENT_ID,
+        "project_id": "project-p7",
+        "source_type": "CLAIMED_WORKITEM",
+        "work_item_ref": "work-item-p7",
+        "claim_ref": "claim-p7",
+        "claim_generation": 1,
+        "assignment_ref": "assignment-p7",
+        "state": "RUNNING",
+    }
+    validate_agent_result(result)
+    result_module._require_execution_lineage(execution, result)
+
+    with pytest.raises(AgentResultError, match="claim lineage"):
+        result_module._require_execution_lineage(
+            {**execution, "source_type": "PROMPT"}, result
+        )
+    with pytest.raises(AgentResultError, match="claim lineage"):
+        result_module._require_execution_lineage(
+            {**execution, "assignment_ref": "different-assignment"}, result
+        )
+
+
 def test_hash_excludes_identity_time_and_sorts_reference_sets() -> None:
     first = _result()
     second = copy.deepcopy(first)
@@ -618,7 +675,8 @@ def test_migration_and_source_keep_p4_boundary_explicit() -> None:
     assert "ae_result_delivery" in migration
     assert "PUBLISH_RESULT" not in migration
     assert "WORKSPACE_RESULT" in source
-    assert "WC_WORK_RESULT" not in source
+    assert "WC_WORK_RESULT" in source
+    assert 'target_type = "WC_WORK_RESULT" if background else "WORKSPACE_RESULT"' in source
     assert AGENT_RESULT_STATUSES == {
         "SUCCEEDED", "PARTIAL", "BLOCKED", "FAILED", "CANCELLED"
     }

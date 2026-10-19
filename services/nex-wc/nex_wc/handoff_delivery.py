@@ -138,11 +138,19 @@ def run_handoff_delivery_job(
         raise HandoffDeliveryError(
             "wc.handoff_event_invalid", "Stored handoff event is invalid.", False
         )
+    planning_source = event.get("planning_source")
+    if not isinstance(planning_source, Mapping):
+        raise HandoffDeliveryError(
+            "wc.handoff_planning_source_invalid",
+            "Stored handoff planning source is invalid.",
+            False,
+        )
     envelope = {
         "event_id": event_id,
         "event_type": "CLAIM_EXECUTION_HANDOFF",
         "requester_ref": _required(event, "requester_ref"),
         "handoff": dict(handoff),
+        "planning_source": dict(planning_source),
     }
     response = client.deliver(envelope)
     delivered = store.mark_handoff_delivered(
