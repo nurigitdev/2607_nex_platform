@@ -7,6 +7,7 @@ from typing import Any
 from nex_runtime import build_service_token_admission_runtime
 from nex_runtime.service_token_admission import ServiceTokenAdmissionRuntime
 
+from .accounts import SqlAlchemyEosAccountRepository
 from .business_transactions import (
     EosBusinessTransactionCoordinator,
     SqlAlchemyEosBusinessTransactionCoordinator,
@@ -26,6 +27,7 @@ class EosDependencies:
     business_transactions: EosBusinessTransactionCoordinator | None
     organization: SqlAlchemyEosOrganizationRepository | None
     projects: SqlAlchemyEosProjectRepository | None
+    accounts: SqlAlchemyEosAccountRepository | None
 
 
 def build_eos_dependencies(
@@ -55,6 +57,11 @@ def build_eos_dependencies(
         if database_runtime is not None
         else None
     )
+    accounts = (
+        SqlAlchemyEosAccountRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
     return EosDependencies(
         service_token_admission=build_service_token_admission_runtime(
             expected_audience=settings.service_id,
@@ -65,4 +72,5 @@ def build_eos_dependencies(
         business_transactions=business_transactions,
         organization=organization,
         projects=projects,
+        accounts=accounts,
     )

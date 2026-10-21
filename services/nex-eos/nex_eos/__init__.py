@@ -1,5 +1,13 @@
 """NeX Enterprise Operations System service."""
 
+from .accounts import (
+    EOS_ACCOUNT_CATEGORIES,
+    EOS_ACCOUNT_STATUSES,
+    EOS_ACCOUNT_TABLE,
+    AccountInput,
+    EosAccountError,
+    SqlAlchemyEosAccountRepository,
+)
 from .app import create_eos_app
 from .business_transactions import (
     EOS_BUSINESS_OPERATION_TABLE,
@@ -52,6 +60,9 @@ from .organization import (
 )
 
 __all__ = (
+    "EOS_ACCOUNT_CATEGORIES",
+    "EOS_ACCOUNT_STATUSES",
+    "EOS_ACCOUNT_TABLE",
     "EOS_BUSINESS_OPERATION_TABLE",
     "EOS_EVENT_TYPES",
     "EOS_IDEMPOTENCY_TABLE",
@@ -68,6 +79,8 @@ __all__ = (
     "EOS_POSITION_TABLE",
     "EOS_POSITION_TYPES",
     "EOS_TEST_RESET_CONFIRMATION",
+    "AccountInput",
+    "EosAccountError",
     "EosBusinessOperationError",
     "EosBusinessOperationRequest",
     "EosBusinessTransactionCoordinator",
@@ -89,6 +102,7 @@ __all__ = (
     "PositionInput",
     "SqlAlchemyEosOrganizationRepository",
     "SqlAlchemyEosProjectRepository",
+    "SqlAlchemyEosAccountRepository",
     "SqlAlchemyEosBusinessTransactionCoordinator",
     "build_eos_database_runtime",
     "create_eos_app",
