@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import copy
+import json
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from threading import RLock
@@ -141,6 +142,7 @@ class ApprovalWorkItemRepository(Protocol):
         self,
         *,
         decision: Mapping[str, Any],
+        outbox: Mapping[str, Any],
         expected_version: int,
     ) -> tuple[dict[str, Any], bool]: ...
 
@@ -148,12 +150,17 @@ class ApprovalWorkItemRepository(Protocol):
         self, *, tenant_id: str, approval_work_item_id: str
     ) -> dict[str, Any] | None: ...
 
+    def list_pending_approval_events(
+        self, *, limit: int
+    ) -> Sequence[Mapping[str, Any]]: ...
+
 
 class InMemoryApprovalWorkItemRepository:
     def __init__(self) -> None:
         self._records: dict[tuple[str, str], dict[str, Any]] = {}
         self._source_keys: set[tuple[str, str, str]] = set()
         self._decisions: dict[tuple[str, str], dict[str, Any]] = {}
+        self._outbox: dict[tuple[str, str], dict[str, Any]] = {}
         self._lock = RLock()
 
     def insert(self, work_item: Mapping[str, Any]) -> dict[str, Any]:
@@ -220,9 +227,11 @@ class InMemoryApprovalWorkItemRepository:
         self,
         *,
         decision: Mapping[str, Any],
+        outbox: Mapping[str, Any],
         expected_version: int,
     ) -> tuple[dict[str, Any], bool]:
         record = validate_approval_decision(decision)
+        event_record = validate_approval_outbox(outbox, decision=record)
         key = (record["tenant_id"], record["approval_work_item_id"])
         with self._lock:
             item = self._records.get(key)
@@ -233,7 +242,17 @@ class InMemoryApprovalWorkItemRepository:
                 _require_same_decision(existing, record)
                 return copy.deepcopy(existing), False
             _require_pending_version(item, expected_version=expected_version)
+            outbox_key = (record["tenant_id"], event_record["outbox_id"])
+            if outbox_key in self._outbox or any(
+                existing_event["event_id"] == event_record["event_id"]
+                and existing_event["tenant_id"] == record["tenant_id"]
+                for existing_event in self._outbox.values()
+            ):
+                raise _decision_conflict(
+                    "Approval outbox identity already exists."
+                )
             self._decisions[key] = copy.deepcopy(record)
+            self._outbox[outbox_key] = copy.deepcopy(event_record)
             item["state"] = _terminal_state(record["decision"])
             item["version"] = expected_version + 1
             return copy.deepcopy(record), True
@@ -244,6 +263,21 @@ class InMemoryApprovalWorkItemRepository:
         with self._lock:
             record = self._decisions.get((tenant_id, approval_work_item_id))
             return None if record is None else copy.deepcopy(record)
+
+    def list_pending_approval_events(
+        self, *, limit: int
+    ) -> Sequence[Mapping[str, Any]]:
+        admitted_limit = _outbox_limit(limit)
+        with self._lock:
+            rows = sorted(
+                (
+                    copy.deepcopy(record)
+                    for record in self._outbox.values()
+                    if record["delivery_state"] == "PENDING"
+                ),
+                key=lambda record: (record["created_at"], record["outbox_id"]),
+            )
+            return rows[:admitted_limit]
 
 
 class SqlAlchemyApprovalWorkItemRepository:
@@ -341,9 +375,11 @@ class SqlAlchemyApprovalWorkItemRepository:
         self,
         *,
         decision: Mapping[str, Any],
+        outbox: Mapping[str, Any],
         expected_version: int,
     ) -> tuple[dict[str, Any], bool]:
         record = validate_approval_decision(decision)
+        event_record = validate_approval_outbox(outbox, decision=record)
         try:
             with self._session_factory() as session:
                 item = _load_for_decision(
@@ -364,6 +400,15 @@ class SqlAlchemyApprovalWorkItemRepository:
                     return existing, False
                 _require_pending_version(item, expected_version=expected_version)
                 session.execute(text(_DECISION_INSERT_SQL), record)
+                params = {
+                    **event_record,
+                    "event_payload": json.dumps(
+                        event_record["event_payload"],
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
+                }
+                session.execute(text(_APPROVAL_OUTBOX_INSERT_SQL), params)
                 updated = session.execute(
                     text(_WORK_ITEM_DECISION_UPDATE_SQL),
                     {
@@ -399,6 +444,24 @@ class SqlAlchemyApprovalWorkItemRepository:
                     tenant_id=tenant_id,
                     approval_work_item_id=approval_work_item_id,
                 )
+        except SQLAlchemyError as exc:
+            raise _decision_unavailable() from exc
+
+    def list_pending_approval_events(
+        self, *, limit: int
+    ) -> Sequence[Mapping[str, Any]]:
+        admitted_limit = _outbox_limit(limit)
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(_APPROVAL_OUTBOX_PENDING_SQL),
+                        {"limit": admitted_limit},
+                    )
+                    .mappings()
+                    .all()
+                )
+                return [_outbox_from_row(row) for row in rows]
         except SQLAlchemyError as exc:
             raise _decision_unavailable() from exc
 
@@ -476,11 +539,15 @@ class ApprovalDecisionService:
         *,
         authorizer: ApprovalDecisionAuthorizer,
         id_factory: Callable[[], str] | None = None,
+        event_id_factory: Callable[[], str] | None = None,
+        outbox_id_factory: Callable[[], str] | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._repository = repository
         self._authorizer = authorizer
         self._id_factory = id_factory or (lambda: str(uuid4()))
+        self._event_id_factory = event_id_factory or (lambda: str(uuid4()))
+        self._outbox_id_factory = outbox_id_factory or (lambda: str(uuid4()))
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def decide(
@@ -491,6 +558,8 @@ class ApprovalDecisionService:
         decision: str,
         decided_by: str,
         decision_comment: str | None = None,
+        correlation_id: str | None = None,
+        causation_id: str | None = None,
     ) -> dict[str, Any]:
         item = self._repository.get(
             tenant_id=tenant_id,
@@ -523,8 +592,33 @@ class ApprovalDecisionService:
             "authorization_checked_at": evidence["authorization_checked_at"],
             "decided_at": decided_at,
         }
+        event = _approval_event(
+            work_item=item,
+            decision=record,
+            event_id=_decision_uuid("event_id", self._event_id_factory()),
+            correlation_id=_decision_scoped(
+                "correlation_id", correlation_id or item["approval_work_item_id"]
+            ),
+            causation_id=_decision_scoped(
+                "causation_id", causation_id or item["approval_work_item_id"]
+            ),
+        )
+        outbox = {
+            "tenant_id": item["tenant_id"],
+            "outbox_id": _decision_uuid("outbox_id", self._outbox_id_factory()),
+            "event_id": event["event_id"],
+            "approval_work_item_id": item["approval_work_item_id"],
+            "decision_id": record["decision_id"],
+            "event_type": event["event_type"],
+            "event_payload": event,
+            "delivery_state": "PENDING",
+            "enqueued_job_id": None,
+            "created_at": decided_at,
+            "updated_at": decided_at,
+        }
         saved, created = self._repository.commit_decision(
             decision=record,
+            outbox=outbox,
             expected_version=item["version"],
         )
         return {"decision": saved, "created": created}
@@ -637,6 +731,84 @@ def validate_approval_decision(value: Mapping[str, Any]) -> dict[str, Any]:
         "authorization_checked_at", record["authorization_checked_at"]
     )
     record["decided_at"] = _decision_timestamp("decided_at", record["decided_at"])
+    return record
+
+
+def validate_approval_event(value: Mapping[str, Any]) -> dict[str, Any]:
+    fields = {
+        "schema_version",
+        "tenant_id",
+        "event_id",
+        "event_type",
+        "approval_work_item_id",
+        "decision_id",
+        "approval_domain",
+        "decision",
+        "decided_by",
+        "oa_decision_ref",
+        "occurred_at",
+        "correlation_id",
+        "causation_id",
+    }
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise _decision_invalid("ApprovalEvent fields are invalid.")
+    record = copy.deepcopy(dict(value))
+    if record["schema_version"] != "wc_approval_event.v1":
+        raise _decision_invalid("ApprovalEvent schema_version is invalid.")
+    record["tenant_id"] = _decision_scoped("tenant_id", record["tenant_id"])
+    for field in ("event_id", "approval_work_item_id", "decision_id"):
+        record[field] = _decision_uuid(field, record[field])
+    domain = str(record["approval_domain"])
+    expected_type = _event_type(domain)
+    if record["event_type"] != expected_type:
+        raise _decision_invalid("ApprovalEvent type does not match approval domain.")
+    record["approval_domain"] = domain
+    record["decision"] = _decision_value(record["decision"])
+    for field in ("decided_by", "oa_decision_ref", "correlation_id", "causation_id"):
+        record[field] = _decision_scoped(field, record[field])
+    record["occurred_at"] = _decision_timestamp("occurred_at", record["occurred_at"])
+    return record
+
+
+def validate_approval_outbox(
+    value: Mapping[str, Any], *, decision: Mapping[str, Any]
+) -> dict[str, Any]:
+    fields = {
+        "tenant_id",
+        "outbox_id",
+        "event_id",
+        "approval_work_item_id",
+        "decision_id",
+        "event_type",
+        "event_payload",
+        "delivery_state",
+        "enqueued_job_id",
+        "created_at",
+        "updated_at",
+    }
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise _decision_invalid("Approval outbox fields are invalid.")
+    record = copy.deepcopy(dict(value))
+    event = validate_approval_event(record["event_payload"])
+    for field in ("tenant_id", "approval_work_item_id", "decision_id"):
+        if record[field] != decision[field] or event[field] != decision[field]:
+            raise _decision_invalid(f"Approval outbox {field} binding is invalid.")
+    record["tenant_id"] = _decision_scoped("tenant_id", record["tenant_id"])
+    for field in ("outbox_id", "event_id", "approval_work_item_id", "decision_id"):
+        record[field] = _decision_uuid(field, record[field])
+    if record["event_id"] != event["event_id"]:
+        raise _decision_invalid("Approval outbox event_id binding is invalid.")
+    if record["event_type"] != event["event_type"]:
+        raise _decision_invalid("Approval outbox event_type binding is invalid.")
+    if record["delivery_state"] not in {"PENDING", "ENQUEUED", "DELIVERED", "FAILED"}:
+        raise _decision_invalid("Approval outbox delivery_state is invalid.")
+    if record["enqueued_job_id"] is not None:
+        record["enqueued_job_id"] = _decision_scoped(
+            "enqueued_job_id", record["enqueued_job_id"]
+        )
+    record["created_at"] = _decision_timestamp("created_at", record["created_at"])
+    record["updated_at"] = _decision_timestamp("updated_at", record["updated_at"])
+    record["event_payload"] = event
     return record
 
 
@@ -825,6 +997,45 @@ def _terminal_state(decision: str) -> str:
     return "APPROVED" if decision == "APPROVE" else "REJECTED"
 
 
+def _event_type(approval_domain: str) -> str:
+    event_types = {
+        "NSL_WRITE": "NSL_APPROVAL_DECIDED",
+        "BUSINESS_FORMAL": "BUSINESS_FORMAL_APPROVAL_DECIDED",
+        "AGENT_FORMAL": "AGENT_FORMAL_APPROVAL_DECIDED",
+    }
+    try:
+        return event_types[approval_domain]
+    except KeyError as exc:
+        raise _decision_invalid("ApprovalEvent approval_domain is invalid.") from exc
+
+
+def _approval_event(
+    *,
+    work_item: Mapping[str, Any],
+    decision: Mapping[str, Any],
+    event_id: str,
+    correlation_id: str,
+    causation_id: str,
+) -> dict[str, Any]:
+    return validate_approval_event(
+        {
+            "schema_version": "wc_approval_event.v1",
+            "tenant_id": decision["tenant_id"],
+            "event_id": event_id,
+            "event_type": _event_type(work_item["approval_domain"]),
+            "approval_work_item_id": decision["approval_work_item_id"],
+            "decision_id": decision["decision_id"],
+            "approval_domain": work_item["approval_domain"],
+            "decision": decision["decision"],
+            "decided_by": decision["decided_by"],
+            "oa_decision_ref": decision["oa_decision_ref"],
+            "occurred_at": decision["decided_at"],
+            "correlation_id": correlation_id,
+            "causation_id": causation_id,
+        }
+    )
+
+
 def _decision_value(value: Any) -> str:
     normalized = str(value).strip().upper()
     if normalized not in {"APPROVE", "REJECT"}:
@@ -890,6 +1101,12 @@ def _decision_unavailable() -> ApprovalDecisionError:
     )
 
 
+def _outbox_limit(value: int) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= 1000:
+        raise _decision_invalid("Approval outbox limit must be between 1 and 1000.")
+    return value
+
+
 def _load_for_decision(
     session: Session, *, tenant_id: str, approval_work_item_id: str
 ) -> dict[str, Any] | None:
@@ -935,6 +1152,27 @@ def _load_decision(
     record["authorized_by_oa"] = bool(record["authorized_by_oa"])
     record["schema_version"] = "wc_approval_decision.v1"
     return validate_approval_decision(record)
+
+
+def _outbox_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    payload = row["event_payload"]
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            raise _decision_invalid("Approval outbox payload is malformed.") from exc
+    record = dict(row)
+    for field in ("outbox_id", "event_id", "approval_work_item_id", "decision_id"):
+        record[field] = str(record[field])
+    for field in ("created_at", "updated_at"):
+        record[field] = _decision_timestamp(field, record[field])
+    record["event_payload"] = payload
+    decision = {
+        "tenant_id": record["tenant_id"],
+        "approval_work_item_id": record["approval_work_item_id"],
+        "decision_id": record["decision_id"],
+    }
+    return validate_approval_outbox(record, decision=decision)
 
 
 def _invalid(detail: str) -> ApprovalWorkItemError:
@@ -1086,4 +1324,26 @@ WHERE tenant_id = :tenant_id
   AND approval_work_item_id = :approval_work_item_id
 ORDER BY decision_version DESC
 LIMIT 1
+"""
+
+_APPROVAL_OUTBOX_INSERT_SQL = """
+INSERT INTO wc_approval_outbox (
+    tenant_id, outbox_id, event_id, approval_work_item_id, decision_id,
+    event_type, event_payload, delivery_state, enqueued_job_id,
+    created_at, updated_at
+) VALUES (
+    :tenant_id, :outbox_id, :event_id, :approval_work_item_id, :decision_id,
+    :event_type, :event_payload, :delivery_state, :enqueued_job_id,
+    :created_at, :updated_at
+)
+"""
+
+_APPROVAL_OUTBOX_PENDING_SQL = """
+SELECT tenant_id, outbox_id, event_id, approval_work_item_id, decision_id,
+       event_type, event_payload, delivery_state, enqueued_job_id,
+       created_at, updated_at
+FROM wc_approval_outbox
+WHERE delivery_state = 'PENDING'
+ORDER BY created_at, outbox_id
+LIMIT :limit
 """

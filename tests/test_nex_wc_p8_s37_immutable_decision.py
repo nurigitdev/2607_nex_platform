@@ -70,6 +70,38 @@ def _decision(**overrides):
     return value
 
 
+def _outbox(decision=None):
+    decision = decision or _decision()
+    event = {
+        "schema_version": "wc_approval_event.v1",
+        "tenant_id": decision["tenant_id"],
+        "event_id": "37200000-0000-4000-8000-000000000001",
+        "event_type": "NSL_APPROVAL_DECIDED",
+        "approval_work_item_id": decision["approval_work_item_id"],
+        "decision_id": decision["decision_id"],
+        "approval_domain": "NSL_WRITE",
+        "decision": decision["decision"],
+        "decided_by": decision["decided_by"],
+        "oa_decision_ref": decision["oa_decision_ref"],
+        "occurred_at": decision["decided_at"],
+        "correlation_id": decision["approval_work_item_id"],
+        "causation_id": decision["approval_work_item_id"],
+    }
+    return {
+        "tenant_id": decision["tenant_id"],
+        "outbox_id": "37300000-0000-4000-8000-000000000001",
+        "event_id": event["event_id"],
+        "approval_work_item_id": decision["approval_work_item_id"],
+        "decision_id": decision["decision_id"],
+        "event_type": event["event_type"],
+        "event_payload": event,
+        "delivery_state": "PENDING",
+        "enqueued_job_id": None,
+        "created_at": decision["decided_at"],
+        "updated_at": decision["decided_at"],
+    }
+
+
 class _AuthorizationSource:
     def __init__(self):
         self.calls = []
@@ -160,6 +192,23 @@ def _factory(*, with_schema=True):
                     decided_at TEXT NOT NULL,
                     PRIMARY KEY (tenant_id, decision_id),
                     UNIQUE (tenant_id, approval_work_item_id, decision_version)
+                )
+            """))
+            connection.execute(text("""
+                CREATE TABLE wc_approval_outbox (
+                    tenant_id TEXT NOT NULL,
+                    outbox_id TEXT NOT NULL,
+                    event_id TEXT NOT NULL,
+                    approval_work_item_id TEXT NOT NULL,
+                    decision_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    event_payload TEXT NOT NULL,
+                    delivery_state TEXT NOT NULL,
+                    enqueued_job_id TEXT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, outbox_id),
+                    UNIQUE (tenant_id, event_id)
                 )
             """))
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False), engine
@@ -322,7 +371,9 @@ def test_s37_repository_version_conflict_and_store_failure_are_distinct():
     repository = InMemoryApprovalWorkItemRepository()
     repository.insert(_work_item())
     with pytest.raises(ApprovalDecisionError) as version_conflict:
-        repository.commit_decision(decision=_decision(), expected_version=2)
+        repository.commit_decision(
+            decision=_decision(), outbox=_outbox(), expected_version=2
+        )
     assert version_conflict.value.status_code == 409
 
     factory, engine = _factory(with_schema=False)
@@ -335,7 +386,9 @@ def test_s37_repository_version_conflict_and_store_failure_are_distinct():
         assert get_error.value.status_code == 503
         assert get_error.value.retryable is True
         with pytest.raises(ApprovalDecisionError) as commit_error:
-            unavailable.commit_decision(decision=_decision(), expected_version=1)
+            unavailable.commit_decision(
+                decision=_decision(), outbox=_outbox(), expected_version=1
+            )
         assert commit_error.value.error_code == "wc.approval_decision_store_unavailable"
     finally:
         engine.dispose()
@@ -375,7 +428,9 @@ def test_s37_reject_maps_to_rejected_terminal_state():
         decision="REJECT",
         decision_comment=None,
     )
-    saved, created = repository.commit_decision(decision=rejected, expected_version=1)
+    saved, created = repository.commit_decision(
+        decision=rejected, outbox=_outbox(rejected), expected_version=1
+    )
     assert created is True
     assert saved["decision"] == "REJECT"
     assert repository.get(
