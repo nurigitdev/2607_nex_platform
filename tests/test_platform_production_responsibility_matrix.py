@@ -13,10 +13,10 @@ def test_repository_matrix_assigns_all_production_controls() -> None:
     assert all(result["checks"].values())
     assert result["summary"] == {
         "control_count": 9,
-        "owner_count": 7,
-        "accountable_owner_count": 7,
-        "responsible_owner_count": 7,
-        "database_owner_count": 6,
+        "owner_count": 8,
+        "accountable_owner_count": 8,
+        "responsible_owner_count": 8,
+        "database_owner_count": 7,
         "target_requirement_count": 7,
     }
     assert len(result["assignments"]) == 9
@@ -51,6 +51,7 @@ def test_database_ownership_uses_service_local_environment_names() -> None:
         "nex-cx": {"owner": "CX", "database_env": "NEX_CX_DATABASE_URL"},
         "nex-mo": {"owner": "MO", "database_env": "NEX_MO_DATABASE_URL"},
         "nex-wc": {"owner": "WC", "database_env": "NEX_WC_DATABASE_URL"},
+        "nex-eos": {"owner": "EOS", "database_env": "NEX_EOS_DATABASE_URL"},
     }
 
 
@@ -62,8 +63,8 @@ def test_text_summary_and_main_branches(tmp_path: Path, monkeypatch, capsys) -> 
 
     passing = matrix.run_platform_production_responsibility_matrix()
     assert matrix.summary_line(passing) == (
-        "platform_production_responsibility_matrix=pass controls=9 owners=7 "
-        "databases=6 targets=7 next=1408"
+        "platform_production_responsibility_matrix=pass controls=9 owners=8 "
+        "databases=7 targets=7 next=1408"
     )
     failing = {"status": "FAIL", "issues": ["one"]}
     assert matrix.summary_line(failing) == (

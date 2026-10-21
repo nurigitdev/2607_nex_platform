@@ -32,10 +32,10 @@ production-shaped runtime profile as proof that production controls exist.
 | --- | --- | --- | --- | --- |
 | `external_signing_key_custody` | External signing-key custody or HSM/KMS integration | OA | `S144` | `DEFERRED` |
 | `managed_tls_certificate_lifecycle` | Managed TLS termination and certificate lifecycle | Platform integration | `S143` | `DEFERRED` |
-| `production_secret_injection_rotation` | Production secret injection and rotation | Platform integration with OA, AE, CX, MO, and AG | `S143` | `DEFERRED` |
+| `production_secret_injection_rotation` | Production secret injection and rotation | Platform integration with OA, AE, CX, MO, AG, WC, and EOS | `S143` | `DEFERRED` |
 | `enterprise_idp_registration` | Enterprise IdP registration and federation metadata | OA | `S144` | `DEFERRED` |
 | `production_object_storage_lifecycle` | Production object storage and lifecycle policy | CX and AE | `S146` | `DEFERRED` |
-| `production_postgresql_backup_ha_dr` | Production PostgreSQL backup, restore, HA, and disaster recovery | OA, AE, CX, MO, and AG database owners with platform coordination | `S145` | `DEFERRED` |
+| `production_postgresql_backup_ha_dr` | Production PostgreSQL backup, restore, HA, and disaster recovery | OA, AE, CX, MO, AG, WC, and EOS database owners with platform coordination | `S145` | `DEFERRED` |
 | `external_notification_incident_endpoints` | External notification and incident endpoints | AG | `S148` | `DEFERRED` |
 | `production_gpu_scheduling_capacity` | Production GPU scheduling, autoscaling, and capacity approval | MO | `S147` | `DEFERRED` |
 | `production_monitoring_paging_slo_approval` | Production monitoring, paging, SLO ownership, and change approval | AG and platform integration | `S148`, `S150` | `DEFERRED` |
@@ -93,7 +93,7 @@ following gaps remain outside the production admission contract.
 | `managed_tls_certificate_lifecycle` | HTTP and HTTPS endpoint shapes are accepted; managed certificate lifecycle is not admitted | Platform integration | `S143` |
 | `external_signing_key_custody` | OA issuance remains fail-closed without an injected external signing provider | OA | `S144` |
 | `enterprise_idp_registration` | OIDC verification primitives exist; production registration and federation metadata are not admitted | OA | `S144` |
-| `postgresql_backup_ha_dr` | Connection and pool configuration exist; backup, restore, HA, RPO, and RTO are not admitted | Five database owners and platform integration | `S145` |
+| `postgresql_backup_ha_dr` | Connection and pool configuration exist; backup, restore, HA, RPO, and RTO are not admitted | Seven database owners and platform integration | `S145` |
 | `object_storage_lifecycle` | CX and AE use owner-private local filesystem adapters; production object storage is not admitted | CX and AE | `S146` |
 | `external_incident_delivery` | AG HTTP transport settings exist; production endpoints and credentials are not required by the profile | AG | `S148` |
 | `gpu_scheduling_capacity` | Live provider endpoints are required; GPU scheduling and capacity approval are not admitted | MO | `S147` |
@@ -126,13 +126,13 @@ domain ownership.
 | --- | --- | --- | --- | --- |
 | `external_signing_key_custody` | OA | OA | Platform integration | `S144` |
 | `managed_tls_certificate_lifecycle` | Platform integration | Platform integration | Platform integration | `S143` |
-| `production_secret_injection_rotation` | Platform integration | OA, AE, CX, MO, AG for their own secrets | Platform integration | `S143` |
+| `production_secret_injection_rotation` | Platform integration | OA, AE, CX, MO, AG, WC, EOS for their own secrets | Platform integration | `S143` |
 | `enterprise_idp_registration` | OA | OA | Platform integration | `S144` |
 | `production_object_storage_lifecycle` | CX and AE for their own namespaces | CX and AE | Platform integration | `S146` |
-| `production_postgresql_backup_ha_dr` | OA, AE, CX, MO, AG for their own databases | Each database owner | Platform integration | `S145` |
+| `production_postgresql_backup_ha_dr` | OA, AE, CX, MO, AG, WC, EOS for their own databases | Each database owner | Platform integration | `S145` |
 | `external_notification_incident_endpoints` | AG | AG | Platform integration | `S148` |
 | `production_gpu_scheduling_capacity` | MO | MO | Platform integration | `S147` |
-| `production_monitoring_paging_slo_approval` | AG for operations; Platform integration for release approval | OA, AE, CX, MO, AG provide service signals; AG operates aggregation and paging | Platform integration | `S148`, `S150` |
+| `production_monitoring_paging_slo_approval` | AG for operations; Platform integration for release approval | OA, AE, CX, MO, AG, WC, EOS provide service signals; AG operates aggregation and paging | Platform integration | `S148`, `S150` |
 
 Responsibility rules:
 
@@ -145,6 +145,8 @@ Responsibility rules:
   telemetry, calibration binding, and GPU-serving operations.
 - AG owns cross-service operational projections, audit, alert aggregation,
   paging, and external incident dispatch, through service APIs.
+- WC owns durable work coordination and human-task state.
+- EOS owns business organization and authoritative enterprise business data.
 - Each backend owns its own PostgreSQL schema, migration, pool, backup, restore,
   and recovery evidence. Cross-service database reads remain prohibited.
 - Platform integration owns packaging, topology, environment admission, TLS,

@@ -206,14 +206,14 @@ def run_s141_platform_production_readiness_closure(
         },
         "production_responsibility_baseline_exact": (
             responsibility_summary.get("control_count") == 9
-            and responsibility_summary.get("owner_count") == 7
-            and responsibility_summary.get("database_owner_count") == 6
+            and responsibility_summary.get("owner_count") == 8
+            and responsibility_summary.get("database_owner_count") == 7
             and all(
                 _mapping(responsibility.get("checks")).get(check) is True
                 for check in (
-                    "all_seven_owners_accountable",
-                    "all_seven_owners_responsible",
-                    "six_database_owners_exact",
+                    "all_eight_owners_accountable",
+                    "all_eight_owners_responsible",
+                    "seven_database_owners_exact",
                 )
             )
         ),

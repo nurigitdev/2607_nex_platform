@@ -9,7 +9,7 @@ from typing import Any, Mapping
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCHEMA_VERSION = "platform_vertical_spine_reaudit_boundary.v1"
+SCHEMA_VERSION = "platform_vertical_spine_reaudit_boundary.v2"
 SLICE_ID = "1302"
 REQUIREMENT = "S131"
 BOUNDARY = "platform_mvp_vertical_spine_current_state_reaudit"
@@ -45,6 +45,7 @@ REQUIRED_PATHS = (
     RequiredPath("cx_runtime", "services/nex-cx/nex_cx/main.py"),
     RequiredPath("mo_runtime", "services/nex-mo/nex_mo/main.py"),
     RequiredPath("ag_runtime", "services/nex-ag/nex_ag/main.py"),
+    RequiredPath("eos_runtime", "services/nex-eos/nex_eos/main.py"),
     RequiredPath("service_runner", "scripts/dev/run_all_services.py"),
     RequiredPath("mvp_srs", "docs/29_nex_platform_mvp_srs_v0_1_assembly.md"),
     RequiredPath(
@@ -100,9 +101,14 @@ TOKEN_REQUIREMENTS = (
         "register_generation_audit_routes(app)",
     ),
     TokenRequirement(
+        "eos_entry",
+        "services/nex-eos/nex_eos/main.py",
+        "app = create_eos_app()",
+    ),
+    TokenRequirement(
         "service_runner",
         "scripts/dev/run_all_services.py",
-        'SERVICES = ["nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo", "nex-wc"]',
+        '"nex-eos",',
     ),
     TokenRequirement(
         "vertical_acceptance",
@@ -156,7 +162,7 @@ def run_platform_vertical_spine_reaudit_boundary(
         "required_paths_present": all(item["present"] for item in paths),
         "required_tokens_present": all(item["present"] for item in tokens),
         "s130_handoff_ready": _group_present(tokens, "s130_handoff"),
-        "six_service_and_web_entries_present": all(
+        "seven_service_and_web_entries_present": all(
             _group_present(tokens, group)
             for group in (
                 "oa_entry",
@@ -165,6 +171,7 @@ def run_platform_vertical_spine_reaudit_boundary(
                 "cx_entry",
                 "mo_entry",
                 "ag_entry",
+                "eos_entry",
             )
         ),
         "requirements_and_golden_scenarios_frozen": all(
@@ -202,7 +209,7 @@ def run_platform_vertical_spine_reaudit_boundary(
         "boundary": BOUNDARY,
         "decision": {
             "owner": "platform_integration",
-            "audit_scope": "oa_to_ae_web_api_to_cx_to_mo_to_ag_and_wc",
+            "audit_scope": "oa_to_ae_web_api_to_cx_to_mo_to_ag_wc_and_eos",
             "repository_state_is_primary_evidence": True,
             "refactor_before_feature_when_needed": True,
             "cross_service_http_api_only": True,
@@ -215,7 +222,7 @@ def run_platform_vertical_spine_reaudit_boundary(
             "decision_status": "FROZEN",
         },
         "baseline_findings": {
-            "backend_service_shell_count": 6,
+            "backend_service_shell_count": 7,
             "ae_web_shell_present": True,
             "service_runner_present": _group_present(tokens, "service_runner"),
             "golden_scenario_contract_count": 10,

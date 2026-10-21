@@ -12,12 +12,12 @@ def test_boundary_audit_passes_for_repository() -> None:
     assert all(result["checks"].values())
     assert result["issues"] == []
     assert result["decision"]["audit_scope"] == (
-        "oa_to_ae_web_api_to_cx_to_mo_to_ag_and_wc"
+        "oa_to_ae_web_api_to_cx_to_mo_to_ag_wc_and_eos"
     )
     assert result["decision"]["cross_service_http_api_only"] is True
     assert result["decision"]["shared_database_reads_allowed"] is False
     assert result["decision"]["next_requirement"] == "S132"
-    assert result["baseline_findings"]["backend_service_shell_count"] == 6
+    assert result["baseline_findings"]["backend_service_shell_count"] == 7
     assert result["baseline_findings"]["golden_scenario_contract_count"] == 10
     assert result["baseline_findings"][
         "executable_named_golden_scenario_count"
@@ -39,7 +39,7 @@ def test_boundary_audit_reports_missing_paths_and_tokens(tmp_path: Path) -> None
         "required_paths_present": False,
         "required_tokens_present": False,
         "s130_handoff_ready": False,
-        "six_service_and_web_entries_present": False,
+        "seven_service_and_web_entries_present": False,
         "requirements_and_golden_scenarios_frozen": False,
     }
     assert any(item["category"] == "path_missing" for item in result["issues"])
@@ -84,20 +84,20 @@ def test_summary_line_reports_pass_and_failure() -> None:
     passing = {
         "status": "PASS",
         "decision": {
-            "audit_scope": "oa_to_ae_web_api_to_cx_to_mo_to_ag_and_wc",
+            "audit_scope": "oa_to_ae_web_api_to_cx_to_mo_to_ag_wc_and_eos",
             "actual_test_database_evidence_required": False,
             "protected_live_provider_evidence_required": False,
             "next_requirement": "S132",
         },
         "baseline_findings": {
-            "backend_service_shell_count": 6,
+            "backend_service_shell_count": 7,
             "executable_named_golden_scenario_count": 0,
         },
     }
 
     assert audit.summary_line(passing) == (
         "platform_vertical_spine_reaudit_boundary=pass "
-        "scope=oa_to_ae_web_api_to_cx_to_mo_to_ag_and_wc services=6+web "
+        "scope=oa_to_ae_web_api_to_cx_to_mo_to_ag_wc_and_eos services=7+web "
         "named_e2e=0/10 postgres_required=False live_required=False next=S132"
     )
     assert audit.summary_line({"status": "FAIL", "issues": [1]}) == (
@@ -115,7 +115,7 @@ def test_main_prints_summary_json_and_failure(monkeypatch, capsys) -> None:
             "next_requirement": "S132",
         },
         "baseline_findings": {
-            "backend_service_shell_count": 6,
+            "backend_service_shell_count": 7,
             "executable_named_golden_scenario_count": 0,
         },
     }

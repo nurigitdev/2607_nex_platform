@@ -26,7 +26,7 @@ def test_shared_ready_route_composes_optional_checks(
     monkeypatch.setattr(
         runtime_app,
         "check_database_readiness",
-        lambda database_env: database_check(),
+        lambda database_env, *, environ=None: database_check(),
     )
     additional_calls = 0
 
@@ -69,7 +69,7 @@ def test_shared_ready_route_fails_closed_for_additional_check(
     monkeypatch.setattr(
         runtime_app,
         "check_database_readiness",
-        lambda database_env: database_check(),
+        lambda database_env, *, environ=None: database_check(),
     )
     client = TestClient(
         build_service_app(
@@ -91,7 +91,7 @@ def test_services_without_additional_checks_preserve_database_only_behavior(
     monkeypatch.setattr(
         runtime_app,
         "check_database_readiness",
-        lambda database_env: database_check(),
+        lambda database_env, *, environ=None: database_check(),
     )
 
     response = TestClient(build_service_app(SERVICE_SPECS["nex-cx"])).get("/ready")
@@ -107,7 +107,7 @@ def test_mo_main_wires_provider_readiness_after_database(
     monkeypatch.setattr(
         runtime_app,
         "check_database_readiness",
-        lambda database_env: database_check(),
+        lambda database_env, *, environ=None: database_check(),
     )
     PROVIDER_READINESS.clear()
 
@@ -129,7 +129,7 @@ def test_mo_ready_requires_both_database_and_provider(
     monkeypatch.setattr(
         runtime_app,
         "check_database_readiness",
-        lambda database_env: database_check(ok=False),
+        lambda database_env, *, environ=None: database_check(ok=False),
     )
     PROVIDER_READINESS.clear()
 
