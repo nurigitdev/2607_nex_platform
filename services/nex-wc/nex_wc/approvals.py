@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import copy
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from threading import RLock
@@ -12,6 +12,12 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
+
+from nex_wc.authorization import (
+    AuthorizationSource,
+    AuthorizationSubjectDenied,
+    require_active_scope,
+)
 
 APPROVAL_DOMAINS = frozenset({"AGENT_FORMAL", "NSL_WRITE", "BUSINESS_FORMAL"})
 APPROVAL_STATES = frozenset(
@@ -88,6 +94,17 @@ class ApprovalWorkItemError(Exception):
     error_code: str
     detail: str
     status_code: int = 400
+    retryable: bool = False
+
+    def __str__(self) -> str:
+        return self.detail
+
+
+@dataclass(frozen=True)
+class ApprovalDecisionAuthorizationError(Exception):
+    error_code: str
+    detail: str
+    status_code: int
     retryable: bool = False
 
     def __str__(self) -> str:
@@ -278,6 +295,63 @@ class ApprovalWorkItemService:
         return {"work_item": saved, "created": created}
 
 
+class ApprovalDecisionAuthorizer:
+    def __init__(
+        self,
+        authorization_source: AuthorizationSource,
+        *,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._authorization_source = authorization_source
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def authorize(
+        self, *, work_item: Mapping[str, Any], decided_by: str
+    ) -> dict[str, Any]:
+        item = validate_approval_work_item(work_item)
+        principal = _scoped("decided_by", decided_by)
+        try:
+            authorization = self._authorization_source.effective_authorization(
+                tenant_id=item["tenant_id"], subject_id=principal
+            )
+        except AuthorizationSubjectDenied as exc:
+            raise _authorization_denied(
+                "OA denied the approval decision principal."
+            ) from exc
+        except Exception as exc:
+            raise ApprovalDecisionAuthorizationError(
+                "wc.approval_authorization_unavailable",
+                "OA effective authorization is unavailable.",
+                503,
+                True,
+            ) from exc
+        try:
+            revision_hash = require_active_scope(
+                authorization, required_scope="approval:decide"
+            )
+            _require_authorization_identity(
+                authorization,
+                tenant_id=item["tenant_id"],
+                principal=principal,
+            )
+            _require_target_compatibility(item, authorization, principal=principal)
+            revision_hash_ref = _authorization_hash_ref(revision_hash)
+            decision_ref = _authorization_decision_ref(
+                authorization, revision_hash_ref=revision_hash_ref
+            )
+        except AuthorizationSubjectDenied as exc:
+            raise _authorization_denied(str(exc)) from exc
+        return {
+            "authorized_by_oa": True,
+            "decided_by": principal,
+            "oa_decision_ref": decision_ref,
+            "authorization_revision_hash": revision_hash_ref,
+            "authorization_checked_at": _timestamp(
+                "authorization_checked_at", self._clock()
+            ),
+        }
+
+
 def validate_approval_work_item(value: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise _invalid("ApprovalWorkItem must be an object.")
@@ -410,6 +484,88 @@ def _require_same_semantics(
             "Approval source identity already exists with different semantics.",
             409,
         )
+
+
+def _require_authorization_identity(
+    authorization: Mapping[str, Any], *, tenant_id: str, principal: str
+) -> None:
+    if (
+        authorization.get("tenant_id") != tenant_id
+        or authorization.get("subject_id") != principal
+    ):
+        raise AuthorizationSubjectDenied(
+            "OA authorization identity does not match the decision principal."
+        )
+
+
+def _require_target_compatibility(
+    work_item: Mapping[str, Any],
+    authorization: Mapping[str, Any],
+    *,
+    principal: str,
+) -> None:
+    target_principal = work_item.get("target_approver_ref")
+    if target_principal is not None:
+        if target_principal != principal:
+            raise AuthorizationSubjectDenied(
+                "Decision principal does not match target_approver_ref."
+            )
+        return
+
+    target_sets = (
+        ("target_role_ref", "roles"),
+        ("target_org_scope_ref", "org_scope_refs"),
+        ("target_project_scope_ref", "project_scope_refs"),
+    )
+    configured = False
+    for target_field, authorization_field in target_sets:
+        target = work_item.get(target_field)
+        if target is None:
+            continue
+        configured = True
+        granted = authorization.get(authorization_field)
+        if (
+            not isinstance(granted, (list, tuple))
+            or target not in granted
+        ):
+            raise AuthorizationSubjectDenied(
+                f"Decision principal does not match {target_field}."
+            )
+    if not configured:
+        raise AuthorizationSubjectDenied(
+            "ApprovalWorkItem has no decision target."
+        )
+
+
+def _authorization_hash_ref(revision_hash: str) -> str:
+    value = revision_hash.strip().lower()
+    if re.fullmatch(r"[0-9a-f]{64}", value):
+        return f"sha256:{value}"
+    if _HASH_REF.fullmatch(value):
+        return value
+    raise AuthorizationSubjectDenied("OA authorization revision hash is malformed.")
+
+
+def _authorization_decision_ref(
+    authorization: Mapping[str, Any], *, revision_hash_ref: str
+) -> str:
+    supplied = authorization.get("decision_ref")
+    if supplied is not None:
+        try:
+            return _scoped("oa_decision_ref", supplied)
+        except ApprovalWorkItemError as exc:
+            raise AuthorizationSubjectDenied(
+                "OA authorization decision reference is malformed."
+            ) from exc
+    return f"oa-authz:{revision_hash_ref.removeprefix('sha256:')}"
+
+
+def _authorization_denied(detail: str) -> ApprovalDecisionAuthorizationError:
+    return ApprovalDecisionAuthorizationError(
+        "wc.approval_authorization_denied",
+        detail,
+        403,
+    )
 
 
 def _invalid(detail: str) -> ApprovalWorkItemError:
