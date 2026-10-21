@@ -55,6 +55,7 @@ WORK_ITEM_REPOSITORY = (
 WORK_ITEMS = WorkItemService(
     WORK_ITEM_REPOSITORY,
     authorization_source=AUTHORIZATION_SOURCE,
+    delegation_guard_enabled=True,
 )
 app.state.wc_work_items = WORK_ITEMS
 COORDINATION_REPOSITORY = (

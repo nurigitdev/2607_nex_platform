@@ -19,6 +19,14 @@ from nex_wc.authorization import (
     AuthorizationSubjectDenied,
     require_active_scope,
 )
+from nex_wc.delegation_lineage import (
+    DelegationLineageRepository,
+    InMemoryDelegationLineageRepository,
+    create_delegation_lineage_in_session,
+    initial_delegation_policy,
+    load_delegation_lineage_in_session,
+    validate_delegation_lineage,
+)
 
 WORK_CLASSES = frozenset(
     {
@@ -78,19 +86,40 @@ class WorkItemError(Exception):
 
 
 class WorkItemRepository(Protocol):
-    def create(self, record: Mapping[str, Any]) -> tuple[dict[str, Any], bool]: ...
+    def create(
+        self,
+        record: Mapping[str, Any],
+        *,
+        lineage: Mapping[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], bool]: ...
 
     def get(self, *, tenant_id: str, work_item_id: str) -> dict[str, Any] | None: ...
 
+    def get_lineage(
+        self, *, tenant_id: str, work_item_id: str
+    ) -> dict[str, Any] | None: ...
+
 
 class InMemoryWorkItemRepository:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        lineage_repository: DelegationLineageRepository | None = None,
+    ) -> None:
         self._records: dict[tuple[str, str], dict[str, Any]] = {}
         self._semantic_keys: dict[tuple[str, str], tuple[str, str]] = {}
+        self._lineages = lineage_repository or InMemoryDelegationLineageRepository()
         self._lock = RLock()
 
-    def create(self, record: Mapping[str, Any]) -> tuple[dict[str, Any], bool]:
+    def create(
+        self,
+        record: Mapping[str, Any],
+        *,
+        lineage: Mapping[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], bool]:
         item = copy.deepcopy(dict(record))
+        admitted_lineage = (
+            None if lineage is None else validate_delegation_lineage(lineage)
+        )
         tenant_id = item["tenant_id"]
         semantic_key = (tenant_id, item["idempotency_key"])
         with self._lock:
@@ -100,6 +129,15 @@ class InMemoryWorkItemRepository:
                 _require_same_semantics(existing, item)
                 return copy.deepcopy(existing), False
             record_key = (tenant_id, item["work_item_id"])
+            if record_key in self._records:
+                raise WorkItemError(
+                    "wc.work_item_id_conflict",
+                    "WorkItem identity already exists.",
+                    409,
+                )
+            if admitted_lineage is not None:
+                _require_lineage_matches_record(item, admitted_lineage)
+                self._lineages.create(admitted_lineage)
             self._records[record_key] = item
             self._semantic_keys[semantic_key] = record_key
             return copy.deepcopy(item), True
@@ -109,13 +147,28 @@ class InMemoryWorkItemRepository:
             found = self._records.get((tenant_id, work_item_id))
             return None if found is None else copy.deepcopy(found)
 
+    def get_lineage(
+        self, *, tenant_id: str, work_item_id: str
+    ) -> dict[str, Any] | None:
+        return self._lineages.get(tenant_id=tenant_id, work_item_id=work_item_id)
+
 
 class SqlAlchemyWorkItemRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
 
-    def create(self, record: Mapping[str, Any]) -> tuple[dict[str, Any], bool]:
+    def create(
+        self,
+        record: Mapping[str, Any],
+        *,
+        lineage: Mapping[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], bool]:
         params = dict(record)
+        admitted_lineage = (
+            None if lineage is None else validate_delegation_lineage(lineage)
+        )
+        if admitted_lineage is not None:
+            _require_lineage_matches_record(record, admitted_lineage)
         params["delegation_spec"] = json.dumps(
             params["delegation_spec"], ensure_ascii=False, sort_keys=True
         )
@@ -140,10 +193,28 @@ class SqlAlchemyWorkItemRepository:
                 created = int(inserted.rowcount or 0) == 1
                 if not created:
                     _require_same_semantics(saved, record)
+                elif admitted_lineage is not None:
+                    create_delegation_lineage_in_session(session, admitted_lineage)
                 session.commit()
                 return saved, created
         except WorkItemError:
             raise
+        except SQLAlchemyError as exc:
+            raise WorkItemError(
+                "wc.work_item_store_unavailable",
+                "WC WorkItem persistence is unavailable.",
+                503,
+                True,
+            ) from exc
+
+    def get_lineage(
+        self, *, tenant_id: str, work_item_id: str
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return load_delegation_lineage_in_session(
+                    session, tenant_id=tenant_id, work_item_id=work_item_id
+                )
         except SQLAlchemyError as exc:
             raise WorkItemError(
                 "wc.work_item_store_unavailable",
@@ -181,11 +252,13 @@ class WorkItemService:
         authorization_source: AuthorizationSource,
         id_factory: Callable[[], str] | None = None,
         clock: Callable[[], datetime] | None = None,
+        delegation_guard_enabled: bool = False,
     ) -> None:
         self._repository = repository
         self._authorization_source = authorization_source
         self._id_factory = id_factory or (lambda: str(uuid4()))
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._delegation_guard_enabled = delegation_guard_enabled
 
     def create(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, Mapping):
@@ -313,7 +386,16 @@ class WorkItemService:
             "created_at": now,
             "updated_at": now,
         }
-        saved, created = self._repository.create(record)
+        lineage = (
+            _first_level_lineage(
+                record=record,
+                requester=requester,
+                created_at=now,
+            )
+            if self._delegation_guard_enabled
+            else None
+        )
+        saved, created = self._repository.create(record, lineage=lineage)
         return {"work_item": saved["work_item"], "created": created}
 
     def get(self, *, tenant_id: str, work_item_id: str) -> dict[str, Any]:
@@ -473,6 +555,53 @@ def _require_same_semantics(
         raise WorkItemError(
             "wc.work_item_idempotency_conflict",
             "The delegation identity belongs to a different requester.",
+            409,
+        )
+
+
+def _first_level_lineage(
+    *,
+    record: Mapping[str, Any],
+    requester: Mapping[str, Any],
+    created_at: str,
+) -> dict[str, Any]:
+    if requester.get("entity_type") != "AGENT":
+        raise _invalid("delegation requester must be an Agent")
+    policy = initial_delegation_policy()
+    work_item_id = str(record["work_item_id"])
+    return validate_delegation_lineage(
+        {
+            "schema_version": "wc_delegation_lineage.v1",
+            "tenant_id": record["tenant_id"],
+            "work_item_id": work_item_id,
+            "root_work_item_id": work_item_id,
+            "parent_work_item_id": None,
+            "parent_claim_ref": None,
+            "parent_claim_generation": None,
+            "delegating_agent_ref": {
+                "agent_id": _uuid("requester.entity_id", requester["entity_id"]),
+                "agent_type": "IA",
+            },
+            "parent_agent_execution_id": record["parent_execution_id"],
+            "delegation_depth": 1,
+            "policy_ref": policy["policy_ref"],
+            "policy_hash": policy["policy_hash"],
+            "created_at": created_at,
+        }
+    )
+
+
+def _require_lineage_matches_record(
+    record: Mapping[str, Any], lineage: Mapping[str, Any]
+) -> None:
+    if (
+        lineage["tenant_id"] != record["tenant_id"]
+        or lineage["work_item_id"] != record["work_item_id"]
+        or lineage["parent_agent_execution_id"] != record["parent_execution_id"]
+    ):
+        raise WorkItemError(
+            "wc.delegation_lineage_conflict",
+            "Delegation lineage does not match its WorkItem admission.",
             409,
         )
 

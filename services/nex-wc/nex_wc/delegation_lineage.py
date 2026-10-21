@@ -97,31 +97,11 @@ class SqlAlchemyDelegationLineageRepository:
         self._session_factory = session_factory
 
     def create(self, lineage: Mapping[str, Any]) -> tuple[dict[str, Any], bool]:
-        record = validate_delegation_lineage(lineage)
-        agent = record["delegating_agent_ref"]
-        params = {
-            **record,
-            "delegating_agent_id": agent["agent_id"],
-            "delegating_agent_type": agent["agent_type"],
-        }
         try:
             with self._session_factory() as session:
-                inserted = session.execute(text(_INSERT_SQL), params)
-                saved = _load(
-                    session,
-                    tenant_id=record["tenant_id"],
-                    work_item_id=record["work_item_id"],
+                saved, created = create_delegation_lineage_in_session(
+                    session, lineage
                 )
-                if saved is None:
-                    raise DelegationLineageError(
-                        "wc.delegation_lineage_write_conflict",
-                        "Delegation lineage could not be reloaded after creation.",
-                        409,
-                        True,
-                    )
-                created = int(inserted.rowcount or 0) == 1
-                if not created:
-                    _require_same_lineage(saved, record)
                 session.commit()
                 return saved, created
         except DelegationLineageError:
@@ -137,7 +117,9 @@ class SqlAlchemyDelegationLineageRepository:
     def get(self, *, tenant_id: str, work_item_id: str) -> dict[str, Any] | None:
         try:
             with self._session_factory() as session:
-                return _load(session, tenant_id=tenant_id, work_item_id=work_item_id)
+                return load_delegation_lineage_in_session(
+                    session, tenant_id=tenant_id, work_item_id=work_item_id
+                )
         except SQLAlchemyError as exc:
             raise DelegationLineageError(
                 "wc.delegation_lineage_store_unavailable",
@@ -145,6 +127,41 @@ class SqlAlchemyDelegationLineageRepository:
                 503,
                 True,
             ) from exc
+
+
+def create_delegation_lineage_in_session(
+    session: Session, lineage: Mapping[str, Any]
+) -> tuple[dict[str, Any], bool]:
+    record = validate_delegation_lineage(lineage)
+    agent = record["delegating_agent_ref"]
+    params = {
+        **record,
+        "delegating_agent_id": agent["agent_id"],
+        "delegating_agent_type": agent["agent_type"],
+    }
+    inserted = session.execute(text(_INSERT_SQL), params)
+    saved = load_delegation_lineage_in_session(
+        session,
+        tenant_id=record["tenant_id"],
+        work_item_id=record["work_item_id"],
+    )
+    if saved is None:
+        raise DelegationLineageError(
+            "wc.delegation_lineage_write_conflict",
+            "Delegation lineage could not be reloaded after creation.",
+            409,
+            True,
+        )
+    created = int(inserted.rowcount or 0) == 1
+    if not created:
+        _require_same_lineage(saved, record)
+    return saved, created
+
+
+def load_delegation_lineage_in_session(
+    session: Session, *, tenant_id: str, work_item_id: str
+) -> dict[str, Any] | None:
+    return _load(session, tenant_id=tenant_id, work_item_id=work_item_id)
 
 
 def validate_delegation_lineage(value: Mapping[str, Any]) -> dict[str, Any]:
