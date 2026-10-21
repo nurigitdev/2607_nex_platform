@@ -28,10 +28,13 @@ from .persistence import (
 )
 from .projects import (
     EOS_NVT_PROJECT_TABLE,
+    EOS_PROJECT_MAX_DEPTH,
     EOS_PROJECT_STATUSES,
+    EOS_PROJECT_TABLE,
     EosProjectError,
     NvtProjectInput,
     NvtProjectUpdate,
+    ProjectInput,
     SqlAlchemyEosProjectRepository,
 )
 from .organization import (
@@ -55,7 +58,9 @@ __all__ = (
     "EOS_METADATA",
     "EOS_OUTBOX_TABLE",
     "EOS_NVT_PROJECT_TABLE",
+    "EOS_PROJECT_MAX_DEPTH",
     "EOS_PROJECT_STATUSES",
+    "EOS_PROJECT_TABLE",
     "EOS_ORGANIZATION_STATUSES",
     "EOS_ORG_UNIT_TABLE",
     "EOS_ORG_UNIT_TYPES",
@@ -79,6 +84,7 @@ __all__ = (
     "OrgUnitInput",
     "NvtProjectInput",
     "NvtProjectUpdate",
+    "ProjectInput",
     "PositionAssignmentInput",
     "PositionInput",
     "SqlAlchemyEosOrganizationRepository",

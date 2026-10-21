@@ -3,13 +3,16 @@ from __future__ import annotations
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from nex_runtime import build_unit_of_work
 from sqlalchemy import (
     Column,
+    CheckConstraint,
+    Date,
     DateTime,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -25,8 +28,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from .business_transactions import EOS_METADATA
 
 EOS_PROJECT_STATUSES = frozenset({"ACTIVE", "INACTIVE"})
+EOS_PROJECT_MAX_DEPTH = 3
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _CODE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+_CURRENCY = re.compile(r"^[A-Z]{3}$")
 
 EOS_NVT_PROJECT_TABLE = Table(
     "eos_nvt_project",
@@ -48,6 +53,54 @@ Index(
     EOS_NVT_PROJECT_TABLE.c.tenant_id,
     EOS_NVT_PROJECT_TABLE.c.status,
     EOS_NVT_PROJECT_TABLE.c.nvt_project_code,
+)
+
+EOS_PROJECT_TABLE = Table(
+    "eos_project",
+    EOS_METADATA,
+    Column("tenant_id", String(128), primary_key=True),
+    Column("project_id", Uuid(as_uuid=False), primary_key=True),
+    Column("project_code", String(64), nullable=False),
+    Column("name", String(256), nullable=False),
+    Column("parent_project_id", Uuid(as_uuid=False), nullable=True),
+    Column("nvt_project_id", Uuid(as_uuid=False), nullable=True),
+    Column("hierarchy_depth", Integer, nullable=False),
+    Column("status", String(16), nullable=False),
+    Column("start_date", Date, nullable=True),
+    Column("end_date", Date, nullable=True),
+    Column("currency", String(3), nullable=False),
+    Column("version", Integer, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("tenant_id", "project_code", name="ux_eos_project_code"),
+    ForeignKeyConstraint(
+        ("tenant_id", "nvt_project_id"),
+        ("eos_nvt_project.tenant_id", "eos_nvt_project.nvt_project_id"),
+        name="fk_eos_project_nvt",
+    ),
+    ForeignKeyConstraint(
+        ("tenant_id", "parent_project_id"),
+        ("eos_project.tenant_id", "eos_project.project_id"),
+        name="fk_eos_project_parent",
+    ),
+    CheckConstraint(
+        "(parent_project_id IS NULL AND nvt_project_id IS NOT NULL) OR "
+        "(parent_project_id IS NOT NULL AND nvt_project_id IS NULL)",
+        name="ck_eos_project_lineage",
+    ),
+    CheckConstraint(
+        "hierarchy_depth BETWEEN 1 AND 3", name="ck_eos_project_depth"
+    ),
+)
+Index(
+    "ix_eos_project_parent",
+    EOS_PROJECT_TABLE.c.tenant_id,
+    EOS_PROJECT_TABLE.c.parent_project_id,
+)
+Index(
+    "ix_eos_project_nvt",
+    EOS_PROJECT_TABLE.c.tenant_id,
+    EOS_PROJECT_TABLE.c.nvt_project_id,
 )
 
 
@@ -76,6 +129,21 @@ class NvtProjectUpdate:
     expected_version: int
     name: str | None = None
     status: str | None = None
+
+
+@dataclass(frozen=True)
+class ProjectInput:
+    tenant_id: str
+    project_id: str
+    project_code: str
+    name: str
+    parent_project_id: str | None = None
+    nvt_project_id: str | None = None
+    status: str = "ACTIVE"
+    start_date: date | None = None
+    end_date: date | None = None
+    currency: str = "KRW"
+    version: int = 1
 
 
 class SqlAlchemyEosProjectRepository:
@@ -108,6 +176,166 @@ class SqlAlchemyEosProjectRepository:
         except SQLAlchemyError as exc:
             raise _persistence_error() from exc
         return dict(record)
+
+    def create_project(self, value: ProjectInput) -> dict[str, Any]:
+        tenant_id = _scoped_id("tenant_id", value.tenant_id)
+        project_id = _uuid("project_id", value.project_id)
+        parent_project_id = _optional_uuid(
+            "parent_project_id", value.parent_project_id
+        )
+        nvt_project_id = _optional_uuid("nvt_project_id", value.nvt_project_id)
+        version = _positive_int("version", value.version)
+        if version != 1:
+            raise _invalid("version", "must start at 1")
+        start_date = _optional_date("start_date", value.start_date)
+        end_date = _optional_date("end_date", value.end_date)
+        if start_date is not None and end_date is not None and end_date < start_date:
+            raise _invalid("end_date", "must not precede start_date")
+        now = datetime.now(UTC)
+
+        try:
+            with build_unit_of_work(self._session_factory) as transaction:
+                depth = self._admit_hierarchy(
+                    transaction.db,
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    parent_project_id=parent_project_id,
+                    nvt_project_id=nvt_project_id,
+                )
+                record = {
+                    "tenant_id": tenant_id,
+                    "project_id": project_id,
+                    "project_code": _code("project_code", value.project_code),
+                    "name": _text("name", value.name, 256),
+                    "parent_project_id": parent_project_id,
+                    "nvt_project_id": nvt_project_id,
+                    "hierarchy_depth": depth,
+                    "status": _status(value.status),
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "currency": _currency(value.currency),
+                    "version": version,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+                transaction.db.execute(EOS_PROJECT_TABLE.insert().values(**record))
+        except EosProjectError:
+            raise
+        except IntegrityError as exc:
+            raise EosProjectError(
+                "EOS_PROJECT_CONFLICT",
+                "Project identity or code already exists in tenant scope",
+                status_code=409,
+            ) from exc
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+        return dict(record)
+
+    def get_project(
+        self,
+        *,
+        tenant_id: str,
+        project_id: str,
+        active_only: bool = False,
+    ) -> dict[str, Any] | None:
+        statement = select(EOS_PROJECT_TABLE).where(
+            EOS_PROJECT_TABLE.c.tenant_id == _scoped_id("tenant_id", tenant_id),
+            EOS_PROJECT_TABLE.c.project_id == _uuid("project_id", project_id),
+        )
+        if active_only:
+            statement = statement.where(EOS_PROJECT_TABLE.c.status == "ACTIVE")
+        try:
+            with self._session_factory() as session:
+                row = session.execute(statement).mappings().one_or_none()
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+        return dict(row) if row is not None else None
+
+    @staticmethod
+    def _admit_hierarchy(
+        session: Session,
+        *,
+        tenant_id: str,
+        project_id: str,
+        parent_project_id: str | None,
+        nvt_project_id: str | None,
+    ) -> int:
+        if parent_project_id is None:
+            if nvt_project_id is None:
+                raise _invalid("nvt_project_id", "is required for a Mother Project")
+            nvt_status = session.execute(
+                select(EOS_NVT_PROJECT_TABLE.c.status).where(
+                    EOS_NVT_PROJECT_TABLE.c.tenant_id == tenant_id,
+                    EOS_NVT_PROJECT_TABLE.c.nvt_project_id == nvt_project_id,
+                )
+            ).scalar_one_or_none()
+            if nvt_status is None:
+                raise EosProjectError(
+                    "EOS_NVT_PROJECT_NOT_FOUND",
+                    "NVTProject was not found in tenant scope",
+                    status_code=404,
+                )
+            if nvt_status != "ACTIVE":
+                raise EosProjectError(
+                    "EOS_NVT_PROJECT_NOT_ACTIVE",
+                    "NVTProject is not active",
+                    status_code=409,
+                )
+            return 1
+
+        if nvt_project_id is not None:
+            raise _invalid(
+                "nvt_project_id", "must be omitted for a Child Project"
+            )
+        if parent_project_id == project_id:
+            raise EosProjectError(
+                "EOS_PROJECT_CYCLE",
+                "Project cannot be its own parent or ancestor",
+                status_code=409,
+            )
+
+        visited = {project_id}
+        current_id: str | None = parent_project_id
+        parent_depth: int | None = None
+        while current_id is not None:
+            if current_id in visited:
+                raise EosProjectError(
+                    "EOS_PROJECT_CYCLE",
+                    "Project hierarchy contains a cycle",
+                    status_code=409,
+                )
+            visited.add(current_id)
+            row = session.execute(
+                select(
+                    EOS_PROJECT_TABLE.c.parent_project_id,
+                    EOS_PROJECT_TABLE.c.hierarchy_depth,
+                ).where(
+                    EOS_PROJECT_TABLE.c.tenant_id == tenant_id,
+                    EOS_PROJECT_TABLE.c.project_id == current_id,
+                )
+            ).mappings().one_or_none()
+            if row is None:
+                raise EosProjectError(
+                    "EOS_PROJECT_PARENT_NOT_FOUND",
+                    "Parent Project was not found in tenant scope",
+                    status_code=404,
+                )
+            if parent_depth is None:
+                parent_depth = int(row["hierarchy_depth"])
+            current_id = (
+                str(row["parent_project_id"])
+                if row["parent_project_id"] is not None
+                else None
+            )
+
+        depth = (parent_depth or 0) + 1
+        if depth > EOS_PROJECT_MAX_DEPTH:
+            raise EosProjectError(
+                "EOS_PROJECT_DEPTH_EXCEEDED",
+                f"Project hierarchy depth must not exceed {EOS_PROJECT_MAX_DEPTH}",
+                status_code=409,
+            )
+        return depth
 
     def get_nvt_project(
         self,
@@ -199,6 +427,10 @@ def _uuid(field_name: str, value: object) -> str:
         raise _invalid(field_name, "must be a UUID") from exc
 
 
+def _optional_uuid(field_name: str, value: object) -> str | None:
+    return None if value is None else _uuid(field_name, value)
+
+
 def _scoped_id(field_name: str, value: object) -> str:
     normalized = str(value).strip() if value is not None else ""
     if not _SCOPED_ID.fullmatch(normalized):
@@ -223,6 +455,21 @@ def _text(field_name: str, value: object, maximum: int) -> str:
 def _positive_int(field_name: str, value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise _invalid(field_name, "must be a positive integer")
+    return value
+
+
+def _currency(value: object) -> str:
+    normalized = str(value).strip().upper() if value is not None else ""
+    if not _CURRENCY.fullmatch(normalized):
+        raise _invalid("currency", "must be a three-letter uppercase code")
+    return normalized
+
+
+def _optional_date(field_name: str, value: object) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime) or not isinstance(value, date):
+        raise _invalid(field_name, "must be a date")
     return value
 
 
