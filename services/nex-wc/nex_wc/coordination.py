@@ -449,6 +449,7 @@ class InMemoryCoordinationRepository:
                 "project_id": selected_agent["project_id"],
                 "claim_generation": generation,
                 "status": "ACTIVE",
+                "agent_execution_id": None,
             }
             claim = {
                 "claim_id": identifiers["claim_id"],
@@ -554,7 +555,13 @@ class InMemoryCoordinationRepository:
         raise CoordinationError("wc.handoff_outbox_not_found", "Handoff outbox was not found.", 404)
 
     def mark_handoff_delivered(
-        self, *, outbox_id: str, event_id: str, job_id: str, updated_at: str
+        self,
+        *,
+        outbox_id: str,
+        event_id: str,
+        job_id: str,
+        updated_at: str,
+        agent_execution_id: str | None = None,
     ) -> dict[str, Any]:
         with self._lock:
             row = next(
@@ -573,9 +580,56 @@ class InMemoryCoordinationRepository:
                 raise CoordinationError(
                     "wc.handoff_outbox_conflict", "Handoff outbox job identity changed."
                 )
+            if agent_execution_id is not None:
+                assignment = self._assignments.get(
+                    (row["tenant_id"], row["work_item_id"])
+                )
+                if (
+                    assignment is None
+                    or assignment["assignment_id"]
+                    != row["event_payload"].get("assignment_ref")
+                    or assignment.get("agent_execution_id")
+                    not in {None, agent_execution_id}
+                ):
+                    raise CoordinationError(
+                        "wc.handoff_execution_conflict",
+                        "Handoff AgentExecution lineage changed.",
+                    )
+                assignment["agent_execution_id"] = agent_execution_id
             row["delivery_state"] = "DELIVERED"
             row["updated_at"] = updated_at
             return copy.deepcopy(row)
+
+    def get_parent_claim_authority(
+        self, *, tenant_id: str, claim_id: str
+    ) -> dict[str, Any] | None:
+        with self._lock:
+            for key, claims in self._claims.items():
+                if key[0] != tenant_id:
+                    continue
+                claim = next(
+                    (item for item in claims if item["claim_id"] == claim_id), None
+                )
+                if claim is None:
+                    continue
+                assignment = self._assignments.get(key)
+                if assignment is None:
+                    return None
+                return {
+                    "work_item_id": claim["work_item_id"],
+                    "claim_id": claim["claim_id"],
+                    "claim_assignment_id": claim["assignment_id"],
+                    "claim_generation": claim["claim_generation"],
+                    "claim_state": claim["state"],
+                    "lease_expires_at": claim["lease_expires_at"],
+                    "assignment_id": assignment["assignment_id"],
+                    "assignment_claim_generation": assignment["claim_generation"],
+                    "assignment_status": assignment["status"],
+                    "agent_id": assignment["agent_id"],
+                    "agent_type": assignment["agent_type"],
+                    "agent_execution_id": assignment.get("agent_execution_id"),
+                }
+        return None
 
 
 class SqlAlchemyCoordinationRepository:
@@ -776,6 +830,7 @@ class SqlAlchemyCoordinationRepository:
                         "project_id": selected_agent["project_id"],
                         "claim_generation": generation,
                         "status": "ACTIVE",
+                        "agent_execution_id": None,
                     },
                     "claim": {
                         "claim_id": identifiers["claim_id"],
@@ -902,16 +957,53 @@ class SqlAlchemyCoordinationRepository:
             raise _store_unavailable() from exc
 
     def mark_handoff_delivered(
-        self, *, outbox_id: str, event_id: str, job_id: str, updated_at: str
+        self,
+        *,
+        outbox_id: str,
+        event_id: str,
+        job_id: str,
+        updated_at: str,
+        agent_execution_id: str | None = None,
     ) -> dict[str, Any]:
-        return self._transition_handoff_outbox(
-            outbox_id=outbox_id,
-            event_id=event_id,
-            job_id=job_id,
-            source_states=("ENQUEUED", "DELIVERED"),
-            target_state="DELIVERED",
-            updated_at=updated_at,
-        )
+        try:
+            with self._session_factory() as session:
+                row = _transition_handoff_outbox_in_session(
+                    session,
+                    outbox_id=outbox_id,
+                    event_id=event_id,
+                    job_id=job_id,
+                    source_states=("ENQUEUED", "DELIVERED"),
+                    target_state="DELIVERED",
+                    updated_at=updated_at,
+                )
+                if agent_execution_id is not None:
+                    assignment_ref = row["event_payload"].get("assignment_ref")
+                    updated = session.execute(
+                        text(
+                            "UPDATE wc_assignment SET agent_execution_id = :execution_id, "
+                            "updated_at = :updated_at WHERE tenant_id = :tenant_id "
+                            "AND assignment_id = :assignment_id "
+                            "AND (agent_execution_id IS NULL "
+                            "OR agent_execution_id = :execution_id)"
+                        ),
+                        {
+                            "tenant_id": row["tenant_id"],
+                            "assignment_id": assignment_ref,
+                            "execution_id": agent_execution_id,
+                            "updated_at": updated_at,
+                        },
+                    )
+                    if int(updated.rowcount or 0) != 1:
+                        raise CoordinationError(
+                            "wc.handoff_execution_conflict",
+                            "Handoff AgentExecution lineage changed.",
+                        )
+                session.commit()
+                return row
+        except CoordinationError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _store_unavailable() from exc
 
     def _transition_handoff_outbox(
         self,
@@ -925,41 +1017,63 @@ class SqlAlchemyCoordinationRepository:
     ) -> dict[str, Any]:
         try:
             with self._session_factory() as session:
-                row = session.execute(
-                    text(
-                        """
-                        UPDATE wc_event_outbox
-                        SET delivery_state = :target_state,
-                            enqueued_job_id = COALESCE(enqueued_job_id, :job_id),
-                            updated_at = :updated_at
-                        WHERE outbox_id = :outbox_id AND event_id = :event_id
-                          AND delivery_state IN (:source_state_1, :source_state_2)
-                          AND (enqueued_job_id IS NULL OR enqueued_job_id = :job_id)
-                        RETURNING tenant_id, outbox_id, event_id, work_item_id,
-                                  event_type, event_payload, delivery_state,
-                                  enqueued_job_id, created_at, updated_at
-                        """
-                    ),
-                    {
-                        "outbox_id": outbox_id,
-                        "event_id": event_id,
-                        "job_id": job_id,
-                        "source_state_1": source_states[0],
-                        "source_state_2": source_states[1],
-                        "target_state": target_state,
-                        "updated_at": updated_at,
-                    },
-                ).mappings().first()
-                if row is None:
-                    raise CoordinationError(
-                        "wc.handoff_outbox_conflict", "Handoff outbox state changed."
-                    )
+                row = _transition_handoff_outbox_in_session(
+                    session,
+                    outbox_id=outbox_id,
+                    event_id=event_id,
+                    job_id=job_id,
+                    source_states=source_states,
+                    target_state=target_state,
+                    updated_at=updated_at,
+                )
                 session.commit()
-                return _outbox_from_row(row)
+                return row
         except CoordinationError:
             raise
         except SQLAlchemyError as exc:
             raise _store_unavailable() from exc
+
+
+def _transition_handoff_outbox_in_session(
+    session: Session,
+    *,
+    outbox_id: str,
+    event_id: str,
+    job_id: str,
+    source_states: tuple[str, str],
+    target_state: str,
+    updated_at: str,
+) -> dict[str, Any]:
+    row = session.execute(
+        text(
+            """
+            UPDATE wc_event_outbox
+            SET delivery_state = :target_state,
+                enqueued_job_id = COALESCE(enqueued_job_id, :job_id),
+                updated_at = :updated_at
+            WHERE outbox_id = :outbox_id AND event_id = :event_id
+              AND delivery_state IN (:source_state_1, :source_state_2)
+              AND (enqueued_job_id IS NULL OR enqueued_job_id = :job_id)
+            RETURNING tenant_id, outbox_id, event_id, work_item_id,
+                      event_type, event_payload, delivery_state,
+                      enqueued_job_id, created_at, updated_at
+            """
+        ),
+        {
+            "outbox_id": outbox_id,
+            "event_id": event_id,
+            "job_id": job_id,
+            "source_state_1": source_states[0],
+            "source_state_2": source_states[1],
+            "target_state": target_state,
+            "updated_at": updated_at,
+        },
+    ).mappings().first()
+    if row is None:
+        raise CoordinationError(
+            "wc.handoff_outbox_conflict", "Handoff outbox state changed."
+        )
+    return _outbox_from_row(row)
 
 
 def _load_work_item(session: Session, tenant_id: str, work_item_id: str) -> dict[str, Any] | None:

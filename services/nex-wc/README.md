@@ -39,5 +39,8 @@ Committed handoff events are bridged into the service-local common JobQueue as
 Migration `1004_wc_delegation_lineage` adds the immutable
 `wc_delegation_lineage` relation. It stores root/parent lineage, current parent
 Claim identity, delegation depth, delegating Agent, and the admitted policy
-hash without changing the P7 WorkItem, Claim, or Assignment tables. Historical
-P7 WorkItems without a lineage row remain valid.
+hash without changing the P7 WorkItem or Claim identity model. Migration
+`1005_wc_assignment_execution` adds only a nullable AgentExecution
+acknowledgement to the existing Assignment so nested delegation can prove that
+the delegating runtime came from the current Claim handoff. Historical P7
+WorkItems without a lineage row remain valid.

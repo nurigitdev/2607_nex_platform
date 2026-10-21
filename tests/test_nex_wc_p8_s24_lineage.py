@@ -219,8 +219,15 @@ def test_s24_sqlalchemy_repository_maps_store_failures():
 
 def test_s24_migration_is_current_and_preserves_existing_wc_tables():
     migrations = load_migrations("nex-wc")
-    assert migrations[-1].version == "1004_wc_delegation_lineage"
-    sql = migrations[-1].sql
+    inventory = sorted(
+        path.stem for path in (ROOT / "database/nex-wc/migrations").glob("*.sql")
+    )
+    assert [migration.version for migration in migrations] == inventory
+    sql = next(
+        migration.sql
+        for migration in migrations
+        if migration.version == "1004_wc_delegation_lineage"
+    )
     assert "CREATE TABLE IF NOT EXISTS wc_delegation_lineage" in sql
     assert "ALTER TABLE wc_work_item" not in sql
     assert "ALTER TABLE wc_claim" not in sql

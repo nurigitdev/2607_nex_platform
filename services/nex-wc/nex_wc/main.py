@@ -52,17 +52,21 @@ WORK_ITEM_REPOSITORY = (
     if SERVICE_PERSISTENCE.api_session_factory is not None
     else InMemoryWorkItemRepository()
 )
+COORDINATION_REPOSITORY = (
+    SqlAlchemyCoordinationRepository(SERVICE_PERSISTENCE.api_session_factory)
+    if SERVICE_PERSISTENCE.api_session_factory is not None
+    else InMemoryCoordinationRepository(WORK_ITEM_REPOSITORY)
+)
+if isinstance(WORK_ITEM_REPOSITORY, InMemoryWorkItemRepository):
+    WORK_ITEM_REPOSITORY.bind_parent_claim_authority_source(
+        COORDINATION_REPOSITORY
+    )
 WORK_ITEMS = WorkItemService(
     WORK_ITEM_REPOSITORY,
     authorization_source=AUTHORIZATION_SOURCE,
     delegation_guard_enabled=True,
 )
 app.state.wc_work_items = WORK_ITEMS
-COORDINATION_REPOSITORY = (
-    SqlAlchemyCoordinationRepository(SERVICE_PERSISTENCE.api_session_factory)
-    if SERVICE_PERSISTENCE.api_session_factory is not None
-    else InMemoryCoordinationRepository(WORK_ITEM_REPOSITORY)
-)
 COORDINATION = WorkCoordinationService(
     COORDINATION_REPOSITORY,
     candidate_source=HttpAgentCandidateSource(

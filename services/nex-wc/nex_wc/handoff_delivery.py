@@ -48,7 +48,13 @@ class HandoffOutboxStore(Protocol):
     ) -> Mapping[str, Any]: ...
 
     def mark_handoff_delivered(
-        self, *, outbox_id: str, event_id: str, job_id: str, updated_at: str
+        self,
+        *,
+        outbox_id: str,
+        event_id: str,
+        job_id: str,
+        updated_at: str,
+        agent_execution_id: str | None = None,
     ) -> Mapping[str, Any]: ...
 
 
@@ -154,17 +160,19 @@ def run_handoff_delivery_job(
         "planning_source": dict(planning_source),
     }
     response = client.deliver(envelope)
+    agent_execution_id = _required(response, "agent_execution_id")
     delivered = store.mark_handoff_delivered(
         outbox_id=outbox_id,
         event_id=event_id,
         job_id=str(normalized["job_id"]),
         updated_at=_time(observed_at),
+        agent_execution_id=agent_execution_id,
     )
     return {
         "event_id": event_id,
         "outbox_id": outbox_id,
         "delivery_state": delivered["delivery_state"],
-        "agent_execution_id": response.get("agent_execution_id"),
+        "agent_execution_id": agent_execution_id,
     }
 
 

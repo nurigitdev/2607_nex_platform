@@ -50,7 +50,7 @@ COMPLETION_POLICIES = frozenset(
         "MANUAL",
     }
 )
-DELEGATION_FIELDS = frozenset(
+BASE_DELEGATION_FIELDS = frozenset(
     {
         "schema_version",
         "delegation_id",
@@ -71,7 +71,16 @@ DELEGATION_FIELDS = frozenset(
         "causation_id",
     }
 )
-REQUIRED_DELEGATION_FIELDS = DELEGATION_FIELDS - {"causation_id"}
+NESTED_DELEGATION_FIELDS = frozenset(
+    {
+        "parent_work_item_id",
+        "parent_claim_ref",
+        "parent_claim_generation",
+        "delegating_agent_ref",
+    }
+)
+DELEGATION_FIELDS = BASE_DELEGATION_FIELDS | NESTED_DELEGATION_FIELDS
+REQUIRED_DELEGATION_FIELDS = BASE_DELEGATION_FIELDS - {"causation_id"}
 
 
 @dataclass(frozen=True)
@@ -100,6 +109,12 @@ class WorkItemRepository(Protocol):
     ) -> dict[str, Any] | None: ...
 
 
+class ParentClaimAuthoritySource(Protocol):
+    def get_parent_claim_authority(
+        self, *, tenant_id: str, claim_id: str
+    ) -> Mapping[str, Any] | None: ...
+
+
 class InMemoryWorkItemRepository:
     def __init__(
         self,
@@ -108,7 +123,13 @@ class InMemoryWorkItemRepository:
         self._records: dict[tuple[str, str], dict[str, Any]] = {}
         self._semantic_keys: dict[tuple[str, str], tuple[str, str]] = {}
         self._lineages = lineage_repository or InMemoryDelegationLineageRepository()
+        self._parent_claim_authority_source: ParentClaimAuthoritySource | None = None
         self._lock = RLock()
+
+    def bind_parent_claim_authority_source(
+        self, source: ParentClaimAuthoritySource
+    ) -> None:
+        self._parent_claim_authority_source = source
 
     def create(
         self,
@@ -137,6 +158,20 @@ class InMemoryWorkItemRepository:
                 )
             if admitted_lineage is not None:
                 _require_lineage_matches_record(item, admitted_lineage)
+                if admitted_lineage["parent_work_item_id"] is not None:
+                    authority = (
+                        None
+                        if self._parent_claim_authority_source is None
+                        else self._parent_claim_authority_source.get_parent_claim_authority(
+                            tenant_id=str(tenant_id),
+                            claim_id=str(admitted_lineage["parent_claim_ref"]),
+                        )
+                    )
+                    _require_parent_claim_authority(
+                        authority,
+                        lineage=admitted_lineage,
+                        observed_at=str(item["created_at"]),
+                    )
                 self._lineages.create(admitted_lineage)
             self._records[record_key] = item
             self._semantic_keys[semantic_key] = record_key
@@ -177,6 +212,20 @@ class SqlAlchemyWorkItemRepository:
         )
         try:
             with self._session_factory() as session:
+                if (
+                    admitted_lineage is not None
+                    and admitted_lineage["parent_work_item_id"] is not None
+                ):
+                    authority = _load_parent_claim_authority_in_session(
+                        session,
+                        tenant_id=str(record["tenant_id"]),
+                        claim_id=str(admitted_lineage["parent_claim_ref"]),
+                    )
+                    _require_parent_claim_authority(
+                        authority,
+                        lineage=admitted_lineage,
+                        observed_at=str(record["created_at"]),
+                    )
                 inserted = session.execute(text(_INSERT_SQL), params)
                 saved = _load_by_semantic_key(
                     session,
@@ -335,7 +384,7 @@ class WorkItemService:
             "source": {
                 "source_type": "AGENT_PLAN_STEP",
                 "source_ref": spec["delegation_id"],
-                "parent_work_item_id": None,
+                "parent_work_item_id": spec.get("parent_work_item_id"),
                 "parent_execution_id": spec["parent_agent_execution_id"],
                 "parent_plan_step_id": spec["parent_executable_step_id"],
             },
@@ -386,15 +435,23 @@ class WorkItemService:
             "created_at": now,
             "updated_at": now,
         }
-        lineage = (
-            _first_level_lineage(
-                record=record,
-                requester=requester,
-                created_at=now,
+        lineage = None
+        if self._delegation_guard_enabled:
+            lineage = (
+                _nested_lineage(
+                    repository=self._repository,
+                    record=record,
+                    spec=spec,
+                    requester=requester,
+                    created_at=now,
+                )
+                if spec["schema_version"] == "1.1"
+                else _first_level_lineage(
+                    record=record,
+                    requester=requester,
+                    created_at=now,
+                )
             )
-            if self._delegation_guard_enabled
-            else None
-        )
         saved, created = self._repository.create(record, lineage=lineage)
         return {"work_item": saved["work_item"], "created": created}
 
@@ -438,8 +495,19 @@ def validate_delegation_spec(value: object) -> dict[str, Any]:
         raise _invalid(f"unsupported DelegationSpec field: {min(unknown)}")
     if missing:
         raise _invalid(f"missing DelegationSpec field: {min(missing)}")
-    if spec["schema_version"] != "1.0":
-        raise _invalid("DelegationSpec schema_version must be 1.0")
+    schema_version = spec["schema_version"]
+    nested_fields = NESTED_DELEGATION_FIELDS & set(spec)
+    if schema_version == "1.0":
+        if nested_fields:
+            raise _invalid("DelegationSpec 1.0 cannot contain nested lineage fields")
+    elif schema_version == "1.1":
+        missing_nested = NESTED_DELEGATION_FIELDS - set(spec)
+        if missing_nested:
+            raise _invalid(
+                f"missing nested DelegationSpec field: {min(missing_nested)}"
+            )
+    else:
+        raise _invalid("DelegationSpec schema_version must be 1.0 or 1.1")
     for name, maximum in (
         ("delegation_id", 128),
         ("tenant_id", 128),
@@ -473,6 +541,31 @@ def validate_delegation_spec(value: object) -> dict[str, Any]:
     causation_id = spec.get("causation_id")
     if causation_id is not None:
         _required_text("causation_id", causation_id, 128)
+    if schema_version == "1.1":
+        spec["parent_work_item_id"] = _uuid(
+            "parent_work_item_id", spec["parent_work_item_id"]
+        )
+        spec["parent_claim_ref"] = _uuid(
+            "parent_claim_ref", spec["parent_claim_ref"]
+        )
+        generation = spec["parent_claim_generation"]
+        if (
+            isinstance(generation, bool)
+            or not isinstance(generation, int)
+            or generation < 1
+        ):
+            raise _invalid("parent_claim_generation must be an integer of at least 1")
+        agent = spec["delegating_agent_ref"]
+        if not isinstance(agent, Mapping) or set(agent) != {"agent_id", "agent_type"}:
+            raise _invalid(
+                "delegating_agent_ref must contain agent_id and agent_type"
+            )
+        if agent["agent_type"] not in AGENT_TYPES:
+            raise _invalid("delegating_agent_ref.agent_type must be CA, PA, or EA")
+        spec["delegating_agent_ref"] = {
+            "agent_id": _uuid("delegating_agent_ref.agent_id", agent["agent_id"]),
+            "agent_type": agent["agent_type"],
+        }
     return spec
 
 
@@ -591,19 +684,147 @@ def _first_level_lineage(
     )
 
 
+def _nested_lineage(
+    *,
+    repository: WorkItemRepository,
+    record: Mapping[str, Any],
+    spec: Mapping[str, Any],
+    requester: Mapping[str, Any],
+    created_at: str,
+) -> dict[str, Any]:
+    agent = spec["delegating_agent_ref"]
+    if (
+        requester.get("entity_type") != "AGENT"
+        or requester.get("entity_id") != agent["agent_id"]
+    ):
+        raise WorkItemError(
+            "wc.delegation_parent_authority_stale",
+            "Nested delegation requester does not match its delegating Agent.",
+            409,
+        )
+    parent = repository.get_lineage(
+        tenant_id=str(record["tenant_id"]),
+        work_item_id=str(spec["parent_work_item_id"]),
+    )
+    if parent is None:
+        raise WorkItemError(
+            "wc.delegation_parent_authority_stale",
+            "Nested delegation parent lineage is unavailable.",
+            409,
+        )
+    policy = initial_delegation_policy()
+    return validate_delegation_lineage(
+        {
+            "schema_version": "wc_delegation_lineage.v1",
+            "tenant_id": record["tenant_id"],
+            "work_item_id": record["work_item_id"],
+            "root_work_item_id": parent["root_work_item_id"],
+            "parent_work_item_id": spec["parent_work_item_id"],
+            "parent_claim_ref": spec["parent_claim_ref"],
+            "parent_claim_generation": spec["parent_claim_generation"],
+            "delegating_agent_ref": agent,
+            "parent_agent_execution_id": record["parent_execution_id"],
+            "delegation_depth": int(parent["delegation_depth"]) + 1,
+            "policy_ref": policy["policy_ref"],
+            "policy_hash": policy["policy_hash"],
+            "created_at": created_at,
+        }
+    )
+
+
 def _require_lineage_matches_record(
     record: Mapping[str, Any], lineage: Mapping[str, Any]
 ) -> None:
+    source = record.get("work_item", {}).get("source", {})
     if (
         lineage["tenant_id"] != record["tenant_id"]
         or lineage["work_item_id"] != record["work_item_id"]
         or lineage["parent_agent_execution_id"] != record["parent_execution_id"]
+        or lineage["parent_work_item_id"] != source.get("parent_work_item_id")
     ):
         raise WorkItemError(
             "wc.delegation_lineage_conflict",
             "Delegation lineage does not match its WorkItem admission.",
             409,
         )
+
+
+def _require_parent_claim_authority(
+    authority: Mapping[str, Any] | None,
+    *,
+    lineage: Mapping[str, Any],
+    observed_at: str,
+) -> None:
+    try:
+        observed = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+        lease_expiry = datetime.fromisoformat(
+            str(None if authority is None else authority.get("lease_expires_at")).replace(
+                "Z", "+00:00"
+            )
+        )
+    except (TypeError, ValueError) as exc:
+        raise _stale_parent_authority() from exc
+    agent = lineage["delegating_agent_ref"]
+    expected = {
+        "work_item_id": lineage["parent_work_item_id"],
+        "claim_id": lineage["parent_claim_ref"],
+        "claim_generation": lineage["parent_claim_generation"],
+        "claim_state": "ACTIVE",
+        "assignment_status": "ACTIVE",
+        "agent_id": agent["agent_id"],
+        "agent_type": agent["agent_type"],
+        "agent_execution_id": lineage["parent_agent_execution_id"],
+    }
+    if authority is None or any(
+        str(authority.get(field)) != str(value) for field, value in expected.items()
+    ):
+        raise _stale_parent_authority()
+    if lease_expiry.tzinfo is None or observed.tzinfo is None or lease_expiry <= observed:
+        raise _stale_parent_authority()
+    if (
+        authority.get("assignment_id") is None
+        or authority.get("claim_assignment_id") != authority.get("assignment_id")
+        or int(authority.get("assignment_claim_generation", 0))
+        != int(lineage["parent_claim_generation"])
+    ):
+        raise _stale_parent_authority()
+
+
+def _stale_parent_authority() -> WorkItemError:
+    return WorkItemError(
+        "wc.delegation_parent_authority_stale",
+        "Nested delegation requires the current parent Claim, Assignment, and AgentExecution authority.",
+        409,
+    )
+
+
+def _load_parent_claim_authority_in_session(
+    session: Session, *, tenant_id: str, claim_id: str
+) -> dict[str, Any] | None:
+    row = (
+        session.execute(
+            text(_SELECT_PARENT_CLAIM_AUTHORITY_SQL),
+            {"tenant_id": tenant_id, "claim_id": claim_id},
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:
+        return None
+    return {
+        "work_item_id": str(row["work_item_id"]),
+        "claim_id": str(row["claim_id"]),
+        "claim_assignment_id": str(row["claim_assignment_id"]),
+        "claim_generation": int(row["claim_generation"]),
+        "claim_state": row["claim_state"],
+        "lease_expires_at": str(row["lease_expires_at"]),
+        "assignment_id": str(row["assignment_id"]),
+        "assignment_claim_generation": int(row["assignment_claim_generation"]),
+        "assignment_status": row["assignment_status"],
+        "agent_id": str(row["agent_id"]),
+        "agent_type": row["agent_type"],
+        "agent_execution_id": row["agent_execution_id"],
+    }
 
 
 def _load_by_semantic_key(
@@ -686,4 +907,23 @@ _SELECT_BY_ID_SQL = f"""
     SELECT {_SELECT_COLUMNS}
     FROM wc_work_item
     WHERE tenant_id = :tenant_id AND work_item_id = :work_item_id
+"""
+
+_SELECT_PARENT_CLAIM_AUTHORITY_SQL = """
+    SELECT claim.work_item_id, claim.claim_id,
+           claim.assignment_id AS claim_assignment_id,
+           claim.claim_generation, claim.state AS claim_state,
+           claim.lease_expires_at,
+           assignment.assignment_id,
+           assignment.claim_generation AS assignment_claim_generation,
+           assignment.status AS assignment_status,
+           assignment.agent_id, assignment.agent_type,
+           assignment.agent_execution_id
+    FROM wc_claim AS claim
+    JOIN wc_assignment AS assignment
+      ON assignment.tenant_id = claim.tenant_id
+     AND assignment.assignment_id = claim.assignment_id
+    WHERE claim.tenant_id = :tenant_id
+      AND claim.claim_id = :claim_id
+    FOR UPDATE OF claim, assignment
 """
