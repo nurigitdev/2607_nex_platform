@@ -17,6 +17,7 @@ from .health import build_configuration_readiness_check
 from .organization import SqlAlchemyEosOrganizationRepository
 from .persistence import EosDatabaseRuntime, build_eos_database_runtime
 from .projects import SqlAlchemyEosProjectRepository
+from .vouchers import SqlAlchemyEosVoucherRepository
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,7 @@ class EosDependencies:
     organization: SqlAlchemyEosOrganizationRepository | None
     projects: SqlAlchemyEosProjectRepository | None
     accounts: SqlAlchemyEosAccountRepository | None
+    vouchers: SqlAlchemyEosVoucherRepository | None
 
 
 def build_eos_dependencies(
@@ -62,6 +64,11 @@ def build_eos_dependencies(
         if database_runtime is not None
         else None
     )
+    vouchers = (
+        SqlAlchemyEosVoucherRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
     return EosDependencies(
         service_token_admission=build_service_token_admission_runtime(
             expected_audience=settings.service_id,
@@ -73,4 +80,5 @@ def build_eos_dependencies(
         organization=organization,
         projects=projects,
         accounts=accounts,
+        vouchers=vouchers,
     )

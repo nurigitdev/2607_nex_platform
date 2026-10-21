@@ -45,6 +45,15 @@ from .projects import (
     ProjectInput,
     SqlAlchemyEosProjectRepository,
 )
+from .vouchers import (
+    EOS_VOUCHER_DRAFT_LINE_TABLE,
+    EOS_VOUCHER_DRAFT_STATES,
+    EOS_VOUCHER_DRAFT_TABLE,
+    EosVoucherError,
+    SqlAlchemyEosVoucherRepository,
+    VoucherDraftInput,
+    VoucherLineInput,
+)
 from .organization import (
     EOS_ORGANIZATION_STATUSES,
     EOS_ORG_UNIT_TABLE,
@@ -79,6 +88,9 @@ __all__ = (
     "EOS_POSITION_TABLE",
     "EOS_POSITION_TYPES",
     "EOS_TEST_RESET_CONFIRMATION",
+    "EOS_VOUCHER_DRAFT_LINE_TABLE",
+    "EOS_VOUCHER_DRAFT_STATES",
+    "EOS_VOUCHER_DRAFT_TABLE",
     "AccountInput",
     "EosAccountError",
     "EosBusinessOperationError",
@@ -93,6 +105,7 @@ __all__ = (
     "EosSettings",
     "EosTestDatabaseResetError",
     "EosTestDatabaseResetResult",
+    "EosVoucherError",
     "InMemoryEosBusinessTransactionCoordinator",
     "OrgUnitInput",
     "NvtProjectInput",
@@ -104,6 +117,9 @@ __all__ = (
     "SqlAlchemyEosProjectRepository",
     "SqlAlchemyEosAccountRepository",
     "SqlAlchemyEosBusinessTransactionCoordinator",
+    "SqlAlchemyEosVoucherRepository",
+    "VoucherDraftInput",
+    "VoucherLineInput",
     "build_eos_database_runtime",
     "create_eos_app",
     "load_eos_settings",

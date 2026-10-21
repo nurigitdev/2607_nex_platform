@@ -47,4 +47,5 @@ def create_eos_app(
     app.state.eos_organization = dependencies.organization
     app.state.eos_projects = dependencies.projects
     app.state.eos_accounts = dependencies.accounts
+    app.state.eos_vouchers = dependencies.vouchers
     return app
