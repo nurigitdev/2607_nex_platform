@@ -16,7 +16,7 @@ def test_repository_contract_trace_privacy_audit_tracks_named_e2e_execution() ->
         "schemas": 174,
         "examples": 236,
         "negative_examples": 204,
-        "openapi": 8,
+        "openapi": 9,
     }
     assert result["findings"]["golden_scenario_contract_count"] == 10
     assert result["findings"]["executable_named_golden_scenario_count"] == 10

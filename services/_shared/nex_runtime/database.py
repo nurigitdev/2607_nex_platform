@@ -25,6 +25,7 @@ SERVICE_DB_ENV_PREFIXES: dict[str, str] = {
     "nex-cx": "NEX_CX",
     "nex-mo": "NEX_MO",
     "nex-wc": "NEX_WC",
+    "nex-eos": "NEX_EOS",
 }
 
 DATABASE_WORKLOADS = ("api", "worker")

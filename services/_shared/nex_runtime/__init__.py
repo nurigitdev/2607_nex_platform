@@ -1,4 +1,5 @@
 from .app import (
+    SERVICE_RUNTIME_OPERATION_SPECS,
     SERVICE_SPECS,
     ServiceSpec,
     build_service_app,

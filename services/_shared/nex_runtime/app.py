@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any
 
 from fastapi import FastAPI, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,8 +20,8 @@ from .auth import (
 from .database import check_database_readiness
 from .problem import problem_response
 from .service_token_admission import (
-    ServiceTokenAdmissionRuntime,
     ServiceTokenAdmissionError,
+    ServiceTokenAdmissionRuntime,
     register_service_token_admission_routes,
     service_token_admission_problem_response,
 )
@@ -81,6 +82,27 @@ SERVICE_SPECS: dict[str, ServiceSpec] = {
         database_env="NEX_WC_DATABASE_URL",
         default_port=8106,
     ),
+    "nex-eos": ServiceSpec(
+        service_id="nex-eos",
+        package_name="nex_eos",
+        display_name="NeX Enterprise Operations System",
+        database_env="NEX_EOS_DATABASE_URL",
+        default_port=8107,
+    ),
+}
+
+# Only services that expose the shared job-control and service-log APIs belong
+# in AG runtime operations. NeX-EOS joins this catalog when those APIs activate.
+SERVICE_RUNTIME_OPERATION_SPECS: dict[str, ServiceSpec] = {
+    service_id: SERVICE_SPECS[service_id]
+    for service_id in (
+        "nex-oa",
+        "nex-ag",
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+        "nex-wc",
+    )
 }
 
 
@@ -90,18 +112,22 @@ def build_service_app(
     readiness_checks: Sequence[ReadinessCheck] = (),
     include_oa_mock_auth_routes: bool = True,
     service_token_admission: ServiceTokenAdmissionRuntime | None = None,
+    environ: Mapping[str, str] | None = None,
+    contract_catalog_version: str = "slice-0022",
+    description: str | None = None,
 ) -> FastAPI:
-    version = os.getenv("NEX_VERSION", "0.0.0-slice0001")
-    profile = os.getenv("NEX_PROFILE", "local_mock")
+    env = os.environ if environ is None else environ
+    version = env.get("NEX_VERSION", "0.0.0-slice0001")
+    profile = env.get("NEX_PROFILE", "local_mock")
     started_at = _utc_now()
 
     app = FastAPI(
         title=f"{spec.display_name} Service",
         version=version,
-        description=f"Slice 0001 service shell for {spec.service_id}.",
+        description=description or f"Slice 0001 service shell for {spec.service_id}.",
     )
     app.state.service_token_admission = service_token_admission
-    _configure_cors(app)
+    _configure_cors(app, environ=env)
 
     @app.get("/")
     def root() -> dict[str, Any]:
@@ -128,7 +154,7 @@ def build_service_app(
 
     @app.get("/ready")
     def ready(response: Response) -> dict[str, Any]:
-        checks = [check_database_readiness(spec.database_env)]
+        checks = [check_database_readiness(spec.database_env, environ=env)]
         checks.extend(
             _run_readiness_check(check, index=index)
             for index, check in enumerate(readiness_checks, start=1)
@@ -154,8 +180,8 @@ def build_service_app(
             "service_name": spec.display_name,
             "version": version,
             "api_version": "v1",
-            "contract_catalog_version": "slice-0022",
-            "build_sha": os.getenv("NEX_BUILD_SHA", "local"),
+            "contract_catalog_version": contract_catalog_version,
+            "build_sha": env.get("NEX_BUILD_SHA", "local"),
         }
 
     @app.get("/internal/v1/auth/service-claim", response_model=None)
@@ -291,10 +317,15 @@ def _register_oa_mock_auth_routes(app: FastAPI) -> None:
         }
 
 
-def _configure_cors(app: FastAPI) -> None:
+def _configure_cors(
+    app: FastAPI,
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> None:
+    env = os.environ if environ is None else environ
     origins = [
         origin.strip()
-        for origin in os.getenv(
+        for origin in env.get(
             "NEX_CORS_ORIGINS",
             "http://127.0.0.1:5173,http://localhost:5173",
         ).split(",")
@@ -323,6 +354,7 @@ def _auth_problem_response(
         detail=result.detail or "Service claim validation failed.",
         type_uri="https://nex-platform.local/problems/authentication-failed",
     )
+
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")

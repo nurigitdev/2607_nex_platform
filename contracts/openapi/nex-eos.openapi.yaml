@@ -1,0 +1,92 @@
+openapi: 3.1.0
+info:
+  title: NeX Enterprise Operations System API
+  version: 2.1.0-p8-s07
+  description: >-
+    P8-S07 executable service shell. Enterprise domain behavior and database
+    mutation routes are intentionally not active.
+servers:
+  - url: http://127.0.0.1:8107
+tags:
+  - name: Platform
+paths:
+  /:
+    get:
+      operationId: getEosServiceRoot
+      tags: [Platform]
+      responses:
+        "200":
+          description: NeX-EOS service identity and platform links.
+  /health:
+    get:
+      operationId: getEosHealth
+      tags: [Platform]
+      responses:
+        "200":
+          description: Process-level service health.
+  /ready:
+    get:
+      operationId: getEosReadiness
+      tags: [Platform]
+      responses:
+        "200":
+          description: Configuration and database dependencies are ready.
+        "503":
+          description: One or more required dependencies are unavailable.
+  /version:
+    get:
+      operationId: getEosVersion
+      tags: [Platform]
+      responses:
+        "200":
+          description: Service version, build, and contract identity.
+  /internal/v1/auth/service-claim:
+    get:
+      operationId: validateEosServiceClaim
+      tags: [Platform]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      responses:
+        "200":
+          description: Service claim is valid for NeX-EOS.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Audience or required scope is not allowed.
+  /internal/v1/auth/service-claim/active:
+    post:
+      operationId: validateEosActiveServiceClaim
+      tags: [Platform]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-route-class: CREDENTIAL
+      responses:
+        "200":
+          description: Service claim is active under the configured trust profile.
+        "401":
+          description: Service claim is missing, invalid, expired, or inactive.
+        "403":
+          description: Audience or required scope is not allowed.
+        "503":
+          description: Signed-token verification or introspection is unavailable.
+  /internal/v1/auth/service-token-runtime:
+    get:
+      operationId: getEosServiceTokenRuntime
+      tags: [Platform]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      responses:
+        "200":
+          description: Redacted service-token admission runtime state.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Audience or required scope is not allowed.
+components:
+  securitySchemes:
+    serviceBearer:
+      type: http
+      scheme: bearer

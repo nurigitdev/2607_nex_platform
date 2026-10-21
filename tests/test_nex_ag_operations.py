@@ -180,6 +180,7 @@ from nex_runtime import (
     OperationalEventEmitter,
     OperationalEventError,
     RUNNING,
+    SERVICE_RUNTIME_OPERATION_SPECS,
     SERVICE_SPECS,
     SUCCEEDED,
     ServiceLogError,
@@ -1350,7 +1351,9 @@ def test_ag_operations_source_config_helpers_normalize_runtime_inputs() -> None:
         "nex-ae-api",
         "nex-cx",
     )
-    assert select_ag_operations_source_service_ids(None) == tuple(sorted(SERVICE_SPECS))
+    assert select_ag_operations_source_service_ids(None) == tuple(
+        sorted(SERVICE_RUNTIME_OPERATION_SPECS)
+    )
 
 
 def test_operation_query_options_normalize_sort_cursor_and_timestamps() -> None:

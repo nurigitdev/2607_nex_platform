@@ -12,7 +12,7 @@ def test_s148_contract_mock_acceptance() -> None:
         "schemas": 174,
         "examples": 236,
         "negative_examples": 204,
-        "openapi": 8,
+        "openapi": 9,
     }
     assert result["external_acceptance"] == "MOCK_ACCEPTED"
     assert result["external_activation"] == "EXTERNAL_NOT_ACTIVATED"

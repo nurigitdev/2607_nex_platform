@@ -9,6 +9,7 @@ pythonpath = [
   "services/nex-cx",
   "services/nex-mo",
   "services/nex-wc",
+  "services/nex-eos",
   "providers/nex-compatible-provider",
   "scripts/db",
   "scripts/deployment",

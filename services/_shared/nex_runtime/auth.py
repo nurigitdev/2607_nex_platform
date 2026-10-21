@@ -16,6 +16,7 @@ KNOWN_SERVICE_IDS = {
     "nex-cx",
     "nex-mo",
     "nex-wc",
+    "nex-eos",
 }
 DEFAULT_SERVICE_SCOPE = "service:call"
 DEFAULT_USER_SCOPE = "workspace:use"

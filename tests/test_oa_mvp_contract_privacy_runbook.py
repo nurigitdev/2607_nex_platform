@@ -14,7 +14,7 @@ def test_contract_privacy_runbook_evidence_passes() -> None:
         "schemas": 174,
         "examples": 236,
         "negative_examples": 204,
-        "openapi": 8,
+        "openapi": 9,
     }
     assert evidence["summary"] == {
         "check_count": 11,

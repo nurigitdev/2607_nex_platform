@@ -7,7 +7,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from nex_runtime import SERVICE_SPECS
+from nex_runtime import SERVICE_RUNTIME_OPERATION_SPECS as SERVICE_SPECS
 from nex_ag.service_auth import resolve_ag_outbound_service_token
 
 
