@@ -133,9 +133,7 @@ def test_migration_registration_and_baseline_scope() -> None:
     )
 
     migrations = load_migrations("nex-eos")
-    assert [migration.version for migration in migrations] == [
-        "2500_eos_schema_migrations_baseline"
-    ]
+    assert migrations[0].version == "2500_eos_schema_migrations_baseline"
     compact = " ".join(migrations[0].sql.lower().split())
     assert "create table if not exists schema_migrations" in compact
     assert "eos_business_operation" not in compact
@@ -152,7 +150,9 @@ def test_migration_dry_run_is_deterministic_without_connecting() -> None:
         connect=lambda *_args, **_kwargs: pytest.fail("dry-run must not connect"),
     )
 
-    assert result.planned == ("2500_eos_schema_migrations_baseline",)
+    assert result.planned == tuple(
+        migration.version for migration in load_migrations("nex-eos")
+    )
     assert result.applied == result.planned
     assert result.skipped == ()
     assert result.dry_run is True

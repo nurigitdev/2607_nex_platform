@@ -4,8 +4,10 @@ NeX-EOS is the service-owned system of record for the minimum enterprise
 operations domain introduced by P8. P8-S07 provides only the executable
 service, configuration, readiness, build identity, and service-trust shell.
 
-No business domain route or mutation is active. P8-S08 adds the migration
-baseline and pooled transaction runtime; business tables begin in P8-S09.
+No public business domain route is active. P8-S08 adds the migration baseline
+and pooled transaction runtime. P8-S09 adds the service-owned
+BusinessOperation, idempotency, and transactional-outbox core used by later
+domain slices.
 
 ## Runtime
 

@@ -1,6 +1,19 @@
 """NeX Enterprise Operations System service."""
 
 from .app import create_eos_app
+from .business_transactions import (
+    EOS_BUSINESS_OPERATION_TABLE,
+    EOS_EVENT_TYPES,
+    EOS_IDEMPOTENCY_TABLE,
+    EOS_METADATA,
+    EOS_OUTBOX_TABLE,
+    EosBusinessOperationError,
+    EosBusinessOperationRequest,
+    EosBusinessTransactionCoordinator,
+    EosBusinessTransactionResult,
+    InMemoryEosBusinessTransactionCoordinator,
+    SqlAlchemyEosBusinessTransactionCoordinator,
+)
 from .config import EosConfigurationError, EosSettings, load_eos_settings
 from .database_reset import (
     EOS_TEST_RESET_CONFIRMATION,
@@ -15,13 +28,24 @@ from .persistence import (
 )
 
 __all__ = (
+    "EOS_BUSINESS_OPERATION_TABLE",
+    "EOS_EVENT_TYPES",
+    "EOS_IDEMPOTENCY_TABLE",
+    "EOS_METADATA",
+    "EOS_OUTBOX_TABLE",
+    "EOS_TEST_RESET_CONFIRMATION",
+    "EosBusinessOperationError",
+    "EosBusinessOperationRequest",
+    "EosBusinessTransactionCoordinator",
+    "EosBusinessTransactionResult",
     "EosConfigurationError",
     "EosDatabaseRuntime",
     "EosDatabaseRuntimeError",
     "EosSettings",
-    "EOS_TEST_RESET_CONFIRMATION",
     "EosTestDatabaseResetError",
     "EosTestDatabaseResetResult",
+    "InMemoryEosBusinessTransactionCoordinator",
+    "SqlAlchemyEosBusinessTransactionCoordinator",
     "build_eos_database_runtime",
     "create_eos_app",
     "load_eos_settings",

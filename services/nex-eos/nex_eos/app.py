@@ -36,11 +36,12 @@ def create_eos_app(
         environ=env,
         contract_catalog_version=CONTRACT_CATALOG_VERSION,
         description=(
-            "P8-S07 service skeleton for NeX Enterprise Operations System. "
-            "Business domain routes are intentionally not active."
+            "NeX Enterprise Operations System service runtime. Business domain "
+            "routes are intentionally activated only by their owning slices."
         ),
     )
     app.state.eos_settings = resolved
     app.state.eos_dependencies = dependencies
     app.state.eos_database_runtime = dependencies.database_runtime
+    app.state.eos_business_transactions = dependencies.business_transactions
     return app

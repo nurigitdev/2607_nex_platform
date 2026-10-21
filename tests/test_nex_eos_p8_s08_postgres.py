@@ -12,7 +12,7 @@ from nex_eos import (
 )
 from nex_runtime import psycopg_database_url
 from psycopg import sql
-from run_migrations import run_service_migrations
+from run_migrations import load_migrations, run_service_migrations
 from sqlalchemy import make_url, text
 
 DATABASE_URL = os.getenv("NEX_EOS_TEST_DATABASE_URL", "")
@@ -58,10 +58,13 @@ def test_s08_actual_postgres_fresh_rerun_rollback_reset_and_zero_residue() -> No
             database_url=scoped_url,
             profile="test",
         )
-        assert fresh.applied == ("2500_eos_schema_migrations_baseline",)
+        expected_versions = tuple(
+            migration.version for migration in load_migrations("nex-eos")
+        )
+        assert fresh.applied == expected_versions
         assert fresh.skipped == ()
         assert rerun.applied == ()
-        assert rerun.skipped == ("2500_eos_schema_migrations_baseline",)
+        assert rerun.skipped == expected_versions
 
         runtime = build_eos_database_runtime(
             environ={"NEX_EOS_TEST_DATABASE_URL": scoped_url},
