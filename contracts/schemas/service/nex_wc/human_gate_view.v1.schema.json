@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_wc/human_gate_view.v1.schema.json",
+  "title": "P8 HumanGateView Additive Transition v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "gate_id", "approval_domain", "state", "title",
+    "summary", "action_ref", "approval_provider_type", "approval_target_ref"
+  ],
+  "properties": {
+    "schema_version": {"const": "human_gate_view.p8.v1"},
+    "gate_id": {"$ref": "#/$defs/uuid"},
+    "approval_domain": {"enum": ["AGENT_FORMAL", "NSL_WRITE", "BUSINESS_FORMAL", "HUMAN_CONFIRMATION", "STEP_UP"]},
+    "state": {"enum": ["PENDING", "APPROVED", "REJECTED", "EXPIRED", "CANCELLED"]},
+    "title": {"type": "string", "minLength": 1, "maxLength": 300},
+    "summary": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "action_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "approval_provider_type": {"type": ["string", "null"], "enum": ["AGENT", "NSL", "EOS", null]},
+    "approval_target_ref": {"type": ["string", "null"], "maxLength": 256},
+    "business_operation_id": {"oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]},
+    "expires_at": {"type": ["string", "null"], "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"approval_domain": {"const": "NSL_WRITE"}}, "required": ["approval_domain"]},
+      "then": {"properties": {"approval_provider_type": {"const": "NSL"}, "approval_target_ref": {"type": "string", "minLength": 1}}}
+    },
+    {
+      "if": {"properties": {"approval_domain": {"const": "BUSINESS_FORMAL"}}, "required": ["approval_domain"]},
+      "then": {
+        "required": ["business_operation_id"],
+        "properties": {
+          "approval_provider_type": {"const": "EOS"},
+          "approval_target_ref": {"type": "string", "minLength": 1},
+          "business_operation_id": {"$ref": "#/$defs/scoped_id"}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "uuid": {"type": "string", "format": "uuid"}
+  }
+}

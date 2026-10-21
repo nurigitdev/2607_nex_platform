@@ -1,0 +1,15 @@
+{
+  "schema_version": "wc_approval_event.v1",
+  "tenant_id": "tenant-p8",
+  "event_id": "32000000-0000-4000-8000-000000000004",
+  "event_type": "BUSINESS_FORMAL_APPROVAL_DECIDED",
+  "approval_work_item_id": "32000000-0000-4000-8000-000000000001",
+  "decision_id": "32000000-0000-4000-8000-000000000002",
+  "approval_domain": "NSL_WRITE",
+  "decision": "APPROVE",
+  "decided_by": "user-approver-001",
+  "oa_decision_ref": "oa-decision-p8-001",
+  "occurred_at": "2026-10-22T09:05:00Z",
+  "correlation_id": "correlation-p8-approval-001",
+  "causation_id": "approval-request-p8-001"
+}

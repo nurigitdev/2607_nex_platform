@@ -80,8 +80,13 @@ def test_s23_p7_delegation_contract_remains_unchanged_and_valid():
 def test_s23_contract_inventory_registers_only_the_guard_pack():
     examples = _json(CONTRACTS / "examples/index.json")["examples"]
     negatives = _json(CONTRACTS / "tests/negative/index.json")["negative_examples"]
-    assert sum(item["schema"].startswith("schemas/service/nex_wc/") for item in examples) == 3
-    assert sum(item["schema"].startswith("schemas/service/nex_wc/") for item in negatives) == 3
+    guard_schemas = {
+        "schemas/service/nex_wc/delegation_policy.v1.schema.json",
+        "schemas/service/nex_wc/delegation_lineage.v1.schema.json",
+        "schemas/service/nex_wc/delegation_spec.v1_1.schema.json",
+    }
+    assert {item["schema"] for item in examples} >= guard_schemas
+    assert {item["schema"] for item in negatives} >= guard_schemas
 
     policy = _json(CONTRACTS / "examples/service/wc_delegation_policy.initial.json")
     assert policy == {

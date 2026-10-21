@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_wc/approval_work_item.v1.schema.json",
+  "title": "WC ApprovalWorkItem Transition v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "approval_work_item_id",
+    "approval_domain", "source_ref", "semantic_hash", "title",
+    "display_safe_summary", "approval_provider_type", "approval_target_ref",
+    "resume_target_ref", "state", "created_at", "version"
+  ],
+  "properties": {
+    "schema_version": {"const": "wc_approval_work_item.v1"},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "approval_work_item_id": {"$ref": "#/$defs/uuid"},
+    "approval_domain": {"enum": ["AGENT_FORMAL", "NSL_WRITE", "BUSINESS_FORMAL"]},
+    "source_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "semantic_hash": {"$ref": "#/$defs/hash_ref"},
+    "title": {"type": "string", "minLength": 1, "maxLength": 300},
+    "display_safe_summary": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "approval_provider_type": {"enum": ["AGENT", "NSL", "EOS"]},
+    "approval_target_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "target_approver_ref": {"oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]},
+    "target_role_ref": {"oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]},
+    "target_org_scope_ref": {"oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]},
+    "target_project_scope_ref": {"oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]},
+    "agent_execution_id": {"oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]},
+    "executable_step_id": {"oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]},
+    "nsl_execution_id": {"oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]},
+    "business_operation_id": {"oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]},
+    "approval_request_id": {"oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]},
+    "protected_request_ref": {"oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]},
+    "resume_target_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "state": {"enum": ["PENDING", "APPROVED", "REJECTED", "EXPIRED", "CANCELLED"]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": ["string", "null"], "format": "date-time"},
+    "version": {"type": "integer", "minimum": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"approval_domain": {"const": "NSL_WRITE"}}, "required": ["approval_domain"]},
+      "then": {
+        "required": ["agent_execution_id", "executable_step_id", "nsl_execution_id", "business_operation_id", "approval_request_id", "protected_request_ref"],
+        "properties": {
+          "approval_provider_type": {"const": "NSL"},
+          "agent_execution_id": {"$ref": "#/$defs/scoped_id"},
+          "executable_step_id": {"$ref": "#/$defs/scoped_id"},
+          "nsl_execution_id": {"$ref": "#/$defs/scoped_id"},
+          "business_operation_id": {"$ref": "#/$defs/scoped_id"},
+          "approval_request_id": {"$ref": "#/$defs/scoped_id"},
+          "protected_request_ref": {"$ref": "#/$defs/scoped_id"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"approval_domain": {"const": "AGENT_FORMAL"}}, "required": ["approval_domain"]},
+      "then": {
+        "required": ["agent_execution_id", "executable_step_id", "business_operation_id", "protected_request_ref"],
+        "properties": {
+          "approval_provider_type": {"const": "AGENT"},
+          "agent_execution_id": {"$ref": "#/$defs/scoped_id"},
+          "executable_step_id": {"$ref": "#/$defs/scoped_id"},
+          "business_operation_id": {"$ref": "#/$defs/scoped_id"},
+          "protected_request_ref": {"$ref": "#/$defs/scoped_id"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"approval_domain": {"const": "BUSINESS_FORMAL"}}, "required": ["approval_domain"]},
+      "then": {
+        "required": ["business_operation_id", "protected_request_ref"],
+        "properties": {
+          "approval_provider_type": {"const": "EOS"},
+          "business_operation_id": {"$ref": "#/$defs/scoped_id"},
+          "protected_request_ref": {"$ref": "#/$defs/scoped_id"}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "uuid": {"type": "string", "format": "uuid"},
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

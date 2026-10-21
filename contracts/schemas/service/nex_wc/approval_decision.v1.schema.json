@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_wc/approval_decision.v1.schema.json",
+  "title": "WC ApprovalDecision Transition v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "decision_id", "approval_work_item_id",
+    "decision", "decided_by", "decision_version", "authorized_by_oa",
+    "oa_decision_ref", "authorization_revision_hash",
+    "authorization_checked_at", "decided_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "wc_approval_decision.v1"},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "decision_id": {"$ref": "#/$defs/uuid"},
+    "approval_work_item_id": {"$ref": "#/$defs/uuid"},
+    "decision": {"enum": ["APPROVE", "REJECT"]},
+    "decided_by": {"$ref": "#/$defs/scoped_id"},
+    "decision_comment": {"type": ["string", "null"], "maxLength": 2000},
+    "decision_version": {"type": "integer", "minimum": 1},
+    "authorized_by_oa": {"const": true},
+    "oa_decision_ref": {"$ref": "#/$defs/scoped_id"},
+    "authorization_revision_hash": {"$ref": "#/$defs/hash_ref"},
+    "authorization_checked_at": {"type": "string", "format": "date-time"},
+    "decided_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "uuid": {"type": "string", "format": "uuid"},
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

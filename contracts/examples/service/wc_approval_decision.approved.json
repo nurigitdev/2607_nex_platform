@@ -1,0 +1,15 @@
+{
+  "schema_version": "wc_approval_decision.v1",
+  "tenant_id": "tenant-p8",
+  "decision_id": "32000000-0000-4000-8000-000000000002",
+  "approval_work_item_id": "32000000-0000-4000-8000-000000000001",
+  "decision": "APPROVE",
+  "decided_by": "user-approver-001",
+  "decision_comment": null,
+  "decision_version": 1,
+  "authorized_by_oa": true,
+  "oa_decision_ref": "oa-decision-p8-001",
+  "authorization_revision_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "authorization_checked_at": "2026-10-22T09:05:00Z",
+  "decided_at": "2026-10-22T09:05:00Z"
+}

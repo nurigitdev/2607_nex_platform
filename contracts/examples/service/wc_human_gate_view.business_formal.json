@@ -1,0 +1,13 @@
+{
+  "schema_version": "human_gate_view.p8.v1",
+  "gate_id": "32000000-0000-4000-8000-000000000003",
+  "approval_domain": "BUSINESS_FORMAL",
+  "state": "PENDING",
+  "title": "Finance organization approval",
+  "summary": "Approve the business operation according to the active EOS stage.",
+  "action_ref": "wc-approval:32000000-0000-4000-8000-000000000003",
+  "approval_provider_type": "EOS",
+  "approval_target_ref": "eos-stage:finance-stage-001",
+  "business_operation_id": "business-operation-p8-001",
+  "expires_at": "2026-10-23T09:00:00Z"
+}

@@ -1050,6 +1050,26 @@
       "name": "wc_delegation_spec_partial_parent_claim",
       "path": "tests/negative/service/wc_delegation_spec.partial_parent_claim.json",
       "schema": "schemas/service/nex_wc/delegation_spec.v1_1.schema.json"
+    },
+    {
+      "name": "wc_approval_work_item_nsl_missing_binding",
+      "path": "tests/negative/service/wc_approval_work_item.nsl_missing_binding.json",
+      "schema": "schemas/service/nex_wc/approval_work_item.v1.schema.json"
+    },
+    {
+      "name": "wc_approval_decision_raw_token",
+      "path": "tests/negative/service/wc_approval_decision.raw_token.json",
+      "schema": "schemas/service/nex_wc/approval_decision.v1.schema.json"
+    },
+    {
+      "name": "wc_human_gate_view_domain_provider_mismatch",
+      "path": "tests/negative/service/wc_human_gate_view.domain_provider_mismatch.json",
+      "schema": "schemas/service/nex_wc/human_gate_view.v1.schema.json"
+    },
+    {
+      "name": "wc_approval_event_domain_event_mismatch",
+      "path": "tests/negative/service/wc_approval_event.domain_event_mismatch.json",
+      "schema": "schemas/service/nex_wc/approval_event.v1.schema.json"
     }
   ]
 }
