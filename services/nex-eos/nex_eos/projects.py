@@ -15,6 +15,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    literal,
     String,
     Table,
     UniqueConstraint,
@@ -251,6 +252,101 @@ class SqlAlchemyEosProjectRepository:
             raise _persistence_error() from exc
         return dict(row) if row is not None else None
 
+    def list_projects_for_nvt(
+        self,
+        *,
+        tenant_id: str,
+        nvt_project_id: str,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        tenant_id = _scoped_id("tenant_id", tenant_id)
+        nvt_project_id = _uuid("nvt_project_id", nvt_project_id)
+        limit = _bounded_limit(limit)
+        project_tree = (
+            select(EOS_PROJECT_TABLE)
+            .where(
+                EOS_PROJECT_TABLE.c.tenant_id == tenant_id,
+                EOS_PROJECT_TABLE.c.parent_project_id.is_(None),
+                EOS_PROJECT_TABLE.c.nvt_project_id == nvt_project_id,
+            )
+            .cte("eos_project_tree", recursive=True)
+        )
+        descendants = select(EOS_PROJECT_TABLE).join(
+            project_tree,
+            (EOS_PROJECT_TABLE.c.tenant_id == project_tree.c.tenant_id)
+            & (
+                EOS_PROJECT_TABLE.c.parent_project_id
+                == project_tree.c.project_id
+            ),
+        )
+        project_tree = project_tree.union_all(descendants)
+        statement = (
+            select(project_tree)
+            .where(project_tree.c.hierarchy_depth <= EOS_PROJECT_MAX_DEPTH)
+            .order_by(project_tree.c.hierarchy_depth, project_tree.c.project_code)
+            .limit(limit)
+        )
+        try:
+            with self._session_factory() as session:
+                rows = session.execute(statement).mappings().all()
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+        return [dict(row) for row in rows]
+
+    def resolve_nvt_project(
+        self,
+        *,
+        tenant_id: str,
+        project_id: str,
+    ) -> dict[str, Any] | None:
+        tenant_id = _scoped_id("tenant_id", tenant_id)
+        project_id = _uuid("project_id", project_id)
+        ancestry = (
+            select(
+                EOS_PROJECT_TABLE.c.project_id,
+                EOS_PROJECT_TABLE.c.parent_project_id,
+                EOS_PROJECT_TABLE.c.nvt_project_id,
+                literal(1).label("walk_depth"),
+            )
+            .where(
+                EOS_PROJECT_TABLE.c.tenant_id == tenant_id,
+                EOS_PROJECT_TABLE.c.project_id == project_id,
+            )
+            .cte("eos_project_ancestry", recursive=True)
+        )
+        parents = (
+            select(
+                EOS_PROJECT_TABLE.c.project_id,
+                EOS_PROJECT_TABLE.c.parent_project_id,
+                EOS_PROJECT_TABLE.c.nvt_project_id,
+                (ancestry.c.walk_depth + 1).label("walk_depth"),
+            )
+            .join(
+                ancestry,
+                (EOS_PROJECT_TABLE.c.tenant_id == tenant_id)
+                & (EOS_PROJECT_TABLE.c.project_id == ancestry.c.parent_project_id),
+            )
+            .where(ancestry.c.walk_depth < EOS_PROJECT_MAX_DEPTH)
+        )
+        ancestry = ancestry.union_all(parents)
+        statement = (
+            select(ancestry.c.nvt_project_id)
+            .where(ancestry.c.nvt_project_id.is_not(None))
+            .order_by(ancestry.c.walk_depth.desc())
+            .limit(1)
+        )
+        try:
+            with self._session_factory() as session:
+                nvt_project_id = session.execute(statement).scalar_one_or_none()
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+        if nvt_project_id is None:
+            return None
+        return self.get_nvt_project(
+            tenant_id=tenant_id,
+            nvt_project_id=str(nvt_project_id),
+        )
+
     @staticmethod
     def _admit_hierarchy(
         session: Session,
@@ -455,6 +551,12 @@ def _text(field_name: str, value: object, maximum: int) -> str:
 def _positive_int(field_name: str, value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise _invalid(field_name, "must be a positive integer")
+    return value
+
+
+def _bounded_limit(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 1000:
+        raise _invalid("limit", "must be an integer between 1 and 1000")
     return value
 
 
