@@ -42,4 +42,5 @@ def create_eos_app(
     )
     app.state.eos_settings = resolved
     app.state.eos_dependencies = dependencies
+    app.state.eos_database_runtime = dependencies.database_runtime
     return app

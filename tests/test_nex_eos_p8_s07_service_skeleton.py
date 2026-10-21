@@ -300,8 +300,10 @@ def test_openapi_freezes_only_service_shell_contract() -> None:
     assert not any(path.startswith("/api/") for path in contract["paths"])
 
 
-def test_database_boundary_is_reserved_without_s07_migrations() -> None:
+def test_database_boundary_is_reserved_for_s08_bootstrap() -> None:
     database_root = ROOT / "database/nex-eos"
 
     assert (database_root / "README.md").is_file()
-    assert not (database_root / "migrations").exists()
+    assert (
+        database_root / "migrations" / "2500_eos_schema_migrations_baseline.sql"
+    ).is_file()

@@ -35,6 +35,7 @@ DEV_DATABASE_ENVS = {
     "nex-cx": "NEX_CX_DATABASE_URL",
     "nex-mo": "NEX_MO_DATABASE_URL",
     "nex-wc": "NEX_WC_DATABASE_URL",
+    "nex-eos": "NEX_EOS_DATABASE_URL",
 }
 
 TEST_DATABASE_ENVS = {
@@ -44,6 +45,7 @@ TEST_DATABASE_ENVS = {
     "nex-cx": "NEX_CX_TEST_DATABASE_URL",
     "nex-mo": "NEX_MO_TEST_DATABASE_URL",
     "nex-wc": "NEX_WC_TEST_DATABASE_URL",
+    "nex-eos": "NEX_EOS_TEST_DATABASE_URL",
 }
 
 PROFILE_DATABASE_ENVS = {
