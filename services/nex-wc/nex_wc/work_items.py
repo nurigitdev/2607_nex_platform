@@ -713,6 +713,13 @@ def _nested_lineage(
             409,
         )
     policy = initial_delegation_policy()
+    prospective_depth = int(parent["delegation_depth"]) + 1
+    if prospective_depth > int(policy["max_delegation_depth"]):
+        raise WorkItemError(
+            "wc.delegation_hop_limit_exceeded",
+            "Nested delegation would exceed the admitted maximum depth.",
+            409,
+        )
     return validate_delegation_lineage(
         {
             "schema_version": "wc_delegation_lineage.v1",
@@ -724,7 +731,7 @@ def _nested_lineage(
             "parent_claim_generation": spec["parent_claim_generation"],
             "delegating_agent_ref": agent,
             "parent_agent_execution_id": record["parent_execution_id"],
-            "delegation_depth": int(parent["delegation_depth"]) + 1,
+            "delegation_depth": prospective_depth,
             "policy_ref": policy["policy_ref"],
             "policy_hash": policy["policy_hash"],
             "created_at": created_at,
