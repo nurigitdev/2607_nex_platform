@@ -23,6 +23,7 @@ from nex_wc.delegation_lineage import (
     DelegationLineageRepository,
     InMemoryDelegationLineageRepository,
     count_delegation_children_in_session,
+    count_delegation_descendants_in_session,
     create_delegation_lineage_in_session,
     initial_delegation_policy,
     load_delegation_lineage_in_session,
@@ -185,6 +186,14 @@ class InMemoryWorkItemRepository:
                             ),
                         )
                     )
+                    _require_root_budget(
+                        self._lineages.count_descendants(
+                            tenant_id=str(tenant_id),
+                            root_work_item_id=str(
+                                admitted_lineage["root_work_item_id"]
+                            ),
+                        )
+                    )
                 self._lineages.create(admitted_lineage)
             self._records[record_key] = item
             self._semantic_keys[semantic_key] = record_key
@@ -229,6 +238,13 @@ class SqlAlchemyWorkItemRepository:
                     admitted_lineage is not None
                     and admitted_lineage["parent_work_item_id"] is not None
                 ):
+                    _lock_delegation_root_in_session(
+                        session,
+                        tenant_id=str(record["tenant_id"]),
+                        root_work_item_id=str(
+                            admitted_lineage["root_work_item_id"]
+                        ),
+                    )
                     authority = _load_parent_claim_authority_in_session(
                         session,
                         tenant_id=str(record["tenant_id"]),
@@ -253,6 +269,15 @@ class SqlAlchemyWorkItemRepository:
                             tenant_id=str(record["tenant_id"]),
                             parent_work_item_id=str(
                                 admitted_lineage["parent_work_item_id"]
+                            ),
+                        )
+                    )
+                    _require_root_budget(
+                        count_delegation_descendants_in_session(
+                            session,
+                            tenant_id=str(record["tenant_id"]),
+                            root_work_item_id=str(
+                                admitted_lineage["root_work_item_id"]
                             ),
                         )
                     )
@@ -845,6 +870,31 @@ def _require_child_budget(current_children: int) -> None:
         )
 
 
+def _require_root_budget(current_descendants: int) -> None:
+    maximum = int(initial_delegation_policy()["max_descendants_per_root"])
+    if current_descendants >= maximum:
+        raise WorkItemError(
+            "wc.delegation_root_budget_exceeded",
+            "Nested delegation would exceed the root descendant budget.",
+            409,
+        )
+
+
+def _lock_delegation_root_in_session(
+    session: Session, *, tenant_id: str, root_work_item_id: str
+) -> None:
+    root = session.execute(
+        text(_LOCK_DELEGATION_ROOT_SQL),
+        {"tenant_id": tenant_id, "root_work_item_id": root_work_item_id},
+    ).scalar_one_or_none()
+    if root is None:
+        raise WorkItemError(
+            "wc.delegation_lineage_invalid",
+            "Delegation root WorkItem is unavailable.",
+            409,
+        )
+
+
 def _load_parent_claim_authority_in_session(
     session: Session, *, tenant_id: str, claim_id: str
 ) -> dict[str, Any] | None:
@@ -954,6 +1004,14 @@ _SELECT_BY_ID_SQL = f"""
     SELECT {_SELECT_COLUMNS}
     FROM wc_work_item
     WHERE tenant_id = :tenant_id AND work_item_id = :work_item_id
+"""
+
+_LOCK_DELEGATION_ROOT_SQL = """
+    SELECT work_item_id
+    FROM wc_work_item
+    WHERE tenant_id = :tenant_id
+      AND work_item_id = :root_work_item_id
+    FOR UPDATE
 """
 
 _SELECT_PARENT_CLAIM_AUTHORITY_SQL = """

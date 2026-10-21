@@ -57,6 +57,8 @@ class DelegationLineageRepository(Protocol):
 
     def count_children(self, *, tenant_id: str, parent_work_item_id: str) -> int: ...
 
+    def count_descendants(self, *, tenant_id: str, root_work_item_id: str) -> int: ...
+
 
 def initial_delegation_policy() -> dict[str, Any]:
     policy = {
@@ -100,6 +102,16 @@ class InMemoryDelegationLineageRepository:
                 for record in self._records.values()
                 if record["tenant_id"] == tenant_id
                 and record["parent_work_item_id"] == parent_work_item_id
+            )
+
+    def count_descendants(self, *, tenant_id: str, root_work_item_id: str) -> int:
+        with self._lock:
+            return sum(
+                1
+                for record in self._records.values()
+                if record["tenant_id"] == tenant_id
+                and record["root_work_item_id"] == root_work_item_id
+                and record["work_item_id"] != root_work_item_id
             )
 
 
@@ -155,6 +167,22 @@ class SqlAlchemyDelegationLineageRepository:
                 True,
             ) from exc
 
+    def count_descendants(self, *, tenant_id: str, root_work_item_id: str) -> int:
+        try:
+            with self._session_factory() as session:
+                return count_delegation_descendants_in_session(
+                    session,
+                    tenant_id=tenant_id,
+                    root_work_item_id=root_work_item_id,
+                )
+        except SQLAlchemyError as exc:
+            raise DelegationLineageError(
+                "wc.delegation_lineage_store_unavailable",
+                "WC delegation lineage persistence is unavailable.",
+                503,
+                True,
+            ) from exc
+
 
 def create_delegation_lineage_in_session(
     session: Session, lineage: Mapping[str, Any]
@@ -200,6 +228,20 @@ def count_delegation_children_in_session(
             {
                 "tenant_id": tenant_id,
                 "parent_work_item_id": parent_work_item_id,
+            },
+        ).scalar_one()
+    )
+
+
+def count_delegation_descendants_in_session(
+    session: Session, *, tenant_id: str, root_work_item_id: str
+) -> int:
+    return int(
+        session.execute(
+            text(_COUNT_DESCENDANTS_SQL),
+            {
+                "tenant_id": tenant_id,
+                "root_work_item_id": root_work_item_id,
             },
         ).scalar_one()
     )
@@ -352,4 +394,12 @@ _COUNT_CHILDREN_SQL = """
     FROM wc_delegation_lineage
     WHERE tenant_id = :tenant_id
       AND parent_work_item_id = :parent_work_item_id
+"""
+
+_COUNT_DESCENDANTS_SQL = """
+    SELECT count(*)
+    FROM wc_delegation_lineage
+    WHERE tenant_id = :tenant_id
+      AND root_work_item_id = :root_work_item_id
+      AND work_item_id <> :root_work_item_id
 """
