@@ -1,12 +1,13 @@
 # P8 — Controlled WRITE / Approval / Delegation / Enterprise OS
 ## Design Document Reading Guide
 
-**Status:** P8 DESIGN BASELINE / IMPLEMENTATION ENTRY GUIDE  
+**Status:** P8 DESIGN BASELINE / CA02-CONTROLLED IMPLEMENTATION ENTRY GUIDE  
 **Phase:** P8  
 **Platform Repository:** `nurigitdev/2607_nex_platform`  
 **Platform Entry Baseline:** `ce1fb8cb2373ab8024bd1ee96c5c641a30368c3a`  
 **NSL Repository:** `nurigitdev/2608_nsl`  
-**Certified NSL v0.2 Baseline:** `5cd81e18ffbedeee83605cd2e6a6cbcab54c1fb6`  
+**Documented NSL v0.2 Candidate:** `5cd81e18ffbedeee83605cd2e6a6cbcab54c1fb6` (UNVERIFIED / NOT ADMITTED)  
+**Actual NSL v0.2 Admission:** NOT ESTABLISHED / P8-S01 REQUIRED  
 **Date:** 2026-10-21
 
 ---
@@ -59,9 +60,11 @@ must be read in order.
         ↓
 ④ P8-CA01A NVT / Voucher Attachment Amendment
         ↓
-⑤ P8 SRS
+⑤ P8-CA02 Source-Backed Entry / Consistency Closure
         ↓
-⑥ P8 Implementation Slice Plan
+⑥ P8 SRS
+        ↓
+⑦ P8 Implementation Slice Plan
         ↓
 Implementation
 ```
@@ -69,7 +72,7 @@ Implementation
 Do not start from the Implementation Slice Plan alone.
 
 The Slice Plan assumes all architectural and contract decisions in documents
-①~⑤ are already understood and accepted.
+①~⑥ are already understood and accepted.
 
 ---
 
@@ -146,7 +149,7 @@ P8_Source_Audit_Controlled_WRITE_Approval_and_Enterprise_OS_v1.0.md
 This document checks the proposed P8 architecture against actual source and
 Frozen contracts.
 
-The most important Source Audit conclusion is:
+The initial Source Audit reported this conclusion:
 
 ```text
 NSL v0.2
@@ -155,6 +158,11 @@ NSL v0.2
 NSL v0.2
 = already implemented and certified deterministic WRITE runtime
 ```
+
+CA02 later found that the documented source commit is not resolvable from the
+audited checkout/remote and that the only admitted wheel is version `0.1.0`.
+Treat the conclusion above as design-history input, not current release
+evidence. P8-S01 must establish the actual v0.2 artifact.
 
 Therefore P8 changes from:
 
@@ -171,7 +179,7 @@ bridge
 verify
 ```
 
-## Important As-Built Baselines
+## Initially Reported As-Built Baselines
 
 ### Platform
 
@@ -181,7 +189,7 @@ commit     = ce1fb8cb2373ab8024bd1ee96c5c641a30368c3a
 tree       = c0901e9e2af266b400adc07dddd815c77fae2ae1
 ```
 
-### NSL v0.2
+### NSL v0.2 Candidate (Not Admitted)
 
 ```text
 repository = nurigitdev/2608_nsl
@@ -225,7 +233,8 @@ Golden A
 
 ## Important Release Hygiene Finding
 
-The certified NSL source still showed stale packaging metadata such as:
+The source described as certified still showed stale packaging metadata such
+as:
 
 ```text
 pyproject package version = 0.1.0
@@ -420,7 +429,42 @@ Golden A attachments remain optional.
 
 ---
 
-# 7. Document ⑤ — P8 SRS
+# 7. Document ⑤ — P8-CA02 Entry / Consistency Closure
+
+## File
+
+```text
+P8_CA02_Source_Backed_Entry_Baseline_and_Pre_Implementation_Consistency_Closure_v1.0.md
+```
+
+## Why It Is Mandatory Before the SRS
+
+CA02 reconciles the initial design set with the source and release artifacts
+that are actually available. It formally accepts CA01/CA01A while preserving a
+fail-closed P8-S01 gate for the missing NSL v0.2 artifact.
+
+It freezes:
+
+```text
+actual NSL source/wheel entry state
+CA01/CA01A formal acceptance
+canonical Platform and NSL coverage gates
+AE ownership of canonical Platform ApprovalEvidence
+deterministic Golden A Project/Account/voucher-line resolution
+opaque object_ref and authoritative tenant resolver boundary
+```
+
+Important entry decision:
+
+```text
+admitted NSL v0.2 source/wheel = NOT ESTABLISHED
+v0.1 admitted wheel            = valid only for v0.1 profiles
+P8 v0.2 runtime activation     = BLOCKED UNTIL P8-S01 PASS
+```
+
+---
+
+# 8. Document ⑥ — P8 SRS
 
 ## File
 
@@ -428,7 +472,7 @@ Golden A attachments remain optional.
 P8_Controlled_WRITE_Approval_Delegation_and_Enterprise_OS_SRS_v1.0.md
 ```
 
-## Read After CA01 / CA01A Because
+## Read After CA01 / CA01A / CA02 Because
 
 This document converts the architecture and contract decisions into
 implementation requirements.
@@ -507,7 +551,7 @@ User Prompt
 
 ---
 
-# 8. Document ⑥ — Implementation Slice Plan
+# 9. Document ⑦ — Implementation Slice Plan
 
 ## File
 
@@ -548,7 +592,7 @@ unit where practical.
 
 ---
 
-# 9. First Implementation Batch
+# 10. First Implementation Batch
 
 Implementation should begin with:
 
@@ -574,7 +618,7 @@ the exact NSL v0.2 artifact being known and admitted.
 
 ---
 
-# 10. Parallel Work After P8.1
+# 11. Parallel Work After P8.1
 
 After P8.1 closes:
 
@@ -606,7 +650,7 @@ boundaries are independent.
 
 ---
 
-# 11. Document Authority vs Reading Order
+# 12. Document Authority vs Reading Order
 
 Reading order and authority order are related but not identical.
 
@@ -617,6 +661,7 @@ Pre-Architecture
 → Source Audit
 → CA01
 → CA01A
+→ CA02
 → SRS
 → Slice Plan
 ```
@@ -631,6 +676,7 @@ Frozen Integrated Baseline
 > P8 Pre-Architecture
 > P8 Source Audit
 > P8-CA01 / CA01A
+> P8-CA02 for its six scoped consistency decisions
 > P8 SRS
 > P8 Slice Plan
 > implementation convenience
@@ -642,10 +688,11 @@ If the Slice Plan appears to contradict the SRS:
 SRS wins
 ```
 
-If the SRS appears to contradict CA01/CA01A:
+If the SRS appears to contradict CA01/CA01A/CA02:
 
 ```text
-CA01 / CA01A wins
+CA02 wins for its six scoped decisions
+CA01 / CA01A wins for other contract-closure decisions
 ```
 
 If P8 documents contradict Frozen authority:
@@ -659,7 +706,7 @@ Do not silently reconcile the contradiction in code.
 
 ---
 
-# 12. Key Source Baselines to Keep Beside the P8 Documents
+# 13. Key Source Baselines to Keep Beside the P8 Documents
 
 ## Platform
 
@@ -684,15 +731,22 @@ Batch C — Runtime Architecture Alignment
 Architecture Consistency Closure / Unified Change Ledger
 ```
 
-and the certified v0.2 source at:
+The actual source-backed runtime baseline at CA02 is:
 
 ```text
-5cd81e18ffbedeee83605cd2e6a6cbcab54c1fb6
+observed source commit = 3b4cb198888570a857e6fb0d3aa077930bb23504
+observed package       = nex-skill-language 0.1.0
+admitted wheel lock    = deployment/locks/nsl-v0.1-wheel.json
+admitted v0.2 source   = NOT ESTABLISHED
+admitted v0.2 wheel    = NOT ESTABLISHED
 ```
+
+The exact v0.2 source, tree, package version, wheel digest, and public API
+become authoritative only through the P8-S01 admission lock.
 
 ---
 
-# 13. Important P8 Invariants
+# 14. Important P8 Invariants
 
 Do not lose these while implementing individual Slices.
 
@@ -728,7 +782,7 @@ RustFS object bytes != EOS Voucher business metadata
 
 ---
 
-# 14. P8 Project Model at a Glance
+# 15. P8 Project Model at a Glance
 
 ```text
 NVTProject
@@ -757,7 +811,7 @@ cycle forbidden
 
 ---
 
-# 15. P8 Approval Model at a Glance
+# 16. P8 Approval Model at a Glance
 
 ```text
                  Human
@@ -786,7 +840,7 @@ Their authoritative semantics remain separate.
 
 ---
 
-# 16. P8 WRITE Model at a Glance
+# 17. P8 WRITE Model at a Glance
 
 ```text
 NSL WriteIntent
@@ -812,7 +866,7 @@ At no point does an LLM directly perform the business mutation.
 
 ---
 
-# 17. P8 Delegation Guard at a Glance
+# 18. P8 Delegation Guard at a Glance
 
 ```text
 current work:delegate
@@ -837,7 +891,7 @@ candidate Agent must not appear in ancestor delegating Agent chain
 
 ---
 
-# 18. Voucher Attachment Model at a Glance
+# 19. Voucher Attachment Model at a Glance
 
 ```text
 VoucherDraft
@@ -863,7 +917,7 @@ as durable attachment identity.
 
 ---
 
-# 19. Implementation Stop Conditions
+# 20. Implementation Stop Conditions
 
 Stop implementation and return to contract review if code appears to require:
 
@@ -879,13 +933,16 @@ WRITE retry after COMMITTED + Verification failure
 Project depth > 3 by hidden exception
 NVTProject folded into ordinary Project without review
 RustFS credential persisted as Voucher attachment identity
+NSL_V02_IN_PROCESS activated without an admitted v0.2 wheel lock
+LLM candidate treated as final ProjectRef, AccountRef, or voucher-line policy
+tenant ownership inferred by parsing object_ref or an internal RustFS key
 ```
 
 These are architecture violations, not implementation shortcuts.
 
 ---
 
-# 20. Recommended Workflow for Each Slice
+# 21. Recommended Workflow for Each Slice
 
 ```text
 1. Read relevant SRS requirements.
@@ -906,7 +963,7 @@ These are architecture violations, not implementation shortcuts.
 
 ---
 
-# 21. Final Reading Checklist
+# 22. Final Reading Checklist
 
 Before beginning `P8-S01`, the implementer should have read:
 
@@ -915,15 +972,16 @@ Before beginning `P8-S01`, the implementer should have read:
 [ ] P8 Source Audit
 [ ] P8-CA01 Contract Closure
 [ ] P8-CA01A Amendment
+[ ] P8-CA02 Entry / Consistency Closure
 [ ] P8 SRS
 [ ] P8 Implementation Slice Plan
 ```
 
-For NSL-related slices also review:
+For NSL-related slices after P8-S01 admission also review:
 
 ```text
 [ ] NSL v0.2 five Frozen architecture authority documents
-[ ] certified NSL v0.2 public API / source
+[ ] actual P8-S01 admitted v0.2 public API / source / wheel lock
 ```
 
 For EOS Approval slices also review:
@@ -943,9 +1001,11 @@ For Delegation slices also review:
 
 ---
 
-# 22. Current Entry Point
+# 23. Current Entry Point
 
-The current P8 design baseline is complete enough to start implementation.
+The current P8 design baseline is consistency-closed and ready to start the
+protected admission work in P8-S01. NSL v0.2 runtime activation remains blocked
+until P8-S01 establishes a real source/wheel baseline and passes admission.
 
 Immediate next action:
 
@@ -964,7 +1024,7 @@ to close P8.1.
 
 ---
 
-# 23. Final Position
+# 24. Final Position
 
 The P8 document set should be understood as one continuous chain:
 
@@ -980,6 +1040,10 @@ Source Audit
 WHAT MUST BE FIXED AT THE BOUNDARY
         ↓
 CA01 / CA01A
+
+WHAT IS ACTUALLY ADMITTED AND WHO OWNS THE REMAINING BOUNDARIES
+        ↓
+CA02
 
 WHAT THE SYSTEM SHALL DO
         ↓
