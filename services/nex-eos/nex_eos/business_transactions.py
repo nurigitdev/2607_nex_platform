@@ -39,7 +39,7 @@ EOS_EVENT_TYPES = frozenset(
 )
 
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
-_OPERATION = re.compile(r"^[A-Z][A-Z0-9_]{0,127}$")
+_OPERATION = re.compile(r"^[A-Z][A-Z0-9_.]{0,127}$")
 
 EOS_METADATA = MetaData()
 EOS_BUSINESS_OPERATION_TABLE = Table(

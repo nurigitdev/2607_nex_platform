@@ -131,6 +131,33 @@ class SqlAlchemyEosAttachmentRepository:
         voucher_id: str,
         attachments: Sequence[VoucherAttachmentInput],
     ) -> list[dict[str, Any]]:
+        try:
+            with build_unit_of_work(self._session_factory) as transaction:
+                return self.attach_many_in_session(
+                    transaction.db,
+                    tenant_id=tenant_id,
+                    voucher_id=voucher_id,
+                    attachments=attachments,
+                )
+        except EosAttachmentError:
+            raise
+        except IntegrityError as exc:
+            raise EosAttachmentError(
+                "EOS_ATTACHMENT_CONFLICT",
+                "Attachment identity or object reference already exists",
+                status_code=409,
+            ) from exc
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+
+    def attach_many_in_session(
+        self,
+        session: Session,
+        *,
+        tenant_id: str,
+        voucher_id: str,
+        attachments: Sequence[VoucherAttachmentInput],
+    ) -> list[dict[str, Any]]:
         tenant_id = _scoped_id("tenant_id", tenant_id)
         voucher_id = _uuid("voucher_id", voucher_id)
         if isinstance(attachments, (str, bytes)) or not isinstance(
@@ -139,7 +166,6 @@ class SqlAlchemyEosAttachmentRepository:
             raise _invalid("attachments", "must be a sequence")
         if not attachments:
             return []
-
         records = [
             self._resolve_attachment(
                 tenant_id=tenant_id,
@@ -152,32 +178,19 @@ class SqlAlchemyEosAttachmentRepository:
             raise _invalid("attachment_id", "must be unique within the request")
         if len({record["object_ref"] for record in records}) != len(records):
             raise _invalid("object_ref", "must be unique within the Voucher")
-
-        try:
-            with build_unit_of_work(self._session_factory) as transaction:
-                voucher_exists = transaction.db.execute(
-                    select(EOS_VOUCHER_DRAFT_TABLE.c.voucher_id).where(
-                        EOS_VOUCHER_DRAFT_TABLE.c.tenant_id == tenant_id,
-                        EOS_VOUCHER_DRAFT_TABLE.c.voucher_id == voucher_id,
-                    )
-                ).scalar_one_or_none()
-                if voucher_exists is None:
-                    raise EosAttachmentError(
-                        "EOS_ATTACHMENT_VOUCHER_NOT_FOUND",
-                        "Voucher Draft was not found in tenant scope",
-                        status_code=404,
-                    )
-                transaction.db.execute(EOS_VOUCHER_ATTACHMENT_TABLE.insert(), records)
-        except EosAttachmentError:
-            raise
-        except IntegrityError as exc:
+        voucher_exists = session.execute(
+            select(EOS_VOUCHER_DRAFT_TABLE.c.voucher_id).where(
+                EOS_VOUCHER_DRAFT_TABLE.c.tenant_id == tenant_id,
+                EOS_VOUCHER_DRAFT_TABLE.c.voucher_id == voucher_id,
+            )
+        ).scalar_one_or_none()
+        if voucher_exists is None:
             raise EosAttachmentError(
-                "EOS_ATTACHMENT_CONFLICT",
-                "Attachment identity or object reference already exists",
-                status_code=409,
-            ) from exc
-        except SQLAlchemyError as exc:
-            raise _persistence_error() from exc
+                "EOS_ATTACHMENT_VOUCHER_NOT_FOUND",
+                "Voucher Draft was not found in tenant scope",
+                status_code=404,
+            )
+        session.execute(EOS_VOUCHER_ATTACHMENT_TABLE.insert(), records)
         return [dict(record) for record in records]
 
     def list_attachments(

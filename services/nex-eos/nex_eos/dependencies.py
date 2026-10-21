@@ -8,6 +8,7 @@ from nex_runtime import build_service_token_admission_runtime
 from nex_runtime.service_token_admission import ServiceTokenAdmissionRuntime
 
 from .accounts import SqlAlchemyEosAccountRepository
+from .authorization import EosVoucherAuthorizationClient, HttpOaAuthorizationSource
 from .business_transactions import (
     EosBusinessTransactionCoordinator,
     SqlAlchemyEosBusinessTransactionCoordinator,
@@ -18,6 +19,7 @@ from .organization import SqlAlchemyEosOrganizationRepository
 from .persistence import EosDatabaseRuntime, build_eos_database_runtime
 from .projects import SqlAlchemyEosProjectRepository
 from .vouchers import SqlAlchemyEosVoucherRepository
+from .voucher_commands import EosCreateVoucherDraftService
 
 
 @dataclass(frozen=True)
@@ -30,6 +32,7 @@ class EosDependencies:
     projects: SqlAlchemyEosProjectRepository | None
     accounts: SqlAlchemyEosAccountRepository | None
     vouchers: SqlAlchemyEosVoucherRepository | None
+    voucher_command_service: EosCreateVoucherDraftService | None
 
 
 def build_eos_dependencies(
@@ -69,6 +72,21 @@ def build_eos_dependencies(
         if database_runtime is not None
         else None
     )
+    oa_token = environ.get("NEX_EOS_TO_OA_SERVICE_TOKEN", "")
+    voucher_command_service = (
+        EosCreateVoucherDraftService(
+            coordinator=business_transactions,
+            vouchers=vouchers,
+            authorizer=EosVoucherAuthorizationClient(
+                HttpOaAuthorizationSource(
+                    base_url=environ.get("NEX_OA_BASE_URL", "http://127.0.0.1:8101"),
+                    service_token=oa_token,
+                )
+            ),
+        )
+        if business_transactions is not None and vouchers is not None and oa_token
+        else None
+    )
     return EosDependencies(
         service_token_admission=build_service_token_admission_runtime(
             expected_audience=settings.service_id,
@@ -81,4 +99,5 @@ def build_eos_dependencies(
         projects=projects,
         accounts=accounts,
         vouchers=vouchers,
+        voucher_command_service=voucher_command_service,
     )

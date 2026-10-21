@@ -8,6 +8,7 @@ from nex_runtime import SERVICE_SPECS, build_service_app
 
 from .config import EosSettings, load_eos_settings
 from .dependencies import build_eos_dependencies
+from .voucher_api import register_voucher_command_routes
 
 SERVICE_SPEC = SERVICE_SPECS["nex-eos"]
 CONTRACT_CATALOG_VERSION = "p8-s07"
@@ -48,4 +49,6 @@ def create_eos_app(
     app.state.eos_projects = dependencies.projects
     app.state.eos_accounts = dependencies.accounts
     app.state.eos_vouchers = dependencies.vouchers
+    app.state.eos_voucher_command_service = dependencies.voucher_command_service
+    register_voucher_command_routes(app)
     return app

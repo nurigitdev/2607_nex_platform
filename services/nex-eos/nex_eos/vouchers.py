@@ -133,6 +133,23 @@ class SqlAlchemyEosVoucherRepository:
         self._session_factory = session_factory
 
     def create_draft(self, value: VoucherDraftInput) -> dict[str, Any]:
+        try:
+            with build_unit_of_work(self._session_factory) as transaction:
+                return self.create_draft_in_session(transaction.db, value)
+        except EosVoucherError:
+            raise
+        except IntegrityError as exc:
+            raise EosVoucherError(
+                "EOS_VOUCHER_CONFLICT",
+                "Voucher Draft identity already exists in tenant scope",
+                status_code=409,
+            ) from exc
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+
+    def create_draft_in_session(
+        self, session: Session, value: VoucherDraftInput
+    ) -> dict[str, Any]:
         tenant_id = _scoped_id("tenant_id", value.tenant_id)
         voucher_id = _uuid("voucher_id", value.voucher_id)
         project_id = _uuid("project_id", value.project_id)
@@ -175,33 +192,21 @@ class SqlAlchemyEosVoucherRepository:
             for line in lines
         ]
 
-        try:
-            with build_unit_of_work(self._session_factory) as transaction:
-                self._require_effective_project(
-                    transaction.db,
-                    tenant_id=tenant_id,
-                    project_id=project_id,
-                    effective_at=transaction_date,
-                )
-                for line in line_records:
-                    self._require_effective_account(
-                        transaction.db,
-                        tenant_id=tenant_id,
-                        account_id=line["account_id"],
-                        effective_at=transaction_date,
-                    )
-                transaction.db.execute(EOS_VOUCHER_DRAFT_TABLE.insert().values(**draft))
-                transaction.db.execute(EOS_VOUCHER_DRAFT_LINE_TABLE.insert(), line_records)
-        except EosVoucherError:
-            raise
-        except IntegrityError as exc:
-            raise EosVoucherError(
-                "EOS_VOUCHER_CONFLICT",
-                "Voucher Draft identity already exists in tenant scope",
-                status_code=409,
-            ) from exc
-        except SQLAlchemyError as exc:
-            raise _persistence_error() from exc
+        self._require_effective_project(
+            session,
+            tenant_id=tenant_id,
+            project_id=project_id,
+            effective_at=transaction_date,
+        )
+        for line in line_records:
+            self._require_effective_account(
+                session,
+                tenant_id=tenant_id,
+                account_id=line["account_id"],
+                effective_at=transaction_date,
+            )
+        session.execute(EOS_VOUCHER_DRAFT_TABLE.insert().values(**draft))
+        session.execute(EOS_VOUCHER_DRAFT_LINE_TABLE.insert(), line_records)
         return {**draft, "lines": [dict(line) for line in line_records]}
 
     def get_draft(
