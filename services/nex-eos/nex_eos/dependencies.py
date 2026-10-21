@@ -13,6 +13,7 @@ from .business_transactions import (
     EosBusinessTransactionCoordinator,
     SqlAlchemyEosBusinessTransactionCoordinator,
 )
+from .business_queries import SqlAlchemyEosBusinessOperationQuery
 from .config import EosSettings
 from .health import build_configuration_readiness_check
 from .organization import SqlAlchemyEosOrganizationRepository
@@ -33,6 +34,7 @@ class EosDependencies:
     accounts: SqlAlchemyEosAccountRepository | None
     vouchers: SqlAlchemyEosVoucherRepository | None
     voucher_command_service: EosCreateVoucherDraftService | None
+    business_operation_query: SqlAlchemyEosBusinessOperationQuery | None
 
 
 def build_eos_dependencies(
@@ -87,6 +89,11 @@ def build_eos_dependencies(
         if business_transactions is not None and vouchers is not None and oa_token
         else None
     )
+    business_operation_query = (
+        SqlAlchemyEosBusinessOperationQuery(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
     return EosDependencies(
         service_token_admission=build_service_token_admission_runtime(
             expected_audience=settings.service_id,
@@ -100,4 +107,5 @@ def build_eos_dependencies(
         accounts=accounts,
         vouchers=vouchers,
         voucher_command_service=voucher_command_service,
+        business_operation_query=business_operation_query,
     )

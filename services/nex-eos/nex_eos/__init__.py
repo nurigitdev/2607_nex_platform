@@ -42,6 +42,10 @@ from .business_transactions import (
     InMemoryEosBusinessTransactionCoordinator,
     SqlAlchemyEosBusinessTransactionCoordinator,
 )
+from .business_queries import (
+    EosBusinessQueryError,
+    SqlAlchemyEosBusinessOperationQuery,
+)
 from .config import EosConfigurationError, EosSettings, load_eos_settings
 from .database_reset import (
     EOS_TEST_RESET_CONFIRMATION,
@@ -138,6 +142,7 @@ __all__ = (
     "EosAuthorizationTarget",
     "EosAccountError",
     "EosBusinessOperationError",
+    "EosBusinessQueryError",
     "EosBusinessOperationRequest",
     "EosBusinessTransactionCoordinator",
     "EosBusinessTransactionResult",
@@ -169,6 +174,7 @@ __all__ = (
     "SqlAlchemyEosProjectRepository",
     "SqlAlchemyEosAccountRepository",
     "SqlAlchemyEosBusinessTransactionCoordinator",
+    "SqlAlchemyEosBusinessOperationQuery",
     "SqlAlchemyEosVoucherRepository",
     "VoucherDraftInput",
     "VoucherAttachmentInput",

@@ -123,6 +123,33 @@ paths:
           description: Command, hash, approval, or domain invariant is invalid.
         "503":
           description: OA authorization or EOS persistence is unavailable.
+  /internal/v1/business-operations/{business_operation_id}:
+    get:
+      operationId: getEosBusinessOperation
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - name: business_operation_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200":
+          description: Authoritative BusinessOperation reconciliation projection.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: BusinessOperation is absent from the requested tenant scope.
+        "422":
+          description: Tenant or BusinessOperation identity is invalid.
+        "503":
+          description: Query persistence or stored state is unavailable.
 components:
   securitySchemes:
     serviceBearer:
