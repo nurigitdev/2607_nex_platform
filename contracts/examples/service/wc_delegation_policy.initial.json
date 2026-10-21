@@ -1,0 +1,10 @@
+{
+  "schema_version": "wc_delegation_policy.v1",
+  "policy_ref": "wc.delegation.guard.initial-v1",
+  "max_delegation_depth": 10,
+  "max_children_per_work_item": 5,
+  "max_descendants_per_root": 50,
+  "cycle_detection": true,
+  "governance_controlled": true,
+  "llm_overridable": false
+}

@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.1",
+  "delegation_id": "delegation-p8-nested-001",
+  "tenant_id": "tenant-p8",
+  "parent_agent_execution_id": "agent-execution-p8-parent-001",
+  "parent_executable_plan_id": "plan-p8-parent-001",
+  "parent_executable_step_id": "step-p8-delegate-001",
+  "delegation_revision": 1,
+  "goal": "Prepare a bounded finance analysis from admitted project data.",
+  "work_class": "ANALYSIS",
+  "required_agent_type": "PA",
+  "required_capability": "FINANCE.PROJECT_ANALYSIS",
+  "project_ref": {
+    "entity_type": "PROJECT",
+    "entity_id": "project-p8",
+    "version": 1
+  },
+  "project_scope_ref": "project-p8",
+  "result_contract_ref": "contract://nex/wc/project-analysis/v1",
+  "completion_policy": "OWNER_SUBMITS",
+  "correlation_id": "correlation-p8-nested-001",
+  "causation_id": "agent-execution-p8-parent-001",
+  "parent_work_item_id": "23000000-0000-4000-8000-000000000001",
+  "parent_claim_ref": "24000000-0000-4000-8000-000000000001",
+  "parent_claim_generation": 1,
+  "delegating_agent_ref": {
+    "agent_id": "25000000-0000-4000-8000-000000000001",
+    "agent_type": "PA"
+  }
+}

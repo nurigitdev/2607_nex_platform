@@ -1189,6 +1189,21 @@
       "name": "eos_create_voucher_draft_result_committed",
       "path": "examples/service/eos_create_voucher_draft_result.committed.json",
       "schema": "schemas/service/nex_eos/create_voucher_draft_result.v1.schema.json"
+    },
+    {
+      "name": "wc_delegation_policy_initial",
+      "path": "examples/service/wc_delegation_policy.initial.json",
+      "schema": "schemas/service/nex_wc/delegation_policy.v1.schema.json"
+    },
+    {
+      "name": "wc_delegation_lineage_nested",
+      "path": "examples/service/wc_delegation_lineage.nested.json",
+      "schema": "schemas/service/nex_wc/delegation_lineage.v1.schema.json"
+    },
+    {
+      "name": "wc_delegation_spec_nested",
+      "path": "examples/service/wc_delegation_spec.nested.json",
+      "schema": "schemas/service/nex_wc/delegation_spec.v1_1.schema.json"
     }
   ]
 }

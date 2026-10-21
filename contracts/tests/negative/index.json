@@ -1035,6 +1035,21 @@
       "name": "eos_create_voucher_draft_result_committed_without_voucher",
       "path": "tests/negative/service/eos_create_voucher_draft_result.committed_without_voucher.json",
       "schema": "schemas/service/nex_eos/create_voucher_draft_result.v1.schema.json"
+    },
+    {
+      "name": "wc_delegation_policy_llm_override",
+      "path": "tests/negative/service/wc_delegation_policy.llm_override.json",
+      "schema": "schemas/service/nex_wc/delegation_policy.v1.schema.json"
+    },
+    {
+      "name": "wc_delegation_lineage_missing_parent_claim",
+      "path": "tests/negative/service/wc_delegation_lineage.missing_parent_claim.json",
+      "schema": "schemas/service/nex_wc/delegation_lineage.v1.schema.json"
+    },
+    {
+      "name": "wc_delegation_spec_partial_parent_claim",
+      "path": "tests/negative/service/wc_delegation_spec.partial_parent_claim.json",
+      "schema": "schemas/service/nex_wc/delegation_spec.v1_1.schema.json"
     }
   ]
 }

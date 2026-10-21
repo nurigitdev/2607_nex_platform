@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_wc/delegation_lineage.v1.schema.json",
+  "title": "WC Delegation Lineage v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "work_item_id",
+    "root_work_item_id",
+    "parent_work_item_id",
+    "parent_claim_ref",
+    "parent_claim_generation",
+    "delegating_agent_ref",
+    "parent_agent_execution_id",
+    "delegation_depth",
+    "policy_ref",
+    "policy_hash",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "wc_delegation_lineage.v1"},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "work_item_id": {"$ref": "#/$defs/uuid"},
+    "root_work_item_id": {"$ref": "#/$defs/uuid"},
+    "parent_work_item_id": {"oneOf": [{"$ref": "#/$defs/uuid"}, {"type": "null"}]},
+    "parent_claim_ref": {"oneOf": [{"$ref": "#/$defs/uuid"}, {"type": "null"}]},
+    "parent_claim_generation": {"type": ["integer", "null"], "minimum": 1},
+    "delegating_agent_ref": {"$ref": "#/$defs/agent_ref"},
+    "parent_agent_execution_id": {"$ref": "#/$defs/scoped_id"},
+    "delegation_depth": {"type": "integer", "minimum": 1, "maximum": 10},
+    "policy_ref": {"type": "string", "pattern": "^wc\\.delegation\\.guard\\.[a-z0-9._-]{1,96}$"},
+    "policy_hash": {"$ref": "#/$defs/hash_ref"},
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"parent_work_item_id": {"type": "null"}}, "required": ["parent_work_item_id"]},
+      "then": {
+        "properties": {
+          "delegation_depth": {"const": 1},
+          "parent_claim_ref": {"type": "null"},
+          "parent_claim_generation": {"type": "null"}
+        }
+      },
+      "else": {
+        "properties": {
+          "delegation_depth": {"minimum": 2},
+          "parent_claim_ref": {"$ref": "#/$defs/uuid"},
+          "parent_claim_generation": {"type": "integer", "minimum": 1}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "uuid": {"type": "string", "format": "uuid"},
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "agent_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent_id", "agent_type"],
+      "properties": {
+        "agent_id": {"$ref": "#/$defs/uuid"},
+        "agent_type": {"enum": ["IA", "CA", "PA", "EA"]}
+      }
+    }
+  }
+}
