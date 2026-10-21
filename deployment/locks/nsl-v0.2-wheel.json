@@ -1,0 +1,33 @@
+{
+  "certification_reference": "nsl-linux-quality:a5a0f5fd7acf4adbbccf890dca2f9998d055d65e",
+  "distribution": "nex-skill-language",
+  "locked_cryptography_version": "46.0.7",
+  "package_version": "0.2.0",
+  "platform_cryptography_requirement": "cryptography<47,>=46",
+  "platform_lock_sha256": "sha256:4921d3104651bba369876c2edecd4a5ae05a01353e6ce4c4def453a90eac3417",
+  "public_api_symbols": [
+    "ApprovalRequest",
+    "ApprovalEvidence",
+    "ApprovalSuspensionCoordinator",
+    "ApprovalResumeCoordinator",
+    "CheckpointPort",
+    "ResumeCheckpointPort",
+    "IdempotencyCoordinator",
+    "WriteExecutionPort",
+    "PostWriteVerificationPort",
+    "RuntimePreflightValidator"
+  ],
+  "record_file_count": 70,
+  "record_integrity_count": 69,
+  "repository": "nurigitdev/2608_nsl",
+  "requirements": [
+    "cryptography<47.0.0,>=46.0.7"
+  ],
+  "requires_python": ">=3.12",
+  "schema_version": "nsl_wheel_lock.v2",
+  "source_revision": "a5a0f5fd7acf4adbbccf890dca2f9998d055d65e",
+  "source_tree": "e7ffb07378ba01f4c9da6645f91b75614c605907",
+  "wheel_filename": "nex_skill_language-0.2.0-py3-none-any.whl",
+  "wheel_sha256": "sha256:862958a5eab982a71bec5ee58b9e530867d6c25f65d8b770efb29ca78ce7f135",
+  "wheel_size": 194308
+}

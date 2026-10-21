@@ -33,6 +33,10 @@ from nex_runtime.nsl_package_admission import (
     validate_nsl_wheel_lock,
 )
 from nex_runtime.nsl_release_identity import build_nsl_release_identity
+from nex_runtime.nsl_v02_wheel_lock import (
+    nsl_v02_wheel_lock_projection,
+    validate_nsl_v02_wheel_lock,
+)
 
 EXECUTION_ENV = "NEX_NSL_WHEEL_ADMISSION"
 DEFAULT_SOURCE = Path("/home/tprover/2608_nsl")
@@ -41,6 +45,9 @@ DEFAULT_REPORT = ROOT / "reports" / "deployment" / "p6-ca02-nsl-wheel.json"
 DEFAULT_LOCK = ROOT / "deployment" / "locks" / "nsl-v0.1-wheel.json"
 P8_V02_OUTPUT = ROOT / "reports" / "deployment" / "p8-nsl-v0.2-wheel"
 P8_V02_REPORT = ROOT / "reports" / "deployment" / "p8-s01-nsl-v0.2-identity.json"
+P8_V02_LOCK_REPORT = (
+    ROOT / "reports" / "deployment" / "p8-s02-nsl-v0.2-wheel-lock.json"
+)
 P8_V02_LOCK = ROOT / "deployment" / "locks" / "nsl-v0.2-wheel.json"
 REPOSITORY = "nurigitdev/2608_nsl"
 PUBLIC_API_SYMBOLS = (
@@ -93,7 +100,11 @@ def run_nsl_wheel_admission(
 ) -> dict[str, Any]:
     env = dict(os.environ if environ is None else environ)
     evidence_schema = (
-        "p8_nsl_release_identity_evidence.v1"
+        (
+            "p8_nsl_v02_wheel_lock_evidence.v1"
+            if lock is not None
+            else "p8_nsl_release_identity_evidence.v1"
+        )
         if expected_source_tree is not None
         else "p6_ca02_nsl_wheel_evidence.v1"
     )
@@ -250,7 +261,11 @@ def _execute(
 
     wheel_lock = None
     if lock is not None:
-        wheel_lock = nsl_wheel_lock_projection(admission, repository=REPOSITORY)
+        wheel_lock = (
+            nsl_v02_wheel_lock_projection(release_identity, admission)
+            if release_identity is not None
+            else nsl_wheel_lock_projection(admission, repository=REPOSITORY)
+        )
     if write_lock and lock is not None:
         lock.parent.mkdir(parents=True, exist_ok=True)
         lock.write_text(
@@ -260,16 +275,26 @@ def _execute(
     elif lock is not None:
         if not lock.is_file():
             raise NslWheelBuildError("NSL wheel lock is missing")
-        validate_nsl_wheel_lock(
-            admission,
-            json.loads(lock.read_text(encoding="utf-8")),
-            repository=REPOSITORY,
-        )
+        persisted_lock = json.loads(lock.read_text(encoding="utf-8"))
+        if release_identity is not None:
+            validate_nsl_v02_wheel_lock(
+                release_identity, admission, persisted_lock
+            )
+        else:
+            validate_nsl_wheel_lock(
+                admission,
+                persisted_lock,
+                repository=REPOSITORY,
+            )
     return {
         "schema_version": (
-            "p8_nsl_release_identity_evidence.v1"
-            if release_identity is not None
-            else "p6_ca02_nsl_wheel_evidence.v1"
+            "p8_nsl_v02_wheel_lock_evidence.v1"
+            if release_identity is not None and lock is not None
+            else (
+                "p8_nsl_release_identity_evidence.v1"
+                if release_identity is not None
+                else "p6_ca02_nsl_wheel_evidence.v1"
+            )
         ),
         "status": "PASS",
         "slice": release_slice,
@@ -462,7 +487,9 @@ def main() -> int:
     args = parser.parse_args()
     if args.release_profile == "v0.2":
         output = args.output or P8_V02_OUTPUT
-        report = args.report or P8_V02_REPORT
+        report = args.report or (
+            P8_V02_REPORT if args.identity_only else P8_V02_LOCK_REPORT
+        )
         lock = None if args.identity_only else (args.lock or P8_V02_LOCK)
         profile_arguments = {
             "expected_version": "0.2.0",
@@ -471,7 +498,7 @@ def main() -> int:
             "expected_source_tree": P8_V02_SOURCE_TREE,
             "expected_wheel_sha256": P8_V02_WHEEL_SHA256,
             "certification_reference": P8_V02_CERTIFICATION_REFERENCE,
-            "release_slice": "P8-S01",
+            "release_slice": "P8-S01" if args.identity_only else "P8-S02",
         }
     else:
         output = args.output or DEFAULT_OUTPUT

@@ -260,3 +260,20 @@ def test_execute_builds_exact_v02_identity_without_lock(
     arguments["certification_reference"] = None
     with pytest.raises(command.NslWheelBuildError, match="identity is incomplete"):
         command._execute(**arguments)
+
+    arguments["certification_reference"] = command.P8_V02_CERTIFICATION_REFERENCE
+    lock = root / "deployment" / "locks" / "nsl-v0.2-wheel.json"
+    arguments.update(lock=lock, write_lock=True, release_slice="P8-S02")
+    locked = command._execute(**arguments)
+    assert locked["schema_version"] == "p8_nsl_v02_wheel_lock_evidence.v1"
+    assert locked["decision"]["wheel_admitted"] is True
+    assert json.loads(lock.read_text(encoding="utf-8"))["source_tree"] == TREE
+
+    arguments["write_lock"] = False
+    assert command._execute(**arguments) == locked
+
+    persisted = json.loads(lock.read_text(encoding="utf-8"))
+    persisted["wheel_sha256"] = "sha256:" + "c" * 64
+    lock.write_text(json.dumps(persisted), encoding="utf-8")
+    with pytest.raises(NslPackageAdmissionError, match="does not match"):
+        command._execute(**arguments)
