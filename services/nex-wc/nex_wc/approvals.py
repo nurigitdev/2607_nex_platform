@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from threading import RLock
 from typing import Any, Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -111,6 +111,17 @@ class ApprovalDecisionAuthorizationError(Exception):
         return self.detail
 
 
+@dataclass(frozen=True)
+class ApprovalDecisionError(Exception):
+    error_code: str
+    detail: str
+    status_code: int = 400
+    retryable: bool = False
+
+    def __str__(self) -> str:
+        return self.detail
+
+
 class ApprovalWorkItemRepository(Protocol):
     def insert(self, work_item: Mapping[str, Any]) -> dict[str, Any]: ...
 
@@ -126,11 +137,23 @@ class ApprovalWorkItemRepository(Protocol):
         self, *, tenant_id: str, approval_domain: str, source_ref: str
     ) -> dict[str, Any] | None: ...
 
+    def commit_decision(
+        self,
+        *,
+        decision: Mapping[str, Any],
+        expected_version: int,
+    ) -> tuple[dict[str, Any], bool]: ...
+
+    def get_decision(
+        self, *, tenant_id: str, approval_work_item_id: str
+    ) -> dict[str, Any] | None: ...
+
 
 class InMemoryApprovalWorkItemRepository:
     def __init__(self) -> None:
         self._records: dict[tuple[str, str], dict[str, Any]] = {}
         self._source_keys: set[tuple[str, str, str]] = set()
+        self._decisions: dict[tuple[str, str], dict[str, Any]] = {}
         self._lock = RLock()
 
     def insert(self, work_item: Mapping[str, Any]) -> dict[str, Any]:
@@ -192,6 +215,35 @@ class InMemoryApprovalWorkItemRepository:
                 ):
                     return copy.deepcopy(record)
             return None
+
+    def commit_decision(
+        self,
+        *,
+        decision: Mapping[str, Any],
+        expected_version: int,
+    ) -> tuple[dict[str, Any], bool]:
+        record = validate_approval_decision(decision)
+        key = (record["tenant_id"], record["approval_work_item_id"])
+        with self._lock:
+            item = self._records.get(key)
+            if item is None:
+                raise _decision_not_found()
+            existing = self._decisions.get(key)
+            if existing is not None:
+                _require_same_decision(existing, record)
+                return copy.deepcopy(existing), False
+            _require_pending_version(item, expected_version=expected_version)
+            self._decisions[key] = copy.deepcopy(record)
+            item["state"] = _terminal_state(record["decision"])
+            item["version"] = expected_version + 1
+            return copy.deepcopy(record), True
+
+    def get_decision(
+        self, *, tenant_id: str, approval_work_item_id: str
+    ) -> dict[str, Any] | None:
+        with self._lock:
+            record = self._decisions.get((tenant_id, approval_work_item_id))
+            return None if record is None else copy.deepcopy(record)
 
 
 class SqlAlchemyApprovalWorkItemRepository:
@@ -285,6 +337,71 @@ class SqlAlchemyApprovalWorkItemRepository:
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
 
+    def commit_decision(
+        self,
+        *,
+        decision: Mapping[str, Any],
+        expected_version: int,
+    ) -> tuple[dict[str, Any], bool]:
+        record = validate_approval_decision(decision)
+        try:
+            with self._session_factory() as session:
+                item = _load_for_decision(
+                    session,
+                    tenant_id=record["tenant_id"],
+                    approval_work_item_id=record["approval_work_item_id"],
+                )
+                if item is None:
+                    raise _decision_not_found()
+                existing = _load_decision(
+                    session,
+                    tenant_id=record["tenant_id"],
+                    approval_work_item_id=record["approval_work_item_id"],
+                )
+                if existing is not None:
+                    _require_same_decision(existing, record)
+                    session.commit()
+                    return existing, False
+                _require_pending_version(item, expected_version=expected_version)
+                session.execute(text(_DECISION_INSERT_SQL), record)
+                updated = session.execute(
+                    text(_WORK_ITEM_DECISION_UPDATE_SQL),
+                    {
+                        "tenant_id": record["tenant_id"],
+                        "approval_work_item_id": record["approval_work_item_id"],
+                        "expected_version": expected_version,
+                        "next_version": expected_version + 1,
+                        "terminal_state": _terminal_state(record["decision"]),
+                    },
+                )
+                if int(updated.rowcount or 0) != 1:
+                    raise _decision_conflict(
+                        "ApprovalWorkItem changed before decision commit."
+                    )
+                session.commit()
+                return record, True
+        except ApprovalDecisionError:
+            raise
+        except IntegrityError as exc:
+            raise _decision_conflict(
+                "Approval decision identity or version already exists."
+            ) from exc
+        except SQLAlchemyError as exc:
+            raise _decision_unavailable() from exc
+
+    def get_decision(
+        self, *, tenant_id: str, approval_work_item_id: str
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return _load_decision(
+                    session,
+                    tenant_id=tenant_id,
+                    approval_work_item_id=approval_work_item_id,
+                )
+        except SQLAlchemyError as exc:
+            raise _decision_unavailable() from exc
+
 
 class ApprovalWorkItemService:
     def __init__(self, repository: ApprovalWorkItemRepository) -> None:
@@ -352,6 +469,67 @@ class ApprovalDecisionAuthorizer:
         }
 
 
+class ApprovalDecisionService:
+    def __init__(
+        self,
+        repository: ApprovalWorkItemRepository,
+        *,
+        authorizer: ApprovalDecisionAuthorizer,
+        id_factory: Callable[[], str] | None = None,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._repository = repository
+        self._authorizer = authorizer
+        self._id_factory = id_factory or (lambda: str(uuid4()))
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def decide(
+        self,
+        *,
+        tenant_id: str,
+        approval_work_item_id: str,
+        decision: str,
+        decided_by: str,
+        decision_comment: str | None = None,
+    ) -> dict[str, Any]:
+        item = self._repository.get(
+            tenant_id=tenant_id,
+            approval_work_item_id=approval_work_item_id,
+        )
+        if item is None:
+            raise _decision_not_found()
+        decision_value = _decision_value(decision)
+        comment = _decision_comment(decision_comment)
+        decision_id = _decision_uuid("decision_id", self._id_factory())
+        decided_at = _timestamp("decided_at", self._clock())
+        evidence = self._authorizer.authorize(
+            work_item=item,
+            decided_by=decided_by,
+        )
+        record = {
+            "schema_version": "wc_approval_decision.v1",
+            "tenant_id": item["tenant_id"],
+            "decision_id": decision_id,
+            "approval_work_item_id": item["approval_work_item_id"],
+            "decision": decision_value,
+            "decided_by": evidence["decided_by"],
+            "decision_comment": comment,
+            "decision_version": 1,
+            "authorized_by_oa": True,
+            "oa_decision_ref": evidence["oa_decision_ref"],
+            "authorization_revision_hash": evidence[
+                "authorization_revision_hash"
+            ],
+            "authorization_checked_at": evidence["authorization_checked_at"],
+            "decided_at": decided_at,
+        }
+        saved, created = self._repository.commit_decision(
+            decision=record,
+            expected_version=item["version"],
+        )
+        return {"decision": saved, "created": created}
+
+
 def validate_approval_work_item(value: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise _invalid("ApprovalWorkItem must be an object.")
@@ -412,6 +590,53 @@ def validate_approval_work_item(value: Mapping[str, Any]) -> dict[str, Any]:
     version = record["version"]
     if not isinstance(version, int) or isinstance(version, bool) or version < 1:
         raise _invalid("ApprovalWorkItem version is invalid.")
+    return record
+
+
+def validate_approval_decision(value: Mapping[str, Any]) -> dict[str, Any]:
+    fields = {
+        "schema_version",
+        "tenant_id",
+        "decision_id",
+        "approval_work_item_id",
+        "decision",
+        "decided_by",
+        "decision_comment",
+        "decision_version",
+        "authorized_by_oa",
+        "oa_decision_ref",
+        "authorization_revision_hash",
+        "authorization_checked_at",
+        "decided_at",
+    }
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise _decision_invalid("ApprovalDecision fields are invalid.")
+    record = copy.deepcopy(dict(value))
+    if record["schema_version"] != "wc_approval_decision.v1":
+        raise _decision_invalid("ApprovalDecision schema_version is invalid.")
+    record["tenant_id"] = _decision_scoped("tenant_id", record["tenant_id"])
+    record["decision_id"] = _decision_uuid("decision_id", record["decision_id"])
+    record["approval_work_item_id"] = _decision_uuid(
+        "approval_work_item_id", record["approval_work_item_id"]
+    )
+    record["decision"] = _decision_value(record["decision"])
+    record["decided_by"] = _decision_scoped("decided_by", record["decided_by"])
+    record["decision_comment"] = _decision_comment(record["decision_comment"])
+    version = record["decision_version"]
+    if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+        raise _decision_invalid("ApprovalDecision decision_version is invalid.")
+    if record["authorized_by_oa"] is not True:
+        raise _decision_invalid("ApprovalDecision must be authorized by OA.")
+    record["oa_decision_ref"] = _decision_scoped(
+        "oa_decision_ref", record["oa_decision_ref"]
+    )
+    hash_ref = record["authorization_revision_hash"]
+    if not isinstance(hash_ref, str) or not _HASH_REF.fullmatch(hash_ref):
+        raise _decision_invalid("ApprovalDecision authorization hash is invalid.")
+    record["authorization_checked_at"] = _decision_timestamp(
+        "authorization_checked_at", record["authorization_checked_at"]
+    )
+    record["decided_at"] = _decision_timestamp("decided_at", record["decided_at"])
     return record
 
 
@@ -568,6 +793,150 @@ def _authorization_denied(detail: str) -> ApprovalDecisionAuthorizationError:
     )
 
 
+def _require_same_decision(
+    existing: Mapping[str, Any], candidate: Mapping[str, Any]
+) -> None:
+    semantic_fields = (
+        "tenant_id",
+        "approval_work_item_id",
+        "decision",
+        "decided_by",
+        "decision_comment",
+    )
+    if any(existing[field] != candidate[field] for field in semantic_fields):
+        raise _decision_conflict(
+            "ApprovalWorkItem already has a different terminal decision."
+        )
+
+
+def _require_pending_version(
+    work_item: Mapping[str, Any], *, expected_version: int
+) -> None:
+    if (
+        work_item.get("state") != "PENDING"
+        or work_item.get("version") != expected_version
+    ):
+        raise _decision_conflict(
+            "ApprovalWorkItem is not at the expected PENDING version."
+        )
+
+
+def _terminal_state(decision: str) -> str:
+    return "APPROVED" if decision == "APPROVE" else "REJECTED"
+
+
+def _decision_value(value: Any) -> str:
+    normalized = str(value).strip().upper()
+    if normalized not in {"APPROVE", "REJECT"}:
+        raise _decision_invalid("ApprovalDecision decision is invalid.")
+    return normalized
+
+
+def _decision_comment(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value) > 2000:
+        raise _decision_invalid("ApprovalDecision comment is invalid.")
+    return value
+
+
+def _decision_uuid(field: str, value: Any) -> str:
+    try:
+        return str(UUID(str(value)))
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise _decision_invalid(f"ApprovalDecision {field} must be a UUID.") from exc
+
+
+def _decision_scoped(field: str, value: Any) -> str:
+    normalized = str(value).strip()
+    if not _SCOPED_ID.fullmatch(normalized):
+        raise _decision_invalid(f"ApprovalDecision {field} is invalid.")
+    return normalized
+
+
+def _decision_timestamp(field: str, value: Any) -> str:
+    try:
+        return _timestamp(field, value)
+    except ApprovalWorkItemError as exc:
+        raise _decision_invalid(f"ApprovalDecision {field} is invalid.") from exc
+
+
+def _decision_invalid(detail: str) -> ApprovalDecisionError:
+    return ApprovalDecisionError("wc.approval_decision_invalid", detail)
+
+
+def _decision_not_found() -> ApprovalDecisionError:
+    return ApprovalDecisionError(
+        "wc.approval_work_item_not_found",
+        "ApprovalWorkItem was not found.",
+        404,
+    )
+
+
+def _decision_conflict(detail: str) -> ApprovalDecisionError:
+    return ApprovalDecisionError(
+        "wc.approval_decision_conflict",
+        detail,
+        409,
+    )
+
+
+def _decision_unavailable() -> ApprovalDecisionError:
+    return ApprovalDecisionError(
+        "wc.approval_decision_store_unavailable",
+        "WC approval decision persistence is unavailable.",
+        503,
+        True,
+    )
+
+
+def _load_for_decision(
+    session: Session, *, tenant_id: str, approval_work_item_id: str
+) -> dict[str, Any] | None:
+    suffix = ""
+    bind = session.get_bind()
+    if bind.dialect.name != "sqlite":
+        suffix = " FOR UPDATE"
+    row = (
+        session.execute(
+            text(_WORK_ITEM_STATE_SQL + suffix),
+            {
+                "tenant_id": tenant_id,
+                "approval_work_item_id": approval_work_item_id,
+            },
+        )
+        .mappings()
+        .first()
+    )
+    return None if row is None else dict(row)
+
+
+def _load_decision(
+    session: Session, *, tenant_id: str, approval_work_item_id: str
+) -> dict[str, Any] | None:
+    row = (
+        session.execute(
+            text(_DECISION_SELECT_SQL),
+            {
+                "tenant_id": tenant_id,
+                "approval_work_item_id": approval_work_item_id,
+            },
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:
+        return None
+    record = dict(row)
+    for field in ("decision_id", "approval_work_item_id"):
+        record[field] = str(record[field])
+    for field in ("authorization_checked_at", "decided_at"):
+        record[field] = _decision_timestamp(field, record[field])
+    record["authorized_by_oa"] = bool(record["authorized_by_oa"])
+    record["schema_version"] = "wc_approval_decision.v1"
+    return validate_approval_decision(record)
+
+
 def _invalid(detail: str) -> ApprovalWorkItemError:
     return ApprovalWorkItemError("wc.approval_work_item_invalid", detail)
 
@@ -678,4 +1047,43 @@ FROM wc_approval_work_item
 WHERE tenant_id = :tenant_id
   AND approval_domain = :approval_domain
   AND source_ref = :source_ref
+"""
+
+_WORK_ITEM_STATE_SQL = """
+SELECT tenant_id, approval_work_item_id, state, version
+FROM wc_approval_work_item
+WHERE tenant_id = :tenant_id
+  AND approval_work_item_id = :approval_work_item_id
+"""
+
+_DECISION_INSERT_SQL = """
+INSERT INTO wc_approval_decision (
+    tenant_id, decision_id, approval_work_item_id, decision, decided_by,
+    decision_comment, decision_version, authorized_by_oa, oa_decision_ref,
+    authorization_revision_hash, authorization_checked_at, decided_at
+) VALUES (
+    :tenant_id, :decision_id, :approval_work_item_id, :decision, :decided_by,
+    :decision_comment, :decision_version, :authorized_by_oa, :oa_decision_ref,
+    :authorization_revision_hash, :authorization_checked_at, :decided_at
+)
+"""
+
+_WORK_ITEM_DECISION_UPDATE_SQL = """
+UPDATE wc_approval_work_item
+SET state = :terminal_state, version = :next_version
+WHERE tenant_id = :tenant_id
+  AND approval_work_item_id = :approval_work_item_id
+  AND state = 'PENDING'
+  AND version = :expected_version
+"""
+
+_DECISION_SELECT_SQL = """
+SELECT tenant_id, decision_id, approval_work_item_id, decision, decided_by,
+       decision_comment, decision_version, authorized_by_oa, oa_decision_ref,
+       authorization_revision_hash, authorization_checked_at, decided_at
+FROM wc_approval_decision
+WHERE tenant_id = :tenant_id
+  AND approval_work_item_id = :approval_work_item_id
+ORDER BY decision_version DESC
+LIMIT 1
 """
