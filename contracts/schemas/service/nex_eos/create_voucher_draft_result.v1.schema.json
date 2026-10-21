@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/create_voucher_draft_result.v1.schema.json",
+  "title": "EOS Create Voucher Draft Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "business_operation_id", "idempotency_key",
+    "payload_hash", "commit_state", "idempotency_disposition", "voucher_ref",
+    "business_transaction_ref", "committed_at", "outbox_event_ref",
+    "reason_code", "reconciliation_ref"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_create_voucher_draft_result.v1"},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "business_operation_id": {"$ref": "#/$defs/uuid"},
+    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 256},
+    "payload_hash": {"$ref": "#/$defs/hash_ref"},
+    "commit_state": {"enum": ["COMMITTED", "NOT_COMMITTED", "UNKNOWN_COMMIT_STATE"]},
+    "idempotency_disposition": {"enum": ["CREATED", "REPLAYED"]},
+    "voucher_ref": {"oneOf": [{"$ref": "#/$defs/entity_ref"}, {"type": "null"}]},
+    "business_transaction_ref": {"oneOf": [{"$ref": "#/$defs/entity_ref"}, {"type": "null"}]},
+    "committed_at": {"type": ["string", "null"], "format": "date-time"},
+    "outbox_event_ref": {"oneOf": [{"$ref": "#/$defs/entity_ref"}, {"type": "null"}]},
+    "reason_code": {"type": ["string", "null"], "maxLength": 128},
+    "reconciliation_ref": {"oneOf": [{"$ref": "#/$defs/entity_ref"}, {"type": "null"}]}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"commit_state": {"const": "COMMITTED"}}},
+      "then": {
+        "properties": {
+          "voucher_ref": {"$ref": "#/$defs/entity_ref"},
+          "business_transaction_ref": {"$ref": "#/$defs/entity_ref"},
+          "committed_at": {"type": "string", "format": "date-time"},
+          "outbox_event_ref": {"$ref": "#/$defs/entity_ref"},
+          "reason_code": {"type": "null"},
+          "reconciliation_ref": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"commit_state": {"const": "UNKNOWN_COMMIT_STATE"}}},
+      "then": {"properties": {"reconciliation_ref": {"$ref": "#/$defs/entity_ref"}}}
+    }
+  ],
+  "$defs": {
+    "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "uuid": {"type": "string", "format": "uuid"},
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "entity_ref": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$"},
+        "id": {"$ref": "#/$defs/scoped_id"}
+      }
+    }
+  }
+}

@@ -1020,6 +1020,21 @@
       "name": "ag_platform_observability_dashboard_database_url",
       "path": "tests/negative/operations/ag_platform_observability_dashboard.database_url.json",
       "schema": "schemas/service/nex_ag/platform_observability_dashboard.v1.schema.json"
+    },
+    {
+      "name": "eos_create_voucher_draft_command_float_amount",
+      "path": "tests/negative/service/eos_create_voucher_draft_command.float_amount.json",
+      "schema": "schemas/service/nex_eos/create_voucher_draft_command.v1.schema.json"
+    },
+    {
+      "name": "eos_create_voucher_draft_command_missing_approval",
+      "path": "tests/negative/service/eos_create_voucher_draft_command.missing_approval.json",
+      "schema": "schemas/service/nex_eos/create_voucher_draft_command.v1.schema.json"
+    },
+    {
+      "name": "eos_create_voucher_draft_result_committed_without_voucher",
+      "path": "tests/negative/service/eos_create_voucher_draft_result.committed_without_voucher.json",
+      "schema": "schemas/service/nex_eos/create_voucher_draft_result.v1.schema.json"
     }
   ]
 }

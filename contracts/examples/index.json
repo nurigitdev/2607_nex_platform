@@ -1179,6 +1179,16 @@
       "name": "ag_platform_observability_dashboard_mock_external",
       "path": "examples/operations/ag_platform_observability_dashboard.mock_external.json",
       "schema": "schemas/service/nex_ag/platform_observability_dashboard.v1.schema.json"
+    },
+    {
+      "name": "eos_create_voucher_draft_command_golden_a",
+      "path": "examples/service/eos_create_voucher_draft_command.golden_a.json",
+      "schema": "schemas/service/nex_eos/create_voucher_draft_command.v1.schema.json"
+    },
+    {
+      "name": "eos_create_voucher_draft_result_committed",
+      "path": "examples/service/eos_create_voucher_draft_result.committed.json",
+      "schema": "schemas/service/nex_eos/create_voucher_draft_result.v1.schema.json"
     }
   ]
 }

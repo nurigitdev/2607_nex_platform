@@ -281,14 +281,14 @@ def test_main_module_exports_executable_app() -> None:
     assert module.SERVICE_SPEC is SERVICE_SPEC
 
 
-def test_openapi_freezes_only_service_shell_contract() -> None:
+def test_openapi_preserves_service_shell_contract_as_domain_paths_evolve() -> None:
     contract = yaml.safe_load(
         (ROOT / "contracts/openapi/nex-eos.openapi.yaml").read_text(encoding="utf-8")
     )
 
-    assert contract["info"]["version"] == "2.1.0-p8-s07"
+    assert contract["info"]["version"].startswith("2.1.0-p8-s")
     assert contract["servers"] == [{"url": "http://127.0.0.1:8107"}]
-    assert set(contract["paths"]) == {
+    assert {
         "/",
         "/health",
         "/ready",
@@ -296,7 +296,7 @@ def test_openapi_freezes_only_service_shell_contract() -> None:
         "/internal/v1/auth/service-claim",
         "/internal/v1/auth/service-claim/active",
         "/internal/v1/auth/service-token-runtime",
-    }
+    }.issubset(contract["paths"])
     assert not any(path.startswith("/api/") for path in contract["paths"])
 
 

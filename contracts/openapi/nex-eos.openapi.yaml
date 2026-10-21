@@ -1,14 +1,15 @@
 openapi: 3.1.0
 info:
   title: NeX Enterprise Operations System API
-  version: 2.1.0-p8-s07
+  version: 2.1.0-p8-s18
   description: >-
-    P8-S07 executable service shell. Enterprise domain behavior and database
-    mutation routes are intentionally not active.
+    NeX-EOS service shell and canonical Voucher Draft command contract. The
+    P8-S18 path is contract-first and becomes executable in P8-S19.
 servers:
   - url: http://127.0.0.1:8107
 tags:
   - name: Platform
+  - name: Finance
 paths:
   /:
     get:
@@ -85,8 +86,52 @@ paths:
           description: Service claim is missing or invalid.
         "403":
           description: Audience or required scope is not allowed.
+  /internal/v1/finance/voucher-drafts:
+    post:
+      operationId: createEosVoucherDraft
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:voucher-draft:create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVoucherDraftCommand"
+      responses:
+        "200":
+          description: Idempotent replay of an existing committed Voucher Draft.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateVoucherDraftResult"
+        "201":
+          description: Voucher Draft committed atomically.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateVoucherDraftResult"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Service trust or fresh business authorization is denied.
+        "409":
+          description: Idempotency identity conflicts with prior semantics.
+        "422":
+          description: Command, hash, approval, or domain invariant is invalid.
+        "503":
+          description: OA authorization or EOS persistence is unavailable.
 components:
   securitySchemes:
     serviceBearer:
       type: http
       scheme: bearer
+  schemas:
+    CreateVoucherDraftCommand:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/create_voucher_draft_command.v1.schema.json
+    CreateVoucherDraftResult:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/create_voucher_draft_result.v1.schema.json

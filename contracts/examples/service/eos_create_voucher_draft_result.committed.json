@@ -1,0 +1,15 @@
+{
+  "schema_version": "eos_create_voucher_draft_result.v1",
+  "tenant_id": "tenant-a",
+  "business_operation_id": "86000000-0000-4000-8000-000000000001",
+  "idempotency_key": "golden-a-voucher-0001",
+  "payload_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "commit_state": "COMMITTED",
+  "idempotency_disposition": "CREATED",
+  "voucher_ref": {"type": "eos.voucher_draft", "id": "84000000-0000-4000-8000-000000000001"},
+  "business_transaction_ref": {"type": "eos.business_operation", "id": "86000000-0000-4000-8000-000000000001"},
+  "committed_at": "2026-10-21T01:02:03Z",
+  "outbox_event_ref": {"type": "eos.outbox_event", "id": "87000000-0000-4000-8000-000000000001"},
+  "reason_code": null,
+  "reconciliation_ref": null
+}
