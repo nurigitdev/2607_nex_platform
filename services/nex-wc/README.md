@@ -33,3 +33,11 @@ authorization uses `NEX_WC_OA_BASE_URL` and `NEX_WC_TO_OA_SERVICE_TOKEN`.
 Committed handoff events are bridged into the service-local common JobQueue as
 `WC_EVENT_DELIVERY`; delivery to AE reuses `NEX_WC_AE_BASE_URL` and
 `NEX_WC_TO_AE_SERVICE_TOKEN`.
+
+## P8.2A Delegation Guard
+
+Migration `1004_wc_delegation_lineage` adds the immutable
+`wc_delegation_lineage` relation. It stores root/parent lineage, current parent
+Claim identity, delegation depth, delegating Agent, and the admitted policy
+hash without changing the P7 WorkItem, Claim, or Assignment tables. Historical
+P7 WorkItems without a lineage row remain valid.
