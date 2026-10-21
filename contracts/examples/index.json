@@ -1224,6 +1224,16 @@
       "name": "wc_approval_event_nsl_approved",
       "path": "examples/service/wc_approval_event.nsl_approved.json",
       "schema": "schemas/service/nex_wc/approval_event.v1.schema.json"
+    },
+    {
+      "name": "eos_approver_resolution_request_default",
+      "path": "examples/service/eos_approver_resolution_request.default.json",
+      "schema": "schemas/service/nex_eos/approver_resolution_request.v1.schema.json"
+    },
+    {
+      "name": "eos_approver_resolution_resolved",
+      "path": "examples/service/eos_approver_resolution.resolved.json",
+      "schema": "schemas/service/nex_eos/approver_resolution.v1.schema.json"
     }
   ]
 }

@@ -1,0 +1,30 @@
+{
+  "schema_version": "eos_approver_resolution.v1",
+  "tenant_id": "tenant-a",
+  "approval_domain": "NSL_WRITE",
+  "risk_level": "HIGH",
+  "policy_ref": "eos.approver.default.v1",
+  "requester_ref": {"type": "oa.user", "id": "employee-1001"},
+  "principal_ref": {"type": "oa.user", "id": "employee-2001"},
+  "position_type": "GROUP_LEAD",
+  "position_ref": {
+    "type": "eos.position",
+    "id": "20000000-0000-4000-8000-000000000001"
+  },
+  "position_assignment_ref": {
+    "type": "eos.position_assignment",
+    "id": "30000000-0000-4000-8000-000000000001"
+  },
+  "org_unit_ref": {
+    "type": "eos.org_unit",
+    "id": "10000000-0000-4000-8000-000000000001"
+  },
+  "project_ref": {
+    "type": "eos.project",
+    "id": "40000000-0000-4000-8000-000000000001"
+  },
+  "resolution_ref": "eos.approver-resolution:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "resolution_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "resolved_at": "2026-10-22T01:00:00Z",
+  "security_authorization": false
+}

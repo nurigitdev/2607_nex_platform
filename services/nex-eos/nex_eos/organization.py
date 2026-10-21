@@ -251,6 +251,83 @@ class SqlAlchemyEosOrganizationRepository:
             ).mappings().one_or_none()
         return dict(row) if row is not None else None
 
+    def resolve_active_approver_assignment(
+        self,
+        *,
+        tenant_id: str,
+        org_unit_id: str,
+        position_type: str,
+        effective_at: datetime,
+    ) -> dict[str, Any] | None:
+        normalized_tenant = _scoped_id("tenant_id", tenant_id)
+        normalized_org_unit = _uuid("org_unit_id", org_unit_id)
+        normalized_position_type = _choice(
+            "position_type", position_type, EOS_POSITION_TYPES
+        )
+        at = _aware_datetime("effective_at", effective_at)
+        statement = (
+            select(
+                EOS_POSITION_TABLE.c.position_id,
+                EOS_POSITION_TABLE.c.position_type,
+                EOS_POSITION_TABLE.c.org_unit_id,
+                EOS_POSITION_ASSIGNMENT_TABLE.c.position_assignment_id,
+                EOS_POSITION_ASSIGNMENT_TABLE.c.principal_ref_type,
+                EOS_POSITION_ASSIGNMENT_TABLE.c.principal_id,
+                EOS_POSITION_ASSIGNMENT_TABLE.c.version.label(
+                    "position_assignment_version"
+                ),
+                EOS_ORG_UNIT_TABLE.c.version.label("org_unit_version"),
+            )
+            .select_from(
+                EOS_POSITION_TABLE.join(
+                    EOS_ORG_UNIT_TABLE,
+                    and_(
+                        EOS_ORG_UNIT_TABLE.c.tenant_id
+                        == EOS_POSITION_TABLE.c.tenant_id,
+                        EOS_ORG_UNIT_TABLE.c.org_unit_id
+                        == EOS_POSITION_TABLE.c.org_unit_id,
+                    ),
+                ).join(
+                    EOS_POSITION_ASSIGNMENT_TABLE,
+                    and_(
+                        EOS_POSITION_ASSIGNMENT_TABLE.c.tenant_id
+                        == EOS_POSITION_TABLE.c.tenant_id,
+                        EOS_POSITION_ASSIGNMENT_TABLE.c.position_id
+                        == EOS_POSITION_TABLE.c.position_id,
+                    ),
+                )
+            )
+            .where(
+                EOS_POSITION_TABLE.c.tenant_id == normalized_tenant,
+                EOS_POSITION_TABLE.c.org_unit_id == normalized_org_unit,
+                EOS_POSITION_TABLE.c.position_type == normalized_position_type,
+                EOS_POSITION_TABLE.c.status == "ACTIVE",
+                EOS_ORG_UNIT_TABLE.c.status == "ACTIVE",
+                EOS_ORG_UNIT_TABLE.c.effective_from <= at,
+                or_(
+                    EOS_ORG_UNIT_TABLE.c.effective_until.is_(None),
+                    EOS_ORG_UNIT_TABLE.c.effective_until > at,
+                ),
+                EOS_POSITION_ASSIGNMENT_TABLE.c.status == "ACTIVE",
+                EOS_POSITION_ASSIGNMENT_TABLE.c.effective_from <= at,
+                or_(
+                    EOS_POSITION_ASSIGNMENT_TABLE.c.effective_until.is_(None),
+                    EOS_POSITION_ASSIGNMENT_TABLE.c.effective_until > at,
+                ),
+            )
+            .limit(1)
+        )
+        try:
+            with self._session_factory() as session:
+                row = session.execute(statement).mappings().one_or_none()
+        except SQLAlchemyError as exc:
+            raise EosOrganizationError(
+                "EOS_ORGANIZATION_QUERY_FAILED",
+                "Organization query is unavailable",
+                status_code=503,
+            ) from exc
+        return dict(row) if row is not None else None
+
     def _transaction(self):
         return build_unit_of_work(self._session_factory)
 

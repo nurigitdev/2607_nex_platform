@@ -47,8 +47,17 @@ def test_negative_contract_examples_are_rejected(schema_path, payload_path):
 def test_contract_indexes_and_openapi_bind_canonical_schemas():
     examples = _json(CONTRACTS / "examples/index.json")["examples"]
     negatives = _json(CONTRACTS / "tests/negative/index.json")["negative_examples"]
-    assert sum(item["schema"].startswith("schemas/service/nex_eos/") for item in examples) == 2
-    assert sum(item["schema"].startswith("schemas/service/nex_eos/") for item in negatives) == 3
+    example_names = {item["name"] for item in examples}
+    negative_names = {item["name"] for item in negatives}
+    assert {
+        "eos_create_voucher_draft_command_golden_a",
+        "eos_create_voucher_draft_result_committed",
+    } <= example_names
+    assert {
+        "eos_create_voucher_draft_command_float_amount",
+        "eos_create_voucher_draft_command_missing_approval",
+        "eos_create_voucher_draft_result_committed_without_voucher",
+    } <= negative_names
 
     spec = yaml.safe_load((CONTRACTS / "openapi/nex-eos.openapi.yaml").read_text())
     operation = spec["paths"]["/internal/v1/finance/voucher-drafts"]["post"]

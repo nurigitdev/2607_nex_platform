@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/approver_resolution_request.v1.schema.json",
+  "title": "EOS Approver Resolution Request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "requester_ref", "approval_domain", "risk_level",
+    "org_unit_ref", "project_ref", "policy_ref"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_approver_resolution_request.v1"},
+    "requester_ref": {
+      "allOf": [
+        {"$ref": "#/$defs/entity_ref"},
+        {"properties": {"type": {"const": "oa.user"}}}
+      ]
+    },
+    "approval_domain": {
+      "enum": ["AGENT_FORMAL", "NSL_WRITE", "BUSINESS_FORMAL"]
+    },
+    "risk_level": {"enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]},
+    "org_unit_ref": {
+      "allOf": [
+        {"$ref": "#/$defs/uuid_entity_ref"},
+        {"properties": {"type": {"const": "eos.org_unit"}}}
+      ]
+    },
+    "project_ref": {
+      "oneOf": [
+        {
+          "allOf": [
+            {"$ref": "#/$defs/uuid_entity_ref"},
+            {"properties": {"type": {"const": "eos.project"}}}
+          ]
+        },
+        {"type": "null"}
+      ]
+    },
+    "policy_ref": {"const": "eos.approver.default.v1"}
+  },
+  "$defs": {
+    "scoped_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$"},
+        "id": {"$ref": "#/$defs/scoped_id"}
+      }
+    },
+    "uuid_entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$"},
+        "id": {"type": "string", "format": "uuid"}
+      }
+    }
+  }
+}

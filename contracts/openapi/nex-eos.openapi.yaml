@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX Enterprise Operations System API
-  version: 2.1.0-p8-s18
+  version: 2.1.0-p8-s39
   description: >-
     NeX-EOS service shell and canonical Voucher Draft command contract. The
     P8-S18 path is contract-first and becomes executable in P8-S19.
@@ -10,6 +10,7 @@ servers:
 tags:
   - name: Platform
   - name: Finance
+  - name: Organization
 paths:
   /:
     get:
@@ -123,6 +124,44 @@ paths:
           description: Command, hash, approval, or domain invariant is invalid.
         "503":
           description: OA authorization or EOS persistence is unavailable.
+  /internal/v1/organization/approver-resolutions:
+    post:
+      operationId: resolveEosApprover
+      tags: [Organization]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-security-authorization: false
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproverResolutionRequest"
+      responses:
+        "200":
+          description: Deterministic intended business approver resolution; not an OA authorization decision.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApproverResolution"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Service audience or scope is denied.
+        "404":
+          description: No effective organization assignment matches the policy.
+        "409":
+          description: The default policy would select the requester.
+        "422":
+          description: Resolution input or policy is invalid.
+        "503":
+          description: Organization persistence is unavailable.
   /internal/v1/business-operations/{business_operation_id}:
     get:
       operationId: getEosBusinessOperation
@@ -190,6 +229,12 @@ components:
       type: http
       scheme: bearer
   schemas:
+    ApproverResolutionRequest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/approver_resolution_request.v1.schema.json
+    ApproverResolution:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/approver_resolution.v1.schema.json
     CreateVoucherDraftCommand:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/create_voucher_draft_command.v1.schema.json

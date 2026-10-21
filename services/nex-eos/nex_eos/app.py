@@ -8,6 +8,7 @@ from nex_runtime import SERVICE_SPECS, build_service_app
 
 from .config import EosSettings, load_eos_settings
 from .dependencies import build_eos_dependencies
+from .organization_api import register_organization_routes
 from .voucher_api import register_voucher_command_routes
 
 SERVICE_SPEC = SERVICE_SPECS["nex-eos"]
@@ -46,6 +47,9 @@ def create_eos_app(
     app.state.eos_database_runtime = dependencies.database_runtime
     app.state.eos_business_transactions = dependencies.business_transactions
     app.state.eos_organization = dependencies.organization
+    app.state.eos_approver_resolution_service = (
+        dependencies.approver_resolution_service
+    )
     app.state.eos_projects = dependencies.projects
     app.state.eos_accounts = dependencies.accounts
     app.state.eos_vouchers = dependencies.vouchers
@@ -53,4 +57,5 @@ def create_eos_app(
     app.state.eos_business_operation_query = dependencies.business_operation_query
     app.state.eos_voucher_verification_query = dependencies.voucher_verification_query
     register_voucher_command_routes(app)
+    register_organization_routes(app)
     return app

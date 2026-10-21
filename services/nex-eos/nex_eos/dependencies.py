@@ -8,20 +8,21 @@ from nex_runtime import build_service_token_admission_runtime
 from nex_runtime.service_token_admission import ServiceTokenAdmissionRuntime
 
 from .accounts import SqlAlchemyEosAccountRepository
+from .approver_resolution import EosApproverResolutionService
 from .authorization import EosVoucherAuthorizationClient, HttpOaAuthorizationSource
+from .business_queries import SqlAlchemyEosBusinessOperationQuery
 from .business_transactions import (
     EosBusinessTransactionCoordinator,
     SqlAlchemyEosBusinessTransactionCoordinator,
 )
-from .business_queries import SqlAlchemyEosBusinessOperationQuery
 from .config import EosSettings
 from .health import build_configuration_readiness_check
 from .organization import SqlAlchemyEosOrganizationRepository
 from .persistence import EosDatabaseRuntime, build_eos_database_runtime
 from .projects import SqlAlchemyEosProjectRepository
-from .vouchers import SqlAlchemyEosVoucherRepository
 from .voucher_commands import EosCreateVoucherDraftService
 from .voucher_verification import SqlAlchemyEosVoucherVerificationQuery
+from .vouchers import SqlAlchemyEosVoucherRepository
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class EosDependencies:
     database_runtime: EosDatabaseRuntime | None
     business_transactions: EosBusinessTransactionCoordinator | None
     organization: SqlAlchemyEosOrganizationRepository | None
+    approver_resolution_service: EosApproverResolutionService | None
     projects: SqlAlchemyEosProjectRepository | None
     accounts: SqlAlchemyEosAccountRepository | None
     vouchers: SqlAlchemyEosVoucherRepository | None
@@ -59,6 +61,11 @@ def build_eos_dependencies(
     organization = (
         SqlAlchemyEosOrganizationRepository(database_runtime.session_factory)
         if database_runtime is not None
+        else None
+    )
+    approver_resolution_service = (
+        EosApproverResolutionService(organization)
+        if organization is not None
         else None
     )
     projects = (
@@ -110,6 +117,7 @@ def build_eos_dependencies(
         database_runtime=database_runtime,
         business_transactions=business_transactions,
         organization=organization,
+        approver_resolution_service=approver_resolution_service,
         projects=projects,
         accounts=accounts,
         vouchers=vouchers,
