@@ -11,6 +11,7 @@ TENANT = "tenant-p8-s27"
 PROJECT = "project-p8-s27"
 IA_ID = "27100000-0000-4000-8000-000000000001"
 PA_ID = "27100000-0000-4000-8000-000000000002"
+CLAIM_AGENT_ID = "27100000-0000-4000-8000-000000000003"
 ROOT_ID = "27200000-0000-4000-8000-000000000001"
 DEPTH10_ID = "27200000-0000-4000-8000-000000000010"
 CHILD_ID = "27200000-0000-4000-8000-000000000011"
@@ -36,7 +37,7 @@ class Agents:
 
     def get_agent(self, **_kwargs):
         return {
-            "agent_id": PA_ID,
+            "agent_id": CLAIM_AGENT_ID,
             "agent_type": "PA",
             "project_id": PROJECT,
             "profile_ref": "agent-profile://pa/project-budget-read/v1",
@@ -69,23 +70,45 @@ def _first_payload(delegation_id: str) -> dict[str, object]:
     }
 
 
-def _depth_ten_lineage() -> dict[str, object]:
+def _complete_depth_ten_lineage() -> list[dict[str, object]]:
     policy = initial_delegation_policy()
-    return {
-        "schema_version": "wc_delegation_lineage.v1",
-        "tenant_id": TENANT,
-        "work_item_id": DEPTH10_ID,
-        "root_work_item_id": ROOT_ID,
-        "parent_work_item_id": PARENT_ID,
-        "parent_claim_ref": CLAIM_ID,
-        "parent_claim_generation": 1,
-        "delegating_agent_ref": {"agent_id": PA_ID, "agent_type": "PA"},
-        "parent_agent_execution_id": EXECUTION_ID,
-        "delegation_depth": 10,
-        "policy_ref": policy["policy_ref"],
-        "policy_hash": policy["policy_hash"],
-        "created_at": NOW,
-    }
+    rows = []
+    for depth in range(1, 11):
+        work_item_id = f"27200000-0000-4000-8000-{depth:012d}"
+        parent_id = (
+            None
+            if depth == 1
+            else f"27200000-0000-4000-8000-{depth - 1:012d}"
+        )
+        rows.append(
+            {
+                "schema_version": "wc_delegation_lineage.v1",
+                "tenant_id": TENANT,
+                "work_item_id": work_item_id,
+                "root_work_item_id": ROOT_ID,
+                "parent_work_item_id": parent_id,
+                "parent_claim_ref": (
+                    None
+                    if depth == 1
+                    else f"27300000-0000-4000-8000-{depth:012d}"
+                ),
+                "parent_claim_generation": None if depth == 1 else 1,
+                "delegating_agent_ref": {
+                    "agent_id": (
+                        IA_ID
+                        if depth == 1
+                        else f"27700000-0000-4000-8000-{depth:012d}"
+                    ),
+                    "agent_type": "IA" if depth == 1 else "PA",
+                },
+                "parent_agent_execution_id": f"execution-p8-s27-{depth}",
+                "delegation_depth": depth,
+                "policy_ref": policy["policy_ref"],
+                "policy_hash": policy["policy_hash"],
+                "created_at": NOW,
+            }
+        )
+    return rows
 
 
 def _nested_payload() -> dict[str, object]:
@@ -119,7 +142,8 @@ def _nested_payload() -> dict[str, object]:
 
 def test_s27_prospective_depth_eleven_is_denied_with_zero_child():
     repository = InMemoryWorkItemRepository()
-    repository._lineages.create(_depth_ten_lineage())
+    for lineage in _complete_depth_ten_lineage():
+        repository._lineages.create(lineage)
     service = WorkItemService(
         repository,
         authorization_source=Authorization(),
@@ -143,7 +167,8 @@ def test_s27_current_depth_ten_work_item_can_still_route_and_claim():
         id_factory=lambda: DEPTH10_ID,
         clock=lambda: NOW_DT,
     ).create(_first_payload("delegation-p8-s27-depth-ten"))
-    repository._lineages.create(_depth_ten_lineage())
+    for lineage in _complete_depth_ten_lineage():
+        repository._lineages.create(lineage)
     coordination_repository = InMemoryCoordinationRepository(repository)
     repository.bind_parent_claim_authority_source(coordination_repository)
     ids = iter(

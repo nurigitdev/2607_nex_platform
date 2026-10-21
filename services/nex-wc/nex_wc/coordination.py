@@ -20,6 +20,10 @@ from nex_wc.authorization import (
     AuthorizationSubjectDenied,
     require_active_scope,
 )
+from nex_wc.delegation_lineage import (
+    DelegationLineageError,
+    load_delegation_ancestor_agents_in_session,
+)
 from nex_wc.work_items import InMemoryWorkItemRepository
 
 DEFAULT_ROUTING_POLICY_VERSION = "p7-routing-policy.v1"
@@ -408,6 +412,14 @@ class InMemoryCoordinationRepository:
                 "ASSIGNED",
             }:
                 raise CoordinationError("wc.work_item_claim_conflict", "WorkItem claim version conflict.")
+            try:
+                ancestor_agents = self._work_items._lineages.ancestor_agent_refs(
+                    tenant_id=tenant_id,
+                    work_item_id=work_item_id,
+                )
+            except DelegationLineageError as exc:
+                raise _invalid_delegation_lineage() from exc
+            _require_non_cyclic_candidate(ancestor_agents, selected_agent)
             active = [
                 claim
                 for claim in self._claims.get(key, [])
@@ -716,6 +728,15 @@ class SqlAlchemyCoordinationRepository:
                 route = _load_latest_route(session, tenant_id, work_item_id, lock=True)
                 if route is None or route["decision"] != "ROUTED" or route.get("target_ref") != selected_agent.get("agent_id"):
                     raise CoordinationError("wc.routing_decision_not_claimable", "Routing decision changed before claim.")
+                try:
+                    ancestor_agents = load_delegation_ancestor_agents_in_session(
+                        session,
+                        tenant_id=tenant_id,
+                        work_item_id=work_item_id,
+                    )
+                except DelegationLineageError as exc:
+                    raise _invalid_delegation_lineage() from exc
+                _require_non_cyclic_candidate(ancestor_agents, selected_agent)
                 if record["state"] == "ASSIGNED":
                     expired = session.execute(
                         text(
@@ -1173,6 +1194,28 @@ def _transition_record(record: dict[str, Any], *, state: str, updated_at: str) -
     record["work_item"]["state"] = state
     record["work_item"]["version"] = record["version"]
     record["work_item"]["updated_at"] = updated_at
+
+
+def _require_non_cyclic_candidate(
+    ancestor_agents: Sequence[Mapping[str, Any]],
+    candidate: Mapping[str, Any],
+) -> None:
+    candidate_ref = (str(candidate.get("agent_id")), str(candidate.get("agent_type")))
+    if any(
+        candidate_ref == (str(agent.get("agent_id")), str(agent.get("agent_type")))
+        for agent in ancestor_agents
+    ):
+        raise CoordinationError(
+            "wc.delegation_cycle_detected",
+            "Selected Agent is already present in the delegation ancestor chain.",
+        )
+
+
+def _invalid_delegation_lineage() -> CoordinationError:
+    return CoordinationError(
+        "wc.delegation_lineage_invalid",
+        "Delegation ancestor lineage is incomplete or inconsistent.",
+    )
 
 
 def _in_memory_handoff_authority(

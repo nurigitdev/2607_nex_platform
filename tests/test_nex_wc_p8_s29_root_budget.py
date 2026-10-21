@@ -33,7 +33,9 @@ SMOKE_ENABLED = os.getenv("NEX_WC_P8_S29_POSTGRES_SMOKE") == "1"
 TENANT = "tenant-p8-s29"
 PROJECT = "project-p8-s29"
 IA_ID = "29100000-0000-4000-8000-000000000001"
-PA_ID = "29100000-0000-4000-8000-000000000002"
+PA_A_ID = "29100000-0000-4000-8000-000000000002"
+PA_B_ID = "29100000-0000-4000-8000-000000000003"
+PA_C_ID = "29100000-0000-4000-8000-000000000004"
 ROOT_ID = "29200000-0000-4000-8000-000000000001"
 NOW_DT = datetime(2026, 10, 21, 18, 0, tzinfo=UTC)
 NOW = "2026-10-21T18:00:00Z"
@@ -54,12 +56,15 @@ class Authorization:
 
 
 class Agents:
+    def __init__(self, agent_id: str):
+        self._agent_id = agent_id
+
     def list_agents(self, **_kwargs):
-        return [self.get_agent(tenant_id=TENANT, agent_id=PA_ID)]
+        return [self.get_agent(tenant_id=TENANT, agent_id=self._agent_id)]
 
     def get_agent(self, **_kwargs):
         return {
-            "agent_id": PA_ID,
+            "agent_id": self._agent_id,
             "agent_type": "PA",
             "project_id": PROJECT,
             "profile_ref": "agent-profile://pa/project-budget-read/v1",
@@ -118,9 +123,12 @@ def _child_payload(sequence: int, parent: dict[str, str]) -> dict[str, object]:
             "parent_work_item_id": parent["work_item_id"],
             "parent_claim_ref": parent["claim_id"],
             "parent_claim_generation": 1,
-            "delegating_agent_ref": {"agent_id": PA_ID, "agent_type": "PA"},
+            "delegating_agent_ref": {
+                "agent_id": parent["agent_id"],
+                "agent_type": "PA",
+            },
         },
-        "requester": {"entity_type": "AGENT", "entity_id": PA_ID},
+        "requester": {"entity_type": "AGENT", "entity_id": parent["agent_id"]},
         "accountable_owner": {"entity_type": "USER", "entity_id": "owner-p8"},
     }
 
@@ -135,10 +143,16 @@ def _create_root(repository) -> None:
     ).create(_root_payload())
 
 
-def _activate_parent(repository, coordination_repository, work_item_id: str, index: int):
+def _activate_parent(
+    repository,
+    coordination_repository,
+    work_item_id: str,
+    index: int,
+    agent_id: str,
+):
     coordination = WorkCoordinationService(
         coordination_repository,
-        candidate_source=Agents(),
+        candidate_source=Agents(agent_id),
         authorization_source=Authorization(),
         id_factory=lambda: str(uuid4()),
         token_factory=lambda: _stable_uuid(f"lease-{index}"),
@@ -166,6 +180,7 @@ def _activate_parent(repository, coordination_repository, work_item_id: str, ind
         "work_item_id": work_item_id,
         "claim_id": claimed["claim"]["claim_id"],
         "execution_id": execution_id,
+        "agent_id": agent_id,
     }
 
 
@@ -184,11 +199,15 @@ def _create_child(repository, sequence: int, parent: dict[str, str]):
 
 def _build_root_with_49_descendants(repository, coordination_repository):
     _create_root(repository)
-    root = _activate_parent(repository, coordination_repository, ROOT_ID, 0)
+    root = _activate_parent(
+        repository, coordination_repository, ROOT_ID, 0, PA_A_ID
+    )
 
     level_one = [_create_child(repository, index, root) for index in range(1, 6)]
     level_one_authority = [
-        _activate_parent(repository, coordination_repository, work_id, index)
+        _activate_parent(
+            repository, coordination_repository, work_id, index, PA_B_ID
+        )
         for index, work_id in enumerate(level_one, start=1)
     ]
 
@@ -200,7 +219,13 @@ def _build_root_with_49_descendants(repository, coordination_repository):
             sequence += 1
 
     level_two_authority = [
-        _activate_parent(repository, coordination_repository, work_id, index + 10)
+        _activate_parent(
+            repository,
+            coordination_repository,
+            work_id,
+            index + 10,
+            PA_C_ID,
+        )
         for index, work_id in enumerate(level_two[:5])
     ]
     for parent in level_two_authority[:3]:
@@ -285,7 +310,7 @@ def test_s29_sqlalchemy_descendant_count_and_failure_mapping():
                 "root": ROOT_ID,
                 "child": _stable_uuid("count-child"),
                 "claim": _stable_uuid("count-claim"),
-                "agent": PA_ID,
+                "agent": PA_A_ID,
                 "created": NOW,
             },
         )

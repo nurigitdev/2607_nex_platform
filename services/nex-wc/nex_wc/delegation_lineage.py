@@ -59,6 +59,10 @@ class DelegationLineageRepository(Protocol):
 
     def count_descendants(self, *, tenant_id: str, root_work_item_id: str) -> int: ...
 
+    def ancestor_agent_refs(
+        self, *, tenant_id: str, work_item_id: str
+    ) -> list[dict[str, str]]: ...
+
 
 def initial_delegation_policy() -> dict[str, Any]:
     policy = {
@@ -113,6 +117,22 @@ class InMemoryDelegationLineageRepository:
                 and record["root_work_item_id"] == root_work_item_id
                 and record["work_item_id"] != root_work_item_id
             )
+
+    def ancestor_agent_refs(
+        self, *, tenant_id: str, work_item_id: str
+    ) -> list[dict[str, str]]:
+        with self._lock:
+            rows: list[dict[str, Any]] = []
+            current = self._records.get((tenant_id, work_item_id))
+            while current is not None and len(rows) <= MAX_DELEGATION_DEPTH:
+                rows.append(copy.deepcopy(current))
+                parent_work_item_id = current["parent_work_item_id"]
+                current = (
+                    None
+                    if parent_work_item_id is None
+                    else self._records.get((tenant_id, parent_work_item_id))
+                )
+            return _validate_ancestor_chain(rows, work_item_id=work_item_id)
 
 
 class SqlAlchemyDelegationLineageRepository:
@@ -183,6 +203,24 @@ class SqlAlchemyDelegationLineageRepository:
                 True,
             ) from exc
 
+    def ancestor_agent_refs(
+        self, *, tenant_id: str, work_item_id: str
+    ) -> list[dict[str, str]]:
+        try:
+            with self._session_factory() as session:
+                return load_delegation_ancestor_agents_in_session(
+                    session, tenant_id=tenant_id, work_item_id=work_item_id
+                )
+        except DelegationLineageError:
+            raise
+        except SQLAlchemyError as exc:
+            raise DelegationLineageError(
+                "wc.delegation_lineage_store_unavailable",
+                "WC delegation lineage persistence is unavailable.",
+                503,
+                True,
+            ) from exc
+
 
 def create_delegation_lineage_in_session(
     session: Session, lineage: Mapping[str, Any]
@@ -245,6 +283,16 @@ def count_delegation_descendants_in_session(
             },
         ).scalar_one()
     )
+
+
+def load_delegation_ancestor_agents_in_session(
+    session: Session, *, tenant_id: str, work_item_id: str
+) -> list[dict[str, str]]:
+    rows = session.execute(
+        text(_SELECT_ANCESTOR_CHAIN_SQL),
+        {"tenant_id": tenant_id, "work_item_id": work_item_id},
+    ).mappings().all()
+    return _validate_ancestor_chain(rows, work_item_id=work_item_id)
 
 
 def validate_delegation_lineage(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -321,6 +369,49 @@ def _require_same_lineage(existing: Mapping[str, Any], candidate: Mapping[str, A
             "Delegation lineage is immutable and already exists with different semantics.",
             409,
         )
+
+
+def _validate_ancestor_chain(
+    rows: list[Mapping[str, Any]], *, work_item_id: str
+) -> list[dict[str, str]]:
+    if not rows:
+        return []
+    expected_depth = int(rows[0]["delegation_depth"])
+    if expected_depth != len(rows) or expected_depth > MAX_DELEGATION_DEPTH:
+        raise _invalid("delegation ancestor chain depth is inconsistent")
+    root_work_item_id = str(rows[0]["root_work_item_id"])
+    seen: set[str] = set()
+    agents: list[dict[str, str]] = []
+    for index, row in enumerate(rows):
+        current_work_item_id = str(row["work_item_id"])
+        expected_parent = (
+            None if index + 1 == len(rows) else str(rows[index + 1]["work_item_id"])
+        )
+        parent_work_item_id = row["parent_work_item_id"]
+        if (
+            current_work_item_id in seen
+            or str(row["root_work_item_id"]) != root_work_item_id
+            or int(row["delegation_depth"]) != expected_depth - index
+            or (
+                None if parent_work_item_id is None else str(parent_work_item_id)
+            )
+            != expected_parent
+        ):
+            raise _invalid("delegation ancestor chain is inconsistent")
+        seen.add(current_work_item_id)
+        agents.append(
+            {
+                "agent_id": str(row["delegating_agent_id"]),
+                "agent_type": str(row["delegating_agent_type"]),
+            }
+            if "delegating_agent_id" in row
+            else copy.deepcopy(dict(row["delegating_agent_ref"]))
+        )
+    if str(rows[0]["work_item_id"]) != str(work_item_id) or str(
+        rows[-1]["work_item_id"]
+    ) != root_work_item_id:
+        raise _invalid("delegation ancestor chain endpoints are inconsistent")
+    return agents
 
 
 def _invalid(detail: str) -> DelegationLineageError:
@@ -402,4 +493,30 @@ _COUNT_DESCENDANTS_SQL = """
     WHERE tenant_id = :tenant_id
       AND root_work_item_id = :root_work_item_id
       AND work_item_id <> :root_work_item_id
+"""
+
+_SELECT_ANCESTOR_CHAIN_SQL = """
+    WITH RECURSIVE ancestor AS (
+        SELECT work_item_id, root_work_item_id, parent_work_item_id,
+               delegating_agent_id, delegating_agent_type, delegation_depth,
+               0 AS hop, ARRAY[work_item_id]::uuid[] AS path
+        FROM wc_delegation_lineage
+        WHERE tenant_id = :tenant_id AND work_item_id = :work_item_id
+        UNION ALL
+        SELECT parent.work_item_id, parent.root_work_item_id,
+               parent.parent_work_item_id, parent.delegating_agent_id,
+               parent.delegating_agent_type, parent.delegation_depth,
+               child.hop + 1, child.path || parent.work_item_id
+        FROM ancestor AS child
+        JOIN wc_delegation_lineage AS parent
+          ON parent.tenant_id = :tenant_id
+         AND parent.work_item_id = child.parent_work_item_id
+        WHERE child.parent_work_item_id IS NOT NULL
+          AND child.hop < 9
+          AND NOT parent.work_item_id = ANY(child.path)
+    )
+    SELECT work_item_id, root_work_item_id, parent_work_item_id,
+           delegating_agent_id, delegating_agent_type, delegation_depth
+    FROM ancestor
+    ORDER BY hop
 """
