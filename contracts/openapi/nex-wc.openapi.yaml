@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX Work Coordination API
-  version: 2.1.0-p8-s40
+  version: 2.1.0-p8-s41
 servers:
   - url: http://127.0.0.1:8106
 paths:
@@ -67,6 +67,62 @@ paths:
         "401": {description: Invalid service token}
         "403": {description: Current approval:read authority denied}
         "422": {description: "Tenant, subject, or limit is invalid"}
+        "503": {description: OA authorization or WC persistence unavailable}
+  /api/v1/approval-gates/{approval_work_item_id}:
+    get:
+      operationId: getWcApprovalGate
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      x-nex-user-scope: approval:read
+      parameters:
+        - {$ref: "#/components/parameters/ApprovalWorkItemId"}
+        - {$ref: "#/components/parameters/TenantIdHeader"}
+        - {$ref: "#/components/parameters/SubjectIdHeader"}
+      responses:
+        "200":
+          description: Eligible display-safe approval gate detail.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ApprovalGateDetail"}
+        "401": {description: Invalid service token}
+        "403": {description: Current approval:read authority denied}
+        "404": {description: Gate is absent or not eligible for the subject}
+        "422": {description: "Tenant, subject, or gate identity is invalid"}
+        "503": {description: OA authorization or WC persistence unavailable}
+  /api/v1/approval-gates/{approval_work_item_id}/decisions:
+    post:
+      operationId: decideWcApprovalGate
+      description: >-
+        Commits APPROVE or REJECT through the WC aggregate after a fresh OA
+        approval:decide check. The route cannot mutate NSL or EOS tables.
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      x-nex-user-scope: approval:decide
+      parameters:
+        - {$ref: "#/components/parameters/ApprovalWorkItemId"}
+        - {$ref: "#/components/parameters/TenantIdHeader"}
+        - {$ref: "#/components/parameters/SubjectIdHeader"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ApprovalDecisionRequest"}
+      responses:
+        "200":
+          description: Exact idempotent replay of the existing decision.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ApprovalDecision"}
+        "201":
+          description: Immutable decision and outbox event committed atomically.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ApprovalDecision"}
+        "401": {description: Invalid service token}
+        "403": {description: Current approval:decide authority or target denied}
+        "404": {description: Approval gate not found}
+        "409": {description: "Expired, terminal, stale, or conflicting decision"}
+        "422": {description: Decision request or identity is invalid}
         "503": {description: OA authorization or WC persistence unavailable}
   /api/v1/work-items/{work_item_id}:
     get:
@@ -154,6 +210,11 @@ components:
       type: http
       scheme: bearer
   parameters:
+    ApprovalWorkItemId:
+      name: approval_work_item_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     WorkItemId:
       name: work_item_id
       in: path
@@ -170,6 +231,15 @@ components:
       required: true
       schema: {type: string, minLength: 1, maxLength: 128}
   schemas:
+    ApprovalDecision:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_wc/approval_decision.v1.schema.json
+    ApprovalDecisionRequest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_wc/approval_decision_request.v1.schema.json
+    ApprovalGateDetail:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_wc/approval_gate_detail.v1.schema.json
     ApprovalInbox:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_wc/approval_inbox.v1.schema.json

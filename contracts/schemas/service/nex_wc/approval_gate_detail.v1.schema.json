@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_wc/approval_gate_detail.v1.schema.json",
+  "title": "WC Approval Gate Detail v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "gate", "created_at", "version", "decision_options"
+  ],
+  "properties": {
+    "schema_version": {"const": "wc_approval_gate_detail.v1"},
+    "gate": {"$ref": "#/$defs/human_gate_view"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "version": {"type": "integer", "minimum": 1},
+    "decision_options": {
+      "type": "array",
+      "prefixItems": [{"const": "APPROVE"}, {"const": "REJECT"}],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    }
+  },
+  "$defs": {
+    "scoped_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "uuid": {"type": "string", "format": "uuid"},
+    "human_gate_view": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "gate_id", "approval_domain", "state", "title",
+        "summary", "action_ref", "approval_provider_type",
+        "approval_target_ref", "business_operation_id", "expires_at"
+      ],
+      "properties": {
+        "schema_version": {"const": "human_gate_view.p8.v1"},
+        "gate_id": {"$ref": "#/$defs/uuid"},
+        "approval_domain": {
+          "enum": [
+            "AGENT_FORMAL", "NSL_WRITE", "BUSINESS_FORMAL",
+            "HUMAN_CONFIRMATION", "STEP_UP"
+          ]
+        },
+        "state": {
+          "enum": ["PENDING", "APPROVED", "REJECTED", "EXPIRED", "CANCELLED"]
+        },
+        "title": {"type": "string", "minLength": 1, "maxLength": 300},
+        "summary": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "action_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+        "approval_provider_type": {
+          "type": ["string", "null"],
+          "enum": ["AGENT", "NSL", "EOS", null]
+        },
+        "approval_target_ref": {"type": ["string", "null"], "maxLength": 256},
+        "business_operation_id": {
+          "oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]
+        },
+        "expires_at": {"type": ["string", "null"], "format": "date-time"}
+      }
+    }
+  }
+}

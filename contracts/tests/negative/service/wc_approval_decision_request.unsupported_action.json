@@ -1,0 +1,7 @@
+{
+  "schema_version": "wc_approval_decision_request.v1",
+  "decision": "DELETE",
+  "decision_comment": null,
+  "correlation_id": null,
+  "causation_id": null
+}

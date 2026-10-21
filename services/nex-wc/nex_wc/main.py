@@ -11,6 +11,9 @@ from nex_runtime import (
 
 from nex_wc.approval_api import register_approval_routes
 from nex_wc.approvals import (
+    ApprovalDecisionAuthorizer,
+    ApprovalDecisionService,
+    ApprovalDetailService,
     ApprovalInboxService,
     InMemoryApprovalWorkItemRepository,
     SqlAlchemyApprovalWorkItemRepository,
@@ -62,8 +65,18 @@ APPROVAL_INBOX = ApprovalInboxService(
     APPROVAL_REPOSITORY,
     authorization_source=AUTHORIZATION_SOURCE,
 )
+APPROVAL_DETAIL = ApprovalDetailService(
+    APPROVAL_REPOSITORY,
+    authorization_source=AUTHORIZATION_SOURCE,
+)
+APPROVAL_DECISIONS = ApprovalDecisionService(
+    APPROVAL_REPOSITORY,
+    authorizer=ApprovalDecisionAuthorizer(AUTHORIZATION_SOURCE),
+)
 app.state.wc_approval_repository = APPROVAL_REPOSITORY
 app.state.wc_approval_inbox = APPROVAL_INBOX
+app.state.wc_approval_detail = APPROVAL_DETAIL
+app.state.wc_approval_decisions = APPROVAL_DECISIONS
 WORK_ITEM_REPOSITORY = (
     SqlAlchemyWorkItemRepository(SERVICE_PERSISTENCE.api_session_factory)
     if SERVICE_PERSISTENCE.api_session_factory is not None
@@ -128,4 +141,9 @@ register_service_log_retention_routes(
 register_work_item_routes(app, service=WORK_ITEMS)
 register_coordination_routes(app, service=COORDINATION)
 register_work_result_routes(app, service=WORK_RESULTS)
-register_approval_routes(app, inbox_service=APPROVAL_INBOX)
+register_approval_routes(
+    app,
+    inbox_service=APPROVAL_INBOX,
+    detail_service=APPROVAL_DETAIL,
+    decision_service=APPROVAL_DECISIONS,
+)

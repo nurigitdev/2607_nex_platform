@@ -558,25 +558,11 @@ class ApprovalInboxService:
         except ApprovalWorkItemError as exc:
             raise _inbox_invalid(exc.detail) from exc
 
-        try:
-            authorization = self._authorization_source.effective_authorization(
-                tenant_id=admitted_tenant,
-                subject_id=admitted_subject,
-            )
-        except AuthorizationSubjectDenied as exc:
-            raise _inbox_denied("OA denied the approval inbox principal.") from exc
-        except Exception as exc:
-            raise _inbox_unavailable("OA effective authorization is unavailable.") from exc
-
-        try:
-            require_active_scope(authorization, required_scope="approval:read")
-            _require_authorization_identity(
-                authorization,
-                tenant_id=admitted_tenant,
-                principal=admitted_subject,
-            )
-        except AuthorizationSubjectDenied as exc:
-            raise _inbox_denied(str(exc)) from exc
+        authorization = _current_approval_read_authorization(
+            self._authorization_source,
+            tenant_id=admitted_tenant,
+            subject_id=admitted_subject,
+        )
 
         try:
             candidates = self._repository.list_pending_work_items(
@@ -622,6 +608,72 @@ class ApprovalInboxService:
             "limit": admitted_limit,
             "scan_truncated": len(candidates) == APPROVAL_INBOX_SCAN_LIMIT,
         }
+
+
+class ApprovalDetailService:
+    def __init__(
+        self,
+        repository: ApprovalWorkItemRepository,
+        *,
+        authorization_source: AuthorizationSource,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._repository = repository
+        self._authorization_source = authorization_source
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def get(
+        self,
+        *,
+        tenant_id: str,
+        subject_id: str,
+        approval_work_item_id: str,
+    ) -> dict[str, Any]:
+        try:
+            admitted_tenant = _scoped("tenant_id", tenant_id)
+            admitted_subject = _scoped("subject_id", subject_id)
+            admitted_work_item_id = _uuid(
+                "approval_work_item_id", approval_work_item_id
+            )
+        except ApprovalWorkItemError as exc:
+            raise _inbox_invalid(exc.detail) from exc
+        authorization = _current_approval_read_authorization(
+            self._authorization_source,
+            tenant_id=admitted_tenant,
+            subject_id=admitted_subject,
+        )
+        try:
+            item = self._repository.get(
+                tenant_id=admitted_tenant,
+                approval_work_item_id=admitted_work_item_id,
+            )
+        except ApprovalWorkItemError as exc:
+            if exc.status_code == 503:
+                raise _inbox_unavailable(
+                    "WC approval persistence is unavailable."
+                ) from exc
+            raise
+        if item is None:
+            raise _gate_not_found()
+        record = validate_approval_work_item(item)
+        try:
+            _require_target_compatibility(
+                record,
+                authorization,
+                principal=admitted_subject,
+            )
+        except AuthorizationSubjectDenied as exc:
+            raise _gate_not_found() from exc
+        now = self._clock()
+        if not isinstance(now, datetime) or now.tzinfo is None:
+            raise _inbox_unavailable("WC approval detail clock is invalid.")
+        if (
+            record["state"] == "PENDING"
+            and record.get("expires_at") is not None
+            and _as_datetime(record["expires_at"]) <= now.astimezone(UTC)
+        ):
+            raise _gate_not_found()
+        return _approval_gate_detail(record)
 
 
 class ApprovalDecisionAuthorizer:
@@ -710,6 +762,11 @@ class ApprovalDecisionService:
         correlation_id: str | None = None,
         causation_id: str | None = None,
     ) -> dict[str, Any]:
+        tenant_id = _decision_scoped("tenant_id", tenant_id)
+        approval_work_item_id = _decision_uuid(
+            "approval_work_item_id", approval_work_item_id
+        )
+        decided_by = _decision_scoped("decided_by", decided_by)
         item = self._repository.get(
             tenant_id=tenant_id,
             approval_work_item_id=approval_work_item_id,
@@ -720,6 +777,20 @@ class ApprovalDecisionService:
         comment = _decision_comment(decision_comment)
         decision_id = _decision_uuid("decision_id", self._id_factory())
         decided_at = _timestamp("decided_at", self._clock())
+        existing = self._repository.get_decision(
+            tenant_id=tenant_id,
+            approval_work_item_id=approval_work_item_id,
+        )
+        if (
+            existing is None
+            and item.get("expires_at") is not None
+            and _as_datetime(item["expires_at"]) <= _as_datetime(decided_at)
+        ):
+            raise ApprovalDecisionError(
+                "wc.approval_decision_expired",
+                "ApprovalWorkItem expired before the decision boundary.",
+                409,
+            )
         evidence = self._authorizer.authorize(
             work_item=item,
             decided_by=decided_by,
@@ -1037,6 +1108,33 @@ def _require_authorization_identity(
         )
 
 
+def _current_approval_read_authorization(
+    authorization_source: AuthorizationSource,
+    *,
+    tenant_id: str,
+    subject_id: str,
+) -> Mapping[str, Any]:
+    try:
+        authorization = authorization_source.effective_authorization(
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+        )
+    except AuthorizationSubjectDenied as exc:
+        raise _inbox_denied("OA denied the approval inbox principal.") from exc
+    except Exception as exc:
+        raise _inbox_unavailable("OA effective authorization is unavailable.") from exc
+    try:
+        require_active_scope(authorization, required_scope="approval:read")
+        _require_authorization_identity(
+            authorization,
+            tenant_id=tenant_id,
+            principal=subject_id,
+        )
+    except AuthorizationSubjectDenied as exc:
+        raise _inbox_denied(str(exc)) from exc
+    return authorization
+
+
 def _require_target_compatibility(
     work_item: Mapping[str, Any],
     authorization: Mapping[str, Any],
@@ -1093,6 +1191,17 @@ def _human_gate_view(work_item: Mapping[str, Any]) -> dict[str, Any]:
         "approval_target_ref": item["approval_target_ref"],
         "business_operation_id": item.get("business_operation_id"),
         "expires_at": item.get("expires_at"),
+    }
+
+
+def _approval_gate_detail(work_item: Mapping[str, Any]) -> dict[str, Any]:
+    item = validate_approval_work_item(work_item)
+    return {
+        "schema_version": "wc_approval_gate_detail.v1",
+        "gate": _human_gate_view(item),
+        "created_at": item["created_at"],
+        "version": item["version"],
+        "decision_options": ["APPROVE", "REJECT"],
     }
 
 
@@ -1298,6 +1407,14 @@ def _inbox_denied(detail: str) -> ApprovalInboxError:
 def _inbox_unavailable(detail: str) -> ApprovalInboxError:
     return ApprovalInboxError(
         "wc.approval_inbox_unavailable", detail, 503, True
+    )
+
+
+def _gate_not_found() -> ApprovalInboxError:
+    return ApprovalInboxError(
+        "wc.approval_gate_not_found",
+        "Approval gate was not found in the eligible tenant scope.",
+        404,
     )
 
 

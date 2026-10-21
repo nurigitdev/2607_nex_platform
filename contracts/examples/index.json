@@ -1239,6 +1239,16 @@
       "name": "wc_approval_inbox_pending",
       "path": "examples/service/wc_approval_inbox.pending.json",
       "schema": "schemas/service/nex_wc/approval_inbox.v1.schema.json"
+    },
+    {
+      "name": "wc_approval_gate_detail_pending",
+      "path": "examples/service/wc_approval_gate_detail.pending.json",
+      "schema": "schemas/service/nex_wc/approval_gate_detail.v1.schema.json"
+    },
+    {
+      "name": "wc_approval_decision_request_approve",
+      "path": "examples/service/wc_approval_decision_request.approve.json",
+      "schema": "schemas/service/nex_wc/approval_decision_request.v1.schema.json"
     }
   ]
 }

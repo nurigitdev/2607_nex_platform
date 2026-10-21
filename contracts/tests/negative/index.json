@@ -1080,6 +1080,11 @@
       "name": "wc_approval_inbox_raw_protected_payload",
       "path": "tests/negative/service/wc_approval_inbox.raw_protected_payload.json",
       "schema": "schemas/service/nex_wc/approval_inbox.v1.schema.json"
+    },
+    {
+      "name": "wc_approval_decision_request_unsupported_action",
+      "path": "tests/negative/service/wc_approval_decision_request.unsupported_action.json",
+      "schema": "schemas/service/nex_wc/approval_decision_request.v1.schema.json"
     }
   ]
 }

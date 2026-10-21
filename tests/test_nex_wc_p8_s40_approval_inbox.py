@@ -268,6 +268,15 @@ def test_inbox_input_is_bounded_and_validated(tenant_id, subject_id, limit) -> N
             limit=limit,
         )
     assert error.value.status_code == 422
+    assert str(error.value)
+
+
+@pytest.mark.parametrize("limit", ("1", True, 0, APPROVAL_INBOX_SCAN_LIMIT + 1))
+def test_repository_scan_limit_validation(limit) -> None:
+    with pytest.raises(ApprovalWorkItemError):
+        InMemoryApprovalWorkItemRepository().list_pending_work_items(
+            tenant_id="tenant-p8", limit=limit
+        )
 
 
 def test_inbox_store_failure_clock_and_scan_truncation() -> None:
