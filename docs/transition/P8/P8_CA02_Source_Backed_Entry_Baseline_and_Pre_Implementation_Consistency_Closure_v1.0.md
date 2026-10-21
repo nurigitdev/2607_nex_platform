@@ -557,10 +557,27 @@ P8-S01 -> establish actual v0.2 source/wheel admission; no placeholder lock
 P8-S16 -> define owner-issued object_ref plus resolver contract before live use
 P8-S48 -> implement AE-owned canonical Platform ApprovalEvidence store
 P8-S49 -> project AE evidence to the admitted NSL public contract
-P8-S59/S60 -> deterministic Project and Account resolution with ambiguity stop
-P8-S61 -> versioned balanced voucher-line policy
-P8-S62+ -> EOS revalidation and zero-mutation negative cases
+P8-S13/S14 -> implement tenant-scoped Project/Account resolution sources and
+               stable-reference validation
+P8-S15/S18 -> implement the versioned balanced voucher-line rule in the
+               aggregate and machine-readable command contract
+P8-S19/S62 -> perform EOS pre-mutation revalidation and prove zero-mutation
+               negative cases at the controlled WRITE gate
+P8-S63/S64 -> seed deterministic Project/Account/line-policy mappings and
+               enforce LLM candidate-only plus ambiguity-stop behavior
 ```
+
+This mapping replaces an earlier incorrect reference to P8-S59/S60/S61. Those
+Slices retain their original responsibilities:
+
+```text
+P8-S59 -> Commit Outcome Mapping
+P8-S60 -> Reconciliation Adapter
+P8-S61 -> PostWriteVerificationPort Adapter
+```
+
+The correction changes only Slice ownership references. It does not change the
+Golden A decisions in Section 8 or the original Slice Plan responsibilities.
 
 If the current Slice Plan uses the generic phrase "Platform Approval Evidence
 Store", it means the AE-owned store defined in Section 7.
