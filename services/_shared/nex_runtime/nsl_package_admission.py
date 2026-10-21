@@ -25,6 +25,9 @@ from .semantic_hashes import semantic_sha256_hash_ref
 NSL_WHEEL_ADMISSION_SCHEMA_VERSION = "nsl_wheel_admission.v1"
 NSL_WHEEL_LOCK_SCHEMA_VERSION = "nsl_wheel_lock.v1"
 NSL_INSTALLED_PACKAGE_READINESS_SCHEMA_VERSION = "nsl_installed_package_readiness.v1"
+NSL_INSTALLED_V02_PACKAGE_READINESS_SCHEMA_VERSION = (
+    "nsl_installed_package_readiness.v2"
+)
 NSL_DISTRIBUTION = "nex-skill-language"
 NSL_PUBLIC_API_PATH = "nsl/api/__init__.py"
 _GIT_REVISION = re.compile(r"^[0-9a-f]{40}$")
@@ -240,6 +243,7 @@ def inspect_installed_nsl_package(
     """Verify that the admitted NSL wheel is the active in-process package."""
 
     normalized = _validate_runtime_wheel_lock(lock)
+    is_v02 = normalized["schema_version"] == "nsl_wheel_lock.v2"
     load_distribution = distribution_loader or importlib.metadata.distribution
     load_version = version_loader or importlib.metadata.version
     load_module = module_loader or importlib.import_module
@@ -308,11 +312,17 @@ def inspect_installed_nsl_package(
         raise NslPackageAdmissionError("; ".join(errors))
 
     return {
-        "schema_version": NSL_INSTALLED_PACKAGE_READINESS_SCHEMA_VERSION,
+        "schema_version": (
+            NSL_INSTALLED_V02_PACKAGE_READINESS_SCHEMA_VERSION
+            if is_v02
+            else NSL_INSTALLED_PACKAGE_READINESS_SCHEMA_VERSION
+        ),
         "status": "PASS",
+        "lock_schema_version": normalized["schema_version"],
         "distribution": normalized["distribution"],
         "package_version": installed_version,
         "source_revision": normalized["source_revision"],
+        "source_tree": normalized.get("source_tree"),
         "wheel_filename": normalized["wheel_filename"],
         "wheel_sha256": normalized["wheel_sha256"],
         "locked_cryptography_version": cryptography_version,
@@ -321,11 +331,19 @@ def inspect_installed_nsl_package(
         "public_api_complete": True,
         "runtime_import_origin": "installed_distribution",
         "admission_lock_hash": semantic_sha256_hash_ref(normalized),
+        "release_admission_hash": (
+            semantic_sha256_hash_ref(normalized) if is_v02 else None
+        ),
+        "certification_reference": normalized.get("certification_reference"),
         "in_process_profile_admissible": True,
     }
 
 
 def _validate_runtime_wheel_lock(lock: Mapping[str, Any]) -> dict[str, Any]:
+    if isinstance(lock, Mapping) and lock.get("schema_version") == "nsl_wheel_lock.v2":
+        from .nsl_v02_wheel_lock import normalize_nsl_v02_wheel_lock
+
+        return normalize_nsl_v02_wheel_lock(lock)
     if not isinstance(lock, Mapping) or set(lock) != _NSL_WHEEL_LOCK_FIELDS:
         raise NslPackageAdmissionError("NSL wheel lock fields are invalid")
     normalized = dict(lock)

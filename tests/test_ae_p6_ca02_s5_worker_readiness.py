@@ -255,7 +255,7 @@ def test_worker_environment_defaults_to_in_process_and_cli_auto_loads_readiness(
     monkeypatch.setattr(
         worker_module,
         "load_in_process_nsl_package_readiness",
-        lambda _environ: readiness,
+        lambda _environ, **_kwargs: readiness,
     )
     output = io.StringIO()
     exit_code = main(

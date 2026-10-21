@@ -27,6 +27,7 @@ from nex_runtime import (
 )
 from nex_runtime.nsl_package_admission import (
     NSL_INSTALLED_PACKAGE_READINESS_SCHEMA_VERSION,
+    NSL_INSTALLED_V02_PACKAGE_READINESS_SCHEMA_VERSION,
     NslPackageAdmissionError,
     inspect_installed_nsl_package,
 )
@@ -34,9 +35,10 @@ from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
 from nex_ae_api.nsl_backend_profiles import (
     DEFAULT_NSL_V01_BACKEND_PROFILE,
-    NSL_V01_BACKEND_PROFILES,
+    NSL_BACKEND_PROFILES,
     NSL_V01_IN_PROCESS_BACKEND,
     NSL_V01_PROCESS_ISOLATED_BACKEND,
+    NSL_V02_IN_PROCESS_BACKEND,
 )
 from nex_ae_api.runtime_jobs import RuntimeJobClaim
 
@@ -74,6 +76,9 @@ WORKER_NSL_WHEEL_LOCK_ENV = "NEX_AE_AGENT_WORKER_NSL_WHEEL_LOCK"
 
 DEFAULT_NSL_WHEEL_LOCK = (
     Path(__file__).resolve().parents[3] / "deployment" / "locks" / "nsl-v0.1-wheel.json"
+)
+DEFAULT_NSL_V02_WHEEL_LOCK = (
+    Path(__file__).resolve().parents[3] / "deployment" / "locks" / "nsl-v0.2-wheel.json"
 )
 DEFAULT_PLATFORM_PYTHON_LOCK = (
     Path(__file__).resolve().parents[3]
@@ -464,7 +469,7 @@ def validate_agent_runtime_worker_profile(
     backends = _normalized_values(
         value["supported_backend_profiles"], "supported_backend_profiles"
     )
-    if not set(backends).issubset(NSL_V01_BACKEND_PROFILES):
+    if not set(backends).issubset(NSL_BACKEND_PROFILES):
         raise _invalid("worker backend profile is unsupported.")
     evidence_policy = _required_text(value["evidence_policy"], "evidence_policy")
     if evidence_policy not in EVIDENCE_POLICIES:
@@ -521,8 +526,19 @@ def validate_agent_runtime_worker_startup(
             "Configured Agent Runtime executor implementation is unavailable.",
         )
     package_status = "NOT_CONFIGURED"
-    if NSL_V01_IN_PROCESS_BACKEND in profile["supported_backend_profiles"]:
-        package_status = _in_process_package_status(in_process_package_readiness)
+    in_process_profiles = set(profile["supported_backend_profiles"]) & {
+        NSL_V01_IN_PROCESS_BACKEND,
+        NSL_V02_IN_PROCESS_BACKEND,
+    }
+    if len(in_process_profiles) > 1:
+        raise AgentRuntimeWorkerError(
+            "ae.agent_runtime_worker.nsl_package_profile_conflict",
+            "One worker cannot activate multiple in-process NSL package versions.",
+        )
+    if in_process_profiles:
+        package_status = _in_process_package_status(
+            in_process_package_readiness, profile=next(iter(in_process_profiles))
+        )
         if config.mode == "enabled" and package_status != "PASS":
             raise AgentRuntimeWorkerError(
                 "ae.agent_runtime_worker.nsl_package_unready",
@@ -909,11 +925,13 @@ def main(
         }
     else:
         if (
-            NSL_V01_IN_PROCESS_BACKEND in config.profile.supported_backend_profiles
+            set(config.profile.supported_backend_profiles)
+            & {NSL_V01_IN_PROCESS_BACKEND, NSL_V02_IN_PROCESS_BACKEND}
             and in_process_package_readiness is None
         ):
             in_process_package_readiness = load_in_process_nsl_package_readiness(
-                environ
+                environ,
+                backend_profiles=config.profile.supported_backend_profiles,
             )
         record = build_agent_runtime_worker_check(
             config,
@@ -932,16 +950,22 @@ def load_in_process_nsl_package_readiness(
     environ: Mapping[str, str] | None = None,
     *,
     lock_path: Path | None = None,
+    backend_profiles: Sequence[str] = (),
 ) -> dict[str, Any]:
     env = os.environ if environ is None else environ
     configured_path = env.get(WORKER_NSL_WHEEL_LOCK_ENV)
+    selected_default = (
+        DEFAULT_NSL_V02_WHEEL_LOCK
+        if NSL_V02_IN_PROCESS_BACKEND in backend_profiles
+        else DEFAULT_NSL_WHEEL_LOCK
+    )
     resolved_path = (
         lock_path
         if lock_path is not None
         else (
             Path(configured_path).expanduser()
             if configured_path
-            else DEFAULT_NSL_WHEEL_LOCK
+            else selected_default
         )
     )
     try:
@@ -961,7 +985,11 @@ def load_in_process_nsl_package_readiness(
         ValueError,
     ) as exc:
         return {
-            "schema_version": NSL_INSTALLED_PACKAGE_READINESS_SCHEMA_VERSION,
+            "schema_version": (
+                NSL_INSTALLED_V02_PACKAGE_READINESS_SCHEMA_VERSION
+                if NSL_V02_IN_PROCESS_BACKEND in backend_profiles
+                else NSL_INSTALLED_PACKAGE_READINESS_SCHEMA_VERSION
+            ),
             "status": "FAIL",
             "failure_code": "ae.agent_runtime_worker.nsl_package_unready",
             "detail": str(exc),
@@ -969,13 +997,35 @@ def load_in_process_nsl_package_readiness(
         }
 
 
-def _in_process_package_status(value: Mapping[str, Any] | None) -> str:
+def _in_process_package_status(
+    value: Mapping[str, Any] | None, *, profile: str
+) -> str:
     if not isinstance(value, Mapping):
         return "MISSING"
+    expected = (
+        (
+            NSL_INSTALLED_V02_PACKAGE_READINESS_SCHEMA_VERSION,
+            "0.2.0",
+            "nsl_wheel_lock.v2",
+        )
+        if profile == NSL_V02_IN_PROCESS_BACKEND
+        else (
+            NSL_INSTALLED_PACKAGE_READINESS_SCHEMA_VERSION,
+            "0.1.0",
+            "nsl_wheel_lock.v1",
+        )
+    )
     if (
-        value.get("schema_version") != NSL_INSTALLED_PACKAGE_READINESS_SCHEMA_VERSION
+        value.get("schema_version") != expected[0]
         or value.get("status") != "PASS"
         or value.get("distribution") != "nex-skill-language"
+        or (
+            profile == NSL_V02_IN_PROCESS_BACKEND
+            and (
+                value.get("package_version") != expected[1]
+                or value.get("lock_schema_version") != expected[2]
+            )
+        )
         or value.get("in_process_profile_admissible") is not True
     ):
         return "FAIL"
