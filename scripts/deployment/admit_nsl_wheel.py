@@ -32,12 +32,16 @@ from nex_runtime.nsl_package_admission import (
     nsl_wheel_lock_projection,
     validate_nsl_wheel_lock,
 )
+from nex_runtime.nsl_release_identity import build_nsl_release_identity
 
 EXECUTION_ENV = "NEX_NSL_WHEEL_ADMISSION"
 DEFAULT_SOURCE = Path("/home/tprover/2608_nsl")
 DEFAULT_OUTPUT = ROOT / "reports" / "deployment" / "p6-ca02-nsl-wheel"
 DEFAULT_REPORT = ROOT / "reports" / "deployment" / "p6-ca02-nsl-wheel.json"
 DEFAULT_LOCK = ROOT / "deployment" / "locks" / "nsl-v0.1-wheel.json"
+P8_V02_OUTPUT = ROOT / "reports" / "deployment" / "p8-nsl-v0.2-wheel"
+P8_V02_REPORT = ROOT / "reports" / "deployment" / "p8-s01-nsl-v0.2-identity.json"
+P8_V02_LOCK = ROOT / "deployment" / "locks" / "nsl-v0.2-wheel.json"
 REPOSITORY = "nurigitdev/2608_nsl"
 PUBLIC_API_SYMBOLS = (
     "RuntimeEngine",
@@ -45,6 +49,24 @@ PUBLIC_API_SYMBOLS = (
     "SkillExecutionJob",
     "SkillExecutionWorker",
 )
+P8_V02_PUBLIC_API_SYMBOLS = (
+    "ApprovalRequest",
+    "ApprovalEvidence",
+    "ApprovalSuspensionCoordinator",
+    "ApprovalResumeCoordinator",
+    "CheckpointPort",
+    "ResumeCheckpointPort",
+    "IdempotencyCoordinator",
+    "WriteExecutionPort",
+    "PostWriteVerificationPort",
+    "RuntimePreflightValidator",
+)
+P8_V02_SOURCE_REVISION = "a5a0f5fd7acf4adbbccf890dca2f9998d055d65e"
+P8_V02_SOURCE_TREE = "e7ffb07378ba01f4c9da6645f91b75614c605907"
+P8_V02_WHEEL_SHA256 = (
+    "sha256:862958a5eab982a71bec5ee58b9e530867d6c25f65d8b770efb29ca78ce7f135"
+)
+P8_V02_CERTIFICATION_REFERENCE = f"nsl-linux-quality:{P8_V02_SOURCE_REVISION}"
 
 
 class NslWheelBuildError(RuntimeError):
@@ -58,14 +80,26 @@ def run_nsl_wheel_admission(
     source: Path = DEFAULT_SOURCE,
     output: Path = DEFAULT_OUTPUT,
     report: Path = DEFAULT_REPORT,
-    lock: Path = DEFAULT_LOCK,
+    lock: Path | None = DEFAULT_LOCK,
     write_lock: bool = False,
     uv_bin: str = "uv",
+    expected_version: str = "0.1.0",
+    public_api_symbols: tuple[str, ...] = PUBLIC_API_SYMBOLS,
+    expected_source_revision: str | None = None,
+    expected_source_tree: str | None = None,
+    expected_wheel_sha256: str | None = None,
+    certification_reference: str | None = None,
+    release_slice: str = "P6-CA02-S1",
 ) -> dict[str, Any]:
     env = dict(os.environ if environ is None else environ)
+    evidence_schema = (
+        "p8_nsl_release_identity_evidence.v1"
+        if expected_source_tree is not None
+        else "p6_ca02_nsl_wheel_evidence.v1"
+    )
     if not execute or env.get(EXECUTION_ENV) != "1":
         return {
-            "schema_version": "p6_ca02_nsl_wheel_evidence.v1",
+            "schema_version": evidence_schema,
             "status": "SKIPPED",
             "skip_reason": f"--execute and {EXECUTION_ENV}=1 are required",
         }
@@ -76,10 +110,17 @@ def run_nsl_wheel_admission(
             lock=lock,
             write_lock=write_lock,
             uv_bin=uv_bin,
+            expected_version=expected_version,
+            public_api_symbols=public_api_symbols,
+            expected_source_revision=expected_source_revision,
+            expected_source_tree=expected_source_tree,
+            expected_wheel_sha256=expected_wheel_sha256,
+            certification_reference=certification_reference,
+            release_slice=release_slice,
         )
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
         evidence = {
-            "schema_version": "p6_ca02_nsl_wheel_evidence.v1",
+            "schema_version": evidence_schema,
             "status": "FAIL",
             "issues": [str(exc)],
             "decision": {"in_process_profile_admissible": False},
@@ -95,13 +136,29 @@ def _execute(
     *,
     source: Path,
     output: Path,
-    lock: Path,
+    lock: Path | None,
     write_lock: bool,
     uv_bin: str,
+    expected_version: str = "0.1.0",
+    public_api_symbols: tuple[str, ...] = PUBLIC_API_SYMBOLS,
+    expected_source_revision: str | None = None,
+    expected_source_tree: str | None = None,
+    expected_wheel_sha256: str | None = None,
+    certification_reference: str | None = None,
+    release_slice: str = "P6-CA02-S1",
 ) -> dict[str, Any]:
     source_revision, source_tree_clean, source_epoch = _git_metadata(source)
     if not source_tree_clean:
         raise NslWheelBuildError("NSL wheel build requires a clean source tree")
+    exact_identity_requested = any(
+        value is not None
+        for value in (
+            expected_source_revision,
+            expected_source_tree,
+            expected_wheel_sha256,
+            certification_reference,
+        )
+    )
     output.mkdir(parents=True, exist_ok=True)
 
     with TemporaryDirectory(prefix="nsl-wheel-admission-") as temporary:
@@ -111,10 +168,18 @@ def _execute(
         _materialize_git_archive(source, first_source)
         _materialize_git_archive(source, second_source)
         first = _build_wheel(
-            first_source, temporary_root / "first", uv_bin, source_epoch
+            first_source,
+            temporary_root / "first",
+            uv_bin,
+            source_epoch,
+            release_tool=exact_identity_requested,
         )
         second = _build_wheel(
-            second_source, temporary_root / "second", uv_bin, source_epoch
+            second_source,
+            temporary_root / "second",
+            uv_bin,
+            source_epoch,
+            release_tool=exact_identity_requested,
         )
         first_inspection = inspect_nsl_wheel(first)
         second_inspection = inspect_nsl_wheel(second)
@@ -123,7 +188,9 @@ def _execute(
             or first_inspection.wheel_sha256 != second_inspection.wheel_sha256
         ):
             raise NslWheelBuildError("NSL wheel build is not reproducible")
-        installed_symbols = _install_and_import(first, temporary_root / "installed")
+        installed_symbols = _install_and_import(
+            first, temporary_root / "installed", public_api_symbols
+        )
         destination = output / first.name
         shutil.copyfile(first, destination)
 
@@ -148,20 +215,49 @@ def _execute(
         inspect_nsl_wheel(destination),
         source_revision=source_revision,
         source_tree_clean=True,
-        expected_version="0.1.0",
+        expected_version=expected_version,
         platform_cryptography_requirement=platform_requirement,
         locked_cryptography_version=locked_cryptography,
         platform_lock_sha256=f"sha256:{python_lock.sha256}",
         public_api_symbols=installed_symbols,
     )
-    wheel_lock = nsl_wheel_lock_projection(admission, repository=REPOSITORY)
-    if write_lock:
+    release_identity = None
+    if exact_identity_requested:
+        if any(
+            value is None
+            for value in (
+                expected_source_revision,
+                expected_source_tree,
+                expected_wheel_sha256,
+                certification_reference,
+            )
+        ):
+            raise NslWheelBuildError("exact NSL release identity is incomplete")
+        source_tree = _capture(
+            ("git", "rev-parse", "HEAD^{tree}"),
+            cwd=source,
+            operation="read NSL source tree",
+        ).strip()
+        release_identity = build_nsl_release_identity(
+            admission,
+            repository=REPOSITORY,
+            source_tree=source_tree,
+            expected_source_revision=expected_source_revision,
+            expected_source_tree=expected_source_tree,
+            expected_wheel_sha256=expected_wheel_sha256,
+            certification_reference=certification_reference,
+        )
+
+    wheel_lock = None
+    if lock is not None:
+        wheel_lock = nsl_wheel_lock_projection(admission, repository=REPOSITORY)
+    if write_lock and lock is not None:
         lock.parent.mkdir(parents=True, exist_ok=True)
         lock.write_text(
             json.dumps(wheel_lock, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-    else:
+    elif lock is not None:
         if not lock.is_file():
             raise NslWheelBuildError("NSL wheel lock is missing")
         validate_nsl_wheel_lock(
@@ -170,16 +266,22 @@ def _execute(
             repository=REPOSITORY,
         )
     return {
-        "schema_version": "p6_ca02_nsl_wheel_evidence.v1",
+        "schema_version": (
+            "p8_nsl_release_identity_evidence.v1"
+            if release_identity is not None
+            else "p6_ca02_nsl_wheel_evidence.v1"
+        ),
         "status": "PASS",
-        "slice": "P6-CA02-S1",
+        "slice": release_slice,
         "admission": admission,
-        "wheel_lock": str(lock.relative_to(ROOT)),
+        "release_identity": release_identity,
+        "wheel_lock": None if lock is None else str(lock.relative_to(ROOT)),
         "reproducible_build_count": 2,
         "decision": {
             "dependency_compatible": True,
-            "wheel_admitted": True,
-            "in_process_profile_admissible": True,
+            "release_identity_verified": release_identity is not None,
+            "wheel_admitted": lock is not None,
+            "in_process_profile_admissible": lock is not None,
             "runtime_profile_activated": False,
         },
     }
@@ -200,14 +302,44 @@ def _git_metadata(source: Path) -> tuple[str, bool, str]:
     return revision, not bool(status.strip()), epoch
 
 
-def _build_wheel(source: Path, output: Path, uv_bin: str, epoch: str) -> Path:
+def _build_wheel(
+    source: Path,
+    output: Path,
+    uv_bin: str,
+    epoch: str,
+    *,
+    release_tool: bool = False,
+) -> Path:
     output.mkdir(parents=True)
     environment = dict(os.environ)
-    environment["SOURCE_DATE_EPOCH"] = epoch
     environment.setdefault("UV_CACHE_DIR", "/tmp/nex-platform-uv-cache")
+    if release_tool:
+        command = (
+            uv_bin,
+            "run",
+            "--isolated",
+            "--no-project",
+            "--with",
+            "build==1.2.2.post1",
+            "--with",
+            "setuptools==75.8.2",
+            "--with",
+            "wheel==0.45.1",
+            "--with",
+            "cryptography==46.0.7",
+            "python",
+            "tools/wheel_release.py",
+            "--output-dir",
+            str(output),
+        )
+        cwd = source
+    else:
+        environment["SOURCE_DATE_EPOCH"] = epoch
+        command = (uv_bin, "build", "--wheel", "--out-dir", str(output), str(source))
+        cwd = ROOT
     process = subprocess.run(
-        (uv_bin, "build", "--wheel", "--out-dir", str(output), str(source)),
-        cwd=ROOT,
+        command,
+        cwd=cwd,
         env=environment,
         check=False,
         capture_output=True,
@@ -239,7 +371,9 @@ def _materialize_git_archive(source: Path, destination: Path) -> None:
         archive.extractall(destination, filter="data")
 
 
-def _install_and_import(wheel: Path, target: Path) -> tuple[str, ...]:
+def _install_and_import(
+    wheel: Path, target: Path, public_api_symbols: tuple[str, ...] = PUBLIC_API_SYMBOLS
+) -> tuple[str, ...]:
     process = subprocess.run(
         (
             sys.executable,
@@ -265,7 +399,7 @@ def _install_and_import(wheel: Path, target: Path) -> tuple[str, ...]:
         "import json, pathlib, sys; "
         f"sys.path.insert(0, {str(target)!r}); "
         "import nsl.api as api; "
-        f"names={PUBLIC_API_SYMBOLS!r}; "
+        f"names={public_api_symbols!r}; "
         "assert pathlib.Path(api.__file__).resolve().is_relative_to("
         f"pathlib.Path({str(target)!r}).resolve()); "
         "assert all(hasattr(api, name) for name in names); "
@@ -318,20 +452,41 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Build and admit the NSL wheel")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
-    parser.add_argument("--lock", type=Path, default=DEFAULT_LOCK)
+    parser.add_argument("--release-profile", choices=("v0.1", "v0.2"), default="v0.1")
+    parser.add_argument("--identity-only", action="store_true")
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--report", type=Path)
+    parser.add_argument("--lock", type=Path)
     parser.add_argument("--write-lock", action="store_true")
     parser.add_argument("--uv-bin", default="uv")
     args = parser.parse_args()
+    if args.release_profile == "v0.2":
+        output = args.output or P8_V02_OUTPUT
+        report = args.report or P8_V02_REPORT
+        lock = None if args.identity_only else (args.lock or P8_V02_LOCK)
+        profile_arguments = {
+            "expected_version": "0.2.0",
+            "public_api_symbols": P8_V02_PUBLIC_API_SYMBOLS,
+            "expected_source_revision": P8_V02_SOURCE_REVISION,
+            "expected_source_tree": P8_V02_SOURCE_TREE,
+            "expected_wheel_sha256": P8_V02_WHEEL_SHA256,
+            "certification_reference": P8_V02_CERTIFICATION_REFERENCE,
+            "release_slice": "P8-S01",
+        }
+    else:
+        output = args.output or DEFAULT_OUTPUT
+        report = args.report or DEFAULT_REPORT
+        lock = args.lock or DEFAULT_LOCK
+        profile_arguments = {}
     result = run_nsl_wheel_admission(
         execute=args.execute,
         source=args.source,
-        output=args.output,
-        report=args.report,
-        lock=args.lock,
+        output=output,
+        report=report,
+        lock=lock,
         write_lock=args.write_lock,
         uv_bin=args.uv_bin,
+        **profile_arguments,
     )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if result["status"] in {"PASS", "SKIPPED"} else 1

@@ -248,8 +248,9 @@ def test_execute_builds_reproducible_wheel_and_revalidates_lock(
         command, "_materialize_git_archive", lambda source, destination: None
     )
 
-    def fake_build(source, output, uv_bin, epoch):
+    def fake_build(source, output, uv_bin, epoch, *, release_tool=False):
         del source, uv_bin, epoch
+        assert release_tool is False
         output.mkdir(parents=True)
         wheel = output / template.name
         shutil.copyfile(template, wheel)
@@ -257,7 +258,7 @@ def test_execute_builds_reproducible_wheel_and_revalidates_lock(
 
     monkeypatch.setattr(command, "_build_wheel", fake_build)
     monkeypatch.setattr(
-        command, "_install_and_import", lambda wheel, target: PUBLIC_API
+        command, "_install_and_import", lambda wheel, target, symbols: PUBLIC_API
     )
     monkeypatch.setattr(
         command,
@@ -401,6 +402,24 @@ def test_build_and_install_helpers_contain_subprocess_failures(
     monkeypatch.setattr(command.subprocess, "run", successful_build)
     wheel = command._build_wheel(tmp_path, tmp_path / "built", "uv", "123")
     assert wheel.suffix == ".whl"
+
+    def successful_release(*args, **kwargs):
+        output = Path(args[0][args[0].index("--output-dir") + 1])
+        _wheel(output)
+        assert kwargs["cwd"] == tmp_path
+        assert "SOURCE_DATE_EPOCH" not in kwargs["env"]
+        assert "tools/wheel_release.py" in args[0]
+        return subprocess.CompletedProcess(args[0], 0, "released", "")
+
+    monkeypatch.setattr(command.subprocess, "run", successful_release)
+    released = command._build_wheel(
+        tmp_path,
+        tmp_path / "released",
+        "uv",
+        "123",
+        release_tool=True,
+    )
+    assert released.suffix == ".whl"
 
     failed = subprocess.CompletedProcess(("uv",), 1, "", "build failed")
     monkeypatch.setattr(command.subprocess, "run", lambda *args, **kwargs: failed)
