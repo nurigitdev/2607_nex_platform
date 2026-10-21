@@ -9,6 +9,12 @@ from nex_runtime import (
     register_service_log_retention_routes,
 )
 
+from nex_wc.approval_api import register_approval_routes
+from nex_wc.approvals import (
+    ApprovalInboxService,
+    InMemoryApprovalWorkItemRepository,
+    SqlAlchemyApprovalWorkItemRepository,
+)
 from nex_wc.coordination import (
     InMemoryCoordinationRepository,
     SqlAlchemyCoordinationRepository,
@@ -47,6 +53,17 @@ AUTHORIZATION_SOURCE = HttpAuthorizationSource(
     base_url=os.getenv("NEX_WC_OA_BASE_URL", "http://127.0.0.1:8101"),
     service_token=os.getenv("NEX_WC_TO_OA_SERVICE_TOKEN", ""),
 )
+APPROVAL_REPOSITORY = (
+    SqlAlchemyApprovalWorkItemRepository(SERVICE_PERSISTENCE.api_session_factory)
+    if SERVICE_PERSISTENCE.api_session_factory is not None
+    else InMemoryApprovalWorkItemRepository()
+)
+APPROVAL_INBOX = ApprovalInboxService(
+    APPROVAL_REPOSITORY,
+    authorization_source=AUTHORIZATION_SOURCE,
+)
+app.state.wc_approval_repository = APPROVAL_REPOSITORY
+app.state.wc_approval_inbox = APPROVAL_INBOX
 WORK_ITEM_REPOSITORY = (
     SqlAlchemyWorkItemRepository(SERVICE_PERSISTENCE.api_session_factory)
     if SERVICE_PERSISTENCE.api_session_factory is not None
@@ -111,3 +128,4 @@ register_service_log_retention_routes(
 register_work_item_routes(app, service=WORK_ITEMS)
 register_coordination_routes(app, service=COORDINATION)
 register_work_result_routes(app, service=WORK_RESULTS)
+register_approval_routes(app, inbox_service=APPROVAL_INBOX)

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX Work Coordination API
-  version: 2.1.0-p7-ca02
+  version: 2.1.0-p8-s40
 servers:
   - url: http://127.0.0.1:8106
 paths:
@@ -42,6 +42,31 @@ paths:
         "401": {description: Invalid service token}
         "403": {description: Fresh OA work:delegate authorization denied}
         "409": {description: Idempotency conflict}
+        "503": {description: OA authorization or WC persistence unavailable}
+  /api/v1/approval-gates:
+    get:
+      operationId: listWcApprovalGates
+      description: >-
+        Returns bounded pending HumanGateView projections eligible for the
+        current OA principal. Protected request payloads are never returned.
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      x-nex-user-scope: approval:read
+      parameters:
+        - {$ref: "#/components/parameters/TenantIdHeader"}
+        - {$ref: "#/components/parameters/SubjectIdHeader"}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+      responses:
+        "200":
+          description: Eligible pending approval gates.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ApprovalInbox"}
+        "401": {description: Invalid service token}
+        "403": {description: Current approval:read authority denied}
+        "422": {description: "Tenant, subject, or limit is invalid"}
         "503": {description: OA authorization or WC persistence unavailable}
   /api/v1/work-items/{work_item_id}:
     get:
@@ -139,7 +164,15 @@ components:
       in: header
       required: true
       schema: {type: string, minLength: 1, maxLength: 128}
+    SubjectIdHeader:
+      name: X-NeX-Subject-Id
+      in: header
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 128}
   schemas:
+    ApprovalInbox:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_wc/approval_inbox.v1.schema.json
     ExpectedVersion:
       type: object
       additionalProperties: false

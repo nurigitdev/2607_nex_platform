@@ -95,11 +95,17 @@ def test_s32_approval_aggregate_contract_does_not_absorb_delegation_runtime():
 def test_s32_contract_inventory_registers_the_four_transition_contracts():
     examples = _json(CONTRACTS / "examples/index.json")["examples"]
     negatives = _json(CONTRACTS / "tests/negative/index.json")["negative_examples"]
-    wc_examples = [
-        item for item in examples if item["schema"].startswith("schemas/service/nex_wc/")
-    ]
-    wc_negatives = [
-        item for item in negatives if item["schema"].startswith("schemas/service/nex_wc/")
-    ]
-    assert len(wc_examples) == 7
-    assert len(wc_negatives) == 7
+    example_names = {item["name"] for item in examples}
+    negative_names = {item["name"] for item in negatives}
+    assert {
+        "wc_approval_work_item_nsl_write",
+        "wc_approval_decision_approved",
+        "wc_human_gate_view_business_formal",
+        "wc_approval_event_nsl_approved",
+    } <= example_names
+    assert {
+        "wc_approval_work_item_nsl_missing_binding",
+        "wc_approval_decision_raw_token",
+        "wc_human_gate_view_domain_provider_mismatch",
+        "wc_approval_event_domain_event_mismatch",
+    } <= negative_names

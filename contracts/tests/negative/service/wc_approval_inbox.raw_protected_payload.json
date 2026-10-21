@@ -1,0 +1,24 @@
+{
+  "schema_version": "wc_approval_inbox.v1",
+  "tenant_id": "tenant-p8",
+  "subject_ref": {"type": "oa.user", "id": "approver-p8"},
+  "gates": [
+    {
+      "schema_version": "human_gate_view.p8.v1",
+      "gate_id": "40000000-0000-4000-8000-000000000001",
+      "approval_domain": "NSL_WRITE",
+      "state": "PENDING",
+      "title": "Approve protected WRITE",
+      "summary": "Create an approved draft voucher.",
+      "action_ref": "/api/v1/approval-gates/40000000-0000-4000-8000-000000000001",
+      "approval_provider_type": "NSL",
+      "approval_target_ref": "approval-request-p8-001",
+      "business_operation_id": "business-operation-p8-001",
+      "expires_at": "2026-10-23T09:00:00Z",
+      "protected_request_payload": {"account": "private"}
+    }
+  ],
+  "returned_count": 1,
+  "limit": 50,
+  "scan_truncated": false
+}

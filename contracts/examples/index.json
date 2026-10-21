@@ -1234,6 +1234,11 @@
       "name": "eos_approver_resolution_resolved",
       "path": "examples/service/eos_approver_resolution.resolved.json",
       "schema": "schemas/service/nex_eos/approver_resolution.v1.schema.json"
+    },
+    {
+      "name": "wc_approval_inbox_pending",
+      "path": "examples/service/wc_approval_inbox.pending.json",
+      "schema": "schemas/service/nex_wc/approval_inbox.v1.schema.json"
     }
   ]
 }

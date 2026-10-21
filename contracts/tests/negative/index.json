@@ -1075,6 +1075,11 @@
       "name": "eos_approver_resolution_request_unknown_policy",
       "path": "tests/negative/service/eos_approver_resolution_request.unknown_policy.json",
       "schema": "schemas/service/nex_eos/approver_resolution_request.v1.schema.json"
+    },
+    {
+      "name": "wc_approval_inbox_raw_protected_payload",
+      "path": "tests/negative/service/wc_approval_inbox.raw_protected_payload.json",
+      "schema": "schemas/service/nex_wc/approval_inbox.v1.schema.json"
     }
   ]
 }

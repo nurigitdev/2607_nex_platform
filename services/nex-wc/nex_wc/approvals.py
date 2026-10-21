@@ -29,6 +29,7 @@ APPROVAL_PROVIDERS = {
     "NSL_WRITE": "NSL",
     "BUSINESS_FORMAL": "EOS",
 }
+APPROVAL_INBOX_SCAN_LIMIT = 1000
 
 _HASH_REF = re.compile(r"^sha256:[0-9a-f]{64}$")
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
@@ -123,6 +124,17 @@ class ApprovalDecisionError(Exception):
         return self.detail
 
 
+@dataclass(frozen=True)
+class ApprovalInboxError(Exception):
+    error_code: str
+    detail: str
+    status_code: int
+    retryable: bool = False
+
+    def __str__(self) -> str:
+        return self.detail
+
+
 class ApprovalWorkItemRepository(Protocol):
     def insert(self, work_item: Mapping[str, Any]) -> dict[str, Any]: ...
 
@@ -137,6 +149,10 @@ class ApprovalWorkItemRepository(Protocol):
     def get_by_source(
         self, *, tenant_id: str, approval_domain: str, source_ref: str
     ) -> dict[str, Any] | None: ...
+
+    def list_pending_work_items(
+        self, *, tenant_id: str, limit: int
+    ) -> Sequence[Mapping[str, Any]]: ...
 
     def commit_decision(
         self,
@@ -222,6 +238,25 @@ class InMemoryApprovalWorkItemRepository:
                 ):
                     return copy.deepcopy(record)
             return None
+
+    def list_pending_work_items(
+        self, *, tenant_id: str, limit: int
+    ) -> Sequence[Mapping[str, Any]]:
+        admitted_limit = _approval_inbox_scan_limit(limit)
+        with self._lock:
+            rows = sorted(
+                (
+                    copy.deepcopy(record)
+                    for record in self._records.values()
+                    if record["tenant_id"] == tenant_id
+                    and record["state"] == "PENDING"
+                ),
+                key=lambda record: (
+                    record["created_at"],
+                    record["approval_work_item_id"],
+                ),
+            )
+            return rows[:admitted_limit]
 
     def commit_decision(
         self,
@@ -371,6 +406,28 @@ class SqlAlchemyApprovalWorkItemRepository:
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
 
+    def list_pending_work_items(
+        self, *, tenant_id: str, limit: int
+    ) -> Sequence[Mapping[str, Any]]:
+        admitted_tenant = _scoped("tenant_id", tenant_id)
+        admitted_limit = _approval_inbox_scan_limit(limit)
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(_SELECT_PENDING_WORK_ITEMS_SQL),
+                        {
+                            "tenant_id": admitted_tenant,
+                            "limit": admitted_limit,
+                        },
+                    )
+                    .mappings()
+                    .all()
+                )
+                return [_work_item_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
     def commit_decision(
         self,
         *,
@@ -473,6 +530,98 @@ class ApprovalWorkItemService:
     def create_or_get(self, work_item: Mapping[str, Any]) -> dict[str, Any]:
         saved, created = self._repository.create_or_get(work_item)
         return {"work_item": saved, "created": created}
+
+
+class ApprovalInboxService:
+    def __init__(
+        self,
+        repository: ApprovalWorkItemRepository,
+        *,
+        authorization_source: AuthorizationSource,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._repository = repository
+        self._authorization_source = authorization_source
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def list_pending(
+        self,
+        *,
+        tenant_id: str,
+        subject_id: str,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        try:
+            admitted_tenant = _scoped("tenant_id", tenant_id)
+            admitted_subject = _scoped("subject_id", subject_id)
+            admitted_limit = _approval_inbox_limit(limit)
+        except ApprovalWorkItemError as exc:
+            raise _inbox_invalid(exc.detail) from exc
+
+        try:
+            authorization = self._authorization_source.effective_authorization(
+                tenant_id=admitted_tenant,
+                subject_id=admitted_subject,
+            )
+        except AuthorizationSubjectDenied as exc:
+            raise _inbox_denied("OA denied the approval inbox principal.") from exc
+        except Exception as exc:
+            raise _inbox_unavailable("OA effective authorization is unavailable.") from exc
+
+        try:
+            require_active_scope(authorization, required_scope="approval:read")
+            _require_authorization_identity(
+                authorization,
+                tenant_id=admitted_tenant,
+                principal=admitted_subject,
+            )
+        except AuthorizationSubjectDenied as exc:
+            raise _inbox_denied(str(exc)) from exc
+
+        try:
+            candidates = self._repository.list_pending_work_items(
+                tenant_id=admitted_tenant,
+                limit=APPROVAL_INBOX_SCAN_LIMIT,
+            )
+        except ApprovalWorkItemError as exc:
+            if exc.status_code == 503:
+                raise _inbox_unavailable(
+                    "WC approval persistence is unavailable."
+                ) from exc
+            raise
+
+        now = self._clock()
+        if not isinstance(now, datetime) or now.tzinfo is None:
+            raise _inbox_unavailable("WC approval inbox clock is invalid.")
+        effective_now = now.astimezone(UTC)
+        gates: list[dict[str, Any]] = []
+        for candidate in candidates:
+            item = validate_approval_work_item(candidate)
+            if item.get("expires_at") is not None and _as_datetime(
+                item["expires_at"]
+            ) <= effective_now:
+                continue
+            try:
+                _require_target_compatibility(
+                    item,
+                    authorization,
+                    principal=admitted_subject,
+                )
+            except AuthorizationSubjectDenied:
+                continue
+            gates.append(_human_gate_view(item))
+            if len(gates) == admitted_limit:
+                break
+
+        return {
+            "schema_version": "wc_approval_inbox.v1",
+            "tenant_id": admitted_tenant,
+            "subject_ref": {"type": "oa.user", "id": admitted_subject},
+            "gates": gates,
+            "returned_count": len(gates),
+            "limit": admitted_limit,
+            "scan_truncated": len(candidates) == APPROVAL_INBOX_SCAN_LIMIT,
+        }
 
 
 class ApprovalDecisionAuthorizer:
@@ -826,16 +975,7 @@ def _load(
         .mappings()
         .first()
     )
-    if row is None:
-        return None
-    stored_fields = (_REQUIRED_FIELDS - {"schema_version"}) | _OPTIONAL_FIELDS
-    record = {field: row[field] for field in stored_fields}
-    record["schema_version"] = "wc_approval_work_item.v1"
-    record["approval_work_item_id"] = str(record["approval_work_item_id"])
-    record["created_at"] = _timestamp("created_at", record["created_at"])
-    if record["expires_at"] is not None:
-        record["expires_at"] = _timestamp("expires_at", record["expires_at"])
-    return validate_approval_work_item(record)
+    return None if row is None else _work_item_from_row(row)
 
 
 def _load_by_source(
@@ -853,8 +993,10 @@ def _load_by_source(
         .mappings()
         .first()
     )
-    if row is None:
-        return None
+    return None if row is None else _work_item_from_row(row)
+
+
+def _work_item_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
     stored_fields = (_REQUIRED_FIELDS - {"schema_version"}) | _OPTIONAL_FIELDS
     record = {field: row[field] for field in stored_fields}
     record["schema_version"] = "wc_approval_work_item.v1"
@@ -932,6 +1074,26 @@ def _require_target_compatibility(
         raise AuthorizationSubjectDenied(
             "ApprovalWorkItem has no decision target."
         )
+
+
+def _human_gate_view(work_item: Mapping[str, Any]) -> dict[str, Any]:
+    item = validate_approval_work_item(work_item)
+    return {
+        "schema_version": "human_gate_view.p8.v1",
+        "gate_id": item["approval_work_item_id"],
+        "approval_domain": item["approval_domain"],
+        "state": item["state"],
+        "title": item["title"],
+        "summary": item["display_safe_summary"],
+        "action_ref": (
+            "/api/v1/approval-gates/"
+            f"{item['approval_work_item_id']}"
+        ),
+        "approval_provider_type": item["approval_provider_type"],
+        "approval_target_ref": item["approval_target_ref"],
+        "business_operation_id": item.get("business_operation_id"),
+        "expires_at": item.get("expires_at"),
+    }
 
 
 def _authorization_hash_ref(revision_hash: str) -> str:
@@ -1105,6 +1267,38 @@ def _outbox_limit(value: int) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= 1000:
         raise _decision_invalid("Approval outbox limit must be between 1 and 1000.")
     return value
+
+
+def _approval_inbox_limit(value: int) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= 100:
+        raise _invalid("Approval inbox limit must be between 1 and 100.")
+    return value
+
+
+def _approval_inbox_scan_limit(value: int) -> int:
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or not 1 <= value <= APPROVAL_INBOX_SCAN_LIMIT
+    ):
+        raise _invalid(
+            f"Approval inbox scan limit must be between 1 and {APPROVAL_INBOX_SCAN_LIMIT}."
+        )
+    return value
+
+
+def _inbox_invalid(detail: str) -> ApprovalInboxError:
+    return ApprovalInboxError("wc.approval_inbox_invalid", detail, 422)
+
+
+def _inbox_denied(detail: str) -> ApprovalInboxError:
+    return ApprovalInboxError("wc.approval_inbox_authorization_denied", detail, 403)
+
+
+def _inbox_unavailable(detail: str) -> ApprovalInboxError:
+    return ApprovalInboxError(
+        "wc.approval_inbox_unavailable", detail, 503, True
+    )
 
 
 def _load_for_decision(
@@ -1285,6 +1479,21 @@ FROM wc_approval_work_item
 WHERE tenant_id = :tenant_id
   AND approval_domain = :approval_domain
   AND source_ref = :source_ref
+"""
+
+_SELECT_PENDING_WORK_ITEMS_SQL = """
+SELECT tenant_id, approval_work_item_id, approval_domain, source_ref,
+       semantic_hash, title, display_safe_summary, approval_provider_type,
+       approval_target_ref, target_approver_ref, target_role_ref,
+       target_org_scope_ref, target_project_scope_ref, agent_execution_id,
+       executable_step_id, nsl_execution_id, business_operation_id,
+       approval_request_id, protected_request_ref, resume_target_ref, state,
+       created_at, expires_at, version
+FROM wc_approval_work_item
+WHERE tenant_id = :tenant_id
+  AND state = 'PENDING'
+ORDER BY created_at, approval_work_item_id
+LIMIT :limit
 """
 
 _WORK_ITEM_STATE_SQL = """
