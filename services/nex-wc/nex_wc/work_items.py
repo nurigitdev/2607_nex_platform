@@ -22,6 +22,7 @@ from nex_wc.authorization import (
 from nex_wc.delegation_lineage import (
     DelegationLineageRepository,
     InMemoryDelegationLineageRepository,
+    count_delegation_children_in_session,
     create_delegation_lineage_in_session,
     initial_delegation_policy,
     load_delegation_lineage_in_session,
@@ -144,6 +145,23 @@ class InMemoryWorkItemRepository:
         tenant_id = item["tenant_id"]
         semantic_key = (tenant_id, item["idempotency_key"])
         with self._lock:
+            if (
+                admitted_lineage is not None
+                and admitted_lineage["parent_work_item_id"] is not None
+            ):
+                authority = (
+                    None
+                    if self._parent_claim_authority_source is None
+                    else self._parent_claim_authority_source.get_parent_claim_authority(
+                        tenant_id=str(tenant_id),
+                        claim_id=str(admitted_lineage["parent_claim_ref"]),
+                    )
+                )
+                _require_parent_claim_authority(
+                    authority,
+                    lineage=admitted_lineage,
+                    observed_at=str(item["created_at"]),
+                )
             existing_ref = self._semantic_keys.get(semantic_key)
             if existing_ref is not None:
                 existing = self._records[existing_ref]
@@ -159,18 +177,13 @@ class InMemoryWorkItemRepository:
             if admitted_lineage is not None:
                 _require_lineage_matches_record(item, admitted_lineage)
                 if admitted_lineage["parent_work_item_id"] is not None:
-                    authority = (
-                        None
-                        if self._parent_claim_authority_source is None
-                        else self._parent_claim_authority_source.get_parent_claim_authority(
+                    _require_child_budget(
+                        self._lineages.count_children(
                             tenant_id=str(tenant_id),
-                            claim_id=str(admitted_lineage["parent_claim_ref"]),
+                            parent_work_item_id=str(
+                                admitted_lineage["parent_work_item_id"]
+                            ),
                         )
-                    )
-                    _require_parent_claim_authority(
-                        authority,
-                        lineage=admitted_lineage,
-                        observed_at=str(item["created_at"]),
                     )
                 self._lineages.create(admitted_lineage)
             self._records[record_key] = item
@@ -225,6 +238,23 @@ class SqlAlchemyWorkItemRepository:
                         authority,
                         lineage=admitted_lineage,
                         observed_at=str(record["created_at"]),
+                    )
+                    existing = _load_by_semantic_key(
+                        session,
+                        tenant_id=str(record["tenant_id"]),
+                        idempotency_key=str(record["idempotency_key"]),
+                    )
+                    if existing is not None:
+                        _require_same_semantics(existing, record)
+                        return existing, False
+                    _require_child_budget(
+                        count_delegation_children_in_session(
+                            session,
+                            tenant_id=str(record["tenant_id"]),
+                            parent_work_item_id=str(
+                                admitted_lineage["parent_work_item_id"]
+                            ),
+                        )
                     )
                 inserted = session.execute(text(_INSERT_SQL), params)
                 saved = _load_by_semantic_key(
@@ -803,6 +833,16 @@ def _stale_parent_authority() -> WorkItemError:
         "Nested delegation requires the current parent Claim, Assignment, and AgentExecution authority.",
         409,
     )
+
+
+def _require_child_budget(current_children: int) -> None:
+    maximum = int(initial_delegation_policy()["max_children_per_work_item"])
+    if current_children >= maximum:
+        raise WorkItemError(
+            "wc.delegation_child_budget_exceeded",
+            "Nested delegation would exceed the direct child budget.",
+            409,
+        )
 
 
 def _load_parent_claim_authority_in_session(

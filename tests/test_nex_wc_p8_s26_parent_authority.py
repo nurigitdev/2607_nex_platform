@@ -360,10 +360,16 @@ def test_s26_sql_child_admission_locks_parent_authority_before_insert(monkeypatc
         "_load_parent_claim_authority_in_session",
         lambda *_args, **_kwargs: calls.append("AUTHORITY") or authority,
     )
+    reloads = iter((None, record))
     monkeypatch.setattr(
         work_item_module,
         "_load_by_semantic_key",
-        lambda *_args, **_kwargs: record,
+        lambda *_args, **_kwargs: next(reloads),
+    )
+    monkeypatch.setattr(
+        work_item_module,
+        "count_delegation_children_in_session",
+        lambda *_args, **_kwargs: calls.append("COUNT") or 0,
     )
     monkeypatch.setattr(
         work_item_module,
@@ -374,7 +380,7 @@ def test_s26_sql_child_admission_locks_parent_authority_before_insert(monkeypatc
         record, lineage=lineage
     )
     assert saved == record and created is True
-    assert calls[0] == "AUTHORITY"
+    assert calls[:2] == ["AUTHORITY", "COUNT"]
     assert calls[-2:] == ["LINEAGE", "COMMIT"]
     assert "FOR UPDATE OF claim, assignment" in work_item_module._SELECT_PARENT_CLAIM_AUTHORITY_SQL
 
