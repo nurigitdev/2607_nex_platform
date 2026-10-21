@@ -107,11 +107,15 @@ def _count(session, table: Table) -> int:
 def test_s09_migration_declares_only_transaction_core_tables() -> None:
     migrations = load_migrations("nex-eos")
 
-    assert [migration.version for migration in migrations] == [
+    assert [migration.version for migration in migrations[:2]] == [
         "2500_eos_schema_migrations_baseline",
         "2501_eos_business_transaction_core",
     ]
-    sql = migrations[-1].sql
+    sql = next(
+        migration.sql
+        for migration in migrations
+        if migration.version == "2501_eos_business_transaction_core"
+    )
     compact = " ".join(sql.lower().split())
     assert "create table if not exists eos_business_operation" in compact
     assert "create table if not exists eos_idempotency" in compact

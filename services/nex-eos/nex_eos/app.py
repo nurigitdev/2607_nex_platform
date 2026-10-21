@@ -44,4 +44,5 @@ def create_eos_app(
     app.state.eos_dependencies = dependencies
     app.state.eos_database_runtime = dependencies.database_runtime
     app.state.eos_business_transactions = dependencies.business_transactions
+    app.state.eos_organization = dependencies.organization
     return app

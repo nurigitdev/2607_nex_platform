@@ -13,6 +13,7 @@ from .business_transactions import (
 )
 from .config import EosSettings
 from .health import build_configuration_readiness_check
+from .organization import SqlAlchemyEosOrganizationRepository
 from .persistence import EosDatabaseRuntime, build_eos_database_runtime
 
 
@@ -22,6 +23,7 @@ class EosDependencies:
     readiness_checks: tuple[Callable[[], Mapping[str, Any]], ...]
     database_runtime: EosDatabaseRuntime | None
     business_transactions: EosBusinessTransactionCoordinator | None
+    organization: SqlAlchemyEosOrganizationRepository | None
 
 
 def build_eos_dependencies(
@@ -41,6 +43,11 @@ def build_eos_dependencies(
         if database_runtime is not None
         else None
     )
+    organization = (
+        SqlAlchemyEosOrganizationRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
     return EosDependencies(
         service_token_admission=build_service_token_admission_runtime(
             expected_audience=settings.service_id,
@@ -49,4 +56,5 @@ def build_eos_dependencies(
         readiness_checks=(build_configuration_readiness_check(settings),),
         database_runtime=database_runtime,
         business_transactions=business_transactions,
+        organization=organization,
     )
