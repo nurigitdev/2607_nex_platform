@@ -97,8 +97,16 @@ class ApprovalWorkItemError(Exception):
 class ApprovalWorkItemRepository(Protocol):
     def insert(self, work_item: Mapping[str, Any]) -> dict[str, Any]: ...
 
+    def create_or_get(
+        self, work_item: Mapping[str, Any]
+    ) -> tuple[dict[str, Any], bool]: ...
+
     def get(
         self, *, tenant_id: str, approval_work_item_id: str
+    ) -> dict[str, Any] | None: ...
+
+    def get_by_source(
+        self, *, tenant_id: str, approval_domain: str, source_ref: str
     ) -> dict[str, Any] | None: ...
 
 
@@ -123,12 +131,50 @@ class InMemoryApprovalWorkItemRepository:
             self._source_keys.add(source_key)
             return copy.deepcopy(record)
 
+    def create_or_get(
+        self, work_item: Mapping[str, Any]
+    ) -> tuple[dict[str, Any], bool]:
+        record = validate_approval_work_item(work_item)
+        key = (record["tenant_id"], record["approval_work_item_id"])
+        source_key = (
+            record["tenant_id"],
+            record["approval_domain"],
+            record["source_ref"],
+        )
+        with self._lock:
+            for existing in self._records.values():
+                if (
+                    existing["tenant_id"],
+                    existing["approval_domain"],
+                    existing["source_ref"],
+                ) == source_key:
+                    _require_same_semantics(existing, record)
+                    return copy.deepcopy(existing), False
+            if key in self._records:
+                raise _conflict()
+            self._records[key] = copy.deepcopy(record)
+            self._source_keys.add(source_key)
+            return copy.deepcopy(record), True
+
     def get(
         self, *, tenant_id: str, approval_work_item_id: str
     ) -> dict[str, Any] | None:
         with self._lock:
             record = self._records.get((tenant_id, approval_work_item_id))
             return None if record is None else copy.deepcopy(record)
+
+    def get_by_source(
+        self, *, tenant_id: str, approval_domain: str, source_ref: str
+    ) -> dict[str, Any] | None:
+        with self._lock:
+            for record in self._records.values():
+                if (
+                    record["tenant_id"] == tenant_id
+                    and record["approval_domain"] == approval_domain
+                    and record["source_ref"] == source_ref
+                ):
+                    return copy.deepcopy(record)
+            return None
 
 
 class SqlAlchemyApprovalWorkItemRepository:
@@ -162,6 +208,39 @@ class SqlAlchemyApprovalWorkItemRepository:
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
 
+    def create_or_get(
+        self, work_item: Mapping[str, Any]
+    ) -> tuple[dict[str, Any], bool]:
+        record = validate_approval_work_item(work_item)
+        params = {field: record.get(field) for field in _REQUIRED_FIELDS | _OPTIONAL_FIELDS}
+        try:
+            with self._session_factory() as session:
+                inserted = session.execute(text(_INSERT_BY_SOURCE_SQL), params)
+                saved = _load_by_source(
+                    session,
+                    tenant_id=record["tenant_id"],
+                    approval_domain=record["approval_domain"],
+                    source_ref=record["source_ref"],
+                )
+                if saved is None:
+                    raise ApprovalWorkItemError(
+                        "wc.approval_work_item_write_conflict",
+                        "ApprovalWorkItem could not be resolved after creation.",
+                        409,
+                        True,
+                    )
+                created = int(inserted.rowcount or 0) == 1
+                if not created:
+                    _require_same_semantics(saved, record)
+                session.commit()
+                return saved, created
+        except ApprovalWorkItemError:
+            raise
+        except IntegrityError as exc:
+            raise _conflict() from exc
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
     def get(
         self, *, tenant_id: str, approval_work_item_id: str
     ) -> dict[str, Any] | None:
@@ -174,6 +253,29 @@ class SqlAlchemyApprovalWorkItemRepository:
                 )
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
+
+    def get_by_source(
+        self, *, tenant_id: str, approval_domain: str, source_ref: str
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                return _load_by_source(
+                    session,
+                    tenant_id=tenant_id,
+                    approval_domain=approval_domain,
+                    source_ref=source_ref,
+                )
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
+
+class ApprovalWorkItemService:
+    def __init__(self, repository: ApprovalWorkItemRepository) -> None:
+        self._repository = repository
+
+    def create_or_get(self, work_item: Mapping[str, Any]) -> dict[str, Any]:
+        saved, created = self._repository.create_or_get(work_item)
+        return {"work_item": saved, "created": created}
 
 
 def validate_approval_work_item(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -265,6 +367,51 @@ def _load(
     return validate_approval_work_item(record)
 
 
+def _load_by_source(
+    session: Session, *, tenant_id: str, approval_domain: str, source_ref: str
+) -> dict[str, Any] | None:
+    row = (
+        session.execute(
+            text(_SELECT_BY_SOURCE_SQL),
+            {
+                "tenant_id": tenant_id,
+                "approval_domain": approval_domain,
+                "source_ref": source_ref,
+            },
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:
+        return None
+    stored_fields = (_REQUIRED_FIELDS - {"schema_version"}) | _OPTIONAL_FIELDS
+    record = {field: row[field] for field in stored_fields}
+    record["schema_version"] = "wc_approval_work_item.v1"
+    record["approval_work_item_id"] = str(record["approval_work_item_id"])
+    record["created_at"] = _timestamp("created_at", record["created_at"])
+    if record["expires_at"] is not None:
+        record["expires_at"] = _timestamp("expires_at", record["expires_at"])
+    return validate_approval_work_item(record)
+
+
+def _require_same_semantics(
+    existing: Mapping[str, Any], candidate: Mapping[str, Any]
+) -> None:
+    ignored = {"approval_work_item_id", "created_at", "state", "version"}
+    existing_projection = {
+        field: value for field, value in existing.items() if field not in ignored
+    }
+    candidate_projection = {
+        field: value for field, value in candidate.items() if field not in ignored
+    }
+    if existing_projection != candidate_projection:
+        raise ApprovalWorkItemError(
+            "wc.approval_work_item_idempotency_conflict",
+            "Approval source identity already exists with different semantics.",
+            409,
+        )
+
+
 def _invalid(detail: str) -> ApprovalWorkItemError:
     return ApprovalWorkItemError("wc.approval_work_item_invalid", detail)
 
@@ -346,6 +493,10 @@ INSERT INTO wc_approval_work_item (
 )
 """
 
+_INSERT_BY_SOURCE_SQL = _INSERT_SQL + """
+ON CONFLICT (tenant_id, approval_domain, source_ref) DO NOTHING
+"""
+
 _SELECT_SQL = """
 SELECT tenant_id, approval_work_item_id, approval_domain, source_ref,
        semantic_hash, title, display_safe_summary, approval_provider_type,
@@ -357,4 +508,18 @@ SELECT tenant_id, approval_work_item_id, approval_domain, source_ref,
 FROM wc_approval_work_item
 WHERE tenant_id = :tenant_id
   AND approval_work_item_id = :approval_work_item_id
+"""
+
+_SELECT_BY_SOURCE_SQL = """
+SELECT tenant_id, approval_work_item_id, approval_domain, source_ref,
+       semantic_hash, title, display_safe_summary, approval_provider_type,
+       approval_target_ref, target_approver_ref, target_role_ref,
+       target_org_scope_ref, target_project_scope_ref, agent_execution_id,
+       executable_step_id, nsl_execution_id, business_operation_id,
+       approval_request_id, protected_request_ref, resume_target_ref, state,
+       created_at, expires_at, version
+FROM wc_approval_work_item
+WHERE tenant_id = :tenant_id
+  AND approval_domain = :approval_domain
+  AND source_ref = :source_ref
 """
