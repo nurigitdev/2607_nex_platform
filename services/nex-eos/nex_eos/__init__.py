@@ -89,6 +89,10 @@ from .voucher_commands import (
     parse_create_voucher_draft_command,
     voucher_payload_hash,
 )
+from .voucher_verification import (
+    EosVoucherVerificationError,
+    SqlAlchemyEosVoucherVerificationQuery,
+)
 from .organization import (
     EOS_ORGANIZATION_STATUSES,
     EOS_ORG_UNIT_TABLE,
@@ -156,6 +160,7 @@ __all__ = (
     "EosTestDatabaseResetResult",
     "EosVoucherError",
     "EosVoucherCommandError",
+    "EosVoucherVerificationError",
     "EosCreateVoucherDraftService",
     "EosServiceCaller",
     "InMemoryEosBusinessTransactionCoordinator",
@@ -176,6 +181,7 @@ __all__ = (
     "SqlAlchemyEosBusinessTransactionCoordinator",
     "SqlAlchemyEosBusinessOperationQuery",
     "SqlAlchemyEosVoucherRepository",
+    "SqlAlchemyEosVoucherVerificationQuery",
     "VoucherDraftInput",
     "VoucherAttachmentInput",
     "VoucherLineInput",

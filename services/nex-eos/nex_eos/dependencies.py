@@ -21,6 +21,7 @@ from .persistence import EosDatabaseRuntime, build_eos_database_runtime
 from .projects import SqlAlchemyEosProjectRepository
 from .vouchers import SqlAlchemyEosVoucherRepository
 from .voucher_commands import EosCreateVoucherDraftService
+from .voucher_verification import SqlAlchemyEosVoucherVerificationQuery
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,7 @@ class EosDependencies:
     vouchers: SqlAlchemyEosVoucherRepository | None
     voucher_command_service: EosCreateVoucherDraftService | None
     business_operation_query: SqlAlchemyEosBusinessOperationQuery | None
+    voucher_verification_query: SqlAlchemyEosVoucherVerificationQuery | None
 
 
 def build_eos_dependencies(
@@ -94,6 +96,11 @@ def build_eos_dependencies(
         if database_runtime is not None
         else None
     )
+    voucher_verification_query = (
+        SqlAlchemyEosVoucherVerificationQuery(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
     return EosDependencies(
         service_token_admission=build_service_token_admission_runtime(
             expected_audience=settings.service_id,
@@ -108,4 +115,5 @@ def build_eos_dependencies(
         vouchers=vouchers,
         voucher_command_service=voucher_command_service,
         business_operation_query=business_operation_query,
+        voucher_verification_query=voucher_verification_query,
     )

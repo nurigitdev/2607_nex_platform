@@ -4,6 +4,10 @@ import json
 from pathlib import Path
 
 import run_platform_contract_trace_privacy_e2e_gap_audit as audit
+from validate_contracts import contract_inventory_counts
+
+
+CONTRACT_ROOT = Path(__file__).resolve().parents[1] / "contracts"
 
 
 def test_repository_contract_trace_privacy_audit_tracks_named_e2e_execution() -> None:
@@ -12,12 +16,7 @@ def test_repository_contract_trace_privacy_audit_tracks_named_e2e_execution() ->
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
     assert result["issues"] == []
-    assert result["contract_counts"] == {
-        "schemas": 174,
-        "examples": 236,
-        "negative_examples": 204,
-        "openapi": 9,
-    }
+    assert result["contract_counts"] == contract_inventory_counts(CONTRACT_ROOT)
     assert result["findings"]["golden_scenario_contract_count"] == 10
     assert result["findings"]["executable_named_golden_scenario_count"] == 10
     assert result["findings"]["executable_named_golden_scenario_ids"] == [

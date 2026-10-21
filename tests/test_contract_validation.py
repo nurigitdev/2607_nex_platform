@@ -81,6 +81,19 @@ def test_validate_contract_tree_accepts_valid_contract_package(tmp_path: Path) -
     assert summary.openapi_count == 1
 
 
+def test_contract_inventory_counts_tracks_current_files_and_indexes(
+    tmp_path: Path,
+) -> None:
+    build_contract_fixture(tmp_path)
+
+    assert validate_contracts.contract_inventory_counts(tmp_path) == {
+        "schemas": 1,
+        "examples": 1,
+        "negative_examples": 1,
+        "openapi": 1,
+    }
+
+
 def test_validate_contract_tree_reports_invalid_example(tmp_path: Path) -> None:
     build_contract_fixture(tmp_path)
     write_json(tmp_path / "examples" / "sample.json", {"unexpected": "value"})

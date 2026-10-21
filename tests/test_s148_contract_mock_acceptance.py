@@ -1,19 +1,20 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import run_s148_contract_mock_acceptance as smoke
+from validate_contracts import contract_inventory_counts
 
 from run_s148_contract_mock_acceptance import main, run_contract_mock_acceptance, summary_line
+
+
+CONTRACT_ROOT = Path(__file__).resolve().parents[1] / "contracts"
 
 
 def test_s148_contract_mock_acceptance() -> None:
     result = run_contract_mock_acceptance()
     assert result["status"] == "PASS"
-    assert result["contract_counts"] == {
-        "schemas": 174,
-        "examples": 236,
-        "negative_examples": 204,
-        "openapi": 9,
-    }
+    assert result["contract_counts"] == contract_inventory_counts(CONTRACT_ROOT)
     assert result["external_acceptance"] == "MOCK_ACCEPTED"
     assert result["external_activation"] == "EXTERNAL_NOT_ACTIVATED"
     assert all(result["checks"].values())

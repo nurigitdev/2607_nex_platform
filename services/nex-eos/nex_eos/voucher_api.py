@@ -16,6 +16,7 @@ from .voucher_commands import (
     EosVoucherCommandError,
 )
 from .business_queries import EosBusinessQueryError
+from .voucher_verification import EosVoucherVerificationError
 
 
 def register_voucher_command_routes(app: FastAPI) -> None:
@@ -114,4 +115,51 @@ def register_voucher_command_routes(app: FastAPI) -> None:
                 detail=exc.detail,
                 retryable=exc.retryable,
                 type_uri="https://nex-platform.local/problems/eos-business-query-failed",
+            )
+
+    @app.get(
+        "/internal/v1/finance/voucher-drafts/{voucher_id}/verification",
+        response_model=None,
+    )
+    def verify_voucher_draft(
+        voucher_id: str,
+        request: Request,
+        business_operation_id: str,
+        tenant_id: str = Header(alias="X-NeX-Tenant-Id"),
+        authorization: str | None = Header(default=None),
+    ):
+        admitted = admit_service_token_from_request(
+            request,
+            authorization,
+            expected_audience="nex-eos",
+            required_scopes=(DEFAULT_SERVICE_SCOPE,),
+        )
+        if isinstance(admitted, JSONResponse):
+            return admitted
+        query = getattr(request.app.state, "eos_voucher_verification_query", None)
+        if query is None:
+            return problem_response(
+                request,
+                status_code=503,
+                error_code="EOS_VOUCHER_VERIFICATION_UNAVAILABLE",
+                title="EOS Voucher verification unavailable",
+                detail="EOS Voucher verification dependency is not configured.",
+                retryable=True,
+                type_uri="https://nex-platform.local/problems/eos-voucher-verification-unavailable",
+            )
+        try:
+            return query.verify(
+                tenant_id=tenant_id,
+                voucher_id=voucher_id,
+                business_operation_id=business_operation_id,
+            )
+        except EosVoucherVerificationError as exc:
+            return problem_response(
+                request,
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                title="EOS Voucher verification failed",
+                detail=exc.detail,
+                retryable=exc.retryable,
+                type_uri="https://nex-platform.local/problems/eos-voucher-verification-failed",
             )

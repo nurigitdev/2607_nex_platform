@@ -51,5 +51,6 @@ def create_eos_app(
     app.state.eos_vouchers = dependencies.vouchers
     app.state.eos_voucher_command_service = dependencies.voucher_command_service
     app.state.eos_business_operation_query = dependencies.business_operation_query
+    app.state.eos_voucher_verification_query = dependencies.voucher_verification_query
     register_voucher_command_routes(app)
     return app

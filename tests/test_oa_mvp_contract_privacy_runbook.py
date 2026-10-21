@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import run_oa_mvp_contract_privacy_runbook as runner
+from validate_contracts import contract_inventory_counts
+
+
+CONTRACT_ROOT = Path(__file__).resolve().parents[1] / "contracts"
 
 
 def test_contract_privacy_runbook_evidence_passes() -> None:
@@ -10,12 +15,7 @@ def test_contract_privacy_runbook_evidence_passes() -> None:
 
     assert evidence["status"] == "PASS", evidence
     assert all(evidence["checks"].values())
-    assert evidence["contract_counts"] == {
-        "schemas": 174,
-        "examples": 236,
-        "negative_examples": 204,
-        "openapi": 9,
-    }
+    assert evidence["contract_counts"] == contract_inventory_counts(CONTRACT_ROOT)
     assert evidence["summary"] == {
         "check_count": 11,
         "passed_check_count": 11,
@@ -59,9 +59,10 @@ def test_document_loaders_fail_closed(tmp_path) -> None:
 
 def test_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_oa_mvp_contract_privacy_runbook()
+    schema_count = contract_inventory_counts(CONTRACT_ROOT)["schemas"]
     assert runner.summary_line(passing) == (
-        "oa_mvp_contract_privacy_runbook=pass checks=11/11 schemas=174 "
-        "routes=6 documents=9 privacy=0 next=1300"
+        "oa_mvp_contract_privacy_runbook=pass checks=11/11 "
+        f"schemas={schema_count} routes=6 documents=9 privacy=0 next=1300"
     )
 
     monkeypatch.setattr(

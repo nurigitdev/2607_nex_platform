@@ -150,6 +150,40 @@ paths:
           description: Tenant or BusinessOperation identity is invalid.
         "503":
           description: Query persistence or stored state is unavailable.
+  /internal/v1/finance/voucher-drafts/{voucher_id}/verification:
+    get:
+      operationId: verifyEosVoucherDraft
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-side-effect-free: true
+      parameters:
+        - name: voucher_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: business_operation_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200":
+          description: Side-effect-free stable Voucher business-state verification.
+        "401":
+          description: Service claim is missing or invalid.
+        "404":
+          description: Voucher or BusinessOperation is absent from tenant scope.
+        "409":
+          description: Voucher and BusinessOperation binding is not committed.
+        "422":
+          description: Verification identity is invalid.
+        "503":
+          description: Persisted business state is unavailable or inconsistent.
 components:
   securitySchemes:
     serviceBearer:
