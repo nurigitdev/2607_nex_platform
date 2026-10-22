@@ -50,6 +50,9 @@ def test_adapter_exposes_only_admitted_v02_public_symbols(
     assert adapter.schema_version == NSL_V02_PUBLIC_API_ADAPTER_SCHEMA_VERSION
     assert tuple(adapter.symbols()) == NSL_V02_REQUIRED_PUBLIC_SYMBOLS
     assert tuple(adapter.symbols().values()) == imported
+    assert adapter.resume_token is imported[
+        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("ResumeToken")
+    ]
     assert adapter.release_admission_hash == HASH
     assert adapter.api_contract_hash.startswith("sha256:")
 
@@ -150,3 +153,4 @@ def test_adapter_architecture_imports_no_private_nsl_modules() -> None:
     assert {alias.name for alias in public_import.names} == set(
         NSL_V02_REQUIRED_PUBLIC_SYMBOLS
     )
+    assert "ResumeToken" in {alias.name for alias in public_import.names}

@@ -61,6 +61,7 @@ P8_V02_PUBLIC_API_SYMBOLS = (
     "ApprovalEvidence",
     "ApprovalSuspensionCoordinator",
     "ApprovalResumeCoordinator",
+    "ResumeToken",
     "CheckpointPort",
     "ResumeCheckpointPort",
     "IdempotencyCoordinator",

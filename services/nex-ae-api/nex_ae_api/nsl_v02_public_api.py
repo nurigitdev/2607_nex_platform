@@ -12,6 +12,7 @@ NSL_V02_REQUIRED_PUBLIC_SYMBOLS = (
     "ApprovalEvidence",
     "ApprovalSuspensionCoordinator",
     "ApprovalResumeCoordinator",
+    "ResumeToken",
     "CheckpointPort",
     "ResumeCheckpointPort",
     "IdempotencyCoordinator",
@@ -36,6 +37,7 @@ class NslV02PublicApiAdapter:
     approval_evidence: Any
     approval_suspension_coordinator: Any
     approval_resume_coordinator: Any
+    resume_token: Any
     checkpoint_port: Any
     resume_checkpoint_port: Any
     idempotency_coordinator: Any
@@ -58,6 +60,7 @@ class NslV02PublicApiAdapter:
                     self.approval_evidence,
                     self.approval_suspension_coordinator,
                     self.approval_resume_coordinator,
+                    self.resume_token,
                     self.checkpoint_port,
                     self.resume_checkpoint_port,
                     self.idempotency_coordinator,
@@ -139,6 +142,7 @@ def _import_public_api() -> tuple[Any, ...]:
         IdempotencyCoordinator,
         PostWriteVerificationPort,
         ResumeCheckpointPort,
+        ResumeToken,
         RuntimePreflightValidator,
         WriteExecutionPort,
     )
@@ -148,6 +152,7 @@ def _import_public_api() -> tuple[Any, ...]:
         ApprovalEvidence,
         ApprovalSuspensionCoordinator,
         ApprovalResumeCoordinator,
+        ResumeToken,
         CheckpointPort,
         ResumeCheckpointPort,
         IdempotencyCoordinator,
