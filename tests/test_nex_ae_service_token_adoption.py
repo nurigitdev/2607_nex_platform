@@ -5,7 +5,6 @@ from typing import Any
 import pytest
 from fastapi import FastAPI, Header, Request
 from fastapi.testclient import TestClient
-
 from nex_ae_api.route_auth import authorize_ae_facade_route_request
 from nex_ae_api.service_auth import (
     AeOutboundServiceTokenError,
@@ -22,7 +21,6 @@ from nex_runtime import (
 )
 from nex_runtime.compatibility import register_generation_compatibility_routes
 from nex_runtime.recovery import register_generation_recovery_policy_routes
-
 
 REFERENCE = "memory://oa-key-ae-adoption"
 KEY_ID = "oa-key-ae-adoption"
@@ -164,6 +162,14 @@ def test_ae_outbound_token_resolution_has_no_signed_profile_mock_fallback() -> N
             "NEX_AE_TO_OA_SERVICE_TOKEN": "oa-signed-from-env",
         },
     ) == "oa-signed-from-env"
+    assert resolve_ae_outbound_service_token(
+        None,
+        audience="nex-eos",
+        environ={
+            "NEX_SERVICE_TOKEN_ROLLOUT_PROFILE": "SIGNED_ONLY",
+            "NEX_AE_TO_EOS_SERVICE_TOKEN": "eos-signed-from-env",
+        },
+    ) == "eos-signed-from-env"
 
     for configured, audience, environ, code in (
         (" bad ", "nex-cx", {}, "ae.outbound_service_token_invalid"),

@@ -23,6 +23,7 @@ NSL_V02_REQUIRED_PUBLIC_SYMBOLS = (
     "WriteEvidencePort",
     "WriteAttemptRecord",
     "WriteRequestedReceipt",
+    "WriteCallRequest",
     "WriteExecutionPort",
     "PostWriteVerificationPort",
     "RuntimePolicyPort",
@@ -59,6 +60,7 @@ class NslV02PublicApiAdapter:
     write_evidence_port: Any
     write_attempt_record: Any
     write_requested_receipt: Any
+    write_call_request: Any
     write_execution_port: Any
     post_write_verification_port: Any
     runtime_policy_port: Any
@@ -93,6 +95,7 @@ class NslV02PublicApiAdapter:
                     self.write_evidence_port,
                     self.write_attempt_record,
                     self.write_requested_receipt,
+                    self.write_call_request,
                     self.write_execution_port,
                     self.post_write_verification_port,
                     self.runtime_policy_port,
@@ -185,6 +188,7 @@ def _import_public_api() -> tuple[Any, ...]:
         RuntimePolicyPort,
         RuntimePreflightValidator,
         WriteAttemptRecord,
+        WriteCallRequest,
         WriteEvidencePort,
         WriteExecutionPort,
         WritePolicyRequest,
@@ -207,6 +211,7 @@ def _import_public_api() -> tuple[Any, ...]:
         WriteEvidencePort,
         WriteAttemptRecord,
         WriteRequestedReceipt,
+        WriteCallRequest,
         WriteExecutionPort,
         PostWriteVerificationPort,
         RuntimePolicyPort,

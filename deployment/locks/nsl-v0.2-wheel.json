@@ -21,6 +21,7 @@
     "WriteEvidencePort",
     "WriteAttemptRecord",
     "WriteRequestedReceipt",
+    "WriteCallRequest",
     "WriteExecutionPort",
     "PostWriteVerificationPort",
     "RuntimePolicyPort",

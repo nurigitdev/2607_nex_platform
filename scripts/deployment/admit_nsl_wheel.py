@@ -72,6 +72,7 @@ P8_V02_PUBLIC_API_SYMBOLS = (
     "WriteEvidencePort",
     "WriteAttemptRecord",
     "WriteRequestedReceipt",
+    "WriteCallRequest",
     "WriteExecutionPort",
     "PostWriteVerificationPort",
     "RuntimePolicyPort",

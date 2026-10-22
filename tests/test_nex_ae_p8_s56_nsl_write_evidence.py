@@ -97,6 +97,7 @@ def _public_api(
         write_evidence_port=port_type,
         write_attempt_record=record_type,
         write_requested_receipt=receipt_type,
+        write_call_request=object,
         write_execution_port=object,
         post_write_verification_port=object,
         runtime_policy_port=object,

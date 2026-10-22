@@ -163,6 +163,7 @@ def _public_api(
         write_evidence_port=object,
         write_attempt_record=object,
         write_requested_receipt=object,
+        write_call_request=object,
         write_execution_port=object,
         post_write_verification_port=object,
         runtime_policy_port=RuntimePolicyPort,
