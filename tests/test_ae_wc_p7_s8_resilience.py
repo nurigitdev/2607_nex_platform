@@ -472,7 +472,11 @@ def test_resume_crash_after_step_commit_recovers_without_duplicate_step_result()
             {"contract": RESULT_CONTRACT, "tenant_id": TENANT, "step_id": STEP_1_ID},
         )
         session.execute(
-            text("INSERT INTO ae_wait_registration VALUES "
+                text("INSERT INTO ae_wait_registration ("
+                     "wait_id,tenant_id,agent_execution_id,executable_step_id,"
+                     "wait_type,external_ref,result_contract_ref,state,version,"
+                     "created_at,satisfied_at,matched_event_id,"
+                     "resume_runtime_job_id,updated_at) VALUES "
                  "(:wait_id,:tenant_id,:execution_id,:step_id,'WORK_RESULT',:external_ref,"
                  ":contract,'RESUME_QUEUED',2,:now,:now,:event_id,:job_id,:now)"),
             {

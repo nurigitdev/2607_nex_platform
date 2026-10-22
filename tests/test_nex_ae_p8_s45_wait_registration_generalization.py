@@ -43,6 +43,10 @@ def repository():
                     version INTEGER NOT NULL,
                     created_at TEXT NOT NULL,
                     satisfied_at TEXT,
+                    nsl_execution_id TEXT,
+                    business_operation_id TEXT,
+                    approval_request_id TEXT,
+                    checkpoint_version INTEGER,
                     PRIMARY KEY (tenant_id, wait_id),
                     UNIQUE (
                         tenant_id, agent_execution_id,
@@ -59,7 +63,7 @@ def repository():
     engine.dispose()
 
 
-def _registration(**changes: str) -> dict[str, str]:
+def _registration(**changes: object) -> dict[str, object]:
     value = {
         "wait_id": "11111111-1111-4111-8111-111111111145",
         "tenant_id": "tenant-p8-s45",
@@ -69,6 +73,10 @@ def _registration(**changes: str) -> dict[str, str]:
         "result_contract_ref": "urn:nex:approval-resume:p8:v1",
         "created_at": NOW,
         "wait_type": "NSL_APPROVAL",
+        "nsl_execution_id": "nsl-execution-p8-s45",
+        "business_operation_id": "business-operation-p8-s45",
+        "approval_request_id": "approval-request:p8-s45:non-uuid",
+        "checkpoint_version": 1,
     }
     value.update(changes)
     return value
@@ -104,6 +112,10 @@ def test_historical_work_result_defaults_remain_compatible(repository) -> None:
     value = _registration(
         wait_type="WORK_RESULT",
         external_ref="44444444-4444-4444-8444-444444444445",
+        nsl_execution_id=None,
+        business_operation_id=None,
+        approval_request_id=None,
+        checkpoint_version=None,
     )
     saved = repository.register(**value)
 
@@ -123,6 +135,10 @@ def test_distinct_wait_types_can_share_one_step(repository) -> None:
         wait_id="55555555-5555-4555-8555-555555555545",
         wait_type="WORK_RESULT",
         external_ref="66666666-6666-4666-8666-666666666645",
+        nsl_execution_id=None,
+        business_operation_id=None,
+        approval_request_id=None,
+        checkpoint_version=None,
     )
     approval = _registration()
 
@@ -151,7 +167,10 @@ def test_same_typed_step_with_changed_identity_conflicts(repository) -> None:
 
     with pytest.raises(DelegatedWorkError) as conflict:
         repository.register(
-            **_registration(external_ref="approval-request:p8-s45:changed")
+            **_registration(
+                external_ref="approval-request:p8-s45:changed",
+                approval_request_id="approval-request:p8-s45:changed",
+            )
         )
     assert conflict.value.error_code == "ae.wait_registration_immutable_conflict"
 
@@ -259,16 +278,49 @@ def test_actual_postgres_supports_historical_and_nsl_waits() -> None:
                     "correlation_id": f"corr-{suffix}",
                 },
             )
+            request_id = f"approval-request:{suffix}"
+            nsl_execution_id = f"nsl-execution:{suffix}"
+            business_operation_id = f"business-operation:{suffix}"
+            request_bytes = b"{}"
+            connection.execute(
+                text(
+                    "INSERT INTO ae_nsl_approval_request ("
+                    "tenant_id, approval_request_id, nsl_execution_id, "
+                    "business_operation_id, protected_request_ref, "
+                    "approval_request_hash, request_size_bytes, content_type, "
+                    "data_classification, created_at, approval_request_bytes"
+                    ") VALUES ("
+                    ":tenant_id, :approval_request_id, :nsl_execution_id, "
+                    ":business_operation_id, :protected_request_ref, "
+                    ":approval_request_hash, :request_size_bytes, "
+                    "'application/json', 'INTERNAL', now(), :request_bytes"
+                    ")"
+                ),
+                {
+                    "tenant_id": tenant_id,
+                    "approval_request_id": request_id,
+                    "nsl_execution_id": nsl_execution_id,
+                    "business_operation_id": business_operation_id,
+                    "protected_request_ref": f"ae://nsl-approval-requests/aa/{'a' * 64}.json",
+                    "approval_request_hash": f"sha256:{'b' * 64}",
+                    "request_size_bytes": len(request_bytes),
+                    "request_bytes": request_bytes,
+                },
+            )
 
         approval = repository.register(
             wait_id=str(uuid4()),
             tenant_id=tenant_id,
             agent_execution_id=execution_id,
             executable_step_id=step_id,
-            external_ref=f"approval-request:{suffix}",
+            external_ref=request_id,
             result_contract_ref="urn:nex:approval-resume:p8:v1",
             created_at=NOW,
             wait_type="NSL_APPROVAL",
+            nsl_execution_id=nsl_execution_id,
+            business_operation_id=business_operation_id,
+            approval_request_id=request_id,
+            checkpoint_version=1,
         )
         work_result = repository.register(
             wait_id=str(uuid4()),
@@ -279,7 +331,7 @@ def test_actual_postgres_supports_historical_and_nsl_waits() -> None:
             result_contract_ref="urn:nex:work-result:p7:v1",
             created_at=NOW,
         )
-        assert approval["external_ref"] == f"approval-request:{suffix}"
+        assert approval["external_ref"] == request_id
         assert work_result["wait_type"] == "WORK_RESULT"
 
         with factory_engine.connect() as connection:
@@ -306,6 +358,13 @@ def test_actual_postgres_supports_historical_and_nsl_waits() -> None:
         with factory_engine.begin() as connection:
             connection.execute(
                 text("DELETE FROM ae_wait_registration WHERE tenant_id = :tenant_id"),
+                {"tenant_id": tenant_id},
+            )
+            connection.execute(
+                text(
+                    "DELETE FROM ae_nsl_approval_request "
+                    "WHERE tenant_id = :tenant_id"
+                ),
                 {"tenant_id": tenant_id},
             )
             connection.execute(

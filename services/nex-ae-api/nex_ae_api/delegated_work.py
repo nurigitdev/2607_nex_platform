@@ -144,13 +144,26 @@ class SqlAlchemyWaitRegistrationRepository:
         result_contract_ref: str,
         created_at: str,
         wait_type: str = "WORK_RESULT",
+        nsl_execution_id: str | None = None,
+        business_operation_id: str | None = None,
+        approval_request_id: str | None = None,
+        checkpoint_version: int | None = None,
     ) -> dict[str, Any]:
+        normalized_wait_type = _wait_type(wait_type)
+        lineage = _wait_lineage(
+            wait_type=normalized_wait_type,
+            external_ref=external_ref,
+            nsl_execution_id=nsl_execution_id,
+            business_operation_id=business_operation_id,
+            approval_request_id=approval_request_id,
+            checkpoint_version=checkpoint_version,
+        )
         record = {
             "wait_id": _uuid("wait_id", wait_id),
             "tenant_id": _required("tenant_id", tenant_id, 128),
             "agent_execution_id": _uuid("agent_execution_id", agent_execution_id),
             "executable_step_id": _uuid("executable_step_id", executable_step_id),
-            "wait_type": _wait_type(wait_type),
+            "wait_type": normalized_wait_type,
             "external_ref": _required("external_ref", external_ref, 256),
             "result_contract_ref": _required(
                 "result_contract_ref", result_contract_ref, 256
@@ -159,6 +172,7 @@ class SqlAlchemyWaitRegistrationRepository:
             "version": 1,
             "created_at": _required("created_at", created_at, 64),
             "satisfied_at": None,
+            **lineage,
         }
         try:
             with self._session_factory() as session:
@@ -343,6 +357,24 @@ def deterministic_wait_id(
     )
 
 
+def deterministic_nsl_approval_wait_id(
+    *,
+    tenant_id: str,
+    agent_execution_id: str,
+    executable_step_id: str,
+    approval_request_id: str,
+    checkpoint_version: int,
+) -> str:
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            "https://nex-platform.local/ae/waits/"
+            f"{tenant_id}/{agent_execution_id}/{executable_step_id}/"
+            f"NSL_APPROVAL/{approval_request_id}/{checkpoint_version}",
+        )
+    )
+
+
 def _load_wait(
     session: Session,
     *,
@@ -356,7 +388,9 @@ def _load_wait(
             text(
                 "SELECT wait_id, tenant_id, agent_execution_id, "
                 "executable_step_id, wait_type, external_ref, "
-                "result_contract_ref, state, version, created_at, satisfied_at "
+                "result_contract_ref, state, version, created_at, satisfied_at, "
+                "nsl_execution_id, business_operation_id, approval_request_id, "
+                "checkpoint_version "
                 "FROM ae_wait_registration WHERE tenant_id = :tenant_id "
                 "AND agent_execution_id = :agent_execution_id "
                 "AND executable_step_id = :executable_step_id "
@@ -387,6 +421,24 @@ def _load_wait(
         "created_at": _timestamp(row["created_at"]),
         "satisfied_at": (
             None if row["satisfied_at"] is None else _timestamp(row["satisfied_at"])
+        ),
+        "nsl_execution_id": (
+            None if row["nsl_execution_id"] is None else str(row["nsl_execution_id"])
+        ),
+        "business_operation_id": (
+            None
+            if row["business_operation_id"] is None
+            else str(row["business_operation_id"])
+        ),
+        "approval_request_id": (
+            None
+            if row["approval_request_id"] is None
+            else str(row["approval_request_id"])
+        ),
+        "checkpoint_version": (
+            None
+            if row["checkpoint_version"] is None
+            else int(row["checkpoint_version"])
         ),
     }
 
@@ -421,6 +473,10 @@ def _same_wait_registration(
         "state",
         "version",
         "satisfied_at",
+        "nsl_execution_id",
+        "business_operation_id",
+        "approval_request_id",
+        "checkpoint_version",
     )
     return all(saved.get(field) == proposed.get(field) for field in immutable_fields)
 
@@ -439,6 +495,49 @@ def _wait_type(value: object) -> str:
     return normalized
 
 
+def _wait_lineage(
+    *,
+    wait_type: str,
+    external_ref: object,
+    nsl_execution_id: object,
+    business_operation_id: object,
+    approval_request_id: object,
+    checkpoint_version: object,
+) -> dict[str, Any]:
+    values = (
+        nsl_execution_id,
+        business_operation_id,
+        approval_request_id,
+        checkpoint_version,
+    )
+    if wait_type == "WORK_RESULT":
+        if any(value is not None for value in values):
+            raise _invalid("WORK_RESULT must not carry NSL approval lineage.")
+        return {
+            "nsl_execution_id": None,
+            "business_operation_id": None,
+            "approval_request_id": None,
+            "checkpoint_version": None,
+        }
+    request_id = _required("approval_request_id", approval_request_id, 256)
+    if _required("external_ref", external_ref, 256) != request_id:
+        raise _invalid("NSL_APPROVAL external_ref must equal approval_request_id.")
+    if (
+        not isinstance(checkpoint_version, int)
+        or isinstance(checkpoint_version, bool)
+        or checkpoint_version < 1
+    ):
+        raise _invalid("checkpoint_version must be a positive integer.")
+    return {
+        "nsl_execution_id": _required("nsl_execution_id", nsl_execution_id, 256),
+        "business_operation_id": _required(
+            "business_operation_id", business_operation_id, 256
+        ),
+        "approval_request_id": request_id,
+        "checkpoint_version": checkpoint_version,
+    }
+
+
 def _required(field: str, value: object, maximum: int) -> str:
     if not isinstance(value, str) or not value.strip() or len(value.strip()) > maximum:
         raise _invalid(f"{field} must be a bounded non-empty string.")
@@ -453,11 +552,13 @@ _WAIT_INSERT_SQL = """
     INSERT INTO ae_wait_registration (
         wait_id, tenant_id, agent_execution_id, executable_step_id,
         wait_type, external_ref, result_contract_ref, state, version,
-        created_at, satisfied_at
+        created_at, satisfied_at, nsl_execution_id, business_operation_id,
+        approval_request_id, checkpoint_version
     ) VALUES (
         :wait_id, :tenant_id, :agent_execution_id, :executable_step_id,
         :wait_type, :external_ref, :result_contract_ref, :state, :version,
-        :created_at, :satisfied_at
+        :created_at, :satisfied_at, :nsl_execution_id, :business_operation_id,
+        :approval_request_id, :checkpoint_version
     ) ON CONFLICT (tenant_id, agent_execution_id, executable_step_id, wait_type)
     DO NOTHING
 """

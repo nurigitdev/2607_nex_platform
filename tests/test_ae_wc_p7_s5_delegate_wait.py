@@ -406,6 +406,8 @@ def test_s5_wait_repository_is_restart_safe_and_conflict_detecting():
                 "wait_type TEXT NOT NULL, external_ref TEXT NOT NULL, "
                 "result_contract_ref TEXT NOT NULL, state TEXT NOT NULL, "
                 "version INTEGER NOT NULL, created_at TEXT NOT NULL, satisfied_at TEXT, "
+                "nsl_execution_id TEXT, business_operation_id TEXT, "
+                "approval_request_id TEXT, checkpoint_version INTEGER, "
                 "PRIMARY KEY (tenant_id, wait_id), "
                 "UNIQUE (tenant_id, agent_execution_id, executable_step_id, wait_type))"
             )
@@ -624,6 +626,8 @@ def test_s5_persistence_failures_and_wait_reload_fail_closed(monkeypatch):
             "agent_execution_id TEXT, executable_step_id TEXT, wait_type TEXT, "
             "external_ref TEXT, result_contract_ref TEXT, state TEXT, "
             "version INTEGER, created_at TEXT, satisfied_at TEXT, "
+            "nsl_execution_id TEXT, business_operation_id TEXT, "
+            "approval_request_id TEXT, checkpoint_version INTEGER, "
             "UNIQUE (tenant_id, agent_execution_id, executable_step_id, wait_type))"
         ))
     repository = SqlAlchemyWaitRegistrationRepository(

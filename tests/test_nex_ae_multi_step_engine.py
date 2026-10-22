@@ -108,6 +108,8 @@ def _factory(*, seed=True):
                 result_contract_ref TEXT NOT NULL, state TEXT NOT NULL,
                 version INTEGER NOT NULL, created_at TEXT NOT NULL,
                 satisfied_at TEXT,
+                nsl_execution_id TEXT, business_operation_id TEXT,
+                approval_request_id TEXT, checkpoint_version INTEGER,
                 PRIMARY KEY (tenant_id, wait_id),
                 UNIQUE (tenant_id, agent_execution_id, executable_step_id, wait_type))""",
         ):
@@ -1086,7 +1088,10 @@ def test_delegate_wait_atomically_moves_parent_to_waiting_dependency() -> None:
     with factory() as session:
         session.execute(
             text(
-                "INSERT INTO ae_wait_registration VALUES "
+                    "INSERT INTO ae_wait_registration ("
+                    "wait_id, tenant_id, agent_execution_id, executable_step_id, "
+                    "wait_type, external_ref, result_contract_ref, state, version, "
+                    "created_at, satisfied_at) VALUES "
                 "(:wait_id, :tenant_id, :execution_id, :step_id, "
                 "'WORK_RESULT', :external_ref, :contract_ref, 'PENDING', 1, :now, NULL)"
             ),
