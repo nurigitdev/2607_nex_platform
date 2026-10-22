@@ -1254,3 +1254,9 @@ Artifact library management:
   server-selected acceptance projection. Service principals and admin users may
   read normalized gate states; viewer users, posted evidence, and raw runtime
   material are rejected.
+- P8-S44 adds the AE-owned protected NSL `ApprovalRequest` store. Exact
+  canonical request bytes remain in immutable memory/filesystem/S3-compatible
+  private storage while `ae_nsl_approval_request` keeps only an opaque
+  reference, hash, size, media type, classification, and bounded lineage.
+  Same-identity replay is idempotent, changed semantics fail closed, and the
+  actual `nex_ae_test` smoke verifies metadata-only PostgreSQL persistence.
