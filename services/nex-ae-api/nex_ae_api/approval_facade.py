@@ -10,6 +10,7 @@ from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse
 from nex_runtime import (
     DEFAULT_USER_SCOPE,
+    SERVICE_SPECS,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
@@ -23,6 +24,10 @@ from nex_ae_api.route_auth import (
 from nex_ae_api.service_auth import (
     AeOutboundServiceTokenError,
     resolve_ae_outbound_service_token,
+)
+
+DEFAULT_WC_APPROVAL_BASE_URL = (
+    f"http://127.0.0.1:{SERVICE_SPECS['nex-wc'].default_port}"
 )
 
 
@@ -72,7 +77,7 @@ class ApprovalFacadeError(Exception):
 
 @dataclass(frozen=True)
 class HttpWcApprovalClient:
-    base_url: str = "http://127.0.0.1:8107"
+    base_url: str = DEFAULT_WC_APPROVAL_BASE_URL
     service_token: str | None = None
     timeout_seconds: float = 15.0
 
@@ -201,7 +206,7 @@ class HttpWcApprovalClient:
 
 def build_default_wc_approval_client() -> HttpWcApprovalClient:
     return HttpWcApprovalClient(
-        base_url=os.getenv("NEX_WC_BASE_URL", "http://127.0.0.1:8107"),
+        base_url=os.getenv("NEX_WC_BASE_URL", DEFAULT_WC_APPROVAL_BASE_URL),
         service_token=os.getenv("NEX_AE_TO_WC_SERVICE_TOKEN"),
     )
 

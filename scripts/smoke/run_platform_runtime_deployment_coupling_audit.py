@@ -104,7 +104,7 @@ def run_platform_runtime_deployment_coupling_audit(
             len(SERVICE_ENDPOINT_ENV_NAMES) == 6
         ),
         "loopback_baseline_exact": (
-            loopback["occurrence_count"] == 46 and loopback["file_count"] == 26
+            loopback["occurrence_count"] == 47 and loopback["file_count"] == 27
         ),
         "thirteen_source_processes_inventoried": len(manifest.processes) == 13,
         "all_coupling_records_documented": all(records_documented.values()),

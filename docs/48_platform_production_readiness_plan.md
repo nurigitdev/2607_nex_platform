@@ -107,7 +107,7 @@ following gaps remain outside the production admission contract.
 | `non_mo_provider_endpoint_access` | Zero provider endpoint references outside MO service source | `CLEAR` | MO and every consumer | Continuous guard |
 | `service_http_api_edges` | 11 client anchors across 7 logical API edges | `TARGET_BOUNDARY` | API producer and consumer pairs | Continuous guard |
 | `ag_legacy_cross_database_adapters` | Four compatibility adapters remain; managed protected profiles require API projection and reject PostgreSQL projection mode | `FORBIDDEN_IN_PROTECTED_PROFILES` | AG | `S142` |
-| `loopback_endpoint_defaults` | 46 local loopback occurrences across 26 Python files; production requires all six service endpoint settings | `FORBIDDEN_IN_PRODUCTION` | Platform integration and client owners | `S142`, `S143` |
+| `loopback_endpoint_defaults` | 47 local loopback occurrences across 27 Python files; production requires all six service endpoint settings | `FORBIDDEN_IN_PRODUCTION` | Platform integration and client owners | `S142`, `S143` |
 | `source_tree_process_commands` | All 13 manifest processes execute repository source commands | `REPLACE_WITH_IMMUTABLE_ARTIFACTS` | Platform integration | `S142` |
 
 Shared `nex_runtime` infrastructure imports are allowed. Service-owned domain

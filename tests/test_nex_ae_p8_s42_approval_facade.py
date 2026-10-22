@@ -464,3 +464,11 @@ def test_default_wc_client_reads_environment(monkeypatch) -> None:
 
     assert client.base_url == "https://wc.example"
     assert client.service_token == "token-s42"
+
+
+def test_default_wc_client_uses_registered_wc_port(monkeypatch) -> None:
+    monkeypatch.delenv("NEX_WC_BASE_URL", raising=False)
+
+    client = build_default_wc_approval_client()
+
+    assert client.base_url == "http://127.0.0.1:8106"

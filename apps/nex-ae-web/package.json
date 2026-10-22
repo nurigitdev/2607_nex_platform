@@ -15,6 +15,7 @@
     "smoke:artifact-library-playwright": "node scripts/runArtifactLibraryPlaywrightSmoke.mjs --summary",
     "smoke:artifact-playwright": "node scripts/runArtifactPlaywrightSmoke.mjs --summary",
     "smoke:auth-first-shell-playwright": "node scripts/runAuthenticationFirstShellPlaywrightSmoke.mjs --summary",
+    "smoke:approval-protected-playwright": "node scripts/runApprovalProtectedPlaywrightSmoke.mjs --summary",
     "smoke:approval-ui-playwright": "node scripts/runApprovalUiPlaywrightSmoke.mjs --summary",
     "smoke:credential-login-harness": "node scripts/runCredentialLoginBrowserHarnessSmoke.mjs --summary",
     "smoke:credential-login-playwright": "node scripts/runCredentialLoginPlaywrightSmoke.mjs --summary",
