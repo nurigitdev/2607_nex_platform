@@ -85,6 +85,14 @@ P8_V02_PUBLIC_API_SYMBOLS = (
     "PolicyDecision",
     "PolicyEffect",
     "RuntimePreflightValidator",
+    "ProviderIdempotencyEvidence",
+    "WriteGuard",
+    "WriteGuardRequest",
+    "write_policy_request",
+    "WriteCallRequestBuilder",
+    "WriteExecutionCoordinator",
+    "PostWriteVerifier",
+    "VerificationResult",
 )
 P8_V02_SOURCE_REVISION = "a5a0f5fd7acf4adbbccf890dca2f9998d055d65e"
 P8_V02_SOURCE_TREE = "e7ffb07378ba01f4c9da6645f91b75614c605907"

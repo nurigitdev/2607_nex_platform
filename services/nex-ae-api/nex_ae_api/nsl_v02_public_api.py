@@ -38,7 +38,17 @@ NSL_V02_REQUIRED_PUBLIC_SYMBOLS = (
     "PolicyDecision",
     "PolicyEffect",
     "RuntimePreflightValidator",
+    "ProviderIdempotencyEvidence",
+    "WriteGuard",
+    "WriteGuardRequest",
+    "write_policy_request",
+    "WriteCallRequestBuilder",
+    "WriteExecutionCoordinator",
+    "PostWriteVerifier",
+    "VerificationResult",
 )
+
+_FOUNDATION_PUBLIC_SYMBOL_COUNT = 30
 
 
 @dataclass(frozen=True)
@@ -84,6 +94,14 @@ class NslV02PublicApiAdapter:
     runtime_preflight_validator: Any
     release_admission_hash: str
     api_contract_hash: str
+    provider_idempotency_evidence: Any = None
+    write_guard: Any = None
+    write_guard_request: Any = None
+    write_policy_request_factory: Any = None
+    write_call_request_builder: Any = None
+    write_execution_coordinator: Any = None
+    post_write_verifier: Any = None
+    verification_result: Any = None
 
     @property
     def schema_version(self) -> str:
@@ -124,6 +142,14 @@ class NslV02PublicApiAdapter:
                     self.policy_decision,
                     self.policy_effect,
                     self.runtime_preflight_validator,
+                    self.provider_idempotency_evidence,
+                    self.write_guard,
+                    self.write_guard_request,
+                    self.write_policy_request_factory,
+                    self.write_call_request_builder,
+                    self.write_execution_coordinator,
+                    self.post_write_verifier,
+                    self.verification_result,
                 ),
                 strict=True,
             )
@@ -149,7 +175,14 @@ def load_nsl_v02_public_api(
             "public_api_symbols": list(NSL_V02_REQUIRED_PUBLIC_SYMBOLS),
         }
     )
-    return NslV02PublicApiAdapter(*imported, release_hash, contract_hash)
+    foundation = imported[:_FOUNDATION_PUBLIC_SYMBOL_COUNT]
+    controlled_write = imported[_FOUNDATION_PUBLIC_SYMBOL_COUNT:]
+    return NslV02PublicApiAdapter(
+        *foundation,
+        release_hash,
+        contract_hash,
+        *controlled_write,
+    )
 
 
 def _validate_readiness(readiness: Mapping[str, Any]) -> str:
@@ -204,23 +237,31 @@ def _import_public_api() -> tuple[Any, ...]:
         PolicyDecision,
         PolicyEffect,
         PostWriteVerificationPort,
+        PostWriteVerifier,
+        ProviderIdempotencyEvidence,
         ResumeCheckpointPort,
         ResumeToken,
         RuntimePolicyPort,
         RuntimePreflightValidator,
         VerificationObservation,
         VerificationRequest,
+        VerificationResult,
         WriteAttemptRecord,
         WriteCallRequest,
+        WriteCallRequestBuilder,
         WriteCommitted,
         WriteCommitUnknown,
         WriteEvidencePort,
+        WriteExecutionCoordinator,
         WriteExecutionPort,
+        WriteGuard,
+        WriteGuardRequest,
         WriteNotCommitted,
         WriteOutcomeIdentity,
         WritePolicyRequest,
         WriteRequestedReceipt,
         WriteResultEnvelope,
+        write_policy_request,
     )
 
     return (
@@ -254,4 +295,12 @@ def _import_public_api() -> tuple[Any, ...]:
         PolicyDecision,
         PolicyEffect,
         RuntimePreflightValidator,
+        ProviderIdempotencyEvidence,
+        WriteGuard,
+        WriteGuardRequest,
+        write_policy_request,
+        WriteCallRequestBuilder,
+        WriteExecutionCoordinator,
+        PostWriteVerifier,
+        VerificationResult,
     )

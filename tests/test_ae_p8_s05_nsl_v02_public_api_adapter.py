@@ -114,6 +114,19 @@ def test_adapter_exposes_only_admitted_v02_public_symbols(
         adapter.verification_observation
         is imported[NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("VerificationObservation")]
     )
+    for attribute, symbol_name in (
+        ("provider_idempotency_evidence", "ProviderIdempotencyEvidence"),
+        ("write_guard", "WriteGuard"),
+        ("write_guard_request", "WriteGuardRequest"),
+        ("write_policy_request_factory", "write_policy_request"),
+        ("write_call_request_builder", "WriteCallRequestBuilder"),
+        ("write_execution_coordinator", "WriteExecutionCoordinator"),
+        ("post_write_verifier", "PostWriteVerifier"),
+        ("verification_result", "VerificationResult"),
+    ):
+        assert getattr(adapter, attribute) is imported[
+            NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index(symbol_name)
+        ]
     assert adapter.release_admission_hash == HASH
     assert adapter.api_contract_hash.startswith("sha256:")
 

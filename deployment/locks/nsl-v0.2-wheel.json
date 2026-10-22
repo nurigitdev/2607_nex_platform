@@ -35,7 +35,15 @@
     "WritePolicyRequest",
     "PolicyDecision",
     "PolicyEffect",
-    "RuntimePreflightValidator"
+    "RuntimePreflightValidator",
+    "ProviderIdempotencyEvidence",
+    "WriteGuard",
+    "WriteGuardRequest",
+    "write_policy_request",
+    "WriteCallRequestBuilder",
+    "WriteExecutionCoordinator",
+    "PostWriteVerifier",
+    "VerificationResult"
   ],
   "record_file_count": 70,
   "record_integrity_count": 69,

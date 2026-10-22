@@ -97,6 +97,12 @@ def test_compatibility_checks_accept_dual_read_and_suspended_prefix() -> None:
     assert "WriteCommitUnknown" in _adapter()["public_api_symbols"]
     assert "VerificationRequest" in _adapter()["public_api_symbols"]
     assert "VerificationObservation" in _adapter()["public_api_symbols"]
+    assert "ProviderIdempotencyEvidence" in _adapter()["public_api_symbols"]
+    assert "WriteGuard" in _adapter()["public_api_symbols"]
+    assert "WriteCallRequestBuilder" in _adapter()["public_api_symbols"]
+    assert "WriteExecutionCoordinator" in _adapter()["public_api_symbols"]
+    assert "PostWriteVerifier" in _adapter()["public_api_symbols"]
+    assert "VerificationResult" in _adapter()["public_api_symbols"]
 
 
 @pytest.mark.parametrize(
