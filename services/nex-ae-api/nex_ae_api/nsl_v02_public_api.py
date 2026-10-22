@@ -16,6 +16,10 @@ NSL_V02_REQUIRED_PUBLIC_SYMBOLS = (
     "CheckpointPort",
     "ResumeCheckpointPort",
     "IdempotencyCoordinator",
+    "IdempotencyEvidencePort",
+    "IdempotencyEvidenceRecord",
+    "IdempotencyReservation",
+    "IdempotencyDisposition",
     "WriteExecutionPort",
     "PostWriteVerificationPort",
     "RuntimePolicyPort",
@@ -45,6 +49,10 @@ class NslV02PublicApiAdapter:
     checkpoint_port: Any
     resume_checkpoint_port: Any
     idempotency_coordinator: Any
+    idempotency_evidence_port: Any
+    idempotency_evidence_record: Any
+    idempotency_reservation: Any
+    idempotency_disposition: Any
     write_execution_port: Any
     post_write_verification_port: Any
     runtime_policy_port: Any
@@ -72,6 +80,10 @@ class NslV02PublicApiAdapter:
                     self.checkpoint_port,
                     self.resume_checkpoint_port,
                     self.idempotency_coordinator,
+                    self.idempotency_evidence_port,
+                    self.idempotency_evidence_record,
+                    self.idempotency_reservation,
+                    self.idempotency_disposition,
                     self.write_execution_port,
                     self.post_write_verification_port,
                     self.runtime_policy_port,
@@ -152,6 +164,10 @@ def _import_public_api() -> tuple[Any, ...]:
         ApprovalSuspensionCoordinator,
         CheckpointPort,
         IdempotencyCoordinator,
+        IdempotencyDisposition,
+        IdempotencyEvidencePort,
+        IdempotencyEvidenceRecord,
+        IdempotencyReservation,
         PolicyDecision,
         PolicyEffect,
         PostWriteVerificationPort,
@@ -172,6 +188,10 @@ def _import_public_api() -> tuple[Any, ...]:
         CheckpointPort,
         ResumeCheckpointPort,
         IdempotencyCoordinator,
+        IdempotencyEvidencePort,
+        IdempotencyEvidenceRecord,
+        IdempotencyReservation,
+        IdempotencyDisposition,
         WriteExecutionPort,
         PostWriteVerificationPort,
         RuntimePolicyPort,
