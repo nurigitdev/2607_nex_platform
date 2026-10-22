@@ -7,6 +7,13 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from nex_runtime.prompts import PromptRegistryError, render_prompt_from_binding
+from nex_runtime.semantic_hashes import (
+    canonical_json,
+    semantic_sha256_hash_ref,
+    validate_sha256_digest,
+)
+
 from nex_ae_api.intent_policy import (
     IntentPolicyError,
     resolve_validated_intent_candidate,
@@ -23,13 +30,6 @@ from nex_ae_api.semantic_candidates import (
     SemanticCandidateStageError,
 )
 from nex_ae_api.work_intent import build_work_intent_from_decision
-from nex_runtime.prompts import PromptRegistryError, render_prompt_from_binding
-from nex_runtime.semantic_hashes import (
-    canonical_json,
-    semantic_sha256_hash_ref,
-    validate_sha256_digest,
-)
-
 
 INTENT_CANDIDATE_SCHEMA_VERSION = "p65.intent_candidate.v1"
 INTENT_GENERATION_INPUT_SCHEMA_VERSION = "p65.intent_generation_input.v1"
@@ -60,6 +60,9 @@ _SELECTOR_KEYS = {"selector_id", "selector_type", "value", "confidence"}
 _PARAMETER_KEYS = {"name", "value", "confidence"}
 _CLARIFICATION_KEYS = {"required", "reasons", "questions"}
 _AUTHORITY_KEYS = {
+    "account_id",
+    "account_ref",
+    "approval_authority",
     "tenant",
     "tenant_id",
     "principal",
@@ -78,6 +81,14 @@ _AUTHORITY_KEYS = {
     "executor_kind",
     "execution_authority",
     "approved",
+    "business_operation_id",
+    "commit_state",
+    "credit_account_id",
+    "credit_account_ref",
+    "debit_account_id",
+    "debit_account_ref",
+    "eos_commit_state",
+    "idempotency_key",
     "provider_url",
     "provider_endpoint",
     "api_key",
@@ -432,9 +443,7 @@ def _result(
         prompt_provenance=dict(prompt_provenance),
         model_provenance=dict(model_provenance),
         admission_policy_ref=policy.policy_ref if policy is not None else None,
-        selected_threshold=(
-            policy.minimum_confidence if policy is not None else None
-        ),
+        selected_threshold=(policy.minimum_confidence if policy is not None else None),
         candidate=dict(candidate),
         intent_decision=(dict(intent_decision) if intent_decision else None),
         work_intent=(dict(work_intent) if work_intent else None),
@@ -488,7 +497,10 @@ def _selectors(value: object) -> list[dict[str, Any]]:
         if not isinstance(record, dict) or set(record) != _SELECTOR_KEYS:
             raise _schema_error("INTENT entity selector fields are invalid.")
         selector_id = record.get("selector_id")
-        if not isinstance(selector_id, str) or _SELECTOR_ID.fullmatch(selector_id) is None:
+        if (
+            not isinstance(selector_id, str)
+            or _SELECTOR_ID.fullmatch(selector_id) is None
+        ):
             raise _schema_error("INTENT entity selector ID is invalid.")
         selector_type = record.get("selector_type")
         if selector_type not in _SELECTOR_TYPES:
@@ -497,9 +509,7 @@ def _selectors(value: object) -> list[dict[str, Any]]:
             "selector_id": selector_id,
             "selector_type": selector_type,
             "value": _candidate_text(record.get("value"), "selector value", 256),
-            "confidence": _confidence(
-                record.get("confidence"), "selector confidence"
-            ),
+            "confidence": _confidence(record.get("confidence"), "selector confidence"),
         }
         identity = canonical_json(item)
         if selector_id in selector_ids or identity in seen:
@@ -521,6 +531,12 @@ def _parameters(value: object) -> list[dict[str, Any]]:
         name = record.get("name")
         if not isinstance(name, str) or _PARAMETER_NAME.fullmatch(name) is None:
             raise _schema_error("INTENT parameter candidate name is invalid.")
+        if name.casefold() in _AUTHORITY_KEYS:
+            raise IntentCandidateStageError(
+                422,
+                "CANDIDATE_AUTHORITY_VIOLATION",
+                "INTENT candidate contains an authority-bearing parameter.",
+            )
         candidate_value = record.get("value")
         if isinstance(candidate_value, str):
             if len(candidate_value) > 500:
@@ -535,9 +551,7 @@ def _parameters(value: object) -> list[dict[str, Any]]:
         item = {
             "name": name,
             "value": candidate_value,
-            "confidence": _confidence(
-                record.get("confidence"), "parameter confidence"
-            ),
+            "confidence": _confidence(record.get("confidence"), "parameter confidence"),
         }
         identity = canonical_json(item)
         if name in names or identity in seen:
@@ -555,13 +569,13 @@ def _clarification(value: object) -> dict[str, Any]:
     if not isinstance(required, bool):
         raise _schema_error("INTENT clarification required flag is invalid.")
     reasons = _text_list(value.get("reasons"), "clarification reasons", 8, 240)
-    questions = _text_list(
-        value.get("questions"), "clarification questions", 4, 500
-    )
+    questions = _text_list(value.get("questions"), "clarification questions", 4, 500)
     return {"required": required, "reasons": reasons, "questions": questions}
 
 
-def _text_list(value: object, field_name: str, maximum: int, text_max: int) -> list[str]:
+def _text_list(
+    value: object, field_name: str, maximum: int, text_max: int
+) -> list[str]:
     records = _bounded_list(value, field_name, maximum)
     normalized = [_candidate_text(item, field_name, text_max) for item in records]
     if len(set(normalized)) != len(normalized):

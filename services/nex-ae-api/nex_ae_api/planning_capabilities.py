@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from nex_ae_api.nsl_backend_profiles import (
     DEFAULT_NSL_V01_BACKEND_PROFILE,
     NSL_V01_BACKEND_PROFILES,
-    normalize_nsl_backend_profile,
+    normalize_nsl_backend_profile_for_operation,
 )
 
 CAPABILITY_SNAPSHOT_SCHEMA_VERSION = "1.1"
@@ -124,8 +124,9 @@ def build_local_skill_capability(
     runtime_contract_ref: str,
     trust_policy_id: str,
     backend_profile: str = LOCAL_SKILL_BACKEND_PROFILE,
+    operation_semantics: str = "READ",
 ) -> dict[str, Any]:
-    """Build one exact, READ-only P6 capability descriptor."""
+    """Build one exact P6/P8 LOCAL_SKILL capability descriptor."""
     capability = {
         "capability_id": skill_id,
         "capability_version": exact_skill_version,
@@ -135,7 +136,7 @@ def build_local_skill_capability(
         "executor_kind": LOCAL_SKILL_EXECUTOR_KIND,
         "input_contract_ref": input_contract_ref,
         "output_contract_ref": output_contract_ref,
-        "operation_semantics": "READ",
+        "operation_semantics": operation_semantics,
         "local_skill_binding": {
             "skill_id": skill_id,
             "exact_skill_version": exact_skill_version,
@@ -244,14 +245,18 @@ class SqlAlchemyCapabilitySnapshotRepository:
         tenant_id = _required_text("tenant_id", tenant_id, 128)
         try:
             with self._session_factory() as session:
-                row = session.execute(
-                    text(
-                        "SELECT snapshot_json FROM ae_capability_snapshot "
-                        "WHERE tenant_id = :tenant_id "
-                        "ORDER BY snapshot_version DESC, created_at DESC LIMIT 1"
-                    ),
-                    {"tenant_id": tenant_id},
-                ).mappings().first()
+                row = (
+                    session.execute(
+                        text(
+                            "SELECT snapshot_json FROM ae_capability_snapshot "
+                            "WHERE tenant_id = :tenant_id "
+                            "ORDER BY snapshot_version DESC, created_at DESC LIMIT 1"
+                        ),
+                        {"tenant_id": tenant_id},
+                    )
+                    .mappings()
+                    .first()
+                )
                 if row is None:
                     return None
                 return _validate_snapshot(_json_value(row["snapshot_json"]))
@@ -379,7 +384,7 @@ def _validate_capability(value: Mapping[str, Any]) -> dict[str, Any]:
     }:
         raise _invalid("Capability executor kind is invalid.")
     semantics = value["operation_semantics"]
-    if semantics not in {"READ", "GENERATE", "AGGREGATE", "REPORT"}:
+    if semantics not in {"READ", "WRITE", "GENERATE", "AGGREGATE", "REPORT"}:
         raise _invalid("Capability operation semantics are invalid.")
     if value["status"] != "ACTIVE":
         raise _invalid("Capability status must be ACTIVE.")
@@ -403,9 +408,16 @@ def _validate_capability(value: Mapping[str, Any]) -> dict[str, Any]:
     if executor_kind == LOCAL_SKILL_EXECUTOR_KIND:
         if not has_local_binding:
             raise _invalid("LOCAL_SKILL capability requires an exact Skill binding.")
-        if executable_type != LOCAL_SKILL_STEP_TYPE or semantics != "READ":
-            raise _invalid("LOCAL_SKILL capability must be a READ LOCAL_SKILL step.")
-        binding = validate_local_skill_binding(value["local_skill_binding"])
+        if executable_type != LOCAL_SKILL_STEP_TYPE or semantics not in {
+            "READ",
+            "WRITE",
+        }:
+            raise _invalid(
+                "LOCAL_SKILL capability must use READ or WRITE operation semantics."
+            )
+        binding = validate_local_skill_binding(
+            value["local_skill_binding"], operation_semantics=semantics
+        )
         if (
             binding["skill_id"] != capability_id
             or binding["exact_skill_version"] != normalized["capability_version"]
@@ -414,12 +426,16 @@ def _validate_capability(value: Mapping[str, Any]) -> dict[str, Any]:
                 "LOCAL_SKILL capability and Skill selector must match exactly."
             )
         normalized["local_skill_binding"] = binding
+    elif semantics == "WRITE":
+        raise _invalid("WRITE capability must use an exact LOCAL_SKILL binding.")
     elif has_local_binding or executable_type == LOCAL_SKILL_STEP_TYPE:
         raise _invalid("Only LOCAL_SKILL may carry an exact Skill binding.")
     return normalized
 
 
-def validate_local_skill_binding(value: object) -> dict[str, str]:
+def validate_local_skill_binding(
+    value: object, *, operation_semantics: str = "READ"
+) -> dict[str, str]:
     fields = {
         "skill_id",
         "exact_skill_version",
@@ -445,9 +461,13 @@ def validate_local_skill_binding(value: object) -> dict[str, str]:
         raise _invalid("LOCAL_SKILL semantic hash is invalid.") from exc
     backend_profile = _required_text("backend_profile", value["backend_profile"], 128)
     try:
-        backend_profile = normalize_nsl_backend_profile(backend_profile)
+        backend_profile = normalize_nsl_backend_profile_for_operation(
+            backend_profile, operation_semantics
+        )
     except ValueError as exc:
-        raise _invalid("LOCAL_SKILL backend profile is unsupported in P6.") from exc
+        raise _invalid(
+            "LOCAL_SKILL backend profile is unsupported for its operation semantics."
+        ) from exc
     if value["package_requirement"] != LOCAL_SKILL_PACKAGE_REQUIREMENT:
         raise _invalid("LOCAL_SKILL package requirement must fail closed.")
     return {
@@ -487,13 +507,11 @@ def _load_snapshot(
 ) -> dict[str, Any] | None:
     row = (
         session.execute(
-            text(
-                """
+            text("""
             SELECT snapshot_json FROM ae_capability_snapshot
             WHERE tenant_id = :tenant_id
               AND capability_snapshot_id = :snapshot_id
-            """
-            ),
+            """),
             {"tenant_id": tenant_id, "snapshot_id": snapshot_id},
         )
         .mappings()
@@ -507,12 +525,10 @@ def _load_snapshot_by_version(
 ) -> dict[str, Any] | None:
     row = (
         session.execute(
-            text(
-                """
+            text("""
             SELECT snapshot_json FROM ae_capability_snapshot
             WHERE tenant_id = :tenant_id AND snapshot_version = :version
-            """
-            ),
+            """),
             {"tenant_id": tenant_id, "version": version},
         )
         .mappings()
