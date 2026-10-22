@@ -1,0 +1,174 @@
+{
+  "schema_version": "p8_golden_a_fixture.v1",
+  "fixture_id": "p8-golden-a-voucher-draft-v1",
+  "fixture_hash": "sha256:b2fc0e01a1d3f0bb68fe574cf71c94bbd606a94e36b394064a317f08681c7611",
+  "tenant": {
+    "tenant_id": "p8-golden-a",
+    "display_name": "P8 Golden A"
+  },
+  "principals": [
+    {
+      "subject_id": "employee-1001",
+      "display_name": "Golden A Requester",
+      "roles": [
+        "employee"
+      ],
+      "scopes": [
+        "workspace:use",
+        "nsl:skill:execute",
+        "finance:voucher-draft:create"
+      ]
+    },
+    {
+      "subject_id": "employee-2001",
+      "display_name": "Golden A Finance Approver",
+      "roles": [
+        "finance_approver"
+      ],
+      "scopes": [
+        "workspace:use",
+        "approval:read",
+        "approval:decide"
+      ]
+    }
+  ],
+  "organization": {
+    "effective_from": "2026-01-01T00:00:00Z",
+    "units": [
+      {
+        "org_unit_id": "10000000-0000-4000-8000-000000000001",
+        "org_unit_code": "COMPANY-A",
+        "name": "Golden A Company",
+        "org_unit_type": "COMPANY",
+        "parent_org_unit_id": null
+      },
+      {
+        "org_unit_id": "10000000-0000-4000-8000-000000000002",
+        "org_unit_code": "GROUP-FINANCE",
+        "name": "Golden A Finance Group",
+        "org_unit_type": "GROUP",
+        "parent_org_unit_id": "10000000-0000-4000-8000-000000000001"
+      },
+      {
+        "org_unit_id": "10000000-0000-4000-8000-000000000003",
+        "org_unit_code": "TEAM-ACCOUNTING",
+        "name": "Golden A Accounting Team",
+        "org_unit_type": "TEAM",
+        "parent_org_unit_id": "10000000-0000-4000-8000-000000000002"
+      },
+      {
+        "org_unit_id": "10000000-0000-4000-8000-000000000004",
+        "org_unit_code": "PART-TRAVEL",
+        "name": "Golden A Travel Part",
+        "org_unit_type": "PART",
+        "parent_org_unit_id": "10000000-0000-4000-8000-000000000003"
+      }
+    ],
+    "positions": [
+      {
+        "position_id": "20000000-0000-4000-8000-000000000001",
+        "position_type": "GROUP_LEAD",
+        "org_unit_id": "10000000-0000-4000-8000-000000000002"
+      }
+    ],
+    "assignments": [
+      {
+        "position_assignment_id": "30000000-0000-4000-8000-000000000001",
+        "position_id": "20000000-0000-4000-8000-000000000001",
+        "principal_id": "employee-2001"
+      }
+    ]
+  },
+  "projects": {
+    "nvt": {
+      "nvt_project_id": "81000000-0000-4000-8000-000000000001",
+      "nvt_project_code": "NVT-GOLDEN-A",
+      "name": "Golden A NVT"
+    },
+    "mother": {
+      "project_id": "82000000-0000-4000-8000-000000000002",
+      "project_code": "PROJECT-A",
+      "name": "Golden A Mother Project",
+      "nvt_project_id": "81000000-0000-4000-8000-000000000001"
+    },
+    "child": {
+      "project_id": "82000000-0000-4000-8000-000000000001",
+      "project_code": "PROJECT-A-2",
+      "name": "Golden A Travel Project",
+      "parent_project_id": "82000000-0000-4000-8000-000000000002"
+    }
+  },
+  "accounts": [
+    {
+      "account_id": "83000000-0000-4000-8000-000000000001",
+      "account_code": "TRAVEL",
+      "name": "Travel Expense",
+      "category": "EXPENSE",
+      "account_type": "GENERAL",
+      "effective_from": "2026-01-01"
+    },
+    {
+      "account_id": "83000000-0000-4000-8000-000000000002",
+      "account_code": "CASH",
+      "name": "Cash",
+      "category": "ASSET",
+      "account_type": "GENERAL",
+      "effective_from": "2026-01-01"
+    }
+  ],
+  "voucher_line_policy": {
+    "policy_id": "golden-a.travel.cash.v1",
+    "policy_version": 1,
+    "voucher_type": "GENERAL",
+    "economic_category": "TRAVEL",
+    "settlement_method": "CASH",
+    "currency": "KRW",
+    "effective_from": "2026-01-01",
+    "debit_account_id": "83000000-0000-4000-8000-000000000001",
+    "credit_account_id": "83000000-0000-4000-8000-000000000002",
+    "line_order": [
+      "DEBIT",
+      "CREDIT"
+    ]
+  },
+  "admission": {
+    "agent_id": "IA.GOLDEN_A",
+    "capability_id": "FINANCE.CREATE_VOUCHER_DRAFT",
+    "skill_id": "FINANCE.CREATE_VOUCHER_DRAFT",
+    "exact_skill_version": "1.0.0",
+    "executor_kind": "LOCAL_SKILL",
+    "operation_semantics": "WRITE",
+    "backend_profile": "NSL_V02_IN_PROCESS",
+    "tool_id": "FINANCE.CREATE_VOUCHER_DRAFT",
+    "approval_id": "APPROVE_VOUCHER_DRAFT",
+    "nsl_lock_path": "deployment/locks/nsl-v0.2-wheel.json",
+    "nsl_package_version": "0.2.0",
+    "nsl_wheel_sha256": "sha256:862958a5eab982a71bec5ee58b9e530867d6c25f65d8b770efb29ca78ce7f135",
+    "required_public_api_symbols": [
+      "ApprovalRequest",
+      "ApprovalEvidence",
+      "ResumeToken",
+      "WriteExecutionCoordinator"
+    ],
+    "activation_state": "LOCKED_PENDING_P8_S64"
+  },
+  "approval_target": {
+    "approval_domain": "NSL_WRITE",
+    "risk_level": "HIGH",
+    "policy_ref": "eos.approver.default.v1",
+    "org_unit_id": "10000000-0000-4000-8000-000000000002",
+    "approver_subject_id": "employee-2001",
+    "position_type": "GROUP_LEAD"
+  },
+  "scenario": {
+    "requester_subject_id": "employee-1001",
+    "prompt": "PROJECT-A-2 프로젝트의 출장비 84,000원을 현금 정산 전표 초안으로 만들어줘.",
+    "amount": "84000.00",
+    "currency": "KRW",
+    "transaction_date": "2026-10-23",
+    "voucher_type": "GENERAL",
+    "economic_category": "TRAVEL",
+    "settlement_method": "CASH",
+    "attachments": []
+  }
+}
