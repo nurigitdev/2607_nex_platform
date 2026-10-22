@@ -65,6 +65,15 @@ def test_adapter_exposes_only_admitted_v02_public_symbols(
     assert adapter.idempotency_reservation is imported[
         NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("IdempotencyReservation")
     ]
+    assert adapter.write_evidence_port is imported[
+        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteEvidencePort")
+    ]
+    assert adapter.write_attempt_record is imported[
+        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteAttemptRecord")
+    ]
+    assert adapter.write_requested_receipt is imported[
+        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteRequestedReceipt")
+    ]
     assert adapter.release_admission_hash == HASH
     assert adapter.api_contract_hash.startswith("sha256:")
 
@@ -175,4 +184,7 @@ def test_adapter_architecture_imports_no_private_nsl_modules() -> None:
         "IdempotencyEvidenceRecord",
         "IdempotencyReservation",
         "IdempotencyDisposition",
+        "WriteEvidencePort",
+        "WriteAttemptRecord",
+        "WriteRequestedReceipt",
     }.issubset({alias.name for alias in public_import.names})

@@ -79,6 +79,9 @@ def _public_api() -> NslV02PublicApiAdapter:
         object,
         object,
         object,
+        object,
+        object,
+        object,
         HASH,
         HASH,
     )

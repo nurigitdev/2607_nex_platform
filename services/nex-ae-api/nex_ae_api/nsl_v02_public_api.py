@@ -20,6 +20,9 @@ NSL_V02_REQUIRED_PUBLIC_SYMBOLS = (
     "IdempotencyEvidenceRecord",
     "IdempotencyReservation",
     "IdempotencyDisposition",
+    "WriteEvidencePort",
+    "WriteAttemptRecord",
+    "WriteRequestedReceipt",
     "WriteExecutionPort",
     "PostWriteVerificationPort",
     "RuntimePolicyPort",
@@ -53,6 +56,9 @@ class NslV02PublicApiAdapter:
     idempotency_evidence_record: Any
     idempotency_reservation: Any
     idempotency_disposition: Any
+    write_evidence_port: Any
+    write_attempt_record: Any
+    write_requested_receipt: Any
     write_execution_port: Any
     post_write_verification_port: Any
     runtime_policy_port: Any
@@ -84,6 +90,9 @@ class NslV02PublicApiAdapter:
                     self.idempotency_evidence_record,
                     self.idempotency_reservation,
                     self.idempotency_disposition,
+                    self.write_evidence_port,
+                    self.write_attempt_record,
+                    self.write_requested_receipt,
                     self.write_execution_port,
                     self.post_write_verification_port,
                     self.runtime_policy_port,
@@ -175,8 +184,11 @@ def _import_public_api() -> tuple[Any, ...]:
         ResumeToken,
         RuntimePolicyPort,
         RuntimePreflightValidator,
+        WriteAttemptRecord,
+        WriteEvidencePort,
         WriteExecutionPort,
         WritePolicyRequest,
+        WriteRequestedReceipt,
     )
 
     return (
@@ -192,6 +204,9 @@ def _import_public_api() -> tuple[Any, ...]:
         IdempotencyEvidenceRecord,
         IdempotencyReservation,
         IdempotencyDisposition,
+        WriteEvidencePort,
+        WriteAttemptRecord,
+        WriteRequestedReceipt,
         WriteExecutionPort,
         PostWriteVerificationPort,
         RuntimePolicyPort,
