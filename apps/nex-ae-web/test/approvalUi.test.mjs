@@ -8,6 +8,7 @@ import {
 import {
   AE_WEB_APPROVAL_UI_SCHEMA_VERSION,
   buildApprovalUiSummary,
+  createApprovalUiController,
   renderApprovalUi
 } from "../src/approvalUi.js";
 
@@ -113,5 +114,37 @@ describe("AE Web approval UI read model", () => {
     assert.match(html, /&lt;script&gt;/);
     assert.match(loading, /불러오는 중/);
     assert.match(empty, /처리할 승인 요청이 없습니다/);
+  });
+
+  it("discards an in-flight inbox response after the session client changes", async () => {
+    let resolveInbox;
+    const staleInbox = new Promise(resolve => {
+      resolveInbox = resolve;
+    });
+    const container = {
+      innerHTML: "",
+      addEventListener() {},
+      querySelector() {
+        return null;
+      }
+    };
+    const client = listApprovalGates => ({
+      clientMode: "mock",
+      listApprovalGates,
+      async getApprovalGate() {},
+      async submitApprovalDecision() {}
+    });
+    const controller = createApprovalUiController({
+      container,
+      client: client(() => staleInbox)
+    });
+
+    const refresh = controller.refresh();
+    controller.setClient(client(async () => ({ gates: [] })));
+    resolveInbox(normalizeApprovalInbox(buildDefaultMockApprovalInbox()));
+    await refresh;
+
+    assert.equal(controller.snapshot().phase, "IDLE");
+    assert.doesNotMatch(container.innerHTML, /data-approval-domain/);
   });
 });

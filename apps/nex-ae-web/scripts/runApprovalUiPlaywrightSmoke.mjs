@@ -34,6 +34,11 @@ export async function runApprovalUiPlaywrightSmoke({
       waitUntil: "domcontentloaded",
       timeout: 25000
     });
+    await page.fill("#credential-employee-id", "EMP-APPROVAL-SMOKE");
+    await page.fill("#credential-password", "mock-password");
+    await page.click("#credential-login-submit-button");
+    await page.waitForSelector("#authenticated-shell:not([hidden])");
+    await page.click('[data-shell-view="approvals"]');
     await page.waitForSelector('[data-approval-domain="NSL_WRITE"]');
 
     const initial = await page.evaluate(() => ({

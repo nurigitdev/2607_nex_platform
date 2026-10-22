@@ -89,7 +89,9 @@ export async function captureV1ManualScreenshots({ root = ROOT } = {}) {
     await page.fill("#credential-employee-id", "1001");
     await page.fill("#credential-password", "documentation-only-password");
     await page.click("#credential-login-submit-button");
-    await page.waitForSelector("#credential-login-feedback[data-severity='success']");
+    await page.waitForSelector("#credential-login-feedback[data-severity='success']", {
+      state: "attached"
+    });
     await captureElement(page, outputDir, CAPTURES[1][0], "#runtime-diagnostics-panel", {
       hiddenSelectors: ["#runtime-diagnostics-preview"]
     });

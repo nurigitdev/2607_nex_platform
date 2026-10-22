@@ -23,6 +23,7 @@ export function createApprovalUiController({
     throw new Error("Approval UI container is required.");
   }
   let activeClient = requiredClient(client);
+  let clientRevision = 0;
   let decisionInFlight = false;
   let state = emptyState(activeClient.clientMode);
 
@@ -31,10 +32,12 @@ export function createApprovalUiController({
   };
 
   async function refresh() {
+    const requestRevision = clientRevision;
     state = { ...state, phase: "LOADING", errorStatus: null, feedback: null };
     render();
     try {
       const inbox = await activeClient.listApprovalGates({ limit: 50 });
+      if (requestRevision !== clientRevision) return snapshot();
       state = {
         ...emptyState(activeClient.clientMode),
         phase: "READY",
@@ -44,6 +47,7 @@ export function createApprovalUiController({
           null
       };
     } catch (error) {
+      if (requestRevision !== clientRevision) return snapshot();
       state = failedState(state, error);
     }
     render();
@@ -51,6 +55,7 @@ export function createApprovalUiController({
   }
 
   async function selectGate(gateId) {
+    const requestRevision = clientRevision;
     const gate = state.inbox?.gates.find(item => item.gate_id === gateId);
     if (!gate) return snapshot();
     if (isApprovalGateExpired(gate, now())) {
@@ -76,8 +81,10 @@ export function createApprovalUiController({
     render();
     try {
       const detail = await activeClient.getApprovalGate(gate.gate_id);
+      if (requestRevision !== clientRevision) return snapshot();
       state = { ...state, phase: "DETAIL_READY", detail };
     } catch (error) {
+      if (requestRevision !== clientRevision) return snapshot();
       state = failedState(state, error);
     }
     render();
@@ -85,6 +92,7 @@ export function createApprovalUiController({
   }
 
   async function submitDecision(decision) {
+    const requestRevision = clientRevision;
     if (decisionInFlight || state.phase !== "DETAIL_READY" || !state.detail) {
       return snapshot();
     }
@@ -118,6 +126,7 @@ export function createApprovalUiController({
         state.detail.gate.gate_id,
         request
       );
+      if (requestRevision !== clientRevision) return snapshot();
       const terminalState = result.decision === "APPROVE" ? "APPROVED" : "REJECTED";
       state = {
         ...state,
@@ -141,6 +150,7 @@ export function createApprovalUiController({
             : "반려가 안전하게 기록되었습니다."
       };
     } catch (error) {
+      if (requestRevision !== clientRevision) return snapshot();
       state = decisionFailureState(state, error);
     } finally {
       decisionInFlight = false;
@@ -172,7 +182,9 @@ export function createApprovalUiController({
     selectGate,
     submitDecision,
     setClient(nextClient) {
+      clientRevision += 1;
       activeClient = requiredClient(nextClient);
+      decisionInFlight = false;
       state = emptyState(activeClient.clientMode);
       render();
     },

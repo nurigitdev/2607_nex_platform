@@ -5,6 +5,12 @@ import {
   createApprovalUiController
 } from "./approvalUi.js";
 import {
+  AE_WEB_DEFAULT_VIEW,
+  canAccessOperations,
+  resolveApplicationShell,
+  viewFromLocationHash
+} from "./applicationShell.js";
+import {
   renderArtifactCard
 } from "./artifactCard.js";
 import {
@@ -106,6 +112,7 @@ import {
 } from "./sessionRouteGuard.js";
 import {
   createAnonymousSessionState,
+  createExpiredSessionState,
   createMockSessionClient
 } from "./sessionClient.js";
 import {
@@ -233,6 +240,7 @@ const workspaceState = {
   sessionState: null,
   sessionClient: null,
   sessionRouteGuard: null,
+  activeView: AE_WEB_DEFAULT_VIEW,
   credentialLogin: createCredentialLoginSurfaceState({
     tenantId: localOwnerScope.tenantId,
     requestedScopes: ["workspace:use", "documents:upload"]
@@ -388,6 +396,7 @@ const workspaceState = {
 
 workspaceState.messages[1].artifactRefs = [workspaceState.artifactRef];
 let approvalUiController = null;
+let sessionExpiryTimer = null;
 const initialRuntimeConfig = loadRuntimeConfig();
 workspaceState.sessionBootstrap = composeAuthenticatedSessionRuntime({
   runtimeConfig: initialRuntimeConfig,
@@ -411,6 +420,13 @@ refreshArtifactExportResult();
 const serviceList = document.querySelector("#service-list");
 const statusStrip = document.querySelector("#status-strip");
 const refreshButton = document.querySelector("#refresh-button");
+const authenticationShell = document.querySelector("#authentication-shell");
+const authenticatedShell = document.querySelector("#authenticated-shell");
+const skipLink = document.querySelector(".skip-link");
+const applicationNavigation = document.querySelector("#application-navigation");
+const shellViewLinks = [...document.querySelectorAll("[data-shell-view]")];
+const shellViewPanels = [...document.querySelectorAll("[data-shell-view-panel]")];
+const shellViewContainers = [...document.querySelectorAll("[data-shell-view-container]")];
 const runtimeDiagnosticsStatus = document.querySelector("#runtime-diagnostics-status");
 const runtimeDiagnosticsSummary = document.querySelector("#runtime-diagnostics-summary");
 const runtimeDiagnosticsPreview = document.querySelector("#runtime-diagnostics-preview");
@@ -424,6 +440,7 @@ const credentialLoginSummary = document.querySelector("#credential-login-summary
 const sessionRouteGuardSummary = document.querySelector("#session-route-guard-summary");
 const credentialLoginSubmitButton = document.querySelector("#credential-login-submit-button");
 const credentialLogoutButton = document.querySelector("#credential-logout-button");
+const chatPane = document.querySelector("#golden-chat");
 const composer = document.querySelector("#composer");
 const promptInput = document.querySelector("#prompt");
 const retrievalToggle = document.querySelector("#retrieval-toggle");
@@ -497,7 +514,18 @@ let artifactLibraryPanelRequestSequence = 0;
 let artifactVersionPanelRequestSequence = 0;
 
 refreshButton.addEventListener("click", () => {
-  renderServiceStatuses();
+  void renderServiceStatuses();
+});
+
+applicationNavigation.addEventListener("click", event => {
+  const link = event.target.closest("[data-shell-view]");
+  if (!link) return;
+  event.preventDefault();
+  selectApplicationView(link.dataset.shellView, { updateHash: true });
+});
+
+window.addEventListener("hashchange", () => {
+  selectApplicationView(viewFromLocationHash(window.location.hash));
 });
 
 credentialLoginForm.addEventListener("submit", event => {
@@ -632,12 +660,172 @@ documentList.addEventListener("click", event => {
 });
 
 renderWorkspace();
-renderServiceStatuses();
-void refreshBrowserSessionRuntime();
-void refreshArtifactLibraryPanel();
-void refreshArtifactVersionPanel();
+if (workspaceState.runtimeConfig.clientMode === "fetch") {
+  void refreshBrowserSessionRuntime();
+}
+
+function renderApplicationShell() {
+  const shell = resolveApplicationShell({
+    sessionState: workspaceState.sessionState,
+    requestedView: workspaceState.activeView
+  });
+  workspaceState.activeView = shell.activeView || AE_WEB_DEFAULT_VIEW;
+  authenticationShell.hidden = !shell.authenticationVisible;
+  authenticatedShell.hidden = !shell.applicationVisible;
+  authenticatedShell.dataset.activeView = shell.activeView || "none";
+  document.body.dataset.sessionStatus = shell.sessionStatus;
+  skipLink.href = shell.authenticated ? "#main-workspace" : "#credential-login-panel";
+
+  for (const link of shellViewLinks) {
+    const view = link.dataset.shellView;
+    const allowed = shell.allowedViews.includes(view);
+    link.hidden = !allowed;
+    link.classList.toggle("active", shell.activeView === view);
+    if (shell.activeView === view) {
+      link.setAttribute("aria-current", "page");
+    } else {
+      link.removeAttribute("aria-current");
+    }
+  }
+  for (const panel of shellViewPanels) {
+    panel.hidden = !shell.authenticated || panel.dataset.shellViewPanel !== shell.activeView;
+  }
+  for (const container of shellViewContainers) {
+    container.hidden = ![...container.querySelectorAll("[data-shell-view-panel]")]
+      .some(panel => !panel.hidden);
+  }
+  return shell;
+}
+
+function selectApplicationView(requestedView, { updateHash = false } = {}) {
+  workspaceState.activeView = requestedView || AE_WEB_DEFAULT_VIEW;
+  const shell = renderApplicationShell();
+  if (!shell.authenticated) return;
+  if (updateHash && window.location.hash !== `#${shell.activeView}`) {
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${window.location.search}#${shell.activeView}`
+    );
+  }
+  if (shell.activeView === "operations") {
+    renderRuntimeDiagnostics();
+    void renderServiceStatuses();
+  }
+}
+
+function scheduleSessionExpiry() {
+  if (sessionExpiryTimer) {
+    window.clearTimeout(sessionExpiryTimer);
+    sessionExpiryTimer = null;
+  }
+  if (workspaceState.sessionState?.status !== "authenticated") return;
+
+  const expiresAtMs = Date.parse(workspaceState.sessionState.expiresAt || "");
+  if (!Number.isFinite(expiresAtMs)) return;
+  const remainingMs = expiresAtMs - Date.now();
+  if (remainingMs <= 0) {
+    queueMicrotask(expireCurrentSession);
+    return;
+  }
+  sessionExpiryTimer = window.setTimeout(
+    () => scheduleSessionExpiryOrExpire(expiresAtMs),
+    Math.min(remainingMs, 2_147_000_000)
+  );
+}
+
+function scheduleSessionExpiryOrExpire(expiresAtMs) {
+  if (Date.now() < expiresAtMs) {
+    scheduleSessionExpiry();
+    return;
+  }
+  expireCurrentSession();
+}
+
+function expireCurrentSession() {
+  if (workspaceState.sessionState?.status !== "authenticated") return;
+  const sessionState = createExpiredSessionState({
+    sessionId: workspaceState.sessionState.sessionId,
+    reason: "expired"
+  });
+  workspaceState.credentialLogin = createCredentialLoginSurfaceState({
+    tenantId: credentialTenantInput.value,
+    employeeId: credentialEmployeeInput.value,
+    requestedScopes: ["workspace:use", "documents:upload"],
+    status: "EXPIRED",
+    reason: "session_expired",
+    errorStatus: "SESSION_EXPIRED"
+  });
+  applySessionBootstrap(composeAuthenticatedSessionRuntime({
+    runtimeConfig: workspaceState.runtimeConfig,
+    sessionState,
+    sessionClient: workspaceState.sessionClient,
+    documents: workspaceState.documents,
+    artifacts: buildCurrentMockArtifactRecords()
+  }));
+  workspaceState.operations = initializeOperationStates();
+  workspaceState.activeView = AE_WEB_DEFAULT_VIEW;
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.pathname}${window.location.search}`
+  );
+  renderWorkspace();
+}
+
+function clearProtectedApplicationSurfaces() {
+  documentDetailRequestSequence += 1;
+  artifactLibraryPanelRequestSequence += 1;
+  artifactVersionPanelRequestSequence += 1;
+  for (const element of [
+    messageList,
+    approvalUi,
+    documentList,
+    documentDetail,
+    uploadFileMetadataSummary,
+    uploadOwnerScope,
+    uploadClientSummary,
+    uploadPayloadPreview,
+    retrievalScopeSummary,
+    retrievalClientSummary,
+    retrievalScopePreview,
+    progressTimeline,
+    artifactLibraryFeedback,
+    artifactLibrarySummary,
+    artifactLibraryList,
+    artifactSummary,
+    artifactPreviewFeedback,
+    artifactPreviewSummary,
+    artifactPreviewContent,
+    artifactVersionFeedback,
+    artifactVersionSummary,
+    artifactVersionList,
+    auditSummary,
+    serviceList,
+    statusStrip,
+    runtimeDiagnosticsSummary,
+    runtimeDiagnosticsPreview
+  ]) {
+    element.replaceChildren();
+  }
+  promptInput.value = "";
+  uploadFileInput.value = "";
+  groundedResponseQuality.replaceChildren();
+  groundedResponseQuality.hidden = true;
+  retrievalQualityWarnings.replaceChildren();
+  retrievalQualityWarnings.hidden = true;
+  runtimeDiagnosticsStatus.textContent = "대기";
+  runtimeDiagnosticsStatus.className = "badge pending";
+}
 
 function renderWorkspace() {
+  renderCredentialLoginSurface();
+  const shell = renderApplicationShell();
+  if (!shell.authenticated) {
+    clearProtectedApplicationSurfaces();
+    return;
+  }
+
   workspaceId.textContent = workspaceState.workspaceId;
   documentCount.textContent = `${workspaceState.documents.length}`;
   generationStage.textContent = statusLabel(workspaceState.progressEvents.at(-1)[2]);
@@ -646,8 +834,11 @@ function renderWorkspace() {
   chatStatus.className = `badge ${badgeClass(workspaceState.progressEvents.at(-1)[2])}`;
   handoffBadge.textContent = statusLabel(workspaceState.artifact.citationStatus);
   handoffBadge.className = `badge ${badgeClass(workspaceState.artifact.citationStatus)}`;
+  chatPane.dataset.generationDisplayMode =
+    workspaceState.generationPresentation?.displayMode || "NONE";
+  chatPane.dataset.generationNextAction =
+    workspaceState.generationPresentation?.nextAction || "NONE";
   renderMessages();
-  renderCredentialLoginSurface();
   void approvalUiController.refresh();
   renderUploadSurface();
   renderDocuments();
@@ -659,11 +850,23 @@ function renderWorkspace() {
   renderArtifactSummary();
   renderArtifactPreviewPanelSurface();
   renderArtifactVersionPanelSurface();
-  renderAuditSummary();
-  renderRuntimeDiagnostics();
+  if (shell.operationsVisible) {
+    renderAuditSummary();
+  } else {
+    auditSummary.replaceChildren();
+  }
+  if (shell.activeView === "operations") {
+    renderRuntimeDiagnostics();
+    void renderServiceStatuses();
+  }
 }
 
 async function renderServiceStatuses() {
+  if (!canAccessOperations(workspaceState.sessionState)) {
+    serviceList.replaceChildren();
+    statusStrip.replaceChildren();
+    return;
+  }
   serviceList.innerHTML = "";
   statusStrip.innerHTML = "";
 
@@ -735,6 +938,7 @@ function applySessionBootstrap(sessionBootstrap) {
     workspaceState.clientRegistry.repairedResponseReviewClient;
   workspaceState.repairedResponseDecisionClient =
     workspaceState.clientRegistry.repairedResponseDecisionClient;
+  scheduleSessionExpiry();
 }
 
 function syncOwnerScopeFromSessionClaims() {
@@ -766,13 +970,11 @@ async function refreshBrowserSessionRuntime() {
   applySessionBootstrap(nextBootstrap);
   workspaceState.operations = initializeOperationStates();
   resetArtifactLifecycleActionState();
-  renderRuntimeDiagnostics();
-  renderCredentialLoginSurface();
-  void approvalUiController.refresh();
-  renderUploadSurface();
-  renderRetrievalScope();
-  void refreshArtifactLibraryPanel();
-  void refreshArtifactVersionPanel();
+  renderWorkspace();
+  if (workspaceState.sessionState?.status === "authenticated") {
+    void refreshArtifactLibraryPanel();
+    void refreshArtifactVersionPanel();
+  }
 }
 
 async function submitCredentialLogin() {
@@ -814,6 +1016,7 @@ async function submitCredentialLogin() {
     applySessionBootstrap(nextBootstrap);
     workspaceState.operations = initializeOperationStates();
     resetArtifactLifecycleActionState();
+    selectApplicationView(AE_WEB_DEFAULT_VIEW, { updateHash: true });
     renderWorkspace();
     void refreshArtifactLibraryPanel();
     void refreshArtifactVersionPanel();
@@ -828,7 +1031,6 @@ async function submitCredentialLogin() {
       errorStatus: error.status || "CREDENTIAL_LOGIN_FAILED"
     });
     renderCredentialLoginSurface();
-    renderRuntimeDiagnostics();
   } finally {
     credentialLoginSubmitButton.disabled = false;
     credentialLogoutButton.disabled =
@@ -857,8 +1059,9 @@ async function logoutCredentialSession() {
     applySessionBootstrap(nextBootstrap);
     workspaceState.operations = initializeOperationStates();
     resetArtifactLifecycleActionState();
+    workspaceState.activeView = AE_WEB_DEFAULT_VIEW;
+    window.history.replaceState(null, "", window.location.pathname);
     renderWorkspace();
-    void refreshArtifactLibraryPanel();
   } catch (error) {
     workspaceState.credentialLogin = createCredentialLoginSurfaceState({
       tenantId: credentialTenantInput.value,
@@ -869,7 +1072,6 @@ async function logoutCredentialSession() {
       errorStatus: error.status || "CREDENTIAL_LOGOUT_FAILED"
     });
     renderCredentialLoginSurface();
-    renderRuntimeDiagnostics();
   } finally {
     credentialLogoutButton.disabled =
       workspaceState.sessionState?.status !== "authenticated";
@@ -952,6 +1154,9 @@ function credentialLoginFeedbackMessage(summary) {
   }
   if (summary.status === "LOGGED_OUT") {
     return "로그아웃되었습니다.";
+  }
+  if (summary.status === "EXPIRED") {
+    return "세션이 만료되었습니다. 다시 로그인해 주세요.";
   }
   return "로그인 준비가 완료되었습니다.";
 }
@@ -3104,6 +3309,13 @@ async function submitUploadDraft() {
 }
 
 function renderRuntimeDiagnostics() {
+  if (!canAccessOperations(workspaceState.sessionState)) {
+    runtimeDiagnosticsSummary.replaceChildren();
+    runtimeDiagnosticsPreview.replaceChildren();
+    runtimeDiagnosticsStatus.textContent = "대기";
+    runtimeDiagnosticsStatus.className = "badge pending";
+    return;
+  }
   const diagnostics = buildRuntimeDiagnostics({
     runtimeConfig: workspaceState.runtimeConfig,
     sessionState: workspaceState.sessionState,
@@ -3345,8 +3557,8 @@ function buildLocalMockBrowserSessionSnapshot() {
     subject_ref: { type: "oa.user", id: localOwnerScope.ownerUserId },
     scopes: ["workspace:use", "documents:upload", "generation:submit"],
     roles: ["employee"],
-    issued_at: "2026-10-06T00:00:00Z",
-    expires_at: "2026-10-06T01:00:00Z",
+    issued_at: "2026-10-22T00:00:00Z",
+    expires_at: "2099-12-31T23:59:59Z",
     metadata: {
       [`raw_${"token"}_included`]: false,
       [`service_${"token"}_included`]: false,
@@ -3568,7 +3780,8 @@ function badgeClass(status) {
       "COMPLETED",
       "EXPORT_READY",
       "PREVIEW_READY",
-      "DOWNLOAD_READY"
+      "DOWNLOAD_READY",
+      "AUTHENTICATED"
     ].includes(status)
   ) {
     return "success";
@@ -3582,14 +3795,15 @@ function badgeClass(status) {
     "READY_FOR_PROMPT",
     "READY_FOR_SUBMIT",
     "ALREADY_EXISTS",
-    "QUEUED"
+    "QUEUED",
+    "EXPIRED"
   ].includes(status)) {
     return "warning";
   }
-  if (["RUNNING", "SELECTING", "READY_FOR_RENDERING", "EXPORT_PENDING"].includes(status)) {
+  if (["RUNNING", "SELECTING", "READY_FOR_RENDERING", "EXPORT_PENDING", "SUBMITTING"].includes(status)) {
     return "running";
   }
-  if (["PENDING", "UNKNOWN", "EMPTY", "NOT_REQUIRED"].includes(status)) return "pending";
+  if (["PENDING", "UNKNOWN", "EMPTY", "NOT_REQUIRED", "READY_FOR_LOGIN", "LOGGED_OUT"].includes(status)) return "pending";
   return "danger";
 }
 

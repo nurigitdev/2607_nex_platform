@@ -30,6 +30,10 @@ body {
   color: var(--nex-text);
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .skip-link {
   position: fixed;
   top: 8px;
@@ -68,6 +72,34 @@ a:focus-visible {
   display: grid;
   grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
   min-height: 100vh;
+}
+
+.authentication-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  border-left: 8px solid var(--nex-sidebar);
+  padding: 32px 20px;
+  background: var(--nex-bg);
+}
+
+.authentication-surface {
+  width: min(100%, 440px);
+}
+
+.authentication-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.authentication-brand h1 {
+  font-size: 22px;
+}
+
+.authentication-panel {
+  box-shadow: 0 14px 36px rgba(24, 33, 43, 0.08);
 }
 
 .sidebar {
@@ -137,6 +169,13 @@ nav a:hover {
   border-bottom: 1px solid var(--nex-border);
   background: var(--nex-surface);
   padding: 16px 24px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .eyebrow {
@@ -214,9 +253,14 @@ h2 {
 
 .content-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 390px);
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   padding: 20px 24px;
+}
+
+.app-shell .workspace-column,
+.app-shell .context-pane {
+  width: min(100%, 980px);
 }
 
 .workspace-column,
@@ -1400,7 +1444,7 @@ nav a,
   }
 
   nav {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   nav a {
@@ -1415,6 +1459,16 @@ nav a,
 @media (max-width: 620px) {
   .topbar,
   .section-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .authentication-shell {
+    align-items: start;
+    padding: 22px 14px;
+  }
+
+  .topbar-actions {
     align-items: stretch;
     flex-direction: column;
   }

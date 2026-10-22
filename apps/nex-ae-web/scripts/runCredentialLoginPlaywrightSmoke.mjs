@@ -78,6 +78,7 @@ export async function runCredentialLoginPlaywrightSmoke({
     await page.fill("#credential-password", environ[PASSWORD_ENV]);
     await page.click("#credential-login-submit-button");
     await page.waitForSelector("#credential-login-feedback[data-severity='success']", {
+      state: "attached",
       timeout: timeoutMs
     });
     await page.waitForFunction(

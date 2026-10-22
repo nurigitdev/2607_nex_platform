@@ -7,10 +7,81 @@
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
-    <a class="skip-link" href="#main-workspace" data-i18n="action.skip_main">
+    <a class="skip-link" href="#primary-content" data-i18n="action.skip_main">
       본문으로 건너뛰기
     </a>
-    <div class="app-shell">
+    <main class="authentication-shell" id="authentication-shell" tabindex="-1">
+      <section class="authentication-surface" id="primary-content">
+        <div class="authentication-brand">
+          <span class="brand-mark" aria-hidden="true">NX</span>
+          <div>
+            <p class="eyebrow">NeX Platform</p>
+            <h1>업무 공간 로그인</h1>
+          </div>
+        </div>
+        <section
+          class="panel authentication-panel"
+          id="credential-login-panel"
+          aria-labelledby="credential-login-title"
+        >
+          <div class="section-header compact">
+            <div>
+              <p class="eyebrow">Employee access</p>
+              <h2 id="credential-login-title" data-i18n="auth.title">사번 로그인</h2>
+            </div>
+            <span class="badge pending" id="credential-login-status">대기</span>
+          </div>
+          <form class="credential-login-form" id="credential-login-form">
+            <label for="credential-tenant-id" data-i18n="auth.tenant">테넌트</label>
+            <input
+              id="credential-tenant-id"
+              name="tenant_id"
+              type="text"
+              value="tenant-local"
+              autocomplete="organization"
+            />
+            <label for="credential-employee-id" data-i18n="auth.employee_id">사번</label>
+            <input
+              id="credential-employee-id"
+              name="employee_id"
+              type="text"
+              autocomplete="username"
+              autofocus
+            />
+            <label for="credential-password" data-i18n="auth.password">비밀번호</label>
+            <input
+              id="credential-password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+            />
+            <button id="credential-login-submit-button" type="submit" data-i18n="auth.login">
+              로그인
+            </button>
+          </form>
+          <div
+            class="operation-feedback"
+            id="credential-login-feedback"
+            role="status"
+            aria-live="polite"
+          ></div>
+          <dl
+            class="meta-list"
+            id="credential-login-summary"
+            aria-label="AE Web credential login summary"
+            hidden
+          ></dl>
+          <dl
+            class="meta-list client-summary"
+            id="session-route-guard-summary"
+            aria-label="AE Web session route guard summary"
+            hidden
+          ></dl>
+        </section>
+      </section>
+    </main>
+
+    <div class="app-shell" id="authenticated-shell" hidden>
       <aside
         id="golden-sidebar"
         class="sidebar"
@@ -21,20 +92,17 @@
           <span class="brand-mark" aria-hidden="true">NX</span>
           <div>
             <strong>NeX AE</strong>
-            <span>local_mock</span>
+            <span>Assistant Workspace</span>
           </div>
         </div>
-        <nav>
-          <a class="active" href="#workspace-summary" data-i18n="nav.workspace">워크스페이스</a>
-          <a href="#credential-login-panel" data-i18n="nav.login">로그인</a>
-          <a href="#runtime-diagnostics-panel" data-i18n="nav.runtime">런타임</a>
-          <a href="#approval-panel">승인함</a>
-          <a href="#upload-surface-panel" data-i18n="nav.upload">업로드</a>
-          <a href="#document-list" data-i18n="nav.documents">문서</a>
-          <a href="#document-detail-panel" data-i18n="nav.detail">상세</a>
-          <a href="#retrieval-scope-panel" data-i18n="nav.retrieval">검색</a>
-          <a href="#artifact-panel" data-i18n="nav.artifact">아티팩트</a>
-          <a href="#audit-panel" data-i18n="nav.audit">감사</a>
+        <nav id="application-navigation">
+          <a class="active" href="#workspace" data-shell-view="workspace" data-i18n="nav.workspace">워크스페이스</a>
+          <a href="#approvals" data-shell-view="approvals">승인함</a>
+          <a href="#upload" data-shell-view="upload" data-i18n="nav.upload">업로드</a>
+          <a href="#documents" data-shell-view="documents" data-i18n="nav.documents">문서</a>
+          <a href="#retrieval" data-shell-view="retrieval" data-i18n="nav.retrieval">검색</a>
+          <a href="#artifacts" data-shell-view="artifacts" data-i18n="nav.artifact">아티팩트</a>
+          <a href="#operations" data-shell-view="operations" data-operations-only>운영/진단</a>
         </nav>
       </aside>
 
@@ -44,12 +112,18 @@
             <p class="eyebrow">Slice 0227</p>
             <h1 data-i18n="app.workspace">NeX-Platform 작업면</h1>
           </div>
-          <div class="status-strip" id="status-strip" aria-live="polite"></div>
+          <div class="topbar-actions">
+            <div class="status-strip" id="status-strip" aria-live="polite"></div>
+            <button id="credential-logout-button" type="button">
+              <span data-i18n="auth.logout">로그아웃</span>
+            </button>
+          </div>
         </header>
 
         <section
           class="summary-band"
           id="workspace-summary"
+          data-shell-view-panel="workspace"
           aria-label="작업 현황"
           data-i18n-aria-label="summary.label"
         >
@@ -75,10 +149,16 @@
           <section
             id="golden-workspace-column"
             class="workspace-column"
+            data-shell-view-container
             aria-label="채팅과 진행 상태"
             data-i18n-aria-label="chat.region"
           >
-            <section class="chat-pane" id="golden-chat" aria-labelledby="chat-title">
+            <section
+              class="chat-pane"
+              id="golden-chat"
+              data-shell-view-panel="workspace"
+              aria-labelledby="chat-title"
+            >
               <div class="section-header">
                 <div>
                   <p class="eyebrow" data-i18n="chat.eyebrow">채팅 문서</p>
@@ -143,6 +223,7 @@
             <section
               class="panel approval-panel"
               id="approval-panel"
+              data-shell-view-panel="approvals"
               aria-labelledby="approval-title"
             >
               <div class="section-header compact">
@@ -155,7 +236,12 @@
               <div id="approval-ui" class="approval-ui"></div>
             </section>
 
-            <section class="timeline-panel" id="golden-timeline" aria-labelledby="timeline-title">
+            <section
+              class="timeline-panel"
+              id="golden-timeline"
+              data-shell-view-panel="workspace"
+              aria-labelledby="timeline-title"
+            >
               <div class="section-header compact">
                 <h2 id="timeline-title" data-i18n="timeline.title">진행 타임라인</h2>
                 <span class="badge running" id="timeline-count">0 events</span>
@@ -167,10 +253,15 @@
           <aside
             id="golden-context-pane"
             class="context-pane"
+            data-shell-view-container
             aria-label="컨텍스트 패널"
             data-i18n-aria-label="context.region"
           >
-            <section class="panel">
+            <section
+              class="panel"
+              id="service-status-panel"
+              data-shell-view-panel="operations"
+            >
               <div class="section-header compact">
                 <h2 data-i18n="service.title">서비스 상태</h2>
                 <button id="refresh-button" type="button" data-i18n="action.refresh">새로고침</button>
@@ -180,65 +271,8 @@
 
             <section
               class="panel"
-              id="credential-login-panel"
-              aria-labelledby="credential-login-title"
-            >
-              <div class="section-header compact">
-                <h2 id="credential-login-title" data-i18n="auth.title">사번 로그인</h2>
-                <div class="badge-pair">
-                  <span class="badge pending" id="credential-login-status">대기</span>
-                  <button id="credential-logout-button" type="button" hidden>
-                    <span data-i18n="auth.logout">로그아웃</span>
-                  </button>
-                </div>
-              </div>
-              <form class="credential-login-form" id="credential-login-form">
-                <label for="credential-tenant-id" data-i18n="auth.tenant">테넌트</label>
-                <input
-                  id="credential-tenant-id"
-                  name="tenant_id"
-                  type="text"
-                  value="tenant-local"
-                  autocomplete="organization"
-                />
-                <label for="credential-employee-id" data-i18n="auth.employee_id">사번</label>
-                <input
-                  id="credential-employee-id"
-                  name="employee_id"
-                  type="text"
-                  autocomplete="username"
-                />
-                <label for="credential-password" data-i18n="auth.password">비밀번호</label>
-                <input
-                  id="credential-password"
-                  name="password"
-                  type="password"
-                  autocomplete="current-password"
-                />
-                <button id="credential-login-submit-button" type="submit" data-i18n="auth.login">
-                  로그인
-                </button>
-              </form>
-              <div
-                class="operation-feedback"
-                id="credential-login-feedback"
-                role="status"
-              ></div>
-              <dl
-                class="meta-list"
-                id="credential-login-summary"
-                aria-label="AE Web credential login summary"
-              ></dl>
-              <dl
-                class="meta-list client-summary"
-                id="session-route-guard-summary"
-                aria-label="AE Web session route guard summary"
-              ></dl>
-            </section>
-
-            <section
-              class="panel"
               id="runtime-diagnostics-panel"
+              data-shell-view-panel="operations"
               aria-labelledby="runtime-diagnostics-title"
             >
               <div class="section-header compact">
@@ -260,6 +294,7 @@
             <section
               class="panel"
               id="upload-surface-panel"
+              data-shell-view-panel="upload"
               aria-labelledby="upload-surface-title"
             >
               <div class="section-header compact">
@@ -305,7 +340,11 @@
               ></pre>
             </section>
 
-            <section class="panel" aria-labelledby="documents-title">
+            <section
+              class="panel"
+              data-shell-view-panel="documents"
+              aria-labelledby="documents-title"
+            >
               <div class="section-header compact">
                 <h2 id="documents-title" data-i18n="documents.title">문서 범위</h2>
                 <span class="badge success">READY</span>
@@ -316,6 +355,7 @@
             <section
               class="panel"
               id="document-detail-panel"
+              data-shell-view-panel="documents"
               aria-labelledby="document-detail-title"
             >
               <div class="section-header compact">
@@ -338,6 +378,7 @@
             <section
               class="panel"
               id="retrieval-scope-panel"
+              data-shell-view-panel="retrieval"
               aria-labelledby="retrieval-scope-title"
             >
               <div class="section-header compact">
@@ -371,7 +412,12 @@
               ></pre>
             </section>
 
-            <section class="panel" id="artifact-panel" aria-labelledby="artifact-title">
+            <section
+              class="panel"
+              id="artifact-panel"
+              data-shell-view-panel="artifacts"
+              aria-labelledby="artifact-title"
+            >
               <div class="section-header compact">
                 <h2 id="artifact-title" data-i18n="artifact.title">아티팩트</h2>
                 <span class="badge pending" id="handoff-badge">대기</span>
@@ -441,7 +487,12 @@
               ></div>
             </section>
 
-            <section class="panel" id="audit-panel" aria-labelledby="audit-title">
+            <section
+              class="panel"
+              id="audit-panel"
+              data-shell-view-panel="operations"
+              aria-labelledby="audit-title"
+            >
               <div class="section-header compact">
                 <h2 id="audit-title" data-i18n="audit.title">AG 감사</h2>
                 <span class="badge success" data-i18n="audit.redacted">민감정보 제거됨</span>

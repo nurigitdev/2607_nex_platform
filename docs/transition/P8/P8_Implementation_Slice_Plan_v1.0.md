@@ -1442,6 +1442,35 @@ duplicate submit
 
 ---
 
+## P8-S42A — Authentication-first AE Web Shell and View Routing Hardening
+
+### Objective
+
+Make employee authentication the only anonymous surface and expose the existing
+AE Web capabilities through authenticated application views.
+
+### Required behavior
+
+```text
+anonymous / expired -> employee login only
+authenticated default -> Chat / Workspace
+authenticated menu -> approvals, upload, documents, retrieval, artifacts
+admin or operator only -> operations / diagnostics
+logout / expiry -> immediate login return and protected DOM cleanup
+```
+
+Service readiness, runtime diagnostics, and audit details MUST NOT be rendered
+before authentication. This Slice does not change a backend contract, database
+table, or migration.
+
+### Playwright
+
+Verify desktop and mobile login-first rendering, authenticated menu routing,
+employee operations-menu denial, absence of anonymous service probes, and
+logout cleanup before entering the protected P8-S43 gate.
+
+---
+
 ## P8-S43 — Human Approval Foundation Protected Gate
 
 ### Required

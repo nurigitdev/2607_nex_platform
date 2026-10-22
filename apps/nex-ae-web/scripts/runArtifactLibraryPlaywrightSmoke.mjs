@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import {
   PLAYWRIGHT_CHROMIUM_EXECUTABLE_ENV
 } from "./runCredentialLoginPlaywrightReadiness.mjs";
+import { activateAuthenticatedView } from "./authenticatedShellNavigation.mjs";
 import {
   safeFetchRuntimeConfig
 } from "./runArtifactPlaywrightSmoke.mjs";
@@ -100,6 +101,7 @@ export async function runArtifactLibraryPlaywrightSmoke({
       waitUntil: "domcontentloaded",
       timeout: timeoutMs
     });
+    await activateAuthenticatedView(page, "artifacts", { timeoutMs });
     await page.waitForSelector("#artifact-library-list", { timeout: timeoutMs });
 
     const browserResult = await page.evaluate(

@@ -14,8 +14,8 @@ def test_repository_viewport_accessibility_acceptance_is_ready() -> None:
     assert result["issues"] == []
     assert result["summary"] == {
         "viewport_count": 2,
-        "required_region_count": 9,
-        "non_overlap_pair_count": 5,
+        "required_region_count": 8,
+        "non_overlap_pair_count": 4,
         "minimum_control_target_px": 24,
         "issue_count": 0,
     }
