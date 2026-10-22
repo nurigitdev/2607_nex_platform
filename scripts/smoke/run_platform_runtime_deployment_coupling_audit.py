@@ -37,6 +37,8 @@ SERVICE_SOURCE_ROOTS = (
     "services/nex-mo",
     "services/nex-ag",
 )
+EXPECTED_LOOPBACK_OCCURRENCE_COUNT = 48
+EXPECTED_LOOPBACK_FILE_COUNT = 28
 
 
 @dataclass(frozen=True)
@@ -104,7 +106,8 @@ def run_platform_runtime_deployment_coupling_audit(
             len(SERVICE_ENDPOINT_ENV_NAMES) == 6
         ),
         "loopback_baseline_exact": (
-            loopback["occurrence_count"] == 47 and loopback["file_count"] == 27
+            loopback["occurrence_count"] == EXPECTED_LOOPBACK_OCCURRENCE_COUNT
+            and loopback["file_count"] == EXPECTED_LOOPBACK_FILE_COUNT
         ),
         "thirteen_source_processes_inventoried": len(manifest.processes) == 13,
         "all_coupling_records_documented": all(records_documented.values()),
