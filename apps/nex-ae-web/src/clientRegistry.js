@@ -3,6 +3,10 @@ import {
   createMockArtifactClient
 } from "./artifactClient.js";
 import {
+  createFetchApprovalClient,
+  createMockApprovalClient
+} from "./approvalClient.js";
+import {
   createFetchDocumentDetailClient,
   createMockDocumentDetailClient
 } from "./documentDetailClient.js";
@@ -60,6 +64,10 @@ export function createAeWebClients({
   const clients =
     clientMode === "mock"
       ? {
+          approvalClient: createMockApprovalClient({
+            inbox: responseFactories.approvalInbox,
+            deniedGateIds: responseFactories.approvalDeniedGateIds
+          }),
           artifactClient: createMockArtifactClient({
             artifacts,
             previews: responseFactories.artifactPreviews || {},
@@ -90,6 +98,7 @@ export function createAeWebClients({
           })
         }
       : {
+          approvalClient: createFetchApprovalClient(commonFetchOptions),
           artifactClient: createFetchArtifactClient(commonFetchOptions),
           documentDetailClient: createFetchDocumentDetailClient(commonFetchOptions),
           uploadClient: createFetchUploadClient(commonFetchOptions),
@@ -131,6 +140,7 @@ export function buildClientRegistrySummary(registry) {
     client_mode: registry.clientMode,
     base_url: registry.clientMode === "fetch" ? registry.baseUrl : "",
     clients: {
+      approval: registry.approvalClient.clientMode,
       artifact: registry.artifactClient.clientMode,
       document_detail: registry.documentDetailClient.clientMode,
       upload: registry.uploadClient.clientMode,
@@ -168,6 +178,7 @@ function isRegistry(value) {
   return (
     Boolean(value) &&
     value.client_registry_schema_version === AE_WEB_CLIENT_REGISTRY_SCHEMA_VERSION &&
+    value.approvalClient &&
     value.artifactClient &&
     value.documentDetailClient &&
     value.uploadClient &&

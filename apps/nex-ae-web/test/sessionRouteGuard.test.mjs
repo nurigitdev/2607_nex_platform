@@ -70,7 +70,12 @@ describe("AE Web session route guard", () => {
     );
     assert.equal(summary.guard_status, "allowed");
     assert.equal(summary.owner_scope_source, "session-claims");
-    assert.equal(summary.allowed_route_count, 4);
+    assert.equal(summary.allowed_route_count, 5);
+    assert.equal(
+      routeGuard.protected_routes.find(route => route.route_id === "approval_inbox")
+        .route_template,
+      "/api/v1/approval-gates"
+    );
     assert.deepEqual(routeGuard.owner_scope, {
       tenant_ref: { type: "oa.tenant", id: "tenant-oa" },
       owner_subject_ref: { type: "oa.user", id: "user-oa" }

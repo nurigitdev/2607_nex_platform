@@ -6,12 +6,12 @@ from dataclasses import dataclass
 
 from nex_runtime import issue_mock_service_token
 
-
 AE_OUTBOUND_TOKEN_ENV_BY_AUDIENCE = {
     "nex-oa": "NEX_AE_TO_OA_SERVICE_TOKEN",
     "nex-cx": "NEX_AE_TO_CX_SERVICE_TOKEN",
     "nex-mo": "NEX_AE_TO_MO_SERVICE_TOKEN",
     "nex-ag": "NEX_AE_TO_AG_SERVICE_TOKEN",
+    "nex-wc": "NEX_AE_TO_WC_SERVICE_TOKEN",
 }
 
 

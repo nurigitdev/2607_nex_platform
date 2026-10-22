@@ -16,6 +16,7 @@ tags:
   - name: Analytics
   - name: Prompts
   - name: Runtime Policy
+  - name: Approvals
   - name: Operations
 paths:
   /health:
@@ -2022,6 +2023,76 @@ paths:
           description: Proposed automation recommendations for the user.
         "401":
           description: Service claim is missing or invalid.
+  /api/v1/approval-gates:
+    get:
+      operationId: listAeApprovalGates
+      tags: [Approvals]
+      description: >-
+        Returns a bounded, display-safe unified approval inbox for the
+        authenticated browser user. AE derives tenant and subject identity
+        from the browser session and calls WC with its service credential.
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+      responses:
+        "200":
+          description: Eligible pending approval gates across preserved domains.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WcApprovalInbox"}
+        "401": {description: Authenticated browser session is missing or invalid.}
+        "403": {description: Current approval read authority is denied.}
+        "422": {description: Limit is invalid.}
+        "503": {description: WC approval service is unavailable.}
+  /api/v1/approval-gates/{approval_work_item_id}:
+    get:
+      operationId: getAeApprovalGate
+      tags: [Approvals]
+      description: Returns display-safe approval detail after WC authorization.
+      parameters:
+        - {$ref: "#/components/parameters/ApprovalWorkItemId"}
+      responses:
+        "200":
+          description: Eligible display-safe approval gate detail.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WcApprovalGateDetail"}
+        "401": {description: Authenticated browser session is missing or invalid.}
+        "403": {description: Current approval read authority is denied.}
+        "404": {description: Gate is absent or unavailable to the browser user.}
+        "503": {description: WC approval service is unavailable.}
+  /api/v1/approval-gates/{approval_work_item_id}/decisions:
+    post:
+      operationId: decideAeApprovalGate
+      tags: [Approvals]
+      description: >-
+        Forwards an exact APPROVE or REJECT request to WC. WC remains the
+        decision system of record and performs fresh OA authorization.
+      parameters:
+        - {$ref: "#/components/parameters/ApprovalWorkItemId"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/WcApprovalDecisionRequest"}
+      responses:
+        "200":
+          description: Exact idempotent replay of an existing decision.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WcApprovalDecision"}
+        "201":
+          description: Immutable approval decision recorded by WC.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WcApprovalDecision"}
+        "401": {description: Authenticated browser session is missing or invalid.}
+        "403": {description: Current approval decision authority is denied.}
+        "404": {description: Approval gate was not found.}
+        "409": {description: "Gate is expired, terminal, stale, or conflicts."}
+        "422": {description: Decision request is invalid.}
+        "503": {description: WC approval service is unavailable.}
   /admin/v1/operations/mvp-acceptance:
     get:
       operationId: getAeMvpAcceptanceOperationsProjection
@@ -2143,6 +2214,11 @@ components:
       scheme: bearer
       bearerFormat: RS256 at+jwt
   parameters:
+    ApprovalWorkItemId:
+      name: approval_work_item_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     AeAsyncRenderJobId:
       name: render_job_id
       in: path
@@ -2150,6 +2226,18 @@ components:
       schema:
         type: string
   schemas:
+    WcApprovalDecision:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_wc/approval_decision.v1.schema.json
+    WcApprovalDecisionRequest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_wc/approval_decision_request.v1.schema.json
+    WcApprovalGateDetail:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_wc/approval_gate_detail.v1.schema.json
+    WcApprovalInbox:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_wc/approval_inbox.v1.schema.json
     AeUploadIngestionProgress:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_ae_api/upload_ingestion_progress.v1.schema.json

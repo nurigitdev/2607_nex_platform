@@ -28,6 +28,7 @@
           <a class="active" href="#workspace-summary" data-i18n="nav.workspace">워크스페이스</a>
           <a href="#credential-login-panel" data-i18n="nav.login">로그인</a>
           <a href="#runtime-diagnostics-panel" data-i18n="nav.runtime">런타임</a>
+          <a href="#approval-panel">승인함</a>
           <a href="#upload-surface-panel" data-i18n="nav.upload">업로드</a>
           <a href="#document-list" data-i18n="nav.documents">문서</a>
           <a href="#document-detail-panel" data-i18n="nav.detail">상세</a>
@@ -137,6 +138,21 @@
                   </span>
                 </div>
               </form>
+            </section>
+
+            <section
+              class="panel approval-panel"
+              id="approval-panel"
+              aria-labelledby="approval-title"
+            >
+              <div class="section-header compact">
+                <div>
+                  <p class="eyebrow">Human Gate</p>
+                  <h2 id="approval-title">통합 승인함</h2>
+                </div>
+                <span class="badge pending">3 domains</span>
+              </div>
+              <div id="approval-ui" class="approval-ui"></div>
             </section>
 
             <section class="timeline-panel" id="golden-timeline" aria-labelledby="timeline-title">
@@ -442,6 +458,7 @@
         "client_mode": "mock",
         "ae_base_url": "",
         "features": {
+          "approval_inbox_enabled": true,
           "document_detail_enabled": true,
           "upload_submit_enabled": true,
           "retrieval_submit_enabled": true,

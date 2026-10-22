@@ -2,6 +2,9 @@ import {
   buildAuthenticatedRuntimeSummary
 } from "./authenticatedRuntime.js";
 import {
+  createApprovalUiController
+} from "./approvalUi.js";
+import {
   renderArtifactCard
 } from "./artifactCard.js";
 import {
@@ -236,6 +239,7 @@ const workspaceState = {
   }),
   authBoundary: null,
   clientRegistry: null,
+  approvalClient: null,
   operations: null,
   documentScope: null,
   lastRetrievalRequest: null,
@@ -383,6 +387,7 @@ const workspaceState = {
 };
 
 workspaceState.messages[1].artifactRefs = [workspaceState.artifactRef];
+let approvalUiController = null;
 const initialRuntimeConfig = loadRuntimeConfig();
 workspaceState.sessionBootstrap = composeAuthenticatedSessionRuntime({
   runtimeConfig: initialRuntimeConfig,
@@ -480,6 +485,13 @@ const artifactVersionFeedback = document.querySelector("#artifact-version-feedba
 const artifactVersionSummary = document.querySelector("#artifact-version-summary");
 const artifactVersionList = document.querySelector("#artifact-version-list");
 const auditSummary = document.querySelector("#audit-summary");
+const approvalUi = document.querySelector("#approval-ui");
+approvalUiController = createApprovalUiController({
+  container: approvalUi,
+  client: workspaceState.approvalClient,
+  correlationId: () => workspaceState.chatDocumentId,
+  causationId: () => workspaceState.interactionId
+});
 let documentDetailRequestSequence = 0;
 let artifactLibraryPanelRequestSequence = 0;
 let artifactVersionPanelRequestSequence = 0;
@@ -636,6 +648,7 @@ function renderWorkspace() {
   handoffBadge.className = `badge ${badgeClass(workspaceState.artifact.citationStatus)}`;
   renderMessages();
   renderCredentialLoginSurface();
+  void approvalUiController.refresh();
   renderUploadSurface();
   renderDocuments();
   renderRetrievalScope();
@@ -704,6 +717,10 @@ function applySessionBootstrap(sessionBootstrap) {
     clientRegistry: workspaceState.clientRegistry
   });
   syncOwnerScopeFromSessionClaims();
+  workspaceState.approvalClient = workspaceState.clientRegistry.approvalClient;
+  if (approvalUiController) {
+    approvalUiController.setClient(workspaceState.approvalClient);
+  }
   workspaceState.documentDetailClient = workspaceState.clientRegistry.documentDetailClient;
   workspaceState.artifactClient = workspaceState.clientRegistry.artifactClient;
   workspaceState.uploadClient = workspaceState.clientRegistry.uploadClient;
@@ -751,6 +768,7 @@ async function refreshBrowserSessionRuntime() {
   resetArtifactLifecycleActionState();
   renderRuntimeDiagnostics();
   renderCredentialLoginSurface();
+  void approvalUiController.refresh();
   renderUploadSurface();
   renderRetrievalScope();
   void refreshArtifactLibraryPanel();
