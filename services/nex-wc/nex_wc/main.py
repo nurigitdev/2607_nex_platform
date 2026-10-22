@@ -15,6 +15,7 @@ from nex_wc.approvals import (
     ApprovalDecisionService,
     ApprovalDetailService,
     ApprovalInboxService,
+    ApprovalWorkItemService,
     InMemoryApprovalWorkItemRepository,
     SqlAlchemyApprovalWorkItemRepository,
 )
@@ -65,6 +66,7 @@ APPROVAL_INBOX = ApprovalInboxService(
     APPROVAL_REPOSITORY,
     authorization_source=AUTHORIZATION_SOURCE,
 )
+APPROVAL_WORK_ITEMS = ApprovalWorkItemService(APPROVAL_REPOSITORY)
 APPROVAL_DETAIL = ApprovalDetailService(
     APPROVAL_REPOSITORY,
     authorization_source=AUTHORIZATION_SOURCE,
@@ -74,6 +76,7 @@ APPROVAL_DECISIONS = ApprovalDecisionService(
     authorizer=ApprovalDecisionAuthorizer(AUTHORIZATION_SOURCE),
 )
 app.state.wc_approval_repository = APPROVAL_REPOSITORY
+app.state.wc_approval_work_items = APPROVAL_WORK_ITEMS
 app.state.wc_approval_inbox = APPROVAL_INBOX
 app.state.wc_approval_detail = APPROVAL_DETAIL
 app.state.wc_approval_decisions = APPROVAL_DECISIONS
@@ -144,6 +147,7 @@ register_work_result_routes(app, service=WORK_RESULTS)
 register_approval_routes(
     app,
     inbox_service=APPROVAL_INBOX,
+    work_item_service=APPROVAL_WORK_ITEMS,
     detail_service=APPROVAL_DETAIL,
     decision_service=APPROVAL_DECISIONS,
 )

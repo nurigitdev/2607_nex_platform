@@ -18,7 +18,7 @@
   "nsl_execution_id": "nsl-execution-p8-001",
   "business_operation_id": "business-operation-p8-001",
   "approval_request_id": "approval-request-p8-001",
-  "protected_request_ref": "ae-private:approval-request-p8-001",
+  "protected_request_ref": "ae://nsl-approval-requests/aa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json",
   "resume_target_ref": "ae-wait:approval-request-p8-001",
   "state": "PENDING",
   "created_at": "2026-10-22T09:00:00Z",

@@ -15,6 +15,8 @@ from nex_wc.approvals import (
     ApprovalDetailService,
     ApprovalInboxError,
     ApprovalInboxService,
+    ApprovalWorkItemError,
+    ApprovalWorkItemService,
 )
 
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
@@ -24,9 +26,29 @@ def register_approval_routes(
     app: FastAPI,
     *,
     inbox_service: ApprovalInboxService,
+    work_item_service: ApprovalWorkItemService | None = None,
     detail_service: ApprovalDetailService | None = None,
     decision_service: ApprovalDecisionService | None = None,
 ) -> None:
+    @app.post("/api/v1/approval-work-items", response_model=None)
+    def create_approval_work_item(
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        denied = _authorize(request, authorization)
+        if denied is not None:
+            return denied
+        if work_item_service is None:
+            return _dependency_unavailable(request, "work-item publication")
+        try:
+            result = work_item_service.create_or_get(payload)
+        except ApprovalWorkItemError as exc:
+            return _approval_problem(
+                request, exc, title="WC approval work-item publication failed"
+            )
+        return JSONResponse(result, status_code=201 if result["created"] else 200)
+
     @app.get("/api/v1/approval-gates", response_model=None)
     def list_approval_gates(
         request: Request,
@@ -188,6 +210,7 @@ def _approval_problem(
         ApprovalInboxError
         | ApprovalDecisionError
         | ApprovalDecisionAuthorizationError
+        | ApprovalWorkItemError
     ),
     *,
     title: str,

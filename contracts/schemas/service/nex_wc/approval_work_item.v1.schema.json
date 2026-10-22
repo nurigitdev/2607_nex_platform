@@ -30,7 +30,7 @@
     "nsl_execution_id": {"oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]},
     "business_operation_id": {"oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]},
     "approval_request_id": {"oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]},
-    "protected_request_ref": {"oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]},
+    "protected_request_ref": {"oneOf": [{"$ref": "#/$defs/opaque_ref"}, {"type": "null"}]},
     "resume_target_ref": {"type": "string", "minLength": 1, "maxLength": 256},
     "state": {"enum": ["PENDING", "APPROVED", "REJECTED", "EXPIRED", "CANCELLED"]},
     "created_at": {"type": "string", "format": "date-time"},
@@ -49,7 +49,7 @@
           "nsl_execution_id": {"$ref": "#/$defs/scoped_id"},
           "business_operation_id": {"$ref": "#/$defs/scoped_id"},
           "approval_request_id": {"$ref": "#/$defs/scoped_id"},
-          "protected_request_ref": {"$ref": "#/$defs/scoped_id"}
+          "protected_request_ref": {"$ref": "#/$defs/opaque_ref"}
         }
       }
     },
@@ -62,7 +62,7 @@
           "agent_execution_id": {"$ref": "#/$defs/scoped_id"},
           "executable_step_id": {"$ref": "#/$defs/scoped_id"},
           "business_operation_id": {"$ref": "#/$defs/scoped_id"},
-          "protected_request_ref": {"$ref": "#/$defs/scoped_id"}
+          "protected_request_ref": {"$ref": "#/$defs/opaque_ref"}
         }
       }
     },
@@ -73,13 +73,14 @@
         "properties": {
           "approval_provider_type": {"const": "EOS"},
           "business_operation_id": {"$ref": "#/$defs/scoped_id"},
-          "protected_request_ref": {"$ref": "#/$defs/scoped_id"}
+          "protected_request_ref": {"$ref": "#/$defs/opaque_ref"}
         }
       }
     }
   ],
   "$defs": {
     "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "opaque_ref": {"type": "string", "minLength": 1, "maxLength": 512},
     "uuid": {"type": "string", "format": "uuid"},
     "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
   }

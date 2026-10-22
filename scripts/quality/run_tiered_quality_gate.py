@@ -55,7 +55,12 @@ SERVICE_PROFILES = {
         coverage_targets=("services/nex-mo/nex_mo",),
     ),
     "nex-wc": ServiceProfile(
-        test_patterns=("test_nex_wc_*.py", "test_wc_*.py"),
+        test_patterns=(
+            "test_nex_wc_*.py",
+            "test_wc_*.py",
+            "test_ae_wc_*.py",
+            "test_nex_ae_wc_*.py",
+        ),
         coverage_targets=("services/nex-wc/nex_wc",),
     ),
     "nex-eos": ServiceProfile(

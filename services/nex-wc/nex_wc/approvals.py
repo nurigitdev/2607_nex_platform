@@ -885,9 +885,13 @@ def validate_approval_work_item(value: Mapping[str, Any]) -> dict[str, Any]:
     ):
         raise _invalid("ApprovalWorkItem semantic_hash is invalid.")
 
-    for field in _OPTIONAL_FIELDS - {"expires_at"}:
+    for field in _OPTIONAL_FIELDS - {"expires_at", "protected_request_ref"}:
         if record.get(field) is not None:
             record[field] = _scoped(field, record[field])
+    if record.get("protected_request_ref") is not None:
+        record["protected_request_ref"] = _bounded(
+            "protected_request_ref", record["protected_request_ref"], 512
+        )
     for field in _DOMAIN_BINDINGS[domain]:
         if record.get(field) is None:
             raise _invalid(f"{domain} requires {field}.")
