@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Mapping
 from typing import Any
 
 _SHA256_DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _SHA256_HASH_REF = re.compile(r"^sha256:[0-9a-f]{64}$")
+_NSL_WRITE_PAYLOAD_DOMAIN = b"NSL-WRITE-PAYLOAD-V1\0"
 
 
 def canonical_json(value: Any) -> str:
@@ -47,3 +49,35 @@ def sha256_from_hash_ref(hash_ref: object) -> str:
 
 def semantic_sha256_hash_ref(value: Any) -> str:
     return hash_ref_from_sha256(sha256_text(canonical_json(value)))
+
+
+def nsl_write_payload_hash_ref(canonical_arguments: Mapping[str, Any]) -> str:
+    """Hash canonical WRITE values with the frozen NSL v0.2 domain."""
+
+    if not isinstance(canonical_arguments, Mapping):
+        raise TypeError("canonical_arguments must be a mapping")
+    projected = _nsl_write_json_value(canonical_arguments, path="$")
+    canonical = canonical_json(projected).encode("utf-8")
+    return hash_ref_from_sha256(
+        hashlib.sha256(_NSL_WRITE_PAYLOAD_DOMAIN + canonical).hexdigest()
+    )
+
+
+def _nsl_write_json_value(value: Any, *, path: str) -> Any:
+    if value is None or isinstance(value, (str, bool)) or type(value) is int:
+        return value
+    if isinstance(value, Mapping):
+        projected: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError(f"NSL WRITE object keys must be strings at {path}")
+            projected[key] = _nsl_write_json_value(item, path=f"{path}.{key}")
+        return projected
+    if isinstance(value, (list, tuple)):
+        return [
+            _nsl_write_json_value(item, path=f"{path}[{index}]")
+            for index, item in enumerate(value)
+        ]
+    raise TypeError(
+        f"unsupported canonical NSL WRITE value at {path}: {type(value).__name__}"
+    )

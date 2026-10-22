@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 from jsonschema import Draft202012Validator, FormatChecker, ValidationError
+from nex_eos import voucher_payload_hash
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACTS = ROOT / "contracts"
@@ -27,6 +28,21 @@ def test_positive_command_and_result_examples_validate():
         Draft202012Validator(schema, format_checker=FormatChecker()).validate(
             _json(example_path)
         )
+
+
+def test_golden_a_command_and_result_share_actual_nsl_payload_identity():
+    command = _json(
+        CONTRACTS / "examples/service/eos_create_voucher_draft_command.golden_a.json"
+    )
+    result = _json(
+        CONTRACTS / "examples/service/eos_create_voucher_draft_result.committed.json"
+    )
+
+    assert command["payload_hash"] == (
+        "sha256:dc50539078c469eedbbd457a25b8036bc4a31cd10d5ab55431475f373d49d76f"
+    )
+    assert voucher_payload_hash(command) == command["payload_hash"]
+    assert result["payload_hash"] == command["payload_hash"]
 
 
 @pytest.mark.parametrize(

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Any, Callable
+from typing import Any
 
-from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
+from nex_runtime.semantic_hashes import nsl_write_payload_hash_ref
 from sqlalchemy.orm import Session
 
 from .attachments import (
@@ -149,7 +149,7 @@ class EosCreateVoucherDraftService:
         self, payload: Mapping[str, Any], *, caller: EosServiceCaller
     ) -> dict[str, Any]:
         command = parse_create_voucher_draft_command(payload)
-        computed_hash = semantic_sha256_hash_ref(command.business_payload())
+        computed_hash = nsl_write_payload_hash_ref(command.business_payload())
         if computed_hash != command.payload_hash:
             raise EosVoucherCommandError(
                 "EOS_VOUCHER_PAYLOAD_HASH_MISMATCH",
@@ -343,7 +343,7 @@ def parse_create_voucher_draft_command(
 
 
 def voucher_payload_hash(payload: Mapping[str, Any]) -> str:
-    return semantic_sha256_hash_ref(
+    return nsl_write_payload_hash_ref(
         parse_create_voucher_draft_command(payload).business_payload()
     )
 
