@@ -4,7 +4,8 @@
 
 **Date:** 2026-10-22
 
-**Revision under test:** `3c79547d17597b2478d545f52be53e60ebf01aa9`
+**Base revision before reconciliation:**
+`3c79547d17597b2478d545f52be53e60ebf01aa9`
 
 **Branch:** `transition/p4-agent-runtime-foundation`
 
