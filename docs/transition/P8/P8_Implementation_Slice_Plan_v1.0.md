@@ -1507,6 +1507,31 @@ Full NSL request remains recoverable without leaking to generic WC rows.
 
 ---
 
+## P8-S44A — ApprovalRequest PostgreSQL BYTEA Integration
+
+### Objective
+
+Keep the exact canonical NSL ApprovalRequest and its immutable metadata in one
+AE PostgreSQL transaction.
+
+### Decision
+
+```text
+ae_nsl_approval_request.approval_request_bytes BYTEA
+```
+
+The opaque `protected_request_ref`, hash, size, classification, and lineage
+remain stable. The repository metadata projection never returns the private
+bytes. Large or binary business payloads remain outside this envelope and are
+referenced through `protected_payload_ref`.
+
+### Migration Safety
+
+The additive migration fails closed when a pre-existing metadata-only row has
+no canonical bytes. It does not manufacture an empty or unverifiable request.
+
+---
+
 ## P8-S45 — Generalize AE WaitRegistration
 
 ### Objective

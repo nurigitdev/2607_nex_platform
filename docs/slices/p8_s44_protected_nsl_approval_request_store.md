@@ -3,6 +3,13 @@
 **Status:** PASS
 **Date:** 2026-10-22
 
+> Historical as-built note: P8-S44 originally selected external AE private
+> storage for the canonical request bytes. P8-S44A subsequently moved those
+> bytes into AE PostgreSQL `BYTEA` for single-transaction consistency while
+> preserving the opaque reference and all integrity metadata. The final
+> as-built state is recorded in
+> `docs/slices/p8_s44a_approval_request_postgresql_bytea_integration.md`.
+
 ## Scope
 
 P8-S44 adds the AE-owned protected persistence boundary for the exact canonical

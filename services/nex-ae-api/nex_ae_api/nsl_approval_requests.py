@@ -2,20 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
-import tempfile
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
-from nex_runtime.object_storage import (
-    ObjectStorageError,
-    S3ObjectStore,
-    build_owner_object_key,
-)
 from nex_runtime.semantic_hashes import (
     canonical_json,
     hash_ref_from_sha256,
@@ -26,14 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-from nex_ae_api.private_object_store import (
-    AePrivateObjectStorageError,
-    ae_private_storage_mode,
-    build_ae_private_object_store,
-)
-
-PROTECTED_APPROVAL_REQUEST_SCHEMA_VERSION = "ae_nsl_approval_request.v1"
-PROTECTED_APPROVAL_REQUEST_STORAGE_ENV = "NEX_AE_NSL_APPROVAL_REQUEST_STORAGE_ROOT"
+PROTECTED_APPROVAL_REQUEST_SCHEMA_VERSION = "ae_nsl_approval_request.v2"
 PROTECTED_APPROVAL_REQUEST_STORAGE_SCHEME = "ae://nsl-approval-requests/"
 PROTECTED_APPROVAL_REQUEST_CONTENT_TYPE = "application/json"
 MAX_PROTECTED_APPROVAL_REQUEST_BYTES = 1024 * 1024
@@ -77,28 +62,14 @@ class ProtectedApprovalRequestError(Exception):
         return self.detail
 
 
-class ProtectedApprovalRequestStorage(Protocol):
-    def save(
-        self,
-        payload: Mapping[str, Any],
-        *,
-        tenant_id: str,
-        execution_id: str,
-    ) -> str: ...
-
-    def load(
-        self,
-        metadata: Mapping[str, Any],
-        *,
-        tenant_id: str,
-        execution_id: str,
-    ) -> dict[str, Any] | None: ...
-
-
 def build_protected_approval_request_payload(
     approval_request: object,
 ) -> dict[str, Any]:
     request = canonical_approval_request_data(approval_request)
+    return _build_payload_from_request(request)
+
+
+def _build_payload_from_request(request: Mapping[str, Any]) -> dict[str, Any]:
     content = canonical_json(request)
     encoded = content.encode("utf-8")
     if not encoded or len(encoded) > MAX_PROTECTED_APPROVAL_REQUEST_BYTES:
@@ -114,7 +85,7 @@ def build_protected_approval_request_payload(
     )
     return {
         "approval_request_id": request["approval_request_id"],
-        "content": content,
+        "content_bytes": encoded,
         "content_sha256": digest,
         "size_bytes": len(encoded),
         "storage_ref": (
@@ -122,13 +93,6 @@ def build_protected_approval_request_payload(
             f"{identity_digest[:2]}/{identity_digest}.json"
         ),
     }
-
-
-def protected_approval_request_payload_metadata(
-    payload: Mapping[str, Any],
-) -> dict[str, Any]:
-    normalized = _validate_payload(payload, require_content=True)
-    return {key: value for key, value in normalized.items() if key != "content"}
 
 
 def canonical_approval_request_data(value: object) -> dict[str, Any]:
@@ -139,6 +103,10 @@ def canonical_approval_request_data(value: object) -> dict[str, Any]:
         raw = to_data()
     except Exception as exc:
         raise _invalid("NSL ApprovalRequest canonical serialization failed.") from exc
+    return _canonicalize_request_mapping(raw)
+
+
+def _canonicalize_request_mapping(raw: object) -> dict[str, Any]:
     if not isinstance(raw, Mapping) or set(raw) != _REQUEST_FIELDS:
         raise _invalid("NSL ApprovalRequest fields do not match the admitted API.")
     try:
@@ -175,247 +143,19 @@ def canonical_approval_request_data(value: object) -> dict[str, Any]:
     return request
 
 
-@dataclass
-class InMemoryProtectedApprovalRequestStorage:
-    payloads: dict[tuple[str, str, str], bytes] = field(default_factory=dict)
-
-    def save(
-        self,
-        payload: Mapping[str, Any],
-        *,
-        tenant_id: str,
-        execution_id: str,
-    ) -> str:
-        normalized = _validate_payload(payload, require_content=True)
-        _required_text("execution_id", execution_id, 256)
-        key = _owner_key(
-            tenant_id,
-            normalized["approval_request_id"],
-            normalized["storage_ref"],
-        )
-        encoded = str(normalized["content"]).encode("utf-8")
-        existing = self.payloads.get(key)
-        if existing is not None and existing != encoded:
-            raise _conflict()
-        self.payloads[key] = encoded
-        return str(normalized["storage_ref"])
-
-    def load(
-        self,
-        metadata: Mapping[str, Any],
-        *,
-        tenant_id: str,
-        execution_id: str,
-    ) -> dict[str, Any] | None:
-        normalized = _validate_payload(metadata, require_content=False)
-        _required_text("execution_id", execution_id, 256)
-        payload = self.payloads.get(
-            _owner_key(
-                tenant_id,
-                normalized["approval_request_id"],
-                normalized["storage_ref"],
-            )
-        )
-        return None if payload is None else _decode_request(payload, normalized)
-
-
-@dataclass(frozen=True)
-class LocalProtectedApprovalRequestStorage:
-    root: Path
-
-    def save(
-        self,
-        payload: Mapping[str, Any],
-        *,
-        tenant_id: str,
-        execution_id: str,
-    ) -> str:
-        normalized = _validate_payload(payload, require_content=True)
-        _required_text("execution_id", execution_id, 256)
-        path = self._path(
-            tenant_id,
-            normalized["approval_request_id"],
-            normalized["storage_ref"],
-        )
-        path.parent.mkdir(parents=True, exist_ok=True)
-        encoded = str(normalized["content"]).encode("utf-8")
-        if path.exists():
-            try:
-                existing = path.read_bytes()
-            except OSError as exc:
-                raise _unavailable() from exc
-            if existing != encoded:
-                raise _conflict()
-            return str(normalized["storage_ref"])
-        temporary_path: Path | None = None
-        try:
-            with tempfile.NamedTemporaryFile(
-                dir=path.parent,
-                prefix=f".{path.name}.",
-                suffix=".tmp",
-                delete=False,
-            ) as temporary:
-                temporary.write(encoded)
-                temporary.flush()
-                os.fsync(temporary.fileno())
-                temporary_path = Path(temporary.name)
-            temporary_path.chmod(0o600)
-            os.replace(temporary_path, path)
-            path.chmod(0o600)
-        except OSError as exc:
-            if temporary_path is not None:
-                temporary_path.unlink(missing_ok=True)
-            raise _unavailable() from exc
-        return str(normalized["storage_ref"])
-
-    def load(
-        self,
-        metadata: Mapping[str, Any],
-        *,
-        tenant_id: str,
-        execution_id: str,
-    ) -> dict[str, Any] | None:
-        normalized = _validate_payload(metadata, require_content=False)
-        _required_text("execution_id", execution_id, 256)
-        path = self._path(
-            tenant_id,
-            normalized["approval_request_id"],
-            normalized["storage_ref"],
-        )
-        if not path.exists():
-            return None
-        try:
-            payload = path.read_bytes()
-        except OSError as exc:
-            raise _unavailable() from exc
-        return _decode_request(payload, normalized)
-
-    def _path(
-        self, tenant_id: str, approval_request_id: str, storage_ref: object
-    ) -> Path:
-        owner_digest = sha256_text(
-            f"{_required_text('tenant_id', tenant_id, 128)}\0"
-            f"{_required_text('approval_request_id', approval_request_id, 256)}"
-        )
-        relative = _storage_ref_relative_path(storage_ref)
-        root = self.root.resolve()
-        path = root.joinpath(
-            owner_digest[:2], owner_digest, *relative.split("/")
-        ).resolve(strict=False)
-        if not path.is_relative_to(root):
-            raise _invalid("Protected ApprovalRequest reference escapes its root.")
-        return path
-
-
-@dataclass(frozen=True)
-class S3ProtectedApprovalRequestStorage:
-    object_store: S3ObjectStore
-
-    def save(
-        self,
-        payload: Mapping[str, Any],
-        *,
-        tenant_id: str,
-        execution_id: str,
-    ) -> str:
-        normalized = _validate_payload(payload, require_content=True)
-        _required_text("execution_id", execution_id, 256)
-        encoded = str(normalized["content"]).encode("utf-8")
-        try:
-            self.object_store.put_immutable(
-                key=self._key(
-                    tenant_id,
-                    normalized["approval_request_id"],
-                    normalized["approval_request_id"],
-                ),
-                payload=encoded,
-                expected_sha256=str(normalized["content_sha256"]),
-                content_type=PROTECTED_APPROVAL_REQUEST_CONTENT_TYPE,
-            )
-        except ObjectStorageError as exc:
-            raise _object_storage_error(exc) from exc
-        return str(normalized["storage_ref"])
-
-    def load(
-        self,
-        metadata: Mapping[str, Any],
-        *,
-        tenant_id: str,
-        execution_id: str,
-    ) -> dict[str, Any] | None:
-        normalized = _validate_payload(metadata, require_content=False)
-        _required_text("execution_id", execution_id, 256)
-        try:
-            payload = self.object_store.get_bytes(
-                key=self._key(
-                    tenant_id,
-                    normalized["approval_request_id"],
-                    normalized["approval_request_id"],
-                ),
-                expected_sha256=str(normalized["content_sha256"]),
-                expected_size_bytes=int(normalized["size_bytes"]),
-                max_size_bytes=MAX_PROTECTED_APPROVAL_REQUEST_BYTES,
-            )
-        except ObjectStorageError as exc:
-            raise _object_storage_error(exc) from exc
-        return None if payload is None else _decode_request(payload, normalized)
-
-    @staticmethod
-    def _key(tenant_id: str, approval_request_id: str, request_id: object) -> str:
-        try:
-            return build_owner_object_key(
-                payload_family="approval-request",
-                tenant_id=_required_text("tenant_id", tenant_id, 128),
-                subject_id=_required_text(
-                    "approval_request_id", approval_request_id, 256
-                ),
-                content_id=_required_text("approval_request_id", request_id, 256),
-                suffix="json",
-            )
-        except ObjectStorageError as exc:
-            raise _object_storage_error(exc) from exc
-
-
-def build_default_protected_approval_request_storage(
-    environ: Mapping[str, str] | None = None,
-) -> ProtectedApprovalRequestStorage:
-    env = os.environ if environ is None else environ
-    try:
-        mode = ae_private_storage_mode(env)
-        if mode == "S3":
-            return S3ProtectedApprovalRequestStorage(build_ae_private_object_store(env))
-    except AePrivateObjectStorageError as exc:
-        raise ProtectedApprovalRequestError(
-            exc.error_code, exc.detail, exc.retryable
-        ) from exc
-    root = env.get(PROTECTED_APPROVAL_REQUEST_STORAGE_ENV)
-    if mode == "FILESYSTEM" and (not isinstance(root, str) or not root.strip()):
-        raise _invalid("AE protected ApprovalRequest filesystem root is required.")
-    if not isinstance(root, str) or not root.strip():
-        return InMemoryProtectedApprovalRequestStorage()
-    return LocalProtectedApprovalRequestStorage(Path(root.strip()))
-
-
 class SqlAlchemyProtectedApprovalRequestStore:
     def __init__(
         self,
         session_factory: sessionmaker[Session],
         *,
-        storage: ProtectedApprovalRequestStorage,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._session_factory = session_factory
-        self._storage = storage
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def persist(self, approval_request: object) -> dict[str, Any]:
         request = canonical_approval_request_data(approval_request)
-        payload = build_protected_approval_request_payload(approval_request)
-        self._storage.save(
-            payload,
-            tenant_id=request["tenant_id"],
-            execution_id=request["execution_id"],
-        )
+        payload = _build_payload_from_request(request)
         record = {
             "schema_version": PROTECTED_APPROVAL_REQUEST_SCHEMA_VERSION,
             "tenant_id": request["tenant_id"],
@@ -428,6 +168,7 @@ class SqlAlchemyProtectedApprovalRequestStore:
             "content_type": PROTECTED_APPROVAL_REQUEST_CONTENT_TYPE,
             "data_classification": request["data_classification"],
             "created_at": _time(self._clock()),
+            "_approval_request_bytes": payload["content_bytes"],
         }
         try:
             with self._session_factory() as session:
@@ -442,7 +183,7 @@ class SqlAlchemyProtectedApprovalRequestStore:
                 if not _same_immutable_record(saved, record):
                     raise _conflict()
                 session.commit()
-                return saved
+                return _public_record(saved)
         except ProtectedApprovalRequestError:
             raise
         except SQLAlchemyError as exc:
@@ -455,141 +196,38 @@ class SqlAlchemyProtectedApprovalRequestStore:
         )
         try:
             with self._session_factory() as session:
-                return _load_record(
+                record = _load_record(
                     session,
                     tenant_id=tenant_id,
                     approval_request_id=approval_request_id,
                 )
+                return None if record is None else _public_record(record)
+        except ProtectedApprovalRequestError:
+            raise
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
 
     def load_request(
         self, *, tenant_id: str, approval_request_id: str
     ) -> dict[str, Any] | None:
-        record = self.get(
-            tenant_id=tenant_id,
-            approval_request_id=approval_request_id,
+        tenant_id = _required_text("tenant_id", tenant_id, 128)
+        approval_request_id = _required_text(
+            "approval_request_id", approval_request_id, 256
         )
+        try:
+            with self._session_factory() as session:
+                record = _load_record(
+                    session,
+                    tenant_id=tenant_id,
+                    approval_request_id=approval_request_id,
+                )
+        except ProtectedApprovalRequestError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
         if record is None:
             return None
-        metadata = {
-            "approval_request_id": record["approval_request_id"],
-            "content_sha256": str(record["approval_request_hash"]).removeprefix(
-                "sha256:"
-            ),
-            "size_bytes": record["request_size_bytes"],
-            "storage_ref": record["protected_request_ref"],
-        }
-        request = self._storage.load(
-            metadata,
-            tenant_id=record["tenant_id"],
-            execution_id=record["nsl_execution_id"],
-        )
-        if request is None:
-            raise _integrity_error()
-        if (
-            request["tenant_id"] != record["tenant_id"]
-            or request["approval_request_id"] != record["approval_request_id"]
-            or request["execution_id"] != record["nsl_execution_id"]
-            or request["business_operation_id"] != record["business_operation_id"]
-            or request["data_classification"] != record["data_classification"]
-        ):
-            raise _integrity_error()
-        return request
-
-
-def _validate_payload(
-    value: Mapping[str, Any], *, require_content: bool
-) -> dict[str, Any]:
-    fields = {
-        "approval_request_id",
-        "content_sha256",
-        "size_bytes",
-        "storage_ref",
-    }
-    if require_content:
-        fields.add("content")
-    if not isinstance(value, Mapping) or set(value) != fields:
-        raise _invalid("Protected ApprovalRequest payload shape is invalid.")
-    request_id = _required_text(
-        "approval_request_id", value.get("approval_request_id"), 256
-    )
-    digest = value.get("content_sha256")
-    if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
-        raise _invalid("Protected ApprovalRequest digest is invalid.")
-    size = value.get("size_bytes")
-    if (
-        isinstance(size, bool)
-        or not isinstance(size, int)
-        or not 1 <= size <= MAX_PROTECTED_APPROVAL_REQUEST_BYTES
-    ):
-        raise _invalid("Protected ApprovalRequest size is invalid.")
-    storage_ref = value.get("storage_ref")
-    if not isinstance(storage_ref, str) or _STORAGE_REF.fullmatch(storage_ref) is None:
-        raise _invalid("Protected ApprovalRequest storage reference is invalid.")
-    normalized = {
-        "approval_request_id": request_id,
-        "content_sha256": digest,
-        "size_bytes": size,
-        "storage_ref": storage_ref,
-    }
-    if require_content:
-        content = value.get("content")
-        if not isinstance(content, str):
-            raise _invalid("Protected ApprovalRequest content must be JSON text.")
-        _verify_payload(content.encode("utf-8"), digest=digest, size=size)
-        try:
-            parsed = json.loads(content)
-        except ValueError as exc:
-            raise _invalid("Protected ApprovalRequest content is not JSON.") from exc
-        if not isinstance(parsed, dict) or canonical_json(parsed) != content:
-            raise _invalid("Protected ApprovalRequest content is not canonical JSON.")
-        if parsed.get("approval_request_id") != request_id:
-            raise _invalid("Protected ApprovalRequest identity is inconsistent.")
-        normalized["content"] = content
-    return normalized
-
-
-def _decode_request(payload: bytes, metadata: Mapping[str, Any]) -> dict[str, Any]:
-    _verify_payload(
-        payload,
-        digest=str(metadata["content_sha256"]),
-        size=int(metadata["size_bytes"]),
-    )
-    try:
-        content = payload.decode("utf-8")
-        request = json.loads(content)
-    except (UnicodeDecodeError, ValueError) as exc:
-        raise _integrity_error() from exc
-    if (
-        not isinstance(request, dict)
-        or canonical_json(request) != content
-        or set(request) != _REQUEST_FIELDS
-        or request.get("approval_request_id") != metadata["approval_request_id"]
-    ):
-        raise _integrity_error()
-    return request
-
-
-def _verify_payload(payload: bytes, *, digest: str, size: int) -> None:
-    if len(payload) != size or hashlib.sha256(payload).hexdigest() != digest:
-        raise _integrity_error()
-
-
-def _storage_ref_relative_path(value: object) -> str:
-    if not isinstance(value, str) or _STORAGE_REF.fullmatch(value) is None:
-        raise _invalid("Protected ApprovalRequest storage reference is invalid.")
-    return value.removeprefix(PROTECTED_APPROVAL_REQUEST_STORAGE_SCHEME)
-
-
-def _owner_key(
-    tenant_id: str, approval_request_id: str, storage_ref: object
-) -> tuple[str, str, str]:
-    return (
-        _required_text("tenant_id", tenant_id, 128),
-        _required_text("approval_request_id", approval_request_id, 256),
-        _storage_ref_relative_path(storage_ref),
-    )
+        return _request_from_record(record)
 
 
 def _load_record(
@@ -601,7 +239,7 @@ def _load_record(
                 "SELECT tenant_id, approval_request_id, nsl_execution_id, "
                 "business_operation_id, protected_request_ref, "
                 "approval_request_hash, request_size_bytes, content_type, "
-                "data_classification, created_at "
+                "data_classification, created_at, approval_request_bytes "
                 "FROM ae_nsl_approval_request "
                 "WHERE tenant_id = :tenant_id "
                 "AND approval_request_id = :approval_request_id"
@@ -620,6 +258,9 @@ def _load_record(
         approval_hash = validate_hash_ref(row["approval_request_hash"])
     except ValueError as exc:
         raise _integrity_error() from exc
+    raw_body = row["approval_request_bytes"]
+    if not isinstance(raw_body, (bytes, bytearray, memoryview)):
+        raise _integrity_error()
     record = {
         "schema_version": PROTECTED_APPROVAL_REQUEST_SCHEMA_VERSION,
         "tenant_id": str(row["tenant_id"]),
@@ -632,6 +273,7 @@ def _load_record(
         "content_type": str(row["content_type"]),
         "data_classification": str(row["data_classification"]),
         "created_at": _time(row["created_at"]),
+        "_approval_request_bytes": bytes(raw_body),
     }
     if (
         _STORAGE_REF.fullmatch(record["protected_request_ref"]) is None
@@ -640,7 +282,55 @@ def _load_record(
         or not 1 <= record["request_size_bytes"] <= MAX_PROTECTED_APPROVAL_REQUEST_BYTES
     ):
         raise _integrity_error()
+    _request_from_record(record)
     return record
+
+
+def _request_from_record(record: Mapping[str, Any]) -> dict[str, Any]:
+    payload = record.get("_approval_request_bytes")
+    if not isinstance(payload, bytes):
+        raise _integrity_error()
+    request = _decode_request(
+        payload,
+        approval_request_id=str(record["approval_request_id"]),
+        digest=str(record["approval_request_hash"]).removeprefix("sha256:"),
+        size=int(record["request_size_bytes"]),
+    )
+    if (
+        request["tenant_id"] != record["tenant_id"]
+        or request["execution_id"] != record["nsl_execution_id"]
+        or request["business_operation_id"] != record["business_operation_id"]
+        or request["data_classification"] != record["data_classification"]
+    ):
+        raise _integrity_error()
+    return request
+
+
+def _decode_request(
+    payload: bytes, *, approval_request_id: str, digest: str, size: int
+) -> dict[str, Any]:
+    _verify_payload(payload, digest=digest, size=size)
+    try:
+        content = payload.decode("utf-8")
+        raw = json.loads(content)
+        request = _canonicalize_request_mapping(raw)
+    except (UnicodeDecodeError, ValueError, ProtectedApprovalRequestError) as exc:
+        raise _integrity_error() from exc
+    if (
+        canonical_json(request) != content
+        or request["approval_request_id"] != approval_request_id
+    ):
+        raise _integrity_error()
+    return request
+
+
+def _verify_payload(payload: bytes, *, digest: str, size: int) -> None:
+    if len(payload) != size or hashlib.sha256(payload).hexdigest() != digest:
+        raise _integrity_error()
+
+
+def _public_record(record: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in record.items() if not key.startswith("_")}
 
 
 def _same_immutable_record(
@@ -648,21 +338,6 @@ def _same_immutable_record(
 ) -> bool:
     fields = set(expected) - {"created_at"}
     return all(saved.get(field) == expected.get(field) for field in fields)
-
-
-def _object_storage_error(
-    exc: ObjectStorageError,
-) -> ProtectedApprovalRequestError:
-    if exc.retryable:
-        return _unavailable()
-    if exc.code in {
-        "OBJECT_STORAGE_IMMUTABLE_CONFLICT",
-        "OBJECT_STORAGE_INTEGRITY_MISMATCH",
-        "OBJECT_STORAGE_METADATA_INVALID",
-        "OBJECT_STORAGE_SIZE_MISMATCH",
-    }:
-        return _integrity_error()
-    return _invalid("Protected ApprovalRequest object-storage operation failed.")
 
 
 def _required_text(field_name: str, value: object, maximum: int) -> str:
@@ -728,11 +403,11 @@ _INSERT_SQL = """
         tenant_id, approval_request_id, nsl_execution_id,
         business_operation_id, protected_request_ref,
         approval_request_hash, request_size_bytes, content_type,
-        data_classification, created_at
+        data_classification, created_at, approval_request_bytes
     ) VALUES (
         :tenant_id, :approval_request_id, :nsl_execution_id,
         :business_operation_id, :protected_request_ref,
         :approval_request_hash, :request_size_bytes, :content_type,
-        :data_classification, :created_at
+        :data_classification, :created_at, :_approval_request_bytes
     ) ON CONFLICT (tenant_id, approval_request_id) DO NOTHING
 """
