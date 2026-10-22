@@ -188,6 +188,8 @@ def _public_api() -> NslV02PublicApiAdapter:
         write_not_committed=WriteNotCommitted,
         write_commit_unknown=WriteCommitUnknown,
         post_write_verification_port=object,
+        verification_request=object,
+        verification_observation=object,
         runtime_policy_port=object,
         write_policy_request=object,
         policy_decision=object,
@@ -236,10 +238,7 @@ def _business_payload() -> dict[str, Any]:
 def _request(**changes: object) -> WriteCallRequest:
     payload = _business_payload()
     payload.update(changes.pop("payload_changes", {}))  # type: ignore[arg-type]
-    arguments = {
-        key: Envelope(_frozen(value))
-        for key, value in payload.items()
-    }
+    arguments = {key: Envelope(_frozen(value)) for key, value in payload.items()}
     values: dict[str, object] = {
         "tenant_id": payload["tenant_id"],
         "execution_id": "nsl-execution-p8-s57",
@@ -275,7 +274,9 @@ def _frozen(value: Any) -> Any:
     return value
 
 
-def _success(command: dict[str, Any], *, disposition: str = "CREATED") -> dict[str, Any]:
+def _success(
+    command: dict[str, Any], *, disposition: str = "CREATED"
+) -> dict[str, Any]:
     return {
         "schema_version": "eos_create_voucher_draft_result.v1",
         "tenant_id": command["tenant_id"],
@@ -362,7 +363,11 @@ def test_http_port_sends_protected_command_and_preserves_created_response() -> N
     [
         (200, "REPLAYED", True),
         (403, {"error_code": "EOS_AUTHORIZATION_DENIED", "retryable": False}, False),
-        (503, {"error_code": "EOS_AUTHORIZATION_UNAVAILABLE", "retryable": True}, False),
+        (
+            503,
+            {"error_code": "EOS_AUTHORIZATION_UNAVAILABLE", "retryable": True},
+            False,
+        ),
     ],
 )
 def test_port_preserves_replay_and_problem_responses(
@@ -372,7 +377,9 @@ def test_port_preserves_replay_and_problem_responses(
 ) -> None:
     request = _request()
     command = build_eos_create_voucher_command(request, public_api=_public_api())
-    body = _success(command, disposition=payload) if isinstance(payload, str) else payload
+    body = (
+        _success(command, disposition=payload) if isinstance(payload, str) else payload
+    )
     transport = httpx.MockTransport(
         lambda incoming: httpx.Response(status, json=body, request=incoming)
     )
@@ -390,7 +397,9 @@ def test_port_preserves_replay_and_problem_responses(
         assert result.payload == body
 
 
-@pytest.mark.parametrize(("status", "disposition"), [(201, "CREATED"), (200, "REPLAYED")])
+@pytest.mark.parametrize(
+    ("status", "disposition"), [(201, "CREATED"), (200, "REPLAYED")]
+)
 def test_execution_port_maps_committed_eos_result_to_actual_nsl_outcome(
     status: int,
     disposition: str,
@@ -579,7 +588,11 @@ def test_outcome_mapper_rejects_non_response_value() -> None:
 
 @pytest.mark.parametrize(
     ("result_type", "classification"),
-    [(None, Classification.CONFIDENTIAL), (RESULT_TYPE, None), (RESULT_TYPE, "CONFIDENTIAL")],
+    [
+        (None, Classification.CONFIDENTIAL),
+        (RESULT_TYPE, None),
+        (RESULT_TYPE, "CONFIDENTIAL"),
+    ],
 )
 def test_execution_port_requires_canonical_result_contract(
     result_type: object,
@@ -644,7 +657,10 @@ def test_port_rejects_untrustworthy_http_responses(
         return httpx.Response(status, json=body, request=request)
 
     port = HttpEosWriteExecutionPort(
-        _public_api(), "http://eos.test", "token", transport=httpx.MockTransport(handler)
+        _public_api(),
+        "http://eos.test",
+        "token",
+        transport=httpx.MockTransport(handler),
     )
 
     with pytest.raises(EosWriteExecutionError) as caught:
@@ -658,8 +674,14 @@ def test_port_rejects_untrustworthy_http_responses(
     ("mutation", "code"),
     [
         (lambda payload: payload.update(tenant_id="tenant-other"), "response_lineage"),
-        (lambda payload: payload.update(payload_hash="sha256:" + "f" * 64), "response_lineage"),
-        (lambda payload: payload.update(idempotency_disposition="REPLAYED"), "response_disposition"),
+        (
+            lambda payload: payload.update(payload_hash="sha256:" + "f" * 64),
+            "response_lineage",
+        ),
+        (
+            lambda payload: payload.update(idempotency_disposition="REPLAYED"),
+            "response_disposition",
+        ),
         (lambda payload: payload.update(extra=1.5), "response_invalid"),
     ],
 )
@@ -674,7 +696,10 @@ def test_port_rejects_invalid_success_lineage(
         return httpx.Response(201, json=payload, request=incoming)
 
     port = HttpEosWriteExecutionPort(
-        _public_api(), "http://eos.test", "token", transport=httpx.MockTransport(handler)
+        _public_api(),
+        "http://eos.test",
+        "token",
+        transport=httpx.MockTransport(handler),
     )
 
     with pytest.raises(EosWriteExecutionError) as caught:
@@ -706,7 +731,10 @@ def test_port_rejects_invalid_success_references_and_commit_time(mutation) -> No
         return httpx.Response(201, json=payload, request=incoming)
 
     port = HttpEosWriteExecutionPort(
-        _public_api(), "http://eos.test", "token", transport=httpx.MockTransport(handler)
+        _public_api(),
+        "http://eos.test",
+        "token",
+        transport=httpx.MockTransport(handler),
     )
 
     with pytest.raises(EosWriteExecutionError) as caught:

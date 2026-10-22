@@ -230,6 +230,8 @@ def _adapter(
         object,
         object,
         object,
+        object,
+        object,
     ]
     return NslV02PublicApiAdapter(*symbols, HASH, HASH)
 
@@ -243,9 +245,7 @@ def _integration(
 ) -> tuple[NslApprovalResumeIntegration, Source, Source]:
     canonical_evidence = _evidence()
     request_source = Source(_request() if request is None else request)
-    evidence_source = Source(
-        canonical_evidence if evidence is None else evidence
-    )
+    evidence_source = Source(canonical_evidence if evidence is None else evidence)
     return (
         NslApprovalResumeIntegration(
             authority_source=Source(

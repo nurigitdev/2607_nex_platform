@@ -48,40 +48,54 @@ class SqlAlchemyEosVoucherVerificationQuery:
     ) -> dict[str, Any]:
         tenant_id = _scoped_id("tenant_id", tenant_id)
         voucher_id = _uuid("voucher_id", voucher_id)
-        business_operation_id = _uuid(
-            "business_operation_id", business_operation_id
-        )
+        business_operation_id = _uuid("business_operation_id", business_operation_id)
         try:
             with self._session_factory() as session:
-                operation = session.execute(
-                    select(EOS_BUSINESS_OPERATION_TABLE).where(
-                        EOS_BUSINESS_OPERATION_TABLE.c.tenant_id == tenant_id,
-                        EOS_BUSINESS_OPERATION_TABLE.c.business_operation_id
-                        == business_operation_id,
+                operation = (
+                    session.execute(
+                        select(EOS_BUSINESS_OPERATION_TABLE).where(
+                            EOS_BUSINESS_OPERATION_TABLE.c.tenant_id == tenant_id,
+                            EOS_BUSINESS_OPERATION_TABLE.c.business_operation_id
+                            == business_operation_id,
+                        )
                     )
-                ).mappings().one_or_none()
-                voucher = session.execute(
-                    select(EOS_VOUCHER_DRAFT_TABLE).where(
-                        EOS_VOUCHER_DRAFT_TABLE.c.tenant_id == tenant_id,
-                        EOS_VOUCHER_DRAFT_TABLE.c.voucher_id == voucher_id,
+                    .mappings()
+                    .one_or_none()
+                )
+                voucher = (
+                    session.execute(
+                        select(EOS_VOUCHER_DRAFT_TABLE).where(
+                            EOS_VOUCHER_DRAFT_TABLE.c.tenant_id == tenant_id,
+                            EOS_VOUCHER_DRAFT_TABLE.c.voucher_id == voucher_id,
+                        )
                     )
-                ).mappings().one_or_none()
-                lines = session.execute(
-                    select(EOS_VOUCHER_DRAFT_LINE_TABLE)
-                    .where(
-                        EOS_VOUCHER_DRAFT_LINE_TABLE.c.tenant_id == tenant_id,
-                        EOS_VOUCHER_DRAFT_LINE_TABLE.c.voucher_id == voucher_id,
+                    .mappings()
+                    .one_or_none()
+                )
+                lines = (
+                    session.execute(
+                        select(EOS_VOUCHER_DRAFT_LINE_TABLE)
+                        .where(
+                            EOS_VOUCHER_DRAFT_LINE_TABLE.c.tenant_id == tenant_id,
+                            EOS_VOUCHER_DRAFT_LINE_TABLE.c.voucher_id == voucher_id,
+                        )
+                        .order_by(EOS_VOUCHER_DRAFT_LINE_TABLE.c.line_no)
                     )
-                    .order_by(EOS_VOUCHER_DRAFT_LINE_TABLE.c.line_no)
-                ).mappings().all()
-                attachments = session.execute(
-                    select(EOS_VOUCHER_ATTACHMENT_TABLE)
-                    .where(
-                        EOS_VOUCHER_ATTACHMENT_TABLE.c.tenant_id == tenant_id,
-                        EOS_VOUCHER_ATTACHMENT_TABLE.c.voucher_id == voucher_id,
+                    .mappings()
+                    .all()
+                )
+                attachments = (
+                    session.execute(
+                        select(EOS_VOUCHER_ATTACHMENT_TABLE)
+                        .where(
+                            EOS_VOUCHER_ATTACHMENT_TABLE.c.tenant_id == tenant_id,
+                            EOS_VOUCHER_ATTACHMENT_TABLE.c.voucher_id == voucher_id,
+                        )
+                        .order_by(EOS_VOUCHER_ATTACHMENT_TABLE.c.attachment_id)
                     )
-                    .order_by(EOS_VOUCHER_ATTACHMENT_TABLE.c.attachment_id)
-                ).mappings().all()
+                    .mappings()
+                    .all()
+                )
         except SQLAlchemyError as exc:
             raise EosVoucherVerificationError(
                 "EOS_VOUCHER_VERIFICATION_UNAVAILABLE",
@@ -120,6 +134,8 @@ class SqlAlchemyEosVoucherVerificationQuery:
             "tenant_id": tenant_id,
             "voucher_ref": {"type": "eos.voucher_draft", "id": voucher_id},
             "business_operation_id": business_operation_id,
+            "operation": str(operation["operation"]),
+            "idempotency_key": str(operation["idempotency_key"]),
             "business_transaction_ref": {
                 "type": "eos.business_operation",
                 "id": business_operation_id,

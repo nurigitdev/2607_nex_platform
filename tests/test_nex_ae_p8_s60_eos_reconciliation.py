@@ -172,6 +172,8 @@ def _public_api() -> NslV02PublicApiAdapter:
         write_not_committed=WriteNotCommitted,
         write_commit_unknown=WriteCommitUnknown,
         post_write_verification_port=object,
+        verification_request=object,
+        verification_observation=object,
         runtime_policy_port=object,
         write_policy_request=object,
         policy_decision=object,

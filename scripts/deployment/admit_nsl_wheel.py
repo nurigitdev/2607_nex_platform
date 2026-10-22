@@ -45,9 +45,7 @@ DEFAULT_REPORT = ROOT / "reports" / "deployment" / "p6-ca02-nsl-wheel.json"
 DEFAULT_LOCK = ROOT / "deployment" / "locks" / "nsl-v0.1-wheel.json"
 P8_V02_OUTPUT = ROOT / "reports" / "deployment" / "p8-nsl-v0.2-wheel"
 P8_V02_REPORT = ROOT / "reports" / "deployment" / "p8-s01-nsl-v0.2-identity.json"
-P8_V02_LOCK_REPORT = (
-    ROOT / "reports" / "deployment" / "p8-s02-nsl-v0.2-wheel-lock.json"
-)
+P8_V02_LOCK_REPORT = ROOT / "reports" / "deployment" / "p8-s02-nsl-v0.2-wheel-lock.json"
 P8_V02_LOCK = ROOT / "deployment" / "locks" / "nsl-v0.2-wheel.json"
 REPOSITORY = "nurigitdev/2608_nsl"
 PUBLIC_API_SYMBOLS = (
@@ -80,6 +78,8 @@ P8_V02_PUBLIC_API_SYMBOLS = (
     "WriteNotCommitted",
     "WriteCommitUnknown",
     "PostWriteVerificationPort",
+    "VerificationRequest",
+    "VerificationObservation",
     "RuntimePolicyPort",
     "WritePolicyRequest",
     "PolicyDecision",
@@ -295,9 +295,7 @@ def _execute(
             raise NslWheelBuildError("NSL wheel lock is missing")
         persisted_lock = json.loads(lock.read_text(encoding="utf-8"))
         if release_identity is not None:
-            validate_nsl_v02_wheel_lock(
-                release_identity, admission, persisted_lock
-            )
+            validate_nsl_v02_wheel_lock(release_identity, admission, persisted_lock)
         else:
             validate_nsl_wheel_lock(
                 admission,

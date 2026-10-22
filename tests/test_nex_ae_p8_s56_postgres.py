@@ -75,7 +75,7 @@ def _public_api() -> NslV02PublicApiAdapter:
             WriteAttemptRecord,
             WriteRequestedReceipt,
         ]
-        + [object] * 13
+        + [object] * 15
     )
     return NslV02PublicApiAdapter(*symbols, HASH, HASH)
 

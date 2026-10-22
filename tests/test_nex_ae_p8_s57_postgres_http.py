@@ -106,7 +106,7 @@ class AuthorizationSource:
 
 
 def _public_api() -> NslV02PublicApiAdapter:
-    symbols = [object] * 15 + [WriteCallRequest, WriteExecutionPort] + [object] * 11
+    symbols = [object] * 15 + [WriteCallRequest, WriteExecutionPort] + [object] * 13
     return NslV02PublicApiAdapter(*symbols, HASH, HASH)
 
 
@@ -238,10 +238,14 @@ def test_actual_eos_postgres_http_adapter_commit_replay_and_zero_residue() -> No
     try:
         with runtime.engine.connect() as connection:
             current = tuple(
-                connection.execute(text("SELECT current_database(), current_user")).one()
+                connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
             )
             migrations = set(
-                connection.execute(text("SELECT version FROM schema_migrations")).scalars()
+                connection.execute(
+                    text("SELECT version FROM schema_migrations")
+                ).scalars()
             )
         assert current == ("nex_eos_test", "nex_eos_user")
         assert "2508_eos_operation_name_compatibility" in migrations

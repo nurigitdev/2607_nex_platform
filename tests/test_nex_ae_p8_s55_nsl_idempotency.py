@@ -87,6 +87,8 @@ def _public_api(
         write_not_committed=object,
         write_commit_unknown=object,
         post_write_verification_port=object,
+        verification_request=object,
+        verification_observation=object,
         runtime_policy_port=object,
         write_policy_request=object,
         policy_decision=object,
@@ -167,19 +169,17 @@ def test_port_creates_then_reuses_durable_evidence(evidence_port) -> None:
     replayed = _reserve(port, evidence)
     saved = port.get(tenant_id=evidence.tenant_id, idempotency_key=KEY)
 
-    assert created == IdempotencyReservation(
-        IdempotencyDisposition.CREATED, evidence
-    )
-    assert replayed == IdempotencyReservation(
-        IdempotencyDisposition.REUSED, evidence
-    )
+    assert created == IdempotencyReservation(IdempotencyDisposition.CREATED, evidence)
+    assert replayed == IdempotencyReservation(IdempotencyDisposition.REUSED, evidence)
     assert saved is not None
     assert saved["schema_version"] == NSL_IDEMPOTENCY_EVIDENCE_SCHEMA_VERSION
     assert saved["payload_hash"] == evidence.payload_hash
     assert saved["evidence_hash"].startswith("sha256:")
     assert saved["created_at"] == NOW
     assert (
-        port.get(tenant_id=evidence.tenant_id, idempotency_key="idem:sha256:" + "f" * 64)
+        port.get(
+            tenant_id=evidence.tenant_id, idempotency_key="idem:sha256:" + "f" * 64
+        )
         is None
     )
 
@@ -192,17 +192,19 @@ def test_same_key_with_different_payload_returns_conflict(evidence_port) -> None
     assert _reserve(port, original).disposition is IdempotencyDisposition.CREATED
     conflict = _reserve(port, changed)
 
-    assert conflict == IdempotencyReservation(
-        IdempotencyDisposition.CONFLICT, changed
-    )
+    assert conflict == IdempotencyReservation(IdempotencyDisposition.CONFLICT, changed)
     with engine.connect() as connection:
-        row = connection.execute(
-            text(
-                "SELECT payload_hash, count(*) OVER () AS total "
-                "FROM ae_nsl_idem_evidence WHERE tenant_id = :tenant_id"
-            ),
-            {"tenant_id": original.tenant_id},
-        ).mappings().one()
+        row = (
+            connection.execute(
+                text(
+                    "SELECT payload_hash, count(*) OVER () AS total "
+                    "FROM ae_nsl_idem_evidence WHERE tenant_id = :tenant_id"
+                ),
+                {"tenant_id": original.tenant_id},
+            )
+            .mappings()
+            .one()
+        )
     assert row["payload_hash"] == original.payload_hash
     assert row["total"] == 1
 
@@ -254,9 +256,12 @@ def test_idempotency_key_is_tenant_scoped(evidence_port) -> None:
         is IdempotencyDisposition.CREATED
     )
     with engine.connect() as connection:
-        assert connection.execute(
-            text("SELECT count(*) FROM ae_nsl_idem_evidence")
-        ).scalar_one() == 2
+        assert (
+            connection.execute(
+                text("SELECT count(*) FROM ae_nsl_idem_evidence")
+            ).scalar_one()
+            == 2
+        )
 
 
 @pytest.mark.parametrize(
@@ -422,10 +427,7 @@ def test_port_fails_closed_if_inserted_evidence_cannot_be_read(
 
 
 def test_migration_defines_short_atomic_evidence_table() -> None:
-    path = (
-        ROOT
-        / "database/nex-ae-api/migrations/2506_ae_nsl_idempotency_evidence.sql"
-    )
+    path = ROOT / "database/nex-ae-api/migrations/2506_ae_nsl_idempotency_evidence.sql"
     compact = " ".join(path.read_text(encoding="utf-8").lower().split())
 
     assert "create table if not exists ae_nsl_idem_evidence" in compact

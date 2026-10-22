@@ -105,6 +105,8 @@ def _public_api(
         write_not_committed=object,
         write_commit_unknown=object,
         post_write_verification_port=object,
+        verification_request=object,
+        verification_observation=object,
         runtime_policy_port=object,
         write_policy_request=object,
         policy_decision=object,

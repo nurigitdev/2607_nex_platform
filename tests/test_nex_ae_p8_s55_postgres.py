@@ -88,6 +88,8 @@ def _public_api() -> NslV02PublicApiAdapter:
         object,
         object,
         object,
+        object,
+        object,
         HASH,
         HASH,
     )
@@ -123,12 +125,15 @@ def test_actual_postgres_reservation_is_atomic_restart_safe_and_conflict_safe() 
 
     try:
         with engine.connect() as connection:
-            assert connection.execute(
-                text(
-                    "SELECT count(*) FROM schema_migrations "
-                    "WHERE version = '2506_ae_nsl_idempotency_evidence'"
-                )
-            ).scalar_one() == 1
+            assert (
+                connection.execute(
+                    text(
+                        "SELECT count(*) FROM schema_migrations "
+                        "WHERE version = '2506_ae_nsl_idempotency_evidence'"
+                    )
+                ).scalar_one()
+                == 1
+            )
 
         with ThreadPoolExecutor(max_workers=8) as executor:
             reservations = list(executor.map(lambda _index: reserve_once(), range(8)))
@@ -143,9 +148,7 @@ def test_actual_postgres_reservation_is_atomic_restart_safe_and_conflict_safe() 
         )
         replay = asyncio.run(restarted_port.reserve(evidence))
         conflict = asyncio.run(
-            restarted_port.reserve(
-                replace(evidence, payload_hash="sha256:" + "e" * 64)
-            )
+            restarted_port.reserve(replace(evidence, payload_hash="sha256:" + "e" * 64))
         )
         saved = restarted_port.get(tenant_id=tenant_id, idempotency_key=key)
 
@@ -154,13 +157,17 @@ def test_actual_postgres_reservation_is_atomic_restart_safe_and_conflict_safe() 
         assert saved is not None
         assert saved["payload_hash"] == evidence.payload_hash
         with engine.connect() as connection:
-            row = connection.execute(
-                text(
-                    "SELECT count(*) AS total, min(payload_hash) AS payload_hash "
-                    "FROM ae_nsl_idem_evidence WHERE tenant_id = :tenant_id"
-                ),
-                {"tenant_id": tenant_id},
-            ).mappings().one()
+            row = (
+                connection.execute(
+                    text(
+                        "SELECT count(*) AS total, min(payload_hash) AS payload_hash "
+                        "FROM ae_nsl_idem_evidence WHERE tenant_id = :tenant_id"
+                    ),
+                    {"tenant_id": tenant_id},
+                )
+                .mappings()
+                .one()
+            )
         assert row["total"] == 1
         assert row["payload_hash"] == evidence.payload_hash
     finally:

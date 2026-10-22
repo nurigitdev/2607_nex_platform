@@ -29,6 +29,8 @@
     "WriteNotCommitted",
     "WriteCommitUnknown",
     "PostWriteVerificationPort",
+    "VerificationRequest",
+    "VerificationObservation",
     "RuntimePolicyPort",
     "WritePolicyRequest",
     "PolicyDecision",

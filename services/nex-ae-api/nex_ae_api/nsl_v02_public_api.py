@@ -31,6 +31,8 @@ NSL_V02_REQUIRED_PUBLIC_SYMBOLS = (
     "WriteNotCommitted",
     "WriteCommitUnknown",
     "PostWriteVerificationPort",
+    "VerificationRequest",
+    "VerificationObservation",
     "RuntimePolicyPort",
     "WritePolicyRequest",
     "PolicyDecision",
@@ -73,6 +75,8 @@ class NslV02PublicApiAdapter:
     write_not_committed: Any
     write_commit_unknown: Any
     post_write_verification_port: Any
+    verification_request: Any
+    verification_observation: Any
     runtime_policy_port: Any
     write_policy_request: Any
     policy_decision: Any
@@ -113,6 +117,8 @@ class NslV02PublicApiAdapter:
                     self.write_not_committed,
                     self.write_commit_unknown,
                     self.post_write_verification_port,
+                    self.verification_request,
+                    self.verification_observation,
                     self.runtime_policy_port,
                     self.write_policy_request,
                     self.policy_decision,
@@ -202,6 +208,8 @@ def _import_public_api() -> tuple[Any, ...]:
         ResumeToken,
         RuntimePolicyPort,
         RuntimePreflightValidator,
+        VerificationObservation,
+        VerificationRequest,
         WriteAttemptRecord,
         WriteCallRequest,
         WriteCommitted,
@@ -239,6 +247,8 @@ def _import_public_api() -> tuple[Any, ...]:
         WriteNotCommitted,
         WriteCommitUnknown,
         PostWriteVerificationPort,
+        VerificationRequest,
+        VerificationObservation,
         RuntimePolicyPort,
         WritePolicyRequest,
         PolicyDecision,

@@ -48,16 +48,15 @@ def _adapter() -> dict:
         "adapter_schema_version": "ae_nsl_v02_public_api_adapter.v1",
         "release_admission_hash": "sha256:" + "a" * 64,
         "api_contract_hash": "sha256:" + "b" * 64,
-        "public_api_symbols": list(smoke._load_object(smoke.DEFAULT_V02_LOCK, "lock")["public_api_symbols"]),
+        "public_api_symbols": list(
+            smoke._load_object(smoke.DEFAULT_V02_LOCK, "lock")["public_api_symbols"]
+        ),
     }
 
 
 def test_smoke_is_explicitly_protected() -> None:
     assert smoke.run_p8_s06_nsl_compatibility({}, execute=False)["status"] == "SKIPPED"
-    assert (
-        smoke.run_p8_s06_nsl_compatibility({}, execute=True)["status"]
-        == "SKIPPED"
-    )
+    assert smoke.run_p8_s06_nsl_compatibility({}, execute=True)["status"] == "SKIPPED"
 
 
 def test_compatibility_checks_accept_dual_read_and_suspended_prefix() -> None:
@@ -96,6 +95,8 @@ def test_compatibility_checks_accept_dual_read_and_suspended_prefix() -> None:
     assert "WriteCommitted" in _adapter()["public_api_symbols"]
     assert "WriteNotCommitted" in _adapter()["public_api_symbols"]
     assert "WriteCommitUnknown" in _adapter()["public_api_symbols"]
+    assert "VerificationRequest" in _adapter()["public_api_symbols"]
+    assert "VerificationObservation" in _adapter()["public_api_symbols"]
 
 
 @pytest.mark.parametrize(
@@ -256,9 +257,7 @@ def test_run_executes_complete_compatibility_orchestration(
                 "{}", encoding="utf-8"
             )
             Path(command[command.index("--audit-out") + 1]).write_text(
-                json.dumps(
-                    {"event_type": "CLI_APPROVAL_SUSPENDED", "payload": {}}
-                ),
+                json.dumps({"event_type": "CLI_APPROVAL_SUSPENDED", "payload": {}}),
                 encoding="utf-8",
             )
             return _controlled()

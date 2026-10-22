@@ -171,6 +171,8 @@ def _public_api(
         write_not_committed=object,
         write_commit_unknown=object,
         post_write_verification_port=object,
+        verification_request=object,
+        verification_observation=object,
         runtime_policy_port=RuntimePolicyPort,
         write_policy_request=request_type,
         policy_decision=decision_type,
@@ -283,13 +285,23 @@ def test_none_assurance_permits_dummy_mode_and_uses_safe_fallback_metadata() -> 
         lambda value: value.__setitem__("operation_trust_decision", []),
         lambda value: value["operation_trust_decision"].pop("decision_hash"),
         lambda value: value["operation_trust_decision"].__setitem__("unexpected", True),
-        lambda value: value["operation_trust_decision"].__setitem__("decision", "MAYBE"),
-        lambda value: value["operation_trust_decision"].__setitem__("assurance_level", "MAX"),
+        lambda value: value["operation_trust_decision"].__setitem__(
+            "decision", "MAYBE"
+        ),
+        lambda value: value["operation_trust_decision"].__setitem__(
+            "assurance_level", "MAX"
+        ),
         lambda value: value.__setitem__("required_assurance_level", "MAX"),
         lambda value: value["operation_trust_decision"].__setitem__("evaluated_at", ""),
-        lambda value: value["operation_trust_decision"].__setitem__("evaluated_at", "bad"),
-        lambda value: value["operation_trust_decision"].__setitem__("evaluated_at", "2026-10-22T10:00:00"),
-        lambda value: value["operation_trust_decision"].__setitem__("expires_at", "2026-10-22T10:00:00Z"),
+        lambda value: value["operation_trust_decision"].__setitem__(
+            "evaluated_at", "bad"
+        ),
+        lambda value: value["operation_trust_decision"].__setitem__(
+            "evaluated_at", "2026-10-22T10:00:00"
+        ),
+        lambda value: value["operation_trust_decision"].__setitem__(
+            "expires_at", "2026-10-22T10:00:00Z"
+        ),
     ),
 )
 def test_malformed_authority_fails_closed(mutator) -> None:

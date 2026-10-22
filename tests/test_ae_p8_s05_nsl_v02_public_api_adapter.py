@@ -50,48 +50,70 @@ def test_adapter_exposes_only_admitted_v02_public_symbols(
     assert adapter.schema_version == NSL_V02_PUBLIC_API_ADAPTER_SCHEMA_VERSION
     assert tuple(adapter.symbols()) == NSL_V02_REQUIRED_PUBLIC_SYMBOLS
     assert tuple(adapter.symbols().values()) == imported
-    assert adapter.resume_token is imported[
-        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("ResumeToken")
-    ]
-    assert adapter.runtime_policy_port is imported[
-        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("RuntimePolicyPort")
-    ]
-    assert adapter.policy_decision is imported[
-        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("PolicyDecision")
-    ]
-    assert adapter.idempotency_evidence_port is imported[
-        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("IdempotencyEvidencePort")
-    ]
-    assert adapter.idempotency_reservation is imported[
-        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("IdempotencyReservation")
-    ]
-    assert adapter.write_evidence_port is imported[
-        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteEvidencePort")
-    ]
-    assert adapter.write_attempt_record is imported[
-        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteAttemptRecord")
-    ]
-    assert adapter.write_requested_receipt is imported[
-        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteRequestedReceipt")
-    ]
-    assert adapter.write_call_request is imported[
-        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteCallRequest")
-    ]
-    assert adapter.write_outcome_identity is imported[
-        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteOutcomeIdentity")
-    ]
-    assert adapter.write_result_envelope is imported[
-        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteResultEnvelope")
-    ]
-    assert adapter.write_committed is imported[
-        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteCommitted")
-    ]
-    assert adapter.write_not_committed is imported[
-        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteNotCommitted")
-    ]
-    assert adapter.write_commit_unknown is imported[
-        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteCommitUnknown")
-    ]
+    assert (
+        adapter.resume_token
+        is imported[NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("ResumeToken")]
+    )
+    assert (
+        adapter.runtime_policy_port
+        is imported[NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("RuntimePolicyPort")]
+    )
+    assert (
+        adapter.policy_decision
+        is imported[NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("PolicyDecision")]
+    )
+    assert (
+        adapter.idempotency_evidence_port
+        is imported[NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("IdempotencyEvidencePort")]
+    )
+    assert (
+        adapter.idempotency_reservation
+        is imported[NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("IdempotencyReservation")]
+    )
+    assert (
+        adapter.write_evidence_port
+        is imported[NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteEvidencePort")]
+    )
+    assert (
+        adapter.write_attempt_record
+        is imported[NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteAttemptRecord")]
+    )
+    assert (
+        adapter.write_requested_receipt
+        is imported[NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteRequestedReceipt")]
+    )
+    assert (
+        adapter.write_call_request
+        is imported[NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteCallRequest")]
+    )
+    assert (
+        adapter.write_outcome_identity
+        is imported[NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteOutcomeIdentity")]
+    )
+    assert (
+        adapter.write_result_envelope
+        is imported[NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteResultEnvelope")]
+    )
+    assert (
+        adapter.write_committed
+        is imported[NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteCommitted")]
+    )
+    assert (
+        adapter.write_not_committed
+        is imported[NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteNotCommitted")]
+    )
+    assert (
+        adapter.write_commit_unknown
+        is imported[NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("WriteCommitUnknown")]
+    )
+    assert (
+        adapter.verification_request
+        is imported[NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("VerificationRequest")]
+    )
+    assert (
+        adapter.verification_observation
+        is imported[NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("VerificationObservation")]
+    )
     assert adapter.release_admission_hash == HASH
     assert adapter.api_contract_hash.startswith("sha256:")
 
