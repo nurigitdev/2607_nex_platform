@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 EOS_VOUCHER_CREATE_SCOPE = "finance:voucher-draft:create"
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _REVISION_HASH = re.compile(r"^[0-9a-f]{64}$")
+_FRESH_AUTHORIZATION_CACHE_CONTROL = "no-store, max-age=0"
 _SUBJECT_DENIAL_CODES = frozenset(
     {
         "oa.authorization_membership_inactive",
@@ -163,6 +164,8 @@ class HttpOaAuthorizationSource:
             headers={
                 "Authorization": f"Bearer {self._service_token}",
                 "Accept": "application/json",
+                "Cache-Control": _FRESH_AUTHORIZATION_CACHE_CONTROL,
+                "Pragma": "no-cache",
             },
         )
         try:

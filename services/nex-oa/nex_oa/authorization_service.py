@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from fastapi import FastAPI, Header, Request
+from fastapi import FastAPI, Header, Request, Response
 from fastapi.responses import JSONResponse
 
 from nex_oa.authorization import OaAuthorizationError
@@ -257,8 +257,11 @@ def register_authorization_routes(
         tenant_id: str,
         subject_id: str,
         request: Request,
+        response: Response,
         authorization: str | None = Header(default=None),
     ):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
         return _read_route(
             request,
             authorization,

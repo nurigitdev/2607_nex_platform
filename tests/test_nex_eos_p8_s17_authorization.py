@@ -191,6 +191,8 @@ def test_http_source_calls_oa_with_service_token(monkeypatch):
     assert "tenant%20a" in calls[0][0].full_url
     assert "employee%2F1" in calls[0][0].full_url
     assert calls[0][0].headers["Authorization"] == "Bearer service-token"
+    assert calls[0][0].headers["Cache-control"] == "no-store, max-age=0"
+    assert calls[0][0].headers["Pragma"] == "no-cache"
 
 
 @pytest.mark.parametrize(

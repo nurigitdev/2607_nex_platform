@@ -197,6 +197,8 @@ def test_routes_enforce_admin_and_read_scopes() -> None:
     )
     assert effective.status_code == 200
     assert effective.json()["authorization"]["roles"] == ["employee"]
+    assert effective.headers["cache-control"] == "no-store, max-age=0"
+    assert effective.headers["pragma"] == "no-cache"
 
 
 def test_routes_cover_group_member_role_events_and_failures() -> None:
