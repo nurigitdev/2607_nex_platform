@@ -16,6 +16,10 @@
     "IdempotencyCoordinator",
     "WriteExecutionPort",
     "PostWriteVerificationPort",
+    "RuntimePolicyPort",
+    "WritePolicyRequest",
+    "PolicyDecision",
+    "PolicyEffect",
     "RuntimePreflightValidator"
   ],
   "record_file_count": 70,

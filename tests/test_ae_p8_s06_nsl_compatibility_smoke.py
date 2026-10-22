@@ -91,6 +91,8 @@ def test_compatibility_checks_accept_dual_read_and_suspended_prefix() -> None:
 
     assert all(checks.values())
     assert "ResumeToken" in _adapter()["public_api_symbols"]
+    assert "RuntimePolicyPort" in _adapter()["public_api_symbols"]
+    assert "PolicyDecision" in _adapter()["public_api_symbols"]
 
 
 @pytest.mark.parametrize(

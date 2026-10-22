@@ -18,6 +18,10 @@ NSL_V02_REQUIRED_PUBLIC_SYMBOLS = (
     "IdempotencyCoordinator",
     "WriteExecutionPort",
     "PostWriteVerificationPort",
+    "RuntimePolicyPort",
+    "WritePolicyRequest",
+    "PolicyDecision",
+    "PolicyEffect",
     "RuntimePreflightValidator",
 )
 
@@ -43,6 +47,10 @@ class NslV02PublicApiAdapter:
     idempotency_coordinator: Any
     write_execution_port: Any
     post_write_verification_port: Any
+    runtime_policy_port: Any
+    write_policy_request: Any
+    policy_decision: Any
+    policy_effect: Any
     runtime_preflight_validator: Any
     release_admission_hash: str
     api_contract_hash: str
@@ -66,6 +74,10 @@ class NslV02PublicApiAdapter:
                     self.idempotency_coordinator,
                     self.write_execution_port,
                     self.post_write_verification_port,
+                    self.runtime_policy_port,
+                    self.write_policy_request,
+                    self.policy_decision,
+                    self.policy_effect,
                     self.runtime_preflight_validator,
                 ),
                 strict=True,
@@ -140,11 +152,15 @@ def _import_public_api() -> tuple[Any, ...]:
         ApprovalSuspensionCoordinator,
         CheckpointPort,
         IdempotencyCoordinator,
+        PolicyDecision,
+        PolicyEffect,
         PostWriteVerificationPort,
         ResumeCheckpointPort,
         ResumeToken,
+        RuntimePolicyPort,
         RuntimePreflightValidator,
         WriteExecutionPort,
+        WritePolicyRequest,
     )
 
     return (
@@ -158,5 +174,9 @@ def _import_public_api() -> tuple[Any, ...]:
         IdempotencyCoordinator,
         WriteExecutionPort,
         PostWriteVerificationPort,
+        RuntimePolicyPort,
+        WritePolicyRequest,
+        PolicyDecision,
+        PolicyEffect,
         RuntimePreflightValidator,
     )

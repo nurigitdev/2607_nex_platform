@@ -67,6 +67,10 @@ P8_V02_PUBLIC_API_SYMBOLS = (
     "IdempotencyCoordinator",
     "WriteExecutionPort",
     "PostWriteVerificationPort",
+    "RuntimePolicyPort",
+    "WritePolicyRequest",
+    "PolicyDecision",
+    "PolicyEffect",
     "RuntimePreflightValidator",
 )
 P8_V02_SOURCE_REVISION = "a5a0f5fd7acf4adbbccf890dca2f9998d055d65e"

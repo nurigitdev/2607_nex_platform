@@ -53,6 +53,12 @@ def test_adapter_exposes_only_admitted_v02_public_symbols(
     assert adapter.resume_token is imported[
         NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("ResumeToken")
     ]
+    assert adapter.runtime_policy_port is imported[
+        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("RuntimePolicyPort")
+    ]
+    assert adapter.policy_decision is imported[
+        NSL_V02_REQUIRED_PUBLIC_SYMBOLS.index("PolicyDecision")
+    ]
     assert adapter.release_admission_hash == HASH
     assert adapter.api_contract_hash.startswith("sha256:")
 
@@ -154,3 +160,9 @@ def test_adapter_architecture_imports_no_private_nsl_modules() -> None:
         NSL_V02_REQUIRED_PUBLIC_SYMBOLS
     )
     assert "ResumeToken" in {alias.name for alias in public_import.names}
+    assert {
+        "RuntimePolicyPort",
+        "WritePolicyRequest",
+        "PolicyDecision",
+        "PolicyEffect",
+    }.issubset({alias.name for alias in public_import.names})
