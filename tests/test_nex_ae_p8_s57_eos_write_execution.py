@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, replace
+from enum import StrEnum
 from types import MappingProxyType
 from typing import Any, Protocol
 
@@ -11,9 +12,11 @@ from nex_ae_api.nsl_eos_write_execution import (
     DEFAULT_EOS_BASE_URL,
     EOS_CREATE_VOUCHER_PATH,
     EosWriteExecutionError,
+    EosWriteExecutionResponse,
     HttpEosWriteExecutionPort,
     build_default_eos_write_execution_port,
     build_eos_create_voucher_command,
+    map_eos_write_execution_response,
 )
 from nex_ae_api.nsl_v02_public_api import NslV02PublicApiAdapter
 from nex_runtime.semantic_hashes import nsl_write_payload_hash_ref
@@ -23,11 +26,117 @@ OPERATION_ID = "86000000-0000-4000-8000-000000000057"
 PROJECT_ID = "82000000-0000-4000-8000-000000000057"
 DEBIT_ID = "83000000-0000-4000-8000-000000000057"
 CREDIT_ID = "83000000-0000-4000-8000-000000000058"
+RESULT_TYPE = object()
 
 
 @dataclass(frozen=True)
 class Envelope:
     value: object
+    type_info: object = None
+    classification: object = None
+    provenance_refs: tuple[str, ...] = ()
+
+    @classmethod
+    def complete(
+        cls,
+        value: object,
+        type_info: object,
+        classification: object,
+        provenance_refs: tuple[str, ...],
+    ) -> Envelope:
+        return cls(value, type_info, classification, provenance_refs)
+
+
+@dataclass(frozen=True)
+class EnvelopeWithoutFactory:
+    value: object
+
+
+class Classification(StrEnum):
+    INTERNAL = "INTERNAL"
+    CONFIDENTIAL = "CONFIDENTIAL"
+
+
+class CommitState(StrEnum):
+    COMMITTED = "COMMITTED"
+    NOT_COMMITTED = "NOT_COMMITTED"
+    UNKNOWN_COMMIT_STATE = "UNKNOWN_COMMIT_STATE"
+
+
+@dataclass(frozen=True)
+class WriteOutcomeIdentity:
+    tenant_id: str
+    business_operation_id: str
+    invocation_id: str
+    node_id: str
+    tool_id: str
+    idempotency_key: str
+    payload_hash: str
+    approval_request_id: str
+    write_intent_hash: str
+
+    @classmethod
+    def from_request(cls, request: WriteCallRequest) -> WriteOutcomeIdentity:
+        return cls(
+            request.tenant_id,
+            request.business_operation_id,
+            request.invocation_id,
+            request.node_id,
+            request.tool_id,
+            request.idempotency_key,
+            request.payload_hash,
+            request.approval_request_id,
+            request.write_intent_hash,
+        )
+
+
+@dataclass(frozen=True)
+class WriteResultEnvelope:
+    identity: WriteOutcomeIdentity
+    value: Envelope
+    business_reference: str
+    provider_transaction_id: str | None
+    committed_at: object
+    evidence_refs: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class WriteCommitted:
+    result: WriteResultEnvelope
+
+    @property
+    def identity(self) -> WriteOutcomeIdentity:
+        return self.result.identity
+
+    @property
+    def commit_state(self) -> CommitState:
+        return CommitState.COMMITTED
+
+
+@dataclass(frozen=True)
+class WriteNotCommitted:
+    identity: WriteOutcomeIdentity
+    reason_code: str
+    message: str
+    provider_transaction_id: str | None = None
+    evidence_refs: tuple[str, ...] = ()
+
+    @property
+    def commit_state(self) -> CommitState:
+        return CommitState.NOT_COMMITTED
+
+
+@dataclass(frozen=True)
+class WriteCommitUnknown:
+    identity: WriteOutcomeIdentity
+    reason_code: str
+    message: str
+    provider_transaction_id: str | None = None
+    evidence_refs: tuple[str, ...] = ()
+
+    @property
+    def commit_state(self) -> CommitState:
+        return CommitState.UNKNOWN_COMMIT_STATE
 
 
 @dataclass(frozen=True)
@@ -73,6 +182,11 @@ def _public_api() -> NslV02PublicApiAdapter:
         write_requested_receipt=object,
         write_call_request=WriteCallRequest,
         write_execution_port=WriteExecutionPort,
+        write_outcome_identity=WriteOutcomeIdentity,
+        write_result_envelope=WriteResultEnvelope,
+        write_committed=WriteCommitted,
+        write_not_committed=WriteNotCommitted,
+        write_commit_unknown=WriteCommitUnknown,
         post_write_verification_port=object,
         runtime_policy_port=object,
         write_policy_request=object,
@@ -183,6 +297,10 @@ def _success(command: dict[str, Any], *, disposition: str = "CREATED") -> dict[s
 
 
 def _execute(port: HttpEosWriteExecutionPort, request: object):
+    return asyncio.run(port.execute_raw(request))
+
+
+def _execute_outcome(port: HttpEosWriteExecutionPort, request: object):
     return asyncio.run(port.execute(request))
 
 
@@ -272,6 +390,213 @@ def test_port_preserves_replay_and_problem_responses(
         assert result.payload == body
 
 
+@pytest.mark.parametrize(("status", "disposition"), [(201, "CREATED"), (200, "REPLAYED")])
+def test_execution_port_maps_committed_eos_result_to_actual_nsl_outcome(
+    status: int,
+    disposition: str,
+) -> None:
+    def handler(incoming: httpx.Request) -> httpx.Response:
+        command = __import__("json").loads(incoming.content)
+        return httpx.Response(
+            status,
+            json=_success(command, disposition=disposition),
+            request=incoming,
+        )
+
+    outcome = _execute_outcome(
+        HttpEosWriteExecutionPort(
+            _public_api(),
+            "http://eos.test",
+            "token",
+            transport=httpx.MockTransport(handler),
+            result_type=RESULT_TYPE,
+            result_classification=Classification.CONFIDENTIAL,
+        ),
+        _request(),
+    )
+
+    assert isinstance(outcome, WriteCommitted)
+    assert outcome.commit_state is CommitState.COMMITTED
+    assert outcome.result.value.value == {"voucher_no": "voucher-p8-s57"}
+    assert outcome.result.value.type_info is RESULT_TYPE
+    assert outcome.result.value.classification is Classification.CONFIDENTIAL
+    assert outcome.result.business_reference == "eos.voucher_draft:voucher-p8-s57"
+    assert outcome.result.provider_transaction_id == OPERATION_ID
+    assert outcome.result.committed_at.isoformat() == "2026-10-22T12:00:00+00:00"
+    assert outcome.result.evidence_refs == (
+        f"eos.business_operation:{OPERATION_ID}",
+        "eos.outbox_event:outbox-p8-s57",
+    )
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "outcome_type", "state", "reason"),
+    [
+        (
+            403,
+            {"status": 403, "error_code": "EOS_AUTHORIZATION_DENIED"},
+            WriteNotCommitted,
+            CommitState.NOT_COMMITTED,
+            "EOS_AUTHORIZATION_DENIED",
+        ),
+        (
+            422,
+            {"status": 409, "error_code": "EOS_INVALID"},
+            WriteNotCommitted,
+            CommitState.NOT_COMMITTED,
+            "EOS_COMMAND_REJECTED",
+        ),
+        (
+            503,
+            {"status": 503, "error_code": "EOS_TRANSACTION_UNAVAILABLE"},
+            WriteCommitUnknown,
+            CommitState.UNKNOWN_COMMIT_STATE,
+            "EOS_TRANSACTION_UNAVAILABLE",
+        ),
+    ],
+)
+def test_execution_port_separates_business_rejection_from_commit_uncertainty(
+    status: int,
+    body: dict[str, object],
+    outcome_type: type,
+    state: CommitState,
+    reason: str,
+) -> None:
+    transport = httpx.MockTransport(
+        lambda incoming: httpx.Response(status, json=body, request=incoming)
+    )
+
+    outcome = _execute_outcome(
+        HttpEosWriteExecutionPort(
+            _public_api(),
+            "http://eos.test",
+            "token",
+            transport=transport,
+            result_type=RESULT_TYPE,
+            result_classification=Classification.CONFIDENTIAL,
+        ),
+        _request(),
+    )
+
+    assert isinstance(outcome, outcome_type)
+    assert outcome.commit_state is state
+    assert outcome.reason_code == reason
+    assert outcome.provider_transaction_id is None
+    assert outcome.evidence_refs[-1] == f"eos.http_status:{status}"
+
+
+@pytest.mark.parametrize(
+    ("failure", "reason"),
+    [
+        (httpx.ReadTimeout("slow"), "PROVIDER_TIMEOUT"),
+        (httpx.ConnectError("offline"), "PROVIDER_CONNECTION_LOST"),
+        (httpx.UnsupportedProtocol("bad"), "EOS_RESPONSE_UNTRUSTWORTHY"),
+    ],
+)
+def test_execution_port_maps_transport_ambiguity_without_retry(
+    failure: Exception,
+    reason: str,
+) -> None:
+    calls = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise failure
+
+    outcome = _execute_outcome(
+        HttpEosWriteExecutionPort(
+            _public_api(),
+            "http://eos.test",
+            "token",
+            transport=httpx.MockTransport(handler),
+            result_type=RESULT_TYPE,
+            result_classification=Classification.CONFIDENTIAL,
+        ),
+        _request(),
+    )
+
+    assert isinstance(outcome, WriteCommitUnknown)
+    assert outcome.reason_code == reason
+    assert outcome.commit_state is CommitState.UNKNOWN_COMMIT_STATE
+    assert calls == 1
+
+
+def test_execution_port_maps_untrustworthy_success_to_unknown() -> None:
+    def handler(incoming: httpx.Request) -> httpx.Response:
+        command = __import__("json").loads(incoming.content)
+        payload = _success(command)
+        payload["commit_state"] = "NOT_COMMITTED"
+        return httpx.Response(201, json=payload, request=incoming)
+
+    outcome = _execute_outcome(
+        HttpEosWriteExecutionPort(
+            _public_api(),
+            "http://eos.test",
+            "token",
+            transport=httpx.MockTransport(handler),
+            result_type=RESULT_TYPE,
+            result_classification=Classification.CONFIDENTIAL,
+        ),
+        _request(),
+    )
+
+    assert isinstance(outcome, WriteCommitUnknown)
+    assert outcome.reason_code == "EOS_RESPONSE_UNTRUSTWORTHY"
+
+
+def test_execution_port_maps_pre_dispatch_failure_to_not_committed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NEX_SERVICE_TOKEN_ROLLOUT_PROFILE", "SIGNED_ONLY")
+    monkeypatch.delenv("NEX_AE_TO_EOS_SERVICE_TOKEN", raising=False)
+
+    outcome = _execute_outcome(
+        HttpEosWriteExecutionPort(
+            _public_api(),
+            "http://eos.test",
+            result_type=RESULT_TYPE,
+            result_classification=Classification.CONFIDENTIAL,
+        ),
+        _request(),
+    )
+
+    assert isinstance(outcome, WriteNotCommitted)
+    assert outcome.reason_code == "EOS_COMMAND_NOT_DISPATCHED"
+    assert outcome.evidence_refs == ("eos.reason:EOS_COMMAND_NOT_DISPATCHED",)
+
+
+def test_outcome_mapper_rejects_non_response_value() -> None:
+    with pytest.raises(TypeError, match="EosWriteExecutionResponse"):
+        map_eos_write_execution_response(
+            object(),  # type: ignore[arg-type]
+            _request(),
+            public_api=_public_api(),
+            result_type=RESULT_TYPE,
+            result_classification=Classification.CONFIDENTIAL,
+        )
+
+
+@pytest.mark.parametrize(
+    ("result_type", "classification"),
+    [(None, Classification.CONFIDENTIAL), (RESULT_TYPE, None), (RESULT_TYPE, "CONFIDENTIAL")],
+)
+def test_execution_port_requires_canonical_result_contract(
+    result_type: object,
+    classification: object,
+) -> None:
+    port = HttpEosWriteExecutionPort(
+        _public_api(),
+        "http://eos.test",
+        "token",
+        result_type=result_type,
+        result_classification=classification,
+    )
+
+    with pytest.raises(ValueError, match="result"):
+        _execute_outcome(port, _request())
+
+
 @pytest.mark.parametrize(
     ("failure", "expected"),
     [
@@ -358,6 +683,58 @@ def test_port_rejects_invalid_success_lineage(
     assert caught.value.outcome_uncertain is True
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda payload: payload.update(
+            business_transaction_ref={
+                "type": "eos.business_operation",
+                "id": "operation-other",
+            }
+        ),
+        lambda payload: payload.update(voucher_ref={"type": "wrong", "id": "voucher"}),
+        lambda payload: payload.update(committed_at=42),
+        lambda payload: payload.update(committed_at="not-a-time"),
+        lambda payload: payload.update(committed_at="2026-10-22T12:00:00+09:00"),
+    ],
+)
+def test_port_rejects_invalid_success_references_and_commit_time(mutation) -> None:
+    def handler(incoming: httpx.Request) -> httpx.Response:
+        command = __import__("json").loads(incoming.content)
+        payload = _success(command)
+        mutation(payload)
+        return httpx.Response(201, json=payload, request=incoming)
+
+    port = HttpEosWriteExecutionPort(
+        _public_api(), "http://eos.test", "token", transport=httpx.MockTransport(handler)
+    )
+
+    with pytest.raises(EosWriteExecutionError) as caught:
+        _execute(port, _request())
+    assert caught.value.outcome_uncertain is True
+
+
+def test_committed_mapping_requires_admitted_value_envelope_factory() -> None:
+    request = _request()
+    arguments = {
+        name: EnvelopeWithoutFactory(envelope.value)
+        for name, envelope in request.arguments.items()
+    }
+    request = replace(request, arguments=arguments)
+    command = build_eos_create_voucher_command(_request(), public_api=_public_api())
+    response = EosWriteExecutionResponse(201, _success(command))
+
+    with pytest.raises(EosWriteExecutionError) as caught:
+        map_eos_write_execution_response(
+            response,
+            request,
+            public_api=_public_api(),
+            result_type=RESULT_TYPE,
+            result_classification=Classification.CONFIDENTIAL,
+        )
+    assert caught.value.error_code == "ae.nsl_eos.result_envelope_unavailable"
+
+
 def test_port_fails_closed_when_signed_service_token_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -429,6 +806,8 @@ def test_port_rejects_invalid_timeout(timeout: object) -> None:
 def test_default_builder_reads_only_eos_boundary_configuration() -> None:
     port = build_default_eos_write_execution_port(
         public_api=_public_api(),
+        result_type=RESULT_TYPE,
+        result_classification=Classification.CONFIDENTIAL,
         environ={
             "NEX_EOS_BASE_URL": "https://eos.internal",
             "NEX_AE_TO_EOS_SERVICE_TOKEN": "token-p8-s57",
@@ -440,7 +819,10 @@ def test_default_builder_reads_only_eos_boundary_configuration() -> None:
     assert port.timeout_seconds == 22.5
 
     default = build_default_eos_write_execution_port(
-        public_api=_public_api(), environ={}
+        public_api=_public_api(),
+        result_type=RESULT_TYPE,
+        result_classification=Classification.CONFIDENTIAL,
+        environ={},
     )
     assert default.base_url == DEFAULT_EOS_BASE_URL
     assert default.service_token is None
@@ -449,5 +831,7 @@ def test_default_builder_reads_only_eos_boundary_configuration() -> None:
     with pytest.raises(ValueError):
         build_default_eos_write_execution_port(
             public_api=_public_api(),
+            result_type=RESULT_TYPE,
+            result_classification=Classification.CONFIDENTIAL,
             environ={"NEX_AE_EOS_WRITE_TIMEOUT_SECONDS": "slow"},
         )

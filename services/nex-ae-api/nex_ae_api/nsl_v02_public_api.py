@@ -25,6 +25,11 @@ NSL_V02_REQUIRED_PUBLIC_SYMBOLS = (
     "WriteRequestedReceipt",
     "WriteCallRequest",
     "WriteExecutionPort",
+    "WriteOutcomeIdentity",
+    "WriteResultEnvelope",
+    "WriteCommitted",
+    "WriteNotCommitted",
+    "WriteCommitUnknown",
     "PostWriteVerificationPort",
     "RuntimePolicyPort",
     "WritePolicyRequest",
@@ -62,6 +67,11 @@ class NslV02PublicApiAdapter:
     write_requested_receipt: Any
     write_call_request: Any
     write_execution_port: Any
+    write_outcome_identity: Any
+    write_result_envelope: Any
+    write_committed: Any
+    write_not_committed: Any
+    write_commit_unknown: Any
     post_write_verification_port: Any
     runtime_policy_port: Any
     write_policy_request: Any
@@ -97,6 +107,11 @@ class NslV02PublicApiAdapter:
                     self.write_requested_receipt,
                     self.write_call_request,
                     self.write_execution_port,
+                    self.write_outcome_identity,
+                    self.write_result_envelope,
+                    self.write_committed,
+                    self.write_not_committed,
+                    self.write_commit_unknown,
                     self.post_write_verification_port,
                     self.runtime_policy_port,
                     self.write_policy_request,
@@ -189,10 +204,15 @@ def _import_public_api() -> tuple[Any, ...]:
         RuntimePreflightValidator,
         WriteAttemptRecord,
         WriteCallRequest,
+        WriteCommitted,
+        WriteCommitUnknown,
         WriteEvidencePort,
         WriteExecutionPort,
+        WriteNotCommitted,
+        WriteOutcomeIdentity,
         WritePolicyRequest,
         WriteRequestedReceipt,
+        WriteResultEnvelope,
     )
 
     return (
@@ -213,6 +233,11 @@ def _import_public_api() -> tuple[Any, ...]:
         WriteRequestedReceipt,
         WriteCallRequest,
         WriteExecutionPort,
+        WriteOutcomeIdentity,
+        WriteResultEnvelope,
+        WriteCommitted,
+        WriteNotCommitted,
+        WriteCommitUnknown,
         PostWriteVerificationPort,
         RuntimePolicyPort,
         WritePolicyRequest,

@@ -5,6 +5,7 @@ import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Any
 
@@ -43,6 +44,24 @@ _BUSINESS_FIELDS = frozenset(
 )
 _TRACE_FIELDS = ("trace_id", "correlation_id", "causation_id")
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
+_REASON_CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,127}$")
+_RESULT_FIELDS = frozenset(
+    {
+        "schema_version",
+        "tenant_id",
+        "business_operation_id",
+        "idempotency_key",
+        "payload_hash",
+        "commit_state",
+        "idempotency_disposition",
+        "voucher_ref",
+        "business_transaction_ref",
+        "committed_at",
+        "outbox_event_ref",
+        "reason_code",
+        "reconciliation_ref",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -78,6 +97,12 @@ class HttpEosWriteExecutionPort:
         repr=False,
         compare=False,
     )
+    result_type: object | None = field(default=None, repr=False, compare=False)
+    result_classification: object | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         _validated_base_url(self.base_url)
@@ -88,7 +113,47 @@ class HttpEosWriteExecutionPort:
         ):
             raise ValueError("EOS WRITE timeout must be a positive number")
 
-    async def execute(self, request: object) -> EosWriteExecutionResponse:
+    async def execute(self, request: object) -> object:
+        result_type, result_classification = _result_contract(
+            self.result_type,
+            self.result_classification,
+        )
+        try:
+            response = await self.execute_raw(request)
+        except TimeoutError:
+            return _unknown_outcome(
+                request,
+                public_api=self.public_api,
+                reason_code="PROVIDER_TIMEOUT",
+            )
+        except ConnectionError:
+            return _unknown_outcome(
+                request,
+                public_api=self.public_api,
+                reason_code="PROVIDER_CONNECTION_LOST",
+            )
+        except EosWriteExecutionError as exc:
+            if exc.outcome_uncertain:
+                return _unknown_outcome(
+                    request,
+                    public_api=self.public_api,
+                    reason_code="EOS_RESPONSE_UNTRUSTWORTHY",
+                )
+            return _not_committed_outcome(
+                request,
+                public_api=self.public_api,
+                reason_code="EOS_COMMAND_NOT_DISPATCHED",
+                status_code=exc.status_code,
+            )
+        return map_eos_write_execution_response(
+            response,
+            request,
+            public_api=self.public_api,
+            result_type=result_type,
+            result_classification=result_classification,
+        )
+
+    async def execute_raw(self, request: object) -> EosWriteExecutionResponse:
         command = build_eos_create_voucher_command(
             request,
             public_api=self.public_api,
@@ -153,6 +218,8 @@ class HttpEosWriteExecutionPort:
 def build_default_eos_write_execution_port(
     *,
     public_api: NslV02PublicApiAdapter,
+    result_type: object,
+    result_classification: object,
     environ: Mapping[str, str] | None = None,
 ) -> HttpEosWriteExecutionPort:
     env = os.environ if environ is None else environ
@@ -166,7 +233,239 @@ def build_default_eos_write_execution_port(
         base_url=env.get("NEX_EOS_BASE_URL", DEFAULT_EOS_BASE_URL),
         service_token=env.get("NEX_AE_TO_EOS_SERVICE_TOKEN") or None,
         timeout_seconds=timeout,
+        result_type=result_type,
+        result_classification=result_classification,
     )
+
+
+def map_eos_write_execution_response(
+    response: EosWriteExecutionResponse,
+    request: object,
+    *,
+    public_api: NslV02PublicApiAdapter,
+    result_type: object,
+    result_classification: object,
+) -> object:
+    if not isinstance(response, EosWriteExecutionResponse):
+        raise TypeError("response must be an EosWriteExecutionResponse")
+    identity = public_api.write_outcome_identity.from_request(request)
+    if response.accepted:
+        return _committed_outcome(
+            response,
+            request,
+            identity=identity,
+            public_api=public_api,
+            result_type=result_type,
+            result_classification=result_classification,
+        )
+    reason_code = _problem_reason_code(response)
+    if 400 <= response.status_code < 500:
+        return _not_committed_outcome(
+            request,
+            public_api=public_api,
+            identity=identity,
+            reason_code=reason_code or "EOS_COMMAND_REJECTED",
+            status_code=response.status_code,
+        )
+    return _unknown_outcome(
+        request,
+        public_api=public_api,
+        identity=identity,
+        reason_code=reason_code or "EOS_COMMIT_ACKNOWLEDGEMENT_UNAVAILABLE",
+        status_code=response.status_code,
+    )
+
+
+def _committed_outcome(
+    response: EosWriteExecutionResponse,
+    request: object,
+    *,
+    identity: object,
+    public_api: NslV02PublicApiAdapter,
+    result_type: object,
+    result_classification: object,
+) -> object:
+    command = build_eos_create_voucher_command(request, public_api=public_api)
+    _validate_success_response(response.payload, command, response.status_code)
+    voucher_ref = _entity_ref(
+        response.payload["voucher_ref"],
+        field_name="voucher_ref",
+        expected_type="eos.voucher_draft",
+    )
+    transaction_ref = _entity_ref(
+        response.payload["business_transaction_ref"],
+        field_name="business_transaction_ref",
+        expected_type="eos.business_operation",
+    )
+    outbox_ref = _entity_ref(
+        response.payload["outbox_event_ref"],
+        field_name="outbox_event_ref",
+        expected_type="eos.outbox_event",
+    )
+    evidence_refs = (
+        f"{transaction_ref['type']}:{transaction_ref['id']}",
+        f"{outbox_ref['type']}:{outbox_ref['id']}",
+    )
+    value = _result_value_envelope(
+        request,
+        value={"voucher_no": voucher_ref["id"]},
+        result_type=result_type,
+        result_classification=result_classification,
+        evidence_refs=evidence_refs,
+    )
+    result = public_api.write_result_envelope(
+        identity=identity,
+        value=value,
+        business_reference=f"{voucher_ref['type']}:{voucher_ref['id']}",
+        provider_transaction_id=transaction_ref["id"],
+        committed_at=_utc_datetime(response.payload["committed_at"]),
+        evidence_refs=evidence_refs,
+    )
+    return public_api.write_committed(result=result)
+
+
+def _not_committed_outcome(
+    request: object,
+    *,
+    public_api: NslV02PublicApiAdapter,
+    reason_code: str,
+    status_code: int | None,
+    identity: object | None = None,
+) -> object:
+    return public_api.write_not_committed(
+        identity=identity or public_api.write_outcome_identity.from_request(request),
+        reason_code=reason_code,
+        message="EOS confirmed that the business command was not committed.",
+        evidence_refs=_outcome_evidence_refs(reason_code, status_code),
+    )
+
+
+def _unknown_outcome(
+    request: object,
+    *,
+    public_api: NslV02PublicApiAdapter,
+    reason_code: str,
+    status_code: int | None = None,
+    identity: object | None = None,
+) -> object:
+    return public_api.write_commit_unknown(
+        identity=identity or public_api.write_outcome_identity.from_request(request),
+        reason_code=reason_code,
+        message="EOS commit state is uncertain; reconciliation is required.",
+        evidence_refs=_outcome_evidence_refs(reason_code, status_code),
+    )
+
+
+def _result_contract(
+    result_type: object | None,
+    result_classification: object | None,
+) -> tuple[object, object]:
+    if result_type is None:
+        raise ValueError("EOS WRITE result type must be supplied by the NSL binding")
+    classification = getattr(result_classification, "value", None)
+    if classification not in {"PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED"}:
+        raise ValueError(
+            "EOS WRITE result classification must be supplied by the NSL binding"
+        )
+    return result_type, result_classification
+
+
+def _result_value_envelope(
+    request: object,
+    *,
+    value: Mapping[str, Any],
+    result_type: object,
+    result_classification: object,
+    evidence_refs: tuple[str, ...],
+) -> object:
+    arguments = getattr(request, "arguments", None)
+    if not isinstance(arguments, Mapping) or not arguments:
+        raise EosWriteExecutionError(
+            "ae.nsl_eos.result_envelope_unavailable",
+            "NSL WRITE request lacks an admitted ValueEnvelope type.",
+            outcome_uncertain=True,
+        )
+    envelope_type = type(next(iter(arguments.values())))
+    complete = getattr(envelope_type, "complete", None)
+    if not callable(complete):
+        raise EosWriteExecutionError(
+            "ae.nsl_eos.result_envelope_unavailable",
+            "NSL WRITE request lacks an admitted ValueEnvelope factory.",
+            outcome_uncertain=True,
+        )
+    return complete(
+        dict(value),
+        result_type,
+        result_classification,
+        evidence_refs,
+    )
+
+
+def _problem_reason_code(response: EosWriteExecutionResponse) -> str | None:
+    code = response.payload.get("error_code")
+    status = response.payload.get("status")
+    if (
+        isinstance(code, str)
+        and _REASON_CODE.fullmatch(code) is not None
+        and (status is None or status == response.status_code)
+    ):
+        return code
+    return None
+
+
+def _outcome_evidence_refs(
+    reason_code: str,
+    status_code: int | None,
+) -> tuple[str, ...]:
+    refs = [f"eos.reason:{reason_code}"]
+    if status_code is not None:
+        refs.append(f"eos.http_status:{status_code}")
+    return tuple(refs)
+
+
+def _entity_ref(
+    value: object,
+    *,
+    field_name: str,
+    expected_type: str,
+) -> dict[str, str]:
+    if (
+        not isinstance(value, Mapping)
+        or set(value) != {"type", "id"}
+        or value.get("type") != expected_type
+        or not isinstance(value.get("id"), str)
+        or _SCOPED_ID.fullmatch(value["id"]) is None
+    ):
+        raise EosWriteExecutionError(
+            "ae.nsl_eos.response_invalid",
+            f"EOS command response {field_name} is invalid.",
+            outcome_uncertain=True,
+        )
+    return {"type": expected_type, "id": value["id"]}
+
+
+def _utc_datetime(value: object) -> datetime:
+    if not isinstance(value, str):
+        raise EosWriteExecutionError(
+            "ae.nsl_eos.response_invalid",
+            "EOS command response committed_at is invalid.",
+            outcome_uncertain=True,
+        )
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise EosWriteExecutionError(
+            "ae.nsl_eos.response_invalid",
+            "EOS command response committed_at is invalid.",
+            outcome_uncertain=True,
+        ) from exc
+    if parsed.tzinfo is None or parsed.utcoffset() != UTC.utcoffset(parsed):
+        raise EosWriteExecutionError(
+            "ae.nsl_eos.response_invalid",
+            "EOS command response committed_at must be UTC.",
+            outcome_uncertain=True,
+        )
+    return parsed
 
 
 def build_eos_create_voucher_command(
@@ -263,6 +562,13 @@ def _validate_success_response(
     command: Mapping[str, Any],
     status_code: int,
 ) -> None:
+    if set(payload) != _RESULT_FIELDS:
+        raise EosWriteExecutionError(
+            "ae.nsl_eos.response_invalid",
+            "EOS command response fields do not match the canonical contract.",
+            outcome_uncertain=True,
+            status_code=status_code,
+        )
     expected = {
         "schema_version": EOS_CREATE_VOUCHER_RESULT_SCHEMA,
         "tenant_id": command["tenant_id"],
@@ -277,6 +583,17 @@ def _validate_success_response(
             outcome_uncertain=True,
             status_code=status_code,
         )
+    if (
+        payload.get("commit_state") != "COMMITTED"
+        or payload.get("reason_code") is not None
+        or payload.get("reconciliation_ref") is not None
+    ):
+        raise EosWriteExecutionError(
+            "ae.nsl_eos.response_commit_state_invalid",
+            "EOS success response does not prove a committed result.",
+            outcome_uncertain=True,
+            status_code=status_code,
+        )
     disposition = payload.get("idempotency_disposition")
     if (status_code, disposition) not in {(201, "CREATED"), (200, "REPLAYED")}:
         raise EosWriteExecutionError(
@@ -285,6 +602,29 @@ def _validate_success_response(
             outcome_uncertain=True,
             status_code=status_code,
         )
+    transaction_ref = _entity_ref(
+        payload.get("business_transaction_ref"),
+        field_name="business_transaction_ref",
+        expected_type="eos.business_operation",
+    )
+    if transaction_ref["id"] != command["business_operation_id"]:
+        raise EosWriteExecutionError(
+            "ae.nsl_eos.response_lineage_invalid",
+            "EOS business transaction reference does not match the WRITE request.",
+            outcome_uncertain=True,
+            status_code=status_code,
+        )
+    _entity_ref(
+        payload.get("voucher_ref"),
+        field_name="voucher_ref",
+        expected_type="eos.voucher_draft",
+    )
+    _entity_ref(
+        payload.get("outbox_event_ref"),
+        field_name="outbox_event_ref",
+        expected_type="eos.outbox_event",
+    )
+    _utc_datetime(payload.get("committed_at"))
 
 
 def _validated_base_url(value: object) -> str:

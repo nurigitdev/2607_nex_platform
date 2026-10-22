@@ -225,6 +225,11 @@ def _adapter(
         object,
         object,
         object,
+        object,
+        object,
+        object,
+        object,
+        object,
     ]
     return NslV02PublicApiAdapter(*symbols, HASH, HASH)
 

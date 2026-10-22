@@ -106,7 +106,7 @@ class AuthorizationSource:
 
 
 def _public_api() -> NslV02PublicApiAdapter:
-    symbols = [object] * 15 + [WriteCallRequest, WriteExecutionPort] + [object] * 6
+    symbols = [object] * 15 + [WriteCallRequest, WriteExecutionPort] + [object] * 11
     return NslV02PublicApiAdapter(*symbols, HASH, HASH)
 
 
@@ -292,8 +292,8 @@ def test_actual_eos_postgres_http_adapter_commit_replay_and_zero_residue() -> No
             transport=httpx.ASGITransport(app=app),
         )
 
-        created = asyncio.run(port.execute(request))
-        replayed = asyncio.run(port.execute(request))
+        created = asyncio.run(port.execute_raw(request))
+        replayed = asyncio.run(port.execute_raw(request))
 
         assert created.status_code == 201
         assert created.payload["idempotency_disposition"] == "CREATED"
