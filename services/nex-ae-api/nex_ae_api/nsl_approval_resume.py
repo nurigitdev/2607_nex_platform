@@ -272,7 +272,8 @@ _AUTHORITY_SQL = """
            evidence.evidence_integrity, evidence.decision AS evidence_decision
     FROM ae_runtime_job AS job
     JOIN ae_wait_registration AS wait
-      ON wait.tenant_id = job.tenant_id AND wait.wait_id = job.wait_id
+      ON wait.tenant_id = job.tenant_id
+     AND CAST(wait.wait_id AS TEXT) = job.wait_id
     JOIN ae_external_event_inbox AS inbox
       ON inbox.tenant_id = wait.tenant_id
      AND inbox.event_id = wait.matched_event_id

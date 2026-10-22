@@ -32,6 +32,8 @@ from run_platform_production_transition_dependency_plan import (
     run_platform_production_transition_dependency_plan,
 )
 from run_platform_runtime_deployment_coupling_audit import (
+    EXPECTED_LOOPBACK_FILE_COUNT,
+    EXPECTED_LOOPBACK_OCCURRENCE_COUNT,
     run_platform_runtime_deployment_coupling_audit,
 )
 
@@ -199,8 +201,8 @@ def run_s141_platform_production_readiness_closure(
             "cross_service_import_count": 0,
             "non_mo_provider_reference_count": 0,
             "legacy_database_adapter_count": 4,
-            "loopback_occurrence_count": 47,
-            "loopback_file_count": 27,
+            "loopback_occurrence_count": EXPECTED_LOOPBACK_OCCURRENCE_COUNT,
+            "loopback_file_count": EXPECTED_LOOPBACK_FILE_COUNT,
             "source_process_count": 13,
             "coupling_record_count": 6,
         },
