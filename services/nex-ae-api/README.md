@@ -1261,3 +1261,7 @@ Artifact library management:
   lineage. Same-identity replay is idempotent, changed semantics fail closed,
   and the actual `nex_ae_test` smoke verifies exact BYTEA persistence without
   exposing request bytes through the repository metadata projection.
+- P8-S45 generalizes the durable AE wait registry without replacing its P7
+  source of record. `external_ref` is a bounded string, `wait_type` admits both
+  `WORK_RESULT` and `NSL_APPROVAL`, and the default repository behavior remains
+  compatible with historical P7 WorkResult waits.

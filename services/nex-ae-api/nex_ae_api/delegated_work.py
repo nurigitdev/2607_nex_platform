@@ -18,6 +18,8 @@ from nex_ae_api.executable_plans import (
     validate_compiled_delegation,
 )
 
+_WAIT_TYPES = frozenset({"WORK_RESULT", "NSL_APPROVAL"})
+
 
 @dataclass(frozen=True)
 class DelegatedWorkError(Exception):
@@ -93,7 +95,9 @@ class SqlAlchemyDelegationRuntimeRepository:
                 if step is None or step.get("executor_kind") != "WC_DELEGATE_WORK":
                     raise _invalid("Delegated work compiled step lineage is invalid.")
                 if row["state"] != "RUNNING" or row["phase"] != "STEP_EXECUTION":
-                    raise _invalid("Delegated work requires active execution authority.")
+                    raise _invalid(
+                        "Delegated work requires active execution authority."
+                    )
                 requester_ref = row["requester_ref"] or row["principal_id"]
                 return {
                     "tenant_id": params["tenant_id"],
@@ -101,12 +105,8 @@ class SqlAlchemyDelegationRuntimeRepository:
                     "executable_plan_id": params["plan_id"],
                     "executable_step_id": params["step_id"],
                     "agent_id": _required("agent_id", str(row["agent_id"]), 128),
-                    "agent_type": _required(
-                        "agent_type", str(row["agent_type"]), 16
-                    ),
-                    "requester_ref": _required(
-                        "requester_ref", requester_ref, 160
-                    ),
+                    "agent_type": _required("agent_type", str(row["agent_type"]), 16),
+                    "requester_ref": _required("requester_ref", requester_ref, 160),
                     "correlation_id": _required(
                         "correlation_id", row["correlation_id"], 128
                     ),
@@ -115,9 +115,7 @@ class SqlAlchemyDelegationRuntimeRepository:
                         if row["causation_id"] is None
                         else _required("causation_id", row["causation_id"], 128)
                     ),
-                    "delegation": validate_compiled_delegation(
-                        step.get("delegation")
-                    ),
+                    "delegation": validate_compiled_delegation(step.get("delegation")),
                 }
         except DelegatedWorkError:
             raise
@@ -145,14 +143,15 @@ class SqlAlchemyWaitRegistrationRepository:
         external_ref: str,
         result_contract_ref: str,
         created_at: str,
+        wait_type: str = "WORK_RESULT",
     ) -> dict[str, Any]:
         record = {
             "wait_id": _uuid("wait_id", wait_id),
             "tenant_id": _required("tenant_id", tenant_id, 128),
             "agent_execution_id": _uuid("agent_execution_id", agent_execution_id),
             "executable_step_id": _uuid("executable_step_id", executable_step_id),
-            "wait_type": "WORK_RESULT",
-            "external_ref": _uuid("external_ref", external_ref),
+            "wait_type": _wait_type(wait_type),
+            "external_ref": _required("external_ref", external_ref, 256),
             "result_contract_ref": _required(
                 "result_contract_ref", result_contract_ref, 256
             ),
@@ -169,6 +168,7 @@ class SqlAlchemyWaitRegistrationRepository:
                     tenant_id=record["tenant_id"],
                     agent_execution_id=record["agent_execution_id"],
                     executable_step_id=record["executable_step_id"],
+                    wait_type=record["wait_type"],
                 )
                 if saved is None:
                     raise DelegatedWorkError(
@@ -193,19 +193,21 @@ class SqlAlchemyWaitRegistrationRepository:
             ) from exc
 
     def get(
-        self, *, tenant_id: str, agent_execution_id: str, executable_step_id: str
+        self,
+        *,
+        tenant_id: str,
+        agent_execution_id: str,
+        executable_step_id: str,
+        wait_type: str = "WORK_RESULT",
     ) -> dict[str, Any] | None:
         try:
             with self._session_factory() as session:
                 return _load_wait(
                     session,
                     tenant_id=_required("tenant_id", tenant_id, 128),
-                    agent_execution_id=_uuid(
-                        "agent_execution_id", agent_execution_id
-                    ),
-                    executable_step_id=_uuid(
-                        "executable_step_id", executable_step_id
-                    ),
+                    agent_execution_id=_uuid("agent_execution_id", agent_execution_id),
+                    executable_step_id=_uuid("executable_step_id", executable_step_id),
+                    wait_type=_wait_type(wait_type),
                 )
         except SQLAlchemyError as exc:
             raise DelegatedWorkError(
@@ -266,9 +268,7 @@ def delegation_dispatch(
 ) -> dict[str, Any]:
     delegation = validate_compiled_delegation(runtime.get("delegation"))
     tenant_id = _required("tenant_id", runtime.get("tenant_id"), 128)
-    execution_id = _uuid(
-        "agent_execution_id", runtime.get("agent_execution_id")
-    )
+    execution_id = _uuid("agent_execution_id", runtime.get("agent_execution_id"))
     plan_id = _uuid("executable_plan_id", runtime.get("executable_plan_id"))
     step_id = _uuid("executable_step_id", runtime.get("executable_step_id"))
     work_item_id = deterministic_work_item_id(
@@ -349,6 +349,7 @@ def _load_wait(
     tenant_id: str,
     agent_execution_id: str,
     executable_step_id: str,
+    wait_type: str = "WORK_RESULT",
 ) -> dict[str, Any] | None:
     row = (
         session.execute(
@@ -359,12 +360,13 @@ def _load_wait(
                 "FROM ae_wait_registration WHERE tenant_id = :tenant_id "
                 "AND agent_execution_id = :agent_execution_id "
                 "AND executable_step_id = :executable_step_id "
-                "AND wait_type = 'WORK_RESULT'"
+                "AND wait_type = :wait_type"
             ),
             {
                 "tenant_id": tenant_id,
                 "agent_execution_id": agent_execution_id,
                 "executable_step_id": executable_step_id,
+                "wait_type": _wait_type(wait_type),
             },
         )
         .mappings()
@@ -428,6 +430,13 @@ def _uuid(field: str, value: object) -> str:
         return str(UUID(str(value)))
     except (TypeError, ValueError) as exc:
         raise _invalid(f"{field} must be a UUID.") from exc
+
+
+def _wait_type(value: object) -> str:
+    normalized = _required("wait_type", value, 32)
+    if normalized not in _WAIT_TYPES:
+        raise _invalid("wait_type is not supported.")
+    return normalized
 
 
 def _required(field: str, value: object, maximum: int) -> str:
