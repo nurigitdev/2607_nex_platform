@@ -20,7 +20,6 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
-
 ROOT = Path(__file__).resolve().parents[2]
 for path in (
     ROOT / "services" / "_shared",
@@ -107,7 +106,6 @@ from run_p5_s3_postgres_smoke import (  # noqa: E402
 from run_protected_dgx_live_profile import (  # noqa: E402
     protected_dgx_vllm_profile_defaults,
 )
-
 
 SCHEMA_VERSION = "p65_s7_postgres_live_e2e.v1"
 SMOKE_ENV = "NEX_AE_P65_S7_POSTGRES_LIVE_E2E"
@@ -272,11 +270,9 @@ def run_p65_s7_postgres_live_e2e(
             nsl_source=nsl_source,
             runtime_environ=effective_env,
         )
-        migration_current = (
-            REQUIRED_MIGRATION in migration.planned
-            and len(migration.planned)
-            == len(migration.applied) + len(migration.skipped)
-        )
+        migration_current = REQUIRED_MIGRATION in migration.planned and len(
+            migration.planned
+        ) == len(migration.applied) + len(migration.skipped)
         evidence = {
             "smoke_schema_version": SCHEMA_VERSION,
             "slice": "P6.5-S7",
@@ -421,7 +417,9 @@ def _execute_postgres_journey(  # pragma: no cover - protected integration body
                 mode="required",
                 admission=admission,
                 intent_stage=LiveIntentCandidateService(client, prompt_store, policies),
-                context_stage=LiveContextCandidateService(client, prompt_store, policies),
+                context_stage=LiveContextCandidateService(
+                    client, prompt_store, policies
+                ),
                 plan_stage=LivePlanCandidateService(client, prompt_store, policies),
                 evidence=SqlAlchemySemanticCandidateEvidenceRepository(factory),
                 candidate_storage=LocalSemanticCandidateStorage(storage_root),
@@ -571,13 +569,10 @@ def _execute_postgres_journey(  # pragma: no cover - protected integration body
                 ),
                 "exact_prompt_versions_recorded": (
                     len(prompt_versions) == 3
-                    and {
-                        row["binding_key"]: row["version"]
-                        for row in prompt_versions
-                    }
+                    and {row["binding_key"]: row["version"] for row in prompt_versions}
                     == {
                         "ae.context_candidate_extraction.default": "v2",
-                        "ae.intent_resolution.default": "v1",
+                        "ae.intent_resolution.default": "v2",
                         "ae.plan_builder.default": "v1",
                     }
                 ),
@@ -615,7 +610,9 @@ def _execute_postgres_journey(  # pragma: no cover - protected integration body
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
             )
-        private_storage_zero_residue = storage_root is not None and not storage_root.exists()
+        private_storage_zero_residue = (
+            storage_root is not None and not storage_root.exists()
+        )
     finally:
         try:
             if not cleanup_counts:

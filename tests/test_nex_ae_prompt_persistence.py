@@ -160,31 +160,78 @@ def test_startup_upgrades_existing_context_v1_binding_with_history() -> None:
     seed_prompt_registry(store, AE_HISTORICAL_PROMPT_SEEDS)
 
     before = store.get_binding(AE_CONTEXT_CANDIDATE_BINDING)
-    assert store.get_template_version(before["prompt_template_version_id"])[
-        "version"
-    ] == "v1"
+    assert (
+        store.get_template_version(before["prompt_template_version_id"])["version"]
+        == "v1"
+    )
 
     seed_ae_prompt_registry(store)
 
     after = store.get_binding(AE_CONTEXT_CANDIDATE_BINDING)
-    assert store.get_template_version(after["prompt_template_version_id"])[
-        "version"
-    ] == "v2"
+    assert (
+        store.get_template_version(after["prompt_template_version_id"])["version"]
+        == "v2"
+    )
     with factory() as session:
-        history = session.execute(
-            text(
-                "SELECT old_prompt_template_version_id, "
-                "new_prompt_template_version_id, correlation_id "
-                "FROM ae_prompt_binding_history"
+        history = (
+            session.execute(
+                text(
+                    "SELECT old_prompt_template_version_id, "
+                    "new_prompt_template_version_id, correlation_id "
+                    "FROM ae_prompt_binding_history "
+                    "WHERE correlation_id = 'p65-s7-context-prompt-v2'"
+                )
             )
-        ).mappings().one()
-    assert history["old_prompt_template_version_id"] == before[
-        "prompt_template_version_id"
-    ]
-    assert history["new_prompt_template_version_id"] == after[
-        "prompt_template_version_id"
-    ]
+            .mappings()
+            .one()
+        )
+    assert (
+        history["old_prompt_template_version_id"]
+        == before["prompt_template_version_id"]
+    )
+    assert (
+        history["new_prompt_template_version_id"] == after["prompt_template_version_id"]
+    )
     assert history["correlation_id"] == "p65-s7-context-prompt-v2"
+
+
+def test_startup_upgrades_existing_intent_v1_binding_with_history() -> None:
+    factory = session_factory()
+    store = SqlAlchemyAePromptRegistryStore(factory)
+    seed_prompt_registry(store, AE_HISTORICAL_PROMPT_SEEDS)
+
+    before = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
+    assert (
+        store.get_template_version(before["prompt_template_version_id"])["version"]
+        == "v1"
+    )
+
+    seed_ae_prompt_registry(store)
+
+    after = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
+    version = store.get_template_version(after["prompt_template_version_id"])
+    assert version["version"] == "v2"
+    assert version["metadata"]["golden_a"] == "voucher_draft"
+    with factory() as session:
+        history = (
+            session.execute(
+                text(
+                    "SELECT old_prompt_template_version_id, "
+                    "new_prompt_template_version_id, correlation_id "
+                    "FROM ae_prompt_binding_history "
+                    "WHERE correlation_id = 'p8-s65-intent-prompt-v2'"
+                )
+            )
+            .mappings()
+            .one()
+        )
+    assert (
+        history["old_prompt_template_version_id"]
+        == before["prompt_template_version_id"]
+    )
+    assert (
+        history["new_prompt_template_version_id"] == after["prompt_template_version_id"]
+    )
 
 
 def test_render_event_is_durable_idempotent_and_excludes_raw_user_prompt() -> None:
@@ -229,25 +276,26 @@ def test_repository_wraps_database_errors_and_error_string() -> None:
 
 
 def test_helpers_cover_postgres_json_datetime_and_missing_write(monkeypatch) -> None:
-    assert "CAST(:metadata AS jsonb)" in persistence._version_insert_sql(
-        "postgresql"
-    )
+    assert "CAST(:metadata AS jsonb)" in persistence._version_insert_sql("postgresql")
     assert "CAST(:metadata AS jsonb)" in persistence._render_event_insert_sql(
         "postgresql"
     )
     assert persistence._json_value('{"value": 1}', {}) == {"value": 1}
     assert persistence._json_value(None, {}) == {}
     assert persistence._json_value({"value": 2}, {}) == {"value": 2}
-    assert persistence._datetime_value(
-        datetime(2026, 9, 28, tzinfo=UTC)
-    ) == "2026-09-28T00:00:00Z"
+    assert (
+        persistence._datetime_value(datetime(2026, 9, 28, tzinfo=UTC))
+        == "2026-09-28T00:00:00Z"
+    )
     with pytest.raises(PromptRepositoryError) as raised:
         persistence._required_saved(None)
     assert raised.value.error_code == "ae.prompt_registry_write_conflict"
 
     factory = session_factory()
     store = SqlAlchemyAePromptRegistryStore(factory)
-    monkeypatch.setattr(persistence, "_load_template_by_key", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        persistence, "_load_template_by_key", lambda *args, **kwargs: None
+    )
     with pytest.raises(PromptRepositoryError):
         seed_ae_prompt_registry(store)
 
@@ -266,9 +314,10 @@ def test_template_version_insert_is_idempotent_but_never_overwrites_content() ->
         store.save_template_version(changed)
 
     assert raised.value.error_code == "ae.prompt_template_version_immutable_conflict"
-    assert store.get_template_version(first["prompt_template_version_id"])[
-        "content"
-    ] == seed.content
+    assert (
+        store.get_template_version(first["prompt_template_version_id"])["content"]
+        == seed.content
+    )
 
 
 def test_binding_activation_is_atomic_cas_and_keeps_exact_provenance_snapshot() -> None:
@@ -298,19 +347,20 @@ def test_binding_activation_is_atomic_cas_and_keeps_exact_provenance_snapshot() 
     )
 
     assert changed["changed"] is True
-    assert changed["history"]["old_prompt_template_version_id"] == first[
-        "prompt_template_version_id"
-    ]
-    assert changed["binding"]["prompt_template_version_id"] == second[
-        "prompt_template_version_id"
-    ]
-    assert before["prompt_template_version_id"] == binding[
-        "prompt_template_version_id"
-    ]
+    assert (
+        changed["history"]["old_prompt_template_version_id"]
+        == first["prompt_template_version_id"]
+    )
+    assert (
+        changed["binding"]["prompt_template_version_id"]
+        == second["prompt_template_version_id"]
+    )
+    assert before["prompt_template_version_id"] == binding["prompt_template_version_id"]
     assert before["prompt_content_sha256"] == first["content_sha256"]
-    assert store.get_prompt_provenance(seed.binding_key)[
-        "prompt_template_version_id"
-    ] == second["prompt_template_version_id"]
+    assert (
+        store.get_prompt_provenance(seed.binding_key)["prompt_template_version_id"]
+        == second["prompt_template_version_id"]
+    )
 
     repeated = store.activate_binding(
         binding_key=seed.binding_key,
@@ -326,9 +376,12 @@ def test_binding_activation_is_atomic_cas_and_keeps_exact_provenance_snapshot() 
         "history": None,
     }
     with factory() as session:
-        assert session.execute(
-            text("SELECT count(*) FROM ae_prompt_binding_history")
-        ).scalar_one() == 1
+        assert (
+            session.execute(
+                text("SELECT count(*) FROM ae_prompt_binding_history")
+            ).scalar_one()
+            == 1
+        )
 
 
 def test_binding_activation_rejects_stale_expected_current_version() -> None:
@@ -354,9 +407,10 @@ def test_binding_activation_rejects_stale_expected_current_version() -> None:
         )
 
     assert raised.value.error_code == "ae.prompt_binding_version_conflict"
-    assert store.get_binding(seed.binding_key)["prompt_template_version_id"] == first[
-        "prompt_template_version_id"
-    ]
+    assert (
+        store.get_binding(seed.binding_key)["prompt_template_version_id"]
+        == first["prompt_template_version_id"]
+    )
 
 
 @pytest.mark.parametrize("failure_target", ["history", "pointer"])
@@ -374,7 +428,9 @@ def test_binding_activation_rolls_back_history_and_pointer_on_fault(
         build_prompt_template_version(second_seed, template)
     )
     trigger_target = (
-        "ae_prompt_binding_history" if failure_target == "history" else "ae_prompt_bindings"
+        "ae_prompt_binding_history"
+        if failure_target == "history"
+        else "ae_prompt_bindings"
     )
     trigger_operation = "INSERT" if failure_target == "history" else "UPDATE"
     with factory() as session:
@@ -396,13 +452,17 @@ def test_binding_activation_rolls_back_history_and_pointer_on_fault(
         )
 
     assert raised.value.error_code == "ae.prompt_registry_unavailable"
-    assert store.get_binding(seed.binding_key)["prompt_template_version_id"] == first[
-        "prompt_template_version_id"
-    ]
+    assert (
+        store.get_binding(seed.binding_key)["prompt_template_version_id"]
+        == first["prompt_template_version_id"]
+    )
     with factory() as session:
-        assert session.execute(
-            text("SELECT count(*) FROM ae_prompt_binding_history")
-        ).scalar_one() == 0
+        assert (
+            session.execute(
+                text("SELECT count(*) FROM ae_prompt_binding_history")
+            ).scalar_one()
+            == 0
+        )
 
 
 def test_startup_seed_does_not_move_an_operator_managed_binding() -> None:
@@ -427,12 +487,12 @@ def test_startup_seed_does_not_move_an_operator_managed_binding() -> None:
 
     seeded = store.save_binding(build_prompt_binding(seed, first))
 
-    assert seeded["prompt_template_version_id"] == second[
-        "prompt_template_version_id"
-    ]
+    assert seeded["prompt_template_version_id"] == second["prompt_template_version_id"]
 
 
-def test_binding_activation_rejects_missing_inactive_and_cross_template_targets() -> None:
+def test_binding_activation_rejects_missing_inactive_and_cross_template_targets() -> (
+    None
+):
     factory = session_factory()
     store = SqlAlchemyAePromptRegistryStore(factory)
     seed = AE_PROMPT_SEEDS[0]
@@ -444,9 +504,7 @@ def test_binding_activation_rejects_missing_inactive_and_cross_template_targets(
         store.activate_binding(
             binding_key="ae.missing",
             new_prompt_template_version_id=first["prompt_template_version_id"],
-            expected_prompt_template_version_id=first[
-                "prompt_template_version_id"
-            ],
+            expected_prompt_template_version_id=first["prompt_template_version_id"],
             changed_by="operator",
             reason="missing",
             correlation_id="missing-binding",
@@ -463,9 +521,7 @@ def test_binding_activation_rejects_missing_inactive_and_cross_template_targets(
         store.activate_binding(
             binding_key=seed.binding_key,
             new_prompt_template_version_id=other["prompt_template_version_id"],
-            expected_prompt_template_version_id=first[
-                "prompt_template_version_id"
-            ],
+            expected_prompt_template_version_id=first["prompt_template_version_id"],
             changed_by="operator",
             reason="cross template",
             correlation_id="cross-template",
@@ -500,9 +556,7 @@ def test_binding_activation_rejects_missing_inactive_and_cross_template_targets(
         store.activate_binding(
             binding_key=seed.binding_key,
             new_prompt_template_version_id=retired["prompt_template_version_id"],
-            expected_prompt_template_version_id=first[
-                "prompt_template_version_id"
-            ],
+            expected_prompt_template_version_id=first["prompt_template_version_id"],
             changed_by="operator",
             reason="retired target",
             correlation_id="retired-target",
@@ -529,9 +583,7 @@ def test_binding_activation_and_template_version_inputs_fail_closed() -> None:
         store.activate_binding(
             binding_key=seed.binding_key,
             new_prompt_template_version_id="not-a-uuid",
-            expected_prompt_template_version_id=version[
-                "prompt_template_version_id"
-            ],
+            expected_prompt_template_version_id=version["prompt_template_version_id"],
             changed_by="operator",
             reason="invalid",
             correlation_id="invalid-change",
@@ -541,12 +593,8 @@ def test_binding_activation_and_template_version_inputs_fail_closed() -> None:
     with pytest.raises(PromptRepositoryError) as empty_change:
         store.activate_binding(
             binding_key=" ",
-            new_prompt_template_version_id=version[
-                "prompt_template_version_id"
-            ],
-            expected_prompt_template_version_id=version[
-                "prompt_template_version_id"
-            ],
+            new_prompt_template_version_id=version["prompt_template_version_id"],
+            expected_prompt_template_version_id=version["prompt_template_version_id"],
             changed_by="operator",
             reason="invalid",
             correlation_id="invalid-change",
@@ -570,9 +618,7 @@ def test_binding_activation_rolls_back_when_pointer_cas_or_history_reload_fails(
     arguments = {
         "binding_key": seed.binding_key,
         "new_prompt_template_version_id": second["prompt_template_version_id"],
-        "expected_prompt_template_version_id": first[
-            "prompt_template_version_id"
-        ],
+        "expected_prompt_template_version_id": first["prompt_template_version_id"],
         "changed_by": "operator",
         "reason": "fault injection",
         "correlation_id": "cas-failure",
@@ -586,13 +632,17 @@ def test_binding_activation_rolls_back_when_pointer_cas_or_history_reload_fails(
     with pytest.raises(PromptRepositoryError) as cas_failure:
         store.activate_binding(**arguments)
     assert cas_failure.value.error_code == "ae.prompt_binding_version_conflict"
-    assert store.get_binding(seed.binding_key)["prompt_template_version_id"] == first[
-        "prompt_template_version_id"
-    ]
+    assert (
+        store.get_binding(seed.binding_key)["prompt_template_version_id"]
+        == first["prompt_template_version_id"]
+    )
     with factory() as session:
-        assert session.execute(
-            text("SELECT count(*) FROM ae_prompt_binding_history")
-        ).scalar_one() == 0
+        assert (
+            session.execute(
+                text("SELECT count(*) FROM ae_prompt_binding_history")
+            ).scalar_one()
+            == 0
+        )
 
 
 def test_binding_activation_rolls_back_when_history_cannot_be_reloaded(
@@ -614,18 +664,17 @@ def test_binding_activation_rolls_back_when_history_cannot_be_reloaded(
         store.activate_binding(
             binding_key=seed.binding_key,
             new_prompt_template_version_id=second["prompt_template_version_id"],
-            expected_prompt_template_version_id=first[
-                "prompt_template_version_id"
-            ],
+            expected_prompt_template_version_id=first["prompt_template_version_id"],
             changed_by="operator",
             reason="history reload",
             correlation_id="history-reload",
         )
 
     assert raised.value.error_code == "ae.prompt_registry_write_conflict"
-    assert store.get_binding(seed.binding_key)["prompt_template_version_id"] == first[
-        "prompt_template_version_id"
-    ]
+    assert (
+        store.get_binding(seed.binding_key)["prompt_template_version_id"]
+        == first["prompt_template_version_id"]
+    )
 
 
 def test_prompt_provenance_wraps_database_errors() -> None:

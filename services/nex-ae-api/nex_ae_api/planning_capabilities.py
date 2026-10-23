@@ -117,6 +117,7 @@ def build_capability_snapshot(
 def build_local_skill_capability(
     *,
     skill_id: str,
+    capability_id: str | None = None,
     exact_skill_version: str,
     skill_semantic_hash: str,
     input_contract_ref: str,
@@ -127,8 +128,9 @@ def build_local_skill_capability(
     operation_semantics: str = "READ",
 ) -> dict[str, Any]:
     """Build one exact P6/P8 LOCAL_SKILL capability descriptor."""
+    resolved_capability_id = capability_id or skill_id
     capability = {
-        "capability_id": skill_id,
+        "capability_id": resolved_capability_id,
         "capability_version": exact_skill_version,
         "status": "ACTIVE",
         "allowed_logical_step_types": ["LOCAL_CAPABILITY"],
@@ -145,6 +147,11 @@ def build_local_skill_capability(
             "trust_policy_id": trust_policy_id,
             "backend_profile": backend_profile,
             "package_requirement": LOCAL_SKILL_PACKAGE_REQUIREMENT,
+            **(
+                {"capability_id": resolved_capability_id}
+                if resolved_capability_id != skill_id
+                else {}
+            ),
         },
     }
     return _validate_capability(capability)
@@ -418,8 +425,9 @@ def _validate_capability(value: Mapping[str, Any]) -> dict[str, Any]:
         binding = validate_local_skill_binding(
             value["local_skill_binding"], operation_semantics=semantics
         )
+        bound_capability_id = binding.get("capability_id", binding["skill_id"])
         if (
-            binding["skill_id"] != capability_id
+            bound_capability_id != capability_id
             or binding["exact_skill_version"] != normalized["capability_version"]
         ):
             raise _invalid(
@@ -445,7 +453,12 @@ def validate_local_skill_binding(
         "backend_profile",
         "package_requirement",
     }
-    if not isinstance(value, Mapping) or set(value) != fields:
+    optional_fields = {"capability_id"}
+    if (
+        not isinstance(value, Mapping)
+        or not fields.issubset(value)
+        or not set(value).issubset(fields | optional_fields)
+    ):
         raise _invalid("LOCAL_SKILL binding fields are invalid.")
     skill_id = _required_text("skill_id", value["skill_id"], 160)
     if _CAPABILITY_ID.fullmatch(skill_id) is None:
@@ -470,7 +483,7 @@ def validate_local_skill_binding(
         ) from exc
     if value["package_requirement"] != LOCAL_SKILL_PACKAGE_REQUIREMENT:
         raise _invalid("LOCAL_SKILL package requirement must fail closed.")
-    return {
+    normalized = {
         "skill_id": skill_id,
         "exact_skill_version": exact_version,
         "skill_semantic_hash": semantic_hash,
@@ -483,6 +496,12 @@ def validate_local_skill_binding(
         "backend_profile": backend_profile,
         "package_requirement": LOCAL_SKILL_PACKAGE_REQUIREMENT,
     }
+    if "capability_id" in value:
+        capability_id = _required_text("capability_id", value["capability_id"], 160)
+        if _CAPABILITY_ID.fullmatch(capability_id) is None:
+            raise _invalid("LOCAL_SKILL bound capability ID is invalid.")
+        normalized["capability_id"] = capability_id
+    return normalized
 
 
 def _snapshot_insert_sql(dialect_name: str) -> str:

@@ -31,7 +31,6 @@ from nex_runtime.prompts import (
 )
 from nex_runtime.semantic_hashes import canonical_json, sha256_text
 
-
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "p65-s2-request"
 EXECUTION_ID = "10000000-0000-4000-8000-000000000652"
@@ -197,22 +196,28 @@ def _run(service: LiveIntentCandidateService, **overrides):
     return service.generate_and_resolve(**values)
 
 
-def test_prompt_registry_seeds_exact_intent_binding_v1() -> None:
+def test_prompt_registry_seeds_exact_intent_binding_v2_and_keeps_v1() -> None:
     store = _store()
     binding = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
     version = store.get_template_version(binding["prompt_template_version_id"])
 
     assert binding["purpose"] == "intent_resolution"
-    assert version["version"] == "v1"
+    assert version["version"] == "v2"
     assert version["role"] == "system"
     assert version["metadata"] == {
-        "phase": "P6.5",
-        "slice": "P6.5-S2",
+        "phase": "P8",
+        "slice": "P8-S65",
         "candidate_schema": "p65.intent_candidate.v1",
         "authority": "untrusted_candidate_only",
+        "golden_a": "voucher_draft",
     }
     assert "tenant" in version["content"]
     assert "hidden reasoning" in version["content"]
+    assert any(
+        item["version"] == "v1"
+        for item in store.template_versions.values()
+        if item["purpose"] == "intent_resolution"
+    )
 
 
 def test_required_mode_generates_candidate_then_deterministic_work_intent() -> None:
@@ -236,10 +241,8 @@ def test_required_mode_generates_candidate_then_deterministic_work_intent() -> N
     assert result.prompt_provenance["prompt_binding_key"] == (
         AE_INTENT_RESOLUTION_BINDING
     )
-    assert result.prompt_provenance["prompt_template_version"] == "v1"
-    assert result.model_provenance["mo_generation_id"] == (
-        "mo-generation-p65-s2"
-    )
+    assert result.prompt_provenance["prompt_template_version"] == "v2"
+    assert result.model_provenance["mo_generation_id"] == ("mo-generation-p65-s2")
 
     call = client.generation_calls[0]
     assert call["semantic_stage"] == "INTENT"
@@ -348,12 +351,24 @@ def test_trusted_execution_mode_cannot_be_overridden_by_candidate() -> None:
         ("not-json", "CANDIDATE_JSON_INVALID"),
         ("NaN", "CANDIDATE_JSON_INVALID"),
         ("[]", "CANDIDATE_SCHEMA_INVALID"),
-        (canonical_json({**_candidate(), "tenant_id": "invented"}), "CANDIDATE_AUTHORITY_VIOLATION"),
+        (
+            canonical_json({**_candidate(), "tenant_id": "invented"}),
+            "CANDIDATE_AUTHORITY_VIOLATION",
+        ),
         (canonical_json({**_candidate(), "extra": True}), "CANDIDATE_SCHEMA_INVALID"),
-        (canonical_json(_candidate(schema_version="unknown")), "CANDIDATE_SCHEMA_INVALID"),
+        (
+            canonical_json(_candidate(schema_version="unknown")),
+            "CANDIDATE_SCHEMA_INVALID",
+        ),
         (canonical_json(_candidate(intent_label=" ")), "CANDIDATE_SCHEMA_INVALID"),
-        (canonical_json(_candidate(intent_label="x" * 161)), "CANDIDATE_BOUNDS_EXCEEDED"),
-        (canonical_json(_candidate(suggested_execution_mode="WRITE")), "CANDIDATE_SCHEMA_INVALID"),
+        (
+            canonical_json(_candidate(intent_label="x" * 161)),
+            "CANDIDATE_BOUNDS_EXCEEDED",
+        ),
+        (
+            canonical_json(_candidate(suggested_execution_mode="WRITE")),
+            "CANDIDATE_SCHEMA_INVALID",
+        ),
         (canonical_json(_candidate(confidence=True)), "CANDIDATE_SCHEMA_INVALID"),
         (canonical_json(_candidate(confidence=1.1)), "CANDIDATE_SCHEMA_INVALID"),
         (
@@ -374,31 +389,74 @@ def test_candidate_top_level_fail_closed_matrix(output: str, error_code: str) ->
         ({}, "CANDIDATE_SCHEMA_INVALID"),
         ([{}], "CANDIDATE_SCHEMA_INVALID"),
         (
-            [{"selector_id": "bad", "selector_type": "QUERY_TERM", "value": "x", "confidence": 0.5}],
-            "CANDIDATE_SCHEMA_INVALID",
-        ),
-        (
-            [{"selector_id": "E1", "selector_type": "ROLE", "value": "x", "confidence": 0.5}],
-            "CANDIDATE_SCHEMA_INVALID",
-        ),
-        (
-            [{"selector_id": "E1", "selector_type": "QUERY_TERM", "value": "x" * 257, "confidence": 0.5}],
-            "CANDIDATE_BOUNDS_EXCEEDED",
-        ),
-        (
-            [{"selector_id": "E1", "selector_type": "QUERY_TERM", "value": "x", "confidence": -0.1}],
-            "CANDIDATE_SCHEMA_INVALID",
-        ),
-        (
             [
-                {"selector_id": "E1", "selector_type": "QUERY_TERM", "value": "x", "confidence": 0.5},
-                {"selector_id": "E1", "selector_type": "ENTITY_NAME", "value": "y", "confidence": 0.6},
+                {
+                    "selector_id": "bad",
+                    "selector_type": "QUERY_TERM",
+                    "value": "x",
+                    "confidence": 0.5,
+                }
             ],
             "CANDIDATE_SCHEMA_INVALID",
         ),
         (
             [
-                {"selector_id": f"E{index}", "selector_type": "QUERY_TERM", "value": str(index), "confidence": 0.5}
+                {
+                    "selector_id": "E1",
+                    "selector_type": "ROLE",
+                    "value": "x",
+                    "confidence": 0.5,
+                }
+            ],
+            "CANDIDATE_SCHEMA_INVALID",
+        ),
+        (
+            [
+                {
+                    "selector_id": "E1",
+                    "selector_type": "QUERY_TERM",
+                    "value": "x" * 257,
+                    "confidence": 0.5,
+                }
+            ],
+            "CANDIDATE_BOUNDS_EXCEEDED",
+        ),
+        (
+            [
+                {
+                    "selector_id": "E1",
+                    "selector_type": "QUERY_TERM",
+                    "value": "x",
+                    "confidence": -0.1,
+                }
+            ],
+            "CANDIDATE_SCHEMA_INVALID",
+        ),
+        (
+            [
+                {
+                    "selector_id": "E1",
+                    "selector_type": "QUERY_TERM",
+                    "value": "x",
+                    "confidence": 0.5,
+                },
+                {
+                    "selector_id": "E1",
+                    "selector_type": "ENTITY_NAME",
+                    "value": "y",
+                    "confidence": 0.6,
+                },
+            ],
+            "CANDIDATE_SCHEMA_INVALID",
+        ),
+        (
+            [
+                {
+                    "selector_id": f"E{index}",
+                    "selector_type": "QUERY_TERM",
+                    "value": str(index),
+                    "confidence": 0.5,
+                }
                 for index in range(1, 34)
             ],
             "CANDIDATE_BOUNDS_EXCEEDED",
@@ -417,9 +475,18 @@ def test_candidate_selector_fail_closed_matrix(selectors, error_code: str) -> No
         ({}, "CANDIDATE_SCHEMA_INVALID"),
         ([{}], "CANDIDATE_SCHEMA_INVALID"),
         ([{"name": "Bad", "value": 1, "confidence": 0.5}], "CANDIDATE_SCHEMA_INVALID"),
-        ([{"name": "value", "value": "x" * 501, "confidence": 0.5}], "CANDIDATE_BOUNDS_EXCEEDED"),
-        ([{"name": "value", "value": [], "confidence": 0.5}], "CANDIDATE_SCHEMA_INVALID"),
-        ([{"name": "value", "value": 1, "confidence": None}], "CANDIDATE_SCHEMA_INVALID"),
+        (
+            [{"name": "value", "value": "x" * 501, "confidence": 0.5}],
+            "CANDIDATE_BOUNDS_EXCEEDED",
+        ),
+        (
+            [{"name": "value", "value": [], "confidence": 0.5}],
+            "CANDIDATE_SCHEMA_INVALID",
+        ),
+        (
+            [{"name": "value", "value": 1, "confidence": None}],
+            "CANDIDATE_SCHEMA_INVALID",
+        ),
         (
             [
                 {"name": "value", "value": 1, "confidence": 0.5},
@@ -428,14 +495,19 @@ def test_candidate_selector_fail_closed_matrix(selectors, error_code: str) -> No
             "CANDIDATE_SCHEMA_INVALID",
         ),
         (
-            [{"name": f"value_{index}", "value": index, "confidence": 0.5} for index in range(33)],
+            [
+                {"name": f"value_{index}", "value": index, "confidence": 0.5}
+                for index in range(33)
+            ],
             "CANDIDATE_BOUNDS_EXCEEDED",
         ),
     ],
 )
 def test_candidate_parameter_fail_closed_matrix(parameters, error_code: str) -> None:
     with pytest.raises(IntentCandidateStageError) as raised:
-        parse_intent_candidate(canonical_json(_candidate(parameter_candidates=parameters)))
+        parse_intent_candidate(
+            canonical_json(_candidate(parameter_candidates=parameters))
+        )
     assert raised.value.error_code == error_code
 
 
@@ -475,16 +547,22 @@ def test_calibration_registry_parses_exact_model_specific_policy() -> None:
     }
     registry = SemanticCalibrationRegistry.from_environment(env)
 
-    assert registry.select(
-        semantic_stage="INTENT",
-        model_profile=MODEL_PROFILE,
-        model_ref=MODEL_REF,
-    ) == policy
-    assert registry.select(
-        semantic_stage="CONTEXT",
-        model_profile=MODEL_PROFILE,
-        model_ref=MODEL_REF,
-    ) is None
+    assert (
+        registry.select(
+            semantic_stage="INTENT",
+            model_profile=MODEL_PROFILE,
+            model_ref=MODEL_REF,
+        )
+        == policy
+    )
+    assert (
+        registry.select(
+            semantic_stage="CONTEXT",
+            model_profile=MODEL_PROFILE,
+            model_ref=MODEL_REF,
+        )
+        is None
+    )
     assert SemanticCalibrationRegistry.from_environment({}).policies == ()
 
 
@@ -590,15 +668,19 @@ def test_invalid_prompt_provenance_digest_fails_closed() -> None:
     assert raised.value.error_code == "CANDIDATE_SCHEMA_INVALID"
 
 
-def test_in_flight_binding_switch_keeps_captured_v1_snapshot() -> None:
+def test_in_flight_binding_switch_keeps_captured_v2_snapshot() -> None:
     base = _store()
     seed = next(
-        item for item in AE_PROMPT_SEEDS if item.binding_key == AE_INTENT_RESOLUTION_BINDING
+        item
+        for item in AE_PROMPT_SEEDS
+        if item.binding_key == AE_INTENT_RESOLUTION_BINDING
     )
-    v2_seed = replace(seed, version="v2", content=seed.content + " Version two.")
-    template = build_prompt_template(v2_seed)
-    version = base.save_template_version(build_prompt_template_version(v2_seed, template))
-    v2_binding = build_prompt_binding(v2_seed, version)
+    v3_seed = replace(seed, version="v3", content=seed.content + " Version three.")
+    template = build_prompt_template(v3_seed)
+    version = base.save_template_version(
+        build_prompt_template_version(v3_seed, template)
+    )
+    v3_binding = build_prompt_binding(v3_seed, version)
 
     class SwitchingStore:
         def __init__(self, delegate):
@@ -607,7 +689,7 @@ def test_in_flight_binding_switch_keeps_captured_v1_snapshot() -> None:
 
         def get_binding(self, key):
             captured = dict(self.delegate.get_binding(key))
-            self.delegate.save_binding(v2_binding)
+            self.delegate.save_binding(v3_binding)
             self.switched = True
             return captured
 
@@ -621,10 +703,11 @@ def test_in_flight_binding_switch_keeps_captured_v1_snapshot() -> None:
     result = _run(_service(store=switching))
 
     assert switching.switched is True
-    assert result.prompt_provenance["prompt_template_version"] == "v1"
-    assert base.get_binding(AE_INTENT_RESOLUTION_BINDING)[
-        "prompt_template_version_id"
-    ] == version["prompt_template_version_id"]
+    assert result.prompt_provenance["prompt_template_version"] == "v2"
+    assert (
+        base.get_binding(AE_INTENT_RESOLUTION_BINDING)["prompt_template_version_id"]
+        == version["prompt_template_version_id"]
+    )
 
 
 def values_not_present(value, forbidden: list[str]) -> bool:

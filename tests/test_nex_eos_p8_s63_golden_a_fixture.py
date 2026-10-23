@@ -62,6 +62,9 @@ def test_canonical_fixture_is_hashed_locked_and_safe_to_publish() -> None:
     assert fixture["schema_version"] == "p8_golden_a_fixture.v1"
     assert fixture["admission"]["activation_state"] == ACTIVATION_STATE
     assert fixture["admission"]["nsl_package_version"] == "0.2.0"
+    assert fixture["admission"]["capability_id"] == "FINANCE.CREATE_VOUCHER_DRAFT"
+    assert fixture["admission"]["skill_id"] == "FINANCE.VOUCHER_DRAFT_CREATE"
+    assert fixture["admission"]["tool_id"] == "FINANCE.CREATE_VOUCHER_DRAFT"
     assert projection["tenant_id"] == "p8-golden-a"
     assert projection["project_ids"][-1] == ("82000000-0000-4000-8000-000000000001")
     assert projection["account_ids"] == [

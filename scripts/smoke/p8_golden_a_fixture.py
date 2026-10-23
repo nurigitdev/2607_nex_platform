@@ -335,6 +335,7 @@ def validate_golden_a_fixture(
             "capability_id",
             "skill_id",
             "exact_skill_version",
+            "skill_semantic_hash",
             "executor_kind",
             "operation_semantics",
             "backend_profile",
@@ -351,6 +352,7 @@ def validate_golden_a_fixture(
         raise _invalid("Golden A WRITE activation must remain deferred to P8-S64")
     if admission["operation_semantics"] != "WRITE":
         raise _invalid("Golden A admission must declare WRITE semantics")
+    validate_hash_ref(admission["skill_semantic_hash"])
     _validate_nsl_lock(admission, root=root)
 
     target = _mapping(

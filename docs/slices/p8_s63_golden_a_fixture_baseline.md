@@ -28,7 +28,7 @@ The tracked manifest is
 
 - fixture id: `p8-golden-a-voucher-draft-v1`
 - fixture hash:
-  `sha256:b2fc0e01a1d3f0bb68fe574cf71c94bbd606a94e36b394064a317f08681c7611`
+  `sha256:37b5296f414908080d44dbf788f88c7eca343881e315ad56b9529f1dd0f5839b`
 - protected tenant: `p8-golden-a`
 - requester: `employee-1001`
 - approver: `employee-2001`
@@ -38,7 +38,10 @@ The tracked manifest is
 - debit Account: `83000000-0000-4000-8000-000000000001`
 - credit Account: `83000000-0000-4000-8000-000000000002`
 - policy: `golden-a.travel.cash.v1`, version `1`
-- skill/tool: `FINANCE.CREATE_VOUCHER_DRAFT`, version `1.0.0`
+- business capability/tool: `FINANCE.CREATE_VOUCHER_DRAFT`
+- admitted NSL Skill: `FINANCE.VOUCHER_DRAFT_CREATE`, version `1.0.0`
+- Skill semantic hash:
+  `sha256:908387dd8dc53697478e83594019e9bfa86e425bb04062f65fc49df4f6303dc5`
 - activation state: `LOCKED_PENDING_P8_S64`
 
 The project and account IDs match the existing Golden A EOS command example.

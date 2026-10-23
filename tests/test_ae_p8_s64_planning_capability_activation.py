@@ -7,8 +7,9 @@ import pytest
 from jsonschema import Draft202012Validator, FormatChecker
 from nex_ae_api.executable_plans import compile_executable_plan
 from nex_ae_api.golden_a_planning import (
+    GOLDEN_A_CAPABILITY_ID,
+    GOLDEN_A_NSL_SKILL_ID,
     GOLDEN_A_OUTPUT_CONTRACT,
-    GOLDEN_A_SKILL_ID,
     GoldenAPlanningError,
     activate_golden_a_work_intent,
     bind_golden_a_planning_candidate,
@@ -56,7 +57,7 @@ def _candidate(**overrides) -> dict:
     scenario = fixture["scenario"]
     values = {
         "schema_version": "p65.intent_candidate.v1",
-        "intent_label": GOLDEN_A_SKILL_ID,
+        "intent_label": GOLDEN_A_CAPABILITY_ID,
         "suggested_execution_mode": "GENERAL_ANSWER",
         "entity_selectors": [
             {
@@ -91,7 +92,7 @@ def _base_work_intent() -> dict:
         received_at=NOW,
         intent_decision={
             "intent_decision_schema_version": "ae_intent_decision.v1",
-            "intent_label": GOLDEN_A_SKILL_ID,
+            "intent_label": GOLDEN_A_CAPABILITY_ID,
             "execution_mode": "GENERAL_ANSWER",
             "confidence": 0.98,
             "raw_prompt_included": False,
@@ -163,7 +164,7 @@ def _plan_candidate(goal: str) -> dict:
                 "title": "Create governed voucher draft",
                 "objective": "Run the exact admitted WRITE Skill.",
                 "depends_on": [],
-                "capability_hint": GOLDEN_A_SKILL_ID,
+                "capability_hint": GOLDEN_A_CAPABILITY_ID,
                 "completion_criteria": ["A governed voucher-draft result is produced."],
             }
         ],
@@ -183,7 +184,8 @@ def test_write_capability_activation_is_exact_and_v02_only() -> None:
     capability = build_golden_a_planning_capability(_fixture())
 
     assert capability["operation_semantics"] == "WRITE"
-    assert capability["capability_id"] == GOLDEN_A_SKILL_ID
+    assert capability["capability_id"] == GOLDEN_A_CAPABILITY_ID
+    assert capability["local_skill_binding"]["skill_id"] == GOLDEN_A_NSL_SKILL_ID
     assert capability["capability_version"] == "1.0.0"
     assert capability["local_skill_binding"]["backend_profile"] == (
         "NSL_V02_IN_PROCESS"
@@ -194,7 +196,8 @@ def test_write_capability_activation_is_exact_and_v02_only() -> None:
 
     with pytest.raises(CapabilitySnapshotError, match="operation semantics"):
         build_local_skill_capability(
-            skill_id=GOLDEN_A_SKILL_ID,
+            skill_id=GOLDEN_A_NSL_SKILL_ID,
+            capability_id=GOLDEN_A_CAPABILITY_ID,
             exact_skill_version="1.0.0",
             skill_semantic_hash="sha256:" + "a" * 64,
             input_contract_ref="contract://input",
@@ -541,7 +544,7 @@ def test_activation_produces_schema_valid_candidate_only_work_intent() -> None:
     schema = __import__("json").loads(WORK_INTENT_SCHEMA.read_text(encoding="utf-8"))
 
     Draft202012Validator(schema, format_checker=FormatChecker()).validate(work_intent)
-    assert work_intent["required_capability_hints"] == [GOLDEN_A_SKILL_ID]
+    assert work_intent["required_capability_hints"] == [GOLDEN_A_CAPABILITY_ID]
     assert work_intent["project_ref"] is None
     assert work_intent["entity_selectors"][0]["raw_text"] == "PROJECT-A-2"
     assert {item["source"] for item in work_intent["parameter_candidates"]} == {
@@ -600,7 +603,8 @@ def test_plan_candidate_binds_exact_write_capability_and_compiles() -> None:
     )
 
     assert validation["status"] == "VALID"
-    assert plan["steps"][0]["required_capability"] == GOLDEN_A_SKILL_ID
+    assert plan["steps"][0]["required_capability"] == GOLDEN_A_CAPABILITY_ID
+    assert compiled["steps"][0]["skill_binding"]["skill_id"] == (GOLDEN_A_NSL_SKILL_ID)
     assert plan["steps"][0]["capability_version_constraint"] == "1.0.0"
     assert compiled["steps"][0]["executor_kind"] == "LOCAL_SKILL"
     assert compiled["steps"][0]["capability_version"] == "1.0.0"

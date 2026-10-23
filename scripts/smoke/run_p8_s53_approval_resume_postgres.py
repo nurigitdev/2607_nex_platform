@@ -98,9 +98,7 @@ class _WcClient:
 
 
 class _AuthorizationSource:
-    def __init__(
-        self, *, tenant_id: str, subject_id: str, decision_ref: str
-    ) -> None:
+    def __init__(self, *, tenant_id: str, subject_id: str, decision_ref: str) -> None:
         self._tenant_id = tenant_id
         self._subject_id = subject_id
         self._decision_ref = decision_ref
@@ -182,8 +180,7 @@ def run_p8_s53_approval_resume_postgres(
                 lock_path=lock_path,
             )
         checks = {
-            "release_identity_exact": release["wheel_sha256"]
-            == lock["wheel_sha256"],
+            "release_identity_exact": release["wheel_sha256"] == lock["wheel_sha256"],
             "actual_ae_postgres": all(
                 case["database"] == EXPECTED_AE_DATABASE
                 and case["role"] == EXPECTED_AE_ROLE
@@ -389,6 +386,9 @@ def _verify_scenario(
     env: Mapping[str, str],
     python_bin: str,
     lock_path: Path,
+    authorization_source: Any | None = None,
+    approver_id_override: str | None = None,
+    nsl_subject_id_override: str | None = None,
 ) -> dict[str, Any]:
     ae_factory = fixture["factory"]
     tenant_id = str(fixture["tenant_id"])
@@ -396,7 +396,8 @@ def _verify_scenario(
     local_step = dict(fixture["executable_plan"]["steps"][0])
     if local_step.get("executor_kind") != "LOCAL_SKILL":
         raise P8S53SmokeError("P8-S53 fixture did not compile a LOCAL_SKILL step")
-    approver_id = str(execution["principal_id"])
+    requester_id = str(execution["principal_id"])
+    approver_id = approver_id_override or requester_id
     nsl_execution_id = f"p8-s53-{scenario}-{uuid4().hex}"
     business_operation_id = f"p8-s53-operation-{scenario}-{uuid4().hex}"
     worker_id = f"p8-s53-{scenario}-{uuid4().hex[:12]}"
@@ -407,7 +408,7 @@ def _verify_scenario(
         _bind_profile_principal(
             profile=profile,
             tenant_id=tenant_id,
-            subject_id=approver_id,
+            subject_id=nsl_subject_id_override or requester_id,
         )
         case_root = profile.parent
         checkpoint = case_root / "controlled-prefix.nsc"
@@ -491,14 +492,15 @@ def _verify_scenario(
         if work_item is None:
             raise P8S53SmokeError("WC ApprovalWorkItem was not persisted")
         decision_ref = f"oa-decision-p8-s53-{scenario}"
+        effective_authorization = authorization_source or _AuthorizationSource(
+            tenant_id=tenant_id,
+            subject_id=approver_id,
+            decision_ref=decision_ref,
+        )
         decision_result = ApprovalDecisionService(
             wc_repository,
             authorizer=ApprovalDecisionAuthorizer(
-                _AuthorizationSource(
-                    tenant_id=tenant_id,
-                    subject_id=approver_id,
-                    decision_ref=decision_ref,
-                ),
+                effective_authorization,
                 clock=lambda: decision_time,
             ),
             clock=lambda: decision_time,
@@ -527,7 +529,10 @@ def _verify_scenario(
             executable_step_id=local_step["executable_step_id"],
             wait_type="NSL_APPROVAL",
         )
-        if any(value is None for value in (terminal_item, protected, canonical_request, wait)):
+        if any(
+            value is None
+            for value in (terminal_item, protected, canonical_request, wait)
+        ):
             raise P8S53SmokeError("approval persistence lineage is incomplete")
         evidence = build_platform_approval_evidence(
             approval_request=canonical_request,
@@ -589,8 +594,7 @@ def _verify_scenario(
             resume["nsl_execution_id"] == nsl_execution_id
             and resume["business_operation_id"] == business_operation_id
             and resume["checkpoint_version"] == checkpoint_version
-            and resume["approval_request_id"]
-            == request_data["approval_request_id"]
+            and resume["approval_request_id"] == request_data["approval_request_id"]
             and resume["claim_id"] == matched["resume_runtime_job_id"]
         )
         scenario_evidence = {
@@ -608,13 +612,10 @@ def _verify_scenario(
             "checks": {
                 f"{scenario}_prefix_waiting": scenario_evidence["prefix_status"]
                 == "WAITING_FOR_APPROVAL",
-                f"{scenario}_mismatch_rejected": mismatch["inbox_state"]
-                == "REJECTED",
-                f"{scenario}_resume_completed": resume["runtime_job_state"]
-                == "DONE",
+                f"{scenario}_mismatch_rejected": mismatch["inbox_state"] == "REJECTED",
+                f"{scenario}_resume_completed": resume["runtime_job_state"] == "DONE",
                 f"{scenario}_lineage_exact": lineage_exact,
-                f"{scenario}_zero_write": prefix_audit["write_requested_count"]
-                == 0
+                f"{scenario}_zero_write": prefix_audit["write_requested_count"] == 0
                 and resume["write_execution"] == "not_started",
             },
             "row_counts": {f"p8_s53_{scenario}_resume_job": 1},
@@ -636,9 +637,7 @@ def _copy_profile(*, source: Path, case_root: Path) -> Path:
     return case_root / "controlled.profile.json"
 
 
-def _bind_profile_principal(
-    *, profile: Path, tenant_id: str, subject_id: str
-) -> None:
+def _bind_profile_principal(*, profile: Path, tenant_id: str, subject_id: str) -> None:
     principal_path = profile.parent / "principal_write.json"
     principal = json.loads(principal_path.read_text(encoding="utf-8"))
     principal["tenant_id"] = tenant_id
@@ -811,9 +810,7 @@ def _skill_identity(
     }
 
 
-def _worker_environment(
-    env: Mapping[str, str], target: Path
-) -> dict[str, str]:
+def _worker_environment(env: Mapping[str, str], target: Path) -> dict[str, str]:
     isolated = dict(env)
     isolated["PYTHONPATH"] = os.pathsep.join(
         (
@@ -943,9 +940,10 @@ def _require_database_target(
     if not value:
         raise P8S53SmokeError(f"{label} is required")
     parsed = urlsplit(value)
-    if unquote(parsed.username or "") != role or unquote(
-        parsed.path.lstrip("/")
-    ) != database:
+    if (
+        unquote(parsed.username or "") != role
+        or unquote(parsed.path.lstrip("/")) != database
+    ):
         raise P8S53SmokeError(f"{label} must target {role}@.../{database}")
 
 

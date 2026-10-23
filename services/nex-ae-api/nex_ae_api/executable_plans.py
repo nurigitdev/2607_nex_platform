@@ -668,9 +668,7 @@ def validate_compiled_delegation(value: object) -> dict[str, Any]:
     return record
 
 
-def _validate_compiled_delegation(
-    step: Mapping[str, Any], value: object
-) -> None:
+def _validate_compiled_delegation(step: Mapping[str, Any], value: object) -> None:
     delegation = validate_compiled_delegation(value)
     if (
         step["step_type"] != "DELEGATE_WORK"
@@ -781,7 +779,10 @@ def _validate_compiled_steps(value: object) -> None:
                 ) from exc
             if (
                 normalized_binding != local_binding
-                or normalized_binding["skill_id"] != step.get("required_capability")
+                or normalized_binding.get(
+                    "capability_id", normalized_binding["skill_id"]
+                )
+                != step.get("required_capability")
                 or normalized_binding["exact_skill_version"]
                 != step.get("capability_version")
             ):
@@ -919,13 +920,9 @@ def _require_compile_authority(
         execution is None
         or execution["state"] != "RUNNING"
         or execution["phase"] != "PLAN_COMPILE"
+        or (source_type == "PROMPT" and execution["legacy_interaction_id"] is None)
         or (
-            source_type == "PROMPT"
-            and execution["legacy_interaction_id"] is None
-        )
-        or (
-            source_type == "CLAIMED_WORKITEM"
-            and execution.get("work_item_ref") is None
+            source_type == "CLAIMED_WORKITEM" and execution.get("work_item_ref") is None
         )
         or source_type not in {"PROMPT", "CLAIMED_WORKITEM"}
     ):

@@ -23,7 +23,8 @@ from nex_ae_api.planning_capabilities import (
 
 GOLDEN_A_FIXTURE_SCHEMA_VERSION = "p8_golden_a_fixture.v1"
 GOLDEN_A_PLANNING_SCHEMA_VERSION = "p8.golden_a_planning_activation.v1"
-GOLDEN_A_SKILL_ID = "FINANCE.CREATE_VOUCHER_DRAFT"
+GOLDEN_A_CAPABILITY_ID = "FINANCE.CREATE_VOUCHER_DRAFT"
+GOLDEN_A_NSL_SKILL_ID = "FINANCE.VOUCHER_DRAFT_CREATE"
 GOLDEN_A_INPUT_CONTRACT = "contract://nex/eos/create-voucher-draft-command/v1"
 GOLDEN_A_OUTPUT_CONTRACT = "contract://nex/eos/create-voucher-draft-result/v1"
 GOLDEN_A_RUNTIME_CONTRACT = "contract://nex/nsl/write-runtime/v0.2"
@@ -53,22 +54,11 @@ def build_golden_a_planning_capability(
 ) -> dict[str, Any]:
     record = _fixture_projection(fixture)
     admission = record["admission"]
-    semantic_hash = semantic_sha256_hash_ref(
-        {
-            "schema_version": "p8.golden_a_skill_admission.v1",
-            "fixture_hash": record["fixture_hash"],
-            "skill_id": admission["skill_id"],
-            "exact_skill_version": admission["exact_skill_version"],
-            "tool_id": admission["tool_id"],
-            "operation_semantics": admission["operation_semantics"],
-            "backend_profile": admission["backend_profile"],
-            "line_policy_hash": semantic_sha256_hash_ref(record["voucher_line_policy"]),
-        }
-    )
     return build_local_skill_capability(
         skill_id=admission["skill_id"],
+        capability_id=admission["capability_id"],
         exact_skill_version=admission["exact_skill_version"],
-        skill_semantic_hash=semantic_hash,
+        skill_semantic_hash=admission["skill_semantic_hash"],
         input_contract_ref=GOLDEN_A_INPUT_CONTRACT,
         output_contract_ref=GOLDEN_A_OUTPUT_CONTRACT,
         runtime_contract_ref=GOLDEN_A_RUNTIME_CONTRACT,
@@ -107,7 +97,7 @@ def bind_golden_a_planning_candidate(
     record = _fixture_projection(fixture)
     normalized = parse_intent_candidate(canonical_json(dict(candidate)))
     candidate_hash = semantic_sha256_hash_ref(normalized)
-    if normalized["intent_label"] != GOLDEN_A_SKILL_ID:
+    if normalized["intent_label"] != GOLDEN_A_CAPABILITY_ID:
         raise GoldenAPlanningError(
             "P8_GOLDEN_A_INTENT_UNSUPPORTED",
             "Golden A activation only admits the voucher-draft intent.",
@@ -200,7 +190,8 @@ def activate_golden_a_work_intent(
     if (
         not isinstance(binding, Mapping)
         or not isinstance(capability_ref, Mapping)
-        or capability_ref.get("capability_id") != GOLDEN_A_SKILL_ID
+        or capability_ref.get("capability_id") != GOLDEN_A_CAPABILITY_ID
+        or capability_ref.get("skill_id") != GOLDEN_A_NSL_SKILL_ID
     ):
         raise GoldenAPlanningError(
             "P8_GOLDEN_A_BINDING_INVALID",
@@ -223,10 +214,10 @@ def activate_golden_a_work_intent(
     project_selector = matching_selectors[0]
     record.update(
         {
-            "intent_label": GOLDEN_A_SKILL_ID,
+            "intent_label": GOLDEN_A_CAPABILITY_ID,
             "goal": "Create a governed voucher draft after deterministic business binding.",
             "work_class": "DOCUMENT",
-            "required_capability_hints": [GOLDEN_A_SKILL_ID],
+            "required_capability_hints": [GOLDEN_A_CAPABILITY_ID],
             "entity_selectors": [
                 {
                     "selector_id": "E1",
@@ -308,9 +299,9 @@ def _fixture_projection(fixture: Mapping[str, Any]) -> dict[str, Any]:
         raise _fixture_error("Golden A fixture is missing planning data.") from exc
     if (
         admission.get("activation_state") != "LOCKED_PENDING_P8_S64"
-        or admission.get("skill_id") != GOLDEN_A_SKILL_ID
-        or admission.get("capability_id") != GOLDEN_A_SKILL_ID
-        or admission.get("tool_id") != GOLDEN_A_SKILL_ID
+        or admission.get("skill_id") != GOLDEN_A_NSL_SKILL_ID
+        or admission.get("capability_id") != GOLDEN_A_CAPABILITY_ID
+        or admission.get("tool_id") != GOLDEN_A_CAPABILITY_ID
         or admission.get("executor_kind") != "LOCAL_SKILL"
         or admission.get("operation_semantics") != "WRITE"
         or admission.get("backend_profile") != NSL_V02_IN_PROCESS_BACKEND
@@ -435,9 +426,12 @@ def _authoritative_binding(
         "capability_ref": {
             "capability_id": capability["capability_id"],
             "capability_version": capability["capability_version"],
+            "skill_id": capability["local_skill_binding"]["skill_id"],
+            "skill_version": capability["local_skill_binding"]["exact_skill_version"],
             "skill_semantic_hash": capability["local_skill_binding"][
                 "skill_semantic_hash"
             ],
+            "tool_id": record["admission"]["tool_id"],
             "executor_kind": capability["executor_kind"],
             "backend_profile": capability["local_skill_binding"]["backend_profile"],
         },

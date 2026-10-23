@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any, Mapping
 from uuid import uuid4
 
-
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "services" / "_shared"))
 sys.path.insert(0, str(ROOT / "services" / "nex-ae-api"))
@@ -30,7 +29,6 @@ from nex_ae_api.prompts import (  # noqa: E402
     seed_ae_prompt_registry,
 )
 from nex_runtime.prompts import PromptRegistryStore  # noqa: E402
-
 
 ACTIVATION_ENV = "NEX_AE_P65_S2_LIVE_SMOKE"
 EVIDENCE_SCHEMA_VERSION = "ae_p65_s2_live_intent_evidence.v1"
@@ -108,13 +106,12 @@ def run_p65_s2_live_intent_candidate_smoke(
         "exact_prompt_binding_captured": (
             result.prompt_provenance.get("prompt_binding_key")
             == AE_INTENT_RESOLUTION_BINDING
-            and result.prompt_provenance.get("prompt_template_version") == "v1"
+            and result.prompt_provenance.get("prompt_template_version") == "v2"
         ),
         "model_specific_calibration_selected": (
             result.admission_policy_ref is not None
             and result.selected_threshold is not None
-            and float(candidate.get("confidence", -1))
-            >= result.selected_threshold
+            and float(candidate.get("confidence", -1)) >= result.selected_threshold
         ),
         "bare_provider_digest_recorded": (
             len(result.provider_output_sha256) == 64
@@ -162,9 +159,11 @@ def run_p65_s2_live_intent_candidate_smoke(
             "execution_mode": decision.get("execution_mode"),
             "work_intent_hash": work_intent.get("intent_hash"),
         },
-        issues=[]
-        if passed
-        else [{"stage": "assertions", "error_code": "LIVE_ASSERTION_FAILED"}],
+        issues=(
+            []
+            if passed
+            else [{"stage": "assertions", "error_code": "LIVE_ASSERTION_FAILED"}]
+        ),
     )
 
 

@@ -70,18 +70,23 @@ DEBIT  83000000-0000-4000-8000-000000000001  +84000.00
 CREDIT 83000000-0000-4000-8000-000000000002  -84000.00
 ```
 
-The activated capability is:
+The activated business capability is explicitly bound to the distinct Skill
+identity reported by the admitted NSL v0.2 wheel:
 
 ```text
-capability/skill/tool = FINANCE.CREATE_VOUCHER_DRAFT
-exact version         = 1.0.0
-executor              = LOCAL_SKILL
-operation semantics   = WRITE
-backend profile       = NSL_V02_IN_PROCESS
+capability = FINANCE.CREATE_VOUCHER_DRAFT
+skill      = FINANCE.VOUCHER_DRAFT_CREATE @ 1.0.0
+tool       = FINANCE.CREATE_VOUCHER_DRAFT
+executor   = LOCAL_SKILL
+semantics  = WRITE
+backend    = NSL_V02_IN_PROCESS
 ```
 
-Its semantic hash is derived from the immutable fixture hash, exact admission,
-backend profile, and voucher-line policy hash. The LLM never supplies that
+Its Skill semantic hash is the exact hash obtained from the admitted wheel:
+`sha256:908387dd8dc53697478e83594019e9bfa86e425bb04062f65fc49df4f6303dc5`.
+The optional `local_skill_binding.capability_id` alias is present only when the
+business capability differs from the executable Skill ID. Existing P6
+same-identity bindings retain their prior shape. The LLM never supplies the
 hash, exact version, executor, or backend.
 
 ## PostgreSQL Evidence

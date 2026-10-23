@@ -1,7 +1,7 @@
 {
   "schema_version": "p8_golden_a_fixture.v1",
   "fixture_id": "p8-golden-a-voucher-draft-v1",
-  "fixture_hash": "sha256:b2fc0e01a1d3f0bb68fe574cf71c94bbd606a94e36b394064a317f08681c7611",
+  "fixture_hash": "sha256:37b5296f414908080d44dbf788f88c7eca343881e315ad56b9529f1dd0f5839b",
   "tenant": {
     "tenant_id": "p8-golden-a",
     "display_name": "P8 Golden A"
@@ -134,13 +134,14 @@
   "admission": {
     "agent_id": "IA.GOLDEN_A",
     "capability_id": "FINANCE.CREATE_VOUCHER_DRAFT",
-    "skill_id": "FINANCE.CREATE_VOUCHER_DRAFT",
+    "skill_id": "FINANCE.VOUCHER_DRAFT_CREATE",
     "exact_skill_version": "1.0.0",
+    "skill_semantic_hash": "sha256:908387dd8dc53697478e83594019e9bfa86e425bb04062f65fc49df4f6303dc5",
     "executor_kind": "LOCAL_SKILL",
     "operation_semantics": "WRITE",
     "backend_profile": "NSL_V02_IN_PROCESS",
     "tool_id": "FINANCE.CREATE_VOUCHER_DRAFT",
-    "approval_id": "APPROVE_VOUCHER_DRAFT",
+    "approval_id": "CREATE_VOUCHER_DRAFT",
     "nsl_lock_path": "deployment/locks/nsl-v0.2-wheel.json",
     "nsl_package_version": "0.2.0",
     "nsl_wheel_sha256": "sha256:862958a5eab982a71bec5ee58b9e530867d6c25f65d8b770efb29ca78ce7f135",
@@ -162,7 +163,7 @@
   },
   "scenario": {
     "requester_subject_id": "employee-1001",
-    "prompt": "PROJECT-A-2 프로젝트의 출장비 84,000원을 현금 정산 전표 초안으로 만들어줘.",
+    "prompt": "2026-10-23에 PROJECT-A-2 프로젝트의 출장비 84,000원을 일반 전표로 현금 정산 초안 생성해줘.",
     "amount": "84000.00",
     "currency": "KRW",
     "transaction_date": "2026-10-23",
