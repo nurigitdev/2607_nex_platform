@@ -412,6 +412,16 @@ _HUMAN_GATE_FIELDS = {
     "business_operation_id",
     "expires_at",
 }
+_BUSINESS_FORMAL_FIELDS = {
+    "schema_version",
+    "current_stage",
+    "stage_count",
+    "requested_role",
+    "eos_target_ref",
+    "org_unit_id",
+    "project_id",
+    "terminal_state",
+}
 
 
 def _require_safe_approval_inbox(body: Mapping[str, Any]) -> None:
@@ -434,7 +444,7 @@ def _require_safe_approval_inbox(body: Mapping[str, Any]) -> None:
     if not isinstance(gates, list):
         _raise_unsafe_wc_response()
     for gate in gates:
-        _require_exact_fields(gate, _HUMAN_GATE_FIELDS)
+        _require_safe_human_gate(gate)
 
 
 def _require_safe_approval_detail(body: Mapping[str, Any]) -> None:
@@ -442,7 +452,7 @@ def _require_safe_approval_detail(body: Mapping[str, Any]) -> None:
         body,
         {"schema_version", "gate", "created_at", "version", "decision_options"},
     )
-    _require_exact_fields(body.get("gate"), _HUMAN_GATE_FIELDS)
+    _require_safe_human_gate(body.get("gate"))
 
 
 def _require_safe_approval_decision(body: Mapping[str, Any]) -> None:
@@ -464,6 +474,47 @@ def _require_safe_approval_decision(body: Mapping[str, Any]) -> None:
     if not required.issubset(fields) or not fields.issubset(
         required | {"decision_comment"}
     ):
+        _raise_unsafe_wc_response()
+
+
+def _require_safe_human_gate(value: object) -> None:
+    if not isinstance(value, Mapping):
+        _raise_unsafe_wc_response()
+    is_business_formal = value.get("approval_domain") == "BUSINESS_FORMAL"
+    expected_fields = (
+        _HUMAN_GATE_FIELDS | {"formal_approval"}
+        if is_business_formal
+        else _HUMAN_GATE_FIELDS
+    )
+    _require_exact_fields(value, expected_fields)
+    if not is_business_formal:
+        return
+    formal = value.get("formal_approval")
+    _require_exact_fields(formal, _BUSINESS_FORMAL_FIELDS)
+    if (
+        value.get("approval_provider_type") != "EOS"
+        or not value.get("business_operation_id")
+        or formal.get("schema_version") != "business_formal_gate_view.p8.v1"
+        or formal.get("eos_target_ref") != value.get("approval_target_ref")
+    ):
+        _raise_unsafe_wc_response()
+    current_stage = formal.get("current_stage")
+    stage_count = formal.get("stage_count")
+    if current_stage is None or stage_count is None:
+        if current_stage is not None or stage_count is not None:
+            _raise_unsafe_wc_response()
+    elif (
+        isinstance(current_stage, bool)
+        or isinstance(stage_count, bool)
+        or not isinstance(current_stage, int)
+        or not isinstance(stage_count, int)
+        or not 1 <= current_stage <= stage_count <= 5
+    ):
+        _raise_unsafe_wc_response()
+    expected_terminal = (
+        None if value.get("state") == "PENDING" else value.get("state")
+    )
+    if formal.get("terminal_state") != expected_terminal:
         _raise_unsafe_wc_response()
 
 

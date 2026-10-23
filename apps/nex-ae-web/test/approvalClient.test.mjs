@@ -95,6 +95,19 @@ describe("AE Web approval client", () => {
       [...new Set(inbox.gates.map(gate => gate.approval_domain))].sort(),
       ["AGENT_FORMAL", "BUSINESS_FORMAL", "NSL_WRITE"]
     );
+    assert.deepEqual(
+      inbox.gates.find(gate => gate.gate_id === BUSINESS_ID).formal_approval,
+      {
+        schema_version: "business_formal_gate_view.p8.v1",
+        current_stage: 1,
+        stage_count: 2,
+        requested_role: "TEAM_LEAD",
+        eos_target_ref: "eos-stage-p8-s42",
+        org_unit_id: "org-finance",
+        project_id: "project-p8-s42",
+        terminal_state: null
+      }
+    );
     assert.equal(detail.gate.gate_id, GATE_ID);
     assert.equal(decision.authorized_by_oa, true);
     assert.doesNotMatch(
@@ -122,6 +135,9 @@ describe("AE Web approval client", () => {
     assert.equal(first.decision_id, replay.decision_id);
     assert.equal(client.getDecisionCallCount(), 3);
     assert.equal(rejected.decision, "REJECT");
+    const rejectedDetail = await client.getApprovalGate(BUSINESS_ID);
+    assert.equal(rejectedDetail.gate.state, "REJECTED");
+    assert.equal(rejectedDetail.gate.formal_approval.terminal_state, "REJECTED");
     await assert.rejects(
       () =>
         client.submitApprovalDecision(
@@ -289,6 +305,34 @@ describe("AE Web approval client", () => {
     assert.throws(
       () => normalizeApprovalDecision({ schema_version: "old" }),
       error => error.status === "APPROVAL_DECISION_RESPONSE_INVALID"
+    );
+
+    const missingFormal = structuredClone(inbox);
+    delete missingFormal.gates[2].formal_approval;
+    assert.throws(
+      () => normalizeApprovalInbox(missingFormal),
+      error => error.status === "BUSINESS_FORMAL_PROJECTION_INVALID"
+    );
+
+    const mismatchedTarget = structuredClone(inbox);
+    mismatchedTarget.gates[2].formal_approval.eos_target_ref = "eos-stage-other";
+    assert.throws(
+      () => normalizeApprovalInbox(mismatchedTarget),
+      error => error.status === "BUSINESS_FORMAL_TARGET_INVALID"
+    );
+
+    const invalidProgress = structuredClone(inbox);
+    invalidProgress.gates[2].formal_approval.current_stage = 3;
+    assert.throws(
+      () => normalizeApprovalInbox(invalidProgress),
+      error => error.status === "BUSINESS_FORMAL_PROGRESS_INVALID"
+    );
+
+    const crossedDomain = structuredClone(inbox);
+    crossedDomain.gates[0].formal_approval = crossedDomain.gates[2].formal_approval;
+    assert.throws(
+      () => normalizeApprovalInbox(crossedDomain),
+      error => error.status === "BUSINESS_FORMAL_DOMAIN_INVALID"
     );
   });
 });

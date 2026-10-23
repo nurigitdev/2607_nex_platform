@@ -35,6 +35,26 @@ def _gate() -> dict[str, Any]:
     }
 
 
+def _formal_gate() -> dict[str, Any]:
+    gate = {
+        **_gate(),
+        "approval_domain": "BUSINESS_FORMAL",
+        "approval_provider_type": "EOS",
+        "approval_target_ref": "eos-stage-s74",
+    }
+    gate["formal_approval"] = {
+        "schema_version": "business_formal_gate_view.p8.v1",
+        "current_stage": 1,
+        "stage_count": 2,
+        "requested_role": "TEAM_LEAD",
+        "eos_target_ref": "eos-stage-s74",
+        "org_unit_id": "org-s74",
+        "project_id": "project-s74",
+        "terminal_state": None,
+    }
+    return gate
+
+
 def _inbox() -> dict[str, Any]:
     return {
         "schema_version": "wc_approval_inbox.v1",
@@ -327,6 +347,113 @@ def test_http_wc_client_uses_ae_service_identity_and_subject_headers(
     assert "approver-s42" not in str(captured[0].get("json"))
 
 
+def test_http_wc_client_admits_business_formal_projection_only_in_its_domain(
+    monkeypatch,
+) -> None:
+    inbox = {**_inbox(), "gates": [_formal_gate()]}
+    detail = {**_detail(), "gate": _formal_gate()}
+    responses = iter((httpx.Response(200, json=inbox), httpx.Response(200, json=detail)))
+    monkeypatch.setattr(
+        approval_facade.httpx,
+        "request",
+        lambda *args, **kwargs: next(responses),
+    )
+    client = HttpWcApprovalClient(service_token="signed-token")
+    common = {
+        "tenant_id": "tenant-s42",
+        "subject_id": "approver-s42",
+        "request_id": "request-s74",
+        "trace_id": "7" * 32,
+    }
+
+    projected = client.list_gates(limit=10, **common)["gates"][0]
+    assert projected["formal_approval"]["current_stage"] == 1
+    assert client.get_gate(GATE_ID, **common)["gate"]["formal_approval"][
+        "requested_role"
+    ] == "TEAM_LEAD"
+
+
+@pytest.mark.parametrize(
+    ("gate_overrides", "formal_overrides"),
+    (
+        ({"approval_provider_type": "NSL"}, {}),
+        ({"business_operation_id": None}, {}),
+        ({}, {"schema_version": "old"}),
+        ({}, {"eos_target_ref": "eos-stage-other"}),
+        ({}, {"current_stage": None}),
+        ({}, {"current_stage": True}),
+        ({}, {"stage_count": True}),
+        ({}, {"current_stage": "1"}),
+        ({}, {"stage_count": "2"}),
+        ({}, {"current_stage": 0}),
+        ({}, {"current_stage": 3, "stage_count": 2}),
+        ({}, {"stage_count": 6}),
+        ({}, {"terminal_state": "APPROVED"}),
+    ),
+)
+def test_http_wc_client_rejects_business_formal_semantic_drift(
+    monkeypatch,
+    gate_overrides,
+    formal_overrides,
+) -> None:
+    gate = _formal_gate()
+    gate.update(gate_overrides)
+    gate["formal_approval"].update(formal_overrides)
+    monkeypatch.setattr(
+        approval_facade.httpx,
+        "request",
+        lambda *args, **kwargs: httpx.Response(
+            200,
+            json={**_inbox(), "gates": [gate]},
+        ),
+    )
+    client = HttpWcApprovalClient(service_token="signed-token")
+
+    with pytest.raises(ApprovalFacadeError) as unsafe:
+        client.list_gates(
+            tenant_id="tenant-s42",
+            subject_id="approver-s42",
+            limit=10,
+            request_id="request-s74",
+            trace_id="8" * 32,
+        )
+
+    assert unsafe.value.error_code == "ae.wc_approval_response_unsafe"
+
+
+def test_http_wc_client_admits_unknown_progress_and_matching_terminal_state(
+    monkeypatch,
+) -> None:
+    unknown = _formal_gate()
+    unknown["formal_approval"].update(current_stage=None, stage_count=None)
+    terminal = _formal_gate()
+    terminal["state"] = "APPROVED"
+    terminal["formal_approval"]["terminal_state"] = "APPROVED"
+    responses = iter(
+        (
+            httpx.Response(200, json={**_inbox(), "gates": [unknown]}),
+            httpx.Response(200, json={**_detail(), "gate": terminal}),
+        )
+    )
+    monkeypatch.setattr(
+        approval_facade.httpx,
+        "request",
+        lambda *args, **kwargs: next(responses),
+    )
+    client = HttpWcApprovalClient(service_token="signed-token")
+    common = {
+        "tenant_id": "tenant-s42",
+        "subject_id": "approver-s42",
+        "request_id": "request-s74",
+        "trace_id": "9" * 32,
+    }
+
+    assert client.list_gates(limit=10, **common)["gates"][0]["formal_approval"][
+        "current_stage"
+    ] is None
+    assert client.get_gate(GATE_ID, **common)["gate"]["state"] == "APPROVED"
+
+
 def test_http_wc_client_decision_status_and_failure_branches(monkeypatch) -> None:
     responses = iter(
         (
@@ -406,9 +533,40 @@ def test_http_wc_client_fails_closed_on_transport_and_token_errors(
             {**_inbox(), "subject_ref": {"type": "oa.user", "id": "x", "raw": 1}},
         ),
         ("list", {**_inbox(), "gates": "invalid"}),
+        ("list", {**_inbox(), "gates": [None]}),
         (
             "list",
             {**_inbox(), "gates": [{**_gate(), "semantic_hash": "private"}]},
+        ),
+        (
+            "list",
+            {**_inbox(), "gates": [{**_gate(), "formal_approval": {}}]},
+        ),
+        (
+            "list",
+            {
+                **_inbox(),
+                "gates": [
+                    {
+                        key: value
+                        for key, value in _formal_gate().items()
+                        if key != "formal_approval"
+                    }
+                ],
+            },
+        ),
+        (
+            "detail",
+            {
+                **_detail(),
+                "gate": {
+                    **_formal_gate(),
+                    "formal_approval": {
+                        **_formal_gate()["formal_approval"],
+                        "semantic_hash": "private",
+                    },
+                },
+            },
         ),
         ("detail", {**_detail(), "protected_request_ref": "private"}),
         (

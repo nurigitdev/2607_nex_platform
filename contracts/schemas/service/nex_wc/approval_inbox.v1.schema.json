@@ -66,7 +66,40 @@
         "business_operation_id": {
           "oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]
         },
-        "expires_at": {"type": ["string", "null"], "format": "date-time"}
+        "expires_at": {"type": ["string", "null"], "format": "date-time"},
+        "formal_approval": {"$ref": "#/$defs/business_formal_view"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"approval_domain": {"const": "BUSINESS_FORMAL"}}, "required": ["approval_domain"]},
+          "then": {
+            "required": ["business_operation_id", "formal_approval"],
+            "properties": {
+              "approval_provider_type": {"const": "EOS"},
+              "approval_target_ref": {"type": "string", "minLength": 1},
+              "business_operation_id": {"$ref": "#/$defs/scoped_id"}
+            }
+          },
+          "else": {"not": {"required": ["formal_approval"]}}
+        }
+      ]
+    },
+    "business_formal_view": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "current_stage", "stage_count", "requested_role",
+        "eos_target_ref", "org_unit_id", "project_id", "terminal_state"
+      ],
+      "properties": {
+        "schema_version": {"const": "business_formal_gate_view.p8.v1"},
+        "current_stage": {"oneOf": [{"type": "integer", "minimum": 1, "maximum": 5}, {"type": "null"}]},
+        "stage_count": {"oneOf": [{"type": "integer", "minimum": 1, "maximum": 5}, {"type": "null"}]},
+        "requested_role": {"type": ["string", "null"], "maxLength": 128},
+        "eos_target_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+        "org_unit_id": {"oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]},
+        "project_id": {"oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]},
+        "terminal_state": {"enum": ["APPROVED", "REJECTED", "EXPIRED", "CANCELLED", null]}
       }
     }
   }

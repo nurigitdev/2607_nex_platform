@@ -134,13 +134,13 @@ export function createApprovalUiController({
         decision: result,
         detail: {
           ...state.detail,
-          gate: { ...state.detail.gate, state: terminalState }
+          gate: withTerminalState(state.detail.gate, terminalState)
         },
         inbox: {
           ...state.inbox,
           gates: state.inbox.gates.map(gate =>
             gate.gate_id === result.approval_work_item_id
-              ? { ...gate, state: terminalState }
+              ? withTerminalState(gate, terminalState)
               : gate
           )
         },
@@ -217,6 +217,9 @@ export function buildApprovalUiSummary(state, { now = new Date() } = {}) {
       gate => gate.state === "PENDING" && !isApprovalGateExpired(gate, now)
     ).length,
     expired_count: gates.filter(gate => isApprovalGateExpired(gate, now)).length,
+    formal_projection_count: gates.filter(
+      gate => gate.approval_domain === "BUSINESS_FORMAL" && gate.formal_approval
+    ).length,
     selected_gate_id: state.selectedGateId,
     domain_counts: domainCounts,
     decision_status: state.decision?.decision || null,
@@ -273,6 +276,7 @@ function renderGate(gate, state, now) {
       <span class="approval-domain ${escapeAttribute(domain.className)}">${escapeHtml(domain.label)}</span>
       <strong>${escapeHtml(gate.title)}</strong>
       <span class="approval-item-summary">${escapeHtml(gate.summary)}</span>
+      ${renderFormalListProgress(gate)}
       <span class="approval-item-state">${escapeHtml(statusLabel(status))}</span>
     </button>
   `;
@@ -295,6 +299,7 @@ function renderDetail(detail, state, now) {
     </header>
     <h3>${escapeHtml(gate.title)}</h3>
     <p>${escapeHtml(gate.summary)}</p>
+    ${renderBusinessFormalDetail(gate)}
     <dl class="approval-detail-meta">
       <div><dt>provider</dt><dd>${escapeHtml(gate.approval_provider_type || "n/a")}</dd></div>
       <div><dt>target</dt><dd>${escapeHtml(gate.approval_target_ref || "n/a")}</dd></div>
@@ -309,6 +314,75 @@ function renderDetail(detail, state, now) {
     </div>
     ${state.decision ? `<p class="approval-decision-record">decision ${escapeHtml(state.decision.decision_id)}</p>` : ""}
   `;
+}
+
+function renderFormalListProgress(gate) {
+  const formal = gate.formal_approval;
+  if (gate.approval_domain !== "BUSINESS_FORMAL" || !formal) return "";
+  const progress =
+    formal.current_stage == null
+      ? "단계 확인 중"
+      : `${formal.current_stage} / ${formal.stage_count} 단계`;
+  const role = formal.requested_role || "역할 미지정";
+  return `<span class="approval-formal-list-progress">${escapeHtml(progress)} · ${escapeHtml(role)}</span>`;
+}
+
+function renderBusinessFormalDetail(gate) {
+  const formal = gate.formal_approval;
+  if (gate.approval_domain !== "BUSINESS_FORMAL" || !formal) return "";
+  const currentStage = formal.current_stage == null ? "확인 중" : formal.current_stage;
+  const stageCount = formal.stage_count == null ? "확인 중" : formal.stage_count;
+  const terminalState = formal.terminal_state || "PENDING";
+  const progress =
+    formal.current_stage == null
+      ? 0
+      : Math.round((formal.current_stage / formal.stage_count) * 100);
+  return `
+    <section
+      class="approval-formal-detail"
+      aria-label="업무 공식 결재 진행 정보"
+      data-business-formal="true"
+      data-formal-current-stage="${escapeAttribute(currentStage)}"
+      data-formal-stage-count="${escapeAttribute(stageCount)}"
+      data-formal-requested-role="${escapeAttribute(formal.requested_role || "")}"
+      data-formal-eos-target="${escapeAttribute(formal.eos_target_ref)}"
+      data-formal-terminal-state="${escapeAttribute(terminalState)}"
+    >
+      <div class="approval-formal-progress-heading">
+        <strong>결재 진행</strong>
+        <span>${escapeHtml(currentStage)} / ${escapeHtml(stageCount)} 단계</span>
+      </div>
+      <div
+        class="approval-formal-progress-track"
+        role="progressbar"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="${escapeAttribute(progress)}"
+      ><span style="width: ${escapeAttribute(progress)}%"></span></div>
+      <dl class="approval-formal-meta">
+        <div><dt>요청 역할</dt><dd>${escapeHtml(formal.requested_role || "미지정")}</dd></div>
+        <div><dt>EOS 대상</dt><dd>${escapeHtml(formal.eos_target_ref)}</dd></div>
+        <div><dt>조직</dt><dd>${escapeHtml(formal.org_unit_id || "미지정")}</dd></div>
+        <div><dt>프로젝트</dt><dd>${escapeHtml(formal.project_id || "미지정")}</dd></div>
+        <div><dt>상태</dt><dd>${escapeHtml(statusLabel(terminalState))}</dd></div>
+      </dl>
+    </section>
+  `;
+}
+
+function withTerminalState(gate, terminalState) {
+  return {
+    ...gate,
+    state: terminalState,
+    ...(gate.formal_approval
+      ? {
+          formal_approval: {
+            ...gate.formal_approval,
+            terminal_state: terminalState
+          }
+        }
+      : {})
+  };
 }
 
 function renderEmptyGateList(phase) {

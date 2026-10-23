@@ -9,5 +9,15 @@
   "approval_provider_type": "EOS",
   "approval_target_ref": "eos-stage:finance-stage-001",
   "business_operation_id": "business-operation-p8-001",
-  "expires_at": "2026-10-23T09:00:00Z"
+  "expires_at": "2026-10-23T09:00:00Z",
+  "formal_approval": {
+    "schema_version": "business_formal_gate_view.p8.v1",
+    "current_stage": 1,
+    "stage_count": 2,
+    "requested_role": "TEAM_LEAD",
+    "eos_target_ref": "eos-stage:finance-stage-001",
+    "org_unit_id": "org-finance",
+    "project_id": "project-p8",
+    "terminal_state": null
+  }
 }

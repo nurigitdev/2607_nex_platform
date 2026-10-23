@@ -1228,10 +1228,16 @@ code {
 }
 
 .approval-item-summary,
-.approval-item-state {
+.approval-item-state,
+.approval-formal-list-progress {
   color: var(--nex-muted);
   font-size: 12px;
   line-height: 1.45;
+}
+
+.approval-formal-list-progress {
+  color: #7a4b08;
+  font-weight: 700;
 }
 
 .approval-domain {
@@ -1287,6 +1293,67 @@ code {
 
 .approval-detail-meta {
   margin: 12px 0;
+}
+
+.approval-formal-detail {
+  margin: 14px 0;
+  border-top: 2px solid #d0a86c;
+  border-bottom: 1px solid var(--nex-border);
+  padding: 12px 0;
+}
+
+.approval-formal-progress-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.approval-formal-progress-heading span {
+  color: #7a4b08;
+  font-weight: 800;
+}
+
+.approval-formal-progress-track {
+  width: 100%;
+  height: 6px;
+  margin: 9px 0 12px;
+  overflow: hidden;
+  background: #e7e9ec;
+}
+
+.approval-formal-progress-track span {
+  display: block;
+  height: 100%;
+  background: #b97918;
+}
+
+.approval-formal-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 18px;
+  margin: 0;
+}
+
+.approval-formal-meta div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 10px;
+  border-top: 1px solid var(--nex-border);
+  padding: 8px 0;
+}
+
+.approval-formal-meta dt {
+  color: var(--nex-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.approval-formal-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
 }
 
 .approval-detail-meta div {
@@ -1530,9 +1597,14 @@ nav a,
   }
 
   .approval-toolbar,
-  .approval-detail-header {
+  .approval-detail-header,
+  .approval-formal-progress-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .approval-formal-meta {
+    grid-template-columns: 1fr;
   }
 
   .approval-decision-actions button {

@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   buildDefaultMockApprovalInbox,
+  createMockApprovalClient,
   normalizeApprovalInbox
 } from "../src/approvalClient.js";
 import {
@@ -40,6 +41,7 @@ describe("AE Web approval UI read model", () => {
     assert.equal(summary.gate_count, 4);
     assert.equal(summary.actionable_count, 3);
     assert.equal(summary.expired_count, 1);
+    assert.equal(summary.formal_projection_count, 1);
     assert.deepEqual(summary.domain_counts, {
       NSL_WRITE: 2,
       AGENT_FORMAL: 1,
@@ -48,11 +50,47 @@ describe("AE Web approval UI read model", () => {
     assert.match(html, /data-approval-domain="NSL_WRITE"/);
     assert.match(html, /data-approval-domain="AGENT_FORMAL"/);
     assert.match(html, /data-approval-domain="BUSINESS_FORMAL"/);
+    assert.match(html, /1 \/ 2 단계 · TEAM_LEAD/);
     assert.match(html, /만료/);
     assert.doesNotMatch(
       html,
       /protected_request|semantic_hash|resume_target_ref|service_token|source_ref/
     );
+  });
+
+  it("renders business formal progress and keeps terminal state aligned", async () => {
+    const container = {
+      innerHTML: "",
+      addEventListener() {},
+      querySelector() {
+        return { value: "P8-S74 formal approval" };
+      }
+    };
+    const controller = createApprovalUiController({
+      container,
+      client: createMockApprovalClient(),
+      now: () => new Date("2026-10-22T09:00:00Z")
+    });
+
+    await controller.refresh();
+    await controller.selectGate("42000000-0000-4000-8000-000000000003");
+
+    assert.match(container.innerHTML, /data-business-formal="true"/);
+    assert.match(container.innerHTML, /data-formal-current-stage="1"/);
+    assert.match(container.innerHTML, /data-formal-stage-count="2"/);
+    assert.match(container.innerHTML, /data-formal-requested-role="TEAM_LEAD"/);
+    assert.match(container.innerHTML, /EOS 대상/);
+    assert.match(container.innerHTML, /eos-stage-p8-s42/);
+
+    await controller.submitDecision("APPROVE");
+
+    assert.equal(controller.snapshot().phase, "DECIDED");
+    assert.equal(
+      controller.snapshot().detail.gate.formal_approval.terminal_state,
+      "APPROVED"
+    );
+    assert.match(container.innerHTML, /data-formal-terminal-state="APPROVED"/);
+    assert.match(container.innerHTML, /data-approval-decision="APPROVE" disabled/);
   });
 
   it("renders safe detail, decision controls, terminal and denied states", () => {

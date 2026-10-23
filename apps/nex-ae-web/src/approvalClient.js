@@ -219,9 +219,19 @@ export function createMockApprovalClient({
         { clientMode: "mock", route: approvalDecisionRoute(admittedId) }
       );
       decisions.set(admittedId, decision);
+      const terminalState =
+        request.decision === "APPROVE" ? "APPROVED" : "REJECTED";
       records.set(admittedId, {
         ...gate,
-        state: request.decision === "APPROVE" ? "APPROVED" : "REJECTED"
+        state: terminalState,
+        ...(gate.formal_approval
+          ? {
+              formal_approval: {
+                ...gate.formal_approval,
+                terminal_state: terminalState
+              }
+            }
+          : {})
       });
       return structuredClone(decision);
     },
@@ -351,7 +361,14 @@ export function buildDefaultMockApprovalInbox() {
       summary: "EOS 업무 규칙에 따른 재무 결재 단계를 검토합니다.",
       provider: "EOS",
       target: "eos-stage-p8-s42",
-      operationId: "business-operation-p8-s42"
+      operationId: "business-operation-p8-s42",
+      formalApproval: {
+        currentStage: 1,
+        stageCount: 2,
+        requestedRole: "TEAM_LEAD",
+        orgUnitId: "org-finance",
+        projectId: "project-p8-s42"
+      }
     }),
     mockGate({
       gateId: "42000000-0000-4000-8000-000000000004",
@@ -382,9 +399,10 @@ function mockGate({
   provider,
   target,
   operationId = null,
+  formalApproval = null,
   expiresAt = "2099-10-23T09:00:00Z"
 }) {
-  return {
+  const gate = {
     schema_version: HUMAN_GATE_VIEW_SCHEMA_VERSION,
     gate_id: gateId,
     approval_domain: domain,
@@ -397,6 +415,19 @@ function mockGate({
     business_operation_id: operationId,
     expires_at: expiresAt
   };
+  if (formalApproval) {
+    gate.formal_approval = {
+      schema_version: "business_formal_gate_view.p8.v1",
+      current_stage: formalApproval.currentStage,
+      stage_count: formalApproval.stageCount,
+      requested_role: formalApproval.requestedRole,
+      eos_target_ref: target,
+      org_unit_id: formalApproval.orgUnitId,
+      project_id: formalApproval.projectId,
+      terminal_state: null
+    };
+  }
+  return gate;
 }
 
 function normalizeHumanGate(gate) {
@@ -412,7 +443,7 @@ function normalizeHumanGate(gate) {
       status: "HUMAN_GATE_INVALID"
     });
   }
-  return {
+  const normalized = {
     schema_version: gate.schema_version,
     gate_id: requiredGateId(gate.gate_id),
     approval_domain: gate.approval_domain,
@@ -425,6 +456,85 @@ function normalizeHumanGate(gate) {
     business_operation_id: optionalText(gate.business_operation_id),
     expires_at: optionalText(gate.expires_at)
   };
+  if (normalized.approval_domain === "BUSINESS_FORMAL") {
+    if (
+      normalized.approval_provider_type !== "EOS" ||
+      normalized.approval_target_ref == null ||
+      normalized.business_operation_id == null
+    ) {
+      throw new ApprovalClientError("Business formal approval gate is invalid.", {
+        status: "BUSINESS_FORMAL_GATE_INVALID"
+      });
+    }
+    normalized.formal_approval = normalizeFormalApproval(
+      gate.formal_approval,
+      normalized
+    );
+  } else if (gate.formal_approval != null) {
+    throw new ApprovalClientError("Formal approval projection crossed domains.", {
+      status: "BUSINESS_FORMAL_DOMAIN_INVALID"
+    });
+  }
+  return normalized;
+}
+
+function normalizeFormalApproval(value, gate) {
+  if (
+    !isObject(value) ||
+    value.schema_version !== "business_formal_gate_view.p8.v1"
+  ) {
+    throw new ApprovalClientError("Business formal projection is invalid.", {
+      status: "BUSINESS_FORMAL_PROJECTION_INVALID"
+    });
+  }
+  const currentStage = optionalStage(value.current_stage, "current_stage");
+  const stageCount = optionalStage(value.stage_count, "stage_count");
+  if (
+    (currentStage == null) !== (stageCount == null) ||
+    (currentStage != null && currentStage > stageCount)
+  ) {
+    throw new ApprovalClientError("Business formal stage progress is invalid.", {
+      status: "BUSINESS_FORMAL_PROGRESS_INVALID"
+    });
+  }
+  const eosTargetRef = requiredText(value.eos_target_ref, "formal eos_target_ref");
+  if (eosTargetRef !== gate.approval_target_ref) {
+    throw new ApprovalClientError("Business formal target projection is invalid.", {
+      status: "BUSINESS_FORMAL_TARGET_INVALID"
+    });
+  }
+  const terminalState = optionalText(value.terminal_state);
+  const expectedTerminal = gate.state === "PENDING" ? null : gate.state;
+  if (
+    ![null, "APPROVED", "REJECTED", "EXPIRED", "CANCELLED"].includes(
+      terminalState
+    ) ||
+    terminalState !== expectedTerminal
+  ) {
+    throw new ApprovalClientError("Business formal terminal state is invalid.", {
+      status: "BUSINESS_FORMAL_TERMINAL_INVALID"
+    });
+  }
+  return {
+    schema_version: value.schema_version,
+    current_stage: currentStage,
+    stage_count: stageCount,
+    requested_role: optionalText(value.requested_role),
+    eos_target_ref: eosTargetRef,
+    org_unit_id: optionalText(value.org_unit_id),
+    project_id: optionalText(value.project_id),
+    terminal_state: terminalState
+  };
+}
+
+function optionalStage(value, field) {
+  if (value == null) return null;
+  if (!Number.isInteger(value) || value < 1 || value > 5) {
+    throw new ApprovalClientError(`Approval formal ${field} is invalid.`, {
+      status: "BUSINESS_FORMAL_PROGRESS_INVALID"
+    });
+  }
+  return value;
 }
 
 function normalizeDecisionRequest(payload) {

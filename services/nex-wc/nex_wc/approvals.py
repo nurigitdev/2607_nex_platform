@@ -1180,7 +1180,7 @@ def _require_target_compatibility(
 
 def _human_gate_view(work_item: Mapping[str, Any]) -> dict[str, Any]:
     item = validate_approval_work_item(work_item)
-    return {
+    view = {
         "schema_version": "human_gate_view.p8.v1",
         "gate_id": item["approval_work_item_id"],
         "approval_domain": item["approval_domain"],
@@ -1195,6 +1195,41 @@ def _human_gate_view(work_item: Mapping[str, Any]) -> dict[str, Any]:
         "approval_target_ref": item["approval_target_ref"],
         "business_operation_id": item.get("business_operation_id"),
         "expires_at": item.get("expires_at"),
+    }
+    if item["approval_domain"] == "BUSINESS_FORMAL":
+        view["formal_approval"] = _business_formal_gate_view(item)
+    return view
+
+
+def _business_formal_gate_view(item: Mapping[str, Any]) -> dict[str, Any]:
+    current_stage: int | None = None
+    stage_count: int | None = None
+    try:
+        summary = json.loads(str(item["display_safe_summary"]))
+    except (TypeError, ValueError):
+        summary = None
+    if isinstance(summary, Mapping):
+        candidate_stage = summary.get("stage_order")
+        candidate_count = summary.get("stage_count")
+        if (
+            isinstance(candidate_stage, int)
+            and not isinstance(candidate_stage, bool)
+            and isinstance(candidate_count, int)
+            and not isinstance(candidate_count, bool)
+            and 1 <= candidate_stage <= candidate_count <= 5
+        ):
+            current_stage = candidate_stage
+            stage_count = candidate_count
+    state = str(item["state"])
+    return {
+        "schema_version": "business_formal_gate_view.p8.v1",
+        "current_stage": current_stage,
+        "stage_count": stage_count,
+        "requested_role": item.get("target_role_ref"),
+        "eos_target_ref": item["approval_target_ref"],
+        "org_unit_id": item.get("target_org_scope_ref"),
+        "project_id": item.get("target_project_scope_ref"),
+        "terminal_state": None if state == "PENDING" else state,
     }
 
 
