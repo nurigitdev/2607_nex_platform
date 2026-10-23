@@ -295,6 +295,139 @@ class SqlAlchemyVoucherAttachmentRepository:
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
 
+    def remove_item(
+        self,
+        *,
+        tenant_id: str,
+        attachment_batch_id: str,
+        attachment_id: str,
+    ) -> dict[str, Any]:
+        params = {
+            "tenant_id": _scoped_id("tenant_id", tenant_id),
+            "attachment_batch_id": _uuid(
+                "attachment_batch_id", attachment_batch_id
+            ),
+            "attachment_id": _uuid("attachment_id", attachment_id),
+            "updated_at": _aware_time(self._clock()),
+        }
+        try:
+            with self._session_factory() as session:
+                batch = _load_batch(
+                    session,
+                    tenant_id=params["tenant_id"],
+                    attachment_batch_id=params["attachment_batch_id"],
+                    for_update=True,
+                )
+                if batch is None:
+                    raise _not_found("Voucher attachment batch was not found.")
+                if batch["state"] in {"LOCKED", "ABANDONED"}:
+                    raise _conflict("Voucher attachment batch is immutable.")
+                item = _load_item(
+                    session,
+                    tenant_id=params["tenant_id"],
+                    attachment_batch_id=params["attachment_batch_id"],
+                    attachment_id=params["attachment_id"],
+                    for_update=True,
+                )
+                if item is None:
+                    raise _not_found("Voucher attachment item was not found.")
+                if item["state"] == "LOCKED":
+                    raise _conflict("Voucher attachment item is immutable.")
+                if item["state"] == "REMOVED":
+                    session.commit()
+                    return item
+                next_count = max(0, int(batch["attachment_count"]) - 1)
+                next_size = max(
+                    0, int(batch["total_size_bytes"]) - int(item["size_bytes"])
+                )
+                updated = session.execute(text(_REMOVE_ITEM_SQL), params)
+                if updated.rowcount != 1:
+                    raise _conflict("Voucher attachment item changed concurrently.")
+                batch_update = session.execute(
+                    text(_UPDATE_BATCH_AFTER_REMOVAL_SQL),
+                    {
+                        **params,
+                        "attachment_count": next_count,
+                        "total_size_bytes": next_size,
+                        "state": "DRAFT" if next_count == 0 else "UPLOADING",
+                    },
+                )
+                if batch_update.rowcount != 1:
+                    raise _conflict("Voucher attachment batch changed concurrently.")
+                saved = _load_item(
+                    session,
+                    tenant_id=params["tenant_id"],
+                    attachment_batch_id=params["attachment_batch_id"],
+                    attachment_id=params["attachment_id"],
+                )
+                if saved is None:
+                    raise _unavailable()
+                session.commit()
+                return saved
+        except VoucherAttachmentPersistenceError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
+    def finalize_batch(
+        self, *, tenant_id: str, attachment_batch_id: str
+    ) -> dict[str, Any]:
+        params = {
+            "tenant_id": _scoped_id("tenant_id", tenant_id),
+            "attachment_batch_id": _uuid(
+                "attachment_batch_id", attachment_batch_id
+            ),
+            "updated_at": _aware_time(self._clock()),
+        }
+        try:
+            with self._session_factory() as session:
+                batch = _load_batch(
+                    session,
+                    tenant_id=params["tenant_id"],
+                    attachment_batch_id=params["attachment_batch_id"],
+                    for_update=True,
+                )
+                if batch is None:
+                    raise _not_found("Voucher attachment batch was not found.")
+                if batch["state"] in {"LOCKED", "ABANDONED"}:
+                    raise _conflict("Voucher attachment batch is immutable.")
+                items = _list_items(
+                    session,
+                    tenant_id=params["tenant_id"],
+                    attachment_batch_id=params["attachment_batch_id"],
+                )
+                active = [item for item in items if item["state"] != "REMOVED"]
+                if any(item["state"] != "READY" for item in active):
+                    raise _conflict(
+                        "Voucher attachment batch contains incomplete items."
+                    )
+                if (
+                    len(active) != batch["attachment_count"]
+                    or sum(int(item["size_bytes"]) for item in active)
+                    != batch["total_size_bytes"]
+                ):
+                    raise _integrity()
+                if batch["state"] != "READY":
+                    updated = session.execute(text(_FINALIZE_BATCH_SQL), params)
+                    if updated.rowcount != 1:
+                        raise _conflict(
+                            "Voucher attachment batch changed concurrently."
+                        )
+                saved = _load_batch(
+                    session,
+                    tenant_id=params["tenant_id"],
+                    attachment_batch_id=params["attachment_batch_id"],
+                )
+                if saved is None:
+                    raise _unavailable()
+                saved["items"] = items
+                session.commit()
+                return saved
+        except VoucherAttachmentPersistenceError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
 
 def _batch_input(value: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(value, Mapping):
@@ -699,4 +832,38 @@ JOIN ae_voucher_attach_batch b
 WHERE a.tenant_id = :tenant_id
   AND a.object_ref = :object_ref
   AND a.state IN ('READY', 'LOCKED')
+"""
+
+_REMOVE_ITEM_SQL = """
+UPDATE ae_voucher_attachment
+SET state = 'REMOVED',
+    content_sha256 = NULL,
+    object_ref = NULL,
+    object_version_ref = NULL,
+    scan_status = 'PENDING',
+    evidence_ref = NULL,
+    updated_at = :updated_at
+WHERE tenant_id = :tenant_id
+  AND attachment_batch_id = :attachment_batch_id
+  AND attachment_id = :attachment_id
+  AND state <> 'LOCKED'
+"""
+
+_UPDATE_BATCH_AFTER_REMOVAL_SQL = """
+UPDATE ae_voucher_attach_batch
+SET state = :state,
+    attachment_count = :attachment_count,
+    total_size_bytes = :total_size_bytes,
+    updated_at = :updated_at
+WHERE tenant_id = :tenant_id
+  AND attachment_batch_id = :attachment_batch_id
+  AND state NOT IN ('LOCKED', 'ABANDONED')
+"""
+
+_FINALIZE_BATCH_SQL = """
+UPDATE ae_voucher_attach_batch
+SET state = 'READY', updated_at = :updated_at
+WHERE tenant_id = :tenant_id
+  AND attachment_batch_id = :attachment_batch_id
+  AND state IN ('DRAFT', 'UPLOADING', 'READY', 'QUARANTINED', 'FAILED')
 """

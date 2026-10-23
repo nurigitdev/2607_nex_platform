@@ -30,6 +30,10 @@ from nex_ae_api.claim_handoff_api import register_claim_handoff_routes
 from nex_ae_api.documents import register_document_library_routes
 from nex_ae_api.generation_feedback import register_generation_feedback_routes
 from nex_ae_api.mvp_acceptance_api import register_ae_mvp_acceptance_routes
+from nex_ae_api.private_object_store import (
+    AePrivateObjectStorageError,
+    build_ae_private_object_store,
+)
 from nex_ae_api.prompts import build_default_ae_prompt_store
 from nex_ae_api.recovery_requests import register_generation_recovery_request_routes
 from nex_ae_api.repaired_response_decisions import (
@@ -48,6 +52,9 @@ from nex_ae_api.trace_projection import (
 )
 from nex_ae_api.upload_progress import register_upload_progress_routes
 from nex_ae_api.uploads import register_upload_routes
+from nex_ae_api.voucher_attachment_api import register_voucher_attachment_routes
+from nex_ae_api.voucher_attachment_storage import VoucherAttachmentObjectGateway
+from nex_ae_api.voucher_attachments import SqlAlchemyVoucherAttachmentRepository
 from nex_ae_api.work_result_event_api import register_work_result_event_routes
 from nex_ae_api.work_result_events import SqlAlchemyWorkResultEventService
 from nex_ae_api.workspace import register_workspace_routes
@@ -82,6 +89,27 @@ register_approval_facade_routes(app)
 register_workspace_routes(app)
 register_upload_routes(app)
 register_upload_progress_routes(app)
+AE_VOUCHER_ATTACHMENT_REPOSITORY = (
+    SqlAlchemyVoucherAttachmentRepository(SERVICE_PERSISTENCE.api_session_factory)
+    if SERVICE_PERSISTENCE.api_session_factory is not None
+    else None
+)
+try:
+    AE_VOUCHER_ATTACHMENT_GATEWAY = (
+        VoucherAttachmentObjectGateway(
+            build_ae_private_object_store(),
+            AE_VOUCHER_ATTACHMENT_REPOSITORY,
+        )
+        if AE_VOUCHER_ATTACHMENT_REPOSITORY is not None
+        else None
+    )
+except AePrivateObjectStorageError:
+    AE_VOUCHER_ATTACHMENT_GATEWAY = None
+register_voucher_attachment_routes(
+    app,
+    repository=AE_VOUCHER_ATTACHMENT_REPOSITORY,
+    gateway=AE_VOUCHER_ATTACHMENT_GATEWAY,
+)
 register_document_library_routes(app)
 register_artifact_handoff_routes(app)
 register_generation_compatibility_routes(app, expected_audience="nex-ae-api")

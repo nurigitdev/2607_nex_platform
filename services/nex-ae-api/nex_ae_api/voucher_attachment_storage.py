@@ -38,6 +38,14 @@ class VoucherAttachmentStorageError(RuntimeError):
         return self.detail
 
 
+@dataclass(frozen=True)
+class VoucherAttachmentDownload:
+    source: BinaryIO
+    display_name: str
+    media_type: str
+    size_bytes: int
+
+
 class VoucherAttachmentObjectGateway:
     def __init__(
         self,
@@ -60,6 +68,11 @@ class VoucherAttachmentObjectGateway:
             attachment_batch_id=attachment_batch_id,
             attachment_id=attachment_id,
         )
+        if batch["state"] == "ABANDONED" or item["state"] in {
+            "QUARANTINED",
+            "REMOVED",
+        }:
+            raise _conflict("Voucher attachment item is not publishable.")
         if item["state"] in {"READY", "LOCKED"}:
             return self._resolve_persisted_item(
                 tenant_id=tenant_id,
@@ -153,6 +166,63 @@ class VoucherAttachmentObjectGateway:
             raise _integrity("Attachment object is missing.")
         return payload
 
+    def open_for_owner(
+        self,
+        *,
+        tenant_id: str,
+        owner_subject_id: str,
+        object_ref: str,
+    ) -> VoucherAttachmentDownload:
+        persisted = self._persisted_resolution(
+            tenant_id=tenant_id, object_ref=object_ref
+        )
+        if persisted["owner_subject_id"] != owner_subject_id:
+            raise _forbidden("Attachment owner scope does not match.")
+        return self._open_persisted(persisted)
+
+    def open_for_service(
+        self,
+        *,
+        requester_service: str,
+        tenant_id: str,
+        object_ref: str,
+    ) -> VoucherAttachmentDownload:
+        if requester_service not in {"nex-wc", "nex-eos"}:
+            raise _forbidden("Attachment review service is not authorized.")
+        return self._open_persisted(
+            self._persisted_resolution(tenant_id=tenant_id, object_ref=object_ref)
+        )
+
+    def remove(
+        self,
+        *,
+        tenant_id: str,
+        attachment_batch_id: str,
+        attachment_id: str,
+    ) -> dict[str, Any]:
+        batch, item = self._registered_item(
+            tenant_id=tenant_id,
+            attachment_batch_id=attachment_batch_id,
+            attachment_id=attachment_id,
+        )
+        if batch["state"] in {"LOCKED", "ABANDONED"} or item["state"] == "LOCKED":
+            raise _conflict("Locked Voucher attachment evidence cannot be removed.")
+        try:
+            removed = self._repository.remove_item(
+                tenant_id=tenant_id,
+                attachment_batch_id=attachment_batch_id,
+                attachment_id=attachment_id,
+            )
+        except VoucherAttachmentPersistenceError as exc:
+            raise _persistence_error(exc) from exc
+        key = _object_key(batch, item)
+        try:
+            if self._object_store.head(key) is not None:
+                self._object_store.delete(key)
+        except ObjectStorageError as exc:
+            raise _storage_error(exc) from exc
+        return removed
+
     def cleanup_unreferenced(
         self,
         *,
@@ -202,11 +272,6 @@ class VoucherAttachmentObjectGateway:
         )
         if item is None:
             raise _not_found("Voucher attachment item was not found.")
-        if batch["state"] == "ABANDONED" or item["state"] in {
-            "QUARANTINED",
-            "REMOVED",
-        }:
-            raise _conflict("Voucher attachment item is not publishable.")
         return batch, item
 
     def _persisted_resolution(
@@ -256,6 +321,33 @@ class VoucherAttachmentObjectGateway:
             "object_version_ref": persisted["object_version_ref"],
             "resolved_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         }
+
+    def _open_persisted(
+        self, persisted: Mapping[str, Any]
+    ) -> VoucherAttachmentDownload:
+        destination = SpooledTemporaryFile(  # noqa: SIM115 - owned by response
+            max_size=ATTACHMENT_SPOOL_MEMORY_BYTES
+        )
+        try:
+            found = self._object_store.copy_to_stream(
+                key=_object_key_from_persisted(persisted),
+                destination=destination,
+                expected_sha256=str(persisted["content_sha256"]),
+                expected_size_bytes=int(persisted["size_bytes"]),
+                max_size_bytes=MAX_ATTACHMENT_FILE_BYTES,
+            )
+        except ObjectStorageError as exc:
+            destination.close()
+            raise _storage_error(exc) from exc
+        if not found:
+            destination.close()
+            raise _integrity("Attachment object is missing.")
+        return VoucherAttachmentDownload(
+            source=destination,
+            display_name=str(persisted["display_name"]),
+            media_type=str(persisted["media_type"]),
+            size_bytes=int(persisted["size_bytes"]),
+        )
 
 
 def _copy_bounded(source: BinaryIO, destination: BinaryIO) -> tuple[str, int]:

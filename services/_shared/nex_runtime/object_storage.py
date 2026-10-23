@@ -6,6 +6,7 @@ import ipaddress
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from io import BytesIO
 from typing import Any, BinaryIO, Protocol
 from urllib.parse import urlsplit
 
@@ -270,30 +271,89 @@ class S3ObjectStore:
         expected_size_bytes: int,
         max_size_bytes: int,
     ) -> bytes | None:
+        destination = BytesIO()
+        found = self.copy_to_stream(
+            key=key,
+            destination=destination,
+            expected_sha256=expected_sha256,
+            expected_size_bytes=expected_size_bytes,
+            max_size_bytes=max_size_bytes,
+        )
+        return destination.getvalue() if found else None
+
+    def copy_to_stream(
+        self,
+        *,
+        key: str,
+        destination: BinaryIO,
+        expected_sha256: str,
+        expected_size_bytes: int,
+        max_size_bytes: int,
+    ) -> bool:
         _validate_key(key)
-        if expected_size_bytes < 0 or max_size_bytes < 1 or expected_size_bytes > max_size_bytes:
-            raise ObjectStorageError("OBJECT_STORAGE_SIZE_INVALID", "Object size boundary is invalid.")
+        if (
+            expected_size_bytes < 0
+            or max_size_bytes < 1
+            or expected_size_bytes > max_size_bytes
+        ):
+            raise ObjectStorageError(
+                "OBJECT_STORAGE_SIZE_INVALID", "Object size boundary is invalid."
+            )
         try:
             response = self.client.get_object(Bucket=self.settings.bucket, Key=key)
         except Exception as exc:
             if _not_found(exc):
-                return None
+                return False
             raise _client_error("OBJECT_STORAGE_GET_FAILED", exc) from exc
+        content_length = response.get("ContentLength")
+        if content_length is not None and content_length != expected_size_bytes:
+            raise ObjectStorageError(
+                "OBJECT_STORAGE_SIZE_MISMATCH",
+                "Stored object size does not match metadata.",
+            )
         body = response.get("Body")
+        digest = hashlib.sha256()
+        size = 0
         try:
-            payload = body.read(max_size_bytes + 1)
+            while True:
+                chunk = body.read(min(1024 * 1024, max_size_bytes - size + 1))
+                if not chunk:
+                    break
+                if not isinstance(chunk, bytes):
+                    raise ObjectStorageError(
+                        "OBJECT_STORAGE_STREAM_INVALID",
+                        "Stored object stream must produce bytes.",
+                    )
+                size += len(chunk)
+                if size > max_size_bytes:
+                    raise ObjectStorageError(
+                        "OBJECT_STORAGE_SIZE_MISMATCH",
+                        "Stored object exceeds its size boundary.",
+                    )
+                destination.write(chunk)
+                digest.update(chunk)
+                if size == expected_size_bytes:
+                    break
+        except ObjectStorageError:
+            raise
         except Exception as exc:
             raise _client_error("OBJECT_STORAGE_READ_FAILED", exc) from exc
         finally:
             close = getattr(body, "close", None)
             if callable(close):
                 close()
-        if not isinstance(payload, bytes) or len(payload) > max_size_bytes:
-            raise ObjectStorageError("OBJECT_STORAGE_SIZE_MISMATCH", "Stored object exceeds its size boundary.")
-        _verify_payload(payload, expected_sha256)
-        if len(payload) != expected_size_bytes:
-            raise ObjectStorageError("OBJECT_STORAGE_SIZE_MISMATCH", "Stored object size does not match metadata.")
-        return payload
+        if digest.hexdigest() != expected_sha256:
+            raise ObjectStorageError(
+                "OBJECT_STORAGE_INTEGRITY_MISMATCH",
+                "Object payload failed integrity validation.",
+            )
+        if size != expected_size_bytes:
+            raise ObjectStorageError(
+                "OBJECT_STORAGE_SIZE_MISMATCH",
+                "Stored object size does not match metadata.",
+            )
+        destination.seek(0)
+        return True
 
     def delete(self, key: str) -> str | None:
         _validate_key(key)
