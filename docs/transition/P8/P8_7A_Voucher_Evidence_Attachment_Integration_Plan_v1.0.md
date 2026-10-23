@@ -1,6 +1,6 @@
 # P8.7A Voucher Evidence Attachment Integration Plan v1.0
 
-**Status:** PROPOSED IMPLEMENTATION PLAN
+**Status:** CLOSED THROUGH P8-S75H
 
 **Date:** 2026-10-23
 

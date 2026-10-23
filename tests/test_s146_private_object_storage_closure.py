@@ -64,7 +64,10 @@ def test_closure_fails_closed_for_empty_repository(tmp_path: Path) -> None:
     assert result["decision"]["s149_object_storage_input_ready"] is False
 
 
-def test_helpers_cover_files_digests_and_noncanonical_root(tmp_path: Path) -> None:
+def test_helpers_cover_files_digests_and_noncanonical_root(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     assert closure._mapping({"ok": True}) == {"ok": True}
     assert closure._mapping(None) == {}
     assert closure._run_evidence(tmp_path) == {}
@@ -82,6 +85,22 @@ def test_helpers_cover_files_digests_and_noncanonical_root(tmp_path: Path) -> No
     assert closure._load_json(source) == {}
     assert closure._load_json(tmp_path / "missing.json") == {}
     assert closure._file_digest(tmp_path / "missing.bin") == ""
+    assert closure._revision_file_digest(tmp_path, "missing", "missing") == ""
+
+    historical = closure._revision_file_digest(
+        closure.ROOT,
+        closure.ACCEPTED_SOURCE_REVISION,
+        "services/_shared/nex_runtime/object_storage.py",
+    )
+    assert historical == (
+        "sha256:5165c17597a06ac50aa44abfaf683d792145aeb788916e23cb0f352794ce75d0"
+    )
+    monkeypatch.setattr(
+        closure.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("git missing")),
+    )
+    assert closure._revision_file_digest(closure.ROOT, "revision", "path") == ""
 
     evidence = {"status": "PASS", "evidence_digest": "old"}
     digest = closure._evidence_digest(evidence)

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from collections.abc import Mapping
 from hashlib import sha256
@@ -147,9 +148,16 @@ def run_s146_private_object_storage_closure(
         ),
         "attestation_artifact_and_configuration_digests_valid": (
             attestation.get("configuration_digest")
-            == _file_digest(root / CONFIGURATION_PATH)
+            == _revision_file_digest(
+                root,
+                ACCEPTED_SOURCE_REVISION,
+                CONFIGURATION_PATH,
+            )
             and attestation.get("artifact_digests")
-            == [_file_digest(root / path) for path in ARTIFACT_PATHS]
+            == [
+                _revision_file_digest(root, ACCEPTED_SOURCE_REVISION, path)
+                for path in ARTIFACT_PATHS
+            ]
         ),
         "attestation_identity_and_dependencies_valid": (
             attestation.get("requirement_id") == "S146"
@@ -328,6 +336,20 @@ def _file_digest(path: Path) -> str:
     except OSError:
         return ""
     return f"sha256:{sha256(payload).hexdigest()}"
+
+
+def _revision_file_digest(root: Path, revision: str, path: str) -> str:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), "show", f"{revision}:{path}"],
+            check=False,
+            capture_output=True,
+        )
+    except OSError:
+        return ""
+    if completed.returncode != 0:
+        return ""
+    return f"sha256:{sha256(completed.stdout).hexdigest()}"
 
 
 def _evidence_digest(evidence: Mapping[str, Any]) -> str:
