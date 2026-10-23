@@ -182,6 +182,9 @@ import {
   buildUploadHandoffPayload,
   buildUploadSurfaceDraftFromFileMetadata
 } from "./uploadSurface.js";
+import {
+  createVoucherAttachmentUiController
+} from "./voucherAttachmentUi.js";
 import { loadWorkspaceBootstrap } from "./workspaceBootstrap.js";
 
 const activeLocale = normalizeLocale(document.documentElement.lang);
@@ -248,6 +251,8 @@ const workspaceState = {
   authBoundary: null,
   clientRegistry: null,
   approvalClient: null,
+  voucherAttachmentClient: null,
+  pendingVoucherInteractionId: null,
   operations: null,
   documentScope: null,
   lastRetrievalRequest: null,
@@ -396,6 +401,7 @@ const workspaceState = {
 
 workspaceState.messages[1].artifactRefs = [workspaceState.artifactRef];
 let approvalUiController = null;
+let voucherAttachmentUiController = null;
 let sessionExpiryTimer = null;
 const initialRuntimeConfig = loadRuntimeConfig();
 workspaceState.sessionBootstrap = composeAuthenticatedSessionRuntime({
@@ -445,6 +451,7 @@ const composer = document.querySelector("#composer");
 const promptInput = document.querySelector("#prompt");
 const retrievalToggle = document.querySelector("#retrieval-toggle");
 const formatSelect = document.querySelector("#format-select");
+const voucherAttachmentUi = document.querySelector("#voucher-attachment-ui");
 const messageList = document.querySelector("#message-list");
 const documentList = document.querySelector("#document-list");
 const documentDetail = document.querySelector("#document-detail");
@@ -508,6 +515,15 @@ approvalUiController = createApprovalUiController({
   client: workspaceState.approvalClient,
   correlationId: () => workspaceState.chatDocumentId,
   causationId: () => workspaceState.interactionId
+});
+voucherAttachmentUiController = createVoucherAttachmentUiController({
+  container: voucherAttachmentUi,
+  client: workspaceState.voucherAttachmentClient,
+  context: () => ({
+    conversationId: workspaceState.chatDocumentId,
+    interactionId: pendingVoucherInteractionId()
+  }),
+  onSessionExpired: () => expireCurrentSession()
 });
 let documentDetailRequestSequence = 0;
 let artifactLibraryPanelRequestSequence = 0;
@@ -808,6 +824,8 @@ function clearProtectedApplicationSurfaces() {
   ]) {
     element.replaceChildren();
   }
+  voucherAttachmentUiController?.clear();
+  workspaceState.pendingVoucherInteractionId = null;
   promptInput.value = "";
   uploadFileInput.value = "";
   groundedResponseQuality.replaceChildren();
@@ -924,6 +942,9 @@ function applySessionBootstrap(sessionBootstrap) {
   if (approvalUiController) {
     approvalUiController.setClient(workspaceState.approvalClient);
   }
+  workspaceState.voucherAttachmentClient =
+    workspaceState.clientRegistry.voucherAttachmentClient;
+  voucherAttachmentUiController?.setClient(workspaceState.voucherAttachmentClient);
   workspaceState.documentDetailClient = workspaceState.clientRegistry.documentDetailClient;
   workspaceState.artifactClient = workspaceState.clientRegistry.artifactClient;
   workspaceState.uploadClient = workspaceState.clientRegistry.uploadClient;
@@ -2253,21 +2274,29 @@ async function appendPromptInteraction() {
 
   const format = formatSelect.value;
   const grounded = retrievalToggle.checked;
+  const requestedInteractionId = pendingVoucherInteractionId();
+  let attachmentManifest = null;
+  try {
+    attachmentManifest = await voucherAttachmentUiController.prepareForSubmission();
+  } catch {
+    return;
+  }
   const retrievalRequest = buildRetrievalRequest({
     userMessage: prompt,
     chatDocumentId: workspaceState.chatDocumentId,
     documentScope: workspaceState.documentScope,
     grounded
   });
-  const requestedInteractionId = nextGenerationInteractionId();
   const generationRequest = buildGroundedGenerationRequest({
     interactionId: requestedInteractionId,
     workspaceId: workspaceState.workspaceId,
     chatDocumentId: workspaceState.chatDocumentId,
     userMessage: prompt,
     documentScope: workspaceState.documentScope,
-    grounded
+    grounded,
+    attachmentManifest
   });
+  workspaceState.pendingVoucherInteractionId = null;
   workspaceState.messages.push({
     role: "user",
     label: "사용자",
@@ -2627,6 +2656,13 @@ function generationLifecycleFeedback(state) {
 
 function nextGenerationInteractionId() {
   return createInteractionId();
+}
+
+function pendingVoucherInteractionId() {
+  if (!workspaceState.pendingVoucherInteractionId) {
+    workspaceState.pendingVoucherInteractionId = nextGenerationInteractionId();
+  }
+  return workspaceState.pendingVoucherInteractionId;
 }
 
 async function submitArtifactPreviewAction(target) {

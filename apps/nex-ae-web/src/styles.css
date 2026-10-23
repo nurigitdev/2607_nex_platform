@@ -797,6 +797,150 @@ h2 {
   gap: 8px;
 }
 
+.voucher-attachment-composer {
+  margin-top: 10px;
+  border-top: 1px solid var(--nex-border);
+  padding-top: 10px;
+}
+
+.voucher-attachment-heading,
+.approval-attachment-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.voucher-attachment-heading > div,
+.approval-attachment-heading > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.voucher-attachment-heading span,
+.approval-attachment-heading span,
+.voucher-attachment-version {
+  color: var(--nex-muted);
+  font-size: 12px;
+}
+
+.voucher-attachment-dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 52px;
+  margin-top: 8px;
+  border: 1px dashed #8a929e;
+  border-radius: 6px;
+  background: #f8f9fa;
+  color: var(--nex-muted);
+  font-size: 13px;
+}
+
+.voucher-attachment-dropzone[data-drag-active="true"] {
+  border-color: var(--nex-accent);
+  background: #eef7f3;
+  color: var(--nex-ink);
+}
+
+.voucher-attachment-dropzone[aria-disabled="true"] {
+  opacity: 0.72;
+}
+
+.voucher-attachment-dropzone button,
+.voucher-attachment-list button,
+.voucher-attachment-new-version {
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.voucher-attachment-feedback {
+  min-height: 18px;
+  margin: 7px 0 0;
+  color: var(--nex-muted);
+  font-size: 12px;
+}
+
+.voucher-attachment-list,
+.approval-attachment-manifest ul {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.voucher-attachment-list li {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(80px, 140px) auto auto auto;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--nex-border);
+  padding-top: 7px;
+}
+
+.voucher-attachment-file {
+  display: grid;
+  min-width: 0;
+}
+
+.voucher-attachment-file strong,
+.approval-attachment-manifest li strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voucher-attachment-file span,
+.approval-attachment-manifest li span {
+  color: var(--nex-muted);
+  font-size: 11px;
+}
+
+.voucher-attachment-progress {
+  height: 5px;
+  overflow: hidden;
+  background: #e4e7eb;
+}
+
+.voucher-attachment-progress span {
+  display: block;
+  height: 100%;
+  background: var(--nex-accent);
+}
+
+.voucher-attachment-state {
+  color: var(--nex-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.voucher-attachment-error {
+  color: var(--nex-danger);
+  font-size: 11px;
+}
+
+.voucher-attachment-links,
+.approval-attachment-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.voucher-attachment-links a,
+.approval-attachment-actions a {
+  color: #176b55;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.voucher-attachment-new-version {
+  margin-top: 9px;
+}
+
 .generation-action-row {
   display: flex;
   align-items: center;
@@ -1356,6 +1500,33 @@ code {
   font-size: 12px;
 }
 
+.approval-attachment-count {
+  color: #176b55;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.approval-attachment-manifest {
+  margin: 14px 0;
+  border-top: 2px solid #2d7b67;
+  border-bottom: 1px solid var(--nex-border);
+  padding: 12px 0;
+}
+
+.approval-attachment-manifest li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--nex-border);
+  padding: 8px 0;
+}
+
+.approval-attachment-manifest li > div {
+  display: grid;
+  min-width: 0;
+}
+
 .approval-detail-meta div {
   display: grid;
   grid-template-columns: 88px minmax(0, 1fr);
@@ -1560,6 +1731,24 @@ nav a,
 
   .composer-row {
     grid-template-columns: 1fr;
+  }
+
+  .voucher-attachment-heading,
+  .approval-attachment-heading,
+  .approval-attachment-manifest li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .voucher-attachment-list li {
+    grid-template-columns: 1fr auto;
+  }
+
+  .voucher-attachment-file,
+  .voucher-attachment-progress,
+  .voucher-attachment-error,
+  .voucher-attachment-links {
+    grid-column: 1 / -1;
   }
 
   .generation-action-row {

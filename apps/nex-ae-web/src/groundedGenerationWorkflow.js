@@ -28,7 +28,8 @@ export function buildGroundedGenerationRequest({
   chatDocumentId,
   userMessage,
   documentScope,
-  grounded = true
+  grounded = true,
+  attachmentManifest = null
 }) {
   const request = {
     interaction_id: requiredText(interactionId, "interactionId"),
@@ -51,6 +52,9 @@ export function buildGroundedGenerationRequest({
       purpose: grounded ? "grounded_answer" : "search"
     }
   };
+  if (attachmentManifest != null) {
+    request.attachment_manifest = structuredClone(attachmentManifest);
+  }
   return request;
 }
 

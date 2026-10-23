@@ -51,6 +51,7 @@ describe("AE Web approval UI read model", () => {
     assert.match(html, /data-approval-domain="AGENT_FORMAL"/);
     assert.match(html, /data-approval-domain="BUSINESS_FORMAL"/);
     assert.match(html, /1 \/ 2 단계 · TEAM_LEAD/);
+    assert.match(html, /증빙 2개/);
     assert.match(html, /만료/);
     assert.doesNotMatch(
       html,
@@ -81,6 +82,10 @@ describe("AE Web approval UI read model", () => {
     assert.match(container.innerHTML, /data-formal-requested-role="TEAM_LEAD"/);
     assert.match(container.innerHTML, /EOS 대상/);
     assert.match(container.innerHTML, /eos-stage-p8-s42/);
+    assert.match(container.innerHTML, /data-approval-attachment-manifest="true"/);
+    assert.match(container.innerHTML, /교통비-영수증.png/);
+    assert.match(container.innerHTML, /다운로드/);
+    assert.doesNotMatch(container.innerHTML, /object_ref|bucket|rustfs|storage_path/i);
 
     await controller.submitDecision("APPROVE");
 

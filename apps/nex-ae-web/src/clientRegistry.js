@@ -38,6 +38,10 @@ import {
   createFetchUploadProgressClient,
   createMockUploadProgressClient
 } from "./uploadProgressClient.js";
+import {
+  createFetchVoucherAttachmentClient,
+  createMockVoucherAttachmentClient
+} from "./voucherAttachmentClient.js";
 
 export const AE_WEB_CLIENT_REGISTRY_SCHEMA_VERSION = "ae_web_client_registry.v1";
 export const AE_WEB_CLIENT_MODES = ["mock", "fetch"];
@@ -80,6 +84,7 @@ export function createAeWebClients({
           uploadProgressClient: createMockUploadProgressClient({
             responseFactory: responseFactories.uploadProgress
           }),
+          voucherAttachmentClient: createMockVoucherAttachmentClient(),
           retrievalClient: createMockRetrievalClient({
             responseFactory: responseFactories.retrieval
           }),
@@ -103,6 +108,8 @@ export function createAeWebClients({
           documentDetailClient: createFetchDocumentDetailClient(commonFetchOptions),
           uploadClient: createFetchUploadClient(commonFetchOptions),
           uploadProgressClient: createFetchUploadProgressClient(commonFetchOptions),
+          voucherAttachmentClient:
+            createFetchVoucherAttachmentClient(commonFetchOptions),
           retrievalClient: createFetchRetrievalClient(commonFetchOptions),
           generationFeedbackClient:
             createFetchGenerationFeedbackClient(commonFetchOptions),
@@ -145,6 +152,7 @@ export function buildClientRegistrySummary(registry) {
       document_detail: registry.documentDetailClient.clientMode,
       upload: registry.uploadClient.clientMode,
       upload_progress: registry.uploadProgressClient.clientMode,
+      voucher_attachment: registry.voucherAttachmentClient.clientMode,
       retrieval: registry.retrievalClient.clientMode,
       grounded_generation: registry.groundedGenerationClient.clientMode,
       generation_feedback: registry.generationFeedbackClient.clientMode,
@@ -183,6 +191,7 @@ function isRegistry(value) {
     value.documentDetailClient &&
     value.uploadClient &&
     value.uploadProgressClient &&
+    value.voucherAttachmentClient &&
     value.retrievalClient &&
     value.groundedGenerationClient &&
     value.generationFeedbackClient &&

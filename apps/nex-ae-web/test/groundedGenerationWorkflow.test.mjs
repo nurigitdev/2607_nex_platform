@@ -40,6 +40,20 @@ test("builds an async owner-neutral grounded request", () => {
   assert.equal(general.retrieval.document_scope, null);
 });
 
+test("carries an immutable attachment manifest without mutating the caller", () => {
+  const attachmentManifest = {
+    schema_version: "ae_voucher_attachment_manifest.v1",
+    attachment_batch_id: "750a0000-0000-4000-8000-000000000001",
+    attachment_manifest_hash: `sha256:${"a".repeat(64)}`,
+    items: [{ attachment_id: "750a0000-0000-4000-8000-000000000002" }]
+  };
+  const payload = request({ attachmentManifest });
+
+  assert.deepEqual(payload.attachment_manifest, attachmentManifest);
+  assert.notEqual(payload.attachment_manifest, attachmentManifest);
+  assert.notEqual(payload.attachment_manifest.items, attachmentManifest.items);
+});
+
 test("runs admission, bounded polling, verified response, and citation quality", async () => {
   const states = [];
   const result = await runGroundedGenerationWorkflow({

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from jsonschema import Draft202012Validator, FormatChecker, ValidationError
+from nex_ae_api.voucher_attachment_manifest import validate_attachment_manifest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -112,3 +113,23 @@ def test_s75a_resolution_is_exactly_ae_owned_eos_attachment_evidence() -> None:
     assert properties["status"] == {"const": "READY"}
     assert properties["authenticated"] == {"const": True}
     assert properties["immutable"] == {"const": True}
+
+
+def test_s75g_manifest_example_matches_runtime_closed_shape() -> None:
+    example = _json(
+        EXAMPLE_ROOT / "ae_voucher_attachment_manifest.locked.json"
+    )
+
+    assert validate_attachment_manifest(example) == example
+    assert set(example) == {
+        "schema_version",
+        "attachment_batch_id",
+        "tenant_id",
+        "owner_subject_ref",
+        "conversation_id",
+        "interaction_id",
+        "attachment_count",
+        "items",
+        "total_size_bytes",
+        "attachment_manifest_hash",
+    }

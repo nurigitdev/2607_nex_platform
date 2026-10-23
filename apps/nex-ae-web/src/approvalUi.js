@@ -277,6 +277,11 @@ function renderGate(gate, state, now) {
       <strong>${escapeHtml(gate.title)}</strong>
       <span class="approval-item-summary">${escapeHtml(gate.summary)}</span>
       ${renderFormalListProgress(gate)}
+      ${
+        gate.attachment_manifest
+          ? `<span class="approval-attachment-count">증빙 ${gate.attachment_manifest.attachment_count}개</span>`
+          : ""
+      }
       <span class="approval-item-state">${escapeHtml(statusLabel(status))}</span>
     </button>
   `;
@@ -300,6 +305,7 @@ function renderDetail(detail, state, now) {
     <h3>${escapeHtml(gate.title)}</h3>
     <p>${escapeHtml(gate.summary)}</p>
     ${renderBusinessFormalDetail(gate)}
+    ${renderAttachmentManifest(gate)}
     <dl class="approval-detail-meta">
       <div><dt>provider</dt><dd>${escapeHtml(gate.approval_provider_type || "n/a")}</dd></div>
       <div><dt>target</dt><dd>${escapeHtml(gate.approval_target_ref || "n/a")}</dd></div>
@@ -313,6 +319,44 @@ function renderDetail(detail, state, now) {
       <button type="button" class="danger" data-approval-decision="REJECT" ${disabled ? "disabled" : ""}>반려</button>
     </div>
     ${state.decision ? `<p class="approval-decision-record">decision ${escapeHtml(state.decision.decision_id)}</p>` : ""}
+  `;
+}
+
+function renderAttachmentManifest(gate) {
+  const manifest = gate.attachment_manifest;
+  if (!manifest) return "";
+  return `
+    <section
+      class="approval-attachment-manifest"
+      data-approval-attachment-manifest="true"
+      data-attachment-count="${escapeAttribute(manifest.attachment_count)}"
+      data-attachment-state="${escapeAttribute(manifest.state)}"
+      aria-label="승인 고정 증빙"
+    >
+      <div class="approval-attachment-heading">
+        <div>
+          <strong>승인 고정 증빙</strong>
+          <span>${manifest.attachment_count}개 · ${formatBytes(manifest.total_size_bytes)}</span>
+        </div>
+        <span class="badge success">변경 불가</span>
+      </div>
+      <ul>
+        ${manifest.items
+          .map(
+            item => `<li data-approval-attachment-id="${escapeAttribute(item.attachment_id)}">
+              <div>
+                <strong>${escapeHtml(item.display_name)}</strong>
+                <span>${escapeHtml(item.media_type)} · ${formatBytes(item.size_bytes)}</span>
+              </div>
+              <span class="approval-attachment-actions">
+                <a href="${escapeAttribute(item.content_route)}" target="_blank" rel="noopener">열기</a>
+                <a href="${escapeAttribute(item.download_route)}">다운로드</a>
+              </span>
+            </li>`
+          )
+          .join("")}
+      </ul>
+    </section>
   `;
 }
 
@@ -368,6 +412,12 @@ function renderBusinessFormalDetail(gate) {
       </dl>
     </section>
   `;
+}
+
+function formatBytes(value) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function withTerminalState(gate, terminalState) {

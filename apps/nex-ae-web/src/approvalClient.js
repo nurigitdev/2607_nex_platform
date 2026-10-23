@@ -13,6 +13,7 @@ export const APPROVAL_DOMAINS = [
 
 const GATE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DECISIONS = new Set(["APPROVE", "REJECT"]);
+const HASH_REF = /^sha256:[0-9a-f]{64}$/;
 const SENSITIVE_KEY_PARTS = [
   "access_token",
   "api_key",
@@ -344,7 +345,10 @@ export function buildDefaultMockApprovalInbox() {
       summary: "검증된 NSL 계획의 전표 초안 생성을 승인합니다.",
       provider: "NSL",
       target: "approval-request-p8-s42",
-      operationId: "business-operation-p8-s42"
+      operationId: "business-operation-p8-s42",
+      attachmentManifest: mockAttachmentReviewManifest(
+        "42000000-0000-4000-8000-000000000001"
+      )
     }),
     mockGate({
       gateId: "42000000-0000-4000-8000-000000000002",
@@ -362,6 +366,9 @@ export function buildDefaultMockApprovalInbox() {
       provider: "EOS",
       target: "eos-stage-p8-s42",
       operationId: "business-operation-p8-s42",
+      attachmentManifest: mockAttachmentReviewManifest(
+        "42000000-0000-4000-8000-000000000003"
+      ),
       formalApproval: {
         currentStage: 1,
         stageCount: 2,
@@ -400,6 +407,7 @@ function mockGate({
   target,
   operationId = null,
   formalApproval = null,
+  attachmentManifest = null,
   expiresAt = "2099-10-23T09:00:00Z"
 }) {
   const gate = {
@@ -427,7 +435,53 @@ function mockGate({
       terminal_state: null
     };
   }
+  if (attachmentManifest) {
+    gate.attachment_manifest = attachmentManifest;
+  }
   return gate;
+}
+
+function mockAttachmentReviewManifest(gateId) {
+  const batchId = "75a70000-0000-4000-8000-000000000001";
+  const items = [
+    {
+      attachment_id: "75a70000-0000-4000-8000-000000000002",
+      display_name: "교통비-영수증.png",
+      media_type: "image/png",
+      size_bytes: 184320
+    },
+    {
+      attachment_id: "75a70000-0000-4000-8000-000000000003",
+      display_name: "출장비-내역.pdf",
+      media_type: "application/pdf",
+      size_bytes: 348160
+    }
+  ].map(item => ({
+    ...item,
+    content_route: `/api/v1/approval-gates/${gateId}/attachments/${item.attachment_id}/content?download=false`,
+    download_route: `/api/v1/approval-gates/${gateId}/attachments/${item.attachment_id}/content?download=true`
+  }));
+  return {
+    schema_version: "ae_voucher_attachment_review_manifest.v1",
+    attachment_batch_id: batchId,
+    attachment_manifest_hash: `sha256:${"b".repeat(64)}`,
+    state: "LOCKED",
+    attachment_count: items.length,
+    total_size_bytes: items.reduce((total, item) => total + item.size_bytes, 0),
+    items
+  };
+}
+
+function attachmentIdentityFromSummary(summary) {
+  if (typeof summary !== "string" || !summary.startsWith("{")) return null;
+  try {
+    const value = JSON.parse(summary);
+    return isObject(value?.attachment_review_manifest)
+      ? value.attachment_review_manifest
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeHumanGate(gate) {
@@ -456,6 +510,13 @@ function normalizeHumanGate(gate) {
     business_operation_id: optionalText(gate.business_operation_id),
     expires_at: optionalText(gate.expires_at)
   };
+  const attachmentManifest =
+    gate.attachment_manifest || attachmentIdentityFromSummary(normalized.summary);
+  if (attachmentManifest != null) {
+    normalized.attachment_manifest = normalizeAttachmentReviewManifest(
+      attachmentManifest
+    );
+  }
   if (normalized.approval_domain === "BUSINESS_FORMAL") {
     if (
       normalized.approval_provider_type !== "EOS" ||
@@ -476,6 +537,65 @@ function normalizeHumanGate(gate) {
     });
   }
   return normalized;
+}
+
+export function normalizeAttachmentReviewManifest(value) {
+  if (
+    !isObject(value) ||
+    value.schema_version !== "ae_voucher_attachment_review_manifest.v1" ||
+    value.state !== "LOCKED" ||
+    !Array.isArray(value.items) ||
+    value.attachment_count !== value.items.length ||
+    !HASH_REF.test(value.attachment_manifest_hash)
+  ) {
+    throw new ApprovalClientError("Approval attachment manifest is invalid.", {
+      status: "APPROVAL_ATTACHMENT_MANIFEST_INVALID"
+    });
+  }
+  const items = value.items.map(item => {
+    if (
+      !isObject(item) ||
+      typeof item.attachment_id !== "string" ||
+      typeof item.display_name !== "string" ||
+      typeof item.media_type !== "string" ||
+      !Number.isInteger(item.size_bytes) ||
+      item.size_bytes < 1 ||
+      typeof item.content_route !== "string" ||
+      typeof item.download_route !== "string" ||
+      !item.content_route.startsWith("/api/v1/") ||
+      !item.download_route.startsWith("/api/v1/")
+    ) {
+      throw new ApprovalClientError("Approval attachment item is invalid.", {
+        status: "APPROVAL_ATTACHMENT_MANIFEST_INVALID"
+      });
+    }
+    return {
+      attachment_id: item.attachment_id,
+      display_name: item.display_name,
+      media_type: item.media_type,
+      size_bytes: item.size_bytes,
+      content_route: item.content_route,
+      download_route: item.download_route
+    };
+  });
+  const total = items.reduce((sum, item) => sum + item.size_bytes, 0);
+  if (!Number.isInteger(value.total_size_bytes) || value.total_size_bytes !== total) {
+    throw new ApprovalClientError("Approval attachment totals are invalid.", {
+      status: "APPROVAL_ATTACHMENT_MANIFEST_INVALID"
+    });
+  }
+  return {
+    schema_version: value.schema_version,
+    attachment_batch_id: requiredText(
+      value.attachment_batch_id,
+      "attachment_batch_id"
+    ),
+    attachment_manifest_hash: value.attachment_manifest_hash,
+    state: "LOCKED",
+    attachment_count: items.length,
+    total_size_bytes: total,
+    items
+  };
 }
 
 function normalizeFormalApproval(value, gate) {
