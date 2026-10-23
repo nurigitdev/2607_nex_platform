@@ -1,0 +1,15 @@
+{
+  "schema_version": "ae_voucher_attachment_resolution.v1",
+  "tenant_id": "tenant-p8-7a",
+  "object_ref": "objref:ae-voucher-evidence-0001",
+  "storage_owner": "nex-ae-api",
+  "purpose": "EOS_VOUCHER_ATTACHMENT",
+  "status": "READY",
+  "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "size_bytes": 84210,
+  "media_type": "application/pdf",
+  "authenticated": false,
+  "immutable": true,
+  "object_version_ref": "version-0001",
+  "resolved_at": "2026-10-23T10:03:00Z"
+}

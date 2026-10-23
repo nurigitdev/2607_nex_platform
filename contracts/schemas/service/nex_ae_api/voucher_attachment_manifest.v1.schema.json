@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/voucher_attachment_manifest.v1.schema.json",
+  "title": "AE Voucher Attachment Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "attachment_batch_id", "tenant_id", "owner_subject_ref",
+    "conversation_id", "interaction_id", "items", "total_size_bytes",
+    "attachment_manifest_hash", "locked_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "ae_voucher_attachment_manifest.v1"},
+    "attachment_batch_id": {"$ref": "#/$defs/uuid"},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "owner_subject_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"const": "oa.user"},
+        "id": {"$ref": "#/$defs/scoped_id"}
+      }
+    },
+    "conversation_id": {"$ref": "#/$defs/uuid"},
+    "interaction_id": {"$ref": "#/$defs/uuid"},
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {"$ref": "#/$defs/item"}
+    },
+    "total_size_bytes": {"type": "integer", "minimum": 1, "maximum": 104857600},
+    "attachment_manifest_hash": {"$ref": "#/$defs/hash_ref"},
+    "locked_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid"},
+    "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "opaque_ref": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]+$",
+      "not": {"pattern": "(?i)(?:access[_-]?key|secret|password|credential|session[_-]?token)"}
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attachment_id", "object_ref", "object_version_ref", "display_name",
+        "media_type", "size_bytes", "content_sha256", "evidence_ref"
+      ],
+      "properties": {
+        "attachment_id": {"$ref": "#/$defs/uuid"},
+        "object_ref": {"$ref": "#/$defs/opaque_ref"},
+        "object_version_ref": {
+          "oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]
+        },
+        "display_name": {"type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[^/\\\\]+$"},
+        "media_type": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.+-]{0,63}/[a-z0-9][a-z0-9.+-]{0,127}$"},
+        "size_bytes": {"type": "integer", "minimum": 1, "maximum": 26214400},
+        "content_sha256": {"$ref": "#/$defs/sha256"},
+        "evidence_ref": {
+          "oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]
+        }
+      }
+    }
+  }
+}

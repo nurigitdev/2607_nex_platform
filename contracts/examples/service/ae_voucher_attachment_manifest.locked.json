@@ -1,0 +1,23 @@
+{
+  "schema_version": "ae_voucher_attachment_manifest.v1",
+  "attachment_batch_id": "750a0000-0000-4000-8000-000000000001",
+  "tenant_id": "tenant-p8-7a",
+  "owner_subject_ref": {"type": "oa.user", "id": "employee-1001"},
+  "conversation_id": "750a0000-0000-4000-8000-000000000002",
+  "interaction_id": "750a0000-0000-4000-8000-000000000003",
+  "items": [
+    {
+      "attachment_id": "750a0000-0000-4000-8000-000000000004",
+      "object_ref": "objref:ae-voucher-evidence-0001",
+      "object_version_ref": "version-0001",
+      "display_name": "taxi-receipt.pdf",
+      "media_type": "application/pdf",
+      "size_bytes": 84210,
+      "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "evidence_ref": "evidence-receipt-0001"
+    }
+  ],
+  "total_size_bytes": 84210,
+  "attachment_manifest_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "locked_at": "2026-10-23T10:02:00Z"
+}

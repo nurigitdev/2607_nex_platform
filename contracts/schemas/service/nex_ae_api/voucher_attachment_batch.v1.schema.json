@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/voucher_attachment_batch.v1.schema.json",
+  "title": "AE Voucher Attachment Batch v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "attachment_batch_id", "tenant_id", "owner_subject_ref",
+    "conversation_id", "interaction_id", "state", "items", "total_size_bytes",
+    "attachment_manifest_hash", "locked_at", "created_at", "updated_at", "trace"
+  ],
+  "properties": {
+    "schema_version": {"const": "ae_voucher_attachment_batch.v1"},
+    "attachment_batch_id": {"$ref": "#/$defs/uuid"},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "owner_subject_ref": {
+      "allOf": [
+        {"$ref": "#/$defs/entity_ref"},
+        {"properties": {"type": {"const": "oa.user"}}}
+      ]
+    },
+    "conversation_id": {"$ref": "#/$defs/uuid"},
+    "interaction_id": {"$ref": "#/$defs/uuid"},
+    "state": {
+      "enum": ["DRAFT", "UPLOADING", "READY", "QUARANTINED", "FAILED", "LOCKED", "ABANDONED"]
+    },
+    "items": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {"$ref": "#/$defs/item"}
+    },
+    "total_size_bytes": {"type": "integer", "minimum": 0, "maximum": 104857600},
+    "attachment_manifest_hash": {
+      "oneOf": [{"$ref": "#/$defs/hash_ref"}, {"type": "null"}]
+    },
+    "locked_at": {
+      "oneOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]
+    },
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "trace": {"$ref": "#/$defs/trace"}
+  },
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid"},
+    "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "opaque_ref": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]+$",
+      "not": {"pattern": "(?i)(?:access[_-]?key|secret|password|credential|session[_-]?token)"}
+    },
+    "entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$"},
+        "id": {"$ref": "#/$defs/scoped_id"}
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attachment_id", "state", "display_name", "media_type", "size_bytes",
+        "content_sha256", "object_ref", "object_version_ref", "scan_status"
+      ],
+      "properties": {
+        "attachment_id": {"$ref": "#/$defs/uuid"},
+        "state": {"enum": ["UPLOADING", "READY", "QUARANTINED", "FAILED", "LOCKED", "REMOVED"]},
+        "display_name": {"type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[^/\\\\]+$"},
+        "media_type": {
+          "enum": [
+            "application/pdf", "image/jpeg", "image/png", "image/webp",
+            "application/zip", "application/x-zip-compressed",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "application/x-hwp", "application/vnd.hancom.hwp"
+          ]
+        },
+        "size_bytes": {"type": "integer", "minimum": 1, "maximum": 26214400},
+        "content_sha256": {
+          "oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+        },
+        "object_ref": {
+          "oneOf": [{"$ref": "#/$defs/opaque_ref"}, {"type": "null"}]
+        },
+        "object_version_ref": {
+          "oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]
+        },
+        "scan_status": {"enum": ["PENDING", "CLEAN", "REJECTED", "UNAVAILABLE"]}
+      }
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trace_id", "correlation_id", "causation_id"],
+      "properties": {
+        "trace_id": {"$ref": "#/$defs/scoped_id"},
+        "correlation_id": {"$ref": "#/$defs/scoped_id"},
+        "causation_id": {"$ref": "#/$defs/scoped_id"}
+      }
+    }
+  }
+}

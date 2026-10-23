@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/voucher_attachment_resolution.v1.schema.json",
+  "title": "AE Voucher Attachment Resolution v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "object_ref", "storage_owner", "purpose",
+    "status", "content_sha256", "size_bytes", "media_type", "authenticated",
+    "immutable", "object_version_ref", "resolved_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "ae_voucher_attachment_resolution.v1"},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "object_ref": {"$ref": "#/$defs/opaque_ref"},
+    "storage_owner": {"const": "nex-ae-api"},
+    "purpose": {"const": "EOS_VOUCHER_ATTACHMENT"},
+    "status": {"const": "READY"},
+    "content_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "size_bytes": {"type": "integer", "minimum": 1, "maximum": 26214400},
+    "media_type": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.+-]{0,63}/[a-z0-9][a-z0-9.+-]{0,127}$"},
+    "authenticated": {"const": true},
+    "immutable": {"const": true},
+    "object_version_ref": {
+      "oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]
+    },
+    "resolved_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "opaque_ref": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]+$",
+      "not": {"pattern": "(?i)(?:access[_-]?key|secret|password|credential|session[_-]?token)"}
+    }
+  }
+}
