@@ -160,9 +160,7 @@ def api_boundary():
     )
     gateway = VoucherAttachmentObjectGateway(store, repository)
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
-    register_voucher_attachment_routes(
-        app, repository=repository, gateway=gateway
-    )
+    register_voucher_attachment_routes(app, repository=repository, gateway=gateway)
     with TestClient(app) as client:
         yield engine, repository, object_client, client
     engine.dispose()
@@ -246,8 +244,7 @@ def test_file_upload_replay_progress_preview_download_and_remove(api_boundary) -
     assert progress.json()["total_size_bytes"] == len(PAYLOAD)
 
     content_path = (
-        f"/api/v1/voucher-attachments/batches/{BATCH_ID}/items/"
-        f"{ATTACHMENT_ID}/content"
+        f"/api/v1/voucher-attachments/batches/{BATCH_ID}/items/{ATTACHMENT_ID}/content"
     )
     preview = client.get(content_path, headers=_headers())
     assert preview.status_code == 200
@@ -265,10 +262,13 @@ def test_file_upload_replay_progress_preview_download_and_remove(api_boundary) -
     assert removed.status_code == 200
     assert removed.json()["state"] == "REMOVED"
     assert objects.objects == {}
-    assert client.delete(
-        f"/api/v1/voucher-attachments/batches/{BATCH_ID}/items/{ATTACHMENT_ID}",
-        headers=_headers(),
-    ).status_code == 200
+    assert (
+        client.delete(
+            f"/api/v1/voucher-attachments/batches/{BATCH_ID}/items/{ATTACHMENT_ID}",
+            headers=_headers(),
+        ).status_code
+        == 200
+    )
 
 
 def test_many_files_finalize_and_partial_batch_rejection(api_boundary) -> None:
@@ -276,19 +276,45 @@ def test_many_files_finalize_and_partial_batch_rejection(api_boundary) -> None:
     assert _create_batch(client).status_code == 201
     second_id = "75d00000-0000-4000-8000-000000000007"
     assert _upload(client).status_code == 201
-    assert _upload(
-        client,
-        attachment_id=second_id,
-        content=b"second receipt",
-        filename="second.png",
-        content_type="image/png",
-    ).status_code == 201
+    assert (
+        _upload(
+            client,
+            attachment_id=second_id,
+            content=b"second receipt",
+            filename="second.png",
+            content_type="image/png",
+        ).status_code
+        == 201
+    )
     finalized = client.post(
         f"/api/v1/voucher-attachments/batches/{BATCH_ID}/finalize",
         headers=_headers(),
     )
     assert finalized.status_code == 200
     assert finalized.json()["attachment_count"] == 2
+    locked = client.post(
+        f"/api/v1/voucher-attachments/batches/{BATCH_ID}/lock",
+        headers=_headers(),
+    )
+    assert locked.status_code == 200
+    assert locked.json()["attachment_manifest_hash"].startswith("sha256:")
+    assert [item["attachment_id"] for item in locked.json()["items"]] == sorted(
+        (ATTACHMENT_ID, second_id)
+    )
+    assert (
+        client.post(
+            f"/api/v1/voucher-attachments/batches/{BATCH_ID}/lock",
+            headers=_headers(),
+        ).json()
+        == locked.json()
+    )
+    assert (
+        client.delete(
+            f"/api/v1/voucher-attachments/batches/{BATCH_ID}/items/{ATTACHMENT_ID}",
+            headers=_headers(),
+        ).status_code
+        == 409
+    )
 
     other_batch = "75d00000-0000-4000-8000-000000000008"
     created = client.post(
@@ -323,8 +349,7 @@ def test_owner_and_service_authorization_fail_closed(api_boundary) -> None:
     assert _create_batch(client).status_code == 201
     assert _upload(client).status_code == 201
     path = (
-        f"/api/v1/voucher-attachments/batches/{BATCH_ID}/items/"
-        f"{ATTACHMENT_ID}/content"
+        f"/api/v1/voucher-attachments/batches/{BATCH_ID}/items/{ATTACHMENT_ID}/content"
     )
     assert client.get(path).status_code == 401
     assert client.get(path, headers=_headers(owner="employee-2002")).status_code == 404
@@ -341,9 +366,12 @@ def test_owner_and_service_authorization_fail_closed(api_boundary) -> None:
 
     cx = issue_mock_service_token(service_id="nex-cx", audience="nex-ae-api")
     service_headers["Authorization"] = f"Bearer {cx.access_token}"
-    assert client.get(
-        path, headers=service_headers, params={"tenant_id": TENANT}
-    ).status_code == 403
+    assert (
+        client.get(
+            path, headers=service_headers, params={"tenant_id": TENANT}
+        ).status_code
+        == 403
+    )
     assert _create_batch(client, headers=service_headers).status_code == 403
 
 
@@ -364,20 +392,30 @@ def test_invalid_media_size_and_unavailable_runtime(api_boundary) -> None:
         assert _create_batch(unavailable).status_code == 503
         batch_path = f"/api/v1/voucher-attachments/batches/{BATCH_ID}"
         assert unavailable.get(batch_path, headers=_headers()).status_code == 503
-        assert unavailable.post(
-            f"{batch_path}/items",
-            headers=_headers(),
-            files={"file": ("receipt.pdf", PAYLOAD, "application/pdf")},
-        ).status_code == 503
-        assert unavailable.delete(
-            f"{batch_path}/items/{ATTACHMENT_ID}", headers=_headers()
-        ).status_code == 503
-        assert unavailable.post(
-            f"{batch_path}/finalize", headers=_headers()
-        ).status_code == 503
-        assert unavailable.get(
-            f"{batch_path}/items/{ATTACHMENT_ID}/content", headers=_headers()
-        ).status_code == 503
+        assert (
+            unavailable.post(
+                f"{batch_path}/items",
+                headers=_headers(),
+                files={"file": ("receipt.pdf", PAYLOAD, "application/pdf")},
+            ).status_code
+            == 503
+        )
+        assert (
+            unavailable.delete(
+                f"{batch_path}/items/{ATTACHMENT_ID}", headers=_headers()
+            ).status_code
+            == 503
+        )
+        assert (
+            unavailable.post(f"{batch_path}/finalize", headers=_headers()).status_code
+            == 503
+        )
+        assert (
+            unavailable.get(
+                f"{batch_path}/items/{ATTACHMENT_ID}/content", headers=_headers()
+            ).status_code
+            == 503
+        )
 
 
 def test_route_error_and_missing_item_paths_are_explicit(api_boundary) -> None:
@@ -389,28 +427,39 @@ def test_route_error_and_missing_item_paths_are_explicit(api_boundary) -> None:
     )
     assert invalid.status_code == 422
     missing_path = (
-        f"/api/v1/voucher-attachments/batches/{BATCH_ID}/items/"
-        f"{ATTACHMENT_ID}"
+        f"/api/v1/voucher-attachments/batches/{BATCH_ID}/items/{ATTACHMENT_ID}"
     )
-    assert client.get(
-        f"/api/v1/voucher-attachments/batches/{BATCH_ID}", headers=_headers()
-    ).status_code == 404
+    assert (
+        client.get(
+            f"/api/v1/voucher-attachments/batches/{BATCH_ID}", headers=_headers()
+        ).status_code
+        == 404
+    )
     assert client.delete(missing_path, headers=_headers()).status_code == 404
-    assert client.post(
-        f"/api/v1/voucher-attachments/batches/{BATCH_ID}/finalize",
-        headers=_headers(),
-    ).status_code == 404
+    assert (
+        client.post(
+            f"/api/v1/voucher-attachments/batches/{BATCH_ID}/finalize",
+            headers=_headers(),
+        ).status_code
+        == 404
+    )
 
     assert _create_batch(client).status_code == 201
     assert client.get(f"{missing_path}/content", headers=_headers()).status_code == 404
-    assert client.post(
-        f"/api/v1/voucher-attachments/batches/{BATCH_ID}/items",
-        files={"file": ("receipt.pdf", PAYLOAD, "application/pdf")},
-    ).status_code == 401
+    assert (
+        client.post(
+            f"/api/v1/voucher-attachments/batches/{BATCH_ID}/items",
+            files={"file": ("receipt.pdf", PAYLOAD, "application/pdf")},
+        ).status_code
+        == 401
+    )
     assert client.delete(missing_path).status_code == 401
-    assert client.post(
-        f"/api/v1/voucher-attachments/batches/{BATCH_ID}/finalize"
-    ).status_code == 401
+    assert (
+        client.post(
+            f"/api/v1/voucher-attachments/batches/{BATCH_ID}/finalize"
+        ).status_code
+        == 401
+    )
 
 
 def test_service_preview_requires_tenant_and_existing_scope(api_boundary) -> None:
@@ -422,13 +471,13 @@ def test_service_preview_requires_tenant_and_existing_scope(api_boundary) -> Non
         "traceparent": f"00-{TRACE_ID}-00f067aa0ba902b7-01",
     }
     path = (
-        f"/api/v1/voucher-attachments/batches/{BATCH_ID}/items/"
-        f"{ATTACHMENT_ID}/content"
+        f"/api/v1/voucher-attachments/batches/{BATCH_ID}/items/{ATTACHMENT_ID}/content"
     )
     assert client.get(path, headers=headers).status_code == 403
-    assert client.get(
-        path, headers=headers, params={"tenant_id": TENANT}
-    ).status_code == 404
+    assert (
+        client.get(path, headers=headers, params={"tenant_id": TENANT}).status_code
+        == 404
+    )
 
 
 def test_repository_remove_and_finalize_state_guards(api_boundary) -> None:
@@ -441,9 +490,7 @@ def test_repository_remove_and_finalize_state_guards(api_boundary) -> None:
         )
     assert missing_batch.value.status_code == 404
     with pytest.raises(VoucherAttachmentPersistenceError) as missing_finalize:
-        repository.finalize_batch(
-            tenant_id=TENANT, attachment_batch_id=BATCH_ID
-        )
+        repository.finalize_batch(tenant_id=TENANT, attachment_batch_id=BATCH_ID)
     assert missing_finalize.value.status_code == 404
 
     assert _create_batch(client).status_code == 201
@@ -456,12 +503,11 @@ def test_repository_remove_and_finalize_state_guards(api_boundary) -> None:
     assert missing_item.value.status_code == 404
 
     assert _upload(client).status_code == 201
-    ready = repository.finalize_batch(
-        tenant_id=TENANT, attachment_batch_id=BATCH_ID
+    ready = repository.finalize_batch(tenant_id=TENANT, attachment_batch_id=BATCH_ID)
+    assert (
+        repository.finalize_batch(tenant_id=TENANT, attachment_batch_id=BATCH_ID)
+        == ready
     )
-    assert repository.finalize_batch(
-        tenant_id=TENANT, attachment_batch_id=BATCH_ID
-    ) == ready
     with engine.begin() as connection:
         connection.execute(
             text(
@@ -478,9 +524,7 @@ def test_repository_remove_and_finalize_state_guards(api_boundary) -> None:
         )
     assert locked_remove.value.status_code == 409
     with pytest.raises(VoucherAttachmentPersistenceError) as locked_finalize:
-        repository.finalize_batch(
-            tenant_id=TENANT, attachment_batch_id=BATCH_ID
-        )
+        repository.finalize_batch(tenant_id=TENANT, attachment_batch_id=BATCH_ID)
     assert locked_finalize.value.status_code == 409
 
 

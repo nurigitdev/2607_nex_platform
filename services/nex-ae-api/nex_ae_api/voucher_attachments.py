@@ -11,6 +11,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from .voucher_attachment_manifest import build_attachment_manifest
+
 ATTACHMENT_BATCH_SCHEMA_VERSION = "ae_voucher_attachment_batch.v1"
 MAX_ATTACHMENT_COUNT = 20
 MAX_ATTACHMENT_FILE_BYTES = 25 * 1024 * 1024
@@ -38,9 +40,7 @@ _ITEM_STATES = frozenset(
 )
 _SCAN_STATES = frozenset({"PENDING", "CLEAN", "REJECTED", "UNAVAILABLE"})
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
-_MEDIA_TYPE = re.compile(
-    r"^[a-z0-9][a-z0-9.+-]{0,63}/[a-z0-9][a-z0-9.+-]{0,127}$"
-)
+_MEDIA_TYPE = re.compile(r"^[a-z0-9][a-z0-9.+-]{0,63}/[a-z0-9][a-z0-9.+-]{0,127}$")
 _SAFE_NAME = re.compile(r"^[^/\\]+$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _OPAQUE_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{15,255}$")
@@ -215,9 +215,7 @@ class SqlAlchemyVoucherAttachmentRepository:
     ) -> dict[str, Any]:
         params = {
             "tenant_id": _scoped_id("tenant_id", tenant_id),
-            "attachment_batch_id": _uuid(
-                "attachment_batch_id", attachment_batch_id
-            ),
+            "attachment_batch_id": _uuid("attachment_batch_id", attachment_batch_id),
             "attachment_id": _uuid("attachment_id", attachment_id),
             "content_sha256": _sha256(content_sha256),
             "object_ref": _object_ref(object_ref),
@@ -286,9 +284,11 @@ class SqlAlchemyVoucherAttachmentRepository:
         }
         try:
             with self._session_factory() as session:
-                row = session.execute(
-                    text(_RESOLVE_OBJECT_REF_SQL), params
-                ).mappings().first()
+                row = (
+                    session.execute(text(_RESOLVE_OBJECT_REF_SQL), params)
+                    .mappings()
+                    .first()
+                )
                 return None if row is None else _resolved_record(row)
         except VoucherAttachmentPersistenceError:
             raise
@@ -304,9 +304,7 @@ class SqlAlchemyVoucherAttachmentRepository:
     ) -> dict[str, Any]:
         params = {
             "tenant_id": _scoped_id("tenant_id", tenant_id),
-            "attachment_batch_id": _uuid(
-                "attachment_batch_id", attachment_batch_id
-            ),
+            "attachment_batch_id": _uuid("attachment_batch_id", attachment_batch_id),
             "attachment_id": _uuid("attachment_id", attachment_id),
             "updated_at": _aware_time(self._clock()),
         }
@@ -374,9 +372,7 @@ class SqlAlchemyVoucherAttachmentRepository:
     ) -> dict[str, Any]:
         params = {
             "tenant_id": _scoped_id("tenant_id", tenant_id),
-            "attachment_batch_id": _uuid(
-                "attachment_batch_id", attachment_batch_id
-            ),
+            "attachment_batch_id": _uuid("attachment_batch_id", attachment_batch_id),
             "updated_at": _aware_time(self._clock()),
         }
         try:
@@ -428,6 +424,72 @@ class SqlAlchemyVoucherAttachmentRepository:
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
 
+    def lock_manifest(
+        self, *, tenant_id: str, attachment_batch_id: str
+    ) -> dict[str, Any]:
+        params = {
+            "tenant_id": _scoped_id("tenant_id", tenant_id),
+            "attachment_batch_id": _uuid("attachment_batch_id", attachment_batch_id),
+            "locked_at": _aware_time(self._clock()),
+        }
+        try:
+            with self._session_factory() as session:
+                batch = _load_batch(
+                    session,
+                    tenant_id=params["tenant_id"],
+                    attachment_batch_id=params["attachment_batch_id"],
+                    for_update=True,
+                )
+                if batch is None:
+                    raise _not_found("Voucher attachment batch was not found.")
+                items = _list_items(
+                    session,
+                    tenant_id=params["tenant_id"],
+                    attachment_batch_id=params["attachment_batch_id"],
+                )
+                batch["items"] = items
+                if batch["state"] == "LOCKED":
+                    session.commit()
+                    return build_attachment_manifest(batch)
+                if batch["state"] != "READY":
+                    raise _conflict(
+                        "Voucher attachment batch must be READY before approval lock."
+                    )
+                manifest = build_attachment_manifest(batch)
+                updated = session.execute(
+                    text(_LOCK_BATCH_SQL),
+                    {
+                        **params,
+                        "attachment_manifest_hash": manifest[
+                            "attachment_manifest_hash"
+                        ],
+                    },
+                )
+                if updated.rowcount != 1:
+                    raise _conflict("Voucher attachment batch changed concurrently.")
+                locked_items = session.execute(text(_LOCK_ITEMS_SQL), params)
+                if locked_items.rowcount != batch["attachment_count"]:
+                    raise _integrity()
+                saved = _load_batch(
+                    session,
+                    tenant_id=params["tenant_id"],
+                    attachment_batch_id=params["attachment_batch_id"],
+                )
+                if saved is None:
+                    raise _unavailable()
+                saved["items"] = _list_items(
+                    session,
+                    tenant_id=params["tenant_id"],
+                    attachment_batch_id=params["attachment_batch_id"],
+                )
+                locked = build_attachment_manifest(saved)
+                session.commit()
+                return locked
+        except VoucherAttachmentPersistenceError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
 
 def _batch_input(value: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(value, Mapping):
@@ -455,9 +517,7 @@ def _batch_input(value: Mapping[str, Any]) -> dict[str, Any]:
         "conversation_id": _uuid("conversation_id", value.get("conversation_id")),
         "interaction_id": _uuid("interaction_id", value.get("interaction_id")),
         "trace_id": _scoped_id("trace_id", trace.get("trace_id")),
-        "correlation_id": _scoped_id(
-            "correlation_id", trace.get("correlation_id")
-        ),
+        "correlation_id": _scoped_id("correlation_id", trace.get("correlation_id")),
         "causation_id": _scoped_id("causation_id", trace.get("causation_id")),
     }
 
@@ -501,10 +561,14 @@ def _load_batch(
     statement = _SELECT_BATCH_SQL
     if for_update and session.get_bind().dialect.name == "postgresql":
         statement += " FOR UPDATE"
-    row = session.execute(
-        text(statement),
-        {"tenant_id": tenant_id, "attachment_batch_id": attachment_batch_id},
-    ).mappings().first()
+    row = (
+        session.execute(
+            text(statement),
+            {"tenant_id": tenant_id, "attachment_batch_id": attachment_batch_id},
+        )
+        .mappings()
+        .first()
+    )
     return None if row is None else _batch_record(row)
 
 
@@ -519,24 +583,32 @@ def _load_item(
     statement = _SELECT_ITEM_SQL
     if for_update and session.get_bind().dialect.name == "postgresql":
         statement += " FOR UPDATE"
-    row = session.execute(
-        text(statement),
-        {
-            "tenant_id": tenant_id,
-            "attachment_batch_id": attachment_batch_id,
-            "attachment_id": attachment_id,
-        },
-    ).mappings().first()
+    row = (
+        session.execute(
+            text(statement),
+            {
+                "tenant_id": tenant_id,
+                "attachment_batch_id": attachment_batch_id,
+                "attachment_id": attachment_id,
+            },
+        )
+        .mappings()
+        .first()
+    )
     return None if row is None else _item_record(row)
 
 
 def _list_items(
     session: Session, *, tenant_id: str, attachment_batch_id: str
 ) -> list[dict[str, Any]]:
-    rows = session.execute(
-        text(_LIST_ITEMS_SQL),
-        {"tenant_id": tenant_id, "attachment_batch_id": attachment_batch_id},
-    ).mappings().all()
+    rows = (
+        session.execute(
+            text(_LIST_ITEMS_SQL),
+            {"tenant_id": tenant_id, "attachment_batch_id": attachment_batch_id},
+        )
+        .mappings()
+        .all()
+    )
     return [_item_record(row) for row in rows]
 
 
@@ -601,7 +673,9 @@ def _require_same_batch(saved: Mapping[str, Any], expected: Mapping[str, Any]) -
         },
     }
     if any(saved.get(name) != value for name, value in checks.items()):
-        raise _conflict("Voucher attachment batch identity conflicts with persisted data.")
+        raise _conflict(
+            "Voucher attachment batch identity conflicts with persisted data."
+        )
 
 
 def _require_same_item(saved: Mapping[str, Any], expected: Mapping[str, Any]) -> None:
@@ -866,4 +940,23 @@ SET state = 'READY', updated_at = :updated_at
 WHERE tenant_id = :tenant_id
   AND attachment_batch_id = :attachment_batch_id
   AND state IN ('DRAFT', 'UPLOADING', 'READY', 'QUARANTINED', 'FAILED')
+"""
+
+_LOCK_BATCH_SQL = """
+UPDATE ae_voucher_attach_batch
+SET state = 'LOCKED',
+    attachment_manifest_hash = :attachment_manifest_hash,
+    locked_at = :locked_at,
+    updated_at = :locked_at
+WHERE tenant_id = :tenant_id
+  AND attachment_batch_id = :attachment_batch_id
+  AND state = 'READY'
+"""
+
+_LOCK_ITEMS_SQL = """
+UPDATE ae_voucher_attachment
+SET state = 'LOCKED', updated_at = :locked_at
+WHERE tenant_id = :tenant_id
+  AND attachment_batch_id = :attachment_batch_id
+  AND state = 'READY'
 """

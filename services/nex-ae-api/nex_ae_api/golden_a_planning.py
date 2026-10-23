@@ -20,6 +20,10 @@ from nex_ae_api.planning_capabilities import (
     build_capability_snapshot,
     build_local_skill_capability,
 )
+from nex_ae_api.voucher_attachment_manifest import (
+    bind_manifest_to_governed_payload,
+    bind_manifest_to_work_intent,
+)
 
 GOLDEN_A_FIXTURE_SCHEMA_VERSION = "p8_golden_a_fixture.v1"
 GOLDEN_A_PLANNING_SCHEMA_VERSION = "p8.golden_a_planning_activation.v1"
@@ -92,6 +96,8 @@ def build_golden_a_capability_snapshot(
 
 def build_golden_a_canonical_write_payload(
     fixture: Mapping[str, Any],
+    *,
+    attachment_manifest: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Resolve the model-independent Golden A Tool-contract payload."""
 
@@ -106,7 +112,7 @@ def build_golden_a_canonical_write_payload(
         "Golden A travel expense",
         "Golden A cash settlement",
     )
-    return {
+    payload = {
         "schema_version": GOLDEN_A_WRITE_SCHEMA_VERSION,
         "tenant_id": record["tenant_id"],
         "requester_ref": {
@@ -137,6 +143,11 @@ def build_golden_a_canonical_write_payload(
         ],
         "attachments": list(scenario["attachments"]),
     }
+    return (
+        payload
+        if attachment_manifest is None
+        else bind_manifest_to_governed_payload(payload, attachment_manifest)
+    )
 
 
 def bind_golden_a_planning_candidate(
@@ -213,6 +224,7 @@ def activate_golden_a_work_intent(
     *,
     candidate: Mapping[str, Any],
     activation: Mapping[str, Any],
+    attachment_manifest: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     record = deepcopy(dict(work_intent))
     expected = semantic_sha256_hash_ref(
@@ -320,7 +332,11 @@ def activate_golden_a_work_intent(
     record["intent_hash"] = semantic_sha256_hash_ref(
         {key: value for key, value in record.items() if key != "intent_hash"}
     )
-    return record
+    return (
+        record
+        if attachment_manifest is None
+        else bind_manifest_to_work_intent(record, attachment_manifest)
+    )
 
 
 def _fixture_projection(fixture: Mapping[str, Any]) -> dict[str, Any]:

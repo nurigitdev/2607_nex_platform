@@ -43,6 +43,7 @@ class GoldenAPlanningJourneyResult:
     plan_stage: Any = field(repr=False)
     validation: Mapping[str, Any] = field(repr=False)
     executable_plan: Mapping[str, Any] = field(repr=False)
+    attachment_manifest: Mapping[str, Any] | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,7 @@ class GoldenAPlanningJourneyService:
         trace_id: str,
         authority_ref: str,
         snapshot_version: int = 1,
+        attachment_manifest: Mapping[str, Any] | None = None,
     ) -> GoldenAPlanningJourneyResult:
         fixture_tenant = _fixture_tenant(fixture)
         if tenant_id != fixture_tenant:
@@ -110,6 +112,7 @@ class GoldenAPlanningJourneyService:
             intent_stage.work_intent,
             candidate=intent_stage.candidate,
             activation=activation,
+            attachment_manifest=attachment_manifest,
         )
         resolver = _GoldenAContextResolver(
             activation=activation,
@@ -185,6 +188,7 @@ class GoldenAPlanningJourneyService:
             plan_stage=plan_stage,
             validation=validation,
             executable_plan=executable_plan,
+            attachment_manifest=attachment_manifest,
         )
 
 

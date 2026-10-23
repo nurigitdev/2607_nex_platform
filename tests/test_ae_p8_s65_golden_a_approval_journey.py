@@ -24,6 +24,10 @@ from nex_ae_api.semantic_candidates import (
     SemanticCalibrationPolicy,
     SemanticCalibrationRegistry,
 )
+from nex_ae_api.voucher_attachment_manifest import (
+    build_attachment_manifest,
+    manifest_identity,
+)
 from nex_runtime.prompts import PromptRegistryStore
 from nex_runtime.semantic_hashes import canonical_json, sha256_text
 from p8_golden_a_fixture import load_golden_a_fixture
@@ -200,6 +204,37 @@ def _run(service: GoldenAPlanningJourneyService, **overrides):
     return service.plan(**values)
 
 
+def _attachment_manifest() -> dict:
+    content_hash = sha256_text("P8-S75E receipt")
+    return build_attachment_manifest(
+        {
+            "schema_version": "ae_voucher_attachment_batch.v1",
+            "attachment_batch_id": "75e00000-0000-4000-8000-000000000001",
+            "tenant_id": TENANT_ID,
+            "owner_subject_ref": {"type": "oa.user", "id": "employee-1001"},
+            "conversation_id": "75e00000-0000-4000-8000-000000000002",
+            "interaction_id": "75e00000-0000-4000-8000-000000000003",
+            "state": "READY",
+            "attachment_count": 1,
+            "total_size_bytes": 16,
+            "attachment_manifest_hash": None,
+            "items": [
+                {
+                    "attachment_id": "75e00000-0000-4000-8000-000000000004",
+                    "state": "READY",
+                    "object_ref": "objref:ae:voucher:p8s75e000000000000000001",
+                    "object_version_ref": "version-p8-s75e",
+                    "display_name": "receipt.pdf",
+                    "media_type": "application/pdf",
+                    "size_bytes": 16,
+                    "content_sha256": content_hash,
+                    "evidence_ref": "evidence-p8-s75e",
+                }
+            ],
+        }
+    )
+
+
 def test_live_candidates_compile_to_exact_golden_a_local_skill() -> None:
     client = CandidateClient()
 
@@ -210,14 +245,37 @@ def test_live_candidates_compile_to_exact_golden_a_local_skill() -> None:
     fixture = _fixture()
     assert client.calls == ["INTENT", "PLAN"]
     assert result.validation["status"] == "VALID"
-    assert result.activation["authoritative_binding"]["project_code"] == (
-        fixture["projects"]["child"]["project_code"]
+    assert (
+        result.activation["authoritative_binding"]["project_code"]
+        == (fixture["projects"]["child"]["project_code"])
     )
     assert step["executor_kind"] == "LOCAL_SKILL"
     assert step["required_capability"] == GOLDEN_A_CAPABILITY_ID
     assert binding["capability_id"] == GOLDEN_A_CAPABILITY_ID
     assert binding["skill_id"] == GOLDEN_A_NSL_SKILL_ID
     assert binding["skill_semantic_hash"] == fixture["admission"]["skill_semantic_hash"]
+
+
+def test_locked_attachment_manifest_reaches_work_intent_and_executable_plan() -> None:
+    manifest = _attachment_manifest()
+
+    result = _run(_service(CandidateClient()), attachment_manifest=manifest)
+
+    identity = manifest_identity(manifest)
+    constraint = next(
+        item
+        for item in result.work_intent["constraints"]
+        if item["constraint_type"] == "ATTACHMENT_MANIFEST"
+    )
+    assert {key: constraint[key] for key in identity} == identity
+    binding = next(
+        item
+        for item in result.executable_plan["steps"][0]["compiled_input_bindings"]
+        if item["target_name"] == "attachment_manifest"
+    )
+    assert binding["binding_type"] == "LITERAL"
+    assert binding["value"] == identity
+    assert result.attachment_manifest == manifest
 
 
 def test_tenant_mismatch_fails_before_provider_call() -> None:

@@ -35,6 +35,7 @@ from nex_ae_api.semantic_candidates import (
     SemanticCalibrationRegistry,
     SemanticCandidateStageError,
 )
+from nex_ae_api.voucher_attachment_manifest import work_intent_manifest_binding
 
 PLAN_CANDIDATE_SCHEMA_VERSION = "p65.plan_candidate.v1"
 P7_PLAN_CANDIDATE_SCHEMA_VERSION = "p7.plan_candidate.v1"
@@ -321,7 +322,7 @@ def parse_plan_candidate(output_text: str) -> dict[str, Any]:
     try:
         value = json.loads(
             output_text,
-            parse_constant=lambda constant: (_raise_json_constant(constant)),
+            parse_constant=lambda constant: _raise_json_constant(constant),
         )
     except (TypeError, ValueError) as exc:
         raise PlanCandidateStageError(
@@ -350,9 +351,7 @@ def parse_plan_candidate(output_text: str) -> dict[str, Any]:
         "logical_steps": _logical_steps(
             value.get("logical_steps"), schema_version=str(schema_version)
         ),
-        "completion_mapping": _completion_mapping(
-            value.get("completion_mapping")
-        ),
+        "completion_mapping": _completion_mapping(value.get("completion_mapping")),
         "confidence": _confidence(value.get("confidence"), "confidence"),
     }
     _validate_dependency_graph(normalized)
@@ -463,11 +462,7 @@ def bind_plan_candidate(
         "planning_constraints": {
             "max_plan_steps": 12,
             "max_delegation_depth": (
-                1
-                if any(
-                    step["step_type"] == "DELEGATE_WORK" for step in steps
-                )
-                else 0
+                1 if any(step["step_type"] == "DELEGATE_WORK" for step in steps) else 0
             ),
             "max_parallel_steps": 1,
         },
@@ -492,9 +487,7 @@ def bind_plan_candidate(
             "rendered_prompt_hash": _provenance_digest(
                 prompt_provenance, "rendered_prompt_hash"
             ),
-            "model_profile": _provenance_text(
-                model_provenance, "model_profile", 128
-            ),
+            "model_profile": _provenance_text(model_provenance, "model_profile", 128),
             "model_ref": _provenance_text(model_provenance, "model_ref", 256),
         },
     }
@@ -502,12 +495,12 @@ def bind_plan_candidate(
     try:
         return validate_agent_plan_contract(plan)
     except AgentPlanError as exc:
-        raise _schema_error("Bound PLAN candidate is not a canonical AgentPlan.") from exc
+        raise _schema_error(
+            "Bound PLAN candidate is not a canonical AgentPlan."
+        ) from exc
 
 
-def _logical_steps(
-    value: object, *, schema_version: str
-) -> list[dict[str, Any]]:
+def _logical_steps(value: object, *, schema_version: str) -> list[dict[str, Any]]:
     records = _bounded_list(value, "logical_steps", 12, require_one=True)
     normalized: list[dict[str, Any]] = []
     step_ids: set[str] = set()
@@ -723,6 +716,15 @@ def _bind_step(
         }
         for index, dependency in enumerate(step["depends_on"], start=1)
     ]
+    attachment_manifest = work_intent_manifest_binding(work_intent)
+    if attachment_manifest is not None and step_type == "LOCAL_CAPABILITY":
+        input_bindings.append(
+            {
+                "target_name": "attachment_manifest",
+                "source_type": "LITERAL",
+                "literal_value": attachment_manifest,
+            }
+        )
     return {
         "step_id": step["step_id"],
         "step_type": step_type,
@@ -823,9 +825,7 @@ def _work_intent_projection(value: Mapping[str, Any]) -> dict[str, Any]:
         "execution_id": execution_id,
         "intent_revision": revision,
         "intent_hash": intent_hash,
-        "intent_label": _bounded_text(
-            value.get("intent_label"), "intent_label", 160
-        ),
+        "intent_label": _bounded_text(value.get("intent_label"), "intent_label", 160),
         "execution_mode": mode,
         "goal": _bounded_text(value.get("goal"), "goal", 1000),
         "work_class": _bounded_text(value.get("work_class"), "work_class", 64),
@@ -930,8 +930,7 @@ def _capability_catalog(snapshot: Mapping[str, Any]) -> list[dict[str, Any]]:
             | set(capability["allowed_logical_step_types"])
         )
         existing["operation_semantics"] = sorted(
-            set(existing["operation_semantics"])
-            | {capability["operation_semantics"]}
+            set(existing["operation_semantics"]) | {capability["operation_semantics"]}
         )
     return [records[key] for key in sorted(records)]
 
@@ -978,7 +977,9 @@ def _resolve_prompt_snapshot(
         content_sha256 = validate_sha256_digest(version.get("content_sha256"))
         rendered_hash = validate_sha256_digest(event.get("rendered_prompt_hash"))
     except ValueError as exc:
-        raise _schema_error("The captured PLAN prompt provenance digest is invalid.") from exc
+        raise _schema_error(
+            "The captured PLAN prompt provenance digest is invalid."
+        ) from exc
     return {
         "rendered_prompt": _bounded_text(
             rendered.get("rendered_prompt"), "rendered_prompt", 16_384
@@ -1055,7 +1056,9 @@ def _report_kind(work_intent: Mapping[str, Any]) -> str:
     )
 
 
-def _versioned_ref(identity: object, version: object, hash_ref: object) -> dict[str, Any]:
+def _versioned_ref(
+    identity: object, version: object, hash_ref: object
+) -> dict[str, Any]:
     try:
         normalized_hash = validate_hash_ref(hash_ref)
     except ValueError as exc:
@@ -1067,9 +1070,7 @@ def _versioned_ref(identity: object, version: object, hash_ref: object) -> dict[
     }
 
 
-def _provenance_text(
-    value: Mapping[str, Any], field_name: str, maximum: int
-) -> str:
+def _provenance_text(value: Mapping[str, Any], field_name: str, maximum: int) -> str:
     return _bounded_text(value.get(field_name), field_name, maximum)
 
 
@@ -1087,10 +1088,10 @@ def _step_ref_list(
     require_one: bool,
 ) -> list[str]:
     records = _bounded_list(value, field_name, maximum, require_one=require_one)
-    if (
-        any(not isinstance(item, str) or _STEP_ID.fullmatch(item) is None for item in records)
-        or len(set(records)) != len(records)
-    ):
+    if any(
+        not isinstance(item, str) or _STEP_ID.fullmatch(item) is None
+        for item in records
+    ) or len(set(records)) != len(records):
         raise _schema_error(f"PLAN {field_name} is invalid.")
     return list(records)
 
@@ -1104,9 +1105,7 @@ def _text_list(
     require_one: bool,
 ) -> list[str]:
     records = _bounded_list(value, field_name, maximum, require_one=require_one)
-    normalized = [
-        _candidate_text(item, field_name, text_maximum) for item in records
-    ]
+    normalized = [_candidate_text(item, field_name, text_maximum) for item in records]
     if len(set(normalized)) != len(normalized):
         raise _schema_error(f"PLAN {field_name} must be unique.")
     return normalized
@@ -1203,7 +1202,11 @@ def _uuid_text(value: object, field_name: str) -> str:
 
 
 def _bounded_int(value: object, field_name: str, minimum: int, maximum: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not minimum <= value <= maximum
+    ):
         raise _request_error(f"{field_name} is outside its supported range.")
     return value
 

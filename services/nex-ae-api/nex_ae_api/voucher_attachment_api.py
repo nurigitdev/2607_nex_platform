@@ -98,7 +98,10 @@ def register_voucher_attachment_routes(
             return _unavailable(request, "Attachment persistence is unavailable.")
         try:
             return _owned_batch(repository, auth, attachment_batch_id)
-        except (VoucherAttachmentPersistenceError, VoucherAttachmentStorageError) as exc:
+        except (
+            VoucherAttachmentPersistenceError,
+            VoucherAttachmentStorageError,
+        ) as exc:
             return _problem(request, exc)
 
     @app.post(
@@ -151,16 +154,17 @@ def register_voucher_attachment_routes(
                 tenant_id=owner.tenant_id,
                 attachment_batch_id=attachment_batch_id,
             )
-        except (VoucherAttachmentPersistenceError, VoucherAttachmentStorageError) as exc:
+        except (
+            VoucherAttachmentPersistenceError,
+            VoucherAttachmentStorageError,
+        ) as exc:
             return _problem(request, exc)
         return JSONResponse(
             status_code=200 if replay else 201,
             content={
                 "attachment_batch_id": attachment_batch_id,
                 "attachment": next(
-                    item
-                    for item in batch["items"]
-                    if item["attachment_id"] == item_id
+                    item for item in batch["items"] if item["attachment_id"] == item_id
                 ),
                 "resolution": resolved,
             },
@@ -196,7 +200,10 @@ def register_voucher_attachment_routes(
                 attachment_batch_id=attachment_batch_id,
                 attachment_id=attachment_id,
             )
-        except (VoucherAttachmentPersistenceError, VoucherAttachmentStorageError) as exc:
+        except (
+            VoucherAttachmentPersistenceError,
+            VoucherAttachmentStorageError,
+        ) as exc:
             return _problem(request, exc)
         return removed
 
@@ -227,7 +234,43 @@ def register_voucher_attachment_routes(
                 tenant_id=owner.tenant_id,
                 attachment_batch_id=attachment_batch_id,
             )
-        except (VoucherAttachmentPersistenceError, VoucherAttachmentStorageError) as exc:
+        except (
+            VoucherAttachmentPersistenceError,
+            VoucherAttachmentStorageError,
+        ) as exc:
+            return _problem(request, exc)
+
+    @app.post(
+        "/api/v1/voucher-attachments/batches/{attachment_batch_id}/lock",
+        response_model=None,
+    )
+    def lock_batch_manifest(
+        attachment_batch_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth = _authorize_browser(
+            request,
+            authorization,
+            oa_session_client=oa_session_client,
+            session_mode=session_mode,
+        )
+        if isinstance(auth, JSONResponse):
+            return auth
+        if repository is None:
+            return _unavailable(request, "Attachment persistence is unavailable.")
+        owner = auth.browser_context
+        assert owner is not None
+        try:
+            _owned_batch(repository, auth, attachment_batch_id)
+            return repository.lock_manifest(
+                tenant_id=owner.tenant_id,
+                attachment_batch_id=attachment_batch_id,
+            )
+        except (
+            VoucherAttachmentPersistenceError,
+            VoucherAttachmentStorageError,
+        ) as exc:
             return _problem(request, exc)
 
     @app.get(
@@ -280,7 +323,10 @@ def register_voucher_attachment_routes(
                     tenant_id=tenant_id,
                     object_ref=str(item["object_ref"]),
                 )
-        except (VoucherAttachmentPersistenceError, VoucherAttachmentStorageError) as exc:
+        except (
+            VoucherAttachmentPersistenceError,
+            VoucherAttachmentStorageError,
+        ) as exc:
             return _problem(request, exc)
         disposition = "attachment" if download else "inline"
         encoded_name = quote(opened.display_name, safe="")
@@ -343,11 +389,7 @@ def _owned_batch(
 
 def _batch_item(batch: dict[str, Any], attachment_id: str) -> dict[str, Any]:
     item = next(
-        (
-            value
-            for value in batch["items"]
-            if value["attachment_id"] == attachment_id
-        ),
+        (value for value in batch["items"] if value["attachment_id"] == attachment_id),
         None,
     )
     if item is None or item["state"] not in {"READY", "LOCKED"}:
@@ -389,12 +431,8 @@ def _unavailable(request: Request, detail: str) -> JSONResponse:
 
 
 def _not_found(detail: str) -> VoucherAttachmentStorageError:
-    return VoucherAttachmentStorageError(
-        "ae.voucher_attachment.not_found", detail, 404
-    )
+    return VoucherAttachmentStorageError("ae.voucher_attachment.not_found", detail, 404)
 
 
 def _forbidden(detail: str) -> VoucherAttachmentStorageError:
-    return VoucherAttachmentStorageError(
-        "ae.voucher_attachment.forbidden", detail, 403
-    )
+    return VoucherAttachmentStorageError("ae.voucher_attachment.forbidden", detail, 403)
