@@ -1032,6 +1032,11 @@
       "schema": "schemas/service/nex_eos/create_voucher_draft_command.v1.schema.json"
     },
     {
+      "name": "eos_create_voucher_draft_command_attachment_without_manifest",
+      "path": "tests/negative/service/eos_create_voucher_draft_command.attachment_without_manifest.json",
+      "schema": "schemas/service/nex_eos/create_voucher_draft_command.v1.schema.json"
+    },
+    {
       "name": "eos_create_voucher_draft_result_committed_without_voucher",
       "path": "tests/negative/service/eos_create_voucher_draft_result.committed_without_voucher.json",
       "schema": "schemas/service/nex_eos/create_voucher_draft_result.v1.schema.json"

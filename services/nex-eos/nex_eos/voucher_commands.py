@@ -82,11 +82,13 @@ class ParsedVoucherDraftCommand:
     nsl_approval_request_id: str
     nsl_approval_evidence_ref: str
     business_approval_proof_ref: str | None
+    attachment_batch_id: str | None
+    attachment_manifest_hash: str | None
     attachments: tuple[VoucherAttachmentInput, ...]
     trace: dict[str, str]
 
     def business_payload(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema_version": EOS_CREATE_VOUCHER_SCHEMA,
             "tenant_id": self.tenant_id,
             "requester_ref": dict(self.requester_ref),
@@ -122,6 +124,14 @@ class ParsedVoucherDraftCommand:
                 for item in self.attachments
             ],
         }
+        if self.attachment_batch_id is not None:
+            payload.update(
+                {
+                    "attachment_batch_id": self.attachment_batch_id,
+                    "attachment_manifest_hash": self.attachment_manifest_hash,
+                }
+            )
+        return payload
 
 
 class EosCreateVoucherDraftService:
@@ -199,6 +209,8 @@ class EosCreateVoucherDraftService:
                             "id": command.nsl_approval_request_id,
                         },
                         lines=command.lines,
+                        attachment_batch_id=command.attachment_batch_id,
+                        attachment_manifest_hash=command.attachment_manifest_hash,
                         voucher_type=command.voucher_type,
                         currency=command.currency,
                     ),
@@ -216,6 +228,8 @@ class EosCreateVoucherDraftService:
                         tenant_id=command.tenant_id,
                         voucher_id=voucher_id,
                         attachments=command.attachments,
+                        attachment_batch_id=command.attachment_batch_id,
+                        attachment_manifest_hash=command.attachment_manifest_hash,
                     )
             except (EosVoucherError, EosAttachmentError) as exc:
                 raise EosBusinessOperationError(
@@ -231,6 +245,9 @@ class EosCreateVoucherDraftService:
                 "authorization_checked_at": _wire_time(
                     evidence.authorization_checked_at
                 ),
+                "attachment_batch_id": command.attachment_batch_id,
+                "attachment_manifest_hash": command.attachment_manifest_hash,
+                "attachment_ids": [item.attachment_id for item in command.attachments],
             }
 
         try:
@@ -296,12 +313,22 @@ def parse_create_voucher_draft_command(
         "nsl_approval_evidence_ref",
         "trace",
     }
-    optional = {"business_approval_proof_ref", "attachments"}
+    optional = {
+        "business_approval_proof_ref",
+        "attachments",
+        "attachment_batch_id",
+        "attachment_manifest_hash",
+    }
     value = _object(payload, "command", required, optional)
     if value["schema_version"] != EOS_CREATE_VOUCHER_SCHEMA:
         raise _invalid("schema_version is not supported")
     lines = _parse_lines(value["lines"])
     attachments = _parse_attachments(value.get("attachments", ()))
+    attachment_batch_id, attachment_manifest_hash = _attachment_lineage(
+        value.get("attachment_batch_id"),
+        value.get("attachment_manifest_hash"),
+        required=bool(attachments),
+    )
     return ParsedVoucherDraftCommand(
         tenant_id=_scoped_id("tenant_id", value["tenant_id"]),
         business_operation_id=_uuid(
@@ -332,6 +359,8 @@ def parse_create_voucher_draft_command(
             if value.get("business_approval_proof_ref") is not None
             else None
         ),
+        attachment_batch_id=attachment_batch_id,
+        attachment_manifest_hash=attachment_manifest_hash,
         attachments=attachments,
         trace=_trace(value["trace"]),
     )
@@ -341,6 +370,21 @@ def voucher_payload_hash(payload: Mapping[str, Any]) -> str:
     return nsl_write_payload_hash_ref(
         parse_create_voucher_draft_command(payload).business_payload()
     )
+
+
+def _attachment_lineage(
+    batch_id: object,
+    manifest_hash: object,
+    *,
+    required: bool,
+) -> tuple[str | None, str | None]:
+    if batch_id is None and manifest_hash is None and not required:
+        return None, None
+    if batch_id is None or manifest_hash is None:
+        raise _invalid(
+            "attachments require attachment_batch_id and attachment_manifest_hash"
+        )
+    return _uuid("attachment_batch_id", batch_id), _hash_ref(manifest_hash)
 
 
 def _parse_lines(value: object) -> tuple[VoucherLineInput, ...]:

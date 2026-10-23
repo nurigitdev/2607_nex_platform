@@ -43,6 +43,9 @@ _PROJECTION_FIELDS = frozenset(
         "project_ref",
         "line_count",
         "attachment_count",
+        "attachment_batch_id",
+        "attachment_manifest_hash",
+        "attachment_ids",
         "balance",
         "stable_business_state_hash",
         "last_observed_at",
@@ -330,6 +333,9 @@ def _validated_projection(
         payload.get("attachment_count"),
         minimum=0,
     )
+    attachment_batch_id, attachment_manifest_hash, attachment_ids = _attachment_lineage(
+        payload, attachment_count
+    )
     try:
         stable_hash = validate_hash_ref(payload.get("stable_business_state_hash"))
     except ValueError as exc:
@@ -344,9 +350,38 @@ def _validated_projection(
         "voucher_version": voucher_version,
         "line_count": line_count,
         "attachment_count": attachment_count,
+        "attachment_batch_id": attachment_batch_id,
+        "attachment_manifest_hash": attachment_manifest_hash,
+        "attachment_ids": attachment_ids,
         "stable_business_state_hash": stable_hash,
         "last_observed_at": _utc_datetime(payload.get("last_observed_at")),
     }
+
+
+def _attachment_lineage(
+    payload: Mapping[str, Any],
+    attachment_count: int,
+) -> tuple[str | None, str | None, list[str]]:
+    batch_id = payload.get("attachment_batch_id")
+    manifest_hash = payload.get("attachment_manifest_hash")
+    attachment_ids = payload.get("attachment_ids")
+    if attachment_count == 0:
+        if batch_id is None and manifest_hash is None and attachment_ids == []:
+            return None, None, []
+        raise _response_invalid("EOS empty attachment lineage is inconsistent.")
+    if not isinstance(attachment_ids, list) or len(attachment_ids) != attachment_count:
+        raise _response_invalid("EOS attachment identities are incomplete.")
+    try:
+        normalized_batch = str(uuid.UUID(str(batch_id)))
+        normalized_hash = validate_hash_ref(manifest_hash)
+        normalized_ids = [str(uuid.UUID(str(item))) for item in attachment_ids]
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise _response_invalid("EOS attachment lineage is invalid.") from exc
+    if normalized_ids != sorted(normalized_ids) or len(set(normalized_ids)) != len(
+        normalized_ids
+    ):
+        raise _response_invalid("EOS attachment identities are not canonical.")
+    return normalized_batch, normalized_hash, normalized_ids
 
 
 def _response_payload(response: httpx.Response) -> dict[str, Any]:

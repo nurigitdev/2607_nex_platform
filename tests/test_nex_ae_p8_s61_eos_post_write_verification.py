@@ -23,6 +23,10 @@ REQUEST_HASH = "sha256:" + "c" * 64
 OPERATION_ID = "86000000-0000-4000-8000-000000000061"
 VOUCHER_ID = "84000000-0000-4000-8000-000000000061"
 PROJECT_ID = "82000000-0000-4000-8000-000000000061"
+ATTACHMENT_BATCH_ID = "87000000-0000-4000-8000-000000000061"
+ATTACHMENT_ID_1 = "88000000-0000-4000-8000-000000000062"
+ATTACHMENT_ID_2 = "88000000-0000-4000-8000-000000000063"
+ATTACHMENT_MANIFEST_HASH = "sha256:" + "e" * 64
 IDEMPOTENCY_KEY = "idem:sha256:" + "d" * 64
 NOW = datetime(2026, 10, 22, 13, tzinfo=UTC)
 
@@ -152,6 +156,9 @@ def _projection(**changes: object) -> dict[str, object]:
         "project_ref": {"type": "eos.project", "id": PROJECT_ID},
         "line_count": 2,
         "attachment_count": 0,
+        "attachment_batch_id": None,
+        "attachment_manifest_hash": None,
+        "attachment_ids": [],
         "balance": "0.00",
         "stable_business_state_hash": "sha256:" + "f" * 64,
         "last_observed_at": "2026-10-22T13:00:00Z",
@@ -210,6 +217,79 @@ def test_verified_projection_maps_to_admitted_observation_and_get_only() -> None
     assert headers["x-nex-tenant-id"] == "tenant-p8-s61"
     assert headers["cache-control"] == "no-store, max-age=0"
     assert headers["pragma"] == "no-cache"
+
+
+def test_verified_attachment_lineage_is_admitted() -> None:
+    payload = _projection(
+        attachment_count=2,
+        attachment_batch_id=ATTACHMENT_BATCH_ID,
+        attachment_manifest_hash=ATTACHMENT_MANIFEST_HASH,
+        attachment_ids=[ATTACHMENT_ID_1, ATTACHMENT_ID_2],
+    )
+
+    result = map_eos_voucher_verification_response(
+        EosVoucherVerificationResponse(200, payload),
+        _request(),
+        public_api=_public_api(),
+        observed_at=NOW,
+    )
+
+    assert isinstance(result, VerificationObservation)
+    assert result.matched is True
+
+
+@pytest.mark.parametrize(
+    "changes",
+    (
+        {"attachment_batch_id": ATTACHMENT_BATCH_ID},
+        {
+            "attachment_count": 2,
+            "attachment_batch_id": ATTACHMENT_BATCH_ID,
+            "attachment_manifest_hash": ATTACHMENT_MANIFEST_HASH,
+            "attachment_ids": [ATTACHMENT_ID_1],
+        },
+        {
+            "attachment_count": 1,
+            "attachment_batch_id": "bad",
+            "attachment_manifest_hash": ATTACHMENT_MANIFEST_HASH,
+            "attachment_ids": [ATTACHMENT_ID_1],
+        },
+        {
+            "attachment_count": 1,
+            "attachment_batch_id": ATTACHMENT_BATCH_ID,
+            "attachment_manifest_hash": "bad",
+            "attachment_ids": [ATTACHMENT_ID_1],
+        },
+        {
+            "attachment_count": 1,
+            "attachment_batch_id": ATTACHMENT_BATCH_ID,
+            "attachment_manifest_hash": ATTACHMENT_MANIFEST_HASH,
+            "attachment_ids": ["bad"],
+        },
+        {
+            "attachment_count": 2,
+            "attachment_batch_id": ATTACHMENT_BATCH_ID,
+            "attachment_manifest_hash": ATTACHMENT_MANIFEST_HASH,
+            "attachment_ids": [ATTACHMENT_ID_2, ATTACHMENT_ID_1],
+        },
+        {
+            "attachment_count": 2,
+            "attachment_batch_id": ATTACHMENT_BATCH_ID,
+            "attachment_manifest_hash": ATTACHMENT_MANIFEST_HASH,
+            "attachment_ids": [ATTACHMENT_ID_1, ATTACHMENT_ID_1],
+        },
+    ),
+)
+def test_invalid_attachment_verification_lineage_fails_closed(changes) -> None:
+    payload = _projection(**changes)
+
+    with pytest.raises(EosPostWriteVerificationError):
+        map_eos_voucher_verification_response(
+            EosVoucherVerificationResponse(200, payload),
+            _request(),
+            public_api=_public_api(),
+            observed_at=NOW,
+        )
 
 
 @pytest.mark.parametrize(

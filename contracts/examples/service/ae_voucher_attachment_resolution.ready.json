@@ -1,6 +1,9 @@
 {
   "schema_version": "ae_voucher_attachment_resolution.v1",
   "tenant_id": "tenant-p8-7a",
+  "attachment_batch_id": "750a0000-0000-4000-8000-000000000001",
+  "attachment_id": "750a0000-0000-4000-8000-000000000002",
+  "attachment_manifest_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "object_ref": "objref:ae-voucher-evidence-0001",
   "storage_owner": "nex-ae-api",
   "purpose": "EOS_VOUCHER_ATTACHMENT",

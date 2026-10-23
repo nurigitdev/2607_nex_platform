@@ -15,6 +15,8 @@ from .approval_transitions import (
     SqlAlchemyEosApprovalTransitionRepository,
 )
 from .approver_resolution import EosApproverResolutionService
+from .attachment_resolution import HttpAeVoucherAttachmentResolver
+from .attachments import SqlAlchemyEosAttachmentRepository
 from .authorization import EosVoucherAuthorizationClient, HttpOaAuthorizationSource
 from .business_formal_wc import (
     DEFAULT_WC_BASE_URL,
@@ -51,6 +53,7 @@ class EosDependencies:
     approval_transition_service: EosBusinessApprovalTransitionService | None
     business_formal_wc_adapter: EosBusinessFormalWcAdapter | None
     vouchers: SqlAlchemyEosVoucherRepository | None
+    attachments: SqlAlchemyEosAttachmentRepository | None
     voucher_command_service: EosCreateVoucherDraftService | None
     business_operation_query: SqlAlchemyEosBusinessOperationQuery | None
     voucher_verification_query: SqlAlchemyEosVoucherVerificationQuery | None
@@ -136,6 +139,21 @@ def build_eos_dependencies(
         if database_runtime is not None
         else None
     )
+    ae_token = environ.get("NEX_EOS_TO_AE_SERVICE_TOKEN", "")
+    attachments = (
+        SqlAlchemyEosAttachmentRepository(
+            database_runtime.session_factory,
+            HttpAeVoucherAttachmentResolver(
+                base_url=environ.get("NEX_AE_API_BASE_URL", "http://127.0.0.1:8103"),
+                service_token=ae_token,
+                timeout_seconds=float(
+                    environ.get("NEX_EOS_AE_ATTACHMENT_TIMEOUT_SECONDS", "15")
+                ),
+            ),
+        )
+        if database_runtime is not None and ae_token
+        else None
+    )
     oa_token = environ.get("NEX_EOS_TO_OA_SERVICE_TOKEN", "")
     voucher_command_service = (
         EosCreateVoucherDraftService(
@@ -147,6 +165,7 @@ def build_eos_dependencies(
                     service_token=oa_token,
                 )
             ),
+            attachments=attachments,
         )
         if business_transactions is not None and vouchers is not None and oa_token
         else None
@@ -178,6 +197,7 @@ def build_eos_dependencies(
         approval_transition_service=approval_transition_service,
         business_formal_wc_adapter=business_formal_wc_adapter,
         vouchers=vouchers,
+        attachments=attachments,
         voucher_command_service=voucher_command_service,
         business_operation_query=business_operation_query,
         voucher_verification_query=voucher_verification_query,

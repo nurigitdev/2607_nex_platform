@@ -39,6 +39,9 @@ _BUSINESS_PAYLOAD_FIELDS = frozenset(
         "attachments",
     }
 )
+_ATTACHMENT_LINEAGE_FIELDS = frozenset(
+    {"attachment_batch_id", "attachment_manifest_hash"}
+)
 _TRACE_FIELDS = ("trace_id", "correlation_id", "causation_id")
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _REASON_CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,127}$")
@@ -476,7 +479,11 @@ def build_eos_create_voucher_command(
         raise _invalid("NSL WRITE tool is not supported by the EOS adapter")
     if not isinstance(request.arguments, Mapping):
         raise _invalid("NSL WRITE arguments must be an object")
-    if set(request.arguments) != _BUSINESS_PAYLOAD_FIELDS:
+    argument_fields = set(request.arguments)
+    if argument_fields not in {
+        _BUSINESS_PAYLOAD_FIELDS,
+        _BUSINESS_PAYLOAD_FIELDS | _ATTACHMENT_LINEAGE_FIELDS,
+    }:
         raise _invalid("NSL WRITE arguments do not match the canonical EOS payload")
 
     business_payload = {
@@ -487,6 +494,10 @@ def build_eos_create_voucher_command(
         raise _invalid("EOS command schema version is not supported")
     if business_payload["tenant_id"] != request.tenant_id:
         raise _invalid("EOS command tenant does not match the NSL WRITE request")
+    if business_payload.get("attachments") and not _ATTACHMENT_LINEAGE_FIELDS.issubset(
+        argument_fields
+    ):
+        raise _invalid("NSL WRITE attachments lack approved manifest lineage")
     try:
         computed_hash = nsl_write_payload_hash_ref(business_payload)
     except (TypeError, ValueError) as exc:

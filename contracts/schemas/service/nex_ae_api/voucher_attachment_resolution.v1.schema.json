@@ -5,13 +5,17 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version", "tenant_id", "object_ref", "storage_owner", "purpose",
+    "schema_version", "tenant_id", "attachment_batch_id", "attachment_id",
+    "attachment_manifest_hash", "object_ref", "storage_owner", "purpose",
     "status", "content_sha256", "size_bytes", "media_type", "authenticated",
     "immutable", "object_version_ref", "resolved_at"
   ],
   "properties": {
     "schema_version": {"const": "ae_voucher_attachment_resolution.v1"},
     "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "attachment_batch_id": {"$ref": "#/$defs/uuid"},
+    "attachment_id": {"$ref": "#/$defs/uuid"},
+    "attachment_manifest_hash": {"$ref": "#/$defs/hash_ref"},
     "object_ref": {"$ref": "#/$defs/opaque_ref"},
     "storage_owner": {"const": "nex-ae-api"},
     "purpose": {"const": "EOS_VOUCHER_ATTACHMENT"},
@@ -28,6 +32,8 @@
   },
   "$defs": {
     "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "uuid": {"type": "string", "format": "uuid"},
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "opaque_ref": {
       "type": "string",
       "minLength": 16,

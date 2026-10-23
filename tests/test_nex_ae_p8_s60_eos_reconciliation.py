@@ -22,6 +22,10 @@ HASH = "sha256:" + "a" * 64
 PAYLOAD_HASH = "sha256:" + "b" * 64
 OPERATION_ID = "86000000-0000-4000-8000-000000000060"
 VOUCHER_ID = "84000000-0000-4000-8000-000000000060"
+ATTACHMENT_BATCH_ID = "87000000-0000-4000-8000-000000000060"
+ATTACHMENT_ID_1 = "88000000-0000-4000-8000-000000000060"
+ATTACHMENT_ID_2 = "88000000-0000-4000-8000-000000000061"
+ATTACHMENT_MANIFEST_HASH = "sha256:" + "e" * 64
 RESULT_TYPE = object()
 
 
@@ -234,6 +238,9 @@ def _projection(
             "id": OPERATION_ID,
         },
         "voucher_ref": voucher,
+        "attachment_batch_id": None,
+        "attachment_manifest_hash": None,
+        "attachment_ids": [],
         "reconciliation_status": reconciliation,
         "last_observed_at": "2026-10-22T12:00:00Z",
     }
@@ -287,6 +294,83 @@ def test_committed_query_maps_to_nsl_committed_and_sends_read_only_request() -> 
     assert headers["x-nex-tenant-id"] == "tenant-p8-s60"
     assert headers["cache-control"] == "no-store, max-age=0"
     assert headers["pragma"] == "no-cache"
+
+
+def test_committed_attachment_lineage_is_canonical_and_preserved_as_evidence() -> None:
+    payload = _projection()
+    payload.update(
+        attachment_batch_id=ATTACHMENT_BATCH_ID,
+        attachment_manifest_hash=ATTACHMENT_MANIFEST_HASH,
+        attachment_ids=[ATTACHMENT_ID_1, ATTACHMENT_ID_2],
+    )
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(200, json=payload, request=request)
+    )
+
+    outcome = _reconcile(_adapter(transport))
+
+    assert isinstance(outcome, WriteCommitted)
+    assert outcome.result.evidence_refs[-1] == (
+        f"eos.attachment_manifest:{ATTACHMENT_BATCH_ID}:" f"{ATTACHMENT_MANIFEST_HASH}"
+    )
+
+
+@pytest.mark.parametrize(
+    "changes",
+    (
+        {
+            "commit_state": "NOT_COMMITTED",
+            "reconciliation_status": "NOT_COMMITTED_CONFIRMED",
+            "voucher_ref": None,
+            "attachment_batch_id": ATTACHMENT_BATCH_ID,
+            "attachment_manifest_hash": ATTACHMENT_MANIFEST_HASH,
+            "attachment_ids": [ATTACHMENT_ID_1],
+        },
+        {
+            "attachment_batch_id": ATTACHMENT_BATCH_ID,
+            "attachment_manifest_hash": ATTACHMENT_MANIFEST_HASH,
+            "attachment_ids": [],
+        },
+        {
+            "attachment_batch_id": "bad",
+            "attachment_manifest_hash": ATTACHMENT_MANIFEST_HASH,
+            "attachment_ids": [ATTACHMENT_ID_1],
+        },
+        {
+            "attachment_batch_id": ATTACHMENT_BATCH_ID,
+            "attachment_manifest_hash": "bad",
+            "attachment_ids": [ATTACHMENT_ID_1],
+        },
+        {
+            "attachment_batch_id": ATTACHMENT_BATCH_ID,
+            "attachment_manifest_hash": ATTACHMENT_MANIFEST_HASH,
+            "attachment_ids": ["bad"],
+        },
+        {
+            "attachment_batch_id": ATTACHMENT_BATCH_ID,
+            "attachment_manifest_hash": ATTACHMENT_MANIFEST_HASH,
+            "attachment_ids": [ATTACHMENT_ID_2, ATTACHMENT_ID_1],
+        },
+        {
+            "attachment_batch_id": ATTACHMENT_BATCH_ID,
+            "attachment_manifest_hash": ATTACHMENT_MANIFEST_HASH,
+            "attachment_ids": [ATTACHMENT_ID_1, ATTACHMENT_ID_1],
+        },
+    ),
+)
+def test_untrustworthy_attachment_reconciliation_preserves_unknown(changes) -> None:
+    payload = _projection()
+    payload.update(changes)
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(200, json=payload, request=request)
+    )
+
+    outcome = _reconcile(_adapter(transport))
+
+    assert isinstance(outcome, WriteCommitUnknown)
+    assert outcome.evidence_refs[0] == (
+        "eos.reason:EOS_RECONCILIATION_RESPONSE_UNTRUSTWORTHY"
+    )
 
 
 @pytest.mark.parametrize(

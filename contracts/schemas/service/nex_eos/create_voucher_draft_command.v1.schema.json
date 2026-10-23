@@ -10,6 +10,17 @@
     "transaction_date", "currency", "description", "lines",
     "nsl_approval_request_id", "nsl_approval_evidence_ref", "trace"
   ],
+  "allOf": [
+    {
+      "if": {
+        "required": ["attachments"],
+        "properties": {"attachments": {"minItems": 1}}
+      },
+      "then": {
+        "required": ["attachment_batch_id", "attachment_manifest_hash"]
+      }
+    }
+  ],
   "properties": {
     "schema_version": {"const": "eos_create_voucher_draft_command.v1"},
     "tenant_id": {"$ref": "#/$defs/scoped_id"},
@@ -36,6 +47,8 @@
     "business_approval_proof_ref": {
       "oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]
     },
+    "attachment_batch_id": {"$ref": "#/$defs/uuid"},
+    "attachment_manifest_hash": {"$ref": "#/$defs/hash_ref"},
     "attachments": {
       "type": "array", "maxItems": 20, "uniqueItems": true,
       "items": {"$ref": "#/$defs/attachment"}

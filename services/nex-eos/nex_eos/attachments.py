@@ -32,8 +32,10 @@ _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _OPAQUE_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{15,255}$")
 _MEDIA_TYPE = re.compile(r"^[a-z0-9][a-z0-9.+-]{0,63}/[a-z0-9][a-z0-9.+-]{0,127}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_HASH_REF = re.compile(r"^sha256:[0-9a-f]{64}$")
 _CREDENTIAL_TOKEN = re.compile(
-    r"(?:access[_-]?key|secret|password|credential|session[_-]?token)", re.I
+    r"(?:access[_-]?key|secret|password|credential|session[_-]?token)",
+    re.IGNORECASE,
 )
 _AWS_ACCESS_KEY = re.compile(r"^AKIA[0-9A-Z]{16}$")
 
@@ -86,6 +88,9 @@ class ResolvedObjectRef:
     authenticated: bool
     immutable: bool
     version_ref: str | None = None
+    attachment_id: str | None = None
+    attachment_batch_id: str | None = None
+    attachment_manifest_hash: str | None = None
 
 
 class ObjectRefResolver(Protocol):
@@ -120,9 +125,7 @@ class SqlAlchemyEosAttachmentRepository:
     ) -> None:
         self._session_factory = session_factory
         self._resolver = resolver
-        self._requester_service = _scoped_id(
-            "requester_service", requester_service
-        )
+        self._requester_service = _scoped_id("requester_service", requester_service)
 
     def attach_many(
         self,
@@ -157,6 +160,8 @@ class SqlAlchemyEosAttachmentRepository:
         tenant_id: str,
         voucher_id: str,
         attachments: Sequence[VoucherAttachmentInput],
+        attachment_batch_id: str | None = None,
+        attachment_manifest_hash: str | None = None,
     ) -> list[dict[str, Any]]:
         tenant_id = _scoped_id("tenant_id", tenant_id)
         voucher_id = _uuid("voucher_id", voucher_id)
@@ -166,11 +171,17 @@ class SqlAlchemyEosAttachmentRepository:
             raise _invalid("attachments", "must be a sequence")
         if not attachments:
             return []
+        expected_batch_id, expected_manifest_hash = _attachment_lineage(
+            attachment_batch_id,
+            attachment_manifest_hash,
+        )
         records = [
             self._resolve_attachment(
                 tenant_id=tenant_id,
                 voucher_id=voucher_id,
                 value=value,
+                attachment_batch_id=expected_batch_id,
+                attachment_manifest_hash=expected_manifest_hash,
             )
             for value in attachments
         ]
@@ -222,6 +233,8 @@ class SqlAlchemyEosAttachmentRepository:
         tenant_id: str,
         voucher_id: str,
         value: VoucherAttachmentInput,
+        attachment_batch_id: str | None,
+        attachment_manifest_hash: str | None,
     ) -> dict[str, Any]:
         if not isinstance(value, VoucherAttachmentInput):
             raise _invalid("attachments", "must contain VoucherAttachmentInput values")
@@ -249,6 +262,9 @@ class SqlAlchemyEosAttachmentRepository:
             media_type=media_type,
             size_bytes=size_bytes,
             content_sha256=content_sha256,
+            attachment_id=_uuid("attachment_id", value.attachment_id),
+            attachment_batch_id=attachment_batch_id,
+            attachment_manifest_hash=attachment_manifest_hash,
         )
         return {
             "tenant_id": tenant_id,
@@ -283,6 +299,9 @@ def _require_resolved_match(
     media_type: str,
     size_bytes: int,
     content_sha256: str,
+    attachment_id: str,
+    attachment_batch_id: str | None,
+    attachment_manifest_hash: str | None,
 ) -> None:
     if not isinstance(value, ResolvedObjectRef):
         raise _rejected("resolver returned an invalid result")
@@ -300,6 +319,14 @@ def _require_resolved_match(
         or value.media_type != media_type
     ):
         raise _rejected("object metadata does not match the association")
+    if attachment_batch_id is not None and (
+        value.attachment_id != attachment_id
+        or value.attachment_batch_id != attachment_batch_id
+        or value.attachment_manifest_hash != attachment_manifest_hash
+    ):
+        raise _rejected(
+            "object lineage does not match the approved attachment manifest"
+        )
 
 
 def _object_ref(value: object) -> str:
@@ -314,6 +341,23 @@ def _object_ref(value: object) -> str:
     ):
         raise _invalid("object_ref", "must be an owner-issued opaque reference")
     return normalized
+
+
+def _attachment_lineage(
+    batch_id: object,
+    manifest_hash: object,
+) -> tuple[str | None, str | None]:
+    if batch_id is None and manifest_hash is None:
+        return None, None
+    if batch_id is None or manifest_hash is None:
+        raise _invalid(
+            "attachment_lineage",
+            "must contain both attachment_batch_id and attachment_manifest_hash",
+        )
+    normalized_hash = str(manifest_hash).strip()
+    if _HASH_REF.fullmatch(normalized_hash) is None:
+        raise _invalid("attachment_manifest_hash", "must be a sha256 hash reference")
+    return _uuid("attachment_batch_id", batch_id), normalized_hash
 
 
 def _uuid(field_name: str, value: object) -> str:

@@ -43,6 +43,8 @@ PROJECT_ID = "82000000-0000-4000-8000-000000000001"
 DEBIT_ID = "83000000-0000-4000-8000-000000000001"
 CREDIT_ID = "83000000-0000-4000-8000-000000000002"
 VOUCHER_ID = "84000000-0000-4000-8000-000000000001"
+ATTACHMENT_BATCH_ID = "85000000-0000-4000-8000-000000000010"
+ATTACHMENT_MANIFEST_HASH = "sha256:" + "c" * 64
 NOW = datetime(2026, 10, 21, 1, 2, 3, tzinfo=UTC)
 
 
@@ -88,6 +90,9 @@ class Resolver:
             authenticated=True,
             immutable=True,
             version_ref="version-1",
+            attachment_id="85000000-0000-4000-8000-000000000001",
+            attachment_batch_id=ATTACHMENT_BATCH_ID,
+            attachment_manifest_hash=ATTACHMENT_MANIFEST_HASH,
         )
 
 
@@ -137,6 +142,9 @@ def _payload(**overrides):
         ).read_text()
     )
     value.update(overrides)
+    if value.get("attachments"):
+        value.setdefault("attachment_batch_id", ATTACHMENT_BATCH_ID)
+        value.setdefault("attachment_manifest_hash", ATTACHMENT_MANIFEST_HASH)
     value["payload_hash"] = voucher_payload_hash(value)
     return value
 

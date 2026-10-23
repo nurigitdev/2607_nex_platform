@@ -236,7 +236,9 @@ class VoucherAttachmentObjectGateway:
             attachment_id=attachment_id,
         )
         if batch["state"] == "LOCKED" or item["state"] in {"READY", "LOCKED"}:
-            raise _conflict("Referenced or locked attachment objects cannot be deleted.")
+            raise _conflict(
+                "Referenced or locked attachment objects cannot be deleted."
+            )
         key = _object_key(batch, item)
         try:
             if self._object_store.head(key) is None:
@@ -309,6 +311,9 @@ class VoucherAttachmentObjectGateway:
         return {
             "schema_version": ATTACHMENT_RESOLUTION_SCHEMA_VERSION,
             "tenant_id": tenant_id,
+            "attachment_batch_id": persisted["attachment_batch_id"],
+            "attachment_id": persisted["attachment_id"],
+            "attachment_manifest_hash": persisted["attachment_manifest_hash"],
             "object_ref": object_ref,
             "storage_owner": ATTACHMENT_STORAGE_OWNER,
             "purpose": ATTACHMENT_PURPOSE,
@@ -428,27 +433,19 @@ def _require_storage_match(
 
 
 def _invalid(detail: str) -> VoucherAttachmentStorageError:
-    return VoucherAttachmentStorageError(
-        "ae.voucher_attachment.invalid", detail, 422
-    )
+    return VoucherAttachmentStorageError("ae.voucher_attachment.invalid", detail, 422)
 
 
 def _forbidden(detail: str) -> VoucherAttachmentStorageError:
-    return VoucherAttachmentStorageError(
-        "ae.voucher_attachment.forbidden", detail, 403
-    )
+    return VoucherAttachmentStorageError("ae.voucher_attachment.forbidden", detail, 403)
 
 
 def _not_found(detail: str) -> VoucherAttachmentStorageError:
-    return VoucherAttachmentStorageError(
-        "ae.voucher_attachment.not_found", detail, 404
-    )
+    return VoucherAttachmentStorageError("ae.voucher_attachment.not_found", detail, 404)
 
 
 def _conflict(detail: str) -> VoucherAttachmentStorageError:
-    return VoucherAttachmentStorageError(
-        "ae.voucher_attachment.conflict", detail, 409
-    )
+    return VoucherAttachmentStorageError("ae.voucher_attachment.conflict", detail, 409)
 
 
 def _integrity(detail: str) -> VoucherAttachmentStorageError:

@@ -36,6 +36,7 @@ _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _REF_TYPE = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
 _CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,31}$")
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
+_HASH_REF = re.compile(r"^sha256:[0-9a-f]{64}$")
 _MONEY_QUANTUM = Decimal("0.01")
 _MAX_MONEY = Decimal("999999999999999999.99")
 
@@ -53,6 +54,8 @@ EOS_VOUCHER_DRAFT_TABLE = Table(
     Column("requester_id", String(128), nullable=False),
     Column("source_ref_type", String(64), nullable=False),
     Column("source_id", String(128), nullable=False),
+    Column("attachment_batch_id", Uuid(as_uuid=False), nullable=True),
+    Column("attachment_manifest_hash", String(71), nullable=True),
     Column("state", String(16), nullable=False),
     Column("version", Integer, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
@@ -87,7 +90,10 @@ EOS_VOUCHER_DRAFT_LINE_TABLE = Table(
         name="fk_eos_voucher_line_account",
     ),
     UniqueConstraint(
-        "tenant_id", "voucher_id", "account_id", "line_no",
+        "tenant_id",
+        "voucher_id",
+        "account_id",
+        "line_no",
         name="ux_eos_voucher_line_account",
     ),
     CheckConstraint("line_no > 0", name="ck_eos_voucher_line_no"),
@@ -122,6 +128,8 @@ class VoucherDraftInput:
     requester_ref: Mapping[str, Any]
     source_ref: Mapping[str, Any]
     lines: Sequence[VoucherLineInput]
+    attachment_batch_id: str | None = None
+    attachment_manifest_hash: str | None = None
     voucher_type: str = "GENERAL"
     currency: str = "KRW"
     state: str = "DRAFT"
@@ -154,10 +162,12 @@ class SqlAlchemyEosVoucherRepository:
         voucher_id = _uuid("voucher_id", value.voucher_id)
         project_id = _uuid("project_id", value.project_id)
         transaction_date = _date("transaction_date", value.transaction_date)
-        requester_type, requester_id = _entity_ref(
-            "requester_ref", value.requester_ref
-        )
+        requester_type, requester_id = _entity_ref("requester_ref", value.requester_ref)
         source_type, source_id = _entity_ref("source_ref", value.source_ref)
+        attachment_batch_id, attachment_manifest_hash = _attachment_lineage(
+            value.attachment_batch_id,
+            value.attachment_manifest_hash,
+        )
         state = _choice("state", value.state, EOS_VOUCHER_DRAFT_STATES)
         version = _positive_int("version", value.version)
         if version != 1:
@@ -182,14 +192,15 @@ class SqlAlchemyEosVoucherRepository:
             "requester_id": requester_id,
             "source_ref_type": source_type,
             "source_id": source_id,
+            "attachment_batch_id": attachment_batch_id,
+            "attachment_manifest_hash": attachment_manifest_hash,
             "state": state,
             "version": version,
             "created_at": now,
             "updated_at": now,
         }
         line_records = [
-            {"tenant_id": tenant_id, "voucher_id": voucher_id, **line}
-            for line in lines
+            {"tenant_id": tenant_id, "voucher_id": voucher_id, **line} for line in lines
         ]
 
         self._require_effective_project(
@@ -209,29 +220,35 @@ class SqlAlchemyEosVoucherRepository:
         session.execute(EOS_VOUCHER_DRAFT_LINE_TABLE.insert(), line_records)
         return {**draft, "lines": [dict(line) for line in line_records]}
 
-    def get_draft(
-        self, *, tenant_id: str, voucher_id: str
-    ) -> dict[str, Any] | None:
+    def get_draft(self, *, tenant_id: str, voucher_id: str) -> dict[str, Any] | None:
         tenant_id = _scoped_id("tenant_id", tenant_id)
         voucher_id = _uuid("voucher_id", voucher_id)
         try:
             with self._session_factory() as session:
-                draft = session.execute(
-                    select(EOS_VOUCHER_DRAFT_TABLE).where(
-                        EOS_VOUCHER_DRAFT_TABLE.c.tenant_id == tenant_id,
-                        EOS_VOUCHER_DRAFT_TABLE.c.voucher_id == voucher_id,
+                draft = (
+                    session.execute(
+                        select(EOS_VOUCHER_DRAFT_TABLE).where(
+                            EOS_VOUCHER_DRAFT_TABLE.c.tenant_id == tenant_id,
+                            EOS_VOUCHER_DRAFT_TABLE.c.voucher_id == voucher_id,
+                        )
                     )
-                ).mappings().one_or_none()
+                    .mappings()
+                    .one_or_none()
+                )
                 if draft is None:
                     return None
-                lines = session.execute(
-                    select(EOS_VOUCHER_DRAFT_LINE_TABLE)
-                    .where(
-                        EOS_VOUCHER_DRAFT_LINE_TABLE.c.tenant_id == tenant_id,
-                        EOS_VOUCHER_DRAFT_LINE_TABLE.c.voucher_id == voucher_id,
+                lines = (
+                    session.execute(
+                        select(EOS_VOUCHER_DRAFT_LINE_TABLE)
+                        .where(
+                            EOS_VOUCHER_DRAFT_LINE_TABLE.c.tenant_id == tenant_id,
+                            EOS_VOUCHER_DRAFT_LINE_TABLE.c.voucher_id == voucher_id,
+                        )
+                        .order_by(EOS_VOUCHER_DRAFT_LINE_TABLE.c.line_no)
                     )
-                    .order_by(EOS_VOUCHER_DRAFT_LINE_TABLE.c.line_no)
-                ).mappings().all()
+                    .mappings()
+                    .all()
+                )
         except SQLAlchemyError as exc:
             raise _persistence_error() from exc
         return {**dict(draft), "lines": [dict(line) for line in lines]}
@@ -240,16 +257,20 @@ class SqlAlchemyEosVoucherRepository:
     def _require_effective_project(
         session: Session, *, tenant_id: str, project_id: str, effective_at: date
     ) -> None:
-        row = session.execute(
-            select(
-                EOS_PROJECT_TABLE.c.status,
-                EOS_PROJECT_TABLE.c.start_date,
-                EOS_PROJECT_TABLE.c.end_date,
-            ).where(
-                EOS_PROJECT_TABLE.c.tenant_id == tenant_id,
-                EOS_PROJECT_TABLE.c.project_id == project_id,
+        row = (
+            session.execute(
+                select(
+                    EOS_PROJECT_TABLE.c.status,
+                    EOS_PROJECT_TABLE.c.start_date,
+                    EOS_PROJECT_TABLE.c.end_date,
+                ).where(
+                    EOS_PROJECT_TABLE.c.tenant_id == tenant_id,
+                    EOS_PROJECT_TABLE.c.project_id == project_id,
+                )
             )
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
         if row is None:
             raise EosVoucherError(
                 "EOS_VOUCHER_PROJECT_NOT_FOUND",
@@ -271,16 +292,20 @@ class SqlAlchemyEosVoucherRepository:
     def _require_effective_account(
         session: Session, *, tenant_id: str, account_id: str, effective_at: date
     ) -> None:
-        row = session.execute(
-            select(
-                EOS_ACCOUNT_TABLE.c.status,
-                EOS_ACCOUNT_TABLE.c.effective_from,
-                EOS_ACCOUNT_TABLE.c.effective_until,
-            ).where(
-                EOS_ACCOUNT_TABLE.c.tenant_id == tenant_id,
-                EOS_ACCOUNT_TABLE.c.account_id == account_id,
+        row = (
+            session.execute(
+                select(
+                    EOS_ACCOUNT_TABLE.c.status,
+                    EOS_ACCOUNT_TABLE.c.effective_from,
+                    EOS_ACCOUNT_TABLE.c.effective_until,
+                ).where(
+                    EOS_ACCOUNT_TABLE.c.tenant_id == tenant_id,
+                    EOS_ACCOUNT_TABLE.c.account_id == account_id,
+                )
             )
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
         if row is None:
             raise EosVoucherError(
                 "EOS_VOUCHER_ACCOUNT_NOT_FOUND",
@@ -303,7 +328,11 @@ class SqlAlchemyEosVoucherRepository:
 
 
 def _lines(values: Sequence[VoucherLineInput]) -> list[dict[str, Any]]:
-    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence) or not values:
+    if (
+        isinstance(values, (str, bytes))
+        or not isinstance(values, Sequence)
+        or not values
+    ):
         raise _invalid("lines", "must contain at least one line")
     records = []
     for line_no, value in enumerate(values, start=1):
@@ -355,6 +384,23 @@ def _entity_ref(field_name: str, value: object) -> tuple[str, str]:
     if not _REF_TYPE.fullmatch(ref_type):
         raise _invalid(field_name, "has invalid type syntax")
     return ref_type, _scoped_id(f"{field_name}.id", value["id"])
+
+
+def _attachment_lineage(
+    batch_id: object,
+    manifest_hash: object,
+) -> tuple[str | None, str | None]:
+    if batch_id is None and manifest_hash is None:
+        return None, None
+    if batch_id is None or manifest_hash is None:
+        raise _invalid(
+            "attachment_lineage",
+            "must contain both attachment_batch_id and attachment_manifest_hash",
+        )
+    normalized_hash = str(manifest_hash).strip()
+    if _HASH_REF.fullmatch(normalized_hash) is None:
+        raise _invalid("attachment_manifest_hash", "must be a sha256 hash reference")
+    return _uuid("attachment_batch_id", batch_id), normalized_hash
 
 
 def _uuid(field_name: str, value: object) -> str:

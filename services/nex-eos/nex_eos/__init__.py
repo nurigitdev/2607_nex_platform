@@ -47,6 +47,11 @@ from .approver_resolution import (
     EosApproverResolutionError,
     EosApproverResolutionService,
 )
+from .attachment_resolution import (
+    AE_ATTACHMENT_RESOLVE_PATH,
+    AeAttachmentResolutionError,
+    HttpAeVoucherAttachmentResolver,
+)
 from .attachments import (
     EOS_OBJECT_READY_STATUS,
     EOS_VOUCHER_ATTACHMENT_PURPOSE,
@@ -154,6 +159,7 @@ from .vouchers import (
 )
 
 __all__ = (
+    "AE_ATTACHMENT_RESOLVE_PATH",
     "DEFAULT_WC_BASE_URL",
     "EOS_ACCOUNT_CATEGORIES",
     "EOS_ACCOUNT_STATUSES",
@@ -201,6 +207,7 @@ __all__ = (
     "EOS_VOUCHER_DRAFT_STATES",
     "EOS_VOUCHER_DRAFT_TABLE",
     "AccountInput",
+    "AeAttachmentResolutionError",
     "ApprovalInstanceInput",
     "ApprovalPolicyInput",
     "ApprovalPolicySelection",
@@ -240,6 +247,7 @@ __all__ = (
     "EosVoucherCommandError",
     "EosVoucherError",
     "EosVoucherVerificationError",
+    "HttpAeVoucherAttachmentResolver",
     "HttpOaAuthorizationSource",
     "HttpWcApprovalWorkItemClient",
     "InMemoryEosBusinessTransactionCoordinator",

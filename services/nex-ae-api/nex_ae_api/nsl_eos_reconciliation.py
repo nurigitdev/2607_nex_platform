@@ -11,6 +11,7 @@ from types import MappingProxyType
 from typing import Any
 
 import httpx
+from nex_runtime.semantic_hashes import validate_hash_ref
 
 from .nsl_eos_write_execution import (
     DEFAULT_EOS_BASE_URL,
@@ -35,6 +36,9 @@ _PROJECTION_FIELDS = frozenset(
         "commit_state",
         "business_transaction_ref",
         "voucher_ref",
+        "attachment_batch_id",
+        "attachment_manifest_hash",
+        "attachment_ids",
         "reconciliation_status",
         "last_observed_at",
     }
@@ -233,6 +237,13 @@ def map_eos_business_operation_response(
         f"eos.business_operation:{projection['business_operation_id']}",
         f"eos.reconciliation:{projection['business_operation_id']}",
     )
+    if projection["attachment_batch_id"] is not None:
+        evidence_refs += (
+            (
+                f"eos.attachment_manifest:{projection['attachment_batch_id']}:"
+                f"{projection['attachment_manifest_hash']}"
+            ),
+        )
     if projection["commit_state"] == "COMMITTED":
         voucher_ref = projection["voucher_ref"]
         value = _result_value_envelope(
@@ -326,16 +337,25 @@ def _validated_projection(
     voucher_ref = payload.get("voucher_ref")
     if state == "COMMITTED" and reconciliation == "COMMITTED_CONFIRMED":
         voucher = _entity_ref(voucher_ref, expected_type="eos.voucher_draft")
+        attachment_batch_id, attachment_manifest_hash, attachment_ids = (
+            _attachment_lineage(payload, committed=True)
+        )
     elif state == "NOT_COMMITTED" and reconciliation == "NOT_COMMITTED_CONFIRMED":
         if voucher_ref is not None:
             raise _invalid("A non-committed reconciliation cannot contain a voucher.")
         voucher = None
+        attachment_batch_id, attachment_manifest_hash, attachment_ids = (
+            _attachment_lineage(payload, committed=False)
+        )
     elif (
         state == "UNKNOWN_COMMIT_STATE" and reconciliation == "RECONCILIATION_REQUIRED"
     ):
         if voucher_ref is not None:
             raise _invalid("An unknown reconciliation cannot contain a voucher.")
         voucher = None
+        attachment_batch_id, attachment_manifest_hash, attachment_ids = (
+            _attachment_lineage(payload, committed=False)
+        )
     else:
         raise _invalid("EOS reconciliation state is inconsistent.")
     return {
@@ -343,9 +363,37 @@ def _validated_projection(
         "commit_state": state,
         "business_transaction_ref": operation_ref,
         "voucher_ref": voucher,
+        "attachment_batch_id": attachment_batch_id,
+        "attachment_manifest_hash": attachment_manifest_hash,
+        "attachment_ids": attachment_ids,
         "reconciliation_status": reconciliation,
         "last_observed_at": observed_at,
     }
+
+
+def _attachment_lineage(
+    payload: Mapping[str, Any],
+    *,
+    committed: bool,
+) -> tuple[str | None, str | None, list[str]]:
+    batch_id = payload.get("attachment_batch_id")
+    manifest_hash = payload.get("attachment_manifest_hash")
+    attachment_ids = payload.get("attachment_ids")
+    if batch_id is None and manifest_hash is None and attachment_ids == []:
+        return None, None, []
+    if not committed or not isinstance(attachment_ids, list) or not attachment_ids:
+        raise _invalid("EOS reconciliation attachment lineage is inconsistent.")
+    try:
+        normalized_batch = str(uuid.UUID(str(batch_id)))
+        normalized_hash = validate_hash_ref(manifest_hash)
+        normalized_ids = [str(uuid.UUID(str(item))) for item in attachment_ids]
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise _invalid("EOS reconciliation attachment lineage is invalid.") from exc
+    if normalized_ids != sorted(normalized_ids) or len(set(normalized_ids)) != len(
+        normalized_ids
+    ):
+        raise _invalid("EOS reconciliation attachment identities are not canonical.")
+    return normalized_batch, normalized_hash, normalized_ids
 
 
 def _unknown(

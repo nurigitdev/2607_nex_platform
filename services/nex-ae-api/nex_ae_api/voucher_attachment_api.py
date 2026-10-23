@@ -11,7 +11,11 @@ from nex_runtime import problem_response, request_id_from_headers, trace_id_from
 from starlette.concurrency import run_in_threadpool
 
 from .oa_session_client import OaUserSessionClient
-from .route_auth import AeFacadeRouteAuthContext, authorize_ae_facade_route_request
+from .route_auth import (
+    AeFacadeRouteAuthContext,
+    authorize_ae_facade_route_request,
+    authorize_ae_internal_service_request,
+)
 from .voucher_attachment_storage import (
     VoucherAttachmentObjectGateway,
     VoucherAttachmentStorageError,
@@ -33,6 +37,47 @@ def register_voucher_attachment_routes(
 ) -> None:
     app.state.ae_voucher_attachment_repository = repository
     app.state.ae_voucher_attachment_gateway = gateway
+
+    @app.post("/internal/v1/voucher-attachments/resolve", response_model=None)
+    def resolve_object_ref(
+        payload: dict[str, Any],
+        request: Request,
+        tenant_id: str = Header(alias="X-NeX-Tenant-Id"),
+        authorization: str | None = Header(default=None),
+    ):
+        admitted = authorize_ae_internal_service_request(
+            request,
+            authorization,
+            allowed_service_ids=("nex-eos",),
+            error_code="AE_VOUCHER_ATTACHMENT_RESOLVER_CALLER_FORBIDDEN",
+            title="Voucher attachment resolver access denied",
+            detail="Voucher attachment resolution is available only to NeX-EOS.",
+        )
+        if isinstance(admitted, JSONResponse):
+            return admitted
+        if gateway is None:
+            return _unavailable(request, "Attachment storage is unavailable.")
+        if set(payload) != {"object_ref", "required_purpose"}:
+            return problem_response(
+                request,
+                status_code=422,
+                error_code="ae.voucher_attachment.invalid",
+                title="Voucher attachment request failed",
+                detail="Resolver payload fields are invalid.",
+            )
+        try:
+            return gateway.resolve(
+                requester_service=admitted.service_id,
+                tenant_id=tenant_id,
+                object_ref=payload.get("object_ref"),
+                required_purpose=payload.get("required_purpose"),
+                authenticated=True,
+            )
+        except (
+            VoucherAttachmentPersistenceError,
+            VoucherAttachmentStorageError,
+        ) as exc:
+            return _problem(request, exc)
 
     @app.post("/api/v1/voucher-attachments/batches", response_model=None)
     def create_batch(

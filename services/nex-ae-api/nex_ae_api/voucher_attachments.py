@@ -748,6 +748,8 @@ def _resolved_record(row: Mapping[str, Any]) -> dict[str, Any]:
         "tenant_id": str(row["tenant_id"]),
         "attachment_batch_id": str(row["attachment_batch_id"]),
         "owner_subject_id": str(row["owner_subject_id"]),
+        "batch_state": str(row["batch_state"]),
+        "attachment_manifest_hash": row["attachment_manifest_hash"],
     }
 
 
@@ -896,6 +898,7 @@ WHERE tenant_id = :tenant_id
 
 _RESOLVE_OBJECT_REF_SQL = """
 SELECT a.tenant_id, a.attachment_batch_id, b.owner_subject_id,
+       b.state AS batch_state, b.attachment_manifest_hash,
        a.attachment_id, a.state, a.display_name, a.media_type, a.size_bytes,
        a.content_sha256, a.object_ref, a.object_version_ref, a.scan_status,
        a.evidence_ref, a.created_at, a.updated_at

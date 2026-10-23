@@ -44,6 +44,8 @@ CREDIT_ID = "93000000-0000-4000-8000-000000000002"
 OPERATION_ID = "94000000-0000-4000-8000-000000000001"
 VOUCHER_ID = "95000000-0000-4000-8000-000000000001"
 ATTACHMENT_ID = "96000000-0000-4000-8000-000000000001"
+ATTACHMENT_BATCH_ID = "96000000-0000-4000-8000-000000000002"
+ATTACHMENT_MANIFEST_HASH = "sha256:" + "e" * 64
 OBJECT_REF = "objref:p8s22protectedopaque01"
 CONTENT_SHA256 = "d" * 64
 NOW = datetime(2026, 10, 21, 10, 0, tzinfo=UTC)
@@ -97,6 +99,9 @@ class ObjectResolver:
             authenticated=True,
             immutable=True,
             version_ref="p8-s22-object-version-1",
+            attachment_id=ATTACHMENT_ID,
+            attachment_batch_id=ATTACHMENT_BATCH_ID,
+            attachment_manifest_hash=ATTACHMENT_MANIFEST_HASH,
         )
 
 
@@ -117,7 +122,9 @@ def _tenant_counts(runtime) -> dict[str, int]:
     with runtime.engine.connect() as connection:
         return {
             table.name: connection.execute(
-                select(func.count()).select_from(table).where(table.c.tenant_id == TENANT)
+                select(func.count())
+                .select_from(table)
+                .where(table.c.tenant_id == TENANT)
             ).scalar_one()
             for table in _TENANT_TABLES
         }
@@ -157,6 +164,8 @@ def _payload() -> dict[str, object]:
         "nsl_approval_request_id": "approval-request-p8-s22",
         "nsl_approval_evidence_ref": "approval-evidence-p8-s22",
         "business_approval_proof_ref": None,
+        "attachment_batch_id": ATTACHMENT_BATCH_ID,
+        "attachment_manifest_hash": ATTACHMENT_MANIFEST_HASH,
         "attachments": [
             {
                 "attachment_id": ATTACHMENT_ID,
@@ -226,12 +235,17 @@ def test_s22_actual_postgres_foundation_gate_and_zero_residue() -> None:
     try:
         with runtime.engine.connect() as connection:
             assert tuple(
-                connection.execute(text("SELECT current_database(), current_user")).one()
+                connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
             ) == ("nex_eos_test", "nex_eos_user")
             applied = set(
-                connection.execute(text("SELECT version FROM schema_migrations")).scalars()
+                connection.execute(
+                    text("SELECT version FROM schema_migrations")
+                ).scalars()
             )
         assert "2508_eos_operation_name_compatibility" in applied
+        assert "2513_eos_voucher_attachment_lineage" in applied
 
         app.state.eos_projects.create_nvt_project(
             NvtProjectInput(TENANT, NVT_ID, "NVT-S22", "NVT S22")
@@ -320,6 +334,11 @@ def test_s22_actual_postgres_foundation_gate_and_zero_residue() -> None:
             assert verified.json()["balance"] == "0.00"
             assert verified.json()["line_count"] == 2
             assert verified.json()["attachment_count"] == 1
+            assert verified.json()["attachment_batch_id"] == ATTACHMENT_BATCH_ID
+            assert (
+                verified.json()["attachment_manifest_hash"] == ATTACHMENT_MANIFEST_HASH
+            )
+            assert verified.json()["attachment_ids"] == [ATTACHMENT_ID]
             assert statements and set(statements) == {"SELECT"}
 
         counts = _tenant_counts(runtime)

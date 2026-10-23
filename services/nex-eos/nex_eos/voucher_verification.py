@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
-from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -128,6 +128,9 @@ class SqlAlchemyEosVoucherVerificationQuery:
         )
         if balance != Decimal("0.00"):
             raise _state_invalid("Voucher line balance is invalid.")
+        attachment_batch_id, attachment_manifest_hash, attachment_ids = (
+            _attachment_lineage(voucher, attachments)
+        )
         state = _stable_state(voucher, lines, attachments)
         return {
             "schema_version": "eos_voucher_verification.v1",
@@ -150,6 +153,9 @@ class SqlAlchemyEosVoucherVerificationQuery:
             },
             "line_count": len(lines),
             "attachment_count": len(attachments),
+            "attachment_batch_id": attachment_batch_id,
+            "attachment_manifest_hash": attachment_manifest_hash,
+            "attachment_ids": attachment_ids,
             "balance": format(balance, ".2f"),
             "stable_business_state_hash": semantic_sha256_hash_ref(state),
             "last_observed_at": _wire_time(operation.get("committed_at")),
@@ -176,6 +182,8 @@ def _stable_state(
             "type": str(voucher["source_ref_type"]),
             "id": str(voucher["source_id"]),
         },
+        "attachment_batch_id": voucher["attachment_batch_id"],
+        "attachment_manifest_hash": voucher["attachment_manifest_hash"],
         "state": str(voucher["state"]),
         "version": int(voucher["version"]),
         "lines": [
@@ -201,6 +209,27 @@ def _stable_state(
             for item in attachments
         ],
     }
+
+
+def _attachment_lineage(
+    voucher: Mapping[str, Any],
+    attachments: list[Mapping[str, Any]],
+) -> tuple[str | None, str | None, list[str]]:
+    batch_id = voucher.get("attachment_batch_id")
+    manifest_hash = voucher.get("attachment_manifest_hash")
+    attachment_ids = sorted(str(item["attachment_id"]) for item in attachments)
+    if not attachments and batch_id is None and manifest_hash is None:
+        return None, None, []
+    if not attachments or batch_id is None or manifest_hash is None:
+        raise _state_invalid("Voucher attachment manifest lineage is incomplete.")
+    if len(set(attachment_ids)) != len(attachment_ids):
+        raise _state_invalid("Voucher attachment identities are not unique.")
+    try:
+        batch_id = str(uuid.UUID(str(batch_id)))
+        validate_hash_ref(manifest_hash)
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise _state_invalid("Voucher attachment manifest hash is invalid.") from exc
+    return batch_id, manifest_hash, attachment_ids
 
 
 def _date_text(value: object) -> str:

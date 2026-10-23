@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
+from nex_runtime.semantic_hashes import validate_hash_ref
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -35,22 +36,22 @@ class SqlAlchemyEosBusinessOperationQuery:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
 
-    def get(
-        self, *, tenant_id: str, business_operation_id: str
-    ) -> dict[str, Any]:
+    def get(self, *, tenant_id: str, business_operation_id: str) -> dict[str, Any]:
         tenant_id = _scoped_id("tenant_id", tenant_id)
-        business_operation_id = _uuid(
-            "business_operation_id", business_operation_id
-        )
+        business_operation_id = _uuid("business_operation_id", business_operation_id)
         try:
             with self._session_factory() as session:
-                row = session.execute(
-                    select(EOS_BUSINESS_OPERATION_TABLE).where(
-                        EOS_BUSINESS_OPERATION_TABLE.c.tenant_id == tenant_id,
-                        EOS_BUSINESS_OPERATION_TABLE.c.business_operation_id
-                        == business_operation_id,
+                row = (
+                    session.execute(
+                        select(EOS_BUSINESS_OPERATION_TABLE).where(
+                            EOS_BUSINESS_OPERATION_TABLE.c.tenant_id == tenant_id,
+                            EOS_BUSINESS_OPERATION_TABLE.c.business_operation_id
+                            == business_operation_id,
+                        )
                     )
-                ).mappings().one_or_none()
+                    .mappings()
+                    .one_or_none()
+                )
         except SQLAlchemyError as exc:
             raise EosBusinessQueryError(
                 "EOS_BUSINESS_QUERY_UNAVAILABLE",
@@ -78,16 +79,21 @@ def _projection(row: Mapping[str, Any]) -> dict[str, Any]:
         commit_state = "COMMITTED"
         reconciliation_status = "COMMITTED_CONFIRMED"
         voucher_ref = {"type": "eos.voucher_draft", "id": result["voucher_id"]}
+        attachment_batch_id, attachment_manifest_hash, attachment_ids = (
+            _attachment_lineage(result)
+        )
         observed_at = row.get("committed_at")
     elif stored_state == "NOT_COMMITTED":
         commit_state = "NOT_COMMITTED"
         reconciliation_status = "NOT_COMMITTED_CONFIRMED"
         voucher_ref = None
+        attachment_batch_id, attachment_manifest_hash, attachment_ids = None, None, []
         observed_at = row.get("committed_at") or row.get("created_at")
     elif stored_state == "PENDING":
         commit_state = "UNKNOWN_COMMIT_STATE"
         reconciliation_status = "RECONCILIATION_REQUIRED"
         voucher_ref = None
+        attachment_batch_id, attachment_manifest_hash, attachment_ids = None, None, []
         observed_at = row.get("created_at")
     else:
         raise _corrupt()
@@ -103,9 +109,39 @@ def _projection(row: Mapping[str, Any]) -> dict[str, Any]:
             "id": str(row["business_operation_id"]),
         },
         "voucher_ref": voucher_ref,
+        "attachment_batch_id": attachment_batch_id,
+        "attachment_manifest_hash": attachment_manifest_hash,
+        "attachment_ids": attachment_ids,
         "reconciliation_status": reconciliation_status,
         "last_observed_at": _wire_time(observed_at),
     }
+
+
+def _attachment_lineage(
+    result: Mapping[str, Any],
+) -> tuple[str | None, str | None, list[str]]:
+    batch_id = result.get("attachment_batch_id")
+    manifest_hash = result.get("attachment_manifest_hash")
+    raw_ids = result.get("attachment_ids", [])
+    if batch_id is None and manifest_hash is None and raw_ids == []:
+        return None, None, []
+    if (
+        not isinstance(batch_id, str)
+        or not isinstance(manifest_hash, str)
+        or not isinstance(raw_ids, list)
+        or not raw_ids
+        or any(not isinstance(item, str) for item in raw_ids)
+    ):
+        raise _corrupt()
+    try:
+        batch_id = str(uuid.UUID(batch_id))
+        validate_hash_ref(manifest_hash)
+        attachment_ids = sorted(str(uuid.UUID(item)) for item in raw_ids)
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise _corrupt() from exc
+    if attachment_ids != raw_ids or len(set(attachment_ids)) != len(attachment_ids):
+        raise _corrupt()
+    return batch_id, manifest_hash, attachment_ids
 
 
 def _wire_time(value: object) -> str:

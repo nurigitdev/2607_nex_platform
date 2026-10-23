@@ -94,9 +94,7 @@ def api_boundary():
         poolclass=StaticPool,
     )
     with engine.begin() as connection:
-        connection.execute(
-            text(
-                """
+        connection.execute(text("""
                 CREATE TABLE ae_voucher_attach_batch (
                     tenant_id TEXT NOT NULL,
                     attachment_batch_id TEXT NOT NULL,
@@ -116,12 +114,8 @@ def api_boundary():
                     PRIMARY KEY (tenant_id, attachment_batch_id),
                     UNIQUE (tenant_id, conversation_id, interaction_id)
                 )
-                """
-            )
-        )
-        connection.execute(
-            text(
-                """
+                """))
+        connection.execute(text("""
                 CREATE TABLE ae_voucher_attachment (
                     tenant_id TEXT NOT NULL,
                     attachment_batch_id TEXT NOT NULL,
@@ -140,9 +134,7 @@ def api_boundary():
                     PRIMARY KEY (tenant_id, attachment_batch_id, attachment_id),
                     UNIQUE (tenant_id, object_ref)
                 )
-                """
-            )
-        )
+                """))
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     repository = SqlAlchemyVoucherAttachmentRepository(
         factory, clock=lambda: datetime(2026, 10, 23, 15, 0, tzinfo=UTC)
@@ -389,6 +381,21 @@ def test_invalid_media_size_and_unavailable_runtime(api_boundary) -> None:
     app = build_service_app(SERVICE_SPECS["nex-ae-api"])
     register_voucher_attachment_routes(app, repository=None, gateway=None)
     with TestClient(app) as unavailable:
+        eos = issue_mock_service_token(service_id="nex-eos", audience="nex-ae-api")
+        assert (
+            unavailable.post(
+                "/internal/v1/voucher-attachments/resolve",
+                headers={
+                    "Authorization": f"Bearer {eos.access_token}",
+                    "X-NeX-Tenant-Id": TENANT,
+                },
+                json={
+                    "object_ref": "objref:ae:voucher:unavailable01",
+                    "required_purpose": "EOS_VOUCHER_ATTACHMENT",
+                },
+            ).status_code
+            == 503
+        )
         assert _create_batch(unavailable).status_code == 503
         batch_path = f"/api/v1/voucher-attachments/batches/{BATCH_ID}"
         assert unavailable.get(batch_path, headers=_headers()).status_code == 503
@@ -542,3 +549,71 @@ def test_finalize_detects_aggregate_integrity_drift(api_boundary) -> None:
     )
     assert response.status_code == 500
     assert response.json()["error_code"] == "ae.voucher_attachment.integrity_failed"
+
+
+def test_eos_internal_resolver_returns_locked_manifest_identity_only(
+    api_boundary,
+) -> None:
+    _engine, _repository, _objects, client = api_boundary
+    assert _create_batch(client).status_code == 201
+    uploaded = _upload(client)
+    assert uploaded.status_code == 201
+    finalized = client.post(
+        f"/api/v1/voucher-attachments/batches/{BATCH_ID}/finalize",
+        headers=_headers(),
+    )
+    assert finalized.status_code == 200
+    locked = client.post(
+        f"/api/v1/voucher-attachments/batches/{BATCH_ID}/lock",
+        headers=_headers(),
+    )
+    assert locked.status_code == 200
+
+    token = issue_mock_service_token(service_id="nex-eos", audience="nex-ae-api")
+    headers = {
+        "Authorization": f"Bearer {token.access_token}",
+        "X-NeX-Tenant-Id": TENANT,
+    }
+    resolved = client.post(
+        "/internal/v1/voucher-attachments/resolve",
+        headers=headers,
+        json={
+            "object_ref": uploaded.json()["attachment"]["object_ref"],
+            "required_purpose": "EOS_VOUCHER_ATTACHMENT",
+        },
+    )
+    assert resolved.status_code == 200, resolved.text
+    assert resolved.json()["attachment_batch_id"] == BATCH_ID
+    assert resolved.json()["attachment_id"] == ATTACHMENT_ID
+    assert (
+        resolved.json()["attachment_manifest_hash"]
+        == locked.json()["attachment_manifest_hash"]
+    )
+    assert "bucket" not in resolved.text and "secret" not in resolved.text
+
+    malformed = client.post(
+        "/internal/v1/voucher-attachments/resolve",
+        headers=headers,
+        json={"object_ref": uploaded.json()["attachment"]["object_ref"]},
+    )
+    assert malformed.status_code == 422
+    missing = client.post(
+        "/internal/v1/voucher-attachments/resolve",
+        headers=headers,
+        json={
+            "object_ref": "objref:ae:voucher:missing0001",
+            "required_purpose": "EOS_VOUCHER_ATTACHMENT",
+        },
+    )
+    assert missing.status_code == 404
+
+    wrong = issue_mock_service_token(service_id="nex-wc", audience="nex-ae-api")
+    denied = client.post(
+        "/internal/v1/voucher-attachments/resolve",
+        headers={**headers, "Authorization": f"Bearer {wrong.access_token}"},
+        json={
+            "object_ref": uploaded.json()["attachment"]["object_ref"],
+            "required_purpose": "EOS_VOUCHER_ATTACHMENT",
+        },
+    )
+    assert denied.status_code == 403
