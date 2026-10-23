@@ -86,6 +86,15 @@ def run_p8_s67_golden_a_exactly_once(
             exactly_once=True,
         )
         approval = s65["approval"]
+        approval_evidence = approval["platform_approval_evidence"]
+        write_identity = approval["write_identity"]
+        migration_heads = {
+            service: summary["latest_version"]
+            for service, summary in s65["migrations"].items()
+        }
+        migration_heads["nex-eos"] = p8_s65._migration_summary(eos_migration)[
+            "latest_version"
+        ]
         checks = {
             "s65_live_approval_passed": s65["status"] == "PASS",
             "eos_migrations_current": (
@@ -106,6 +115,10 @@ def run_p8_s67_golden_a_exactly_once(
             "status": "PASS" if all(checks.values()) else "FAIL",
             "actual_postgres": True,
             "actual_remote_provider": True,
+            "nsl_release": s65["release"],
+            "migration_heads": migration_heads,
+            "nsl_execution_id": write_identity["nsl_execution_id"],
+            "approval_work_item_id": approval_evidence["approval_work_item_ref"],
             "s65": {
                 "status": s65["status"],
                 "payload_hash": approval["payload_hash"],

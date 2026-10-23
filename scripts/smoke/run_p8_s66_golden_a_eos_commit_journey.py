@@ -394,18 +394,15 @@ def _execute_commit(  # pragma: no cover - actual PostgreSQL/OA/EOS gate.
             fixture, oa_engine=oa_engine, eos_engine=eos_engine
         )
         if commit is not None:
-            commit["checks"]["zero_residue"] = (
-                all(value == 0 for value in _ae_counts(ae_engine, tenant_id).values())
-                and all(
-                    value == 0
-                    for value in _eos_mutation_counts(eos_engine, tenant_id).values()
-                )
-                and all(
-                    value == 0
-                    for service in residue.values()
-                    for value in service.values()
-                )
+            residue_count = sum(_ae_counts(ae_engine, tenant_id).values()) + sum(
+                _eos_mutation_counts(eos_engine, tenant_id).values()
+            ) + sum(
+                value
+                for service in residue.values()
+                for value in service.values()
             )
+            commit["residue_count"] = residue_count
+            commit["checks"]["zero_residue"] = residue_count == 0
         if oa_server is not None:
             oa_server.stop()
         if eos_server is not None:

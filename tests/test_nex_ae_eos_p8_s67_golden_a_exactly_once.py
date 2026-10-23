@@ -35,8 +35,23 @@ def _s65_result() -> dict[str, object]:
     return {
         "status": "PASS",
         "provider": {"model_ref": "model-a"},
+        "release": {
+            "source_revision": "1" * 40,
+            "source_tree": "2" * 40,
+            "source_tree_clean": True,
+            "wheel_sha256": "sha256:" + "3" * 64,
+        },
+        "migrations": {
+            "nex-ae-api": {"latest_version": "2507_ae_nsl_write_evidence"},
+            "nex-wc": {"latest_version": "1006_wc_approval_foundation"},
+            "nex-oa": {"latest_version": "1376_oa_trace_projection_index"},
+        },
         "approval": {
             "payload_hash": "sha256:" + "a" * 64,
+            "write_identity": {"nsl_execution_id": "nsl-execution-a"},
+            "platform_approval_evidence": {
+                "approval_work_item_ref": "4ad36159-c314-4b72-9520-e128af1dd64e"
+            },
             "event_replay": {
                 "created": False,
                 "resume_runtime_job_id": "resume-a",
@@ -55,6 +70,7 @@ def _commit_result() -> dict[str, object]:
             "eos_committed_once": True,
         },
         "payload_hash": "sha256:" + "a" * 64,
+        "residue_count": 0,
         "eos_mutation_counts": {"eos_voucher_draft": 1},
         "retry_variants": {
             "ack_loss_after_commit": {
@@ -116,6 +132,16 @@ def test_s67_composes_all_retry_boundaries(monkeypatch: pytest.MonkeyPatch) -> N
     assert result["status"] == "PASS"
     assert captured["exactly_once"] is True
     assert result["checks_passed"] == result["checks_total"]
+    assert result["migration_heads"] == {
+        "nex-ae-api": "2507_ae_nsl_write_evidence",
+        "nex-wc": "1006_wc_approval_foundation",
+        "nex-oa": "1376_oa_trace_projection_index",
+        "nex-eos": "one",
+    }
+    assert result["nsl_execution_id"] == "nsl-execution-a"
+    assert result["approval_work_item_id"] == (
+        "4ad36159-c314-4b72-9520-e128af1dd64e"
+    )
     assert result["decision"] == {
         "p8_s67_closed": True,
         "business_mutation_count": 1,
