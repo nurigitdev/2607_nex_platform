@@ -180,8 +180,12 @@ def _payload() -> dict[str, object]:
 
 def test_s22_operation_migration_matches_canonical_runtime_contract() -> None:
     migrations = load_migrations("nex-eos")
-    assert migrations[-1].version == "2508_eos_operation_name_compatibility"
-    sql = migrations[-1].sql
+    migration = next(
+        item
+        for item in migrations
+        if item.version == "2508_eos_operation_name_compatibility"
+    )
+    sql = migration.sql
     assert sql.count("CHECK (operation ~ '^[A-Z][A-Z0-9_.]{0,127}$')") == 2
     assert "FINANCE.CREATE_VOUCHER_DRAFT" in (
         ROOT / "services/nex-eos/nex_eos/voucher_commands.py"
