@@ -10,6 +10,10 @@ from nex_runtime.service_token_admission import ServiceTokenAdmissionRuntime
 from .accounts import SqlAlchemyEosAccountRepository
 from .approval_instances import SqlAlchemyEosApprovalInstanceRepository
 from .approval_policies import SqlAlchemyEosApprovalPolicyRepository
+from .approval_transitions import (
+    EosBusinessApprovalTransitionService,
+    SqlAlchemyEosApprovalTransitionRepository,
+)
 from .approver_resolution import EosApproverResolutionService
 from .authorization import EosVoucherAuthorizationClient, HttpOaAuthorizationSource
 from .business_formal_wc import (
@@ -44,6 +48,7 @@ class EosDependencies:
     accounts: SqlAlchemyEosAccountRepository | None
     approval_policies: SqlAlchemyEosApprovalPolicyRepository | None
     approval_instances: SqlAlchemyEosApprovalInstanceRepository | None
+    approval_transition_service: EosBusinessApprovalTransitionService | None
     business_formal_wc_adapter: EosBusinessFormalWcAdapter | None
     vouchers: SqlAlchemyEosVoucherRepository | None
     voucher_command_service: EosCreateVoucherDraftService | None
@@ -94,6 +99,19 @@ def build_eos_dependencies(
     approval_instances = (
         SqlAlchemyEosApprovalInstanceRepository(database_runtime.session_factory)
         if database_runtime is not None
+        else None
+    )
+    approval_transitions = (
+        SqlAlchemyEosApprovalTransitionRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    approval_transition_service = (
+        EosBusinessApprovalTransitionService(
+            approval_instances=approval_instances,
+            transitions=approval_transitions,
+        )
+        if approval_instances is not None and approval_transitions is not None
         else None
     )
     wc_token = environ.get("NEX_EOS_TO_WC_SERVICE_TOKEN", "")
@@ -157,6 +175,7 @@ def build_eos_dependencies(
         accounts=accounts,
         approval_policies=approval_policies,
         approval_instances=approval_instances,
+        approval_transition_service=approval_transition_service,
         business_formal_wc_adapter=business_formal_wc_adapter,
         vouchers=vouchers,
         voucher_command_service=voucher_command_service,

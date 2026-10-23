@@ -118,7 +118,7 @@ EOS_APPROVAL_INSTANCE_TABLE = Table(
     ),
     CheckConstraint("version > 0", name="ck_eos_approval_instance_version"),
     CheckConstraint(
-        "active_stage_order IS NULL OR " "active_stage_order BETWEEN 1 AND stage_count",
+        "active_stage_order IS NULL OR active_stage_order BETWEEN 1 AND stage_count",
         name="ck_eos_approval_instance_active_stage",
     ),
 )
@@ -227,6 +227,76 @@ EOS_APPROVAL_DECISION_TABLE = Table(
     ),
     CheckConstraint("decision_version > 0", name="ck_eos_approval_decision_version"),
     CheckConstraint("authorized_by_oa = TRUE", name="ck_eos_approval_decision_oa"),
+)
+
+EOS_APPROVAL_PROOF_TABLE = Table(
+    "eos_approval_proof",
+    EOS_METADATA,
+    Column("tenant_id", String(128), primary_key=True),
+    Column("approval_proof_id", Uuid(as_uuid=False), primary_key=True),
+    Column("approval_instance_id", Uuid(as_uuid=False), nullable=False),
+    Column("business_operation_id", Uuid(as_uuid=False), nullable=False),
+    Column("final_approval_stage_id", Uuid(as_uuid=False), nullable=False),
+    Column("final_wc_decision_id", Uuid(as_uuid=False), nullable=False),
+    Column("approval_domain", String(32), nullable=False),
+    Column("protected_operation_ref", String(256), nullable=False),
+    Column("payload_hash", String(71), nullable=False),
+    Column("write_intent_hash", String(71), nullable=False),
+    Column("policy_hash", String(71), nullable=False),
+    Column("instance_binding_hash", String(71), nullable=False),
+    Column("decision_chain_hash", String(71), nullable=False),
+    Column("final_decision_hash", String(71), nullable=False),
+    Column("proof_version", Integer, nullable=False),
+    Column("proof_hash", String(71), nullable=False),
+    Column("issued_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint(
+        "tenant_id",
+        "approval_instance_id",
+        name="ux_eos_approval_proof_instance",
+    ),
+    UniqueConstraint("tenant_id", "proof_hash", name="ux_eos_approval_proof_hash"),
+    ForeignKeyConstraint(
+        ("tenant_id", "approval_instance_id"),
+        (
+            "eos_approval_instance.tenant_id",
+            "eos_approval_instance.approval_instance_id",
+        ),
+        name="fk_eos_approval_proof_instance",
+        ondelete="RESTRICT",
+    ),
+    ForeignKeyConstraint(
+        ("tenant_id", "business_operation_id"),
+        (
+            "eos_business_operation.tenant_id",
+            "eos_business_operation.business_operation_id",
+        ),
+        name="fk_eos_approval_proof_operation",
+        ondelete="RESTRICT",
+    ),
+    ForeignKeyConstraint(
+        ("tenant_id", "approval_instance_id", "final_approval_stage_id"),
+        (
+            "eos_approval_stage.tenant_id",
+            "eos_approval_stage.approval_instance_id",
+            "eos_approval_stage.approval_stage_id",
+        ),
+        name="fk_eos_approval_proof_stage",
+        ondelete="RESTRICT",
+    ),
+    ForeignKeyConstraint(
+        ("tenant_id", "final_wc_decision_id"),
+        (
+            "eos_approval_decision.tenant_id",
+            "eos_approval_decision.wc_decision_id",
+        ),
+        name="fk_eos_approval_proof_final_decision",
+        ondelete="RESTRICT",
+    ),
+    CheckConstraint(
+        "approval_domain = 'BUSINESS_FORMAL'",
+        name="ck_eos_approval_proof_domain",
+    ),
+    CheckConstraint("proof_version > 0", name="ck_eos_approval_proof_version"),
 )
 
 
