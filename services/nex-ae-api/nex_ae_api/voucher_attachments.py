@@ -11,11 +11,25 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-
 ATTACHMENT_BATCH_SCHEMA_VERSION = "ae_voucher_attachment_batch.v1"
 MAX_ATTACHMENT_COUNT = 20
 MAX_ATTACHMENT_FILE_BYTES = 25 * 1024 * 1024
 MAX_ATTACHMENT_BATCH_BYTES = 100 * 1024 * 1024
+ALLOWED_ATTACHMENT_MEDIA_TYPES = frozenset(
+    {
+        "application/pdf",
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "application/zip",
+        "application/x-zip-compressed",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/x-hwp",
+        "application/vnd.hancom.hwp",
+    }
+)
 _BATCH_STATES = frozenset(
     {"DRAFT", "UPLOADING", "READY", "QUARANTINED", "FAILED", "LOCKED", "ABANDONED"}
 )
@@ -28,6 +42,8 @@ _MEDIA_TYPE = re.compile(
     r"^[a-z0-9][a-z0-9.+-]{0,63}/[a-z0-9][a-z0-9.+-]{0,127}$"
 )
 _SAFE_NAME = re.compile(r"^[^/\\]+$")
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_OPAQUE_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{15,255}$")
 
 
 @dataclass(frozen=True)
@@ -185,6 +201,100 @@ class SqlAlchemyVoucherAttachmentRepository:
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
 
+    def publish_item(
+        self,
+        *,
+        tenant_id: str,
+        attachment_batch_id: str,
+        attachment_id: str,
+        content_sha256: str,
+        object_ref: str,
+        object_version_ref: str | None,
+        scan_status: str = "CLEAN",
+        evidence_ref: str | None = None,
+    ) -> dict[str, Any]:
+        params = {
+            "tenant_id": _scoped_id("tenant_id", tenant_id),
+            "attachment_batch_id": _uuid(
+                "attachment_batch_id", attachment_batch_id
+            ),
+            "attachment_id": _uuid("attachment_id", attachment_id),
+            "content_sha256": _sha256(content_sha256),
+            "object_ref": _object_ref(object_ref),
+            "object_version_ref": _optional_scoped_id(
+                "object_version_ref", object_version_ref
+            ),
+            "scan_status": _scan_status(scan_status),
+            "evidence_ref": _optional_scoped_id("evidence_ref", evidence_ref),
+            "updated_at": _aware_time(self._clock()),
+        }
+        try:
+            with self._session_factory() as session:
+                batch = _load_batch(
+                    session,
+                    tenant_id=params["tenant_id"],
+                    attachment_batch_id=params["attachment_batch_id"],
+                    for_update=True,
+                )
+                if batch is None:
+                    raise _not_found("Voucher attachment batch was not found.")
+                if batch["state"] in {"LOCKED", "ABANDONED"}:
+                    raise _conflict("Voucher attachment batch is immutable.")
+                item = _load_item(
+                    session,
+                    tenant_id=params["tenant_id"],
+                    attachment_batch_id=params["attachment_batch_id"],
+                    attachment_id=params["attachment_id"],
+                    for_update=True,
+                )
+                if item is None:
+                    raise _not_found("Voucher attachment item was not found.")
+                if item["state"] in {"READY", "LOCKED"}:
+                    _require_same_publication(item, params)
+                    session.commit()
+                    return item
+                if item["state"] not in {"UPLOADING", "FAILED"}:
+                    raise _conflict("Voucher attachment item cannot be published.")
+                updated = session.execute(text(_PUBLISH_ITEM_SQL), params)
+                if updated.rowcount != 1:
+                    raise _conflict("Voucher attachment item changed concurrently.")
+                saved = _load_item(
+                    session,
+                    tenant_id=params["tenant_id"],
+                    attachment_batch_id=params["attachment_batch_id"],
+                    attachment_id=params["attachment_id"],
+                )
+                if saved is None:
+                    raise _unavailable()
+                session.commit()
+                return saved
+        except VoucherAttachmentPersistenceError:
+            raise
+        except IntegrityError as exc:
+            raise _conflict(
+                "Voucher attachment object reference conflicts with persisted data."
+            ) from exc
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
+    def resolve_object_ref(
+        self, *, tenant_id: str, object_ref: str
+    ) -> dict[str, Any] | None:
+        params = {
+            "tenant_id": _scoped_id("tenant_id", tenant_id),
+            "object_ref": _object_ref(object_ref),
+        }
+        try:
+            with self._session_factory() as session:
+                row = session.execute(
+                    text(_RESOLVE_OBJECT_REF_SQL), params
+                ).mappings().first()
+                return None if row is None else _resolved_record(row)
+        except VoucherAttachmentPersistenceError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
 
 def _batch_input(value: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(value, Mapping):
@@ -231,7 +341,10 @@ def _item_input(value: Mapping[str, Any]) -> dict[str, Any]:
     if not 1 <= len(name) <= 255 or _SAFE_NAME.fullmatch(name) is None:
         raise _invalid("Voucher attachment display name is invalid.")
     media_type = str(value.get("media_type") or "")
-    if _MEDIA_TYPE.fullmatch(media_type) is None:
+    if (
+        _MEDIA_TYPE.fullmatch(media_type) is None
+        or media_type not in ALLOWED_ATTACHMENT_MEDIA_TYPES
+    ):
         raise _invalid("Voucher attachment media type is invalid.")
     return {
         "tenant_id": _scoped_id("tenant_id", value.get("tenant_id")),
@@ -268,9 +381,13 @@ def _load_item(
     tenant_id: str,
     attachment_batch_id: str,
     attachment_id: str,
+    for_update: bool = False,
 ) -> dict[str, Any] | None:
+    statement = _SELECT_ITEM_SQL
+    if for_update and session.get_bind().dialect.name == "postgresql":
+        statement += " FOR UPDATE"
     row = session.execute(
-        text(_SELECT_ITEM_SQL),
+        text(statement),
         {
             "tenant_id": tenant_id,
             "attachment_batch_id": attachment_batch_id,
@@ -360,6 +477,22 @@ def _require_same_item(saved: Mapping[str, Any], expected: Mapping[str, Any]) ->
             raise _conflict("Voucher attachment item conflicts with persisted data.")
 
 
+def _require_same_publication(
+    saved: Mapping[str, Any], expected: Mapping[str, Any]
+) -> None:
+    for name in (
+        "content_sha256",
+        "object_ref",
+        "object_version_ref",
+        "scan_status",
+        "evidence_ref",
+    ):
+        if saved.get(name) != expected.get(name):
+            raise _conflict(
+                "Voucher attachment publication conflicts with persisted data."
+            )
+
+
 def _scoped_id(name: str, value: object) -> str:
     normalized = str(value or "")
     if _SCOPED_ID.fullmatch(normalized) is None:
@@ -372,6 +505,43 @@ def _uuid(name: str, value: object) -> str:
         return str(UUID(str(value)))
     except (ValueError, TypeError, AttributeError) as exc:
         raise _invalid(f"Voucher attachment {name} is invalid.") from exc
+
+
+def _sha256(value: object) -> str:
+    normalized = str(value or "")
+    if _SHA256.fullmatch(normalized) is None:
+        raise _invalid("Voucher attachment content_sha256 is invalid.")
+    return normalized
+
+
+def _object_ref(value: object) -> str:
+    normalized = str(value or "")
+    if _OPAQUE_REF.fullmatch(normalized) is None or "://" in normalized:
+        raise _invalid("Voucher attachment object_ref is invalid.")
+    return normalized
+
+
+def _optional_scoped_id(name: str, value: object) -> str | None:
+    return None if value is None else _scoped_id(name, value)
+
+
+def _scan_status(value: object) -> str:
+    normalized = str(value or "")
+    if normalized not in {"CLEAN", "REJECTED", "UNAVAILABLE"}:
+        raise _invalid("Voucher attachment scan_status is invalid.")
+    return normalized
+
+
+def _resolved_record(row: Mapping[str, Any]) -> dict[str, Any]:
+    item = _item_record(row)
+    if item["state"] not in {"READY", "LOCKED"}:
+        raise _integrity()
+    return {
+        **item,
+        "tenant_id": str(row["tenant_id"]),
+        "attachment_batch_id": str(row["attachment_batch_id"]),
+        "owner_subject_id": str(row["owner_subject_id"]),
+    }
 
 
 def _aware_time(value: datetime) -> datetime:
@@ -500,4 +670,33 @@ SET state = 'UPLOADING',
 WHERE tenant_id = :tenant_id
   AND attachment_batch_id = :attachment_batch_id
   AND state IN ('DRAFT', 'UPLOADING', 'READY', 'QUARANTINED', 'FAILED')
+"""
+
+_PUBLISH_ITEM_SQL = """
+UPDATE ae_voucher_attachment
+SET state = 'READY',
+    content_sha256 = :content_sha256,
+    object_ref = :object_ref,
+    object_version_ref = :object_version_ref,
+    scan_status = :scan_status,
+    evidence_ref = :evidence_ref,
+    updated_at = :updated_at
+WHERE tenant_id = :tenant_id
+  AND attachment_batch_id = :attachment_batch_id
+  AND attachment_id = :attachment_id
+  AND state IN ('UPLOADING', 'FAILED')
+"""
+
+_RESOLVE_OBJECT_REF_SQL = """
+SELECT a.tenant_id, a.attachment_batch_id, b.owner_subject_id,
+       a.attachment_id, a.state, a.display_name, a.media_type, a.size_bytes,
+       a.content_sha256, a.object_ref, a.object_version_ref, a.scan_status,
+       a.evidence_ref, a.created_at, a.updated_at
+FROM ae_voucher_attachment a
+JOIN ae_voucher_attach_batch b
+  ON b.tenant_id = a.tenant_id
+ AND b.attachment_batch_id = a.attachment_batch_id
+WHERE a.tenant_id = :tenant_id
+  AND a.object_ref = :object_ref
+  AND a.state IN ('READY', 'LOCKED')
 """

@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
 import hashlib
 import importlib
 import ipaddress
 import re
+from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any, BinaryIO, Protocol
 from urllib.parse import urlsplit
-
 
 OBJECT_STORAGE_BACKENDS = frozenset({"S3"})
 OBJECT_STORAGE_OWNERS = {
@@ -148,7 +147,7 @@ def build_owner_object_key(
             "Object-storage key family or suffix is invalid.",
         )
     owner_digest = hashlib.sha256(
-        f"{_identity(tenant_id)}\0{_identity(subject_id)}".encode("utf-8")
+        f"{_identity(tenant_id)}\0{_identity(subject_id)}".encode()
     ).hexdigest()
     content_digest = hashlib.sha256(_identity(content_id).encode("utf-8")).hexdigest()
     return (
@@ -215,6 +214,53 @@ class S3ObjectStore:
                 retryable=True,
             )
         return _assert_immutable(published, expected_sha256, len(payload), content_type)
+
+    def put_immutable_stream(
+        self,
+        *,
+        key: str,
+        source: BinaryIO,
+        expected_sha256: str,
+        expected_size_bytes: int,
+        max_size_bytes: int,
+        content_type: str,
+    ) -> ObjectMetadata:
+        _validate_key(key)
+        _verify_stream(
+            source,
+            expected_sha256=expected_sha256,
+            expected_size_bytes=expected_size_bytes,
+            max_size_bytes=max_size_bytes,
+        )
+        existing = self.head(key)
+        if existing is not None:
+            return _assert_immutable(
+                existing, expected_sha256, expected_size_bytes, content_type
+            )
+        try:
+            self.client.put_object(
+                Bucket=self.settings.bucket,
+                Key=key,
+                Body=source,
+                ContentLength=expected_size_bytes,
+                ContentType=content_type,
+                Metadata={"sha256": expected_sha256},
+                ServerSideEncryption="AES256",
+                IfNoneMatch="*",
+            )
+        except Exception as exc:
+            if _status_code(exc) != 412:
+                raise _client_error("OBJECT_STORAGE_PUT_FAILED", exc) from exc
+        published = self.head(key)
+        if published is None:
+            raise ObjectStorageError(
+                "OBJECT_STORAGE_PUBLISH_INCOMPLETE",
+                "Object was not visible after immutable publication.",
+                retryable=True,
+            )
+        return _assert_immutable(
+            published, expected_sha256, expected_size_bytes, content_type
+        )
 
     def get_bytes(
         self,
@@ -306,6 +352,64 @@ def _assert_immutable(
 def _verify_payload(payload: bytes, expected_sha256: str) -> None:
     if not _SHA256.fullmatch(expected_sha256) or hashlib.sha256(payload).hexdigest() != expected_sha256:
         raise ObjectStorageError("OBJECT_STORAGE_INTEGRITY_MISMATCH", "Object payload failed integrity validation.")
+
+
+def _verify_stream(
+    source: BinaryIO,
+    *,
+    expected_sha256: str,
+    expected_size_bytes: int,
+    max_size_bytes: int,
+) -> None:
+    if (
+        not _SHA256.fullmatch(expected_sha256)
+        or isinstance(expected_size_bytes, bool)
+        or not isinstance(expected_size_bytes, int)
+        or expected_size_bytes < 0
+        or isinstance(max_size_bytes, bool)
+        or not isinstance(max_size_bytes, int)
+        or max_size_bytes < 1
+        or expected_size_bytes > max_size_bytes
+    ):
+        raise ObjectStorageError(
+            "OBJECT_STORAGE_SIZE_INVALID", "Object size boundary is invalid."
+        )
+    try:
+        source.seek(0)
+    except (AttributeError, OSError) as exc:
+        raise ObjectStorageError(
+            "OBJECT_STORAGE_STREAM_INVALID",
+            "Object stream must be seekable.",
+        ) from exc
+    digest = hashlib.sha256()
+    size = 0
+    while True:
+        chunk = source.read(min(1024 * 1024, max_size_bytes - size + 1))
+        if not chunk:
+            break
+        if not isinstance(chunk, bytes):
+            raise ObjectStorageError(
+                "OBJECT_STORAGE_STREAM_INVALID", "Object stream must produce bytes."
+            )
+        size += len(chunk)
+        if size > max_size_bytes:
+            raise ObjectStorageError(
+                "OBJECT_STORAGE_SIZE_MISMATCH",
+                "Object stream exceeds its size boundary.",
+            )
+        digest.update(chunk)
+    try:
+        source.seek(0)
+    except OSError as exc:
+        raise ObjectStorageError(
+            "OBJECT_STORAGE_STREAM_INVALID",
+            "Object stream could not be rewound.",
+        ) from exc
+    if size != expected_size_bytes or digest.hexdigest() != expected_sha256:
+        raise ObjectStorageError(
+            "OBJECT_STORAGE_INTEGRITY_MISMATCH",
+            "Object stream failed integrity validation.",
+        )
 
 
 def _validate_key(key: str) -> None:
