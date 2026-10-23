@@ -12,6 +12,11 @@ from .approval_instances import SqlAlchemyEosApprovalInstanceRepository
 from .approval_policies import SqlAlchemyEosApprovalPolicyRepository
 from .approver_resolution import EosApproverResolutionService
 from .authorization import EosVoucherAuthorizationClient, HttpOaAuthorizationSource
+from .business_formal_wc import (
+    DEFAULT_WC_BASE_URL,
+    EosBusinessFormalWcAdapter,
+    HttpWcApprovalWorkItemClient,
+)
 from .business_queries import SqlAlchemyEosBusinessOperationQuery
 from .business_transactions import (
     EosBusinessTransactionCoordinator,
@@ -39,6 +44,7 @@ class EosDependencies:
     accounts: SqlAlchemyEosAccountRepository | None
     approval_policies: SqlAlchemyEosApprovalPolicyRepository | None
     approval_instances: SqlAlchemyEosApprovalInstanceRepository | None
+    business_formal_wc_adapter: EosBusinessFormalWcAdapter | None
     vouchers: SqlAlchemyEosVoucherRepository | None
     voucher_command_service: EosCreateVoucherDraftService | None
     business_operation_query: SqlAlchemyEosBusinessOperationQuery | None
@@ -90,6 +96,18 @@ def build_eos_dependencies(
         if database_runtime is not None
         else None
     )
+    wc_token = environ.get("NEX_EOS_TO_WC_SERVICE_TOKEN", "")
+    business_formal_wc_adapter = (
+        EosBusinessFormalWcAdapter(
+            approval_instances=approval_instances,
+            wc_client=HttpWcApprovalWorkItemClient(
+                base_url=environ.get("NEX_WC_BASE_URL", DEFAULT_WC_BASE_URL),
+                service_token=wc_token,
+            ),
+        )
+        if approval_instances is not None and wc_token
+        else None
+    )
     vouchers = (
         SqlAlchemyEosVoucherRepository(database_runtime.session_factory)
         if database_runtime is not None
@@ -134,6 +152,7 @@ def build_eos_dependencies(
         accounts=accounts,
         approval_policies=approval_policies,
         approval_instances=approval_instances,
+        business_formal_wc_adapter=business_formal_wc_adapter,
         vouchers=vouchers,
         voucher_command_service=voucher_command_service,
         business_operation_query=business_operation_query,

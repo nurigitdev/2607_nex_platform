@@ -52,6 +52,7 @@ def create_eos_app(
     app.state.eos_accounts = dependencies.accounts
     app.state.eos_approval_policies = dependencies.approval_policies
     app.state.eos_approval_instances = dependencies.approval_instances
+    app.state.eos_business_formal_wc_adapter = dependencies.business_formal_wc_adapter
     app.state.eos_vouchers = dependencies.vouchers
     app.state.eos_voucher_command_service = dependencies.voucher_command_service
     app.state.eos_business_operation_query = dependencies.business_operation_query

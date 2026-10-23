@@ -60,6 +60,14 @@ from .authorization import (
     EosVoucherAuthorizationClient,
     HttpOaAuthorizationSource,
 )
+from .business_formal_wc import (
+    DEFAULT_WC_BASE_URL,
+    EosBusinessFormalWcAdapter,
+    EosBusinessFormalWcError,
+    HttpWcApprovalWorkItemClient,
+    WcApprovalWorkItemClient,
+    deterministic_business_formal_work_item_id,
+)
 from .business_queries import (
     EosBusinessQueryError,
     SqlAlchemyEosBusinessOperationQuery,
@@ -139,6 +147,7 @@ from .vouchers import (
 )
 
 __all__ = (
+    "DEFAULT_WC_BASE_URL",
     "EOS_ACCOUNT_CATEGORIES",
     "EOS_ACCOUNT_STATUSES",
     "EOS_ACCOUNT_TABLE",
@@ -199,6 +208,8 @@ __all__ = (
     "EosAuthorizationError",
     "EosAuthorizationEvidence",
     "EosAuthorizationTarget",
+    "EosBusinessFormalWcAdapter",
+    "EosBusinessFormalWcError",
     "EosBusinessOperationError",
     "EosBusinessOperationRequest",
     "EosBusinessQueryError",
@@ -219,6 +230,7 @@ __all__ = (
     "EosVoucherError",
     "EosVoucherVerificationError",
     "HttpOaAuthorizationSource",
+    "HttpWcApprovalWorkItemClient",
     "InMemoryEosBusinessTransactionCoordinator",
     "NvtProjectInput",
     "NvtProjectUpdate",
@@ -242,8 +254,10 @@ __all__ = (
     "VoucherAttachmentInput",
     "VoucherDraftInput",
     "VoucherLineInput",
+    "WcApprovalWorkItemClient",
     "build_eos_database_runtime",
     "create_eos_app",
+    "deterministic_business_formal_work_item_id",
     "load_eos_settings",
     "parse_create_voucher_draft_command",
     "reset_eos_test_database",
