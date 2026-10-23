@@ -102,14 +102,19 @@ next contract/API Slice.
 - Final NeX-EOS service regression: `578 passed`, `17` protected skips.
 - Actual migrations against `nex_eos_test`: `2511_eos_approval_proof` and
   `2512_eos_approval_proof_decision_fk` applied.
-- Actual `nex_wc_test` + `nex_eos_test` protected smoke: `1 passed`, no skip.
-- Protected smoke verified actual database/user identities, WC decision and
-  outbox persistence, two-stage EOS transition, final proof, restart read,
-  exact replay and zero residue in both databases.
+- Actual `nex_eos_test` + `nex_wc_test` + `nex_oa_test` protected smoke:
+  `1 passed`, no skip; all three migration inventories were current.
+- Protected smoke verified actual database/user identities, two fresh OA
+  PostgreSQL authorization reads, WC decision and outbox persistence,
+  two-stage EOS transition, final proof, restart read, exact replay and zero
+  residue in all three databases.
 - Final NeX-EOS Slice Gate: `578 passed`, `17` protected skips; service
   statement coverage `99.64%`, branch coverage `99.71%`; explicit S73 module
   coverage `100.00% / 100.00%`; contracts passed with `188` schemas, `250`
   examples, `217` negative examples and `9` OpenAPI documents.
+- Post-S73 Checkpoint Gate: `16,231 passed`, `86` protected skips; statement
+  coverage `98.80%`, branch coverage `97.32%`; contracts passed with `188`
+  schemas, `250` examples, `217` negative examples and `9` OpenAPI documents.
 
 Remote embedding, reranking and generation providers were not required.
 

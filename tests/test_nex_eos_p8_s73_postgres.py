@@ -35,6 +35,18 @@ from nex_eos import (
     SqlAlchemyEosProjectRepository,
     build_eos_database_runtime,
 )
+from nex_oa.authorization_repository import (
+    build_authorization_repository_for_runtime,
+)
+from nex_oa.authorization_resolver import OaEffectiveAuthorizationResolver
+from nex_oa.authorization_service import OaAuthorizationService
+from nex_oa.memberships import build_tenant_membership_registry_for_runtime
+from nex_oa.subjects import build_subject_registry_for_runtime
+from nex_runtime import (
+    SERVICE_SPECS,
+    attach_service_persistence_runtime,
+    build_service_app,
+)
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from nex_wc.approvals import (
     ApprovalDecisionAuthorizer,
@@ -42,12 +54,14 @@ from nex_wc.approvals import (
     ApprovalWorkItemService,
     SqlAlchemyApprovalWorkItemRepository,
 )
+from run_migrations import run_service_migrations
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
 EOS_DATABASE_URL = os.getenv("NEX_EOS_TEST_DATABASE_URL", "")
 WC_DATABASE_URL = os.getenv("NEX_WC_TEST_DATABASE_URL", "")
+OA_DATABASE_URL = os.getenv("NEX_OA_TEST_DATABASE_URL", "")
 SMOKE_ENABLED = os.getenv("NEX_EOS_P8_S73_POSTGRES_SMOKE") == "1"
 TENANT = "p8-s73-pg"
 INSTANCE_ID = "76000000-0000-4000-8000-000000000001"
@@ -65,8 +79,11 @@ PAYLOAD_HASH = semantic_sha256_hash_ref({"amount": "7300.00"})
 INTENT_HASH = semantic_sha256_hash_ref({"write": "p8-s73-pg-voucher"})
 
 pytestmark = pytest.mark.skipif(
-    not EOS_DATABASE_URL or not WC_DATABASE_URL or not SMOKE_ENABLED,
-    reason="Protected P8-S73 EOS/WC PostgreSQL smoke is disabled",
+    not EOS_DATABASE_URL
+    or not WC_DATABASE_URL
+    or not OA_DATABASE_URL
+    or not SMOKE_ENABLED,
+    reason="Protected P8-S73 EOS/WC/OA PostgreSQL smoke is disabled",
 )
 
 EOS_TABLES = (
@@ -94,19 +111,20 @@ class RepositoryClient:
 
 
 class AuthorizationSource:
+    def __init__(self, service: OaAuthorizationService) -> None:
+        self._service = service
+        self.calls: list[tuple[str, str]] = []
+
     def effective_authorization(self, *, tenant_id, subject_id):
-        return {
-            "active": True,
-            "tenant_id": tenant_id,
-            "subject_id": subject_id,
-            "scopes": ["approval:decide"],
-            "roles": ["TEAM_LEAD", "GROUP_LEAD"],
-            "org_scope_refs": [ORG_ID],
-            "project_scope_refs": [PROJECT_ID],
-            "revision_hash": semantic_sha256_hash_ref(
-                {"subject": subject_id, "revision": 1}
-            ),
-        }
+        response = self._service.effective_authorization(
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+        )
+        authorization = response.get("authorization")
+        if not isinstance(authorization, dict):
+            raise TypeError("OA authorization response is invalid")
+        self.calls.append((tenant_id, subject_id))
+        return {**authorization, "active": True}
 
 
 def _cleanup_eos(runtime) -> dict[str, int]:
@@ -142,14 +160,57 @@ def _cleanup_wc(engine) -> dict[str, int]:
         }
 
 
-def _decision_envelope(repository, item, *, suffix: int, at: datetime):
+def _cleanup_oa(engine) -> dict[str, int]:
+    tables = (
+        "oa_authz_events",
+        "oa_group_roles",
+        "oa_group_members",
+        "oa_roles",
+        "oa_groups",
+        "oa_user_sessions",
+        "oa_local_credentials",
+        "oa_tenant_memberships",
+        "oa_subjects",
+        "oa_tenants",
+    )
+    with engine.begin() as connection:
+        for table_name in tables:
+            connection.execute(
+                text(f"DELETE FROM {table_name} WHERE tenant_id = :tenant_id"),
+                {"tenant_id": TENANT},
+            )
+    with engine.connect() as connection:
+        return {
+            table_name: connection.execute(
+                text(f"SELECT count(*) FROM {table_name} WHERE tenant_id = :tenant_id"),
+                {"tenant_id": TENANT},
+            ).scalar_one()
+            for table_name in tables
+        }
+
+
+def _dispose_persistence_runtime(runtime) -> None:
+    if runtime.worker_engine is not None and runtime.worker_engine is not runtime.api_engine:
+        runtime.worker_engine.dispose()
+    if runtime.api_engine is not None:
+        runtime.api_engine.dispose()
+
+
+def _decision_envelope(
+    repository,
+    item,
+    *,
+    authorization_source: AuthorizationSource,
+    suffix: int,
+    at: datetime,
+):
     decision_id = f"76000000-0000-4000-8001-{suffix:012d}"
     event_id = f"76000000-0000-4000-8002-{suffix:012d}"
     outbox_id = f"76000000-0000-4000-8003-{suffix:012d}"
     service = ApprovalDecisionService(
         repository,
         authorizer=ApprovalDecisionAuthorizer(
-            AuthorizationSource(),
+            authorization_source,
             clock=lambda: at,
         ),
         id_factory=lambda: decision_id,
@@ -190,6 +251,26 @@ def test_s73_actual_wc_decision_advances_eos_and_survives_restart() -> None:
         "nex_wc_user",
         "nex_wc_test",
     )
+    assert (make_url(OA_DATABASE_URL).username, make_url(OA_DATABASE_URL).database) == (
+        "nex_oa_user",
+        "nex_oa_test",
+    )
+    migrations = {
+        service_id: run_service_migrations(
+            service_id,
+            database_url=database_url,
+            profile="test",
+        )
+        for service_id, database_url in (
+            ("nex-eos", EOS_DATABASE_URL),
+            ("nex-wc", WC_DATABASE_URL),
+            ("nex-oa", OA_DATABASE_URL),
+        )
+    }
+    assert all(
+        len(result.planned) == len(result.applied) + len(result.skipped)
+        for result in migrations.values()
+    )
     eos = build_eos_database_runtime(
         environ={"NEX_EOS_TEST_DATABASE_URL": EOS_DATABASE_URL},
         database_env="NEX_EOS_TEST_DATABASE_URL",
@@ -200,8 +281,33 @@ def test_s73_actual_wc_decision_advances_eos_and_survives_restart() -> None:
         autoflush=False,
         expire_on_commit=False,
     )
+    oa_spec = SERVICE_SPECS["nex-oa"]
+    oa_app = build_service_app(oa_spec)
+    oa = attach_service_persistence_runtime(
+        oa_app,
+        oa_spec,
+        environ={
+            oa_spec.database_env: OA_DATABASE_URL,
+            "NEX_OA_PERSISTENCE_MODE": "postgres",
+        },
+    )
+    assert oa.api_engine is not None
+    subjects = build_subject_registry_for_runtime(oa)
+    memberships = build_tenant_membership_registry_for_runtime(
+        oa,
+        subject_registry=subjects,
+    )
+    authorization_repository = build_authorization_repository_for_runtime(oa)
+    authorization_source = AuthorizationSource(
+        OaAuthorizationService(
+            repository=authorization_repository,
+            resolver=OaEffectiveAuthorizationResolver(authorization_repository),
+            membership_registry=memberships,
+        )
+    )
     assert all(value == 0 for value in _cleanup_eos(eos).values())
     assert all(value == 0 for value in _cleanup_wc(wc_engine).values())
+    assert all(value == 0 for value in _cleanup_oa(oa.api_engine).values())
     try:
         with eos.engine.connect() as connection:
             assert tuple(
@@ -217,6 +323,25 @@ def test_s73_actual_wc_decision_advances_eos_and_survives_restart() -> None:
                     )
                 ).scalar_one()
                 == 1
+            )
+        with oa.api_engine.connect() as connection:
+            assert tuple(
+                connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+            ) == ("nex_oa_test", "nex_oa_user")
+
+        for subject_id in ("employee-p8-s73-team", "employee-p8-s73-group"):
+            memberships.ensure_membership(
+                {
+                    "tenant_id": TENANT,
+                    "subject_id": subject_id,
+                    "tenant_display_name": "P8 S73 PostgreSQL Tenant",
+                    "subject_display_name": subject_id,
+                    "roles": ["employee"],
+                    "scopes": ["approval:decide"],
+                    "membership_metadata": {"smoke_marker": "p8-s73"},
+                }
             )
         with wc_engine.connect() as connection:
             assert tuple(
@@ -357,6 +482,7 @@ def test_s73_actual_wc_decision_advances_eos_and_survives_restart() -> None:
         first_envelope = _decision_envelope(
             wc_repository,
             first_projection["work_item"],
+            authorization_source=authorization_source,
             suffix=1,
             at=NOW + timedelta(minutes=1),
         )
@@ -384,6 +510,7 @@ def test_s73_actual_wc_decision_advances_eos_and_survives_restart() -> None:
         second_envelope = _decision_envelope(
             wc_repository,
             second_projection["work_item"],
+            authorization_source=authorization_source,
             suffix=2,
             at=NOW + timedelta(minutes=4),
         )
@@ -420,8 +547,14 @@ def test_s73_actual_wc_decision_advances_eos_and_survives_restart() -> None:
         )
         assert replay["created"] is False
         assert replay["approval_proof"] == proof
+        assert authorization_source.calls == [
+            (TENANT, "employee-p8-s73-team"),
+            (TENANT, "employee-p8-s73-group"),
+        ]
     finally:
         assert all(value == 0 for value in _cleanup_wc(wc_engine).values())
         assert all(value == 0 for value in _cleanup_eos(eos).values())
+        assert all(value == 0 for value in _cleanup_oa(oa.api_engine).values())
         wc_engine.dispose()
         eos.dispose()
+        _dispose_persistence_runtime(oa)
