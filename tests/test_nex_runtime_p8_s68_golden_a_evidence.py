@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 
 import nex_runtime.golden_a_evidence as evidence
@@ -76,6 +77,14 @@ def test_builds_exact_digest_protected_metadata_only_package() -> None:
     assert "postgresql" not in serialized
     assert "http://" not in serialized
     assert "payload" not in serialized
+
+
+def test_sorted_json_round_trip_preserves_package_validity() -> None:
+    restored = json.loads(json.dumps(_package(), sort_keys=True))
+
+    result = evidence.validate_golden_a_evidence_package(restored)
+
+    assert result["status"] == "PASS", result
 
 
 @pytest.mark.parametrize(

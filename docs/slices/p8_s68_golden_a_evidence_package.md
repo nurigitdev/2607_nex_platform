@@ -36,9 +36,9 @@ On those conditions, the package gate is `P8.6_GOLDEN_A_CLOSED`.
 
 ## Verification
 
-- Focused gate: `22 passed, 1 skipped`; the new package domain and runner each
+- Focused gate: `23 passed, 1 skipped`; the new package domain and runner each
   reached 100% statement and branch coverage.
-- Full Gate: `16,746 passed, 87 skipped, 0 failed` from 16,833 collected tests;
+- Full Gate: `16,747 passed, 87 skipped, 0 failed` from 16,834 collected tests;
   statement coverage was 96.7617% and branch coverage was 96.1844%.
 - Protected Golden A: actual AE/WC/OA/EOS test PostgreSQL databases and live
   generation, embedding, and reranking providers all passed.

@@ -169,8 +169,11 @@ def validate_golden_a_evidence_package(
             and _matches(_HASH_REF, release.get("release_admission_hash"))
         ),
         "migration_heads_exact": (
-            tuple(heads) == EXPECTED_MIGRATION_SERVICES
-            and all(_matches(_MIGRATION, heads.get(service)) for service in heads)
+            set(heads) == set(EXPECTED_MIGRATION_SERVICES)
+            and all(
+                _matches(_MIGRATION, heads.get(service))
+                for service in EXPECTED_MIGRATION_SERVICES
+            )
         ),
         "protected_test_evidence_valid": (
             set(tests) == _TEST_FIELDS
