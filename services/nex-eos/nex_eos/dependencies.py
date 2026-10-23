@@ -8,6 +8,7 @@ from nex_runtime import build_service_token_admission_runtime
 from nex_runtime.service_token_admission import ServiceTokenAdmissionRuntime
 
 from .accounts import SqlAlchemyEosAccountRepository
+from .approval_instances import SqlAlchemyEosApprovalInstanceRepository
 from .approval_policies import SqlAlchemyEosApprovalPolicyRepository
 from .approver_resolution import EosApproverResolutionService
 from .authorization import EosVoucherAuthorizationClient, HttpOaAuthorizationSource
@@ -37,6 +38,7 @@ class EosDependencies:
     projects: SqlAlchemyEosProjectRepository | None
     accounts: SqlAlchemyEosAccountRepository | None
     approval_policies: SqlAlchemyEosApprovalPolicyRepository | None
+    approval_instances: SqlAlchemyEosApprovalInstanceRepository | None
     vouchers: SqlAlchemyEosVoucherRepository | None
     voucher_command_service: EosCreateVoucherDraftService | None
     business_operation_query: SqlAlchemyEosBusinessOperationQuery | None
@@ -83,6 +85,11 @@ def build_eos_dependencies(
         if database_runtime is not None
         else None
     )
+    approval_instances = (
+        SqlAlchemyEosApprovalInstanceRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
     vouchers = (
         SqlAlchemyEosVoucherRepository(database_runtime.session_factory)
         if database_runtime is not None
@@ -126,6 +133,7 @@ def build_eos_dependencies(
         projects=projects,
         accounts=accounts,
         approval_policies=approval_policies,
+        approval_instances=approval_instances,
         vouchers=vouchers,
         voucher_command_service=voucher_command_service,
         business_operation_query=business_operation_query,
