@@ -1,5 +1,5 @@
 {
-  "certification_reference": "nsl-linux-quality:b8b9d051cf97579b4bbf3382d7cb1358bdf2e05b",
+  "certification_reference": "nsl-linux-quality:c0a8d4e125ee129c4556d896356237bb3973582d",
   "distribution": "nex-skill-language",
   "locked_cryptography_version": "46.0.7",
   "package_version": "0.2.0",
@@ -53,8 +53,8 @@
   ],
   "requires_python": ">=3.12",
   "schema_version": "nsl_wheel_lock.v2",
-  "source_revision": "b8b9d051cf97579b4bbf3382d7cb1358bdf2e05b",
-  "source_tree": "1f5cdd171ebd0977024eb0fa58ad72d483a71ab2",
+  "source_revision": "c0a8d4e125ee129c4556d896356237bb3973582d",
+  "source_tree": "057611c8c584afa5483f7f3e5990a19533ddea58",
   "wheel_filename": "nex_skill_language-0.2.0-py3-none-any.whl",
   "wheel_sha256": "sha256:862958a5eab982a71bec5ee58b9e530867d6c25f65d8b770efb29ca78ce7f135",
   "wheel_size": 194308

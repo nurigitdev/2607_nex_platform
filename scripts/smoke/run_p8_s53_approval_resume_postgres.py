@@ -389,6 +389,7 @@ def _verify_scenario(
     authorization_source: Any | None = None,
     approver_id_override: str | None = None,
     nsl_subject_id_override: str | None = None,
+    business_operation_id_override: str | None = None,
 ) -> dict[str, Any]:
     ae_factory = fixture["factory"]
     tenant_id = str(fixture["tenant_id"])
@@ -399,7 +400,9 @@ def _verify_scenario(
     requester_id = str(execution["principal_id"])
     approver_id = approver_id_override or requester_id
     nsl_execution_id = f"p8-s53-{scenario}-{uuid4().hex}"
-    business_operation_id = f"p8-s53-operation-{scenario}-{uuid4().hex}"
+    business_operation_id = business_operation_id_override or (
+        f"p8-s53-operation-{scenario}-{uuid4().hex}"
+    )
     worker_id = f"p8-s53-{scenario}-{uuid4().hex[:12]}"
     wc_engine = create_engine(wc_database_url, poolclass=NullPool)
     wc_factory = sessionmaker(bind=wc_engine, expire_on_commit=False)
@@ -603,6 +606,15 @@ def _verify_scenario(
             "wc_role": wc_role,
             "prefix_status": prefix["result"]["status"],
             "payload_hash": request_data["payload_hash"],
+            "write_identity": {
+                "approval_id": request_data["approval_id"],
+                "approval_request_id": request_data["approval_request_id"],
+                "write_node_id": request_data["write_node_id"],
+                "tool_id": request_data["tool_id"],
+                "business_operation_id": request_data["business_operation_id"],
+                "nsl_execution_id": request_data["execution_id"],
+            },
+            "platform_approval_evidence": saved_evidence,
             "prefix_audit": prefix_audit,
             "mismatch_event": mismatch,
             "matched_event": matched,

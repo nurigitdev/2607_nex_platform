@@ -13,6 +13,7 @@ from nex_ae_api.golden_a_planning import (
     GoldenAPlanningError,
     activate_golden_a_work_intent,
     bind_golden_a_planning_candidate,
+    build_golden_a_canonical_write_payload,
     build_golden_a_capability_snapshot,
     build_golden_a_planning_capability,
 )
@@ -30,7 +31,11 @@ from nex_ae_api.planning_capabilities import (
     build_local_skill_capability,
 )
 from nex_ae_api.work_intent import build_work_intent_from_decision
-from nex_runtime.semantic_hashes import canonical_json, semantic_sha256_hash_ref
+from nex_runtime.semantic_hashes import (
+    canonical_json,
+    nsl_write_payload_hash_ref,
+    semantic_sha256_hash_ref,
+)
 from p8_golden_a_fixture import load_golden_a_fixture
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -245,6 +250,33 @@ def test_exact_project_code_binds_authoritative_project_accounts_and_balanced_li
         "eos_commit_state",
     ):
         assert forbidden not in serialized
+
+
+def test_canonical_write_payload_uses_stable_refs_and_excludes_control_lineage() -> (
+    None
+):
+    payload = build_golden_a_canonical_write_payload(_fixture())
+
+    assert payload["project_ref"] == {
+        "type": "eos.project",
+        "id": "82000000-0000-4000-8000-000000000001",
+    }
+    assert [item["account_ref"]["id"] for item in payload["lines"]] == [
+        "83000000-0000-4000-8000-000000000001",
+        "83000000-0000-4000-8000-000000000002",
+    ]
+    assert [item["signed_amount"] for item in payload["lines"]] == [
+        "84000.00",
+        "-84000.00",
+    ]
+    assert not {
+        "nsl_approval_request_id",
+        "nsl_approval_evidence_ref",
+        "business_approval_proof_ref",
+    }.intersection(payload)
+    assert nsl_write_payload_hash_ref(payload) == (
+        "sha256:240a7e83a1b3355ba98b5473cc239f1aea6a318b17e53e385c01837666fb8eb9"
+    )
 
 
 @pytest.mark.parametrize(

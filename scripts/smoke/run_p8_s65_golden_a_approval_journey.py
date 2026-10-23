@@ -48,6 +48,7 @@ from nex_ae_api.golden_a_approval_journey import GoldenAPlanningJourneyService
 from nex_ae_api.golden_a_planning import (
     GOLDEN_A_CAPABILITY_ID,
     GOLDEN_A_NSL_SKILL_ID,
+    build_golden_a_canonical_write_payload,
 )
 from nex_ae_api.intent_candidate_generation import LiveIntentCandidateService
 from nex_ae_api.mo_generation_client import build_default_ae_mo_generation_client
@@ -456,9 +457,10 @@ def _execute_postgres_journey(  # pragma: no cover - actual protected integratio
             authorization_source=authorization,
             approver_id_override=approver,
             nsl_subject_id_override=requester,
+            business_operation_id_override=str(uuid4()),
         )["scenario"]
         canonical_payload_hash = nsl_write_payload_hash_ref(
-            _canonical_business_payload(fixture)
+            build_golden_a_canonical_write_payload(fixture)
         )
         exact_binding = planning.activation["authoritative_binding"]["capability_ref"]
         checks = {
@@ -532,6 +534,8 @@ def _execute_postgres_journey(  # pragma: no cover - actual protected integratio
                 "approval_status": approval["resume"]["approval_status"],
                 "lineage_exact": approval["lineage_exact"],
                 "payload_hash": approval["payload_hash"],
+                "write_identity": approval["write_identity"],
+                "platform_approval_evidence": approval["platform_approval_evidence"],
                 "eos_mutation_count": approval["resume"]["eos_mutation_count"],
             },
         }
@@ -646,7 +650,7 @@ def _customize_profile(profile: Path, fixture: Mapping[str, Any]) -> None:
         if tool["tool_id"] == "FINANCE.RESOLVE_VOUCHER_DRAFT_COMMAND":
             case = tool["cases"][0]
             case["arguments"] = input_value
-            case["result"] = _canonical_business_payload(fixture)
+            case["result"] = build_golden_a_canonical_write_payload(fixture)
             continue
         key, value = replacements[tool["tool_id"]]
         tool["cases"][0]["arguments"][key] = value
@@ -660,50 +664,6 @@ def _customize_profile(profile: Path, fixture: Mapping[str, Any]) -> None:
 def _copy_golden_a_profile(*, source: Path, case_root: Path) -> Path:
     shutil.copytree(source / "examples/golden_a_voucher_draft", case_root)
     return case_root / "controlled.profile.json"
-
-
-def _canonical_business_payload(fixture: Mapping[str, Any]) -> dict[str, Any]:
-    scenario = fixture["scenario"]
-    policy = fixture["voucher_line_policy"]
-    evidence_ref = f"policy:{policy['policy_id']}"
-    descriptions = (
-        "Golden A travel expense",
-        "Golden A cash settlement",
-    )
-    categories = (scenario["economic_category"], scenario["settlement_method"])
-    amounts = (scenario["amount"], f"-{scenario['amount']}")
-    account_ids = (policy["debit_account_id"], policy["credit_account_id"])
-    return {
-        "schema_version": "eos_create_voucher_draft_command.v1",
-        "tenant_id": fixture["tenant"]["tenant_id"],
-        "requester_ref": {
-            "type": "oa.user",
-            "id": scenario["requester_subject_id"],
-        },
-        "project_ref": {
-            "type": "eos.project",
-            "id": fixture["projects"]["child"]["project_id"],
-        },
-        "voucher_type": scenario["voucher_type"],
-        "transaction_date": scenario["transaction_date"],
-        "currency": scenario["currency"],
-        "description_text": scenario["description"],
-        "lines": [
-            {
-                "line_no": index,
-                "account_ref": {"type": "eos.account", "id": account_id},
-                "signed_amount": amount,
-                "economic_category": category,
-                "description": description,
-                "evidence_refs": [evidence_ref],
-            }
-            for index, (account_id, amount, category, description) in enumerate(
-                zip(account_ids, amounts, categories, descriptions, strict=True),
-                start=1,
-            )
-        ],
-        "attachments": list(scenario["attachments"]),
-    }
 
 
 def _build_oa_app(database_url: str) -> Any:  # pragma: no cover - live gate.

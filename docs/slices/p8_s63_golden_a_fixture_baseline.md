@@ -41,7 +41,7 @@ The tracked manifest is
 - business capability/tool: `FINANCE.CREATE_VOUCHER_DRAFT`
 - admitted NSL Skill: `FINANCE.VOUCHER_DRAFT_CREATE`, version `1.1.0`
 - Skill semantic hash:
-  `sha256:9b7b7b3bffaf3263487b1ff2be4682e8c3e049d2fbc189a23dea64da74e6e7ca`
+  `sha256:b6ba60f6ae681dc754b6d304fcf7c99794a48e88429c698afd9d12afcb90a8fc`
 - activation state: `LOCKED_PENDING_P8_S64`
 
 The project and account IDs match the existing Golden A EOS command example.

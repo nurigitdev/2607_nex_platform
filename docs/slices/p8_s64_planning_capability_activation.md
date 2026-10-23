@@ -84,7 +84,7 @@ backend    = NSL_V02_IN_PROCESS
 ```
 
 Its Skill semantic hash is the exact hash obtained from the admitted wheel:
-`sha256:9b7b7b3bffaf3263487b1ff2be4682e8c3e049d2fbc189a23dea64da74e6e7ca`.
+`sha256:b6ba60f6ae681dc754b6d304fcf7c99794a48e88429c698afd9d12afcb90a8fc`.
 The optional `local_skill_binding.capability_id` alias is present only when the
 business capability differs from the executable Skill ID. Existing P6
 same-identity bindings retain their prior shape. The LLM never supplies the

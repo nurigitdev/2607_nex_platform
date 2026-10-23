@@ -1,7 +1,7 @@
 {
   "schema_version": "p8_golden_a_fixture.v1",
   "fixture_id": "p8-golden-a-voucher-draft-v1",
-  "fixture_hash": "sha256:3e777c2b37aec5e1658aaf0c145f1e9f3f8d25123d251e210d64968001aea3e2",
+  "fixture_hash": "sha256:601e096a6f97a93f3f2ffa44b18dddc8bbf8b37531cc21e9ffd171e868c2b4ac",
   "tenant": {
     "tenant_id": "p8-golden-a",
     "display_name": "P8 Golden A"
@@ -136,7 +136,7 @@
     "capability_id": "FINANCE.CREATE_VOUCHER_DRAFT",
     "skill_id": "FINANCE.VOUCHER_DRAFT_CREATE",
     "exact_skill_version": "1.1.0",
-    "skill_semantic_hash": "sha256:9b7b7b3bffaf3263487b1ff2be4682e8c3e049d2fbc189a23dea64da74e6e7ca",
+    "skill_semantic_hash": "sha256:b6ba60f6ae681dc754b6d304fcf7c99794a48e88429c698afd9d12afcb90a8fc",
     "executor_kind": "LOCAL_SKILL",
     "operation_semantics": "WRITE",
     "backend_profile": "NSL_V02_IN_PROCESS",

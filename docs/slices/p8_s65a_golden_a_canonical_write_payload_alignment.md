@@ -43,9 +43,9 @@ The source-backed Golden A Skill and tool contract were versioned together:
 ```text
 Skill              = FINANCE.VOUCHER_DRAFT_CREATE @ 1.1.0
 WRITE tool         = FINANCE.CREATE_VOUCHER_DRAFT @ 1.1.0
-Skill semantic hash= sha256:9b7b7b3bffaf3263487b1ff2be4682e8c3e049d2fbc189a23dea64da74e6e7ca
-NSL source commit  = b8b9d051cf97579b4bbf3382d7cb1358bdf2e05b
-NSL source tree    = 1f5cdd171ebd0977024eb0fa58ad72d483a71ab2
+Skill semantic hash= sha256:b6ba60f6ae681dc754b6d304fcf7c99794a48e88429c698afd9d12afcb90a8fc
+NSL source commit  = c0a8d4e125ee129c4556d896356237bb3973582d
+NSL source tree    = 057611c8c584afa5483f7f3e5990a19533ddea58
 ```
 
 The admitted wheel bytes did not change, so its digest remains:
@@ -57,6 +57,11 @@ sha256:862958a5eab982a71bec5ee58b9e530867d6c25f65d8b770efb29ca78ce7f135
 The Platform source lock and package admission constants now identify the new
 source commit/tree while retaining that wheel digest. S63 and S64 fixtures bind
 the exact Skill version and semantic hash.
+
+The v1.1 WRITE contract also names `FINANCE.GET_VOUCHER_DRAFT` as its
+post-WRITE verification tool. This matches the Platform EOS adapter's canonical
+read-back operation ID; the earlier source-only `FINANCE.GET_VOUCHER` alias was
+removed before P8-S66 admission.
 
 ## Hash Continuity
 
@@ -114,6 +119,6 @@ tenant-private payloads are excluded.
 
 P8-S65A is closed. Golden A has one model-independent canonical business
 payload and one payload hash across NSL admission, human approval, AE write
-adaptation, and the pending EOS commit. Approval metadata remains independently
-auditable control lineage. P8-S66 may now execute the approved payload without
-hash translation or business-payload reconstruction.
+adaptation, EOS commit, and read-back verification. Approval metadata remains
+independently auditable control lineage. P8-S66 confirmed the same approved
+hash through an actual `COMMITTED` and `VERIFIED` journey.

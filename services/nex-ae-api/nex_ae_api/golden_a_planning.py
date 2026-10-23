@@ -29,6 +29,7 @@ GOLDEN_A_INPUT_CONTRACT = "contract://nex/eos/create-voucher-draft-command/v1"
 GOLDEN_A_OUTPUT_CONTRACT = "contract://nex/eos/create-voucher-draft-result/v1"
 GOLDEN_A_RUNTIME_CONTRACT = "contract://nex/nsl/write-runtime/v0.2"
 GOLDEN_A_TRUST_POLICY = "policy://nex/ae/governed-write/golden-a/v1"
+GOLDEN_A_WRITE_SCHEMA_VERSION = "eos_create_voucher_draft_command.v1"
 
 _REQUIRED_PARAMETERS = (
     "amount",
@@ -87,6 +88,55 @@ def build_golden_a_capability_snapshot(
             build_golden_a_planning_capability(fixture),
         ),
     )
+
+
+def build_golden_a_canonical_write_payload(
+    fixture: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Resolve the model-independent Golden A Tool-contract payload."""
+
+    record = _fixture_projection(fixture)
+    scenario = record["scenario"]
+    policy = record["voucher_line_policy"]
+    evidence_ref = f"policy:{policy['policy_id']}"
+    account_ids = (policy["debit_account_id"], policy["credit_account_id"])
+    amounts = (scenario["amount"], f"-{scenario['amount']}")
+    categories = (scenario["economic_category"], scenario["settlement_method"])
+    descriptions = (
+        "Golden A travel expense",
+        "Golden A cash settlement",
+    )
+    return {
+        "schema_version": GOLDEN_A_WRITE_SCHEMA_VERSION,
+        "tenant_id": record["tenant_id"],
+        "requester_ref": {
+            "type": "oa.user",
+            "id": scenario["requester_subject_id"],
+        },
+        "project_ref": {
+            "type": "eos.project",
+            "id": record["projects"][1]["project_id"],
+        },
+        "voucher_type": scenario["voucher_type"],
+        "transaction_date": scenario["transaction_date"],
+        "currency": scenario["currency"],
+        "description_text": scenario["description"],
+        "lines": [
+            {
+                "line_no": line_no,
+                "account_ref": {"type": "eos.account", "id": account_id},
+                "signed_amount": amount,
+                "economic_category": category,
+                "description": description,
+                "evidence_refs": [evidence_ref],
+            }
+            for line_no, (account_id, amount, category, description) in enumerate(
+                zip(account_ids, amounts, categories, descriptions, strict=True),
+                start=1,
+            )
+        ],
+        "attachments": list(scenario["attachments"]),
+    }
 
 
 def bind_golden_a_planning_candidate(
