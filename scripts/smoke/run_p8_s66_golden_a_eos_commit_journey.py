@@ -186,6 +186,7 @@ def _execute_commit(  # pragma: no cover - actual PostgreSQL/OA/EOS gate.
     oa_database_url: str,
     eos_database_url: str,
     s65: Mapping[str, Any],
+    exactly_once: bool = False,
 ) -> dict[str, Any]:
     fixture = load_golden_a_fixture()
     tenant_id = fixture["tenant"]["tenant_id"]
@@ -291,21 +292,28 @@ def _execute_commit(  # pragma: no cover - actual PostgreSQL/OA/EOS gate.
                 + "\n",
                 encoding="utf-8",
             )
+            worker_command = [
+                python_bin,
+                str(WORKER),
+                "--source",
+                str(source),
+                "--lock",
+                str(lock_path),
+                "--platform-lock",
+                str(DEFAULT_PLATFORM_LOCK),
+                "--approval-evidence",
+                str(approval_path),
+            ]
+            if exactly_once:
+                worker_command.append("--exactly-once-variants")
             worker = p8_s53._run_json(
-                (
-                    python_bin,
-                    str(WORKER),
-                    "--source",
-                    str(source),
-                    "--lock",
-                    str(lock_path),
-                    "--platform-lock",
-                    str(DEFAULT_PLATFORM_LOCK),
-                    "--approval-evidence",
-                    str(approval_path),
-                ),
+                tuple(worker_command),
                 env=worker_env,
-                operation="execute isolated NSL v0.2 Golden A EOS commit worker",
+                operation=(
+                    "execute isolated NSL v0.2 Golden A exactly-once worker"
+                    if exactly_once
+                    else "execute isolated NSL v0.2 Golden A EOS commit worker"
+                ),
             )
         counts = _eos_mutation_counts(eos_engine, tenant_id)
         ae_counts = _ae_counts(ae_engine, tenant_id)
@@ -330,7 +338,8 @@ def _execute_commit(  # pragma: no cover - actual PostgreSQL/OA/EOS gate.
                 worker["approval_request_id"]
                 == platform_evidence["approval_request_id"]
             ),
-            "fresh_oa_runtime_policy": worker["fresh_oa_runtime_policy_calls"] == 1,
+            "fresh_oa_runtime_policy": worker["fresh_oa_runtime_policy_calls"]
+            == (3 if exactly_once else 1),
             "eos_committed_once": counts
             == {
                 "eos_voucher_draft_attachment": 0,
@@ -341,9 +350,28 @@ def _execute_commit(  # pragma: no cover - actual PostgreSQL/OA/EOS gate.
                 "eos_business_operation": 1,
             },
             "ae_write_evidence_durable": ae_counts
-            == {"idempotency": 1, "write_evidence": 1},
+            == {
+                "idempotency": 1,
+                "write_evidence": worker["expected_write_evidence_count"],
+            },
             "post_write_verified": worker["verification_status"] == "VERIFIED",
         }
+        if exactly_once:
+            variants = worker.get("retry_variants", {})
+            checks["ack_loss_reconciled"] = (
+                variants.get("ack_loss_after_commit", {}).get("observed_commit_state")
+                == "UNKNOWN_COMMIT_STATE"
+                and variants.get("ack_loss_after_commit", {}).get(
+                    "reconciled_commit_state"
+                )
+                == "COMMITTED"
+            )
+            checks["worker_and_publication_retry_reused"] = all(
+                variants.get(name, {}).get("reservation") == "REUSED"
+                and variants.get(name, {}).get("commit_state") == "COMMITTED"
+                and variants.get(name, {}).get("verification_status") == "VERIFIED"
+                for name in ("ae_worker_retry", "result_publication_retry")
+            )
         commit = {
             "checks": checks,
             "payload_hash": worker["payload_hash"],
@@ -357,6 +385,8 @@ def _execute_commit(  # pragma: no cover - actual PostgreSQL/OA/EOS gate.
             "ae_evidence_counts": ae_counts,
             "nsl_release_admission_hash": worker["release_admission_hash"],
         }
+        if exactly_once:
+            commit["retry_variants"] = worker["retry_variants"]
     finally:
         _cleanup_ae(ae_engine, tenant_id)
         _cleanup_eos_mutations(eos_engine, tenant_id)

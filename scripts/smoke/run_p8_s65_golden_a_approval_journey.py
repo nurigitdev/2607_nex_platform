@@ -504,6 +504,16 @@ def _execute_postgres_journey(  # pragma: no cover - actual protected integratio
                 approval["matched_event"]["inbox_state"] == "MATCHED"
                 and approval["mismatch_event"]["inbox_state"] == "REJECTED"
             ),
+            "approval_event_replay_idempotent": (
+                approval["event_replay"]["created"] is False
+                and approval["event_replay"]["resume_runtime_job_id"]
+                == approval["matched_event"]["resume_runtime_job_id"]
+            ),
+            "resume_enqueue_replay_idempotent": (
+                approval["resume_enqueue_replay"]["runtime_job_id"]
+                == approval["matched_event"]["resume_runtime_job_id"]
+                and approval["resume_job_count"] == 1
+            ),
             "resume_completed": (
                 approval["resume"]["runtime_job_state"] == "DONE"
                 and approval["resume"]["approval_gate_passed"] is True
@@ -537,6 +547,9 @@ def _execute_postgres_journey(  # pragma: no cover - actual protected integratio
                 "write_identity": approval["write_identity"],
                 "platform_approval_evidence": approval["platform_approval_evidence"],
                 "eos_mutation_count": approval["resume"]["eos_mutation_count"],
+                "event_replay": approval["event_replay"],
+                "resume_enqueue_replay": approval["resume_enqueue_replay"],
+                "resume_job_count": approval["resume_job_count"],
             },
         }
     finally:

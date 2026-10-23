@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,7 @@ from nex_ae_api.nsl_controlled_write_integration import (
 from nex_ae_api.nsl_eos_post_write_verification import (
     HttpEosPostWriteVerificationAdapter,
 )
+from nex_ae_api.nsl_eos_reconciliation import HttpEosReconciliationAdapter
 from nex_ae_api.nsl_eos_write_execution import HttpEosWriteExecutionPort
 from nex_ae_api.nsl_idempotency import SqlAlchemyNslIdempotencyEvidencePort
 from nex_ae_api.nsl_runtime_policy import PlatformRuntimePolicyAdapter
@@ -56,6 +58,29 @@ AE_TO_EOS_TOKEN_ENV = "NEX_P8_S66_WORKER_AE_TO_EOS_SERVICE_TOKEN"
 
 class P8S66WorkerError(RuntimeError):
     pass
+
+
+class _AckLossAfterCommitWritePort:
+    """Discard one trustworthy EOS response after the command reached EOS."""
+
+    def __init__(self, delegate: HttpEosWriteExecutionPort, public_api: Any) -> None:
+        self._delegate = delegate
+        self._public_api = public_api
+        self.response_status: int | None = None
+
+    async def execute(self, request: object) -> object:
+        response = await self._delegate.execute_raw(request)
+        if not response.accepted:
+            raise P8S66WorkerError(
+                "EOS ACK-loss injection requires a committed response"
+            )
+        self.response_status = response.status_code
+        return self._public_api.write_commit_unknown(
+            identity=self._public_api.write_outcome_identity.from_request(request),
+            reason_code="EOS_COMMIT_ACKNOWLEDGEMENT_LOST",
+            message="EOS committed the command but the response was deliberately discarded.",
+            evidence_refs=("fault-injection:eos-ack-loss-after-commit",),
+        )
 
 
 class _GovernedWriteSource:
@@ -315,28 +340,94 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
             base_url=runtime[EOS_BASE_URL_ENV],
             service_token=runtime[AE_TO_EOS_TOKEN_ENV],
         )
-        integration = NslControlledWriteIntegration(
+        normal_write_port = HttpEosWriteExecutionPort(
             public_api=public_api,
-            policy_port=PlatformRuntimePolicyAdapter(
-                authorization_source=governed_source,
-                public_api=public_api,
-            ),
-            idempotency_port=SqlAlchemyNslIdempotencyEvidencePort(
-                factory, public_api=public_api, clock=lambda: now
-            ),
-            write_evidence_port=SqlAlchemyNslWriteEvidencePort(
-                factory, public_api=public_api, clock=lambda: now
-            ),
-            write_port=HttpEosWriteExecutionPort(
-                public_api=public_api,
-                base_url=runtime[EOS_BASE_URL_ENV],
-                service_token=runtime[AE_TO_EOS_TOKEN_ENV],
-                result_type=contract.output_type,
-                result_classification=DataClassification.CONFIDENTIAL,
-            ),
-            verification_port=verification_port,
+            base_url=runtime[EOS_BASE_URL_ENV],
+            service_token=runtime[AE_TO_EOS_TOKEN_ENV],
+            result_type=contract.output_type,
+            result_classification=DataClassification.CONFIDENTIAL,
         )
-        result = asyncio.run(integration.execute(request))
+
+        def integration(write_port: object) -> NslControlledWriteIntegration:
+            return NslControlledWriteIntegration(
+                public_api=public_api,
+                policy_port=PlatformRuntimePolicyAdapter(
+                    authorization_source=governed_source,
+                    public_api=public_api,
+                ),
+                idempotency_port=SqlAlchemyNslIdempotencyEvidencePort(
+                    factory, public_api=public_api, clock=lambda: now
+                ),
+                write_evidence_port=SqlAlchemyNslWriteEvidencePort(
+                    factory, public_api=public_api, clock=lambda: now
+                ),
+                write_port=write_port,
+                verification_port=verification_port,
+            )
+
+        variants: dict[str, Any] | None = None
+        if args.exactly_once_variants:
+            ack_loss_port = _AckLossAfterCommitWritePort(normal_write_port, public_api)
+            ack_loss = asyncio.run(integration(ack_loss_port).execute(request))
+            if not isinstance(ack_loss.outcome, public_api.write_commit_unknown):
+                raise P8S66WorkerError(
+                    "ACK-loss variant did not produce UNKNOWN_COMMIT_STATE"
+                )
+            reconciled = asyncio.run(
+                HttpEosReconciliationAdapter(
+                    public_api=public_api,
+                    base_url=runtime[EOS_BASE_URL_ENV],
+                    service_token=runtime[AE_TO_EOS_TOKEN_ENV],
+                    result_type=contract.output_type,
+                    result_classification=DataClassification.CONFIDENTIAL,
+                ).reconcile(ack_loss.write_request, ack_loss.outcome)
+            )
+            if not isinstance(reconciled, public_api.write_committed):
+                raise P8S66WorkerError(
+                    "ACK-loss reconciliation did not confirm COMMITTED"
+                )
+            worker_retry = asyncio.run(
+                integration(normal_write_port).execute(
+                    replace(request, invocation_id=f"p8-s67-worker-{uuid4().hex}")
+                )
+            )
+            publication_retry = asyncio.run(
+                integration(normal_write_port).execute(
+                    replace(request, invocation_id=f"p8-s67-publication-{uuid4().hex}")
+                )
+            )
+            for label, candidate in (
+                ("AE worker retry", worker_retry),
+                ("result publication retry", publication_retry),
+            ):
+                if not isinstance(candidate.outcome, public_api.write_committed):
+                    raise P8S66WorkerError(f"{label} did not preserve COMMITTED")
+                if candidate.verification.status is not VerificationStatus.VERIFIED:
+                    raise P8S66WorkerError(f"{label} did not preserve VERIFIED")
+                if candidate.reservation.disposition.value != "REUSED":
+                    raise P8S66WorkerError(
+                        f"{label} did not reuse idempotency evidence"
+                    )
+            result = publication_retry
+            variants = {
+                "ack_loss_after_commit": {
+                    "response_status_discarded": ack_loss_port.response_status,
+                    "observed_commit_state": ack_loss.outcome.commit_state.value,
+                    "reconciled_commit_state": reconciled.commit_state.value,
+                },
+                "ae_worker_retry": {
+                    "reservation": worker_retry.reservation.disposition.value,
+                    "commit_state": worker_retry.outcome.commit_state.value,
+                    "verification_status": worker_retry.verification.status.value,
+                },
+                "result_publication_retry": {
+                    "reservation": publication_retry.reservation.disposition.value,
+                    "commit_state": publication_retry.outcome.commit_state.value,
+                    "verification_status": publication_retry.verification.status.value,
+                },
+            }
+        else:
+            result = asyncio.run(integration(normal_write_port).execute(request))
     finally:
         engine.dispose()
 
@@ -361,7 +452,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
             f"status={result.verification.status.value}, "
             f"reason={result.verification.reason_code}, detail={diagnostic}"
         )
-    return {
+    output = {
         "schema_version": "p8_s66_eos_commit_worker.v1",
         "status": "PASS",
         "release_admission_hash": public_api.release_admission_hash,
@@ -381,7 +472,11 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
         "verification_status": result.verification.status.value,
         "verification_evidence_ref": result.verification.evidence_ref,
         "fresh_oa_runtime_policy_calls": governed_source.calls,
+        "expected_write_evidence_count": 3 if variants is not None else 1,
     }
+    if variants is not None:
+        output["retry_variants"] = variants
+    return output
 
 
 def _runtime_environment() -> dict[str, str]:
@@ -430,6 +525,7 @@ def main() -> int:
     parser.add_argument("--lock", required=True, type=Path)
     parser.add_argument("--platform-lock", required=True, type=Path)
     parser.add_argument("--approval-evidence", required=True, type=Path)
+    parser.add_argument("--exactly-once-variants", action="store_true")
     print(json.dumps(run_worker(parser.parse_args()), sort_keys=True))
     return 0
 

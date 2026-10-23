@@ -548,9 +548,10 @@ def _verify_scenario(
         saved_evidence = SqlAlchemyPlatformApprovalEvidenceRepository(
             ae_factory
         ).create_or_get(evidence)
+        runtime_jobs = SqlAlchemyRuntimeJobQueue(ae_factory)
         event_service = SqlAlchemyNslApprovalEventService(
             ae_factory,
-            runtime_jobs=SqlAlchemyRuntimeJobQueue(ae_factory),
+            runtime_jobs=runtime_jobs,
             clock=lambda: decision_time,
         )
         event = _approval_event(
@@ -569,6 +570,39 @@ def _verify_scenario(
         matched = event_service.ingest(event)
         if matched["inbox_state"] != "MATCHED":
             raise P8S53SmokeError("valid approval event did not enqueue resume")
+        event_replay = event_service.ingest(event)
+        replayed_resume = runtime_jobs.enqueue_unique(
+            tenant_id=tenant_id,
+            runtime_job_id=matched["resume_runtime_job_id"],
+            job_type="RESUME_EXECUTION",
+            execution_id=execution["agent_execution_id"],
+            executable_step_id=local_step["executable_step_id"],
+            wait_id=wait["wait_id"],
+            dedup_key=f"p8:nsl-approval-resume:{wait['wait_id']}:{event['event_id']}",
+            run_after=_time(decision_time),
+            correlation_id=event["correlation_id"],
+            now=_time(decision_time),
+            payload={
+                "wait_id": wait["wait_id"],
+                "event_id": event["event_id"],
+                "approval_request_id": event["approval_request_id"],
+                "approval_work_item_ref": event["approval_work_item_ref"],
+                "approval_evidence_ref": event["approval_evidence_ref"],
+                "resume_token_ref": f"ae-nsl-resume:{event['evidence_integrity']}",
+            },
+            causation_id=event["event_id"],
+        )
+        with ae_factory() as session:
+            resume_job_count = int(
+                session.execute(
+                    text(
+                        "SELECT count(*) FROM ae_runtime_job "
+                        "WHERE tenant_id = :tenant AND wait_id = :wait_id "
+                        "AND job_type = 'RESUME_EXECUTION'"
+                    ),
+                    {"tenant": tenant_id, "wait_id": wait["wait_id"]},
+                ).scalar_one()
+            )
         if scenario == "expiry":
             if expires_at is None:
                 raise P8S53SmokeError("expiry scenario requires an NSL TTL policy")
@@ -618,6 +652,13 @@ def _verify_scenario(
             "prefix_audit": prefix_audit,
             "mismatch_event": mismatch,
             "matched_event": matched,
+            "event_replay": event_replay,
+            "resume_enqueue_replay": {
+                "runtime_job_id": replayed_resume["runtime_job_id"],
+                "state": replayed_resume["state"],
+                "attempt_no": replayed_resume["attempt_no"],
+            },
+            "resume_job_count": resume_job_count,
             "resume": resume,
             "lineage_exact": lineage_exact,
         }
@@ -626,6 +667,16 @@ def _verify_scenario(
                 f"{scenario}_prefix_waiting": scenario_evidence["prefix_status"]
                 == "WAITING_FOR_APPROVAL",
                 f"{scenario}_mismatch_rejected": mismatch["inbox_state"] == "REJECTED",
+                f"{scenario}_event_replay_idempotent": (
+                    event_replay["created"] is False
+                    and event_replay["resume_runtime_job_id"]
+                    == matched["resume_runtime_job_id"]
+                ),
+                f"{scenario}_resume_enqueue_idempotent": (
+                    replayed_resume["runtime_job_id"]
+                    == matched["resume_runtime_job_id"]
+                    and resume_job_count == 1
+                ),
                 f"{scenario}_resume_completed": resume["runtime_job_state"] == "DONE",
                 f"{scenario}_lineage_exact": lineage_exact,
                 f"{scenario}_zero_write": prefix_audit["write_requested_count"] == 0
