@@ -29,21 +29,17 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .accounts import EOS_ACCOUNT_TABLE
-from .approver_resolution import EOS_APPROVAL_DOMAINS, EOS_APPROVAL_RISK_LEVELS
+from .approval_contracts import (
+    EOS_APPROVAL_DOMAINS,
+    EOS_APPROVAL_LADDER,
+    EOS_APPROVAL_RISK_LEVELS,
+)
 from .business_transactions import EOS_METADATA
 from .organization import EOS_POSITION_TYPES
 from .projects import EOS_PROJECT_TABLE
 
 EOS_APPROVAL_POLICY_STATUSES = frozenset({"ACTIVE", "INACTIVE"})
 EOS_APPROVAL_SEPARATION_POLICIES = frozenset({"REQUESTER_EXCLUDED"})
-EOS_APPROVAL_LADDER = (
-    "PART_LEAD",
-    "TEAM_LEAD",
-    "GROUP_LEAD",
-    "CEO",
-    "CHAIRMAN",
-)
-
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _TRANSACTION_TYPE = re.compile(r"^[A-Z][A-Z0-9_.]{0,127}$")
 _MONEY_QUANTUM = Decimal("0.01")

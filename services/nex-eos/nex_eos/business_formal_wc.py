@@ -12,6 +12,7 @@ from nex_runtime import SERVICE_SPECS
 from nex_runtime.semantic_hashes import canonical_json, semantic_sha256_hash_ref
 
 from .approval_instances import SqlAlchemyEosApprovalInstanceRepository
+from .approver_resolution import EosApproverResolutionError
 
 DEFAULT_WC_BASE_URL = f"http://127.0.0.1:{SERVICE_SPECS['nex-wc'].default_port}"
 
@@ -34,6 +35,15 @@ class EosBusinessFormalWcError(RuntimeError):
 
 class WcApprovalWorkItemClient(Protocol):
     def create_or_get(self, work_item: Mapping[str, Any]) -> Mapping[str, Any]: ...
+
+
+class LeadershipStageResolver(Protocol):
+    def resolve_active_stage(
+        self,
+        *,
+        instance: Mapping[str, Any],
+        stage: Mapping[str, Any],
+    ) -> Mapping[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -90,10 +100,12 @@ class EosBusinessFormalWcAdapter:
         self,
         *,
         approval_instances: SqlAlchemyEosApprovalInstanceRepository,
+        approver_resolution: LeadershipStageResolver,
         wc_client: WcApprovalWorkItemClient,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._approval_instances = approval_instances
+        self._approver_resolution = approver_resolution
         self._wc_client = wc_client
         self._clock = clock or (lambda: datetime.now(UTC))
 
@@ -130,9 +142,24 @@ class EosBusinessFormalWcAdapter:
                 "Approval instance expired before WC publication",
                 status_code=409,
             )
+        try:
+            resolution = dict(
+                self._approver_resolution.resolve_active_stage(
+                    instance=instance,
+                    stage=stage,
+                )
+            )
+        except EosApproverResolutionError as exc:
+            raise EosBusinessFormalWcError(
+                exc.error_code,
+                exc.detail,
+                status_code=exc.status_code,
+                retryable=exc.retryable,
+            ) from exc
         work_item = _work_item(
             instance=instance,
             stage=stage,
+            resolution=resolution,
             created_at=created_at,
             expires_at=expires_at,
         )
@@ -148,6 +175,7 @@ class EosBusinessFormalWcAdapter:
             "tenant_id": instance["tenant_id"],
             "approval_instance_id": instance["approval_instance_id"],
             "approval_stage_id": stage["approval_stage_id"],
+            "approver_resolution": resolution,
             "work_item": published["work_item"],
             "created": published["created"],
         }
@@ -169,11 +197,13 @@ def _work_item(
     *,
     instance: Mapping[str, Any],
     stage: Mapping[str, Any],
+    resolution: Mapping[str, Any],
     created_at: datetime,
     expires_at: datetime | None,
 ) -> dict[str, Any]:
     stage_ref = f"eos.approval-stage:{stage['approval_stage_id']}"
     target_role = str(stage["position_type"])
+    target_approver = str(resolution["principal_ref"]["id"])
     target_org = str(instance["org_unit_ref"]["id"])
     target_project = str(instance["project_ref"]["id"])
     semantic = {
@@ -195,8 +225,15 @@ def _work_item(
         "org_unit_ref": instance["org_unit_ref"],
         "project_ref": instance["project_ref"],
         "target_role_ref": target_role,
+        "target_approver_ref": target_approver,
         "target_org_scope_ref": target_org,
         "target_project_scope_ref": target_project,
+        "approver_resolution_ref": resolution["resolution_ref"],
+        "approver_resolution_hash": resolution["resolution_hash"],
+        "position_ref": resolution["position_ref"],
+        "position_assignment_ref": resolution["position_assignment_ref"],
+        "position_assignment_version": resolution["position_assignment_version"],
+        "org_unit_version": resolution["org_unit_version"],
     }
     summary = canonical_json(
         {
@@ -222,7 +259,7 @@ def _work_item(
         "display_safe_summary": summary,
         "approval_provider_type": "EOS",
         "approval_target_ref": stage_ref,
-        "target_approver_ref": None,
+        "target_approver_ref": target_approver,
         "target_role_ref": target_role,
         "target_org_scope_ref": target_org,
         "target_project_scope_ref": target_project,
@@ -280,6 +317,7 @@ def _require_wc_lineage(actual: Mapping[str, Any], expected: Mapping[str, Any]) 
         "semantic_hash",
         "approval_provider_type",
         "approval_target_ref",
+        "target_approver_ref",
         "target_role_ref",
         "target_org_scope_ref",
         "target_project_scope_ref",

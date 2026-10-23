@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 from nex_eos import (
+    EosApproverResolutionError,
     EosBusinessFormalWcAdapter,
     EosBusinessFormalWcError,
     HttpWcApprovalWorkItemClient,
@@ -28,6 +29,8 @@ STAGE_ID = "72000000-0000-4000-8000-000000000002"
 OPERATION_ID = "72000000-0000-4000-8000-000000000003"
 ORG_ID = "72000000-0000-4000-8000-000000000004"
 PROJECT_ID = "72000000-0000-4000-8000-000000000005"
+POSITION_ID = "72000000-0000-4000-8000-000000000007"
+ASSIGNMENT_ID = "72000000-0000-4000-8000-000000000008"
 
 
 def _instance(**overrides):
@@ -119,9 +122,34 @@ class CapturingClient:
         return {"work_item": dict(work_item), "created": True}
 
 
-def _adapter(*, source=None, client=None, clock=lambda: NOW):
+class StageResolver:
+    def __init__(self, *, failure=None):
+        self.failure = failure
+        self.calls = []
+
+    def resolve_active_stage(self, *, instance, stage):
+        self.calls.append((instance, stage))
+        if self.failure is not None:
+            raise self.failure
+        return {
+            "schema_version": "eos_leadership_stage_resolution.v1",
+            "principal_ref": {"type": "oa.user", "id": "employee-2001"},
+            "position_ref": {"type": "eos.position", "id": POSITION_ID},
+            "position_assignment_ref": {
+                "type": "eos.position_assignment",
+                "id": ASSIGNMENT_ID,
+            },
+            "position_assignment_version": 2,
+            "org_unit_version": 3,
+            "resolution_ref": "eos.leadership-stage-resolution:" + "5" * 64,
+            "resolution_hash": "sha256:" + "5" * 64,
+        }
+
+
+def _adapter(*, source=None, resolver=None, client=None, clock=lambda: NOW):
     return EosBusinessFormalWcAdapter(
         approval_instances=source or InstanceSource(),  # type: ignore[arg-type]
+        approver_resolution=resolver or StageResolver(),
         wc_client=client or CapturingClient(),
         clock=clock,
     )
@@ -152,7 +180,7 @@ def test_projects_active_stage_to_existing_wc_contract_and_replays() -> None:
     assert item["approval_work_item_id"] == deterministic_business_formal_work_item_id(
         tenant_id=TENANT, approval_stage_id=STAGE_ID
     )
-    assert item["target_approver_ref"] is None
+    assert item["target_approver_ref"] == "employee-2001"
     assert item["target_role_ref"] == "TEAM_LEAD"
     assert item["target_org_scope_ref"] == ORG_ID
     assert item["target_project_scope_ref"] == PROJECT_ID
@@ -291,6 +319,29 @@ def test_wc_response_lineage_mismatch_and_untyped_failure_are_redacted() -> None
         ).project_active_stage(tenant_id=TENANT, approval_instance_id=INSTANCE_ID)
     assert unavailable.value.error_code == "EOS_BUSINESS_FORMAL_WC_UNAVAILABLE"
     assert "private failure" not in unavailable.value.detail
+
+
+def test_approver_resolution_error_is_preserved_without_wc_publication() -> None:
+    client = CapturingClient()
+    resolver = StageResolver(
+        failure=EosApproverResolutionError(
+            "EOS_APPROVER_NOT_FOUND",
+            "No effective approver assignment matches the requested policy",
+            status_code=404,
+        )
+    )
+
+    with pytest.raises(EosBusinessFormalWcError) as error:
+        _adapter(resolver=resolver, client=client).project_active_stage(
+            tenant_id=TENANT,
+            approval_instance_id=INSTANCE_ID,
+        )
+
+    assert (error.value.error_code, error.value.status_code) == (
+        "EOS_APPROVER_NOT_FOUND",
+        404,
+    )
+    assert client.calls == []
 
 
 class FakeResponse:

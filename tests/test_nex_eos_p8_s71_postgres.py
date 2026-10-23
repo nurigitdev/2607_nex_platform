@@ -13,13 +13,18 @@ from nex_eos import (
     EOS_BUSINESS_OPERATION_TABLE,
     EOS_NVT_PROJECT_TABLE,
     EOS_ORG_UNIT_TABLE,
+    EOS_POSITION_ASSIGNMENT_TABLE,
+    EOS_POSITION_TABLE,
     EOS_PROJECT_TABLE,
     ApprovalInstanceInput,
     ApprovalPolicyInput,
     ApprovalPolicyStageInput,
+    EosApproverResolutionService,
     EosBusinessFormalWcAdapter,
     NvtProjectInput,
     OrgUnitInput,
+    PositionAssignmentInput,
+    PositionInput,
     ProjectInput,
     SqlAlchemyEosApprovalInstanceRepository,
     SqlAlchemyEosApprovalPolicyRepository,
@@ -38,7 +43,10 @@ from sqlalchemy.orm import sessionmaker
 
 EOS_DATABASE_URL = os.getenv("NEX_EOS_TEST_DATABASE_URL", "")
 WC_DATABASE_URL = os.getenv("NEX_WC_TEST_DATABASE_URL", "")
-SMOKE_ENABLED = os.getenv("NEX_EOS_P8_S71_POSTGRES_SMOKE") == "1"
+SMOKE_ENABLED = (
+    os.getenv("NEX_EOS_P8_S71_POSTGRES_SMOKE") == "1"
+    or os.getenv("NEX_EOS_P8_S72_POSTGRES_SMOKE") == "1"
+)
 TENANT = "p8-s71-pg"
 INSTANCE_ID = "73000000-0000-4000-8000-000000000001"
 POLICY_ID = "73000000-0000-4000-8000-000000000002"
@@ -46,6 +54,8 @@ OPERATION_ID = "73000000-0000-4000-8000-000000000003"
 ORG_ID = "73000000-0000-4000-8000-000000000004"
 NVT_ID = "73000000-0000-4000-8000-000000000005"
 PROJECT_ID = "73000000-0000-4000-8000-000000000006"
+POSITION_ID = "73000000-0000-4000-8000-000000000007"
+ASSIGNMENT_ID = "73000000-0000-4000-8000-000000000008"
 NOW = datetime(2026, 10, 23, 13, 0, tzinfo=UTC)
 PAYLOAD_HASH = semantic_sha256_hash_ref({"amount": "1500.00"})
 INTENT_HASH = semantic_sha256_hash_ref({"write": "voucher-draft"})
@@ -64,6 +74,8 @@ EOS_TABLES = (
     EOS_BUSINESS_OPERATION_TABLE,
     EOS_PROJECT_TABLE,
     EOS_NVT_PROJECT_TABLE,
+    EOS_POSITION_ASSIGNMENT_TABLE,
+    EOS_POSITION_TABLE,
     EOS_ORG_UNIT_TABLE,
 )
 
@@ -166,7 +178,8 @@ def test_s71_actual_eos_wc_postgres_projection_restart_and_zero_residue() -> Non
                 == 1
             )
 
-        SqlAlchemyEosOrganizationRepository(eos.session_factory).create_org_unit(
+        organization = SqlAlchemyEosOrganizationRepository(eos.session_factory)
+        organization.create_org_unit(
             OrgUnitInput(
                 TENANT,
                 ORG_ID,
@@ -174,6 +187,18 @@ def test_s71_actual_eos_wc_postgres_projection_restart_and_zero_residue() -> Non
                 "P8-S71 PostgreSQL Finance",
                 "TEAM",
                 NOW - timedelta(days=1),
+            )
+        )
+        organization.create_position(
+            PositionInput(TENANT, POSITION_ID, "TEAM_LEAD", ORG_ID)
+        )
+        organization.assign_position(
+            PositionAssignmentInput(
+                TENANT,
+                ASSIGNMENT_ID,
+                POSITION_ID,
+                {"type": "oa.user", "id": "employee-p8-s72-approver"},
+                NOW - timedelta(hours=1),
             )
         )
         projects = SqlAlchemyEosProjectRepository(eos.session_factory)
@@ -241,6 +266,9 @@ def test_s71_actual_eos_wc_postgres_projection_restart_and_zero_residue() -> Non
         wc_repository = SqlAlchemyApprovalWorkItemRepository(wc_sessions)
         adapter = EosBusinessFormalWcAdapter(
             approval_instances=eos_instances,
+            approver_resolution=EosApproverResolutionService(
+                organization, clock=lambda: NOW
+            ),
             wc_client=RepositoryClient(wc_repository),
             clock=lambda: NOW,
         )
@@ -253,11 +281,18 @@ def test_s71_actual_eos_wc_postgres_projection_restart_and_zero_residue() -> Non
         )
         assert projected["work_item"]["approval_domain"] == "BUSINESS_FORMAL"
         assert projected["work_item"]["target_role_ref"] == "TEAM_LEAD"
+        assert (
+            projected["work_item"]["target_approver_ref"] == "employee-p8-s72-approver"
+        )
 
         restarted_wc = SqlAlchemyApprovalWorkItemRepository(wc_sessions)
         restarted = EosBusinessFormalWcAdapter(
             approval_instances=SqlAlchemyEosApprovalInstanceRepository(
                 eos.session_factory, clock=lambda: NOW
+            ),
+            approver_resolution=EosApproverResolutionService(
+                SqlAlchemyEosOrganizationRepository(eos.session_factory),
+                clock=lambda: NOW + timedelta(minutes=1),
             ),
             wc_client=RepositoryClient(restarted_wc),
             clock=lambda: NOW + timedelta(minutes=1),

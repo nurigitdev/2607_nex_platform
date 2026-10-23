@@ -100,12 +100,17 @@ def build_eos_dependencies(
     business_formal_wc_adapter = (
         EosBusinessFormalWcAdapter(
             approval_instances=approval_instances,
+            approver_resolution=approver_resolution_service,
             wc_client=HttpWcApprovalWorkItemClient(
                 base_url=environ.get("NEX_WC_BASE_URL", DEFAULT_WC_BASE_URL),
                 service_token=wc_token,
             ),
         )
-        if approval_instances is not None and wc_token
+        if (
+            approval_instances is not None
+            and approver_resolution_service is not None
+            and wc_token
+        )
         else None
     )
     vouchers = (
