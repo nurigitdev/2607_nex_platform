@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, date, datetime
-from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -108,19 +107,34 @@ def _seed(factory):
     accounts = SqlAlchemyEosAccountRepository(factory)
     projects.create_nvt_project(NvtProjectInput("tenant-a", NVT_ID, "NVT-A", "NVT A"))
     projects.create_project(
-        ProjectInput("tenant-a", PROJECT_ID, "PROJECT-A", "Project A", nvt_project_id=NVT_ID)
+        ProjectInput(
+            "tenant-a", PROJECT_ID, "PROJECT-A", "Project A", nvt_project_id=NVT_ID
+        )
     )
     accounts.create_account(
-        AccountInput("tenant-a", DEBIT_ID, "TRAVEL", "Travel", "EXPENSE", "GENERAL", date(2026, 1, 1))
+        AccountInput(
+            "tenant-a",
+            DEBIT_ID,
+            "TRAVEL",
+            "Travel",
+            "EXPENSE",
+            "GENERAL",
+            date(2026, 1, 1),
+        )
     )
     accounts.create_account(
-        AccountInput("tenant-a", CREDIT_ID, "CASH", "Cash", "ASSET", "GENERAL", date(2026, 1, 1))
+        AccountInput(
+            "tenant-a", CREDIT_ID, "CASH", "Cash", "ASSET", "GENERAL", date(2026, 1, 1)
+        )
     )
 
 
 def _payload(**overrides):
     value = json.loads(
-        (ROOT / "contracts/examples/service/eos_create_voucher_draft_command.golden_a.json").read_text()
+        (
+            ROOT
+            / "contracts/examples/service/eos_create_voucher_draft_command.golden_a.json"
+        ).read_text()
     )
     value.update(overrides)
     value["payload_hash"] = voucher_payload_hash(value)
@@ -207,6 +221,19 @@ def test_payload_hash_and_authorization_fail_before_any_mutation(factory):
         )
     assert denied.value.status_code == 403
     assert _count(factory, EOS_BUSINESS_OPERATION_TABLE) == 0
+
+
+def test_payload_hash_excludes_approval_control_lineage() -> None:
+    first = _payload()
+    second = _payload(
+        nsl_approval_request_id="approval-request-2002",
+        nsl_approval_evidence_ref="approval-evidence-2002",
+        business_approval_proof_ref="business-approval-proof-2002",
+    )
+
+    assert first["payload_hash"] == second["payload_hash"]
+    assert voucher_payload_hash(first) == voucher_payload_hash(second)
+    assert first["nsl_approval_request_id"] != second["nsl_approval_request_id"]
 
 
 def test_domain_failure_rolls_back_business_control_records(factory):
@@ -304,7 +331,7 @@ def test_command_requires_sql_transaction_and_timezone_aware_clock(factory):
     assert transaction_required.value.error_code == "EOS_VOUCHER_TRANSACTION_REQUIRED"
 
     bad_clock = _service(factory)
-    bad_clock._clock = lambda: datetime(2026, 1, 1)  # noqa: SLF001
+    bad_clock._clock = lambda: datetime(2026, 1, 1)  # noqa: DTZ001
     with pytest.raises(EosVoucherCommandError) as clock_error:
         bad_clock.execute(_payload(), caller=_caller())
     assert clock_error.value.error_code == "EOS_VOUCHER_CLOCK_INVALID"

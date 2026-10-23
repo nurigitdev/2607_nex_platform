@@ -1,7 +1,7 @@
 {
   "schema_version": "p8_golden_a_fixture.v1",
   "fixture_id": "p8-golden-a-voucher-draft-v1",
-  "fixture_hash": "sha256:37b5296f414908080d44dbf788f88c7eca343881e315ad56b9529f1dd0f5839b",
+  "fixture_hash": "sha256:3e777c2b37aec5e1658aaf0c145f1e9f3f8d25123d251e210d64968001aea3e2",
   "tenant": {
     "tenant_id": "p8-golden-a",
     "display_name": "P8 Golden A"
@@ -135,8 +135,8 @@
     "agent_id": "IA.GOLDEN_A",
     "capability_id": "FINANCE.CREATE_VOUCHER_DRAFT",
     "skill_id": "FINANCE.VOUCHER_DRAFT_CREATE",
-    "exact_skill_version": "1.0.0",
-    "skill_semantic_hash": "sha256:908387dd8dc53697478e83594019e9bfa86e425bb04062f65fc49df4f6303dc5",
+    "exact_skill_version": "1.1.0",
+    "skill_semantic_hash": "sha256:9b7b7b3bffaf3263487b1ff2be4682e8c3e049d2fbc189a23dea64da74e6e7ca",
     "executor_kind": "LOCAL_SKILL",
     "operation_semantics": "WRITE",
     "backend_profile": "NSL_V02_IN_PROCESS",
@@ -170,6 +170,7 @@
     "voucher_type": "GENERAL",
     "economic_category": "TRAVEL",
     "settlement_method": "CASH",
+    "description": "Golden A travel expense draft",
     "attachments": []
   }
 }

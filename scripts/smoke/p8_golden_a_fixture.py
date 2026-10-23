@@ -400,6 +400,7 @@ def validate_golden_a_fixture(
             "voucher_type",
             "economic_category",
             "settlement_method",
+            "description",
             "attachments",
         },
     )
@@ -409,6 +410,7 @@ def validate_golden_a_fixture(
     if requester not in principal_ids or requester == target_subject:
         raise _invalid("requester must be a distinct fixture principal")
     _text("scenario.prompt", scenario["prompt"])
+    _text("scenario.description", scenario["description"])
     scenario_date = _date("scenario.transaction_date", scenario["transaction_date"])
     if policy_date > scenario_date:
         raise _invalid("voucher line policy is not effective for the scenario")

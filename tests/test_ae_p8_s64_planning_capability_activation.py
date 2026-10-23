@@ -186,7 +186,10 @@ def test_write_capability_activation_is_exact_and_v02_only() -> None:
     assert capability["operation_semantics"] == "WRITE"
     assert capability["capability_id"] == GOLDEN_A_CAPABILITY_ID
     assert capability["local_skill_binding"]["skill_id"] == GOLDEN_A_NSL_SKILL_ID
-    assert capability["capability_version"] == "1.0.0"
+    assert (
+        capability["capability_version"]
+        == _fixture()["admission"]["exact_skill_version"]
+    )
     assert capability["local_skill_binding"]["backend_profile"] == (
         "NSL_V02_IN_PROCESS"
     )
@@ -605,9 +608,15 @@ def test_plan_candidate_binds_exact_write_capability_and_compiles() -> None:
     assert validation["status"] == "VALID"
     assert plan["steps"][0]["required_capability"] == GOLDEN_A_CAPABILITY_ID
     assert compiled["steps"][0]["skill_binding"]["skill_id"] == (GOLDEN_A_NSL_SKILL_ID)
-    assert plan["steps"][0]["capability_version_constraint"] == "1.0.0"
+    assert (
+        plan["steps"][0]["capability_version_constraint"]
+        == _fixture()["admission"]["exact_skill_version"]
+    )
     assert compiled["steps"][0]["executor_kind"] == "LOCAL_SKILL"
-    assert compiled["steps"][0]["capability_version"] == "1.0.0"
+    assert (
+        compiled["steps"][0]["capability_version"]
+        == _fixture()["admission"]["exact_skill_version"]
+    )
     assert compiled["steps"][0]["skill_binding"]["backend_profile"] == (
         "NSL_V02_IN_PROCESS"
     )

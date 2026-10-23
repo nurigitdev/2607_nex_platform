@@ -3,7 +3,7 @@
   "tenant_id": "tenant-a",
   "business_operation_id": "86000000-0000-4000-8000-000000000001",
   "idempotency_key": "golden-a-voucher-0001",
-  "payload_hash": "sha256:dc50539078c469eedbbd457a25b8036bc4a31cd10d5ab55431475f373d49d76f",
+  "payload_hash": "sha256:1705802a128eb6206a7e8f9547bb4074d3699c27a6e87ad69b3b6a0def4c02ba",
   "commit_state": "COMMITTED",
   "idempotency_disposition": "CREATED",
   "voucher_ref": {"type": "eos.voucher_draft", "id": "84000000-0000-4000-8000-000000000001"},

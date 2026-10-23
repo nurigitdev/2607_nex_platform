@@ -94,7 +94,7 @@ class ParsedVoucherDraftCommand:
             "voucher_type": self.voucher_type,
             "transaction_date": self.transaction_date.isoformat(),
             "currency": self.currency,
-            "description": self.description,
+            "description_text": self.description,
             "lines": [
                 {
                     "line_no": line_no,
@@ -109,9 +109,6 @@ class ParsedVoucherDraftCommand:
                 }
                 for line_no, line in enumerate(self.lines, start=1)
             ],
-            "nsl_approval_request_id": self.nsl_approval_request_id,
-            "nsl_approval_evidence_ref": self.nsl_approval_evidence_ref,
-            "business_approval_proof_ref": self.business_approval_proof_ref,
             "attachments": [
                 {
                     "attachment_id": item.attachment_id,
@@ -230,9 +227,7 @@ class EosCreateVoucherDraftService:
                 "business_result_ref": f"eos.voucher_draft:{voucher_id}",
                 "voucher_id": voucher_id,
                 "committed_at": _wire_time(committed_at),
-                "authorization_revision_hash": (
-                    evidence.authorization_revision_hash
-                ),
+                "authorization_revision_hash": (evidence.authorization_revision_hash),
                 "authorization_checked_at": _wire_time(
                     evidence.authorization_checked_at
                 ),
@@ -358,7 +353,13 @@ def _parse_lines(value: object) -> tuple[VoucherLineInput, ...]:
         line = _object(
             raw,
             "line",
-            {"line_no", "account_ref", "signed_amount", "economic_category", "evidence_refs"},
+            {
+                "line_no",
+                "account_ref",
+                "signed_amount",
+                "economic_category",
+                "evidence_refs",
+            },
             {"description"},
         )
         if line["line_no"] != expected_line_no:
@@ -399,7 +400,14 @@ def _parse_attachments(value: object) -> tuple[VoucherAttachmentInput, ...]:
         item = _object(
             raw,
             "attachment",
-            {"attachment_id", "object_ref", "display_name", "media_type", "size_bytes", "content_sha256"},
+            {
+                "attachment_id",
+                "object_ref",
+                "display_name",
+                "media_type",
+                "size_bytes",
+                "content_sha256",
+            },
             {"evidence_ref"},
         )
         result.append(VoucherAttachmentInput(**item))
@@ -407,7 +415,9 @@ def _parse_attachments(value: object) -> tuple[VoucherAttachmentInput, ...]:
 
 
 def _trace(value: object) -> dict[str, str]:
-    item = _object(value, "trace", {"trace_id", "correlation_id", "causation_id"}, set())
+    item = _object(
+        value, "trace", {"trace_id", "correlation_id", "causation_id"}, set()
+    )
     return {name: _scoped_id(name, item[name]) for name in sorted(item)}
 
 

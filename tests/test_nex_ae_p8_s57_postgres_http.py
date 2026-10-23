@@ -127,7 +127,7 @@ def _request(
         "voucher_type": "GENERAL",
         "transaction_date": "2026-10-22",
         "currency": "KRW",
-        "description": "P8-S57 actual PostgreSQL adapter smoke",
+        "description_text": "P8-S57 actual PostgreSQL adapter smoke",
         "lines": [
             {
                 "line_no": 1,
@@ -146,9 +146,6 @@ def _request(
                 "evidence_refs": ["approval-evidence-p8-s57"],
             },
         ],
-        "nsl_approval_request_id": approval_request_id,
-        "nsl_approval_evidence_ref": "approval-evidence-p8-s57",
-        "business_approval_proof_ref": None,
         "attachments": [],
     }
     arguments = MappingProxyType(

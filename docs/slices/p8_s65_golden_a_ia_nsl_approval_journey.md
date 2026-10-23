@@ -30,7 +30,7 @@ The actual NSL wheel does not use one identifier for every layer:
 
 ```text
 business capability = FINANCE.CREATE_VOUCHER_DRAFT
-NSL Skill            = FINANCE.VOUCHER_DRAFT_CREATE @ 1.0.0
+NSL Skill            = FINANCE.VOUCHER_DRAFT_CREATE @ 1.1.0
 WRITE tool           = FINANCE.CREATE_VOUCHER_DRAFT
 approval id          = CREATE_VOUCHER_DRAFT
 ```
@@ -81,7 +81,7 @@ AE PostgreSQL = nex_ae_user @ nex_ae_test
 WC PostgreSQL = nex_wc_user @ nex_wc_test
 OA PostgreSQL = nex_oa_user @ nex_oa_test
 generation    = general-llm-default / Qwen3.5-4B
-NSL Skill     = FINANCE.VOUCHER_DRAFT_CREATE @ 1.0.0
+NSL Skill     = FINANCE.VOUCHER_DRAFT_CREATE @ 1.1.0
 ```
 
 All migrations were current: AE `59/59`, WC `13/13`, OA `18/18`. Provider
@@ -95,10 +95,17 @@ prefix returned `WAITING_FOR_APPROVAL`; WC matched one valid event and rejected
 the mismatched lineage probe; the approval status was `APPROVED`; AE consumed
 the exact checkpoint and completed the resume runtime job as `DONE`.
 
+P8-S65A supersedes the original four-scalar WRITE example with a Golden A
+v1.1 contract. The protected ApprovalRequest now binds payload hash
+`sha256:240a7e83a1b3355ba98b5473cc239f1aea6a318b17e53e385c01837666fb8eb9`
+over the stable ProjectRef, AccountRefs, balanced lines, and other business
+fields. Approval request/evidence identities are generated and retained as
+control lineage outside that hash.
+
 Final protected result:
 
 ```text
-checks             = 18/18 PASS
+checks             = 20/20 PASS
 actual PostgreSQL  = true
 actual provider    = true
 approval           = APPROVED
@@ -123,9 +130,10 @@ payloads are excluded.
   regression remained green.
 - Actual PostgreSQL, remote-provider, OA authorization, WC approval, and NSL
   resume gate: `PASS`, no inferred skip.
-- NeX-AE Slice Gate: `5,182 passed`, `35 skipped` protected tests.
+- P8-S65A revalidation NeX-AE Slice Gate: `5,130 passed`, `35 skipped`
+  protected tests.
 - Slice Gate statement coverage: `98.41%` against `95%`.
-- Slice Gate branch coverage: `96.39%` against `94%`.
+- Slice Gate branch coverage: `96.38%` against `94%`.
 - Contract validation: 188 schemas, 250 positive examples, 217 negative
   examples, and 9 OpenAPI documents.
 

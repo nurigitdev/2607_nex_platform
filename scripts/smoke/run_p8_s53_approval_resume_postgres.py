@@ -602,6 +602,7 @@ def _verify_scenario(
             "wc_database": wc_database,
             "wc_role": wc_role,
             "prefix_status": prefix["result"]["status"],
+            "payload_hash": request_data["payload_hash"],
             "prefix_audit": prefix_audit,
             "mismatch_event": mismatch,
             "matched_event": matched,

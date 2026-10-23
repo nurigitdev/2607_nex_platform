@@ -30,8 +30,17 @@ def test_actual_admitted_write_call_request_projects_unchanged_identities() -> N
             / "contracts/examples/service/eos_create_voucher_draft_command.golden_a.json"
         ).read_text(encoding="utf-8")
     )
-    for field in ("business_operation_id", "idempotency_key", "payload_hash", "trace"):
+    for field in (
+        "business_operation_id",
+        "idempotency_key",
+        "payload_hash",
+        "nsl_approval_request_id",
+        "nsl_approval_evidence_ref",
+        "business_approval_proof_ref",
+        "trace",
+    ):
         business_payload.pop(field)
+    business_payload["description_text"] = business_payload.pop("description")
 
     completed = subprocess.run(
         [
@@ -54,7 +63,7 @@ def test_actual_admitted_write_call_request_projects_unchanged_identities() -> N
         "business_operation_id": "86000000-0000-4000-8000-000000000001",
         "idempotency_key": "idem:sha256:" + "7" * 64,
         "payload_hash": (
-            "sha256:dc50539078c469eedbbd457a25b8036bc4a31cd10d5ab55431475f373d49d76f"
+            "sha256:1705802a128eb6206a7e8f9547bb4074d3699c27a6e87ad69b3b6a0def4c02ba"
         ),
         "request_type": "WriteCallRequest",
         "write_call_request_admitted": True,
@@ -112,7 +121,7 @@ request = WriteCallRequest(
     idempotency_key=IdempotencyKey("idem:sha256:" + "7" * 64),
     payload_hash=payload_hash,
     approval_id="APPROVE_VOUCHER_DRAFT",
-    approval_request_id=ApprovalRequestId(payload["nsl_approval_request_id"]),
+    approval_request_id=ApprovalRequestId("approval-request-1001"),
     write_intent_hash="sha256:" + "8" * 64,
     business_preconditions=precondition,
     trace_refs=(

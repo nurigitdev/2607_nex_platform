@@ -60,8 +60,9 @@ governance path.
 
 ## Deterministic Binding
 
-The activation reuses the canonical S63 fixture without changing its hash or
-activation marker. The exact project code `PROJECT-A-2` resolves to Project
+The activation reuses the canonical S63 fixture and its activation marker.
+P8-S65A refreshed the fixture hash only to admit the versioned canonical WRITE
+contract. The exact project code `PROJECT-A-2` resolves to Project
 `82000000-0000-4000-8000-000000000001`. The versioned
 `golden-a.travel.cash.v1` policy maps the protected `84,000.00 KRW` scenario to:
 
@@ -75,7 +76,7 @@ identity reported by the admitted NSL v0.2 wheel:
 
 ```text
 capability = FINANCE.CREATE_VOUCHER_DRAFT
-skill      = FINANCE.VOUCHER_DRAFT_CREATE @ 1.0.0
+skill      = FINANCE.VOUCHER_DRAFT_CREATE @ 1.1.0
 tool       = FINANCE.CREATE_VOUCHER_DRAFT
 executor   = LOCAL_SKILL
 semantics  = WRITE
@@ -83,7 +84,7 @@ backend    = NSL_V02_IN_PROCESS
 ```
 
 Its Skill semantic hash is the exact hash obtained from the admitted wheel:
-`sha256:908387dd8dc53697478e83594019e9bfa86e425bb04062f65fc49df4f6303dc5`.
+`sha256:9b7b7b3bffaf3263487b1ff2be4682e8c3e049d2fbc189a23dea64da74e6e7ca`.
 The optional `local_skill_binding.capability_id` alias is present only when the
 business capability differs from the executable Skill ID. Existing P6
 same-identity bindings retain their prior shape. The LLM never supplies the

@@ -127,9 +127,7 @@ class GovernedWriteSource:
                 "reason_code": None,
                 "decision_hash": "sha256:" + "e" * 64,
                 "evaluated_at": self._evaluated_at.isoformat(),
-                "expires_at": (
-                    self._evaluated_at + timedelta(minutes=10)
-                ).isoformat(),
+                "expires_at": (self._evaluated_at + timedelta(minutes=10)).isoformat(),
             },
             "required_assurance_level": "HIGH",
         }
@@ -151,7 +149,7 @@ def _payload(
         "voucher_type": "GENERAL",
         "transaction_date": "2026-10-22",
         "currency": "KRW",
-        "description": description,
+        "description_text": description,
         "lines": [
             {
                 "line_no": 1,
@@ -170,9 +168,6 @@ def _payload(
                 "evidence_refs": ["approval-evidence-p8-s62"],
             },
         ],
-        "nsl_approval_request_id": f"approval-{tenant_id}",
-        "nsl_approval_evidence_ref": "approval-evidence-p8-s62",
-        "business_approval_proof_ref": None,
         "attachments": [],
     }
 
@@ -204,13 +199,15 @@ def _skill_and_contract():
     )
 
     result_type = record_type("VoucherDraft", voucher_no=STRING)
-    fields = tuple(_payload(
-        tenant_id="t",
-        project_id="p",
-        debit_id="d",
-        credit_id="c",
-        description="x",
-    ))
+    fields = tuple(
+        _payload(
+            tenant_id="t",
+            project_id="p",
+            debit_id="d",
+            credit_id="c",
+            description="x",
+        )
+    )
     contract = ToolContract(
         tool_id="FINANCE.CREATE_VOUCHER_DRAFT",
         version="1.0.0",
@@ -372,7 +369,7 @@ def _controlled_request(
         payload_hash=payload_hash,
         write_intent_hash=intent_hash,
     )
-    approval_request_id = ApprovalRequestId(payload["nsl_approval_request_id"])
+    approval_request_id = ApprovalRequestId(f"approval-{context.tenant_id}")
     approval = ApprovalEvidence(
         tenant_id=context.tenant_id,
         execution_id=context.identity.execution_id,
@@ -683,7 +680,7 @@ def test_controlled_write_actual_wheel_postgres_gate() -> None:
             skill=skill,
             contract=contract,
             context=conflict_context,
-            payload={**payload, "description": "conflicting payload"},
+            payload={**payload, "description_text": "conflicting payload"},
             now=now,
             suffix=f"{suffix}-conflict",
         )
@@ -782,8 +779,6 @@ def test_controlled_write_actual_wheel_postgres_gate() -> None:
     finally:
         _cleanup_ae(ae_engine, tenant_id)
         _cleanup_eos(eos_runtime, tenant_id)
-        assert all(
-            count == 0 for count in _eos_counts(eos_runtime, tenant_id).values()
-        )
+        assert all(count == 0 for count in _eos_counts(eos_runtime, tenant_id).values())
         ae_engine.dispose()
         eos_runtime.dispose()

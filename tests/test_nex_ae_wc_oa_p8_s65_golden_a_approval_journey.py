@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts/smoke"))
 
 import run_p8_s65_golden_a_approval_journey as smoke
+from nex_runtime.semantic_hashes import nsl_write_payload_hash_ref
 from p8_golden_a_fixture import load_golden_a_fixture
 
 
@@ -88,6 +89,12 @@ def test_golden_a_profile_uses_exact_project_account_period_and_amount(
             )
         ]
     }
+    tool_fixture["tools"].append(
+        {
+            "tool_id": "FINANCE.RESOLVE_VOUCHER_DRAFT_COMMAND",
+            "cases": [{"arguments": {}, "result": {}}],
+        }
+    )
     (fixture_dir / "success.json").write_text(
         json.dumps(tool_fixture), encoding="utf-8"
     )
@@ -102,10 +109,18 @@ def test_golden_a_profile_uses_exact_project_account_period_and_amount(
         )["tools"]
     }
     assert input_value == {
+        "tenant_id": "p8-golden-a",
+        "requester_id": "employee-1001",
         "account_code": "TRAVEL",
+        "counter_account_code": "CASH",
         "project_code": "PROJECT-A-2",
         "accounting_period": "2026-10",
         "amount": {"$type": "Money", "amount": "84000.00", "currency": "KRW"},
+        "transaction_date": "2026-10-23",
+        "voucher_type": "GENERAL",
+        "economic_category": "TRAVEL",
+        "settlement_method": "CASH",
+        "description_text": "Golden A travel expense draft",
     }
     assert (
         tools["ACCOUNT.GET_ACCOUNT"]["cases"][0]["result"]["account_code"] == "TRAVEL"
@@ -113,6 +128,16 @@ def test_golden_a_profile_uses_exact_project_account_period_and_amount(
     assert (
         tools["PROJECT.GET_PROJECT"]["cases"][0]["arguments"]["project_code"]
         == "PROJECT-A-2"
+    )
+    command = tools["FINANCE.RESOLVE_VOUCHER_DRAFT_COMMAND"]["cases"][0]["result"]
+    assert command["project_ref"]["id"] == "82000000-0000-4000-8000-000000000001"
+    assert [line["signed_amount"] for line in command["lines"]] == [
+        "84000.00",
+        "-84000.00",
+    ]
+    assert "nsl_approval_request_id" not in command
+    assert nsl_write_payload_hash_ref(command) == (
+        "sha256:240a7e83a1b3355ba98b5473cc239f1aea6a318b17e53e385c01837666fb8eb9"
     )
 
 

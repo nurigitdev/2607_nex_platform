@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
@@ -92,6 +93,7 @@ from nex_runtime import (
     redact_database_url,
     sqlalchemy_database_url,
 )
+from nex_runtime.semantic_hashes import nsl_write_payload_hash_ref
 from nex_wc.coordination_clients import HttpAuthorizationSource
 from p8_golden_a_fixture import load_golden_a_fixture
 from run_migrations import run_service_migrations
@@ -292,7 +294,7 @@ def _execute_live_journey(  # pragma: no cover - actual PostgreSQL/DGX/NSL gate.
                 env,
             )
             worker_env = p8_s53._worker_environment(env, target)
-            profile = p8_s53._copy_profile(
+            profile = _copy_golden_a_profile(
                 source=source, case_root=temporary_root / "golden-a"
             )
             _customize_profile(profile, fixture)
@@ -323,6 +325,13 @@ def _execute_live_journey(  # pragma: no cover - actual PostgreSQL/DGX/NSL gate.
                     python_bin=python_bin,
                     lock_path=lock_path,
                 )
+            result["checks"]["actual_nsl_skill_v11_admitted"] = (
+                skill["skill_id"] == fixture["admission"]["skill_id"]
+                and skill["skill_version"]
+                == fixture["admission"]["exact_skill_version"]
+                and skill["semantic_hash"]
+                == fixture["admission"]["skill_semantic_hash"]
+            )
         return {
             **result,
             "provider": {
@@ -448,6 +457,9 @@ def _execute_postgres_journey(  # pragma: no cover - actual protected integratio
             approver_id_override=approver,
             nsl_subject_id_override=requester,
         )["scenario"]
+        canonical_payload_hash = nsl_write_payload_hash_ref(
+            _canonical_business_payload(fixture)
+        )
         exact_binding = planning.activation["authoritative_binding"]["capability_ref"]
         checks = {
             "live_provider_ready": readiness.readiness_status == "READY",
@@ -483,6 +495,9 @@ def _execute_postgres_journey(  # pragma: no cover - actual protected integratio
                 and approval["resume"]["approval_status"] == "APPROVED"
             ),
             "nsl_prefix_suspended": approval["prefix_status"] == "WAITING_FOR_APPROVAL",
+            "canonical_payload_hash_preserved": (
+                approval["payload_hash"] == canonical_payload_hash
+            ),
             "approval_event_matched_once": (
                 approval["matched_event"]["inbox_state"] == "MATCHED"
                 and approval["mismatch_event"]["inbox_state"] == "REJECTED"
@@ -516,6 +531,7 @@ def _execute_postgres_journey(  # pragma: no cover - actual protected integratio
                 "resume_state": approval["resume"]["runtime_job_state"],
                 "approval_status": approval["resume"]["approval_status"],
                 "lineage_exact": approval["lineage_exact"],
+                "payload_hash": approval["payload_hash"],
                 "eos_mutation_count": approval["resume"]["eos_mutation_count"],
             },
         }
@@ -582,30 +598,43 @@ def _customize_profile(profile: Path, fixture: Mapping[str, Any]) -> None:
         for item in fixture["accounts"]
         if item["account_id"] == fixture["voucher_line_policy"]["debit_account_id"]
     )
+    counter_account_code = next(
+        item["account_code"]
+        for item in fixture["accounts"]
+        if item["account_id"] == fixture["voucher_line_policy"]["credit_account_id"]
+    )
     project_code = fixture["projects"]["child"]["project_code"]
     accounting_period = str(scenario["transaction_date"])[:7]
+    description = str(scenario["description"])
+    tenant_id = str(fixture["tenant"]["tenant_id"])
+    requester_id = str(scenario["requester_subject_id"])
+    amount = {
+        "$type": "Money",
+        "amount": scenario["amount"],
+        "currency": scenario["currency"],
+    }
+    input_value = {
+        "tenant_id": tenant_id,
+        "requester_id": requester_id,
+        "account_code": account_code,
+        "counter_account_code": counter_account_code,
+        "project_code": project_code,
+        "accounting_period": accounting_period,
+        "amount": amount,
+        "transaction_date": scenario["transaction_date"],
+        "voucher_type": scenario["voucher_type"],
+        "economic_category": scenario["economic_category"],
+        "settlement_method": scenario["settlement_method"],
+        "description_text": description,
+    }
     input_path = profile.parent / "input.json"
     input_path.write_text(
-        json.dumps(
-            {
-                "account_code": account_code,
-                "project_code": project_code,
-                "accounting_period": accounting_period,
-                "amount": {
-                    "$type": "Money",
-                    "amount": scenario["amount"],
-                    "currency": scenario["currency"],
-                },
-            },
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
+        json.dumps(input_value, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     fixture_path = profile.parent / "fixtures/success.json"
     tool_fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
-    replacements = {
+    replacements: dict[str, tuple[str, str]] = {
         "ACCOUNT.GET_ACCOUNT": ("account_code", account_code),
         "PROJECT.GET_PROJECT": ("project_code", project_code),
         "FINANCE.GET_ACCOUNTING_PERIOD": (
@@ -614,6 +643,11 @@ def _customize_profile(profile: Path, fixture: Mapping[str, Any]) -> None:
         ),
     }
     for tool in tool_fixture["tools"]:
+        if tool["tool_id"] == "FINANCE.RESOLVE_VOUCHER_DRAFT_COMMAND":
+            case = tool["cases"][0]
+            case["arguments"] = input_value
+            case["result"] = _canonical_business_payload(fixture)
+            continue
         key, value = replacements[tool["tool_id"]]
         tool["cases"][0]["arguments"][key] = value
         tool["cases"][0]["result"][key] = value
@@ -621,6 +655,55 @@ def _customize_profile(profile: Path, fixture: Mapping[str, Any]) -> None:
         json.dumps(tool_fixture, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def _copy_golden_a_profile(*, source: Path, case_root: Path) -> Path:
+    shutil.copytree(source / "examples/golden_a_voucher_draft", case_root)
+    return case_root / "controlled.profile.json"
+
+
+def _canonical_business_payload(fixture: Mapping[str, Any]) -> dict[str, Any]:
+    scenario = fixture["scenario"]
+    policy = fixture["voucher_line_policy"]
+    evidence_ref = f"policy:{policy['policy_id']}"
+    descriptions = (
+        "Golden A travel expense",
+        "Golden A cash settlement",
+    )
+    categories = (scenario["economic_category"], scenario["settlement_method"])
+    amounts = (scenario["amount"], f"-{scenario['amount']}")
+    account_ids = (policy["debit_account_id"], policy["credit_account_id"])
+    return {
+        "schema_version": "eos_create_voucher_draft_command.v1",
+        "tenant_id": fixture["tenant"]["tenant_id"],
+        "requester_ref": {
+            "type": "oa.user",
+            "id": scenario["requester_subject_id"],
+        },
+        "project_ref": {
+            "type": "eos.project",
+            "id": fixture["projects"]["child"]["project_id"],
+        },
+        "voucher_type": scenario["voucher_type"],
+        "transaction_date": scenario["transaction_date"],
+        "currency": scenario["currency"],
+        "description_text": scenario["description"],
+        "lines": [
+            {
+                "line_no": index,
+                "account_ref": {"type": "eos.account", "id": account_id},
+                "signed_amount": amount,
+                "economic_category": category,
+                "description": description,
+                "evidence_refs": [evidence_ref],
+            }
+            for index, (account_id, amount, category, description) in enumerate(
+                zip(account_ids, amounts, categories, descriptions, strict=True),
+                start=1,
+            )
+        ],
+        "attachments": list(scenario["attachments"]),
+    }
 
 
 def _build_oa_app(database_url: str) -> Any:  # pragma: no cover - live gate.

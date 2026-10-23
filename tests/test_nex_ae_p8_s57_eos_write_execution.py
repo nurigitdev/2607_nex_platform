@@ -27,6 +27,7 @@ PROJECT_ID = "82000000-0000-4000-8000-000000000057"
 DEBIT_ID = "83000000-0000-4000-8000-000000000057"
 CREDIT_ID = "83000000-0000-4000-8000-000000000058"
 RESULT_TYPE = object()
+APPROVAL_REQUEST_ID = "approval-request-p8-s57"
 
 
 @dataclass(frozen=True)
@@ -209,7 +210,7 @@ def _business_payload() -> dict[str, Any]:
         "voucher_type": "GENERAL",
         "transaction_date": "2026-10-22",
         "currency": "KRW",
-        "description": "P8-S57 EOS adapter voucher",
+        "description_text": "P8-S57 EOS adapter voucher",
         "lines": [
             {
                 "line_no": 1,
@@ -228,9 +229,6 @@ def _business_payload() -> dict[str, Any]:
                 "evidence_refs": ["approval-evidence-p8-s57"],
             },
         ],
-        "nsl_approval_request_id": "approval-request-p8-s57",
-        "nsl_approval_evidence_ref": "approval-evidence-p8-s57",
-        "business_approval_proof_ref": None,
         "attachments": [],
     }
 
@@ -252,7 +250,7 @@ def _request(**changes: object) -> WriteCallRequest:
         "idempotency_key": "idem:sha256:" + "c" * 64,
         "payload_hash": nsl_write_payload_hash_ref(payload),
         "approval_id": "APPROVE_VOUCHER_DRAFT",
-        "approval_request_id": payload["nsl_approval_request_id"],
+        "approval_request_id": APPROVAL_REQUEST_ID,
         "write_intent_hash": "sha256:" + "d" * 64,
         "business_preconditions": object(),
         "trace_refs": (
@@ -310,17 +308,39 @@ def test_command_projection_preserves_nsl_identities_and_canonical_values() -> N
 
     command = build_eos_create_voucher_command(request, public_api=_public_api())
 
+    business_payload = _business_payload()
+    description = business_payload.pop("description_text")
     assert command == {
-        **_business_payload(),
+        **business_payload,
+        "description": description,
         "business_operation_id": request.business_operation_id,
         "idempotency_key": request.idempotency_key,
         "payload_hash": request.payload_hash,
+        "nsl_approval_request_id": APPROVAL_REQUEST_ID,
+        "nsl_approval_evidence_ref": (f"ae-approval-evidence:{APPROVAL_REQUEST_ID}"),
+        "business_approval_proof_ref": None,
         "trace": {
             "trace_id": "trace-p8-s57",
             "correlation_id": "correlation-p8-s57",
             "causation_id": "write-node-p8-s57",
         },
     }
+
+
+def test_approval_lineage_changes_do_not_change_business_payload_hash() -> None:
+    first = _request()
+    second = replace(first, approval_request_id="approval-request-p8-s57-retry")
+
+    first_command = build_eos_create_voucher_command(first, public_api=_public_api())
+    second_command = build_eos_create_voucher_command(second, public_api=_public_api())
+
+    assert first.payload_hash == second.payload_hash
+    assert first_command["payload_hash"] == second_command["payload_hash"]
+    assert (
+        first_command["nsl_approval_request_id"]
+        != second_command["nsl_approval_request_id"]
+    )
+    assert first_command["description"] == second_command["description"]
 
 
 def test_http_port_sends_protected_command_and_preserves_created_response() -> None:
@@ -785,11 +805,10 @@ def test_port_fails_closed_when_signed_service_token_is_missing(
         replace(_request(), arguments={}),
         _request(payload_changes={"schema_version": "other"}),
         replace(_request(), tenant_id="tenant-other"),
-        replace(_request(), approval_request_id="approval-other"),
         replace(_request(), payload_hash="sha256:" + "f" * 64),
         replace(
             _request(),
-            arguments={**dict(_request().arguments), "description": object()},
+            arguments={**dict(_request().arguments), "description_text": object()},
         ),
         replace(_request(), trace_refs=[]),
         replace(_request(), trace_refs=(1,)),

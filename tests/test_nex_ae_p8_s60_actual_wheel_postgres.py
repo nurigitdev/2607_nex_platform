@@ -91,7 +91,7 @@ def _payload(
         "voucher_type": "GENERAL",
         "transaction_date": "2026-10-22",
         "currency": "KRW",
-        "description": "P8-S60 response-loss reconciliation smoke",
+        "description_text": "P8-S60 response-loss reconciliation smoke",
         "lines": [
             {
                 "line_no": 1,
@@ -110,9 +110,6 @@ def _payload(
                 "evidence_refs": ["approval-evidence-p8-s60"],
             },
         ],
-        "nsl_approval_request_id": f"approval-{tenant_id}",
-        "nsl_approval_evidence_ref": "approval-evidence-p8-s60",
-        "business_approval_proof_ref": None,
         "attachments": [],
     }
 
@@ -177,7 +174,7 @@ def _request(
         idempotency_key=IdempotencyKey("idem:sha256:" + uuid4().hex.ljust(64, "0")),
         payload_hash=payload_hash,
         approval_id="APPROVE_VOUCHER_DRAFT",
-        approval_request_id=ApprovalRequestId(payload["nsl_approval_request_id"]),
+        approval_request_id=ApprovalRequestId(f"approval-{tenant_id}"),
         write_intent_hash="sha256:" + "d" * 64,
         business_preconditions=precondition,
         trace_refs=(

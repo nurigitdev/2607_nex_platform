@@ -25,7 +25,7 @@ EOS_CREATE_VOUCHER_RESULT_SCHEMA = "eos_create_voucher_draft_result.v1"
 EOS_CREATE_VOUCHER_PATH = "/internal/v1/finance/voucher-drafts"
 DEFAULT_EOS_BASE_URL = f"http://127.0.0.1:{SERVICE_SPECS['nex-eos'].default_port}"
 
-_BUSINESS_FIELDS = frozenset(
+_BUSINESS_PAYLOAD_FIELDS = frozenset(
     {
         "schema_version",
         "tenant_id",
@@ -34,11 +34,8 @@ _BUSINESS_FIELDS = frozenset(
         "voucher_type",
         "transaction_date",
         "currency",
-        "description",
+        "description_text",
         "lines",
-        "nsl_approval_request_id",
-        "nsl_approval_evidence_ref",
-        "business_approval_proof_ref",
         "attachments",
     }
 )
@@ -479,7 +476,7 @@ def build_eos_create_voucher_command(
         raise _invalid("NSL WRITE tool is not supported by the EOS adapter")
     if not isinstance(request.arguments, Mapping):
         raise _invalid("NSL WRITE arguments must be an object")
-    if set(request.arguments) != _BUSINESS_FIELDS:
+    if set(request.arguments) != _BUSINESS_PAYLOAD_FIELDS:
         raise _invalid("NSL WRITE arguments do not match the canonical EOS payload")
 
     business_payload = {
@@ -490,8 +487,6 @@ def build_eos_create_voucher_command(
         raise _invalid("EOS command schema version is not supported")
     if business_payload["tenant_id"] != request.tenant_id:
         raise _invalid("EOS command tenant does not match the NSL WRITE request")
-    if business_payload["nsl_approval_request_id"] != request.approval_request_id:
-        raise _invalid("EOS command approval request lineage is invalid")
     try:
         computed_hash = nsl_write_payload_hash_ref(business_payload)
     except (TypeError, ValueError) as exc:
@@ -499,11 +494,18 @@ def build_eos_create_voucher_command(
     if computed_hash != request.payload_hash:
         raise _invalid("EOS business payload hash differs from the NSL payload hash")
 
+    command_payload = dict(business_payload)
+    command_payload["description"] = command_payload.pop("description_text")
     return {
-        **business_payload,
+        **command_payload,
         "business_operation_id": str(request.business_operation_id),
         "idempotency_key": str(request.idempotency_key),
         "payload_hash": str(request.payload_hash),
+        "nsl_approval_request_id": str(request.approval_request_id),
+        "nsl_approval_evidence_ref": (
+            f"ae-approval-evidence:{request.approval_request_id}"
+        ),
+        "business_approval_proof_ref": None,
         "trace": _trace_from_refs(request.trace_refs),
     }
 

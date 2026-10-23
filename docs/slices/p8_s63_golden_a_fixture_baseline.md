@@ -28,7 +28,7 @@ The tracked manifest is
 
 - fixture id: `p8-golden-a-voucher-draft-v1`
 - fixture hash:
-  `sha256:37b5296f414908080d44dbf788f88c7eca343881e315ad56b9529f1dd0f5839b`
+  `sha256:3e777c2b37aec5e1658aaf0c145f1e9f3f8d25123d251e210d64968001aea3e2`
 - protected tenant: `p8-golden-a`
 - requester: `employee-1001`
 - approver: `employee-2001`
@@ -39,9 +39,9 @@ The tracked manifest is
 - credit Account: `83000000-0000-4000-8000-000000000002`
 - policy: `golden-a.travel.cash.v1`, version `1`
 - business capability/tool: `FINANCE.CREATE_VOUCHER_DRAFT`
-- admitted NSL Skill: `FINANCE.VOUCHER_DRAFT_CREATE`, version `1.0.0`
+- admitted NSL Skill: `FINANCE.VOUCHER_DRAFT_CREATE`, version `1.1.0`
 - Skill semantic hash:
-  `sha256:908387dd8dc53697478e83594019e9bfa86e425bb04062f65fc49df4f6303dc5`
+  `sha256:9b7b7b3bffaf3263487b1ff2be4682e8c3e049d2fbc189a23dea64da74e6e7ca`
 - activation state: `LOCKED_PENDING_P8_S64`
 
 The project and account IDs match the existing Golden A EOS command example.
@@ -49,6 +49,10 @@ The deterministic policy maps `GENERAL + TRAVEL + CASH + effective date` to
 the two stable Account references and the fixed `DEBIT`, `CREDIT` line order.
 The fixture includes an exact project code and an empty attachment set, so no
 display-name ranking or RustFS dependency is introduced.
+
+P8-S65A refreshed this baseline in place without changing its schema or
+fixture ID. The added scenario description and v1.1 Skill binding align the
+fixture with the canonical business WRITE payload used by S65 and S66.
 
 ## Safety Boundary
 
