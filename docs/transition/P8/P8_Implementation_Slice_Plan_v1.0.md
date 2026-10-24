@@ -2648,6 +2648,28 @@ all regression suites.
 
 No P7 Claim/WorkResult behavior regression.
 
+### Implemented
+
+Completed on 2026-10-24.
+
+P8-S88 ran the complete default repository regression profile with no test
+deselection. All 17,349 collected cases completed: 17,238 passed, 111 explicit
+protected environment guards skipped, and zero failed or errored. The JUnit
+evidence independently confirmed 289 P7-marked cases with 280 passed and 9
+protected skips, plus 363 Claim/WorkResult-related cases with 359 passed and 4
+protected skips. Neither group had a failure or error.
+
+The protected skips remain assigned to their explicit PostgreSQL, RustFS,
+Playwright, admitted-wheel, restart, or live-provider gates. Coverage was not
+measured in this Slice because P8-S89 owns coverage closure. No production
+source, test behavior, API, contract, database schema, or migration changed.
+See `docs/slices/p8_s88_full_repository_regression.md` for execution and
+evidence details.
+
+### Gate
+
+**P8-S88 CLOSED**. Full repository regression is green; P8-S89 is next.
+
 ---
 
 ## P8-S89 — Coverage Closure

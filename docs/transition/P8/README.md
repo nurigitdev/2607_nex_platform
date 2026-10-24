@@ -31,7 +31,7 @@ P8.7   CLOSED
 P8.7A  CLOSED through P8-S75H
 P8-CA03 CLOSED
 P8.8   CLOSED through P8-S86
-P8.9   IN PROGRESS; P8-S87 CLOSED, P8-S88 is the next Slice
+P8.9   IN PROGRESS; P8-S87 and P8-S88 CLOSED, P8-S89 is the next Slice
 ```
 
 Current admitted NSL runtime:
@@ -75,7 +75,10 @@ example, producer/consumer parity, terminology, and reference hygiene across
 191 schemas, 255 positive examples, 221 negative examples, 9 OpenAPI
 documents, 1,050 references, 25 parity checks, and 21 terminology checks. It
 also registered two valid existing positive examples that had not been
-indexed. Before continuing to P8-S88, read
+indexed. P8-S88 then ran all 17,349 repository tests: 17,238 passed, 111
+explicit protected environment guards skipped, and zero failed or errored.
+The same JUnit evidence showed zero P7 or Claim/WorkResult failure/error.
+Before continuing to P8-S89, read
 `P8_8_Pre_Entry_Repository_Consistency_and_Reliability_Preparation_Actions_v1.0.md`
 as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s76_unknown_commit_state_fault_injection.md` plus
@@ -89,7 +92,8 @@ as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s84_trust_authorization_revocation.md` and
 `docs/slices/p8_s85_tamper_cross_tenant_matrix.md` and
 `docs/slices/p8_s86_full_reliability_protected_gate.md` plus
-`docs/slices/p8_s87_contract_openapi_example_hygiene.md` as execution evidence.
+`docs/slices/p8_s87_contract_openapi_example_hygiene.md` and
+`docs/slices/p8_s88_full_repository_regression.md` as execution evidence.
 
 ---
 
