@@ -2486,6 +2486,26 @@ finance:voucher-draft:create revoked before mutation
 
 All fail closed at current boundary.
 
+**Status: CLOSED on 2026-10-24.**
+
+The admitted NSL v0.2 wheel was installed in an isolated target and passed its
+exact release lock. The same wheel failed readiness when only the lock digest
+was changed, and the enabled Agent Runtime worker rejected that failed package
+readiness before NSL public API activation.
+
+Actual OA/WC/AE/EOS test PostgreSQL and RustFS then proved two time-of-check
+revocations. Removing `approval:decide` from the current OA membership after a
+WorkItem existed but before decision left the item PENDING and created no
+Decision or approval outbox row. Removing
+`finance:voucher-draft:create` after approval but before EOS dispatch returned
+403 before BusinessOperation, idempotency, Voucher, attachment resolution, or
+EOS outbox mutation. Revoking the OA browser session also blocked the same
+private attachment before repository or RustFS access. The immutable object
+version remained unchanged and cleanup left zero database or object residue.
+
+No production API, event schema, database table, migration, or runtime ordering
+changed. P8-S85 is next.
+
 ---
 
 ## P8-S85 — Tamper / Cross-Tenant Matrix
