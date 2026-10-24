@@ -2802,6 +2802,30 @@ duplicate replay, and domain distinction; P8-S92 is next.
 Re-run Golden A and required reliability variants against the final candidate
 commit.
 
+### Implementation Result
+
+P8-S92 re-ran the canonical S68/S67 Golden A journey and the complete S76-S86
+fault matrix against candidate commit
+`5dc4c21970d07a6858202e594a6b23cfe01047bb`. The provider preflight admitted
+live embedding, reranking, and generation. Golden A used actual AE/WC/OA/EOS
+PostgreSQL, admitted NSL v0.2, and live generation; it committed and verified
+exactly one Voucher mutation and left zero database residue.
+
+The fault matrix then used the same four actual databases and digest-pinned
+RustFS with SSE-S3. All 13 explicitly selected tests passed with zero skip or
+failure. A separate residue audit found zero matching database rows, then
+physically removed all 25 object versions and 25 delete markers retained by
+normal bucket versioning. See
+`docs/slices/p8_s92_golden_a_fault_final_rerun.md` for the accepted candidate
+identity, migration heads, fault inventory, and local evidence paths.
+
+### Gate
+
+**P8-S92 CLOSED**. Golden A and every required P8.8 reliability variant pass
+against the same candidate tree with exact mutation, lineage, authorization,
+reconciliation, verification, tenant isolation, and cleanup invariants;
+P8-S93 is next.
+
 ---
 
 ## P8-S93 — P8 Final As-Built Baseline / P9 Handoff

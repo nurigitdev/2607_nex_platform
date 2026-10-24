@@ -31,7 +31,7 @@ P8.7   CLOSED
 P8.7A  CLOSED through P8-S75H
 P8-CA03 CLOSED
 P8.8   CLOSED through P8-S86
-P8.9   IN PROGRESS; P8-S87 through P8-S91 CLOSED, P8-S92 is the next Slice
+P8.9   IN PROGRESS; P8-S87 through P8-S92 CLOSED, P8-S93 is the next Slice
 ```
 
 Current admitted NSL runtime:
@@ -96,7 +96,13 @@ covering `NSL_WRITE`, `BUSINESS_FORMAL`, approve, reject, expired,
 unauthorized, exact replay, and domain separation. Responsive desktop/mobile
 captures exposed and closed one long formal-summary overflow; the complete AE
 Web regression passed `375` tests and the three databases retained zero S91
-tenant residue. Before continuing to P8-S92,
+tenant residue. P8-S92 then re-ran Golden A and the complete S76-S86 fault
+matrix against the same final-candidate tree. Live embedding, reranking, and
+generation preflight passed; Golden A committed and verified exactly one
+Voucher with zero residue; and all 13 actual PostgreSQL/RustFS fault tests
+passed with zero skip or failure. The final residue audit found zero matching
+rows across AE/WC/OA/EOS and physically purged all retained test object
+versions and delete markers. Before continuing to P8-S93,
 read
 `P8_8_Pre_Entry_Repository_Consistency_and_Reliability_Preparation_Actions_v1.0.md`
 as the normative P8-CA03 amendment to the P8.8 reliability matrix and
@@ -115,7 +121,8 @@ as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s88_full_repository_regression.md` and
 `docs/slices/p8_s89_coverage_closure.md` and
 `docs/slices/p8_s90_actual_db_full_gate.md` and
-`docs/slices/p8_s91_ia_playwright_full_gate.md` as execution evidence.
+`docs/slices/p8_s91_ia_playwright_full_gate.md` and
+`docs/slices/p8_s92_golden_a_fault_final_rerun.md` as execution evidence.
 
 ---
 
