@@ -2767,6 +2767,34 @@ duplicate
 domain distinction
 ```
 
+### Implementation Result
+
+P8-S91 composed the existing S43 authenticated human-approval journey and the
+S74 EOS-backed formal-approval journey into the final IA browser gate. The
+accepted run used actual WC, OA, and EOS PostgreSQL test databases and
+production-shaped same-origin AE API/Web routes. It executed four selected
+tests with zero skip or failure and proved the eight required behaviors without
+adding a duplicate approval implementation.
+
+The Playwright harnesses now optionally capture full-page desktop and mobile
+evidence under a guarded `reports/quality/` path and fail on horizontal
+overflow. This gate found one mobile overflow caused by a long formal-approval
+summary. The detail summary now uses the same `overflow-wrap: anywhere` rule
+as the existing inbox and metadata surfaces, and the Web regression guards the
+rule. Four accepted screenshots were visually inspected.
+
+The complete AE Web Node regression passed `375` tests. Explicit post-gate
+queries found no S43/S74 tenant residue in OA, WC, or EOS. The unchanged P8-S89
+coverage result remains `96.72%` statement and `96.11%` branch. See
+`docs/slices/p8_s91_ia_playwright_full_gate.md` for the acceptance matrix and
+execution evidence.
+
+### Gate
+
+**P8-S91 CLOSED**. Authenticated IA Playwright acceptance passes across
+`NSL_WRITE`, `BUSINESS_FORMAL`, approve, reject, expired, unauthorized,
+duplicate replay, and domain distinction; P8-S92 is next.
+
 ---
 
 ## P8-S92 — Golden A + Fault Re-run

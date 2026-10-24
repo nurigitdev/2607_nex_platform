@@ -8,6 +8,7 @@ import {
   formatProtectedApprovalSummary,
   protectedApprovalRuntimeConfig
 } from "../scripts/runApprovalProtectedPlaywrightSmoke.mjs";
+import { captureResponsiveScreenshotEvidence } from "../scripts/responsiveScreenshotEvidence.mjs";
 
 const PACKAGE = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf-8")
@@ -65,6 +66,30 @@ describe("P8-S43 protected approval Playwright contract", () => {
     assert.throws(
       () => assertProtectedApprovalEvidenceRedacted({ semantic_hash: "private" }, {}),
       /protected material/
+    );
+  });
+
+  it("keeps screenshot evidence optional and rejects paths outside reports", async () => {
+    assert.deepEqual(
+      await captureResponsiveScreenshotEvidence({
+        page: null,
+        screenshotDir: "",
+        prefix: "approval"
+      }),
+      {
+        requested: false,
+        captureCount: 0,
+        noHorizontalOverflow: true,
+        layouts: []
+      }
+    );
+    await assert.rejects(
+      captureResponsiveScreenshotEvidence({
+        page: null,
+        screenshotDir: "../private",
+        prefix: "approval"
+      }),
+      /InvalidScreenshotDirectory/
     );
   });
 });

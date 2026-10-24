@@ -1431,6 +1431,7 @@ code {
 }
 
 .approval-detail-surface > p {
+  overflow-wrap: anywhere;
   color: var(--nex-muted);
   line-height: 1.55;
 }

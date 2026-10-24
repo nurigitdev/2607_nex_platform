@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import {
   PLAYWRIGHT_CHROMIUM_EXECUTABLE_ENV
 } from "./runCredentialLoginPlaywrightReadiness.mjs";
+import { captureResponsiveScreenshotEvidence } from "./responsiveScreenshotEvidence.mjs";
 
 export const AE_WEB_APPROVAL_PROTECTED_PLAYWRIGHT_SCHEMA_VERSION =
   "ae_web_approval_protected_playwright.p8.v1";
@@ -17,10 +18,13 @@ const ENV = {
   rejectGateId: "NEX_P8_S43_REJECT_GATE_ID",
   hiddenGateId: "NEX_P8_S43_HIDDEN_GATE_ID",
   expiredGateId: "NEX_P8_S43_EXPIRED_GATE_ID",
+  screenshotDir: "NEX_P8_S91_SCREENSHOT_DIR",
   timeoutMs: "NEX_P8_S43_TIMEOUT_MS"
 };
 
-const REQUIRED_ENV = Object.values(ENV).filter(name => name !== ENV.timeoutMs);
+const REQUIRED_ENV = Object.entries(ENV)
+  .filter(([key]) => !["screenshotDir", "timeoutMs"].includes(key))
+  .map(([, name]) => name);
 const DEFAULT_TIMEOUT_MS = 25000;
 const FORBIDDEN_EVIDENCE_FRAGMENTS = [
   "access_" + "token",
@@ -115,6 +119,11 @@ export async function runApprovalProtectedPlaywrightSmoke({
         node => node.getAttribute("data-approval-domain")
       )
     }));
+    const responsiveEvidence = await captureResponsiveScreenshotEvidence({
+      page,
+      screenshotDir: environ[ENV.screenshotDir],
+      prefix: "approval-inbox"
+    });
 
     stage = "approve_detail";
     await selectGate(page, environ[ENV.approveGateId], timeout);
@@ -176,6 +185,10 @@ export async function runApprovalProtectedPlaywrightSmoke({
       authenticated_approval_http_observed:
         requestLog.some(item => item.method === "GET") &&
         requestLog.filter(item => item.method === "POST").length >= 3,
+      responsive_layout_has_no_horizontal_overflow:
+        responsiveEvidence.noHorizontalOverflow,
+      requested_screenshots_captured:
+        !responsiveEvidence.requested || responsiveEvidence.captureCount === 2,
       logout_returned_to_login: await page.isVisible("#credential-login-panel"),
       protected_payload_absent: FORBIDDEN_EVIDENCE_FRAGMENTS.every(
         fragment => !panelHtml.toLowerCase().includes(fragment.toLowerCase())
@@ -198,7 +211,9 @@ export async function runApprovalProtectedPlaywrightSmoke({
         approval_response_count: responseLog.length,
         replay_status: replayStatus,
         hidden_status: deniedStatuses.hidden,
-        expired_status: deniedStatuses.expired
+        expired_status: deniedStatuses.expired,
+        responsive_capture_count: responsiveEvidence.captureCount,
+        responsive_layouts: responsiveEvidence.layouts
       },
       checks
     };

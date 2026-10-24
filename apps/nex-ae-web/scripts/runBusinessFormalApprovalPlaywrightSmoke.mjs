@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 
 import { PLAYWRIGHT_CHROMIUM_EXECUTABLE_ENV } from "./runCredentialLoginPlaywrightReadiness.mjs";
 import { protectedApprovalRuntimeConfig } from "./runApprovalProtectedPlaywrightSmoke.mjs";
+import { captureResponsiveScreenshotEvidence } from "./responsiveScreenshotEvidence.mjs";
 
 export const AE_WEB_BUSINESS_FORMAL_PLAYWRIGHT_SCHEMA_VERSION =
   "ae_web_business_formal_playwright.p8.v1";
@@ -18,10 +19,13 @@ const ENV = {
   expectedTarget: "NEX_P8_S74_EXPECTED_TARGET",
   expectedStage: "NEX_P8_S74_EXPECTED_STAGE",
   expectedStageCount: "NEX_P8_S74_EXPECTED_STAGE_COUNT",
+  screenshotDir: "NEX_P8_S91_SCREENSHOT_DIR",
   timeoutMs: "NEX_P8_S74_TIMEOUT_MS"
 };
 
-const REQUIRED_ENV = Object.values(ENV).filter(name => name !== ENV.timeoutMs);
+const REQUIRED_ENV = Object.entries(ENV)
+  .filter(([key]) => !["screenshotDir", "timeoutMs"].includes(key))
+  .map(([, name]) => name);
 const DEFAULT_TIMEOUT_MS = 25000;
 const FORBIDDEN_FRAGMENTS = [
   "access_" + "token",
@@ -123,6 +127,11 @@ export async function runBusinessFormalApprovalPlaywrightSmoke({
       terminalState: node.getAttribute("data-formal-terminal-state")
     }));
     const detailText = await page.locator(".approval-detail-surface").innerText();
+    const responsiveEvidence = await captureResponsiveScreenshotEvidence({
+      page,
+      screenshotDir: environ[ENV.screenshotDir],
+      prefix: "business-formal-detail"
+    });
 
     stage = "formal_decision";
     await page.fill("#approval-decision-comment", "P8-S74 formal approval smoke");
@@ -155,6 +164,10 @@ export async function runBusinessFormalApprovalPlaywrightSmoke({
       pending_state_visible: formal.terminalState === "PENDING",
       formal_approval_committed:
         terminalState === "APPROVED" && approvalPostCount === 1,
+      responsive_layout_has_no_horizontal_overflow:
+        responsiveEvidence.noHorizontalOverflow,
+      requested_screenshots_captured:
+        !responsiveEvidence.requested || responsiveEvidence.captureCount === 2,
       logout_returned_to_login: await page.isVisible("#credential-login-panel"),
       protected_payload_absent: FORBIDDEN_FRAGMENTS.every(
         fragment => !panelHtml.toLowerCase().includes(fragment.toLowerCase())
@@ -174,7 +187,9 @@ export async function runBusinessFormalApprovalPlaywrightSmoke({
         visible_gate_count: inbox.domains.length,
         visible_domain_count: new Set(inbox.domains).size,
         projected_stage_count: Number(formal.stageCount),
-        approval_post_count: approvalPostCount
+        approval_post_count: approvalPostCount,
+        responsive_capture_count: responsiveEvidence.captureCount,
+        responsive_layouts: responsiveEvidence.layouts
       },
       checks
     };

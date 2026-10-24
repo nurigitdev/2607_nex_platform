@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
@@ -28,6 +29,18 @@ function readyState(overrides = {}) {
 }
 
 describe("AE Web approval UI read model", () => {
+  it("wraps long display-safe detail summaries within narrow viewports", () => {
+    const styles = readFileSync(
+      new URL("../src/styles.css", import.meta.url),
+      "utf8"
+    );
+
+    assert.match(
+      styles,
+      /\.approval-detail-surface > p\s*{[^}]*overflow-wrap:\s*anywhere;/s
+    );
+  });
+
   it("preserves three approval domains and safe actionable counts", () => {
     const state = readyState();
     const summary = buildApprovalUiSummary(state, {

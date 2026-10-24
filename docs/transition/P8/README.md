@@ -31,7 +31,7 @@ P8.7   CLOSED
 P8.7A  CLOSED through P8-S75H
 P8-CA03 CLOSED
 P8.8   CLOSED through P8-S86
-P8.9   IN PROGRESS; P8-S87 through P8-S90 CLOSED, P8-S91 is the next Slice
+P8.9   IN PROGRESS; P8-S87 through P8-S91 CLOSED, P8-S92 is the next Slice
 ```
 
 Current admitted NSL runtime:
@@ -89,7 +89,14 @@ actual AE/WC/OA/EOS test databases, applied all 105 current migrations, and
 ran 74 selected PostgreSQL cases with zero skip or failure. Forty of those
 cases were protected skips in the default S89 profile and actual executions in
 S90. Baseline and post-suite row-count/content fingerprints matched across all
-133 public tables, proving zero database residue. Before continuing to P8-S91,
+133 public tables, proving zero database residue. P8-S91 then composed the S43
+and S74 authenticated approval journeys into an actual OA/WC/EOS PostgreSQL
+and Chromium full gate. All four selected tests ran without skip or failure,
+covering `NSL_WRITE`, `BUSINESS_FORMAL`, approve, reject, expired,
+unauthorized, exact replay, and domain separation. Responsive desktop/mobile
+captures exposed and closed one long formal-summary overflow; the complete AE
+Web regression passed `375` tests and the three databases retained zero S91
+tenant residue. Before continuing to P8-S92,
 read
 `P8_8_Pre_Entry_Repository_Consistency_and_Reliability_Preparation_Actions_v1.0.md`
 as the normative P8-CA03 amendment to the P8.8 reliability matrix and
@@ -107,7 +114,8 @@ as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s87_contract_openapi_example_hygiene.md` and
 `docs/slices/p8_s88_full_repository_regression.md` and
 `docs/slices/p8_s89_coverage_closure.md` and
-`docs/slices/p8_s90_actual_db_full_gate.md` as execution evidence.
+`docs/slices/p8_s90_actual_db_full_gate.md` and
+`docs/slices/p8_s91_ia_playwright_full_gate.md` as execution evidence.
 
 ---
 
