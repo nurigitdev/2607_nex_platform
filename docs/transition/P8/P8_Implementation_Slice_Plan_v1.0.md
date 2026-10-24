@@ -2299,6 +2299,31 @@ fails.
 
 No CREATE retry.
 
+### Implementation Status (2026-10-24)
+
+**CLOSED.** Source audit confirmed the admitted NSL v0.2 verifier already
+separates committed business state from verification status. The reusable
+`EosVerificationMismatchFaultPort` now requires one exact healthy EOS
+read-back before injecting a correctly bound deterministic mismatch.
+
+Actual AE/WC/OA/EOS test databases, the admitted NSL v0.2 wheel, and
+digest-pinned RustFS proved:
+
+```text
+EOS CREATE dispatches             = 1
+authoritative verification reads  = 1
+CommitState                       = COMMITTED
+VerificationStatus                = FAILED
+Voucher Drafts                    = 1
+attachment associations           = 3
+outbox rows                       = 1
+manifest/attachment/object drift  = 0
+duplicate RustFS object versions  = 0
+test residue                      = 0
+```
+
+No production API contract, table, or migration changed. P8-S79 is next.
+
 ---
 
 ## P8-S79 — COMMITTED + Verification UNKNOWN

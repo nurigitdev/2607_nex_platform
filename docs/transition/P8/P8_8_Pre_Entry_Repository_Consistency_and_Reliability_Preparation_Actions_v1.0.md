@@ -1,6 +1,6 @@
 # P8.8 Pre-Entry Repository Consistency and Reliability Preparation Actions v1.0
 
-**Status:** P8-CA03 CLOSED / P8-S76 and P8-S77 CLOSED / P8-S78 READY
+**Status:** P8-CA03 CLOSED / P8-S76 through P8-S78 CLOSED / P8-S79 READY
 **Phase:** P8.7A → P8.8 Transition
 **Purpose:** Close small repository/configuration/evidence gaps before starting P8.8 Reliability / Reconciliation Closure
 **Platform Repository:** `nurigitdev/2607_nex_platform`
@@ -444,6 +444,22 @@ no new RustFS object
 
 Recommended for P8-S78.
 
+Implementation closure on 2026-10-24:
+
+```text
+actual EOS healthy read-back       = 1
+deterministic mismatch observation = 1
+CommitState                        = COMMITTED
+VerificationStatus                 = FAILED
+EOS CREATE dispatches              = 1
+Voucher / associations / outbox    = 1 / 3 / 1
+manifest and RustFS object drift   = 0
+```
+
+The fault harness requires a healthy, exactly bound baseline observation
+before it can inject the deterministic mismatch. Therefore dependency failure
+or ambiguous binding cannot be mislabeled as `FAILED`.
+
 ---
 
 ## P8.8-A04 — COMMITTED + Verification UNKNOWN with Attachments
@@ -799,7 +815,9 @@ zero-skip protected evidence above.
 
 P8-S76 subsequently consumed this handoff and closed the attachment-bearing
 ACK-loss fault-injection boundary. P8-S77 then used authoritative EOS reads to
-prove `COMMITTED`, `NOT_COMMITTED`, and still-`UNKNOWN` outcomes. Across both
-Slices, protected evidence recorded one EOS CREATE dispatch, one Voucher,
-three attachment associations, stable manifest and RustFS object identities,
-and zero residue. P8-S78 is now the next canonical Slice.
+prove `COMMITTED`, `NOT_COMMITTED`, and still-`UNKNOWN` outcomes. P8-S78 proved
+that a correctly bound deterministic verification mismatch produces
+`VerificationStatus.FAILED` without changing `CommitState.COMMITTED` or
+recreating the Voucher, associations, manifest, or RustFS objects. Protected
+evidence recorded one EOS CREATE dispatch and zero residue. P8-S79 is now the
+next canonical Slice.
