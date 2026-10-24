@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -423,3 +423,205 @@ class ApprovalEventAckLossFaultClient:
                 "AE approval event acknowledgement is not durably matched."
             )
         return str(event_id), resume_job_id.strip()
+
+
+class WorkerCrashAfterCheckpointFaultError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class WorkerCrashAfterCheckpointFaultEvidence:
+    publication_attempts: int
+    injected_crashes: int
+    restart_attempts: int
+    downstream_publications: int
+    checkpoint_hash: str | None
+    checkpoint_integrity_hash: str | None
+    checkpoint_version: int | None
+    approval_request_hash: str | None
+    approval_request_id: str | None
+    payload_hash: str | None
+    protected_payload_ref: str | None
+
+
+class WorkerCrashAfterCheckpointFaultPort:
+    """Crash once after a durable checkpoint and publish on exact restart."""
+
+    def __init__(self, delegate: Any, checkpoint_loader: Callable[[], object]) -> None:
+        if not callable(getattr(delegate, "publish", None)):
+            raise TypeError("Worker-crash approval delegate must expose publish().")
+        if not callable(checkpoint_loader):
+            raise TypeError("Worker-crash checkpoint loader must be callable.")
+        self._delegate = delegate
+        self._checkpoint_loader = checkpoint_loader
+        self._publication_attempts = 0
+        self._injected_crashes = 0
+        self._restart_attempts = 0
+        self._downstream_publications = 0
+        self._checkpoint_hash: str | None = None
+        self._checkpoint_integrity_hash: str | None = None
+        self._checkpoint_version: int | None = None
+        self._approval_request_hash: str | None = None
+        self._approval_request_id: str | None = None
+        self._payload_hash: str | None = None
+        self._protected_payload_ref: str | None = None
+
+    @property
+    def evidence(self) -> WorkerCrashAfterCheckpointFaultEvidence:
+        return WorkerCrashAfterCheckpointFaultEvidence(
+            publication_attempts=self._publication_attempts,
+            injected_crashes=self._injected_crashes,
+            restart_attempts=self._restart_attempts,
+            downstream_publications=self._downstream_publications,
+            checkpoint_hash=self._checkpoint_hash,
+            checkpoint_integrity_hash=self._checkpoint_integrity_hash,
+            checkpoint_version=self._checkpoint_version,
+            approval_request_hash=self._approval_request_hash,
+            approval_request_id=self._approval_request_id,
+            payload_hash=self._payload_hash,
+            protected_payload_ref=self._protected_payload_ref,
+        )
+
+    async def publish(self, request: object) -> object:
+        self._publication_attempts += 1
+        checkpoint = self._checkpoint()
+        approval_request = self._approval_request(request)
+        self._require_lineage(checkpoint, approval_request)
+        checkpoint_hash = semantic_sha256_hash_ref(checkpoint)
+        request_hash = semantic_sha256_hash_ref(approval_request)
+
+        if self._checkpoint_hash is None:
+            self._remember(checkpoint, approval_request, checkpoint_hash, request_hash)
+            self._injected_crashes = 1
+            raise WorkerCrashAfterCheckpointFaultError(
+                "Worker crashed after durable checkpoint persistence."
+            )
+        if (
+            checkpoint_hash != self._checkpoint_hash
+            or request_hash != self._approval_request_hash
+        ):
+            raise WorkerCrashAfterCheckpointFaultError(
+                "Worker restart changed checkpoint or ApprovalRequest semantics."
+            )
+        self._restart_attempts += 1
+        result = await self._delegate.publish(request)
+        self._downstream_publications += 1
+        return result
+
+    async def publish_after_restart(self, request: object) -> object:
+        try:
+            await self.publish(request)
+        except WorkerCrashAfterCheckpointFaultError:
+            if self._injected_crashes != 1:
+                raise
+        else:
+            raise WorkerCrashAfterCheckpointFaultError(
+                "Worker-crash injection did not stop the first publication."
+            )
+        return await self.publish(request)
+
+    def _checkpoint(self) -> dict[str, Any]:
+        try:
+            raw = self._checkpoint_loader()
+            checkpoint = dict(raw)  # type: ignore[arg-type]
+        except (TypeError, ValueError) as exc:
+            raise WorkerCrashAfterCheckpointFaultError(
+                "Durable NSL checkpoint is not an object."
+            ) from exc
+        required = {
+            "execution_id",
+            "business_operation_id",
+            "checkpoint_version",
+            "semantic_hash",
+            "integrity_hash",
+        }
+        if not required.issubset(checkpoint):
+            raise WorkerCrashAfterCheckpointFaultError(
+                "Durable NSL checkpoint identity is incomplete."
+            )
+        version = checkpoint["checkpoint_version"]
+        if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+            raise WorkerCrashAfterCheckpointFaultError(
+                "Durable NSL checkpoint version is invalid."
+            )
+        for field in ("execution_id", "business_operation_id"):
+            if not isinstance(checkpoint[field], str) or not checkpoint[field].strip():
+                raise WorkerCrashAfterCheckpointFaultError(
+                    "Durable NSL checkpoint identity is incomplete."
+                )
+        for field in ("semantic_hash", "integrity_hash"):
+            if not _hash_ref(checkpoint[field]):
+                raise WorkerCrashAfterCheckpointFaultError(
+                    f"Durable NSL checkpoint {field} is invalid."
+                )
+        return checkpoint
+
+    @staticmethod
+    def _approval_request(request: object) -> dict[str, Any]:
+        try:
+            raw = request.to_data()  # type: ignore[attr-defined]
+            approval_request = dict(raw)
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise WorkerCrashAfterCheckpointFaultError(
+                "ApprovalRequest restart input is not canonical."
+            ) from exc
+        required = (
+            "execution_id",
+            "business_operation_id",
+            "approval_request_id",
+            "skill_semantic_hash",
+            "payload_hash",
+            "protected_payload_ref",
+        )
+        if any(
+            not isinstance(approval_request.get(field), str)
+            or not str(approval_request[field]).strip()
+            for field in required
+        ):
+            raise WorkerCrashAfterCheckpointFaultError(
+                "ApprovalRequest restart identity is incomplete."
+            )
+        for field in ("skill_semantic_hash", "payload_hash"):
+            if not _hash_ref(approval_request[field]):
+                raise WorkerCrashAfterCheckpointFaultError(
+                    f"ApprovalRequest {field} is invalid."
+                )
+        return approval_request
+
+    @staticmethod
+    def _require_lineage(
+        checkpoint: Mapping[str, Any], approval_request: Mapping[str, Any]
+    ) -> None:
+        expected = {
+            "execution_id": approval_request["execution_id"],
+            "business_operation_id": approval_request["business_operation_id"],
+            "semantic_hash": approval_request["skill_semantic_hash"],
+        }
+        if any(checkpoint[field] != value for field, value in expected.items()):
+            raise WorkerCrashAfterCheckpointFaultError(
+                "Durable checkpoint and ApprovalRequest lineage differ."
+            )
+
+    def _remember(
+        self,
+        checkpoint: Mapping[str, Any],
+        request: Mapping[str, Any],
+        checkpoint_hash: str,
+        request_hash: str,
+    ) -> None:
+        self._checkpoint_hash = checkpoint_hash
+        self._checkpoint_integrity_hash = str(checkpoint["integrity_hash"])
+        self._checkpoint_version = int(checkpoint["checkpoint_version"])
+        self._approval_request_hash = request_hash
+        self._approval_request_id = str(request["approval_request_id"])
+        self._payload_hash = str(request["payload_hash"])
+        self._protected_payload_ref = str(request["protected_payload_ref"])
+
+
+def _hash_ref(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 71
+        and value.startswith("sha256:")
+        and all(character in "0123456789abcdef" for character in value[7:])
+    )

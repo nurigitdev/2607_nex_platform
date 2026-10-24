@@ -2422,6 +2422,23 @@ Restart restores exact wait/resume identity.
 
 No duplicate ApprovalRequest semantic work.
 
+**Status: CLOSED on 2026-10-24.**
+
+A deterministic fault now terminates the first approval-publication attempt
+only after the admitted NSL checkpoint is durably readable and exactly bound
+to the ApprovalRequest execution, business operation, Skill semantic hash,
+payload hash, and protected payload reference. The restart attempt reloads the
+same checkpoint and request, rejects any semantic drift before publication,
+and delegates once to the existing idempotent AE/WC approval boundary.
+
+APPROVE, REJECT, and expiry scenarios against actual `nex_ae_test` and
+`nex_wc_test` each converged on one protected ApprovalRequest, one NSL approval
+wait, one WC ApprovalWorkItem, one resume job, and one checkpoint consume.
+All runtime jobs reached `DONE`, EOS mutation remained zero, and cleanup left
+zero residue. The attachment manifest remains protected behind the unchanged
+PayloadHash and protected payload reference; no RustFS object was recreated.
+No production API contract, table, or migration changed. P8-S83 is next.
+
 ---
 
 ## P8-S83 — Worker Crash After WRITE_REQUESTED

@@ -134,6 +134,7 @@ def run_p8_s53_approval_resume_postgres(
     report_path: Path = DEFAULT_REPORT,
     python_bin: str = sys.executable,
     approval_event_client_factory: Callable[[Any], Any] | None = None,
+    approval_publication_factory: Callable[[Any, Callable[[], Any]], Any] | None = None,
 ) -> dict[str, Any]:
     env = dict(os.environ if environ is None else environ)
     if not execute or env.get(SMOKE_ENV) != "1":
@@ -189,6 +190,7 @@ def run_p8_s53_approval_resume_postgres(
                 python_bin=python_bin,
                 lock_path=lock_path,
                 approval_event_client_factory=approval_event_client_factory,
+                approval_publication_factory=approval_publication_factory,
             )
         checks = {
             "release_identity_exact": release["wheel_sha256"] == lock["wheel_sha256"],
@@ -282,6 +284,7 @@ def _execute_scenarios(
     python_bin: str,
     lock_path: Path,
     approval_event_client_factory: Callable[[Any], Any] | None = None,
+    approval_publication_factory: Callable[[Any, Callable[[], Any]], Any] | None = None,
 ) -> dict[str, Any]:
     original_snapshot_builder = p5_s5.build_capability_snapshot
     original_plan_builder = p5_s5.build_deterministic_agent_plan
@@ -366,6 +369,7 @@ def _execute_scenarios(
                     python_bin=python_bin,
                     lock_path=lock_path,
                     approval_event_client_factory=approval_event_client_factory,
+                    approval_publication_factory=approval_publication_factory,
                 )
                 captured.update(verification["scenario"])
                 return verification
@@ -404,6 +408,7 @@ def _verify_scenario(
     nsl_subject_id_override: str | None = None,
     business_operation_id_override: str | None = None,
     approval_event_client_factory: Callable[[Any], Any] | None = None,
+    approval_publication_factory: Callable[[Any, Callable[[], Any]], Any] | None = None,
 ) -> dict[str, Any]:
     ae_factory = fixture["factory"]
     tenant_id = str(fixture["tenant_id"])
@@ -500,7 +505,28 @@ def _verify_scenario(
             wc_client=_WcClient(ApprovalWorkItemService(wc_repository)),
             clock=lambda: decision_time,
         )
-        asyncio.run(publication.publish(_ApprovalRequestSnapshot(request_data)))
+        checkpoint_crash_evidence = None
+        if approval_publication_factory is None:
+            asyncio.run(publication.publish(_ApprovalRequestSnapshot(request_data)))
+        else:
+            controlled_publication = approval_publication_factory(
+                publication,
+                lambda: _checkpoint_data(checkpoint),
+            )
+            publish_after_restart = getattr(
+                controlled_publication, "publish_after_restart", None
+            )
+            if not callable(publish_after_restart):
+                raise P8S53SmokeError(
+                    "checkpoint-crash publication must expose publish_after_restart()"
+                )
+            asyncio.run(publish_after_restart(_ApprovalRequestSnapshot(request_data)))
+            evidence_value = getattr(controlled_publication, "evidence", None)
+            if evidence_value is None:
+                raise P8S53SmokeError(
+                    "checkpoint-crash publication evidence is unavailable"
+                )
+            checkpoint_crash_evidence = asdict(evidence_value)
         work_item = wc_repository.get_by_source(
             tenant_id=tenant_id,
             approval_domain="NSL_WRITE",
@@ -508,6 +534,12 @@ def _verify_scenario(
         )
         if work_item is None:
             raise P8S53SmokeError("WC ApprovalWorkItem was not persisted")
+        approval_persistence_counts = _approval_persistence_counts(
+            ae_factory,
+            wc_factory,
+            tenant_id=tenant_id,
+            approval_request_id=request_data["approval_request_id"],
+        )
         decision_ref = f"oa-decision-p8-s53-{scenario}"
         effective_authorization = authorization_source or _AuthorizationSource(
             tenant_id=tenant_id,
@@ -598,9 +630,7 @@ def _verify_scenario(
                 )
             evidence_value = getattr(delivery_client, "evidence", None)
             if evidence_value is None:
-                raise P8S53SmokeError(
-                    "approval event ACK-loss evidence is unavailable"
-                )
+                raise P8S53SmokeError("approval event ACK-loss evidence is unavailable")
             ack_loss_evidence = asdict(evidence_value)
         if matched["inbox_state"] != "MATCHED":
             raise P8S53SmokeError("valid approval event did not enqueue resume")
@@ -688,6 +718,8 @@ def _verify_scenario(
             "matched_event": matched,
             "event_replay": event_replay,
             "approval_event_ack_loss": ack_loss_evidence,
+            "worker_crash_after_checkpoint": checkpoint_crash_evidence,
+            "approval_persistence_counts": approval_persistence_counts,
             "resume_enqueue_replay": {
                 "runtime_job_id": replayed_resume["runtime_job_id"],
                 "state": replayed_resume["state"],
@@ -951,12 +983,65 @@ def _approval_request_data(path: Path) -> dict[str, Any]:
     return dict(request)
 
 
+def _checkpoint_data(path: Path) -> dict[str, Any]:
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(document, dict):
+        raise P8S53SmokeError("NSL checkpoint document is not an object")
+    return document
+
+
 def _checkpoint_version(path: Path) -> int:
-    checkpoint = json.loads(path.read_text(encoding="utf-8"))
+    checkpoint = _checkpoint_data(path)
     version = checkpoint.get("checkpoint_version")
     if isinstance(version, bool) or not isinstance(version, int) or version < 1:
         raise P8S53SmokeError("NSL checkpoint version is invalid")
     return version
+
+
+def _approval_persistence_counts(
+    ae_factory: sessionmaker[Session],
+    wc_factory: sessionmaker[Session],
+    *,
+    tenant_id: str,
+    approval_request_id: str,
+) -> dict[str, int]:
+    parameters = {"tenant": tenant_id, "request_id": approval_request_id}
+    with ae_factory() as session:
+        request_count = int(
+            session.execute(
+                text(
+                    "SELECT count(*) FROM ae_nsl_approval_request "
+                    "WHERE tenant_id = :tenant "
+                    "AND approval_request_id = :request_id"
+                ),
+                parameters,
+            ).scalar_one()
+        )
+        wait_count = int(
+            session.execute(
+                text(
+                    "SELECT count(*) FROM ae_wait_registration "
+                    "WHERE tenant_id = :tenant "
+                    "AND approval_request_id = :request_id"
+                ),
+                parameters,
+            ).scalar_one()
+        )
+    with wc_factory() as session:
+        work_item_count = int(
+            session.execute(
+                text(
+                    "SELECT count(*) FROM wc_approval_work_item "
+                    "WHERE tenant_id = :tenant AND source_ref = :request_id"
+                ),
+                parameters,
+            ).scalar_one()
+        )
+    return {
+        "protected_approval_requests": request_count,
+        "approval_waits": wait_count,
+        "approval_work_items": work_item_count,
+    }
 
 
 def _cleanup_case(
