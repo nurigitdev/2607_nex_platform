@@ -27,6 +27,8 @@ def run_worker(
     payload: dict[str, Any],
     readiness_path: Path,
     nsl_source: Path,
+    *,
+    fault_mode: str = "deterministic-mismatch",
 ) -> dict[str, Any]:
     from nex_ae_api.nsl_eos_post_write_verification import (
         HttpEosPostWriteVerificationAdapter,
@@ -38,12 +40,19 @@ def run_worker(
     from nsl.core import DataClassification, VerificationStatus
     from nsl.runtime_models import ExecutionContext, ExecutionRequest
     from nsl.security import ExecutionPrincipal, PrincipalVerification
-    from p8_reliability_faults import EosVerificationMismatchFaultPort
+    from p8_reliability_faults import (
+        EosVerificationMismatchFaultPort,
+        EosVerificationTimeoutFaultPort,
+    )
 
     command = payload.get("command")
+    if fault_mode not in {"deterministic-mismatch", "timeout"}:
+        raise P8S78VerificationFailedWorkerError(
+            "P8 verification fault mode is unsupported."
+        )
     if not isinstance(command, dict):
         raise P8S78VerificationFailedWorkerError(
-            "P8-S78 requires one canonical Voucher command."
+            "P8 verification fault worker requires one canonical Voucher command."
         )
     readiness = json.loads(readiness_path.read_text(encoding="utf-8"))["readiness"]
     public_api = load_nsl_v02_public_api(readiness)
@@ -65,7 +74,7 @@ def run_worker(
         actor_type="USER",
         roles=frozenset({"employee"}),
         scopes=frozenset({"finance:voucher-draft:create"}),
-        auth_context_ref="oa:p8-s78-protected",
+        auth_context_ref=f"oa:p8-{fault_mode}-protected",
         verification=PrincipalVerification.VERIFIED,
     )
     context = ExecutionContext(
@@ -95,16 +104,24 @@ def run_worker(
     outcome = asyncio.run(write_port.execute(request))
     if not isinstance(outcome, public_api.write_committed):
         raise P8S78VerificationFailedWorkerError(
-            "P8-S78 EOS write did not remain COMMITTED."
+            "P8 verification fault EOS write did not remain COMMITTED."
         )
-    fault_port = EosVerificationMismatchFaultPort(
-        HttpEosPostWriteVerificationAdapter(
-            public_api=public_api,
-            base_url=payload["eos_base_url"],
-            service_token=payload["service_token"],
-        ),
-        public_api,
+    verification_delegate = HttpEosPostWriteVerificationAdapter(
+        public_api=public_api,
+        base_url=payload["eos_base_url"],
+        service_token=payload["service_token"],
     )
+    if fault_mode == "timeout":
+        fault_port = EosVerificationTimeoutFaultPort(verification_delegate)
+        expected_status = VerificationStatus.UNKNOWN
+        schema_version = "p8_s79_verification_unknown_worker.v1"
+    else:
+        fault_port = EosVerificationMismatchFaultPort(
+            verification_delegate,
+            public_api,
+        )
+        expected_status = VerificationStatus.FAILED
+        schema_version = "p8_s78_verification_failed_worker.v1"
     verification = asyncio.run(
         public_api.post_write_verifier().verify(
             outcome.result,
@@ -113,17 +130,19 @@ def run_worker(
             fault_port,
         )
     )
-    if verification.status is not VerificationStatus.FAILED:
+    if verification.status is not expected_status:
         raise P8S78VerificationFailedWorkerError(
-            "P8-S78 deterministic mismatch did not become Verification FAILED."
+            "P8 verification fault did not produce the expected status."
         )
     if verification.commit_state.value != "COMMITTED":
         raise P8S78VerificationFailedWorkerError(
-            "P8-S78 verification changed the committed business state."
+            "P8 verification fault changed the committed business state."
         )
     fault_evidence = fault_port.evidence
+    injected_matched = getattr(fault_evidence, "injected_matched", None)
+    injected_failure = getattr(fault_evidence, "injected_exception", None)
     return {
-        "schema_version": "p8_s78_verification_failed_worker.v1",
+        "schema_version": schema_version,
         "status": "PASS",
         "commit_state": outcome.commit_state.value,
         "verification_commit_state": verification.commit_state.value,
@@ -133,7 +152,8 @@ def run_worker(
         "write_dispatch_attempts": write_port.dispatch_attempts,
         "verification_read_attempts": fault_evidence.read_attempts,
         "baseline_matched": fault_evidence.baseline_matched,
-        "injected_matched": fault_evidence.injected_matched,
+        "injected_matched": injected_matched,
+        "injected_failure": injected_failure,
         "business_operation_id": str(outcome.identity.business_operation_id),
         "idempotency_key": str(outcome.identity.idempotency_key),
         "payload_hash": str(outcome.identity.payload_hash),
@@ -234,12 +254,22 @@ def main() -> int:
     parser.add_argument("--ae-source", required=True, type=Path)
     parser.add_argument("--shared-source", required=True, type=Path)
     parser.add_argument("--nsl-source", required=True, type=Path)
+    parser.add_argument(
+        "--fault-mode",
+        choices=("deterministic-mismatch", "timeout"),
+        default="deterministic-mismatch",
+    )
     args = parser.parse_args()
     sys.path[:0] = [str(args.wheel), str(args.ae_source), str(args.shared_source)]
     payload = json.load(sys.stdin)
     print(
         json.dumps(
-            run_worker(payload, args.readiness, args.nsl_source),
+            run_worker(
+                payload,
+                args.readiness,
+                args.nsl_source,
+                fault_mode=args.fault_mode,
+            ),
             sort_keys=True,
         )
     )

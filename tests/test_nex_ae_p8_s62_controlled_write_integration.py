@@ -256,6 +256,22 @@ def test_committed_write_with_failed_verification_is_not_retried() -> None:
     assert EVENTS.count("verification") == 1
 
 
+def test_committed_write_with_unknown_verification_is_not_retried() -> None:
+    EVENTS.clear()
+    PostWriteVerifier.result = VerificationResult("UNKNOWN")
+    try:
+        result = asyncio.run(
+            _integration(WriteCommitted("committed-result")).execute(_request())
+        )
+    finally:
+        PostWriteVerifier.result = VerificationResult()
+
+    assert isinstance(result.outcome, WriteCommitted)
+    assert result.verification == VerificationResult("UNKNOWN")
+    assert EVENTS.count("write") == 1
+    assert EVENTS.count("verification") == 1
+
+
 @pytest.mark.parametrize("outcome", [WriteNotCommitted(), WriteCommitUnknown()])
 def test_noncommitted_outcome_skips_post_write_verification(outcome: object) -> None:
     EVENTS.clear()

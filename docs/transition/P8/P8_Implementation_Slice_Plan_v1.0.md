@@ -2330,6 +2330,32 @@ No production API contract, table, or migration changed. P8-S79 is next.
 
 Same requirement for dependency timeout/unknown read outcome.
 
+### Implementation Status (2026-10-24)
+
+**CLOSED.** The reusable `EosVerificationTimeoutFaultPort` performs one exact
+healthy EOS read-back and then discards that response as `TimeoutError`.
+Admitted NSL maps it to `VerificationStatus.UNKNOWN` with
+`VERIFICATION_TIMEOUT`, while the commit state remains `COMMITTED`.
+
+Actual AE/WC/OA/EOS test databases, the admitted NSL v0.2 wheel, and
+digest-pinned RustFS proved:
+
+```text
+EOS CREATE dispatches             = 1
+authoritative verification reads  = 1
+CommitState                       = COMMITTED
+VerificationStatus                = UNKNOWN
+verification reason               = VERIFICATION_TIMEOUT
+Voucher Drafts                    = 1
+attachment associations           = 3
+outbox rows                       = 1
+manifest/attachment/object drift  = 0
+duplicate RustFS object versions  = 0
+test residue                      = 0
+```
+
+No production API contract, table, or migration changed. P8-S80 is next.
+
 ---
 
 ## P8-S80 — Outbox Publication ACK Loss

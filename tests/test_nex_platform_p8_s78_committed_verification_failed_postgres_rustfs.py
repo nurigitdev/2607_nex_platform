@@ -367,6 +367,8 @@ def _run_verification_failure(
     *,
     eos_base_url: str,
     service_token: str,
+    fault_mode: str = "deterministic-mismatch",
+    nsl_source: Path = NSL_SOURCE,
 ) -> dict[str, Any]:
     wheel = (
         ROOT
@@ -388,7 +390,9 @@ def _run_verification_failure(
             "--shared-source",
             str(ROOT / "services/_shared"),
             "--nsl-source",
-            str(NSL_SOURCE),
+            str(nsl_source),
+            "--fault-mode",
+            fault_mode,
         ],
         input=json.dumps(
             {
@@ -405,8 +409,13 @@ def _run_verification_failure(
     return json.loads(completed.stdout)
 
 
-def _object_versions(client: Any, object_key: str) -> tuple[tuple[Any, ...], ...]:
-    response = client.list_object_versions(Bucket=BUCKET, Prefix=object_key)
+def _object_versions(
+    client: Any,
+    object_key: str,
+    *,
+    bucket: str = BUCKET,
+) -> tuple[tuple[Any, ...], ...]:
+    response = client.list_object_versions(Bucket=bucket, Prefix=object_key)
     return tuple(
         sorted(
             (

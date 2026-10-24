@@ -181,3 +181,71 @@ class EosVerificationMismatchFaultPort:
             )
         self._injected_matched = False
         return injected
+
+
+class EosVerificationTimeoutFaultError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class EosVerificationTimeoutFaultEvidence:
+    read_attempts: int
+    baseline_matched: bool
+    injected_exception: str
+    expected_reason_code: str
+
+
+class EosVerificationTimeoutFaultPort:
+    """Discard one healthy EOS verification response as a timeout."""
+
+    EXPECTED_REASON_CODE = "VERIFICATION_TIMEOUT"
+
+    def __init__(self, delegate: Any) -> None:
+        if not callable(getattr(delegate, "read", None)):
+            raise TypeError("EOS verification timeout delegate must expose read().")
+        self._delegate = delegate
+        self._read_attempts = 0
+        self._baseline_matched: bool | None = None
+        self._injected_exception: str | None = None
+
+    @property
+    def read_attempts(self) -> int:
+        return self._read_attempts
+
+    @property
+    def evidence(self) -> EosVerificationTimeoutFaultEvidence:
+        if self._baseline_matched is None or self._injected_exception is None:
+            raise EosVerificationTimeoutFaultError(
+                "EOS verification timeout evidence is unavailable before injection."
+            )
+        return EosVerificationTimeoutFaultEvidence(
+            read_attempts=self._read_attempts,
+            baseline_matched=self._baseline_matched,
+            injected_exception=self._injected_exception,
+            expected_reason_code=self.EXPECTED_REASON_CODE,
+        )
+
+    async def read(self, request: object) -> object:
+        if self._read_attempts != 0:
+            raise EosVerificationTimeoutFaultError(
+                "EOS verification timeout fault port is one-shot."
+            )
+        self._read_attempts = 1
+        baseline = await self._delegate.read(request)
+        if (
+            getattr(baseline, "matched", None) is not True
+            or getattr(baseline, "request_hash", None)
+            != getattr(request, "request_hash", None)
+            or getattr(baseline, "business_reference", None)
+            != getattr(request, "business_reference", None)
+            or getattr(baseline, "observed_at", None) is None
+        ):
+            raise EosVerificationTimeoutFaultError(
+                "EOS verification timeout injection requires an exact healthy "
+                "baseline observation."
+            )
+        self._baseline_matched = True
+        self._injected_exception = "TimeoutError"
+        raise TimeoutError(
+            "EOS post-WRITE verification response was deliberately discarded."
+        )

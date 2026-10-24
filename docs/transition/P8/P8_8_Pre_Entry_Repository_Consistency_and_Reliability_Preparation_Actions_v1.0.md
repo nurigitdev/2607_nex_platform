@@ -1,6 +1,6 @@
 # P8.8 Pre-Entry Repository Consistency and Reliability Preparation Actions v1.0
 
-**Status:** P8-CA03 CLOSED / P8-S76 through P8-S78 CLOSED / P8-S79 READY
+**Status:** P8-CA03 CLOSED / P8-S76 through P8-S79 CLOSED / P8-S80 READY
 **Phase:** P8.7A → P8.8 Transition
 **Purpose:** Close small repository/configuration/evidence gaps before starting P8.8 Reliability / Reconciliation Closure
 **Platform Repository:** `nurigitdev/2607_nex_platform`
@@ -484,6 +484,23 @@ preserve original manifest identity
 
 Recommended for P8-S79.
 
+Implementation closure on 2026-10-24:
+
+```text
+actual EOS healthy read-back     = 1
+injected unavailable result      = TimeoutError
+CommitState                      = COMMITTED
+VerificationStatus              = UNKNOWN
+reason                           = VERIFICATION_TIMEOUT
+EOS CREATE dispatches            = 1
+Voucher / associations / outbox  = 1 / 3 / 1
+manifest and RustFS object drift = 0
+```
+
+The fault harness proves the endpoint was healthy before discarding the
+response, and is one-shot. An unavailable result therefore cannot trigger
+WRITE, upload, association, or manifest recreation.
+
 ---
 
 ## P8.8-A05 — Reconciliation Detects Attachment Lineage Drift
@@ -819,5 +836,7 @@ prove `COMMITTED`, `NOT_COMMITTED`, and still-`UNKNOWN` outcomes. P8-S78 proved
 that a correctly bound deterministic verification mismatch produces
 `VerificationStatus.FAILED` without changing `CommitState.COMMITTED` or
 recreating the Voucher, associations, manifest, or RustFS objects. Protected
-evidence recorded one EOS CREATE dispatch and zero residue. P8-S79 is now the
-next canonical Slice.
+evidence recorded one EOS CREATE dispatch and zero residue. P8-S79 then proved
+that a discarded verification response becomes `VerificationStatus.UNKNOWN`
+while the committed Voucher, attachment lineage, and objects remain unchanged.
+P8-S80 is now the next canonical Slice.
