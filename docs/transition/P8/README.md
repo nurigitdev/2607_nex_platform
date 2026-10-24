@@ -31,7 +31,7 @@ P8.7   CLOSED
 P8.7A  CLOSED through P8-S75H
 P8-CA03 CLOSED
 P8.8   CLOSED through P8-S86
-P8.9   IN PROGRESS; P8-S87 through P8-S89 CLOSED, P8-S90 is the next Slice
+P8.9   IN PROGRESS; P8-S87 through P8-S90 CLOSED, P8-S91 is the next Slice
 ```
 
 Current admitted NSL runtime:
@@ -84,7 +84,13 @@ retained the S88 result while statement coverage reached 96.72% and branch
 coverage reached 96.11%. The existing `96 / 94` floor passed without changing
 the coverage source roots, threshold, or sole `*/__init__.py` omission. NSL
 native certification remains independent of the Platform denominator and its
-admitted identity is unchanged. Before continuing to P8-S90, read
+admitted identity is unchanged. P8-S90 then guarded and freshly reset the
+actual AE/WC/OA/EOS test databases, applied all 105 current migrations, and
+ran 74 selected PostgreSQL cases with zero skip or failure. Forty of those
+cases were protected skips in the default S89 profile and actual executions in
+S90. Baseline and post-suite row-count/content fingerprints matched across all
+133 public tables, proving zero database residue. Before continuing to P8-S91,
+read
 `P8_8_Pre_Entry_Repository_Consistency_and_Reliability_Preparation_Actions_v1.0.md`
 as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s76_unknown_commit_state_fault_injection.md` plus
@@ -100,7 +106,8 @@ as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s86_full_reliability_protected_gate.md` plus
 `docs/slices/p8_s87_contract_openapi_example_hygiene.md` and
 `docs/slices/p8_s88_full_repository_regression.md` and
-`docs/slices/p8_s89_coverage_closure.md` as execution evidence.
+`docs/slices/p8_s89_coverage_closure.md` and
+`docs/slices/p8_s90_actual_db_full_gate.md` as execution evidence.
 
 ---
 

@@ -2724,6 +2724,32 @@ EOS
 
 PostgreSQL suite with reset and residue verification.
 
+### Implemented
+
+P8-S90 connected directly to the service-owned `nex_ae_test`, `nex_wc_test`,
+`nex_oa_test`, and `nex_eos_test` databases under their expected roles. It
+guarded the `_test` identities, reset each public schema, and freshly applied
+all 60 AE, 13 WC, 18 OA, and 14 EOS migrations with zero skipped migration.
+
+The accepted protected run selected 38 PostgreSQL modules and completed all 74
+cases with zero skip, failure, or error. Cross-checking the same identities in
+the P8-S89 JUnit report proved that 40 cases were protected skips in the
+default profile and actual executions in S90. Before acceptance, the gate
+found and closed a hard-coded P8-S31 WC migration-head assertion and a local
+NSL `0.1.0` environment drift; the rerun used the digest-pinned admitted NSL
+`0.2.0` wheel.
+
+Fresh-baseline and post-suite fingerprints matched for all 133 public tables
+across the four databases, including the three expected AE prompt seed rows.
+There was no missing/extra table, row-count drift, row-content drift, or test
+residue. See `docs/slices/p8_s90_actual_db_full_gate.md` for execution and
+evidence details.
+
+### Gate
+
+**P8-S90 CLOSED**. Actual AE/WC/OA/EOS PostgreSQL reset, migration, protected
+execution, and zero-residue verification pass; P8-S91 is next.
+
 ---
 
 ## P8-S91 — IA Playwright Full Gate

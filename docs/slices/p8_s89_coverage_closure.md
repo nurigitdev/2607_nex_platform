@@ -113,8 +113,8 @@ its source is not folded into the Platform coverage denominator. The admitted
 P8 identity remains:
 
 ```text
-source revision = a5a0f5fd7acf4adbbccf890dca2f9998d055d65e
-certification   = nsl-linux-quality:a5a0f5fd7acf4adbbccf890dca2f9998d055d65e
+source revision = c0a8d4e125ee129c4556d896356237bb3973582d
+certification   = nsl-linux-quality:c0a8d4e125ee129c4556d896356237bb3973582d
 wheel sha256    = 862958a5eab982a71bec5ee58b9e530867d6c25f65d8b770efb29ca78ce7f135
 ```
 

@@ -11,7 +11,11 @@ from nex_wc.coordination import (
     SqlAlchemyCoordinationRepository,
     WorkCoordinationService,
 )
-from nex_wc.work_items import SqlAlchemyWorkItemRepository, WorkItemError, WorkItemService
+from nex_wc.work_items import (
+    SqlAlchemyWorkItemRepository,
+    WorkItemError,
+    WorkItemService,
+)
 from run_migrations import load_migrations
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
@@ -266,8 +270,7 @@ def _assert_database_identity_and_migrations(engine) -> None:
         applied = set(
             connection.execute(text("SELECT version FROM schema_migrations")).scalars()
         )
-    assert set(expected) <= applied
-    assert expected[-1] == "1005_wc_assignment_execution"
+        assert applied == set(expected)
 
 
 def test_s31_delegation_guard_acceptance_inventory_is_complete() -> None:
