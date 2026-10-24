@@ -205,6 +205,22 @@ def _request(**changes: object) -> WriteCallRequest:
     return WriteCallRequest(**values)  # type: ignore[arg-type]
 
 
+def _attachment_request(**changes: object) -> WriteCallRequest:
+    arguments = {
+        "schema_version": Envelope("command.v1"),
+        "attachment_batch_id": Envelope(ATTACHMENT_BATCH_ID),
+        "attachment_manifest_hash": Envelope(ATTACHMENT_MANIFEST_HASH),
+        "attachments": Envelope(
+            [
+                {"attachment_id": ATTACHMENT_ID_1, "object_ref": "s3://one"},
+                {"attachment_id": ATTACHMENT_ID_2, "object_ref": "s3://two"},
+            ]
+        ),
+    }
+    arguments.update(changes.pop("arguments", {}))
+    return _request(arguments=MappingProxyType(arguments), **changes)
+
+
 def _unknown(request: WriteCallRequest | None = None) -> WriteCommitUnknown:
     request = request or _request()
     return WriteCommitUnknown(
@@ -307,11 +323,212 @@ def test_committed_attachment_lineage_is_canonical_and_preserved_as_evidence() -
         lambda request: httpx.Response(200, json=payload, request=request)
     )
 
-    outcome = _reconcile(_adapter(transport))
+    outcome = _reconcile(_adapter(transport), request=_attachment_request())
 
     assert isinstance(outcome, WriteCommitted)
     assert outcome.result.evidence_refs[-1] == (
         f"eos.attachment_manifest:{ATTACHMENT_BATCH_ID}:" f"{ATTACHMENT_MANIFEST_HASH}"
+    )
+
+
+@pytest.mark.parametrize(
+    "changes",
+    (
+        {"attachment_batch_id": "87000000-0000-4000-8000-000000000061"},
+        {"attachment_manifest_hash": "sha256:" + "f" * 64},
+        {"attachment_ids": [ATTACHMENT_ID_1]},
+        {
+            "attachment_ids": [
+                ATTACHMENT_ID_1,
+                "88000000-0000-4000-8000-000000000062",
+            ]
+        },
+    ),
+)
+def test_committed_attachment_lineage_must_match_original_write(changes) -> None:
+    payload = _projection()
+    payload.update(
+        attachment_batch_id=ATTACHMENT_BATCH_ID,
+        attachment_manifest_hash=ATTACHMENT_MANIFEST_HASH,
+        attachment_ids=[ATTACHMENT_ID_1, ATTACHMENT_ID_2],
+    )
+    payload.update(changes)
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(200, json=payload, request=request)
+    )
+
+    outcome = _reconcile(_adapter(transport), request=_attachment_request())
+
+    assert isinstance(outcome, WriteCommitUnknown)
+    assert outcome.identity.payload_hash == PAYLOAD_HASH
+    assert outcome.evidence_refs[0] == (
+        "eos.reason:EOS_RECONCILIATION_RESPONSE_UNTRUSTWORTHY"
+    )
+
+
+@pytest.mark.parametrize(
+    ("state", "reconciliation", "outcome_type"),
+    (
+        ("NOT_COMMITTED", "NOT_COMMITTED_CONFIRMED", WriteNotCommitted),
+        ("UNKNOWN_COMMIT_STATE", "RECONCILIATION_REQUIRED", WriteCommitUnknown),
+    ),
+)
+def test_nonterminal_attachment_write_preserves_original_outcome_identity(
+    state: str,
+    reconciliation: str,
+    outcome_type: type,
+) -> None:
+    request = _attachment_request()
+    transport = httpx.MockTransport(
+        lambda http_request: httpx.Response(
+            200,
+            json=_projection(state=state, reconciliation=reconciliation),
+            request=http_request,
+        )
+    )
+
+    outcome = _reconcile(_adapter(transport), request=request)
+
+    assert isinstance(outcome, outcome_type)
+    assert outcome.identity == WriteOutcomeIdentity.from_request(request)
+    assert outcome.identity.payload_hash == PAYLOAD_HASH
+
+
+def test_request_attachment_order_does_not_change_identity_match() -> None:
+    request = _attachment_request(
+        arguments={
+            "attachments": Envelope(
+                [
+                    {"attachment_id": ATTACHMENT_ID_2, "object_ref": "s3://two"},
+                    {"attachment_id": ATTACHMENT_ID_1, "object_ref": "s3://one"},
+                ]
+            )
+        }
+    )
+    payload = _projection()
+    payload.update(
+        attachment_batch_id=ATTACHMENT_BATCH_ID,
+        attachment_manifest_hash=ATTACHMENT_MANIFEST_HASH,
+        attachment_ids=[ATTACHMENT_ID_1, ATTACHMENT_ID_2],
+    )
+
+    outcome = _reconcile(
+        _adapter(
+            httpx.MockTransport(
+                lambda http_request: httpx.Response(
+                    200, json=payload, request=http_request
+                )
+            )
+        ),
+        request=request,
+    )
+
+    assert isinstance(outcome, WriteCommitted)
+
+
+def test_frozen_request_attachment_sequence_matches_canonical_projection() -> None:
+    request = _attachment_request(
+        arguments={
+            "attachments": Envelope(
+                (
+                    {"attachment_id": ATTACHMENT_ID_1, "object_ref": "s3://one"},
+                    {"attachment_id": ATTACHMENT_ID_2, "object_ref": "s3://two"},
+                )
+            )
+        }
+    )
+    payload = _projection()
+    payload.update(
+        attachment_batch_id=ATTACHMENT_BATCH_ID,
+        attachment_manifest_hash=ATTACHMENT_MANIFEST_HASH,
+        attachment_ids=[ATTACHMENT_ID_1, ATTACHMENT_ID_2],
+    )
+
+    outcome = _reconcile(
+        _adapter(
+            httpx.MockTransport(
+                lambda http_request: httpx.Response(
+                    200, json=payload, request=http_request
+                )
+            )
+        ),
+        request=request,
+    )
+
+    assert isinstance(outcome, WriteCommitted)
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    (
+        object(),
+        MappingProxyType({"attachments": Envelope("not-a-sequence")}),
+        MappingProxyType(
+            {
+                "attachments": Envelope([]),
+                "attachment_batch_id": Envelope(ATTACHMENT_BATCH_ID),
+            }
+        ),
+        MappingProxyType(
+            {
+                "attachments": Envelope([{"attachment_id": ATTACHMENT_ID_1}]),
+            }
+        ),
+        MappingProxyType(
+            {
+                "attachments": Envelope([{"attachment_id": ATTACHMENT_ID_1}]),
+                "attachment_batch_id": Envelope("bad"),
+                "attachment_manifest_hash": Envelope(ATTACHMENT_MANIFEST_HASH),
+            }
+        ),
+        MappingProxyType(
+            {
+                "attachments": Envelope([{"attachment_id": ATTACHMENT_ID_1}]),
+                "attachment_batch_id": Envelope(ATTACHMENT_BATCH_ID),
+                "attachment_manifest_hash": Envelope("bad"),
+            }
+        ),
+        MappingProxyType(
+            {
+                "attachments": Envelope(["bad-item"]),
+                "attachment_batch_id": Envelope(ATTACHMENT_BATCH_ID),
+                "attachment_manifest_hash": Envelope(ATTACHMENT_MANIFEST_HASH),
+            }
+        ),
+        MappingProxyType(
+            {
+                "attachments": Envelope([{"attachment_id": "bad"}]),
+                "attachment_batch_id": Envelope(ATTACHMENT_BATCH_ID),
+                "attachment_manifest_hash": Envelope(ATTACHMENT_MANIFEST_HASH),
+            }
+        ),
+        MappingProxyType(
+            {
+                "attachments": Envelope(
+                    [
+                        {"attachment_id": ATTACHMENT_ID_1},
+                        {"attachment_id": ATTACHMENT_ID_1},
+                    ]
+                ),
+                "attachment_batch_id": Envelope(ATTACHMENT_BATCH_ID),
+                "attachment_manifest_hash": Envelope(ATTACHMENT_MANIFEST_HASH),
+            }
+        ),
+    ),
+)
+def test_malformed_request_attachment_lineage_remains_unknown(arguments) -> None:
+    request = _request(arguments=arguments)
+    transport = httpx.MockTransport(
+        lambda http_request: httpx.Response(
+            200, json=_projection(), request=http_request
+        )
+    )
+
+    outcome = _reconcile(_adapter(transport), request=request)
+
+    assert isinstance(outcome, WriteCommitUnknown)
+    assert outcome.evidence_refs[0] == (
+        "eos.reason:EOS_RECONCILIATION_RESPONSE_UNTRUSTWORTHY"
     )
 
 

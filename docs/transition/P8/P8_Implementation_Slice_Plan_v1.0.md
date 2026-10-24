@@ -2262,6 +2262,32 @@ UNKNOWN → still UNKNOWN
 
 No duplicate Voucher Draft.
 
+### Implementation status
+
+`CLOSED` on 2026-10-24.
+
+The existing AE reconciliation adapter now compares every EOS `COMMITTED`
+attachment lineage against the original admitted NSL WRITE batch, manifest
+hash, and canonical attachment ID set. Drift or malformed lineage remains
+`UNKNOWN_COMMIT_STATE` and cannot be promoted to committed.
+
+Actual AE/WC/OA/EOS test databases, the admitted NSL v0.2 wheel, and
+digest-pinned RustFS proved:
+
+```text
+UNKNOWN -> COMMITTED              = PASS
+UNKNOWN -> NOT_COMMITTED          = PASS
+UNKNOWN -> still UNKNOWN          = PASS
+EOS CREATE dispatches             = 1
+Voucher Drafts                    = 1
+attachment associations           = 3
+manifest/attachment/object drift  = 0
+duplicate RustFS object versions  = 0
+test residue                      = 0
+```
+
+No API contract, table, or migration changed. P8-S78 is next.
+
 ---
 
 ## P8-S78 — COMMITTED + Verification FAILED

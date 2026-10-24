@@ -1,6 +1,6 @@
 # P8.8 Pre-Entry Repository Consistency and Reliability Preparation Actions v1.0
 
-**Status:** P8-CA03 CLOSED / P8-S76 CLOSED / P8-S77 READY
+**Status:** P8-CA03 CLOSED / P8-S76 and P8-S77 CLOSED / P8-S78 READY
 **Phase:** P8.7A → P8.8 Transition
 **Purpose:** Close small repository/configuration/evidence gaps before starting P8.8 Reliability / Reconciliation Closure
 **Platform Repository:** `nurigitdev/2607_nex_platform`
@@ -798,7 +798,8 @@ The 98 skips remain explicit protected/live opt-ins. P8-S75H has separate
 zero-skip protected evidence above.
 
 P8-S76 subsequently consumed this handoff and closed the attachment-bearing
-ACK-loss fault-injection boundary. Its protected evidence recorded exactly one
-EOS dispatch, one Voucher, three attachment associations, stable manifest and
-RustFS object identities, and zero residue. P8-S77 is now the next canonical
-Slice.
+ACK-loss fault-injection boundary. P8-S77 then used authoritative EOS reads to
+prove `COMMITTED`, `NOT_COMMITTED`, and still-`UNKNOWN` outcomes. Across both
+Slices, protected evidence recorded one EOS CREATE dispatch, one Voucher,
+three attachment associations, stable manifest and RustFS object identities,
+and zero residue. P8-S78 is now the next canonical Slice.

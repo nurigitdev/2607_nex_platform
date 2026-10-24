@@ -332,6 +332,7 @@ def _validated_projection(
     if operation_ref["id"] != request.business_operation_id:
         raise _invalid("EOS reconciliation transaction reference is invalid.")
     observed_at = _utc_datetime(payload.get("last_observed_at"))
+    requested_attachment_lineage = _request_attachment_lineage(request)
     state = payload.get("commit_state")
     reconciliation = payload.get("reconciliation_status")
     voucher_ref = payload.get("voucher_ref")
@@ -340,6 +341,14 @@ def _validated_projection(
         attachment_batch_id, attachment_manifest_hash, attachment_ids = (
             _attachment_lineage(payload, committed=True)
         )
+        if (
+            attachment_batch_id,
+            attachment_manifest_hash,
+            attachment_ids,
+        ) != requested_attachment_lineage:
+            raise _invalid(
+                "EOS reconciliation attachment lineage differs from the WRITE request."
+            )
     elif state == "NOT_COMMITTED" and reconciliation == "NOT_COMMITTED_CONFIRMED":
         if voucher_ref is not None:
             raise _invalid("A non-committed reconciliation cannot contain a voucher.")
@@ -394,6 +403,56 @@ def _attachment_lineage(
     ):
         raise _invalid("EOS reconciliation attachment identities are not canonical.")
     return normalized_batch, normalized_hash, normalized_ids
+
+
+def _request_attachment_lineage(
+    request: object,
+) -> tuple[str | None, str | None, list[str]]:
+    arguments = getattr(request, "arguments", None)
+    if not isinstance(arguments, Mapping):
+        raise _invalid("NSL WRITE request arguments are unavailable for reconciliation.")
+    raw_attachments = _argument_value(arguments, "attachments", default=[])
+    raw_batch = _argument_value(arguments, "attachment_batch_id")
+    raw_manifest_hash = _argument_value(arguments, "attachment_manifest_hash")
+    if not isinstance(raw_attachments, (list, tuple)):
+        raise _invalid("NSL WRITE request attachment identities are invalid.")
+    if not raw_attachments:
+        if raw_batch is None and raw_manifest_hash is None:
+            return None, None, []
+        raise _invalid("NSL WRITE request attachment lineage is inconsistent.")
+    if raw_batch is None or raw_manifest_hash is None:
+        raise _invalid("NSL WRITE request attachment lineage is incomplete.")
+    try:
+        normalized_batch = str(uuid.UUID(str(raw_batch)))
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise _invalid("NSL WRITE request attachment batch identity is invalid.") from exc
+    try:
+        normalized_hash = validate_hash_ref(raw_manifest_hash)
+    except (TypeError, ValueError) as exc:
+        raise _invalid("NSL WRITE request attachment manifest hash is invalid.") from exc
+    normalized_ids: list[str] = []
+    for item in raw_attachments:
+        if not isinstance(item, Mapping):
+            raise _invalid("NSL WRITE request attachment item is invalid.")
+        try:
+            normalized_ids.append(str(uuid.UUID(str(item.get("attachment_id")))))
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise _invalid("NSL WRITE request attachment identity is invalid.") from exc
+    if len(set(normalized_ids)) != len(normalized_ids):
+        raise _invalid("NSL WRITE request attachment identities are not unique.")
+    return normalized_batch, normalized_hash, sorted(normalized_ids)
+
+
+def _argument_value(
+    arguments: Mapping[str, Any],
+    name: str,
+    *,
+    default: object = None,
+) -> object:
+    envelope = arguments.get(name)
+    if envelope is None:
+        return default
+    return getattr(envelope, "value", default)
 
 
 def _unknown(

@@ -30,7 +30,7 @@ P8.6   CLOSED
 P8.7   CLOSED
 P8.7A  CLOSED through P8-S75H
 P8-CA03 CLOSED
-P8.8   IN PROGRESS; P8-S76 CLOSED / P8-S77 is next
+P8.8   IN PROGRESS; P8-S76 and P8-S77 CLOSED / P8-S78 is next
 ```
 
 Current admitted NSL runtime:
@@ -45,13 +45,14 @@ wheel_sha256     = sha256:862958a5eab982a71bec5ee58b9e530867d6c25f65d8b770efb29c
 The historical NSL admission block was resolved by P8-S01 through P8-S06.
 The current attachment baseline was closed by P8-S75H. P8-CA03 aligned the
 Repository Full Gate with the canonical `96 / 94` policy and made the P8.8
-reliability matrix attachment-aware. P8-S76 then proved attachment-bearing
-commit-acknowledgement loss without blind redispatch. Before implementing
-P8-S77, read
+reliability matrix attachment-aware. P8-S76 proved attachment-bearing
+commit-acknowledgement loss without blind redispatch, and P8-S77 resolved all
+three authoritative reconciliation outcomes without duplicate mutation. Before
+implementing P8-S78, read
 `P8_8_Pre_Entry_Repository_Consistency_and_Reliability_Preparation_Actions_v1.0.md`
 as the normative P8-CA03 amendment to the P8.8 reliability matrix and
-`docs/slices/p8_s76_unknown_commit_state_fault_injection.md` as its first
-execution evidence.
+`docs/slices/p8_s76_unknown_commit_state_fault_injection.md` plus
+`docs/slices/p8_s77_reconciliation_outcomes.md` as execution evidence.
 
 ---
 
