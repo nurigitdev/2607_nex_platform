@@ -9,7 +9,8 @@ import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -97,6 +98,14 @@ class _WcClient:
         return self._service.create_or_get(work_item)
 
 
+class _NslApprovalEventClient:
+    def __init__(self, service: SqlAlchemyNslApprovalEventService) -> None:
+        self._service = service
+
+    def deliver(self, event: Mapping[str, Any]) -> Mapping[str, Any]:
+        return self._service.ingest(event)
+
+
 class _AuthorizationSource:
     def __init__(self, *, tenant_id: str, subject_id: str, decision_ref: str) -> None:
         self._tenant_id = tenant_id
@@ -124,6 +133,7 @@ def run_p8_s53_approval_resume_postgres(
     wheel_directory: Path = DEFAULT_WHEEL_DIRECTORY,
     report_path: Path = DEFAULT_REPORT,
     python_bin: str = sys.executable,
+    approval_event_client_factory: Callable[[Any], Any] | None = None,
 ) -> dict[str, Any]:
     env = dict(os.environ if environ is None else environ)
     if not execute or env.get(SMOKE_ENV) != "1":
@@ -178,6 +188,7 @@ def run_p8_s53_approval_resume_postgres(
                 env=v02_env,
                 python_bin=python_bin,
                 lock_path=lock_path,
+                approval_event_client_factory=approval_event_client_factory,
             )
         checks = {
             "release_identity_exact": release["wheel_sha256"] == lock["wheel_sha256"],
@@ -270,6 +281,7 @@ def _execute_scenarios(
     env: Mapping[str, str],
     python_bin: str,
     lock_path: Path,
+    approval_event_client_factory: Callable[[Any], Any] | None = None,
 ) -> dict[str, Any]:
     original_snapshot_builder = p5_s5.build_capability_snapshot
     original_plan_builder = p5_s5.build_deterministic_agent_plan
@@ -353,6 +365,7 @@ def _execute_scenarios(
                     env=env,
                     python_bin=python_bin,
                     lock_path=lock_path,
+                    approval_event_client_factory=approval_event_client_factory,
                 )
                 captured.update(verification["scenario"])
                 return verification
@@ -390,6 +403,7 @@ def _verify_scenario(
     approver_id_override: str | None = None,
     nsl_subject_id_override: str | None = None,
     business_operation_id_override: str | None = None,
+    approval_event_client_factory: Callable[[Any], Any] | None = None,
 ) -> dict[str, Any]:
     ae_factory = fixture["factory"]
     tenant_id = str(fixture["tenant_id"])
@@ -567,7 +581,27 @@ def _verify_scenario(
                 "nsl_execution_id": f"{nsl_execution_id}-mismatch",
             }
         )
-        matched = event_service.ingest(event)
+        ack_loss_evidence = None
+        if approval_event_client_factory is None:
+            matched = event_service.ingest(event)
+        else:
+            delivery_client = approval_event_client_factory(
+                _NslApprovalEventClient(event_service)
+            )
+            try:
+                delivery_client.deliver(event)
+            except TimeoutError:
+                matched = delivery_client.deliver(event)
+            else:
+                raise P8S53SmokeError(
+                    "approval event ACK-loss client did not discard the first ACK"
+                )
+            evidence_value = getattr(delivery_client, "evidence", None)
+            if evidence_value is None:
+                raise P8S53SmokeError(
+                    "approval event ACK-loss evidence is unavailable"
+                )
+            ack_loss_evidence = asdict(evidence_value)
         if matched["inbox_state"] != "MATCHED":
             raise P8S53SmokeError("valid approval event did not enqueue resume")
         event_replay = event_service.ingest(event)
@@ -653,6 +687,7 @@ def _verify_scenario(
             "mismatch_event": mismatch,
             "matched_event": matched,
             "event_replay": event_replay,
+            "approval_event_ack_loss": ack_loss_evidence,
             "resume_enqueue_replay": {
                 "runtime_job_id": replayed_resume["runtime_job_id"],
                 "state": replayed_resume["state"],

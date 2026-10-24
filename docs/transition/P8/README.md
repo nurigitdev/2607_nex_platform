@@ -30,7 +30,7 @@ P8.6   CLOSED
 P8.7   CLOSED
 P8.7A  CLOSED through P8-S75H
 P8-CA03 CLOSED
-P8.8   IN PROGRESS; P8-S76 through P8-S80 CLOSED / P8-S81 is next
+P8.8   IN PROGRESS; P8-S76 through P8-S81 CLOSED / P8-S82 is next
 ```
 
 Current admitted NSL runtime:
@@ -50,16 +50,19 @@ commit-acknowledgement loss without blind redispatch, P8-S77 resolved all
 three authoritative reconciliation outcomes without duplicate mutation,
 P8-S78 proved that deterministic verification failure preserves the committed
 Voucher and exact attachment lineage, P8-S79 proved the same invariant for a
-timed-out, unknown verification outcome, and P8-S80 proved that publication
-ACK loss retries the stable outbox event without repeating business or object
-mutation. Before implementing P8-S81, read
+timed-out, unknown verification outcome, P8-S80 proved that publication ACK
+loss retries the stable outbox event without repeating business or object
+mutation, and P8-S81 proved that approval-event ACK loss creates one semantic
+resume and one checkpoint consume while preserving exact approval lineage.
+Before implementing P8-S82, read
 `P8_8_Pre_Entry_Repository_Consistency_and_Reliability_Preparation_Actions_v1.0.md`
 as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s76_unknown_commit_state_fault_injection.md` plus
 `docs/slices/p8_s77_reconciliation_outcomes.md` and
 `docs/slices/p8_s78_committed_verification_failed.md` and
 `docs/slices/p8_s79_committed_verification_unknown.md` and
-`docs/slices/p8_s80_outbox_publication_ack_loss.md` as execution evidence.
+`docs/slices/p8_s80_outbox_publication_ack_loss.md` and
+`docs/slices/p8_s81_approval_event_ack_loss.md` as execution evidence.
 
 ---
 

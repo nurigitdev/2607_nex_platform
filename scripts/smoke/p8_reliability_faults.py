@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
+
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
 
 class EosCommitAckLossFaultError(RuntimeError):
@@ -300,3 +303,123 @@ class EosOutboxAckLossFaultTransport:
             )
         self._acknowledged_attempts += 1
         return receipt
+
+
+class ApprovalEventAckLossFaultError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class ApprovalEventAckLossFaultEvidence:
+    delivery_attempts: int
+    downstream_acceptances: int
+    acknowledged_attempts: int
+    unique_event_count: int
+    unique_resume_job_count: int
+    approval_binding_hash: str | None
+
+
+class ApprovalEventAckLossFaultClient:
+    """Lose one ACK after AE durably admits an exact approval event."""
+
+    _BINDING_FIELDS = (
+        "tenant_id",
+        "approval_request_id",
+        "approval_work_item_ref",
+        "approval_evidence_ref",
+        "evidence_integrity",
+        "nsl_execution_id",
+        "business_operation_id",
+        "decision",
+    )
+
+    def __init__(self, delegate: Any) -> None:
+        if not callable(getattr(delegate, "deliver", None)):
+            raise TypeError("Approval event ACK-loss delegate must expose deliver().")
+        self._delegate = delegate
+        self._delivery_attempts = 0
+        self._downstream_acceptances = 0
+        self._acknowledged_attempts = 0
+        self._event_ids: set[str] = set()
+        self._resume_job_ids: set[str] = set()
+        self._event_hash: str | None = None
+        self._binding_hash: str | None = None
+
+    @property
+    def evidence(self) -> ApprovalEventAckLossFaultEvidence:
+        return ApprovalEventAckLossFaultEvidence(
+            delivery_attempts=self._delivery_attempts,
+            downstream_acceptances=self._downstream_acceptances,
+            acknowledged_attempts=self._acknowledged_attempts,
+            unique_event_count=len(self._event_ids),
+            unique_resume_job_count=len(self._resume_job_ids),
+            approval_binding_hash=self._binding_hash,
+        )
+
+    def deliver(self, event: object) -> object:
+        self._delivery_attempts += 1
+        normalized, event_hash, binding_hash = self._event_identity(event)
+        if self._event_hash is not None and (
+            event_hash != self._event_hash or binding_hash != self._binding_hash
+        ):
+            raise ApprovalEventAckLossFaultError(
+                "Approval event retry changed its semantic or approval binding."
+            )
+        response = self._delegate.deliver(normalized)
+        event_id, resume_job_id = self._accepted_response(response, normalized)
+        self._downstream_acceptances += 1
+        self._event_ids.add(event_id)
+        self._resume_job_ids.add(resume_job_id)
+        if self._event_hash is None:
+            self._event_hash = event_hash
+            self._binding_hash = binding_hash
+            raise TimeoutError(
+                "AE accepted the approval event but its acknowledgement was discarded."
+            )
+        self._acknowledged_attempts += 1
+        return response
+
+    @classmethod
+    def _event_identity(cls, event: object) -> tuple[dict[str, Any], str, str]:
+        if not isinstance(event, Mapping):
+            raise ApprovalEventAckLossFaultError(
+                "Approval event ACK-loss input must be an object."
+            )
+        normalized = dict(event)
+        required = ("event_id", *cls._BINDING_FIELDS)
+        if any(
+            not isinstance(normalized.get(field), str)
+            or not str(normalized[field]).strip()
+            for field in required
+        ):
+            raise ApprovalEventAckLossFaultError(
+                "Approval event ACK-loss identity is incomplete."
+            )
+        binding = {field: normalized[field] for field in cls._BINDING_FIELDS}
+        return (
+            normalized,
+            semantic_sha256_hash_ref(normalized),
+            semantic_sha256_hash_ref(binding),
+        )
+
+    @staticmethod
+    def _accepted_response(
+        response: object, event: Mapping[str, Any]
+    ) -> tuple[str, str]:
+        if not isinstance(response, Mapping):
+            raise ApprovalEventAckLossFaultError(
+                "AE approval event acknowledgement is not an object."
+            )
+        event_id = response.get("event_id")
+        resume_job_id = response.get("resume_runtime_job_id")
+        if (
+            event_id != event["event_id"]
+            or response.get("inbox_state") != "MATCHED"
+            or response.get("wait_state") != "RESUME_QUEUED"
+            or not isinstance(resume_job_id, str)
+            or not resume_job_id.strip()
+        ):
+            raise ApprovalEventAckLossFaultError(
+                "AE approval event acknowledgement is not durably matched."
+            )
+        return str(event_id), resume_job_id.strip()

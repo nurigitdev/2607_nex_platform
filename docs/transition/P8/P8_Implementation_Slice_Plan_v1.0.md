@@ -2402,6 +2402,16 @@ No production API contract, table, or migration changed. P8-S81 is next.
 Duplicate/retried approval event creates at most one resume job and one
 checkpoint consume.
 
+**Status: CLOSED on 2026-10-24.**
+
+The first acknowledgement is discarded only after AE has durably matched the
+event and persisted its deterministic `RESUME_EXECUTION` job. The exact event
+and approval binding are then retried. APPROVE, REJECT, and expiry scenarios
+against actual `nex_ae_test` and `nex_wc_test` each produced one semantic
+resume, one NSL checkpoint consume, no EOS mutation, and zero residue. Event
+or approval-binding drift fails before redelivery. No production API contract,
+table, or migration changed. P8-S82 is next.
+
 ---
 
 ## P8-S82 — Worker Crash After Checkpoint
