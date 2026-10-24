@@ -31,7 +31,9 @@ P8.7   CLOSED
 P8.7A  CLOSED through P8-S75H
 P8-CA03 CLOSED
 P8.8   CLOSED through P8-S86
-P8.9   IN PROGRESS; P8-S87 through P8-S92 CLOSED, P8-S93 is the next Slice
+P8.9   CLOSED through P8-S93
+P8     CLOSED / GOLDEN A CLOSED / RELIABILITY CLOSED
+P9     ENTRY AUTHORIZED for source-backed NeX-WA / Work Asset scope
 ```
 
 Current admitted NSL runtime:
@@ -102,8 +104,10 @@ generation preflight passed; Golden A committed and verified exactly one
 Voucher with zero residue; and all 13 actual PostgreSQL/RustFS fault tests
 passed with zero skip or failure. The final residue audit found zero matching
 rows across AE/WC/OA/EOS and physically purged all retained test object
-versions and delete markers. Before continuing to P8-S93,
-read
+versions and delete markers. P8-S93 then froze the verified P8 runtime commit
+and tree, all seven migration heads, contract versions, admitted NSL identity,
+final gate evidence, deferred scope, and P9 Work Asset entry invariants. P8 is
+closed. Before beginning P9, read
 `P8_8_Pre_Entry_Repository_Consistency_and_Reliability_Preparation_Actions_v1.0.md`
 as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s76_unknown_commit_state_fault_injection.md` plus
@@ -122,7 +126,11 @@ as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s89_coverage_closure.md` and
 `docs/slices/p8_s90_actual_db_full_gate.md` and
 `docs/slices/p8_s91_ia_playwright_full_gate.md` and
-`docs/slices/p8_s92_golden_a_fault_final_rerun.md` as execution evidence.
+`docs/slices/p8_s92_golden_a_fault_final_rerun.md` and
+`docs/slices/p8_s93_final_as_built_baseline_p9_handoff.md` as execution
+evidence, then
+read `P8_Final_AsBuilt_Baseline_and_P9_Handoff_v1.0.md` as the authoritative
+handoff.
 
 ---
 
@@ -181,6 +189,8 @@ must be read in order.
 ⑦ P8 Implementation Slice Plan
         ↓
 Implementation
+        ↓
+⑧ P8 Final As-Built Baseline / P9 Handoff
 ```
 
 Do not start from the Implementation Slice Plan alone.
@@ -703,6 +713,18 @@ P8-S93
 
 Each Slice should be treated as an independent implementation/regression/commit
 unit where practical.
+
+## Final Closure Document
+
+After P8-S93, read:
+
+```text
+P8_Final_AsBuilt_Baseline_and_P9_Handoff_v1.0.md
+```
+
+This document freezes the verified implementation baseline and the invariants
+that P9 NeX-WA / Work Asset work must inherit. It supersedes the historical
+entry metadata at the top of this README as the current as-built state.
 
 ---
 

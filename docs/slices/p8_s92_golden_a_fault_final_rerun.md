@@ -14,8 +14,8 @@ public contract.
 The accepted candidate identity was:
 
 ```text
-commit = 5dc4c21970d07a6858202e594a6b23cfe01047bb
-tree   = 138043b2ef0acf1ce73511df27064c5c367f92f6
+commit = 89f70d742d7ff40f01a990729499ad875ae88bf1
+tree   = 8a375453925ebf228a64e61b6c79e05d8f87701d
 ```
 
 P8-S93 remains responsible for recording the final as-built commit after the
@@ -75,11 +75,16 @@ Golden A gate           = P8.6_GOLDEN_A_CLOSED
 The evidence package also admitted the latest complete repository evidence:
 
 ```text
-passed tests        = 17,111
+passed tests        = 17,238
 failed tests        = 0
-statement coverage  = 96.7568%
-branch coverage     = 96.1434%
+protected skips     = 111
+statement coverage  = 96.7162%
+branch coverage     = 96.1061%
 ```
+
+This accepted package explicitly used the canonical S89 JUnit and coverage
+artifacts under `reports/quality/`; it did not use the historical
+`reports/coverage/` defaults.
 
 ## Fault Final Re-run
 

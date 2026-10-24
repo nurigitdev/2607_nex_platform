@@ -2806,7 +2806,7 @@ commit.
 
 P8-S92 re-ran the canonical S68/S67 Golden A journey and the complete S76-S86
 fault matrix against candidate commit
-`5dc4c21970d07a6858202e594a6b23cfe01047bb`. The provider preflight admitted
+`89f70d742d7ff40f01a990729499ad875ae88bf1`. The provider preflight admitted
 live embedding, reranking, and generation. Golden A used actual AE/WC/OA/EOS
 PostgreSQL, admitted NSL v0.2, and live generation; it committed and verified
 exactly one Voucher mutation and left zero database residue.
@@ -2843,6 +2843,28 @@ coverage
 known deferred scope
 P9 entry invariants
 ```
+
+### Implementation Result
+
+P8-S93 freezes the verified P8-S92 runtime baseline at commit
+`89f70d742d7ff40f01a990729499ad875ae88bf1` and tree
+`8a375453925ebf228a64e61b6c79e05d8f87701d`. It records the exact NSL v0.2
+wheel identity, all seven source/test migration heads, the P8 contract and
+OpenAPI versions, Golden A and fault evidence digests, final regression and
+coverage, deferred scope, and the P9 Work Asset entry invariants.
+
+The source-backed S93 recheck found zero migration drift across 158 source and
+applied migrations, and the contract hygiene validator retained all 191
+schemas, 255 positive examples, 221 negative examples, and 9 OpenAPI
+documents. The final handoff is
+`P8_Final_AsBuilt_Baseline_and_P9_Handoff_v1.0.md`; the execution record is
+`docs/slices/p8_s93_final_as_built_baseline_p9_handoff.md`.
+
+### Gate
+
+**P8-S93 CLOSED**. P8 is frozen on the documented baseline and P9 entry is
+authorized for source-backed Work Asset design and implementation that
+preserves every P8 invariant.
 
 ### Final state
 
