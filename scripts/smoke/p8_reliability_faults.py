@@ -625,3 +625,247 @@ def _hash_ref(value: object) -> bool:
         and value.startswith("sha256:")
         and all(character in "0123456789abcdef" for character in value[7:])
     )
+
+
+class WorkerCrashAfterWriteRequestedFaultError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class WorkerCrashAfterWriteRequestedFaultEvidence:
+    provider_dispatches: int
+    injected_crashes: int
+    response_discarded: bool
+    provider_commit_state: str | None
+    write_request_hash: str | None
+    write_evidence_record_hash: str | None
+    business_operation_id: str | None
+    idempotency_key: str | None
+    payload_hash: str | None
+
+
+class WorkerCrashAfterWriteRequestedFaultPort:
+    """Lose one provider outcome after exact durable WRITE_REQUESTED evidence."""
+
+    def __init__(
+        self,
+        delegate: Any,
+        evidence_loader: Callable[[object], object],
+        public_api: Any,
+    ) -> None:
+        if not callable(getattr(delegate, "execute", None)):
+            raise TypeError("WRITE_REQUESTED crash delegate must expose execute().")
+        if not callable(evidence_loader):
+            raise TypeError("WRITE_REQUESTED evidence loader must be callable.")
+        _require_write_recovery_api(public_api)
+        self._delegate = delegate
+        self._evidence_loader = evidence_loader
+        self._public_api = public_api
+        self._provider_dispatches = 0
+        self._injected_crashes = 0
+        self._response_discarded = False
+        self._provider_commit_state: str | None = None
+        self._write_request_hash: str | None = None
+        self._write_evidence_record_hash: str | None = None
+        self._business_operation_id: str | None = None
+        self._idempotency_key: str | None = None
+        self._payload_hash: str | None = None
+
+    @property
+    def evidence(self) -> WorkerCrashAfterWriteRequestedFaultEvidence:
+        if self._injected_crashes != 1:
+            raise WorkerCrashAfterWriteRequestedFaultError(
+                "WRITE_REQUESTED worker-crash evidence is unavailable."
+            )
+        return WorkerCrashAfterWriteRequestedFaultEvidence(
+            provider_dispatches=self._provider_dispatches,
+            injected_crashes=self._injected_crashes,
+            response_discarded=self._response_discarded,
+            provider_commit_state=self._provider_commit_state,
+            write_request_hash=self._write_request_hash,
+            write_evidence_record_hash=self._write_evidence_record_hash,
+            business_operation_id=self._business_operation_id,
+            idempotency_key=self._idempotency_key,
+            payload_hash=self._payload_hash,
+        )
+
+    async def execute(self, request: object) -> object:
+        if self._provider_dispatches:
+            raise WorkerCrashAfterWriteRequestedFaultError(
+                "Worker restart attempted a blind WRITE redispatch."
+            )
+        binding = _bound_write_requested_evidence(
+            request,
+            self._evidence_loader(request),
+            public_api=self._public_api,
+        )
+        self._provider_dispatches = 1
+        outcome = await self._delegate.execute(request)
+        commit_state = _commit_state(outcome)
+        self._provider_commit_state = commit_state
+        self._write_request_hash = binding["write_request_hash"]
+        self._write_evidence_record_hash = binding["record_hash"]
+        self._business_operation_id = binding["business_operation_id"]
+        self._idempotency_key = binding["idempotency_key"]
+        self._payload_hash = binding["payload_hash"]
+        self._response_discarded = True
+        self._injected_crashes = 1
+        raise WorkerCrashAfterWriteRequestedFaultError(
+            "Worker crashed after durable WRITE_REQUESTED and provider dispatch."
+        )
+
+
+@dataclass(frozen=True)
+class WorkerRestartAfterWriteRequestedEvidence:
+    evidence_loads: int
+    reconciliation_attempts: int
+    live_write_dispatches: int
+    assumed_not_committed: bool
+    reconciled_commit_state: str | None
+    write_request_hash: str | None
+    write_evidence_record_hash: str | None
+    business_operation_id: str | None
+    idempotency_key: str | None
+    payload_hash: str | None
+
+
+class WorkerRestartAfterWriteRequestedRecovery:
+    """Recover a crashed WRITE only through the authoritative EOS read model."""
+
+    def __init__(
+        self,
+        reconciliation_port: Any,
+        evidence_loader: Callable[[object], object],
+        public_api: Any,
+    ) -> None:
+        if not callable(getattr(reconciliation_port, "reconcile", None)):
+            raise TypeError("WRITE_REQUESTED recovery port must expose reconcile().")
+        if not callable(evidence_loader):
+            raise TypeError("WRITE_REQUESTED evidence loader must be callable.")
+        _require_write_recovery_api(public_api)
+        self._reconciliation_port = reconciliation_port
+        self._evidence_loader = evidence_loader
+        self._public_api = public_api
+        self._evidence_loads = 0
+        self._reconciliation_attempts = 0
+        self._reconciled_commit_state: str | None = None
+        self._binding: dict[str, str] | None = None
+
+    @property
+    def evidence(self) -> WorkerRestartAfterWriteRequestedEvidence:
+        binding = self._binding or {}
+        return WorkerRestartAfterWriteRequestedEvidence(
+            evidence_loads=self._evidence_loads,
+            reconciliation_attempts=self._reconciliation_attempts,
+            live_write_dispatches=0,
+            assumed_not_committed=False,
+            reconciled_commit_state=self._reconciled_commit_state,
+            write_request_hash=binding.get("write_request_hash"),
+            write_evidence_record_hash=binding.get("record_hash"),
+            business_operation_id=binding.get("business_operation_id"),
+            idempotency_key=binding.get("idempotency_key"),
+            payload_hash=binding.get("payload_hash"),
+        )
+
+    async def recover(self, request: object) -> object:
+        if self._reconciliation_attempts:
+            raise WorkerCrashAfterWriteRequestedFaultError(
+                "WRITE_REQUESTED recovery is one-shot."
+            )
+        self._binding = _bound_write_requested_evidence(
+            request,
+            self._evidence_loader(request),
+            public_api=self._public_api,
+        )
+        self._evidence_loads = 1
+        identity = self._public_api.write_outcome_identity.from_request(request)
+        unknown = self._public_api.write_commit_unknown(
+            identity=identity,
+            reason_code="WORKER_CRASH_AFTER_WRITE_REQUESTED",
+            message=(
+                "The worker stopped after durable WRITE_REQUESTED; EOS must be "
+                "queried before any further WRITE action."
+            ),
+            evidence_refs=("ae.write_requested:" + self._binding["record_hash"],),
+        )
+        self._reconciliation_attempts = 1
+        outcome = await self._reconciliation_port.reconcile(request, unknown)
+        if not isinstance(
+            outcome,
+            (
+                self._public_api.write_committed,
+                self._public_api.write_not_committed,
+                self._public_api.write_commit_unknown,
+            ),
+        ):
+            raise WorkerCrashAfterWriteRequestedFaultError(
+                "WRITE_REQUESTED reconciliation returned an invalid outcome."
+            )
+        self._reconciled_commit_state = _commit_state(outcome)
+        return outcome
+
+
+def _require_write_recovery_api(public_api: object) -> None:
+    identity = getattr(public_api, "write_outcome_identity", None)
+    if not callable(getattr(identity, "from_request", None)):
+        raise TypeError("WRITE recovery identity projection is unavailable.")
+    if not callable(getattr(public_api, "write_commit_unknown", None)):
+        raise TypeError("WRITE recovery unknown outcome is unavailable.")
+    for name in ("write_call_request", "write_committed", "write_not_committed"):
+        if not isinstance(getattr(public_api, name, None), type):
+            raise TypeError(f"WRITE recovery {name} type is unavailable.")
+
+
+def _bound_write_requested_evidence(
+    request: object,
+    saved: object,
+    *,
+    public_api: Any,
+) -> dict[str, str]:
+    if not isinstance(request, public_api.write_call_request):
+        raise WorkerCrashAfterWriteRequestedFaultError(
+            "Worker recovery requires an admitted WRITE request."
+        )
+    if not isinstance(saved, Mapping):
+        raise WorkerCrashAfterWriteRequestedFaultError(
+            "Durable WRITE_REQUESTED evidence is unavailable."
+        )
+    expected = {
+        "tenant_id": str(request.tenant_id),
+        "nsl_execution_id": str(request.execution_id),
+        "business_operation_id": str(request.business_operation_id),
+        "invocation_id": str(request.invocation_id),
+        "write_node_id": str(request.node_id),
+        "tool_id": str(request.tool_id),
+        "contract_hash": str(request.contract_hash),
+        "approval_request_id": str(request.approval_request_id),
+        "idempotency_key": str(request.idempotency_key),
+        "payload_hash": str(request.payload_hash),
+        "write_intent_hash": str(request.write_intent_hash),
+        "precondition_evidence_id": str(request.business_preconditions.evidence_id),
+    }
+    if any(saved.get(field) != value for field, value in expected.items()):
+        raise WorkerCrashAfterWriteRequestedFaultError(
+            "Durable WRITE_REQUESTED evidence differs from the restart request."
+        )
+    record_hash = saved.get("record_hash")
+    if not _hash_ref(record_hash):
+        raise WorkerCrashAfterWriteRequestedFaultError(
+            "Durable WRITE_REQUESTED record hash is invalid."
+        )
+    return {
+        "write_request_hash": semantic_sha256_hash_ref(expected),
+        "record_hash": str(record_hash),
+        "business_operation_id": expected["business_operation_id"],
+        "idempotency_key": expected["idempotency_key"],
+        "payload_hash": expected["payload_hash"],
+    }
+
+
+def _commit_state(outcome: object) -> str:
+    value = getattr(getattr(outcome, "commit_state", None), "value", None)
+    if value not in {"COMMITTED", "NOT_COMMITTED", "UNKNOWN_COMMIT_STATE"}:
+        raise WorkerCrashAfterWriteRequestedFaultError(
+            "WRITE recovery outcome commit state is invalid."
+        )
+    return str(value)

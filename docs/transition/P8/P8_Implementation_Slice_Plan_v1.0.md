@@ -2453,6 +2453,25 @@ do not assume NOT_COMMITTED
 
 Use idempotency/reconciliation semantics.
 
+**Status: CLOSED on 2026-10-24.**
+
+An attachment-bearing protected journey now runs the admitted NSL v0.2 wheel
+in two independent processes. The first process durably records the exact
+`WRITE_REQUESTED`, dispatches one EOS CREATE, discards the returned COMMITTED
+outcome, and terminates with the deterministic crash exit code. The restarted
+process reconstructs the same request, verifies it against
+`ae_nsl_write_evidence`, and performs one EOS BusinessOperation
+reconciliation GET. It never invokes the live WRITE port and never infers
+`NOT_COMMITTED` from process loss.
+
+Actual AE/WC/OA/EOS test PostgreSQL and RustFS acceptance produced one write
+evidence row, one BusinessOperation, one Voucher, three attachment
+associations, and one outbox row. BusinessOperationId, IdempotencyKey,
+PayloadHash, AttachmentManifestHash, attachment IDs, object references, and
+RustFS object versions remained unchanged across restart. Cleanup left zero
+database and object residue. No production API contract, table, or migration
+changed. P8-S84 is next.
+
 ---
 
 ## P8-S84 — Trust / Authorization Revocation

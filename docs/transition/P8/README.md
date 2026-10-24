@@ -30,7 +30,7 @@ P8.6   CLOSED
 P8.7   CLOSED
 P8.7A  CLOSED through P8-S75H
 P8-CA03 CLOSED
-P8.8   IN PROGRESS; P8-S76 through P8-S82 CLOSED / P8-S83 is next
+P8.8   IN PROGRESS; P8-S76 through P8-S83 CLOSED / P8-S84 is next
 ```
 
 Current admitted NSL runtime:
@@ -57,7 +57,10 @@ resume and one checkpoint consume while preserving exact approval lineage.
 P8-S82 proved that a worker crash after durable checkpoint persistence
 recovers the exact wait/resume identity without duplicating ApprovalRequest,
 approval wait, WorkItem, payload/manifest reference, or checkpoint consume.
-Before implementing P8-S83, read
+P8-S83 proved with two admitted-wheel processes that a worker crash after
+durable WRITE_REQUESTED and EOS commit recovers only through the authoritative
+EOS read model, performs no live WRITE redispatch, and preserves the exact
+attachment manifest/object identity. Before implementing P8-S84, read
 `P8_8_Pre_Entry_Repository_Consistency_and_Reliability_Preparation_Actions_v1.0.md`
 as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s76_unknown_commit_state_fault_injection.md` plus
@@ -66,7 +69,9 @@ as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s79_committed_verification_unknown.md` and
 `docs/slices/p8_s80_outbox_publication_ack_loss.md` and
 `docs/slices/p8_s81_approval_event_ack_loss.md` and
-`docs/slices/p8_s82_worker_crash_after_checkpoint.md` as execution evidence.
+`docs/slices/p8_s82_worker_crash_after_checkpoint.md` and
+`docs/slices/p8_s83_worker_crash_after_write_requested.md` as execution
+evidence.
 
 ---
 
