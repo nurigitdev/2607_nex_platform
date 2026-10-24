@@ -2366,6 +2366,33 @@ Retry event publication only.
 
 Business mutation count remains one.
 
+### Implementation Status (2026-10-24)
+
+**CLOSED.** `SqlAlchemyEosOutboxPublisher` now locks one pending event with
+PostgreSQL `FOR UPDATE SKIP LOCKED`, validates its payload hash, and records a
+confirmed exact-binding receipt before changing the row to `PUBLISHED`. An
+unconfirmed ACK increments `attempt_count` while keeping the row `PENDING`;
+the business transaction coordinator is not part of this retry path.
+
+Actual AE/WC/OA/EOS test databases and digest-pinned RustFS proved:
+
+```text
+EOS Voucher CREATE requests        = 1
+outbox publication attempts        = 2
+downstream acceptances             = 2
+confirmed acknowledgements         = 1
+unique semantic event IDs          = 1
+final outbox state / attempts       = PUBLISHED / 2
+Voucher Drafts                      = 1
+attachment associations            = 3
+outbox rows                         = 1
+manifest/attachment/object drift    = 0
+duplicate RustFS object versions    = 0
+test residue                        = 0
+```
+
+No production API contract, table, or migration changed. P8-S81 is next.
+
 ---
 
 ## P8-S81 — Approval Event ACK Loss

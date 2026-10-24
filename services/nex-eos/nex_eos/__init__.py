@@ -117,6 +117,14 @@ from .organization import (
     PositionInput,
     SqlAlchemyEosOrganizationRepository,
 )
+from .outbox_publication import (
+    EosOutboxEvent,
+    EosOutboxPublicationError,
+    EosOutboxPublicationResult,
+    EosOutboxPublishReceipt,
+    EosOutboxTransport,
+    SqlAlchemyEosOutboxPublisher,
+)
 from .persistence import (
     EosDatabaseRuntime,
     EosDatabaseRuntimeError,
@@ -238,6 +246,11 @@ __all__ = (
     "EosDatabaseRuntime",
     "EosDatabaseRuntimeError",
     "EosOrganizationError",
+    "EosOutboxEvent",
+    "EosOutboxPublicationError",
+    "EosOutboxPublicationResult",
+    "EosOutboxPublishReceipt",
+    "EosOutboxTransport",
     "EosProjectError",
     "EosServiceCaller",
     "EosSettings",
@@ -268,6 +281,7 @@ __all__ = (
     "SqlAlchemyEosBusinessOperationQuery",
     "SqlAlchemyEosBusinessTransactionCoordinator",
     "SqlAlchemyEosOrganizationRepository",
+    "SqlAlchemyEosOutboxPublisher",
     "SqlAlchemyEosProjectRepository",
     "SqlAlchemyEosVoucherRepository",
     "SqlAlchemyEosVoucherVerificationQuery",

@@ -249,3 +249,54 @@ class EosVerificationTimeoutFaultPort:
         raise TimeoutError(
             "EOS post-WRITE verification response was deliberately discarded."
         )
+
+
+class EosOutboxAckLossFaultError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class EosOutboxAckLossFaultEvidence:
+    publication_attempts: int
+    downstream_acceptances: int
+    acknowledged_attempts: int
+    unique_event_count: int
+
+
+class EosOutboxAckLossFaultTransport:
+    """Lose the first downstream ACK after semantic event acceptance."""
+
+    def __init__(self, delegate: Any) -> None:
+        if not callable(getattr(delegate, "publish", None)):
+            raise TypeError("EOS outbox ACK-loss delegate must expose publish().")
+        self._delegate = delegate
+        self._publication_attempts = 0
+        self._downstream_acceptances = 0
+        self._acknowledged_attempts = 0
+        self._event_ids: set[str] = set()
+
+    @property
+    def evidence(self) -> EosOutboxAckLossFaultEvidence:
+        return EosOutboxAckLossFaultEvidence(
+            publication_attempts=self._publication_attempts,
+            downstream_acceptances=self._downstream_acceptances,
+            acknowledged_attempts=self._acknowledged_attempts,
+            unique_event_count=len(self._event_ids),
+        )
+
+    def publish(self, event: object) -> object:
+        self._publication_attempts += 1
+        receipt = self._delegate.publish(event)
+        self._downstream_acceptances += 1
+        event_id = getattr(event, "event_id", None)
+        if not isinstance(event_id, str):
+            raise EosOutboxAckLossFaultError(
+                "EOS outbox ACK-loss event identity is unavailable."
+            )
+        self._event_ids.add(event_id)
+        if self._publication_attempts == 1:
+            raise TimeoutError(
+                "EOS outbox publication was accepted but its ACK was discarded."
+            )
+        self._acknowledged_attempts += 1
+        return receipt
