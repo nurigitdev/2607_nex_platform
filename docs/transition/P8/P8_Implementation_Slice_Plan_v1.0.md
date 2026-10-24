@@ -2218,6 +2218,36 @@ no blind retry
 RECONCILIATION_REQUIRED
 ```
 
+### Implementation status
+
+`CLOSED` on 2026-10-24.
+
+The admitted NSL v0.2 WRITE request was dispatched exactly once to actual EOS.
+After EOS committed one attachment-bearing Voucher, the accepted response was
+discarded and AE observed:
+
+```text
+UNKNOWN_COMMIT_STATE
+RECONCILIATION_REQUIRED
+```
+
+The one-shot fault adapter forbids a second dispatch. Protected evidence used
+actual AE/WC/OA/EOS PostgreSQL databases and digest-pinned RustFS and proved:
+
+```text
+Voucher mutation count             = 1
+BusinessOperation count            = 1
+Outbox count                       = 1
+Attachment association count       = 3
+AttachmentManifestHash drift       = 0
+Attachment/Object identity drift   = 0
+RustFS duplicate object versions   = 0
+test residue                        = 0
+```
+
+No reconciliation transition was performed in P8-S76. Authoritative
+`COMMITTED`, `NOT_COMMITTED`, and still-`UNKNOWN` outcomes remain P8-S77 scope.
+
 ---
 
 ## P8-S77 — Reconciliation Outcomes

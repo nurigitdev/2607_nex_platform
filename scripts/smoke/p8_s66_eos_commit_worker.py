@@ -48,6 +48,7 @@ from nex_runtime.semantic_hashes import (
     semantic_sha256_hash_ref,
 )
 from p8_golden_a_fixture import load_golden_a_fixture
+from p8_reliability_faults import EosCommitAckLossFaultPort
 
 AE_DATABASE_ENV = "NEX_P8_S66_WORKER_AE_DATABASE_URL"
 OA_BASE_URL_ENV = "NEX_P8_S66_WORKER_OA_BASE_URL"
@@ -58,29 +59,6 @@ AE_TO_EOS_TOKEN_ENV = "NEX_P8_S66_WORKER_AE_TO_EOS_SERVICE_TOKEN"
 
 class P8S66WorkerError(RuntimeError):
     pass
-
-
-class _AckLossAfterCommitWritePort:
-    """Discard one trustworthy EOS response after the command reached EOS."""
-
-    def __init__(self, delegate: HttpEosWriteExecutionPort, public_api: Any) -> None:
-        self._delegate = delegate
-        self._public_api = public_api
-        self.response_status: int | None = None
-
-    async def execute(self, request: object) -> object:
-        response = await self._delegate.execute_raw(request)
-        if not response.accepted:
-            raise P8S66WorkerError(
-                "EOS ACK-loss injection requires a committed response"
-            )
-        self.response_status = response.status_code
-        return self._public_api.write_commit_unknown(
-            identity=self._public_api.write_outcome_identity.from_request(request),
-            reason_code="EOS_COMMIT_ACKNOWLEDGEMENT_LOST",
-            message="EOS committed the command but the response was deliberately discarded.",
-            evidence_refs=("fault-injection:eos-ack-loss-after-commit",),
-        )
 
 
 class _GovernedWriteSource:
@@ -367,7 +345,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
 
         variants: dict[str, Any] | None = None
         if args.exactly_once_variants:
-            ack_loss_port = _AckLossAfterCommitWritePort(normal_write_port, public_api)
+            ack_loss_port = EosCommitAckLossFaultPort(normal_write_port, public_api)
             ack_loss = asyncio.run(integration(ack_loss_port).execute(request))
             if not isinstance(ack_loss.outcome, public_api.write_commit_unknown):
                 raise P8S66WorkerError(
