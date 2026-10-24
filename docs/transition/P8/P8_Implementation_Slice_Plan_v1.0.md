@@ -2166,6 +2166,45 @@ does not satisfy either
 
 ---
 
+## P8-CA03 Attachment-Bearing Reliability Amendment
+
+P8-S76 through P8-S86 retain their original numbering and objectives. They
+also apply the normative reliability additions in
+`P8_8_Pre_Entry_Repository_Consistency_and_Reliability_Preparation_Actions_v1.0.md`.
+
+Across every applicable fault and recovery path, the following identities are
+immutable:
+
+```text
+BusinessOperationId
+IdempotencyKey
+ApprovalRequest / WriteIntent / PayloadHash lineage
+AttachmentManifestHash
+attachment IDs
+RustFS object identities
+```
+
+The attachment-bearing reliability matrix is:
+
+| Slice | Required attachment-aware acceptance |
+|---|---|
+| P8-S76 | Lose the EOS commit response after committing one Voucher with three attachment associations; enter `UNKNOWN_COMMIT_STATE` without a second CREATE or upload. |
+| P8-S77 | Resolve attachment-bearing UNKNOWN to `COMMITTED`, `NOT_COMMITTED`, or still `UNKNOWN`; preserve exact manifest, attachment, and object identity in every outcome. |
+| P8-S78 | Keep one committed Voucher and its exact associations when post-write verification deterministically fails. |
+| P8-S79 | Keep one committed Voucher and its exact associations when verification is unavailable or unknown. |
+| P8-S80 | Retry outbox publication only; do not repeat Voucher mutation, association writes, or object upload. |
+| P8-S81 | Replay approval delivery at most once semantically while preserving the original manifest-to-approval binding. |
+| P8-S82 | Recover after checkpoint without duplicate approval, manifest, or attachment semantic work. |
+| P8-S83 | Recover after `WRITE_REQUESTED` through idempotency and reconciliation without assuming `NOT_COMMITTED` or recreating evidence. |
+| P8-S84 | Fail closed after current trust or authorization revocation, including protected attachment reads, before any new protected action. |
+| P8-S85 | Detect manifest drift, attachment substitution, and cross-tenant object references without mutation, repair, disclosure, or tenant inference. |
+| P8-S86 | Run at least one complete attachment-bearing reliability journey against actual AE/WC/OA/EOS test databases and RustFS, with zero duplicate mutation, zero duplicate object creation, and zero residue. |
+
+Remote generation, embedding, and reranking providers are not required for
+this reliability gate. Mandatory fault acceptance uses deterministic fixtures.
+
+---
+
 ## P8-S76 — UNKNOWN_COMMIT_STATE Fault Injection
 
 ### Objective

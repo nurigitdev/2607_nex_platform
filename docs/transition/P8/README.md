@@ -12,6 +12,45 @@
 
 ---
 
+## Current Implementation Status
+
+The metadata above records the historical CA02 entry state. It is preserved
+as design history and is not the current implementation status.
+
+```text
+Reviewed Branch = transition/p4-agent-runtime-foundation
+
+P8.1   CLOSED
+P8.2   CLOSED
+P8.2A  CLOSED
+P8.3   CLOSED
+P8.4   CLOSED
+P8.5   CLOSED
+P8.6   CLOSED
+P8.7   CLOSED
+P8.7A  CLOSED through P8-S75H
+P8-CA03 CLOSED
+P8.8   READY; P8-S76 is next
+```
+
+Current admitted NSL runtime:
+
+```text
+distribution    = nex-skill-language
+package_version = 0.2.0
+wheel            = nex_skill_language-0.2.0-py3-none-any.whl
+wheel_sha256     = sha256:862958a5eab982a71bec5ee58b9e530867d6c25f65d8b770efb29ca78ce7f135
+```
+
+The historical NSL admission block was resolved by P8-S01 through P8-S06.
+The current attachment baseline was closed by P8-S75H. P8-CA03 aligned the
+Repository Full Gate with the canonical `96 / 94` policy and made the P8.8
+reliability matrix attachment-aware. Before implementing P8-S76, read
+`P8_8_Pre_Entry_Repository_Consistency_and_Reliability_Preparation_Actions_v1.0.md`
+as the normative P8-CA03 amendment to the P8.8 reliability matrix.
+
+---
+
 # 1. Purpose
 
 This README is the entry point for the P8 design document set.
