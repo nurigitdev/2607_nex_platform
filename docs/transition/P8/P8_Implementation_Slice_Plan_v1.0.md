@@ -2601,6 +2601,34 @@ reference scan
 
 Zero known P0/P1 contract drift.
 
+### Implemented
+
+Completed on 2026-10-24.
+
+P8-S87 added `scripts/quality/validate_p8_contract_hygiene.py` as a
+reproducible contract-only gate layered over the existing repository contract
+validator. It now rejects duplicate, missing, unsafe, or unindexed example
+references; resolves canonical schema annotations from either `contracts/` or
+the repository root; verifies four shared WC-to-AE approval schemas and 17
+AE/WC/EOS operations; and scans the P8 approval and commit vocabulary for
+canonical enum and alias drift.
+
+The audit registered two existing positive AG examples that were present on
+disk but absent from the positive index. The resulting gate passed across 191
+schemas, 255 positive examples, 221 negative examples, 9 OpenAPI documents,
+1,050 references, 25 parity checks, and 21 terminology checks. P8 regression
+passed with 1,789 tests and 63 protected skips. The NeX-AE Slice Gate passed
+5,370 tests with 44 protected skips, 98.32% statement coverage, and 96.30%
+branch coverage; the new validator's isolated scope reached 99.40% statement
+and 98.91% branch coverage. No runtime API, database schema, migration, or
+service behavior changed. See
+`docs/slices/p8_s87_contract_openapi_example_hygiene.md` for commands and
+evidence.
+
+### Gate
+
+**P8-S87 CLOSED**. Zero known P0/P1 contract drift; P8-S88 is next.
+
 ---
 
 ## P8-S88 — Full Repository Regression

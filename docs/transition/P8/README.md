@@ -31,7 +31,7 @@ P8.7   CLOSED
 P8.7A  CLOSED through P8-S75H
 P8-CA03 CLOSED
 P8.8   CLOSED through P8-S86
-P8.9   NEXT; P8-S87 is the next Slice
+P8.9   IN PROGRESS; P8-S87 CLOSED, P8-S88 is the next Slice
 ```
 
 Current admitted NSL runtime:
@@ -70,7 +70,12 @@ test databases and digest-pinned RustFS. Its complete attachment-bearing
 journey recovered an intentionally lost EOS commit acknowledgement through
 reconciliation, completed actual post-WRITE verification, preserved one
 Voucher and one version of each object, and left zero database or object
-residue after cleanup. Before implementing P8-S87, read
+residue after cleanup. P8-S87 then closed contract, OpenAPI, positive/negative
+example, producer/consumer parity, terminology, and reference hygiene across
+191 schemas, 255 positive examples, 221 negative examples, 9 OpenAPI
+documents, 1,050 references, 25 parity checks, and 21 terminology checks. It
+also registered two valid existing positive examples that had not been
+indexed. Before continuing to P8-S88, read
 `P8_8_Pre_Entry_Repository_Consistency_and_Reliability_Preparation_Actions_v1.0.md`
 as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s76_unknown_commit_state_fault_injection.md` plus
@@ -83,7 +88,8 @@ as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s83_worker_crash_after_write_requested.md` and
 `docs/slices/p8_s84_trust_authorization_revocation.md` and
 `docs/slices/p8_s85_tamper_cross_tenant_matrix.md` and
-`docs/slices/p8_s86_full_reliability_protected_gate.md` as execution evidence.
+`docs/slices/p8_s86_full_reliability_protected_gate.md` plus
+`docs/slices/p8_s87_contract_openapi_example_hygiene.md` as execution evidence.
 
 ---
 

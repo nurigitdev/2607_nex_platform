@@ -1181,6 +1181,16 @@
       "schema": "schemas/service/nex_ag/platform_observability_dashboard.v1.schema.json"
     },
     {
+      "name": "ag_operator_review_note_observation",
+      "path": "examples/generation/ag_operator_review_note.observation.json",
+      "schema": "schemas/generation/ag_operator_review_note.v1.schema.json"
+    },
+    {
+      "name": "ag_redacted_evidence_export_worker_result",
+      "path": "examples/generation/ag_redacted_evidence_export.worker_result.json",
+      "schema": "schemas/generation/ag_redacted_evidence_export.v1.schema.json"
+    },
+    {
       "name": "eos_create_voucher_draft_command_golden_a",
       "path": "examples/service/eos_create_voucher_draft_command.golden_a.json",
       "schema": "schemas/service/nex_eos/create_voucher_draft_command.v1.schema.json"
