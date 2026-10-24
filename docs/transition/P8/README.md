@@ -31,7 +31,7 @@ P8.7   CLOSED
 P8.7A  CLOSED through P8-S75H
 P8-CA03 CLOSED
 P8.8   CLOSED through P8-S86
-P8.9   IN PROGRESS; P8-S87 and P8-S88 CLOSED, P8-S89 is the next Slice
+P8.9   IN PROGRESS; P8-S87 through P8-S89 CLOSED, P8-S90 is the next Slice
 ```
 
 Current admitted NSL runtime:
@@ -78,7 +78,13 @@ also registered two valid existing positive examples that had not been
 indexed. P8-S88 then ran all 17,349 repository tests: 17,238 passed, 111
 explicit protected environment guards skipped, and zero failed or errored.
 The same JUnit evidence showed zero P7 or Claim/WorkResult failure/error.
-Before continuing to P8-S89, read
+P8-S89 then repeated the same complete repository population with canonical
+coverage enabled over `services`, `scripts`, and `providers`: all 17,349 cases
+retained the S88 result while statement coverage reached 96.72% and branch
+coverage reached 96.11%. The existing `96 / 94` floor passed without changing
+the coverage source roots, threshold, or sole `*/__init__.py` omission. NSL
+native certification remains independent of the Platform denominator and its
+admitted identity is unchanged. Before continuing to P8-S90, read
 `P8_8_Pre_Entry_Repository_Consistency_and_Reliability_Preparation_Actions_v1.0.md`
 as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s76_unknown_commit_state_fault_injection.md` plus
@@ -93,7 +99,8 @@ as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s85_tamper_cross_tenant_matrix.md` and
 `docs/slices/p8_s86_full_reliability_protected_gate.md` plus
 `docs/slices/p8_s87_contract_openapi_example_hygiene.md` and
-`docs/slices/p8_s88_full_repository_regression.md` as execution evidence.
+`docs/slices/p8_s88_full_repository_regression.md` and
+`docs/slices/p8_s89_coverage_closure.md` as execution evidence.
 
 ---
 

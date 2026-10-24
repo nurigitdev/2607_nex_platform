@@ -2685,6 +2685,30 @@ No exclusion manipulation to make coverage pass.
 
 NSL native certification remains independently PASS.
 
+### Implemented
+
+P8-S89 ran the complete default repository regression profile with branch
+coverage enabled over the existing `services`, `scripts`, and `providers`
+source roots. All 17,349 collected cases completed: 17,238 passed, 111 explicit
+protected environment guards skipped, and zero failed or errored. The
+coverage JSON measured 168,378 of 174,095 statements and 37,910 of 39,446
+branches across 1,453 files.
+
+The canonical threshold checker reported statement coverage `96.72%` and
+branch coverage `96.11%`, passing the required `96% / 94%` floor. The
+`pyproject.toml` SHA-256 remained
+`d245f02f89a6923767deb19ddf5bf856813ec2139e4c05835850bf8245721a38`
+before and after execution and matched both `HEAD` and `HEAD^`; its sole
+coverage omission remains `*/__init__.py`. NSL native certification remains
+independent of the Platform coverage denominator and its admitted identity is
+unchanged. See `docs/slices/p8_s89_coverage_closure.md` for execution and
+evidence details.
+
+### Gate
+
+**P8-S89 CLOSED**. Canonical Platform coverage is above both thresholds with
+no exclusion manipulation; P8-S90 is next.
+
 ---
 
 ## P8-S90 — Actual DB Full Gate
