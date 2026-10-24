@@ -2524,6 +2524,26 @@ stale Claim delegation
 
 Zero unauthorized mutation.
 
+**Status: CLOSED on 2026-10-24.**
+
+The source audit retained the existing ownership boundaries: AE verifies
+Platform ApprovalEvidence and approved attachment lineage, EOS verifies the
+canonical payload and tenant-scoped Project, Account, and attachment
+references inside one business transaction, and WC verifies current parent
+Claim authority before nested delegation admission.
+
+The focused matrix covers all seven canonical attacks plus manifest drift,
+attachment substitution, and opaque `object_ref` tenant isolation. Actual
+`nex_ae_test`, `nex_wc_test`, `nex_oa_test`, and `nex_eos_test` PostgreSQL with
+digest-pinned RustFS then proved integrity rejection, tenant-scoped lookup,
+transaction rollback, unchanged object versions, and zero cleanup residue.
+No unauthorized BusinessOperation, idempotency, Voucher, Voucher line,
+attachment association, outbox, child WorkItem, or delegation-lineage row was
+created.
+
+No production API, event schema, database table, migration, or runtime
+ordering changed. P8-S86 is next.
+
 ---
 
 ## P8-S86 — Full Reliability Protected Gate
