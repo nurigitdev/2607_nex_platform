@@ -30,7 +30,8 @@ P8.6   CLOSED
 P8.7   CLOSED
 P8.7A  CLOSED through P8-S75H
 P8-CA03 CLOSED
-P8.8   IN PROGRESS; P8-S76 through P8-S83 CLOSED / P8-S84 is next
+P8.8   CLOSED through P8-S86
+P8.9   NEXT; P8-S87 is the next Slice
 ```
 
 Current admitted NSL runtime:
@@ -60,7 +61,16 @@ approval wait, WorkItem, payload/manifest reference, or checkpoint consume.
 P8-S83 proved with two admitted-wheel processes that a worker crash after
 durable WRITE_REQUESTED and EOS commit recovers only through the authoritative
 EOS read model, performs no live WRITE redispatch, and preserves the exact
-attachment manifest/object identity. Before implementing P8-S84, read
+attachment manifest/object identity. P8-S84 proved that current OA trust and
+authorization revocation fail closed before every new protected action. P8-S85
+proved the tamper and cross-tenant matrix at the owning AE, WC, OA, EOS, and
+RustFS boundaries with zero unauthorized mutation. P8-S86 then ran every
+P8-S76 through P8-S86 protected fault variant against the actual AE/WC/OA/EOS
+test databases and digest-pinned RustFS. Its complete attachment-bearing
+journey recovered an intentionally lost EOS commit acknowledgement through
+reconciliation, completed actual post-WRITE verification, preserved one
+Voucher and one version of each object, and left zero database or object
+residue after cleanup. Before implementing P8-S87, read
 `P8_8_Pre_Entry_Repository_Consistency_and_Reliability_Preparation_Actions_v1.0.md`
 as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s76_unknown_commit_state_fault_injection.md` plus
@@ -70,8 +80,10 @@ as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s80_outbox_publication_ack_loss.md` and
 `docs/slices/p8_s81_approval_event_ack_loss.md` and
 `docs/slices/p8_s82_worker_crash_after_checkpoint.md` and
-`docs/slices/p8_s83_worker_crash_after_write_requested.md` as execution
-evidence.
+`docs/slices/p8_s83_worker_crash_after_write_requested.md` and
+`docs/slices/p8_s84_trust_authorization_revocation.md` and
+`docs/slices/p8_s85_tamper_cross_tenant_matrix.md` and
+`docs/slices/p8_s86_full_reliability_protected_gate.md` as execution evidence.
 
 ---
 

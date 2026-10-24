@@ -2550,6 +2550,31 @@ ordering changed. P8-S86 is next.
 
 Run all fault variants using actual service DBs.
 
+### Implemented
+
+P8-S86 added one protected attachment-bearing journey over the admitted NSL
+v0.2 wheel and the existing AE, WC, OA, EOS, and RustFS boundaries. The worker
+dispatches the canonical Voucher WRITE exactly once, deliberately discards the
+accepted EOS response, observes `UNKNOWN_COMMIT_STATE`, reconciles the same
+BusinessOperationId to `COMMITTED`, and performs actual post-WRITE verification
+to `VERIFIED`. It performs no blind redispatch and introduces no production
+source, API, schema, table, migration, or runtime-order change.
+
+The complete P8-S76 through P8-S86 protected matrix ran against actual
+`nex_ae_test`, `nex_wc_test`, `nex_oa_test`, `nex_eos_test`, and digest-pinned
+RustFS: 13 tests passed and none skipped. The S86 journey preserved one locked
+attachment manifest, one RustFS object version per attachment, one approval
+decision, one BusinessOperation, one idempotency row, one Voucher, two balanced
+Voucher lines, three Voucher attachment associations, and one outbox event.
+Cleanup then proved zero database and object residue.
+
+The P8 regression passed with 1,774 tests and 63 protected skips. The NeX-AE
+Slice Gate passed 5,355 tests with 45 protected skips, 98.32% statement
+coverage, 96.28% branch coverage, and contract validation across 191 schemas,
+253 positive examples, 221 negative examples, and 9 OpenAPI documents. See
+`docs/slices/p8_s86_full_reliability_protected_gate.md` for the command and
+evidence details.
+
 ### Gate
 
 **P8.8 CLOSED**.
