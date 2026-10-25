@@ -36,7 +36,10 @@ P8 v1.0 FROZEN / GOLDEN A CLOSED / RELIABILITY CLOSED
 P8-CA04 CLOSED
 P8.10  CLOSED through P8-S103
 P8 v1.1 FINAL / DEMO RELEASE READY
-P9     ENTRY AUTHORIZED
+P8-CA05 DESIGN CLOSED
+P8.11  IMPLEMENTATION ENTRY AUTHORIZED / NOT STARTED
+P8 v1.2 DEMO RELEASE CANDIDATE REFRESH HELD through P8-S113
+P9     ENTRY AUTHORIZED BY v1.1 / CURRENTLY DEFERRED BEHIND P8.11
 ```
 
 Current admitted NSL runtime:
@@ -213,7 +216,12 @@ P8.10 handoff. For Project membership history and any future extension, read
 `P8_CA04_Project_Membership_and_Governed_Project_Operations_Contract_Closure_v1.0.md`.
 CA04 preserves that frozen baseline, adds the P8.10 Project membership scope,
 and establishes the canonical `<DOMAIN>.<BUSINESS_OBJECT>.<ACTION>` naming
-rule for new NSL and API contracts.
+rule for new NSL and API contracts. Before extending the Chairman demonstration
+with governed NVTProject operations or multi-member Project setup, then read
+`P8_CA05_NVT_Project_Operations_and_Batch_Membership_Contract_Closure_v1.0.md`.
+CA05 preserves both frozen baselines, authorizes the additive P8-S104 through
+P8-S113 sequence, and keeps batch membership inside one approval and one NSL
+controlled WRITE.
 
 ---
 
@@ -276,6 +284,8 @@ Implementation
 ⑧ P8 Final As-Built Baseline / P9 Handoff
         ↓
 ⑨ P8-CA04 Project Membership and Governed Project Operations
+        ↓
+⑩ P8-CA05 NVT Project Operations and Batch Membership
 ```
 
 Do not start from the Implementation Slice Plan alone.
@@ -831,6 +841,17 @@ This additive successor records the closed CA04/P8.10 implementation,
 protected demonstration evidence, final Full Gate, zero-residue result, and
 current Demo Release/P9 entry authorization. The v1.0 file remains preserved
 as the historical S93 baseline.
+
+For the additive P8.11 demonstration amendment, then read:
+
+```text
+P8_CA05_NVT_Project_Operations_and_Batch_Membership_Contract_Closure_v1.0.md
+```
+
+CA05 does not rewrite the v1.0 or v1.1 Final As-Built records. It authorizes
+P8-S104 through P8-S113 for governed NVTProject CREATE/GET/LIST/UPDATE and one
+collection-valued `PROJECT.MEMBERSHIP.ADD_MANY` controlled WRITE. A new Final
+As-Built v1.2 is required before the refreshed Demo Release Candidate closes.
 
 ---
 

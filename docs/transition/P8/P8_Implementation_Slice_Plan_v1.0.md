@@ -37,6 +37,20 @@ contracts, and temporarily holds the historical P9 entry authorization until
 P8 Final As-Built v1.1. The original S01-S93 plan and evidence remain immutable
 history.
 
+P8-S103 closed that amendment in Final As-Built v1.1. A later demonstration
+rehearsal identified governed NVTProject operations and multi-member Project
+setup as additive requirements governed by:
+
+```text
+P8_CA05_NVT_Project_Operations_and_Batch_Membership_Contract_Closure_v1.0.md
+```
+
+CA05 authorizes P8-S104 through P8-S113 as P8.11. It preserves the complete
+S01-S103 history, keeps existing single-member operations compatible, and
+requires one approval and one NSL controlled WRITE for the canonical batch
+member set. The CA05 document, not this historical plan body, is authoritative
+for P8.11 scope and gates.
+
 ---
 
 # 1. Purpose
