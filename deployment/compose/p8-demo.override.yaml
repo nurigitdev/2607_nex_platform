@@ -2,6 +2,7 @@ name: nex-platform-p8-demo
 
 x-p8-demo-common-environment: &p8-demo-common-environment
   NEX_PROFILE: staging_live
+  NEX_DEPLOYMENT_BOUNDARY: P8_DEMO
   NEX_PERSISTENCE_MODE: postgres
   NEX_SERVICE_TOKEN_ROLLOUT_PROFILE: SIGNED_ONLY
   NEX_OPENBAO_ADDR: https://openbao:8200
@@ -15,6 +16,9 @@ x-p8-demo-common-environment: &p8-demo-common-environment
   NEX_CONFIG_GENERATION: config:p8-demo.1
   NEX_SECRET_GENERATION: ${NEX_P8_DEMO_SECRET_GENERATION:-secret:p8-demo.1}
   NEX_TLS_GENERATION: ${NEX_P8_DEMO_TLS_GENERATION:-tls:p8-demo.1}
+  NEX_TLS_TERMINATION_POLICY_REF: tls://openbao/nex-platform/staging/policy@v1
+  NEX_TLS_CERTIFICATE_REF: tls://openbao/nex-platform/staging/certificate@v1
+  NEX_TLS_TRUST_BUNDLE_REF: tls://openbao/nex-platform/staging/trust-bundle@v1
   NEX_OA_BASE_URL: https://oa.nex-staging.test:8443
   NEX_AE_API_BASE_URL: https://ae-api.nex-staging.test:8443
   NEX_WC_BASE_URL: https://wc.nex-staging.test:8443
@@ -83,13 +87,20 @@ services:
 
   nex-oa:
     restart: unless-stopped
+    environment:
+      NEX_DEPLOYMENT_BOUNDARY: P8_DEMO
 
   nex-ag:
     restart: unless-stopped
+    environment:
+      NEX_DEPLOYMENT_BOUNDARY: P8_DEMO
 
   nex-ae-api:
     restart: unless-stopped
     environment:
+      NEX_DEPLOYMENT_BOUNDARY: P8_DEMO
+      NEX_AE_TO_MO_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_MO_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_TO_AG_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_AG_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
       NEX_WC_BASE_URL: https://wc.nex-staging.test:8443
       NEX_EOS_BASE_URL: https://eos.nex-staging.test:8443
       NEX_AE_TO_WC_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_WC_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
@@ -97,9 +108,13 @@ services:
 
   nex-cx:
     restart: unless-stopped
+    environment:
+      NEX_DEPLOYMENT_BOUNDARY: P8_DEMO
 
   nex-mo:
     restart: unless-stopped
+    environment:
+      NEX_DEPLOYMENT_BOUNDARY: P8_DEMO
 
   nex-ae-web:
     restart: unless-stopped
@@ -149,13 +164,24 @@ services:
     command: [python, -m, nex_ae_api.demo_runtime, worker]
     environment:
       NEX_PROFILE: staging_live
+      NEX_DEPLOYMENT_BOUNDARY: P8_DEMO
       NEX_PERSISTENCE_MODE: postgres
+      NEX_SERVICE_TOKEN_ROLLOUT_PROFILE: SIGNED_ONLY
       NEX_OPENBAO_ADDR: https://openbao:8200
       NEX_OPENBAO_CA_CERT_FILE: /run/secrets/openbao_ca
       NEX_OPENBAO_ROLE_ID_FILE: /run/secrets/openbao_role_id
       NEX_OPENBAO_SECRET_ID_FILE: /run/secrets/openbao_secret_id
       NEX_OPENBAO_SECRET_NAMESPACE: staging
+      NEX_SECRET_GENERATION: ${NEX_P8_DEMO_SECRET_GENERATION:-secret:p8-demo.1}
       NEX_AE_DATABASE_URL_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_DATABASE_URL@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_TO_OA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_OA_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_TO_CX_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_CX_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_TO_MO_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_MO_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_TO_AG_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_AG_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_TO_WC_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_WC_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_TO_EOS_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_EOS_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_OBJECT_STORAGE_ACCESS_KEY_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_OBJECT_STORAGE_ACCESS_KEY@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_OBJECT_STORAGE_SECRET_KEY_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_OBJECT_STORAGE_SECRET_KEY@${NEX_P8_DEMO_SECRET_VERSION:-v1}
     secrets:
       - openbao_ca
       - platform_ca
