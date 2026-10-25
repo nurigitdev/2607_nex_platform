@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from nex_oa.service_principal_boundary import (
+    KNOWN_SERVICE_IDS,
     PROPOSED_TABLES,
     S126_SERVICE_PRINCIPAL_HANDOFF,
     validate_service_credential_record,
@@ -48,11 +49,29 @@ def test_s126_handoff_freezes_credential_and_storage_boundaries() -> None:
     assert handoff.database_plaintext_secret_allowed is False
     assert handoff.silent_default_audience_or_scope_allowed is False
     assert handoff.to_wire()["token_ttl_seconds"] == 300
+    assert KNOWN_SERVICE_IDS == {
+        "nex-oa",
+        "nex-ag",
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+        "nex-wc",
+        "nex-eos",
+    }
 
 
 def test_valid_principal_and_credential_shapes_pass() -> None:
     assert validate_service_principal_spec(_principal()) == ()
     assert validate_service_credential_record(_credential()) == ()
+    assert (
+        validate_service_principal_spec(
+            _principal(
+                service_id="nex-wc",
+                allowed_audiences=["nex-eos", "nex-ae-api"],
+            )
+        )
+        == ()
+    )
 
 
 def test_missing_fields_fail_closed() -> None:

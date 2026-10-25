@@ -7,7 +7,15 @@ from typing import Any, Mapping
 SERVICE_PRINCIPAL_STATUSES = ("ACTIVE", "DISABLED")
 SERVICE_CREDENTIAL_STATUSES = ("ACTIVE", "ROTATING", "REVOKED", "EXPIRED")
 KNOWN_SERVICE_IDS = frozenset(
-    {"nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo"}
+    {
+        "nex-oa",
+        "nex-ag",
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+        "nex-wc",
+        "nex-eos",
+    }
 )
 MAX_CREDENTIAL_LIFETIME_DAYS = 90
 MAX_ROTATION_GRACE_SECONDS = 86_400

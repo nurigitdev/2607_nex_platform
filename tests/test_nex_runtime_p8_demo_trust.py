@@ -11,6 +11,7 @@ from nex_runtime.demo_trust import (
     DemoTrustError,
     DemoTrustGrant,
     demo_secret_bindings_for_owner,
+    demo_startup_credential_bindings_for_owner,
     demo_trust_projection,
     materialize_demo_owner_secrets,
 )
@@ -99,6 +100,10 @@ def test_inventory_covers_seven_owners_all_trust_slots_and_thirteen_tls_hosts() 
     assert len(DEMO_SECRET_BINDINGS) == 31
     with pytest.raises(DemoTrustError, match="owner"):
         demo_secret_bindings_for_owner("nex-unknown")
+    assert demo_startup_credential_bindings_for_owner("nex-oa") == ()
+    assert len(demo_startup_credential_bindings_for_owner("nex-eos")) == 2
+    with pytest.raises(DemoTrustError, match="owner"):
+        demo_startup_credential_bindings_for_owner("nex-unknown")
 
 
 def test_owner_materialization_is_deterministic_scoped_and_value_free() -> None:

@@ -18,8 +18,12 @@ SIGNED_TOKEN_ISSUER = "urn:nex-platform:oa"
 SIGNED_TOKEN_TYPE = "at+jwt"
 SIGNED_TOKEN_ALGORITHM = "RS256"
 SERVICE_ACCESS_TOKEN_USE = "service_access"
+P8_DEMO_SERVICE_ACCESS_TOKEN_USE = "p8_demo_service_access"
+P8_DEMO_DEPLOYMENT_BOUNDARY = "P8_DEMO"
+P8_DEMO_DEPLOYMENT_PROFILE = "staging_live"
+P8_DEMO_MAX_TOKEN_TTL_SECONDS = 86_400
 SIGNED_TOKEN_AUDIENCES = frozenset(
-    {"nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo"}
+    {"nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo", "nex-wc", "nex-eos"}
 )
 JWKS_CACHE_TTL_SECONDS = 300
 MAX_JWKS_CACHE_TTL_SECONDS = 900
@@ -62,6 +66,7 @@ class VerifiedServiceTokenClaims:
     subject: str
     audience: str
     service_id: str
+    token_use: str
     scopes: tuple[str, ...]
     issued_at: int
     not_before: int
@@ -186,12 +191,14 @@ class SignedServiceTokenVerifier:
         *,
         issuer: str = SIGNED_TOKEN_ISSUER,
         clock: Callable[[], float] = time,
+        allow_p8_demo_profile: bool = False,
     ) -> None:
         self._cache = cache
         self._issuer = _nonempty_string(issuer, "issuer")
         if not callable(clock):
             raise TypeError("token verifier clock must be callable")
         self._clock = clock
+        self._allow_p8_demo_profile = allow_p8_demo_profile is True
 
     def jwks_cache_snapshot(self) -> dict[str, int | None | str | bool]:
         return self._cache.public_snapshot()
@@ -258,6 +265,7 @@ class SignedServiceTokenVerifier:
             expected_audience=audience,
             required_scopes=scopes,
             now_epoch=now,
+            allow_p8_demo_profile=self._allow_p8_demo_profile,
         )
 
     def _now(self, now_epoch: int | None) -> int:
@@ -329,6 +337,7 @@ def _validated_service_claims(
     expected_audience: str,
     required_scopes: tuple[str, ...],
     now_epoch: int,
+    allow_p8_demo_profile: bool = False,
 ) -> VerifiedServiceTokenClaims:
     required = (
         "iss",
@@ -359,8 +368,19 @@ def _validated_service_claims(
         raise _unauthorized("nex.token_issuer_invalid", "access token issuer is invalid")
     if audience != expected_audience:
         raise _forbidden("nex.token_audience_forbidden", "access token audience is forbidden")
-    if token_use != SERVICE_ACCESS_TOKEN_USE:
+    accepted_token_uses = {SERVICE_ACCESS_TOKEN_USE}
+    if allow_p8_demo_profile:
+        accepted_token_uses.add(P8_DEMO_SERVICE_ACCESS_TOKEN_USE)
+    if token_use not in accepted_token_uses:
         raise _unauthorized("nex.token_use_invalid", "access token use is invalid")
+    if token_use == P8_DEMO_SERVICE_ACCESS_TOKEN_USE and (
+        claims.get("deployment_boundary") != P8_DEMO_DEPLOYMENT_BOUNDARY
+        or claims.get("deployment_profile") != P8_DEMO_DEPLOYMENT_PROFILE
+    ):
+        raise _unauthorized(
+            "nex.token_demo_boundary_invalid",
+            "Demo access token deployment boundary is invalid",
+        )
     if service_id not in SIGNED_TOKEN_AUDIENCES or subject != f"service:{service_id}":
         raise _unauthorized("nex.token_subject_invalid", "access token subject is invalid")
     issued_at = _integer_claim(claims["iat"], "iat")
@@ -376,7 +396,12 @@ def _validated_service_claims(
         raise _unauthorized("nex.token_time_invalid", "access token time claims are invalid")
     if issued_at - not_before > MAX_CLOCK_SKEW_SECONDS:
         raise _unauthorized("nex.token_time_invalid", "access token time claims are invalid")
-    if expires_at - issued_at > MAX_TOKEN_TTL_SECONDS:
+    maximum_ttl = (
+        P8_DEMO_MAX_TOKEN_TTL_SECONDS
+        if token_use == P8_DEMO_SERVICE_ACCESS_TOKEN_USE
+        else MAX_TOKEN_TTL_SECONDS
+    )
+    if expires_at - issued_at > maximum_ttl:
         raise _unauthorized("nex.token_ttl_invalid", "access token lifetime is invalid")
     if not_before > now_epoch + MAX_CLOCK_SKEW_SECONDS:
         raise _unauthorized("nex.token_not_yet_valid", "access token is not yet valid")
@@ -392,6 +417,7 @@ def _validated_service_claims(
         subject=subject,
         audience=audience,
         service_id=service_id,
+        token_use=token_use,
         scopes=granted_scopes,
         issued_at=issued_at,
         not_before=not_before,

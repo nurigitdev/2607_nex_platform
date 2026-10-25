@@ -468,6 +468,7 @@ def build_service_token_admission_runtime(
             clock=clock,
         ),
         clock=clock,
+        allow_p8_demo_profile=_p8_demo_service_token_profile_enabled(env),
     )
     authorization_token = env.get("NEX_OA_INTROSPECTION_SERVICE_TOKEN")
     introspector = (
@@ -661,7 +662,7 @@ def _validate_introspection_binding(
         )
     expected = {
         "introspection_schema_version": "oa_token_introspection.v1",
-        "token_use": "service_access",
+        "token_use": claims.token_use,
         "sub": claims.subject,
         "aud": claims.audience,
         "scope": " ".join(claims.scopes),
@@ -709,7 +710,7 @@ def _signed_projection(
         audience=claims.audience,
         service_id=claims.service_id,
         scopes=claims.scopes,
-        token_use="service_access",
+        token_use=claims.token_use,
         token_kind="SIGNED",
         issued_at=claims.issued_at,
         expires_at=claims.expires_at,
@@ -730,6 +731,22 @@ def _bearer_token(authorization: object) -> str:
             "nex.authorization_invalid", "authorization must use the Bearer scheme"
         )
     return token
+
+
+def _p8_demo_service_token_profile_enabled(environ: Mapping[str, str]) -> bool:
+    requested = str(
+        environ.get("NEX_P8_DEMO_SERVICE_TOKEN_PROFILE") or ""
+    ).strip()
+    if not requested:
+        return False
+    if requested != "STARTUP_24H":
+        raise ValueError("P8 Demo service-token profile is unsupported")
+    if (
+        str(environ.get("NEX_PROFILE") or "").strip() != "staging_live"
+        or str(environ.get("NEX_DEPLOYMENT_BOUNDARY") or "").strip() != "P8_DEMO"
+    ):
+        raise ValueError("P8 Demo service-token profile boundary is invalid")
+    return True
 
 
 def _response_object(response: httpx.Response, label: str) -> dict[str, Any]:

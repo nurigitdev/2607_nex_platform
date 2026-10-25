@@ -68,6 +68,7 @@ def build_oa_local_service_token_admission(
     verifier = SignedServiceTokenVerifier(
         BoundedJwksCache(LocalOaJwksSource(signing_key_service), clock=clock),
         clock=clock,
+        allow_p8_demo_profile=_p8_demo_profile_enabled(env),
     )
     callers = tuple(
         item.strip()
@@ -88,6 +89,22 @@ def build_oa_local_service_token_admission(
         compatibility_deadline_epoch=deadline,
         clock=clock,
     )
+
+
+def _p8_demo_profile_enabled(environ: Mapping[str, str]) -> bool:
+    requested = str(
+        environ.get("NEX_P8_DEMO_SERVICE_TOKEN_PROFILE") or ""
+    ).strip()
+    if not requested:
+        return False
+    if requested != "STARTUP_24H":
+        raise ValueError("P8 Demo service-token profile is unsupported")
+    if (
+        str(environ.get("NEX_PROFILE") or "").strip() != "staging_live"
+        or str(environ.get("NEX_DEPLOYMENT_BOUNDARY") or "").strip() != "P8_DEMO"
+    ):
+        raise ValueError("P8 Demo service-token profile boundary is invalid")
+    return True
 
 
 def authorize_oa_service_request(

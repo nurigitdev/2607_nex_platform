@@ -170,11 +170,27 @@ DEMO_TRUST_GRANTS = (
     ),
 )
 
+DEMO_STARTUP_TOKEN_BOOTSTRAP_ENV = "NEX_P8_DEMO_STARTUP_TOKEN_BOOTSTRAP"
+DEMO_STARTUP_CREDENTIAL_TARGETS = (
+    "NEX_P8_DEMO_SERVICE_CREDENTIAL_ID",
+    "NEX_P8_DEMO_SERVICE_CLIENT_SECRET",
+)
+
 
 def demo_secret_bindings_for_owner(owner: str) -> tuple[DemoSecretBinding, ...]:
     if owner not in DEMO_OWNERS:
         raise DemoTrustError("Demo trust owner is invalid")
     return tuple(binding for binding in DEMO_SECRET_BINDINGS if binding.owner == owner)
+
+
+def demo_startup_credential_bindings_for_owner(
+    owner: str,
+) -> tuple[DemoSecretBinding, ...]:
+    if owner not in DEMO_OWNERS:
+        raise DemoTrustError("Demo trust owner is invalid")
+    if owner == "nex-oa":
+        return ()
+    return tuple(DemoSecretBinding(owner, target) for target in DEMO_STARTUP_CREDENTIAL_TARGETS)
 
 
 def materialize_demo_owner_secrets(
@@ -195,9 +211,13 @@ def materialize_demo_owner_secrets(
     if _GENERATION.fullmatch(generation) is None:
         raise DemoTrustError("Demo secret generation is invalid")
 
+    bindings = demo_secret_bindings_for_owner(owner)
+    if str(environ.get(DEMO_STARTUP_TOKEN_BOOTSTRAP_ENV) or "").strip().lower() == "true":
+        bindings = (*bindings, *demo_startup_credential_bindings_for_owner(owner))
+
     secrets: list[ResolvedSecret] = []
     metadata = []
-    for binding in demo_secret_bindings_for_owner(owner):
+    for binding in bindings:
         if str(environ.get(binding.target_environment_name) or "").strip():
             raise DemoTrustError(
                 f"raw Demo secret input is prohibited: {binding.target_environment_name}"
@@ -239,7 +259,7 @@ def materialize_demo_owner_secrets(
                     binding.source_environment_name,
                     environ[binding.source_environment_name],
                 )
-                for binding in demo_secret_bindings_for_owner(owner)
+                for binding in bindings
             ],
         }
     )

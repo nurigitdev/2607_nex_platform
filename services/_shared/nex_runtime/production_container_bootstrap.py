@@ -9,8 +9,10 @@ import sys
 from .demo_trust import (
     DEMO_DEPLOYMENT_BOUNDARY,
     DEMO_OWNERS,
+    DEMO_STARTUP_TOKEN_BOOTSTRAP_ENV,
     materialize_demo_owner_secrets,
 )
+from .demo_service_token_bootstrap import issue_demo_startup_service_tokens
 from .openbao_secret_resolver import (
     OpenBaoSecretResolver,
     OpenBaoSecretResolverError,
@@ -42,6 +44,9 @@ def prepare_production_container_environment(
     resolver_factory: Callable[[Mapping[str, str]], OpenBaoSecretResolver] = (
         build_openbao_secret_resolver
     ),
+    demo_token_issuer: Callable[
+        [str, Mapping[str, str]], tuple[dict[str, str], object]
+    ] = issue_demo_startup_service_tokens,
 ) -> tuple[dict[str, str], OwnerProductionSecretMaterialization]:
     if owner not in ALLOWED_OWNERS:
         raise ProductionContainerBootstrapError("production container owner is invalid")
@@ -78,6 +83,13 @@ def prepare_production_container_environment(
             if name.endswith("_REF") or name in _PRIVATE_BOOTSTRAP_NAMES:
                 process_environment.pop(name, None)
         resolver.revoke()
+        if (
+            str(environ.get("NEX_DEPLOYMENT_BOUNDARY") or "").strip()
+            == DEMO_DEPLOYMENT_BOUNDARY
+            and str(environ.get(DEMO_STARTUP_TOKEN_BOOTSTRAP_ENV) or "").strip()
+            == "true"
+        ):
+            process_environment, _ = demo_token_issuer(owner, process_environment)
     except Exception:
         try:
             resolver.revoke()
