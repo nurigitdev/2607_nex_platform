@@ -154,6 +154,33 @@ long-running packaged process.
 P8 protected tests compose these objects inside their controlled runners. That
 proves semantics but not an independently running installed topology.
 
+### 4.5 Existing development databases are clean but not migration-current
+
+A read-only PostgreSQL inspection on 2026-10-25 confirmed that all seven
+development databases exist and are owned by the expected service roles:
+
+| Service | Database / role | Applied / source migrations | Business tables | Exact business rows |
+| --- | --- | ---: | ---: | ---: |
+| `nex-oa` | `nex_oa_dev` / `nex_oa_user` | `0 / 18` | 0 | 0 |
+| `nex-ag` | `nex_ag_dev` / `nex_ag_user` | `0 / 20` | 0 | 0 |
+| `nex-ae-api` | `nex_ae_dev` / `nex_ae_user` | `0 / 60` | 0 | 0 |
+| `nex-cx` | `nex_cx_dev` / `nex_cx_user` | `0 / 23` | 0 | 0 |
+| `nex-mo` | `nex_mo_dev` / `nex_mo_user` | `0 / 10` | 0 | 0 |
+| `nex-wc` | `nex_wc_dev` / `nex_wc_user` | `0 / 13` | 0 | 0 |
+| `nex-eos` | `nex_eos_dev` / `nex_eos_user` | `8 / 15` | 12 | 0 |
+
+The first six databases have no `schema_migrations` table. EOS is an older,
+empty P8 schema missing migrations `2508` through `2514`. No database contains
+an extra migration version.
+
+The canonical migration runner already defines all seven `NEX_*_DATABASE_URL`
+bindings as its `dev` profile. Normal service runtime does not require a
+`*_test` or `*_demo` suffix. Test target resolvers and destructive test reset
+helpers, by contrast, require the exact `*_test` database and role identities.
+Consequently, the existing development databases can be admitted for this
+Demo Release after migration and isolation controls; no source-level database
+rename is required.
+
 ## 5. Audit Findings
 
 | ID | Severity | Finding | Required closure |
@@ -163,7 +190,7 @@ proves semantics but not an independently running installed topology.
 | `DEMO-03` | BLOCKER | OpenBao and environment references omit WC/EOS databases, AppRoles, and AE/WC/EOS trust tokens. | Add owner-scoped secrets and prove fail-closed startup and rotation. |
 | `DEMO-04` | BLOCKER | The installed topology has no admitted AE Agent Runtime dispatcher/executable worker lifecycle. | Package and run the exact P6-P8 execution composition with readiness and restart recovery. |
 | `DEMO-05` | BLOCKER | Existing S143 acceptance proves only the pre-WC/EOS topology. | Add an eight-application protected installation and restart gate. |
-| `DEMO-06` | HIGH | No dedicated Demo database profile or guarded seed/reset workflow exists. | Create seven isolated demo databases and a tenant-scoped idempotent fixture lifecycle. |
+| `DEMO-06` | HIGH | Seven clean development databases exist but are not migration-current or operationally reserved for Demo use. | Admit the exact seven `*_dev` identities, apply current migrations, freeze concurrent use, and add a tenant-scoped idempotent fixture lifecycle. |
 | `DEMO-07` | HIGH | WC delivery and EOS outbox components exist as source adapters but their installed process ownership is not frozen. | Record whether each is synchronous or background in the golden journey and admit every required consumer. |
 | `DEMO-08` | HIGH | EOS intentionally does not expose the shared JobQueue/service-log operation surface. | Use EOS API/readiness and business-specific evidence; do not falsely report EOS as AG-managed until separately implemented. |
 | `DEMO-09` | HIGH | No single install/start/stop/restart/rehearsal runbook covers the P8 topology. | Produce operator commands, recovery steps, preflight, and evidence collection. |
@@ -230,23 +257,42 @@ DGX remote generation / embedding / reranking providers
 Kubernetes, HA PostgreSQL, a service mesh, registry push, and distributed
 failover remain out of scope.
 
-### 6.4 Dedicated Demo databases
+### 6.4 Admitted development databases as isolated Demo state
 
 The release SHALL NOT use `*_test` databases as its durable demonstration
-state. The recommended database names are:
+state. For the current single-host Chairman demonstration, the existing clean
+development databases are the admitted targets:
 
 ```text
-nex_oa_demo
-nex_ag_demo
-nex_ae_demo
-nex_cx_demo
-nex_mo_demo
-nex_wc_demo
-nex_eos_demo
+nex_oa_dev   owned by nex_oa_user
+nex_ag_dev   owned by nex_ag_user
+nex_ae_dev   owned by nex_ae_user
+nex_cx_dev   owned by nex_cx_user
+nex_mo_dev   owned by nex_mo_user
+nex_wc_dev   owned by nex_wc_user
+nex_eos_dev  owned by nex_eos_user
 ```
 
-Their credentials remain OpenBao-managed. Creation and grants are an explicit
-operator prerequisite and are not performed by importing test reset helpers.
+This decision is safe because the inspected databases contain zero business
+rows and are not targeted by exact-name test reset helpers. It is conditional
+on all of the following:
+
+1. Demo preparation applies the current source migration inventory with the
+   canonical `dev` migration profile.
+2. The seven databases are reserved for the Demo branch until the Chairman
+   demonstration closes; other branches and manual development do not write
+   to them.
+3. OpenBao supplies only the normal `NEX_*_DATABASE_URL` runtime variables.
+   No `NEX_*_TEST_DATABASE_URL` is injected into Demo containers.
+4. Pre-rehearsal backup and migration evidence record all seven exact database
+   and role identities.
+5. Seed and cleanup operate only on the dedicated Demo tenant. Test reset
+   functions and whole-database truncation are forbidden.
+
+Separate `*_demo` databases become mandatory when development and demonstration
+must run concurrently, when the release moves to another host, or when multiple
+independent Demo datasets are required. They are not required for the current
+single-host, serialized preparation period.
 
 The seed/reset command may affect only the dedicated Demo tenant and must fail
 closed without an exact confirmation value.
@@ -343,7 +389,7 @@ all images run as non-root with read-only roots where supported
 ### 8.2 Database and secret gate
 
 ```text
-seven Demo database URLs target dedicated *_demo databases
+seven Demo database URLs target the admitted exact *_dev databases and roles
 all service migrations are current
 OpenBao paths and AppRoles are owner-scoped
 AE/WC/EOS signed service-token audiences and scopes are exact
@@ -399,7 +445,7 @@ Each item remains an independent implementation, test, commit, and push unit:
 | 1 | Demo runtime/process closure | Executable AE dispatcher/worker and exact required delivery consumers |
 | 2 | Eight-image OCI catalog closure | WC/EOS images, process bindings, complete provenance |
 | 3 | Demo Compose/trust closure | WC/EOS services, routes, OpenBao ownership, signed trust |
-| 4 | Demo database and fixture closure | Seven migrations, guarded idempotent seed/reset |
+| 4 | Demo database and fixture closure | Seven `_dev` admissions/migrations, guarded idempotent seed/reset |
 | 5 | Installed lifecycle closure | Build, install, start, stop, restart, health and recovery |
 | 6 | Protected Chairman rehearsal | Live generation, PostgreSQL, RustFS, Playwright golden journey |
 | 7 | Demo release and operations closure | Runbooks, evidence pack, immutable release identifier |
@@ -414,7 +460,8 @@ P8-DEMO work may close only when:
 1. The eight-image release set is complete and provenance-admitted.
 2. Every public journey dependency runs as an installed process.
 3. WC/EOS database, secret, route, trust, and health boundaries are present.
-4. Dedicated Demo databases are migrated and guarded fixtures are repeatable.
+4. The seven admitted `_dev` databases are migration-current, reserved for
+   Demo use, and have repeatable guarded fixtures.
 5. Start, stop, restart, and durable recovery pass on the single host.
 6. The complete protected Chairman journey passes without mock fallback.
 7. Exact replay produces no duplicate Voucher or membership mutation.
@@ -431,7 +478,8 @@ HISTORICAL DEPLOYMENT EVIDENCE PRESERVED
 SIX-IMAGE INSTALLED TOPOLOGY NOT SUFFICIENT
 WC/EOS PACKAGING AND COMPOSE INTEGRATION REQUIRED
 AE AGENT RUNTIME INSTALLED PROCESS CLOSURE REQUIRED
-DEDICATED DEMO DATABASES REQUIRED
+SEVEN CLEAN DEV DATABASES CONDITIONALLY ADMITTED FOR DEMO
+MIGRATION / RESERVATION / TENANT-GUARD CLOSURE REQUIRED
 PROTECTED INSTALLED GOLDEN JOURNEY REQUIRED
 DEMO IMPLEMENTATION ENTRY AUTHORIZED WITH BLOCKING GATES
 ```

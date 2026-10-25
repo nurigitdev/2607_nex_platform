@@ -250,8 +250,8 @@ Before building or installing the Chairman Demo Release, read
 `P8_DEMO_CA01_Chairman_Demo_Release_Boundary_and_Readiness_Audit_v1.0.md`.
 It preserves the P8 v1.2 business baseline and defines the blocking closure for
 the eight-image WC/EOS-aware Compose topology, installed Agent Runtime
-processes, dedicated Demo databases, guarded fixtures, and protected live
-rehearsal.
+processes, admitted isolated `*_dev` databases, guarded fixtures, and protected
+live rehearsal.
 
 ---
 
