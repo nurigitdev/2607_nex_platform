@@ -36,6 +36,7 @@ NVT_PROJECT_GET = "PROJECT.NVT_PROJECT.GET"
 NVT_PROJECT_LIST = "PROJECT.NVT_PROJECT.LIST"
 NVT_PROJECT_UPDATE = "PROJECT.NVT_PROJECT.UPDATE"
 MEMBERSHIP_ADD = "PROJECT.MEMBERSHIP.ADD"
+MEMBERSHIP_ADD_MANY = "PROJECT.MEMBERSHIP.ADD_MANY"
 MEMBERSHIP_REMOVE = "PROJECT.MEMBERSHIP.REMOVE"
 MEMBERSHIP_LIST = "PROJECT.MEMBERSHIP.LIST"
 
@@ -53,6 +54,8 @@ PROJECT_WRITE_OPERATIONS = frozenset(
     }
 )
 PROJECT_OPERATIONS = PROJECT_READ_OPERATIONS | PROJECT_WRITE_OPERATIONS
+PROJECT_BATCH_WRITE_OPERATIONS = frozenset({MEMBERSHIP_ADD_MANY})
+PROJECT_CAPABILITY_OPERATIONS = PROJECT_OPERATIONS | PROJECT_BATCH_WRITE_OPERATIONS
 
 _PROJECT_REQUIRED = frozenset(
     {PROJECT_GET, PROJECT_DEACTIVATE, MEMBERSHIP_ADD, MEMBERSHIP_REMOVE, MEMBERSHIP_LIST}
@@ -81,9 +84,9 @@ def build_project_operation_capabilities(
 ) -> tuple[dict[str, Any], ...]:
     artifacts = _artifact_map(read_admission, write_admission)
     capabilities = []
-    for operation_id in sorted(PROJECT_OPERATIONS):
+    for operation_id in sorted(PROJECT_CAPABILITY_OPERATIONS):
         artifact = artifacts[operation_id]
-        write = operation_id in PROJECT_WRITE_OPERATIONS
+        write = operation_id in PROJECT_WRITE_OPERATIONS | PROJECT_BATCH_WRITE_OPERATIONS
         capabilities.append(
             build_local_skill_capability(
                 skill_id=operation_id,
@@ -398,7 +401,7 @@ def _artifact_map(
         (
             write_admission,
             "nsl_project_write_artifact_admission.v1",
-            PROJECT_WRITE_OPERATIONS,
+            PROJECT_WRITE_OPERATIONS | PROJECT_BATCH_WRITE_OPERATIONS,
         ),
     )
     result: dict[str, dict[str, Any]] = {}
@@ -444,7 +447,7 @@ def _artifact_map(
                 "P8_PROJECT_ARTIFACT_ADMISSION_INVALID",
                 "Project operation artifact set is incomplete.",
             )
-    if set(result) != PROJECT_OPERATIONS:
+    if set(result) != PROJECT_CAPABILITY_OPERATIONS:
         raise _error(
             "P8_PROJECT_ARTIFACT_ADMISSION_INVALID",
             "Project operation artifact set contains an unsupported identity.",

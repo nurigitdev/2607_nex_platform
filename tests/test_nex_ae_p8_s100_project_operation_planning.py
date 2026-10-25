@@ -9,6 +9,7 @@ from nex_ae_api.intent_candidate_generation import IntentCandidateStageError
 from nex_ae_api.intent_policy import resolve_validated_intent_candidate
 from nex_ae_api.project_operation_planning import (
     MEMBERSHIP_ADD,
+    MEMBERSHIP_ADD_MANY,
     MEMBERSHIP_LIST,
     MEMBERSHIP_REMOVE,
     NVT_PROJECT_CREATE,
@@ -20,6 +21,7 @@ from nex_ae_api.project_operation_planning import (
     PROJECT_GET,
     PROJECT_LIST,
     PROJECT_OPERATIONS,
+    PROJECT_CAPABILITY_OPERATIONS,
     ProjectOperationPlanningError,
     activate_project_operation_work_intent,
     admit_project_operation_candidate,
@@ -276,6 +278,20 @@ def test_all_canonical_project_operations_bind_only_authoritative_ids(
     assert result["admission_hash"] == semantic_sha256_hash_ref(
         {key: value for key, value in result.items() if key != "admission_hash"}
     )
+
+
+def test_batch_membership_is_capability_only_until_batch_orchestration() -> None:
+    capabilities = build_project_operation_capabilities(
+        read_admission=_load(READ_ADMISSION),
+        write_admission=_load(WRITE_ADMISSION),
+    )
+    assert {item["capability_id"] for item in capabilities} == PROJECT_CAPABILITY_OPERATIONS
+    assert MEMBERSHIP_ADD_MANY in PROJECT_CAPABILITY_OPERATIONS
+    assert MEMBERSHIP_ADD_MANY not in PROJECT_OPERATIONS
+
+    with pytest.raises(ProjectOperationPlanningError) as unsupported:
+        _admit(_candidate(MEMBERSHIP_ADD_MANY))
+    assert unsupported.value.error_code == "P8_PROJECT_OPERATION_UNSUPPORTED"
 
 
 def test_project_and_employee_ambiguity_never_reaches_governed_write() -> None:
@@ -655,7 +671,7 @@ def test_unsupported_operation_is_rejected_after_candidate_validation() -> None:
     assert raised.value.error_code == "P8_PROJECT_OPERATION_UNSUPPORTED"
 
 
-def test_capability_snapshot_binds_all_eleven_exact_artifacts() -> None:
+def test_capability_snapshot_binds_all_twelve_exact_artifacts() -> None:
     read = _load(READ_ADMISSION)
     write = _load(WRITE_ADMISSION)
     capabilities = build_project_operation_capabilities(
@@ -672,8 +688,12 @@ def test_capability_snapshot_binds_all_eleven_exact_artifacts() -> None:
         baseline_capabilities=(),
     )
 
-    assert {item["capability_id"] for item in capabilities} == PROJECT_OPERATIONS
-    assert {item["capability_id"] for item in snapshot["capabilities"]} == PROJECT_OPERATIONS
+    assert {
+        item["capability_id"] for item in capabilities
+    } == PROJECT_CAPABILITY_OPERATIONS
+    assert {
+        item["capability_id"] for item in snapshot["capabilities"]
+    } == PROJECT_CAPABILITY_OPERATIONS
     assert all(
         item["local_skill_binding"]["backend_profile"] == "NSL_V02_IN_PROCESS"
         for item in capabilities

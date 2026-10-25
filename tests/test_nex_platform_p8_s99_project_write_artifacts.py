@@ -14,6 +14,7 @@ from nex_eos import (
     PROJECT_CREATE_OPERATION,
     PROJECT_DEACTIVATE_OPERATION,
     PROJECT_MEMBERSHIP_ADD_OPERATION,
+    PROJECT_MEMBERSHIP_ADD_MANY_OPERATION,
     PROJECT_MEMBERSHIP_REMOVE_OPERATION,
     create_eos_app,
 )
@@ -46,6 +47,11 @@ EXPECTED = {
         "PROJECT.PROJECT.GET",
     ),
     PROJECT_MEMBERSHIP_ADD_OPERATION: (
+        "CREATE",
+        "project:membership:manage",
+        "PROJECT.MEMBERSHIP.LIST",
+    ),
+    PROJECT_MEMBERSHIP_ADD_MANY_OPERATION: (
         "CREATE",
         "project:membership:manage",
         "PROJECT.MEMBERSHIP.LIST",
@@ -153,3 +159,14 @@ def test_actual_nsl_write_source_revision_manifest_and_semantics_are_exact() -> 
         assert verification.tool_id == expected["verification_tool_id"]
         assert item["source_sha256"] == expected["source_sha256"] == _sha256(source_path)
         assert item["semantic_hash"] == expected["semantic_hash"] == compiled.semantic_hash
+
+        if compiled.skill_id == PROJECT_MEMBERSHIP_ADD_MANY_OPERATION:
+            target_input = next(
+                field for field in compiled.inputs if field.name == "target_subject_ids"
+            )
+            assert target_input.type_info.kind == "list"
+            assert target_input.type_info.item is not None
+            assert target_input.type_info.item.name == "String"
+            assert compiled.limits.collection_size == 50
+            assert compiled.analysis.max_tool_calls == 1
+            assert compiled.analysis.max_loop_iterations == 0

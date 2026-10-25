@@ -2,9 +2,9 @@
   "schema_version": "nsl_project_write_artifact_admission.v1",
   "status": "PASS",
   "repository": "nurigitdev/2608_nsl",
-  "artifact_source_revision": "6ab16da5e8840a1387c4c2c3d6eeb933e54849d4",
+  "artifact_source_revision": "f5d899bb611ee2cd65ce9f6544ed6e51b450b7d4",
   "artifact_manifest_path": "examples/project_operations/write_artifact_manifest.json",
-  "artifact_manifest_sha256": "sha256:ae2a3d8ebf827aebc076418c7ba9075f895c24e084c40536b43b7ecbc9729057",
+  "artifact_manifest_sha256": "sha256:d9ec73d53392ab6df670886cbed1ddf8dd093a7c86ddb8195880fcc8c7f34392",
   "runtime_wheel": {
     "package_version": "0.2.1",
     "source_revision": "d53658ec2ab0b42e995fe0ebe80badd53218feec",
@@ -55,6 +55,15 @@
       "verification_tool_id": "PROJECT.MEMBERSHIP.LIST",
       "source_sha256": "sha256:1e760ec0f8a24403f42de0e5a8948672d310995534f16edfa39537bacc65d2cc",
       "semantic_hash": "sha256:578eada9a02ff813a5290d988769aa66baf8cc7adf9dbc41c55bb70cacc7c4f2"
+    },
+    {
+      "skill_id": "PROJECT.MEMBERSHIP.ADD_MANY",
+      "skill_version": "1.0.0",
+      "operation_kind": "CREATE",
+      "required_scope": "project:membership:manage",
+      "verification_tool_id": "PROJECT.MEMBERSHIP.LIST",
+      "source_sha256": "sha256:723f5683a4b6a9baa458874878d3b4956ecb259feca9077629c86500a127efe5",
+      "semantic_hash": "sha256:9a3362e5906cf9d62d720d77369acc6e39d40afcb1f0ccb59726b0ea85e7af02"
     },
     {
       "skill_id": "PROJECT.MEMBERSHIP.REMOVE",

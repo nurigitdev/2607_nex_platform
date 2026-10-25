@@ -23,6 +23,9 @@ PROJECT_MEMBERSHIP_ADD_MANY = "PROJECT.MEMBERSHIP.ADD_MANY"
 PROJECT_MEMBERSHIP_BATCH_ADMISSION_SCHEMA_VERSION = (
     "p8.project_membership_batch_admission.v1"
 )
+PROJECT_MEMBERSHIP_BATCH_SKILL_BINDING_SCHEMA_VERSION = (
+    "p8.project_membership_batch_skill_binding.v1"
+)
 OA_EMPLOYEE_BATCH_RESOLUTION_SCHEMA_VERSION = "oa_employee_batch_resolution.v1"
 DEFAULT_OA_BASE_URL = "http://127.0.0.1:8101"
 DEFAULT_OA_EMPLOYEE_BATCH_TIMEOUT_SECONDS = 15.0
@@ -291,6 +294,37 @@ def require_project_membership_batch_approval_binding(
     return normalized["payload_hash"]
 
 
+def bind_project_membership_batch_skill(
+    admission: Mapping[str, Any],
+    *,
+    approval_request: object,
+    write_admission: Mapping[str, Any],
+) -> dict[str, Any]:
+    normalized = validate_project_membership_batch_admission(admission)
+    payload_hash = require_project_membership_batch_approval_binding(
+        normalized, approval_request
+    )
+    artifact = _batch_write_artifact(write_admission)
+    result = {
+        "schema_version": PROJECT_MEMBERSHIP_BATCH_SKILL_BINDING_SCHEMA_VERSION,
+        "operation_id": PROJECT_MEMBERSHIP_ADD_MANY,
+        "payload_hash": payload_hash,
+        "capability_ref": {
+            "capability_id": PROJECT_MEMBERSHIP_ADD_MANY,
+            "skill_id": PROJECT_MEMBERSHIP_ADD_MANY,
+            "skill_version": artifact["skill_version"],
+            "skill_semantic_hash": artifact["semantic_hash"],
+            "source_sha256": artifact["source_sha256"],
+            "artifact_source_revision": write_admission["artifact_source_revision"],
+        },
+        "arguments": deepcopy(normalized["governed_payload"]),
+        "approval_projection": deepcopy(normalized["approval_projection"]),
+        "model_authority": False,
+    }
+    result["binding_hash"] = semantic_sha256_hash_ref(result)
+    return result
+
+
 def validate_project_membership_batch_admission(
     value: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -415,6 +449,46 @@ def validate_project_membership_batch_admission(
     if dict(projection) != expected_projection:
         raise _invalid("Membership batch approval projection is inconsistent.")
     return supplied
+
+
+def _batch_write_artifact(write_admission: Mapping[str, Any]) -> dict[str, Any]:
+    if (
+        not isinstance(write_admission, Mapping)
+        or write_admission.get("schema_version")
+        != "nsl_project_write_artifact_admission.v1"
+        or write_admission.get("status") != "PASS"
+        or not isinstance(write_admission.get("skills"), Sequence)
+    ):
+        raise _invalid("Project membership batch Skill admission is invalid.")
+    revision = write_admission.get("artifact_source_revision")
+    try:
+        validate_hash_ref(write_admission.get("artifact_manifest_sha256"))
+    except ValueError as exc:
+        raise _invalid("Project membership batch artifact digest is invalid.") from exc
+    if not isinstance(revision, str) or re.fullmatch(r"[0-9a-f]{40}", revision) is None:
+        raise _invalid("Project membership batch source revision is invalid.")
+    matches = [
+        item
+        for item in write_admission["skills"]
+        if isinstance(item, Mapping)
+        and item.get("skill_id") == PROJECT_MEMBERSHIP_ADD_MANY
+    ]
+    if len(matches) != 1:
+        raise _invalid("Project membership batch Skill is not exactly admitted.")
+    artifact = deepcopy(dict(matches[0]))
+    try:
+        validate_hash_ref(artifact.get("semantic_hash"))
+        validate_hash_ref(artifact.get("source_sha256"))
+    except ValueError as exc:
+        raise _invalid("Project membership batch Skill digest is invalid.") from exc
+    if (
+        artifact.get("skill_version") != "1.0.0"
+        or artifact.get("operation_kind") != "CREATE"
+        or artifact.get("required_scope") != "project:membership:manage"
+        or artifact.get("verification_tool_id") != "PROJECT.MEMBERSHIP.LIST"
+    ):
+        raise _invalid("Project membership batch Skill contract is invalid.")
+    return artifact
 
 
 def _normalize_request(value: Mapping[str, Any]) -> dict[str, Any]:

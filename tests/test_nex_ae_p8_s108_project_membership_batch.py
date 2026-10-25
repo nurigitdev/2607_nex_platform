@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -9,10 +11,12 @@ import pytest
 from nex_ae_api.project_membership_batch import (
     OA_EMPLOYEE_BATCH_RESOLUTION_SCHEMA_VERSION,
     PROJECT_MEMBERSHIP_ADD_MANY,
+    PROJECT_MEMBERSHIP_BATCH_SKILL_BINDING_SCHEMA_VERSION,
     HttpOaEmployeeBatchResolutionSource,
     ProjectMembershipBatchError,
     admit_project_membership_batch,
     batch_approval_display_summary,
+    bind_project_membership_batch_skill,
     build_default_oa_employee_batch_resolution_source,
     require_project_membership_batch_approval_binding,
     validate_project_membership_batch_admission,
@@ -23,6 +27,10 @@ TENANT = "tenant-s108"
 REQUESTER = "subject-requester"
 PROJECT_ID = "a1080000-0000-4000-8000-000000000001"
 TRACE_ID = "1" * 32
+ROOT = Path(__file__).resolve().parents[1]
+WRITE_ADMISSION = (
+    ROOT / "contracts/examples/common/nsl_project_write_artifact_admission.pass.json"
+)
 
 
 def _request(*, role: str | None = None, candidates: list[dict] | None = None) -> dict:
@@ -110,6 +118,10 @@ def _admit(response: dict, request: dict | None = None) -> tuple[dict, Source]:
         trace_id=TRACE_ID,
     )
     return result, source
+
+
+def _write_admission() -> dict:
+    return json.loads(WRITE_ADMISSION.read_text(encoding="utf-8"))
 
 
 def test_mixed_batch_is_deduplicated_sorted_and_bound_to_one_approval() -> None:
@@ -377,6 +389,133 @@ def test_approval_binding_rejects_mapping_and_object_tamper() -> None:
     ):
         with pytest.raises(ProjectMembershipBatchError):
             require_project_membership_batch_approval_binding(result, approval)
+
+
+def test_batch_skill_binding_preserves_approved_payload_and_exact_artifact() -> None:
+    result, _ = _admit(
+        _resolution(
+            [
+                _resolved(0, "EMP-001", "subject-a"),
+                _resolved(1, "EMP-002", "subject-b"),
+            ]
+        )
+    )
+    write_admission = _write_admission()
+    approval = {
+        "payload_hash": result["payload_hash"],
+        "display_safe_summary": result["approval_projection"],
+    }
+
+    binding = bind_project_membership_batch_skill(
+        result,
+        approval_request=approval,
+        write_admission=write_admission,
+    )
+
+    artifact = next(
+        item
+        for item in write_admission["skills"]
+        if item["skill_id"] == PROJECT_MEMBERSHIP_ADD_MANY
+    )
+    assert binding["schema_version"] == (
+        PROJECT_MEMBERSHIP_BATCH_SKILL_BINDING_SCHEMA_VERSION
+    )
+    assert binding["payload_hash"] == result["payload_hash"]
+    assert binding["arguments"] == result["governed_payload"]
+    assert binding["approval_projection"] == result["approval_projection"]
+    assert binding["capability_ref"] == {
+        "capability_id": PROJECT_MEMBERSHIP_ADD_MANY,
+        "skill_id": PROJECT_MEMBERSHIP_ADD_MANY,
+        "skill_version": "1.0.0",
+        "skill_semantic_hash": artifact["semantic_hash"],
+        "source_sha256": artifact["source_sha256"],
+        "artifact_source_revision": write_admission["artifact_source_revision"],
+    }
+    assert binding["model_authority"] is False
+    assert binding["binding_hash"] == semantic_sha256_hash_ref(
+        {key: item for key, item in binding.items() if key != "binding_hash"}
+    )
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    (
+        lambda value: value.update(schema_version="bad"),
+        lambda value: value.update(status="FAIL"),
+        lambda value: value.update(skills="bad"),
+        lambda value: value.update(artifact_source_revision="bad"),
+        lambda value: value.update(artifact_manifest_sha256="bad"),
+        lambda value: value["skills"].__setitem__(
+            next(
+                index
+                for index, item in enumerate(value["skills"])
+                if item["skill_id"] == PROJECT_MEMBERSHIP_ADD_MANY
+            ),
+            {"skill_id": "OTHER"},
+        ),
+        lambda value: value["skills"].append(
+            deepcopy(
+                next(
+                    item
+                    for item in value["skills"]
+                    if item["skill_id"] == PROJECT_MEMBERSHIP_ADD_MANY
+                )
+            )
+        ),
+        lambda value: next(
+            item
+            for item in value["skills"]
+            if item["skill_id"] == PROJECT_MEMBERSHIP_ADD_MANY
+        ).update(skill_version="2.0.0"),
+        lambda value: next(
+            item
+            for item in value["skills"]
+            if item["skill_id"] == PROJECT_MEMBERSHIP_ADD_MANY
+        ).update(operation_kind="UPDATE"),
+        lambda value: next(
+            item
+            for item in value["skills"]
+            if item["skill_id"] == PROJECT_MEMBERSHIP_ADD_MANY
+        ).update(required_scope="project:read"),
+        lambda value: next(
+            item
+            for item in value["skills"]
+            if item["skill_id"] == PROJECT_MEMBERSHIP_ADD_MANY
+        ).update(verification_tool_id="PROJECT.PROJECT.GET"),
+        lambda value: next(
+            item
+            for item in value["skills"]
+            if item["skill_id"] == PROJECT_MEMBERSHIP_ADD_MANY
+        ).update(semantic_hash="bad"),
+        lambda value: next(
+            item
+            for item in value["skills"]
+            if item["skill_id"] == PROJECT_MEMBERSHIP_ADD_MANY
+        ).update(source_sha256="bad"),
+    ),
+)
+def test_batch_skill_binding_rejects_unadmitted_or_tampered_artifact(mutate) -> None:
+    result, _ = _admit(
+        _resolution(
+            [
+                _resolved(0, "EMP-001", "subject-a"),
+                _resolved(1, "EMP-002", "subject-b"),
+            ]
+        )
+    )
+    approval = {
+        "payload_hash": result["payload_hash"],
+        "display_safe_summary": result["approval_projection"],
+    }
+    write_admission = _write_admission()
+    mutate(write_admission)
+
+    with pytest.raises(ProjectMembershipBatchError):
+        bind_project_membership_batch_skill(
+            result,
+            approval_request=approval,
+            write_admission=write_admission,
+        )
 
 
 @pytest.mark.parametrize(
