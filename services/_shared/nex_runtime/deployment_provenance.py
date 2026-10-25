@@ -73,13 +73,14 @@ def collect_deployment_release_manifest(
     source_revision: str,
     source_tree_clean: bool,
     image_references: Mapping[str, str] | None = None,
+    catalog: DeploymentArtifactCatalog | None = None,
 ) -> DeploymentReleaseManifest:
-    catalog = build_default_deployment_artifact_catalog()
-    inputs = build_deployment_build_inputs(root, catalog=catalog)
-    definitions = build_default_oci_definitions(catalog)
+    artifact_catalog = catalog or build_default_deployment_artifact_catalog()
+    inputs = build_deployment_build_inputs(root, catalog=artifact_catalog)
+    definitions = build_default_oci_definitions(artifact_catalog)
     validate_oci_containerfiles(root, definitions)
     references = dict(image_references or {})
-    expected_ids = {artifact.artifact_id for artifact in catalog.artifacts}
+    expected_ids = {artifact.artifact_id for artifact in artifact_catalog.artifacts}
     if references and set(references) != expected_ids:
         raise DeploymentProvenanceError(
             "image references must cover the complete artifact set"
@@ -91,7 +92,7 @@ def collect_deployment_release_manifest(
     provenance = []
     with TemporaryDirectory(prefix="nex-release-context-") as temp:
         destination = Path(temp)
-        for artifact in catalog.artifacts:
+        for artifact in artifact_catalog.artifacts:
             definition = definition_by_id[artifact.artifact_id]
             context = materialize_oci_build_context(
                 root,
@@ -147,7 +148,7 @@ def collect_deployment_release_manifest(
         )
     validate_deployment_release_manifest(
         manifest,
-        catalog=catalog,
+        catalog=artifact_catalog,
         inputs=inputs,
     )
     return manifest

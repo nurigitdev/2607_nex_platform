@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import signal
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-import signal
-import time
 from typing import Any
 
 from sqlalchemy import bindparam, text
@@ -28,12 +28,34 @@ from .worker_heartbeats import (
     WorkerHeartbeatEmitter,
 )
 
-
 DEMO_PROCESS_RUN_SCHEMA_VERSION = "p8_demo_process_run.v1"
+DEMO_RUNTIME_CHECK_MODE_ENV = "NEX_DEMO_RUNTIME_CHECK_MODE"
+DEMO_RUNTIME_PACKAGE_CHECK_MODE = "PACKAGE"
 
 
 class DemoProcessRuntimeError(RuntimeError):
     pass
+
+
+def demo_package_check_requested(environ: Mapping[str, str]) -> bool:
+    return (
+        str(environ.get(DEMO_RUNTIME_CHECK_MODE_ENV) or "").strip().upper()
+        == DEMO_RUNTIME_PACKAGE_CHECK_MODE
+    )
+
+
+def build_demo_package_check(source_check: Mapping[str, Any]) -> dict[str, Any]:
+    record = dict(source_check)
+    if record.get("status") != "PASS" or not record.get("process_id"):
+        raise DemoProcessRuntimeError("source package check is invalid")
+    return {
+        **record,
+        "check_scope": DEMO_RUNTIME_PACKAGE_CHECK_MODE,
+        "package_ready": True,
+        "runtime_ready": False,
+        "database": {"status": "NOT_REQUESTED"},
+        "secret_included": False,
+    }
 
 
 @dataclass(frozen=True)

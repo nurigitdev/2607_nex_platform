@@ -12,7 +12,9 @@ from nex_runtime.demo_process_runtime import (
     DemoProcessRuntimeConfig,
     DemoProcessRuntimeError,
     DemoProcessShutdownToken,
+    build_demo_package_check,
     build_demo_process_database_resource,
+    demo_package_check_requested,
     demo_process_database_check,
     install_demo_process_signal_handlers,
     restore_demo_process_signal_handlers,
@@ -98,9 +100,12 @@ def main(
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--max-cycles", type=int)
     args = parser.parse_args(list(argv) if argv is not None else None)
+    environment = os.environ if environ is None else environ
     try:
         record = (
-            dict(live_check(environ))
+            build_demo_package_check(build_source_check())
+            if args.check and demo_package_check_requested(environment)
+            else dict(live_check(environ))
             if args.check
             else dict(live_run(environ, max_cycles=args.max_cycles))
         )

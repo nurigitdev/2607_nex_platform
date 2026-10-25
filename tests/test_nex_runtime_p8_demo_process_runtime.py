@@ -1,25 +1,25 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
 import signal
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-
 from nex_runtime.demo_process_runtime import (
     DemoProcessDatabaseResource,
     DemoProcessRuntimeConfig,
     DemoProcessRuntimeError,
     DemoProcessShutdownToken,
+    build_demo_package_check,
     build_demo_process_database_resource,
+    demo_package_check_requested,
     demo_process_database_check,
     install_demo_process_signal_handlers,
     restore_demo_process_signal_handlers,
     run_demo_process_loop,
 )
-
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
 
 NOW = datetime(2026, 10, 25, 9, 0, tzinfo=UTC)
 
@@ -64,6 +64,16 @@ def _resource() -> tuple[DemoProcessDatabaseResource, Heartbeats]:
         _config(), Engine(), object(), heartbeats  # type: ignore[arg-type]
     )
     return resource, heartbeats
+
+
+def test_package_check_mode_is_explicit_and_validates_source_record() -> None:
+    assert demo_package_check_requested({"NEX_DEMO_RUNTIME_CHECK_MODE": "package"})
+    assert not demo_package_check_requested({})
+    record = build_demo_package_check({"status": "PASS", "process_id": "worker"})
+    assert record["package_ready"] is True
+    assert record["runtime_ready"] is False
+    with pytest.raises(DemoProcessRuntimeError, match="source package check"):
+        build_demo_package_check({"status": "BLOCKED"})
 
 
 @pytest.mark.parametrize(
@@ -232,8 +242,8 @@ def test_loop_rejects_invalid_cycle_bounds(max_cycles) -> None:
     with pytest.raises(DemoProcessRuntimeError, match="max_cycles"):
         run_demo_process_loop(
             _resource()[0],
-            recovery_probe=lambda: {},
-            cycle=lambda: {},
+            recovery_probe=dict,
+            cycle=dict,
             max_cycles=max_cycles,
         )
 
@@ -243,17 +253,17 @@ def test_loop_rejects_malformed_probe_and_naive_clock() -> None:
         run_demo_process_loop(
             _resource()[0],
             recovery_probe=lambda: None,  # type: ignore[return-value]
-            cycle=lambda: {},
+            cycle=dict,
             max_cycles=1,
             clock=lambda: NOW,
         )
     with pytest.raises(DemoProcessRuntimeError, match="timezone-aware"):
         run_demo_process_loop(
             _resource()[0],
-            recovery_probe=lambda: {},
-            cycle=lambda: {},
+            recovery_probe=dict,
+            cycle=dict,
             max_cycles=1,
-            clock=lambda: datetime(2026, 10, 25),
+            clock=lambda: datetime(2026, 10, 25),  # noqa: DTZ001 - invalid clock fixture
         )
 
 

@@ -6,9 +6,9 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
-
 from nex_ae_api import demo_runtime as ae_runtime
 from nex_eos import demo_runtime as eos_runtime
+from nex_runtime.demo_process_runtime import DEMO_RUNTIME_CHECK_MODE_ENV
 from nex_runtime.demo_processes import (
     DEMO_APPLICATION_ARTIFACTS,
     DEMO_INSTALLED_PROCESS_IDS,
@@ -109,6 +109,35 @@ def test_demo_runtime_commands_admit_check_but_fail_closed_execution(
     blocked = json.loads(output.getvalue())
     assert blocked["status"] == "BLOCKED"
     assert blocked["secret_included"] is False
+
+
+@pytest.mark.parametrize(
+    ("module", "process", "process_id"),
+    (
+        (ae_runtime, "worker", "nex-ae-agent-runtime-worker"),
+        (wc_runtime, "events", "nex-wc-event-delivery-worker"),
+        (eos_runtime, "outbox", "nex-eos-outbox-publisher"),
+    ),
+)
+def test_demo_runtime_offline_package_check_is_explicit_and_non_runtime(
+    module, process: str, process_id: str
+) -> None:
+    output = io.StringIO()
+
+    assert module.main(
+        [process, "--check"],
+        stdout=output,
+        environ={DEMO_RUNTIME_CHECK_MODE_ENV: "PACKAGE"},
+        live_check=lambda _environ: (_ for _ in ()).throw(AssertionError),
+    ) == 0
+
+    record = json.loads(output.getvalue())
+    assert record["process_id"] == process_id
+    assert record["check_scope"] == "PACKAGE"
+    assert record["package_ready"] is True
+    assert record["runtime_ready"] is False
+    assert record["database"] == {"status": "NOT_REQUESTED"}
+    assert record["secret_included"] is False
 
 
 @pytest.mark.parametrize(
@@ -287,5 +316,5 @@ def test_service_queue_projections_are_safe_and_recovery_aware(
     assert readiness["probe"] == "READINESS"
     assert recovery["status"] == "IDLE"
     assert recovery["domain_claiming_enabled"] is False
-    for key, value in expected.items():
-        assert recovery[key] == value
+    for key, expected_value in expected.items():
+        assert recovery[key] == expected_value
