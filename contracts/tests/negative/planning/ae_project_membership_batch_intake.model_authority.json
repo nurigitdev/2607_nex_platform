@@ -1,0 +1,12 @@
+{
+  "tenant_id": "tenant-demo",
+  "requester_subject_id": "subject-chairman",
+  "project_id": "11111111-1111-4111-8111-111111111111",
+  "candidates": [
+    {
+      "input_index": 0,
+      "employee_id": "1001",
+      "subject_id": "model-supplied-subject"
+    }
+  ]
+}

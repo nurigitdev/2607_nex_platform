@@ -1324,6 +1324,16 @@
       "name": "oa_employee_batch_resolution_mixed",
       "path": "examples/auth/oa_employee_batch_resolution.mixed.json",
       "schema": "schemas/service/nex_oa/employee_batch_resolution.v1.schema.json"
+    },
+    {
+      "name": "ae_project_membership_batch_intake_mixed",
+      "path": "examples/planning/ae_project_membership_batch_intake.mixed.json",
+      "schema": "schemas/service/nex_ae_api/project_membership_batch_intake.v1.schema.json"
+    },
+    {
+      "name": "ae_project_membership_batch_admission_mixed",
+      "path": "examples/planning/ae_project_membership_batch_admission.mixed.json",
+      "schema": "schemas/service/nex_ae_api/project_membership_batch_admission.v1.schema.json"
     }
   ]
 }
