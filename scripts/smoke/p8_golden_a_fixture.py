@@ -15,6 +15,7 @@ from nex_eos import (
     EOS_ORG_UNIT_TABLE,
     EOS_POSITION_ASSIGNMENT_TABLE,
     EOS_POSITION_TABLE,
+    EOS_PROJECT_MEMBER_TABLE,
     EOS_PROJECT_TABLE,
     AccountInput,
     EosApproverResolutionService,
@@ -600,6 +601,7 @@ def reset_golden_a_fixture(
     tenant_id = record["tenant"]["tenant_id"]
     with eos_engine.begin() as connection:
         for table in (
+            EOS_PROJECT_MEMBER_TABLE,
             EOS_POSITION_ASSIGNMENT_TABLE,
             EOS_POSITION_TABLE,
             EOS_ORG_UNIT_TABLE,
@@ -648,6 +650,7 @@ def golden_a_residue_counts(
             for table in (
                 EOS_NVT_PROJECT_TABLE,
                 EOS_PROJECT_TABLE,
+                EOS_PROJECT_MEMBER_TABLE,
                 EOS_ACCOUNT_TABLE,
                 EOS_ORG_UNIT_TABLE,
                 EOS_POSITION_TABLE,

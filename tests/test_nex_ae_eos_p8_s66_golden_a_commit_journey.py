@@ -122,6 +122,19 @@ def test_s66_summary_excludes_lineage_details() -> None:
     assert "approval_request" not in summary
 
 
+def test_s66_parses_only_canonical_voucher_business_references() -> None:
+    voucher_id = "84000000-0000-4000-8000-000000000001"
+
+    assert smoke._voucher_id_from_ref(f"eos.voucher_draft:{voucher_id}") == voucher_id
+    for invalid in (
+        voucher_id,
+        "eos.voucher_draft:not-a-uuid",
+        {"type": "eos.voucher_draft", "id": voucher_id},
+    ):
+        with pytest.raises(smoke.P8S66SmokeError, match="invalid VoucherRef"):
+            smoke._voucher_id_from_ref(invalid)
+
+
 @pytest.mark.skipif(
     os.getenv(smoke.SMOKE_ENV) != "1"
     or any(not os.getenv(key) for key in smoke.EXPECTED_DATABASES),

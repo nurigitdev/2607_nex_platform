@@ -23,6 +23,7 @@
     "smoke:grounded-generation-experience": "node scripts/runGroundedGenerationExperienceSmoke.mjs --summary",
     "smoke:grounded-generation-playwright": "node scripts/runGroundedGenerationPlaywrightSmoke.mjs --summary",
     "smoke:korean-golden-journey-playwright": "node scripts/runKoreanGoldenJourneyPlaywrightAcceptance.mjs --summary",
+    "smoke:p8-s102-demo-playwright": "node scripts/runP8S102DemoPlaywrightSmoke.mjs",
     "smoke:voucher-attachment-playwright": "node scripts/runVoucherAttachmentPlaywrightSmoke.mjs --summary",
     "smoke:playwright-readiness": "node scripts/runCredentialLoginPlaywrightReadiness.mjs --summary",
     "test": "node --test test/*.test.mjs"

@@ -9,6 +9,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.orm import sessionmaker
@@ -39,6 +40,8 @@ from nex_eos import (
     EOS_VOUCHER_ATTACHMENT_TABLE,
     EOS_VOUCHER_DRAFT_LINE_TABLE,
     EOS_VOUCHER_DRAFT_TABLE,
+    ProjectMembershipInput,
+    SqlAlchemyEosProjectMembershipRepository,
     create_eos_app,
 )
 from nex_oa.authorization_service import OA_AUTHORIZATION_READ_SCOPE
@@ -246,6 +249,14 @@ def _execute_commit(  # pragma: no cover - actual PostgreSQL/OA/EOS gate.
             projects=eos_app.state.eos_projects,
             accounts=eos_app.state.eos_accounts,
         )
+        _seed_demo_requester_access(
+            fixture,
+            oa_engine=oa_engine,
+            oa_factory=oa_factory,
+            eos_memberships=SqlAlchemyEosProjectMembershipRepository(
+                eos_runtime.session_factory
+            ),
+        )
         eos_server = browser_runtime.start_api_server(
             eos_app, browser_runtime.find_free_port()
         )
@@ -317,6 +328,12 @@ def _execute_commit(  # pragma: no cover - actual PostgreSQL/OA/EOS gate.
             )
         counts = _eos_mutation_counts(eos_engine, tenant_id)
         ae_counts = _ae_counts(ae_engine, tenant_id)
+        voucher_id = _voucher_id_from_ref(worker["voucher_ref"])
+        voucher_access = _read_committed_voucher(
+            eos_app,
+            fixture=fixture,
+            voucher_id=voucher_id,
+        )
         checks = {
             "actual_ae_database": ae_identity == ("nex_ae_test", "nex_ae_user"),
             "actual_eos_database": eos_identity == ("nex_eos_test", "nex_eos_user"),
@@ -355,6 +372,19 @@ def _execute_commit(  # pragma: no cover - actual PostgreSQL/OA/EOS gate.
                 "write_evidence": worker["expected_write_evidence_count"],
             },
             "post_write_verified": worker["verification_status"] == "VERIFIED",
+            "project_membership_guard_admitted": (
+                voucher_access["detail"]["voucher"]["project_id"]
+                == fixture["projects"]["child"]["project_id"]
+            ),
+            "voucher_get_list_membership_filtered": (
+                voucher_access["detail"]["operation_id"] == "FINANCE.VOUCHER_DRAFT.GET"
+                and voucher_access["collection"]["operation_id"]
+                == "FINANCE.VOUCHER_DRAFT.LIST"
+                and [
+                    item["voucher_id"] for item in voucher_access["collection"]["items"]
+                ]
+                == [voucher_id]
+            ),
         }
         if exactly_once:
             variants = worker.get("retry_variants", {})
@@ -384,6 +414,7 @@ def _execute_commit(  # pragma: no cover - actual PostgreSQL/OA/EOS gate.
             "eos_mutation_counts": counts,
             "ae_evidence_counts": ae_counts,
             "nsl_release_admission_hash": worker["release_admission_hash"],
+            "voucher_access": voucher_access,
         }
         if exactly_once:
             commit["retry_variants"] = worker["retry_variants"]
@@ -394,12 +425,12 @@ def _execute_commit(  # pragma: no cover - actual PostgreSQL/OA/EOS gate.
             fixture, oa_engine=oa_engine, eos_engine=eos_engine
         )
         if commit is not None:
-            residue_count = sum(_ae_counts(ae_engine, tenant_id).values()) + sum(
-                _eos_mutation_counts(eos_engine, tenant_id).values()
-            ) + sum(
-                value
-                for service in residue.values()
-                for value in service.values()
+            residue_count = (
+                sum(_ae_counts(ae_engine, tenant_id).values())
+                + sum(_eos_mutation_counts(eos_engine, tenant_id).values())
+                + sum(
+                    value for service in residue.values() for value in service.values()
+                )
             )
             commit["residue_count"] = residue_count
             commit["checks"]["zero_residue"] = residue_count == 0
@@ -415,6 +446,92 @@ def _execute_commit(  # pragma: no cover - actual PostgreSQL/OA/EOS gate.
     if commit is None:
         raise P8S66SmokeError("Golden A EOS commit evidence is unavailable")
     return commit
+
+
+def _seed_demo_requester_access(
+    fixture: Mapping[str, Any],
+    *,
+    oa_engine: Any,
+    oa_factory: Any,
+    eos_memberships: SqlAlchemyEosProjectMembershipRepository,
+) -> None:
+    tenant_id = fixture["tenant"]["tenant_id"]
+    requester_id = fixture["scenario"]["requester_subject_id"]
+    requester = next(
+        item for item in fixture["principals"] if item["subject_id"] == requester_id
+    )
+    with oa_engine.begin() as connection:
+        connection.execute(
+            text(
+                "DELETE FROM oa_tenant_memberships "
+                "WHERE tenant_id = :tenant_id AND subject_id = :subject_id"
+            ),
+            {"tenant_id": tenant_id, "subject_id": requester_id},
+        )
+    SqlAlchemyOaTenantMembershipRegistry(
+        oa_factory,
+        subject_registry=SqlAlchemyOaSubjectRegistry(oa_factory),
+    ).ensure_membership(
+        {
+            "tenant_id": tenant_id,
+            "tenant_display_name": fixture["tenant"]["display_name"],
+            "subject_id": requester_id,
+            "subject_display_name": requester["display_name"],
+            "roles": requester["roles"],
+            "scopes": sorted({*requester["scopes"], "finance:voucher-draft:read"}),
+            "membership_metadata": {
+                "fixture_id": fixture["fixture_id"],
+                "profile": "p8-s102-demo",
+            },
+        }
+    )
+    eos_memberships.create_membership(
+        ProjectMembershipInput(
+            tenant_id=tenant_id,
+            project_membership_id="84000000-0000-4000-8000-000000000001",
+            project_id=fixture["projects"]["child"]["project_id"],
+            subject_id=requester_id,
+            member_role="OWNER",
+            created_by_subject_id=requester_id,
+        )
+    )
+
+
+def _read_committed_voucher(
+    eos_app: Any,
+    *,
+    fixture: Mapping[str, Any],
+    voucher_id: str,
+) -> dict[str, Any]:
+    tenant_id = fixture["tenant"]["tenant_id"]
+    requester_id = fixture["scenario"]["requester_subject_id"]
+    service = eos_app.state.eos_voucher_access_service
+    if service is None:
+        raise P8S66SmokeError("EOS Voucher access service is unavailable")
+    return {
+        "detail": service.get_draft(
+            tenant_id=tenant_id,
+            voucher_id=voucher_id,
+            requester_subject_id=requester_id,
+        ),
+        "collection": service.list_drafts(
+            tenant_id=tenant_id,
+            project_id=fixture["projects"]["child"]["project_id"],
+            requester_subject_id=requester_id,
+            limit=10,
+            offset=0,
+        ),
+    }
+
+
+def _voucher_id_from_ref(value: object) -> str:
+    prefix = "eos.voucher_draft:"
+    if not isinstance(value, str) or not value.startswith(prefix):
+        raise P8S66SmokeError("EOS worker returned an invalid VoucherRef")
+    try:
+        return str(UUID(value[len(prefix) :]))
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise P8S66SmokeError("EOS worker returned an invalid VoucherRef") from exc
 
 
 def _cleanup_ae(engine: Any, tenant_id: str) -> None:
