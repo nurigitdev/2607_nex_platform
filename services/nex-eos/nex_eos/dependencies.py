@@ -33,6 +33,7 @@ from .health import build_configuration_readiness_check
 from .organization import SqlAlchemyEosOrganizationRepository
 from .persistence import EosDatabaseRuntime, build_eos_database_runtime
 from .project_memberships import SqlAlchemyEosProjectMembershipRepository
+from .project_operations import EosGovernedProjectService
 from .projects import SqlAlchemyEosProjectRepository
 from .voucher_commands import EosCreateVoucherDraftService
 from .voucher_verification import SqlAlchemyEosVoucherVerificationQuery
@@ -49,6 +50,7 @@ class EosDependencies:
     approver_resolution_service: EosApproverResolutionService | None
     projects: SqlAlchemyEosProjectRepository | None
     project_memberships: SqlAlchemyEosProjectMembershipRepository | None
+    project_operations: EosGovernedProjectService | None
     accounts: SqlAlchemyEosAccountRepository | None
     approval_policies: SqlAlchemyEosApprovalPolicyRepository | None
     approval_instances: SqlAlchemyEosApprovalInstanceRepository | None
@@ -162,6 +164,20 @@ def build_eos_dependencies(
         else None
     )
     oa_token = environ.get("NEX_EOS_TO_OA_SERVICE_TOKEN", "")
+    project_operations = (
+        EosGovernedProjectService(
+            session_factory=database_runtime.session_factory,
+            coordinator=business_transactions,
+            authorization_source=HttpOaAuthorizationSource(
+                base_url=environ.get("NEX_OA_BASE_URL", "http://127.0.0.1:8101"),
+                service_token=oa_token,
+            ),
+        )
+        if database_runtime is not None
+        and business_transactions is not None
+        and oa_token
+        else None
+    )
     voucher_command_service = (
         EosCreateVoucherDraftService(
             coordinator=business_transactions,
@@ -199,6 +215,7 @@ def build_eos_dependencies(
         approver_resolution_service=approver_resolution_service,
         projects=projects,
         project_memberships=project_memberships,
+        project_operations=project_operations,
         accounts=accounts,
         approval_policies=approval_policies,
         approval_instances=approval_instances,

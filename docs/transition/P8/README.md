@@ -34,7 +34,7 @@ P8.8   CLOSED through P8-S86
 P8.9   CLOSED through P8-S93
 P8 v1.0 FROZEN / GOLDEN A CLOSED / RELIABILITY CLOSED
 P8-CA04 DESIGN CLOSED / P8.10 IMPLEMENTATION ENTRY AUTHORIZED
-P8.10  P8-S94..S95 CLOSED / P8-S96 is the next Slice
+P8.10  P8-S94..S96 CLOSED / P8-S97 is the next Slice
 P9     ENTRY HELD until P8-S103 re-authorizes the handoff
 ```
 
@@ -52,7 +52,11 @@ verified migration `2514` against the actual `nex_eos_test` database. Public
 membership lifecycle and authorization were intentionally deferred. P8-S95
 then added idempotent ADD/REMOVE/reactivation, optimistic version guards, and
 PostgreSQL-verified last-active-OWNER concurrency protection. Public governed
-authorization remains assigned to P8-S96.
+authorization was then completed by P8-S96.
+
+P8-S96 added a service-token-protected governed Project API. It requires fresh
+OA scopes and, independently, active EOS Project membership; WRITE operations
+reuse the existing EOS BusinessOperation/idempotency/outbox transaction.
 
 The historical NSL admission block was resolved by P8-S01 through P8-S06.
 The current attachment baseline was closed by P8-S75H. P8-CA03 aligned the

@@ -8,18 +8,18 @@ from typing import Any
 
 from nex_runtime import build_unit_of_work
 from sqlalchemy import (
-    Column,
     CheckConstraint,
+    Column,
     Date,
     DateTime,
     ForeignKeyConstraint,
     Index,
     Integer,
-    literal,
     String,
     Table,
     UniqueConstraint,
     Uuid,
+    literal,
     select,
     update,
 )
@@ -179,6 +179,25 @@ class SqlAlchemyEosProjectRepository:
         return dict(record)
 
     def create_project(self, value: ProjectInput) -> dict[str, Any]:
+        try:
+            with build_unit_of_work(self._session_factory) as transaction:
+                return self.create_project_in_session(transaction.db, value)
+        except EosProjectError:
+            raise
+        except IntegrityError as exc:
+            raise EosProjectError(
+                "EOS_PROJECT_CONFLICT",
+                "Project identity or code already exists in tenant scope",
+                status_code=409,
+            ) from exc
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+
+    def create_project_in_session(
+        self,
+        session: Session,
+        value: ProjectInput,
+    ) -> dict[str, Any]:
         tenant_id = _scoped_id("tenant_id", value.tenant_id)
         project_id = _uuid("project_id", value.project_id)
         parent_project_id = _optional_uuid(
@@ -194,42 +213,30 @@ class SqlAlchemyEosProjectRepository:
             raise _invalid("end_date", "must not precede start_date")
         now = datetime.now(UTC)
 
-        try:
-            with build_unit_of_work(self._session_factory) as transaction:
-                depth = self._admit_hierarchy(
-                    transaction.db,
-                    tenant_id=tenant_id,
-                    project_id=project_id,
-                    parent_project_id=parent_project_id,
-                    nvt_project_id=nvt_project_id,
-                )
-                record = {
-                    "tenant_id": tenant_id,
-                    "project_id": project_id,
-                    "project_code": _code("project_code", value.project_code),
-                    "name": _text("name", value.name, 256),
-                    "parent_project_id": parent_project_id,
-                    "nvt_project_id": nvt_project_id,
-                    "hierarchy_depth": depth,
-                    "status": _status(value.status),
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "currency": _currency(value.currency),
-                    "version": version,
-                    "created_at": now,
-                    "updated_at": now,
-                }
-                transaction.db.execute(EOS_PROJECT_TABLE.insert().values(**record))
-        except EosProjectError:
-            raise
-        except IntegrityError as exc:
-            raise EosProjectError(
-                "EOS_PROJECT_CONFLICT",
-                "Project identity or code already exists in tenant scope",
-                status_code=409,
-            ) from exc
-        except SQLAlchemyError as exc:
-            raise _persistence_error() from exc
+        depth = self._admit_hierarchy(
+            session,
+            tenant_id=tenant_id,
+            project_id=project_id,
+            parent_project_id=parent_project_id,
+            nvt_project_id=nvt_project_id,
+        )
+        record = {
+            "tenant_id": tenant_id,
+            "project_id": project_id,
+            "project_code": _code("project_code", value.project_code),
+            "name": _text("name", value.name, 256),
+            "parent_project_id": parent_project_id,
+            "nvt_project_id": nvt_project_id,
+            "hierarchy_depth": depth,
+            "status": _status(value.status),
+            "start_date": start_date,
+            "end_date": end_date,
+            "currency": _currency(value.currency),
+            "version": version,
+            "created_at": now,
+            "updated_at": now,
+        }
+        session.execute(EOS_PROJECT_TABLE.insert().values(**record))
         return dict(record)
 
     def get_project(
