@@ -32,8 +32,10 @@ P8.7A  CLOSED through P8-S75H
 P8-CA03 CLOSED
 P8.8   CLOSED through P8-S86
 P8.9   CLOSED through P8-S93
-P8     CLOSED / GOLDEN A CLOSED / RELIABILITY CLOSED
-P9     ENTRY AUTHORIZED for source-backed NeX-WA / Work Asset scope
+P8 v1.0 FROZEN / GOLDEN A CLOSED / RELIABILITY CLOSED
+P8-CA04 DESIGN CLOSED / P8.10 IMPLEMENTATION ENTRY AUTHORIZED
+P8.10  P8-S94 is the next Slice
+P9     ENTRY HELD until P8-S103 re-authorizes the handoff
 ```
 
 Current admitted NSL runtime:
@@ -107,7 +109,8 @@ rows across AE/WC/OA/EOS and physically purged all retained test object
 versions and delete markers. P8-S93 then froze the verified P8 runtime commit
 and tree, all seven migration heads, contract versions, admitted NSL identity,
 final gate evidence, deferred scope, and P9 Work Asset entry invariants. P8 is
-closed. Before beginning P9, read
+v1.0-closed. CA04 now holds that P9 entry until the additive P8.10 amendment is
+implemented and reclosed at P8-S103. Before beginning P9, read
 `P8_8_Pre_Entry_Repository_Consistency_and_Reliability_Preparation_Actions_v1.0.md`
 as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s76_unknown_commit_state_fault_injection.md` plus
@@ -130,7 +133,12 @@ as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s93_final_as_built_baseline_p9_handoff.md` as execution
 evidence, then
 read `P8_Final_AsBuilt_Baseline_and_P9_Handoff_v1.0.md` as the authoritative
-handoff.
+v1.0 handoff. Before starting any new Project or membership implementation,
+read
+`P8_CA04_Project_Membership_and_Governed_Project_Operations_Contract_Closure_v1.0.md`.
+CA04 preserves that frozen baseline, adds the P8.10 Project membership scope,
+and establishes the canonical `<DOMAIN>.<BUSINESS_OBJECT>.<ACTION>` naming
+rule for new NSL and API contracts.
 
 ---
 
@@ -191,6 +199,8 @@ must be read in order.
 Implementation
         ↓
 ⑧ P8 Final As-Built Baseline / P9 Handoff
+        ↓
+⑨ P8-CA04 Project Membership and Governed Project Operations
 ```
 
 Do not start from the Implementation Slice Plan alone.
@@ -725,6 +735,16 @@ P8_Final_AsBuilt_Baseline_and_P9_Handoff_v1.0.md
 This document freezes the verified implementation baseline and the invariants
 that P9 NeX-WA / Work Asset work must inherit. It supersedes the historical
 entry metadata at the top of this README as the current as-built state.
+
+For the post-closure P8.10 amendment, then read:
+
+```text
+P8_CA04_Project_Membership_and_Governed_Project_Operations_Contract_Closure_v1.0.md
+```
+
+CA04 does not rewrite the S93 baseline. It authorizes the additive P8-S94
+through P8-S103 sequence and requires a P8 Final As-Built v1.1 before Demo
+Release or P9 implementation entry.
 
 ---
 

@@ -21,6 +21,24 @@
 
 ---
 
+## Post-Closure Amendment Notice
+
+This plan records the historical P8-S01 through P8-S93 implementation that
+produced the frozen P8 Final As-Built v1.0. The later source-backed Project
+membership gap is governed by:
+
+```text
+P8_CA04_Project_Membership_and_Governed_Project_Operations_Contract_Closure_v1.0.md
+```
+
+CA04 authorizes the additive P8-S94 through P8-S103 sequence, establishes the
+canonical `<DOMAIN>.<BUSINESS_OBJECT>.<ACTION>` naming rule for new NSL and API
+contracts, and temporarily holds the historical P9 entry authorization until
+P8 Final As-Built v1.1. The original S01-S93 plan and evidence remain immutable
+history.
+
+---
+
 # 1. Purpose
 
 This plan converts the P8 SRS into small implementation / verification /
