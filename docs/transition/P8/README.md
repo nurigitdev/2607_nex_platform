@@ -33,9 +33,10 @@ P8-CA03 CLOSED
 P8.8   CLOSED through P8-S86
 P8.9   CLOSED through P8-S93
 P8 v1.0 FROZEN / GOLDEN A CLOSED / RELIABILITY CLOSED
-P8-CA04 DESIGN CLOSED / P8.10 IMPLEMENTATION ENTRY AUTHORIZED
-P8.10  P8-S94..S102 CLOSED / P8-S103 is the next Slice
-P9     ENTRY HELD until P8-S103 re-authorizes the handoff
+P8-CA04 CLOSED
+P8.10  CLOSED through P8-S103
+P8 v1.1 FINAL / DEMO RELEASE READY
+P9     ENTRY AUTHORIZED
 ```
 
 Current admitted NSL runtime:
@@ -108,7 +109,17 @@ generation, EOS membership-filtered Voucher commit/verification/GET/LIST, and
 an authenticated Chromium Playwright journey. The immutable NSL `0.2.1`
 runtime revision was materialized independently from later source-admitted
 Skill artifacts. Backend and browser cleanup completed with zero backend
-residue; P8-S103 now owns the final Full Gate and P9 handoff closure.
+residue; P8-S103 subsequently closed the final Full Gate and P9 handoff.
+
+P8-S103 completed the Repository Full Gate with `17,365` passed, `117`
+explicit protected skips, zero failures, statement coverage `96.70%`, and
+branch coverage `96.09%`. Contract validation passed at `197 / 261 / 224 / 9`.
+The actual OA/AE/WC/EOS PostgreSQL, live-generation, authenticated Playwright
+journey was then re-run independently and again passed `8/8` with
+`COMMITTED / VERIFIED`, membership-filtered Voucher GET/LIST, and zero backend
+residue. All seven service test databases matched `159/159` source/applied
+migrations. P8.10 is closed, Demo Release entry is ready, and P9 entry is
+re-authorized by the additive Final As-Built v1.1.
 
 The historical NSL admission block was resolved by P8-S01 through P8-S06.
 The current attachment baseline was closed by P8-S75H. P8-CA03 aligned the
@@ -172,8 +183,8 @@ rows across AE/WC/OA/EOS and physically purged all retained test object
 versions and delete markers. P8-S93 then froze the verified P8 runtime commit
 and tree, all seven migration heads, contract versions, admitted NSL identity,
 final gate evidence, deferred scope, and P9 Work Asset entry invariants. P8 is
-v1.0-closed. CA04 now holds that P9 entry until the additive P8.10 amendment is
-implemented and reclosed at P8-S103. Before beginning P9, read
+v1.0-closed. CA04 was implemented and reclosed at P8-S103; the additive v1.1
+baseline now authorizes Demo Release and P9 entry. Before beginning P9, read
 `P8_8_Pre_Entry_Repository_Consistency_and_Reliability_Preparation_Actions_v1.0.md`
 as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s76_unknown_commit_state_fault_injection.md` plus
@@ -196,8 +207,9 @@ as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 `docs/slices/p8_s93_final_as_built_baseline_p9_handoff.md` as execution
 evidence, then
 read `P8_Final_AsBuilt_Baseline_and_P9_Handoff_v1.0.md` as the authoritative
-v1.0 handoff. Before starting any new Project or membership implementation,
-read
+v1.0 historical handoff and
+`P8_Final_AsBuilt_Baseline_and_P9_Handoff_v1.1.md` as the current additive
+P8.10 handoff. For Project membership history and any future extension, read
 `P8_CA04_Project_Membership_and_Governed_Project_Operations_Contract_Closure_v1.0.md`.
 CA04 preserves that frozen baseline, adds the P8.10 Project membership scope,
 and establishes the canonical `<DOMAIN>.<BUSINESS_OBJECT>.<ACTION>` naming
@@ -808,6 +820,17 @@ P8_CA04_Project_Membership_and_Governed_Project_Operations_Contract_Closure_v1.0
 CA04 does not rewrite the S93 baseline. It authorizes the additive P8-S94
 through P8-S103 sequence and requires a P8 Final As-Built v1.1 before Demo
 Release or P9 implementation entry.
+
+After P8-S103, read:
+
+```text
+P8_Final_AsBuilt_Baseline_and_P9_Handoff_v1.1.md
+```
+
+This additive successor records the closed CA04/P8.10 implementation,
+protected demonstration evidence, final Full Gate, zero-residue result, and
+current Demo Release/P9 entry authorization. The v1.0 file remains preserved
+as the historical S93 baseline.
 
 ---
 
