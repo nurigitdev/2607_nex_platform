@@ -32,6 +32,7 @@ from .config import EosSettings
 from .health import build_configuration_readiness_check
 from .organization import SqlAlchemyEosOrganizationRepository
 from .persistence import EosDatabaseRuntime, build_eos_database_runtime
+from .project_memberships import SqlAlchemyEosProjectMembershipRepository
 from .projects import SqlAlchemyEosProjectRepository
 from .voucher_commands import EosCreateVoucherDraftService
 from .voucher_verification import SqlAlchemyEosVoucherVerificationQuery
@@ -47,6 +48,7 @@ class EosDependencies:
     organization: SqlAlchemyEosOrganizationRepository | None
     approver_resolution_service: EosApproverResolutionService | None
     projects: SqlAlchemyEosProjectRepository | None
+    project_memberships: SqlAlchemyEosProjectMembershipRepository | None
     accounts: SqlAlchemyEosAccountRepository | None
     approval_policies: SqlAlchemyEosApprovalPolicyRepository | None
     approval_instances: SqlAlchemyEosApprovalInstanceRepository | None
@@ -86,6 +88,11 @@ def build_eos_dependencies(
     )
     projects = (
         SqlAlchemyEosProjectRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    project_memberships = (
+        SqlAlchemyEosProjectMembershipRepository(database_runtime.session_factory)
         if database_runtime is not None
         else None
     )
@@ -191,6 +198,7 @@ def build_eos_dependencies(
         organization=organization,
         approver_resolution_service=approver_resolution_service,
         projects=projects,
+        project_memberships=project_memberships,
         accounts=accounts,
         approval_policies=approval_policies,
         approval_instances=approval_instances,

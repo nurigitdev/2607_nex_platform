@@ -130,6 +130,14 @@ from .persistence import (
     EosDatabaseRuntimeError,
     build_eos_database_runtime,
 )
+from .project_memberships import (
+    EOS_PROJECT_MEMBER_ROLES,
+    EOS_PROJECT_MEMBER_STATUSES,
+    EOS_PROJECT_MEMBER_TABLE,
+    EosProjectMembershipError,
+    ProjectMembershipInput,
+    SqlAlchemyEosProjectMembershipRepository,
+)
 from .projects import (
     EOS_NVT_PROJECT_TABLE,
     EOS_PROJECT_MAX_DEPTH,
@@ -205,6 +213,9 @@ __all__ = (
     "EOS_POSITION_TABLE",
     "EOS_POSITION_TYPES",
     "EOS_PROJECT_MAX_DEPTH",
+    "EOS_PROJECT_MEMBER_ROLES",
+    "EOS_PROJECT_MEMBER_STATUSES",
+    "EOS_PROJECT_MEMBER_TABLE",
     "EOS_PROJECT_STATUSES",
     "EOS_PROJECT_TABLE",
     "EOS_TEST_RESET_CONFIRMATION",
@@ -252,6 +263,7 @@ __all__ = (
     "EosOutboxPublishReceipt",
     "EosOutboxTransport",
     "EosProjectError",
+    "EosProjectMembershipError",
     "EosServiceCaller",
     "EosSettings",
     "EosTestDatabaseResetError",
@@ -272,6 +284,7 @@ __all__ = (
     "PositionAssignmentInput",
     "PositionInput",
     "ProjectInput",
+    "ProjectMembershipInput",
     "ResolvedObjectRef",
     "SqlAlchemyEosAccountRepository",
     "SqlAlchemyEosApprovalInstanceRepository",
@@ -282,6 +295,7 @@ __all__ = (
     "SqlAlchemyEosBusinessTransactionCoordinator",
     "SqlAlchemyEosOrganizationRepository",
     "SqlAlchemyEosOutboxPublisher",
+    "SqlAlchemyEosProjectMembershipRepository",
     "SqlAlchemyEosProjectRepository",
     "SqlAlchemyEosVoucherRepository",
     "SqlAlchemyEosVoucherVerificationQuery",

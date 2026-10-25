@@ -34,7 +34,7 @@ P8.8   CLOSED through P8-S86
 P8.9   CLOSED through P8-S93
 P8 v1.0 FROZEN / GOLDEN A CLOSED / RELIABILITY CLOSED
 P8-CA04 DESIGN CLOSED / P8.10 IMPLEMENTATION ENTRY AUTHORIZED
-P8.10  P8-S94 is the next Slice
+P8.10  P8-S94 CLOSED / P8-S95 is the next Slice
 P9     ENTRY HELD until P8-S103 re-authorizes the handoff
 ```
 
@@ -46,6 +46,11 @@ package_version = 0.2.0
 wheel            = nex_skill_language-0.2.0-py3-none-any.whl
 wheel_sha256     = sha256:862958a5eab982a71bec5ee58b9e530867d6c25f65d8b770efb29ca78ce7f135
 ```
+
+P8-S94 added the EOS-owned `eos_project_member` persistence foundation and
+verified migration `2514` against the actual `nex_eos_test` database. Public
+membership lifecycle and authorization remain intentionally deferred to
+P8-S95 and P8-S96.
 
 The historical NSL admission block was resolved by P8-S01 through P8-S06.
 The current attachment baseline was closed by P8-S75H. P8-CA03 aligned the

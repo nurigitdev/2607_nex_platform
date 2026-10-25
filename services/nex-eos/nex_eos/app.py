@@ -49,6 +49,7 @@ def create_eos_app(
     app.state.eos_organization = dependencies.organization
     app.state.eos_approver_resolution_service = dependencies.approver_resolution_service
     app.state.eos_projects = dependencies.projects
+    app.state.eos_project_memberships = dependencies.project_memberships
     app.state.eos_accounts = dependencies.accounts
     app.state.eos_approval_policies = dependencies.approval_policies
     app.state.eos_approval_instances = dependencies.approval_instances
