@@ -1334,6 +1334,16 @@
       "name": "ae_project_membership_batch_admission_mixed",
       "path": "examples/planning/ae_project_membership_batch_admission.mixed.json",
       "schema": "schemas/service/nex_ae_api/project_membership_batch_admission.v1.schema.json"
+    },
+    {
+      "name": "eos_project_membership_add_many_command_valid",
+      "path": "examples/service/eos_project_membership_add_many_command.valid.json",
+      "schema": "schemas/service/nex_eos/project_membership_add_many_command.v1.schema.json"
+    },
+    {
+      "name": "eos_project_membership_add_many_result_partial",
+      "path": "examples/service/eos_project_membership_add_many_result.partial.json",
+      "schema": "schemas/service/nex_eos/project_membership_add_many_result.v1.schema.json"
     }
   ]
 }

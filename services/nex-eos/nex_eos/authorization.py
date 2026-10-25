@@ -39,7 +39,9 @@ class EosAuthorizationError(RuntimeError):
 
 
 class AuthorizationSubjectDenied(RuntimeError):
-    pass
+    def __init__(self, detail: str, *, error_code: str | None = None) -> None:
+        self.error_code = error_code
+        super().__init__(detail)
 
 
 class AuthorizationSource(Protocol):
@@ -172,9 +174,11 @@ class HttpOaAuthorizationSource:
             with urlopen(request, timeout=self._timeout_seconds) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
-            if _problem_error_code(exc) in _SUBJECT_DENIAL_CODES:
+            error_code = _problem_error_code(exc)
+            if error_code in _SUBJECT_DENIAL_CODES:
                 raise AuthorizationSubjectDenied(
-                    "OA denied the subject authorization request."
+                    "OA denied the subject authorization request.",
+                    error_code=error_code,
                 ) from exc
             raise RuntimeError(f"OA authorization failed with HTTP {exc.code}") from exc
         except (URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as exc:

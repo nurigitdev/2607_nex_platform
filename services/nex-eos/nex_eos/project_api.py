@@ -155,6 +155,25 @@ def register_project_routes(app: FastAPI) -> None:
         )
 
     @app.post(
+        "/internal/v1/projects/{project_id}/memberships:add-many",
+        response_model=None,
+        operation_id="PROJECT.MEMBERSHIP.ADD_MANY",
+    )
+    def add_memberships(
+        project_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        return _write(
+            request,
+            authorization,
+            lambda service, caller: service.add_memberships(
+                {**payload, "project_id": project_id}, caller=caller
+            ),
+        )
+
+    @app.post(
         "/internal/v1/projects/{project_id}/memberships/{subject_id}:remove",
         response_model=None,
         operation_id="PROJECT.MEMBERSHIP.REMOVE",

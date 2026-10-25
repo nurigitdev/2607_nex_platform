@@ -29,7 +29,7 @@ def test_default_registry_resolves_canonical_and_legacy_names() -> None:
     assert canonical.to_projection() == {
         "requested_operation": "PROJECT.PROJECT.GET",
         "canonical_operation": "PROJECT.PROJECT.GET",
-        "registry_version": "p8-s105.v1",
+        "registry_version": "p8-s109.v1",
         "alias_applied": False,
     }
     assert alias.canonical_operation == "PROJECT.PROJECT.GET"
@@ -117,6 +117,7 @@ def test_eos_project_openapi_uses_canonical_operation_ids() -> None:
         "PROJECT.PROJECT.LIST",
         "PROJECT.PROJECT.DEACTIVATE",
         "PROJECT.MEMBERSHIP.ADD",
+        "PROJECT.MEMBERSHIP.ADD_MANY",
         "PROJECT.MEMBERSHIP.REMOVE",
         "PROJECT.MEMBERSHIP.LIST",
     }

@@ -7,7 +7,10 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from nex_runtime import DEFAULT_OPERATION_REGISTRY, OperationNameError
-from nex_runtime.semantic_hashes import nsl_write_payload_hash_ref
+from nex_runtime.semantic_hashes import (
+    nsl_write_payload_hash_ref,
+    validate_hash_ref,
+)
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -20,6 +23,7 @@ from .business_transactions import (
 )
 from .project_memberships import (
     EOS_PROJECT_MEMBER_TABLE,
+    EOS_PROJECT_MEMBER_ROLES,
     EosProjectMembershipError,
     ProjectMembershipInput,
     SqlAlchemyEosProjectMembershipRepository,
@@ -45,6 +49,7 @@ NVT_PROJECT_ADMIN_SCOPE = "project:nvt_project:admin"
 PROJECT_CREATE_OPERATION = "PROJECT.PROJECT.CREATE"
 PROJECT_DEACTIVATE_OPERATION = "PROJECT.PROJECT.DEACTIVATE"
 PROJECT_MEMBERSHIP_ADD_OPERATION = "PROJECT.MEMBERSHIP.ADD"
+PROJECT_MEMBERSHIP_ADD_MANY_OPERATION = "PROJECT.MEMBERSHIP.ADD_MANY"
 PROJECT_MEMBERSHIP_REMOVE_OPERATION = "PROJECT.MEMBERSHIP.REMOVE"
 NVT_PROJECT_CREATE_OPERATION = "PROJECT.NVT_PROJECT.CREATE"
 NVT_PROJECT_UPDATE_OPERATION = "PROJECT.NVT_PROJECT.UPDATE"
@@ -327,6 +332,77 @@ class EosGovernedProjectService:
                     f"eos.project-membership:{membership['project_membership_id']}"
                 ),
                 "membership": _wire(membership),
+                "authorization_revision_hash": authorization["revision_hash"],
+            }
+
+        return self._execute_write(envelope, mutation)
+
+    def add_memberships(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        caller: EosServiceCaller,
+    ) -> dict[str, Any]:
+        _require_service_caller(caller)
+        envelope = _batch_write_envelope(payload)
+        requester = _scoped_id("requester_subject_id", payload.get("requester_subject_id"))
+        project_id = _uuid("project_id", payload.get("project_id"))
+        target_subject_ids = _canonical_subject_ids(payload.get("target_subject_ids"))
+        member_role = _text("member_role", payload.get("member_role", "MEMBER")).upper()
+        if member_role not in EOS_PROJECT_MEMBER_ROLES:
+            raise _invalid("member_role is invalid")
+        resolution_evidence_hash = _hash_ref(
+            "resolution_evidence_hash", payload.get("resolution_evidence_hash")
+        )
+        authorization = self._authorize(
+            tenant_id=envelope["tenant_id"],
+            subject_id=requester,
+            required_scope=PROJECT_MEMBERSHIP_MANAGE_SCOPE,
+            project_id=project_id,
+        )
+
+        eligible: list[str] = []
+        item_results: list[dict[str, Any]] = []
+        for subject_id in target_subject_ids:
+            outcome = self._target_eligibility(
+                tenant_id=envelope["tenant_id"], subject_id=subject_id
+            )
+            if outcome is None:
+                eligible.append(subject_id)
+            else:
+                item_results.append({"subject_id": subject_id, "outcome": outcome})
+
+        def mutation(session: Session | None) -> Mapping[str, Any]:
+            if session is None:
+                raise RuntimeError("Membership ADD_MANY requires a database transaction")
+            applied = self._memberships.add_memberships_in_session(
+                session,
+                tenant_id=envelope["tenant_id"],
+                project_id=project_id,
+                target_subject_ids=tuple(eligible),
+                member_role=member_role,
+                created_by_subject_id=requester,
+                manager_subject_id=requester,
+            )
+            combined = sorted(
+                [*item_results, *applied],
+                key=lambda item: str(item["subject_id"]).encode("utf-8"),
+            )
+            counts = _batch_outcome_counts(combined)
+            operation_status = _batch_operation_status(counts)
+            return {
+                "business_result_ref": (
+                    "eos.project-membership-batch:"
+                    f"{envelope['business_operation_id']}"
+                ),
+                "operation_status": operation_status,
+                "requested_count": len(target_subject_ids),
+                "resolved_count": len(target_subject_ids),
+                **counts,
+                "project_id": project_id,
+                "member_role": member_role,
+                "resolution_evidence_hash": resolution_evidence_hash,
+                "item_results": combined,
                 "authorization_revision_hash": authorization["revision_hash"],
             }
 
@@ -679,6 +755,35 @@ class EosGovernedProjectService:
             required_scope=None,
         )
 
+    def _target_eligibility(self, *, tenant_id: str, subject_id: str) -> str | None:
+        try:
+            value = self._authorization_source.effective_authorization(
+                tenant_id=tenant_id,
+                subject_id=subject_id,
+            )
+        except AuthorizationSubjectDenied as exc:
+            if exc.error_code == "oa.authorization_membership_not_found":
+                return "NOT_ELIGIBLE"
+            return "SUBJECT_INACTIVE"
+        except Exception as exc:
+            raise EosGovernedProjectError(
+                "EOS_PROJECT_AUTHORIZATION_UNAVAILABLE",
+                "OA target subject status is unavailable",
+                status_code=503,
+                retryable=True,
+            ) from exc
+        if isinstance(value, Mapping) and value.get("active") is False:
+            return "SUBJECT_INACTIVE"
+        if isinstance(value, Mapping) and value.get("eligible") is False:
+            return "NOT_ELIGIBLE"
+        _admit_authorization(
+            value,
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+            required_scope=None,
+        )
+        return None
+
     @staticmethod
     def _require_project_role(
         session: Session,
@@ -730,6 +835,27 @@ def project_operation_payload_hash(
     )
 
 
+def project_membership_add_many_payload_hash(payload: Mapping[str, Any]) -> str:
+    if not isinstance(payload, Mapping):
+        raise _invalid("payload must be an object")
+    return nsl_write_payload_hash_ref(
+        {
+            "tenant_id": _scoped_id("tenant_id", payload.get("tenant_id")),
+            "requester_subject_id": _scoped_id(
+                "requester_subject_id", payload.get("requester_subject_id")
+            ),
+            "project_id": _uuid("project_id", payload.get("project_id")),
+            "target_subject_ids": list(
+                _canonical_subject_ids(payload.get("target_subject_ids"))
+            ),
+            "member_role": _batch_member_role(payload.get("member_role", "MEMBER")),
+            "resolution_evidence_hash": _hash_ref(
+                "resolution_evidence_hash", payload.get("resolution_evidence_hash")
+            ),
+        }
+    )
+
+
 def _write_envelope(
     payload: Mapping[str, Any], operation: str
 ) -> dict[str, str]:
@@ -761,6 +887,90 @@ def _write_envelope(
         "payload_hash": supplied_hash,
         "requested_operation": resolution.requested_operation,
     }
+
+
+def _batch_write_envelope(payload: Mapping[str, Any]) -> dict[str, str]:
+    if not isinstance(payload, Mapping):
+        raise _invalid("payload must be an object")
+    requested_operation = payload.get(
+        "requested_operation", PROJECT_MEMBERSHIP_ADD_MANY_OPERATION
+    )
+    try:
+        resolution = DEFAULT_OPERATION_REGISTRY.resolve(requested_operation)
+    except OperationNameError as exc:
+        raise _invalid("requested_operation is not admitted") from exc
+    if resolution.canonical_operation != PROJECT_MEMBERSHIP_ADD_MANY_OPERATION:
+        raise _invalid("requested_operation does not match the route operation")
+    supplied_hash = _text("payload_hash", payload.get("payload_hash"))
+    computed_hash = project_membership_add_many_payload_hash(payload)
+    if supplied_hash != computed_hash:
+        raise EosGovernedProjectError(
+            "EOS_PROJECT_PAYLOAD_HASH_MISMATCH",
+            "Canonical Project operation payload hash does not match",
+            status_code=422,
+        )
+    return {
+        "tenant_id": _scoped_id("tenant_id", payload.get("tenant_id")),
+        "business_operation_id": _uuid(
+            "business_operation_id", payload.get("business_operation_id")
+        ),
+        "idempotency_key": _text("idempotency_key", payload.get("idempotency_key")),
+        "operation": PROJECT_MEMBERSHIP_ADD_MANY_OPERATION,
+        "payload_hash": supplied_hash,
+        "requested_operation": resolution.requested_operation,
+    }
+
+
+def _canonical_subject_ids(value: object) -> tuple[str, ...]:
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise _invalid("target_subject_ids must be a sequence")
+    subjects = tuple(_scoped_id("target_subject_id", item) for item in value)
+    if not subjects or len(subjects) > 50:
+        raise _invalid("target_subject_ids must contain 1 to 50 subjects")
+    if len(set(subjects)) != len(subjects):
+        raise _invalid("target_subject_ids must not contain duplicates")
+    if subjects != tuple(sorted(subjects, key=lambda item: item.encode("utf-8"))):
+        raise _invalid("target_subject_ids must use canonical byte order")
+    return subjects
+
+
+def _hash_ref(field_name: str, value: object) -> str:
+    try:
+        return validate_hash_ref(value)
+    except (TypeError, ValueError) as exc:
+        raise _invalid(f"{field_name} must be a SHA-256 hash reference") from exc
+
+
+def _batch_member_role(value: object) -> str:
+    role = _text("member_role", value).upper()
+    if role not in EOS_PROJECT_MEMBER_ROLES:
+        raise _invalid("member_role is invalid")
+    return role
+
+
+def _batch_outcome_counts(items: Sequence[Mapping[str, Any]]) -> dict[str, int]:
+    outcomes = [str(item.get("outcome")) for item in items]
+    return {
+        "added_count": outcomes.count("ADDED"),
+        "reactivated_count": outcomes.count("REACTIVATED"),
+        "unchanged_count": outcomes.count("ALREADY_ACTIVE"),
+        "rejected_count": sum(
+            outcome in {"SUBJECT_INACTIVE", "NOT_ELIGIBLE", "ROLE_CONFLICT"}
+            for outcome in outcomes
+        ),
+    }
+
+
+def _batch_operation_status(counts: Mapping[str, int]) -> str:
+    mutated = counts["added_count"] + counts["reactivated_count"]
+    rejected = counts["rejected_count"]
+    if mutated and rejected:
+        return "PARTIALLY_APPLIED"
+    if mutated:
+        return "APPLIED"
+    if rejected:
+        return "REJECTED"
+    return "NO_CHANGE"
 
 
 def _admit_authorization(

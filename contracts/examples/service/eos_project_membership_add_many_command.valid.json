@@ -1,0 +1,13 @@
+{
+  "schema_version": "eos_project_membership_add_many_command.v1",
+  "tenant_id": "tenant-demo",
+  "business_operation_id": "a3000000-0000-4000-8000-000000000001",
+  "idempotency_key": "demo-project-membership-add-many-1",
+  "payload_hash": "sha256:571996c3fab245fd25bd73c8e33ad93266f933045296f792cdb7d10d92d13103",
+  "requester_subject_id": "subject-chairman",
+  "requested_operation": "PROJECT.MEMBERSHIP.ADD_MANY",
+  "project_id": "11111111-1111-4111-8111-111111111111",
+  "target_subject_ids": ["subject-a", "subject-b"],
+  "member_role": "MEMBER",
+  "resolution_evidence_hash": "sha256:573b130aa3ef95b2cb2c7c7756cc76029ad7fb0f427bff88824060ba3e04eacd"
+}

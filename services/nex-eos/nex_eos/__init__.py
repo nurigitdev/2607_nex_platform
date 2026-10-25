@@ -131,12 +131,14 @@ from .persistence import (
     build_eos_database_runtime,
 )
 from .project_memberships import (
+    EOS_PROJECT_MEMBERSHIP_BATCH_OUTCOMES,
     EOS_PROJECT_MEMBER_ROLES,
     EOS_PROJECT_MEMBER_STATUSES,
     EOS_PROJECT_MEMBER_TABLE,
     EosProjectMembershipError,
     ProjectMembershipInput,
     SqlAlchemyEosProjectMembershipRepository,
+    deterministic_project_membership_id,
 )
 from .project_operations import (
     NVT_PROJECT_ADMIN_SCOPE,
@@ -149,11 +151,13 @@ from .project_operations import (
     PROJECT_CREATE_SCOPE,
     PROJECT_DEACTIVATE_OPERATION,
     PROJECT_MEMBERSHIP_ADD_OPERATION,
+    PROJECT_MEMBERSHIP_ADD_MANY_OPERATION,
     PROJECT_MEMBERSHIP_MANAGE_SCOPE,
     PROJECT_MEMBERSHIP_REMOVE_OPERATION,
     PROJECT_READ_SCOPE,
     EosGovernedProjectError,
     EosGovernedProjectService,
+    project_membership_add_many_payload_hash,
     project_operation_payload_hash,
 )
 from .projects import (
@@ -241,6 +245,7 @@ __all__ = (
     "EOS_POSITION_TYPES",
     "EOS_PROJECT_MAX_DEPTH",
     "EOS_PROJECT_MEMBER_ROLES",
+    "EOS_PROJECT_MEMBERSHIP_BATCH_OUTCOMES",
     "EOS_PROJECT_MEMBER_STATUSES",
     "EOS_PROJECT_MEMBER_TABLE",
     "EOS_PROJECT_STATUSES",
@@ -267,6 +272,7 @@ __all__ = (
     "PROJECT_CREATE_SCOPE",
     "PROJECT_DEACTIVATE_OPERATION",
     "PROJECT_MEMBERSHIP_ADD_OPERATION",
+    "PROJECT_MEMBERSHIP_ADD_MANY_OPERATION",
     "PROJECT_MEMBERSHIP_MANAGE_SCOPE",
     "PROJECT_MEMBERSHIP_REMOVE_OPERATION",
     "PROJECT_READ_SCOPE",
@@ -355,9 +361,11 @@ __all__ = (
     "build_eos_database_runtime",
     "create_eos_app",
     "deterministic_business_formal_work_item_id",
+    "deterministic_project_membership_id",
     "load_eos_settings",
     "parse_create_voucher_draft_command",
     "project_operation_payload_hash",
+    "project_membership_add_many_payload_hash",
     "reset_eos_test_database",
     "voucher_payload_hash",
 )

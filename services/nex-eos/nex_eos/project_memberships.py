@@ -5,6 +5,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 from nex_runtime import build_unit_of_work
 from sqlalchemy import (
@@ -29,6 +30,9 @@ from .projects import EOS_PROJECT_TABLE
 
 EOS_PROJECT_MEMBER_ROLES = frozenset({"OWNER", "MANAGER", "MEMBER", "VIEWER"})
 EOS_PROJECT_MEMBER_STATUSES = frozenset({"ACTIVE", "REMOVED"})
+EOS_PROJECT_MEMBERSHIP_BATCH_OUTCOMES = frozenset(
+    {"ADDED", "REACTIVATED", "ALREADY_ACTIVE", "ROLE_CONFLICT"}
+)
 
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$")
 
@@ -257,6 +261,106 @@ class SqlAlchemyEosProjectMembershipRepository:
         if int(result.rowcount or 0) != 1:
             raise _concurrent_change()
         return {**dict(existing), **changes}
+
+    def add_memberships_in_session(
+        self,
+        session: Session,
+        *,
+        tenant_id: str,
+        project_id: str,
+        target_subject_ids: tuple[str, ...],
+        member_role: str,
+        created_by_subject_id: str,
+        manager_subject_id: str,
+    ) -> list[dict[str, Any]]:
+        tenant_id = _scoped_id("tenant_id", tenant_id)
+        project_id = _uuid("project_id", project_id)
+        member_role = _choice(
+            "member_role", member_role, EOS_PROJECT_MEMBER_ROLES
+        )
+        created_by_subject_id = _scoped_id(
+            "created_by_subject_id", created_by_subject_id
+        )
+        manager_subject_id = _scoped_id(
+            "manager_subject_id", manager_subject_id
+        )
+        subjects = tuple(_scoped_id("target_subject_id", item) for item in target_subject_ids)
+        if len(subjects) > 50 or len(set(subjects)) != len(subjects):
+            raise _invalid("target_subject_ids must contain at most 50 unique subjects")
+        if subjects != tuple(sorted(subjects, key=lambda item: item.encode("utf-8"))):
+            raise _invalid("target_subject_ids must use canonical byte order")
+
+        project_status = self._locked_project_status(
+            session, tenant_id=tenant_id, project_id=project_id
+        )
+        if project_status != "ACTIVE":
+            raise EosProjectMembershipError(
+                "EOS_PROJECT_INACTIVE",
+                "Project must be active before memberships can be added",
+                status_code=409,
+            )
+        self._require_manager(
+            session,
+            tenant_id=tenant_id,
+            project_id=project_id,
+            subject_id=manager_subject_id,
+        )
+
+        results: list[dict[str, Any]] = []
+        for subject_id in subjects:
+            existing = self._locked_subject_membership(
+                session,
+                tenant_id=tenant_id,
+                project_id=project_id,
+                subject_id=subject_id,
+            )
+            if existing is None:
+                record = _membership_record(
+                    ProjectMembershipInput(
+                        tenant_id=tenant_id,
+                        project_membership_id=deterministic_project_membership_id(
+                            tenant_id, project_id, subject_id
+                        ),
+                        project_id=project_id,
+                        subject_id=subject_id,
+                        member_role=member_role,
+                        created_by_subject_id=created_by_subject_id,
+                    )
+                )
+                session.execute(EOS_PROJECT_MEMBER_TABLE.insert().values(**record))
+                results.append(_batch_item("ADDED", record))
+                continue
+            if existing["member_role"] != member_role:
+                results.append(_batch_item("ROLE_CONFLICT", existing))
+                continue
+            if existing["status"] == "ACTIVE":
+                results.append(_batch_item("ALREADY_ACTIVE", existing))
+                continue
+
+            now = datetime.now(UTC)
+            changes = {
+                "status": "ACTIVE",
+                "valid_from": now,
+                "valid_to": None,
+                "removed_by_subject_id": None,
+                "version": int(existing["version"]) + 1,
+                "updated_at": now,
+            }
+            updated = session.execute(
+                update(EOS_PROJECT_MEMBER_TABLE)
+                .where(
+                    EOS_PROJECT_MEMBER_TABLE.c.tenant_id == tenant_id,
+                    EOS_PROJECT_MEMBER_TABLE.c.project_membership_id
+                    == existing["project_membership_id"],
+                    EOS_PROJECT_MEMBER_TABLE.c.status == "REMOVED",
+                    EOS_PROJECT_MEMBER_TABLE.c.version == existing["version"],
+                )
+                .values(**changes)
+            )
+            if int(updated.rowcount or 0) != 1:
+                raise _concurrent_change()
+            results.append(_batch_item("REACTIVATED", {**dict(existing), **changes}))
+        return results
 
     def remove_membership(
         self,
@@ -487,6 +591,33 @@ def _membership_record(value: ProjectMembershipInput) -> dict[str, Any]:
         "removed_by_subject_id": removed_by_subject_id,
         "created_at": now,
         "updated_at": now,
+    }
+
+
+def deterministic_project_membership_id(
+    tenant_id: str, project_id: str, subject_id: str
+) -> str:
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            "nex:p8:project-operation:membership:"
+            f"{_scoped_id('tenant_id', tenant_id)}:"
+            f"{_uuid('project_id', project_id)}:"
+            f"{_scoped_id('subject_id', subject_id)}",
+        )
+    )
+
+
+def _batch_item(outcome: str, membership: Any) -> dict[str, Any]:
+    if outcome not in EOS_PROJECT_MEMBERSHIP_BATCH_OUTCOMES:
+        raise _invalid("batch item outcome is invalid")
+    return {
+        "subject_id": str(membership["subject_id"]),
+        "outcome": outcome,
+        "project_membership_id": str(membership["project_membership_id"]),
+        "member_role": str(membership["member_role"]),
+        "membership_status": str(membership["status"]),
+        "version": int(membership["version"]),
     }
 
 

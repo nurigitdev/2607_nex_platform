@@ -606,6 +606,10 @@ class FakeProjectService:
         self.calls.append(("add", payload))
         return {"created": True, "result": {}}
 
+    def add_memberships(self, payload, *, caller):
+        self.calls.append(("add-many", payload))
+        return {"created": True, "result": {}}
+
     def remove_membership(self, payload, *, caller):
         self.calls.append(("remove", payload))
         return {"created": True, "result": {}}
@@ -662,6 +666,11 @@ def test_project_routes_require_service_token_and_expose_read_boundary() -> None
         headers=write_headers,
     ).status_code == 201
     assert client.post(
+        f"/internal/v1/projects/{PROJECT_ID}/memberships:add-many",
+        json={"a": 1},
+        headers=write_headers,
+    ).status_code == 201
+    assert client.post(
         f"/internal/v1/projects/{PROJECT_ID}/memberships/member-a:remove",
         json={"a": 1},
         headers=write_headers,
@@ -673,6 +682,7 @@ def test_project_routes_require_service_token_and_expose_read_boundary() -> None
         "create",
         "deactivate",
         "add",
+        "add-many",
         "remove",
     }
 

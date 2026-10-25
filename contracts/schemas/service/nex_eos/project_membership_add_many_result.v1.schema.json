@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/project_membership_add_many_result.v1.schema.json",
+  "title": "EOS Project Membership Add Many Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "created",
+    "tenant_id",
+    "business_operation_id",
+    "idempotency_key",
+    "operation",
+    "payload_hash",
+    "commit_state",
+    "result",
+    "outbox"
+  ],
+  "properties": {
+    "created": {"type": "boolean"},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "business_operation_id": {"$ref": "#/$defs/uuid"},
+    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 256},
+    "operation": {"const": "PROJECT.MEMBERSHIP.ADD_MANY"},
+    "payload_hash": {"$ref": "#/$defs/hash_ref"},
+    "commit_state": {"const": "COMMITTED"},
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "business_result_ref",
+        "operation_status",
+        "requested_count",
+        "resolved_count",
+        "added_count",
+        "reactivated_count",
+        "unchanged_count",
+        "rejected_count",
+        "project_id",
+        "member_role",
+        "resolution_evidence_hash",
+        "item_results",
+        "authorization_revision_hash",
+        "requested_operation",
+        "canonical_operation"
+      ],
+      "properties": {
+        "business_result_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+        "operation_status": {
+          "enum": ["APPLIED", "PARTIALLY_APPLIED", "NO_CHANGE", "REJECTED"]
+        },
+        "requested_count": {"type": "integer", "minimum": 1, "maximum": 50},
+        "resolved_count": {"type": "integer", "minimum": 1, "maximum": 50},
+        "added_count": {"type": "integer", "minimum": 0, "maximum": 50},
+        "reactivated_count": {"type": "integer", "minimum": 0, "maximum": 50},
+        "unchanged_count": {"type": "integer", "minimum": 0, "maximum": 50},
+        "rejected_count": {"type": "integer", "minimum": 0, "maximum": 50},
+        "project_id": {"$ref": "#/$defs/uuid"},
+        "member_role": {"enum": ["OWNER", "MANAGER", "MEMBER", "VIEWER"]},
+        "resolution_evidence_hash": {"$ref": "#/$defs/hash_ref"},
+        "item_results": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {"$ref": "#/$defs/item_result"}
+        },
+        "authorization_revision_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "requested_operation": {"const": "PROJECT.MEMBERSHIP.ADD_MANY"},
+        "canonical_operation": {"const": "PROJECT.MEMBERSHIP.ADD_MANY"}
+      }
+    },
+    "outbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outbox_id",
+        "event_id",
+        "event_type",
+        "event_payload_hash",
+        "delivery_state"
+      ],
+      "properties": {
+        "outbox_id": {"$ref": "#/$defs/uuid"},
+        "event_id": {"$ref": "#/$defs/uuid"},
+        "event_type": {"const": "BUSINESS_TRANSACTION_COMMITTED"},
+        "event_payload_hash": {"$ref": "#/$defs/hash_ref"},
+        "delivery_state": {"const": "PENDING"}
+      }
+    }
+  },
+  "$defs": {
+    "scoped_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$"
+    },
+    "uuid": {"type": "string", "format": "uuid"},
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "item_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_id", "outcome"],
+      "properties": {
+        "subject_id": {"$ref": "#/$defs/scoped_id"},
+        "outcome": {
+          "enum": [
+            "ADDED",
+            "REACTIVATED",
+            "ALREADY_ACTIVE",
+            "SUBJECT_INACTIVE",
+            "ROLE_CONFLICT",
+            "NOT_ELIGIBLE"
+          ]
+        },
+        "project_membership_id": {"$ref": "#/$defs/uuid"},
+        "member_role": {"enum": ["OWNER", "MANAGER", "MEMBER", "VIEWER"]},
+        "membership_status": {"enum": ["ACTIVE", "REMOVED"]},
+        "version": {"type": "integer", "minimum": 1}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "enum": ["ADDED", "REACTIVATED", "ALREADY_ACTIVE", "ROLE_CONFLICT"]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "project_membership_id",
+              "member_role",
+              "membership_status",
+              "version"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
