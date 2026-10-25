@@ -2,6 +2,6 @@
   "schema_version": "canonical_operation_alias.v1",
   "requested_operation": "PROJECT.GET_PROJECT",
   "canonical_operation": "PROJECT.GET_PROJECT",
-  "registry_version": "p8-s97.v1",
+  "registry_version": "p8-s105.v1",
   "alias_applied": true
 }

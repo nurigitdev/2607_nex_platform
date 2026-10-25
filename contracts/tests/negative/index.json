@@ -1120,6 +1120,11 @@
       "name": "ae_voucher_attachment_resolution_unauthenticated",
       "path": "tests/negative/service/ae_voucher_attachment_resolution.unauthenticated.json",
       "schema": "schemas/service/nex_ae_api/voucher_attachment_resolution.v1.schema.json"
+    },
+    {
+      "name": "eos_nvt_project_update_command_immutable_code",
+      "path": "tests/negative/service/eos_nvt_project_update_command.immutable_code.json",
+      "schema": "schemas/service/nex_eos/nvt_project_update_command.v1.schema.json"
     }
   ]
 }

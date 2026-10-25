@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX Enterprise Operations System API
-  version: 2.1.0-p8-s39
+  version: 2.1.0-p8-s105
   description: >-
     NeX-EOS service shell and canonical Voucher Draft command contract. The
     P8-S18 path is contract-first and becomes executable in P8-S19.
@@ -11,6 +11,7 @@ tags:
   - name: Platform
   - name: Finance
   - name: Organization
+  - name: Project
 paths:
   /:
     get:
@@ -87,6 +88,145 @@ paths:
           description: Service claim is missing or invalid.
         "403":
           description: Audience or required scope is not allowed.
+  /internal/v1/nvt-projects:
+    get:
+      operationId: PROJECT.NVT_PROJECT.LIST
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:nvt_project:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: status
+          in: query
+          required: false
+          schema: {type: string, enum: [ACTIVE, INACTIVE]}
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 500, default: 100}
+        - name: offset
+          in: query
+          required: false
+          schema: {type: integer, minimum: 0, default: 0}
+      responses:
+        "200":
+          description: Tenant-scoped bounded NVTProject list in deterministic order.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Fresh OA NVTProject read authority is denied.
+        "422":
+          description: Tenant, subject, status, or pagination input is invalid.
+        "503":
+          description: OA authorization or EOS persistence is unavailable.
+    post:
+      operationId: PROJECT.NVT_PROJECT.CREATE
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:nvt_project:create
+      x-nex-route-class: WRITE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NvtProjectCreateCommand"
+      responses:
+        "200":
+          description: Exact idempotent replay of an existing NVTProject creation.
+        "201":
+          description: NVTProject and BusinessOperation committed atomically.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Service trust or fresh OA create authority is denied.
+        "409":
+          description: NVT identity, code, or idempotency semantics conflict.
+        "422":
+          description: Command, payload hash, or domain invariant is invalid.
+        "503":
+          description: OA authorization or EOS persistence is unavailable.
+  /internal/v1/nvt-projects/{nvt_project_id}:
+    get:
+      operationId: PROJECT.NVT_PROJECT.GET
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:nvt_project:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: nvt_project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200":
+          description: Current tenant-scoped NVTProject projection.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Fresh OA NVTProject read authority is denied.
+        "404":
+          description: NVTProject is absent from the admitted tenant scope.
+        "422":
+          description: Tenant, subject, or NVTProject identity is invalid.
+        "503":
+          description: OA authorization or EOS persistence is unavailable.
+    patch:
+      operationId: PROJECT.NVT_PROJECT.UPDATE
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:nvt_project:admin
+      x-nex-route-class: WRITE
+      parameters:
+        - name: nvt_project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NvtProjectUpdateCommand"
+      responses:
+        "200":
+          description: NVTProject update committed or replayed idempotently.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Service trust or fresh OA admin authority is denied.
+        "404":
+          description: NVTProject is absent from the admitted tenant scope.
+        "409":
+          description: Version changed or an active Mother Project blocks inactivation.
+        "422":
+          description: Patch, payload hash, or domain invariant is invalid.
+        "503":
+          description: OA authorization or EOS persistence is unavailable.
   /internal/v1/finance/voucher-drafts:
     get:
       operationId: FINANCE.VOUCHER_DRAFT.LIST
@@ -316,3 +456,9 @@ components:
     CreateVoucherDraftResult:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/create_voucher_draft_result.v1.schema.json
+    NvtProjectCreateCommand:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/nvt_project_create_command.v1.schema.json
+    NvtProjectUpdateCommand:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/nvt_project_update_command.v1.schema.json

@@ -27,6 +27,8 @@ from .project_memberships import (
 from .projects import (
     EOS_PROJECT_TABLE,
     EosProjectError,
+    NvtProjectInput,
+    NvtProjectUpdate,
     ProjectInput,
     SqlAlchemyEosProjectRepository,
 )
@@ -36,11 +38,16 @@ PROJECT_CREATE_SCOPE = "project:project:create"
 PROJECT_READ_SCOPE = "project:project:read"
 PROJECT_ADMIN_SCOPE = "project:project:admin"
 PROJECT_MEMBERSHIP_MANAGE_SCOPE = "project:membership:manage"
+NVT_PROJECT_CREATE_SCOPE = "project:nvt_project:create"
+NVT_PROJECT_READ_SCOPE = "project:nvt_project:read"
+NVT_PROJECT_ADMIN_SCOPE = "project:nvt_project:admin"
 
 PROJECT_CREATE_OPERATION = "PROJECT.PROJECT.CREATE"
 PROJECT_DEACTIVATE_OPERATION = "PROJECT.PROJECT.DEACTIVATE"
 PROJECT_MEMBERSHIP_ADD_OPERATION = "PROJECT.MEMBERSHIP.ADD"
 PROJECT_MEMBERSHIP_REMOVE_OPERATION = "PROJECT.MEMBERSHIP.REMOVE"
+NVT_PROJECT_CREATE_OPERATION = "PROJECT.NVT_PROJECT.CREATE"
+NVT_PROJECT_UPDATE_OPERATION = "PROJECT.NVT_PROJECT.UPDATE"
 
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$")
 _REVISION_HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -75,6 +82,146 @@ class EosGovernedProjectService:
         self._authorization_source = authorization_source
         self._projects = SqlAlchemyEosProjectRepository(session_factory)
         self._memberships = SqlAlchemyEosProjectMembershipRepository(session_factory)
+
+    def create_nvt_project(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        caller: EosServiceCaller,
+    ) -> dict[str, Any]:
+        _require_service_caller(caller)
+        envelope = _write_envelope(payload, NVT_PROJECT_CREATE_OPERATION)
+        requester = _scoped_id("requester_subject_id", payload.get("requester_subject_id"))
+        nvt_payload = _object("nvt_project", payload.get("nvt_project"))
+        nvt_project = NvtProjectInput(
+            tenant_id=envelope["tenant_id"],
+            nvt_project_id=_uuid(
+                "nvt_project.nvt_project_id", nvt_payload.get("nvt_project_id")
+            ),
+            nvt_project_code=_text(
+                "nvt_project.nvt_project_code", nvt_payload.get("nvt_project_code")
+            ),
+            name=_text("nvt_project.name", nvt_payload.get("name")),
+            status=_text("nvt_project.status", nvt_payload.get("status", "ACTIVE")),
+        )
+        authorization = self._authorize(
+            tenant_id=envelope["tenant_id"],
+            subject_id=requester,
+            required_scope=NVT_PROJECT_CREATE_SCOPE,
+        )
+
+        def mutation(session: Session | None) -> Mapping[str, Any]:
+            if session is None:
+                raise RuntimeError("NVTProject creation requires a database transaction")
+            created = self._projects.create_nvt_project_in_session(session, nvt_project)
+            return {
+                "business_result_ref": f"eos.nvt-project:{nvt_project.nvt_project_id}",
+                "nvt_project": _wire(created),
+                "authorization_revision_hash": authorization["revision_hash"],
+            }
+
+        return self._execute_write(envelope, mutation)
+
+    def update_nvt_project(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        caller: EosServiceCaller,
+    ) -> dict[str, Any]:
+        _require_service_caller(caller)
+        envelope = _write_envelope(payload, NVT_PROJECT_UPDATE_OPERATION)
+        requester = _scoped_id("requester_subject_id", payload.get("requester_subject_id"))
+        changes = _object("changes", payload.get("changes"))
+        unexpected = sorted(set(changes) - {"name", "status"})
+        if unexpected:
+            raise _invalid(f"changes contains immutable or unknown fields: {unexpected}")
+        update_value = NvtProjectUpdate(
+            tenant_id=envelope["tenant_id"],
+            nvt_project_id=_uuid("nvt_project_id", payload.get("nvt_project_id")),
+            expected_version=_positive_int(
+                "expected_version", payload.get("expected_version")
+            ),
+            name=changes.get("name"),
+            status=changes.get("status"),
+        )
+        authorization = self._authorize(
+            tenant_id=envelope["tenant_id"],
+            subject_id=requester,
+            required_scope=NVT_PROJECT_ADMIN_SCOPE,
+        )
+
+        def mutation(session: Session | None) -> Mapping[str, Any]:
+            if session is None:
+                raise RuntimeError("NVTProject update requires a database transaction")
+            updated = self._projects.update_nvt_project_in_session(session, update_value)
+            return {
+                "business_result_ref": f"eos.nvt-project:{update_value.nvt_project_id}",
+                "nvt_project": _wire(updated),
+                "authorization_revision_hash": authorization["revision_hash"],
+            }
+
+        return self._execute_write(envelope, mutation)
+
+    def get_nvt_project(
+        self,
+        *,
+        tenant_id: str,
+        nvt_project_id: str,
+        requester_subject_id: str,
+    ) -> dict[str, Any]:
+        tenant_id = _scoped_id("tenant_id", tenant_id)
+        nvt_project_id = _uuid("nvt_project_id", nvt_project_id)
+        requester_subject_id = _scoped_id(
+            "requester_subject_id", requester_subject_id
+        )
+        self._authorize(
+            tenant_id=tenant_id,
+            subject_id=requester_subject_id,
+            required_scope=NVT_PROJECT_READ_SCOPE,
+        )
+        try:
+            found = self._projects.get_nvt_project(
+                tenant_id=tenant_id,
+                nvt_project_id=nvt_project_id,
+            )
+        except EosProjectError as exc:
+            raise _governed_project_error(exc) from exc
+        if found is None:
+            raise EosGovernedProjectError(
+                "EOS_NVT_PROJECT_NOT_FOUND",
+                "NVTProject was not found in tenant scope",
+                status_code=404,
+            )
+        return _wire(found)
+
+    def list_nvt_projects(
+        self,
+        *,
+        tenant_id: str,
+        requester_subject_id: str,
+        status: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        tenant_id = _scoped_id("tenant_id", tenant_id)
+        requester_subject_id = _scoped_id(
+            "requester_subject_id", requester_subject_id
+        )
+        self._authorize(
+            tenant_id=tenant_id,
+            subject_id=requester_subject_id,
+            required_scope=NVT_PROJECT_READ_SCOPE,
+        )
+        try:
+            rows = self._projects.list_nvt_projects(
+                tenant_id=tenant_id,
+                status=status,
+                limit=_limit(limit),
+                offset=_offset(offset),
+            )
+        except EosProjectError as exc:
+            raise _governed_project_error(exc) from exc
+        return [_wire(row) for row in rows]
 
     def create_project(
         self,
@@ -729,6 +876,14 @@ def _authorization_denied(scope: str) -> EosGovernedProjectError:
         "EOS_PROJECT_AUTHORIZATION_DENIED",
         f"Current {scope} authorization was denied",
         status_code=403,
+    )
+
+
+def _governed_project_error(exc: EosProjectError) -> EosGovernedProjectError:
+    return EosGovernedProjectError(
+        exc.error_code,
+        exc.detail,
+        status_code=exc.status_code,
     )
 
 

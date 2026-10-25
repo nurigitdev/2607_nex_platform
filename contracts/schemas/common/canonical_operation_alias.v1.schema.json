@@ -24,7 +24,7 @@
       "pattern": "^[A-Z][A-Z0-9_]*\\.[A-Z][A-Z0-9_]*\\.[A-Z][A-Z0-9_]*$",
       "maxLength": 128
     },
-    "registry_version": {"const": "p8-s97.v1"},
+    "registry_version": {"const": "p8-s105.v1"},
     "alias_applied": {"type": "boolean"}
   }
 }

@@ -1,0 +1,12 @@
+{
+  "schema_version": "eos_nvt_project_update_command.v1",
+  "tenant_id": "tenant-demo",
+  "business_operation_id": "a1000000-0000-4000-8000-000000000002",
+  "idempotency_key": "demo-nvt-project-update-1",
+  "payload_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "requester_subject_id": "employee-1001",
+  "requested_operation": "PROJECT.NVT_PROJECT.UPDATE",
+  "nvt_project_id": "a2000000-0000-4000-8000-000000000001",
+  "expected_version": 1,
+  "changes": {"name": "NVT Demo Revised"}
+}

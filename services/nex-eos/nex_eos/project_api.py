@@ -17,6 +17,94 @@ from .voucher_commands import EosServiceCaller
 
 def register_project_routes(app: FastAPI) -> None:
     @app.post(
+        "/internal/v1/nvt-projects",
+        response_model=None,
+        operation_id="PROJECT.NVT_PROJECT.CREATE",
+    )
+    def create_nvt_project(
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        return _write(
+            request,
+            authorization,
+            lambda service, caller: service.create_nvt_project(payload, caller=caller),
+        )
+
+    @app.patch(
+        "/internal/v1/nvt-projects/{nvt_project_id}",
+        response_model=None,
+        operation_id="PROJECT.NVT_PROJECT.UPDATE",
+    )
+    def update_nvt_project(
+        nvt_project_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        return _write(
+            request,
+            authorization,
+            lambda service, caller: service.update_nvt_project(
+                {**payload, "nvt_project_id": nvt_project_id}, caller=caller
+            ),
+            created_status=200,
+        )
+
+    @app.get(
+        "/internal/v1/nvt-projects/{nvt_project_id}",
+        response_model=None,
+        operation_id="PROJECT.NVT_PROJECT.GET",
+    )
+    def get_nvt_project(
+        nvt_project_id: str,
+        request: Request,
+        tenant_id: str = Header(alias="X-NeX-Tenant-Id"),
+        requester_subject_id: str = Header(alias="X-NeX-Subject-Id"),
+        authorization: str | None = Header(default=None),
+    ):
+        return _read(
+            request,
+            authorization,
+            lambda service: service.get_nvt_project(
+                tenant_id=tenant_id,
+                nvt_project_id=nvt_project_id,
+                requester_subject_id=requester_subject_id,
+            ),
+        )
+
+    @app.get(
+        "/internal/v1/nvt-projects",
+        response_model=None,
+        operation_id="PROJECT.NVT_PROJECT.LIST",
+    )
+    def list_nvt_projects(
+        request: Request,
+        status: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        tenant_id: str = Header(alias="X-NeX-Tenant-Id"),
+        requester_subject_id: str = Header(alias="X-NeX-Subject-Id"),
+        authorization: str | None = Header(default=None),
+    ):
+        return _read(
+            request,
+            authorization,
+            lambda service: {
+                "items": service.list_nvt_projects(
+                    tenant_id=tenant_id,
+                    requester_subject_id=requester_subject_id,
+                    status=status,
+                    limit=limit,
+                    offset=offset,
+                ),
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+
+    @app.post(
         "/internal/v1/projects",
         response_model=None,
         operation_id="PROJECT.PROJECT.CREATE",
@@ -168,7 +256,13 @@ def register_project_routes(app: FastAPI) -> None:
         )
 
 
-def _write(request: Request, authorization: str | None, operation: Callable):
+def _write(
+    request: Request,
+    authorization: str | None,
+    operation: Callable,
+    *,
+    created_status: int = 201,
+):
     admitted = _admit(request, authorization, route_class="WRITE")
     if isinstance(admitted, JSONResponse):
         return admitted
@@ -182,7 +276,10 @@ def _write(request: Request, authorization: str | None, operation: Callable):
         )
     except EosGovernedProjectError as exc:
         return _problem(request, exc)
-    return JSONResponse(result, status_code=201 if result["created"] else 200)
+    return JSONResponse(
+        result,
+        status_code=created_status if result["created"] else 200,
+    )
 
 
 def _read(request: Request, authorization: str | None, operation: Callable):

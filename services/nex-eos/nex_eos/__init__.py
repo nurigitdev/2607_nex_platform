@@ -139,6 +139,11 @@ from .project_memberships import (
     SqlAlchemyEosProjectMembershipRepository,
 )
 from .project_operations import (
+    NVT_PROJECT_ADMIN_SCOPE,
+    NVT_PROJECT_CREATE_OPERATION,
+    NVT_PROJECT_CREATE_SCOPE,
+    NVT_PROJECT_READ_SCOPE,
+    NVT_PROJECT_UPDATE_OPERATION,
     PROJECT_ADMIN_SCOPE,
     PROJECT_CREATE_OPERATION,
     PROJECT_CREATE_SCOPE,
@@ -162,6 +167,15 @@ from .projects import (
     ProjectInput,
     SqlAlchemyEosProjectRepository,
 )
+from .voucher_access import (
+    EOS_VOUCHER_AUDIT_SCOPE,
+    EOS_VOUCHER_CREATE_ROLES,
+    EOS_VOUCHER_GET_OPERATION,
+    EOS_VOUCHER_LIST_OPERATION,
+    EOS_VOUCHER_READ_SCOPE,
+    EosVoucherAccessError,
+    EosVoucherAccessService,
+)
 from .voucher_commands import (
     EOS_CREATE_VOUCHER_OPERATION,
     EOS_CREATE_VOUCHER_RESULT_SCHEMA,
@@ -172,15 +186,6 @@ from .voucher_commands import (
     ParsedVoucherDraftCommand,
     parse_create_voucher_draft_command,
     voucher_payload_hash,
-)
-from .voucher_access import (
-    EOS_VOUCHER_AUDIT_SCOPE,
-    EOS_VOUCHER_CREATE_ROLES,
-    EOS_VOUCHER_GET_OPERATION,
-    EOS_VOUCHER_LIST_OPERATION,
-    EOS_VOUCHER_READ_SCOPE,
-    EosVoucherAccessError,
-    EosVoucherAccessService,
 )
 from .voucher_verification import (
     EosVoucherVerificationError,
@@ -243,15 +248,20 @@ __all__ = (
     "EOS_TEST_RESET_CONFIRMATION",
     "EOS_VOUCHER_ATTACHMENT_PURPOSE",
     "EOS_VOUCHER_ATTACHMENT_TABLE",
-    "EOS_VOUCHER_CREATE_SCOPE",
-    "EOS_VOUCHER_CREATE_ROLES",
     "EOS_VOUCHER_AUDIT_SCOPE",
+    "EOS_VOUCHER_CREATE_ROLES",
+    "EOS_VOUCHER_CREATE_SCOPE",
     "EOS_VOUCHER_DRAFT_LINE_TABLE",
     "EOS_VOUCHER_DRAFT_STATES",
     "EOS_VOUCHER_DRAFT_TABLE",
     "EOS_VOUCHER_GET_OPERATION",
     "EOS_VOUCHER_LIST_OPERATION",
     "EOS_VOUCHER_READ_SCOPE",
+    "NVT_PROJECT_ADMIN_SCOPE",
+    "NVT_PROJECT_CREATE_OPERATION",
+    "NVT_PROJECT_CREATE_SCOPE",
+    "NVT_PROJECT_READ_SCOPE",
+    "NVT_PROJECT_UPDATE_OPERATION",
     "PROJECT_ADMIN_SCOPE",
     "PROJECT_CREATE_OPERATION",
     "PROJECT_CREATE_SCOPE",
@@ -305,9 +315,9 @@ __all__ = (
     "EosSettings",
     "EosTestDatabaseResetError",
     "EosTestDatabaseResetResult",
-    "EosVoucherAuthorizationClient",
     "EosVoucherAccessError",
     "EosVoucherAccessService",
+    "EosVoucherAuthorizationClient",
     "EosVoucherCommandError",
     "EosVoucherError",
     "EosVoucherVerificationError",

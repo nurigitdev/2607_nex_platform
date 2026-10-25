@@ -29,7 +29,7 @@ def test_default_registry_resolves_canonical_and_legacy_names() -> None:
     assert canonical.to_projection() == {
         "requested_operation": "PROJECT.PROJECT.GET",
         "canonical_operation": "PROJECT.PROJECT.GET",
-        "registry_version": "p8-s97.v1",
+        "registry_version": "p8-s105.v1",
         "alias_applied": False,
     }
     assert alias.canonical_operation == "PROJECT.PROJECT.GET"
@@ -105,6 +105,12 @@ def test_eos_project_openapi_uses_canonical_operation_ids() -> None:
         if path.startswith("/internal/v1/projects")
         for operation in methods.values()
     }
+    nvt_project_operations = {
+        operation["operationId"]
+        for path, methods in app.openapi()["paths"].items()
+        if path.startswith("/internal/v1/nvt-projects")
+        for operation in methods.values()
+    }
     assert project_operations == {
         "PROJECT.PROJECT.CREATE",
         "PROJECT.PROJECT.GET",
@@ -114,8 +120,15 @@ def test_eos_project_openapi_uses_canonical_operation_ids() -> None:
         "PROJECT.MEMBERSHIP.REMOVE",
         "PROJECT.MEMBERSHIP.LIST",
     }
+    assert nvt_project_operations == {
+        "PROJECT.NVT_PROJECT.CREATE",
+        "PROJECT.NVT_PROJECT.GET",
+        "PROJECT.NVT_PROJECT.LIST",
+        "PROJECT.NVT_PROJECT.UPDATE",
+    }
     assert all(
-        CANONICAL_OPERATION_PATTERN.fullmatch(item) for item in project_operations
+        CANONICAL_OPERATION_PATTERN.fullmatch(item)
+        for item in project_operations | nvt_project_operations
     )
 
 
