@@ -39,6 +39,8 @@ P8 v1.1 FINAL / DEMO RELEASE READY
 P8-CA05 CLOSED
 P8.11  CLOSED through P8-S113
 P8 v1.2 FINAL / DEMO RELEASE CANDIDATE REFRESHED
+P8-DEMO-CA01 SOURCE-BACKED AUDIT COMPLETE
+P8 DEMO IMPLEMENTATION ENTRY AUTHORIZED WITH BLOCKING GATES
 P9     ENTRY AUTHORIZED BY v1.2
 ```
 
@@ -244,6 +246,13 @@ P8-S113 sequence, and keeps batch membership inside one approval and one NSL
 controlled WRITE. The current handoff after that sequence is
 `P8_Final_AsBuilt_Baseline_and_P9_Handoff_v1.2.md`.
 
+Before building or installing the Chairman Demo Release, read
+`P8_DEMO_CA01_Chairman_Demo_Release_Boundary_and_Readiness_Audit_v1.0.md`.
+It preserves the P8 v1.2 business baseline and defines the blocking closure for
+the eight-image WC/EOS-aware Compose topology, installed Agent Runtime
+processes, dedicated Demo databases, guarded fixtures, and protected live
+rehearsal.
+
 ---
 
 # 1. Purpose
@@ -307,6 +316,8 @@ Implementation
 ⑨ P8-CA04 Project Membership and Governed Project Operations
         ↓
 ⑩ P8-CA05 NVT Project Operations and Batch Membership
+        ↓
+⑪ P8-DEMO-CA01 Chairman Demo Release Boundary and Readiness Audit
 ```
 
 Do not start from the Implementation Slice Plan alone.
@@ -885,6 +896,16 @@ contract-hygiene reconciliation, final Repository Full Gate, actual protected
 demonstration revalidation, zero-residue result, refreshed Demo Release
 Candidate, and current P9 entry authorization. The v1.0 and v1.1 files remain
 immutable historical baselines.
+
+For installed Chairman Demo Release work, then read:
+
+```text
+P8_DEMO_CA01_Chairman_Demo_Release_Boundary_and_Readiness_Audit_v1.0.md
+```
+
+This audit records why the historical six-image S143 topology is not sufficient
+for the WC/EOS-aware P8 v1.2 runtime. It authorizes additive Demo deployment
+work while preserving all historical Compose and P8 evidence.
 
 ---
 
