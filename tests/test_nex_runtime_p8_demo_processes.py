@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,6 +18,14 @@ from nex_runtime.demo_processes import (
     validate_demo_process_manifest,
 )
 from nex_wc import demo_runtime as wc_runtime
+
+
+class _Resource:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def test_demo_process_manifest_freezes_installed_and_embedded_ownership() -> None:
@@ -67,18 +76,39 @@ def test_all_installed_background_processes_have_worker_pool_and_lifecycle() -> 
 def test_demo_runtime_commands_admit_check_but_fail_closed_execution(
     module, argv: list[str], process_id: str
 ) -> None:
+    check_record = {**module.build_source_check(), "database": {"status": "PASS"}}
     output = io.StringIO()
-    assert module.main(argv, stdout=output) == 0
+    assert module.main(
+        argv,
+        stdout=output,
+        live_check=lambda _environ: check_record,
+    ) == 0
     check = json.loads(output.getvalue())
     assert check["status"] == "PASS"
     assert check["process_id"] == process_id
-    assert check["execution_enabled"] is False
+    assert check["execution_enabled"] is True
+    assert check["domain_claiming_enabled"] is False
 
     output = io.StringIO()
-    assert module.main(argv[:1], stdout=output) == 2
+    assert module.main(
+        [*argv[:1], "--max-cycles", "1"],
+        stdout=output,
+        live_run=lambda _environ, **_kwargs: {
+            "status": "STOPPED",
+            "process_id": process_id,
+        },
+    ) == 0
+    assert json.loads(output.getvalue())["status"] == "STOPPED"
+
+    output = io.StringIO()
+    assert module.main(
+        argv,
+        stdout=output,
+        live_check=lambda _environ: (_ for _ in ()).throw(ValueError("private")),
+    ) == 2
     blocked = json.loads(output.getvalue())
     assert blocked["status"] == "BLOCKED"
-    assert blocked["failure_code"].endswith("execution_not_activated")
+    assert blocked["secret_included"] is False
 
 
 @pytest.mark.parametrize(
@@ -154,3 +184,108 @@ def test_demo_process_manifest_contains_module_finder_failures() -> None:
 
     with pytest.raises(DemoProcessManifestError, match="source module missing"):
         validate_demo_process_manifest(build_demo_process_manifest(), module_finder=fail)
+
+
+@pytest.mark.parametrize("module", (ae_runtime, wc_runtime, eos_runtime))
+def test_service_live_check_and_run_close_worker_resource(
+    module, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checked = _Resource()
+    monkeypatch.setattr(
+        module,
+        "demo_process_database_check",
+        lambda _resource, **_kwargs: {"status": "PASS"},
+    )
+
+    check = module.build_live_check(
+        {}, resource_builder=lambda *_args, **_kwargs: checked
+    )
+
+    assert check["status"] == "PASS"
+    assert check["database"] == {"status": "PASS"}
+    assert checked.closed is True
+
+    running = _Resource()
+    monkeypatch.setattr(module, "install_demo_process_signal_handlers", lambda _token: {})
+    monkeypatch.setattr(module, "restore_demo_process_signal_handlers", lambda _old: None)
+    monkeypatch.setattr(
+        module,
+        "run_demo_process_loop",
+        lambda resource, **_kwargs: {
+            "status": "STOPPED",
+            "process_id": module.build_source_check()["process_id"],
+        },
+    )
+
+    result = module.run_live(
+        {},
+        max_cycles=1,
+        resource_builder=lambda *_args, **_kwargs: running,
+    )
+
+    assert result["status"] == "STOPPED"
+    assert running.closed is True
+
+
+class _Result:
+    def __init__(self, value):
+        self.value = value
+
+    def mappings(self):
+        return self
+
+    def one(self):
+        return self.value
+
+    def scalar_one(self):
+        return self.value
+
+
+class _Session:
+    def __init__(self, value):
+        self.value = value
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+    def execute(self, _statement):
+        return _Result(self.value)
+
+
+@pytest.mark.parametrize(
+    ("module", "value", "expected"),
+    (
+        (
+            ae_runtime,
+            {"queued": 2, "recoverable": 1},
+            {"queued_count": 2, "recoverable_lease_count": 1},
+        ),
+        (
+            wc_runtime,
+            {"active_jobs": 3, "coordination_events": 2, "approval_events": 1},
+            {
+                "active_job_count": 3,
+                "coordination_event_count": 2,
+                "approval_event_count": 1,
+            },
+        ),
+        (eos_runtime, 4, {"pending_outbox_count": 4}),
+    ),
+)
+def test_service_queue_projections_are_safe_and_recovery_aware(
+    module, value, expected
+) -> None:
+    resource = SimpleNamespace(sessions=lambda: _Session(value))
+
+    recovery = module._queue_projection(resource, recovery=True)
+    readiness = module._queue_projection(resource, recovery=False)
+
+    assert recovery["probe"] == "RECOVERY"
+    assert readiness["probe"] == "READINESS"
+    assert recovery["status"] == "IDLE"
+    assert recovery["domain_claiming_enabled"] is False
+    for key, value in expected.items():
+        assert recovery[key] == value
