@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/project_operation_admission.v1.schema.json",
+  "title": "AE Project Operation Admission v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "directive",
+    "failure_code",
+    "candidate_hash",
+    "operation_id",
+    "clarification",
+    "authoritative_binding",
+    "admission_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "p8.project_operation_admission.v1"},
+    "directive": {"enum": ["CONTINUE", "CLARIFICATION_REQUIRED", "BLOCKED"]},
+    "failure_code": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,127}$"}
+      ]
+    },
+    "candidate_hash": {"$ref": "#/$defs/hashRef"},
+    "operation_id": {"$ref": "#/$defs/operationId"},
+    "clarification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reasons", "questions"],
+      "properties": {
+        "reasons": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {"type": "string", "minLength": 1, "maxLength": 500}
+        },
+        "questions": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {"type": "string", "minLength": 1, "maxLength": 500}
+        }
+      }
+    },
+    "authoritative_binding": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/binding"}]
+    },
+    "admission_hash": {"$ref": "#/$defs/hashRef"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"directive": {"const": "CONTINUE"}}},
+      "then": {
+        "properties": {
+          "failure_code": {"type": "null"},
+          "authoritative_binding": {"$ref": "#/$defs/binding"}
+        }
+      },
+      "else": {
+        "properties": {
+          "failure_code": {"type": "string"},
+          "authoritative_binding": {"type": "null"}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "hashRef": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "operationId": {
+      "enum": [
+        "PROJECT.PROJECT.CREATE",
+        "PROJECT.PROJECT.GET",
+        "PROJECT.PROJECT.LIST",
+        "PROJECT.PROJECT.DEACTIVATE",
+        "PROJECT.MEMBERSHIP.ADD",
+        "PROJECT.MEMBERSHIP.REMOVE",
+        "PROJECT.MEMBERSHIP.LIST"
+      ]
+    },
+    "typedRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"enum": ["eos.project", "oa.user"]},
+        "id": {"type": "string", "minLength": 1, "maxLength": 128}
+      }
+    },
+    "capabilityRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_id",
+        "skill_id",
+        "skill_version",
+        "skill_semantic_hash",
+        "source_sha256"
+      ],
+      "properties": {
+        "capability_id": {"$ref": "#/$defs/operationId"},
+        "skill_id": {"$ref": "#/$defs/operationId"},
+        "skill_version": {"const": "1.0.0"},
+        "skill_semantic_hash": {"$ref": "#/$defs/hashRef"},
+        "source_sha256": {"$ref": "#/$defs/hashRef"}
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_id",
+        "tenant_id",
+        "requester_subject_id",
+        "capability_ref",
+        "arguments",
+        "project_ref",
+        "target_subject_ref",
+        "model_authority"
+      ],
+      "properties": {
+        "operation_id": {"$ref": "#/$defs/operationId"},
+        "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "requester_subject_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "capability_ref": {"$ref": "#/$defs/capabilityRef"},
+        "arguments": {
+          "type": "object",
+          "minProperties": 2,
+          "required": ["tenant_id", "requester_subject_id"],
+          "additionalProperties": true
+        },
+        "project_ref": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/typedRef"}]
+        },
+        "target_subject_ref": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/typedRef"}]
+        },
+        "model_authority": {"const": false}
+      }
+    }
+  }
+}

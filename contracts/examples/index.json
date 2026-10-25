@@ -1,6 +1,16 @@
 {
   "examples": [
     {
+      "name": "nsl_project_write_artifact_admission_pass",
+      "path": "examples/common/nsl_project_write_artifact_admission.pass.json",
+      "schema": "schemas/common/nsl_project_write_artifact_admission.v1.schema.json"
+    },
+    {
+      "name": "ae_project_operation_admission_continue",
+      "path": "examples/planning/ae_project_operation_admission.continue.json",
+      "schema": "schemas/service/nex_ae_api/project_operation_admission.v1.schema.json"
+    },
+    {
       "name": "nsl_project_read_artifact_admission_pass",
       "path": "examples/common/nsl_project_read_artifact_admission.pass.json",
       "schema": "schemas/common/nsl_project_read_artifact_admission.v1.schema.json"

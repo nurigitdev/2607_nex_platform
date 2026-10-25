@@ -1,0 +1,32 @@
+{
+  "schema_version": "p8.project_operation_admission.v1",
+  "directive": "CONTINUE",
+  "failure_code": null,
+  "candidate_hash": "sha256:249e607f36bf9ccbb237eb87aaab1e378c96cfea3393917235756385fe2e859f",
+  "operation_id": "PROJECT.PROJECT.GET",
+  "clarification": {"reasons": [], "questions": []},
+  "authoritative_binding": {
+    "operation_id": "PROJECT.PROJECT.GET",
+    "tenant_id": "tenant-s100",
+    "requester_subject_id": "employee-1001",
+    "capability_ref": {
+      "capability_id": "PROJECT.PROJECT.GET",
+      "skill_id": "PROJECT.PROJECT.GET",
+      "skill_version": "1.0.0",
+      "skill_semantic_hash": "sha256:31b08c9032fb4c244e5a47a7371dad4df4b80270dfa6d69fd431a9dfeb6b29e8",
+      "source_sha256": "sha256:698d67806bfc275f5090bb124c26a687f0f5748e700e15673c135fb981c16ba4"
+    },
+    "arguments": {
+      "tenant_id": "tenant-s100",
+      "requester_subject_id": "employee-1001",
+      "project_id": "a1000000-0000-4000-8000-000000000001"
+    },
+    "project_ref": {
+      "type": "eos.project",
+      "id": "a1000000-0000-4000-8000-000000000001"
+    },
+    "target_subject_ref": null,
+    "model_authority": false
+  },
+  "admission_hash": "sha256:93b72a2ddaa56497ba7b6827f7cb4ed5acb1a9ece6f6e89df48366c636c606c1"
+}

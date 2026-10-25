@@ -1,6 +1,11 @@
 {
   "negative_examples": [
     {
+      "name": "ae_project_operation_admission_model_authority",
+      "path": "tests/negative/planning/ae_project_operation_admission.model_authority.json",
+      "schema": "schemas/service/nex_ae_api/project_operation_admission.v1.schema.json"
+    },
+    {
       "name": "canonical_operation_alias_two_segment_canonical",
       "path": "tests/negative/common/canonical_operation_alias.two_segment_canonical.json",
       "schema": "schemas/common/canonical_operation_alias.v1.schema.json"
