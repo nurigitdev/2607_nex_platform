@@ -88,6 +88,46 @@ paths:
         "403":
           description: Audience or required scope is not allowed.
   /internal/v1/finance/voucher-drafts:
+    get:
+      operationId: FINANCE.VOUCHER_DRAFT.LIST
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:voucher-draft:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: project_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: requester_subject_id
+          in: query
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 100, default: 100}
+        - name: offset
+          in: query
+          required: false
+          schema: {type: integer, minimum: 0, default: 0}
+      responses:
+        "200":
+          description: Membership-filtered, bounded Voucher Draft list in deterministic order.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Fresh OA read authorization or active Project membership is denied.
+        "422":
+          description: Tenant, Project, requester, or pagination input is invalid.
+        "503":
+          description: OA authorization or EOS query persistence is unavailable.
     post:
       operationId: createEosVoucherDraft
       tags: [Finance]
@@ -124,6 +164,41 @@ paths:
           description: Command, hash, approval, or domain invariant is invalid.
         "503":
           description: OA authorization or EOS persistence is unavailable.
+  /internal/v1/finance/voucher-drafts/{voucher_id}:
+    get:
+      operationId: FINANCE.VOUCHER_DRAFT.GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:voucher-draft:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: voucher_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: requester_subject_id
+          in: query
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200":
+          description: Membership-filtered Voucher Draft and ordered accounting lines.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Fresh OA read authorization or active Project membership is denied.
+        "404":
+          description: Voucher Draft is absent from the admitted tenant and Project scope.
+        "422":
+          description: Tenant, Voucher, or requester identity is invalid.
+        "503":
+          description: OA authorization or EOS query persistence is unavailable.
   /internal/v1/organization/approver-resolutions:
     post:
       operationId: resolveEosApprover

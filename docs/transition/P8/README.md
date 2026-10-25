@@ -34,7 +34,7 @@ P8.8   CLOSED through P8-S86
 P8.9   CLOSED through P8-S93
 P8 v1.0 FROZEN / GOLDEN A CLOSED / RELIABILITY CLOSED
 P8-CA04 DESIGN CLOSED / P8.10 IMPLEMENTATION ENTRY AUTHORIZED
-P8.10  P8-S94..S100 CLOSED / P8-S101 is the next Slice
+P8.10  P8-S94..S101 CLOSED / P8-S102 is the next Slice
 P9     ENTRY HELD until P8-S103 re-authorizes the handoff
 ```
 
@@ -92,6 +92,15 @@ cross-tenant, or model-supplied stable authority stops before planning. Exact
 Skill source/semantic identity and resolved arguments are integrity-bound into
 the activated WorkIntent. The AE Slice Gate passed at 98.33% statement and
 96.30% branch coverage.
+
+P8-S101 added source-admitted `FINANCE.VOUCHER_DRAFT.GET/LIST` NSL Skills and
+closed EOS membership-filtered Voucher CREATE/GET/LIST behavior. CREATE now
+checks active Project membership inside the controlled-WRITE transaction;
+GET/LIST require fresh OA read authority and independently filter at the EOS
+query boundary. Only the explicit finance-auditor scope bypasses membership,
+without bypassing tenant or active-Project isolation. The EOS Slice Gate
+passed at 98.85% statement and 98.15% branch coverage; the required
+Checkpoint Gate is recorded in the Slice evidence.
 
 The historical NSL admission block was resolved by P8-S01 through P8-S06.
 The current attachment baseline was closed by P8-S75H. P8-CA03 aligned the

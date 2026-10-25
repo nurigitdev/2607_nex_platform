@@ -1,6 +1,11 @@
 {
   "negative_examples": [
     {
+      "name": "eos_voucher_draft_list_request_missing_project",
+      "path": "tests/negative/service/eos_voucher_draft_list_request.missing_project.json",
+      "schema": "schemas/service/nex_eos/voucher_draft_list_request.v1.schema.json"
+    },
+    {
       "name": "ae_project_operation_admission_model_authority",
       "path": "tests/negative/planning/ae_project_operation_admission.model_authority.json",
       "schema": "schemas/service/nex_ae_api/project_operation_admission.v1.schema.json"

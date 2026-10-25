@@ -32,6 +32,7 @@ from .vouchers import (
     VoucherDraftInput,
     VoucherLineInput,
 )
+from .voucher_access import EosVoucherAccessError, EosVoucherAccessService
 
 EOS_CREATE_VOUCHER_OPERATION = "FINANCE.CREATE_VOUCHER_DRAFT"
 EOS_CREATE_VOUCHER_SCHEMA = "eos_create_voucher_draft_command.v1"
@@ -141,6 +142,7 @@ class EosCreateVoucherDraftService:
         coordinator: EosBusinessTransactionCoordinator,
         vouchers: SqlAlchemyEosVoucherRepository,
         authorizer: EosVoucherAuthorizationClient,
+        project_access: EosVoucherAccessService | None = None,
         attachments: SqlAlchemyEosAttachmentRepository | None = None,
         id_factory: Callable[[], str] | None = None,
         clock: Callable[[], datetime] | None = None,
@@ -148,6 +150,7 @@ class EosCreateVoucherDraftService:
         self._coordinator = coordinator
         self._vouchers = vouchers
         self._authorizer = authorizer
+        self._project_access = project_access
         self._attachments = attachments
         self._id_factory = id_factory or (lambda: str(uuid.uuid4()))
         self._clock = clock or (lambda: datetime.now(UTC))
@@ -195,6 +198,13 @@ class EosCreateVoucherDraftService:
                     status_code=500,
                 )
             try:
+                if self._project_access is not None:
+                    self._project_access.require_create_membership(
+                        session,
+                        tenant_id=command.tenant_id,
+                        project_id=command.project_ref["id"],
+                        subject_id=command.requester_ref["id"],
+                    )
                 self._vouchers.create_draft_in_session(
                     session,
                     VoucherDraftInput(
@@ -231,7 +241,7 @@ class EosCreateVoucherDraftService:
                         attachment_batch_id=command.attachment_batch_id,
                         attachment_manifest_hash=command.attachment_manifest_hash,
                     )
-            except (EosVoucherError, EosAttachmentError) as exc:
+            except (EosVoucherError, EosAttachmentError, EosVoucherAccessError) as exc:
                 raise EosBusinessOperationError(
                     exc.error_code,
                     exc.detail,

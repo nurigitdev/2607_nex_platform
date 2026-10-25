@@ -16,6 +16,7 @@ from .voucher_commands import (
     EosVoucherCommandError,
 )
 from .business_queries import EosBusinessQueryError
+from .voucher_access import EosVoucherAccessError, EosVoucherAccessService
 from .voucher_verification import EosVoucherVerificationError
 
 
@@ -71,6 +72,74 @@ def register_voucher_command_routes(app: FastAPI) -> None:
             result,
             status_code=201 if result["idempotency_disposition"] == "CREATED" else 200,
         )
+
+    @app.get(
+        "/internal/v1/finance/voucher-drafts/{voucher_id}",
+        response_model=None,
+        operation_id="FINANCE.VOUCHER_DRAFT.GET",
+    )
+    def get_voucher_draft(
+        voucher_id: str,
+        request: Request,
+        requester_subject_id: str,
+        tenant_id: str = Header(alias="X-NeX-Tenant-Id"),
+        authorization: str | None = Header(default=None),
+    ):
+        admitted = admit_service_token_from_request(
+            request,
+            authorization,
+            expected_audience="nex-eos",
+            required_scopes=(DEFAULT_SERVICE_SCOPE,),
+        )
+        if isinstance(admitted, JSONResponse):
+            return admitted
+        service = _voucher_access_service(request)
+        if service is None:
+            return _voucher_access_unavailable(request)
+        try:
+            return service.get_draft(
+                tenant_id=tenant_id,
+                voucher_id=voucher_id,
+                requester_subject_id=requester_subject_id,
+            )
+        except EosVoucherAccessError as exc:
+            return _voucher_access_problem(request, exc)
+
+    @app.get(
+        "/internal/v1/finance/voucher-drafts",
+        response_model=None,
+        operation_id="FINANCE.VOUCHER_DRAFT.LIST",
+    )
+    def list_voucher_drafts(
+        request: Request,
+        project_id: str,
+        requester_subject_id: str,
+        limit: int = 100,
+        offset: int = 0,
+        tenant_id: str = Header(alias="X-NeX-Tenant-Id"),
+        authorization: str | None = Header(default=None),
+    ):
+        admitted = admit_service_token_from_request(
+            request,
+            authorization,
+            expected_audience="nex-eos",
+            required_scopes=(DEFAULT_SERVICE_SCOPE,),
+        )
+        if isinstance(admitted, JSONResponse):
+            return admitted
+        service = _voucher_access_service(request)
+        if service is None:
+            return _voucher_access_unavailable(request)
+        try:
+            return service.list_drafts(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                requester_subject_id=requester_subject_id,
+                limit=limit,
+                offset=offset,
+            )
+        except EosVoucherAccessError as exc:
+            return _voucher_access_problem(request, exc)
 
     @app.get(
         "/internal/v1/business-operations/{business_operation_id}",
@@ -163,3 +232,31 @@ def register_voucher_command_routes(app: FastAPI) -> None:
                 retryable=exc.retryable,
                 type_uri="https://nex-platform.local/problems/eos-voucher-verification-failed",
             )
+
+
+def _voucher_access_service(request: Request) -> EosVoucherAccessService | None:
+    return getattr(request.app.state, "eos_voucher_access_service", None)
+
+
+def _voucher_access_unavailable(request: Request):
+    return problem_response(
+        request,
+        status_code=503,
+        error_code="EOS_VOUCHER_ACCESS_UNAVAILABLE",
+        title="EOS Voucher access unavailable",
+        detail="EOS Voucher access dependencies are not configured.",
+        retryable=True,
+        type_uri="https://nex-platform.local/problems/eos-voucher-access-unavailable",
+    )
+
+
+def _voucher_access_problem(request: Request, exc: EosVoucherAccessError):
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="EOS Voucher access failed",
+        detail=exc.detail,
+        retryable=exc.retryable,
+        type_uri="https://nex-platform.local/problems/eos-voucher-access-failed",
+    )

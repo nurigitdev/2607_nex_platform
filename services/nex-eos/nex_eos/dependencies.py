@@ -36,6 +36,7 @@ from .project_memberships import SqlAlchemyEosProjectMembershipRepository
 from .project_operations import EosGovernedProjectService
 from .projects import SqlAlchemyEosProjectRepository
 from .voucher_commands import EosCreateVoucherDraftService
+from .voucher_access import EosVoucherAccessService
 from .voucher_verification import SqlAlchemyEosVoucherVerificationQuery
 from .vouchers import SqlAlchemyEosVoucherRepository
 
@@ -59,6 +60,7 @@ class EosDependencies:
     vouchers: SqlAlchemyEosVoucherRepository | None
     attachments: SqlAlchemyEosAttachmentRepository | None
     voucher_command_service: EosCreateVoucherDraftService | None
+    voucher_access_service: EosVoucherAccessService | None
     business_operation_query: SqlAlchemyEosBusinessOperationQuery | None
     voucher_verification_query: SqlAlchemyEosVoucherVerificationQuery | None
 
@@ -164,30 +166,39 @@ def build_eos_dependencies(
         else None
     )
     oa_token = environ.get("NEX_EOS_TO_OA_SERVICE_TOKEN", "")
+    authorization_source = (
+        HttpOaAuthorizationSource(
+            base_url=environ.get("NEX_OA_BASE_URL", "http://127.0.0.1:8101"),
+            service_token=oa_token,
+        )
+        if oa_token
+        else None
+    )
     project_operations = (
         EosGovernedProjectService(
             session_factory=database_runtime.session_factory,
             coordinator=business_transactions,
-            authorization_source=HttpOaAuthorizationSource(
-                base_url=environ.get("NEX_OA_BASE_URL", "http://127.0.0.1:8101"),
-                service_token=oa_token,
-            ),
+            authorization_source=authorization_source,
         )
         if database_runtime is not None
         and business_transactions is not None
         and oa_token
         else None
     )
+    voucher_access_service = (
+        EosVoucherAccessService(
+            session_factory=database_runtime.session_factory,
+            authorization_source=authorization_source,
+        )
+        if database_runtime is not None and authorization_source is not None
+        else None
+    )
     voucher_command_service = (
         EosCreateVoucherDraftService(
             coordinator=business_transactions,
             vouchers=vouchers,
-            authorizer=EosVoucherAuthorizationClient(
-                HttpOaAuthorizationSource(
-                    base_url=environ.get("NEX_OA_BASE_URL", "http://127.0.0.1:8101"),
-                    service_token=oa_token,
-                )
-            ),
+            authorizer=EosVoucherAuthorizationClient(authorization_source),
+            project_access=voucher_access_service,
             attachments=attachments,
         )
         if business_transactions is not None and vouchers is not None and oa_token
@@ -224,6 +235,7 @@ def build_eos_dependencies(
         vouchers=vouchers,
         attachments=attachments,
         voucher_command_service=voucher_command_service,
+        voucher_access_service=voucher_access_service,
         business_operation_query=business_operation_query,
         voucher_verification_query=voucher_verification_query,
     )
