@@ -36,10 +36,10 @@ P8 v1.0 FROZEN / GOLDEN A CLOSED / RELIABILITY CLOSED
 P8-CA04 CLOSED
 P8.10  CLOSED through P8-S103
 P8 v1.1 FINAL / DEMO RELEASE READY
-P8-CA05 DESIGN CLOSED
-P8.11  IMPLEMENTATION ENTRY AUTHORIZED / NOT STARTED
-P8 v1.2 DEMO RELEASE CANDIDATE REFRESH HELD through P8-S113
-P9     ENTRY AUTHORIZED BY v1.1 / CURRENTLY DEFERRED BEHIND P8.11
+P8-CA05 CLOSED
+P8.11  CLOSED through P8-S113
+P8 v1.2 FINAL / DEMO RELEASE CANDIDATE REFRESHED
+P9     ENTRY AUTHORIZED BY v1.2
 ```
 
 Current admitted NSL runtime:
@@ -123,6 +123,26 @@ journey was then re-run independently and again passed `8/8` with
 residue. All seven service test databases matched `159/159` source/applied
 migrations. P8.10 is closed, Demo Release entry is ready, and P9 entry is
 re-authorized by the additive Final As-Built v1.1.
+
+P8-S104 through P8-S106 closed governed NVTProject CREATE/GET/LIST/UPDATE
+across EOS protected APIs, exact NSL source admission, and AE deterministic
+planning. P8-S107 added the authoritative OA employee batch resolver and
+passed the required Checkpoint Gate. P8-S108 through P8-S110 then bound one
+canonical employee set into one approval, one collection-valued NSL WRITE,
+and one transactional EOS `PROJECT.MEMBERSHIP.ADD_MANY` operation with exact
+replay and deterministic partial outcomes.
+
+P8-S111 connected the bounded natural-language candidate and Korean AE Web
+result surface, then passed the second Checkpoint Gate. P8-S112 passed `10/10`
+protected checks with actual OA/AE/WC/EOS PostgreSQL, live `Qwen3.5-4B`
+generation, authenticated Chromium, exact replay, and zero residue.
+
+P8-S113 reconciled two missing CA05 negative fixtures without weakening the
+historical S101 drift guard. The Repository Full Gate passed with `17,532`
+tests, `118` explicit protected skips, zero failures, statement coverage
+`96.63%`, branch coverage `96.01%`, AE Web `386/386`, and contract validation
+`207 / 271 / 231 / 9`. P8.11 and P8-CA05 are closed, the Demo Release
+Candidate is refreshed, and P9 entry is re-authorized by Final As-Built v1.2.
 
 The historical NSL admission block was resolved by P8-S01 through P8-S06.
 The current attachment baseline was closed by P8-S75H. P8-CA03 aligned the
@@ -211,7 +231,7 @@ as the normative P8-CA03 amendment to the P8.8 reliability matrix and
 evidence, then
 read `P8_Final_AsBuilt_Baseline_and_P9_Handoff_v1.0.md` as the authoritative
 v1.0 historical handoff and
-`P8_Final_AsBuilt_Baseline_and_P9_Handoff_v1.1.md` as the current additive
+`P8_Final_AsBuilt_Baseline_and_P9_Handoff_v1.1.md` as the historical additive
 P8.10 handoff. For Project membership history and any future extension, read
 `P8_CA04_Project_Membership_and_Governed_Project_Operations_Contract_Closure_v1.0.md`.
 CA04 preserves that frozen baseline, adds the P8.10 Project membership scope,
@@ -221,7 +241,8 @@ with governed NVTProject operations or multi-member Project setup, then read
 `P8_CA05_NVT_Project_Operations_and_Batch_Membership_Contract_Closure_v1.0.md`.
 CA05 preserves both frozen baselines, authorizes the additive P8-S104 through
 P8-S113 sequence, and keeps batch membership inside one approval and one NSL
-controlled WRITE.
+controlled WRITE. The current handoff after that sequence is
+`P8_Final_AsBuilt_Baseline_and_P9_Handoff_v1.2.md`.
 
 ---
 
@@ -853,6 +874,18 @@ P8-S104 through P8-S113 for governed NVTProject CREATE/GET/LIST/UPDATE and one
 collection-valued `PROJECT.MEMBERSHIP.ADD_MANY` controlled WRITE. A new Final
 As-Built v1.2 is required before the refreshed Demo Release Candidate closes.
 
+After P8-S113, read:
+
+```text
+P8_Final_AsBuilt_Baseline_and_P9_Handoff_v1.2.md
+```
+
+This additive successor records the closed CA05/P8.11 implementation,
+contract-hygiene reconciliation, final Repository Full Gate, actual protected
+demonstration revalidation, zero-residue result, refreshed Demo Release
+Candidate, and current P9 entry authorization. The v1.0 and v1.1 files remain
+immutable historical baselines.
+
 ---
 
 # 10. First Implementation Batch
@@ -1266,24 +1299,12 @@ For Delegation slices also review:
 
 # 23. Current Entry Point
 
-The current P8 design baseline is consistency-closed and ready to start the
-protected admission work in P8-S01. NSL v0.2 runtime activation remains blocked
-until P8-S01 establishes a real source/wheel baseline and passes admission.
+P8 is closed through the additive P8.11 amendment. The current authoritative
+handoff is Final As-Built v1.2; v1.0 and v1.1 remain immutable history.
 
-Immediate next action:
-
-```text
-P8-S01
-Actual NSL v0.2 Wheel Identity Closure
-```
-
-Then:
-
-```text
-S02 → S03 → S04 → S05 → S06
-```
-
-to close P8.1.
+The next implementation phase is P9 NeX-WA / Work Asset. Before coding, P9
+must perform a source-backed current-state, ownership, and contract audit and
+must inherit every P8 v1.0, v1.1, and v1.2 invariant.
 
 ---
 

@@ -1145,6 +1145,16 @@
       "name": "ae_project_membership_batch_admission_rejected_write_authority",
       "path": "tests/negative/planning/ae_project_membership_batch_admission.rejected_write_authority.json",
       "schema": "schemas/service/nex_ae_api/project_membership_batch_admission.v1.schema.json"
+    },
+    {
+      "name": "ae_project_membership_batch_result_invalid_status",
+      "path": "tests/negative/planning/ae_project_membership_batch_result.invalid_status.json",
+      "schema": "schemas/service/nex_ae_api/project_membership_batch_result_projection.v1.schema.json"
+    },
+    {
+      "name": "ae_project_membership_batch_skill_binding_model_authority",
+      "path": "tests/negative/planning/ae_project_membership_batch_skill_binding.model_authority.json",
+      "schema": "schemas/service/nex_ae_api/project_membership_batch_skill_binding.v1.schema.json"
     }
   ]
 }

@@ -1,0 +1,34 @@
+{
+  "schema_version": "p8.project_membership_batch_result_projection.v1",
+  "operation_id": "PROJECT.MEMBERSHIP.ADD_MANY",
+  "payload_hash": "sha256:e14a1733ca79fd83c9982b8600eb5113452ba807f57c64ff0bc97771999f38a2",
+  "project_id": "b1110000-0000-4000-8000-000000000001",
+  "member_role": "MANAGER",
+  "overall_status": "COMMITTED",
+  "business_result_ref": "eos.project-membership-batch:s111",
+  "summary": {
+    "requested_count": 1,
+    "admitted_count": 1,
+    "applied_count": 1,
+    "pre_admission_rejected_count": 0,
+    "commit_rejected_count": 0,
+    "total_rejected_count": 0
+  },
+  "items": [
+    {
+      "stage": "EOS_COMMIT",
+      "input_index": null,
+      "subject_id": "subject-a",
+      "normalized_employee_id": null,
+      "outcome": "ADDED",
+      "applied": true
+    }
+  ],
+  "metadata": {
+    "model_authority": false,
+    "raw_prompt_included": false,
+    "credentials_included": false,
+    "provider_configuration_included": false
+  },
+  "result_hash": "sha256:d9eda414dabf4d3c8b14ce07c9ce6751bc43ab17e9ce5e6c330839a17a1e92ee"
+}
