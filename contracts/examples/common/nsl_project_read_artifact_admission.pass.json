@@ -1,0 +1,33 @@
+{
+  "schema_version": "nsl_project_read_artifact_admission.v1",
+  "status": "PASS",
+  "repository": "nurigitdev/2608_nsl",
+  "artifact_source_revision": "82bc0fcbeb0de59bdc0aa3785c589e5515b24280",
+  "artifact_manifest_path": "examples/project_operations/artifact_manifest.json",
+  "artifact_manifest_sha256": "sha256:fb1b2f15eff60e0439ddd81c0fd7475d2e6214fa610e0401412baf717319f799",
+  "runtime_wheel": {
+    "package_version": "0.2.0",
+    "source_revision": "c0a8d4e125ee129c4556d896356237bb3973582d",
+    "wheel_sha256": "sha256:862958a5eab982a71bec5ee58b9e530867d6c25f65d8b770efb29ca78ce7f135"
+  },
+  "skills": [
+    {
+      "skill_id": "PROJECT.PROJECT.GET",
+      "skill_version": "1.0.0",
+      "source_sha256": "sha256:698d67806bfc275f5090bb124c26a687f0f5748e700e15673c135fb981c16ba4",
+      "semantic_hash": "sha256:31b08c9032fb4c244e5a47a7371dad4df4b80270dfa6d69fd431a9dfeb6b29e8"
+    },
+    {
+      "skill_id": "PROJECT.PROJECT.LIST",
+      "skill_version": "1.0.0",
+      "source_sha256": "sha256:49b1318f3bdc83d0ff632858dcc529ba891654159e2954795801c61ef2908121",
+      "semantic_hash": "sha256:36ef806f56afb96bd3cdf97ce30667824030c98489accc39c3f87635911a7649"
+    },
+    {
+      "skill_id": "PROJECT.MEMBERSHIP.LIST",
+      "skill_version": "1.0.0",
+      "source_sha256": "sha256:b795f9afeebe873d08ba994c7e2e1d6f075948c84fcbf9cc2ba16e3c2c06081e",
+      "semantic_hash": "sha256:16c5d8cd1a7319b2cc3d46a724af25e9158a8016a39d43f04eb4abbafda6c13f"
+    }
+  ]
+}

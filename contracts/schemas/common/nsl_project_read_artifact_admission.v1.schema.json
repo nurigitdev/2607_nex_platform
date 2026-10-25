@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/nsl_project_read_artifact_admission.v1.schema.json",
+  "title": "NSL Project READ Artifact Admission v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "repository",
+    "artifact_source_revision",
+    "artifact_manifest_path",
+    "artifact_manifest_sha256",
+    "runtime_wheel",
+    "skills"
+  ],
+  "properties": {
+    "schema_version": {"const": "nsl_project_read_artifact_admission.v1"},
+    "status": {"const": "PASS"},
+    "repository": {"const": "nurigitdev/2608_nsl"},
+    "artifact_source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "artifact_manifest_path": {"const": "examples/project_operations/artifact_manifest.json"},
+    "artifact_manifest_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "runtime_wheel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["package_version", "source_revision", "wheel_sha256"],
+      "properties": {
+        "package_version": {"const": "0.2.0"},
+        "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "wheel_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "skills": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["skill_id", "skill_version", "source_sha256", "semantic_hash"],
+        "properties": {
+          "skill_id": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*\\.[A-Z][A-Z0-9_]*\\.[A-Z][A-Z0-9_]*$"
+          },
+          "skill_version": {"const": "1.0.0"},
+          "source_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+          "semantic_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+        }
+      }
+    }
+  }
+}

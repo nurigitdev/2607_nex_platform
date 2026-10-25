@@ -1,6 +1,11 @@
 {
   "examples": [
     {
+      "name": "nsl_project_read_artifact_admission_pass",
+      "path": "examples/common/nsl_project_read_artifact_admission.pass.json",
+      "schema": "schemas/common/nsl_project_read_artifact_admission.v1.schema.json"
+    },
+    {
       "name": "canonical_operation_alias_project_get",
       "path": "examples/common/canonical_operation_alias.project_get.json",
       "schema": "schemas/common/canonical_operation_alias.v1.schema.json"

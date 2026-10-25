@@ -34,7 +34,7 @@ P8.8   CLOSED through P8-S86
 P8.9   CLOSED through P8-S93
 P8 v1.0 FROZEN / GOLDEN A CLOSED / RELIABILITY CLOSED
 P8-CA04 DESIGN CLOSED / P8.10 IMPLEMENTATION ENTRY AUTHORIZED
-P8.10  P8-S94..S97 CLOSED / P8-S98 is the next Slice
+P8.10  P8-S94..S98 CLOSED / P8-S99 is the next Slice
 P9     ENTRY HELD until P8-S103 re-authorizes the handoff
 ```
 
@@ -63,6 +63,12 @@ aliases. Alias resolution now precedes payload hashing and idempotency while
 preserving the requested name only as diagnostic lineage. EOS Project OpenAPI
 operation IDs use the canonical three-segment form. The required Checkpoint
 Gate passed at 98.67% statement and 97.15% branch coverage.
+
+P8-S98 added deterministic canonical NSL READ Skills and Tools for Project GET,
+Project LIST, and membership LIST in NSL revision `82bc0fcb...`. Their source,
+Tool catalog, semantic hashes, and artifact manifest are exact-admitted while
+the unchanged NSL v0.2 runtime wheel retains its existing independent lock.
+The NSL mandatory gate and Platform actual-source protected smoke passed.
 
 The historical NSL admission block was resolved by P8-S01 through P8-S06.
 The current attachment baseline was closed by P8-S75H. P8-CA03 aligned the
