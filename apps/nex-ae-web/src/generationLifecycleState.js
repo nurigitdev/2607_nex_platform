@@ -192,6 +192,7 @@ export function applyVerifiedGeneratedResponse(state, response) {
       sizeBytes: response.sizeBytes,
       responseId: response.responseId,
       lineage: response.lineage,
+      projectMembershipBatchResult: response.projectMembershipBatchResult,
       source: "response"
     },
     activeAction: null,

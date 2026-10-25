@@ -4,6 +4,7 @@ import {
 } from "./groundedResponseQuality.js";
 import { createRepairedResponseDecisionState } from "./repairedResponseDecisionState.js";
 import { buildRetrievalQualityWarningSurface } from "./retrievalQualityWarnings.js";
+import { buildProjectMembershipBatchResultSurface } from "./projectMembershipBatchResult.js";
 
 export const AE_WEB_GROUNDED_GENERATION_PRESENTATION_SCHEMA_VERSION =
   "ae_web_grounded_generation_presentation.v1";
@@ -83,6 +84,11 @@ export async function buildGroundedGenerationPresentation({
       ? buildRetrievalQualityWarningSurface(retrievalResult)
       : null,
     groundedResponseQuality: qualitySurface,
+    projectMembershipBatchResult: state.response?.projectMembershipBatchResult
+      ? buildProjectMembershipBatchResultSurface(
+          state.response.projectMembershipBatchResult
+        )
+      : null,
     repairedResponseReview,
     metadata: {
       ownerVerifiedResponse: Boolean(state.response),
@@ -121,6 +127,7 @@ export function buildGroundedGenerationPresentationFailure(workflow, error) {
     retrievalResult: buildAdmissionRetrievalResult(workflow.admission),
     retrievalQualityWarning: null,
     groundedResponseQuality: qualitySurface,
+    projectMembershipBatchResult: null,
     repairedResponseReview: null,
     errorStatus: safeErrorStatus(error),
     metadata: {

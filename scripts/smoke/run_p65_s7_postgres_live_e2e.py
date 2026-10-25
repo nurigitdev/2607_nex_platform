@@ -572,7 +572,7 @@ def _execute_postgres_journey(  # pragma: no cover - protected integration body
                     and {row["binding_key"]: row["version"] for row in prompt_versions}
                     == {
                         "ae.context_candidate_extraction.default": "v2",
-                        "ae.intent_resolution.default": "v3",
+                        "ae.intent_resolution.default": "v6",
                         "ae.plan_builder.default": "v1",
                     }
                 ),

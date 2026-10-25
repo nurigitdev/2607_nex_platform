@@ -71,6 +71,55 @@ _P8_PROJECT_BATCH_INTENT_CANDIDATE_V3_CONTENT = (
     "employee numbers are absent or ambiguous, require clarification."
 )
 
+_P8_NVT_PROJECT_INTENT_CANDIDATE_V4_CONTENT = (
+    _P8_PROJECT_BATCH_INTENT_CANDIDATE_V3_CONTENT
+    + " For NVT Project operations, use only these canonical intent labels: "
+    "PROJECT.NVT_PROJECT.CREATE, PROJECT.NVT_PROJECT.GET, "
+    "PROJECT.NVT_PROJECT.LIST, or PROJECT.NVT_PROJECT.UPDATE. Use "
+    "GENERAL_ANSWER. For CREATE, emit nvt_project_code and name as scalar "
+    "parameter candidates. For GET or UPDATE, emit the exact NVT Project code "
+    "as one QUERY_TERM selector. For UPDATE, emit only explicit mutable name or "
+    "status parameter candidates. LIST may emit status, limit, or offset only "
+    "when explicitly supplied. Never invent Project IDs, tenant authority, "
+    "status changes, or update fields. Require clarification when a required "
+    "code or name is absent or ambiguous."
+)
+
+_P8_AUTHORITY_SAFE_INTENT_CANDIDATE_V5_CONTENT = (
+    _P8_NVT_PROJECT_INTENT_CANDIDATE_V4_CONTENT
+    + " Employee numbers and optional name hints are opaque lookup candidates. "
+    "Never infer whether an employee exists, is active, or has a matching name; "
+    "OA alone decides those facts. Preserve every explicitly paired name hint "
+    "as the matching employee_name_N scalar. Do not require clarification merely "
+    "because an employee number is unfamiliar, appears invalid, or a supplied "
+    "name appears suspicious. When one exact Project code and at least one "
+    "employee number are explicit, emit clarification.required false and let "
+    "deterministic Project resolution and OA batch resolution report item errors."
+)
+
+_P8_AUTHORITY_SAFE_INTENT_CANDIDATE_V6_CONTENT = (
+    _P8_PROJECT_BATCH_INTENT_CANDIDATE_V3_CONTENT
+    + " For NVT Project operations, use only these canonical intent labels: "
+    "PROJECT.NVT_PROJECT.CREATE, PROJECT.NVT_PROJECT.GET, "
+    "PROJECT.NVT_PROJECT.LIST, or PROJECT.NVT_PROJECT.UPDATE. Use "
+    "GENERAL_ANSWER only when the request is not an NVT Project operation. "
+    "For CREATE, emit nvt_project_code and name as scalar parameter candidates. "
+    "For GET or UPDATE, emit the exact NVT Project code as one QUERY_TERM "
+    "selector. For UPDATE, emit only explicit mutable name or status parameter "
+    "candidates. LIST may emit status, limit, or offset only when explicitly "
+    "supplied. Never invent Project IDs, tenant authority, status changes, or "
+    "update fields. Require clarification when a required code or name is absent "
+    "or ambiguous."
+    + " Employee numbers and optional name hints are opaque lookup candidates. "
+    "Never infer whether an employee exists, is active, or has a matching name; "
+    "OA alone decides those facts. Preserve every explicitly paired name hint "
+    "as the matching employee_name_N scalar. Do not require clarification merely "
+    "because an employee number is unfamiliar, appears invalid, or a supplied "
+    "name appears suspicious. When one exact Project code and at least one "
+    "employee number are explicit, emit clarification.required false and let "
+    "deterministic Project resolution and OA batch resolution report item errors."
+)
+
 _P65_CONTEXT_CANDIDATE_V1_CONTENT = (
     "You generate an untrusted context candidate set, never an "
     "authoritative context or access decision. Return exactly one JSON "
@@ -137,6 +186,69 @@ AE_HISTORICAL_PROMPT_SEEDS = [
             "slice": "P6.5-S2",
             "candidate_schema": "p65.intent_candidate.v1",
             "authority": "untrusted_candidate_only",
+        },
+    ),
+    PromptSeed(
+        service_id="nex-ae-api",
+        purpose="intent_resolution",
+        name="p65_default_intent_candidate_system",
+        owner_domain="agent-experience",
+        binding_key=AE_INTENT_RESOLUTION_BINDING,
+        version="v5",
+        role="system",
+        segment_order=0,
+        content=_P8_AUTHORITY_SAFE_INTENT_CANDIDATE_V5_CONTENT,
+        model_capability="generation",
+        metadata={
+            "phase": "P8",
+            "slice": "P8-S112",
+            "candidate_schema": "p65.intent_candidate.v1",
+            "authority": "untrusted_candidate_only",
+            "golden_a": "voucher_draft",
+            "project_membership_batch": "indexed_scalar_candidates",
+            "nvt_project_operations": "create_get_list_update",
+            "employee_authority": "oa_only",
+        },
+    ),
+    PromptSeed(
+        service_id="nex-ae-api",
+        purpose="intent_resolution",
+        name="p65_default_intent_candidate_system",
+        owner_domain="agent-experience",
+        binding_key=AE_INTENT_RESOLUTION_BINDING,
+        version="v4",
+        role="system",
+        segment_order=0,
+        content=_P8_NVT_PROJECT_INTENT_CANDIDATE_V4_CONTENT,
+        model_capability="generation",
+        metadata={
+            "phase": "P8",
+            "slice": "P8-S112",
+            "candidate_schema": "p65.intent_candidate.v1",
+            "authority": "untrusted_candidate_only",
+            "golden_a": "voucher_draft",
+            "project_membership_batch": "indexed_scalar_candidates",
+            "nvt_project_operations": "create_get_list_update",
+        },
+    ),
+    PromptSeed(
+        service_id="nex-ae-api",
+        purpose="intent_resolution",
+        name="p65_default_intent_candidate_system",
+        owner_domain="agent-experience",
+        binding_key=AE_INTENT_RESOLUTION_BINDING,
+        version="v3",
+        role="system",
+        segment_order=0,
+        content=_P8_PROJECT_BATCH_INTENT_CANDIDATE_V3_CONTENT,
+        model_capability="generation",
+        metadata={
+            "phase": "P8",
+            "slice": "P8-S111",
+            "candidate_schema": "p65.intent_candidate.v1",
+            "authority": "untrusted_candidate_only",
+            "golden_a": "voucher_draft",
+            "project_membership_batch": "indexed_scalar_candidates",
         },
     ),
     PromptSeed(
@@ -225,18 +337,21 @@ AE_PROMPT_SEEDS = [
         name="p65_default_intent_candidate_system",
         owner_domain="agent-experience",
         binding_key=AE_INTENT_RESOLUTION_BINDING,
-        version="v3",
+        version="v6",
         role="system",
         segment_order=0,
-        content=_P8_PROJECT_BATCH_INTENT_CANDIDATE_V3_CONTENT,
+        content=_P8_AUTHORITY_SAFE_INTENT_CANDIDATE_V6_CONTENT,
         model_capability="generation",
         metadata={
             "phase": "P8",
-            "slice": "P8-S111",
+            "slice": "P8-S112",
             "candidate_schema": "p65.intent_candidate.v1",
             "authority": "untrusted_candidate_only",
             "golden_a": "voucher_draft",
             "project_membership_batch": "indexed_scalar_candidates",
+            "nvt_project_operations": "create_get_list_update",
+            "employee_authority": "oa_only",
+            "nvt_fallback_rule": "non_nvt_only",
         },
     ),
     PromptSeed(
@@ -370,8 +485,8 @@ def _activate_current_intent_candidate_prompt(store: Any) -> None:
         new_prompt_template_version_id=target["prompt_template_version_id"],
         expected_prompt_template_version_id=current["prompt_template_version_id"],
         changed_by="nex-ae-api-bootstrap",
-        reason="P8-S111 Project membership batch candidate normalization",
-        correlation_id="p8-s111-intent-prompt-v3",
+        reason="P8-S112 NVT Project and membership candidate normalization",
+        correlation_id="p8-s112-intent-prompt-v6",
     )
 
 

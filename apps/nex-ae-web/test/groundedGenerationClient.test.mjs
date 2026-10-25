@@ -234,6 +234,23 @@ test("client rejects missing fetch, identifiers, payloads, and schema drift", as
   );
 });
 
+test("generated response retains the safe project membership batch projection", () => {
+  const projection = {
+    schema_version: "p8.project_membership_batch_result_projection.v1",
+    operation_id: "PROJECT.MEMBERSHIP.ADD_MANY"
+  };
+  const result = buildGeneratedResponseResult({
+    response_schema_version: "ae_generated_response.v1",
+    interaction_id: "interaction-batch",
+    response_id: "response-batch",
+    content: "처리가 완료되었습니다.",
+    project_membership_batch_result: projection,
+    owner_scope_enforced: true
+  });
+
+  assert.deepEqual(result.projectMembershipBatchResult, projection);
+});
+
 test("unknown mock operation fails closed through a custom proxy call", async () => {
   const client = createMockGroundedGenerationClient({
     responseFactories: {

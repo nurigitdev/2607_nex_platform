@@ -119,5 +119,7 @@ describe("AE Web Project membership batch result", () => {
     const mainSource = await readFile(new URL("../src/main.js", import.meta.url), "utf8");
     assert.match(mainSource, /renderProjectMembershipBatchResult/);
     assert.match(mainSource, /message\.projectMembershipBatchResult/);
+    assert.match(mainSource, /generationPresentation\.projectMembershipBatchResult/);
+    assert.match(mainSource, /presentation\.projectMembershipBatchResult/);
   });
 });

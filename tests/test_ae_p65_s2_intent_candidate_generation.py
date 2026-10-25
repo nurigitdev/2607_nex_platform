@@ -196,26 +196,44 @@ def _run(service: LiveIntentCandidateService, **overrides):
     return service.generate_and_resolve(**values)
 
 
-def test_prompt_registry_seeds_exact_intent_binding_v3_and_keeps_v1() -> None:
+def test_prompt_registry_seeds_exact_intent_binding_v6_and_keeps_history() -> None:
     store = _store()
     binding = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
     version = store.get_template_version(binding["prompt_template_version_id"])
 
     assert binding["purpose"] == "intent_resolution"
-    assert version["version"] == "v3"
+    assert version["version"] == "v6"
     assert version["role"] == "system"
     assert version["metadata"] == {
         "phase": "P8",
-        "slice": "P8-S111",
+        "slice": "P8-S112",
         "candidate_schema": "p65.intent_candidate.v1",
         "authority": "untrusted_candidate_only",
         "golden_a": "voucher_draft",
         "project_membership_batch": "indexed_scalar_candidates",
+        "nvt_project_operations": "create_get_list_update",
+        "employee_authority": "oa_only",
+        "nvt_fallback_rule": "non_nvt_only",
     }
     assert "tenant" in version["content"]
     assert "hidden reasoning" in version["content"]
     assert any(
         item["version"] == "v1"
+        for item in store.template_versions.values()
+        if item["purpose"] == "intent_resolution"
+    )
+    assert any(
+        item["version"] == "v3"
+        for item in store.template_versions.values()
+        if item["purpose"] == "intent_resolution"
+    )
+    assert any(
+        item["version"] == "v4"
+        for item in store.template_versions.values()
+        if item["purpose"] == "intent_resolution"
+    )
+    assert any(
+        item["version"] == "v5"
         for item in store.template_versions.values()
         if item["purpose"] == "intent_resolution"
     )
@@ -242,7 +260,7 @@ def test_required_mode_generates_candidate_then_deterministic_work_intent() -> N
     assert result.prompt_provenance["prompt_binding_key"] == (
         AE_INTENT_RESOLUTION_BINDING
     )
-    assert result.prompt_provenance["prompt_template_version"] == "v3"
+    assert result.prompt_provenance["prompt_template_version"] == "v6"
     assert result.model_provenance["mo_generation_id"] == ("mo-generation-p65-s2")
 
     call = client.generation_calls[0]
@@ -669,19 +687,19 @@ def test_invalid_prompt_provenance_digest_fails_closed() -> None:
     assert raised.value.error_code == "CANDIDATE_SCHEMA_INVALID"
 
 
-def test_in_flight_binding_switch_keeps_captured_v3_snapshot() -> None:
+def test_in_flight_binding_switch_keeps_captured_v6_snapshot() -> None:
     base = _store()
     seed = next(
         item
         for item in AE_PROMPT_SEEDS
         if item.binding_key == AE_INTENT_RESOLUTION_BINDING
     )
-    v3_seed = replace(seed, version="v4", content=seed.content + " Version four.")
-    template = build_prompt_template(v3_seed)
+    v7_seed = replace(seed, version="v7", content=seed.content + " Version seven.")
+    template = build_prompt_template(v7_seed)
     version = base.save_template_version(
-        build_prompt_template_version(v3_seed, template)
+        build_prompt_template_version(v7_seed, template)
     )
-    v3_binding = build_prompt_binding(v3_seed, version)
+    v7_binding = build_prompt_binding(v7_seed, version)
 
     class SwitchingStore:
         def __init__(self, delegate):
@@ -690,7 +708,7 @@ def test_in_flight_binding_switch_keeps_captured_v3_snapshot() -> None:
 
         def get_binding(self, key):
             captured = dict(self.delegate.get_binding(key))
-            self.delegate.save_binding(v3_binding)
+            self.delegate.save_binding(v7_binding)
             self.switched = True
             return captured
 
@@ -704,7 +722,7 @@ def test_in_flight_binding_switch_keeps_captured_v3_snapshot() -> None:
     result = _run(_service(store=switching))
 
     assert switching.switched is True
-    assert result.prompt_provenance["prompt_template_version"] == "v3"
+    assert result.prompt_provenance["prompt_template_version"] == "v6"
     assert (
         base.get_binding(AE_INTENT_RESOLUTION_BINDING)["prompt_template_version_id"]
         == version["prompt_template_version_id"]

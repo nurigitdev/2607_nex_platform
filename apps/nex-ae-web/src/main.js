@@ -2422,6 +2422,8 @@ async function appendPromptInteraction() {
       ? generationPresentation.retrievalQualityWarning
       : null,
     groundedResponseQuality: generationPresentation.groundedResponseQuality,
+    projectMembershipBatchResult:
+      generationPresentation.projectMembershipBatchResult,
     generationFeedback: createGenerationFeedbackSurfaceState({
       interactionId: workspaceState.interactionId,
       chatDocumentId: workspaceState.chatDocumentId,
@@ -2609,6 +2611,7 @@ async function retryLastGeneration() {
       retrievalResult: presentation.retrievalResult,
       retrievalQualityWarning: presentation.retrievalQualityWarning,
       groundedResponseQuality: presentation.groundedResponseQuality,
+      projectMembershipBatchResult: presentation.projectMembershipBatchResult,
       generationFeedback: createGenerationFeedbackSurfaceState({
         interactionId: workspaceState.interactionId,
         chatDocumentId: workspaceState.chatDocumentId,

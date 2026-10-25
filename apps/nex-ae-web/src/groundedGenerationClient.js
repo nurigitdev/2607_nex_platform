@@ -302,6 +302,9 @@ export function buildGeneratedResponseResult(
       contentSha256: stringOrNull(record.content_sha256),
       sizeBytes: Number.isInteger(record.size_bytes) ? record.size_bytes : null,
       lineage: objectOrNull(record.lineage),
+      projectMembershipBatchResult: objectOrNull(
+        record.project_membership_batch_result
+      ),
       ownerScopeEnforced: record.owner_scope_enforced === true
     },
     { clientMode, route, contentIncluded: true }
