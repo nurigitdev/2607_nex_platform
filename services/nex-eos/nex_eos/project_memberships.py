@@ -19,6 +19,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     select,
+    update,
 )
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -172,6 +173,202 @@ class SqlAlchemyEosProjectMembershipRepository:
             raise _persistence_error() from exc
         return dict(row) if row is not None else None
 
+    def add_membership(self, value: ProjectMembershipInput) -> dict[str, Any]:
+        record = _membership_record(value)
+        if record["status"] != "ACTIVE":
+            raise _invalid("ADD requires an ACTIVE membership")
+        try:
+            with build_unit_of_work(self._session_factory) as transaction:
+                project_status = self._locked_project_status(
+                    transaction.db,
+                    tenant_id=record["tenant_id"],
+                    project_id=record["project_id"],
+                )
+                if project_status != "ACTIVE":
+                    raise EosProjectMembershipError(
+                        "EOS_PROJECT_INACTIVE",
+                        "Project must be active before membership can be added",
+                        status_code=409,
+                    )
+                existing = self._locked_subject_membership(
+                    transaction.db,
+                    tenant_id=record["tenant_id"],
+                    project_id=record["project_id"],
+                    subject_id=record["subject_id"],
+                )
+                if existing is None:
+                    transaction.db.execute(
+                        EOS_PROJECT_MEMBER_TABLE.insert().values(**record)
+                    )
+                    return dict(record)
+                if existing["member_role"] != record["member_role"]:
+                    raise EosProjectMembershipError(
+                        "EOS_PROJECT_MEMBERSHIP_ROLE_CONFLICT",
+                        "Existing Project membership has a different role",
+                        status_code=409,
+                    )
+                if existing["status"] == "ACTIVE":
+                    return dict(existing)
+
+                now = datetime.now(UTC)
+                changes = {
+                    "status": "ACTIVE",
+                    "valid_from": record["valid_from"],
+                    "valid_to": None,
+                    "removed_by_subject_id": None,
+                    "version": int(existing["version"]) + 1,
+                    "updated_at": now,
+                }
+                result = transaction.db.execute(
+                    update(EOS_PROJECT_MEMBER_TABLE)
+                    .where(
+                        EOS_PROJECT_MEMBER_TABLE.c.tenant_id
+                        == record["tenant_id"],
+                        EOS_PROJECT_MEMBER_TABLE.c.project_membership_id
+                        == existing["project_membership_id"],
+                        EOS_PROJECT_MEMBER_TABLE.c.status == "REMOVED",
+                        EOS_PROJECT_MEMBER_TABLE.c.version == existing["version"],
+                    )
+                    .values(**changes)
+                )
+                if int(result.rowcount or 0) != 1:
+                    raise _concurrent_change()
+                return {**dict(existing), **changes}
+        except EosProjectMembershipError:
+            raise
+        except IntegrityError as exc:
+            raise EosProjectMembershipError(
+                "EOS_PROJECT_MEMBERSHIP_CONFLICT",
+                "Project membership identity or subject relationship already exists",
+                status_code=409,
+            ) from exc
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+
+    def remove_membership(
+        self,
+        *,
+        tenant_id: str,
+        project_id: str,
+        subject_id: str,
+        removed_by_subject_id: str,
+        removed_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        tenant_id = _scoped_id("tenant_id", tenant_id)
+        project_id = _uuid("project_id", project_id)
+        subject_id = _scoped_id("subject_id", subject_id)
+        removed_by_subject_id = _scoped_id(
+            "removed_by_subject_id", removed_by_subject_id
+        )
+        removed_at = _aware_datetime("removed_at", removed_at or datetime.now(UTC))
+        try:
+            with build_unit_of_work(self._session_factory) as transaction:
+                project_status = self._locked_project_status(
+                    transaction.db,
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                )
+                existing = self._locked_subject_membership(
+                    transaction.db,
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    subject_id=subject_id,
+                )
+                if existing is None:
+                    raise EosProjectMembershipError(
+                        "EOS_PROJECT_MEMBERSHIP_NOT_FOUND",
+                        "Project membership was not found in tenant scope",
+                        status_code=404,
+                    )
+                if existing["status"] == "REMOVED":
+                    return dict(existing)
+                if existing["member_role"] == "OWNER" and project_status == "ACTIVE":
+                    active_owner_count = transaction.db.execute(
+                        select(EOS_PROJECT_MEMBER_TABLE.c.project_membership_id).where(
+                            EOS_PROJECT_MEMBER_TABLE.c.tenant_id == tenant_id,
+                            EOS_PROJECT_MEMBER_TABLE.c.project_id == project_id,
+                            EOS_PROJECT_MEMBER_TABLE.c.member_role == "OWNER",
+                            EOS_PROJECT_MEMBER_TABLE.c.status == "ACTIVE",
+                        )
+                    ).all()
+                    if len(active_owner_count) <= 1:
+                        raise EosProjectMembershipError(
+                            "EOS_PROJECT_LAST_OWNER_REQUIRED",
+                            "An active Project must retain at least one active OWNER",
+                            status_code=409,
+                        )
+
+                changes = {
+                    "status": "REMOVED",
+                    "valid_to": removed_at,
+                    "removed_by_subject_id": removed_by_subject_id,
+                    "version": int(existing["version"]) + 1,
+                    "updated_at": removed_at,
+                }
+                result = transaction.db.execute(
+                    update(EOS_PROJECT_MEMBER_TABLE)
+                    .where(
+                        EOS_PROJECT_MEMBER_TABLE.c.tenant_id == tenant_id,
+                        EOS_PROJECT_MEMBER_TABLE.c.project_membership_id
+                        == existing["project_membership_id"],
+                        EOS_PROJECT_MEMBER_TABLE.c.status == "ACTIVE",
+                        EOS_PROJECT_MEMBER_TABLE.c.version == existing["version"],
+                    )
+                    .values(**changes)
+                )
+                if int(result.rowcount or 0) != 1:
+                    raise _concurrent_change()
+                return {**dict(existing), **changes}
+        except EosProjectMembershipError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+
+    @staticmethod
+    def _locked_project_status(
+        session: Session,
+        *,
+        tenant_id: str,
+        project_id: str,
+    ) -> str:
+        status = session.execute(
+            select(EOS_PROJECT_TABLE.c.status)
+            .where(
+                EOS_PROJECT_TABLE.c.tenant_id == tenant_id,
+                EOS_PROJECT_TABLE.c.project_id == project_id,
+            )
+            .with_for_update()
+        ).scalar_one_or_none()
+        if status is None:
+            raise EosProjectMembershipError(
+                "EOS_PROJECT_NOT_FOUND",
+                "Project does not exist in tenant scope",
+                status_code=404,
+            )
+        return str(status)
+
+    @staticmethod
+    def _locked_subject_membership(
+        session: Session,
+        *,
+        tenant_id: str,
+        project_id: str,
+        subject_id: str,
+    ) -> Any:
+        return (
+            session.execute(
+                select(EOS_PROJECT_MEMBER_TABLE)
+                .where(
+                    EOS_PROJECT_MEMBER_TABLE.c.tenant_id == tenant_id,
+                    EOS_PROJECT_MEMBER_TABLE.c.project_id == project_id,
+                    EOS_PROJECT_MEMBER_TABLE.c.subject_id == subject_id,
+                )
+                .with_for_update()
+            )
+            .mappings()
+            .one_or_none()
+        )
+
 
 def _membership_record(value: ProjectMembershipInput) -> dict[str, Any]:
     now = datetime.now(UTC)
@@ -269,4 +466,12 @@ def _persistence_error() -> EosProjectMembershipError:
         "EOS_PROJECT_MEMBERSHIP_PERSISTENCE_FAILED",
         "Project membership persistence is unavailable",
         status_code=503,
+    )
+
+
+def _concurrent_change() -> EosProjectMembershipError:
+    return EosProjectMembershipError(
+        "EOS_PROJECT_MEMBERSHIP_VERSION_CONFLICT",
+        "Project membership changed concurrently",
+        status_code=409,
     )
