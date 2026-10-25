@@ -20,6 +20,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 NVT_ID = "41000000-0000-4000-8000-000000000001"
+INACTIVE_NVT_ID = "41000000-0000-4000-8000-000000000002"
 MOTHER_ID = "42000000-0000-4000-8000-000000000001"
 CHILD_ID = "42000000-0000-4000-8000-000000000002"
 GRANDCHILD_ID = "42000000-0000-4000-8000-000000000003"
@@ -171,12 +172,15 @@ def test_parent_and_nvt_are_tenant_scoped_and_active(
         )
     assert missing_nvt.value.error_code == "EOS_NVT_PROJECT_NOT_FOUND"
 
+    repository.create_nvt_project(
+        NvtProjectInput("tenant-a", INACTIVE_NVT_ID, "NVT-INACTIVE", "Inactive NVT")
+    )
     repository.update_nvt_project(
-        NvtProjectUpdate("tenant-a", NVT_ID, 1, status="INACTIVE")
+        NvtProjectUpdate("tenant-a", INACTIVE_NVT_ID, 1, status="INACTIVE")
     )
     with pytest.raises(EosProjectError) as inactive_nvt:
         repository.create_project(
-            _project(CHILD_ID, "INACTIVE-NVT", nvt_project_id=NVT_ID)
+            _project(CHILD_ID, "INACTIVE-NVT", nvt_project_id=INACTIVE_NVT_ID)
         )
     assert inactive_nvt.value.error_code == "EOS_NVT_PROJECT_NOT_ACTIVE"
 

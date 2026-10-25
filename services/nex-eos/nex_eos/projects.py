@@ -152,6 +152,25 @@ class SqlAlchemyEosProjectRepository:
         self._session_factory = session_factory
 
     def create_nvt_project(self, value: NvtProjectInput) -> dict[str, Any]:
+        try:
+            with build_unit_of_work(self._session_factory) as transaction:
+                return self.create_nvt_project_in_session(transaction.db, value)
+        except EosProjectError:
+            raise
+        except IntegrityError as exc:
+            raise EosProjectError(
+                "EOS_NVT_PROJECT_CONFLICT",
+                "NVTProject identity or code already exists in tenant scope",
+                status_code=409,
+            ) from exc
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+
+    @staticmethod
+    def create_nvt_project_in_session(
+        session: Session,
+        value: NvtProjectInput,
+    ) -> dict[str, Any]:
         now = datetime.now(UTC)
         record = {
             "tenant_id": _scoped_id("tenant_id", value.tenant_id),
@@ -165,17 +184,7 @@ class SqlAlchemyEosProjectRepository:
         }
         if record["version"] != 1:
             raise _invalid("version", "must start at 1")
-        try:
-            with build_unit_of_work(self._session_factory) as transaction:
-                transaction.db.execute(EOS_NVT_PROJECT_TABLE.insert().values(**record))
-        except IntegrityError as exc:
-            raise EosProjectError(
-                "EOS_NVT_PROJECT_CONFLICT",
-                "NVTProject identity or code already exists in tenant scope",
-                status_code=409,
-            ) from exc
-        except SQLAlchemyError as exc:
-            raise _persistence_error() from exc
+        session.execute(EOS_NVT_PROJECT_TABLE.insert().values(**record))
         return dict(record)
 
     def create_project(self, value: ProjectInput) -> dict[str, Any]:
@@ -461,59 +470,129 @@ class SqlAlchemyEosProjectRepository:
             raise _persistence_error() from exc
         return dict(row) if row is not None else None
 
-    def update_nvt_project(self, value: NvtProjectUpdate) -> dict[str, Any]:
-        tenant_id = _scoped_id("tenant_id", value.tenant_id)
-        nvt_project_id = _uuid("nvt_project_id", value.nvt_project_id)
-        expected_version = _positive_int("expected_version", value.expected_version)
-        changes: dict[str, Any] = {"updated_at": datetime.now(UTC)}
-        if value.name is not None:
-            changes["name"] = _text("name", value.name, 256)
-        if value.status is not None:
-            changes["status"] = _status(value.status)
-        if len(changes) == 1:
-            raise _invalid("update", "must change name or status")
-        changes["version"] = expected_version + 1
+    def list_nvt_projects(
+        self,
+        *,
+        tenant_id: str,
+        status: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        statement = select(EOS_NVT_PROJECT_TABLE).where(
+            EOS_NVT_PROJECT_TABLE.c.tenant_id == _scoped_id("tenant_id", tenant_id)
+        )
+        if status is not None:
+            statement = statement.where(
+                EOS_NVT_PROJECT_TABLE.c.status == _status(status)
+            )
+        statement = statement.order_by(
+            EOS_NVT_PROJECT_TABLE.c.nvt_project_code,
+            EOS_NVT_PROJECT_TABLE.c.nvt_project_id,
+        ).limit(_bounded_limit(limit)).offset(_bounded_offset(offset))
+        try:
+            with self._session_factory() as session:
+                rows = session.execute(statement).mappings().all()
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+        return [dict(row) for row in rows]
 
+    def update_nvt_project(self, value: NvtProjectUpdate) -> dict[str, Any]:
         try:
             with build_unit_of_work(self._session_factory) as transaction:
-                result = transaction.db.execute(
-                    update(EOS_NVT_PROJECT_TABLE)
-                    .where(
-                        EOS_NVT_PROJECT_TABLE.c.tenant_id == tenant_id,
-                        EOS_NVT_PROJECT_TABLE.c.nvt_project_id == nvt_project_id,
-                        EOS_NVT_PROJECT_TABLE.c.version == expected_version,
-                    )
-                    .values(**changes)
-                )
-                if result.rowcount != 1:
-                    current = transaction.db.execute(
-                        select(EOS_NVT_PROJECT_TABLE.c.version).where(
-                            EOS_NVT_PROJECT_TABLE.c.tenant_id == tenant_id,
-                            EOS_NVT_PROJECT_TABLE.c.nvt_project_id == nvt_project_id,
-                        )
-                    ).scalar_one_or_none()
-                    if current is None:
-                        raise EosProjectError(
-                            "EOS_NVT_PROJECT_NOT_FOUND",
-                            "NVTProject was not found in tenant scope",
-                            status_code=404,
-                        )
-                    raise EosProjectError(
-                        "EOS_NVT_PROJECT_VERSION_CONFLICT",
-                        "NVTProject version changed before update",
-                        status_code=409,
-                    )
+                return self.update_nvt_project_in_session(transaction.db, value)
         except EosProjectError:
             raise
         except SQLAlchemyError as exc:
             raise _persistence_error() from exc
-        found = self.get_nvt_project(
-            tenant_id=tenant_id,
-            nvt_project_id=nvt_project_id,
+
+    @staticmethod
+    def update_nvt_project_in_session(
+        session: Session,
+        value: NvtProjectUpdate,
+    ) -> dict[str, Any]:
+        tenant_id = _scoped_id("tenant_id", value.tenant_id)
+        nvt_project_id = _uuid("nvt_project_id", value.nvt_project_id)
+        expected_version = _positive_int("expected_version", value.expected_version)
+        requested_changes: dict[str, Any] = {}
+        if value.name is not None:
+            requested_changes["name"] = _text("name", value.name, 256)
+        if value.status is not None:
+            requested_changes["status"] = _status(value.status)
+        if not requested_changes:
+            raise _invalid("update", "must change name or status")
+
+        current = (
+            session.execute(
+                select(EOS_NVT_PROJECT_TABLE)
+                .where(
+                    EOS_NVT_PROJECT_TABLE.c.tenant_id == tenant_id,
+                    EOS_NVT_PROJECT_TABLE.c.nvt_project_id == nvt_project_id,
+                )
+                .with_for_update()
+            )
+            .mappings()
+            .one_or_none()
         )
-        if found is None:  # pragma: no cover - committed update guarantees the row
-            raise _persistence_error()
-        return found
+        if current is None:
+            raise EosProjectError(
+                "EOS_NVT_PROJECT_NOT_FOUND",
+                "NVTProject was not found in tenant scope",
+                status_code=404,
+            )
+        if int(current["version"]) != expected_version:
+            raise EosProjectError(
+                "EOS_NVT_PROJECT_VERSION_CONFLICT",
+                "NVTProject version changed before update",
+                status_code=409,
+            )
+
+        semantic_changes = {
+            field_name: field_value
+            for field_name, field_value in requested_changes.items()
+            if current[field_name] != field_value
+        }
+        if not semantic_changes:
+            return dict(current)
+
+        if current["status"] == "ACTIVE" and semantic_changes.get("status") == "INACTIVE":
+            active_project_id = session.execute(
+                select(EOS_PROJECT_TABLE.c.project_id)
+                .where(
+                    EOS_PROJECT_TABLE.c.tenant_id == tenant_id,
+                    EOS_PROJECT_TABLE.c.nvt_project_id == nvt_project_id,
+                    EOS_PROJECT_TABLE.c.parent_project_id.is_(None),
+                    EOS_PROJECT_TABLE.c.status == "ACTIVE",
+                )
+                .limit(1)
+            ).scalar_one_or_none()
+            if active_project_id is not None:
+                raise EosProjectError(
+                    "EOS_NVT_PROJECT_IN_USE",
+                    "NVTProject has an active Mother Project",
+                    status_code=409,
+                )
+
+        changes = {
+            **semantic_changes,
+            "version": expected_version + 1,
+            "updated_at": datetime.now(UTC),
+        }
+        result = session.execute(
+            update(EOS_NVT_PROJECT_TABLE)
+            .where(
+                EOS_NVT_PROJECT_TABLE.c.tenant_id == tenant_id,
+                EOS_NVT_PROJECT_TABLE.c.nvt_project_id == nvt_project_id,
+                EOS_NVT_PROJECT_TABLE.c.version == expected_version,
+            )
+            .values(**changes)
+        )
+        if result.rowcount != 1:
+            raise EosProjectError(
+                "EOS_NVT_PROJECT_VERSION_CONFLICT",
+                "NVTProject version changed before update",
+                status_code=409,
+            )
+        return {**dict(current), **changes}
 
 
 def _status(value: object) -> str:
@@ -564,6 +643,12 @@ def _positive_int(field_name: str, value: object) -> int:
 def _bounded_limit(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 1000:
         raise _invalid("limit", "must be an integer between 1 and 1000")
+    return value
+
+
+def _bounded_offset(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise _invalid("offset", "must be a non-negative integer")
     return value
 
 

@@ -8,6 +8,7 @@ from nex_eos import (
     EosProjectError,
     NvtProjectInput,
     NvtProjectUpdate,
+    ProjectInput,
     SqlAlchemyEosProjectRepository,
 )
 from run_migrations import load_migrations
@@ -18,6 +19,8 @@ from sqlalchemy.pool import StaticPool
 
 ROOT = Path(__file__).resolve().parents[1]
 NVT_ID = "40000000-0000-4000-8000-000000000001"
+SECOND_NVT_ID = "40000000-0000-4000-8000-000000000002"
+MOTHER_PROJECT_ID = "41000000-0000-4000-8000-000000000001"
 
 
 @pytest.fixture
@@ -113,6 +116,134 @@ def test_active_filter_and_optimistic_versioning(
             )
         )
     assert stale.value.error_code == "EOS_NVT_PROJECT_VERSION_CONFLICT"
+
+
+def test_nvt_list_is_tenant_scoped_filtered_bounded_and_deterministic(
+    repository: SqlAlchemyEosProjectRepository,
+) -> None:
+    repository.create_nvt_project(_nvt(nvt_project_code="NVT-B", name="B"))
+    repository.create_nvt_project(
+        _nvt(
+            nvt_project_id=SECOND_NVT_ID,
+            nvt_project_code="NVT-A",
+            name="A",
+            status="INACTIVE",
+        )
+    )
+    repository.create_nvt_project(
+        _nvt(
+            tenant_id="tenant-b",
+            nvt_project_id=SECOND_NVT_ID,
+            nvt_project_code="NVT-OTHER",
+            name="Other tenant",
+        )
+    )
+
+    assert [
+        item["nvt_project_code"]
+        for item in repository.list_nvt_projects(tenant_id="tenant-a")
+    ] == ["NVT-A", "NVT-B"]
+    assert [
+        item["nvt_project_code"]
+        for item in repository.list_nvt_projects(
+            tenant_id="tenant-a", status="active", limit=1, offset=0
+        )
+    ] == ["NVT-B"]
+    assert [
+        item["nvt_project_code"]
+        for item in repository.list_nvt_projects(
+            tenant_id="tenant-a", limit=1, offset=1
+        )
+    ] == ["NVT-B"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (("status", "UNKNOWN"), ("limit", 0), ("limit", True), ("offset", -1)),
+)
+def test_nvt_list_rejects_invalid_query_values(
+    repository: SqlAlchemyEosProjectRepository,
+    field: str,
+    value: object,
+) -> None:
+    with pytest.raises(EosProjectError) as error:
+        repository.list_nvt_projects(tenant_id="tenant-a", **{field: value})
+    assert error.value.error_code == "EOS_PROJECT_INVALID"
+
+
+def test_exact_no_change_update_preserves_version_and_timestamp(
+    repository: SqlAlchemyEosProjectRepository,
+) -> None:
+    repository.create_nvt_project(_nvt())
+    stored = repository.get_nvt_project(
+        tenant_id="tenant-a", nvt_project_id=NVT_ID
+    )
+    assert stored is not None
+
+    replayed = repository.update_nvt_project(
+        NvtProjectUpdate(
+            tenant_id="tenant-a",
+            nvt_project_id=NVT_ID,
+            expected_version=1,
+            name="Golden A",
+            status="ACTIVE",
+        )
+    )
+
+    assert replayed["version"] == 1
+    assert replayed["updated_at"] == stored["updated_at"]
+
+
+def test_active_mother_project_blocks_nvt_inactivation(
+    repository: SqlAlchemyEosProjectRepository,
+) -> None:
+    repository.create_nvt_project(_nvt())
+    repository.create_project(
+        ProjectInput(
+            tenant_id="tenant-a",
+            project_id=MOTHER_PROJECT_ID,
+            project_code="MOTHER-A",
+            name="Mother A",
+            nvt_project_id=NVT_ID,
+        )
+    )
+
+    with pytest.raises(EosProjectError) as error:
+        repository.update_nvt_project(
+            NvtProjectUpdate(
+                tenant_id="tenant-a",
+                nvt_project_id=NVT_ID,
+                expected_version=1,
+                status="INACTIVE",
+            )
+        )
+
+    assert error.value.error_code == "EOS_NVT_PROJECT_IN_USE"
+    assert error.value.status_code == 409
+    assert repository.get_nvt_project(
+        tenant_id="tenant-a", nvt_project_id=NVT_ID
+    )["status"] == "ACTIVE"
+
+
+def test_in_session_create_participates_in_caller_rollback() -> None:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    EOS_METADATA.create_all(engine)
+    session_factory = sessionmaker(
+        bind=engine, autoflush=False, expire_on_commit=False
+    )
+    repository = SqlAlchemyEosProjectRepository(session_factory)
+
+    with session_factory() as session:
+        repository.create_nvt_project_in_session(session, _nvt())
+        session.rollback()
+
+    assert repository.get_nvt_project(
+        tenant_id="tenant-a", nvt_project_id=NVT_ID
+    ) is None
 
 
 def test_update_is_tenant_isolated_and_not_found_is_explicit(
