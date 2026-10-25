@@ -14,6 +14,16 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "services" / "_shared"))
 sys.path.insert(0, str(ROOT / "scripts" / "deployment"))
+for service_directory in (
+    "nex-oa",
+    "nex-ag",
+    "nex-ae-api",
+    "nex-cx",
+    "nex-mo",
+    "nex-wc",
+    "nex-eos",
+):
+    sys.path.insert(0, str(ROOT / "services" / service_directory))
 
 import build_platform_images as image_build
 from nex_runtime.demo_oci_release import (
