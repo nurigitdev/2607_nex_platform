@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/canonical_operation_alias.v1.schema.json",
+  "title": "Canonical Operation Alias v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "requested_operation",
+    "canonical_operation",
+    "registry_version",
+    "alias_applied"
+  ],
+  "properties": {
+    "schema_version": {"const": "canonical_operation_alias.v1"},
+    "requested_operation": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_.]*$",
+      "minLength": 3,
+      "maxLength": 128
+    },
+    "canonical_operation": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*\\.[A-Z][A-Z0-9_]*\\.[A-Z][A-Z0-9_]*$",
+      "maxLength": 128
+    },
+    "registry_version": {"const": "p8-s97.v1"},
+    "alias_applied": {"type": "boolean"}
+  }
+}

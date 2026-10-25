@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime
 from typing import Any
 
+from nex_runtime import DEFAULT_OPERATION_REGISTRY, OperationNameError
 from nex_runtime.semantic_hashes import nsl_write_payload_hash_ref
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -438,9 +439,16 @@ class EosGovernedProjectService:
         return [_wire(row) for row in rows]
 
     def _execute_write(self, envelope, mutation) -> dict[str, Any]:
+        requested_operation = envelope.pop("requested_operation")
+        canonical_operation = envelope["operation"]
+
         def admitted_mutation(session: Session | None) -> Mapping[str, Any]:
             try:
-                return mutation(session)
+                return {
+                    **mutation(session),
+                    "requested_operation": requested_operation,
+                    "canonical_operation": canonical_operation,
+                }
             except (
                 EosGovernedProjectError,
                 EosProjectError,
@@ -552,12 +560,27 @@ class EosGovernedProjectService:
 def project_operation_payload_hash(
     payload: Mapping[str, Any], operation: str
 ) -> str:
+    try:
+        canonical_operation = DEFAULT_OPERATION_REGISTRY.resolve(
+            operation
+        ).canonical_operation
+    except OperationNameError as exc:
+        raise _invalid("operation is not admitted") from exc
     projected = {
         key: value
         for key, value in payload.items()
-        if key not in {"business_operation_id", "idempotency_key", "payload_hash", "trace"}
+        if key
+        not in {
+            "business_operation_id",
+            "idempotency_key",
+            "payload_hash",
+            "requested_operation",
+            "trace",
+        }
     }
-    return nsl_write_payload_hash_ref({"operation": operation, **projected})
+    return nsl_write_payload_hash_ref(
+        {"operation": canonical_operation, **projected}
+    )
 
 
 def _write_envelope(
@@ -565,6 +588,13 @@ def _write_envelope(
 ) -> dict[str, str]:
     if not isinstance(payload, Mapping):
         raise _invalid("payload must be an object")
+    requested_operation = payload.get("requested_operation", operation)
+    try:
+        resolution = DEFAULT_OPERATION_REGISTRY.resolve(requested_operation)
+    except OperationNameError as exc:
+        raise _invalid("requested_operation is not admitted") from exc
+    if resolution.canonical_operation != operation:
+        raise _invalid("requested_operation does not match the route operation")
     tenant_id = _scoped_id("tenant_id", payload.get("tenant_id"))
     supplied_hash = _text("payload_hash", payload.get("payload_hash"))
     computed_hash = project_operation_payload_hash(payload, operation)
@@ -582,6 +612,7 @@ def _write_envelope(
         "idempotency_key": _text("idempotency_key", payload.get("idempotency_key")),
         "operation": operation,
         "payload_hash": supplied_hash,
+        "requested_operation": resolution.requested_operation,
     }
 
 

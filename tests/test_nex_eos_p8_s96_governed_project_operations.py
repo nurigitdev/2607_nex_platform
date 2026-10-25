@@ -133,6 +133,8 @@ def test_project_and_initial_owner_commit_atomically_and_replay(governed) -> Non
     assert created["created"] is True
     assert replay["created"] is False
     assert created["result"] == replay["result"]
+    assert created["result"]["requested_operation"] == PROJECT_CREATE_OPERATION
+    assert created["result"]["canonical_operation"] == PROJECT_CREATE_OPERATION
     with factory() as session:
         assert session.execute(select(func.count()).select_from(EOS_PROJECT_TABLE)).scalar_one() == 1
         assert session.execute(select(func.count()).select_from(EOS_PROJECT_MEMBER_TABLE)).scalar_one() == 1
@@ -411,6 +413,17 @@ def test_authorization_and_parser_negative_matrix(governed) -> None:
     for payload in invalid_payloads:
         with pytest.raises(EosGovernedProjectError):
             service.create_project(payload, caller=CALLER)  # type: ignore[arg-type]
+
+    mismatched_operation = {
+        **base,
+        "requested_operation": "PROJECT.GET_PROJECT",
+    }
+    mismatched_operation["payload_hash"] = project_operation_payload_hash(
+        mismatched_operation, PROJECT_CREATE_OPERATION
+    )
+    with pytest.raises(EosGovernedProjectError) as mismatch:
+        service.create_project(mismatched_operation, caller=CALLER)
+    assert mismatch.value.error_code == "EOS_PROJECT_OPERATION_INVALID"
 
 
 def test_typed_oa_denial_and_non_transactional_coordinator_fail_closed(governed) -> None:

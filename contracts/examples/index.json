@@ -1,6 +1,11 @@
 {
   "examples": [
     {
+      "name": "canonical_operation_alias_project_get",
+      "path": "examples/common/canonical_operation_alias.project_get.json",
+      "schema": "schemas/common/canonical_operation_alias.v1.schema.json"
+    },
+    {
       "name": "contract_manifest_minimal",
       "path": "examples/common/contract_manifest.minimal.json",
       "schema": "schemas/common/contract_manifest.v1.schema.json"

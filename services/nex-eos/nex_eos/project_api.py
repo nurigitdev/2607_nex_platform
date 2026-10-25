@@ -16,7 +16,11 @@ from .voucher_commands import EosServiceCaller
 
 
 def register_project_routes(app: FastAPI) -> None:
-    @app.post("/internal/v1/projects", response_model=None)
+    @app.post(
+        "/internal/v1/projects",
+        response_model=None,
+        operation_id="PROJECT.PROJECT.CREATE",
+    )
     def create_project(
         payload: dict[str, Any],
         request: Request,
@@ -24,7 +28,11 @@ def register_project_routes(app: FastAPI) -> None:
     ):
         return _write(request, authorization, lambda service, caller: service.create_project(payload, caller=caller))
 
-    @app.post("/internal/v1/projects/{project_id}:deactivate", response_model=None)
+    @app.post(
+        "/internal/v1/projects/{project_id}:deactivate",
+        response_model=None,
+        operation_id="PROJECT.PROJECT.DEACTIVATE",
+    )
     def deactivate_project(
         project_id: str,
         payload: dict[str, Any],
@@ -39,7 +47,11 @@ def register_project_routes(app: FastAPI) -> None:
             ),
         )
 
-    @app.post("/internal/v1/projects/{project_id}/memberships", response_model=None)
+    @app.post(
+        "/internal/v1/projects/{project_id}/memberships",
+        response_model=None,
+        operation_id="PROJECT.MEMBERSHIP.ADD",
+    )
     def add_membership(
         project_id: str,
         payload: dict[str, Any],
@@ -57,6 +69,7 @@ def register_project_routes(app: FastAPI) -> None:
     @app.post(
         "/internal/v1/projects/{project_id}/memberships/{subject_id}:remove",
         response_model=None,
+        operation_id="PROJECT.MEMBERSHIP.REMOVE",
     )
     def remove_membership(
         project_id: str,
@@ -74,7 +87,11 @@ def register_project_routes(app: FastAPI) -> None:
             ),
         )
 
-    @app.get("/internal/v1/projects/{project_id}", response_model=None)
+    @app.get(
+        "/internal/v1/projects/{project_id}",
+        response_model=None,
+        operation_id="PROJECT.PROJECT.GET",
+    )
     def get_project(
         project_id: str,
         request: Request,
@@ -92,7 +109,11 @@ def register_project_routes(app: FastAPI) -> None:
             ),
         )
 
-    @app.get("/internal/v1/projects", response_model=None)
+    @app.get(
+        "/internal/v1/projects",
+        response_model=None,
+        operation_id="PROJECT.PROJECT.LIST",
+    )
     def list_projects(
         request: Request,
         limit: int = 100,
@@ -116,7 +137,11 @@ def register_project_routes(app: FastAPI) -> None:
             },
         )
 
-    @app.get("/internal/v1/projects/{project_id}/memberships", response_model=None)
+    @app.get(
+        "/internal/v1/projects/{project_id}/memberships",
+        response_model=None,
+        operation_id="PROJECT.MEMBERSHIP.LIST",
+    )
     def list_memberships(
         project_id: str,
         request: Request,

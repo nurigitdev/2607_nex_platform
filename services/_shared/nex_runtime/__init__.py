@@ -69,6 +69,16 @@ from .observability_signals import (
     ObservabilitySignalError,
     correlate_observability_signals,
 )
+from .operation_names import (
+    CANONICAL_OPERATION_PATTERN,
+    DEFAULT_OPERATION_REGISTRY,
+    OPERATION_ALIAS_REGISTRY_VERSION,
+    P8_CANONICAL_OPERATIONS,
+    P8_OPERATION_ALIASES,
+    CanonicalOperationRegistry,
+    OperationNameError,
+    ResolvedOperationName,
+)
 from .env import load_env_file, merge_pythonpath
 from .deployment_artifacts import (
     ARTIFACT_KINDS,
@@ -607,6 +617,14 @@ from .subject_resolver import (
 )
 
 __all__ = [
+    "CANONICAL_OPERATION_PATTERN",
+    "DEFAULT_OPERATION_REGISTRY",
+    "OPERATION_ALIAS_REGISTRY_VERSION",
+    "P8_CANONICAL_OPERATIONS",
+    "P8_OPERATION_ALIASES",
+    "CanonicalOperationRegistry",
+    "OperationNameError",
+    "ResolvedOperationName",
     "ARTIFACT_KINDS",
     "ARTIFACT_REFERENCE_ENVIRONMENTS",
     "COMPOSITION_STATUSES",

@@ -1,6 +1,11 @@
 {
   "negative_examples": [
     {
+      "name": "canonical_operation_alias_two_segment_canonical",
+      "path": "tests/negative/common/canonical_operation_alias.two_segment_canonical.json",
+      "schema": "schemas/common/canonical_operation_alias.v1.schema.json"
+    },
+    {
       "name": "cx_source_ownership_boundary_decision_missing_status",
       "path": "tests/negative/retrieval/cx_source_ownership_boundary_decision.missing_status.json",
       "schema": "schemas/service/nex_cx/source_ownership_boundary_decision.v1.schema.json"
