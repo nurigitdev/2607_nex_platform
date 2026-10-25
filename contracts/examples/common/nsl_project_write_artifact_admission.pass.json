@@ -1,0 +1,51 @@
+{
+  "schema_version": "nsl_project_write_artifact_admission.v1",
+  "status": "PASS",
+  "repository": "nurigitdev/2608_nsl",
+  "artifact_source_revision": "98a72a8df685c0bedb1d798e98b42369656cb071",
+  "artifact_manifest_path": "examples/project_operations/write_artifact_manifest.json",
+  "artifact_manifest_sha256": "sha256:ebab64f0ddc22ab31947255c0a99a0c019110fc484a4f8fa42e886897b54f824",
+  "runtime_wheel": {
+    "package_version": "0.2.1",
+    "source_revision": "d53658ec2ab0b42e995fe0ebe80badd53218feec",
+    "wheel_sha256": "sha256:a89ce5fde1a32749565ba0906a2f1faf1d440ff6db2dfc07c0b2a581378507cb"
+  },
+  "skills": [
+    {
+      "skill_id": "PROJECT.PROJECT.CREATE",
+      "skill_version": "1.0.0",
+      "operation_kind": "CREATE",
+      "required_scope": "project:project:create",
+      "verification_tool_id": "PROJECT.PROJECT.GET",
+      "source_sha256": "sha256:a78f7056d2240f6fe82bdfd537ed023cb835e609855f2fc0f18f81c9a1e4b63f",
+      "semantic_hash": "sha256:0527ce50babd401c4d8b9d6687fed997b2f379026d9a75aef08e667a4a9354af"
+    },
+    {
+      "skill_id": "PROJECT.PROJECT.DEACTIVATE",
+      "skill_version": "1.0.0",
+      "operation_kind": "UPDATE",
+      "required_scope": "project:project:admin",
+      "verification_tool_id": "PROJECT.PROJECT.GET",
+      "source_sha256": "sha256:fbbd7f491843c52b43f93821e73c6f23596c48767e52014ba8bc9e5a07c98aaa",
+      "semantic_hash": "sha256:52ea296addf61c508ea784ad329348488244ce8f8ec306d299f9deba7dc87a2d"
+    },
+    {
+      "skill_id": "PROJECT.MEMBERSHIP.ADD",
+      "skill_version": "1.0.0",
+      "operation_kind": "CREATE",
+      "required_scope": "project:membership:manage",
+      "verification_tool_id": "PROJECT.MEMBERSHIP.LIST",
+      "source_sha256": "sha256:1e760ec0f8a24403f42de0e5a8948672d310995534f16edfa39537bacc65d2cc",
+      "semantic_hash": "sha256:578eada9a02ff813a5290d988769aa66baf8cc7adf9dbc41c55bb70cacc7c4f2"
+    },
+    {
+      "skill_id": "PROJECT.MEMBERSHIP.REMOVE",
+      "skill_version": "1.0.0",
+      "operation_kind": "UPDATE",
+      "required_scope": "project:membership:manage",
+      "verification_tool_id": "PROJECT.MEMBERSHIP.LIST",
+      "source_sha256": "sha256:dc022c5f1b963a551460393adfd7fc61c7f52f8d870ae32876f9a16f2483fa70",
+      "semantic_hash": "sha256:2125ed419f650785834de46629680c22471e504dad264ba34bbdb609ec5a8f13"
+    }
+  ]
+}

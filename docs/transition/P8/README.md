@@ -34,7 +34,7 @@ P8.8   CLOSED through P8-S86
 P8.9   CLOSED through P8-S93
 P8 v1.0 FROZEN / GOLDEN A CLOSED / RELIABILITY CLOSED
 P8-CA04 DESIGN CLOSED / P8.10 IMPLEMENTATION ENTRY AUTHORIZED
-P8.10  P8-S94..S99A CLOSED / P8-S99 is the next Slice
+P8.10  P8-S94..S99 CLOSED / P8-S100 is the next Slice
 P9     ENTRY HELD until P8-S103 re-authorizes the handoff
 ```
 
@@ -76,6 +76,13 @@ Project deactivation and membership removal. NSL package `0.2.1` passed its
 identity. The historical `0.2.0` lock remains immutable for prior evidence;
 new v0.2 runtime startup selects `nsl-v0.2.1-wheel.json` and rejects package
 versions outside the explicit `0.2.0` / `0.2.1` compatibility set.
+
+P8-S99 then admitted four canonical governed Project WRITE Skills from exact
+NSL source revision `98a72a8d...`. Project CREATE and membership ADD use
+`OperationKind.CREATE`; Project DEACTIVATE and membership REMOVE use
+`OperationKind.UPDATE`. The independent v0.2.1 wheel lock, source and semantic
+hashes, EOS route identities, current OA scopes, idempotency, approval, and
+post-WRITE verification metadata are all bound without mutating S98 evidence.
 
 The historical NSL admission block was resolved by P8-S01 through P8-S06.
 The current attachment baseline was closed by P8-S75H. P8-CA03 aligned the
