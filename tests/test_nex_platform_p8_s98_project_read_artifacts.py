@@ -34,6 +34,8 @@ def test_project_read_admission_contract_and_platform_routes_align() -> None:
 
     skill_ids = {item["skill_id"] for item in admission["skills"]}
     assert skill_ids == {
+        "PROJECT.NVT_PROJECT.GET",
+        "PROJECT.NVT_PROJECT.LIST",
         "PROJECT.PROJECT.GET",
         "PROJECT.PROJECT.LIST",
         "PROJECT.MEMBERSHIP.LIST",
@@ -55,7 +57,7 @@ def test_project_read_admission_contract_and_platform_routes_align() -> None:
     route_ids = {
         operation["operationId"]
         for path, methods in app.openapi()["paths"].items()
-        if path.startswith("/internal/v1/projects")
+        if path.startswith(("/internal/v1/projects", "/internal/v1/nvt-projects"))
         for operation in methods.values()
     }
     assert skill_ids <= route_ids

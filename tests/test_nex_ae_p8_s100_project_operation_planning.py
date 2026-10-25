@@ -11,6 +11,10 @@ from nex_ae_api.project_operation_planning import (
     MEMBERSHIP_ADD,
     MEMBERSHIP_LIST,
     MEMBERSHIP_REMOVE,
+    NVT_PROJECT_CREATE,
+    NVT_PROJECT_GET,
+    NVT_PROJECT_LIST,
+    NVT_PROJECT_UPDATE,
     PROJECT_CREATE,
     PROJECT_DEACTIVATE,
     PROJECT_GET,
@@ -32,6 +36,7 @@ WRITE_ADMISSION = ROOT / "contracts/examples/common/nsl_project_write_artifact_a
 TENANT = "tenant-s100"
 REQUESTER = "employee-1001"
 PROJECT_ID = "a1000000-0000-4000-8000-000000000001"
+NVT_PROJECT_ID = "a1000000-0000-4000-8000-000000000010"
 
 
 def _load(path: Path) -> dict:
@@ -100,6 +105,35 @@ def _subjects(*, duplicate: bool = False, inactive: bool = False) -> list[dict]:
     return values
 
 
+def _nvt_projects(*, duplicate: bool = False) -> list[dict]:
+    values = [
+        {
+            "tenant_id": TENANT,
+            "nvt_project_id": NVT_PROJECT_ID,
+            "nvt_project_code": "NVT-A",
+            "name": "NVT 프로젝트 A",
+            "status": "ACTIVE",
+            "entity_version": 4,
+        },
+        {
+            "tenant_id": "other-tenant",
+            "nvt_project_id": "a1000000-0000-4000-8000-000000000011",
+            "nvt_project_code": "NVT-A",
+            "name": "다른 tenant NVT 프로젝트",
+            "status": "ACTIVE",
+            "entity_version": 1,
+        },
+    ]
+    if duplicate:
+        values.append(
+            {
+                **values[0],
+                "nvt_project_id": "a1000000-0000-4000-8000-000000000012",
+            }
+        )
+    return values
+
+
 def _candidate(operation: str, *, selector: str | None = "PROJECT-A", **params) -> dict:
     return {
         "schema_version": "p65.intent_candidate.v1",
@@ -135,6 +169,7 @@ def _admit(candidate: dict, **overrides) -> dict:
         "write_admission": _load(WRITE_ADMISSION),
         "projects": _projects(),
         "subjects": _subjects(),
+        "nvt_projects": _nvt_projects(),
     }
     values.update(overrides)
     return admit_project_operation_candidate(**values)
@@ -166,6 +201,44 @@ def _admit(candidate: dict, **overrides) -> dict:
             {"project_id": PROJECT_ID, "expected_version": 3},
         ),
         (
+            NVT_PROJECT_CREATE,
+            _candidate(
+                NVT_PROJECT_CREATE,
+                selector=None,
+                nvt_project_code="NVT-NEW",
+                nvt_project_name="신규 NVT 프로젝트",
+            ),
+            {
+                "nvt_project_code": "NVT-NEW",
+                "nvt_project_name": "신규 NVT 프로젝트",
+                "status": "ACTIVE",
+            },
+        ),
+        (
+            NVT_PROJECT_GET,
+            _candidate(NVT_PROJECT_GET, selector="NVT-A"),
+            {"nvt_project_id": NVT_PROJECT_ID},
+        ),
+        (
+            NVT_PROJECT_LIST,
+            _candidate(NVT_PROJECT_LIST, selector=None, limit=20, offset=2),
+            {"status": "ACTIVE", "limit": 20, "offset": 2},
+        ),
+        (
+            NVT_PROJECT_UPDATE,
+            _candidate(
+                NVT_PROJECT_UPDATE,
+                selector="NVT-A",
+                nvt_project_name="NVT 프로젝트 A 개정",
+            ),
+            {
+                "nvt_project_id": NVT_PROJECT_ID,
+                "nvt_project_name": "NVT 프로젝트 A 개정",
+                "status": "ACTIVE",
+                "expected_version": 4,
+            },
+        ),
+        (
             MEMBERSHIP_ADD,
             _candidate(MEMBERSHIP_ADD, employee_id="EMP-2002", member_role="MEMBER"),
             {"project_id": PROJECT_ID, "target_subject_id": "subject-2002"},
@@ -195,6 +268,11 @@ def test_all_canonical_project_operations_bind_only_authoritative_ids(
     assert arguments["tenant_id"] == TENANT
     assert arguments["requester_subject_id"] == REQUESTER
     assert all(arguments[key] == value for key, value in expected.items())
+    if operation == NVT_PROJECT_CREATE:
+        assert result["authoritative_binding"]["nvt_project_ref"] == {
+            "type": "eos.nvt_project",
+            "id": arguments["nvt_project_id"],
+        }
     assert result["admission_hash"] == semantic_sha256_hash_ref(
         {key: value for key, value in result.items() if key != "admission_hash"}
     )
@@ -220,6 +298,26 @@ def test_project_and_employee_ambiguity_never_reaches_governed_write() -> None:
     assert all(
         item["authoritative_binding"] is None
         for item in (project, employee, display_name)
+    )
+
+
+def test_nvt_project_resolution_requires_exact_tenant_scoped_code() -> None:
+    ambiguous = _admit(
+        _candidate(NVT_PROJECT_GET, selector="NVT-A"),
+        nvt_projects=_nvt_projects(duplicate=True),
+    )
+    display_name = _admit(
+        _candidate(NVT_PROJECT_GET, selector="NVT 프로젝트 A"),
+    )
+    missing = _admit(_candidate(NVT_PROJECT_GET, selector="NVT-404"))
+
+    assert ambiguous["failure_code"] == "NVT_PROJECT_CANDIDATE_AMBIGUOUS"
+    assert display_name["failure_code"] == "NVT_PROJECT_CONFIRMATION_REQUIRED"
+    assert missing["failure_code"] == "NVT_PROJECT_CANDIDATE_NOT_FOUND"
+    assert all(
+        item["directive"] == "CLARIFICATION_REQUIRED"
+        and item["authoritative_binding"] is None
+        for item in (ambiguous, display_name, missing)
     )
 
 
@@ -328,6 +426,19 @@ def test_create_ids_are_deterministic_and_tenant_scoped() -> None:
         "project_id"
     ]
 
+    nvt_candidate = _candidate(
+        NVT_PROJECT_CREATE,
+        selector=None,
+        nvt_project_code="NVT-NEW",
+        nvt_project_name="신규 NVT 프로젝트",
+    )
+    nvt_first = _admit(nvt_candidate)
+    nvt_second = _admit(deepcopy(nvt_candidate))
+    assert (
+        nvt_first["authoritative_binding"]["arguments"]["nvt_project_id"]
+        == nvt_second["authoritative_binding"]["arguments"]["nvt_project_id"]
+    )
+
 
 def test_model_supplied_stable_authority_field_is_rejected_before_binding() -> None:
     candidate = _candidate(PROJECT_GET)
@@ -337,6 +448,13 @@ def test_model_supplied_stable_authority_field_is_rejected_before_binding() -> N
 
     with pytest.raises(IntentCandidateStageError, match="authority"):
         _admit(candidate)
+
+    nvt_candidate = _candidate(NVT_PROJECT_GET, selector="NVT-A")
+    nvt_candidate["parameter_candidates"] = [
+        {"name": "nvt_project_id", "value": NVT_PROJECT_ID, "confidence": 1.0}
+    ]
+    with pytest.raises(IntentCandidateStageError, match="authority"):
+        _admit(nvt_candidate)
 
 
 @pytest.mark.parametrize(
@@ -402,6 +520,85 @@ def test_model_supplied_stable_authority_field_is_rejected_before_binding() -> N
             "EMPLOYEE_REFERENCE_NOT_FOUND",
             "CLARIFICATION_REQUIRED",
         ),
+        (
+            _candidate(
+                NVT_PROJECT_CREATE,
+                selector=None,
+                nvt_project_name="코드 없음",
+            ),
+            "NVT_PROJECT_CODE_REQUIRED",
+            "CLARIFICATION_REQUIRED",
+        ),
+        (
+            _candidate(
+                NVT_PROJECT_CREATE,
+                selector=None,
+                nvt_project_code="bad code",
+                nvt_project_name="잘못된 코드",
+            ),
+            "NVT_PROJECT_CODE_INVALID",
+            "CLARIFICATION_REQUIRED",
+        ),
+        (
+            _candidate(
+                NVT_PROJECT_CREATE,
+                selector=None,
+                nvt_project_code="NVT-A",
+                nvt_project_name="중복 NVT 프로젝트",
+            ),
+            "NVT_PROJECT_CODE_CONFLICT",
+            "BLOCKED",
+        ),
+        (
+            _candidate(
+                NVT_PROJECT_CREATE,
+                selector=None,
+                nvt_project_code="NVT-NEW",
+            ),
+            "NVT_PROJECT_NAME_REQUIRED",
+            "CLARIFICATION_REQUIRED",
+        ),
+        (
+            _candidate(
+                NVT_PROJECT_CREATE,
+                selector=None,
+                nvt_project_code="NVT-NEW",
+                nvt_project_name="잘못된 초기 상태",
+                status="INACTIVE",
+            ),
+            "NVT_PROJECT_INITIAL_STATUS_INVALID",
+            "CLARIFICATION_REQUIRED",
+        ),
+        (
+            _candidate(
+                NVT_PROJECT_CREATE,
+                selector=None,
+                nvt_project_code="NVT-NEW",
+                nvt_project_name="알 수 없는 초기 상태",
+                status="ARCHIVED",
+            ),
+            "NVT_PROJECT_STATUS_INVALID",
+            "CLARIFICATION_REQUIRED",
+        ),
+        (
+            _candidate(NVT_PROJECT_LIST, selector=None, status="ARCHIVED"),
+            "NVT_PROJECT_STATUS_INVALID",
+            "CLARIFICATION_REQUIRED",
+        ),
+        (
+            _candidate(NVT_PROJECT_UPDATE, selector="NVT-A"),
+            "NVT_PROJECT_CHANGE_REQUIRED",
+            "CLARIFICATION_REQUIRED",
+        ),
+        (
+            _candidate(
+                NVT_PROJECT_UPDATE,
+                selector="NVT-A",
+                status="ARCHIVED",
+            ),
+            "NVT_PROJECT_STATUS_INVALID",
+            "CLARIFICATION_REQUIRED",
+        ),
     ),
 )
 def test_authoritative_resolution_failures_stop_before_execution(
@@ -422,6 +619,7 @@ def test_authoritative_resolution_failures_stop_before_execution(
         _candidate(PROJECT_LIST, selector=None, limit=0),
         _candidate(PROJECT_LIST, selector=None, limit=101),
         _candidate(PROJECT_LIST, selector=None, offset=-1),
+        _candidate(NVT_PROJECT_LIST, selector=None, limit=101),
     ),
 )
 def test_invalid_pagination_fails_closed(candidate: dict) -> None:
@@ -457,7 +655,7 @@ def test_unsupported_operation_is_rejected_after_candidate_validation() -> None:
     assert raised.value.error_code == "P8_PROJECT_OPERATION_UNSUPPORTED"
 
 
-def test_capability_snapshot_binds_all_seven_exact_artifacts() -> None:
+def test_capability_snapshot_binds_all_eleven_exact_artifacts() -> None:
     read = _load(READ_ADMISSION)
     write = _load(WRITE_ADMISSION)
     capabilities = build_project_operation_capabilities(

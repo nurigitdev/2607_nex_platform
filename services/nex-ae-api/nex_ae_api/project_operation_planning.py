@@ -31,23 +31,38 @@ PROJECT_CREATE = "PROJECT.PROJECT.CREATE"
 PROJECT_GET = "PROJECT.PROJECT.GET"
 PROJECT_LIST = "PROJECT.PROJECT.LIST"
 PROJECT_DEACTIVATE = "PROJECT.PROJECT.DEACTIVATE"
+NVT_PROJECT_CREATE = "PROJECT.NVT_PROJECT.CREATE"
+NVT_PROJECT_GET = "PROJECT.NVT_PROJECT.GET"
+NVT_PROJECT_LIST = "PROJECT.NVT_PROJECT.LIST"
+NVT_PROJECT_UPDATE = "PROJECT.NVT_PROJECT.UPDATE"
 MEMBERSHIP_ADD = "PROJECT.MEMBERSHIP.ADD"
 MEMBERSHIP_REMOVE = "PROJECT.MEMBERSHIP.REMOVE"
 MEMBERSHIP_LIST = "PROJECT.MEMBERSHIP.LIST"
 
-PROJECT_READ_OPERATIONS = frozenset({PROJECT_GET, PROJECT_LIST, MEMBERSHIP_LIST})
+PROJECT_READ_OPERATIONS = frozenset(
+    {PROJECT_GET, PROJECT_LIST, NVT_PROJECT_GET, NVT_PROJECT_LIST, MEMBERSHIP_LIST}
+)
 PROJECT_WRITE_OPERATIONS = frozenset(
-    {PROJECT_CREATE, PROJECT_DEACTIVATE, MEMBERSHIP_ADD, MEMBERSHIP_REMOVE}
+    {
+        PROJECT_CREATE,
+        PROJECT_DEACTIVATE,
+        NVT_PROJECT_CREATE,
+        NVT_PROJECT_UPDATE,
+        MEMBERSHIP_ADD,
+        MEMBERSHIP_REMOVE,
+    }
 )
 PROJECT_OPERATIONS = PROJECT_READ_OPERATIONS | PROJECT_WRITE_OPERATIONS
 
 _PROJECT_REQUIRED = frozenset(
     {PROJECT_GET, PROJECT_DEACTIVATE, MEMBERSHIP_ADD, MEMBERSHIP_REMOVE, MEMBERSHIP_LIST}
 )
+_NVT_PROJECT_REQUIRED = frozenset({NVT_PROJECT_GET, NVT_PROJECT_UPDATE})
 _SUBJECT_REQUIRED = frozenset({MEMBERSHIP_ADD, MEMBERSHIP_REMOVE})
 _PROJECT_CODE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
 _MEMBER_ROLES = frozenset({"OWNER", "MANAGER", "MEMBER", "VIEWER"})
+_NVT_PROJECT_STATUSES = frozenset({"ACTIVE", "INACTIVE"})
 
 
 @dataclass(frozen=True)
@@ -127,6 +142,7 @@ def admit_project_operation_candidate(
     write_admission: Mapping[str, Any],
     projects: Sequence[Mapping[str, Any]],
     subjects: Sequence[Mapping[str, Any]],
+    nvt_projects: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     tenant = _text(tenant_id, "tenant_id", 128)
     requester = _text(requester_subject_id, "requester_subject_id", 128)
@@ -152,12 +168,21 @@ def admit_project_operation_candidate(
 
     tenant_projects = _tenant_records(projects, tenant, "project")
     tenant_subjects = _tenant_records(subjects, tenant, "subject")
+    tenant_nvt_projects = _tenant_records(nvt_projects, tenant, "NVTProject")
     parameters = _parameter_map(normalized["parameter_candidates"])
 
     project: Mapping[str, Any] | None = None
     if operation_id in _PROJECT_REQUIRED:
         project, failure = _resolve_project(
             normalized["entity_selectors"], tenant_projects
+        )
+        if failure is not None:
+            return _failure(candidate_hash, operation_id, failure)
+
+    nvt_project: Mapping[str, Any] | None = None
+    if operation_id in _NVT_PROJECT_REQUIRED:
+        nvt_project, failure = _resolve_nvt_project(
+            normalized["entity_selectors"], tenant_nvt_projects
         )
         if failure is not None:
             return _failure(candidate_hash, operation_id, failure)
@@ -184,6 +209,16 @@ def admit_project_operation_candidate(
         )
         if failure is not None:
             return _failure(candidate_hash, operation_id, failure)
+    elif operation_id == NVT_PROJECT_CREATE:
+        arguments, failure = _nvt_create_arguments(
+            parameters,
+            tenant=tenant,
+            requester=requester,
+            candidate_hash=candidate_hash,
+            nvt_projects=tenant_nvt_projects,
+        )
+        if failure is not None:
+            return _failure(candidate_hash, operation_id, failure)
     elif operation_id == PROJECT_LIST:
         arguments = {
             "tenant_id": tenant,
@@ -191,6 +226,29 @@ def admit_project_operation_candidate(
             "limit": _bounded_page(parameters.get("limit"), 100),
             "offset": _bounded_offset(parameters.get("offset")),
         }
+    elif operation_id == NVT_PROJECT_LIST:
+        status, failure = _nvt_status(parameters.get("status"), default="ACTIVE")
+        if failure is not None:
+            return _failure(candidate_hash, operation_id, failure)
+        arguments = {
+            "tenant_id": tenant,
+            "requester_subject_id": requester,
+            "status": status,
+            "limit": _bounded_page(parameters.get("limit"), 100),
+            "offset": _bounded_offset(parameters.get("offset")),
+        }
+    elif operation_id in _NVT_PROJECT_REQUIRED:
+        assert nvt_project is not None
+        arguments = {
+            "tenant_id": tenant,
+            "requester_subject_id": requester,
+            "nvt_project_id": _nvt_project_id(nvt_project),
+        }
+        if operation_id == NVT_PROJECT_UPDATE:
+            update, failure = _nvt_update_arguments(parameters, nvt_project)
+            if failure is not None:
+                return _failure(candidate_hash, operation_id, failure)
+            arguments.update(update)
     else:
         assert project is not None
         arguments = {
@@ -249,6 +307,15 @@ def admit_project_operation_candidate(
             None
             if project is None
             else {"type": "eos.project", "id": _project_id(project)}
+        ),
+        "nvt_project_ref": (
+            {"type": "eos.nvt_project", "id": arguments["nvt_project_id"]}
+            if operation_id == NVT_PROJECT_CREATE
+            else (
+                None
+                if nvt_project is None
+                else {"type": "eos.nvt_project", "id": _nvt_project_id(nvt_project)}
+            )
         ),
         "target_subject_ref": (
             None
@@ -450,6 +517,103 @@ def _create_arguments(parameters, *, tenant, requester, candidate_hash, projects
     }, None
 
 
+def _nvt_create_arguments(
+    parameters,
+    *,
+    tenant,
+    requester,
+    candidate_hash,
+    nvt_projects,
+):
+    if parameters.get("nvt_project_code") is None:
+        return {}, _clarification(
+            "NVT_PROJECT_CODE_REQUIRED",
+            "NVTProject code is required.",
+            "새 NVT 프로젝트의 코드를 입력해 주세요.",
+        )
+    code = _parameter_text(parameters.get("nvt_project_code"), "nvt_project_code", 64)
+    if _PROJECT_CODE.fullmatch(code) is None:
+        return {}, _clarification(
+            "NVT_PROJECT_CODE_INVALID",
+            "NVTProject code is invalid.",
+            "영문, 숫자, 점, 밑줄 또는 하이픈으로 된 NVT 프로젝트 코드를 확인해 주세요.",
+        )
+    if any(
+        str(item.get("nvt_project_code", "")).casefold() == code.casefold()
+        for item in nvt_projects
+    ):
+        return {}, _blocked(
+            "NVT_PROJECT_CODE_CONFLICT",
+            "The NVTProject code already exists in the tenant.",
+        )
+    if parameters.get("nvt_project_name") is None:
+        return {}, _clarification(
+            "NVT_PROJECT_NAME_REQUIRED",
+            "NVTProject name is required.",
+            "새 NVT 프로젝트의 이름을 입력해 주세요.",
+        )
+    name = _parameter_text(parameters.get("nvt_project_name"), "nvt_project_name", 256)
+    status, failure = _nvt_status(parameters.get("status"), default="ACTIVE")
+    if failure is not None:
+        return {}, failure
+    if status != "ACTIVE":
+        return {}, _clarification(
+            "NVT_PROJECT_INITIAL_STATUS_INVALID",
+            "A new NVTProject must start ACTIVE.",
+            "새 NVT 프로젝트의 초기 상태는 ACTIVE로 지정해 주세요.",
+        )
+    return {
+        "tenant_id": tenant,
+        "requester_subject_id": requester,
+        "nvt_project_id": _stable_uuid("nvt-project", tenant, candidate_hash, code),
+        "nvt_project_code": code,
+        "nvt_project_name": name,
+        "status": "ACTIVE",
+    }, None
+
+
+def _nvt_update_arguments(parameters, nvt_project):
+    name_item = parameters.get("nvt_project_name")
+    status_item = parameters.get("status")
+    if name_item is None and status_item is None:
+        return {}, _clarification(
+            "NVT_PROJECT_CHANGE_REQUIRED",
+            "An NVTProject name or status change is required.",
+            "변경할 NVT 프로젝트 이름 또는 상태를 입력해 주세요.",
+        )
+    name = (
+        _text(nvt_project.get("name"), "NVTProject name", 256)
+        if name_item is None
+        else _parameter_text(name_item, "nvt_project_name", 256)
+    )
+    status, failure = _nvt_status(status_item, default=nvt_project.get("status"))
+    if failure is not None:
+        return {}, failure
+    return {
+        "expected_version": _positive_int(
+            nvt_project.get("entity_version", nvt_project.get("version")),
+            "NVTProject entity_version",
+        ),
+        "nvt_project_name": name,
+        "status": status,
+    }, None
+
+
+def _nvt_status(item, *, default):
+    status = (
+        str(default).strip().upper()
+        if item is None
+        else _parameter_text(item, "status", 16).upper()
+    )
+    if status not in _NVT_PROJECT_STATUSES:
+        return None, _clarification(
+            "NVT_PROJECT_STATUS_INVALID",
+            "NVTProject status is invalid.",
+            "NVT 프로젝트 상태를 ACTIVE 또는 INACTIVE로 입력해 주세요.",
+        )
+    return status, None
+
+
 def _resolve_project(selectors, projects):
     values = [str(item["value"]) for item in selectors]
     exact = {
@@ -485,6 +649,39 @@ def _resolve_project(selectors, projects):
         "PROJECT_CANDIDATE_NOT_FOUND",
         "No tenant-scoped exact Project code was resolved.",
         "정확한 프로젝트 코드를 입력해 주세요.",
+    )
+
+
+def _resolve_nvt_project(selectors, nvt_projects):
+    values = [str(item["value"]) for item in selectors]
+    exact = {
+        _nvt_project_id(project): project
+        for value in values
+        for project in nvt_projects
+        if value.casefold() == str(project.get("nvt_project_code", "")).casefold()
+    }
+    if len(exact) == 1:
+        return next(iter(exact.values())), None
+    if len(exact) > 1:
+        return None, _clarification(
+            "NVT_PROJECT_CANDIDATE_AMBIGUOUS",
+            "Multiple NVTProject codes were proposed.",
+            "작업할 NVT 프로젝트 코드를 하나만 선택해 주세요.",
+        )
+    if any(
+        value.casefold() == str(project.get("name", "")).casefold()
+        for value in values
+        for project in nvt_projects
+    ):
+        return None, _clarification(
+            "NVT_PROJECT_CONFIRMATION_REQUIRED",
+            "An NVTProject display-name match requires exact-code confirmation.",
+            "검색된 NVT 프로젝트의 정확한 코드를 확인해 주세요.",
+        )
+    return None, _clarification(
+        "NVT_PROJECT_CANDIDATE_NOT_FOUND",
+        "No tenant-scoped exact NVTProject code was resolved.",
+        "정확한 NVT 프로젝트 코드를 입력해 주세요.",
     )
 
 
@@ -607,6 +804,10 @@ def _tenant_records(records, tenant_id, label):
 
 def _project_id(project):
     return _text(project.get("project_id"), "project_id", 128)
+
+
+def _nvt_project_id(project):
+    return _text(project.get("nvt_project_id"), "nvt_project_id", 128)
 
 
 def _subject_id(subject):

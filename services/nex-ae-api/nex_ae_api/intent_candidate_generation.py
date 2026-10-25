@@ -73,6 +73,8 @@ _AUTHORITY_KEYS = {
     "project",
     "project_id",
     "project_ref",
+    "nvt_project_id",
+    "nvt_project_ref",
     "role",
     "roles",
     "permission",

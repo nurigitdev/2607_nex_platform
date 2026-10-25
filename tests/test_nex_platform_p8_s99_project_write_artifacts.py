@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 from nex_eos import (
+    NVT_PROJECT_CREATE_OPERATION,
+    NVT_PROJECT_UPDATE_OPERATION,
     PROJECT_CREATE_OPERATION,
     PROJECT_DEACTIVATE_OPERATION,
     PROJECT_MEMBERSHIP_ADD_OPERATION,
@@ -27,6 +29,16 @@ LOCK = ROOT / "deployment/locks/nsl-v0.2.1-wheel.json"
 SOURCE_ENV = "NEX_P8_S99_NSL_SOURCE"
 
 EXPECTED = {
+    NVT_PROJECT_CREATE_OPERATION: (
+        "CREATE",
+        "project:nvt_project:create",
+        "PROJECT.NVT_PROJECT.GET",
+    ),
+    NVT_PROJECT_UPDATE_OPERATION: (
+        "UPDATE",
+        "project:nvt_project:admin",
+        "PROJECT.NVT_PROJECT.GET",
+    ),
     PROJECT_CREATE_OPERATION: ("CREATE", "project:project:create", "PROJECT.PROJECT.GET"),
     PROJECT_DEACTIVATE_OPERATION: (
         "UPDATE",
@@ -83,7 +95,7 @@ def test_project_write_admission_contract_routes_and_registry_align() -> None:
     route_ids = {
         operation["operationId"]
         for path, methods in app.openapi()["paths"].items()
-        if path.startswith("/internal/v1/projects")
+        if path.startswith(("/internal/v1/projects", "/internal/v1/nvt-projects"))
         for operation in methods.values()
     }
     assert set(admitted) <= route_ids

@@ -72,6 +72,10 @@
         "PROJECT.PROJECT.GET",
         "PROJECT.PROJECT.LIST",
         "PROJECT.PROJECT.DEACTIVATE",
+        "PROJECT.NVT_PROJECT.CREATE",
+        "PROJECT.NVT_PROJECT.GET",
+        "PROJECT.NVT_PROJECT.LIST",
+        "PROJECT.NVT_PROJECT.UPDATE",
         "PROJECT.MEMBERSHIP.ADD",
         "PROJECT.MEMBERSHIP.REMOVE",
         "PROJECT.MEMBERSHIP.LIST"
@@ -82,7 +86,7 @@
       "additionalProperties": false,
       "required": ["type", "id"],
       "properties": {
-        "type": {"enum": ["eos.project", "oa.user"]},
+        "type": {"enum": ["eos.project", "eos.nvt_project", "oa.user"]},
         "id": {"type": "string", "minLength": 1, "maxLength": 128}
       }
     },
@@ -129,6 +133,9 @@
           "additionalProperties": true
         },
         "project_ref": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/typedRef"}]
+        },
+        "nvt_project_ref": {
           "oneOf": [{"type": "null"}, {"$ref": "#/$defs/typedRef"}]
         },
         "target_subject_ref": {

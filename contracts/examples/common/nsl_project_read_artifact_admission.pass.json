@@ -2,15 +2,27 @@
   "schema_version": "nsl_project_read_artifact_admission.v1",
   "status": "PASS",
   "repository": "nurigitdev/2608_nsl",
-  "artifact_source_revision": "82bc0fcbeb0de59bdc0aa3785c589e5515b24280",
+  "artifact_source_revision": "6ab16da5e8840a1387c4c2c3d6eeb933e54849d4",
   "artifact_manifest_path": "examples/project_operations/artifact_manifest.json",
-  "artifact_manifest_sha256": "sha256:fb1b2f15eff60e0439ddd81c0fd7475d2e6214fa610e0401412baf717319f799",
+  "artifact_manifest_sha256": "sha256:56d2bbc035cd10c2d40fa84f4664e7c05ea8b70362b7a724df0a15dc4f8d0c01",
   "runtime_wheel": {
     "package_version": "0.2.0",
     "source_revision": "c0a8d4e125ee129c4556d896356237bb3973582d",
     "wheel_sha256": "sha256:862958a5eab982a71bec5ee58b9e530867d6c25f65d8b770efb29ca78ce7f135"
   },
   "skills": [
+    {
+      "skill_id": "PROJECT.NVT_PROJECT.GET",
+      "skill_version": "1.0.0",
+      "source_sha256": "sha256:decae724ea091e25003969a36d2055af4c2b9a077d0db6f32343a7136c427c5f",
+      "semantic_hash": "sha256:e06e3104950f095cdfc2c50268a037248d2a7cc33571e782ec4b7b7500c00f11"
+    },
+    {
+      "skill_id": "PROJECT.NVT_PROJECT.LIST",
+      "skill_version": "1.0.0",
+      "source_sha256": "sha256:f9cd06844105d0488743275419cd427d7fb31d1fa9b0ba0d37865363d2e9ac6f",
+      "semantic_hash": "sha256:27d3aae4a6cd84e63e5c64fb470afbe16373c2c5c2bc4c6e0c9f59ab289cc19a"
+    },
     {
       "skill_id": "PROJECT.PROJECT.GET",
       "skill_version": "1.0.0",
