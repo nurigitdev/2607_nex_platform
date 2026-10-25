@@ -34,7 +34,7 @@ P8.8   CLOSED through P8-S86
 P8.9   CLOSED through P8-S93
 P8 v1.0 FROZEN / GOLDEN A CLOSED / RELIABILITY CLOSED
 P8-CA04 DESIGN CLOSED / P8.10 IMPLEMENTATION ENTRY AUTHORIZED
-P8.10  P8-S94..S98 CLOSED / P8-S99 is the next Slice
+P8.10  P8-S94..S99A CLOSED / P8-S99 is the next Slice
 P9     ENTRY HELD until P8-S103 re-authorizes the handoff
 ```
 
@@ -42,9 +42,9 @@ Current admitted NSL runtime:
 
 ```text
 distribution    = nex-skill-language
-package_version = 0.2.0
-wheel            = nex_skill_language-0.2.0-py3-none-any.whl
-wheel_sha256     = sha256:862958a5eab982a71bec5ee58b9e530867d6c25f65d8b770efb29ca78ce7f135
+package_version = 0.2.1
+wheel            = nex_skill_language-0.2.1-py3-none-any.whl
+wheel_sha256     = sha256:a89ce5fde1a32749565ba0906a2f1faf1d440ff6db2dfc07c0b2a581378507cb
 ```
 
 P8-S94 added the EOS-owned `eos_project_member` persistence foundation and
@@ -69,6 +69,13 @@ Project LIST, and membership LIST in NSL revision `82bc0fcb...`. Their source,
 Tool catalog, semantic hashes, and artifact manifest are exact-admitted while
 the unchanged NSL v0.2 runtime wheel retains its existing independent lock.
 The NSL mandatory gate and Platform actual-source protected smoke passed.
+
+P8-S99A then added the bounded NSL `OperationKind.UPDATE` contract required by
+Project deactivation and membership removal. NSL package `0.2.1` passed its
+2,314-test authoritative gate and was admitted as a separate exact wheel
+identity. The historical `0.2.0` lock remains immutable for prior evidence;
+new v0.2 runtime startup selects `nsl-v0.2.1-wheel.json` and rejects package
+versions outside the explicit `0.2.0` / `0.2.1` compatibility set.
 
 The historical NSL admission block was resolved by P8-S01 through P8-S06.
 The current attachment baseline was closed by P8-S75H. P8-CA03 aligned the

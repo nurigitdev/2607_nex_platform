@@ -100,6 +100,19 @@ P8_V02_WHEEL_SHA256 = (
     "sha256:862958a5eab982a71bec5ee58b9e530867d6c25f65d8b770efb29ca78ce7f135"
 )
 P8_V02_CERTIFICATION_REFERENCE = f"nsl-linux-quality:{P8_V02_SOURCE_REVISION}"
+P8_V021_OUTPUT = ROOT / "reports" / "deployment" / "p8-nsl-v0.2.1-wheel"
+P8_V021_REPORT = (
+    ROOT / "reports" / "deployment" / "p8-s99a-nsl-v0.2.1-wheel-lock.json"
+)
+P8_V021_LOCK = ROOT / "deployment" / "locks" / "nsl-v0.2.1-wheel.json"
+P8_V021_SOURCE_REVISION = "d53658ec2ab0b42e995fe0ebe80badd53218feec"
+P8_V021_SOURCE_TREE = "e16863f483bd6b9e2e1503de9baaf0f58cb15521"
+P8_V021_WHEEL_SHA256 = (
+    "sha256:a89ce5fde1a32749565ba0906a2f1faf1d440ff6db2dfc07c0b2a581378507cb"
+)
+P8_V021_CERTIFICATION_REFERENCE = (
+    f"nsl-linux-quality:{P8_V021_SOURCE_REVISION}"
+)
 
 
 class NslWheelBuildError(RuntimeError):
@@ -501,7 +514,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Build and admit the NSL wheel")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
-    parser.add_argument("--release-profile", choices=("v0.1", "v0.2"), default="v0.1")
+    parser.add_argument(
+        "--release-profile",
+        choices=("v0.1", "v0.2", "v0.2.1"),
+        default="v0.1",
+    )
     parser.add_argument("--identity-only", action="store_true")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--report", type=Path)
@@ -509,7 +526,20 @@ def main() -> int:
     parser.add_argument("--write-lock", action="store_true")
     parser.add_argument("--uv-bin", default="uv")
     args = parser.parse_args()
-    if args.release_profile == "v0.2":
+    if args.release_profile == "v0.2.1":
+        output = args.output or P8_V021_OUTPUT
+        report = args.report or P8_V021_REPORT
+        lock = None if args.identity_only else (args.lock or P8_V021_LOCK)
+        profile_arguments = {
+            "expected_version": "0.2.1",
+            "public_api_symbols": P8_V02_PUBLIC_API_SYMBOLS,
+            "expected_source_revision": P8_V021_SOURCE_REVISION,
+            "expected_source_tree": P8_V021_SOURCE_TREE,
+            "expected_wheel_sha256": P8_V021_WHEEL_SHA256,
+            "certification_reference": P8_V021_CERTIFICATION_REFERENCE,
+            "release_slice": "P8-S99A",
+        }
+    elif args.release_profile == "v0.2":
         output = args.output or P8_V02_OUTPUT
         report = args.report or (
             P8_V02_REPORT if args.identity_only else P8_V02_LOCK_REPORT

@@ -31,6 +31,7 @@ from nex_runtime.nsl_package_admission import (
     NslPackageAdmissionError,
     inspect_installed_nsl_package,
 )
+from nex_runtime.nsl_v02_wheel_lock import NSL_V02_ADMITTED_PACKAGE_VERSIONS
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
 from nex_ae_api.nsl_backend_profiles import (
@@ -78,7 +79,10 @@ DEFAULT_NSL_WHEEL_LOCK = (
     Path(__file__).resolve().parents[3] / "deployment" / "locks" / "nsl-v0.1-wheel.json"
 )
 DEFAULT_NSL_V02_WHEEL_LOCK = (
-    Path(__file__).resolve().parents[3] / "deployment" / "locks" / "nsl-v0.2-wheel.json"
+    Path(__file__).resolve().parents[3]
+    / "deployment"
+    / "locks"
+    / "nsl-v0.2.1-wheel.json"
 )
 DEFAULT_PLATFORM_PYTHON_LOCK = (
     Path(__file__).resolve().parents[3]
@@ -1005,13 +1009,13 @@ def _in_process_package_status(
     expected = (
         (
             NSL_INSTALLED_V02_PACKAGE_READINESS_SCHEMA_VERSION,
-            "0.2.0",
+            NSL_V02_ADMITTED_PACKAGE_VERSIONS,
             "nsl_wheel_lock.v2",
         )
         if profile == NSL_V02_IN_PROCESS_BACKEND
         else (
             NSL_INSTALLED_PACKAGE_READINESS_SCHEMA_VERSION,
-            "0.1.0",
+            frozenset({"0.1.0"}),
             "nsl_wheel_lock.v1",
         )
     )
@@ -1022,7 +1026,7 @@ def _in_process_package_status(
         or (
             profile == NSL_V02_IN_PROCESS_BACKEND
             and (
-                value.get("package_version") != expected[1]
+                value.get("package_version") not in expected[1]
                 or value.get("lock_schema_version") != expected[2]
             )
         )

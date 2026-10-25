@@ -664,6 +664,7 @@ The authorized P8.10 sequence is:
 | `P8-S96` | Governed Project service/API and OA-backed authorization |
 | `P8-S97` | Canonical operation alias registry and API naming enforcement |
 | `P8-S98` | Canonical Project NSL READ Skills/Tools |
+| `P8-S99A` | NSL `UPDATE` OperationKind and v0.2.1 exact admission |
 | `P8-S99` | Canonical Project NSL governed WRITE Skills/Tools |
 | `P8-S100` | IA Project operations and clarification/admission integration |
 | `P8-S101` | Membership-filtered Voucher create/get/list integration |

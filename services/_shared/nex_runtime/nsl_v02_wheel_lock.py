@@ -20,6 +20,7 @@ from .nsl_release_identity import (
 )
 
 NSL_V02_WHEEL_LOCK_SCHEMA_VERSION = "nsl_wheel_lock.v2"
+NSL_V02_ADMITTED_PACKAGE_VERSIONS = frozenset({"0.2.0", "0.2.1"})
 _GIT_OBJECT_ID = re.compile(r"^[0-9a-f]{40}$")
 _HASH_REF = re.compile(r"^sha256:[0-9a-f]{64}$")
 _LOCK_FIELDS = frozenset(
@@ -142,7 +143,7 @@ def normalize_nsl_v02_wheel_lock(lock: Mapping[str, Any]) -> dict[str, Any]:
         raise NslPackageAdmissionError("NSL v0.2 wheel lock repository is invalid")
     if canonicalize_name(str(normalized["distribution"])) != NSL_DISTRIBUTION:
         raise NslPackageAdmissionError("NSL v0.2 wheel lock distribution is invalid")
-    if normalized["package_version"] != "0.2.0":
+    if normalized["package_version"] not in NSL_V02_ADMITTED_PACKAGE_VERSIONS:
         raise NslPackageAdmissionError("NSL v0.2 wheel lock version is invalid")
     for field in ("source_revision", "source_tree"):
         if not _GIT_OBJECT_ID.fullmatch(str(normalized[field])):

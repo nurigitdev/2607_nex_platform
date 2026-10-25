@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from nex_runtime.nsl_v02_wheel_lock import NSL_V02_ADMITTED_PACKAGE_VERSIONS
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
 
 NSL_V02_PUBLIC_API_ADAPTER_SCHEMA_VERSION = "ae_nsl_v02_public_api_adapter.v1"
@@ -160,6 +161,7 @@ def load_nsl_v02_public_api(
     readiness: Mapping[str, Any],
 ) -> NslV02PublicApiAdapter:
     release_hash = _validate_readiness(readiness)
+    package_version = str(readiness["package_version"])
     imported = _import_public_api()
     imported_names = tuple(getattr(symbol, "__name__", None) for symbol in imported)
     if imported_names != NSL_V02_REQUIRED_PUBLIC_SYMBOLS:
@@ -170,7 +172,7 @@ def load_nsl_v02_public_api(
     contract_hash = semantic_sha256_hash_ref(
         {
             "schema_version": NSL_V02_PUBLIC_API_ADAPTER_SCHEMA_VERSION,
-            "package_version": "0.2.0",
+            "package_version": package_version,
             "release_admission_hash": release_hash,
             "public_api_symbols": list(NSL_V02_REQUIRED_PUBLIC_SYMBOLS),
         }
@@ -196,7 +198,6 @@ def _validate_readiness(readiness: Mapping[str, Any]) -> str:
         "status": "PASS",
         "lock_schema_version": "nsl_wheel_lock.v2",
         "distribution": "nex-skill-language",
-        "package_version": "0.2.0",
         "runtime_import_origin": "installed_distribution",
         "public_api_complete": True,
         "in_process_profile_admissible": True,
@@ -205,6 +206,11 @@ def _validate_readiness(readiness: Mapping[str, Any]) -> str:
         raise NslV02PublicApiError(
             "ae.nsl_v02.readiness_invalid",
             "NSL v0.2 public API requires exact passing package readiness.",
+        )
+    if readiness.get("package_version") not in NSL_V02_ADMITTED_PACKAGE_VERSIONS:
+        raise NslV02PublicApiError(
+            "ae.nsl_v02.readiness_invalid",
+            "NSL v0.2 public API requires an admitted package version.",
         )
     if tuple(readiness.get("public_api_symbols", ())) != (
         NSL_V02_REQUIRED_PUBLIC_SYMBOLS
