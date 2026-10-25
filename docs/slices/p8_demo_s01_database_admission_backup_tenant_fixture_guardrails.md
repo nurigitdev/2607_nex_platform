@@ -75,7 +75,7 @@ The source migration inventory was not applied before this backup.
 
 ## Demo Tenant Seed/Reset Boundary
 
-The admitted tenant is exactly `p8-golden-a`. A fixture action is only a plan
+The admitted tenant is exactly `VO00`. A fixture action is only a plan
 until all of the following are true:
 
 1. action is `SEED` or `RESET` and its exact action-specific confirmation is

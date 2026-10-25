@@ -30,7 +30,7 @@ from nex_runtime import (
 )
 
 SCHEMA_VERSION = "p8_demo_database_guardrail_evidence.v1"
-DEFAULT_FIXTURE = ROOT / "scripts/smoke/data/p8_golden_a_fixture.v1.json"
+DEFAULT_FIXTURE = ROOT / "scripts/deployment/data/p8_demo_vo00_fixture.v1.json"
 DEFAULT_BACKUP_ROOT = Path("/data/nex-platform/demo/postgres-backups")
 DEFAULT_REPORT = ROOT / "reports/deployment/p8-demo-database-guardrails.json"
 

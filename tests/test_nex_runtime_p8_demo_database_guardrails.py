@@ -33,7 +33,7 @@ from nex_runtime.postgres_backup import (
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
 ROOT = Path(__file__).resolve().parents[1]
-FIXTURE_PATH = ROOT / "scripts/smoke/data/p8_golden_a_fixture.v1.json"
+FIXTURE_PATH = ROOT / "scripts/deployment/data/p8_demo_vo00_fixture.v1.json"
 BACKUP_ID = "20261025T010203Z-abcdef12"
 
 
@@ -399,8 +399,8 @@ def test_backup_credentials_allow_passwordless_url_and_reject_line_breaks(
 def test_fixture_seed_and_reset_plans_are_tenant_only_and_backup_bound() -> None:
     fixture = _fixture()
     for action, confirmation in (
-        ("SEED", "SEED_P8_GOLDEN_A_TENANT"),
-        ("reset", "RESET_P8_GOLDEN_A_TENANT"),
+        ("SEED", "SEED_P8_DEMO_VO00_TENANT"),
+        ("reset", "RESET_P8_DEMO_VO00_TENANT"),
     ):
         plan = build_demo_tenant_fixture_plan(
             fixture,
@@ -409,7 +409,7 @@ def test_fixture_seed_and_reset_plans_are_tenant_only_and_backup_bound() -> None
             backup_id=BACKUP_ID,
         )
         projection = demo_tenant_fixture_plan_public_projection(plan)
-        assert plan.tenant_id == "p8-golden-a"
+        assert plan.tenant_id == "VO00"
         assert plan.mutation_scope == "TENANT_ONLY"
         assert plan.tenant_predicate_required is True
         assert plan.service_ids == tuple(
@@ -439,7 +439,7 @@ def test_fixture_plan_rejects_invalid_control_values(
 ) -> None:
     values = {
         "action": "SEED",
-        "confirmation": "SEED_P8_GOLDEN_A_TENANT",
+        "confirmation": "SEED_P8_DEMO_VO00_TENANT",
         "backup_id": BACKUP_ID,
     }
     values[field] = value
@@ -450,7 +450,7 @@ def test_fixture_plan_rejects_invalid_control_values(
 def test_fixture_plan_rejects_cross_tenant_bad_id_and_hash() -> None:
     values = {
         "action": "SEED",
-        "confirmation": "SEED_P8_GOLDEN_A_TENANT",
+        "confirmation": "SEED_P8_DEMO_VO00_TENANT",
         "backup_id": BACKUP_ID,
     }
     fixture = _fixture()
@@ -472,7 +472,7 @@ def test_fixture_plan_rejects_cross_tenant_bad_id_and_hash() -> None:
         build_demo_tenant_fixture_plan(fixture, **values)
 
     fixture = _fixture()
-    fixture["scenario"]["amount"] = "1.00"
+    fixture["tenant"]["display_name"] = "tampered"
     with pytest.raises(DemoDatabaseGuardError, match="fixture_hash_mismatch"):
         build_demo_tenant_fixture_plan(fixture, **values)
     with pytest.raises(DemoDatabaseGuardError, match="fixture_invalid"):
@@ -483,7 +483,7 @@ def test_fixture_admission_requires_complete_current_database_set() -> None:
     plan = build_demo_tenant_fixture_plan(
         _fixture(),
         action="RESET",
-        confirmation="RESET_P8_GOLDEN_A_TENANT",
+        confirmation="RESET_P8_DEMO_VO00_TENANT",
         backup_id=BACKUP_ID,
     )
     inspections = tuple(_inspection(target) for target in DEMO_DATABASE_TARGETS)
@@ -556,7 +556,7 @@ def test_backup_manifest_loader_and_result_boundary_fail_closed(tmp_path: Path) 
     plan = build_demo_tenant_fixture_plan(
         _fixture(),
         action="SEED",
-        confirmation="SEED_P8_GOLDEN_A_TENANT",
+        confirmation="SEED_P8_DEMO_VO00_TENANT",
         backup_id=BACKUP_ID,
     )
     inspections = tuple(_inspection(target) for target in DEMO_DATABASE_TARGETS)

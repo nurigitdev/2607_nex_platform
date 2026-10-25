@@ -24,11 +24,11 @@ from .semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
 DEMO_DATABASE_ADMISSION_SCHEMA_VERSION = "p8_demo_database_admission.v1"
 DEMO_BACKUP_SET_SCHEMA_VERSION = "p8_demo_pre_migration_backup_set.v1"
 DEMO_TENANT_FIXTURE_PLAN_SCHEMA_VERSION = "p8_demo_tenant_fixture_plan.v1"
-DEMO_TENANT_ID = "p8-golden-a"
+DEMO_TENANT_ID = "VO00"
 DEMO_DATABASE_BACKUP_CONFIRMATION = "BACKUP_P8_DEMO_DEV_DATABASES"
 DEMO_FIXTURE_CONFIRMATIONS = {
-    "SEED": "SEED_P8_GOLDEN_A_TENANT",
-    "RESET": "RESET_P8_GOLDEN_A_TENANT",
+    "SEED": "SEED_P8_DEMO_VO00_TENANT",
+    "RESET": "RESET_P8_DEMO_VO00_TENANT",
 }
 _SAFE_LIBPQ_QUERY_OPTIONS = frozenset(
     {"sslmode", "sslrootcert", "sslcert", "sslkey", "connect_timeout"}
