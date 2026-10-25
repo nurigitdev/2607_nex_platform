@@ -513,7 +513,7 @@ def _complete_parent_report(fixture: Mapping[str, object]) -> dict[str, object]:
         }
         == {
             "ae.context_candidate_extraction.default": "v2",
-            "ae.intent_resolution.default": "v1",
+            "ae.intent_resolution.default": "v3",
             "ae.plan_builder.default": "v1",
         },
     }

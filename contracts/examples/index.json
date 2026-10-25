@@ -1341,6 +1341,11 @@
       "schema": "schemas/service/nex_ae_api/project_membership_batch_skill_binding.v1.schema.json"
     },
     {
+      "name": "ae_project_membership_batch_result_partial",
+      "path": "examples/planning/ae_project_membership_batch_result.partial.json",
+      "schema": "schemas/service/nex_ae_api/project_membership_batch_result_projection.v1.schema.json"
+    },
+    {
       "name": "eos_project_membership_add_many_command_valid",
       "path": "examples/service/eos_project_membership_add_many_command.valid.json",
       "schema": "schemas/service/nex_eos/project_membership_add_many_command.v1.schema.json"

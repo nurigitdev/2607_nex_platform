@@ -104,6 +104,7 @@ import {
   buildRuntimeDiagnostics,
   buildRuntimeDiagnosticsSummary
 } from "./runtimeDiagnostics.js";
+import { renderProjectMembershipBatchResult } from "./projectMembershipBatchResult.js";
 import { createInteractionId } from "./runtimeIdentifiers.js";
 import {
   buildSessionRouteGuard,
@@ -1503,6 +1504,11 @@ function renderMessages() {
       ${renderMessageRetrievalScope(message.retrievalScope)}
       ${renderMessageRetrievalQualityWarning(message.retrievalQualityWarning)}
       ${renderMessageGroundedResponseQuality(message.groundedResponseQuality)}
+      ${
+        message.projectMembershipBatchResult
+          ? renderProjectMembershipBatchResult(message.projectMembershipBatchResult)
+          : ""
+      }
       ${renderArtifactRefs(message.artifactRefs || [])}
       ${renderMessageRepairedResponseReview(message.repairedResponseReview)}
       ${renderMessageGenerationFeedback(message.generationFeedback)}

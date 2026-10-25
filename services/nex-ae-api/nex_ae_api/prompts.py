@@ -57,6 +57,20 @@ _P8_GOLDEN_A_INTENT_CANDIDATE_V2_CONTENT = (
     "set clarification.required true instead of inventing it."
 )
 
+_P8_PROJECT_BATCH_INTENT_CANDIDATE_V3_CONTENT = (
+    _P8_GOLDEN_A_INTENT_CANDIDATE_V2_CONTENT
+    + " For a request to add several employees to one Project, use the "
+    "canonical intent_label PROJECT.MEMBERSHIP.ADD_MANY and GENERAL_ANSWER. "
+    "Emit the exact Project code as one QUERY_TERM selector. Emit employee "
+    "numbers as scalar parameter candidates employee_id_1, employee_id_2, "
+    "and so on; an explicit name hint may use the matching employee_name_1, "
+    "employee_name_2 name. Use member_role only when explicitly supplied, "
+    "otherwise omit it so platform policy can default to MEMBER. Never emit "
+    "subject IDs, tenant IDs, Project IDs, parallel arrays, object-valued "
+    "parameters, or final membership authority. If the Project code or "
+    "employee numbers are absent or ambiguous, require clarification."
+)
+
 _P65_CONTEXT_CANDIDATE_V1_CONTENT = (
     "You generate an untrusted context candidate set, never an "
     "authoritative context or access decision. Return exactly one JSON "
@@ -211,17 +225,18 @@ AE_PROMPT_SEEDS = [
         name="p65_default_intent_candidate_system",
         owner_domain="agent-experience",
         binding_key=AE_INTENT_RESOLUTION_BINDING,
-        version="v2",
+        version="v3",
         role="system",
         segment_order=0,
-        content=_P8_GOLDEN_A_INTENT_CANDIDATE_V2_CONTENT,
+        content=_P8_PROJECT_BATCH_INTENT_CANDIDATE_V3_CONTENT,
         model_capability="generation",
         metadata={
             "phase": "P8",
-            "slice": "P8-S65",
+            "slice": "P8-S111",
             "candidate_schema": "p65.intent_candidate.v1",
             "authority": "untrusted_candidate_only",
             "golden_a": "voucher_draft",
+            "project_membership_batch": "indexed_scalar_candidates",
         },
     ),
     PromptSeed(
@@ -355,8 +370,8 @@ def _activate_current_intent_candidate_prompt(store: Any) -> None:
         new_prompt_template_version_id=target["prompt_template_version_id"],
         expected_prompt_template_version_id=current["prompt_template_version_id"],
         changed_by="nex-ae-api-bootstrap",
-        reason="P8-S65 Golden A voucher candidate normalization",
-        correlation_id="p8-s65-intent-prompt-v2",
+        reason="P8-S111 Project membership batch candidate normalization",
+        correlation_id="p8-s111-intent-prompt-v3",
     )
 
 

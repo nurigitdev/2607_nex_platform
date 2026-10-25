@@ -210,7 +210,7 @@ def test_startup_upgrades_existing_intent_v1_binding_with_history() -> None:
 
     after = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
     version = store.get_template_version(after["prompt_template_version_id"])
-    assert version["version"] == "v2"
+    assert version["version"] == "v3"
     assert version["metadata"]["golden_a"] == "voucher_draft"
     with factory() as session:
         history = (
@@ -219,7 +219,7 @@ def test_startup_upgrades_existing_intent_v1_binding_with_history() -> None:
                     "SELECT old_prompt_template_version_id, "
                     "new_prompt_template_version_id, correlation_id "
                     "FROM ae_prompt_binding_history "
-                    "WHERE correlation_id = 'p8-s65-intent-prompt-v2'"
+                    "WHERE correlation_id = 'p8-s111-intent-prompt-v3'"
                 )
             )
             .mappings()

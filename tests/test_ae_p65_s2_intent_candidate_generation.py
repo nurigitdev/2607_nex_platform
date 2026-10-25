@@ -196,20 +196,21 @@ def _run(service: LiveIntentCandidateService, **overrides):
     return service.generate_and_resolve(**values)
 
 
-def test_prompt_registry_seeds_exact_intent_binding_v2_and_keeps_v1() -> None:
+def test_prompt_registry_seeds_exact_intent_binding_v3_and_keeps_v1() -> None:
     store = _store()
     binding = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
     version = store.get_template_version(binding["prompt_template_version_id"])
 
     assert binding["purpose"] == "intent_resolution"
-    assert version["version"] == "v2"
+    assert version["version"] == "v3"
     assert version["role"] == "system"
     assert version["metadata"] == {
         "phase": "P8",
-        "slice": "P8-S65",
+        "slice": "P8-S111",
         "candidate_schema": "p65.intent_candidate.v1",
         "authority": "untrusted_candidate_only",
         "golden_a": "voucher_draft",
+        "project_membership_batch": "indexed_scalar_candidates",
     }
     assert "tenant" in version["content"]
     assert "hidden reasoning" in version["content"]
@@ -241,7 +242,7 @@ def test_required_mode_generates_candidate_then_deterministic_work_intent() -> N
     assert result.prompt_provenance["prompt_binding_key"] == (
         AE_INTENT_RESOLUTION_BINDING
     )
-    assert result.prompt_provenance["prompt_template_version"] == "v2"
+    assert result.prompt_provenance["prompt_template_version"] == "v3"
     assert result.model_provenance["mo_generation_id"] == ("mo-generation-p65-s2")
 
     call = client.generation_calls[0]
@@ -668,14 +669,14 @@ def test_invalid_prompt_provenance_digest_fails_closed() -> None:
     assert raised.value.error_code == "CANDIDATE_SCHEMA_INVALID"
 
 
-def test_in_flight_binding_switch_keeps_captured_v2_snapshot() -> None:
+def test_in_flight_binding_switch_keeps_captured_v3_snapshot() -> None:
     base = _store()
     seed = next(
         item
         for item in AE_PROMPT_SEEDS
         if item.binding_key == AE_INTENT_RESOLUTION_BINDING
     )
-    v3_seed = replace(seed, version="v3", content=seed.content + " Version three.")
+    v3_seed = replace(seed, version="v4", content=seed.content + " Version four.")
     template = build_prompt_template(v3_seed)
     version = base.save_template_version(
         build_prompt_template_version(v3_seed, template)
@@ -703,7 +704,7 @@ def test_in_flight_binding_switch_keeps_captured_v2_snapshot() -> None:
     result = _run(_service(store=switching))
 
     assert switching.switched is True
-    assert result.prompt_provenance["prompt_template_version"] == "v2"
+    assert result.prompt_provenance["prompt_template_version"] == "v3"
     assert (
         base.get_binding(AE_INTENT_RESOLUTION_BINDING)["prompt_template_version_id"]
         == version["prompt_template_version_id"]

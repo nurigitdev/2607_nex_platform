@@ -106,7 +106,7 @@ def run_p65_s2_live_intent_candidate_smoke(
         "exact_prompt_binding_captured": (
             result.prompt_provenance.get("prompt_binding_key")
             == AE_INTENT_RESOLUTION_BINDING
-            and result.prompt_provenance.get("prompt_template_version") == "v2"
+            and result.prompt_provenance.get("prompt_template_version") == "v3"
         ),
         "model_specific_calibration_selected": (
             result.admission_policy_ref is not None

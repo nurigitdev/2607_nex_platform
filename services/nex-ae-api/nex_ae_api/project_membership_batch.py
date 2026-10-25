@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import httpx
+from nex_runtime import resolve_service_endpoint
 from nex_runtime.semantic_hashes import (
     nsl_write_payload_hash_ref,
     semantic_sha256_hash_ref,
@@ -27,7 +28,7 @@ PROJECT_MEMBERSHIP_BATCH_SKILL_BINDING_SCHEMA_VERSION = (
     "p8.project_membership_batch_skill_binding.v1"
 )
 OA_EMPLOYEE_BATCH_RESOLUTION_SCHEMA_VERSION = "oa_employee_batch_resolution.v1"
-DEFAULT_OA_BASE_URL = "http://127.0.0.1:8101"
+DEFAULT_OA_BASE_URL = resolve_service_endpoint("nex-oa", environ={}).base_url
 DEFAULT_OA_EMPLOYEE_BATCH_TIMEOUT_SECONDS = 15.0
 MAX_PROJECT_MEMBERSHIP_BATCH_SIZE = 50
 
@@ -159,7 +160,7 @@ def build_default_oa_employee_batch_resolution_source(
 ) -> HttpOaEmployeeBatchResolutionSource:
     env = os.environ if environ is None else environ
     return HttpOaEmployeeBatchResolutionSource(
-        base_url=env.get("NEX_OA_BASE_URL", DEFAULT_OA_BASE_URL),
+        base_url=resolve_service_endpoint("nex-oa", environ=env).base_url,
         service_token=env.get("NEX_AE_TO_OA_SERVICE_TOKEN"),
         timeout_seconds=_positive_float(
             env.get("NEX_AE_OA_EMPLOYEE_BATCH_TIMEOUT_SECONDS"),
