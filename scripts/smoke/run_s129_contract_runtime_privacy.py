@@ -62,7 +62,7 @@ def run_s129_contract_runtime_privacy(root: Path = ROOT) -> dict[str, Any]:
         ),
         "oa_drift_reduced": oa_drift.get("status") == "PASS"
         and oa_drift.get("summary", {}).get("drift_count") == 21
-        and oa_drift.get("summary", {}).get("runtime_openapi_covered_count") == 32,
+        and oa_drift.get("summary", {}).get("runtime_openapi_covered_count") == 33,
         "telemetry_aggregated": set(snapshot["counts"].values()) == {1},
         "telemetry_privacy_safe": not _contains_key(
             snapshot,

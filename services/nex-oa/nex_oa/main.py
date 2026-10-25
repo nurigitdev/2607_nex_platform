@@ -2,9 +2,11 @@ from nex_runtime import (
     SERVICE_SPECS,
     attach_service_persistence_runtime,
     build_service_app,
+    operational_event_emitter_from_app,
     register_service_job_control_routes,
     register_service_log_retention_routes,
 )
+
 from nex_oa.auth_boundary import register_identity_auth_boundary_routes
 from nex_oa.auth_events import (
     build_auth_event_repository_for_runtime,
@@ -25,20 +27,17 @@ from nex_oa.bootstrap_login_boundary import (
 from nex_oa.credential_delivery import (
     register_session_credential_delivery_boundary_routes,
 )
-from nex_oa.identity_lifecycle_repository import (
-    build_identity_lifecycle_repository_for_runtime,
-)
-from nex_oa.identity_lifecycle_service import (
-    OaIdentityLifecycleService,
-    register_identity_lifecycle_routes,
+from nex_oa.credential_security import (
+    build_credential_security_repository_for_runtime,
+    register_credential_security_routes,
 )
 from nex_oa.credentials import (
     build_credential_registry_for_runtime,
     register_local_credential_routes,
 )
-from nex_oa.credential_security import (
-    build_credential_security_repository_for_runtime,
-    register_credential_security_routes,
+from nex_oa.employee_batch_resolution import (
+    OaEmployeeBatchResolver,
+    register_employee_batch_resolution_routes,
 )
 from nex_oa.federated_identity_repository import (
     build_federated_identity_repository_for_runtime,
@@ -49,36 +48,42 @@ from nex_oa.federated_login import (
     OaFederatedLoginService,
     register_federated_login_routes,
 )
+from nex_oa.identity_lifecycle_repository import (
+    build_identity_lifecycle_repository_for_runtime,
+)
+from nex_oa.identity_lifecycle_service import (
+    OaIdentityLifecycleService,
+    register_identity_lifecycle_routes,
+)
 from nex_oa.memberships import (
     build_tenant_membership_registry_for_runtime,
     register_identity_membership_routes,
 )
+from nex_oa.service_auth import build_oa_local_service_token_admission
+from nex_oa.service_principal_api import register_service_principal_routes
+from nex_oa.service_principal_repository import (
+    build_service_principal_repository_for_runtime,
+)
+from nex_oa.service_principal_service import OaServicePrincipalService
 from nex_oa.sessions import (
     build_oa_session_registry_for_runtime,
     register_user_session_routes,
 )
-from nex_oa.service_principal_repository import (
-    build_service_principal_repository_for_runtime,
-)
-from nex_oa.service_principal_api import register_service_principal_routes
-from nex_oa.service_principal_service import OaServicePrincipalService
+from nex_oa.signed_token_api import register_signed_token_routes
 from nex_oa.signed_token_repository import build_signed_token_repository_for_runtime
 from nex_oa.signing_key_service import OaSigningKeyService
-from nex_oa.signed_token_api import register_signed_token_routes
-from nex_oa.token_exchange_service import OaClientCredentialTokenExchangeService
-from nex_oa.token_signing import build_oa_signing_provider
-from nex_oa.token_validation_service import OaSignedTokenValidationService
-from nex_runtime import operational_event_emitter_from_app
 from nex_oa.subjects import (
     build_subject_registry_for_runtime,
     register_subject_registry_routes,
 )
-from nex_oa.user_login import OaUserLoginService, register_user_login_routes
-from nex_oa.service_auth import build_oa_local_service_token_admission
+from nex_oa.token_exchange_service import OaClientCredentialTokenExchangeService
+from nex_oa.token_signing import build_oa_signing_provider
+from nex_oa.token_validation_service import OaSignedTokenValidationService
 from nex_oa.trace_projection import (
     RepositoryOaTraceProjectionSource,
     register_oa_trace_projection_routes,
 )
+from nex_oa.user_login import OaUserLoginService, register_user_login_routes
 
 SERVICE_SPEC = SERVICE_SPECS["nex-oa"]
 app = build_service_app(SERVICE_SPEC, include_oa_mock_auth_routes=False)
@@ -92,6 +97,10 @@ TENANT_MEMBERSHIP_REGISTRY = build_tenant_membership_registry_for_runtime(
 LOCAL_CREDENTIAL_REGISTRY = build_credential_registry_for_runtime(
     SERVICE_PERSISTENCE,
     subject_registry=SUBJECT_REGISTRY,
+)
+EMPLOYEE_BATCH_RESOLVER = OaEmployeeBatchResolver(
+    credential_registry=LOCAL_CREDENTIAL_REGISTRY,
+    membership_registry=TENANT_MEMBERSHIP_REGISTRY,
 )
 AUTHORIZATION_REPOSITORY = build_authorization_repository_for_runtime(
     SERVICE_PERSISTENCE
@@ -191,6 +200,7 @@ register_credential_security_routes(
     auth_event_repository=AUTH_EVENT_REPOSITORY,
 )
 register_identity_membership_routes(app, registry=TENANT_MEMBERSHIP_REGISTRY)
+register_employee_batch_resolution_routes(app, resolver=EMPLOYEE_BATCH_RESOLVER)
 register_authorization_routes(app, service=AUTHORIZATION_SERVICE)
 register_identity_lifecycle_routes(app, service=IDENTITY_LIFECYCLE_SERVICE)
 register_service_principal_routes(

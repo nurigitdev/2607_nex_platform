@@ -1125,6 +1125,16 @@
       "name": "eos_nvt_project_update_command_immutable_code",
       "path": "tests/negative/service/eos_nvt_project_update_command.immutable_code.json",
       "schema": "schemas/service/nex_eos/nvt_project_update_command.v1.schema.json"
+    },
+    {
+      "name": "oa_employee_batch_resolution_rejected_subject_leak",
+      "path": "tests/negative/auth/oa_employee_batch_resolution.rejected_subject_leak.json",
+      "schema": "schemas/service/nex_oa/employee_batch_resolution.v1.schema.json"
+    },
+    {
+      "name": "oa_employee_batch_resolution_request_private_field",
+      "path": "tests/negative/auth/oa_employee_batch_resolution_request.private_field.json",
+      "schema": "schemas/service/nex_oa/employee_batch_resolution_request.v1.schema.json"
     }
   ]
 }

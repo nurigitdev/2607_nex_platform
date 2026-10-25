@@ -323,11 +323,11 @@ def run_oa_service_principal_contracts(root: Path = ROOT) -> dict[str, Any]:
         "canonical_schema_links_declared": all(canonical_checks.values()),
         "contract_inventory_complete": (
             drift.get("status") == "PASS"
-            and drift_summary.get("runtime_operation_count") == 53
-            and drift_summary.get("openapi_operation_count") == 32
-            and drift_summary.get("schema_count") == 26
-            and drift_summary.get("positive_fixture_covered_count") == 26
-            and drift_summary.get("negative_fixture_covered_count") == 26
+            and drift_summary.get("runtime_operation_count") == 54
+            and drift_summary.get("openapi_operation_count") == 33
+            and drift_summary.get("schema_count") == 28
+            and drift_summary.get("positive_fixture_covered_count") == 28
+            and drift_summary.get("negative_fixture_covered_count") == 28
             and drift_summary.get("drift_count") == 21
         ),
     }

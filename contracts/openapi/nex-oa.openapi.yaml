@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX OA API
-  version: 0.0.0-slice1289
+  version: 0.0.0-p8-s107
 tags:
   - name: Platform
   - name: Auth
@@ -97,6 +97,30 @@ paths:
         "403": {description: Caller scope or requested user scope is not allowed.}
         "404": {description: Active tenant membership was not found.}
         "503": {description: OA trust or persistence runtime is unavailable.}
+  /internal/v1/identity/employees:resolve-batch:
+    post:
+      operationId: resolveOaEmployeeBatch
+      tags: [Identity Lifecycle]
+      security:
+        - signedServiceBearer: []
+      x-nex-required-scopes: [service:call, identity:employee:resolve]
+      x-nex-route-class: READ
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmployeeBatchResolutionRequest"
+      responses:
+        "200":
+          description: Tenant-scoped employee candidates were resolved independently.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeBatchResolution"
+        "400": {description: "Batch envelope or structural bounds are invalid."}
+        "401": {description: "Service token is missing, invalid, or lacks required scope."}
+        "503": {description: "OA authority or persistence is unavailable; retry the operation."}
   /api/v1/auth/service-token:
     post:
       operationId: exchangeOaClientCredentialToken
@@ -941,6 +965,12 @@ components:
     OaUserLoginResponse:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_oa/user_login_response.v1.schema.json
+    EmployeeBatchResolutionRequest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/employee_batch_resolution_request.v1.schema.json
+    EmployeeBatchResolution:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/employee_batch_resolution.v1.schema.json
     ServiceTokenExchangeRequest:
       type: object
       additionalProperties: false

@@ -1,0 +1,8 @@
+{
+  "tenant_id": "tenant-demo",
+  "candidates": [
+    {"input_index": 0, "employee_id": "EMP-1001", "expected_name": "홍길동"},
+    {"input_index": 1, "employee_id": "EMP-1002"},
+    {"input_index": 2, "employee_id": "EMP-1001"}
+  ]
+}

@@ -1314,6 +1314,16 @@
       "name": "eos_nvt_project_update_command_valid",
       "path": "examples/service/eos_nvt_project_update_command.valid.json",
       "schema": "schemas/service/nex_eos/nvt_project_update_command.v1.schema.json"
+    },
+    {
+      "name": "oa_employee_batch_resolution_request_mixed",
+      "path": "examples/auth/oa_employee_batch_resolution_request.mixed.json",
+      "schema": "schemas/service/nex_oa/employee_batch_resolution_request.v1.schema.json"
+    },
+    {
+      "name": "oa_employee_batch_resolution_mixed",
+      "path": "examples/auth/oa_employee_batch_resolution.mixed.json",
+      "schema": "schemas/service/nex_oa/employee_batch_resolution.v1.schema.json"
     }
   ]
 }
