@@ -15,6 +15,7 @@ from nex_runtime.demo_compose import (
     DemoComposeError,
     admit_demo_compose_sources,
     admit_rendered_demo_compose,
+    image_environment_from_installed_runtime_reports,
     image_environment_from_release_report,
 )
 
@@ -46,7 +47,12 @@ def _release_report() -> dict:
         "status": "PASS",
         "image_build": {
             "artifacts": [
-                {"artifact_id": key, "image_reference": value}
+                {
+                    "artifact_id": key,
+                    "image_reference": value,
+                    "image_id": value.rsplit("@", 1)[1],
+                    "local_tag": f"demo/{key}:current",
+                }
                 for key, value in references.items()
             ]
         },
@@ -175,6 +181,65 @@ def test_release_report_rejects_failure_and_coverage_drift() -> None:
     report["image_build"]["artifacts"].pop()
     with pytest.raises(DemoComposeError, match="coverage drift"):
         image_environment_from_release_report(report)
+
+
+def test_installed_runtime_report_replaces_only_the_ae_image() -> None:
+    image_id = "sha256:" + "a" * 64
+    report = {
+        "status": "PASS",
+        "slice": "P8-DEMO-S10B",
+        "base_image": "demo/nex-ae-runtime:current",
+        "output_image": "demo/nex-ae-runtime:p8-demo-s10b",
+        "bundle": {"status": "PASS"},
+        "image": {
+            "image_id": image_id,
+            "repo_digests": [f"demo/nex-ae-runtime@{image_id}"],
+        },
+    }
+
+    environment = image_environment_from_installed_runtime_reports(
+        _release_report(), report
+    )
+
+    assert environment["NEX_AE_RUNTIME_IMAGE"] == (
+        f"demo/nex-ae-runtime@{image_id}"
+    )
+    assert environment["NEX_WC_RUNTIME_IMAGE"] == _references()["nex-wc-runtime"]
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    (
+        (lambda value: {**value, "status": "FAIL"}, "not passing"),
+        (lambda value: {**value, "bundle": {"status": "FAIL"}}, "not admitted"),
+        (lambda value: {**value, "base_image": "wrong"}, "base image drift"),
+        (
+            lambda value: {
+                **value,
+                "image": {**value["image"], "repo_digests": ["latest"]},
+            },
+            "mutable",
+        ),
+    ),
+)
+def test_installed_runtime_report_rejects_provenance_drift(mutation, message: str) -> None:
+    image_id = "sha256:" + "a" * 64
+    report = {
+        "status": "PASS",
+        "slice": "P8-DEMO-S10B",
+        "base_image": "demo/nex-ae-runtime:current",
+        "output_image": "demo/nex-ae-runtime:p8-demo-s10b",
+        "bundle": {"status": "PASS"},
+        "image": {
+            "image_id": image_id,
+            "repo_digests": [f"demo/nex-ae-runtime@{image_id}"],
+        },
+    }
+
+    with pytest.raises(DemoComposeError, match=message):
+        image_environment_from_installed_runtime_reports(
+            _release_report(), mutation(report)
+        )
 
 
 def test_source_admission_contains_yaml_and_policy_drift(

@@ -58,6 +58,7 @@ _IMAGE_ENV_BY_ARTIFACT = {
     "nex-ae-web": "NEX_AE_WEB_IMAGE",
 }
 _IMMUTABLE_IMAGE = re.compile(r"^[^@\s]+@sha256:[0-9a-f]{64}$")
+_SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class DemoComposeError(ValueError):
@@ -212,6 +213,57 @@ def image_environment_from_release_report(
         _IMAGE_ENV_BY_ARTIFACT[artifact_id]: reference
         for artifact_id, reference in references.items()
     }
+
+
+def image_environment_from_installed_runtime_reports(
+    release_report: Mapping[str, Any],
+    ae_runtime_report: Mapping[str, Any],
+) -> dict[str, str]:
+    """Bind the complete release set to the NSL-bundled AE runtime image."""
+
+    environment = image_environment_from_release_report(release_report)
+    artifacts = _mapping(
+        _mapping(release_report.get("image_build"), "image build").get("artifacts"),
+        "image artifacts",
+        sequence=True,
+    )
+    ae_release = next(
+        (
+            item
+            for item in artifacts.values()
+            if isinstance(item, Mapping)
+            and item.get("artifact_id") == "nex-ae-runtime"
+        ),
+        None,
+    )
+    if ae_release is None:
+        raise DemoComposeError("P8 Demo OCI report AE artifact is unavailable")
+    if (
+        ae_runtime_report.get("status") != "PASS"
+        or ae_runtime_report.get("slice") != "P8-DEMO-S10B"
+    ):
+        raise DemoComposeError("installed AE runtime report is not passing")
+    bundle = _mapping(ae_runtime_report.get("bundle"), "installed AE bundle")
+    image = _mapping(ae_runtime_report.get("image"), "installed AE image")
+    if bundle.get("status") != "PASS":
+        raise DemoComposeError("installed AE runtime bundle is not admitted")
+    if ae_runtime_report.get("base_image") not in {
+        ae_release.get("local_tag"),
+        ae_release.get("image_reference"),
+    }:
+        raise DemoComposeError("installed AE runtime base image drift")
+    image_id = str(image.get("image_id") or "")
+    references = tuple(str(value) for value in image.get("repo_digests") or ())
+    if _SHA256.fullmatch(image_id) is None or len(references) != 1:
+        raise DemoComposeError("installed AE runtime image identity is invalid")
+    reference = references[0]
+    if _IMMUTABLE_IMAGE.fullmatch(reference) is None or not reference.endswith(image_id):
+        raise DemoComposeError("installed AE runtime image reference is mutable")
+    output_repository = str(ae_runtime_report.get("output_image") or "").split(":", 1)[0]
+    if not output_repository or not reference.startswith(f"{output_repository}@"):
+        raise DemoComposeError("installed AE runtime repository drift")
+    environment["NEX_AE_RUNTIME_IMAGE"] = reference
+    return environment
 
 
 def _load_mapping(value: str, label: str) -> dict[str, Any]:
