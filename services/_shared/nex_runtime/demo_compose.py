@@ -60,6 +60,10 @@ _IMAGE_ENV_BY_ARTIFACT = {
 _IMMUTABLE_IMAGE = re.compile(r"^[^@\s]+@sha256:[0-9a-f]{64}$")
 _SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 _LOCAL_TAG = re.compile(r"^(?P<repository>[^@\s]+):(?P<tag>[A-Za-z0-9_.-]+)$")
+_AE_REQUIRED_PLANNING_ENVIRONMENT = {
+    "NEX_AE_AGENT_RUNTIME_MODE": "required",
+    "NEX_AE_PLANNING_MODE": "required",
+}
 
 
 class DemoComposeError(ValueError):
@@ -112,6 +116,17 @@ def admit_demo_compose_sources(
                 overlay.get("secrets"), "Demo Compose secrets"
             ):
                 errors.append(f"Demo owner secret missing: {owner}_{kind}")
+    ae_environment = _mapping(
+        _mapping(services.get("nex-ae-api"), "service nex-ae-api").get("environment"),
+        "Demo AE environment",
+    )
+    for name, expected in _AE_REQUIRED_PLANNING_ENVIRONMENT.items():
+        if ae_environment.get(name) != expected:
+            errors.append(f"Demo AE planning profile drift: {name}")
+    if "NEX_P8_DEMO_SEMANTIC_CALIBRATION_POLICIES_JSON" not in str(
+        ae_environment.get("NEX_AE_P65_SEMANTIC_CALIBRATION_POLICIES_JSON") or ""
+    ):
+        errors.append("Demo AE semantic calibration input missing")
     if "_TEST_DATABASE_URL" in overlay_text or "nuri1004" in overlay_text:
         errors.append("Demo Compose contains a test or raw database credential")
 

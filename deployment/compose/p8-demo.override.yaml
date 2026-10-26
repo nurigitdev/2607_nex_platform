@@ -131,6 +131,9 @@ services:
       NEX_DEPLOYMENT_BOUNDARY: P8_DEMO
       NEX_P8_DEMO_SERVICE_TOKEN_PROFILE: STARTUP_24H
       NEX_P8_DEMO_STARTUP_TOKEN_BOOTSTRAP: "true"
+      NEX_AE_AGENT_RUNTIME_MODE: required
+      NEX_AE_PLANNING_MODE: required
+      NEX_AE_P65_SEMANTIC_CALIBRATION_POLICIES_JSON: ${NEX_P8_DEMO_SEMANTIC_CALIBRATION_POLICIES_JSON:?semantic calibration policies are required}
       NEX_AE_TO_MO_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_MO_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
       NEX_AE_TO_AG_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_AG_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
       NEX_WC_BASE_URL: https://wc.nex-staging.test:8443

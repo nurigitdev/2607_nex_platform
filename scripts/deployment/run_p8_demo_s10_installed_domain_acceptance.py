@@ -175,7 +175,16 @@ def _execute_protected_acceptance(
     root: Path,
     image_report_path: Path,
     ae_image_report_path: Path,
+    additional_services: Sequence[str] = (),
+    live_hook: Callable[..., Mapping[str, Any]] | None = None,
+    restart_services: Sequence[str] = DEMO_DOMAIN_PROCESSES,
+    post_restart_hook: Callable[..., Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    admitted_restart_services = tuple(dict.fromkeys(restart_services))
+    if not admitted_restart_services:
+        raise P8DemoS10AcceptanceError(
+            "installed acceptance restart services are required"
+        )
     image_report = _load_json(image_report_path)
     ae_image_report = _load_json(ae_image_report_path)
     image_environment = image_environment_from_installed_runtime_reports(
@@ -307,6 +316,9 @@ def _execute_protected_acceptance(
                         payload={"data": {"value": value}},
                     )
 
+            installed_services = tuple(
+                dict.fromkeys((*DOMAIN_SERVICES, *additional_services))
+            )
             _compose(
                 runtime_env,
                 root=root,
@@ -316,7 +328,7 @@ def _execute_protected_acceptance(
                     "--wait",
                     "--wait-timeout",
                     "180",
-                    *DOMAIN_SERVICES,
+                    *installed_services,
                 ),
             )
             _wait_for_tls(
@@ -331,16 +343,53 @@ def _execute_protected_acceptance(
             token_runtimes = _signed_token_runtime_acceptance(
                 runtime_dir, materials=materials
             )
+            extended_acceptance = None
+            if live_hook is not None:
+                extended_acceptance = dict(
+                    live_hook(
+                        runtime_env=runtime_env,
+                        root=root,
+                        runtime_dir=runtime_dir,
+                        urls=urls,
+                        materials=materials,
+                        root_access=root_access,
+                        root_secret=root_secret,
+                        object_credentials=object_credentials,
+                    )
+                )
+                if extended_acceptance.get("status") != "PASS":
+                    raise P8DemoS10AcceptanceError(
+                        "extended installed acceptance did not pass"
+                    )
 
             _compose(
                 runtime_env,
                 root=root,
-                arguments=("restart", *DEMO_DOMAIN_PROCESSES),
+                arguments=("restart", *admitted_restart_services),
             )
             restarted_heartbeats = _wait_for_heartbeats(
                 urls,
                 previous=initial_heartbeats,
             )
+            post_restart_acceptance = None
+            if post_restart_hook is not None:
+                post_restart_acceptance = dict(
+                    post_restart_hook(
+                        runtime_env=runtime_env,
+                        root=root,
+                        runtime_dir=runtime_dir,
+                        urls=urls,
+                        materials=materials,
+                        root_access=root_access,
+                        root_secret=root_secret,
+                        object_credentials=object_credentials,
+                        live_acceptance=extended_acceptance,
+                    )
+                )
+                if post_restart_acceptance.get("status") != "PASS":
+                    raise P8DemoS10AcceptanceError(
+                        "post-restart installed acceptance did not pass"
+                    )
             bootstrap_counts = _bootstrap_log_counts(runtime_env, root=root)
             domain = admit_demo_domain_runtime_evidence(
                 initial_heartbeats=initial_heartbeats,
@@ -375,6 +424,10 @@ def _execute_protected_acceptance(
                 "secret_included": False,
                 "token_value_included": False,
             }
+            if extended_acceptance is not None:
+                result["extended_acceptance"] = extended_acceptance
+            if post_restart_acceptance is not None:
+                result["post_restart_acceptance"] = post_restart_acceptance
             _assert_redacted(result, sensitive)
             return result
         finally:

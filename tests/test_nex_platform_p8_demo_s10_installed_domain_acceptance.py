@@ -184,3 +184,17 @@ def test_evidence_redaction_and_atomic_report(tmp_path: Path) -> None:
     report = tmp_path / "s10.json"
     acceptance._write_report(report, {"status": "PASS", "secret_included": False})
     assert json.loads(report.read_text(encoding="utf-8"))["status"] == "PASS"
+
+
+def test_s10_installed_acceptance_requires_restart_targets() -> None:
+    with pytest.raises(
+        acceptance.P8DemoS10AcceptanceError,
+        match="restart services",
+    ):
+        acceptance._execute_protected_acceptance(
+            {},
+            root=ROOT,
+            image_report_path=Path("images.json"),
+            ae_image_report_path=Path("ae.json"),
+            restart_services=(),
+        )
