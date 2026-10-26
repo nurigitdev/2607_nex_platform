@@ -307,8 +307,18 @@ export async function runP8DemoS11PostRestartRecovery({
     );
     stage = "result_render";
     const rendered = await renderAgentResult(page, projection);
-    stage = "requester_logout";
-    await logout(page, timeout);
+    stage = "requester_session_close";
+    const logoutResponse = await browserJson(
+      page,
+      "/ae-api/api/v1/auth/session/logout",
+      { method: "POST" }
+    );
+    if (logoutResponse.status !== 200) {
+      throw new Error(`CredentialLogoutStatus${logoutResponse.status}`);
+    }
+    stage = "requester_shell_reset";
+    await page.reload({ waitUntil: "domcontentloaded", timeout });
+    await page.waitForSelector("#authentication-shell:not([hidden])", { timeout });
     const checks = {
       authenticated_after_restart: true,
       authoritative_result_recovered: projection.terminal === true,
