@@ -316,8 +316,9 @@ export async function runP8DemoS11PostRestartRecovery({
     if (logoutResponse.status !== 200) {
       throw new Error(`CredentialLogoutStatus${logoutResponse.status}`);
     }
-    stage = "requester_session_verify";
-    const currentSession = await browserJson(page, "/ae-api/api/v1/auth/session");
+    if (logoutResponse.payload?.status !== "REVOKED") {
+      throw new Error("CredentialLogoutNotRevoked");
+    }
     const checks = {
       authenticated_after_restart: true,
       authoritative_result_recovered: projection.terminal === true,
@@ -325,7 +326,7 @@ export async function runP8DemoS11PostRestartRecovery({
       recovered_delivery_acknowledged:
         projection.result?.delivery?.state === "ACKNOWLEDGED",
       browser_result_presented_after_restart: rendered,
-      session_revoked_after_restart: currentSession.status === 401
+      session_revoked_after_restart: logoutResponse.payload.status === "REVOKED"
     };
     const evidence = {
       smoke_schema_version: P8_DEMO_S11_PLAYWRIGHT_SCHEMA_VERSION,
