@@ -59,6 +59,7 @@ _IMAGE_ENV_BY_ARTIFACT = {
 }
 _IMMUTABLE_IMAGE = re.compile(r"^[^@\s]+@sha256:[0-9a-f]{64}$")
 _SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
+_LOCAL_TAG = re.compile(r"^(?P<repository>[^@\s]+):(?P<tag>[A-Za-z0-9_.-]+)$")
 
 
 class DemoComposeError(ValueError):
@@ -238,6 +239,22 @@ def image_environment_from_installed_runtime_reports(
     )
     if ae_release is None:
         raise DemoComposeError("P8 Demo OCI report AE artifact is unavailable")
+    for item in artifacts.values():
+        if not isinstance(item, Mapping):
+            raise DemoComposeError("P8 Demo OCI local image artifact is invalid")
+        artifact_id = str(item.get("artifact_id") or "")
+        local_match = _LOCAL_TAG.fullmatch(str(item.get("local_tag") or ""))
+        image_id = str(item.get("image_id") or "")
+        if (
+            artifact_id not in _IMAGE_ENV_BY_ARTIFACT
+            or local_match is None
+            or _SHA256.fullmatch(image_id) is None
+            or item.get("manifest_digest") != image_id
+        ):
+            raise DemoComposeError("P8 Demo OCI local image identity drift")
+        environment[_IMAGE_ENV_BY_ARTIFACT[artifact_id]] = (
+            f"{local_match.group('repository')}@{image_id}"
+        )
     if (
         ae_runtime_report.get("status") != "PASS"
         or ae_runtime_report.get("slice") != "P8-DEMO-S10B"

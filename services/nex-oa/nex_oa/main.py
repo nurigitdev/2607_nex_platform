@@ -7,6 +7,7 @@ from nex_runtime import (
     operational_event_emitter_from_app,
     register_service_job_control_routes,
     register_service_log_retention_routes,
+    register_service_token_admission_routes,
 )
 
 from nex_oa.auth_boundary import register_identity_auth_boundary_routes
@@ -180,6 +181,7 @@ SERVICE_TOKEN_ADMISSION = build_oa_local_service_token_admission(
     validation_service=TOKEN_VALIDATION_SERVICE,
 )
 app.state.service_token_admission = SERVICE_TOKEN_ADMISSION
+register_service_token_admission_routes(app, spec=SERVICE_SPEC)
 SERVICE_PRINCIPAL_AUDIT_EMITTER = operational_event_emitter_from_app(
     app,
     service_id="nex-oa",

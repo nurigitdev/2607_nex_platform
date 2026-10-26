@@ -50,6 +50,7 @@ from nex_oa.service_principal_repository import (
 )
 from nex_oa.service_principal_service import OaServicePrincipalService
 from nex_oa.signed_token_repository import SqlAlchemyOaSignedTokenRepository
+from nex_oa.signing_key_policy import MINIMUM_PUBLICATION_LEAD_SECONDS
 from nex_oa.signing_key_service import OaSigningKeyService
 from nex_runtime.demo_compose import (
     admit_demo_compose_sources,
@@ -220,6 +221,7 @@ def _execute_protected_acceptance(
     runtime_env: dict[str, str] | None = None
     provisioned: Any = None
     key_id: str | None = None
+    created_principal_ids: tuple[str, ...] = ()
     oa_engine: Any = None
     with TemporaryDirectory(prefix="nex-p8-demo-s10-") as temporary:
         runtime_dir = Path(temporary) / "runtime"
@@ -287,7 +289,7 @@ def _execute_protected_acceptance(
             )
 
             oa_engine = create_engine(urls["nex-oa"], poolclass=NullPool)
-            provisioned, key_id = _provision_oa_trust(
+            provisioned, key_id, created_principal_ids = _provision_oa_trust(
                 oa_engine,
                 admin=admin,
                 root_token=bootstrap.root_token,
@@ -388,6 +390,7 @@ def _execute_protected_acceptance(
                     oa_engine,
                     provisioned=provisioned,
                     key_id=key_id,
+                    created_principal_ids=created_principal_ids,
                 )
                 oa_engine.dispose()
 
@@ -436,16 +439,20 @@ def _provision_oa_trust(
     root_token: str,
     generation: str,
     client_secrets: Mapping[str, str],
-) -> tuple[Any, str]:
+) -> tuple[Any, str, tuple[str, ...]]:
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     principals = OaServicePrincipalService(
         SqlAlchemyOaServicePrincipalRepository(factory)
     )
-    provisioned = provision_demo_service_principals(
-        principals,
-        generation=generation,
-        client_secrets=client_secrets,
-        now_epoch=int(time.time()),
+    specs = demo_service_principal_specs()
+    existing_principal_ids = _existing_demo_principal_ids(engine, specs=specs)
+    created_principal_ids = tuple(
+        spec.principal_id
+        for spec in specs
+        if spec.principal_id not in existing_principal_ids
+    )
+    credential_ids = tuple(
+        f"{spec.principal_id}-{generation}" for spec in specs
     )
     keys = OaSigningKeyService(
         repository=SqlAlchemyOaSignedTokenRepository(factory),
@@ -463,25 +470,62 @@ def _provision_oa_trust(
             "OA Demo dev database already has an active signing key"
         )
     key_id = f"p8-demo-s10-{secrets.token_hex(8)}"
-    register_openbao_transit_key_version(
-        OpenBaoTransitKeyProvisioner(admin, root_token),
-        keys,
-        key_name=TRANSIT_KEY_NAME,
-        key_version=1,
-        key_id=key_id,
-        issuer=PRODUCTION_TOKEN_ISSUER,
-        published_at=now - 60,
-        activate_at=now - 30,
-        sign_until=now + 172_800,
-        verify_until=now + 259_200,
-    )
-    keys.set_key_state(
-        key_id,
-        target_state="ACTIVE",
-        expected_revision=1,
-        now_epoch=now,
-    )
-    return provisioned, key_id
+    try:
+        provisioned = provision_demo_service_principals(
+            principals,
+            generation=generation,
+            client_secrets=client_secrets,
+            now_epoch=now,
+        )
+        register_openbao_transit_key_version(
+            OpenBaoTransitKeyProvisioner(admin, root_token),
+            keys,
+            key_name=TRANSIT_KEY_NAME,
+            key_version=1,
+            key_id=key_id,
+            issuer=PRODUCTION_TOKEN_ISSUER,
+            **_signing_key_window(now),
+        )
+        keys.set_key_state(
+            key_id,
+            target_state="ACTIVE",
+            expected_revision=1,
+            now_epoch=now,
+        )
+    except Exception:
+        _delete_oa_acceptance_rows(
+            engine,
+            credential_ids=credential_ids,
+            principal_ids=created_principal_ids,
+            key_id=key_id,
+        )
+        raise
+    return provisioned, key_id, created_principal_ids
+
+
+def _existing_demo_principal_ids(engine: Any, *, specs: Sequence[Any]) -> set[str]:
+    existing = set()
+    with engine.connect() as connection:
+        for spec in specs:
+            present = connection.execute(
+                text(
+                    "SELECT principal_id FROM oa_service_principals "
+                    "WHERE principal_id=:principal_id"
+                ),
+                {"principal_id": spec.principal_id},
+            ).scalar_one_or_none()
+            if present is not None:
+                existing.add(str(present))
+    return existing
+
+
+def _signing_key_window(now_epoch: int) -> dict[str, int]:
+    return {
+        "published_at": now_epoch - MINIMUM_PUBLICATION_LEAD_SECONDS,
+        "activate_at": now_epoch,
+        "sign_until": now_epoch + 172_800,
+        "verify_until": now_epoch + 259_200,
+    }
 
 
 def _signed_token_runtime_acceptance(
@@ -523,7 +567,9 @@ def _signed_token_runtime_acceptance(
         )
         if runtime_status != 200:
             raise P8DemoS10AcceptanceError(
-                f"signed service-token runtime admission failed: {audience}"
+                "signed service-token runtime admission failed: "
+                f"{audience}: status={runtime_status} "
+                f"error={payload.get('error_code', 'unknown')}"
             )
         results[audience] = runtime
     return results
@@ -650,30 +696,47 @@ def _cleanup_oa_acceptance_rows(
     *,
     provisioned: Any,
     key_id: str | None,
+    created_principal_ids: Sequence[str],
 ) -> None:
     if provisioned is None and key_id is None:
         return
+    credential_ids = tuple(
+        item.credential_id for item in provisioned.materials
+    ) if provisioned is not None else ()
+    _delete_oa_acceptance_rows(
+        engine,
+        credential_ids=credential_ids,
+        principal_ids=created_principal_ids,
+        key_id=key_id,
+    )
+
+
+def _delete_oa_acceptance_rows(
+    engine: Any,
+    *,
+    credential_ids: Sequence[str],
+    principal_ids: Sequence[str],
+    key_id: str | None,
+) -> None:
     with engine.begin() as connection:
         if key_id is not None:
             connection.execute(
                 text("DELETE FROM oa_signing_keys WHERE key_id=:key_id"),
                 {"key_id": key_id},
             )
-        if provisioned is not None:
-            for item in provisioned.materials:
-                connection.execute(
-                    text("DELETE FROM oa_service_creds WHERE credential_id=:id"),
-                    {"id": item.credential_id},
-                )
-            if provisioned.created_principal_count:
-                for spec in demo_service_principal_specs():
-                    connection.execute(
-                        text(
-                            "DELETE FROM oa_service_principals "
-                            "WHERE principal_id=:principal_id"
-                        ),
-                        {"principal_id": spec.principal_id},
-                    )
+        for credential_id in credential_ids:
+            connection.execute(
+                text("DELETE FROM oa_service_creds WHERE credential_id=:id"),
+                {"id": credential_id},
+            )
+        for principal_id in principal_ids:
+            connection.execute(
+                text(
+                    "DELETE FROM oa_service_principals "
+                    "WHERE principal_id=:principal_id"
+                ),
+                {"principal_id": principal_id},
+            )
 
 
 def _container_database_url(value: str) -> str:

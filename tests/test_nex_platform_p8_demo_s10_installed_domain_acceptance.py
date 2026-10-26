@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 import run_p8_demo_s10_installed_domain_acceptance as acceptance
+from sqlalchemy import create_engine, text
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -117,6 +118,61 @@ def test_secret_material_covers_base_bindings_without_exposing_urls() -> None:
     assert values["NEX_MO_VLLM_API_KEY"].startswith("unused-")
     with pytest.raises(acceptance.P8DemoS10AcceptanceError, match="PostgreSQL"):
         acceptance._container_database_url("sqlite:///local.db")
+
+
+def test_demo_signing_key_window_honors_production_publication_lead() -> None:
+    window = acceptance._signing_key_window(1_000_000)
+
+    assert window["activate_at"] - window["published_at"] == 330
+    assert window["sign_until"] > window["activate_at"]
+    assert window["verify_until"] > window["sign_until"]
+
+
+def test_partial_oa_trust_cleanup_is_exact_and_residue_free() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE oa_signing_keys (key_id TEXT PRIMARY KEY)"))
+        connection.execute(
+            text(
+                "CREATE TABLE oa_service_principals "
+                "(principal_id TEXT PRIMARY KEY)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE oa_service_creds "
+                "(credential_id TEXT PRIMARY KEY, principal_id TEXT)"
+            )
+        )
+        connection.execute(
+            text("INSERT INTO oa_signing_keys VALUES ('target-key'), ('keep-key')")
+        )
+        connection.execute(
+            text("INSERT INTO oa_service_principals VALUES ('target'), ('keep')")
+        )
+        connection.execute(
+            text(
+                "INSERT INTO oa_service_creds VALUES "
+                "('target-cred', 'target'), ('keep-cred', 'keep')"
+            )
+        )
+
+    acceptance._delete_oa_acceptance_rows(
+        engine,
+        credential_ids=("target-cred",),
+        principal_ids=("target",),
+        key_id="target-key",
+    )
+
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT key_id FROM oa_signing_keys")).scalar_one() == "keep-key"
+        assert connection.execute(
+            text("SELECT principal_id FROM oa_service_principals")
+        ).scalar_one() == "keep"
+        assert connection.execute(
+            text("SELECT credential_id FROM oa_service_creds")
+        ).scalar_one() == "keep-cred"
+    engine.dispose()
 
 
 def test_evidence_redaction_and_atomic_report(tmp_path: Path) -> None:

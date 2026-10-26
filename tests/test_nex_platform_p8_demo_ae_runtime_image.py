@@ -5,6 +5,20 @@ from types import SimpleNamespace
 
 import build_p8_demo_ae_runtime_image as build
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_demo_ae_runtime_containerfile_admits_every_embedded_asset_path() -> None:
+    source = (ROOT / "deployment/oci/p8-demo-ae-runtime.Containerfile").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "NEX_AE_DEMO_PLATFORM_LOCK="
+        "/app/deployment/p8-demo/locks/python-production.lock"
+    ) in source
+    assert "assert all(Path(os.environ[name]).exists() for name in names)" in source
+
 
 def test_demo_ae_runtime_image_dry_run_requires_locked_bundle() -> None:
     result = build.build_p8_demo_ae_runtime_image(

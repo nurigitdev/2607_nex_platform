@@ -4,8 +4,8 @@ import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from time import time
 from threading import Lock
+from time import time
 from typing import Any, Protocol
 
 import httpx
@@ -26,7 +26,6 @@ from .signed_token_verifier import (
     SignedTokenVerificationError,
     VerifiedServiceTokenClaims,
 )
-
 
 TOKEN_ROLLOUT_PROFILES = ("TEST_MOCK", "DUAL_READ", "SIGNED_ONLY")
 TOKEN_ROUTE_CLASSES = ("READ", "WRITE", "ADMIN", "CREDENTIAL", "KEY_MANAGEMENT")
@@ -597,6 +596,25 @@ def register_service_token_admission_routes(
             "request_id": request_id_from_headers(request),
             "trace_id": trace_id_from_headers(request),
         }
+
+    @app.get("/internal/v1/auth/service-token-runtime", response_model=None)
+    def service_token_runtime(
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any] | JSONResponse:
+        runtime = _service_token_admission_from_app(request)
+        if isinstance(runtime, JSONResponse):
+            return runtime
+        try:
+            runtime.admit(
+                authorization,
+                required_scopes=(DEFAULT_SERVICE_SCOPE,),
+                route_class="READ",
+            )
+        except ServiceTokenAdmissionError as exc:
+            return service_token_admission_problem_response(request, exc)
+        return runtime.public_snapshot()
+
 
 def _service_token_admission_from_app(
     request: Request,

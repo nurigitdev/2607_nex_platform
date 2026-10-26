@@ -51,6 +51,7 @@ def _release_report() -> dict:
                     "artifact_id": key,
                     "image_reference": value,
                     "image_id": value.rsplit("@", 1)[1],
+                    "manifest_digest": value.rsplit("@", 1)[1],
                     "local_tag": f"demo/{key}:current",
                 }
                 for key, value in references.items()
@@ -204,7 +205,8 @@ def test_installed_runtime_report_replaces_only_the_ae_image() -> None:
     assert environment["NEX_AE_RUNTIME_IMAGE"] == (
         f"demo/nex-ae-runtime@{image_id}"
     )
-    assert environment["NEX_WC_RUNTIME_IMAGE"] == _references()["nex-wc-runtime"]
+    wc_digest = _references()["nex-wc-runtime"].rsplit("@", 1)[1]
+    assert environment["NEX_WC_RUNTIME_IMAGE"] == f"demo/nex-wc-runtime@{wc_digest}"
 
 
 @pytest.mark.parametrize(
