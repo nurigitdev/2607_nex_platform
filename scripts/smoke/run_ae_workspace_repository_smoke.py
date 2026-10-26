@@ -90,6 +90,16 @@ def _session_factory():
                 metadata TEXT NOT NULL, created_at TEXT NOT NULL
             )
         """))
+        connection.execute(text("""
+            CREATE TABLE ae_conversations (
+                conversation_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL,
+                workspace_id TEXT NOT NULL, owner_user_id TEXT NOT NULL,
+                title TEXT NOT NULL, status TEXT NOT NULL,
+                next_journal_seq INTEGER NOT NULL, created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL, version INTEGER NOT NULL,
+                UNIQUE (tenant_id, conversation_id)
+            )
+        """))
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 

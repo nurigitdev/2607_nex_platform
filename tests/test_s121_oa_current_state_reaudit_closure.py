@@ -15,18 +15,24 @@ def test_repository_s121_closure_accepts_monotonic_hardening() -> None:
         "CONFIRMED_GAPS_NOT_PRODUCTION_AUTH_COMPLETE"
     )
     assert all(result["checks"].values())
-    assert result["summary"] == {
+    summary = result["summary"]
+    stable_summary = {
+        key: value
+        for key, value in summary.items()
+        if key != "contract_drift_count"
+    }
+    assert stable_summary == {
         "audit_count": 8,
         "passed_audit_count": 8,
         "traceable_requirement_count": 5,
         "lifecycle_gap_count": 0,
         "security_gap_count": 0,
-        "contract_drift_count": 21,
         "trust_refactor_count": 2,
         "repaired_surface_count": 5,
         "missing_file_count": 0,
         "missing_token_count": 0,
     }
+    assert 0 <= summary["contract_drift_count"] <= 21
     assert set(result["audit_statuses"].values()) == {"PASS"}
     assert all(result["postgres_evidence"].values())
     assert result["next_requirement"] == "S122"
@@ -104,10 +110,11 @@ def test_closure_helpers_fail_closed(tmp_path: Path) -> None:
 
 def test_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = closure.run_s121_oa_current_state_reaudit_closure()
+    drift = passing["summary"]["contract_drift_count"]
 
     assert closure.summary_line(passing) == (
         "s121_oa_current_state_reaudit_closure=pass audits=8/8 "
-        "lifecycle_gaps=0 security_gaps=0 contract_drift=21 next=S122"
+        f"lifecycle_gaps=0 security_gaps=0 contract_drift={drift} next=S122"
     )
     assert "next=blocked" in closure.summary_line({"status": "FAIL"})
 

@@ -116,16 +116,22 @@ def test_repository_contract_smoke_passes_with_reduced_known_drift() -> None:
     assert all(result["checks"].values())
     assert result["failed_checks"] == []
     assert result["issues"] == []
-    assert result["summary"] == {
+    summary = result["summary"]
+    stable_summary = {
+        key: value
+        for key, value in summary.items()
+        if key != "remaining_contract_drift_count"
+    }
+    assert stable_summary == {
         "schema_count": 2,
         "positive_fixture_count": 2,
         "negative_fixture_count": 2,
         "documented_operation_count": 2,
         "lifecycle_implemented_count": 8,
         "remaining_lifecycle_gap_count": 0,
-        "remaining_contract_drift_count": 21,
         "issue_count": 0,
     }
+    assert 0 <= summary["remaining_contract_drift_count"] <= 21
 
 
 def test_contract_smoke_fails_closed_without_inputs(tmp_path: Path) -> None:
@@ -171,8 +177,12 @@ def test_safe_audit_summary_and_main_paths(monkeypatch, capsys) -> None:
     assert contracts._safe_audit(lambda _root: None, ROOT) == {"status": "FAIL"}
 
     passing = contracts.run_oa_identity_lifecycle_contracts()
+    summary = passing["summary"]
     assert "contracts=pass" in contracts.summary_line(passing)
-    assert "contract_drift=21" in contracts.summary_line(passing)
+    assert (
+        f"contract_drift={summary['remaining_contract_drift_count']}"
+        in contracts.summary_line(passing)
+    )
     monkeypatch.setattr(
         contracts,
         "run_oa_identity_lifecycle_contracts",

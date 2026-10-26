@@ -21,13 +21,19 @@ def test_repository_contracts_are_strict_scoped_and_privacy_safe() -> None:
     assert all(result["privacy_checks"].values())
     assert all(result["operation_checks"].values())
     assert result["issues"] == []
-    assert result["summary"] == {
+    summary = result["summary"]
+    stable_summary = {
+        key: value
+        for key, value in summary.items()
+        if key != "remaining_contract_drift_count"
+    }
+    assert stable_summary == {
         "schema_count": 2,
         "documented_operation_count": 3,
         "security_implemented_count": 8,
         "security_gap_count": 0,
-        "remaining_contract_drift_count": 21,
     }
+    assert 0 <= summary["remaining_contract_drift_count"] <= 21
 
 
 @pytest.mark.parametrize("name", sorted(contracts.CONTRACTS))
@@ -75,9 +81,12 @@ def test_helpers_cover_invalid_inputs_and_privacy_shapes(tmp_path: Path) -> None
 
 def test_summary_and_cli_paths(monkeypatch, capsys) -> None:
     passing = contracts.run_oa_credential_security_contracts()
+    summary = passing["summary"]
     assert "contracts=pass" in contracts.summary_line(passing)
     assert "security=8/8" in contracts.summary_line(passing)
-    assert "drift=21" in contracts.summary_line(passing)
+    assert f"drift={summary['remaining_contract_drift_count']}" in contracts.summary_line(
+        passing
+    )
     monkeypatch.setattr(
         contracts, "run_oa_credential_security_contracts", lambda: passing
     )

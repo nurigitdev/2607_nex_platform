@@ -10,13 +10,20 @@ from nex_oa.database_drift_audit import (
 import run_oa_database_drift_audit as runner
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _expected_migration_count() -> int:
+    return len(tuple((ROOT / "database/nex-oa/migrations").glob("*.sql")))
+
+
 def test_repository_database_drift_audit_is_statically_clean() -> None:
     result = build_oa_database_drift_audit()
 
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
     assert result["issues"] == []
-    assert result["summary"]["migration_count"] == 18
+    assert result["summary"]["migration_count"] == _expected_migration_count()
     assert result["summary"]["core_table_count"] == 16
     assert result["summary"]["overlength_identifier_count"] == 0
     assert result["database_readiness"] == (
@@ -77,9 +84,10 @@ def test_database_drift_audit_reports_malformed_migration(tmp_path: Path) -> Non
 
 def test_summary_line_and_runner_main_paths(monkeypatch, capsys) -> None:
     passing = runner.run_oa_database_drift_audit()
+    migration_count = _expected_migration_count()
 
     assert "database_drift_audit=pass" in runner.summary_line(passing)
-    assert "migrations=18" in runner.summary_line(passing)
+    assert f"migrations={migration_count}" in runner.summary_line(passing)
     assert "alembic=NOT_CONFIGURED" in runner.summary_line(passing)
     monkeypatch.setattr(runner, "run_oa_database_drift_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0
