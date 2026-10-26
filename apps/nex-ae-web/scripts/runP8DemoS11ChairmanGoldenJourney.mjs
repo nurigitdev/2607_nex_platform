@@ -403,7 +403,22 @@ async function login(page, { tenantId, employeeId, password, timeout }) {
 }
 
 async function logout(page, timeout) {
-  await page.click("#credential-logout-button");
+  await page.waitForSelector(
+    "#credential-logout-button:not([hidden]):not([disabled])",
+    { timeout }
+  );
+  const responsePromise = page.waitForResponse(response => {
+    const route = new URL(response.url()).pathname;
+    return (
+      response.request().method() === "POST" &&
+      route === "/ae-api/api/v1/auth/session/logout"
+    );
+  }, { timeout });
+  await page.click("#credential-logout-button", { timeout });
+  const response = await responsePromise;
+  if (response.status() !== 200) {
+    throw new Error(`CredentialLogoutStatus${response.status()}`);
+  }
   await page.waitForSelector("#authentication-shell:not([hidden])", { timeout });
 }
 
