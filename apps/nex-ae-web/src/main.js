@@ -2533,8 +2533,11 @@ async function pollInteractionAgentResult(message, attempt = 1) {
       await workspaceState.interactionAgentResultClient.getInteractionAgentResult(
         message.interactionId
       );
+    if (message.agentResult.terminal) {
+      applyTerminalInteractionAgentResult(message);
+      return;
+    }
     renderMessages();
-    if (message.agentResult.terminal) return;
   } catch (error) {
     if (error?.statusCode !== 404) {
       message.agentResult = {
@@ -2551,6 +2554,42 @@ async function pollInteractionAgentResult(message, attempt = 1) {
     () => void pollInteractionAgentResult(message, attempt + 1),
     2000
   );
+}
+
+function applyTerminalInteractionAgentResult(message) {
+  const resultStatus = message.agentResult.result?.status ||
+    message.agentResult.executionState;
+  const succeeded = ["SUCCEEDED", "PARTIAL"].includes(resultStatus);
+  message.text = succeeded
+    ? "Agent 업무 처리가 완료되었습니다."
+    : "Agent 실행이 종료되었습니다. 상태와 경고를 확인해 주세요.";
+  workspaceState.operations.generation = succeeded
+    ? markOperationSucceeded(workspaceState.operations.generation, {
+        status: resultStatus,
+        resultStatus,
+        clientMode: workspaceState.interactionAgentResultClient.clientMode,
+        route: message.agentResult.route
+      })
+    : markOperationFailed(workspaceState.operations.generation, {
+        errorStatus: resultStatus,
+        retryable: false,
+        clientMode: workspaceState.interactionAgentResultClient.clientMode,
+        route: message.agentResult.route
+      });
+  workspaceState.progressEvents.push([
+    "agent.execution.completed",
+    message.agentResult.executionPhase,
+    succeeded ? "COMPLETED" : "FAILED"
+  ]);
+  workspaceState.artifact.handoffStatus = "NOT_REQUIRED";
+  workspaceState.artifact.citationStatus = "NOT_REQUIRED";
+  workspaceState.generationPresentation = {
+    ...workspaceState.generationPresentation,
+    displayMode: "AGENT_RESULT",
+    assistantText: message.text,
+    nextAction: "PRESENT_AGENT_RESULT"
+  };
+  renderWorkspace();
 }
 
 async function cancelActiveGeneration() {

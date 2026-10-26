@@ -210,7 +210,11 @@ export async function runP8DemoS11ChairmanGoldenJourney({
       interactionId,
       timeout
     );
-    const rendered = await renderAgentResult(requesterPage, resultProjection);
+    await requesterPage.waitForSelector(
+      ".agent-result[data-agent-result-state='SUCCEEDED']",
+      { timeout }
+    );
+    const rendered = await inspectRenderedAgentResult(requesterPage);
     await screenCapture.capture(requesterPage, "requester-result");
 
     stage = "logout";
@@ -249,6 +253,8 @@ export async function runP8DemoS11ChairmanGoldenJourney({
         value => value.startsWith("EOS:BUSINESS_OPERATION:")
       ),
       browser_result_presented: rendered,
+      browser_generation_state_succeeded:
+        (await requesterPage.textContent("#generation-stage")) === "완료",
       requester_logout_returned_to_login:
         await requesterPage.isVisible("#credential-login-panel"),
       approver_logout_returned_to_login:
@@ -557,18 +563,13 @@ function isTransientBrowserFetchFailure(error) {
   return /Failed to fetch|NetworkError|ERR_(?:CONNECTION|NETWORK|HTTP2)/i.test(value);
 }
 
-async function renderAgentResult(page, projection) {
-  return page.evaluate(async value => {
-    const module = await import("/src/interactionAgentResultClient.js");
-    const projected = module.projectInteractionAgentResult(value, {
-      clientMode: "fetch",
-      route: "owner-scoped-agent-result"
-    });
-    const container = document.querySelector("#message-list");
-    container.insertAdjacentHTML("beforeend", module.renderInteractionAgentResult(projected));
-    const card = container.querySelector(".agent-result[data-agent-result-state='SUCCEEDED']");
+async function inspectRenderedAgentResult(page) {
+  return page.evaluate(() => {
+    const card = document.querySelector(
+      ".agent-result[data-agent-result-state='SUCCEEDED']"
+    );
     return Boolean(card && card.textContent.includes("업무 처리 결과"));
-  }, projection);
+  });
 }
 
 async function browserJson(page, route, { method = "GET", body = null } = {}) {

@@ -104,8 +104,10 @@ export async function runGroundedGenerationWorkflow({
     admission = await client.admitInteraction(request);
     state = applyGenerationAdmission(state, admission);
     publish("generation.request.accepted");
+    const agentExecutionAdmitted =
+      admission.semanticPlanning?.status === "COMPILED";
 
-    while (!state.terminal && pollCount < maxPolls) {
+    while (!agentExecutionAdmitted && !state.terminal && pollCount < maxPolls) {
       assertNotAborted(signal);
       const delay = state.nextPollAfterSeconds ?? 2;
       if (client.clientMode !== "mock") await wait(delay);
@@ -144,6 +146,8 @@ export async function runGroundedGenerationWorkflow({
     state,
     readModel,
     admission,
+    agentExecutionAdmitted:
+      admission?.semanticPlanning?.status === "COMPILED",
     groundingRequested: request.retrieval?.enabled === true,
     pollCount,
     pollLimitReached: state.phase === "active" && pollCount === maxPolls,

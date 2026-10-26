@@ -32,6 +32,11 @@ Those capabilities remain available from their authenticated navigation views.
 - The S11 Playwright runner creates the durable workspace, installs its
   browser bootstrap, types the canonical voucher prompt, disables retrieval,
   and clicks the visible Send button.
+- A compiled semantic Agent plan is handed to the AgentResult lifecycle. It
+  does not continue through the response/citation polling path owned by
+  ordinary Chat/RAG generation.
+- The pending AgentResult card is updated in place at terminal completion and
+  drives the workspace status to `COMPLETED` without adding a duplicate card.
 - Screen evidence includes the empty workspace, prompt-ready state, and
   prompt-submitted state in addition to approval, result, logout, and restart
   recovery transitions.
@@ -54,10 +59,16 @@ Compose reused the previous immutable AE Web image. This is an expected
 fail-closed result: the current eight-image release set and enriched AE runtime
 image must be rebuilt before the protected acceptance is repeated.
 
+Visual inspection of the first rebuilt run found a second fail-closed issue:
+the business execution and EOS commit succeeded, but the legacy generation
+poller subsequently marked the browser surface failed. The semantic planning
+handoff above closes that split-brain presentation without changing the RAG
+workflow.
+
 ## Focused Regression
 
 ```text
-AE Web Node tests       = 398 passed
+AE Web Node tests       = 400 passed
 S11 Python tests        = 10 passed
 AE Web static tests     = 28 passed
 syntax / diff checks    = PASS
