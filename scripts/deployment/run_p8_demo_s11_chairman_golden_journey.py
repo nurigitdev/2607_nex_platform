@@ -284,8 +284,12 @@ def _execute_protected_acceptance(env: Mapping[str, str], *, root: Path) -> dict
                 ),
                 "one_voucher_after_restart": database["voucher_count"] == 1,
             }
+            if not all(checks.values()):
+                raise P8DemoS11Error(
+                    _post_restart_failure_detail(recovered, checks=checks)
+                )
             return {
-                "status": "PASS" if all(checks.values()) else "FAIL",
+                "status": "PASS",
                 "actual_playwright": True,
                 "authoritative_recovery": True,
                 "browser": _public_browser_evidence(recovered),
@@ -490,6 +494,20 @@ def _safe_diagnostic_value(value: Any) -> str:
         text_value
         if text_value.replace("_", "").replace("-", "").replace(".", "").isalnum()
         else "invalid"
+    )
+
+
+def _post_restart_failure_detail(
+    recovered: Mapping[str, Any], *, checks: Mapping[str, bool]
+) -> str:
+    observations = recovered.get("observations")
+    stage = observations.get("stage") if isinstance(observations, Mapping) else None
+    failed = tuple(sorted(key for key, value in checks.items() if value is not True))
+    return (
+        "post-restart Chairman acceptance failed "
+        f"(failure={_safe_diagnostic_value(recovered.get('failure_code'))}; "
+        f"stage={_safe_diagnostic_value(stage)}; "
+        f"checks={','.join(failed) or 'none'})"
     )
 
 

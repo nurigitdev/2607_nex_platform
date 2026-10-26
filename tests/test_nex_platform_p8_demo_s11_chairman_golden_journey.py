@@ -292,3 +292,23 @@ def test_s11_failed_step_summary_is_bounded_and_public() -> None:
             "VALID:APPROVAL_VALID"
         ),
     )
+
+
+def test_s11_post_restart_failure_detail_is_bounded_and_actionable() -> None:
+    detail = acceptance._post_restart_failure_detail(
+        {
+            "failure_code": "AgentResultStatus503",
+            "observations": {"stage": "authoritative_result_recovery"},
+        },
+        checks={
+            "browser_recovery_passed": False,
+            "result_hash_stable": False,
+            "one_agent_result_after_restart": True,
+        },
+    )
+
+    assert detail == (
+        "post-restart Chairman acceptance failed "
+        "(failure=AgentResultStatus503; stage=authoritative_result_recovery; "
+        "checks=browser_recovery_passed,result_hash_stable)"
+    )
