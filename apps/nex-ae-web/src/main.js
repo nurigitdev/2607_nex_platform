@@ -1020,14 +1020,14 @@ async function submitCredentialLogin() {
       tenantInput: credentialTenantInput,
       employeeInput: credentialEmployeeInput,
       passwordInput: credentialPasswordInput,
-      requestedScopes: ["workspace:use", "documents:upload"]
+      requestedScopes: null
     });
     credentialPasswordInput.value = "";
     const sessionState = await workspaceState.sessionClient.login(loginRequest);
     workspaceState.credentialLogin = createCredentialLoginSurfaceState({
       tenantId: loginRequest.tenant_id,
       employeeId: loginRequest.employee_id,
-      requestedScopes: loginRequest.requested_scopes,
+      requestedScopes: sessionState.scopes,
       ttlSeconds: loginRequest.ttl_seconds,
       status: "AUTHENTICATED",
       reason: "login_succeeded"

@@ -252,7 +252,8 @@ export async function runP8DemoS11ChairmanGoldenJourney({
   } catch (error) {
     const evidence = failure(safeFailureCode(error), {
       stage,
-      response_count: responses.length
+      response_count: responses.length,
+      recent_api_responses: responses.slice(-5)
     });
     assertP8DemoS11EvidenceRedacted(evidence, environ);
     return evidence;
@@ -367,7 +368,18 @@ async function login(page, { tenantId, employeeId, password, timeout }) {
   await page.fill("#credential-tenant-id", tenantId);
   await page.fill("#credential-employee-id", employeeId);
   await page.fill("#credential-password", password);
+  const responsePromise = page.waitForResponse(response => {
+    const route = new URL(response.url()).pathname;
+    return (
+      response.request().method() === "POST" &&
+      route === "/ae-api/api/v1/auth/session/login"
+    );
+  }, { timeout });
   await page.click("#credential-login-submit-button");
+  const response = await responsePromise;
+  if (response.status() !== 200) {
+    throw new Error(`CredentialLoginStatus${response.status()}`);
+  }
   await page.waitForSelector("#authenticated-shell:not([hidden])", { timeout });
 }
 
