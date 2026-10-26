@@ -21,9 +21,24 @@ def test_s11_source_admission_is_protected_and_provider_scoped() -> None:
     assert result["actual_postgres_required"] is True
     assert result["actual_remote_generation_required"] is True
     assert result["actual_playwright_required"] is True
+    assert result["screen_capture_required"] is True
     assert result["approval_authority_read_admitted"] is True
     assert result["embedding_required"] is False
     assert result["reranking_required"] is False
+
+
+def test_s11_prepares_a_clean_bounded_screenshot_directory(tmp_path: Path) -> None:
+    target = tmp_path / "screens"
+    target.mkdir()
+    stale = target / "p8-demo-s11-journey-01-login.png"
+    unrelated = target / "keep.png"
+    stale.write_bytes(b"stale")
+    unrelated.write_bytes(b"keep")
+
+    acceptance._prepare_screenshot_directory(target)
+
+    assert not stale.exists()
+    assert unrelated.read_bytes() == b"keep"
 
 
 def test_s11_source_admission_runs_in_a_standalone_process(tmp_path: Path) -> None:

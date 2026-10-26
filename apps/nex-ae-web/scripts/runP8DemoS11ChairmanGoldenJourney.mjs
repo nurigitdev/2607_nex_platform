@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { PLAYWRIGHT_CHROMIUM_EXECUTABLE_ENV } from "./runCredentialLoginPlaywrightReadiness.mjs";
@@ -16,6 +18,7 @@ const ENV = {
   approverPassword: "NEX_P8_DEMO_S11_APPROVER_PASSWORD",
   prompt: "NEX_P8_DEMO_S11_PROMPT",
   recoveryInteractionId: "NEX_P8_DEMO_S11_RECOVERY_INTERACTION_ID",
+  screenshotDir: "NEX_P8_DEMO_S11_SCREENSHOT_DIR",
   timeoutMs: "NEX_P8_DEMO_S11_TIMEOUT_MS"
 };
 const REQUIRED_ENV = [
@@ -69,6 +72,7 @@ export async function runP8DemoS11ChairmanGoldenJourney({
   let problemStage = null;
   let problemDirective = null;
   const responses = [];
+  const screenCapture = createScreenCapture(environ, "journey");
   try {
     const playwright = await importPlaywright();
     browser = await launchBrowser(playwright, environ);
@@ -84,6 +88,7 @@ export async function runP8DemoS11ChairmanGoldenJourney({
     const anonymousProtectedSurfaceHidden =
       (await requesterPage.isHidden("#authenticated-shell")) &&
       (await requesterPage.isHidden("#approval-panel"));
+    await screenCapture.capture(requesterPage, "login");
 
     stage = "requester_login";
     await login(requesterPage, {
@@ -92,6 +97,7 @@ export async function runP8DemoS11ChairmanGoldenJourney({
       password: environ[ENV.requesterPassword],
       timeout
     });
+    await screenCapture.capture(requesterPage, "requester-workspace");
 
     stage = "workspace_create";
     const workspace = await browserJson(requesterPage, "/ae-api/api/v1/workspaces", {
@@ -168,19 +174,23 @@ export async function runP8DemoS11ChairmanGoldenJourney({
       password: environ[ENV.approverPassword],
       timeout
     });
+    await screenCapture.capture(approverPage, "approver-workspace");
 
     stage = "approval_wait";
     const gateId = await waitForNslWriteGate(approverPage, timeout);
     await approverPage.click('[data-shell-view="approvals"]');
     await approverPage.waitForSelector('.approval-feedback[data-phase="READY"]', { timeout });
     await approverPage.waitForSelector(`[data-approval-gate-id="${gateId}"]`, { timeout });
+    await screenCapture.capture(approverPage, "approval-inbox");
 
     stage = "approval_decision";
     await approverPage.click(`[data-approval-gate-id="${gateId}"]`);
     await approverPage.waitForSelector('.approval-feedback[data-phase="DETAIL_READY"]', { timeout });
+    await screenCapture.capture(approverPage, "approval-detail");
     await approverPage.fill("#approval-decision-comment", "P8-DEMO-S11 protected acceptance");
     await approverPage.click('[data-approval-decision="APPROVE"]');
     await approverPage.waitForSelector('.approval-feedback[data-phase="DECIDED"]', { timeout });
+    await screenCapture.capture(approverPage, "approval-decided");
     if (!decisionRequest) throw new Error("ApprovalDecisionRequestMissing");
 
     stage = "approval_replay";
@@ -196,10 +206,13 @@ export async function runP8DemoS11ChairmanGoldenJourney({
       timeout
     );
     const rendered = await renderAgentResult(requesterPage, resultProjection);
+    await screenCapture.capture(requesterPage, "requester-result");
 
     stage = "logout";
     await logout(approverPage, timeout);
+    await screenCapture.capture(approverPage, "approver-logged-out");
     await logout(requesterPage, timeout);
+    await screenCapture.capture(requesterPage, "requester-logged-out");
     const checks = {
       chromium_launched: true,
       anonymous_protected_surface_hidden: anonymousProtectedSurfaceHidden,
@@ -246,6 +259,7 @@ export async function runP8DemoS11ChairmanGoldenJourney({
         result_external_ref_count:
           resultProjection.result?.external_refs?.length || 0
       },
+      screen_capture: screenCapture.evidence(),
       checks,
       runtime: {
         interaction_id: interactionId,
@@ -265,6 +279,7 @@ export async function runP8DemoS11ChairmanGoldenJourney({
       failed_stage: problemStage,
       failure_directive: problemDirective
     });
+    evidence.screen_capture = screenCapture.evidence();
     assertP8DemoS11EvidenceRedacted(evidence, environ);
     return evidence;
   } finally {
@@ -285,6 +300,7 @@ export async function runP8DemoS11PostRestartRecovery({
   let context = null;
   let stage = "launch";
   const responses = [];
+  const screenCapture = createScreenCapture(environ, "recovery");
   try {
     const playwright = await importPlaywright();
     browser = await launchBrowser(playwright, environ);
@@ -299,6 +315,7 @@ export async function runP8DemoS11PostRestartRecovery({
       password: environ[ENV.requesterPassword],
       timeout
     });
+    await screenCapture.capture(page, "requester-workspace");
     stage = "authoritative_result_read";
     const projection = await waitForAgentResult(
       page,
@@ -307,6 +324,7 @@ export async function runP8DemoS11PostRestartRecovery({
     );
     stage = "result_render";
     const rendered = await renderAgentResult(page, projection);
+    await screenCapture.capture(page, "requester-result");
     stage = "requester_session_close";
     const logoutResponse = await browserJson(
       page,
@@ -336,6 +354,7 @@ export async function runP8DemoS11PostRestartRecovery({
         result_business_ref_count: projection.result?.business_refs?.length || 0,
         result_external_ref_count: projection.result?.external_refs?.length || 0
       },
+      screen_capture: screenCapture.evidence(),
       checks,
       runtime: {
         interaction_id: environ[ENV.recoveryInteractionId],
@@ -351,12 +370,45 @@ export async function runP8DemoS11PostRestartRecovery({
       response_count: responses.length,
       recent_api_responses: responses.slice(-5)
     });
+    evidence.screen_capture = screenCapture.evidence();
     assertP8DemoS11EvidenceRedacted(evidence, environ);
     return evidence;
   } finally {
     if (context) await context.close();
     if (browser) await browser.close();
   }
+}
+
+function createScreenCapture(environ, prefix) {
+  const directory = environ[ENV.screenshotDir] || null;
+  const captures = [];
+  let index = 0;
+  return {
+    async capture(page, stage) {
+      if (!directory) return;
+      await mkdir(directory, { recursive: true });
+      index += 1;
+      const filename = [
+        "p8-demo-s11",
+        prefix,
+        String(index).padStart(2, "0"),
+        stage
+      ].join("-") + ".png";
+      await page.screenshot({
+        path: path.join(directory, filename),
+        fullPage: true,
+        animations: "disabled"
+      });
+      captures.push({ stage, file: filename });
+    },
+    evidence() {
+      return {
+        enabled: Boolean(directory),
+        count: captures.length,
+        captures: [...captures]
+      };
+    }
+  };
 }
 
 async function launchBrowser(playwright, environ) {

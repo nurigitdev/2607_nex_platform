@@ -44,6 +44,7 @@ DEFAULT_REPORT = ROOT / "reports/deployment/p8-demo-s11-chairman-golden-journey.
 PLAYWRIGHT_RUNNER = (
     ROOT / "apps/nex-ae-web/scripts/runP8DemoS11ChairmanGoldenJourney.mjs"
 )
+SCREENSHOT_ENV = "NEX_P8_DEMO_S11_SCREENSHOT_DIR"
 TENANT_ID = "VO00"
 REQUESTER_EMPLOYEE_ID = "1001"
 APPROVER_EMPLOYEE_ID = "2001"
@@ -114,6 +115,7 @@ def _source_admission(root: Path) -> dict[str, Any]:
         "actual_rustfs_required": True,
         "actual_remote_generation_required": True,
         "actual_playwright_required": True,
+        "screen_capture_required": True,
         "approval_authority_read_admitted": True,
         "embedding_required": False,
         "reranking_required": False,
@@ -135,6 +137,8 @@ def _execute_protected_acceptance(env: Mapping[str, str], *, root: Path) -> dict
     credential_snapshot: list[dict[str, Any]] = []
     live_state: dict[str, Any] = {}
     try:
+        screenshot_dir = root / "reports/deployment/p8-demo-s11-screens"
+        _prepare_screenshot_directory(screenshot_dir)
         composed._cleanup_dynamic_rows(engines, tenant_id=TENANT_ID)
         credential_snapshot = _rotate_demo_credentials(
             engines["nex-oa"],
@@ -156,6 +160,7 @@ def _execute_protected_acceptance(env: Mapping[str, str], *, root: Path) -> dict
 
         runtime_env = {
             **env,
+            SCREENSHOT_ENV: str(screenshot_dir),
             "NEX_P8_DEMO_SEMANTIC_CALIBRATION_POLICIES_JSON": (
                 _semantic_calibration_json()
             ),
@@ -375,6 +380,12 @@ def _run_playwright(
     if completed.returncode != 0 or evidence.get("status") != "PASS":
         return dict(evidence)
     return dict(evidence)
+
+
+def _prepare_screenshot_directory(directory: Path) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    for screenshot in directory.glob("p8-demo-s11-*.png"):
+        screenshot.unlink()
 
 
 def _activate_golden_a_capability(engine: Any, *, root: Path) -> dict[str, Any]:
