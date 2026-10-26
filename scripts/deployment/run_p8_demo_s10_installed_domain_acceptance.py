@@ -378,6 +378,7 @@ def _execute_protected_acceptance(
                 root=root,
                 arguments=("restart", *admitted_restart_services),
             )
+            restarted_readiness = _wait_for_service_readiness(runtime_dir)
             restarted_heartbeats = _wait_for_heartbeats(
                 urls,
                 previous=initial_heartbeats,
@@ -426,6 +427,7 @@ def _execute_protected_acceptance(
                 "approle_profile": approles,
                 "service_principal_provisioning": provisioned.evidence(),
                 "readiness": readiness,
+                "restarted_readiness": restarted_readiness,
                 "domain_acceptance": domain,
                 "release_set_digest": image_report["release_manifest"][
                     "release_set_digest"
@@ -658,6 +660,20 @@ def _service_readiness(runtime_dir: Path) -> dict[str, str]:
             raise P8DemoS10AcceptanceError(f"Demo service is not ready: {service_id}")
         result[service_id] = "READY"
     return result
+
+
+def _wait_for_service_readiness(
+    runtime_dir: Path, *, timeout_seconds: float = 90.0
+) -> dict[str, str]:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        try:
+            return _service_readiness(runtime_dir)
+        except (OSError, P8DemoS10AcceptanceError, http.client.HTTPException, ssl.SSLError):
+            time.sleep(0.5)
+    raise P8DemoS10AcceptanceError(
+        "Demo services did not become ready after restart"
+    )
 
 
 def _pending_domain_counts(urls: Mapping[str, str]) -> dict[str, int]:

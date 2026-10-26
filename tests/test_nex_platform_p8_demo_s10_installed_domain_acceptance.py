@@ -242,3 +242,43 @@ def test_s10_installed_acceptance_requires_restart_targets() -> None:
             ae_image_report_path=Path("ae.json"),
             restart_services=(),
         )
+
+
+def test_restart_readiness_waits_for_transient_proxy_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    attempts = iter(
+        (
+            acceptance.P8DemoS10AcceptanceError("Demo service is not ready"),
+            {
+                "nex-oa": "READY",
+                "nex-ae-api": "READY",
+                "nex-wc": "READY",
+                "nex-eos": "READY",
+            },
+        )
+    )
+
+    def readiness(_runtime_dir):
+        value = next(attempts)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(acceptance, "_service_readiness", readiness)
+    monkeypatch.setattr(acceptance.time, "sleep", lambda _seconds: None)
+
+    assert acceptance._wait_for_service_readiness(tmp_path) == {
+        "nex-oa": "READY",
+        "nex-ae-api": "READY",
+        "nex-wc": "READY",
+        "nex-eos": "READY",
+    }
+
+
+def test_restart_readiness_timeout_is_bounded(tmp_path: Path) -> None:
+    with pytest.raises(
+        acceptance.P8DemoS10AcceptanceError,
+        match="did not become ready after restart",
+    ):
+        acceptance._wait_for_service_readiness(tmp_path, timeout_seconds=0.0)
