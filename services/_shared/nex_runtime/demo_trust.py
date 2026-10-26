@@ -123,7 +123,10 @@ DEMO_SECRET_BINDINGS = tuple(
 
 DEMO_TRUST_GRANTS = (
     DemoTrustGrant(
-        "NEX_AE_TO_OA_SERVICE_TOKEN", "nex-ae-api", "nex-oa", ("service:call",)
+        "NEX_AE_TO_OA_SERVICE_TOKEN",
+        "nex-ae-api",
+        "nex-oa",
+        ("service:call", "authorization:read"),
     ),
     DemoTrustGrant(
         "NEX_AE_TO_CX_SERVICE_TOKEN", "nex-ae-api", "nex-cx", ("service:call",)

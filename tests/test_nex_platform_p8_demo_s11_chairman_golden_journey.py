@@ -21,6 +21,7 @@ def test_s11_source_admission_is_protected_and_provider_scoped() -> None:
     assert result["actual_postgres_required"] is True
     assert result["actual_remote_generation_required"] is True
     assert result["actual_playwright_required"] is True
+    assert result["approval_authority_read_admitted"] is True
     assert result["embedding_required"] is False
     assert result["reranking_required"] is False
 
@@ -155,6 +156,33 @@ def test_s11_public_browser_projection_strips_runtime_lineage() -> None:
         }
     ) == ("agent_result_succeeded", "browser_result_presented")
     assert acceptance._failed_browser_checks({"checks": []}) == ()
+    assert acceptance._browser_terminal_summary(
+        {
+            "runtime": {
+                "result_projection": {
+                    "result": {
+                        "status": "BLOCKED",
+                        "delivery": {"state": "PENDING"},
+                        "business_refs": ["EOS:BUSINESS_OPERATION:safe-ref"],
+                    }
+                }
+            }
+        }
+    ) == {
+        "result_status": "BLOCKED",
+        "delivery_state": "PENDING",
+        "business_ref_count": 1,
+    }
+    assert acceptance._browser_terminal_summary({}) == {
+        "result_status": "none",
+        "delivery_state": "none",
+        "business_ref_count": 0,
+    }
+    assert acceptance._safe_diagnostic_value("eos.write_outcome-requires_reconciliation") == (
+        "eos.write_outcome-requires_reconciliation"
+    )
+    assert acceptance._safe_diagnostic_value("not safe/value") == "invalid"
+    assert acceptance._safe_diagnostic_value(None) == "none"
     assert "provider=true" in acceptance.summary_line(
         {
             "status": "PASS",
@@ -220,3 +248,47 @@ def test_s11_fixture_visibility_uses_canonical_eos_project_member_table() -> Non
         "account_count": 2,
         "organization_unit_count": 4,
     }
+
+
+def test_s11_failed_step_summary_is_bounded_and_public() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE ae_agent_execution ("
+                "tenant_id TEXT, agent_execution_id TEXT, legacy_interaction_id TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE ae_step_result ("
+                "tenant_id TEXT, agent_execution_id TEXT, compiled_step_key TEXT, "
+                "status TEXT, error_ref TEXT, result_payload JSON)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO ae_agent_execution VALUES "
+                "('VO00', 'execution-1', 'interaction-1')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO ae_step_result VALUES "
+                "('VO00', 'execution-1', 'E1', 'BLOCKED', "
+                "'eos.write_outcome_requires_reconciliation', "
+                "'{\"commit_state\":\"COMMITTED\","
+                "\"verification_status\":\"FAILED\","
+                "\"approval_status\":\"VALID\","
+                "\"reason_code\":\"APPROVAL_VALID\"}')"
+            )
+        )
+
+    assert acceptance._failed_step_summary(
+        engine, interaction_id="interaction-1"
+    ) == (
+        (
+            "E1:BLOCKED:eos.write_outcome_requires_reconciliation:COMMITTED:FAILED:"
+            "VALID:APPROVAL_VALID"
+        ),
+    )

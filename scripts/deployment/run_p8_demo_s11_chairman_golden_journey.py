@@ -36,6 +36,7 @@ from nex_ae_api.planning_capabilities import SqlAlchemyCapabilitySnapshotReposit
 from nex_oa.credentials import hash_password, password_hash_algorithm
 from nex_runtime.demo_database import resolve_demo_database_targets
 from nex_runtime.demo_fixture import load_demo_business_fixture
+from nex_runtime.demo_trust import DEMO_TRUST_GRANTS
 
 EXECUTION_ENV = "NEX_P8_DEMO_S11_LIVE"
 SCHEMA_VERSION = "p8_demo_s11_chairman_golden_journey.v1"
@@ -91,6 +92,18 @@ def _source_admission(root: Path) -> dict[str, Any]:
     package = json.loads((root / "apps/nex-ae-web/package.json").read_text(encoding="utf-8"))
     if "smoke:p8-demo-s11-chairman-golden-journey" not in package.get("scripts", {}):
         raise P8DemoS11Error("S11 Playwright command is not registered")
+    ae_oa_grants = tuple(
+        grant
+        for grant in DEMO_TRUST_GRANTS
+        if grant.owner == "nex-ae-api" and grant.audience == "nex-oa"
+    )
+    if len(ae_oa_grants) != 1 or not {
+        "service:call",
+        "authorization:read",
+    }.issubset(ae_oa_grants[0].scopes):
+        raise P8DemoS11Error(
+            "AE-to-OA current-authorization trust grant is not admitted"
+        )
     return {
         "schema_version": SCHEMA_VERSION,
         "slice": "P8-DEMO-S11",
@@ -101,6 +114,7 @@ def _source_admission(root: Path) -> dict[str, Any]:
         "actual_rustfs_required": True,
         "actual_remote_generation_required": True,
         "actual_playwright_required": True,
+        "approval_authority_read_admitted": True,
         "embedding_required": False,
         "reranking_required": False,
         "secret_included": False,
@@ -160,6 +174,19 @@ def _execute_protected_acceptance(env: Mapping[str, str], *, root: Path) -> dict
             if browser.get("status") != "PASS" or not isinstance(runtime, Mapping):
                 failure_code = str(browser.get("failure_code") or "unknown")
                 failed_checks = _failed_browser_checks(browser)
+                terminal_summary = _browser_terminal_summary(browser)
+                interaction_id = (
+                    str(runtime.get("interaction_id") or "")
+                    if isinstance(runtime, Mapping)
+                    else ""
+                )
+                step_summary = (
+                    _failed_step_summary(
+                        engines["nex-ae-api"], interaction_id=interaction_id
+                    )
+                    if interaction_id
+                    else ()
+                )
                 problem_code = str(
                     browser.get("observations", {}).get("problem_code") or "none"
                 )
@@ -174,7 +201,11 @@ def _execute_protected_acceptance(env: Mapping[str, str], *, root: Path) -> dict
                     "installed Chairman browser journey failed at "
                     f"{browser.get('observations', {}).get('stage', 'unknown')} "
                     f"({failure_code}; {problem_code}; {failed_stage}; {directive}; "
-                    f"checks={','.join(failed_checks) or 'none'})"
+                    f"checks={','.join(failed_checks) or 'none'}; "
+                    f"result={terminal_summary['result_status']}; "
+                    f"delivery={terminal_summary['delivery_state']}; "
+                    f"business_refs={terminal_summary['business_ref_count']}; "
+                    f"steps={','.join(step_summary) or 'none'})"
                 )
             interaction_id = str(runtime.get("interaction_id") or "")
             if not interaction_id:
@@ -383,6 +414,83 @@ def _failed_browser_checks(evidence: Mapping[str, Any]) -> tuple[str, ...]:
     if not isinstance(checks, Mapping):
         return ()
     return tuple(sorted(str(key) for key, value in checks.items() if value is not True))
+
+
+def _browser_terminal_summary(evidence: Mapping[str, Any]) -> dict[str, Any]:
+    runtime = evidence.get("runtime")
+    projection = runtime.get("result_projection") if isinstance(runtime, Mapping) else None
+    result = projection.get("result") if isinstance(projection, Mapping) else None
+    delivery = result.get("delivery") if isinstance(result, Mapping) else None
+    business_refs = result.get("business_refs") if isinstance(result, Mapping) else None
+    return {
+        "result_status": str(result.get("status") or "none")
+        if isinstance(result, Mapping)
+        else "none",
+        "delivery_state": str(delivery.get("state") or "none")
+        if isinstance(delivery, Mapping)
+        else "none",
+        "business_ref_count": len(business_refs)
+        if isinstance(business_refs, (list, tuple))
+        else 0,
+    }
+
+
+def _failed_step_summary(
+    engine: Any, *, interaction_id: str
+) -> tuple[str, ...]:
+    with engine.connect() as connection:
+        rows = list(
+            connection.execute(
+                text(
+                    "SELECT sr.compiled_step_key, sr.status, sr.error_ref, "
+                    "sr.result_payload "
+                    "FROM ae_step_result sr JOIN ae_agent_execution ex "
+                    "ON ex.tenant_id=sr.tenant_id "
+                    "AND ex.agent_execution_id=sr.agent_execution_id "
+                    "WHERE ex.tenant_id=:tenant "
+                    "AND CAST(ex.legacy_interaction_id AS text)=:interaction_id "
+                    "ORDER BY sr.compiled_step_key"
+                ),
+                {"tenant": TENANT_ID, "interaction_id": interaction_id},
+            ).mappings()
+        )
+    return tuple(
+        ":".join(
+            _safe_diagnostic_value(value)
+            for value in (
+                row.get("compiled_step_key"),
+                row.get("status"),
+                row.get("error_ref"),
+                _result_payload(row).get("commit_state"),
+                _result_payload(row).get("verification_status"),
+                _result_payload(row).get("approval_status"),
+                _result_payload(row).get("reason_code"),
+            )
+        )
+        for row in rows
+    )
+
+
+def _result_payload(row: Mapping[str, Any]) -> Mapping[str, Any]:
+    payload = row.get("result_payload")
+    if isinstance(payload, Mapping):
+        return payload
+    if isinstance(payload, str):
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, Mapping) else {}
+    return {}
+
+
+def _safe_diagnostic_value(value: Any) -> str:
+    text_value = str(value or "none")
+    return (
+        text_value
+        if text_value.replace("_", "").replace("-", "").replace(".", "").isalnum()
+        else "invalid"
+    )
 
 
 def _semantic_calibration_json() -> str:

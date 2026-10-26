@@ -5,7 +5,6 @@ from typing import Any
 
 import httpx
 import pytest
-
 from nex_oa.token_signing import InMemoryOaRsaSigningProvider, encode_signed_jwt
 from nex_runtime.demo_service_token_bootstrap import (
     DEMO_CLIENT_SECRET_ENV,
@@ -19,7 +18,6 @@ from nex_runtime.production_container_bootstrap import (
     prepare_production_container_environment,
 )
 from nex_runtime.production_secret_materialization import ResolvedSecret
-
 
 REFERENCE = "memory://p8-demo-startup-token"
 KEY_ID = "p8-demo-startup-token"
@@ -122,6 +120,27 @@ def test_startup_exchange_issues_audience_scoped_tokens_and_scrubs_credentials()
     )
     assert oa_evidence.issued_token_count == 0
     assert oa_environment["NEX_PROFILE"] == "staging_live"
+
+
+def test_ae_startup_token_can_read_current_oa_authority() -> None:
+    endpoint = TokenEndpoint(owner="nex-ae-api")
+
+    environment, evidence = issue_demo_startup_service_tokens(
+        "nex-ae-api",
+        _environment("nex-ae-api"),
+        requester=endpoint,
+        clock=lambda: 500,
+    )
+
+    ae_to_oa = next(
+        request
+        for request in endpoint.requests
+        if request["audience"] == "nex-oa"
+        and request["scope"] != "token:introspect"
+    )
+    assert ae_to_oa["scope"] == "service:call authorization:read"
+    assert environment["NEX_AE_TO_OA_SERVICE_TOKEN"].count(".") == 2
+    assert evidence.issued_token_count == 7
 
 
 def test_bootstrap_profile_is_demo_only_and_fails_closed() -> None:

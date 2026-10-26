@@ -42,6 +42,12 @@ def test_demo_principal_specs_cover_every_non_oa_owner_and_exact_trust() -> None
     }
     assert all("nex-oa" in spec.allowed_audiences for spec in specs)
     assert all("token:introspect" in spec.allowed_scopes for spec in specs)
+    ae = next(spec for spec in specs if spec.owner == "nex-ae-api")
+    assert ae.allowed_scopes == (
+        "authorization:read",
+        "service:call",
+        "token:introspect",
+    )
     wc = next(spec for spec in specs if spec.owner == "nex-wc")
     assert wc.allowed_audiences == ("nex-ae-api", "nex-oa")
     assert wc.allowed_scopes == (
