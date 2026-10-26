@@ -14,13 +14,13 @@ from nex_ae_api.agent_runtime_dispatcher import (
     load_agent_runtime_dispatcher_config,
 )
 from nex_ae_api.agent_runtime_worker import (
+    AgentRuntimeAssignment,
     AgentRuntimeWorkerLifecycle,
     load_agent_runtime_worker_config,
     run_bounded_agent_runtime_worker,
 )
 from nex_ae_api.multi_step_engine import SqlAlchemyMultiStepEngine
 from nex_ae_api.nsl_approval_resume import SqlAlchemyNslApprovalResumeSource
-from nex_ae_api.p6_ia_read_runtime import AgentRuntimeStepAssignmentHandler
 from nex_ae_api.p8_demo_controlled_skill import (
     P8DemoControlledSkillConfig,
     P8DemoControlledSkillRuntime,
@@ -35,11 +35,49 @@ from nex_ae_api.workspace_result_publication import SqlAlchemyInstalledIaResultC
 ROOT = Path(__file__).resolve().parents[3]
 
 
+class InstalledP8StepAssignmentHandler:
+    """Run one admitted step and schedule its durable successor."""
+
+    def __init__(
+        self,
+        worker: P5StepExecutionWorker,
+        engine: SqlAlchemyMultiStepEngine,
+    ) -> None:
+        self._worker = worker
+        self._engine = engine
+
+    def __call__(self, assignment: AgentRuntimeAssignment) -> Mapping[str, Any]:
+        execution = self._worker.run_claim(
+            tenant_id=assignment.tenant_id,
+            claim=assignment.claim,
+        )
+        scheduled = None
+        if execution.disposition != "WAITING":
+            scheduled = self._engine.schedule_next(
+                tenant_id=assignment.tenant_id,
+                execution_id=str(assignment.claim.job["execution_id"]),
+                now=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            )
+        step_result = execution.step_result or {}
+        step = execution.step or {}
+        return {
+            "schema_version": "p8_demo_installed_step_assignment.v1",
+            "runtime_job_id": assignment.runtime_job_id,
+            "executable_step_id": step.get("executable_step_id"),
+            "disposition": execution.disposition,
+            "runtime_job_state": execution.runtime_job.get("state"),
+            "step_result_id": step_result.get("step_result_id"),
+            "step_result_status": step_result.get("status"),
+            "successor_scheduled": scheduled is not None,
+            "content_included": False,
+        }
+
+
 @dataclass(frozen=True)
 class InstalledP8RuntimeComposition:
     controlled_skill: P8DemoControlledSkillRuntime
     assignment_source: SqlAlchemyAgentRuntimeAssignmentSource
-    handler: AgentRuntimeStepAssignmentHandler
+    handler: InstalledP8StepAssignmentHandler
     worker_config: Any
     heartbeat_emitter: Any
     executor_kinds: tuple[str, ...]
@@ -103,10 +141,14 @@ def build_installed_p8_runtime_composition(
         executors=registry,
         continuation_source=SqlAlchemyNslApprovalResumeSource(resource.sessions),
     )
+    executor_backends = {
+        kind: controlled.backend_profile for kind in registry.registered_kinds
+    }
     dispatcher = SqlAlchemyAgentRuntimeDispatcher(
         resource.sessions,
         config=load_agent_runtime_dispatcher_config(environ),
         queue=jobs,
+        executor_backends=executor_backends,
     )
     worker_environ = {
         **environ,
@@ -117,7 +159,8 @@ def build_installed_p8_runtime_composition(
             environ.get("NEX_AE_AGENT_WORKER_ID") or resource.config.worker_id
         ),
         "NEX_AE_AGENT_WORKER_EXECUTOR_KINDS": str(
-            environ.get("NEX_AE_AGENT_WORKER_EXECUTOR_KINDS") or "LOCAL_SKILL"
+            environ.get("NEX_AE_AGENT_WORKER_EXECUTOR_KINDS")
+            or ",".join(registry.registered_kinds)
         ),
         "NEX_AE_AGENT_WORKER_BACKEND_PROFILES": str(
             environ.get("NEX_AE_AGENT_WORKER_BACKEND_PROFILES") or "NSL_V02_IN_PROCESS"
@@ -130,7 +173,7 @@ def build_installed_p8_runtime_composition(
     return InstalledP8RuntimeComposition(
         controlled_skill=controlled,
         assignment_source=SqlAlchemyAgentRuntimeAssignmentSource(dispatcher),
-        handler=AgentRuntimeStepAssignmentHandler(worker),
+        handler=InstalledP8StepAssignmentHandler(worker, engine),
         worker_config=worker_config,
         heartbeat_emitter=resource.heartbeat,
         executor_kinds=registry.registered_kinds,

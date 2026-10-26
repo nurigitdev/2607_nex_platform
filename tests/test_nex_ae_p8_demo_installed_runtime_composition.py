@@ -5,14 +5,15 @@ from types import SimpleNamespace
 
 import nex_ae_api.p8_demo_runtime_composition as composition
 import pytest
-from nex_ae_api.p6_ia_read_runtime import AgentRuntimeStepAssignmentHandler
+from nex_ae_api.agent_runtime_worker import AgentRuntimeAssignment
 from nex_ae_api.p8_demo_controlled_skill import (
     P8DemoControlledSkillError,
     P8DemoControlledSkillRuntime,
     _context_projection,
     _controlled_write_outcome,
 )
-from nex_ae_api.step_executors import LocalSkillExecutorDependencies
+from nex_ae_api.runtime_jobs import RuntimeJobClaim
+from nex_ae_api.step_executors import LocalSkillExecutorDependencies, P5WorkerExecution
 from nex_runtime.demo_fixture import load_demo_business_fixture
 from nex_runtime.demo_nsl_runtime_adapter import write_stable_json
 from sqlalchemy import create_engine, text
@@ -139,6 +140,7 @@ def test_composition_reuses_existing_dispatcher_worker_and_executor_registry(
         result_mapper=lambda value: value,
     )
     controlled = SimpleNamespace(
+        backend_profile="NSL_V02_IN_PROCESS",
         dependencies=dependencies,
         initial=lambda *_values: None,
         resume=lambda *_values: None,
@@ -162,10 +164,15 @@ def test_composition_reuses_existing_dispatcher_worker_and_executor_registry(
 
     runtime = composition.build_installed_p8_runtime_composition(resource, {})
 
-    assert isinstance(runtime.handler, AgentRuntimeStepAssignmentHandler)
+    assert isinstance(runtime.handler, composition.InstalledP8StepAssignmentHandler)
     assert runtime.worker_config.mode == "enabled"
     assert runtime.worker_config.profile.worker_id == "ae-demo-agent-runtime-1"
-    assert runtime.worker_config.profile.supported_executor_kinds == ("LOCAL_SKILL",)
+    assert runtime.worker_config.profile.supported_executor_kinds == (
+        "DETERMINISTIC_AGGREGATE",
+        "DETERMINISTIC_REPORT",
+        "LOCAL_SKILL",
+        "P4_CHAT_RAG_COMPATIBILITY",
+    )
     assert runtime.executor_kinds == (
         "DETERMINISTIC_AGGREGATE",
         "DETERMINISTIC_REPORT",
@@ -173,6 +180,90 @@ def test_composition_reuses_existing_dispatcher_worker_and_executor_registry(
         "P4_CHAT_RAG_COMPATIBILITY",
     )
     assert runtime.backend_profiles == ("NSL_V02_IN_PROCESS",)
+
+
+def test_installed_handler_schedules_successor_after_terminal_outcome() -> None:
+    scheduled: list[dict[str, str]] = []
+    claim = RuntimeJobClaim(
+        job={
+            "tenant_id": "VO00",
+            "runtime_job_id": "job-1",
+            "execution_id": "execution-1",
+            "state": "RUNNING",
+            "lease_owner": "worker-1",
+            "lease_token": "lease-1",
+        },
+        attempt={"attempt_no": 1},
+        executor_kind="DETERMINISTIC_REPORT",
+        backend_profile=None,
+    )
+    worker = SimpleNamespace(
+        run_claim=lambda **_values: P5WorkerExecution(
+            disposition="TERMINAL",
+            step={"executable_step_id": "step-1"},
+            step_result={"step_result_id": "result-1", "status": "SUCCEEDED"},
+            runtime_job={"state": "DONE"},
+        )
+    )
+    engine = SimpleNamespace(
+        schedule_next=lambda **values: scheduled.append(values)
+        or {"runtime_job_id": "job-2"}
+    )
+    handler = composition.InstalledP8StepAssignmentHandler(worker, engine)
+
+    result = handler(
+        AgentRuntimeAssignment(
+            tenant_id="VO00",
+            executor_kind="DETERMINISTIC_REPORT",
+            backend_profile="NSL_V02_IN_PROCESS",
+            claim=claim,
+        )
+    )
+
+    assert result["successor_scheduled"] is True
+    assert scheduled[0]["tenant_id"] == "VO00"
+    assert scheduled[0]["execution_id"] == "execution-1"
+
+
+def test_installed_handler_does_not_schedule_while_step_is_waiting() -> None:
+    claim = RuntimeJobClaim(
+        job={
+            "tenant_id": "VO00",
+            "runtime_job_id": "job-1",
+            "execution_id": "execution-1",
+            "state": "RUNNING",
+            "lease_owner": "worker-1",
+            "lease_token": "lease-1",
+        },
+        attempt={"attempt_no": 1},
+        executor_kind="LOCAL_SKILL",
+        backend_profile="NSL_V02_IN_PROCESS",
+    )
+    worker = SimpleNamespace(
+        run_claim=lambda **_values: P5WorkerExecution(
+            disposition="WAITING",
+            step={"executable_step_id": "step-1"},
+            step_result=None,
+            runtime_job={"state": "DONE"},
+        )
+    )
+    engine = SimpleNamespace(
+        schedule_next=lambda **_values: pytest.fail(
+            "WAITING step must not schedule its successor"
+        )
+    )
+
+    result = composition.InstalledP8StepAssignmentHandler(worker, engine)(
+        AgentRuntimeAssignment(
+            tenant_id="VO00",
+            executor_kind="LOCAL_SKILL",
+            backend_profile="NSL_V02_IN_PROCESS",
+            claim=claim,
+        )
+    )
+
+    assert result["successor_scheduled"] is False
+    assert result["step_result_id"] is None
 
 
 def test_controlled_skill_rejects_direct_backend_invocation() -> None:

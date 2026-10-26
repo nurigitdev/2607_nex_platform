@@ -348,11 +348,16 @@ class SqlAlchemyAgentRuntimeDispatcher:
             )
             if claim is None or claim.executor_kind is None:
                 continue
+            backend_value = (
+                claim.backend_profile
+                if claim.executor_kind == LOCAL_SKILL_EXECUTOR
+                else self._executor_backends.get(claim.executor_kind)
+            )
             try:
-                backend = normalize_nsl_backend_profile(claim.backend_profile)
+                backend = normalize_nsl_backend_profile(backend_value)
             except ValueError as exc:
                 raise _invalid(
-                    "Claimed LOCAL_SKILL job lacks a supported persisted backend profile."
+                    "Claimed job lacks its configured worker backend profile."
                 ) from exc
             assignments.append(
                 AgentRuntimeAssignment(
@@ -814,7 +819,8 @@ def _runnable_tenants_sql(dialect_name: str, *, filter_backends: bool) -> str:
     return _RUNNABLE_TENANTS_SQL.replace(
         "WHERE step.executor_kind IN :executor_kinds",
         "WHERE step.executor_kind IN :executor_kinds "
-        f"AND {backend_expression} IN :backend_profiles",
+        "AND (step.executor_kind <> 'LOCAL_SKILL' "
+        f"OR {backend_expression} IN :backend_profiles)",
     )
 
 
