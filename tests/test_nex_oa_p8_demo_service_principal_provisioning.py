@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from nex_oa.demo_service_principal_provisioning import (
     DemoServicePrincipalProvisioningError,
@@ -12,6 +14,8 @@ from nex_runtime.demo_service_token_bootstrap import (
     DEMO_CLIENT_SECRET_ENV,
     DEMO_CREDENTIAL_ID_ENV,
 )
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _service() -> OaServicePrincipalService:
@@ -45,6 +49,26 @@ def test_demo_principal_specs_cover_every_non_oa_owner_and_exact_trust() -> None
         "service:call",
         "token:introspect",
     )
+
+
+def test_oa_persistence_allowlist_covers_every_demo_service_principal() -> None:
+    migration = (
+        ROOT
+        / "database/nex-oa/migrations/2516_oa_service_principal_wc_eos.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "oa_service_principals_service_id_check" in migration
+    for service_id in (
+        "nex-oa",
+        "nex-ag",
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+        "nex-wc",
+        "nex-eos",
+    ):
+        assert f"'{service_id}'" in migration
+    assert "2516_oa_service_principal_wc_eos" in migration
 
 
 def test_demo_principal_provisioning_is_generation_bound_and_replay_safe() -> None:
