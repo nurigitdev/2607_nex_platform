@@ -320,6 +320,9 @@ def test_source_admission_reports_all_security_and_route_drift(
         {"image": "missing", "command": ["bad"]}
     )
     overlay["services"]["nex-eos-outbox-publisher"]["image"] = "missing"
+    overlay["services"]["nex-ae-agent-runtime-worker"]["environment"][
+        "NEX_AE_AGENT_WORKER_EXECUTOR_KINDS"
+    ] = "LOCAL_SKILL"
     overlay["secrets"] = {}
     overlay["NEX_OA_TEST_DATABASE_URL"] = "nuri1004"
     wc_router = dynamic["http"]["routers"].pop("wc")
@@ -348,6 +351,7 @@ def test_source_admission_reports_all_security_and_route_drift(
         "image input missing",
         "owner secret missing",
         "raw database credential",
+        "installed worker executor profile drift",
         "route coverage or order drift",
         "TLS route drift",
         "upstream drift",

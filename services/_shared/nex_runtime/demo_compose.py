@@ -64,6 +64,12 @@ _AE_REQUIRED_PLANNING_ENVIRONMENT = {
     "NEX_AE_AGENT_RUNTIME_MODE": "required",
     "NEX_AE_PLANNING_MODE": "required",
 }
+_AE_INSTALLED_WORKER_EXECUTORS = (
+    "DETERMINISTIC_AGGREGATE",
+    "DETERMINISTIC_REPORT",
+    "LOCAL_SKILL",
+    "P4_CHAT_RAG_COMPATIBILITY",
+)
 
 
 class DemoComposeError(ValueError):
@@ -127,6 +133,22 @@ def admit_demo_compose_sources(
         ae_environment.get("NEX_AE_P65_SEMANTIC_CALIBRATION_POLICIES_JSON") or ""
     ):
         errors.append("Demo AE semantic calibration input missing")
+    ae_worker_environment = _mapping(
+        _mapping(
+            services.get("nex-ae-agent-runtime-worker"),
+            "service nex-ae-agent-runtime-worker",
+        ).get("environment"),
+        "Demo AE worker environment",
+    )
+    observed_executors = tuple(
+        value.strip()
+        for value in str(
+            ae_worker_environment.get("NEX_AE_AGENT_WORKER_EXECUTOR_KINDS") or ""
+        ).split(",")
+        if value.strip()
+    )
+    if observed_executors != _AE_INSTALLED_WORKER_EXECUTORS:
+        errors.append("Demo AE installed worker executor profile drift")
     if "_TEST_DATABASE_URL" in overlay_text or "nuri1004" in overlay_text:
         errors.append("Demo Compose contains a test or raw database credential")
 
