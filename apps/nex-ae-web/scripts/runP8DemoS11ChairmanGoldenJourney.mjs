@@ -66,6 +66,8 @@ export async function runP8DemoS11ChairmanGoldenJourney({
   let stage = "launch";
   let decisionRequest = null;
   let problemCode = null;
+  let problemStage = null;
+  let problemDirective = null;
   const responses = [];
   try {
     const playwright = await importPlaywright();
@@ -140,6 +142,8 @@ export async function runP8DemoS11ChairmanGoldenJourney({
       admission.payload?.generation?.semantic_planning?.status !== "COMPILED"
     ) {
       problemCode = publicProblemCode(admission.payload);
+      problemStage = publicProblemValue(admission.payload?.details?.semantic_stage);
+      problemDirective = publicProblemValue(admission.payload?.details?.directive);
       throw new Error(`LivePlanAdmissionStatus${admission.status}`);
     }
     const semanticStages = admission.payload.generation.semantic_planning.stages || [];
@@ -257,7 +261,9 @@ export async function runP8DemoS11ChairmanGoldenJourney({
       stage,
       response_count: responses.length,
       recent_api_responses: responses.slice(-5),
-      problem_code: problemCode
+      problem_code: problemCode,
+      failed_stage: problemStage,
+      failure_directive: problemDirective
     });
     assertP8DemoS11EvidenceRedacted(evidence, environ);
     return evidence;
@@ -468,7 +474,10 @@ function publicRouteClass(route) {
 }
 
 function publicProblemCode(payload) {
-  const value = payload?.error_code;
+  return publicProblemValue(payload?.error_code);
+}
+
+function publicProblemValue(value) {
   return typeof value === "string" && /^[A-Za-z0-9._:-]{1,128}$/.test(value)
     ? value
     : null;

@@ -7,11 +7,13 @@ import http.client
 import json
 import os
 import secrets
+import socket
 import ssl
 import subprocess
 import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -74,6 +76,9 @@ from nex_runtime.demo_trust import (
     DEMO_SECRET_BINDINGS,
     DEMO_TLS_HOSTS,
 )
+from nex_runtime.object_storage import ObjectStorageSettings, build_s3_client
+from nex_runtime.object_storage_lifecycle import bootstrap_private_bucket
+from nex_runtime.rustfs_iam import RustfsAdminClient
 from nex_runtime.s143_staging import (
     OpenBaoAdminClient,
     configure_openbao_staging,
@@ -337,6 +342,12 @@ def _execute_protected_acceptance(
                 server_hostname="oa.nex-staging.test",
                 ca_file=runtime_dir / "tls/platform-ca.crt",
             )
+            object_storage = _provision_demo_object_storage(
+                runtime_dir=runtime_dir,
+                root_access=root_access,
+                root_secret=root_secret,
+                object_credentials=object_credentials,
+            )
             readiness = _service_readiness(runtime_dir)
             initial_heartbeats = _wait_for_heartbeats(urls)
             materials = {item.owner: item for item in provisioned.materials}
@@ -407,6 +418,8 @@ def _execute_protected_acceptance(
                 "actual_postgres": True,
                 "actual_openbao": True,
                 "actual_compose": True,
+                "actual_rustfs": True,
+                "object_storage_bootstrap": object_storage,
                 "database_admission": database_admission,
                 "pre_activation_queue_counts": queue_counts,
                 "post_restart_queue_counts": post_counts,
@@ -799,6 +812,95 @@ def _container_database_url(value: str) -> str:
     return parsed.set(host="host.docker.internal").render_as_string(
         hide_password=False
     )
+
+
+def _provision_demo_object_storage(
+    *,
+    runtime_dir: Path,
+    root_access: str,
+    root_secret: str,
+    object_credentials: Mapping[str, str],
+    client_builder: Callable[[ObjectStorageSettings], Any] = build_s3_client,
+    bucket_bootstrap: Callable[..., Any] = bootstrap_private_bucket,
+    iam_factory: Callable[..., Any] = RustfsAdminClient,
+) -> dict[str, Any]:
+    endpoint = "https://object.nex-staging.test:8443"
+    ca_bundle = str(runtime_dir / "tls/platform-ca.crt")
+    buckets = ("nex-ae-private", "nex-cx-private")
+    with _object_hostname_loopback():
+        root_client = client_builder(
+            ObjectStorageSettings(
+                owner="bootstrap",
+                endpoint_url=endpoint,
+                bucket=buckets[0],
+                access_key=root_access,
+                secret_key=root_secret,
+                ca_bundle=ca_bundle,
+            )
+        )
+        bucket_receipts = [
+            bucket_bootstrap(root_client, bucket=bucket).evidence()
+            for bucket in buckets
+        ]
+        iam = iam_factory(
+            endpoint,
+            access_key=root_access,
+            secret_key=root_secret,
+            ca_bundle=ca_bundle,
+        )
+        iam_receipts = [
+            iam.provision_bucket_owner(
+                access_key=object_credentials[f"NEX_{owner}_OBJECT_STORAGE_ACCESS_KEY"],
+                secret_key=object_credentials[f"NEX_{owner}_OBJECT_STORAGE_SECRET_KEY"],
+                bucket=bucket,
+                policy_name=policy,
+            )
+            for owner, bucket, policy in (
+                ("AE", "nex-ae-private", "nex-ae-private-rw"),
+                ("CX", "nex-cx-private", "nex-cx-private-rw"),
+            )
+        ]
+    return {
+        "status": "PASS",
+        "bucket_count": len(bucket_receipts),
+        "owner_identity_count": len(iam_receipts),
+        "bucket_receipts": bucket_receipts,
+        "iam_receipts": iam_receipts,
+        "root_credential_reused_by_service": False,
+        "secret_included": False,
+    }
+
+
+@contextmanager
+def _object_hostname_loopback():
+    original = socket.getaddrinfo
+    original_no_proxy = os.environ.get("NO_PROXY")
+    original_no_proxy_lower = os.environ.get("no_proxy")
+    bypass = ",".join(
+        item
+        for item in (original_no_proxy, "object.nex-staging.test")
+        if item
+    )
+    os.environ["NO_PROXY"] = bypass
+    os.environ["no_proxy"] = bypass
+
+    def resolve(host: str, port: Any, *args: Any, **kwargs: Any):
+        target = "127.0.0.1" if host == "object.nex-staging.test" else host
+        return original(target, port, *args, **kwargs)
+
+    socket.getaddrinfo = resolve
+    try:
+        yield
+    finally:
+        socket.getaddrinfo = original
+        for name, value in (
+            ("NO_PROXY", original_no_proxy),
+            ("no_proxy", original_no_proxy_lower),
+        ):
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 def _compose(

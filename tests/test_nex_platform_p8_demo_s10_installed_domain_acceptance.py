@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -126,6 +127,49 @@ def test_demo_signing_key_window_honors_production_publication_lead() -> None:
     assert window["activate_at"] - window["published_at"] == 330
     assert window["sign_until"] > window["activate_at"]
     assert window["verify_until"] > window["sign_until"]
+
+
+def test_demo_object_storage_bootstrap_provisions_two_private_owners(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, str]] = []
+
+    @dataclass(frozen=True)
+    class Receipt:
+        bucket: str
+
+        def evidence(self):
+            return {"bucket": self.bucket, "status": "READY"}
+
+    class Iam:
+        def provision_bucket_owner(self, *, access_key, secret_key, bucket, **_):
+            assert access_key.endswith("-access")
+            assert secret_key.endswith("-secret")
+            calls.append((access_key, bucket))
+            return {"status": "PROVISIONED", "root_credential_reused": False}
+
+    result = acceptance._provision_demo_object_storage(
+        runtime_dir=tmp_path,
+        root_access="root-access",
+        root_secret="root-secret-value",
+        object_credentials={
+            "NEX_AE_OBJECT_STORAGE_ACCESS_KEY": "ae-access",
+            "NEX_AE_OBJECT_STORAGE_SECRET_KEY": "ae-secret",
+            "NEX_CX_OBJECT_STORAGE_ACCESS_KEY": "cx-access",
+            "NEX_CX_OBJECT_STORAGE_SECRET_KEY": "cx-secret",
+        },
+        client_builder=lambda settings: {"owner": settings.owner},
+        bucket_bootstrap=lambda _client, *, bucket: Receipt(bucket),
+        iam_factory=lambda *_args, **_kwargs: Iam(),
+    )
+
+    assert result["status"] == "PASS"
+    assert result["bucket_count"] == result["owner_identity_count"] == 2
+    assert calls == [
+        ("ae-access", "nex-ae-private"),
+        ("cx-access", "nex-cx-private"),
+    ]
+    assert result["secret_included"] is False
 
 
 def test_partial_oa_trust_cleanup_is_exact_and_residue_free() -> None:

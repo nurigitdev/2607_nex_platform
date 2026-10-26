@@ -149,10 +149,17 @@ def _execute_protected_acceptance(env: Mapping[str, str], *, root: Path) -> dict
                 problem_code = str(
                     browser.get("observations", {}).get("problem_code") or "none"
                 )
+                failed_stage = str(
+                    browser.get("observations", {}).get("failed_stage") or "none"
+                )
+                directive = str(
+                    browser.get("observations", {}).get("failure_directive")
+                    or "none"
+                )
                 raise P8DemoS11Error(
                     "installed Chairman browser journey failed at "
                     f"{browser.get('observations', {}).get('stage', 'unknown')} "
-                    f"({failure_code}; {problem_code})"
+                    f"({failure_code}; {problem_code}; {failed_stage}; {directive})"
                 )
             interaction_id = str(runtime.get("interaction_id") or "")
             if not interaction_id:
