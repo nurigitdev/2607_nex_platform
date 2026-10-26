@@ -71,6 +71,14 @@ Use the `nex-ae-runtime` tag recorded by the image-set report as
   --execute
 ```
 
+Before rendering Compose, inject the admitted S11 semantic calibration policy.
+The value is not a secret, but it is required explicitly so a missing or stale
+INTENT/CONTEXT/PLAN policy fails closed:
+
+```bash
+export NEX_P8_DEMO_SEMANTIC_CALIBRATION_POLICIES_JSON='[{"adversarial_evidence_ref":"acceptance://p8-demo-s11/intent/adversarial","golden_evidence_ref":"acceptance://p8-demo-s11/intent/golden","minimum_confidence":0.5,"model_profile":"general-llm-default","model_ref":"Qwen3.5-4B","policy_ref":"semantic-admission://intent/p8-demo-s11/v1","policy_version":"p8-demo-s11-v1","semantic_stage":"INTENT"},{"adversarial_evidence_ref":"acceptance://p8-demo-s11/context/adversarial","golden_evidence_ref":"acceptance://p8-demo-s11/context/golden","minimum_confidence":0.5,"model_profile":"general-llm-default","model_ref":"Qwen3.5-4B","policy_ref":"semantic-admission://context/p8-demo-s11/v1","policy_version":"p8-demo-s11-v1","semantic_stage":"CONTEXT"},{"adversarial_evidence_ref":"acceptance://p8-demo-s11/plan/adversarial","golden_evidence_ref":"acceptance://p8-demo-s11/plan/golden","minimum_confidence":0.5,"model_profile":"general-llm-default","model_ref":"Qwen3.5-4B","policy_ref":"semantic-admission://plan/p8-demo-s11/v1","policy_version":"p8-demo-s11-v1","semantic_stage":"PLAN"}]'
+```
+
 Render and validate all Compose overlays against those exact image IDs:
 
 ```bash
@@ -119,9 +127,11 @@ and background processes, renewed restart heartbeats, and zero post-restart
 queues. Then execute the existing composition and result-closure gates:
 
 ```bash
-./.venv/bin/python scripts/smoke/run_p8_demo_s10b_installed_runtime.py \
+NEX_P8_DEMO_S10B_LIVE=1 \
+  ./.venv/bin/python scripts/smoke/run_p8_demo_s10b_installed_runtime.py \
   --execute --summary
-./.venv/bin/python scripts/smoke/run_p8_demo_s10c_installed_result_closure.py \
+NEX_P8_DEMO_S10C_LIVE=1 \
+  ./.venv/bin/python scripts/smoke/run_p8_demo_s10c_installed_result_closure.py \
   --execute --summary
 ```
 
