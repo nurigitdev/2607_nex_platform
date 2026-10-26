@@ -76,4 +76,62 @@ syntax / diff checks    = PASS
 ```
 
 Actual PostgreSQL, live generation, Playwright, screenshot, and restart
-results are recorded after rebuilding the installed release images.
+results passed after rebuilding the installed release images.
+
+## Protected Live Evidence
+
+```text
+status                         = PASS
+actual PostgreSQL              = true (7 dev databases current)
+actual remote generation       = true (Qwen3.5-4B)
+actual Playwright              = true
+browser checks                 = 24 / 24
+initial / submitted messages   = 0 / 1
+initial timeline events        = 1
+execution                      = SUCCEEDED / FINALIZE
+AgentResult / delivery ACK     = 1 / 1
+approval / business operation  = 1 / 1
+voucher / balanced lines       = 1 / 2
+post-restart pending queues     = AE 0 / WC 0 / EOS 0
+screen captures                = 13
+```
+
+The browser-submitted interaction remained authoritative through semantic
+planning, approval, EOS commit, result publication, logout, service restart,
+and recovery. The final visual inspection showed one user prompt, one updated
+AgentResult card, `COMPLETED` workspace state, `SUCCEEDED` generation control,
+and a `FINALIZE` timeline without the historical RAG sample.
+
+## Screen Evidence
+
+```text
+reports/deployment/p8-demo-s11-screens/
+  p8-demo-s11-journey-01-login.png
+  p8-demo-s11-journey-02-requester-workspace-empty.png
+  p8-demo-s11-journey-03-voucher-prompt-ready.png
+  p8-demo-s11-journey-04-voucher-prompt-submitted.png
+  p8-demo-s11-journey-05-approver-workspace.png
+  p8-demo-s11-journey-06-approval-inbox.png
+  p8-demo-s11-journey-07-approval-detail.png
+  p8-demo-s11-journey-08-approval-decided.png
+  p8-demo-s11-journey-09-requester-result.png
+  p8-demo-s11-journey-10-approver-logged-out.png
+  p8-demo-s11-journey-11-requester-logged-out.png
+  p8-demo-s11-recovery-01-requester-workspace.png
+  p8-demo-s11-recovery-02-requester-result.png
+```
+
+## OCI Evidence
+
+```text
+application images        = 8 / 8
+release set digest        = sha256:d61f33c835e2e0e627cda77a3363e5b76475a790e787483d371289022e45a4c0
+AE runtime image id       = sha256:9c08de993ef4ab64c7f9e116a81e244bc5ccca988f5cc9dc79086cd0d3ad34dd
+runtime user              = 65532:65532
+packaged NSL version      = 0.2.1
+registry push             = false
+```
+
+Runtime reports and PNG files remain under ignored `reports/deployment/`.
+Secrets, database URLs, passwords, raw provider payloads, and prompt text are
+excluded from JSON evidence.

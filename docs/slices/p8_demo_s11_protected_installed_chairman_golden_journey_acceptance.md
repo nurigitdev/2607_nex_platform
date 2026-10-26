@@ -66,6 +66,11 @@ not included in the evidence report.
 
 ## Screen Evidence
 
+> Follow-up: P8-DEMO-S11A replaced the static fetch-mode Chat/RAG sample with
+> the prompt-first Golden A journey. The filenames and visual observations in
+> this section preserve the original S11 evidence; current evidence is listed
+> in `p8_demo_s11a_prompt_first_golden_a_browser_journey.md`.
+
 Playwright now clears the prior S11 capture set and records every meaningful
 view transition without entering credentials before the login capture. Nine
 primary journey screens and two restart-recovery screens were saved:
