@@ -210,13 +210,14 @@ def test_startup_upgrades_existing_intent_v1_binding_with_history() -> None:
 
     after = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
     version = store.get_template_version(after["prompt_template_version_id"])
-    assert version["version"] == "v6"
+    assert version["version"] == "v7"
     assert version["metadata"]["golden_a"] == "voucher_draft"
     assert version["metadata"]["nvt_project_operations"] == (
         "create_get_list_update"
     )
     assert version["metadata"]["employee_authority"] == "oa_only"
     assert version["metadata"]["nvt_fallback_rule"] == "non_nvt_only"
+    assert version["metadata"]["golden_a_parameter_mapping"] == "exact"
     with factory() as session:
         history = (
             session.execute(
@@ -224,7 +225,7 @@ def test_startup_upgrades_existing_intent_v1_binding_with_history() -> None:
                     "SELECT old_prompt_template_version_id, "
                     "new_prompt_template_version_id, correlation_id "
                     "FROM ae_prompt_binding_history "
-                    "WHERE correlation_id = 'p8-s112-intent-prompt-v6'"
+                    "WHERE correlation_id = 'p8-demo-s11-intent-prompt-v7'"
                 )
             )
             .mappings()

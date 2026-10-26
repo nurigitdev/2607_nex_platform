@@ -6,19 +6,19 @@ from typing import Any
 
 from fastapi import FastAPI, Header, Request, Response
 from fastapi.responses import JSONResponse
-
-from nex_oa.authorization import OaAuthorizationError
-from nex_oa.authorization_repository import OaAuthorizationRepository
-from nex_oa.authorization_resolver import OaEffectiveAuthorizationResolver
-from nex_oa.memberships import OaMembershipError, OaTenantMembershipRegistry
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
+    admit_service_token_from_request,
     problem_response,
     request_id_from_headers,
     trace_id_from_headers,
     validate_authorization_header,
 )
 
+from nex_oa.authorization import OaAuthorizationError
+from nex_oa.authorization_repository import OaAuthorizationRepository
+from nex_oa.authorization_resolver import OaEffectiveAuthorizationResolver
+from nex_oa.memberships import OaMembershipError, OaTenantMembershipRegistry
 
 OA_AUTHORIZATION_ADMIN_SCOPE = "authorization:admin"
 OA_AUTHORIZATION_READ_SCOPE = "authorization:read"
@@ -55,9 +55,7 @@ class OaAuthorizationService:
             tenant_id=tenant_id,
             role_id=role_id,
         )
-        return _mutation_response(
-            self.repository.upsert_role(request, context=context)
-        )
+        return _mutation_response(self.repository.upsert_role(request, context=context))
 
     def upsert_group(
         self,
@@ -310,7 +308,11 @@ def _mutation_route(
         response = operation(context)
     except OaAuthorizationError as exc:
         return _problem(request, exc)
-    return {**response, "request_id": context["request_id"], "trace_id": context["trace_id"]}
+    return {
+        **response,
+        "request_id": context["request_id"],
+        "trace_id": context["trace_id"],
+    }
 
 
 def _read_route(
@@ -342,22 +344,38 @@ def _authorize(
     *,
     required_scope: str,
 ) -> tuple[Any | None, JSONResponse | None]:
-    result = validate_authorization_header(
+    if getattr(request.app.state, "service_token_admission", None) is None:
+        result = validate_authorization_header(
+            authorization,
+            expected_audience="nex-oa",
+            required_scopes=(DEFAULT_SERVICE_SCOPE, required_scope),
+        )
+        if result.ok:
+            return result.claims, None
+        status_code = 403 if result.error_code == "TOKEN_SCOPE_MISSING" else 401
+        return None, problem_response(
+            request,
+            status_code=status_code,
+            error_code=result.error_code or "SERVICE_CLAIM_INVALID",
+            title=(
+                "Authorization failed"
+                if status_code == 403
+                else "Authentication failed"
+            ),
+            detail=result.detail
+            or "OA authorization administration requires a valid service claim.",
+            type_uri=("https://nex-platform.local/problems/authorization-admin-access"),
+        )
+    admitted = admit_service_token_from_request(
+        request,
         authorization,
         expected_audience="nex-oa",
-        required_scopes=[DEFAULT_SERVICE_SCOPE, required_scope],
+        required_scopes=(DEFAULT_SERVICE_SCOPE, required_scope),
+        route_class=(
+            "ADMIN" if required_scope == OA_AUTHORIZATION_ADMIN_SCOPE else "READ"
+        ),
     )
-    if result.ok:
-        return result.claims, None
-    status_code = 403 if result.error_code == "TOKEN_SCOPE_MISSING" else 401
-    return None, problem_response(
-        request,
-        status_code=status_code,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authorization failed" if status_code == 403 else "Authentication failed",
-        detail=result.detail or "OA authorization administration requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/authorization-admin-access",
-    )
+    return (None, admitted) if isinstance(admitted, JSONResponse) else (admitted, None)
 
 
 def _bound_payload(

@@ -2,15 +2,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-
 import nex_ae_api.workspace_persistence as persistence
+import pytest
 from nex_ae_api.workspace_persistence import (
     SqlAlchemyWorkspaceRepository,
     WorkspaceRepositoryError,
 )
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
 
 
 def session_factory(*, with_schema: bool = True):
@@ -46,6 +45,20 @@ def session_factory(*, with_schema: bool = True):
                     summary TEXT NOT NULL,
                     metadata TEXT NOT NULL,
                     created_at TEXT NOT NULL
+                )
+            """))
+            connection.execute(text("""
+                CREATE TABLE ae_conversations (
+                    conversation_id TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL,
+                    owner_user_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    next_journal_seq INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    version INTEGER NOT NULL
                 )
             """))
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
@@ -89,7 +102,8 @@ def activity(**overrides):
 
 
 def test_repository_creates_reads_and_lists_initial_activity() -> None:
-    repository = SqlAlchemyWorkspaceRepository(session_factory())
+    sessions = session_factory()
+    repository = SqlAlchemyWorkspaceRepository(sessions)
 
     created = repository.create_workspace(workspace(), activity())
     loaded = repository.get_workspace(created["workspace_id"])
@@ -98,11 +112,28 @@ def test_repository_creates_reads_and_lists_initial_activity() -> None:
     assert created == workspace()
     assert loaded == workspace()
     assert activities == [activity()]
+    with sessions() as session:
+        default_conversation = session.execute(
+            text(
+                "SELECT conversation_id, tenant_id, workspace_id, owner_user_id "
+                "FROM ae_conversations"
+            )
+        ).mappings().one()
+    assert dict(default_conversation) == {
+        "conversation_id": workspace()["chat_document_id"],
+        "tenant_id": workspace()["tenant_id"],
+        "workspace_id": workspace()["workspace_id"],
+        "owner_user_id": workspace()["owner_user_id"],
+    }
 
 
 def test_create_is_idempotent_and_rejects_cross_owner_collision() -> None:
-    repository = SqlAlchemyWorkspaceRepository(session_factory())
+    sessions = session_factory()
+    repository = SqlAlchemyWorkspaceRepository(sessions)
     repository.create_workspace(workspace(), activity())
+
+    with sessions.begin() as session:
+        session.execute(text("DELETE FROM ae_conversations"))
 
     repeated = repository.create_workspace(
         workspace(title="Ignored retry title"),
@@ -110,6 +141,10 @@ def test_create_is_idempotent_and_rejects_cross_owner_collision() -> None:
     )
     assert repeated == workspace()
     assert len(repository.list_activities(workspace()["workspace_id"])) == 1
+    with sessions() as session:
+        assert session.execute(
+            text("SELECT count(*) FROM ae_conversations")
+        ).scalar_one() == 1
 
     with pytest.raises(WorkspaceRepositoryError) as exc:
         repository.create_workspace(
@@ -117,6 +152,26 @@ def test_create_is_idempotent_and_rejects_cross_owner_collision() -> None:
             activity(activity_id="55555555-5555-4555-8555-555555555555"),
         )
     assert exc.value.error_code == "ae.workspace_owner_conflict"
+
+
+def test_default_conversation_rejects_cross_scope_collision() -> None:
+    sessions = session_factory()
+    repository = SqlAlchemyWorkspaceRepository(sessions)
+    repository.create_workspace(workspace(), activity())
+
+    with (
+        sessions.begin() as session,
+        pytest.raises(WorkspaceRepositoryError) as exc,
+    ):
+        persistence._ensure_default_conversation(
+            session,
+            workspace(
+                workspace_id="99999999-9999-4999-8999-999999999999",
+                owner_user_id="user-b",
+            ),
+        )
+
+    assert exc.value.error_code == "ae.workspace_conversation_conflict"
 
 
 def test_create_fails_retryably_when_conflicting_row_cannot_be_reloaded(

@@ -6,6 +6,13 @@ import os
 from pathlib import Path
 import sys
 
+from .demo_trust import (
+    DEMO_DEPLOYMENT_BOUNDARY,
+    DEMO_OWNERS,
+    DEMO_STARTUP_TOKEN_BOOTSTRAP_ENV,
+    materialize_demo_owner_secrets,
+)
+from .demo_service_token_bootstrap import issue_demo_startup_service_tokens
 from .openbao_secret_resolver import (
     OpenBaoSecretResolver,
     OpenBaoSecretResolverError,
@@ -18,7 +25,7 @@ from .production_secret_materialization import (
 
 
 ROOT = Path(__file__).resolve().parents[3]
-ALLOWED_OWNERS = ("nex-oa", "nex-ae-api", "nex-cx", "nex-mo", "nex-ag")
+ALLOWED_OWNERS = DEMO_OWNERS
 _PRIVATE_BOOTSTRAP_NAMES = (
     "NEX_OPENBAO_ROLE_ID_FILE",
     "NEX_OPENBAO_SECRET_ID_FILE",
@@ -37,6 +44,9 @@ def prepare_production_container_environment(
     resolver_factory: Callable[[Mapping[str, str]], OpenBaoSecretResolver] = (
         build_openbao_secret_resolver
     ),
+    demo_token_issuer: Callable[
+        [str, Mapping[str, str]], tuple[dict[str, str], object]
+    ] = issue_demo_startup_service_tokens,
 ) -> tuple[dict[str, str], OwnerProductionSecretMaterialization]:
     if owner not in ALLOWED_OWNERS:
         raise ProductionContainerBootstrapError("production container owner is invalid")
@@ -47,13 +57,24 @@ def prepare_production_container_environment(
         )
     resolver = resolver_factory(environ)
     try:
-        materialization = materialize_owner_production_secrets(
-            environ,
-            resolver,
-            owner=owner,
-            profile=profile,
-            root=root,
-        )
+        if (
+            str(environ.get("NEX_DEPLOYMENT_BOUNDARY") or "").strip()
+            == DEMO_DEPLOYMENT_BOUNDARY
+        ):
+            materialization = materialize_demo_owner_secrets(
+                environ,
+                resolver,
+                owner=owner,
+                profile=profile,
+            )
+        else:
+            materialization = materialize_owner_production_secrets(
+                environ,
+                resolver,
+                owner=owner,
+                profile=profile,
+                root=root,
+            )
         process_environment = dict(environ)
         process_environment.update(
             materialization.owner_environment.process_environment()
@@ -62,6 +83,13 @@ def prepare_production_container_environment(
             if name.endswith("_REF") or name in _PRIVATE_BOOTSTRAP_NAMES:
                 process_environment.pop(name, None)
         resolver.revoke()
+        if (
+            str(environ.get("NEX_DEPLOYMENT_BOUNDARY") or "").strip()
+            == DEMO_DEPLOYMENT_BOUNDARY
+            and str(environ.get(DEMO_STARTUP_TOKEN_BOOTSTRAP_ENV) or "").strip()
+            == "true"
+        ):
+            process_environment, _ = demo_token_issuer(owner, process_environment)
     except Exception:
         try:
             resolver.revoke()

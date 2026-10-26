@@ -173,6 +173,13 @@ def build_plan_agent_result(
     ]
     artifact_refs = _union_result_refs(results.values(), "artifact_refs")
     external_refs = _union_result_refs(results.values(), "external_refs")
+    business_refs = sorted(
+        {
+            f"EOS:BUSINESS_OPERATION:{item['business_operation_id']}"
+            for item in results.values()
+            if item.get("business_operation_id") is not None
+        }
+    )
     evidence_refs = sorted(
         {
             *_union_result_refs(results.values(), "evidence_refs"),
@@ -212,7 +219,7 @@ def build_plan_agent_result(
             "output_step_results": output_results,
             "external_refs": external_refs,
         },
-        "business_refs": [],
+        "business_refs": business_refs,
         "child_work_result_refs": [],
         "artifact_refs": artifact_refs,
         "evidence_refs": evidence_refs,

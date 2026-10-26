@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from nex_ae_api.agent_runtime_worker import AgentRuntimeAssignment
 from nex_ae_api.nsl_backend_profiles import (
     DEFAULT_NSL_V01_BACKEND_PROFILE,
-    NSL_V01_BACKEND_PROFILES,
+    NSL_BACKEND_PROFILES,
     normalize_nsl_backend_profile,
 )
 from nex_ae_api.runtime_jobs import SqlAlchemyRuntimeJobQueue
@@ -348,11 +348,16 @@ class SqlAlchemyAgentRuntimeDispatcher:
             )
             if claim is None or claim.executor_kind is None:
                 continue
+            backend_value = (
+                claim.backend_profile
+                if claim.executor_kind == LOCAL_SKILL_EXECUTOR
+                else self._executor_backends.get(claim.executor_kind)
+            )
             try:
-                backend = normalize_nsl_backend_profile(claim.backend_profile)
+                backend = normalize_nsl_backend_profile(backend_value)
             except ValueError as exc:
                 raise _invalid(
-                    "Claimed LOCAL_SKILL job lacks a supported persisted backend profile."
+                    "Claimed job lacks its configured worker backend profile."
                 ) from exc
             assignments.append(
                 AgentRuntimeAssignment(
@@ -574,7 +579,7 @@ class SqlAlchemyAgentRuntimeDispatcher:
             for executor in executors
             if (
                 executor == LOCAL_SKILL_EXECUTOR
-                and bool(backends.intersection(NSL_V01_BACKEND_PROFILES))
+                and bool(backends.intersection(NSL_BACKEND_PROFILES))
             )
             or (
                 executor != LOCAL_SKILL_EXECUTOR
@@ -814,7 +819,8 @@ def _runnable_tenants_sql(dialect_name: str, *, filter_backends: bool) -> str:
     return _RUNNABLE_TENANTS_SQL.replace(
         "WHERE step.executor_kind IN :executor_kinds",
         "WHERE step.executor_kind IN :executor_kinds "
-        f"AND {backend_expression} IN :backend_profiles",
+        "AND (step.executor_kind <> 'LOCAL_SKILL' "
+        f"OR {backend_expression} IN :backend_profiles)",
     )
 
 

@@ -54,8 +54,11 @@ class SqlAlchemyWorkspaceRepository:
                             "ae.workspace_owner_conflict",
                             "Workspace identifier is already owned by another subject.",
                         )
+                    _ensure_default_conversation(session, existing)
+                    session.commit()
                     return existing
                 _insert_activity(session, initial_activity)
+                _ensure_default_conversation(session, workspace)
                 session.commit()
                 return workspace
         except WorkspaceRepositoryError:
@@ -164,6 +167,61 @@ def _insert_activity(session: Session, activity: dict[str, Any]) -> Any:
         text(_activity_insert_sql(_dialect_name(session))),
         _activity_params(activity),
     )
+
+
+def _ensure_default_conversation(
+    session: Session, workspace: dict[str, Any]
+) -> None:
+    params = {
+        "conversation_id": workspace["chat_document_id"],
+        "tenant_id": workspace["tenant_id"],
+        "workspace_id": workspace["workspace_id"],
+        "owner_user_id": workspace["owner_user_id"],
+        "title": workspace["title"],
+        "created_at": workspace["created_at"],
+        "updated_at": workspace["updated_at"],
+    }
+    session.execute(
+        text(
+            """
+            INSERT INTO ae_conversations (
+                conversation_id, tenant_id, workspace_id, owner_user_id,
+                title, status, next_journal_seq, created_at, updated_at, version
+            ) VALUES (
+                :conversation_id, :tenant_id, :workspace_id, :owner_user_id,
+                :title, 'ACTIVE', 1, :created_at, :updated_at, 1
+            ) ON CONFLICT (conversation_id) DO NOTHING
+            """
+        ),
+        params,
+    )
+    scope = (
+        session.execute(
+            text(
+                """
+                SELECT tenant_id, workspace_id, owner_user_id
+                FROM ae_conversations
+                WHERE conversation_id = :conversation_id
+                """
+            ),
+            params,
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if scope is None or (
+        str(scope["tenant_id"]),
+        str(scope["workspace_id"]),
+        str(scope["owner_user_id"]),
+    ) != (
+        params["tenant_id"],
+        params["workspace_id"],
+        params["owner_user_id"],
+    ):
+        raise WorkspaceRepositoryError(
+            "ae.workspace_conversation_conflict",
+            "Workspace default Conversation belongs to another scope.",
+        )
 
 
 def _load_workspace(session: Session, workspace_id: str) -> dict[str, Any] | None:

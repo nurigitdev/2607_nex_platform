@@ -32,6 +32,7 @@ from sqlalchemy.engine import Engine
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_FIXTURE_PATH = ROOT / "scripts/smoke/data/p8_golden_a_fixture.v1.json"
 FIXTURE_SCHEMA_VERSION = "p8_golden_a_fixture.v1"
+GOLDEN_A_TENANT_ID = "p8-golden-a"
 ACTIVATION_STATE = "LOCKED_PENDING_P8_S64"
 _TOP_LEVEL_FIELDS = {
     "schema_version",
@@ -94,6 +95,7 @@ def load_golden_a_fixture(
     path: Path = DEFAULT_FIXTURE_PATH,
     *,
     root: Path = ROOT,
+    expected_tenant_id: str = GOLDEN_A_TENANT_ID,
 ) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -102,13 +104,18 @@ def load_golden_a_fixture(
             "P8_GOLDEN_A_FIXTURE_UNREADABLE",
             f"Golden A fixture cannot be read: {path}",
         ) from exc
-    return validate_golden_a_fixture(payload, root=root)
+    return validate_golden_a_fixture(
+        payload,
+        root=root,
+        expected_tenant_id=expected_tenant_id,
+    )
 
 
 def validate_golden_a_fixture(
     payload: Mapping[str, Any],
     *,
     root: Path = ROOT,
+    expected_tenant_id: str = GOLDEN_A_TENANT_ID,
 ) -> dict[str, Any]:
     if not isinstance(payload, Mapping) or set(payload) != _TOP_LEVEL_FIELDS:
         raise _invalid("fixture must contain exactly the canonical top-level fields")
@@ -424,7 +431,7 @@ def validate_golden_a_fixture(
         raise _invalid("scenario.amount must be a positive two-decimal string")
     if scenario["attachments"] != []:
         raise _invalid("Golden A baseline keeps attachments optional and empty")
-    if tenant_id != "p8-golden-a" or effective_from > datetime.combine(
+    if tenant_id != expected_tenant_id or effective_from > datetime.combine(
         scenario_date, datetime.min.time(), tzinfo=UTC
     ):
         raise _invalid(
@@ -441,8 +448,13 @@ def seed_golden_a_fixture(
     projects: ProjectRepository,
     accounts: AccountRepository,
     root: Path = ROOT,
+    expected_tenant_id: str = GOLDEN_A_TENANT_ID,
 ) -> dict[str, Any]:
-    record = validate_golden_a_fixture(fixture, root=root)
+    record = validate_golden_a_fixture(
+        fixture,
+        root=root,
+        expected_tenant_id=expected_tenant_id,
+    )
     tenant = record["tenant"]
     tenant_id = tenant["tenant_id"]
     effective_from = _datetime(
@@ -556,7 +568,9 @@ def seed_golden_a_fixture(
             "Golden A approver resolution differs from the fixture target",
         )
     return golden_a_public_projection(
-        record, resolution_hash=resolution["resolution_hash"]
+        record,
+        resolution_hash=resolution["resolution_hash"],
+        expected_tenant_id=expected_tenant_id,
     )
 
 
@@ -564,8 +578,12 @@ def golden_a_public_projection(
     fixture: Mapping[str, Any],
     *,
     resolution_hash: str | None = None,
+    expected_tenant_id: str = GOLDEN_A_TENANT_ID,
 ) -> dict[str, Any]:
-    record = validate_golden_a_fixture(fixture)
+    record = validate_golden_a_fixture(
+        fixture,
+        expected_tenant_id=expected_tenant_id,
+    )
     projection: dict[str, Any] = {
         "schema_version": "p8_golden_a_seed_result.v1",
         "fixture_id": record["fixture_id"],
@@ -596,8 +614,13 @@ def reset_golden_a_fixture(
     oa_engine: Engine,
     eos_engine: Engine,
     root: Path = ROOT,
+    expected_tenant_id: str = GOLDEN_A_TENANT_ID,
 ) -> dict[str, dict[str, int]]:
-    record = validate_golden_a_fixture(fixture, root=root)
+    record = validate_golden_a_fixture(
+        fixture,
+        root=root,
+        expected_tenant_id=expected_tenant_id,
+    )
     tenant_id = record["tenant"]["tenant_id"]
     with eos_engine.begin() as connection:
         for table in (

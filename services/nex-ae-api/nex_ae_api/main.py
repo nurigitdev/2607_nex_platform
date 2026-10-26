@@ -1,3 +1,5 @@
+import os
+
 from nex_runtime import (
     SERVICE_SPECS,
     attach_service_persistence_runtime,
@@ -22,14 +24,25 @@ from nex_ae_api.analytics import (
     DEFAULT_PROMPT_ANALYTICS_STORE,
     register_prompt_analytics_routes,
 )
+from nex_ae_api.approval_decision_event_api import (
+    ApprovalDecisionEventRouter,
+    HttpEosBusinessApprovalDecisionClient,
+    SqlAlchemyNslApprovalDecisionAdmission,
+    register_approval_decision_event_routes,
+)
 from nex_ae_api.approval_facade import register_approval_facade_routes
 from nex_ae_api.artifacts import register_artifact_handoff_routes
 from nex_ae_api.auth_sessions import register_auth_session_routes
 from nex_ae_api.chat import register_chat_routes
 from nex_ae_api.claim_handoff_api import register_claim_handoff_routes
 from nex_ae_api.documents import register_document_library_routes
+from nex_ae_api.eos_outbox_event_api import register_eos_outbox_event_routes
 from nex_ae_api.generation_feedback import register_generation_feedback_routes
+from nex_ae_api.interaction_agent_result_api import (
+    register_interaction_agent_result_routes,
+)
 from nex_ae_api.mvp_acceptance_api import register_ae_mvp_acceptance_routes
+from nex_ae_api.nsl_approval_events import SqlAlchemyNslApprovalEventService
 from nex_ae_api.private_object_store import (
     AePrivateObjectStorageError,
     build_ae_private_object_store,
@@ -58,6 +71,9 @@ from nex_ae_api.voucher_attachments import SqlAlchemyVoucherAttachmentRepository
 from nex_ae_api.work_result_event_api import register_work_result_event_routes
 from nex_ae_api.work_result_events import SqlAlchemyWorkResultEventService
 from nex_ae_api.workspace import register_workspace_routes
+from nex_ae_api.workspace_result_publication import (
+    SqlAlchemyInteractionAgentResultSource,
+)
 
 SERVICE_SPEC = SERVICE_SPECS["nex-ae-api"]
 SERVICE_TOKEN_ADMISSION = build_service_token_admission_runtime(
@@ -120,6 +136,16 @@ register_chat_routes(
     analytics_store=DEFAULT_PROMPT_ANALYTICS_STORE,
     prompt_store=AE_PROMPT_STORE,
 )
+register_interaction_agent_result_routes(
+    app,
+    source=(
+        SqlAlchemyInteractionAgentResultSource(
+            SERVICE_PERSISTENCE.api_session_factory
+        )
+        if SERVICE_PERSISTENCE.api_session_factory is not None
+        else None
+    ),
+)
 AE_AGENT_RUNTIME = attach_agent_runtime_foundation(
     app,
     SERVICE_PERSISTENCE,
@@ -140,6 +166,34 @@ AE_WORK_RESULT_EVENTS = (
 )
 app.state.ae_work_result_events = AE_WORK_RESULT_EVENTS
 register_work_result_event_routes(app, admission=AE_WORK_RESULT_EVENTS)
+AE_APPROVAL_DECISION_EVENTS = None
+if (
+    SERVICE_PERSISTENCE.api_session_factory is not None
+    and AE_AGENT_RUNTIME.jobs is not None
+    and os.getenv("NEX_AE_TO_EOS_SERVICE_TOKEN", "").strip()
+):
+    AE_APPROVAL_DECISION_EVENTS = ApprovalDecisionEventRouter(
+        nsl_admission=SqlAlchemyNslApprovalDecisionAdmission(
+            SERVICE_PERSISTENCE.api_session_factory,
+            event_service=SqlAlchemyNslApprovalEventService(
+                SERVICE_PERSISTENCE.api_session_factory,
+                runtime_jobs=AE_AGENT_RUNTIME.jobs,
+            ),
+        ),
+        business_admission=HttpEosBusinessApprovalDecisionClient(
+            base_url=os.getenv("NEX_EOS_BASE_URL", "http://127.0.0.1:8107"),
+            service_token=os.environ["NEX_AE_TO_EOS_SERVICE_TOKEN"],
+        ),
+    )
+app.state.ae_approval_decision_events = AE_APPROVAL_DECISION_EVENTS
+register_approval_decision_event_routes(
+    app,
+    admission=AE_APPROVAL_DECISION_EVENTS,
+)
+register_eos_outbox_event_routes(
+    app,
+    store=SERVICE_PERSISTENCE.operational_event_store,
+)
 register_agent_registry_routes(
     app,
     registry=(

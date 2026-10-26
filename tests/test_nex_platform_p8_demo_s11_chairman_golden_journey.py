@@ -1,0 +1,329 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import run_p8_demo_s11_chairman_golden_journey as acceptance
+from sqlalchemy import create_engine, text
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_s11_source_admission_is_protected_and_provider_scoped() -> None:
+    result = acceptance.run_p8_demo_s11_chairman_golden_journey(
+        {}, execute=False, root=ROOT
+    )
+
+    assert result["status"] == "SOURCE_ADMITTED"
+    assert result["executed"] is False
+    assert result["actual_postgres_required"] is True
+    assert result["actual_remote_generation_required"] is True
+    assert result["actual_playwright_required"] is True
+    assert result["screen_capture_required"] is True
+    assert result["approval_authority_read_admitted"] is True
+    assert result["embedding_required"] is False
+    assert result["reranking_required"] is False
+
+
+def test_s11_prepares_a_clean_bounded_screenshot_directory(tmp_path: Path) -> None:
+    target = tmp_path / "screens"
+    target.mkdir()
+    stale = target / "p8-demo-s11-journey-01-login.png"
+    unrelated = target / "keep.png"
+    stale.write_bytes(b"stale")
+    unrelated.write_bytes(b"keep")
+
+    acceptance._prepare_screenshot_directory(target)
+
+    assert not stale.exists()
+    assert unrelated.read_bytes() == b"keep"
+
+
+def test_s11_source_admission_runs_in_a_standalone_process(tmp_path: Path) -> None:
+    report = tmp_path / "source.json"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(
+                ROOT
+                / "scripts/deployment/run_p8_demo_s11_chairman_golden_journey.py"
+            ),
+            "--summary",
+            "--report",
+            str(report),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "source_admitted" in completed.stdout
+    assert json.loads(report.read_text(encoding="utf-8"))["executed"] is False
+
+
+def test_s11_execution_is_double_opt_in_and_contains_failure() -> None:
+    calls: list[dict[str, str]] = []
+
+    def runner(env, *, root):
+        calls.append(dict(env))
+        assert root == ROOT
+        return {
+            "status": "PASS",
+            "actual_postgres": True,
+            "actual_remote_generation": True,
+            "actual_playwright": True,
+        }
+
+    skipped = acceptance.run_p8_demo_s11_chairman_golden_journey(
+        {}, execute=True, root=ROOT, protected_runner=runner
+    )
+    passed = acceptance.run_p8_demo_s11_chairman_golden_journey(
+        {acceptance.EXECUTION_ENV: "1"},
+        execute=True,
+        root=ROOT,
+        protected_runner=runner,
+    )
+    failed = acceptance.run_p8_demo_s11_chairman_golden_journey(
+        {acceptance.EXECUTION_ENV: "1"},
+        execute=True,
+        root=ROOT,
+        protected_runner=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("bounded failure")
+        ),
+    )
+
+    assert skipped["status"] == "SOURCE_ADMITTED"
+    assert passed["status"] == "PASS"
+    assert passed["executed"] is True
+    assert len(calls) == 1
+    assert failed["status"] == "FAIL"
+    assert failed["issues"] == ["bounded failure"]
+    assert failed["secret_included"] is False
+
+
+def test_s11_calibration_is_exact_for_all_three_semantic_stages() -> None:
+    policies = json.loads(acceptance._semantic_calibration_json())
+
+    assert [policy["semantic_stage"] for policy in policies] == [
+        "INTENT",
+        "CONTEXT",
+        "PLAN",
+    ]
+    assert {policy["model_profile"] for policy in policies} == {
+        "general-llm-default"
+    }
+    assert {policy["model_ref"] for policy in policies} == {"Qwen3.5-4B"}
+    assert {policy["minimum_confidence"] for policy in policies} == {0.5}
+
+
+def test_s11_activates_existing_golden_a_local_skill_capability() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE ae_capability_snapshot ("
+                "tenant_id TEXT NOT NULL, capability_snapshot_id TEXT NOT NULL, "
+                "snapshot_version INTEGER NOT NULL, snapshot_hash TEXT NOT NULL, "
+                "snapshot_json TEXT NOT NULL, created_at TEXT NOT NULL, "
+                "PRIMARY KEY (tenant_id, capability_snapshot_id), "
+                "UNIQUE (tenant_id, snapshot_version))"
+            )
+        )
+
+    activated = acceptance._activate_golden_a_capability(engine, root=ROOT)
+
+    assert activated["status"] == "ACTIVE"
+    assert activated["capability_id"] == "FINANCE.CREATE_VOUCHER_DRAFT"
+    assert activated["executor_kind"] == "LOCAL_SKILL"
+    with engine.connect() as connection:
+        assert (
+            connection.execute(
+                text(
+                    "SELECT count(*) FROM ae_capability_snapshot "
+                    "WHERE tenant_id='VO00'"
+                )
+            ).scalar_one()
+            == 1
+        )
+
+
+def test_s11_public_browser_projection_strips_runtime_lineage() -> None:
+    projected = acceptance._public_browser_evidence(
+        {
+            "status": "PASS",
+            "checks": {"browser": True},
+            "runtime": {"interaction_id": "private"},
+        }
+    )
+
+    assert projected == {"status": "PASS", "checks": {"browser": True}}
+    assert acceptance._failed_browser_checks(
+        {
+            "checks": {
+                "live_plan_compiled": True,
+                "browser_result_presented": False,
+                "agent_result_succeeded": False,
+            }
+        }
+    ) == ("agent_result_succeeded", "browser_result_presented")
+    assert acceptance._failed_browser_checks({"checks": []}) == ()
+    assert acceptance._browser_terminal_summary(
+        {
+            "runtime": {
+                "result_projection": {
+                    "result": {
+                        "status": "BLOCKED",
+                        "delivery": {"state": "PENDING"},
+                        "business_refs": ["EOS:BUSINESS_OPERATION:safe-ref"],
+                    }
+                }
+            }
+        }
+    ) == {
+        "result_status": "BLOCKED",
+        "delivery_state": "PENDING",
+        "business_ref_count": 1,
+    }
+    assert acceptance._browser_terminal_summary({}) == {
+        "result_status": "none",
+        "delivery_state": "none",
+        "business_ref_count": 0,
+    }
+    assert acceptance._safe_diagnostic_value("eos.write_outcome-requires_reconciliation") == (
+        "eos.write_outcome-requires_reconciliation"
+    )
+    assert acceptance._safe_diagnostic_value("not safe/value") == "invalid"
+    assert acceptance._safe_diagnostic_value(None) == "none"
+    assert "provider=true" in acceptance.summary_line(
+        {
+            "status": "PASS",
+            "executed": True,
+            "actual_postgres": True,
+            "actual_remote_generation": True,
+            "actual_playwright": True,
+        }
+    )
+
+
+def test_s11_fixture_visibility_uses_canonical_eos_project_member_table() -> None:
+    oa_engine = create_engine("sqlite+pysqlite:///:memory:")
+    eos_engine = create_engine("sqlite+pysqlite:///:memory:")
+    with oa_engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE oa_local_credentials ("
+                "tenant_id TEXT NOT NULL, status TEXT NOT NULL)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO oa_local_credentials (tenant_id, status) "
+                "VALUES ('VO00', 'ACTIVE'), ('VO00', 'ACTIVE')"
+            )
+        )
+    with eos_engine.begin() as connection:
+        for table in (
+            "eos_nvt_project",
+            "eos_project",
+            "eos_project_member",
+            "eos_account",
+            "eos_org_unit",
+        ):
+            connection.execute(
+                text(f"CREATE TABLE {table} (tenant_id TEXT NOT NULL)")
+            )
+        connection.execute(text("INSERT INTO eos_nvt_project VALUES ('VO00')"))
+        connection.execute(
+            text("INSERT INTO eos_project VALUES ('VO00'), ('VO00')")
+        )
+        connection.execute(
+            text("INSERT INTO eos_project_member VALUES ('VO00'), ('VO00')")
+        )
+        connection.execute(
+            text("INSERT INTO eos_account VALUES ('VO00'), ('VO00')")
+        )
+        connection.execute(
+            text(
+                "INSERT INTO eos_org_unit VALUES "
+                "('VO00'), ('VO00'), ('VO00'), ('VO00')"
+            )
+        )
+
+    assert acceptance._fixture_visibility(
+        {"nex-oa": oa_engine, "nex-eos": eos_engine}
+    ) == {
+        "active_employee_count": 2,
+        "nvt_project_count": 1,
+        "project_count": 2,
+        "project_membership_count": 2,
+        "account_count": 2,
+        "organization_unit_count": 4,
+    }
+
+
+def test_s11_failed_step_summary_is_bounded_and_public() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE ae_agent_execution ("
+                "tenant_id TEXT, agent_execution_id TEXT, legacy_interaction_id TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE ae_step_result ("
+                "tenant_id TEXT, agent_execution_id TEXT, compiled_step_key TEXT, "
+                "status TEXT, error_ref TEXT, result_payload JSON)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO ae_agent_execution VALUES "
+                "('VO00', 'execution-1', 'interaction-1')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO ae_step_result VALUES "
+                "('VO00', 'execution-1', 'E1', 'BLOCKED', "
+                "'eos.write_outcome_requires_reconciliation', "
+                "'{\"commit_state\":\"COMMITTED\","
+                "\"verification_status\":\"FAILED\","
+                "\"approval_status\":\"VALID\","
+                "\"reason_code\":\"APPROVAL_VALID\"}')"
+            )
+        )
+
+    assert acceptance._failed_step_summary(
+        engine, interaction_id="interaction-1"
+    ) == (
+        (
+            "E1:BLOCKED:eos.write_outcome_requires_reconciliation:COMMITTED:FAILED:"
+            "VALID:APPROVAL_VALID"
+        ),
+    )
+
+
+def test_s11_post_restart_failure_detail_is_bounded_and_actionable() -> None:
+    detail = acceptance._post_restart_failure_detail(
+        {
+            "failure_code": "AgentResultStatus503",
+            "observations": {"stage": "authoritative_result_recovery"},
+        },
+        checks={
+            "browser_recovery_passed": False,
+            "result_hash_stable": False,
+            "one_agent_result_after_restart": True,
+        },
+    )
+
+    assert detail == (
+        "post-restart Chairman acceptance failed "
+        "(failure=AgentResultStatus503; stage=authoritative_result_recovery; "
+        "checks=browser_recovery_passed,result_hash_stable)"
+    )

@@ -196,13 +196,13 @@ def _run(service: LiveIntentCandidateService, **overrides):
     return service.generate_and_resolve(**values)
 
 
-def test_prompt_registry_seeds_exact_intent_binding_v6_and_keeps_history() -> None:
+def test_prompt_registry_seeds_exact_intent_binding_v7_and_keeps_history() -> None:
     store = _store()
     binding = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
     version = store.get_template_version(binding["prompt_template_version_id"])
 
     assert binding["purpose"] == "intent_resolution"
-    assert version["version"] == "v6"
+    assert version["version"] == "v7"
     assert version["role"] == "system"
     assert version["metadata"] == {
         "phase": "P8",
@@ -214,9 +214,13 @@ def test_prompt_registry_seeds_exact_intent_binding_v6_and_keeps_history() -> No
         "nvt_project_operations": "create_get_list_update",
         "employee_authority": "oa_only",
         "nvt_fallback_rule": "non_nvt_only",
+        "golden_a_parameter_mapping": "exact",
     }
     assert "tenant" in version["content"]
     assert "hidden reasoning" in version["content"]
+    assert "voucher_type=GENERAL" in version["content"]
+    assert "economic_category=TRAVEL" in version["content"]
+    assert "settlement_method=CASH" in version["content"]
     assert any(
         item["version"] == "v1"
         for item in store.template_versions.values()
@@ -224,6 +228,11 @@ def test_prompt_registry_seeds_exact_intent_binding_v6_and_keeps_history() -> No
     )
     assert any(
         item["version"] == "v3"
+        for item in store.template_versions.values()
+        if item["purpose"] == "intent_resolution"
+    )
+    assert any(
+        item["version"] == "v6"
         for item in store.template_versions.values()
         if item["purpose"] == "intent_resolution"
     )
@@ -260,7 +269,7 @@ def test_required_mode_generates_candidate_then_deterministic_work_intent() -> N
     assert result.prompt_provenance["prompt_binding_key"] == (
         AE_INTENT_RESOLUTION_BINDING
     )
-    assert result.prompt_provenance["prompt_template_version"] == "v6"
+    assert result.prompt_provenance["prompt_template_version"] == "v7"
     assert result.model_provenance["mo_generation_id"] == ("mo-generation-p65-s2")
 
     call = client.generation_calls[0]
@@ -722,7 +731,7 @@ def test_in_flight_binding_switch_keeps_captured_v6_snapshot() -> None:
     result = _run(_service(store=switching))
 
     assert switching.switched is True
-    assert result.prompt_provenance["prompt_template_version"] == "v6"
+    assert result.prompt_provenance["prompt_template_version"] == "v7"
     assert (
         base.get_binding(AE_INTENT_RESOLUTION_BINDING)["prompt_template_version_id"]
         == version["prompt_template_version_id"]

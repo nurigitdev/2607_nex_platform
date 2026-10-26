@@ -204,18 +204,14 @@ class SqlAlchemyMultiStepEngine:
                         "ae.multi_step_dependency_not_satisfied",
                         "ExecutableStep dependencies are not successful.",
                     )
-                if (
-                    step["state"] == "WAITING"
-                    and not (
-                        (
-                            job["job_type"] == "CONTINUE_EXECUTION"
-                            and step["executor_kind"]
-                            == "P4_CHAT_RAG_COMPATIBILITY"
-                        )
-                        or (
-                            job["job_type"] == "RESUME_EXECUTION"
-                            and step["executor_kind"] == "WC_DELEGATE_WORK"
-                        )
+                if step["state"] == "WAITING" and not (
+                    (
+                        job["job_type"] == "CONTINUE_EXECUTION"
+                        and step["executor_kind"] == "P4_CHAT_RAG_COMPATIBILITY"
+                    )
+                    or (
+                        job["job_type"] == "RESUME_EXECUTION"
+                        and step["executor_kind"] in {"WC_DELEGATE_WORK", "LOCAL_SKILL"}
                     )
                 ):
                     raise MultiStepEngineError(
@@ -416,7 +412,11 @@ class SqlAlchemyMultiStepEngine:
                     step["agent_execution_id"] != job["execution_id"]
                     or step["state"] != "RUNNING"
                     or step["executor_kind"]
-                    not in {"P4_CHAT_RAG_COMPATIBILITY", "WC_DELEGATE_WORK"}
+                    not in {
+                        "P4_CHAT_RAG_COMPATIBILITY",
+                        "WC_DELEGATE_WORK",
+                        "LOCAL_SKILL",
+                    }
                 ):
                     raise MultiStepEngineError(
                         "ae.multi_step_waiting_mismatch",
@@ -459,7 +459,7 @@ class SqlAlchemyMultiStepEngine:
                         ),
                         params,
                     )
-                else:
+                elif step["executor_kind"] == "WC_DELEGATE_WORK":
                     params = {
                         "tenant_id": tenant,
                         "execution_id": step["agent_execution_id"],
@@ -496,6 +496,43 @@ class SqlAlchemyMultiStepEngine:
                         params,
                     )
                     _move_to_dependency_wait(session, runtime, now)
+                else:
+                    params = {
+                        "tenant_id": tenant,
+                        "execution_id": step["agent_execution_id"],
+                        "step_id": step_id,
+                        "version": step["version"],
+                        "wait_id": _required_uuid("wait_id", outcome.wait_id),
+                        "external_ref": _required_text(
+                            "external_ref", outcome.external_ref, 256
+                        ),
+                        "result_contract_ref": _required_text(
+                            "result_contract_ref",
+                            outcome.result_contract_ref,
+                            256,
+                        ),
+                        "now": now,
+                    }
+                    _require_nsl_approval_wait(session, params)
+                    runtime = _load_runtime(
+                        session, tenant, step["agent_execution_id"], lock=True
+                    )
+                    if runtime is None:
+                        raise MultiStepEngineError(
+                            "ae.multi_step_execution_not_found",
+                            "NSL approval step lost its AgentExecution.",
+                        )
+                    updated = session.execute(
+                        text(
+                            "UPDATE ae_executable_step SET state = 'WAITING', "
+                            "version = version + 1, updated_at = :now "
+                            "WHERE tenant_id = :tenant_id "
+                            "AND executable_step_id = :step_id "
+                            "AND state = 'RUNNING' AND version = :version"
+                        ),
+                        params,
+                    )
+                    _move_to_approval_wait(session, runtime, now)
                 if int(updated.rowcount or 0) != 1:
                     raise MultiStepEngineError(
                         "ae.multi_step_waiting_conflict",
@@ -766,9 +803,16 @@ def _enter_external_resume(
     now: str,
 ) -> None:
     payload = job.get("payload")
+    wait_type = (
+        "WORK_RESULT"
+        if step.get("executor_kind") == "WC_DELEGATE_WORK"
+        else "NSL_APPROVAL"
+        if step.get("executor_kind") == "LOCAL_SKILL"
+        else None
+    )
     if (
         step.get("state") != "WAITING"
-        or step.get("executor_kind") != "WC_DELEGATE_WORK"
+        or wait_type is None
         or not isinstance(payload, Mapping)
         or not job.get("wait_id")
         or not payload.get("event_id")
@@ -777,20 +821,25 @@ def _enter_external_resume(
             "ae.multi_step_resume_authority_invalid",
             "RESUME_EXECUTION lacks its exact delegated wait authority.",
         )
-    wait = session.execute(
-        text(
-            "SELECT state, matched_event_id, resume_runtime_job_id "
-            "FROM ae_wait_registration WHERE tenant_id = :tenant_id "
-            "AND wait_id = :wait_id AND agent_execution_id = :execution_id "
-            "AND executable_step_id = :step_id AND wait_type = 'WORK_RESULT'"
-        ),
-        {
-            "tenant_id": runtime["tenant_id"],
-            "wait_id": job["wait_id"],
-            "execution_id": runtime["agent_execution_id"],
-            "step_id": step["executable_step_id"],
-        },
-    ).mappings().first()
+    wait = (
+        session.execute(
+            text(
+                "SELECT state, matched_event_id, resume_runtime_job_id "
+                "FROM ae_wait_registration WHERE tenant_id = :tenant_id "
+                "AND wait_id = :wait_id AND agent_execution_id = :execution_id "
+                "AND executable_step_id = :step_id AND wait_type = :wait_type"
+            ),
+            {
+                "tenant_id": runtime["tenant_id"],
+                "wait_id": job["wait_id"],
+                "execution_id": runtime["agent_execution_id"],
+                "step_id": step["executable_step_id"],
+                "wait_type": wait_type,
+            },
+        )
+        .mappings()
+        .first()
+    )
     if wait is None or (
         wait["state"],
         str(wait["matched_event_id"]),
@@ -806,7 +855,13 @@ def _enter_external_resume(
         )
     if runtime["state"] == "RUNNING" and runtime["phase"] == "STEP_EXECUTION":
         return
-    if runtime["state"] != "WAITING_DEPENDENCY" or runtime["phase"] != "STEP_EXECUTION":
+    expected_parent_state = (
+        "WAITING_DEPENDENCY" if wait_type == "WORK_RESULT" else "WAITING_APPROVAL"
+    )
+    if (
+        runtime["state"] != expected_parent_state
+        or runtime["phase"] != "STEP_EXECUTION"
+    ):
         raise MultiStepEngineError(
             "ae.multi_step_resume_parent_unavailable",
             "Parent AgentExecution is not eligible for delegated resume.",
@@ -816,13 +871,14 @@ def _enter_external_resume(
             "UPDATE ae_agent_execution SET state = 'RUNNING', "
             "version = version + 1, updated_at = :now "
             "WHERE tenant_id = :tenant_id AND agent_execution_id = :execution_id "
-            "AND state = 'WAITING_DEPENDENCY' AND phase = 'STEP_EXECUTION' "
+            "AND state = :expected_state AND phase = 'STEP_EXECUTION' "
             "AND version = :version"
         ),
         {
             "tenant_id": runtime["tenant_id"],
             "execution_id": runtime["agent_execution_id"],
             "version": runtime["version"],
+            "expected_state": expected_parent_state,
             "now": now,
         },
     )
@@ -1111,6 +1167,28 @@ def _require_delegate_wait(session: Session, params: Mapping[str, Any]) -> None:
         )
 
 
+def _require_nsl_approval_wait(session: Session, params: Mapping[str, Any]) -> None:
+    row = session.execute(
+        text(
+            "SELECT wait_id FROM ae_wait_registration "
+            "WHERE tenant_id = :tenant_id "
+            "AND wait_id = :wait_id "
+            "AND agent_execution_id = :execution_id "
+            "AND executable_step_id = :step_id "
+            "AND wait_type = 'NSL_APPROVAL' "
+            "AND external_ref = :external_ref "
+            "AND result_contract_ref = :result_contract_ref "
+            "AND state = 'PENDING'"
+        ),
+        params,
+    ).first()
+    if row is None:
+        raise MultiStepEngineError(
+            "ae.multi_step_wait_registration_mismatch",
+            "LOCAL_SKILL approval requires its exact pending WaitRegistration.",
+        )
+
+
 def _move_to_dependency_wait(
     session: Session, runtime: Mapping[str, Any], now: str
 ) -> None:
@@ -1139,6 +1217,38 @@ def _move_to_dependency_wait(
         raise MultiStepEngineError(
             "ae.multi_step_dependency_wait_conflict",
             "AgentExecution changed before dependency wait.",
+            True,
+        )
+
+
+def _move_to_approval_wait(
+    session: Session, runtime: Mapping[str, Any], now: str
+) -> None:
+    if runtime["state"] != "RUNNING" or runtime["phase"] != "STEP_EXECUTION":
+        raise MultiStepEngineError(
+            "ae.multi_step_approval_wait_mismatch",
+            "NSL approval requires active step execution authority.",
+        )
+    updated = session.execute(
+        text(
+            "UPDATE ae_agent_execution SET state = 'WAITING_APPROVAL', "
+            "version = version + 1, updated_at = :now "
+            "WHERE tenant_id = :tenant_id "
+            "AND agent_execution_id = :execution_id "
+            "AND state = 'RUNNING' AND phase = 'STEP_EXECUTION' "
+            "AND version = :version"
+        ),
+        {
+            "tenant_id": runtime["tenant_id"],
+            "execution_id": runtime["agent_execution_id"],
+            "version": runtime["version"],
+            "now": now,
+        },
+    )
+    if int(updated.rowcount or 0) != 1:
+        raise MultiStepEngineError(
+            "ae.multi_step_approval_wait_conflict",
+            "AgentExecution changed before approval wait.",
             True,
         )
 

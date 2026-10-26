@@ -1,0 +1,317 @@
+name: nex-platform-p8-demo
+
+x-p8-demo-common-environment: &p8-demo-common-environment
+  NEX_PROFILE: staging_live
+  NEX_DEPLOYMENT_BOUNDARY: P8_DEMO
+  NEX_PERSISTENCE_MODE: postgres
+  NEX_SERVICE_TOKEN_ROLLOUT_PROFILE: SIGNED_ONLY
+  NEX_P8_DEMO_SERVICE_TOKEN_PROFILE: STARTUP_24H
+  NEX_P8_DEMO_STARTUP_TOKEN_BOOTSTRAP: "true"
+  NEX_OPENBAO_ADDR: https://openbao:8200
+  NEX_OPENBAO_CA_CERT_FILE: /run/secrets/openbao_ca
+  NEX_OPENBAO_ROLE_ID_FILE: /run/secrets/openbao_role_id
+  NEX_OPENBAO_SECRET_ID_FILE: /run/secrets/openbao_secret_id
+  NEX_OPENBAO_SECRET_NAMESPACE: staging
+  NEX_OPENBAO_TIMEOUT_SECONDS: "10"
+  SSL_CERT_FILE: /run/secrets/platform_ca
+  REQUESTS_CA_BUNDLE: /run/secrets/platform_ca
+  NEX_CONFIG_GENERATION: config:p8-demo.1
+  NEX_SECRET_GENERATION: ${NEX_P8_DEMO_SECRET_GENERATION:-secret:p8-demo.1}
+  NEX_TLS_GENERATION: ${NEX_P8_DEMO_TLS_GENERATION:-tls:p8-demo.1}
+  NEX_TLS_TERMINATION_POLICY_REF: tls://openbao/nex-platform/staging/policy@v1
+  NEX_TLS_CERTIFICATE_REF: tls://openbao/nex-platform/staging/certificate@v1
+  NEX_TLS_TRUST_BUNDLE_REF: tls://openbao/nex-platform/staging/trust-bundle@v1
+  NEX_OA_BASE_URL: https://oa.nex-staging.test:8443
+  NEX_AE_API_BASE_URL: https://ae-api.nex-staging.test:8443
+  NEX_WC_BASE_URL: https://wc.nex-staging.test:8443
+  NEX_EOS_BASE_URL: https://eos.nex-staging.test:8443
+
+x-p8-demo-wc-environment: &p8-demo-wc-environment
+  <<: *p8-demo-common-environment
+  NEX_WC_DATABASE_URL_REF: secret://openbao/nex-platform/staging/nex-wc/NEX_WC_DATABASE_URL@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+  NEX_WC_OA_BASE_URL: https://oa.nex-staging.test:8443
+  NEX_WC_AE_BASE_URL: https://ae-api.nex-staging.test:8443
+  NEX_WC_TO_OA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-wc/NEX_WC_TO_OA_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+  NEX_WC_TO_AE_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-wc/NEX_WC_TO_AE_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+  NEX_P8_DEMO_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-wc/NEX_P8_DEMO_SERVICE_CREDENTIAL_ID@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+  NEX_P8_DEMO_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-wc/NEX_P8_DEMO_SERVICE_CLIENT_SECRET@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+
+x-p8-demo-eos-environment: &p8-demo-eos-environment
+  <<: *p8-demo-common-environment
+  NEX_EOS_DATABASE_URL_REF: secret://openbao/nex-platform/staging/nex-eos/NEX_EOS_DATABASE_URL@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+  NEX_EOS_TO_WC_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-eos/NEX_EOS_TO_WC_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+  NEX_EOS_TO_AE_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-eos/NEX_EOS_TO_AE_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+  NEX_EOS_TO_OA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-eos/NEX_EOS_TO_OA_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+  NEX_P8_DEMO_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-eos/NEX_P8_DEMO_SERVICE_CREDENTIAL_ID@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+  NEX_P8_DEMO_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-eos/NEX_P8_DEMO_SERVICE_CLIENT_SECRET@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+
+x-p8-demo-service: &p8-demo-service
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  extra_hosts: [host.docker.internal:host-gateway]
+  networks: [service, control]
+  depends_on:
+    openbao:
+      condition: service_healthy
+    traefik:
+      condition: service_healthy
+    nex-oa:
+      condition: service_healthy
+
+services:
+  openbao:
+    restart: unless-stopped
+    networks: [control, admin, identity]
+
+  traefik:
+    restart: unless-stopped
+    volumes:
+      - ../compose/traefik/p8-demo-dynamic.yaml:/etc/traefik/dynamic.yaml:ro
+    networks:
+      edge: {}
+      service:
+        aliases:
+          - oa.nex-staging.test
+          - ag.nex-staging.test
+          - ae-api.nex-staging.test
+          - cx.nex-staging.test
+          - mo.nex-staging.test
+          - wc.nex-staging.test
+          - eos.nex-staging.test
+          - ae.nex-staging.test
+          - embedding.nex-staging.test
+          - reranker.nex-staging.test
+          - generation.nex-staging.test
+          - id.nex-staging.test
+          - object.nex-staging.test
+      identity: {}
+      object-storage: {}
+
+  rustfs:
+    restart: unless-stopped
+
+  nex-oa:
+    restart: unless-stopped
+    environment:
+      NEX_DEPLOYMENT_BOUNDARY: P8_DEMO
+      NEX_P8_DEMO_SERVICE_TOKEN_PROFILE: STARTUP_24H
+      NEX_OA_SIGNING_PROVIDER: OPENBAO_TRANSIT
+      NEX_OA_TRANSIT_ROLE_ID_FILE: /run/secrets/openbao_transit_role_id
+      NEX_OA_TRANSIT_SECRET_ID_FILE: /run/secrets/openbao_transit_secret_id
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: oa_role_id
+        target: openbao_role_id
+      - source: oa_secret_id
+        target: openbao_secret_id
+      - source: oa_transit_role_id
+        target: openbao_transit_role_id
+      - source: oa_transit_secret_id
+        target: openbao_transit_secret_id
+
+  nex-ag:
+    restart: unless-stopped
+    environment:
+      NEX_DEPLOYMENT_BOUNDARY: P8_DEMO
+      NEX_P8_DEMO_SERVICE_TOKEN_PROFILE: STARTUP_24H
+      NEX_P8_DEMO_STARTUP_TOKEN_BOOTSTRAP: "true"
+      NEX_P8_DEMO_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-ag/NEX_P8_DEMO_SERVICE_CREDENTIAL_ID@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_P8_DEMO_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-ag/NEX_P8_DEMO_SERVICE_CLIENT_SECRET@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+    depends_on:
+      nex-oa:
+        condition: service_healthy
+
+  nex-ae-api:
+    restart: unless-stopped
+    environment:
+      NEX_DEPLOYMENT_BOUNDARY: P8_DEMO
+      NEX_P8_DEMO_SERVICE_TOKEN_PROFILE: STARTUP_24H
+      NEX_P8_DEMO_STARTUP_TOKEN_BOOTSTRAP: "true"
+      NEX_AE_AGENT_RUNTIME_MODE: required
+      NEX_AE_PLANNING_MODE: required
+      NEX_AE_DEMO_GOLDEN_A_ADMISSION_ENABLED: "true"
+      NEX_AE_P65_SEMANTIC_CALIBRATION_POLICIES_JSON: ${NEX_P8_DEMO_SEMANTIC_CALIBRATION_POLICIES_JSON:?semantic calibration policies are required}
+      NEX_AE_TO_MO_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_MO_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_TO_AG_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_AG_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_WC_BASE_URL: https://wc.nex-staging.test:8443
+      NEX_EOS_BASE_URL: https://eos.nex-staging.test:8443
+      NEX_AE_TO_WC_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_WC_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_TO_EOS_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_EOS_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_P8_DEMO_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_P8_DEMO_SERVICE_CREDENTIAL_ID@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_P8_DEMO_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_P8_DEMO_SERVICE_CLIENT_SECRET@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+    depends_on:
+      nex-oa:
+        condition: service_healthy
+
+  nex-cx:
+    restart: unless-stopped
+    environment:
+      NEX_DEPLOYMENT_BOUNDARY: P8_DEMO
+      NEX_P8_DEMO_SERVICE_TOKEN_PROFILE: STARTUP_24H
+      NEX_P8_DEMO_STARTUP_TOKEN_BOOTSTRAP: "true"
+      NEX_P8_DEMO_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-cx/NEX_P8_DEMO_SERVICE_CREDENTIAL_ID@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_P8_DEMO_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-cx/NEX_P8_DEMO_SERVICE_CLIENT_SECRET@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+    depends_on:
+      nex-oa:
+        condition: service_healthy
+
+  nex-mo:
+    restart: unless-stopped
+    environment:
+      NEX_DEPLOYMENT_BOUNDARY: P8_DEMO
+      NEX_P8_DEMO_SERVICE_TOKEN_PROFILE: STARTUP_24H
+      NEX_P8_DEMO_STARTUP_TOKEN_BOOTSTRAP: "true"
+      NEX_P8_DEMO_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-mo/NEX_P8_DEMO_SERVICE_CREDENTIAL_ID@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_P8_DEMO_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-mo/NEX_P8_DEMO_SERVICE_CLIENT_SECRET@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+    depends_on:
+      nex-oa:
+        condition: service_healthy
+
+  nex-ae-web:
+    restart: unless-stopped
+
+  nex-wc:
+    <<: *p8-demo-service
+    image: ${NEX_WC_RUNTIME_IMAGE:?immutable WC image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-wc, --]
+    command: [python, -m, uvicorn, nex_wc.main:app, --host, 0.0.0.0, --port, "8106"]
+    environment: *p8-demo-wc-environment
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: wc_role_id
+        target: openbao_role_id
+      - source: wc_secret_id
+        target: openbao_secret_id
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8106/ready', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  nex-eos:
+    <<: *p8-demo-service
+    image: ${NEX_EOS_RUNTIME_IMAGE:?immutable EOS image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-eos, --]
+    command: [python, -m, uvicorn, nex_eos.main:app, --host, 0.0.0.0, --port, "8107"]
+    environment: *p8-demo-eos-environment
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: eos_role_id
+        target: openbao_role_id
+      - source: eos_secret_id
+        target: openbao_secret_id
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8107/ready', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  nex-ae-agent-runtime-worker:
+    <<: *p8-demo-service
+    image: ${NEX_AE_RUNTIME_IMAGE:?immutable AE image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-ae-api, --]
+    command: [python, -m, nex_ae_api.demo_runtime, worker]
+    environment:
+      <<: *p8-demo-common-environment
+      NEX_AE_DATABASE_URL_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_DATABASE_URL@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_TO_OA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_OA_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_TO_CX_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_CX_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_TO_MO_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_MO_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_TO_AG_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_AG_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_TO_WC_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_WC_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_TO_EOS_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_EOS_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_OBJECT_STORAGE_ACCESS_KEY_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_OBJECT_STORAGE_ACCESS_KEY@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_AE_OBJECT_STORAGE_SECRET_KEY_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_OBJECT_STORAGE_SECRET_KEY@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_P8_DEMO_DOMAIN_CLAIMING_ENABLED: "true"
+      NEX_AE_AGENT_WORKER_MODE: enabled
+      NEX_AE_AGENT_WORKER_ID: ae-demo-agent-runtime-1
+      NEX_AE_AGENT_WORKER_EXECUTOR_KINDS: DETERMINISTIC_AGGREGATE,DETERMINISTIC_REPORT,LOCAL_SKILL,P4_CHAT_RAG_COMPATIBILITY
+      NEX_AE_AGENT_WORKER_BACKEND_PROFILES: NSL_V02_IN_PROCESS
+      NEX_AE_DEMO_NSL_STATE_ROOT: /var/lib/nex-platform/ae-runtime/nsl
+      NEX_P8_DEMO_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_P8_DEMO_SERVICE_CREDENTIAL_ID@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_P8_DEMO_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_P8_DEMO_SERVICE_CLIENT_SECRET@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: ae_role_id
+        target: openbao_role_id
+      - source: ae_secret_id
+        target: openbao_secret_id
+    volumes:
+      - p8_demo_ae_runtime_state:/var/lib/nex-platform/ae-runtime
+    depends_on:
+      openbao:
+        condition: service_healthy
+      nex-ae-api:
+        condition: service_healthy
+      nex-oa:
+        condition: service_healthy
+
+  nex-wc-event-delivery-worker:
+    <<: *p8-demo-service
+    image: ${NEX_WC_RUNTIME_IMAGE:?immutable WC image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-wc, --]
+    command: [python, -m, nex_wc.demo_runtime, events]
+    environment:
+      <<: *p8-demo-wc-environment
+      NEX_P8_DEMO_DOMAIN_CLAIMING_ENABLED: "true"
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: wc_role_id
+        target: openbao_role_id
+      - source: wc_secret_id
+        target: openbao_secret_id
+    depends_on:
+      openbao:
+        condition: service_healthy
+      nex-wc:
+        condition: service_healthy
+
+  nex-eos-outbox-publisher:
+    <<: *p8-demo-service
+    image: ${NEX_EOS_RUNTIME_IMAGE:?immutable EOS image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-eos, --]
+    command: [python, -m, nex_eos.demo_runtime, outbox]
+    environment:
+      <<: *p8-demo-eos-environment
+      NEX_P8_DEMO_DOMAIN_CLAIMING_ENABLED: "true"
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: eos_role_id
+        target: openbao_role_id
+      - source: eos_secret_id
+        target: openbao_secret_id
+    depends_on:
+      openbao:
+        condition: service_healthy
+      nex-eos:
+        condition: service_healthy
+
+secrets:
+  wc_role_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-wc.role-id"
+  wc_secret_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-wc.secret-id"
+  eos_role_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-eos.role-id"
+  eos_secret_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-eos.secret-id"
+  oa_transit_role_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-oa-transit.role-id"
+  oa_transit_secret_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-oa-transit.secret-id"
+
+networks:
+  identity:
+    internal: true
+
+volumes:
+  p8_demo_ae_runtime_state:

@@ -832,15 +832,15 @@ def _load_artifact(
 def _require_artifact_selector(
     lineage: Mapping[str, Any], artifact: Mapping[str, Any]
 ) -> None:
-    if (
-        lineage["required_capability"] != artifact["skill_id"]
-        or lineage["capability_version"] != artifact["skill_version"]
-    ):
-        raise NSLStepExecutionError(
-            "ae.nsl_binding_artifact_mismatch",
-            "Verified Skill artifact does not match the exact compiled step selector.",
-        )
     if lineage["executor_kind"] != "LOCAL_SKILL":
+        if (
+            lineage["required_capability"] != artifact["skill_id"]
+            or lineage["capability_version"] != artifact["skill_version"]
+        ):
+            raise NSLStepExecutionError(
+                "ae.nsl_binding_artifact_mismatch",
+                "Verified Skill artifact does not match the exact compiled step selector.",
+            )
         return
     try:
         binding = validate_local_skill_binding(lineage["skill_binding"])
@@ -848,6 +848,23 @@ def _require_artifact_selector(
         raise _invalid(
             "Active LOCAL_SKILL step lacks its exact compiled binding."
         ) from exc
+    if (
+        binding.get("capability_id", binding["skill_id"])
+        != lineage["required_capability"]
+        or binding["exact_skill_version"] != lineage["capability_version"]
+    ):
+        raise NSLStepExecutionError(
+            "ae.nsl_binding_artifact_mismatch",
+            "LOCAL_SKILL binding does not match the exact compiled capability selector.",
+        )
+    if (
+        binding["skill_id"] != artifact["skill_id"]
+        or binding["exact_skill_version"] != artifact["skill_version"]
+    ):
+        raise NSLStepExecutionError(
+            "ae.nsl_binding_artifact_mismatch",
+            "Verified Skill artifact does not match the exact compiled Skill selector.",
+        )
     if (
         binding["skill_semantic_hash"] != artifact["skill_semantic_hash"]
         or binding["runtime_contract_ref"] != artifact["runtime_contract_ref"]
@@ -1033,17 +1050,32 @@ def _require_replay(
     backend_profile: str,
 ) -> None:
     binding = saved["binding"]
-    if (
-        saved["request"] != request
-        or saved["context_projection"] != context
-        or binding["request_hash"] != semantic_sha256_hash_ref(request)
-        or binding["verified_artifact_ref"] != artifact["artifact_ref"]
-        or binding["verified_artifact_hash"] != artifact["artifact_hash"]
-        or binding["backend_profile"] != backend_profile
-    ):
+    conflicts = tuple(
+        name
+        for name, differs in (
+            ("request", saved["request"] != request),
+            ("context", saved["context_projection"] != context),
+            (
+                "request_hash",
+                binding["request_hash"] != semantic_sha256_hash_ref(request),
+            ),
+            (
+                "artifact_ref",
+                binding["verified_artifact_ref"] != artifact["artifact_ref"],
+            ),
+            (
+                "artifact_hash",
+                binding["verified_artifact_hash"] != artifact["artifact_hash"],
+            ),
+            ("backend_profile", binding["backend_profile"] != backend_profile),
+        )
+        if differs
+    )
+    if conflicts:
         raise NSLStepExecutionError(
             "ae.nsl_binding_immutable_conflict",
-            "ExecutableStep already has a different immutable NSL request binding.",
+            "ExecutableStep already has a different immutable NSL request binding "
+            f"({', '.join(conflicts)}).",
         )
 
 

@@ -112,11 +112,21 @@ class P6LocalSkillExecutor:
         handler: Callable[
             [StepExecutionContext, LocalSkillExecutorDependencies], P5ExecutorOutcome
         ],
+        continuation_handler: Callable[
+            [StepExecutionContext, LocalSkillExecutorDependencies, Any],
+            P5ExecutorOutcome,
+        ]
+        | None = None,
     ) -> None:
         self._dependencies = validate_local_skill_executor_dependencies(dependencies)
         if not callable(handler):
             raise _local_skill_unavailable("LOCAL_SKILL handler is unavailable.")
+        if continuation_handler is not None and not callable(continuation_handler):
+            raise _local_skill_unavailable(
+                "LOCAL_SKILL continuation handler is unavailable."
+            )
         self._handler = handler
+        self._continuation_handler = continuation_handler
 
     @property
     def backend_profile(self) -> str:
@@ -140,7 +150,7 @@ class P6LocalSkillExecutor:
         _require_executor(context.step, LOCAL_SKILL_EXECUTOR_KIND)
         if context.step.get("step_type") != "LOCAL_SKILL":
             raise _invalid("LOCAL_SKILL executor requires a LOCAL_SKILL step.")
-        if continuation_result is not None:
+        if continuation_result is not None and self._continuation_handler is None:
             raise _invalid("LOCAL_SKILL READ cannot consume continuation input in P6.")
         try:
             binding = validate_local_skill_binding(context.step.get("skill_binding"))
@@ -150,7 +160,15 @@ class P6LocalSkillExecutor:
             raise _local_skill_unavailable(
                 "LOCAL_SKILL compiled binding has no matching configured backend."
             )
-        outcome = self._handler(context, self._dependencies)
+        outcome = (
+            self._handler(context, self._dependencies)
+            if continuation_result is None
+            else self._continuation_handler(
+                context,
+                self._dependencies,
+                continuation_result,
+            )
+        )
         if not isinstance(outcome, P5ExecutorOutcome):
             raise _invalid("LOCAL_SKILL handler returned an invalid outcome.")
         return outcome
@@ -163,9 +181,7 @@ class P7DelegateWorkExecutor:
         dependencies: DelegateWorkExecutorDependencies,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
-        self._dependencies = validate_delegate_work_executor_dependencies(
-            dependencies
-        )
+        self._dependencies = validate_delegate_work_executor_dependencies(dependencies)
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def execute(
@@ -179,9 +195,7 @@ class P7DelegateWorkExecutor:
             raise _invalid("WC_DELEGATE_WORK requires a DELEGATE_WORK step.")
         if continuation_result is not None:
             return _delegated_result_outcome(context, continuation_result)
-        created_at = self._clock().astimezone(UTC).isoformat().replace(
-            "+00:00", "Z"
-        )
+        created_at = self._clock().astimezone(UTC).isoformat().replace("+00:00", "Z")
         try:
             runtime = self._dependencies.runtime_repository.load(
                 tenant_id=context.job["tenant_id"],
@@ -270,13 +284,10 @@ def _local_skill_backend_profiles(backend: object) -> tuple[str, ...]:
             or not routed_profiles
             or not callable(getattr(backend, "resolve", None))
         ):
-            raise _local_skill_unavailable(
-                "LOCAL_SKILL backend router is unavailable."
-            )
+            raise _local_skill_unavailable("LOCAL_SKILL backend router is unavailable.")
         try:
             profiles = tuple(
-                normalize_nsl_backend_profile(profile)
-                for profile in routed_profiles
+                normalize_nsl_backend_profile(profile) for profile in routed_profiles
             )
         except ValueError as exc:
             raise _local_skill_unavailable(
@@ -293,9 +304,7 @@ def _local_skill_backend_profiles(backend: object) -> tuple[str, ...]:
         )
     try:
         return (
-            normalize_nsl_backend_profile(
-                getattr(backend, "backend_profile", None)
-            ),
+            normalize_nsl_backend_profile(getattr(backend, "backend_profile", None)),
         )
     except ValueError as exc:
         raise _local_skill_unavailable(
@@ -753,6 +762,11 @@ def default_p6_executor_registry(
     local_skill_handler: Callable[
         [StepExecutionContext, LocalSkillExecutorDependencies], P5ExecutorOutcome
     ],
+    local_skill_continuation_handler: Callable[
+        [StepExecutionContext, LocalSkillExecutorDependencies, Any],
+        P5ExecutorOutcome,
+    ]
+    | None = None,
 ) -> P5StepExecutorRegistry:
     projection = P5DeterministicProjectionExecutor()
     return P5StepExecutorRegistry(
@@ -763,6 +777,7 @@ def default_p6_executor_registry(
             LOCAL_SKILL_EXECUTOR_KIND: P6LocalSkillExecutor(
                 dependencies=local_skill_dependencies,
                 handler=local_skill_handler,
+                continuation_handler=local_skill_continuation_handler,
             ),
         }
     )

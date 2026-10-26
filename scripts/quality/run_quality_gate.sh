@@ -822,3 +822,4 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_p6_ca02_s8_runtime_profile_acceptance.py --summary
 "$PYTHON_BIN" scripts/smoke/run_p8_s06_nsl_compatibility.py --summary
 "$PYTHON_BIN" scripts/smoke/run_p8_s68_golden_a_evidence_package.py --execute --summary
+"$PYTHON_BIN" scripts/deployment/run_p8_demo_s12_release_operations_closure.py --summary

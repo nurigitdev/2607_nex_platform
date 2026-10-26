@@ -141,7 +141,7 @@ def test_required_block_is_problem_response_and_shadow_failure_falls_back() -> N
     assert len(generation.calls) == 1
 
 
-def test_required_unknown_failure_is_sanitized() -> None:
+def test_required_unknown_failure_is_sanitized_and_logged(caplog) -> None:
     runtime = Runtime(failure=RuntimeError("private stack detail"))
     client, _, _ = _client(runtime)
     response = client.post(
@@ -157,3 +157,4 @@ def test_required_unknown_failure_is_sanitized() -> None:
     assert response.status_code == 409
     assert response.json()["error_code"] == "SEMANTIC_ADMISSION_FAILED"
     assert "private stack detail" not in str(response.json())
+    assert "exception_type=RuntimeError" in caplog.text

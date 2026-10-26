@@ -1,0 +1,34 @@
+{
+  "closure_status": "P8_DEMO_CLOSED",
+  "full_regression": {
+    "branch_coverage": 95.2682,
+    "failed_test_count": 0,
+    "passed_test_count": 17847,
+    "skipped_test_count": 118,
+    "statement_coverage": 96.0119,
+    "status": "PASS"
+  },
+  "production_deployment_performed": false,
+  "registry_push_performed": false,
+  "release_candidate_id": "p8-demo-rc:531b6b76cdbfe206",
+  "release_identity": {
+    "ae_runtime_image_id": "sha256:2565fb9a8bdcf9ac975557a7c8585ab26328fb33e98bec47226c2352679422e2",
+    "compose_dynamic_digest": "sha256:0cbd85e30d8a424993dd02ed917eae0f78bcbed9c387febb8770a5f9f63aa7a1",
+    "compose_overlay_digest": "sha256:8ef78a5abe6c8debdec40c08df4019bb227ef7a9ebf6c24c49362ffad5498190",
+    "dependency_identity_digest": "sha256:e2eceadcc2aa8eb69ab940dac6e42adcf451dec71edd8574c02596d7bb14e213",
+    "nsl_bundle_id": "p8-demo-nsl-v0.2.1-golden-a-v1",
+    "release_set_digest": "sha256:7e8256928d077eefdacf2b69012ae48cda01fc6933ab7cedab6ad36e7001d23d",
+    "source_revision": "ec77eef4736d8ac974f0ccc8914f296aeeffa54a"
+  },
+  "release_identity_digest": "sha256:531b6b76cdbfe2069211546a5c09ac09dd80e9e6bc670d5c99eaae6e848d7eec",
+  "runtime_residue_retained": false,
+  "schema_version": "p8_demo_release_candidate.v1",
+  "slice": "P8-DEMO-S12",
+  "summary": {
+    "database_count": 7,
+    "image_count": 8,
+    "live_provider_capability_count": 3,
+    "passed_check_count": 12,
+    "total_check_count": 12
+  }
+}

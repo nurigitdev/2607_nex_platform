@@ -7,8 +7,12 @@ from typing import Any
 
 from nex_oa.production_token_profiles import (
     ACCESS_TOKEN_TYPE,
-    DEFAULT_TOKEN_TTL_SECONDS,
+    P8_DEMO_DEPLOYMENT_BOUNDARY,
+    P8_DEMO_DEPLOYMENT_PROFILE,
+    P8_DEMO_SERVICE_ACCESS_PROFILE,
     PRODUCTION_TOKEN_ISSUER,
+    ProductionTokenProfile,
+    get_production_token_profile,
     validate_production_token_shape,
 )
 from nex_oa.service_principal_service import OaServicePrincipalService
@@ -27,10 +31,15 @@ class OaClientCredentialTokenExchangeService:
         principal_service: OaServicePrincipalService,
         signing_key_service: OaSigningKeyService,
         signing_provider: OaRsaSigningProvider,
+        token_profile_name: str = "service_access",
     ) -> None:
         self.principal_service = principal_service
         self.signing_key_service = signing_key_service
         self.signing_provider = signing_provider
+        profile = get_production_token_profile(token_profile_name)
+        if profile.subject_kind != "service_principal":
+            raise ValueError("token exchange profile must be a service-principal profile")
+        self.token_profile = profile
 
     def exchange(
         self,
@@ -67,22 +76,27 @@ class OaClientCredentialTokenExchangeService:
             "typ": ACCESS_TOKEN_TYPE,
             "kid": key["key_id"],
         }
-        claims = {
+        claims: dict[str, Any] = {
             "iss": PRODUCTION_TOKEN_ISSUER,
             "sub": f"service:{auth['service_id']}",
             "aud": audience,
             "iat": now,
             "nbf": now,
-            "exp": now + DEFAULT_TOKEN_TTL_SECONDS,
+            "exp": now + self.token_profile.default_ttl_seconds,
             "jti": token_id or f"sat-{token_urlsafe(24)}",
-            "token_use": "service_access",
+            "token_use": self.token_profile.name,
             "scope": " ".join(requested_scopes),
             "service_id": auth["service_id"],
             "credential_id": auth["credential_id"],
             "credential_revision": auth["credential_revision"],
         }
+        if self.token_profile.name == P8_DEMO_SERVICE_ACCESS_PROFILE:
+            claims.update(
+                deployment_boundary=P8_DEMO_DEPLOYMENT_BOUNDARY,
+                deployment_profile=P8_DEMO_DEPLOYMENT_PROFILE,
+            )
         errors = validate_production_token_shape(
-            "service_access",
+            self.token_profile.name,
             headers=headers,
             claims=claims,
         )
@@ -102,9 +116,28 @@ class OaClientCredentialTokenExchangeService:
             "response_schema_version": OA_TOKEN_RESPONSE_SCHEMA_VERSION,
             "access_token": access_token,
             "token_type": "Bearer",
-            "expires_in": DEFAULT_TOKEN_TTL_SECONDS,
+            "expires_in": self.token_profile.default_ttl_seconds,
             "scope": claims["scope"],
         }
+
+
+def service_token_exchange_profile_for_environment(
+    environ: Mapping[str, str],
+) -> ProductionTokenProfile:
+    requested = str(
+        environ.get("NEX_P8_DEMO_SERVICE_TOKEN_PROFILE") or ""
+    ).strip()
+    if not requested:
+        return get_production_token_profile("service_access")
+    if requested != "STARTUP_24H":
+        raise ValueError("P8 Demo service-token profile is unsupported")
+    if (
+        str(environ.get("NEX_PROFILE") or "").strip() != P8_DEMO_DEPLOYMENT_PROFILE
+        or str(environ.get("NEX_DEPLOYMENT_BOUNDARY") or "").strip()
+        != P8_DEMO_DEPLOYMENT_BOUNDARY
+    ):
+        raise ValueError("P8 Demo service-token profile boundary is invalid")
+    return get_production_token_profile(P8_DEMO_SERVICE_ACCESS_PROFILE)
 
 
 def _normalize_scope(value: object) -> tuple[str, ...]:

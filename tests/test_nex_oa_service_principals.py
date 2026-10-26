@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from nex_oa.service_principals import (
     OaServicePrincipalError,
     normalize_audiences,
@@ -40,9 +39,7 @@ def _credential(**overrides: object) -> dict[str, object]:
 
 
 def test_plan_service_principal_create_and_update() -> None:
-    created = plan_service_principal_upsert(
-        {**_principal(), "expected_revision": 0}
-    )
+    created = plan_service_principal_upsert({**_principal(), "expected_revision": 0})
     updated = plan_service_principal_upsert(
         {
             **created,
@@ -58,6 +55,17 @@ def test_plan_service_principal_create_and_update() -> None:
     assert updated["display_name"] == "AE Runtime Updated"
     assert updated["previous_revision"] == 1
     assert updated["revision"] == 2
+
+
+def test_principal_scope_accepts_hierarchical_resource_segments() -> None:
+    result = plan_service_principal_upsert(
+        {
+            **_principal(allowed_scopes=["identity:employee:resolve"]),
+            "expected_revision": 0,
+        }
+    )
+
+    assert result["allowed_scopes"] == ("identity:employee:resolve",)
 
 
 def test_principal_identity_and_revision_are_guarded() -> None:
@@ -97,7 +105,11 @@ def test_principal_identity_and_revision_are_guarded() -> None:
 def test_principal_contract_rejects_invalid_fields(payload: dict[str, object]) -> None:
     with pytest.raises(OaServicePrincipalError) as caught:
         plan_service_principal_upsert(
-            {**_principal(), **payload, "expected_revision": payload.get("expected_revision", 0)}
+            {
+                **_principal(),
+                **payload,
+                "expected_revision": payload.get("expected_revision", 0),
+            }
         )
 
     assert caught.value.status_code == 400
@@ -108,9 +120,7 @@ def test_normalizers_are_canonical_and_fail_closed() -> None:
     assert normalize_service_principal_id(" AE.Runtime ") == "ae.runtime"
     assert normalize_service_id(" NEX-CX ") == "nex-cx"
     assert normalize_audiences(["nex-oa", " NEX-CX "]) == ("nex-cx", "nex-oa")
-    assert normalize_scopes([" Document:Read ", "document:read"]) == (
-        "document:read",
-    )
+    assert normalize_scopes([" Document:Read ", "document:read"]) == ("document:read",)
     assert normalize_credential_status(" rotating ") == "ROTATING"
 
     with pytest.raises(OaServicePrincipalError):
@@ -193,9 +203,27 @@ def test_credential_transition_rotation_revocation_and_idempotency() -> None:
     ("credential", "target", "expected", "grace", "error_code"),
     [
         (_credential(), "ROTATING", 1, 1, "oa.service_credential_revision_conflict"),
-        (_credential(status="REVOKED"), "ACTIVE", 2, None, "oa.service_credential_transition_invalid"),
-        (_credential(), "ROTATING", 2, None, "oa.service_principal_grace_seconds_invalid"),
-        (_credential(), "ROTATING", 2, 86_401, "oa.service_principal_grace_seconds_invalid"),
+        (
+            _credential(status="REVOKED"),
+            "ACTIVE",
+            2,
+            None,
+            "oa.service_credential_transition_invalid",
+        ),
+        (
+            _credential(),
+            "ROTATING",
+            2,
+            None,
+            "oa.service_principal_grace_seconds_invalid",
+        ),
+        (
+            _credential(),
+            "ROTATING",
+            2,
+            86_401,
+            "oa.service_principal_grace_seconds_invalid",
+        ),
         (_credential(), "REVOKED", 2, 1, "oa.service_principal_grace_seconds_invalid"),
     ],
 )

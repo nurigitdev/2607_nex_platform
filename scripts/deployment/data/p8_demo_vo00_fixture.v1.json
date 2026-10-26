@@ -1,0 +1,39 @@
+{
+  "schema_version": "p8_demo_fixture.v1",
+  "fixture_id": "p8-demo-vo00-v1",
+  "fixture_hash": "sha256:20da3835c8dfa83eb573ac63cd9fd46ba93c94b099e65ae240d9e69a39138599",
+  "base_fixture": {
+    "path": "scripts/smoke/data/p8_golden_a_fixture.v1.json",
+    "fixture_hash": "sha256:601e096a6f97a93f3f2ffa44b18dddc8bbf8b37531cc21e9ffd171e868c2b4ac"
+  },
+  "tenant": {
+    "tenant_id": "VO00",
+    "display_name": "NeX Platform Demo"
+  },
+  "login_accounts": [
+    {
+      "subject_id": "employee-1001",
+      "employee_id": "1001",
+      "password_env": "NEX_DEMO_CHAIRMAN_PASSWORD"
+    },
+    {
+      "subject_id": "employee-2001",
+      "employee_id": "2001",
+      "password_env": "NEX_DEMO_APPROVER_PASSWORD"
+    }
+  ],
+  "project_memberships": [
+    {
+      "project_membership_id": "84000000-0000-4000-8000-000000000001",
+      "project_key": "child",
+      "subject_id": "employee-1001",
+      "member_role": "OWNER"
+    },
+    {
+      "project_membership_id": "84000000-0000-4000-8000-000000000002",
+      "project_key": "child",
+      "subject_id": "employee-2001",
+      "member_role": "MEMBER"
+    }
+  ]
+}

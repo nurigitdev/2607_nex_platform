@@ -1,3 +1,5 @@
+import os
+
 from nex_runtime import (
     SERVICE_SPECS,
     attach_service_persistence_runtime,
@@ -5,6 +7,7 @@ from nex_runtime import (
     operational_event_emitter_from_app,
     register_service_job_control_routes,
     register_service_log_retention_routes,
+    register_service_token_admission_routes,
 )
 
 from nex_oa.auth_boundary import register_identity_auth_boundary_routes
@@ -76,7 +79,10 @@ from nex_oa.subjects import (
     build_subject_registry_for_runtime,
     register_subject_registry_routes,
 )
-from nex_oa.token_exchange_service import OaClientCredentialTokenExchangeService
+from nex_oa.token_exchange_service import (
+    OaClientCredentialTokenExchangeService,
+    service_token_exchange_profile_for_environment,
+)
 from nex_oa.token_signing import build_oa_signing_provider
 from nex_oa.token_validation_service import OaSignedTokenValidationService
 from nex_oa.trace_projection import (
@@ -158,20 +164,24 @@ SIGNING_KEY_SERVICE = OaSigningKeyService(
     repository=SIGNED_TOKEN_REPOSITORY,
 )
 TOKEN_SIGNING_PROVIDER = build_oa_signing_provider()
+SERVICE_TOKEN_EXCHANGE_PROFILE = service_token_exchange_profile_for_environment(os.environ)
 TOKEN_EXCHANGE_SERVICE = OaClientCredentialTokenExchangeService(
     principal_service=SERVICE_PRINCIPAL_SERVICE,
     signing_key_service=SIGNING_KEY_SERVICE,
     signing_provider=TOKEN_SIGNING_PROVIDER,
+    token_profile_name=SERVICE_TOKEN_EXCHANGE_PROFILE.name,
 )
 TOKEN_VALIDATION_SERVICE = OaSignedTokenValidationService(
     signing_key_service=SIGNING_KEY_SERVICE,
     principal_service=SERVICE_PRINCIPAL_SERVICE,
+    accepted_service_token_profiles=(SERVICE_TOKEN_EXCHANGE_PROFILE.name,),
 )
 SERVICE_TOKEN_ADMISSION = build_oa_local_service_token_admission(
     signing_key_service=SIGNING_KEY_SERVICE,
     validation_service=TOKEN_VALIDATION_SERVICE,
 )
 app.state.service_token_admission = SERVICE_TOKEN_ADMISSION
+register_service_token_admission_routes(app, spec=SERVICE_SPEC)
 SERVICE_PRINCIPAL_AUDIT_EMITTER = operational_event_emitter_from_app(
     app,
     service_id="nex-oa",

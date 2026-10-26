@@ -106,11 +106,13 @@ import {
 } from "./runtimeDiagnostics.js";
 import { renderProjectMembershipBatchResult } from "./projectMembershipBatchResult.js";
 import { createInteractionId } from "./runtimeIdentifiers.js";
+import { renderInteractionAgentResult } from "./interactionAgentResultClient.js";
 import {
   buildSessionRouteGuard,
   buildSessionRouteGuardSummary,
   ownerScopeFromSessionState
 } from "./sessionRouteGuard.js";
+import { buildSessionIdentityPresentation } from "./sessionIdentityPresentation.js";
 import {
   createAnonymousSessionState,
   createExpiredSessionState,
@@ -160,6 +162,7 @@ import {
   buildGenerationFeedbackSurfaceSummary,
   createGenerationFeedbackSurfaceState
 } from "./generationFeedback.js";
+import { buildFetchWorkspacePresentation } from "./fetchWorkspacePresentation.js";
 import {
   buildRepairedResponseReviewSurfaceFromProjection
 } from "./repairedResponseReviewClient.js";
@@ -267,6 +270,7 @@ const workspaceState = {
   artifactLibraryFilterMode: "all",
   artifactVersionPanel: createArtifactVersionPanelState(),
   groundedGenerationClient: null,
+  interactionAgentResultClient: null,
   generationLifecycle: null,
   generationWorkflow: null,
   generationPresentation: null,
@@ -405,6 +409,14 @@ let approvalUiController = null;
 let voucherAttachmentUiController = null;
 let sessionExpiryTimer = null;
 const initialRuntimeConfig = loadRuntimeConfig();
+if (initialRuntimeConfig.clientMode === "fetch") {
+  Object.assign(
+    workspaceState,
+    buildFetchWorkspacePresentation({
+      documents: documentBootstrap?.documents || []
+    })
+  );
+}
 workspaceState.sessionBootstrap = composeAuthenticatedSessionRuntime({
   runtimeConfig: initialRuntimeConfig,
   ...(initialRuntimeConfig.clientMode === "mock"
@@ -447,6 +459,8 @@ const credentialLoginSummary = document.querySelector("#credential-login-summary
 const sessionRouteGuardSummary = document.querySelector("#session-route-guard-summary");
 const credentialLoginSubmitButton = document.querySelector("#credential-login-submit-button");
 const credentialLogoutButton = document.querySelector("#credential-logout-button");
+const currentSessionUser = document.querySelector("#current-session-user");
+const currentSessionUserAccount = document.querySelector("#current-session-user-account");
 const chatPane = document.querySelector("#golden-chat");
 const composer = document.querySelector("#composer");
 const promptInput = document.querySelector("#prompt");
@@ -729,6 +743,9 @@ function selectApplicationView(requestedView, { updateHash = false } = {}) {
     renderRuntimeDiagnostics();
     void renderServiceStatuses();
   }
+  if (shell.activeView === "approvals") {
+    void approvalUiController.refresh();
+  }
 }
 
 function scheduleSessionExpiry() {
@@ -954,6 +971,8 @@ function applySessionBootstrap(sessionBootstrap) {
   workspaceState.retrievalClient = workspaceState.clientRegistry.retrievalClient;
   workspaceState.groundedGenerationClient =
     workspaceState.clientRegistry.groundedGenerationClient;
+  workspaceState.interactionAgentResultClient =
+    workspaceState.clientRegistry.interactionAgentResultClient;
   workspaceState.generationFeedbackClient =
     workspaceState.clientRegistry.generationFeedbackClient;
   workspaceState.repairedResponseReviewClient =
@@ -1016,14 +1035,14 @@ async function submitCredentialLogin() {
       tenantInput: credentialTenantInput,
       employeeInput: credentialEmployeeInput,
       passwordInput: credentialPasswordInput,
-      requestedScopes: ["workspace:use", "documents:upload"]
+      requestedScopes: null
     });
     credentialPasswordInput.value = "";
     const sessionState = await workspaceState.sessionClient.login(loginRequest);
     workspaceState.credentialLogin = createCredentialLoginSurfaceState({
       tenantId: loginRequest.tenant_id,
       employeeId: loginRequest.employee_id,
-      requestedScopes: loginRequest.requested_scopes,
+      requestedScopes: sessionState.scopes,
       ttlSeconds: loginRequest.ttl_seconds,
       status: "AUTHENTICATED",
       reason: "login_succeeded"
@@ -1103,12 +1122,21 @@ async function logoutCredentialSession() {
 function renderCredentialLoginSurface() {
   const summary = buildCredentialLoginSurfaceSummary(workspaceState.credentialLogin);
   const guard = buildSessionRouteGuardSummary(workspaceState.sessionRouteGuard);
+  const identity = buildSessionIdentityPresentation({
+    sessionState: workspaceState.sessionState,
+    employeeId: workspaceState.credentialLogin.employeeId
+  });
   credentialLoginStatus.textContent = statusLabel(summary.status);
   credentialLoginStatus.className = `badge ${badgeClass(summary.status)}`;
   credentialTenantInput.value = workspaceState.credentialLogin.tenantId;
   credentialEmployeeInput.value = workspaceState.credentialLogin.employeeId;
   credentialLogoutButton.hidden = workspaceState.sessionState?.status !== "authenticated";
   credentialLogoutButton.disabled = workspaceState.sessionState?.status !== "authenticated";
+  currentSessionUser.hidden = !identity.visible;
+  currentSessionUserAccount.textContent = identity.account;
+  currentSessionUser.title = identity.subjectRef
+    ? `OA subject: ${identity.subjectRef}`
+    : "";
   credentialLoginFeedback.dataset.severity =
     summary.status === "FAILED"
       ? "danger"
@@ -1186,7 +1214,9 @@ function credentialLoginFeedbackMessage(summary) {
 function buildCurrentDocumentScope() {
   return buildDocumentScope({
     documents: workspaceState.documents,
-    selectedDocumentIds: [workspaceState.selectedDocumentId]
+    selectedDocumentIds: workspaceState.selectedDocumentId
+      ? [workspaceState.selectedDocumentId]
+      : []
   });
 }
 
@@ -1510,6 +1540,7 @@ function renderMessages() {
           : ""
       }
       ${renderArtifactRefs(message.artifactRefs || [])}
+      ${renderInteractionAgentResult(message.agentResult)}
       ${renderMessageRepairedResponseReview(message.repairedResponseReview)}
       ${renderMessageGenerationFeedback(message.generationFeedback)}
     `;
@@ -1874,6 +1905,11 @@ function renderTimeline() {
     const [eventType, stage, status] = event;
     const item = document.createElement("li");
     item.className = status === "COMPLETED" ? "is-complete" : "is-running";
+    item.setAttribute(
+      "aria-label",
+      `${stage}, ${eventType}, ${statusLabel(status)}`
+    );
+    item.title = `${stage} · ${eventType} · ${statusLabel(status)}`;
     item.innerHTML = `
       <span>${index + 1}</span>
       <div>
@@ -2308,6 +2344,7 @@ async function appendPromptInteraction() {
     label: "사용자",
     text: prompt
   });
+  promptInput.value = "";
   workspaceState.operations.generation = markOperationRunning(
     workspaceState.operations.generation,
     {
@@ -2315,6 +2352,7 @@ async function appendPromptInteraction() {
       route: "/api/v1/chat/interactions"
     }
   );
+  renderMessages();
   workspaceState.lastGenerationRequest = generationRequest;
   workspaceState.generationAbortController?.abort();
   workspaceState.generationAbortController = new AbortController();
@@ -2411,10 +2449,16 @@ async function appendPromptInteraction() {
     visibleArtifactRef = artifactExport?.artifactRef || artifactRef;
   }
   const qualityContract = generationWorkflow.state.citationQuality?.quality || {};
-  workspaceState.messages.push({
+  const semanticPlanning = generationWorkflow.admission?.semanticPlanning;
+  const assistantMessage = {
     role: "assistant",
     label: "assistant",
     text: generationPresentation.assistantText,
+    interactionId: workspaceState.interactionId,
+    agentResult:
+      semanticPlanning?.status === "COMPILED"
+        ? pendingInteractionAgentResult(workspaceState.interactionId)
+        : null,
     artifactRefs: visibleArtifactRef ? [visibleArtifactRef] : [],
     retrievalScope: grounded ? workspaceState.documentScope : null,
     retrievalResult: grounded ? retrievalResult : null,
@@ -2431,7 +2475,8 @@ async function appendPromptInteraction() {
       clientMode: workspaceState.generationFeedbackClient.clientMode
     }),
     repairedResponseReview: generationPresentation.repairedResponseReview
-  });
+  };
+  workspaceState.messages.push(assistantMessage);
   workspaceState.lastRetrievalRequest = retrievalRequest;
   workspaceState.lastRetrievalResult = retrievalResult;
   workspaceState.artifact.handoffStatus = artifactHandoffAllowed
@@ -2472,10 +2517,113 @@ async function appendPromptInteraction() {
     });
   }
   renderWorkspace();
+  if (assistantMessage.agentResult) {
+    void pollInteractionAgentResult(assistantMessage);
+  }
   if (visibleArtifactRef) {
     void refreshArtifactLibraryPanel();
     void refreshArtifactVersionPanel();
   }
+}
+
+function pendingInteractionAgentResult(interactionId) {
+  return {
+    interactionId,
+    agentExecutionId: "pending",
+    executionState: "QUEUED",
+    executionPhase: "PLAN_COMPILE",
+    terminal: false,
+    result: null
+  };
+}
+
+async function pollInteractionAgentResult(message, attempt = 1) {
+  if (
+    workspaceState.sessionState?.status !== "authenticated" ||
+    !workspaceState.interactionAgentResultClient ||
+    !message.interactionId
+  ) {
+    return;
+  }
+  try {
+    message.agentResult =
+      await workspaceState.interactionAgentResultClient.getInteractionAgentResult(
+        message.interactionId
+      );
+    if (message.agentResult.terminal) {
+      applyTerminalInteractionAgentResult(message);
+      return;
+    }
+    renderMessages();
+  } catch (error) {
+    if (error?.statusCode !== 404) {
+      message.agentResult = {
+        ...message.agentResult,
+        executionState: "UNAVAILABLE",
+        executionPhase: "RESULT_PUBLISH",
+        terminal: false
+      };
+      renderMessages();
+    }
+  }
+  if (attempt >= 150) return;
+  globalThis.setTimeout(
+    () => void pollInteractionAgentResult(message, attempt + 1),
+    2000
+  );
+}
+
+function applyTerminalInteractionAgentResult(message) {
+  const resultStatus = message.agentResult.result?.status ||
+    message.agentResult.executionState;
+  const succeeded = ["SUCCEEDED", "PARTIAL"].includes(resultStatus);
+  message.text = succeeded
+    ? "Agent 업무 처리가 완료되었습니다."
+    : "Agent 실행이 종료되었습니다. 상태와 경고를 확인해 주세요.";
+  workspaceState.operations.generation = succeeded
+    ? markOperationSucceeded(workspaceState.operations.generation, {
+        status: resultStatus,
+        resultStatus,
+        clientMode: workspaceState.interactionAgentResultClient.clientMode,
+        route: message.agentResult.route
+      })
+    : markOperationFailed(workspaceState.operations.generation, {
+        errorStatus: resultStatus,
+        retryable: false,
+        clientMode: workspaceState.interactionAgentResultClient.clientMode,
+        route: message.agentResult.route
+      });
+  workspaceState.progressEvents.push([
+    "agent.execution.completed",
+    message.agentResult.executionPhase,
+    succeeded ? "COMPLETED" : "FAILED"
+  ]);
+  workspaceState.artifact.handoffStatus = "NOT_REQUIRED";
+  workspaceState.artifact.citationStatus = "NOT_REQUIRED";
+  workspaceState.generationLifecycle = {
+    ...workspaceState.generationLifecycle,
+    phase: succeeded ? "completed" : "failed",
+    lifecycleStatus: resultStatus,
+    currentStage: message.agentResult.executionPhase,
+    progressMode: "DETERMINATE",
+    progressPercent: 100,
+    messageKey: succeeded
+      ? "generation.progress.completed"
+      : "generation.progress.failed",
+    cancellable: false,
+    retryable: false,
+    terminal: true,
+    nextPollAfterSeconds: null,
+    activeAction: null,
+    errorStatus: succeeded ? null : resultStatus
+  };
+  workspaceState.generationPresentation = {
+    ...workspaceState.generationPresentation,
+    displayMode: "AGENT_RESULT",
+    assistantText: message.text,
+    nextAction: "PRESENT_AGENT_RESULT"
+  };
+  renderWorkspace();
 }
 
 async function cancelActiveGeneration() {

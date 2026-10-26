@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -31,6 +32,8 @@ from nex_ae_api.intent_candidate_generation import (
     LiveIntentCandidateService,
     resolve_intent_candidate,
 )
+from nex_ae_api.mo_generation_client import build_default_ae_mo_generation_client
+from nex_ae_api.multi_step_engine import SqlAlchemyMultiStepEngine
 from nex_ae_api.plan_candidate_generation import (
     LivePlanCandidateService,
     bind_plan_candidate,
@@ -62,7 +65,6 @@ from nex_ae_api.work_intent import (
     build_work_intent_from_decision,
     planning_mode,
 )
-from nex_ae_api.mo_generation_client import build_default_ae_mo_generation_client
 
 
 @dataclass(frozen=True)
@@ -178,6 +180,7 @@ class SemanticCandidateAdmissionRuntime:
     available: bool
     service: DeterministicCandidateAdmissionService | None
     unavailable_reason: str | None = None
+    scheduler: SqlAlchemyMultiStepEngine | None = field(default=None, repr=False)
 
     def admit_chat(
         self,
@@ -229,7 +232,7 @@ class SemanticCandidateAdmissionRuntime:
             retrieval_package=retrieval_package,
             as_of=_timestamp(self.service.clock()),
         )
-        return self.service.admit_and_compile(
+        result = self.service.admit_and_compile(
             SemanticCandidateAdmissionRequest(
                 tenant_id=tenant_id,
                 owner_subject_id=owner_subject_id,
@@ -246,9 +249,7 @@ class SemanticCandidateAdmissionRuntime:
                     "conversation_summary": _optional_request_text(
                         payload.get("conversation_summary"), 16_384
                     ),
-                    "resource_label_hints": _resource_label_hints(
-                        retrieval_package
-                    ),
+                    "resource_label_hints": _resource_label_hints(retrieval_package),
                 },
                 runtime_policy_ref=runtime_policy_ref_from_compatibility_policy(
                     runtime_policy
@@ -264,11 +265,23 @@ class SemanticCandidateAdmissionRuntime:
                     retrieval_package is not None
                     and retrieval_package.get("status") != "NO_ANSWER"
                 ),
-                trusted_execution_mode=runtime_policy.get(
-                    "intent_decision", {}
-                ).get("execution_mode"),
+                trusted_execution_mode=runtime_policy.get("intent_decision", {}).get(
+                    "execution_mode"
+                ),
             )
         )
+        if (
+            self.mode == "required"
+            and result.status == "COMPILED"
+            and result.agent_execution_id is not None
+            and self.scheduler is not None
+        ):
+            self.scheduler.schedule_next(
+                tenant_id=tenant_id,
+                execution_id=result.agent_execution_id,
+                now=_timestamp(self.service.clock()),
+            )
+        return result
 
 
 @dataclass(frozen=True)
@@ -287,13 +300,16 @@ class DeterministicCandidateAdmissionService:
     validations: Any = field(repr=False)
     executable_plans: Any = field(repr=False)
     executions: Any = field(repr=False)
-    clock: Callable[[], datetime] = field(
-        default=lambda: datetime.now(UTC), repr=False
+    domain_intent_activators: Mapping[str, Any] = field(
+        default_factory=dict, repr=False
     )
+    clock: Callable[[], datetime] = field(default=lambda: datetime.now(UTC), repr=False)
 
     def __post_init__(self) -> None:
         if self.mode not in {"disabled", "shadow", "required"}:
-            raise _error(500, "SEMANTIC_ADMISSION_MODE_INVALID", "Planning mode is invalid.")
+            raise _error(
+                500, "SEMANTIC_ADMISSION_MODE_INVALID", "Planning mode is invalid."
+            )
 
     def admit_and_compile(
         self, request: SemanticCandidateAdmissionRequest
@@ -380,7 +396,8 @@ class DeterministicCandidateAdmissionService:
         work_intent = self.work_intents.get(
             tenant_id=request.tenant_id, work_intent_id=ids.work_intent
         )
-        if work_intent is None:
+        persisted_work_intent = work_intent is not None
+        if not persisted_work_intent:
             if request.planning_source_type == "CLAIMED_WORKITEM":
                 intent_decision = resolve_intent_candidate(
                     intent_candidate,
@@ -415,6 +432,37 @@ class DeterministicCandidateAdmissionService:
                     work_intent_id=ids.work_intent,
                     prompt_provenance=_work_intent_provenance(intent_evidence),
                 )
+        assert work_intent is not None
+        context_resolver = request.context_resolver
+        activator = self.domain_intent_activators.get(
+            str(work_intent.get("intent_label") or "")
+        )
+        if activator is not None:
+            try:
+                activated = activator.activate(
+                    candidate=intent_candidate,
+                    work_intent=work_intent,
+                    principal_id=request.owner_subject_id,
+                    resolved_at=now,
+                )
+                activated_work_intent = dict(activated.work_intent)
+                context_resolver = activated.context_resolver
+            except Exception as exc:
+                raise SemanticCandidateAdmissionError(
+                    422,
+                    str(getattr(exc, "error_code", "DOMAIN_INTENT_ACTIVATION_FAILED")),
+                    "The admitted intent could not be deterministically activated.",
+                    False,
+                    semantic_stage="INTENT",
+                ) from exc
+            if persisted_work_intent and activated_work_intent != work_intent:
+                raise _error(
+                    409,
+                    "DOMAIN_INTENT_ACTIVATION_DRIFT",
+                    "Persisted domain intent activation does not match replay.",
+                )
+            work_intent = activated_work_intent
+        if not persisted_work_intent:
             work_intent = self.work_intents.save(
                 tenant_id=request.tenant_id,
                 work_intent=work_intent,
@@ -440,7 +488,7 @@ class DeterministicCandidateAdmissionService:
                 source_type=request.planning_source_type,
                 source_ref=request.source_ref,
                 runtime_policy_ref=request.runtime_policy_ref,
-                resolver=request.context_resolver,
+                resolver=context_resolver,
                 request_id=request.request_id,
                 trace_id=request.trace_id,
                 planning_mode=self.mode,
@@ -474,7 +522,7 @@ class DeterministicCandidateAdmissionService:
                     source_ref=request.source_ref,
                     work_intent=work_intent,
                     runtime_policy_ref=request.runtime_policy_ref,
-                    resolver=request.context_resolver,
+                    resolver=context_resolver,
                     candidate_hints=context_candidate_hints(
                         context_candidate,
                         candidate_hash=context_evidence["candidate_hash"],
@@ -512,9 +560,7 @@ class DeterministicCandidateAdmissionService:
                 work_intent_id=ids.work_intent,
                 agent_context_id=ids.context,
             )
-        agent_plan = self.plans.get(
-            tenant_id=request.tenant_id, agent_plan_id=ids.plan
-        )
+        agent_plan = self.plans.get(tenant_id=request.tenant_id, agent_plan_id=ids.plan)
         if agent_plan is None:
             if plan_result is not None and plan_result.agent_plan is not None:
                 agent_plan = dict(plan_result.agent_plan)
@@ -548,9 +594,7 @@ class DeterministicCandidateAdmissionService:
                 validation_result_id=ids.validation,
                 validated_at=now,
             )
-            current_execution = self.executions.get(
-                request.tenant_id, execution_id
-            )
+            current_execution = self.executions.get(request.tenant_id, execution_id)
             if current_execution is None:
                 raise _error(
                     409,
@@ -899,6 +943,7 @@ def attach_semantic_candidate_admission(
     prompt_store: Any,
     environ: Mapping[str, str] | None = None,
 ) -> SemanticCandidateAdmissionRuntime:
+    resolved_environ = os.environ if environ is None else environ
     mode = planning_mode(environ)
     if mode == "disabled":
         runtime = SemanticCandidateAdmissionRuntime(
@@ -949,6 +994,10 @@ def attach_semantic_candidate_admission(
         )
     client = build_default_ae_mo_generation_client(environ)
     calibrations = SemanticCalibrationRegistry.from_environment(environ)
+    from nex_ae_api.p8_demo_semantic_activation import (
+        build_p8_demo_intent_activators,
+    )
+
     service = DeterministicCandidateAdmissionService(
         mode=mode,
         admission=admission,
@@ -964,11 +1013,19 @@ def attach_semantic_candidate_admission(
         validations=SqlAlchemyPlanValidationRepository(session_factory),
         executable_plans=SqlAlchemyExecutablePlanRepository(session_factory),
         executions=SqlAlchemyAgentExecutionRepository(session_factory),
+        domain_intent_activators=build_p8_demo_intent_activators(
+            resolved_environ
+        ),
     )
     runtime = SemanticCandidateAdmissionRuntime(
         mode=mode,
         available=True,
         service=service,
+        scheduler=(
+            SqlAlchemyMultiStepEngine(session_factory, agent_runtime.jobs)
+            if mode == "required" and getattr(agent_runtime, "jobs", None) is not None
+            else None
+        ),
     )
     app.state.ae_semantic_candidate_admission = runtime
     return runtime
@@ -1115,6 +1172,4 @@ def _error(
     detail: str,
     retryable: bool = False,
 ) -> SemanticCandidateAdmissionError:
-    return SemanticCandidateAdmissionError(
-        status_code, error_code, detail, retryable
-    )
+    return SemanticCandidateAdmissionError(status_code, error_code, detail, retryable)

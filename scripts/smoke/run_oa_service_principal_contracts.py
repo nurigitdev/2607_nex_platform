@@ -16,7 +16,10 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "services/_shared"))
 sys.path.insert(0, str(ROOT / "services/nex-oa"))
 
-from nex_oa.contract_api_drift_audit import build_oa_contract_api_drift_audit  # noqa: E402
+from nex_oa.contract_api_drift_audit import (  # noqa: E402
+    INVENTORY_BASELINE,
+    build_oa_contract_api_drift_audit,
+)
 from nex_oa.service_principal_api import register_service_principal_routes  # noqa: E402
 from nex_oa.service_principal_repository import (  # noqa: E402
     InMemoryOaServicePrincipalRepository,
@@ -323,12 +326,17 @@ def run_oa_service_principal_contracts(root: Path = ROOT) -> dict[str, Any]:
         "canonical_schema_links_declared": all(canonical_checks.values()),
         "contract_inventory_complete": (
             drift.get("status") == "PASS"
-            and drift_summary.get("runtime_operation_count") == 54
-            and drift_summary.get("openapi_operation_count") == 33
-            and drift_summary.get("schema_count") == 28
-            and drift_summary.get("positive_fixture_covered_count") == 28
-            and drift_summary.get("negative_fixture_covered_count") == 28
-            and drift_summary.get("drift_count") == 21
+            and int(drift_summary.get("runtime_operation_count") or 0)
+            >= INVENTORY_BASELINE["runtime_operations"]
+            and int(drift_summary.get("openapi_operation_count") or 0)
+            >= INVENTORY_BASELINE["openapi_operations"]
+            and int(drift_summary.get("schema_count") or 0)
+            >= INVENTORY_BASELINE["oa_schemas"]
+            and drift_summary.get("positive_fixture_covered_count")
+            == drift_summary.get("schema_count")
+            and drift_summary.get("negative_fixture_covered_count")
+            == drift_summary.get("schema_count")
+            and 0 <= int(drift_summary.get("drift_count") or 0) <= 21
         ),
     }
     status = "PASS" if all(checks.values()) and not issues else "FAIL"

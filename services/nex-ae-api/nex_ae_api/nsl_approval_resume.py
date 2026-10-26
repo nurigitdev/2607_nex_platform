@@ -87,12 +87,13 @@ def _validate_claim(
         or attempt.get("outcome") != "RUNNING"
     ):
         raise _invalid("RuntimeJob lacks exact running NSL approval resume authority.")
-    payload = {field: _required(field, raw_payload.get(field)) for field in _PAYLOAD_FIELDS}
+    payload = {
+        field: _required(field, raw_payload.get(field)) for field in _PAYLOAD_FIELDS
+    }
     if (
         _value(job.get("wait_id")) != payload["wait_id"]
         or _value(attempt.get("tenant_id")) != _value(job.get("tenant_id"))
-        or _value(attempt.get("runtime_job_id"))
-        != _value(job.get("runtime_job_id"))
+        or _value(attempt.get("runtime_job_id")) != _value(job.get("runtime_job_id"))
         or _value(attempt.get("lease_token")) != _value(job.get("lease_token"))
         or _value(attempt.get("worker_id")) != _value(job.get("lease_owner"))
     ):
@@ -131,7 +132,6 @@ def _project_authority(
         "wait_execution_id": _value(job.get("execution_id")),
         "wait_step_id": _value(job.get("executable_step_id")),
         "step_executor_kind": "LOCAL_SKILL",
-        "step_state": "WAITING",
         "inbox_state": "MATCHED",
         "inbox_type": "NSL_APPROVAL_DECIDED",
         "inbox_event_id": payload["event_id"],
@@ -143,6 +143,8 @@ def _project_authority(
         "evidence_work_item_ref": payload["approval_work_item_ref"],
     }
     if any(_value(row.get(field)) != value for field, value in expected.items()):
+        raise _authority_missing()
+    if _value(row.get("step_state")) not in {"WAITING", "RUNNING"}:
         raise _authority_missing()
     if {key: _value(value) for key, value in stored_payload.items()} != dict(payload):
         raise _authority_missing()

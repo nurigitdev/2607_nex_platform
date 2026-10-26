@@ -110,6 +110,39 @@ def test_verifies_oa_service_token_and_projects_privacy_safe_claims(
     assert "sat-shared-verifier" not in json.dumps(projection)
 
 
+def test_p8_demo_token_requires_explicit_verifier_boundary(
+    signing_runtime: dict[str, Any],
+) -> None:
+    claims = _claims(
+        token_use="p8_demo_service_access",
+        exp=86_900,
+        deployment_boundary="P8_DEMO",
+        deployment_profile="staging_live",
+    )
+    token = _token(signing_runtime, claims=claims)
+    default, _ = _verifier(signing_runtime)
+    with pytest.raises(SignedTokenVerificationError) as rejected:
+        default.verify(token, expected_audience="nex-cx", now_epoch=600)
+    assert rejected.value.code == "nex.token_use_invalid"
+
+    verifier = SignedServiceTokenVerifier(
+        BoundedJwksCache(_source(signing_runtime), clock=lambda: 600),
+        clock=lambda: 600,
+        allow_p8_demo_profile=True,
+    )
+    verified = verifier.verify(token, expected_audience="nex-cx", now_epoch=600)
+    assert verified.token_use == "p8_demo_service_access"
+    assert verified.expires_at - verified.issued_at == 86_400
+
+    invalid = _token(
+        signing_runtime,
+        claims={**claims, "deployment_boundary": "PRODUCTION"},
+    )
+    with pytest.raises(SignedTokenVerificationError) as boundary:
+        verifier.verify(invalid, expected_audience="nex-cx", now_epoch=600)
+    assert boundary.value.code == "nex.token_demo_boundary_invalid"
+
+
 def test_cache_reuses_keys_refreshes_on_ttl_and_unknown_kid(
     signing_runtime: dict[str, Any],
 ) -> None:

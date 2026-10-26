@@ -834,7 +834,8 @@ def _select_capability_runnable(
         else ", NULL AS backend_profile"
     )
     backend_predicate = (
-        f" AND {backend_expression} IN :backend_profiles"
+        " AND (step.executor_kind <> 'LOCAL_SKILL' "
+        f"OR {backend_expression} IN :backend_profiles)"
         if backend_profiles is not None
         else ""
     )

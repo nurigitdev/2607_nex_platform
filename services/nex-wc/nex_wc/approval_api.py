@@ -5,8 +5,7 @@ from typing import Any
 
 from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse
-from nex_runtime import DEFAULT_SERVICE_SCOPE, problem_response
-from nex_runtime.auth import validate_authorization_header
+from nex_runtime import problem_response
 
 from nex_wc.approvals import (
     ApprovalDecisionAuthorizationError,
@@ -18,6 +17,7 @@ from nex_wc.approvals import (
     ApprovalWorkItemError,
     ApprovalWorkItemService,
 )
+from nex_wc.route_auth import authorize_wc_service_request
 
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
@@ -127,9 +127,7 @@ def register_approval_routes(
                 causation_id=request_value["causation_id"],
             )
         except (ApprovalDecisionError, ApprovalDecisionAuthorizationError) as exc:
-            return _approval_problem(
-                request, exc, title="WC approval decision failed"
-            )
+            return _approval_problem(request, exc, title="WC approval decision failed")
         return JSONResponse(
             result["decision"],
             status_code=201 if result["created"] else 200,
@@ -137,23 +135,8 @@ def register_approval_routes(
 
 
 def _authorize(request: Request, authorization: str | None) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-wc",
-        required_scopes=(DEFAULT_SERVICE_SCOPE,),
-    )
-    if result.ok:
-        return None
-    status = 403 if result.error_code == "SERVICE_SCOPE_MISSING" else 401
-    return problem_response(
-        request,
-        status_code=status,
-        error_code=result.error_code or "WC_AUTHORIZATION_FAILED",
-        title="WC service authorization failed",
-        detail=result.detail or "WC service authorization failed.",
-        retryable=False,
-        type_uri="https://nex-platform.local/problems/wc-service-authorization-failed",
-    )
+    admitted = authorize_wc_service_request(request, authorization)
+    return admitted if isinstance(admitted, JSONResponse) else None
 
 
 def _decision_request(payload: object) -> dict[str, Any]:

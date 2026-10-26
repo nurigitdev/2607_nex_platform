@@ -198,6 +198,7 @@ export function buildInteractionResult(
       groundedResponseQuality: objectOrNull(
         record.generation?.grounded_response_quality
       ),
+      semanticPlanning: objectOrNull(record.generation?.semantic_planning),
       citationWorkflow: objectOrNull(record.generation?.citation_workflow),
       artifactRefs: Array.isArray(record.artifact_refs) ? record.artifact_refs : [],
       retryable: Boolean(asyncGeneration?.retryable),

@@ -16,7 +16,7 @@ from urllib.request import urlopen
 ROOT_DIR = Path(__file__).resolve().parents[2]
 APP_DIR = ROOT_DIR / "apps" / "nex-ae-web"
 DEFAULT_PORT = 5227
-DEFAULT_SLICE_LABEL = "Slice 0227"
+DEFAULT_SLICE_LABEL = "NeX-Platform"
 
 
 @dataclass(frozen=True)

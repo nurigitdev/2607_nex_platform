@@ -39,6 +39,21 @@ P8 v1.1 FINAL / DEMO RELEASE READY
 P8-CA05 CLOSED
 P8.11  CLOSED through P8-S113
 P8 v1.2 FINAL / DEMO RELEASE CANDIDATE REFRESHED
+P8-DEMO-CA01 SOURCE-BACKED AUDIT COMPLETE
+P8-DEMO-S01 DATABASE ADMISSION / PRE-MIGRATION BACKUP GUARDRAILS COMPLETE
+P8-DEMO-S02 SEVEN-SERVICE DEV DATABASE MIGRATION CLOSURE COMPLETE
+P8-DEMO-S03 VO00 TENANT FIXTURE SEED / RESET LIFECYCLE COMPLETE
+P8-DEMO-S04 INSTALLED RUNTIME PROCESS OWNERSHIP / COMMAND ADMISSION COMPLETE
+P8-DEMO-S05 RUNTIME READINESS / RESTART RECOVERY COMPLETE
+P8-DEMO-S06 EIGHT-IMAGE OCI RELEASE SET COMPLETE
+P8-DEMO-S07 COMPOSE / TRAEFIK DEMO TOPOLOGY COMPLETE
+P8-DEMO-S08 OPENBAO SECRET / TRUST / PKI ADMISSION COMPLETE
+P8-DEMO-S09 EXTERNAL DEPENDENCY ADMISSION COMPLETE
+P8-DEMO-S10A STARTUP-ISSUED BOUNDED-LIFETIME SERVICE TOKEN BOOTSTRAP COMPLETE
+P8-DEMO-S10B INSTALLED P6-P8 RUNTIME COMPOSITION EXTRACTION COMPLETE
+P8-DEMO-S10 INSTALLED DOMAIN CONSUMER / SIGNED TRUST ACCEPTANCE COMPLETE
+P8-DEMO-S10C INSTALLED IA RESULT FINALIZATION / WORKSPACE PUBLICATION COMPLETE
+P8 DEMO IMPLEMENTATION ENTRY AUTHORIZED WITH BLOCKING GATES
 P9     ENTRY AUTHORIZED BY v1.2
 ```
 
@@ -244,6 +259,13 @@ P8-S113 sequence, and keeps batch membership inside one approval and one NSL
 controlled WRITE. The current handoff after that sequence is
 `P8_Final_AsBuilt_Baseline_and_P9_Handoff_v1.2.md`.
 
+Before building or installing the Chairman Demo Release, read
+`P8_DEMO_CA01_Chairman_Demo_Release_Boundary_and_Readiness_Audit_v1.0.md`.
+It preserves the P8 v1.2 business baseline and defines the blocking closure for
+the eight-image WC/EOS-aware Compose topology, installed Agent Runtime
+processes, admitted isolated `*_dev` databases, guarded fixtures, and protected
+live rehearsal.
+
 ---
 
 # 1. Purpose
@@ -307,6 +329,8 @@ Implementation
 ⑨ P8-CA04 Project Membership and Governed Project Operations
         ↓
 ⑩ P8-CA05 NVT Project Operations and Batch Membership
+        ↓
+⑪ P8-DEMO-CA01 Chairman Demo Release Boundary and Readiness Audit
 ```
 
 Do not start from the Implementation Slice Plan alone.
@@ -885,6 +909,40 @@ contract-hygiene reconciliation, final Repository Full Gate, actual protected
 demonstration revalidation, zero-residue result, refreshed Demo Release
 Candidate, and current P9 entry authorization. The v1.0 and v1.1 files remain
 immutable historical baselines.
+
+For installed Chairman Demo Release work, then read:
+
+```text
+P8_DEMO_CA01_Chairman_Demo_Release_Boundary_and_Readiness_Audit_v1.0.md
+```
+
+This audit records why the historical six-image S143 topology is not sufficient
+for the WC/EOS-aware P8 v1.2 runtime. It authorizes additive Demo deployment
+work while preserving all historical Compose and P8 evidence.
+
+P8-DEMO-S10B then closes the installed execution composition without adding a
+second business workflow. The packaged AE worker reuses the existing P5/P6
+scheduler, DB-protected dispatcher, bounded worker, executor registry, P8
+approval checkpoint/resume integration, and EOS controlled WRITE adapters.
+Actual AE/WC/EOS/OA PostgreSQL and signed-only service-token evidence is
+recorded in `docs/slices/p8_demo_s10b_installed_p6_p8_runtime_composition_extraction.md`.
+
+P8-DEMO-S10 activates that installed composition with the actual local Docker,
+OpenBao, Traefik, RustFS boundary, and all seven migration-current development
+databases. The three owner-scoped domain consumers restart with renewed
+heartbeats, OA/AE/WC/EOS accept signed tokens only, no provider fallback is
+used, and all ephemeral trust rows and containers are removed. Evidence is
+recorded in
+`docs/slices/p8_demo_s10_installed_domain_consumer_activation_and_signed_trust_acceptance.md`.
+
+P8-DEMO-S10C closes the installed IA lifecycle that S10B intentionally ended
+at `RESULT_VERIFY`. It reuses the existing P5 finalization service and existing
+AgentResult, WORKSPACE_RESULT delivery, and workspace-activity tables; no
+migration or parallel result model is introduced. The owner-scoped API and AE
+Web projection expose the acknowledged result, while restart and exact replay
+create no duplicate AgentResult, activity, BusinessOperation, or voucher.
+Actual AE/WC/EOS/OA PostgreSQL evidence is recorded in
+`docs/slices/p8_demo_s10c_installed_ia_result_finalization_and_workspace_publication_closure.md`.
 
 ---
 

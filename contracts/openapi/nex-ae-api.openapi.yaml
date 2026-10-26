@@ -1281,6 +1281,92 @@ paths:
           description: Generated response lineage is not ready.
         "503":
           description: Private response storage is unavailable or failed integrity verification.
+  /api/v1/chat/interactions/{interaction_id}/agent-result:
+    get:
+      operationId: getAeInteractionAgentResult
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Owner-scoped Agent execution and published result projection.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - schema_version
+                  - interaction_id
+                  - workspace_id
+                  - agent_execution_id
+                  - execution_state
+                  - execution_phase
+                  - terminal
+                  - result
+                  - updated_at
+                  - completed_at
+                  - metadata
+                properties:
+                  schema_version:
+                    const: ae_interaction_agent_result.v1
+                  interaction_id:
+                    type: string
+                    format: uuid
+                  workspace_id:
+                    type: string
+                    format: uuid
+                  agent_execution_id:
+                    type: string
+                    format: uuid
+                  execution_state:
+                    type: string
+                  execution_phase:
+                    type: string
+                  terminal:
+                    type: boolean
+                  result:
+                    type:
+                      - object
+                      - "null"
+                  updated_at:
+                    type: string
+                    format: date-time
+                  completed_at:
+                    type:
+                      - string
+                      - "null"
+                    format: date-time
+                  metadata:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - owner_scope_authority
+                      - raw_result_included
+                      - prompt_included
+                    properties:
+                      owner_scope_authority:
+                        const: claim
+                      raw_result_included:
+                        const: false
+                      prompt_included:
+                        const: false
+        "400":
+          description: Interaction identity or stored projection is invalid.
+        "401":
+          description: Service or browser claim is missing or invalid.
+        "403":
+          description: An authenticated browser owner is required.
+        "404":
+          description: Agent result was not found in the authenticated owner scope.
+        "503":
+          description: Durable interaction result storage is unavailable.
   /api/v1/chat/interactions/{interaction_id}/citation-quality:
     get:
       operationId: getAeChatInteractionCitationQuality

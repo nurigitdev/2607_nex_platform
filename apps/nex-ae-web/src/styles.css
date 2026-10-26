@@ -178,6 +178,26 @@ nav a:hover {
   gap: 12px;
 }
 
+.current-session-user {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 34px;
+  border-left: 1px solid var(--nex-border);
+  padding: 7px 2px 7px 12px;
+  white-space: nowrap;
+}
+
+.current-session-user span {
+  color: var(--nex-muted);
+  font-size: 12px;
+}
+
+.current-session-user strong {
+  color: var(--nex-text);
+  font-size: 14px;
+}
+
 .eyebrow {
   margin: 0 0 4px;
   color: var(--nex-muted);
@@ -388,6 +408,33 @@ h2 {
   justify-self: start;
   border-color: #cfd8dc;
   background: #fbfcfd;
+}
+
+.agent-result {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  border-top: 1px solid var(--nex-border);
+  padding-top: 12px;
+}
+
+.agent-result__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agent-result ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.agent-result code {
+  overflow-wrap: anywhere;
+  font-size: 12px;
 }
 
 .artifact-link-list {
@@ -1104,31 +1151,37 @@ meter {
 }
 
 .timeline {
-  display: grid;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: 0;
   margin: 0;
   padding: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
   list-style: none;
+  scrollbar-width: thin;
 }
 
 .timeline li {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  gap: 10px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 7px;
   align-items: center;
-  border-top: 1px solid var(--nex-border);
-  padding: 12px 14px;
+  border-left: 1px solid var(--nex-border);
+  padding: 10px 12px;
+  white-space: nowrap;
 }
 
 .timeline li:first-child {
-  border-top: 0;
+  border-left: 0;
 }
 
 .timeline li > span {
   display: inline-grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: var(--nex-surface-muted);
   color: var(--nex-muted);
@@ -1152,11 +1205,40 @@ meter {
   overflow-wrap: anywhere;
 }
 
+.timeline strong {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline small {
+  display: none;
+}
+
 .timeline em {
   color: var(--nex-muted);
   font-size: 12px;
   font-style: normal;
   font-weight: 800;
+}
+
+.timeline-panel {
+  display: flex;
+  align-items: stretch;
+  min-height: 54px;
+  overflow: hidden;
+}
+
+.timeline-panel > .section-header {
+  flex: 0 0 auto;
+  border-right: 1px solid var(--nex-border);
+  border-bottom: 0;
+  padding: 10px 12px;
+}
+
+.timeline-panel > .section-header h2 {
+  font-size: 14px;
+  white-space: nowrap;
 }
 
 .artifact-summary {
@@ -1765,11 +1847,15 @@ nav a,
     width: 100%;
   }
 
-  .timeline li,
   .credential-login-form,
   .inline-meta div,
   .meta-list div {
     grid-template-columns: 1fr;
+  }
+
+  .timeline-panel > .section-header {
+    align-items: center;
+    flex-direction: row;
   }
 
   .repaired-response-review-card-header {

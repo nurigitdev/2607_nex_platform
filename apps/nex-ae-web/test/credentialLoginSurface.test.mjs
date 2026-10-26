@@ -79,6 +79,20 @@ describe("AE Web credential-login surface", () => {
         ttl_seconds: 3600
       }
     );
+    assert.deepEqual(
+      buildCredentialLoginRequestFromForm({
+        tenantInput: { value: "tenant-role-aware" },
+        employeeInput: { value: "EMP-ROLE" },
+        passwordInput: { value: "RolePass!" },
+        requestedScopes: null
+      }),
+      {
+        tenant_id: "tenant-role-aware",
+        employee_id: "EMP-ROLE",
+        password: "RolePass!",
+        ttl_seconds: 3600
+      }
+    );
   });
 
   it("rejects malformed credential login requests and summaries", () => {

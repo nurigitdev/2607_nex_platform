@@ -6,8 +6,11 @@ from nex_oa.production_token_profiles import (
     ACCESS_TOKEN_TYPE,
     DEFAULT_TOKEN_TTL_SECONDS,
     MAX_CLOCK_SKEW_SECONDS,
+    P8_DEMO_SERVICE_ACCESS_PROFILE,
+    P8_DEMO_TOKEN_TTL_SECONDS,
     PRODUCTION_TOKEN_ISSUER,
     PRODUCTION_TOKEN_PROFILES,
+    TOKEN_AUDIENCES,
     get_production_token_profile,
     validate_production_token_shape,
 )
@@ -69,6 +72,10 @@ def test_production_token_profiles_freeze_canonical_contract() -> None:
     assert "authorization_revision" in delegated.profile_claims
     assert "roles" in delegated.forbidden_claims
     assert service.to_wire()["subject_kind"] == "service_principal"
+    assert {"nex-wc", "nex-eos"}.issubset(TOKEN_AUDIENCES)
+    demo = get_production_token_profile(P8_DEMO_SERVICE_ACCESS_PROFILE)
+    assert demo.maximum_ttl_seconds == P8_DEMO_TOKEN_TTL_SECONDS == 86_400
+    assert "deployment_boundary" in demo.profile_claims
     with pytest.raises(ValueError, match="unsupported production token profile"):
         get_production_token_profile("mock")
     with pytest.raises(ValueError):
@@ -88,6 +95,43 @@ def test_valid_canonical_shapes_pass(profile: str, claims: dict[str, object]) ->
         headers=_headers(),
         claims=claims,
     ) == ()
+
+
+@pytest.mark.parametrize("service_id", ("nex-wc", "nex-eos"))
+def test_wc_and_eos_service_tokens_are_canonical(service_id: str) -> None:
+    assert validate_production_token_shape(
+        "service_access",
+        headers=_headers(),
+        claims=_service_claims(
+            service_id=service_id,
+            sub=f"service:{service_id}",
+            aud="nex-ae-api",
+        ),
+    ) == ()
+
+
+def test_p8_demo_profile_is_additive_bounded_and_exactly_scoped() -> None:
+    claims = _service_claims(
+        token_use=P8_DEMO_SERVICE_ACCESS_PROFILE,
+        exp=87_400,
+        deployment_boundary="P8_DEMO",
+        deployment_profile="staging_live",
+    )
+    assert validate_production_token_shape(
+        P8_DEMO_SERVICE_ACCESS_PROFILE,
+        headers=_headers(),
+        claims=claims,
+    ) == ()
+    assert "claim_time_ttl_exceeded" in validate_production_token_shape(
+        P8_DEMO_SERVICE_ACCESS_PROFILE,
+        headers=_headers(),
+        claims={**claims, "exp": 87_401},
+    )
+    assert "claim_deployment_boundary_invalid" in validate_production_token_shape(
+        P8_DEMO_SERVICE_ACCESS_PROFILE,
+        headers=_headers(),
+        claims={**claims, "deployment_boundary": "production"},
+    )
 
 
 def test_unknown_profile_and_required_fields_fail_closed() -> None:

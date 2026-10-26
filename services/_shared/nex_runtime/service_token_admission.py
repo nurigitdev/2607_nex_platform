@@ -4,8 +4,8 @@ import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from time import time
 from threading import Lock
+from time import time
 from typing import Any, Protocol
 
 import httpx
@@ -26,7 +26,6 @@ from .signed_token_verifier import (
     SignedTokenVerificationError,
     VerifiedServiceTokenClaims,
 )
-
 
 TOKEN_ROLLOUT_PROFILES = ("TEST_MOCK", "DUAL_READ", "SIGNED_ONLY")
 TOKEN_ROUTE_CLASSES = ("READ", "WRITE", "ADMIN", "CREDENTIAL", "KEY_MANAGEMENT")
@@ -468,6 +467,7 @@ def build_service_token_admission_runtime(
             clock=clock,
         ),
         clock=clock,
+        allow_p8_demo_profile=_p8_demo_service_token_profile_enabled(env),
     )
     authorization_token = env.get("NEX_OA_INTROSPECTION_SERVICE_TOKEN")
     introspector = (
@@ -597,6 +597,25 @@ def register_service_token_admission_routes(
             "trace_id": trace_id_from_headers(request),
         }
 
+    @app.get("/internal/v1/auth/service-token-runtime", response_model=None)
+    def service_token_runtime(
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any] | JSONResponse:
+        runtime = _service_token_admission_from_app(request)
+        if isinstance(runtime, JSONResponse):
+            return runtime
+        try:
+            runtime.admit(
+                authorization,
+                required_scopes=(DEFAULT_SERVICE_SCOPE,),
+                route_class="READ",
+            )
+        except ServiceTokenAdmissionError as exc:
+            return service_token_admission_problem_response(request, exc)
+        return runtime.public_snapshot()
+
+
 def _service_token_admission_from_app(
     request: Request,
 ) -> ServiceTokenAdmissionRuntime | JSONResponse:
@@ -661,7 +680,7 @@ def _validate_introspection_binding(
         )
     expected = {
         "introspection_schema_version": "oa_token_introspection.v1",
-        "token_use": "service_access",
+        "token_use": claims.token_use,
         "sub": claims.subject,
         "aud": claims.audience,
         "scope": " ".join(claims.scopes),
@@ -709,7 +728,7 @@ def _signed_projection(
         audience=claims.audience,
         service_id=claims.service_id,
         scopes=claims.scopes,
-        token_use="service_access",
+        token_use=claims.token_use,
         token_kind="SIGNED",
         issued_at=claims.issued_at,
         expires_at=claims.expires_at,
@@ -730,6 +749,22 @@ def _bearer_token(authorization: object) -> str:
             "nex.authorization_invalid", "authorization must use the Bearer scheme"
         )
     return token
+
+
+def _p8_demo_service_token_profile_enabled(environ: Mapping[str, str]) -> bool:
+    requested = str(
+        environ.get("NEX_P8_DEMO_SERVICE_TOKEN_PROFILE") or ""
+    ).strip()
+    if not requested:
+        return False
+    if requested != "STARTUP_24H":
+        raise ValueError("P8 Demo service-token profile is unsupported")
+    if (
+        str(environ.get("NEX_PROFILE") or "").strip() != "staging_live"
+        or str(environ.get("NEX_DEPLOYMENT_BOUNDARY") or "").strip() != "P8_DEMO"
+    ):
+        raise ValueError("P8 Demo service-token profile boundary is invalid")
+    return True
 
 
 def _response_object(response: httpx.Response, label: str) -> dict[str, Any]:

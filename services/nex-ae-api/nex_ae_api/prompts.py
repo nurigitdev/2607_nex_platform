@@ -120,6 +120,15 @@ _P8_AUTHORITY_SAFE_INTENT_CANDIDATE_V6_CONTENT = (
     "deterministic Project resolution and OA batch resolution report item errors."
 )
 
+_P8_DEMO_GOLDEN_A_INTENT_CANDIDATE_V7_CONTENT = (
+    _P8_AUTHORITY_SAFE_INTENT_CANDIDATE_V6_CONTENT
+    + " For FINANCE.CREATE_VOUCHER_DRAFT, map explicit Korean business terms "
+    "to their exact parameter names: 일반 전표 means voucher_type=GENERAL, "
+    "출장비 means economic_category=TRAVEL, and 현금 means "
+    "settlement_method=CASH. Never place TRAVEL in voucher_type or omit one "
+    "of these three independent parameters when its source term is explicit."
+)
+
 _P65_CONTEXT_CANDIDATE_V1_CONTENT = (
     "You generate an untrusted context candidate set, never an "
     "authoritative context or access decision. Return exactly one JSON "
@@ -186,6 +195,29 @@ AE_HISTORICAL_PROMPT_SEEDS = [
             "slice": "P6.5-S2",
             "candidate_schema": "p65.intent_candidate.v1",
             "authority": "untrusted_candidate_only",
+        },
+    ),
+    PromptSeed(
+        service_id="nex-ae-api",
+        purpose="intent_resolution",
+        name="p65_default_intent_candidate_system",
+        owner_domain="agent-experience",
+        binding_key=AE_INTENT_RESOLUTION_BINDING,
+        version="v6",
+        role="system",
+        segment_order=0,
+        content=_P8_AUTHORITY_SAFE_INTENT_CANDIDATE_V6_CONTENT,
+        model_capability="generation",
+        metadata={
+            "phase": "P8",
+            "slice": "P8-S112",
+            "candidate_schema": "p65.intent_candidate.v1",
+            "authority": "untrusted_candidate_only",
+            "golden_a": "voucher_draft",
+            "project_membership_batch": "indexed_scalar_candidates",
+            "nvt_project_operations": "create_get_list_update",
+            "employee_authority": "oa_only",
+            "nvt_fallback_rule": "non_nvt_only",
         },
     ),
     PromptSeed(
@@ -337,10 +369,10 @@ AE_PROMPT_SEEDS = [
         name="p65_default_intent_candidate_system",
         owner_domain="agent-experience",
         binding_key=AE_INTENT_RESOLUTION_BINDING,
-        version="v6",
+        version="v7",
         role="system",
         segment_order=0,
-        content=_P8_AUTHORITY_SAFE_INTENT_CANDIDATE_V6_CONTENT,
+        content=_P8_DEMO_GOLDEN_A_INTENT_CANDIDATE_V7_CONTENT,
         model_capability="generation",
         metadata={
             "phase": "P8",
@@ -352,6 +384,7 @@ AE_PROMPT_SEEDS = [
             "nvt_project_operations": "create_get_list_update",
             "employee_authority": "oa_only",
             "nvt_fallback_rule": "non_nvt_only",
+            "golden_a_parameter_mapping": "exact",
         },
     ),
     PromptSeed(
@@ -485,8 +518,8 @@ def _activate_current_intent_candidate_prompt(store: Any) -> None:
         new_prompt_template_version_id=target["prompt_template_version_id"],
         expected_prompt_template_version_id=current["prompt_template_version_id"],
         changed_by="nex-ae-api-bootstrap",
-        reason="P8-S112 NVT Project and membership candidate normalization",
-        correlation_id="p8-s112-intent-prompt-v6",
+        reason="P8-DEMO-S11 Golden A parameter mapping hardening",
+        correlation_id="p8-demo-s11-intent-prompt-v7",
     )
 
 

@@ -355,6 +355,20 @@ def test_repository_is_append_once_and_idempotent(evidence_repo) -> None:
         repository.get(tenant_id=evidence["tenant_id"], approval_request_id="missing")
         is None
     )
+    assert (
+        repository.get_by_work_item_ref(
+            tenant_id=evidence["tenant_id"],
+            approval_work_item_ref=evidence["approval_work_item_ref"],
+        )
+        == first
+    )
+    assert (
+        repository.get_by_work_item_ref(
+            tenant_id=evidence["tenant_id"],
+            approval_work_item_ref=str(uuid4()),
+        )
+        is None
+    )
 
 
 def test_repository_rejects_changed_semantics(evidence_repo) -> None:
@@ -436,6 +450,13 @@ def test_repository_maps_database_failures(evidence_repo) -> None:
             approval_request_id=evidence["approval_request_id"],
         )
     assert get_error.value.retryable is True
+
+    with pytest.raises(PlatformApprovalEvidenceError) as work_item_error:
+        repository.get_by_work_item_ref(
+            tenant_id=evidence["tenant_id"],
+            approval_work_item_ref=evidence["approval_work_item_ref"],
+        )
+    assert work_item_error.value.retryable is True
 
 
 def test_migration_defines_short_immutable_evidence_table() -> None:

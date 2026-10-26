@@ -21,9 +21,7 @@ from nex_wc.authorization import (
 )
 
 APPROVAL_DOMAINS = frozenset({"AGENT_FORMAL", "NSL_WRITE", "BUSINESS_FORMAL"})
-APPROVAL_STATES = frozenset(
-    {"PENDING", "APPROVED", "REJECTED", "EXPIRED", "CANCELLED"}
-)
+APPROVAL_STATES = frozenset({"PENDING", "APPROVED", "REJECTED", "EXPIRED", "CANCELLED"})
 APPROVAL_PROVIDERS = {
     "AGENT_FORMAL": "AGENT",
     "NSL_WRITE": "NSL",
@@ -85,9 +83,7 @@ _DOMAIN_BINDINGS = {
             "protected_request_ref",
         }
     ),
-    "BUSINESS_FORMAL": frozenset(
-        {"business_operation_id", "protected_request_ref"}
-    ),
+    "BUSINESS_FORMAL": frozenset({"business_operation_id", "protected_request_ref"}),
 }
 
 
@@ -248,8 +244,7 @@ class InMemoryApprovalWorkItemRepository:
                 (
                     copy.deepcopy(record)
                     for record in self._records.values()
-                    if record["tenant_id"] == tenant_id
-                    and record["state"] == "PENDING"
+                    if record["tenant_id"] == tenant_id and record["state"] == "PENDING"
                 ),
                 key=lambda record: (
                     record["created_at"],
@@ -283,9 +278,7 @@ class InMemoryApprovalWorkItemRepository:
                 and existing_event["tenant_id"] == record["tenant_id"]
                 for existing_event in self._outbox.values()
             ):
-                raise _decision_conflict(
-                    "Approval outbox identity already exists."
-                )
+                raise _decision_conflict("Approval outbox identity already exists.")
             self._decisions[key] = copy.deepcopy(record)
             self._outbox[outbox_key] = copy.deepcopy(event_record)
             item["state"] = _terminal_state(record["decision"])
@@ -321,7 +314,9 @@ class SqlAlchemyApprovalWorkItemRepository:
 
     def insert(self, work_item: Mapping[str, Any]) -> dict[str, Any]:
         record = validate_approval_work_item(work_item)
-        params = {field: record.get(field) for field in _REQUIRED_FIELDS | _OPTIONAL_FIELDS}
+        params = {
+            field: record.get(field) for field in _REQUIRED_FIELDS | _OPTIONAL_FIELDS
+        }
         try:
             with self._session_factory() as session:
                 session.execute(text(_INSERT_SQL), params)
@@ -350,7 +345,9 @@ class SqlAlchemyApprovalWorkItemRepository:
         self, work_item: Mapping[str, Any]
     ) -> tuple[dict[str, Any], bool]:
         record = validate_approval_work_item(work_item)
-        params = {field: record.get(field) for field in _REQUIRED_FIELDS | _OPTIONAL_FIELDS}
+        params = {
+            field: record.get(field) for field in _REQUIRED_FIELDS | _OPTIONAL_FIELDS
+        }
         try:
             with self._session_factory() as session:
                 inserted = session.execute(text(_INSERT_BY_SOURCE_SQL), params)
@@ -583,9 +580,10 @@ class ApprovalInboxService:
         gates: list[dict[str, Any]] = []
         for candidate in candidates:
             item = validate_approval_work_item(candidate)
-            if item.get("expires_at") is not None and _as_datetime(
-                item["expires_at"]
-            ) <= effective_now:
+            if (
+                item.get("expires_at") is not None
+                and _as_datetime(item["expires_at"]) <= effective_now
+            ):
                 continue
             try:
                 _require_target_compatibility(
@@ -776,11 +774,15 @@ class ApprovalDecisionService:
         decision_value = _decision_value(decision)
         comment = _decision_comment(decision_comment)
         decision_id = _decision_uuid("decision_id", self._id_factory())
-        decided_at = _timestamp("decided_at", self._clock())
         existing = self._repository.get_decision(
             tenant_id=tenant_id,
             approval_work_item_id=approval_work_item_id,
         )
+        evidence = self._authorizer.authorize(
+            work_item=item,
+            decided_by=decided_by,
+        )
+        decided_at = _timestamp("decided_at", self._clock())
         if (
             existing is None
             and item.get("expires_at") is not None
@@ -791,10 +793,6 @@ class ApprovalDecisionService:
                 "ApprovalWorkItem expired before the decision boundary.",
                 409,
             )
-        evidence = self._authorizer.authorize(
-            work_item=item,
-            decided_by=decided_by,
-        )
         record = {
             "schema_version": "wc_approval_decision.v1",
             "tenant_id": item["tenant_id"],
@@ -806,9 +804,7 @@ class ApprovalDecisionService:
             "decision_version": 1,
             "authorized_by_oa": True,
             "oa_decision_ref": evidence["oa_decision_ref"],
-            "authorization_revision_hash": evidence[
-                "authorization_revision_hash"
-            ],
+            "authorization_revision_hash": evidence["authorization_revision_hash"],
             "authorization_checked_at": evidence["authorization_checked_at"],
             "decided_at": decided_at,
         }
@@ -1165,17 +1161,12 @@ def _require_target_compatibility(
             continue
         configured = True
         granted = authorization.get(authorization_field)
-        if (
-            not isinstance(granted, (list, tuple))
-            or target not in granted
-        ):
+        if not isinstance(granted, (list, tuple)) or target not in granted:
             raise AuthorizationSubjectDenied(
                 f"Decision principal does not match {target_field}."
             )
     if not configured:
-        raise AuthorizationSubjectDenied(
-            "ApprovalWorkItem has no decision target."
-        )
+        raise AuthorizationSubjectDenied("ApprovalWorkItem has no decision target.")
 
 
 def _human_gate_view(work_item: Mapping[str, Any]) -> dict[str, Any]:
@@ -1187,10 +1178,7 @@ def _human_gate_view(work_item: Mapping[str, Any]) -> dict[str, Any]:
         "state": item["state"],
         "title": item["title"],
         "summary": item["display_safe_summary"],
-        "action_ref": (
-            "/api/v1/approval-gates/"
-            f"{item['approval_work_item_id']}"
-        ),
+        "action_ref": (f"/api/v1/approval-gates/{item['approval_work_item_id']}"),
         "approval_provider_type": item["approval_provider_type"],
         "approval_target_ref": item["approval_target_ref"],
         "business_operation_id": item.get("business_operation_id"),
@@ -1444,9 +1432,7 @@ def _inbox_denied(detail: str) -> ApprovalInboxError:
 
 
 def _inbox_unavailable(detail: str) -> ApprovalInboxError:
-    return ApprovalInboxError(
-        "wc.approval_inbox_unavailable", detail, 503, True
-    )
+    return ApprovalInboxError("wc.approval_inbox_unavailable", detail, 503, True)
 
 
 def _gate_not_found() -> ApprovalInboxError:
@@ -1606,9 +1592,12 @@ INSERT INTO wc_approval_work_item (
 )
 """
 
-_INSERT_BY_SOURCE_SQL = _INSERT_SQL + """
+_INSERT_BY_SOURCE_SQL = (
+    _INSERT_SQL
+    + """
 ON CONFLICT (tenant_id, approval_domain, source_ref) DO NOTHING
 """
+)
 
 _SELECT_SQL = """
 SELECT tenant_id, approval_work_item_id, approval_domain, source_ref,

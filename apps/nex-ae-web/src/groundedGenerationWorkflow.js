@@ -35,6 +35,7 @@ export function buildGroundedGenerationRequest({
     interaction_id: requiredText(interactionId, "interactionId"),
     workspace_id: requiredText(workspaceId, "workspaceId"),
     chat_document_id: requiredText(chatDocumentId, "chatDocumentId"),
+    conversation_id: requiredText(chatDocumentId, "chatDocumentId"),
     user_message: requiredText(userMessage, "userMessage"),
     generation: {
       execution_strategy: "ASYNCHRONOUS",
@@ -103,8 +104,10 @@ export async function runGroundedGenerationWorkflow({
     admission = await client.admitInteraction(request);
     state = applyGenerationAdmission(state, admission);
     publish("generation.request.accepted");
+    const agentExecutionAdmitted =
+      admission.semanticPlanning?.status === "COMPILED";
 
-    while (!state.terminal && pollCount < maxPolls) {
+    while (!agentExecutionAdmitted && !state.terminal && pollCount < maxPolls) {
       assertNotAborted(signal);
       const delay = state.nextPollAfterSeconds ?? 2;
       if (client.clientMode !== "mock") await wait(delay);
@@ -143,6 +146,8 @@ export async function runGroundedGenerationWorkflow({
     state,
     readModel,
     admission,
+    agentExecutionAdmitted:
+      admission?.semanticPlanning?.status === "COMPILED",
     groundingRequested: request.retrieval?.enabled === true,
     pollCount,
     pollLimitReached: state.phase === "active" && pollCount === maxPolls,

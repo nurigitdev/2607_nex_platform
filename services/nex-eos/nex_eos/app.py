@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from fastapi import FastAPI
 from nex_runtime import SERVICE_SPECS, build_service_app
 
+from .approval_decision_api import register_approval_decision_routes
 from .config import EosSettings, load_eos_settings
 from .dependencies import build_eos_dependencies
 from .organization_api import register_organization_routes
@@ -64,6 +65,7 @@ def create_eos_app(
     app.state.eos_business_operation_query = dependencies.business_operation_query
     app.state.eos_voucher_verification_query = dependencies.voucher_verification_query
     register_voucher_command_routes(app)
+    register_approval_decision_routes(app)
     register_organization_routes(app)
     register_project_routes(app)
     return app

@@ -11,7 +11,10 @@ from nex_ae_api.agent_context import TrustedContextResolution
 from nex_ae_api.agent_execution import AgentRuntimeAdmission
 from nex_ae_api.context_candidate_generation import LiveContextCandidateService
 from nex_ae_api.intent_candidate_generation import LiveIntentCandidateService
-from nex_ae_api.mo_generation_client import AeMoGenerationReadiness, AeMoGenerationResult
+from nex_ae_api.mo_generation_client import (
+    AeMoGenerationReadiness,
+    AeMoGenerationResult,
+)
 from nex_ae_api.plan_candidate_generation import LivePlanCandidateService
 from nex_ae_api.planning_capabilities import build_capability_snapshot
 from nex_ae_api.prompts import seed_ae_prompt_registry
@@ -23,12 +26,14 @@ from nex_ae_api.semantic_candidate_evidence import (
     InMemorySemanticCandidateStorage,
     SqlAlchemySemanticCandidateEvidenceRepository,
 )
-from nex_ae_api.semantic_candidates import SemanticCalibrationPolicy, SemanticCalibrationRegistry
+from nex_ae_api.semantic_candidates import (
+    SemanticCalibrationPolicy,
+    SemanticCalibrationRegistry,
+)
 from nex_runtime.prompts import PromptRegistryStore
 from nex_runtime.semantic_hashes import canonical_json, semantic_sha256_hash_ref
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-
 
 EXECUTION_ID = "10000000-0000-4000-8000-000000000656"
 AGENT_ID = "20000000-0000-4000-8000-000000000656"
@@ -167,6 +172,29 @@ class Resolver:
         )
 
 
+class DomainActivator:
+    def __init__(self, *, drift: bool = False, fail: bool = False) -> None:
+        self.drift = drift
+        self.fail = fail
+        self.calls = 0
+
+    def activate(self, *, work_intent, **_kwargs):
+        self.calls += 1
+        if self.fail:
+            raise ValueError("domain activation failed")
+        activated = dict(work_intent)
+        if self.drift:
+            activated["goal"] = f"Activated goal {self.calls}"
+            activated["intent_hash"] = semantic_sha256_hash_ref(
+                {
+                    key: value
+                    for key, value in activated.items()
+                    if key != "intent_hash"
+                }
+            )
+        return SimpleNamespace(work_intent=activated, context_resolver=Resolver())
+
+
 class Admission:
     def __init__(self) -> None:
         self.calls = 0
@@ -273,6 +301,7 @@ def _components(
     intent_confidence: float = 0.92,
     context_confidence: float = 0.91,
     plan_confidence: float = 0.93,
+    domain_activator=None,
 ):
     client = GenerationClient(
         intent_confidence=intent_confidence,
@@ -304,6 +333,11 @@ def _components(
         validations=validations,
         executable_plans=executable_plans,
         executions=executions,
+        domain_intent_activators=(
+            {}
+            if domain_activator is None
+            else {"analyze_project_budget": domain_activator}
+        ),
         clock=lambda: datetime(2026, 10, 17, 2, 0, tzinfo=UTC),
     )
     return service, client, admission, work_intents, contexts, plans, validations, executable_plans
@@ -363,6 +397,32 @@ def test_required_pipeline_compiles_and_replays_without_provider_calls() -> None
     assert client.calls == []
     assert validations.save_calls == 1
     assert admission.calls == 2
+
+
+def test_required_pipeline_applies_and_replays_domain_intent_activation() -> None:
+    activator = DomainActivator()
+    service, *_ = _components(domain_activator=activator)
+
+    first = service.admit_and_compile(_request())
+    replay = service.admit_and_compile(_request())
+
+    assert first.status == replay.status == "COMPILED"
+    assert activator.calls == 2
+
+
+def test_domain_intent_activation_fails_closed_on_error_or_replay_drift() -> None:
+    failed, *_ = _components(domain_activator=DomainActivator(fail=True))
+    with pytest.raises(admission_module.SemanticCandidateAdmissionError) as raised:
+        failed.admit_and_compile(_request())
+    assert raised.value.error_code == "DOMAIN_INTENT_ACTIVATION_FAILED"
+    assert raised.value.semantic_stage == "INTENT"
+
+    activator = DomainActivator(drift=True)
+    drifted, *_ = _components(domain_activator=activator)
+    assert drifted.admit_and_compile(_request()).status == "COMPILED"
+    with pytest.raises(admission_module.SemanticCandidateAdmissionError) as replay:
+        drifted.admit_and_compile(_request())
+    assert replay.value.error_code == "DOMAIN_INTENT_ACTIVATION_DRIFT"
 
 
 def test_resume_reconstructs_missing_canonical_work_intent_without_provider() -> None:

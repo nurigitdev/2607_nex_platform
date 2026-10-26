@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-import re
 from typing import Any
 
 from nex_oa.service_principal_boundary import (
@@ -14,12 +14,11 @@ from nex_oa.service_principal_boundary import (
     SERVICE_PRINCIPAL_STATUSES,
 )
 
-
 OA_SERVICE_PRINCIPAL_SCHEMA_VERSION = "oa_service_principal.v1"
 OA_SERVICE_CREDENTIAL_SCHEMA_VERSION = "oa_service_credential.v1"
 
 _ID_PATTERN = re.compile(r"^[a-z][a-z0-9._-]{1,63}$")
-_SCOPE_PATTERN = re.compile(r"^[a-z][a-z0-9._-]{0,63}:[a-z][a-z0-9._-]{0,63}$")
+_SCOPE_PATTERN = re.compile(r"^[a-z][a-z0-9._-]{0,63}(?::[a-z][a-z0-9._-]{0,63})+$")
 _CREDENTIAL_TRANSITIONS = {
     "ACTIVE": frozenset(("ROTATING", "REVOKED", "EXPIRED")),
     "ROTATING": frozenset(("REVOKED", "EXPIRED")),
@@ -82,7 +81,9 @@ def plan_credential_issue(
             "credentials cannot be issued for a disabled service principal.",
         )
     principal_id = normalize_service_principal_id(principal.get("principal_id"))
-    count = _integer(active_credential_count, field_name="active_credential_count", minimum=0)
+    count = _integer(
+        active_credential_count, field_name="active_credential_count", minimum=0
+    )
     if count >= MAX_SIMULTANEOUS_ACTIVE_CREDENTIALS:
         raise _error(
             409,
@@ -122,9 +123,7 @@ def plan_credential_status_transition(
     current_revision = _integer(
         credential.get("revision"), field_name="revision", minimum=1
     )
-    expected = _integer(
-        expected_revision, field_name="expected_revision", minimum=1
-    )
+    expected = _integer(expected_revision, field_name="expected_revision", minimum=1)
     if expected != current_revision:
         raise _error(
             409,
@@ -221,9 +220,12 @@ def normalize_scopes(value: object) -> tuple[str, ...]:
     values = _sequence(value, field_name="allowed_scopes")
     normalized: set[str] = set()
     for item in values:
-        if not isinstance(item, str) or not _SCOPE_PATTERN.fullmatch(item.strip().lower()):
+        if not isinstance(item, str) or not _SCOPE_PATTERN.fullmatch(
+            item.strip().lower()
+        ):
             raise _invalid(
-                "allowed_scopes", "each scope must use the resource:action form."
+                "allowed_scopes",
+                "each scope must contain at least resource and action segments.",
             )
         normalized.add(item.strip().lower())
     if not normalized:

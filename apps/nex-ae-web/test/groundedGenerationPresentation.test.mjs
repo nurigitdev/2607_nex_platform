@@ -61,6 +61,22 @@ test("presents only an owner-verified response with validated citation quality",
   assert.equal(JSON.stringify(presentation.summary).includes("Grounded mock"), false);
 });
 
+test("presents a compiled semantic plan as an active Agent execution", async () => {
+  const workflow = {
+    ...(await completedWorkflow()),
+    status: "ACTIVE",
+    agentExecutionAdmitted: true,
+    groundingRequested: false
+  };
+  const presentation = await buildGroundedGenerationPresentation({ workflow });
+
+  assert.equal(presentation.displayMode, "AGENT_EXECUTION");
+  assert.equal(presentation.assistantText, "Agent가 요청을 처리하고 있습니다.");
+  assert.equal(presentation.agentExecutionAdmitted, true);
+  assert.equal(presentation.artifactHandoffAllowed, false);
+  assert.equal(presentation.summary.agent_execution_admitted, true);
+});
+
 test("projects an owner-verified batch result into the message presentation", async () => {
   const workflow = await completedWorkflow();
   const projection = {

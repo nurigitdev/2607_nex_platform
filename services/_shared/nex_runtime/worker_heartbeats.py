@@ -31,7 +31,15 @@ WORKER_HEARTBEAT_STATUSES = (
 ACTIVE_WORKER_HEARTBEAT_STATUSES = (STARTING, IDLE, BUSY)
 TERMINAL_WORKER_HEARTBEAT_STATUSES = (STOPPED, ERROR)
 
-SERVICE_IDS = ("nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo", "nex-wc")
+SERVICE_IDS = (
+    "nex-oa",
+    "nex-ag",
+    "nex-ae-api",
+    "nex-cx",
+    "nex-mo",
+    "nex-wc",
+    "nex-eos",
+)
 
 DEFAULT_WORKER_STALE_AFTER_SECONDS = 60
 MAX_WORKER_STALE_AFTER_SECONDS = 86_400

@@ -156,3 +156,28 @@ exports it only to the RustFS process; the raw value is absent from Compose,
 image layers, reports, and application containers. Slice 1461 proves the
 protected OpenBao materialization, RustFS IAM/bucket bootstrap, CX/AE
 cross-bucket denial, restart, lifecycle, restore, and cleanup execution.
+
+## P8 Chairman Demo Override
+
+`p8-demo.override.yaml` is layered after the immutable S143 base and S146
+object-storage override. It adds WC, EOS, the AE Agent Runtime worker, WC event
+delivery worker, and EOS outbox publisher. The application set is exactly eight
+immutable images; worker containers reuse their owner image.
+
+The override uses `restart: unless-stopped`, adds WC/EOS AppRole secret-file
+inputs, defines the internal identity network needed by the S146 route set, and
+mounts `traefik/p8-demo-dynamic.yaml`. Only Traefik publishes application
+ingress. WC, EOS, workers, PostgreSQL, OpenBao control traffic, and RustFS have
+no direct public application port.
+
+Render the protected topology from the admitted S06 image report with:
+
+```bash
+NEX_P8_DEMO_COMPOSE_RENDER=1 \
+./.venv/bin/python scripts/deployment/check_p8_demo_compose.py \
+  --execute --summary
+```
+
+This command renders and validates the topology; it does not start containers.
+OpenBao owner secrets and runtime lifecycle activation belong to subsequent
+P8-DEMO Slices.

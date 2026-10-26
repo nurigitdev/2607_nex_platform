@@ -18,6 +18,7 @@ from nex_ae_api.agent_runtime_dispatcher import (
 from nex_ae_api.nsl_backend_profiles import (
     NSL_V01_IN_PROCESS_BACKEND,
     NSL_V01_PROCESS_ISOLATED_BACKEND,
+    NSL_V02_IN_PROCESS_BACKEND,
 )
 from nex_ae_api.runtime_jobs import RuntimeJobError, SqlAlchemyRuntimeJobQueue
 from sqlalchemy import create_engine, text
@@ -230,6 +231,29 @@ def test_dispatch_claims_only_exact_worker_backend_profile(runtime_store) -> Non
     )
 
 
+def test_dispatch_admits_local_skill_v02_worker_profile(runtime_store) -> None:
+    engine, factory = runtime_store
+    queue = _queue(factory)
+    _add_job(
+        engine,
+        queue,
+        tenant_id="tenant-v02",
+        suffix="v02",
+        backend_profile=NSL_V02_IN_PROCESS_BACKEND,
+    )
+
+    result = _dispatcher(factory).dispatch_round(
+        worker_id="worker-v02",
+        supported_executor_kinds=("LOCAL_SKILL",),
+        supported_backend_profiles=(NSL_V02_IN_PROCESS_BACKEND,),
+        lease_seconds=60,
+        observed_at=NOW,
+    )
+
+    assert len(result["assignments"]) == 1
+    assert result["assignments"][0].backend_profile == NSL_V02_IN_PROCESS_BACKEND
+
+
 def _dispatcher(factory, *, dispatcher_id="dispatcher-a", **overrides: Any):
     config = AgentRuntimeDispatcherConfig(
         dispatcher_id=dispatcher_id,
@@ -410,6 +434,48 @@ def test_capability_claim_is_atomic_and_stale_dispatcher_cannot_claim(
             lease_seconds=60,
             now=NOW,
         )
+
+
+def test_dispatch_claims_registered_non_local_executor_without_skill_backend(
+    runtime_store,
+) -> None:
+    engine, factory = runtime_store
+    queue = _queue(factory)
+    _add_job(
+        engine,
+        queue,
+        tenant_id="tenant-report",
+        suffix="report",
+        executor_kind="DETERMINISTIC_REPORT",
+    )
+    dispatcher = SqlAlchemyAgentRuntimeDispatcher(
+        factory,
+        config=AgentRuntimeDispatcherConfig(
+            dispatcher_id="dispatcher-report",
+            dispatch_batch_size=1,
+            global_active_claim_cap=1,
+            per_tenant_active_claim_cap=1,
+            tenant_snapshot_limit=1,
+        ),
+        queue=queue,
+        executor_backends={
+            "DETERMINISTIC_REPORT": NSL_V02_IN_PROCESS_BACKEND,
+        },
+    )
+
+    result = dispatcher.dispatch_round(
+        worker_id="worker-report",
+        supported_executor_kinds=("DETERMINISTIC_REPORT",),
+        supported_backend_profiles=(NSL_V02_IN_PROCESS_BACKEND,),
+        lease_seconds=60,
+        observed_at=NOW,
+    )
+
+    assert result["status"] == "DISPATCHED"
+    assert len(result["assignments"]) == 1
+    assignment = result["assignments"][0]
+    assert assignment.executor_kind == "DETERMINISTIC_REPORT"
+    assert assignment.backend_profile == NSL_V02_IN_PROCESS_BACKEND
     with pytest.raises(RuntimeJobError):
         queue.claim_capability_aware(
             tenant_id="tenant-a",

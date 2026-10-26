@@ -26,6 +26,7 @@ from nex_ae_api.mo_generation_client import (  # noqa: E402
 )
 from nex_ae_api.prompts import (  # noqa: E402
     AE_INTENT_RESOLUTION_BINDING,
+    AE_PROMPT_SEEDS,
     seed_ae_prompt_registry,
 )
 from nex_runtime.prompts import PromptRegistryStore  # noqa: E402
@@ -36,6 +37,14 @@ GOLDEN_PROMPT = (
     "내가 접근할 수 있는 프로젝트 예산 자료를 확인해서 총 예산, "
     "집행액, 잔액을 한국어로 요약해줘."
 )
+
+
+def _current_intent_prompt_version() -> str:
+    return next(
+        seed.version
+        for seed in AE_PROMPT_SEEDS
+        if seed.binding_key == AE_INTENT_RESOLUTION_BINDING
+    )
 
 
 def run_p65_s2_live_intent_candidate_smoke(
@@ -106,7 +115,8 @@ def run_p65_s2_live_intent_candidate_smoke(
         "exact_prompt_binding_captured": (
             result.prompt_provenance.get("prompt_binding_key")
             == AE_INTENT_RESOLUTION_BINDING
-            and result.prompt_provenance.get("prompt_template_version") == "v6"
+            and result.prompt_provenance.get("prompt_template_version")
+            == _current_intent_prompt_version()
         ),
         "model_specific_calibration_selected": (
             result.admission_policy_ref is not None

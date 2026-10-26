@@ -27,6 +27,8 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "credential-password",
         "credential-login-submit-button",
         "credential-logout-button",
+        "current-session-user",
+        "current-session-user-account",
         "credential-login-feedback",
         "credential-login-summary",
         "session-route-guard-summary",
@@ -64,7 +66,8 @@ def test_ae_web_shell_exposes_mvp_workspace_surfaces() -> None:
         "format-select",
     ]:
         assert f'id="{required_id}"' in html
-    assert "Slice 0227" in html
+    assert ">NeX-Platform</h1>" in html
+    assert "Slice 0227" not in html
     assert "lang=\"ko\"" in html
 
 
@@ -1192,7 +1195,7 @@ def test_ae_web_static_browser_smoke_runner_is_quality_gate_wired() -> None:
 
     for expected in [
         "ae_web_static_browser_smoke",
-        "DEFAULT_SLICE_LABEL = \"Slice 0227\"",
+        "DEFAULT_SLICE_LABEL = \"NeX-Platform\"",
         "required_anchors",
         "runtime-diagnostics-panel",
         "credential-login-panel",

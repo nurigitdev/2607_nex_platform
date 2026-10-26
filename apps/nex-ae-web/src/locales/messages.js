@@ -4,7 +4,7 @@ export const SUPPORTED_LOCALES = Object.freeze(["ko", "en"]);
 const ko = Object.freeze({
   "app.title": "NeX AE 작업 공간",
   "app.navigation": "주요 탐색",
-  "app.workspace": "NeX-Platform 작업면",
+  "app.workspace": "NeX-Platform",
   "nav.workspace": "워크스페이스",
   "nav.login": "로그인",
   "nav.runtime": "런타임",
@@ -43,6 +43,7 @@ const ko = Object.freeze({
   "auth.employee_id": "사번",
   "auth.password": "비밀번호",
   "auth.login": "로그인",
+  "auth.current_user": "접속 사용자",
   "auth.logout": "로그아웃",
   "runtime.title": "런타임 진단",
   "upload.title": "업로드 준비",
@@ -104,7 +105,7 @@ const ko = Object.freeze({
 const en = Object.freeze({
   "app.title": "NeX AE Workspace",
   "app.navigation": "Primary navigation",
-  "app.workspace": "NeX-Platform Workspace",
+  "app.workspace": "NeX-Platform",
   "nav.workspace": "Workspace",
   "nav.login": "Login",
   "nav.runtime": "Runtime",
@@ -143,6 +144,7 @@ const en = Object.freeze({
   "auth.employee_id": "Employee ID",
   "auth.password": "Password",
   "auth.login": "Login",
+  "auth.current_user": "Signed in as",
   "auth.logout": "Logout",
   "runtime.title": "Runtime diagnostics",
   "upload.title": "Upload preparation",
