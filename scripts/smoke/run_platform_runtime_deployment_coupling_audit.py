@@ -37,8 +37,42 @@ SERVICE_SOURCE_ROOTS = (
     "services/nex-mo",
     "services/nex-ag",
 )
-EXPECTED_LOOPBACK_OCCURRENCE_COUNT = 49
-EXPECTED_LOOPBACK_FILE_COUNT = 29
+EXPECTED_LOOPBACK_INVENTORY = (
+    ("services/_shared/nex_runtime/app.py", 1),
+    ("services/_shared/nex_runtime/process_manifest.py", 1),
+    ("services/_shared/nex_runtime/s146_compose.py", 1),
+    ("services/_shared/nex_runtime/service_endpoints.py", 5),
+    ("services/_shared/nex_runtime/service_token_admission.py", 1),
+    ("services/_shared/nex_runtime/subject_resolver.py", 2),
+    ("services/nex-ae-api/nex_ae_api/approval_facade.py", 1),
+    ("services/nex-ae-api/nex_ae_api/artifacts.py", 2),
+    ("services/nex-ae-api/nex_ae_api/chat.py", 4),
+    ("services/nex-ae-api/nex_ae_api/cx_async_generation_client.py", 1),
+    ("services/nex-ae-api/nex_ae_api/documents.py", 2),
+    ("services/nex-ae-api/nex_ae_api/main.py", 1),
+    ("services/nex-ae-api/nex_ae_api/nsl_approval_publication.py", 1),
+    ("services/nex-ae-api/nex_ae_api/nsl_eos_write_execution.py", 1),
+    ("services/nex-ae-api/nex_ae_api/oa_session_client.py", 1),
+    ("services/nex-ae-api/nex_ae_api/recovery_requests.py", 2),
+    ("services/nex-ae-api/nex_ae_api/repaired_response_client.py", 1),
+    ("services/nex-ae-api/nex_ae_api/retrieval.py", 2),
+    ("services/nex-ae-api/nex_ae_api/upload_progress.py", 2),
+    ("services/nex-ae-api/nex_ae_api/uploads.py", 2),
+    ("services/nex-ag/nex_ag/artifact_operations.py", 1),
+    ("services/nex-ag/nex_ag/cross_service_trace.py", 4),
+    ("services/nex-ag/nex_ag/generation_audit.py", 4),
+    ("services/nex-ag/nex_ag/generation_remediation_handoff.py", 1),
+    ("services/nex-ag/nex_ag/job_control.py", 1),
+    ("services/nex-ag/nex_ag/readiness.py", 1),
+    ("services/nex-ag/nex_ag/service_log_retention.py", 1),
+    ("services/nex-cx/nex_cx/embedding_index.py", 1),
+    ("services/nex-cx/nex_cx/generation.py", 1),
+    ("services/nex-cx/nex_cx/retrieval.py", 1),
+)
+EXPECTED_LOOPBACK_OCCURRENCE_COUNT = sum(
+    occurrence_count for _, occurrence_count in EXPECTED_LOOPBACK_INVENTORY
+)
+EXPECTED_LOOPBACK_FILE_COUNT = len(EXPECTED_LOOPBACK_INVENTORY)
 
 
 @dataclass(frozen=True)
@@ -76,6 +110,7 @@ def run_platform_runtime_deployment_coupling_audit(
     topology_findings = dict(topology.get("findings") or {})
     profile_findings = dict(profiles.get("findings") or {})
     loopback = _loopback_occurrences(root)
+    expected_loopback = _expected_loopback_evidence()
     manifest = build_platform_runtime_manifest("local_mock", environ={})
     plan = _read_text(root / PLAN_PATH)
     protected_legacy_rejected = _protected_legacy_projection_rejected()
@@ -105,10 +140,7 @@ def run_platform_runtime_deployment_coupling_audit(
         "production_requires_all_service_endpoints": (
             len(SERVICE_ENDPOINT_ENV_NAMES) == 6
         ),
-        "loopback_baseline_exact": (
-            loopback["occurrence_count"] == EXPECTED_LOOPBACK_OCCURRENCE_COUNT
-            and loopback["file_count"] == EXPECTED_LOOPBACK_FILE_COUNT
-        ),
+        "loopback_baseline_exact": loopback == expected_loopback,
         "thirteen_source_processes_inventoried": len(manifest.processes) == 13,
         "all_coupling_records_documented": all(records_documented.values()),
     }
@@ -180,6 +212,18 @@ def _loopback_occurrences(root: Path) -> dict[str, Any]:
         "file_count": len(findings),
         "occurrence_count": sum(item["occurrence_count"] for item in findings),
         "files": findings,
+    }
+
+
+def _expected_loopback_evidence() -> dict[str, Any]:
+    files = [
+        {"path": path, "occurrence_count": occurrence_count}
+        for path, occurrence_count in EXPECTED_LOOPBACK_INVENTORY
+    ]
+    return {
+        "file_count": EXPECTED_LOOPBACK_FILE_COUNT,
+        "occurrence_count": EXPECTED_LOOPBACK_OCCURRENCE_COUNT,
+        "files": files,
     }
 
 

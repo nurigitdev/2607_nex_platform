@@ -244,6 +244,37 @@ def test_installed_runtime_report_rejects_provenance_drift(mutation, message: st
         )
 
 
+def test_installed_runtime_reports_reject_local_release_identity_drift() -> None:
+    report = _release_report()
+    report["image_build"]["artifacts"].append("invalid")
+    with pytest.raises(DemoComposeError, match="local image artifact is invalid"):
+        image_environment_from_installed_runtime_reports(report, {})
+
+    report = _release_report()
+    report["image_build"]["artifacts"][0]["local_tag"] = "mutable"
+    with pytest.raises(DemoComposeError, match="local image identity drift"):
+        image_environment_from_installed_runtime_reports(report, {})
+
+
+def test_installed_runtime_report_rejects_digest_and_repository_drift() -> None:
+    image_id = "sha256:" + "a" * 64
+    report = {
+        "status": "PASS",
+        "slice": "P8-DEMO-S10B",
+        "base_image": "demo/nex-ae-runtime:current",
+        "output_image": "demo/nex-ae-runtime:p8-demo-s10b",
+        "bundle": {"status": "PASS"},
+        "image": {"image_id": image_id, "repo_digests": []},
+    }
+    with pytest.raises(DemoComposeError, match="image identity is invalid"):
+        image_environment_from_installed_runtime_reports(_release_report(), report)
+
+    report["image"]["repo_digests"] = [f"demo/nex-ae-runtime@{image_id}"]
+    report["output_image"] = "other/nex-ae-runtime:p8-demo-s10b"
+    with pytest.raises(DemoComposeError, match="repository drift"):
+        image_environment_from_installed_runtime_reports(_release_report(), report)
+
+
 def test_source_admission_contains_yaml_and_policy_drift(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

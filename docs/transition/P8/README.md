@@ -51,6 +51,7 @@ P8-DEMO-S08 OPENBAO SECRET / TRUST / PKI ADMISSION COMPLETE
 P8-DEMO-S09 EXTERNAL DEPENDENCY ADMISSION COMPLETE
 P8-DEMO-S10A STARTUP-ISSUED BOUNDED-LIFETIME SERVICE TOKEN BOOTSTRAP COMPLETE
 P8-DEMO-S10B INSTALLED P6-P8 RUNTIME COMPOSITION EXTRACTION COMPLETE
+P8-DEMO-S10 INSTALLED DOMAIN CONSUMER / SIGNED TRUST ACCEPTANCE COMPLETE
 P8 DEMO IMPLEMENTATION ENTRY AUTHORIZED WITH BLOCKING GATES
 P9     ENTRY AUTHORIZED BY v1.2
 ```
@@ -924,6 +925,14 @@ scheduler, DB-protected dispatcher, bounded worker, executor registry, P8
 approval checkpoint/resume integration, and EOS controlled WRITE adapters.
 Actual AE/WC/EOS/OA PostgreSQL and signed-only service-token evidence is
 recorded in `docs/slices/p8_demo_s10b_installed_p6_p8_runtime_composition_extraction.md`.
+
+P8-DEMO-S10 activates that installed composition with the actual local Docker,
+OpenBao, Traefik, RustFS boundary, and all seven migration-current development
+databases. The three owner-scoped domain consumers restart with renewed
+heartbeats, OA/AE/WC/EOS accept signed tokens only, no provider fallback is
+used, and all ephemeral trust rows and containers are removed. Evidence is
+recorded in
+`docs/slices/p8_demo_s10_installed_domain_consumer_activation_and_signed_trust_acceptance.md`.
 
 ---
 
