@@ -145,6 +145,16 @@ def test_s11_public_browser_projection_strips_runtime_lineage() -> None:
     )
 
     assert projected == {"status": "PASS", "checks": {"browser": True}}
+    assert acceptance._failed_browser_checks(
+        {
+            "checks": {
+                "live_plan_compiled": True,
+                "browser_result_presented": False,
+                "agent_result_succeeded": False,
+            }
+        }
+    ) == ("agent_result_succeeded", "browser_result_presented")
+    assert acceptance._failed_browser_checks({"checks": []}) == ()
     assert "provider=true" in acceptance.summary_line(
         {
             "status": "PASS",

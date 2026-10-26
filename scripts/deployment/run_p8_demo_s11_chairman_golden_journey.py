@@ -159,6 +159,7 @@ def _execute_protected_acceptance(env: Mapping[str, str], *, root: Path) -> dict
             runtime = browser.get("runtime")
             if browser.get("status") != "PASS" or not isinstance(runtime, Mapping):
                 failure_code = str(browser.get("failure_code") or "unknown")
+                failed_checks = _failed_browser_checks(browser)
                 problem_code = str(
                     browser.get("observations", {}).get("problem_code") or "none"
                 )
@@ -172,7 +173,8 @@ def _execute_protected_acceptance(env: Mapping[str, str], *, root: Path) -> dict
                 raise P8DemoS11Error(
                     "installed Chairman browser journey failed at "
                     f"{browser.get('observations', {}).get('stage', 'unknown')} "
-                    f"({failure_code}; {problem_code}; {failed_stage}; {directive})"
+                    f"({failure_code}; {problem_code}; {failed_stage}; {directive}; "
+                    f"checks={','.join(failed_checks) or 'none'})"
                 )
             interaction_id = str(runtime.get("interaction_id") or "")
             if not interaction_id:
@@ -374,6 +376,13 @@ def _activate_golden_a_capability(engine: Any, *, root: Path) -> dict[str, Any]:
 
 def _public_browser_evidence(evidence: Mapping[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in evidence.items() if key != "runtime"}
+
+
+def _failed_browser_checks(evidence: Mapping[str, Any]) -> tuple[str, ...]:
+    checks = evidence.get("checks")
+    if not isinstance(checks, Mapping):
+        return ()
+    return tuple(sorted(str(key) for key, value in checks.items() if value is not True))
 
 
 def _semantic_calibration_json() -> str:

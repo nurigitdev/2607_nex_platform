@@ -731,6 +731,9 @@ function selectApplicationView(requestedView, { updateHash = false } = {}) {
     renderRuntimeDiagnostics();
     void renderServiceStatuses();
   }
+  if (shell.activeView === "approvals") {
+    void approvalUiController.refresh();
+  }
 }
 
 function scheduleSessionExpiry() {

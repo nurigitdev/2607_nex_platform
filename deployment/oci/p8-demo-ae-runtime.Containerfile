@@ -9,6 +9,7 @@ RUN python -m pip install --no-deps /app/deployment/p8-demo/wheel/nex_skill_lang
 COPY --chown=65532:65532 skill /app/deployment/p8-demo/nsl/golden_a_voucher_draft
 COPY --chown=65532:65532 fixtures /app/deployment/p8-demo/fixtures
 COPY --chown=65532:65532 locks /app/deployment/p8-demo/locks
+RUN install -d -o 65532 -g 65532 -m 0700 /var/lib/nex-platform/ae-runtime/nsl
 
 ENV NEX_AE_DEMO_NSL_BUNDLE_MANIFEST=/app/deployment/p8-demo/locks/p8-demo-nsl-runtime-bundle.v1.json \
     NEX_AE_DEMO_NSL_WHEEL=/app/deployment/p8-demo/wheel/nex_skill_language-0.2.1-py3-none-any.whl \
