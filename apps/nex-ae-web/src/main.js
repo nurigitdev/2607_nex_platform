@@ -161,6 +161,7 @@ import {
   buildGenerationFeedbackSurfaceSummary,
   createGenerationFeedbackSurfaceState
 } from "./generationFeedback.js";
+import { buildFetchWorkspacePresentation } from "./fetchWorkspacePresentation.js";
 import {
   buildRepairedResponseReviewSurfaceFromProjection
 } from "./repairedResponseReviewClient.js";
@@ -407,6 +408,14 @@ let approvalUiController = null;
 let voucherAttachmentUiController = null;
 let sessionExpiryTimer = null;
 const initialRuntimeConfig = loadRuntimeConfig();
+if (initialRuntimeConfig.clientMode === "fetch") {
+  Object.assign(
+    workspaceState,
+    buildFetchWorkspacePresentation({
+      documents: documentBootstrap?.documents || []
+    })
+  );
+}
 workspaceState.sessionBootstrap = composeAuthenticatedSessionRuntime({
   runtimeConfig: initialRuntimeConfig,
   ...(initialRuntimeConfig.clientMode === "mock"
@@ -1193,7 +1202,9 @@ function credentialLoginFeedbackMessage(summary) {
 function buildCurrentDocumentScope() {
   return buildDocumentScope({
     documents: workspaceState.documents,
-    selectedDocumentIds: [workspaceState.selectedDocumentId]
+    selectedDocumentIds: workspaceState.selectedDocumentId
+      ? [workspaceState.selectedDocumentId]
+      : []
   });
 }
 
@@ -2316,6 +2327,7 @@ async function appendPromptInteraction() {
     label: "사용자",
     text: prompt
   });
+  promptInput.value = "";
   workspaceState.operations.generation = markOperationRunning(
     workspaceState.operations.generation,
     {
@@ -2323,6 +2335,7 @@ async function appendPromptInteraction() {
       route: "/api/v1/chat/interactions"
     }
   );
+  renderMessages();
   workspaceState.lastGenerationRequest = generationRequest;
   workspaceState.generationAbortController?.abort();
   workspaceState.generationAbortController = new AbortController();

@@ -67,7 +67,8 @@ export async function runP8DemoS11ChairmanGoldenJourney({
   if (missing.length > 0) return failure("required_env_missing", { missing_count: missing.length });
 
   const timeout = positiveTimeout(environ[ENV.timeoutMs]);
-  const interactionId = randomUUID();
+  const journeyId = randomUUID();
+  let interactionId = null;
   let browser = null;
   let requesterContext = null;
   let approverContext = null;
@@ -102,13 +103,11 @@ export async function runP8DemoS11ChairmanGoldenJourney({
       password: environ[ENV.requesterPassword],
       timeout
     });
-    await screenCapture.capture(requesterPage, "requester-workspace");
-
     stage = "workspace_create";
     const workspace = await browserJson(requesterPage, "/ae-api/api/v1/workspaces", {
       method: "POST",
       body: {
-        title: `P8 Demo S11 ${interactionId.slice(0, 8)}`,
+        title: `P8 Demo S11 ${journeyId.slice(0, 8)}`,
         runtime_defaults: {
           locale: "ko-KR",
           execution_mode: "GENERAL_ANSWER",
@@ -118,36 +117,35 @@ export async function runP8DemoS11ChairmanGoldenJourney({
     });
     if (workspace.status !== 200) throw new Error(`WorkspaceCreateStatus${workspace.status}`);
 
+    await installWorkspaceBootstrap(requesterPage, workspace.payload);
+    await requesterPage.reload({ waitUntil: "domcontentloaded", timeout });
+    await requesterPage.waitForSelector("#authenticated-shell:not([hidden])", { timeout });
+    const promptFirstWorkspace = await inspectPromptFirstWorkspace(requesterPage);
+    await screenCapture.capture(requesterPage, "requester-workspace-empty");
+
+    stage = "voucher_prompt_entry";
+    await requesterPage.uncheck("#retrieval-toggle");
+    await requesterPage.fill("#prompt", environ[ENV.prompt]);
+    const voucherPromptReady = await inspectPromptFirstWorkspace(requesterPage);
+    await screenCapture.capture(requesterPage, "voucher-prompt-ready");
+
     stage = "live_plan_admission";
-    const admission = await browserJson(
-      requesterPage,
-      "/ae-api/api/v1/chat/interactions",
-      {
-        method: "POST",
-        body: {
-          interaction_id: interactionId,
-          workspace_id: workspace.payload.workspace_id,
-          chat_document_id: workspace.payload.chat_document_id,
-          conversation_id: workspace.payload.chat_document_id,
-          user_message: environ[ENV.prompt],
-          generation: {
-            execution_strategy: "ASYNCHRONOUS",
-            execution_mode: "GENERAL_ANSWER",
-            reasoning_mode: "disabled"
-          },
-          retrieval: {
-            enabled: false,
-            execution_mode: "GENERAL_CHAT",
-            document_scope: null,
-            retrieval_profile: { search_strategy: "hybrid" },
-            top_k: 5,
-            include_neighbors: false,
-            include_source_preview: false,
-            purpose: "search"
-          }
-        }
-      }
-    );
+    const admissionResponsePromise = requesterPage.waitForResponse(response => {
+      const route = new URL(response.url()).pathname;
+      return (
+        response.request().method() === "POST" &&
+        route === "/ae-api/api/v1/chat/interactions"
+      );
+    }, { timeout });
+    await requesterPage.click("#composer button[type='submit']");
+    await requesterPage.waitForSelector("#message-list .message.user", { timeout });
+    const voucherPromptSubmitted = await inspectPromptFirstWorkspace(requesterPage);
+    await screenCapture.capture(requesterPage, "voucher-prompt-submitted");
+    const admissionResponse = await admissionResponsePromise;
+    const admission = {
+      status: admissionResponse.status(),
+      payload: await admissionResponse.json()
+    };
     if (
       admission.status !== 202 ||
       admission.payload?.generation?.semantic_planning?.status !== "COMPILED"
@@ -157,6 +155,8 @@ export async function runP8DemoS11ChairmanGoldenJourney({
       problemDirective = publicProblemValue(admission.payload?.details?.directive);
       throw new Error(`LivePlanAdmissionStatus${admission.status}`);
     }
+    interactionId = admission.payload.interaction_id;
+    if (!interactionId) throw new Error("LivePlanInteractionIdMissing");
     const semanticStages = admission.payload.generation.semantic_planning.stages || [];
 
     stage = "approver_login";
@@ -224,6 +224,16 @@ export async function runP8DemoS11ChairmanGoldenJourney({
       requester_authenticated: true,
       approver_authenticated: true,
       workspace_created: true,
+      prompt_first_workspace_empty: promptFirstWorkspace.messageCount === 0,
+      prompt_first_timeline_idle: promptFirstWorkspace.timelineEventCount === 1,
+      prompt_first_composer_empty: promptFirstWorkspace.promptEmpty === true,
+      voucher_prompt_entered_in_composer: voucherPromptReady.promptEmpty === false,
+      voucher_prompt_submitted_via_composer:
+        voucherPromptSubmitted.messageCount === 1 &&
+        voucherPromptSubmitted.promptEmpty === true,
+      retrieval_disabled_for_voucher:
+        voucherPromptReady.retrievalEnabled === false &&
+        voucherPromptSubmitted.retrievalEnabled === false,
       live_plan_compiled: true,
       all_semantic_stages_admitted:
         semanticStages.length === 3 &&
@@ -256,6 +266,9 @@ export async function runP8DemoS11ChairmanGoldenJourney({
       },
       observations: {
         semantic_stage_count: semanticStages.length,
+        initial_message_count: promptFirstWorkspace.messageCount,
+        initial_timeline_event_count: promptFirstWorkspace.timelineEventCount,
+        submitted_message_count: voucherPromptSubmitted.messageCount,
         approval_gate_count: 1,
         approval_replay_status: replay.status,
         authenticated_http_response_count: responses.length,
@@ -426,6 +439,25 @@ async function configuredPage(context) {
     globalThis.__NEX_AE_WEB_CONFIG__ = config;
   }, p8DemoS11RuntimeConfig());
   return page;
+}
+
+async function installWorkspaceBootstrap(page, workspace) {
+  await page.addInitScript(value => {
+    globalThis.__NEX_AE_WEB_WORKSPACE_BOOTSTRAP__ = value;
+  }, {
+    schema_version: "ae_web_workspace_bootstrap.v1",
+    workspace_id: workspace.workspace_id,
+    chat_document_id: workspace.chat_document_id
+  });
+}
+
+async function inspectPromptFirstWorkspace(page) {
+  return page.evaluate(() => ({
+    messageCount: document.querySelectorAll("#message-list .message").length,
+    timelineEventCount: document.querySelectorAll("#progress-timeline li").length,
+    promptEmpty: document.querySelector("#prompt")?.value === "",
+    retrievalEnabled: document.querySelector("#retrieval-toggle")?.checked === true
+  }));
 }
 
 function observeApiResponses(page, responses) {
