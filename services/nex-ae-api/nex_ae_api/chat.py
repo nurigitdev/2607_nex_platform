@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -122,6 +123,8 @@ from nex_ae_api.workspace_chat_orchestration import (
 from nex_ae_api.workspace_chat_observability import observe_workspace_chat_state
 from nex_ae_api.chat_application import ChatApplicationService
 from nex_ae_api.semantic_candidate_admission import SemanticCandidateAdmissionError
+
+LOGGER = logging.getLogger(__name__)
 
 AE_CHAT_RETRIEVAL_QUALITY_WARNING_CONTRACT_VERSION = (
     "ae_chat_retrieval_quality_warning.v1"
@@ -2518,6 +2521,10 @@ def _admit_semantic_candidate_pipeline(
     except Exception as exc:
         if getattr(runtime, "mode", None) == "shadow":
             return None
+        LOGGER.exception(
+            "Unexpected semantic candidate admission failure; exception_type=%s",
+            type(exc).__name__,
+        )
         raise ChatInteractionError(
             status_code=409,
             error_code="SEMANTIC_ADMISSION_FAILED",
