@@ -6,7 +6,6 @@ import json
 import os
 import sys
 from collections.abc import Mapping, Sequence
-from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -43,16 +42,15 @@ from nex_runtime.demo_database import (
     load_demo_backup_set_manifest,
     resolve_demo_database_targets,
 )
+from nex_runtime.demo_fixture import load_demo_business_fixture
 from nex_runtime.demo_tenant import (
     inspect_demo_tenant_database,
     reset_demo_tenant_database,
 )
 from nex_runtime.semantic_hashes import (
     semantic_sha256_hash_ref,
-    validate_hash_ref,
 )
 from p8_golden_a_fixture import (
-    load_golden_a_fixture,
     seed_golden_a_fixture,
     validate_golden_a_fixture,
 )
@@ -72,42 +70,26 @@ _FIELDS = {
 }
 
 
-def load_demo_fixture(path: Path = DEFAULT_FIXTURE) -> tuple[dict[str, Any], dict[str, Any]]:
+def load_demo_fixture(
+    path: Path = DEFAULT_FIXTURE,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise DemoDatabaseGuardError("demo_fixture_unreadable") from exc
-    if not isinstance(document, Mapping) or set(document) != _FIELDS:
+    if not isinstance(raw, Mapping) or set(raw) != _FIELDS:
         raise DemoDatabaseGuardError("demo_fixture_document_invalid")
-    record = deepcopy(dict(document))
-    if record["schema_version"] != DEMO_FIXTURE_SCHEMA_VERSION:
-        raise DemoDatabaseGuardError("demo_fixture_schema_invalid")
-    supplied_hash = validate_hash_ref(record["fixture_hash"])
-    hash_input = deepcopy(record)
-    hash_input.pop("fixture_hash")
-    if semantic_sha256_hash_ref(hash_input) != supplied_hash:
-        raise DemoDatabaseGuardError("demo_fixture_hash_mismatch")
-    tenant = record.get("tenant")
-    if not isinstance(tenant, Mapping) or tenant.get("tenant_id") != DEMO_TENANT_ID:
-        raise DemoDatabaseGuardError("demo_fixture_tenant_invalid")
-
-    base_ref = record.get("base_fixture")
-    if not isinstance(base_ref, Mapping) or set(base_ref) != {"path", "fixture_hash"}:
+    base_ref = raw.get("base_fixture")
+    if not isinstance(base_ref, Mapping):
         raise DemoDatabaseGuardError("demo_fixture_base_invalid")
-    relative = Path(str(base_ref["path"]))
+    relative = Path(str(base_ref.get("path", "")))
     base_path = (ROOT / relative).resolve()
     if not base_path.is_relative_to(ROOT.resolve()) or not base_path.is_file():
         raise DemoDatabaseGuardError("demo_fixture_base_path_invalid")
-    base = load_golden_a_fixture(base_path)
-    if base["fixture_hash"] != validate_hash_ref(base_ref["fixture_hash"]):
-        raise DemoDatabaseGuardError("demo_fixture_base_hash_mismatch")
-
-    business_fixture = deepcopy(base)
-    business_fixture["fixture_id"] = record["fixture_id"]
-    business_fixture["tenant"] = dict(tenant)
-    business_hash_input = deepcopy(business_fixture)
-    business_hash_input.pop("fixture_hash")
-    business_fixture["fixture_hash"] = semantic_sha256_hash_ref(business_hash_input)
+    record, business_fixture = load_demo_business_fixture(
+        path,
+        base_fixture_path=base_path,
+    )
     validate_golden_a_fixture(
         business_fixture,
         expected_tenant_id=DEMO_TENANT_ID,
@@ -242,9 +224,7 @@ def _seed_fixture(
         oa_factory,
         subject_registry=subjects,
     )
-    principals = {
-        item["subject_id"]: item for item in business_fixture["principals"]
-    }
+    principals = {item["subject_id"]: item for item in business_fixture["principals"]}
     for account in document["login_accounts"]:
         password = environ.get(account["password_env"], "")
         if not isinstance(password, str) or not password:
@@ -278,7 +258,9 @@ def _seed_fixture(
         )
 
 
-def _inspect_all(engines: Mapping[str, Any], targets: Sequence[Any]) -> list[dict[str, Any]]:
+def _inspect_all(
+    engines: Mapping[str, Any], targets: Sequence[Any]
+) -> list[dict[str, Any]]:
     return [
         inspect_demo_tenant_database(
             engines[target.target.service_id],
@@ -315,9 +297,7 @@ def _require_expected_state(
     }
     for inspection in inspections:
         actual = {
-            table: count
-            for table, count in inspection["table_counts"].items()
-            if count
+            table: count for table, count in inspection["table_counts"].items() if count
         }
         if actual != expected.get(inspection["service_id"], {}):
             raise DemoDatabaseGuardError("demo_fixture_existing_state_conflict")
@@ -330,7 +310,9 @@ def _verify_seed_identity(
     oa_engine: Any,
     eos_engine: Any,
 ) -> None:
-    employee_ids = sorted(item["employee_id"].lower() for item in document["login_accounts"])
+    employee_ids = sorted(
+        item["employee_id"].lower() for item in document["login_accounts"]
+    )
     membership_ids = sorted(
         item["project_membership_id"] for item in document["project_memberships"]
     )
@@ -361,9 +343,7 @@ def _verify_seed_identity(
         actual_project_ids = sorted(
             str(item)
             for item in connection.execute(
-                text(
-                    "SELECT project_id FROM eos_project WHERE tenant_id = :tenant_id"
-                ),
+                text("SELECT project_id FROM eos_project WHERE tenant_id = :tenant_id"),
                 {"tenant_id": DEMO_TENANT_ID},
             ).scalars()
         )
@@ -413,7 +393,10 @@ def write_report(path: Path, report: Mapping[str, Any]) -> None:
 
 
 def summary_line(report: Mapping[str, Any]) -> str:
-    rows = sum(item.get("row_count", item.get("rows_after", 0)) for item in report["operations"])
+    rows = sum(
+        item.get("row_count", item.get("rows_after", 0))
+        for item in report["operations"]
+    )
     return (
         f"status={report['status']} action={report['action']} "
         f"state={report['execution_state']} tenant={report['tenant_id']} "
@@ -422,7 +405,9 @@ def summary_line(report: Mapping[str, Any]) -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Manage the VO00 P8 Demo tenant fixture.")
+    parser = argparse.ArgumentParser(
+        description="Manage the VO00 P8 Demo tenant fixture."
+    )
     parser.add_argument("--action", choices=("SEED", "RESET"), required=True)
     parser.add_argument("--confirmation", required=True)
     parser.add_argument("--backup-manifest", type=Path, required=True)

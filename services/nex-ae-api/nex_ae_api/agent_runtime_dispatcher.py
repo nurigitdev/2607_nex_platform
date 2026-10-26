@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from nex_ae_api.agent_runtime_worker import AgentRuntimeAssignment
 from nex_ae_api.nsl_backend_profiles import (
     DEFAULT_NSL_V01_BACKEND_PROFILE,
-    NSL_V01_BACKEND_PROFILES,
+    NSL_BACKEND_PROFILES,
     normalize_nsl_backend_profile,
 )
 from nex_ae_api.runtime_jobs import SqlAlchemyRuntimeJobQueue
@@ -574,7 +574,7 @@ class SqlAlchemyAgentRuntimeDispatcher:
             for executor in executors
             if (
                 executor == LOCAL_SKILL_EXECUTOR
-                and bool(backends.intersection(NSL_V01_BACKEND_PROFILES))
+                and bool(backends.intersection(NSL_BACKEND_PROFILES))
             )
             or (
                 executor != LOCAL_SKILL_EXECUTOR

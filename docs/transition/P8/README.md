@@ -50,6 +50,7 @@ P8-DEMO-S07 COMPOSE / TRAEFIK DEMO TOPOLOGY COMPLETE
 P8-DEMO-S08 OPENBAO SECRET / TRUST / PKI ADMISSION COMPLETE
 P8-DEMO-S09 EXTERNAL DEPENDENCY ADMISSION COMPLETE
 P8-DEMO-S10A STARTUP-ISSUED BOUNDED-LIFETIME SERVICE TOKEN BOOTSTRAP COMPLETE
+P8-DEMO-S10B INSTALLED P6-P8 RUNTIME COMPOSITION EXTRACTION COMPLETE
 P8 DEMO IMPLEMENTATION ENTRY AUTHORIZED WITH BLOCKING GATES
 P9     ENTRY AUTHORIZED BY v1.2
 ```
@@ -916,6 +917,13 @@ P8_DEMO_CA01_Chairman_Demo_Release_Boundary_and_Readiness_Audit_v1.0.md
 This audit records why the historical six-image S143 topology is not sufficient
 for the WC/EOS-aware P8 v1.2 runtime. It authorizes additive Demo deployment
 work while preserving all historical Compose and P8 evidence.
+
+P8-DEMO-S10B then closes the installed execution composition without adding a
+second business workflow. The packaged AE worker reuses the existing P5/P6
+scheduler, DB-protected dispatcher, bounded worker, executor registry, P8
+approval checkpoint/resume integration, and EOS controlled WRITE adapters.
+Actual AE/WC/EOS/OA PostgreSQL and signed-only service-token evidence is
+recorded in `docs/slices/p8_demo_s10b_installed_p6_p8_runtime_composition_extraction.md`.
 
 ---
 

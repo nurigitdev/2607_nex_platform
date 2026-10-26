@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 from nex_ae_api.nsl_approval_evidence import (
     NslApprovalEvidenceProjectionError,
+    PersistedApprovalEventAuthoritySource,
     PlatformApprovalEvidenceVerifier,
     project_nsl_approval_evidence,
 )
@@ -172,6 +173,9 @@ class EvidenceSource:
     def get(self, **_values: object) -> dict[str, Any] | None:
         return copy.deepcopy(self.evidence)
 
+    def get_by_work_item_ref(self, **_values: object) -> dict[str, Any] | None:
+        return copy.deepcopy(self.evidence)
+
 
 class WcSource:
     def __init__(self, authority: dict[str, Any]) -> None:
@@ -228,6 +232,27 @@ def test_projection_uses_actual_public_type_shape_without_binding_override(
     assert _verifier(evidence).verify(projected) is True
 
 
+def test_persisted_approval_event_projects_wc_authority_without_wc_db_access() -> None:
+    evidence = _platform()
+    source = PersistedApprovalEventAuthoritySource(EvidenceSource(evidence))
+
+    authority = source.resolve(
+        tenant_id=evidence["tenant_id"],
+        approval_work_item_ref=evidence["approval_work_item_ref"],
+    )
+
+    assert authority == _authority(evidence)
+
+
+def test_persisted_approval_event_authority_fails_closed() -> None:
+    with pytest.raises(TypeError):
+        PersistedApprovalEventAuthoritySource(object())
+
+    source = PersistedApprovalEventAuthoritySource(EvidenceSource(None))
+    with pytest.raises(NslApprovalEvidenceProjectionError):
+        source.resolve(tenant_id="tenant", approval_work_item_ref=WORK_ITEM_ID)
+
+
 def test_projection_rejects_incompatible_or_binding_mutating_type() -> None:
     evidence = _platform()
 
@@ -241,9 +266,7 @@ def test_projection_rejects_incompatible_or_binding_mutating_type() -> None:
             return super().__getattribute__(name)
 
     with pytest.raises(NslApprovalEvidenceProjectionError):
-        project_nsl_approval_evidence(
-            evidence, approval_evidence_type=MutatingEvidence
-        )
+        project_nsl_approval_evidence(evidence, approval_evidence_type=MutatingEvidence)
 
 
 def test_verifier_fails_closed_for_missing_or_changed_platform_evidence() -> None:
@@ -311,9 +334,7 @@ def test_verifier_rejects_inactive_or_changed_oa_authority(
         evidence, approval_evidence_type=ApprovalEvidence
     )
 
-    assert (
-        _verifier(evidence, authorization=authorization).verify(projected) is False
-    )
+    assert _verifier(evidence, authorization=authorization).verify(projected) is False
 
 
 def test_verifier_accepts_explicit_current_oa_decision_ref() -> None:

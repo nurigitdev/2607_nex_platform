@@ -455,6 +455,23 @@ def test_local_skill_executor_rejects_registry_bypass_and_runtime_drift() -> Non
     with pytest.raises(P5StepExecutorError, match="continuation"):
         executor.execute(_context(), continuation_result={})
 
+    resumed = P5ExecutorOutcome(
+        state="SUCCEEDED",
+        result_contract_ref="contract://nex/p6/step-result/v1.2",
+        result_payload={"resumed": True},
+    )
+    observed: list[object] = []
+    resumable = P6LocalSkillExecutor(
+        dependencies=_dependencies(),
+        handler=lambda _context, _dependencies: (_ for _ in ()).throw(AssertionError),
+        continuation_handler=lambda _context, _dependencies, continuation: (
+            observed.append(continuation) or resumed
+        ),
+    )
+    continuation = {"schema_version": "ae_nsl_approval_resume_authority.v1"}
+    assert resumable.execute(_context(), continuation_result=continuation) is resumed
+    assert observed == [continuation]
+
     invalid_binding = copy.deepcopy(_compiled()["steps"][0])
     invalid_binding["skill_binding"]["backend_profile"] = "IN_PROCESS"
     with pytest.raises(P5StepExecutorError, match="compiled binding") as exc_info:

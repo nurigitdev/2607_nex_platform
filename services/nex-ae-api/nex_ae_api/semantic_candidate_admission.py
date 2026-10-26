@@ -31,6 +31,8 @@ from nex_ae_api.intent_candidate_generation import (
     LiveIntentCandidateService,
     resolve_intent_candidate,
 )
+from nex_ae_api.mo_generation_client import build_default_ae_mo_generation_client
+from nex_ae_api.multi_step_engine import SqlAlchemyMultiStepEngine
 from nex_ae_api.plan_candidate_generation import (
     LivePlanCandidateService,
     bind_plan_candidate,
@@ -62,7 +64,6 @@ from nex_ae_api.work_intent import (
     build_work_intent_from_decision,
     planning_mode,
 )
-from nex_ae_api.mo_generation_client import build_default_ae_mo_generation_client
 
 
 @dataclass(frozen=True)
@@ -178,6 +179,7 @@ class SemanticCandidateAdmissionRuntime:
     available: bool
     service: DeterministicCandidateAdmissionService | None
     unavailable_reason: str | None = None
+    scheduler: SqlAlchemyMultiStepEngine | None = field(default=None, repr=False)
 
     def admit_chat(
         self,
@@ -229,7 +231,7 @@ class SemanticCandidateAdmissionRuntime:
             retrieval_package=retrieval_package,
             as_of=_timestamp(self.service.clock()),
         )
-        return self.service.admit_and_compile(
+        result = self.service.admit_and_compile(
             SemanticCandidateAdmissionRequest(
                 tenant_id=tenant_id,
                 owner_subject_id=owner_subject_id,
@@ -246,9 +248,7 @@ class SemanticCandidateAdmissionRuntime:
                     "conversation_summary": _optional_request_text(
                         payload.get("conversation_summary"), 16_384
                     ),
-                    "resource_label_hints": _resource_label_hints(
-                        retrieval_package
-                    ),
+                    "resource_label_hints": _resource_label_hints(retrieval_package),
                 },
                 runtime_policy_ref=runtime_policy_ref_from_compatibility_policy(
                     runtime_policy
@@ -264,11 +264,23 @@ class SemanticCandidateAdmissionRuntime:
                     retrieval_package is not None
                     and retrieval_package.get("status") != "NO_ANSWER"
                 ),
-                trusted_execution_mode=runtime_policy.get(
-                    "intent_decision", {}
-                ).get("execution_mode"),
+                trusted_execution_mode=runtime_policy.get("intent_decision", {}).get(
+                    "execution_mode"
+                ),
             )
         )
+        if (
+            self.mode == "required"
+            and result.status == "COMPILED"
+            and result.agent_execution_id is not None
+            and self.scheduler is not None
+        ):
+            self.scheduler.schedule_next(
+                tenant_id=tenant_id,
+                execution_id=result.agent_execution_id,
+                now=_timestamp(self.service.clock()),
+            )
+        return result
 
 
 @dataclass(frozen=True)
@@ -287,13 +299,13 @@ class DeterministicCandidateAdmissionService:
     validations: Any = field(repr=False)
     executable_plans: Any = field(repr=False)
     executions: Any = field(repr=False)
-    clock: Callable[[], datetime] = field(
-        default=lambda: datetime.now(UTC), repr=False
-    )
+    clock: Callable[[], datetime] = field(default=lambda: datetime.now(UTC), repr=False)
 
     def __post_init__(self) -> None:
         if self.mode not in {"disabled", "shadow", "required"}:
-            raise _error(500, "SEMANTIC_ADMISSION_MODE_INVALID", "Planning mode is invalid.")
+            raise _error(
+                500, "SEMANTIC_ADMISSION_MODE_INVALID", "Planning mode is invalid."
+            )
 
     def admit_and_compile(
         self, request: SemanticCandidateAdmissionRequest
@@ -512,9 +524,7 @@ class DeterministicCandidateAdmissionService:
                 work_intent_id=ids.work_intent,
                 agent_context_id=ids.context,
             )
-        agent_plan = self.plans.get(
-            tenant_id=request.tenant_id, agent_plan_id=ids.plan
-        )
+        agent_plan = self.plans.get(tenant_id=request.tenant_id, agent_plan_id=ids.plan)
         if agent_plan is None:
             if plan_result is not None and plan_result.agent_plan is not None:
                 agent_plan = dict(plan_result.agent_plan)
@@ -548,9 +558,7 @@ class DeterministicCandidateAdmissionService:
                 validation_result_id=ids.validation,
                 validated_at=now,
             )
-            current_execution = self.executions.get(
-                request.tenant_id, execution_id
-            )
+            current_execution = self.executions.get(request.tenant_id, execution_id)
             if current_execution is None:
                 raise _error(
                     409,
@@ -969,6 +977,11 @@ def attach_semantic_candidate_admission(
         mode=mode,
         available=True,
         service=service,
+        scheduler=(
+            SqlAlchemyMultiStepEngine(session_factory, agent_runtime.jobs)
+            if mode == "required" and getattr(agent_runtime, "jobs", None) is not None
+            else None
+        ),
     )
     app.state.ae_semantic_candidate_admission = runtime
     return runtime
@@ -1115,6 +1128,4 @@ def _error(
     detail: str,
     retryable: bool = False,
 ) -> SemanticCandidateAdmissionError:
-    return SemanticCandidateAdmissionError(
-        status_code, error_code, detail, retryable
-    )
+    return SemanticCandidateAdmissionError(status_code, error_code, detail, retryable)

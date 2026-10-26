@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -25,6 +26,8 @@ from nex_ae_api.planning_capabilities import (
 
 HASH = "sha256:" + "a" * 64
 NOW = "2026-10-21T00:00:00Z"
+ROOT = Path(__file__).resolve().parents[1]
+MIGRATION = ROOT / "database/nex-ae-api/migrations/2514_ae_nsl_v02_profile.sql"
 
 
 class _Backend:
@@ -90,9 +93,10 @@ def test_read_remains_compatible_with_known_profiles(profile: str) -> None:
 
 
 def test_write_requires_v02_and_unknown_values_fail_closed() -> None:
-    assert normalize_nsl_backend_profile_for_operation(
-        NSL_V02_IN_PROCESS_BACKEND, "WRITE"
-    ) == NSL_V02_IN_PROCESS_BACKEND
+    assert (
+        normalize_nsl_backend_profile_for_operation(NSL_V02_IN_PROCESS_BACKEND, "WRITE")
+        == NSL_V02_IN_PROCESS_BACKEND
+    )
     for profile in (
         NSL_V01_IN_PROCESS_BACKEND,
         NSL_V01_PROCESS_ISOLATED_BACKEND,
@@ -121,12 +125,33 @@ def test_v02_profile_flows_through_capability_and_execution_binding() -> None:
     assert capability["local_skill_binding"]["backend_profile"] == (
         NSL_V02_IN_PROCESS_BACKEND
     )
-    assert validate_local_skill_binding(capability["local_skill_binding"])[
-        "backend_profile"
-    ] == NSL_V02_IN_PROCESS_BACKEND
-    assert validate_nsl_step_execution_binding(
-        _binding(NSL_V02_IN_PROCESS_BACKEND)
-    )["backend_profile"] == NSL_V02_IN_PROCESS_BACKEND
+    assert (
+        validate_local_skill_binding(capability["local_skill_binding"])[
+            "backend_profile"
+        ]
+        == NSL_V02_IN_PROCESS_BACKEND
+    )
+    assert (
+        validate_nsl_step_execution_binding(_binding(NSL_V02_IN_PROCESS_BACKEND))[
+            "backend_profile"
+        ]
+        == NSL_V02_IN_PROCESS_BACKEND
+    )
+
+
+def test_v02_profile_persistence_migration_preserves_v01_compatibility() -> None:
+    sql = MIGRATION.read_text(encoding="utf-8")
+
+    assert "2514_ae_nsl_v02_profile" in sql
+    assert "ck_ae_nsl_step_profile" in sql
+    for profile in (
+        NSL_V01_IN_PROCESS_BACKEND,
+        NSL_V01_PROCESS_ISOLATED_BACKEND,
+        NSL_V02_IN_PROCESS_BACKEND,
+    ):
+        assert f"'{profile}'" in sql
+    assert "UPDATE ae_nsl_step_execution" not in sql
+    assert "DELETE FROM ae_nsl_step_execution" not in sql
 
 
 def test_router_requires_exact_v02_profile_without_fallback() -> None:
@@ -140,9 +165,7 @@ def test_router_requires_exact_v02_profile_without_fallback() -> None:
     assert unavailable.value.error_code == "ae.nsl_backend_profile_unavailable"
 
     mismatched = deepcopy({NSL_V02_IN_PROCESS_BACKEND: backend})
-    mismatched[NSL_V02_IN_PROCESS_BACKEND] = _Backend(
-        NSL_V01_IN_PROCESS_BACKEND
-    )
+    mismatched[NSL_V02_IN_PROCESS_BACKEND] = _Backend(NSL_V01_IN_PROCESS_BACKEND)
     with pytest.raises(NSLReadBackendError) as mismatch:
         NSLReadBackendRouter(mismatched)
     assert mismatch.value.error_code == "ae.nsl_read_backend_unavailable"

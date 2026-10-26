@@ -293,6 +293,42 @@ class SqlAlchemyPlatformApprovalEvidenceRepository:
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
 
+    def get_by_work_item_ref(
+        self, *, tenant_id: str, approval_work_item_ref: str
+    ) -> dict[str, Any] | None:
+        tenant_id = _required("tenant_id", tenant_id, 128)
+        approval_work_item_ref = _uuid("approval_work_item_ref", approval_work_item_ref)
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            "SELECT approval_request_id FROM ae_approval_evidence "
+                            "WHERE tenant_id = :tenant_id "
+                            "AND approval_work_item_ref = :approval_work_item_ref"
+                        ),
+                        {
+                            "tenant_id": tenant_id,
+                            "approval_work_item_ref": approval_work_item_ref,
+                        },
+                    )
+                    .mappings()
+                    .first()
+                )
+                return (
+                    None
+                    if row is None
+                    else _load(
+                        session,
+                        tenant_id=tenant_id,
+                        approval_request_id=str(row["approval_request_id"]),
+                    )
+                )
+        except PlatformApprovalEvidenceError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
 
 def _load(
     session: Session, *, tenant_id: str, approval_request_id: str

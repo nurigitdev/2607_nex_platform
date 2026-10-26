@@ -476,6 +476,7 @@ def test_repository_rejects_cross_tenant_lineage_and_immutable_replay(store) -> 
             compiled_inputs={"year": 2027},
         )
     assert caught.value.error_code == "ae.nsl_binding_immutable_conflict"
+    assert "request, request_hash" in caught.value.detail
 
     assert (
         SqlAlchemyNSLStepExecutionRepository(factory).get(
@@ -604,6 +605,51 @@ def test_active_local_skill_binding_requires_exact_runtime_artifact_lineage(
         connection.execute(
             text("UPDATE ae_executable_step SET skill_binding_json = :binding"),
             {"binding": json.dumps(changed, sort_keys=True)},
+        )
+    with pytest.raises(NSLStepExecutionError) as caught:
+        _bind(_repository(factory))
+    assert caught.value.error_code == "ae.nsl_binding_artifact_mismatch"
+
+
+def test_active_local_skill_binding_allows_distinct_capability_and_skill_ids(
+    store,
+) -> None:
+    engine, factory = store
+    artifact = _example("p6-golden-verified-artifact-v1.json")
+    capability_id = "FINANCE.PROJECT_BUDGET_REVIEW"
+    skill_binding = {
+        "capability_id": capability_id,
+        "skill_id": artifact["skill_id"],
+        "exact_skill_version": artifact["skill_version"],
+        "skill_semantic_hash": artifact["skill_semantic_hash"],
+        "runtime_contract_ref": artifact["runtime_contract_ref"],
+        "trust_policy_id": artifact["trust_evidence"]["trust_policy_id"],
+        "backend_profile": "NSL_V01_PROCESS_ISOLATED",
+        "package_requirement": "SIGNED_TRUSTED_ACTIVE",
+    }
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE ae_executable_step SET executor_kind = 'LOCAL_SKILL', "
+                "required_capability = :capability_id, skill_binding_json = :binding"
+            ),
+            {
+                "capability_id": capability_id,
+                "binding": json.dumps(skill_binding, sort_keys=True),
+            },
+        )
+
+    saved = _bind(_repository(factory))
+
+    assert saved["binding"]["skill_id"] == artifact["skill_id"]
+    assert saved["binding"]["state"] == "REQUEST_BOUND"
+
+    skill_binding["capability_id"] = "FINANCE.OTHER_CAPABILITY"
+    with engine.begin() as connection:
+        connection.execute(text("DELETE FROM ae_nsl_step_execution"))
+        connection.execute(
+            text("UPDATE ae_executable_step SET skill_binding_json = :binding"),
+            {"binding": json.dumps(skill_binding, sort_keys=True)},
         )
     with pytest.raises(NSLStepExecutionError) as caught:
         _bind(_repository(factory))

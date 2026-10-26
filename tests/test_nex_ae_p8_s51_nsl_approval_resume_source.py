@@ -307,6 +307,17 @@ def test_resolve_returns_exact_durable_resume_authority() -> None:
     }
 
 
+def test_resolve_accepts_step_marked_running_by_claimed_worker() -> None:
+    engine, sessions = _sessions()
+    with engine.begin() as connection:
+        connection.execute(text("UPDATE ae_executable_step SET state = 'RUNNING'"))
+
+    authority = SqlAlchemyNslApprovalResumeSource(sessions).resolve(_claim())
+
+    assert authority["runtime_job_id"] == JOB_ID
+    assert authority["executable_step_id"] == STEP_ID
+
+
 @pytest.mark.parametrize(
     ("job_changes", "attempt_changes"),
     (
@@ -350,12 +361,14 @@ def test_claim_type_and_empty_reference_fail_closed() -> None:
         "UPDATE ae_runtime_job SET payload_json = '{}'",
         "UPDATE ae_wait_registration SET state = 'PENDING'",
         "UPDATE ae_executable_step SET executor_kind = 'DETERMINISTIC_REPORT'",
-        "UPDATE ae_executable_step SET state = 'RUNNING'",
+        "UPDATE ae_executable_step SET state = 'SUCCEEDED'",
         "UPDATE ae_wait_registration SET matched_event_id = 'other'",
         "UPDATE ae_external_event_inbox SET state = 'RECEIVED'",
         "UPDATE ae_external_event_inbox SET approval_evidence_ref = 'other'",
         "UPDATE ae_nsl_approval_request SET business_operation_id = 'other'",
-        "UPDATE ae_approval_evidence SET evidence_integrity = 'sha256:" + "b" * 64 + "'",
+        "UPDATE ae_approval_evidence SET evidence_integrity = 'sha256:"
+        + "b" * 64
+        + "'",
         "UPDATE ae_approval_evidence SET decision = 'REJECT'",
     ),
 )

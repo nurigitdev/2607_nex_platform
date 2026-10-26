@@ -49,9 +49,7 @@ def test_demo_process_manifest_freezes_installed_and_embedded_ownership() -> Non
 
 def test_all_installed_background_processes_have_worker_pool_and_lifecycle() -> None:
     background = [
-        item
-        for item in build_demo_process_manifest()
-        if item.kind == "worker"
+        item for item in build_demo_process_manifest() if item.kind == "worker"
     ]
 
     assert {item.process_id for item in background} == {
@@ -78,34 +76,45 @@ def test_demo_runtime_commands_admit_check_but_fail_closed_execution(
 ) -> None:
     check_record = {**module.build_source_check(), "database": {"status": "PASS"}}
     output = io.StringIO()
-    assert module.main(
-        argv,
-        stdout=output,
-        live_check=lambda _environ: check_record,
-    ) == 0
+    assert (
+        module.main(
+            argv,
+            stdout=output,
+            live_check=lambda _environ: check_record,
+        )
+        == 0
+    )
     check = json.loads(output.getvalue())
     assert check["status"] == "PASS"
     assert check["process_id"] == process_id
     assert check["execution_enabled"] is True
     assert check["domain_claiming_enabled"] is False
+    assert check["composition_mode"] == "EXISTING_COMPONENT_COMPOSITION"
+    assert check["new_business_behavior_added"] is False
 
     output = io.StringIO()
-    assert module.main(
-        [*argv[:1], "--max-cycles", "1"],
-        stdout=output,
-        live_run=lambda _environ, **_kwargs: {
-            "status": "STOPPED",
-            "process_id": process_id,
-        },
-    ) == 0
+    assert (
+        module.main(
+            [*argv[:1], "--max-cycles", "1"],
+            stdout=output,
+            live_run=lambda _environ, **_kwargs: {
+                "status": "STOPPED",
+                "process_id": process_id,
+            },
+        )
+        == 0
+    )
     assert json.loads(output.getvalue())["status"] == "STOPPED"
 
     output = io.StringIO()
-    assert module.main(
-        argv,
-        stdout=output,
-        live_check=lambda _environ: (_ for _ in ()).throw(ValueError("private")),
-    ) == 2
+    assert (
+        module.main(
+            argv,
+            stdout=output,
+            live_check=lambda _environ: (_ for _ in ()).throw(ValueError("private")),
+        )
+        == 2
+    )
     blocked = json.loads(output.getvalue())
     assert blocked["status"] == "BLOCKED"
     assert blocked["secret_included"] is False
@@ -124,12 +133,15 @@ def test_demo_runtime_offline_package_check_is_explicit_and_non_runtime(
 ) -> None:
     output = io.StringIO()
 
-    assert module.main(
-        [process, "--check"],
-        stdout=output,
-        environ={DEMO_RUNTIME_CHECK_MODE_ENV: "PACKAGE"},
-        live_check=lambda _environ: (_ for _ in ()).throw(AssertionError),
-    ) == 0
+    assert (
+        module.main(
+            [process, "--check"],
+            stdout=output,
+            environ={DEMO_RUNTIME_CHECK_MODE_ENV: "PACKAGE"},
+            live_check=lambda _environ: (_ for _ in ()).throw(AssertionError),
+        )
+        == 0
+    )
 
     record = json.loads(output.getvalue())
     assert record["process_id"] == process_id
@@ -164,9 +176,7 @@ def test_demo_runtime_offline_package_check_is_explicit_and_non_runtime(
             for item in items
         ),
         lambda items: tuple(
-            item
-            for item in items
-            if item.process_id != "nex-eos-outbox-publisher"
+            item for item in items if item.process_id != "nex-eos-outbox-publisher"
         ),
         lambda items: tuple(
             replace(item, artifact_id="nex-ae-runtime")
@@ -212,7 +222,9 @@ def test_demo_process_manifest_contains_module_finder_failures() -> None:
         raise ImportError("unavailable")
 
     with pytest.raises(DemoProcessManifestError, match="source module missing"):
-        validate_demo_process_manifest(build_demo_process_manifest(), module_finder=fail)
+        validate_demo_process_manifest(
+            build_demo_process_manifest(), module_finder=fail
+        )
 
 
 @pytest.mark.parametrize("module", (ae_runtime, wc_runtime, eos_runtime))
@@ -235,8 +247,12 @@ def test_service_live_check_and_run_close_worker_resource(
     assert checked.closed is True
 
     running = _Resource()
-    monkeypatch.setattr(module, "install_demo_process_signal_handlers", lambda _token: {})
-    monkeypatch.setattr(module, "restore_demo_process_signal_handlers", lambda _old: None)
+    monkeypatch.setattr(
+        module, "install_demo_process_signal_handlers", lambda _token: {}
+    )
+    monkeypatch.setattr(
+        module, "restore_demo_process_signal_handlers", lambda _old: None
+    )
     monkeypatch.setattr(
         module,
         "run_demo_process_loop",
@@ -318,3 +334,20 @@ def test_service_queue_projections_are_safe_and_recovery_aware(
     assert recovery["domain_claiming_enabled"] is False
     for key, expected_value in expected.items():
         assert recovery[key] == expected_value
+
+
+def test_ae_demo_runtime_admits_installed_composition_activation() -> None:
+    environment = {
+        "NEX_P8_DEMO_DOMAIN_CLAIMING_ENABLED": "true",
+        "NEX_PROFILE": "staging_live",
+        "NEX_DEPLOYMENT_BOUNDARY": "P8_DEMO",
+        "NEX_SERVICE_TOKEN_ROLLOUT_PROFILE": "SIGNED_ONLY",
+        **{name: "configured" for name in ae_runtime.REQUIRED_DOMAIN_SECRETS},
+    }
+
+    check = ae_runtime.build_source_check(environment)
+
+    assert check["domain_claiming_enabled"] is True
+    assert check["domain_claiming_activation"] == "ACTIVE"
+    assert check["installed_execution_composition"] == "P6_P8_EXISTING_COMPONENTS"
+    assert check["new_business_behavior_added"] is False

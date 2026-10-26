@@ -36,7 +36,7 @@ from nex_wc.handoff_delivery import (
     run_handoff_delivery_job,
 )
 from nex_wc.work_items import InMemoryWorkItemRepository, WorkItemService
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 from test_nex_ae_multi_step_engine import (
     EXECUTION_ID,
@@ -127,9 +127,7 @@ def test_expired_claim_reclaim_increments_generation_and_blocks_stale_handoff() 
         authorization_source=_Authorization(),
         clock=lambda: clock[0],
     ).create(_work_payload())["work_item"]
-    ids = iter(
-        f"00000000-0000-4000-8000-{value:012d}" for value in range(1, 30)
-    )
+    ids = iter(f"00000000-0000-4000-8000-{value:012d}" for value in range(1, 30))
     repository = InMemoryCoordinationRepository(work_repository)
     service = WorkCoordinationService(
         repository,
@@ -141,10 +139,14 @@ def test_expired_claim_reclaim_increments_generation_and_blocks_stale_handoff() 
         lease_seconds=300,
     )
     service.route(
-        tenant_id=item["tenant_id"], work_item_id=item["work_item_id"], expected_version=1
+        tenant_id=item["tenant_id"],
+        work_item_id=item["work_item_id"],
+        expected_version=1,
     )
     first = service.claim(
-        tenant_id=item["tenant_id"], work_item_id=item["work_item_id"], expected_version=2
+        tenant_id=item["tenant_id"],
+        work_item_id=item["work_item_id"],
+        expected_version=2,
     )
     queue = InMemoryJobQueue()
     stale_job = enqueue_pending_handoffs(
@@ -161,7 +163,9 @@ def test_expired_claim_reclaim_increments_generation_and_blocks_stale_handoff() 
 
     clock[0] += timedelta(seconds=301)
     second = service.claim(
-        tenant_id=item["tenant_id"], work_item_id=item["work_item_id"], expected_version=3
+        tenant_id=item["tenant_id"],
+        work_item_id=item["work_item_id"],
+        expected_version=3,
     )
     claims = repository._claims[(item["tenant_id"], item["work_item_id"])]
     assert [(claim["claim_generation"], claim["state"]) for claim in claims] == [
@@ -169,9 +173,10 @@ def test_expired_claim_reclaim_increments_generation_and_blocks_stale_handoff() 
         (2, "ACTIVE"),
     ]
     assert second["claim"]["claim_generation"] == 2
-    assert repository._outbox[(item["tenant_id"], first["outbox_id"])][
-        "delivery_state"
-    ] == "FAILED"
+    assert (
+        repository._outbox[(item["tenant_id"], first["outbox_id"])]["delivery_state"]
+        == "FAILED"
+    )
 
     delivered = []
     client = SimpleNamespace(deliver=lambda envelope: delivered.append(envelope) or {})
@@ -215,9 +220,7 @@ def test_claim_timestamp_and_handoff_lease_corruption_fail_closed() -> None:
         "claim_generation": 2,
         "claim_lease_expires_at": LATER,
     }
-    wc_handoff_delivery._require_current_claim_authority(
-        authority, handoff, NOW_DT
-    )
+    wc_handoff_delivery._require_current_claim_authority(authority, handoff, NOW_DT)
     assert wc_handoff_delivery._datetime(NOW) == NOW_DT
     assert wc_handoff_delivery._datetime(NOW_DT) is NOW_DT
 
@@ -251,7 +254,8 @@ def _publisher_factory():
         "provenance": {"executable_plan_id": PLAN_ID},
     }
     with engine.begin() as connection:
-        connection.execute(text("""
+        connection.execute(
+            text("""
             CREATE TABLE ae_agent_execution (
                 tenant_id TEXT, agent_execution_id TEXT, agent_id TEXT,
                 agent_type TEXT, project_id TEXT, work_item_ref TEXT,
@@ -259,29 +263,38 @@ def _publisher_factory():
                 correlation_id TEXT, causation_id TEXT, state TEXT, phase TEXT,
                 result_id TEXT, completed_at TEXT, updated_at TEXT, version INTEGER,
                 PRIMARY KEY (tenant_id, agent_execution_id))
-        """))
-        connection.execute(text("""
+        """)
+        )
+        connection.execute(
+            text("""
             CREATE TABLE ae_agent_result (
                 tenant_id TEXT, result_id TEXT, result_envelope_json TEXT,
                 PRIMARY KEY (tenant_id, result_id))
-        """))
-        connection.execute(text("""
+        """)
+        )
+        connection.execute(
+            text("""
             CREATE TABLE ae_result_delivery (
                 tenant_id TEXT, delivery_id TEXT, result_id TEXT,
                 agent_execution_id TEXT, target_type TEXT, target_ref TEXT,
                 state TEXT, attempt_no INTEGER, external_delivery_ref TEXT,
                 latest_preflight_ref TEXT, created_at TEXT, updated_at TEXT,
                 acknowledged_at TEXT, PRIMARY KEY (tenant_id, delivery_id))
-        """))
-        connection.execute(text("""
+        """)
+        )
+        connection.execute(
+            text("""
             CREATE TABLE ae_claim_handoff_inbox (
                 tenant_id TEXT, agent_execution_id TEXT, planning_source_json TEXT,
                 PRIMARY KEY (tenant_id, agent_execution_id))
-        """))
+        """)
+        )
         connection.execute(
-            text("INSERT INTO ae_agent_execution VALUES "
-                 "(:t,:e,:a,'PA','project-p7-s8',:w,:c,1,:assignment,'corr','cause',"
-                 "'RUNNING','RESULT_PUBLISH',:r,NULL,:now,1)"),
+            text(
+                "INSERT INTO ae_agent_execution VALUES "
+                "(:t,:e,:a,'PA','project-p7-s8',:w,:c,1,:assignment,'corr','cause',"
+                "'RUNNING','RESULT_PUBLISH',:r,NULL,:now,1)"
+            ),
             {
                 "t": "tenant-p7-s8",
                 "e": CHILD_EXECUTION_ID,
@@ -298,8 +311,10 @@ def _publisher_factory():
             {"t": "tenant-p7-s8", "r": RESULT_ID, "payload": json.dumps(result)},
         )
         connection.execute(
-            text("INSERT INTO ae_result_delivery VALUES "
-                 "(:t,:d,:r,:e,'WC_WORK_RESULT',:w,'PENDING',0,NULL,NULL,:now,:now,NULL)"),
+            text(
+                "INSERT INTO ae_result_delivery VALUES "
+                "(:t,:d,:r,:e,'WC_WORK_RESULT',:w,'PENDING',0,NULL,NULL,:now,:now,NULL)"
+            ),
             {
                 "t": "tenant-p7-s8",
                 "d": DELIVERY_ID,
@@ -348,9 +363,7 @@ def test_work_result_response_loss_retries_identical_semantics() -> None:
     client = _AcceptedThenLost()
     publisher = SqlAlchemyWcWorkResultPublisher(factory, client)
     with pytest.raises(WorkResultPublicationError):
-        publisher.publish(
-            tenant_id="tenant-p7-s8", delivery_id=DELIVERY_ID, now=NOW
-        )
+        publisher.publish(tenant_id="tenant-p7-s8", delivery_id=DELIVERY_ID, now=NOW)
     accepted = publisher.publish(
         tenant_id="tenant-p7-s8", delivery_id=DELIVERY_ID, now=LATER
     )
@@ -407,16 +420,20 @@ def test_work_result_resume_source_fails_closed_without_exact_authority() -> Non
     engine = create_engine("sqlite+pysqlite://", future=True)
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     with engine.begin() as connection:
-        connection.execute(text("""
+        connection.execute(
+            text("""
             CREATE TABLE ae_external_event_inbox (
                 tenant_id TEXT, event_id TEXT, result_id TEXT, external_ref TEXT,
                 event_payload TEXT, state TEXT)
-        """))
-        connection.execute(text("""
+        """)
+        )
+        connection.execute(
+            text("""
             CREATE TABLE ae_wait_registration (
                 tenant_id TEXT, wait_id TEXT, matched_event_id TEXT, state TEXT,
                 resume_runtime_job_id TEXT)
-        """))
+        """)
+        )
     source = SqlAlchemyWorkResultResumeSource(factory)
 
     with pytest.raises(WorkResultResumeError) as wrong_type:
@@ -444,41 +461,63 @@ def test_work_result_resume_source_types_store_failure() -> None:
     assert unavailable.value.retryable is True
 
 
-def test_resume_crash_after_step_commit_recovers_without_duplicate_step_result() -> None:
+def test_resume_crash_after_step_commit_recovers_without_duplicate_step_result() -> (
+    None
+):
     factory = multi_step_factory()
     event = _work_result_event()
     with factory.begin() as session:
-        for statement in (
-            "ALTER TABLE ae_wait_registration ADD COLUMN matched_event_id TEXT",
-            "ALTER TABLE ae_wait_registration ADD COLUMN resume_runtime_job_id TEXT",
-            "ALTER TABLE ae_wait_registration ADD COLUMN updated_at TEXT",
+        existing_columns = {
+            column["name"]
+            for column in inspect(session.connection()).get_columns(
+                "ae_wait_registration"
+            )
+        }
+        for column_name in (
+            "matched_event_id",
+            "resume_runtime_job_id",
+            "updated_at",
         ):
-            session.execute(text(statement))
-        session.execute(text("""
+            if column_name not in existing_columns:
+                session.execute(
+                    text(
+                        "ALTER TABLE ae_wait_registration "
+                        f"ADD COLUMN {column_name} TEXT"
+                    )
+                )
+        session.execute(
+            text("""
             CREATE TABLE ae_external_event_inbox (
                 tenant_id TEXT, event_id TEXT, result_id TEXT, external_ref TEXT,
                 event_payload TEXT, state TEXT, PRIMARY KEY (tenant_id, event_id))
-        """))
+        """)
+        )
         session.execute(
-            text("UPDATE ae_agent_execution SET state='WAITING_DEPENDENCY', "
-                 "phase='STEP_EXECUTION' WHERE tenant_id=:tenant_id"),
+            text(
+                "UPDATE ae_agent_execution SET state='WAITING_DEPENDENCY', "
+                "phase='STEP_EXECUTION' WHERE tenant_id=:tenant_id"
+            ),
             {"tenant_id": TENANT},
         )
         session.execute(
-            text("UPDATE ae_executable_step SET step_type='DELEGATE_WORK', "
-                 "executor_kind='WC_DELEGATE_WORK', state='WAITING', version=2, "
-                 "output_contract_ref=:contract WHERE tenant_id=:tenant_id "
-                 "AND executable_step_id=:step_id"),
+            text(
+                "UPDATE ae_executable_step SET step_type='DELEGATE_WORK', "
+                "executor_kind='WC_DELEGATE_WORK', state='WAITING', version=2, "
+                "output_contract_ref=:contract WHERE tenant_id=:tenant_id "
+                "AND executable_step_id=:step_id"
+            ),
             {"contract": RESULT_CONTRACT, "tenant_id": TENANT, "step_id": STEP_1_ID},
         )
         session.execute(
-                text("INSERT INTO ae_wait_registration ("
-                     "wait_id,tenant_id,agent_execution_id,executable_step_id,"
-                     "wait_type,external_ref,result_contract_ref,state,version,"
-                     "created_at,satisfied_at,matched_event_id,"
-                     "resume_runtime_job_id,updated_at) VALUES "
-                 "(:wait_id,:tenant_id,:execution_id,:step_id,'WORK_RESULT',:external_ref,"
-                 ":contract,'RESUME_QUEUED',2,:now,:now,:event_id,:job_id,:now)"),
+            text(
+                "INSERT INTO ae_wait_registration ("
+                "wait_id,tenant_id,agent_execution_id,executable_step_id,"
+                "wait_type,external_ref,result_contract_ref,state,version,"
+                "created_at,satisfied_at,matched_event_id,"
+                "resume_runtime_job_id,updated_at) VALUES "
+                "(:wait_id,:tenant_id,:execution_id,:step_id,'WORK_RESULT',:external_ref,"
+                ":contract,'RESUME_QUEUED',2,:now,:now,:event_id,:job_id,:now)"
+            ),
             {
                 "wait_id": WAIT_ID,
                 "tenant_id": TENANT,
@@ -492,8 +531,10 @@ def test_resume_crash_after_step_commit_recovers_without_duplicate_step_result()
             },
         )
         session.execute(
-            text("INSERT INTO ae_external_event_inbox VALUES "
-                 "(:tenant_id,:event_id,:result_id,:external_ref,:payload,'MATCHED')"),
+            text(
+                "INSERT INTO ae_external_event_inbox VALUES "
+                "(:tenant_id,:event_id,:result_id,:external_ref,:payload,'MATCHED')"
+            ),
             {
                 "tenant_id": TENANT,
                 "event_id": EVENT_ID,
@@ -585,18 +626,24 @@ def test_resume_crash_after_step_commit_recovers_without_duplicate_step_result()
 
     with factory() as session:
         step_result_count = session.execute(
-            text("SELECT count(*) FROM ae_step_result WHERE tenant_id=:tenant_id "
-                 "AND executable_step_id=:step_id"),
+            text(
+                "SELECT count(*) FROM ae_step_result WHERE tenant_id=:tenant_id "
+                "AND executable_step_id=:step_id"
+            ),
             {"tenant_id": TENANT, "step_id": STEP_1_ID},
         ).scalar_one()
         wait_state = session.execute(
-            text("SELECT state FROM ae_wait_registration WHERE tenant_id=:tenant_id "
-                 "AND wait_id=:wait_id"),
+            text(
+                "SELECT state FROM ae_wait_registration WHERE tenant_id=:tenant_id "
+                "AND wait_id=:wait_id"
+            ),
             {"tenant_id": TENANT, "wait_id": WAIT_ID},
         ).scalar_one()
         parent = tuple(
             session.execute(
-                text("SELECT state, phase FROM ae_agent_execution WHERE tenant_id=:tenant_id"),
+                text(
+                    "SELECT state, phase FROM ae_agent_execution WHERE tenant_id=:tenant_id"
+                ),
                 {"tenant_id": TENANT},
             ).one()
         )

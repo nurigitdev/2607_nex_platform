@@ -3,13 +3,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-import pytest
 import nex_ae_api.semantic_candidate_admission as admission_module
+import pytest
 from nex_ae_api.agent_context import ContextBuildRequest
 from nex_ae_api.semantic_candidate_admission import (
+    SemanticCandidateAdmissionError,
     SemanticCandidateAdmissionResult,
     SemanticCandidateAdmissionRuntime,
-    SemanticCandidateAdmissionError,
     attach_semantic_candidate_admission,
 )
 from nex_ae_api.semantic_candidate_evidence import LocalSemanticCandidateStorage
@@ -150,6 +150,15 @@ class _AdmissionService:
         )
 
 
+class _Scheduler:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def schedule_next(self, **kwargs):
+        self.calls.append(kwargs)
+        return {"runtime_job_id": "scheduled"}
+
+
 def _chat_payload(**overrides):
     value = {
         "tenant_id": "tenant-a",
@@ -179,7 +188,9 @@ def _runtime_policy():
 
 
 @pytest.mark.parametrize("snapshot", [None, {"capability_snapshot_id": "existing"}])
-def test_runtime_admit_chat_builds_scoped_request_and_capability_snapshot(snapshot) -> None:
+def test_runtime_admit_chat_builds_scoped_request_and_capability_snapshot(
+    snapshot,
+) -> None:
     service = _AdmissionService(snapshot)
     runtime = SemanticCandidateAdmissionRuntime(
         mode="required", available=True, service=service
@@ -216,13 +227,64 @@ def test_runtime_admit_chat_builds_scoped_request_and_capability_snapshot(snapsh
         assert request.capability_snapshot is snapshot
 
 
+def test_required_runtime_schedules_compiled_execution() -> None:
+    service = _AdmissionService()
+    scheduler = _Scheduler()
+    runtime = SemanticCandidateAdmissionRuntime(
+        mode="required",
+        available=True,
+        service=service,
+        scheduler=scheduler,
+    )
+
+    runtime.admit_chat(
+        payload=_chat_payload(),
+        runtime_policy=_runtime_policy(),
+        retrieval_package=None,
+        request_id="request-a",
+        trace_id="c" * 32,
+    )
+
+    assert scheduler.calls == [
+        {
+            "tenant_id": "tenant-a",
+            "execution_id": "10000000-0000-4000-8000-000000000659",
+            "now": "2026-10-17T03:00:00Z",
+        }
+    ]
+
+
+def test_shadow_runtime_does_not_schedule_compiled_execution() -> None:
+    service = _AdmissionService()
+    scheduler = _Scheduler()
+    runtime = SemanticCandidateAdmissionRuntime(
+        mode="shadow",
+        available=True,
+        service=service,
+        scheduler=scheduler,
+    )
+
+    runtime.admit_chat(
+        payload=_chat_payload(),
+        runtime_policy=_runtime_policy(),
+        retrieval_package=None,
+        request_id="request-a",
+        trace_id="c" * 32,
+    )
+
+    assert scheduler.calls == []
+
+
 def test_runtime_disabled_and_unavailable_paths_are_explicit() -> None:
     disabled = SemanticCandidateAdmissionRuntime(
         mode="disabled", available=False, service=None
     )
     result = disabled.admit_chat(
-        payload={}, runtime_policy={}, retrieval_package=None,
-        request_id="request-a", trace_id="a" * 32,
+        payload={},
+        runtime_policy={},
+        retrieval_package=None,
+        request_id="request-a",
+        trace_id="a" * 32,
     )
     assert result.status == "DISABLED"
 
@@ -231,8 +293,11 @@ def test_runtime_disabled_and_unavailable_paths_are_explicit() -> None:
     )
     with pytest.raises(SemanticCandidateAdmissionError) as raised:
         unavailable.admit_chat(
-            payload={}, runtime_policy={}, retrieval_package=None,
-            request_id="request-a", trace_id="a" * 32,
+            payload={},
+            runtime_policy={},
+            retrieval_package=None,
+            request_id="request-a",
+            trace_id="a" * 32,
         )
     assert raised.value.error_code == "SEMANTIC_ADMISSION_NOT_READY"
 
@@ -287,7 +352,10 @@ def test_chat_context_resolver_is_owner_scoped_and_retrieval_aware() -> None:
 def test_package_hash_and_resource_label_helpers_cover_fallback_boundaries() -> None:
     valid = "sha256:" + "a" * 64
     assert admission_module._package_hash({"package_hash": valid}) == valid
-    assert admission_module._package_hash({"package_hash": "b" * 64}) == "sha256:" + "b" * 64
+    assert (
+        admission_module._package_hash({"package_hash": "b" * 64})
+        == "sha256:" + "b" * 64
+    )
     assert admission_module._package_hash({"package_hash": "B" * 64}).startswith(
         "sha256:"
     )
@@ -319,6 +387,6 @@ def test_request_text_helpers_reject_missing_or_invalid_values(value) -> None:
 
 
 def test_timestamp_normalizes_naive_datetime() -> None:
-    assert admission_module._timestamp(datetime(2026, 10, 17, 3, 0)) == (
+    assert admission_module._timestamp(datetime(2026, 10, 17, 3, 0)) == (  # noqa: DTZ001
         "2026-10-17T03:00:00Z"
     )

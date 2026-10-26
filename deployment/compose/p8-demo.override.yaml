@@ -214,18 +214,7 @@ services:
     entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-ae-api, --]
     command: [python, -m, nex_ae_api.demo_runtime, worker]
     environment:
-      NEX_PROFILE: staging_live
-      NEX_DEPLOYMENT_BOUNDARY: P8_DEMO
-      NEX_PERSISTENCE_MODE: postgres
-      NEX_SERVICE_TOKEN_ROLLOUT_PROFILE: SIGNED_ONLY
-      NEX_P8_DEMO_SERVICE_TOKEN_PROFILE: STARTUP_24H
-      NEX_P8_DEMO_STARTUP_TOKEN_BOOTSTRAP: "true"
-      NEX_OPENBAO_ADDR: https://openbao:8200
-      NEX_OPENBAO_CA_CERT_FILE: /run/secrets/openbao_ca
-      NEX_OPENBAO_ROLE_ID_FILE: /run/secrets/openbao_role_id
-      NEX_OPENBAO_SECRET_ID_FILE: /run/secrets/openbao_secret_id
-      NEX_OPENBAO_SECRET_NAMESPACE: staging
-      NEX_SECRET_GENERATION: ${NEX_P8_DEMO_SECRET_GENERATION:-secret:p8-demo.1}
+      <<: *p8-demo-common-environment
       NEX_AE_DATABASE_URL_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_DATABASE_URL@${NEX_P8_DEMO_SECRET_VERSION:-v1}
       NEX_AE_TO_OA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_OA_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
       NEX_AE_TO_CX_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_CX_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
@@ -235,6 +224,12 @@ services:
       NEX_AE_TO_EOS_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_EOS_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
       NEX_AE_OBJECT_STORAGE_ACCESS_KEY_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_OBJECT_STORAGE_ACCESS_KEY@${NEX_P8_DEMO_SECRET_VERSION:-v1}
       NEX_AE_OBJECT_STORAGE_SECRET_KEY_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_OBJECT_STORAGE_SECRET_KEY@${NEX_P8_DEMO_SECRET_VERSION:-v1}
+      NEX_P8_DEMO_DOMAIN_CLAIMING_ENABLED: "true"
+      NEX_AE_AGENT_WORKER_MODE: enabled
+      NEX_AE_AGENT_WORKER_ID: ae-demo-agent-runtime-1
+      NEX_AE_AGENT_WORKER_EXECUTOR_KINDS: LOCAL_SKILL
+      NEX_AE_AGENT_WORKER_BACKEND_PROFILES: NSL_V02_IN_PROCESS
+      NEX_AE_DEMO_NSL_STATE_ROOT: /var/lib/nex-platform/ae-runtime/nsl
       NEX_P8_DEMO_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_P8_DEMO_SERVICE_CREDENTIAL_ID@${NEX_P8_DEMO_SECRET_VERSION:-v1}
       NEX_P8_DEMO_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_P8_DEMO_SERVICE_CLIENT_SECRET@${NEX_P8_DEMO_SECRET_VERSION:-v1}
     secrets:
@@ -244,6 +239,8 @@ services:
         target: openbao_role_id
       - source: ae_secret_id
         target: openbao_secret_id
+    volumes:
+      - p8_demo_ae_runtime_state:/var/lib/nex-platform/ae-runtime
     depends_on:
       openbao:
         condition: service_healthy
@@ -259,6 +256,7 @@ services:
     command: [python, -m, nex_wc.demo_runtime, events]
     environment:
       <<: *p8-demo-wc-environment
+      NEX_P8_DEMO_DOMAIN_CLAIMING_ENABLED: "true"
     secrets:
       - openbao_ca
       - platform_ca
@@ -279,6 +277,7 @@ services:
     command: [python, -m, nex_eos.demo_runtime, outbox]
     environment:
       <<: *p8-demo-eos-environment
+      NEX_P8_DEMO_DOMAIN_CLAIMING_ENABLED: "true"
     secrets:
       - openbao_ca
       - platform_ca
@@ -309,3 +308,6 @@ secrets:
 networks:
   identity:
     internal: true
+
+volumes:
+  p8_demo_ae_runtime_state:

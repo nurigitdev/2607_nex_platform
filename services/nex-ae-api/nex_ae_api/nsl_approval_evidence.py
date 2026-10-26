@@ -71,9 +71,7 @@ def project_nsl_approval_evidence(
             approver_id=record["approver_id"],
             decided_at=_utc(record["decided_at"]),
             expires_at=(
-                _utc(record["expires_at"])
-                if record["expires_at"] is not None
-                else None
+                _utc(record["expires_at"]) if record["expires_at"] is not None else None
             ),
             payload_hash=record["payload_hash"],
             write_intent_hash=record["write_intent_hash"],
@@ -133,14 +131,61 @@ class PlatformApprovalEvidenceVerifier:
             return False
 
 
+class PersistedApprovalEventAuthoritySource:
+    """Project immutable WC decision authority from its admitted AE evidence."""
+
+    def __init__(self, evidence_source: Any) -> None:
+        if not callable(getattr(evidence_source, "get_by_work_item_ref", None)):
+            raise TypeError("approval evidence work-item lookup is unavailable")
+        self._evidence_source = evidence_source
+
+    def resolve(
+        self, *, tenant_id: str, approval_work_item_ref: str
+    ) -> Mapping[str, Any]:
+        value = self._evidence_source.get_by_work_item_ref(
+            tenant_id=tenant_id,
+            approval_work_item_ref=approval_work_item_ref,
+        )
+        if value is None:
+            raise NslApprovalEvidenceProjectionError(
+                "Persisted approval event authority is unavailable."
+            )
+        record = validate_platform_approval_evidence(value)
+        state = {"APPROVE": "APPROVED", "REJECT": "REJECTED"}[record["decision"]]
+        return {
+            "work_item": {
+                "tenant_id": record["tenant_id"],
+                "approval_work_item_id": record["approval_work_item_ref"],
+                "approval_domain": "NSL_WRITE",
+                "approval_provider_type": "NSL",
+                "source_ref": record["approval_request_id"],
+                "approval_target_ref": record["approval_request_id"],
+                "agent_execution_id": record["agent_execution_id"],
+                "executable_step_id": record["executable_step_id"],
+                "nsl_execution_id": record["nsl_execution_id"],
+                "business_operation_id": record["business_operation_id"],
+                "approval_request_id": record["approval_request_id"],
+                "protected_request_ref": record["protected_request_ref"],
+                "state": state,
+            },
+            "decision": {
+                "tenant_id": record["tenant_id"],
+                "approval_work_item_id": record["approval_work_item_ref"],
+                "decision": record["decision"],
+                "decided_by": record["approver_id"],
+                "decided_at": record["decided_at"],
+                "oa_decision_ref": record["oa_decision_ref"],
+                "authorized_by_oa": True,
+            },
+        }
+
+
 def _wc_authority_matches(
     record: Mapping[str, Any],
     work_item: Mapping[str, Any],
     decision: Mapping[str, Any],
 ) -> bool:
-    terminal_state = {"APPROVE": "APPROVED", "REJECT": "REJECTED"}[
-        record["decision"]
-    ]
+    terminal_state = {"APPROVE": "APPROVED", "REJECT": "REJECTED"}[record["decision"]]
     item_fields = {
         "tenant_id": record["tenant_id"],
         "approval_work_item_id": record["approval_work_item_ref"],
@@ -251,8 +296,7 @@ def _mapping(value: Mapping[str, Any], field: str) -> Mapping[str, Any]:
 
 def _contains(value: Mapping[str, Any], expected: Mapping[str, Any]) -> bool:
     return all(
-        value.get(field) == expected_value
-        for field, expected_value in expected.items()
+        value.get(field) == expected_value for field, expected_value in expected.items()
     )
 
 

@@ -110,6 +110,8 @@ def _factory(*, seed=True):
                 satisfied_at TEXT,
                 nsl_execution_id TEXT, business_operation_id TEXT,
                 approval_request_id TEXT, checkpoint_version INTEGER,
+                matched_event_id TEXT, resume_runtime_job_id TEXT,
+                updated_at TEXT,
                 PRIMARY KEY (tenant_id, wait_id),
                 UNIQUE (tenant_id, agent_execution_id, executable_step_id, wait_type))""",
         ):
@@ -1088,10 +1090,10 @@ def test_delegate_wait_atomically_moves_parent_to_waiting_dependency() -> None:
     with factory() as session:
         session.execute(
             text(
-                    "INSERT INTO ae_wait_registration ("
-                    "wait_id, tenant_id, agent_execution_id, executable_step_id, "
-                    "wait_type, external_ref, result_contract_ref, state, version, "
-                    "created_at, satisfied_at) VALUES "
+                "INSERT INTO ae_wait_registration ("
+                "wait_id, tenant_id, agent_execution_id, executable_step_id, "
+                "wait_type, external_ref, result_contract_ref, state, version, "
+                "created_at, satisfied_at) VALUES "
                 "(:wait_id, :tenant_id, :execution_id, :step_id, "
                 "'WORK_RESULT', :external_ref, :contract_ref, 'PENDING', 1, :now, NULL)"
             ),
@@ -1128,6 +1130,131 @@ def test_delegate_wait_atomically_moves_parent_to_waiting_dependency() -> None:
         ).one()
     assert waiting["state"] == "WAITING"
     assert tuple(runtime) == ("WAITING_DEPENDENCY", "STEP_EXECUTION")
+
+
+def test_nsl_approval_wait_and_resume_use_multi_step_engine_authority() -> None:
+    factory = _factory()
+    with factory.begin() as session:
+        session.execute(
+            text(
+                "UPDATE ae_executable_step SET step_type = 'LOCAL_SKILL', "
+                "executor_kind = 'LOCAL_SKILL', "
+                "output_contract_ref = 'contract://nex/eos/voucher-draft/v1' "
+                "WHERE tenant_id = :tenant_id AND executable_step_id = :step_id"
+            ),
+            {"tenant_id": TENANT, "step_id": STEP_1_ID},
+        )
+    engine, queue = _runtime(
+        factory,
+        engine_ids=(JOB_1_ID, RESULT_1_ID),
+        queue_ids=(LEASE_1, ATTEMPT_1, LEASE_2, ATTEMPT_2),
+    )
+    engine.schedule_next(tenant_id=TENANT, execution_id=EXECUTION_ID, now=NOW)
+    start_claim = _claim(queue)
+    engine.begin_claim(tenant_id=TENANT, claim=start_claim, now=NOW)
+    approval_request_id = "approval-request-1"
+    with factory.begin() as session:
+        session.execute(
+            text(
+                "INSERT INTO ae_wait_registration ("
+                "wait_id, tenant_id, agent_execution_id, executable_step_id, "
+                "wait_type, external_ref, result_contract_ref, state, version, "
+                "created_at, nsl_execution_id, business_operation_id, "
+                "approval_request_id, checkpoint_version, updated_at) VALUES ("
+                ":wait_id, :tenant_id, :execution_id, :step_id, 'NSL_APPROVAL', "
+                ":external_ref, :contract_ref, 'PENDING', 1, :now, "
+                "'nsl-execution-1', 'business-operation-1', :external_ref, 1, :now)"
+            ),
+            {
+                "wait_id": RESULT_1_ID,
+                "tenant_id": TENANT,
+                "execution_id": EXECUTION_ID,
+                "step_id": STEP_1_ID,
+                "external_ref": approval_request_id,
+                "contract_ref": "urn:nex:approval-resume:p8:v1",
+                "now": NOW,
+            },
+        )
+
+    waiting = engine.record_waiting(
+        tenant_id=TENANT,
+        claim=start_claim,
+        outcome=StepWaitingOutcome(
+            wait_id=RESULT_1_ID,
+            external_ref=approval_request_id,
+            result_contract_ref="urn:nex:approval-resume:p8:v1",
+        ),
+        now=LATER,
+    )
+    queue.complete(
+        tenant_id=TENANT,
+        runtime_job_id=start_claim.job["runtime_job_id"],
+        worker_id="worker-1",
+        lease_token=start_claim.job["lease_token"],
+        now=LATER,
+    )
+    event_id = "approval-event-1"
+    queue.enqueue_unique(
+        tenant_id=TENANT,
+        runtime_job_id=JOB_2_ID,
+        job_type="RESUME_EXECUTION",
+        execution_id=EXECUTION_ID,
+        executable_step_id=STEP_1_ID,
+        wait_id=RESULT_1_ID,
+        dedup_key="nsl-approval-resume-1",
+        run_after=LATER,
+        correlation_id="corr",
+        causation_id=event_id,
+        now=LATER,
+        payload={"event_id": event_id},
+    )
+    with factory.begin() as session:
+        session.execute(
+            text(
+                "UPDATE ae_wait_registration SET state = 'RESUME_QUEUED', "
+                "matched_event_id = :event_id, resume_runtime_job_id = :job_id "
+                "WHERE tenant_id = :tenant_id AND wait_id = :wait_id"
+            ),
+            {
+                "tenant_id": TENANT,
+                "wait_id": RESULT_1_ID,
+                "event_id": event_id,
+                "job_id": JOB_2_ID,
+            },
+        )
+    resume_claim = _claim(queue, now=LATER)
+    resumed = engine.begin_claim(tenant_id=TENANT, claim=resume_claim, now=LATER)
+    result = engine.record_outcome(
+        tenant_id=TENANT,
+        claim=resume_claim,
+        outcome=_success(
+            "contract://nex/eos/voucher-draft/v1",
+            "voucher-1",
+            started=LATER,
+            completed=LAST,
+        ),
+    )
+
+    with factory() as session:
+        parent_state = session.execute(
+            text(
+                "SELECT state FROM ae_agent_execution WHERE tenant_id = :tenant_id "
+                "AND agent_execution_id = :execution_id"
+            ),
+            {"tenant_id": TENANT, "execution_id": EXECUTION_ID},
+        ).scalar_one()
+        wait_state = session.execute(
+            text(
+                "SELECT state FROM ae_wait_registration WHERE tenant_id = :tenant_id "
+                "AND wait_id = :wait_id"
+            ),
+            {"tenant_id": TENANT, "wait_id": RESULT_1_ID},
+        ).scalar_one()
+    assert waiting["state"] == "WAITING"
+    assert resumed.step["state"] == "WAITING"
+    assert result["status"] == "SUCCEEDED"
+    assert parent_state == "RUNNING"
+    assert wait_state == "CONSUMED"
 
 
 def test_waiting_and_continuation_guards() -> None:
