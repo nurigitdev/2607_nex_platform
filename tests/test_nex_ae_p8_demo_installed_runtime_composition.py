@@ -49,6 +49,16 @@ def test_installed_runtime_cycle_projects_canonical_worker_counters(
         heartbeat_emitter=SimpleNamespace(store=object()),
         executor_kinds=("LOCAL_SKILL",),
         backend_profiles=("NSL_V02_IN_PROCESS",),
+        result_closer=SimpleNamespace(
+            close_ready=lambda **_values: {
+                "candidate_count": 1,
+                "finalized_count": 1,
+                "published_count": 1,
+                "replayed_count": 0,
+                "failed_count": 0,
+                "failures": [],
+            }
+        ),
     )
 
     result = runtime.run_cycle()
@@ -61,6 +71,14 @@ def test_installed_runtime_cycle_projects_canonical_worker_counters(
         "succeeded_count": 1,
         "failed_count": 0,
         "stop_reason": "MAX_CYCLES",
+        "result_closure": {
+            "candidate_count": 1,
+            "finalized_count": 1,
+            "published_count": 1,
+            "replayed_count": 0,
+            "failed_count": 0,
+            "failures": [],
+        },
     }
     assert captured["max_cycles"] == 1
     assert captured["stop_on_failure"] is False
@@ -91,6 +109,16 @@ def test_installed_runtime_cycle_reports_idle(monkeypatch: pytest.MonkeyPatch) -
         heartbeat_emitter=SimpleNamespace(store=object()),
         executor_kinds=("LOCAL_SKILL",),
         backend_profiles=("NSL_V02_IN_PROCESS",),
+        result_closer=SimpleNamespace(
+            close_ready=lambda **_values: {
+                "candidate_count": 0,
+                "finalized_count": 0,
+                "published_count": 0,
+                "replayed_count": 0,
+                "failed_count": 0,
+                "failures": [],
+            }
+        ),
     )
 
     assert runtime.run_cycle()["status"] == "IDLE"

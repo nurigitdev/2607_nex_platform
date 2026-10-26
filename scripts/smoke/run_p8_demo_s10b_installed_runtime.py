@@ -455,6 +455,7 @@ def run_p8_demo_s10b_installed_runtime(
                     ),
                 )
                 resume_cycle = composition.run_cycle()
+                replay_cycle = composition.run_cycle()
 
             projection = _result_projection(
                 engines,
@@ -493,9 +494,19 @@ def run_p8_demo_s10b_installed_runtime(
             ),
             "resume_controlled_write_completed": (
                 resume_cycle["execution_count"] == 1
-                and projection["execution_state"] == "RUNNING"
-                and projection["execution_phase"] == "RESULT_VERIFY"
+                and resume_cycle["result_closure"]["finalized_count"] == 1
+                and resume_cycle["result_closure"]["published_count"] == 1
+                and projection["execution_state"] == "SUCCEEDED"
+                and projection["execution_phase"] == "FINALIZE"
                 and projection["step_state"] == "SUCCEEDED"
+            ),
+            "workspace_result_acknowledged_once": (
+                projection["agent_result_count"] == 1
+                and projection["result_delivery_count"] == 1
+                and projection["acknowledged_delivery_count"] == 1
+                and projection["workspace_result_activity_count"] == 1
+                and replay_cycle["execution_count"] == 0
+                and replay_cycle["result_closure"]["candidate_count"] == 0
             ),
             "eos_committed_once": (
                 projection["voucher_count"] == 1
@@ -528,6 +539,7 @@ def run_p8_demo_s10b_installed_runtime(
             "prefix_cycle": prefix_cycle,
             "prefix_projection": prefix_projection,
             "resume_cycle": resume_cycle,
+            "replay_cycle": replay_cycle,
             "projection": projection,
             "admission": {
                 name: {
@@ -854,7 +866,11 @@ def _result_projection(
                     "SELECT "
                     "(SELECT count(*) FROM ae_nsl_approval_request WHERE tenant_id=:tenant) approval_request_count, "
                     "(SELECT count(*) FROM ae_nsl_idem_evidence WHERE tenant_id=:tenant) idempotency_evidence_count, "
-                    "(SELECT count(*) FROM ae_nsl_write_evidence WHERE tenant_id=:tenant) write_evidence_count"
+                    "(SELECT count(*) FROM ae_nsl_write_evidence WHERE tenant_id=:tenant) write_evidence_count, "
+                    "(SELECT count(*) FROM ae_agent_result WHERE tenant_id=:tenant) agent_result_count, "
+                    "(SELECT count(*) FROM ae_result_delivery WHERE tenant_id=:tenant) result_delivery_count, "
+                    "(SELECT count(*) FROM ae_result_delivery WHERE tenant_id=:tenant AND state='ACKNOWLEDGED') acknowledged_delivery_count, "
+                    "(SELECT count(*) FROM ae_workspace_activities a JOIN ae_workspaces w ON w.workspace_id=a.workspace_id WHERE w.tenant_id=:tenant AND a.activity_type='agent.result.published') workspace_result_activity_count"
                 ),
                 {"tenant": tenant_id},
             )
@@ -890,6 +906,8 @@ def _cleanup_dynamic_rows(
 ) -> dict[str, int]:
     deleted: dict[str, int] = {}
     ae_tables = (
+        "ae_result_delivery",
+        "ae_agent_result",
         "ae_runtime_job_attempt",
         "ae_external_event_inbox",
         "ae_approval_evidence",
@@ -917,6 +935,16 @@ def _cleanup_dynamic_rows(
         "ae_agent_identity",
     )
     with engines["nex-ae-api"].begin() as connection:
+        deleted["ae:ae_workspace_activities"] = int(
+            connection.execute(
+                text(
+                    "DELETE FROM ae_workspace_activities WHERE workspace_id IN "
+                    "(SELECT workspace_id FROM ae_workspaces WHERE tenant_id=:tenant)"
+                ),
+                {"tenant": tenant_id},
+            ).rowcount
+            or 0
+        )
         for table in ae_tables:
             deleted[f"ae:{table}"] = int(
                 connection.execute(
@@ -932,12 +960,6 @@ def _cleanup_dynamic_rows(
             text(
                 "DELETE FROM service_worker_heartbeats "
                 "WHERE service_id='nex-ae-api' AND worker_id='ae-demo-s10b-worker'"
-            )
-        )
-        connection.execute(
-            text(
-                "DELETE FROM ae_workspace_activities WHERE workspace_id NOT IN "
-                "(SELECT workspace_id FROM ae_workspaces)"
             )
         )
         connection.execute(

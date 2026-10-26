@@ -390,6 +390,33 @@ h2 {
   background: #fbfcfd;
 }
 
+.agent-result {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  border-top: 1px solid var(--nex-border);
+  padding-top: 12px;
+}
+
+.agent-result__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agent-result ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.agent-result code {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
 .artifact-link-list {
   display: grid;
   gap: 10px;

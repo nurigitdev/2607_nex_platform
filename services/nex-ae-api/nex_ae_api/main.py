@@ -38,6 +38,9 @@ from nex_ae_api.claim_handoff_api import register_claim_handoff_routes
 from nex_ae_api.documents import register_document_library_routes
 from nex_ae_api.eos_outbox_event_api import register_eos_outbox_event_routes
 from nex_ae_api.generation_feedback import register_generation_feedback_routes
+from nex_ae_api.interaction_agent_result_api import (
+    register_interaction_agent_result_routes,
+)
 from nex_ae_api.mvp_acceptance_api import register_ae_mvp_acceptance_routes
 from nex_ae_api.nsl_approval_events import SqlAlchemyNslApprovalEventService
 from nex_ae_api.private_object_store import (
@@ -68,6 +71,9 @@ from nex_ae_api.voucher_attachments import SqlAlchemyVoucherAttachmentRepository
 from nex_ae_api.work_result_event_api import register_work_result_event_routes
 from nex_ae_api.work_result_events import SqlAlchemyWorkResultEventService
 from nex_ae_api.workspace import register_workspace_routes
+from nex_ae_api.workspace_result_publication import (
+    SqlAlchemyInteractionAgentResultSource,
+)
 
 SERVICE_SPEC = SERVICE_SPECS["nex-ae-api"]
 SERVICE_TOKEN_ADMISSION = build_service_token_admission_runtime(
@@ -129,6 +135,16 @@ register_chat_routes(
     app,
     analytics_store=DEFAULT_PROMPT_ANALYTICS_STORE,
     prompt_store=AE_PROMPT_STORE,
+)
+register_interaction_agent_result_routes(
+    app,
+    source=(
+        SqlAlchemyInteractionAgentResultSource(
+            SERVICE_PERSISTENCE.api_session_factory
+        )
+        if SERVICE_PERSISTENCE.api_session_factory is not None
+        else None
+    ),
 )
 AE_AGENT_RUNTIME = attach_agent_runtime_foundation(
     app,

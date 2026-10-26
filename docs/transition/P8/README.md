@@ -52,6 +52,7 @@ P8-DEMO-S09 EXTERNAL DEPENDENCY ADMISSION COMPLETE
 P8-DEMO-S10A STARTUP-ISSUED BOUNDED-LIFETIME SERVICE TOKEN BOOTSTRAP COMPLETE
 P8-DEMO-S10B INSTALLED P6-P8 RUNTIME COMPOSITION EXTRACTION COMPLETE
 P8-DEMO-S10 INSTALLED DOMAIN CONSUMER / SIGNED TRUST ACCEPTANCE COMPLETE
+P8-DEMO-S10C INSTALLED IA RESULT FINALIZATION / WORKSPACE PUBLICATION COMPLETE
 P8 DEMO IMPLEMENTATION ENTRY AUTHORIZED WITH BLOCKING GATES
 P9     ENTRY AUTHORIZED BY v1.2
 ```
@@ -933,6 +934,15 @@ heartbeats, OA/AE/WC/EOS accept signed tokens only, no provider fallback is
 used, and all ephemeral trust rows and containers are removed. Evidence is
 recorded in
 `docs/slices/p8_demo_s10_installed_domain_consumer_activation_and_signed_trust_acceptance.md`.
+
+P8-DEMO-S10C closes the installed IA lifecycle that S10B intentionally ended
+at `RESULT_VERIFY`. It reuses the existing P5 finalization service and existing
+AgentResult, WORKSPACE_RESULT delivery, and workspace-activity tables; no
+migration or parallel result model is introduced. The owner-scoped API and AE
+Web projection expose the acknowledged result, while restart and exact replay
+create no duplicate AgentResult, activity, BusinessOperation, or voucher.
+Actual AE/WC/EOS/OA PostgreSQL evidence is recorded in
+`docs/slices/p8_demo_s10c_installed_ia_result_finalization_and_workspace_publication_closure.md`.
 
 ---
 

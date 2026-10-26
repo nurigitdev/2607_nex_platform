@@ -106,6 +106,7 @@ import {
 } from "./runtimeDiagnostics.js";
 import { renderProjectMembershipBatchResult } from "./projectMembershipBatchResult.js";
 import { createInteractionId } from "./runtimeIdentifiers.js";
+import { renderInteractionAgentResult } from "./interactionAgentResultClient.js";
 import {
   buildSessionRouteGuard,
   buildSessionRouteGuardSummary,
@@ -267,6 +268,7 @@ const workspaceState = {
   artifactLibraryFilterMode: "all",
   artifactVersionPanel: createArtifactVersionPanelState(),
   groundedGenerationClient: null,
+  interactionAgentResultClient: null,
   generationLifecycle: null,
   generationWorkflow: null,
   generationPresentation: null,
@@ -954,6 +956,8 @@ function applySessionBootstrap(sessionBootstrap) {
   workspaceState.retrievalClient = workspaceState.clientRegistry.retrievalClient;
   workspaceState.groundedGenerationClient =
     workspaceState.clientRegistry.groundedGenerationClient;
+  workspaceState.interactionAgentResultClient =
+    workspaceState.clientRegistry.interactionAgentResultClient;
   workspaceState.generationFeedbackClient =
     workspaceState.clientRegistry.generationFeedbackClient;
   workspaceState.repairedResponseReviewClient =
@@ -1510,6 +1514,7 @@ function renderMessages() {
           : ""
       }
       ${renderArtifactRefs(message.artifactRefs || [])}
+      ${renderInteractionAgentResult(message.agentResult)}
       ${renderMessageRepairedResponseReview(message.repairedResponseReview)}
       ${renderMessageGenerationFeedback(message.generationFeedback)}
     `;
@@ -2411,10 +2416,16 @@ async function appendPromptInteraction() {
     visibleArtifactRef = artifactExport?.artifactRef || artifactRef;
   }
   const qualityContract = generationWorkflow.state.citationQuality?.quality || {};
-  workspaceState.messages.push({
+  const semanticPlanning = generationWorkflow.admission?.semanticPlanning;
+  const assistantMessage = {
     role: "assistant",
     label: "assistant",
     text: generationPresentation.assistantText,
+    interactionId: workspaceState.interactionId,
+    agentResult:
+      semanticPlanning?.status === "COMPILED"
+        ? pendingInteractionAgentResult(workspaceState.interactionId)
+        : null,
     artifactRefs: visibleArtifactRef ? [visibleArtifactRef] : [],
     retrievalScope: grounded ? workspaceState.documentScope : null,
     retrievalResult: grounded ? retrievalResult : null,
@@ -2431,7 +2442,8 @@ async function appendPromptInteraction() {
       clientMode: workspaceState.generationFeedbackClient.clientMode
     }),
     repairedResponseReview: generationPresentation.repairedResponseReview
-  });
+  };
+  workspaceState.messages.push(assistantMessage);
   workspaceState.lastRetrievalRequest = retrievalRequest;
   workspaceState.lastRetrievalResult = retrievalResult;
   workspaceState.artifact.handoffStatus = artifactHandoffAllowed
@@ -2472,10 +2484,57 @@ async function appendPromptInteraction() {
     });
   }
   renderWorkspace();
+  if (assistantMessage.agentResult) {
+    void pollInteractionAgentResult(assistantMessage);
+  }
   if (visibleArtifactRef) {
     void refreshArtifactLibraryPanel();
     void refreshArtifactVersionPanel();
   }
+}
+
+function pendingInteractionAgentResult(interactionId) {
+  return {
+    interactionId,
+    agentExecutionId: "pending",
+    executionState: "QUEUED",
+    executionPhase: "PLAN_COMPILE",
+    terminal: false,
+    result: null
+  };
+}
+
+async function pollInteractionAgentResult(message, attempt = 1) {
+  if (
+    workspaceState.sessionState?.status !== "authenticated" ||
+    !workspaceState.interactionAgentResultClient ||
+    !message.interactionId
+  ) {
+    return;
+  }
+  try {
+    message.agentResult =
+      await workspaceState.interactionAgentResultClient.getInteractionAgentResult(
+        message.interactionId
+      );
+    renderMessages();
+    if (message.agentResult.terminal) return;
+  } catch (error) {
+    if (error?.statusCode !== 404) {
+      message.agentResult = {
+        ...message.agentResult,
+        executionState: "UNAVAILABLE",
+        executionPhase: "RESULT_PUBLISH",
+        terminal: false
+      };
+      renderMessages();
+    }
+  }
+  if (attempt >= 150) return;
+  globalThis.setTimeout(
+    () => void pollInteractionAgentResult(message, attempt + 1),
+    2000
+  );
 }
 
 async function cancelActiveGeneration() {

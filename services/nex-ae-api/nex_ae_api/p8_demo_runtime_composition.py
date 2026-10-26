@@ -30,6 +30,7 @@ from nex_ae_api.step_executors import (
     P5StepExecutionWorker,
     default_p6_executor_registry,
 )
+from nex_ae_api.workspace_result_publication import SqlAlchemyInstalledIaResultCloser
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -43,6 +44,7 @@ class InstalledP8RuntimeComposition:
     heartbeat_emitter: Any
     executor_kinds: tuple[str, ...]
     backend_profiles: tuple[str, ...]
+    result_closer: SqlAlchemyInstalledIaResultCloser
 
     def run_cycle(self) -> dict[str, Any]:
         lifecycle = AgentRuntimeWorkerLifecycle(
@@ -61,15 +63,21 @@ class InstalledP8RuntimeComposition:
             max_cycles=1,
             stop_on_failure=False,
         )
+        closure = self.result_closer.close_ready(limit=10)
         claimed_count = int(result["claimed_count"])
+        closure_work = int(closure["finalized_count"]) + int(
+            closure["published_count"]
+        )
+        failed_count = int(result["failed_count"]) + int(closure["failed_count"])
         return {
-            "status": "WORK" if claimed_count else "IDLE",
+            "status": "WORK" if claimed_count or closure_work else "IDLE",
             "domain_claiming_enabled": True,
             "composition_mode": "EXISTING_COMPONENT_COMPOSITION",
             "execution_count": claimed_count,
             "succeeded_count": result["succeeded_count"],
-            "failed_count": result["failed_count"],
+            "failed_count": failed_count,
             "stop_reason": result["stop_reason"],
+            "result_closure": closure,
         }
 
 
@@ -127,6 +135,7 @@ def build_installed_p8_runtime_composition(
         heartbeat_emitter=resource.heartbeat,
         executor_kinds=registry.registered_kinds,
         backend_profiles=registry.backend_profiles,
+        result_closer=SqlAlchemyInstalledIaResultCloser(resource.sessions),
     )
 
 

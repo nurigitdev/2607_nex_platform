@@ -23,6 +23,10 @@ import {
   createMockGroundedGenerationClient
 } from "./groundedGenerationClient.js";
 import {
+  createFetchInteractionAgentResultClient,
+  createMockInteractionAgentResultClient
+} from "./interactionAgentResultClient.js";
+import {
   createFetchRepairedResponseReviewClient,
   createMockRepairedResponseReviewClient
 } from "./repairedResponseReviewClient.js";
@@ -94,6 +98,9 @@ export function createAeWebClients({
           groundedGenerationClient: createMockGroundedGenerationClient({
             responseFactories: responseFactories.groundedGeneration || {}
           }),
+          interactionAgentResultClient: createMockInteractionAgentResultClient({
+            responseFactory: responseFactories.interactionAgentResult
+          }),
           repairedResponseReviewClient: createMockRepairedResponseReviewClient({
             projections: responseFactories.repairedResponseReviewProjections || [],
             responseFactory: responseFactories.repairedResponseReview
@@ -115,6 +122,8 @@ export function createAeWebClients({
             createFetchGenerationFeedbackClient(commonFetchOptions),
           groundedGenerationClient:
             createFetchGroundedGenerationClient(commonFetchOptions),
+          interactionAgentResultClient:
+            createFetchInteractionAgentResultClient(commonFetchOptions),
           repairedResponseReviewClient:
             createFetchRepairedResponseReviewClient(commonFetchOptions),
           repairedResponseDecisionClient:
@@ -155,6 +164,7 @@ export function buildClientRegistrySummary(registry) {
       voucher_attachment: registry.voucherAttachmentClient.clientMode,
       retrieval: registry.retrievalClient.clientMode,
       grounded_generation: registry.groundedGenerationClient.clientMode,
+      interaction_agent_result: registry.interactionAgentResultClient.clientMode,
       generation_feedback: registry.generationFeedbackClient.clientMode,
       repaired_response_review: registry.repairedResponseReviewClient.clientMode,
       repaired_response_decision: registry.repairedResponseDecisionClient.clientMode
