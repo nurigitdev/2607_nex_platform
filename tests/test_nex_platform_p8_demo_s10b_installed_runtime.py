@@ -15,6 +15,17 @@ def _database_environment() -> dict[str, str]:
     }
 
 
+def test_demo_cleanup_orders_semantic_and_chat_dependents_before_owners() -> None:
+    tables = smoke.AE_DYNAMIC_CLEANUP_TABLES
+
+    assert tables.index("ae_chat_artifact_refs") < tables.index(
+        "ae_chat_interactions"
+    )
+    assert tables.index("ae_semantic_candidate") < tables.index(
+        "ae_agent_execution"
+    )
+
+
 def test_protected_smoke_is_explicitly_opt_in() -> None:
     result = smoke.run_p8_demo_s10b_installed_runtime({}, execute=False)
 

@@ -132,6 +132,38 @@ DATABASES = {
     ),
     "nex-oa": ("NEX_OA_TEST_DATABASE_URL", "nex_oa_user", "nex_oa_test"),
 }
+AE_DYNAMIC_CLEANUP_TABLES = (
+    "ae_chat_artifact_refs",
+    "ae_chat_interactions",
+    "ae_result_delivery",
+    "ae_agent_result",
+    "ae_runtime_job_attempt",
+    "ae_external_event_inbox",
+    "ae_approval_evidence",
+    "ae_wait_registration",
+    "ae_nsl_write_evidence",
+    "ae_nsl_idem_evidence",
+    "ae_nsl_approval_request",
+    "ae_nsl_step_execution",
+    "ae_nsl_artifact",
+    "ae_step_result",
+    "ae_rt_job_issue",
+    "ae_runtime_job",
+    "ae_executable_step",
+    "ae_executable_plan",
+    "ae_plan_validation",
+    "ae_agent_plan",
+    "ae_capability_snapshot",
+    "ae_agent_context",
+    "ae_work_intent",
+    "ae_semantic_candidate",
+    "ae_agent_execution",
+    "ae_conversation_events",
+    "ae_conversation_messages",
+    "ae_conversations",
+    "ae_ia_principal_assignment",
+    "ae_agent_identity",
+)
 
 
 class P8DemoS10BSmokeError(RuntimeError):
@@ -905,35 +937,6 @@ def _cleanup_dynamic_rows(
     engines: Mapping[str, Any], *, tenant_id: str
 ) -> dict[str, int]:
     deleted: dict[str, int] = {}
-    ae_tables = (
-        "ae_result_delivery",
-        "ae_agent_result",
-        "ae_runtime_job_attempt",
-        "ae_external_event_inbox",
-        "ae_approval_evidence",
-        "ae_wait_registration",
-        "ae_nsl_write_evidence",
-        "ae_nsl_idem_evidence",
-        "ae_nsl_approval_request",
-        "ae_nsl_step_execution",
-        "ae_nsl_artifact",
-        "ae_step_result",
-        "ae_rt_job_issue",
-        "ae_runtime_job",
-        "ae_executable_step",
-        "ae_executable_plan",
-        "ae_plan_validation",
-        "ae_agent_plan",
-        "ae_capability_snapshot",
-        "ae_agent_context",
-        "ae_work_intent",
-        "ae_agent_execution",
-        "ae_conversation_events",
-        "ae_conversation_messages",
-        "ae_conversations",
-        "ae_ia_principal_assignment",
-        "ae_agent_identity",
-    )
     with engines["nex-ae-api"].begin() as connection:
         deleted["ae:ae_workspace_activities"] = int(
             connection.execute(
@@ -945,7 +948,7 @@ def _cleanup_dynamic_rows(
             ).rowcount
             or 0
         )
-        for table in ae_tables:
+        for table in AE_DYNAMIC_CLEANUP_TABLES:
             deleted[f"ae:{table}"] = int(
                 connection.execute(
                     text(f"DELETE FROM {table} WHERE tenant_id=:tenant"),

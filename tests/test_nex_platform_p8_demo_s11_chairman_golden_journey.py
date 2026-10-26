@@ -104,6 +104,37 @@ def test_s11_calibration_is_exact_for_all_three_semantic_stages() -> None:
     assert {policy["minimum_confidence"] for policy in policies} == {0.5}
 
 
+def test_s11_activates_existing_golden_a_local_skill_capability() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE ae_capability_snapshot ("
+                "tenant_id TEXT NOT NULL, capability_snapshot_id TEXT NOT NULL, "
+                "snapshot_version INTEGER NOT NULL, snapshot_hash TEXT NOT NULL, "
+                "snapshot_json TEXT NOT NULL, created_at TEXT NOT NULL, "
+                "PRIMARY KEY (tenant_id, capability_snapshot_id), "
+                "UNIQUE (tenant_id, snapshot_version))"
+            )
+        )
+
+    activated = acceptance._activate_golden_a_capability(engine, root=ROOT)
+
+    assert activated["status"] == "ACTIVE"
+    assert activated["capability_id"] == "FINANCE.CREATE_VOUCHER_DRAFT"
+    assert activated["executor_kind"] == "LOCAL_SKILL"
+    with engine.connect() as connection:
+        assert (
+            connection.execute(
+                text(
+                    "SELECT count(*) FROM ae_capability_snapshot "
+                    "WHERE tenant_id='VO00'"
+                )
+            ).scalar_one()
+            == 1
+        )
+
+
 def test_s11_public_browser_projection_strips_runtime_lineage() -> None:
     projected = acceptance._public_browser_evidence(
         {

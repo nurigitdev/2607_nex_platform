@@ -8,15 +8,19 @@ import secrets
 import subprocess
 import sys
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [
     str(ROOT / "services/_shared"),
+    str(ROOT / "services/nex-ae-api"),
     str(ROOT / "services/nex-oa"),
     str(ROOT / "scripts/deployment"),
     str(ROOT / "scripts/smoke"),
@@ -24,8 +28,14 @@ sys.path[:0] = [
 
 import run_p8_demo_s10_installed_domain_acceptance as installed
 import run_p8_demo_s10b_installed_runtime as composed
+from nex_ae_api.golden_a_planning import (
+    GOLDEN_A_CAPABILITY_ID,
+    build_golden_a_capability_snapshot,
+)
+from nex_ae_api.planning_capabilities import SqlAlchemyCapabilitySnapshotRepository
 from nex_oa.credentials import hash_password, password_hash_algorithm
 from nex_runtime.demo_database import resolve_demo_database_targets
+from nex_runtime.demo_fixture import load_demo_business_fixture
 
 EXECUTION_ENV = "NEX_P8_DEMO_S11_LIVE"
 SCHEMA_VERSION = "p8_demo_s11_chairman_golden_journey.v1"
@@ -138,6 +148,9 @@ def _execute_protected_acceptance(env: Mapping[str, str], *, root: Path) -> dict
         }
 
         def live_hook(**_: Any) -> Mapping[str, Any]:
+            capability_activation = _activate_golden_a_capability(
+                engines["nex-ae-api"], root=root
+            )
             browser = _run_playwright(
                 runtime_env,
                 requester_password=requester_password,
@@ -195,6 +208,7 @@ def _execute_protected_acceptance(env: Mapping[str, str], *, root: Path) -> dict
                 "actual_playwright": True,
                 "provider_model_profile": MODEL_PROFILE,
                 "provider_model_ref": MODEL_REF,
+                "capability_activation": capability_activation,
                 "fixture_visibility": fixture,
                 "browser": _public_browser_evidence(browser),
                 "database": database,
@@ -324,6 +338,38 @@ def _run_playwright(
     if completed.returncode != 0 or evidence.get("status") != "PASS":
         return dict(evidence)
     return dict(evidence)
+
+
+def _activate_golden_a_capability(engine: Any, *, root: Path) -> dict[str, Any]:
+    _, fixture = load_demo_business_fixture(
+        root / "scripts/deployment/data/p8_demo_vo00_fixture.v1.json",
+        base_fixture_path=root / "scripts/smoke/data/p8_golden_a_fixture.v1.json",
+    )
+    snapshot = build_golden_a_capability_snapshot(
+        fixture,
+        capability_snapshot_id=str(
+            uuid5(NAMESPACE_URL, "nex:p8-demo-s11:golden-a-capability:VO00:v1")
+        ),
+        snapshot_version=1,
+        created_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    )
+    repository = SqlAlchemyCapabilitySnapshotRepository(
+        sessionmaker(bind=engine, expire_on_commit=False)
+    )
+    saved = repository.save(snapshot)
+    capability = next(
+        item
+        for item in saved["capabilities"]
+        if item["capability_id"] == GOLDEN_A_CAPABILITY_ID
+    )
+    return {
+        "status": "ACTIVE",
+        "capability_id": capability["capability_id"],
+        "capability_version": capability["capability_version"],
+        "executor_kind": capability["executor_kind"],
+        "snapshot_id": saved["capability_snapshot_id"],
+        "snapshot_hash": saved["snapshot_hash"],
+    }
 
 
 def _public_browser_evidence(evidence: Mapping[str, Any]) -> dict[str, Any]:
@@ -500,11 +546,19 @@ def _database_acceptance_projection(
 
 def _assert_zero_journey_residue(engines: Mapping[str, Any]) -> None:
     with engines["nex-ae-api"].connect() as connection:
-        ae_count = int(
-            connection.execute(
-                text("SELECT count(*) FROM ae_agent_execution WHERE tenant_id=:tenant"),
+        ae_counts = tuple(
+            int(value)
+            for value in connection.execute(
+                text(
+                    "SELECT "
+                    "(SELECT count(*) FROM ae_agent_execution WHERE tenant_id=:tenant), "
+                    "(SELECT count(*) FROM ae_semantic_candidate WHERE tenant_id=:tenant), "
+                    "(SELECT count(*) FROM ae_capability_snapshot WHERE tenant_id=:tenant), "
+                    "(SELECT count(*) FROM ae_chat_interactions WHERE tenant_id=:tenant), "
+                    "(SELECT count(*) FROM ae_workspaces WHERE tenant_id=:tenant)"
+                ),
                 {"tenant": TENANT_ID},
-            ).scalar_one()
+            ).one()
         )
     with engines["nex-wc"].connect() as connection:
         wc_count = int(
@@ -520,7 +574,7 @@ def _assert_zero_journey_residue(engines: Mapping[str, Any]) -> None:
                 {"tenant": TENANT_ID},
             ).scalar_one()
         )
-    if (ae_count or wc_count or eos_count):
+    if any(ae_counts) or wc_count or eos_count:
         raise P8DemoS11Error("S11 protected journey cleanup left durable residue")
 
 
