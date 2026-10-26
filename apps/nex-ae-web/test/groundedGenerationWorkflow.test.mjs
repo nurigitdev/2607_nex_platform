@@ -28,6 +28,7 @@ test("builds an async owner-neutral grounded request", () => {
   assert.equal(payload.generation.execution_strategy, "ASYNCHRONOUS");
   assert.equal(payload.generation.reasoning_mode, "disabled");
   assert.equal(payload.generation.execution_mode, "GROUNDED_ANSWER");
+  assert.equal(payload.conversation_id, "chat-workflow-1");
   assert.deepEqual(payload.retrieval.document_scope.document_ids, ["doc-1", "doc-2"]);
   assert.equal(payload.retrieval.include_source_preview, false);
   assert.equal("tenant_id" in payload, false);

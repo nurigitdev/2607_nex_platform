@@ -65,6 +65,7 @@ export async function runP8DemoS11ChairmanGoldenJourney({
   let approverContext = null;
   let stage = "launch";
   let decisionRequest = null;
+  let problemCode = null;
   const responses = [];
   try {
     const playwright = await importPlaywright();
@@ -114,6 +115,7 @@ export async function runP8DemoS11ChairmanGoldenJourney({
           interaction_id: interactionId,
           workspace_id: workspace.payload.workspace_id,
           chat_document_id: workspace.payload.chat_document_id,
+          conversation_id: workspace.payload.chat_document_id,
           user_message: environ[ENV.prompt],
           generation: {
             execution_strategy: "ASYNCHRONOUS",
@@ -137,6 +139,7 @@ export async function runP8DemoS11ChairmanGoldenJourney({
       admission.status !== 202 ||
       admission.payload?.generation?.semantic_planning?.status !== "COMPILED"
     ) {
+      problemCode = publicProblemCode(admission.payload);
       throw new Error(`LivePlanAdmissionStatus${admission.status}`);
     }
     const semanticStages = admission.payload.generation.semantic_planning.stages || [];
@@ -253,7 +256,8 @@ export async function runP8DemoS11ChairmanGoldenJourney({
     const evidence = failure(safeFailureCode(error), {
       stage,
       response_count: responses.length,
-      recent_api_responses: responses.slice(-5)
+      recent_api_responses: responses.slice(-5),
+      problem_code: problemCode
     });
     assertP8DemoS11EvidenceRedacted(evidence, environ);
     return evidence;
@@ -461,6 +465,13 @@ function publicRouteClass(route) {
   if (route.includes("/chat/interactions")) return "chat";
   if (route.includes("/workspaces")) return "workspace";
   return "other";
+}
+
+function publicProblemCode(payload) {
+  const value = payload?.error_code;
+  return typeof value === "string" && /^[A-Za-z0-9._:-]{1,128}$/.test(value)
+    ? value
+    : null;
 }
 
 function positiveTimeout(value) {

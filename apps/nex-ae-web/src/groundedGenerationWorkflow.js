@@ -35,6 +35,7 @@ export function buildGroundedGenerationRequest({
     interaction_id: requiredText(interactionId, "interactionId"),
     workspace_id: requiredText(workspaceId, "workspaceId"),
     chat_document_id: requiredText(chatDocumentId, "chatDocumentId"),
+    conversation_id: requiredText(chatDocumentId, "chatDocumentId"),
     user_message: requiredText(userMessage, "userMessage"),
     generation: {
       execution_strategy: "ASYNCHRONOUS",
