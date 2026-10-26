@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -30,6 +32,30 @@ def test_s10_source_admission_is_non_executing_and_business_neutral() -> None:
     assert result["executed"] is False
     assert result["domain_activation"]["process_count"] == 3
     assert result["new_business_behavior_added"] is False
+
+
+def test_s10_source_admission_runs_in_a_standalone_python_process(
+    tmp_path: Path,
+) -> None:
+    report = tmp_path / "standalone.json"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/deployment/run_p8_demo_s10_installed_domain_acceptance.py"),
+            "--summary",
+            "--report",
+            str(report),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "p8_demo_s10_installed_domain=source_admitted" in completed.stdout
+    assert json.loads(report.read_text(encoding="utf-8"))["source_admitted"] is True
 
 
 def test_s10_execution_requires_both_switches_and_contains_failures() -> None:

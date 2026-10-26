@@ -23,10 +23,17 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
 ROOT = Path(__file__).resolve().parents[2]
-for path in (
-    ROOT / "services/_shared",
-    ROOT / "services/nex-oa",
+for relative in (
+    "services/_shared",
+    "services/nex-oa",
+    "services/nex-ag",
+    "services/nex-ae-api",
+    "services/nex-cx",
+    "services/nex-mo",
+    "services/nex-wc",
+    "services/nex-eos",
 ):
+    path = ROOT / relative
     sys.path.insert(0, str(path))
 
 from nex_oa.demo_service_principal_provisioning import (
