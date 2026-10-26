@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -299,6 +300,9 @@ class DeterministicCandidateAdmissionService:
     validations: Any = field(repr=False)
     executable_plans: Any = field(repr=False)
     executions: Any = field(repr=False)
+    domain_intent_activators: Mapping[str, Any] = field(
+        default_factory=dict, repr=False
+    )
     clock: Callable[[], datetime] = field(default=lambda: datetime.now(UTC), repr=False)
 
     def __post_init__(self) -> None:
@@ -392,7 +396,8 @@ class DeterministicCandidateAdmissionService:
         work_intent = self.work_intents.get(
             tenant_id=request.tenant_id, work_intent_id=ids.work_intent
         )
-        if work_intent is None:
+        persisted_work_intent = work_intent is not None
+        if not persisted_work_intent:
             if request.planning_source_type == "CLAIMED_WORKITEM":
                 intent_decision = resolve_intent_candidate(
                     intent_candidate,
@@ -427,6 +432,37 @@ class DeterministicCandidateAdmissionService:
                     work_intent_id=ids.work_intent,
                     prompt_provenance=_work_intent_provenance(intent_evidence),
                 )
+        assert work_intent is not None
+        context_resolver = request.context_resolver
+        activator = self.domain_intent_activators.get(
+            str(work_intent.get("intent_label") or "")
+        )
+        if activator is not None:
+            try:
+                activated = activator.activate(
+                    candidate=intent_candidate,
+                    work_intent=work_intent,
+                    principal_id=request.owner_subject_id,
+                    resolved_at=now,
+                )
+                activated_work_intent = dict(activated.work_intent)
+                context_resolver = activated.context_resolver
+            except Exception as exc:
+                raise SemanticCandidateAdmissionError(
+                    422,
+                    str(getattr(exc, "error_code", "DOMAIN_INTENT_ACTIVATION_FAILED")),
+                    "The admitted intent could not be deterministically activated.",
+                    False,
+                    semantic_stage="INTENT",
+                ) from exc
+            if persisted_work_intent and activated_work_intent != work_intent:
+                raise _error(
+                    409,
+                    "DOMAIN_INTENT_ACTIVATION_DRIFT",
+                    "Persisted domain intent activation does not match replay.",
+                )
+            work_intent = activated_work_intent
+        if not persisted_work_intent:
             work_intent = self.work_intents.save(
                 tenant_id=request.tenant_id,
                 work_intent=work_intent,
@@ -452,7 +488,7 @@ class DeterministicCandidateAdmissionService:
                 source_type=request.planning_source_type,
                 source_ref=request.source_ref,
                 runtime_policy_ref=request.runtime_policy_ref,
-                resolver=request.context_resolver,
+                resolver=context_resolver,
                 request_id=request.request_id,
                 trace_id=request.trace_id,
                 planning_mode=self.mode,
@@ -486,7 +522,7 @@ class DeterministicCandidateAdmissionService:
                     source_ref=request.source_ref,
                     work_intent=work_intent,
                     runtime_policy_ref=request.runtime_policy_ref,
-                    resolver=request.context_resolver,
+                    resolver=context_resolver,
                     candidate_hints=context_candidate_hints(
                         context_candidate,
                         candidate_hash=context_evidence["candidate_hash"],
@@ -907,6 +943,7 @@ def attach_semantic_candidate_admission(
     prompt_store: Any,
     environ: Mapping[str, str] | None = None,
 ) -> SemanticCandidateAdmissionRuntime:
+    resolved_environ = os.environ if environ is None else environ
     mode = planning_mode(environ)
     if mode == "disabled":
         runtime = SemanticCandidateAdmissionRuntime(
@@ -957,6 +994,10 @@ def attach_semantic_candidate_admission(
         )
     client = build_default_ae_mo_generation_client(environ)
     calibrations = SemanticCalibrationRegistry.from_environment(environ)
+    from nex_ae_api.p8_demo_semantic_activation import (
+        build_p8_demo_intent_activators,
+    )
+
     service = DeterministicCandidateAdmissionService(
         mode=mode,
         admission=admission,
@@ -972,6 +1013,9 @@ def attach_semantic_candidate_admission(
         validations=SqlAlchemyPlanValidationRepository(session_factory),
         executable_plans=SqlAlchemyExecutablePlanRepository(session_factory),
         executions=SqlAlchemyAgentExecutionRepository(session_factory),
+        domain_intent_activators=build_p8_demo_intent_activators(
+            resolved_environ
+        ),
     )
     runtime = SemanticCandidateAdmissionRuntime(
         mode=mode,

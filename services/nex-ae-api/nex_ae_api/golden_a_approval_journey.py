@@ -114,7 +114,7 @@ class GoldenAPlanningJourneyService:
             activation=activation,
             attachment_manifest=attachment_manifest,
         )
-        resolver = _GoldenAContextResolver(
+        resolver = GoldenAContextResolver(
             activation=activation,
             authority_ref=authority_ref,
             resolved_at=received_at,
@@ -193,7 +193,7 @@ class GoldenAPlanningJourneyService:
 
 
 @dataclass(frozen=True)
-class _GoldenAContextResolver:
+class GoldenAContextResolver:
     activation: Mapping[str, Any] = field(repr=False)
     authority_ref: str
     resolved_at: str
