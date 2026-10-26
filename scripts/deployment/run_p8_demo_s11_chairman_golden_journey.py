@@ -415,7 +415,7 @@ def _fixture_visibility(engines: Mapping[str, Any]) -> dict[str, int]:
                 "SELECT "
                 "(SELECT count(*) FROM eos_nvt_project WHERE tenant_id=:tenant), "
                 "(SELECT count(*) FROM eos_project WHERE tenant_id=:tenant), "
-                "(SELECT count(*) FROM eos_project_membership WHERE tenant_id=:tenant), "
+                "(SELECT count(*) FROM eos_project_member WHERE tenant_id=:tenant), "
                 "(SELECT count(*) FROM eos_account WHERE tenant_id=:tenant), "
                 "(SELECT count(*) FROM eos_org_unit WHERE tenant_id=:tenant)"
             ),

@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import run_p8_demo_s11_chairman_golden_journey as acceptance
+from sqlalchemy import create_engine, text
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -122,3 +123,59 @@ def test_s11_public_browser_projection_strips_runtime_lineage() -> None:
             "actual_playwright": True,
         }
     )
+
+
+def test_s11_fixture_visibility_uses_canonical_eos_project_member_table() -> None:
+    oa_engine = create_engine("sqlite+pysqlite:///:memory:")
+    eos_engine = create_engine("sqlite+pysqlite:///:memory:")
+    with oa_engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE oa_local_credentials ("
+                "tenant_id TEXT NOT NULL, status TEXT NOT NULL)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO oa_local_credentials (tenant_id, status) "
+                "VALUES ('VO00', 'ACTIVE'), ('VO00', 'ACTIVE')"
+            )
+        )
+    with eos_engine.begin() as connection:
+        for table in (
+            "eos_nvt_project",
+            "eos_project",
+            "eos_project_member",
+            "eos_account",
+            "eos_org_unit",
+        ):
+            connection.execute(
+                text(f"CREATE TABLE {table} (tenant_id TEXT NOT NULL)")
+            )
+        connection.execute(text("INSERT INTO eos_nvt_project VALUES ('VO00')"))
+        connection.execute(
+            text("INSERT INTO eos_project VALUES ('VO00'), ('VO00')")
+        )
+        connection.execute(
+            text("INSERT INTO eos_project_member VALUES ('VO00'), ('VO00')")
+        )
+        connection.execute(
+            text("INSERT INTO eos_account VALUES ('VO00'), ('VO00')")
+        )
+        connection.execute(
+            text(
+                "INSERT INTO eos_org_unit VALUES "
+                "('VO00'), ('VO00'), ('VO00'), ('VO00')"
+            )
+        )
+
+    assert acceptance._fixture_visibility(
+        {"nex-oa": oa_engine, "nex-eos": eos_engine}
+    ) == {
+        "active_employee_count": 2,
+        "nvt_project_count": 1,
+        "project_count": 2,
+        "project_membership_count": 2,
+        "account_count": 2,
+        "organization_unit_count": 4,
+    }
