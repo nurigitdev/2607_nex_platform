@@ -284,11 +284,13 @@ export async function runP8DemoS11PostRestartRecovery({
   let browser = null;
   let context = null;
   let stage = "launch";
+  const responses = [];
   try {
     const playwright = await importPlaywright();
     browser = await launchBrowser(playwright, environ);
     context = await browser.newContext(browserContextOptions());
     const page = await configuredPage(context);
+    observeApiResponses(page, responses);
     stage = "requester_login";
     await page.goto(environ[ENV.webUrl], { waitUntil: "domcontentloaded", timeout });
     await login(page, {
@@ -297,13 +299,15 @@ export async function runP8DemoS11PostRestartRecovery({
       password: environ[ENV.requesterPassword],
       timeout
     });
-    stage = "authoritative_result_recovery";
+    stage = "authoritative_result_read";
     const projection = await waitForAgentResult(
       page,
       environ[ENV.recoveryInteractionId],
       timeout
     );
+    stage = "result_render";
     const rendered = await renderAgentResult(page, projection);
+    stage = "requester_logout";
     await logout(page, timeout);
     const checks = {
       authenticated_after_restart: true,
@@ -331,7 +335,12 @@ export async function runP8DemoS11PostRestartRecovery({
     assertP8DemoS11EvidenceRedacted(evidence, environ);
     return evidence;
   } catch (error) {
-    const evidence = failure(safeFailureCode(error), { stage, recovery_mode: true });
+    const evidence = failure(safeFailureCode(error), {
+      stage,
+      recovery_mode: true,
+      response_count: responses.length,
+      recent_api_responses: responses.slice(-5)
+    });
     assertP8DemoS11EvidenceRedacted(evidence, environ);
     return evidence;
   } finally {
@@ -419,8 +428,17 @@ async function waitForAgentResult(page, interactionId, timeout) {
     interactionId
   )}/agent-result`;
   const deadline = Date.now() + timeout;
+  let transientFetchFailures = 0;
   while (Date.now() < deadline) {
-    const response = await browserJson(page, route);
+    let response;
+    try {
+      response = await browserJson(page, route);
+    } catch (error) {
+      if (!isTransientBrowserFetchFailure(error)) throw error;
+      transientFetchFailures += 1;
+      await page.waitForTimeout(750);
+      continue;
+    }
     if (response.status === 200 && response.payload?.terminal === true) {
       return response.payload;
     }
@@ -429,7 +447,13 @@ async function waitForAgentResult(page, interactionId, timeout) {
     }
     await page.waitForTimeout(750);
   }
+  if (transientFetchFailures > 0) throw new Error("AgentResultTransportTimeout");
   throw new Error("AgentResultTimeout");
+}
+
+function isTransientBrowserFetchFailure(error) {
+  const value = String(error?.message || error || "");
+  return /Failed to fetch|NetworkError|ERR_(?:CONNECTION|NETWORK|HTTP2)/i.test(value);
 }
 
 async function renderAgentResult(page, projection) {
@@ -490,6 +514,9 @@ function positiveTimeout(value) {
 
 function safeFailureCode(error) {
   const value = String(error?.message || error?.constructor?.name || "playwright_failed");
+  if (/Failed to fetch|NetworkError|ERR_(?:CONNECTION|NETWORK|HTTP2)/i.test(value)) {
+    return "BrowserFetchFailed";
+  }
   return /^[A-Za-z][A-Za-z0-9]{0,95}$/.test(value) ? value : "playwright_failed";
 }
 

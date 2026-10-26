@@ -45,6 +45,31 @@ test("S11 runner fails closed before importing Playwright", async () => {
   assert.equal(imported, false);
 });
 
+test("S11 runner classifies transient browser fetch failures safely", async () => {
+  const result = await runP8DemoS11ChairmanGoldenJourney({
+    environ: {
+      NEX_P8_DEMO_S11_WEB_URL: "https://ae.nex-staging.test:8443",
+      NEX_P8_DEMO_S11_TENANT_ID: "VO00",
+      NEX_P8_DEMO_S11_REQUESTER_EMPLOYEE_ID: "1001",
+      NEX_P8_DEMO_S11_REQUESTER_PASSWORD: "requester-password",
+      NEX_P8_DEMO_S11_APPROVER_EMPLOYEE_ID: "2001",
+      NEX_P8_DEMO_S11_APPROVER_PASSWORD: "approver-password",
+      NEX_P8_DEMO_S11_PROMPT: "protected prompt"
+    },
+    importPlaywright: async () => ({
+      chromium: {
+        launch: async () => {
+          throw new Error("page.evaluate: TypeError: Failed to fetch");
+        }
+      }
+    })
+  });
+
+  assert.equal(result.status, "FAIL");
+  assert.equal(result.failure_code, "BrowserFetchFailed");
+  assert.equal(result.observations.stage, "launch");
+});
+
 test("S11 public evidence strips runtime identifiers and rejects secrets", () => {
   const publicEvidence = publicP8DemoS11PlaywrightEvidence({
     status: "PASS",
