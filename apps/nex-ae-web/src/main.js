@@ -2583,6 +2583,23 @@ function applyTerminalInteractionAgentResult(message) {
   ]);
   workspaceState.artifact.handoffStatus = "NOT_REQUIRED";
   workspaceState.artifact.citationStatus = "NOT_REQUIRED";
+  workspaceState.generationLifecycle = {
+    ...workspaceState.generationLifecycle,
+    phase: succeeded ? "completed" : "failed",
+    lifecycleStatus: resultStatus,
+    currentStage: message.agentResult.executionPhase,
+    progressMode: "DETERMINATE",
+    progressPercent: 100,
+    messageKey: succeeded
+      ? "generation.progress.completed"
+      : "generation.progress.failed",
+    cancellable: false,
+    retryable: false,
+    terminal: true,
+    nextPollAfterSeconds: null,
+    activeAction: null,
+    errorStatus: succeeded ? null : resultStatus
+  };
   workspaceState.generationPresentation = {
     ...workspaceState.generationPresentation,
     displayMode: "AGENT_RESULT",

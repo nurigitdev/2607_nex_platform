@@ -347,7 +347,7 @@ export async function runP8DemoS11PostRestartRecovery({
       timeout
     );
     stage = "result_render";
-    const rendered = await renderAgentResult(page, projection);
+    const rendered = await renderRecoveredAgentResult(page, projection);
     await screenCapture.capture(page, "requester-result");
     const checks = {
       authenticated_after_restart: true,
@@ -570,6 +570,25 @@ async function inspectRenderedAgentResult(page) {
     );
     return Boolean(card && card.textContent.includes("업무 처리 결과"));
   });
+}
+
+async function renderRecoveredAgentResult(page, projection) {
+  return page.evaluate(async value => {
+    const module = await import("/src/interactionAgentResultClient.js");
+    const projected = module.projectInteractionAgentResult(value, {
+      clientMode: "fetch",
+      route: "owner-scoped-agent-result"
+    });
+    const container = document.querySelector("#message-list");
+    container.insertAdjacentHTML(
+      "beforeend",
+      module.renderInteractionAgentResult(projected)
+    );
+    const card = container.querySelector(
+      ".agent-result[data-agent-result-state='SUCCEEDED']"
+    );
+    return Boolean(card && card.textContent.includes("업무 처리 결과"));
+  }, projection);
 }
 
 async function browserJson(page, route, { method = "GET", body = null } = {}) {

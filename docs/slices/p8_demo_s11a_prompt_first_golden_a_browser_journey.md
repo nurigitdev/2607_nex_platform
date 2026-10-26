@@ -36,7 +36,8 @@ Those capabilities remain available from their authenticated navigation views.
   does not continue through the response/citation polling path owned by
   ordinary Chat/RAG generation.
 - The pending AgentResult card is updated in place at terminal completion and
-  drives the workspace status to `COMPLETED` without adding a duplicate card.
+  drives the workspace and generation-control status to `COMPLETED` without
+  adding a duplicate card or retaining a stale `PENDING` indicator.
 - Screen evidence includes the empty workspace, prompt-ready state, and
   prompt-submitted state in addition to approval, result, logout, and restart
   recovery transitions.
