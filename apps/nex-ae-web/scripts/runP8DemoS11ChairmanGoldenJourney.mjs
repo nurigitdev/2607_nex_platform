@@ -37,6 +37,11 @@ const RECOVERY_REQUIRED_ENV = [
   ENV.requesterPassword,
   ENV.recoveryInteractionId
 ];
+const REDACTED_ENV = [
+  ENV.requesterPassword,
+  ENV.approverPassword,
+  ENV.prompt
+];
 const DEFAULT_TIMEOUT_MS = 300_000;
 
 export function p8DemoS11RuntimeConfig() {
@@ -601,7 +606,7 @@ export function publicP8DemoS11PlaywrightEvidence(evidence) {
 
 export function assertP8DemoS11EvidenceRedacted(evidence, environ = process.env) {
   const serialized = JSON.stringify(evidence);
-  for (const name of [...new Set([...REQUIRED_ENV, ...RECOVERY_REQUIRED_ENV])]) {
+  for (const name of REDACTED_ENV) {
     const value = environ[name];
     if (value && value.length >= 8 && serialized.includes(value)) {
       throw new Error(`P8-DEMO-S11 evidence leaked ${name}`);

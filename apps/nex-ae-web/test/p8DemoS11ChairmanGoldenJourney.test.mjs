@@ -81,6 +81,15 @@ test("S11 public evidence strips runtime identifiers and rejects secrets", () =>
   });
   assert.equal("runtime" in publicEvidence, false);
   assert.match(formatP8DemoS11Summary(publicEvidence), /playwright=pass/);
+  assert.doesNotThrow(() => assertP8DemoS11EvidenceRedacted(
+    {
+      status: "PASS",
+      runtime: { interaction_id: "recovery-interaction-id" }
+    },
+    {
+      NEX_P8_DEMO_S11_RECOVERY_INTERACTION_ID: "recovery-interaction-id"
+    }
+  ));
   assert.throws(
     () => assertP8DemoS11EvidenceRedacted(
       { status: "PASS", leaked: "demo-password-value" },
