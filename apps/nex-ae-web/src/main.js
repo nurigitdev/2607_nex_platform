@@ -112,6 +112,7 @@ import {
   buildSessionRouteGuardSummary,
   ownerScopeFromSessionState
 } from "./sessionRouteGuard.js";
+import { buildSessionIdentityPresentation } from "./sessionIdentityPresentation.js";
 import {
   createAnonymousSessionState,
   createExpiredSessionState,
@@ -458,6 +459,8 @@ const credentialLoginSummary = document.querySelector("#credential-login-summary
 const sessionRouteGuardSummary = document.querySelector("#session-route-guard-summary");
 const credentialLoginSubmitButton = document.querySelector("#credential-login-submit-button");
 const credentialLogoutButton = document.querySelector("#credential-logout-button");
+const currentSessionUser = document.querySelector("#current-session-user");
+const currentSessionUserAccount = document.querySelector("#current-session-user-account");
 const chatPane = document.querySelector("#golden-chat");
 const composer = document.querySelector("#composer");
 const promptInput = document.querySelector("#prompt");
@@ -1119,12 +1122,21 @@ async function logoutCredentialSession() {
 function renderCredentialLoginSurface() {
   const summary = buildCredentialLoginSurfaceSummary(workspaceState.credentialLogin);
   const guard = buildSessionRouteGuardSummary(workspaceState.sessionRouteGuard);
+  const identity = buildSessionIdentityPresentation({
+    sessionState: workspaceState.sessionState,
+    employeeId: workspaceState.credentialLogin.employeeId
+  });
   credentialLoginStatus.textContent = statusLabel(summary.status);
   credentialLoginStatus.className = `badge ${badgeClass(summary.status)}`;
   credentialTenantInput.value = workspaceState.credentialLogin.tenantId;
   credentialEmployeeInput.value = workspaceState.credentialLogin.employeeId;
   credentialLogoutButton.hidden = workspaceState.sessionState?.status !== "authenticated";
   credentialLogoutButton.disabled = workspaceState.sessionState?.status !== "authenticated";
+  currentSessionUser.hidden = !identity.visible;
+  currentSessionUserAccount.textContent = identity.account;
+  currentSessionUser.title = identity.subjectRef
+    ? `OA subject: ${identity.subjectRef}`
+    : "";
   credentialLoginFeedback.dataset.severity =
     summary.status === "FAILED"
       ? "danger"
@@ -1893,6 +1905,11 @@ function renderTimeline() {
     const [eventType, stage, status] = event;
     const item = document.createElement("li");
     item.className = status === "COMPLETED" ? "is-complete" : "is-running";
+    item.setAttribute(
+      "aria-label",
+      `${stage}, ${eventType}, ${statusLabel(status)}`
+    );
+    item.title = `${stage} · ${eventType} · ${statusLabel(status)}`;
     item.innerHTML = `
       <span>${index + 1}</span>
       <div>

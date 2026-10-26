@@ -109,11 +109,19 @@
       <main class="workspace" id="main-workspace" tabindex="-1">
         <header class="topbar" id="golden-topbar">
           <div>
-            <p class="eyebrow">Slice 0227</p>
-            <h1 data-i18n="app.workspace">NeX-Platform 작업면</h1>
+            <h1 data-i18n="app.workspace">NeX-Platform</h1>
           </div>
           <div class="topbar-actions">
             <div class="status-strip" id="status-strip" aria-live="polite"></div>
+            <div
+              class="current-session-user"
+              id="current-session-user"
+              aria-live="polite"
+              hidden
+            >
+              <span data-i18n="auth.current_user">접속 사용자</span>
+              <strong id="current-session-user-account"></strong>
+            </div>
             <button id="credential-logout-button" type="button">
               <span data-i18n="auth.logout">로그아웃</span>
             </button>

@@ -62,11 +62,20 @@ export async function runAuthenticationFirstShellPlaywrightSmoke({
     const authenticated = await page.evaluate(() => ({
       activeView: document.querySelector("#authenticated-shell")?.dataset.activeView,
       authenticationHidden: document.querySelector("#authentication-shell")?.hidden === true,
+      applicationTitle: document.querySelector("#golden-topbar h1")?.textContent?.trim(),
+      currentUserVisible:
+        document.querySelector("#current-session-user")?.hidden === false,
+      currentUserAccount:
+        document.querySelector("#current-session-user-account")?.textContent?.trim(),
       employeeOperationsHidden:
         document.querySelector('[data-shell-view="operations"]')?.hidden === true,
       visibleProtectedPanelCount: [...document.querySelectorAll("[data-shell-view-panel]")]
         .filter(panel => !panel.hidden).length,
-      logoutVisible: !document.querySelector("#credential-logout-button")?.hidden
+      logoutVisible: !document.querySelector("#credential-logout-button")?.hidden,
+      timelineTopOffsets: [...document.querySelectorAll("#progress-timeline li")]
+        .map(item => Math.round(item.getBoundingClientRect().top)),
+      timelinePanelHeight:
+        Math.round(document.querySelector("#golden-timeline")?.getBoundingClientRect().height || 0)
     }));
 
     await page.click('[data-shell-view="workspace"]');
@@ -74,7 +83,11 @@ export async function runAuthenticationFirstShellPlaywrightSmoke({
     const mobile = await page.evaluate(() => ({
       horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
       chatWidth: document.querySelector("#golden-chat")?.getBoundingClientRect().width || 0,
-      viewportWidth: window.innerWidth
+      viewportWidth: window.innerWidth,
+      timelineTopOffsets: [...document.querySelectorAll("#progress-timeline li")]
+        .map(item => Math.round(item.getBoundingClientRect().top)),
+      timelinePanelHeight:
+        Math.round(document.querySelector("#golden-timeline")?.getBoundingClientRect().height || 0)
     }));
 
     await page.click("#credential-logout-button");
@@ -95,12 +108,22 @@ export async function runAuthenticationFirstShellPlaywrightSmoke({
       anonymous_service_probes_absent: protectedServiceRequests.length === 0,
       login_opens_authenticated_shell:
         authenticated.authenticationHidden && authenticated.logoutVisible,
+      authenticated_header_is_product_named:
+        authenticated.applicationTitle === "NeX-Platform",
+      current_account_precedes_logout:
+        authenticated.currentUserVisible &&
+        authenticated.currentUserAccount === "EMP-S42A-SMOKE",
       employee_operations_hidden: authenticated.employeeOperationsHidden,
       authenticated_views_routed:
         routedViews.length === 5 && new Set(routedViews).size === 5,
       one_view_surface_active: authenticated.visibleProtectedPanelCount === 1,
+      desktop_timeline_is_single_row:
+        new Set(authenticated.timelineTopOffsets).size === 1 &&
+        authenticated.timelinePanelHeight <= 72,
       mobile_has_no_horizontal_overflow:
         !mobile.horizontalOverflow && mobile.chatWidth <= mobile.viewportWidth,
+      mobile_timeline_is_single_row:
+        new Set(mobile.timelineTopOffsets).size === 1 && mobile.timelinePanelHeight <= 72,
       logout_returns_to_login: loggedOut.applicationHidden,
       logout_clears_protected_surfaces:
         loggedOut.protectedMessageCount === 0 && loggedOut.protectedApprovalCount === 0,
@@ -121,7 +144,9 @@ export async function runAuthenticationFirstShellPlaywrightSmoke({
       observations: {
         routed_view_count: routedViews.length,
         protected_service_request_count: protectedServiceRequests.length,
-        mobile_viewport_width: mobile.viewportWidth
+        mobile_viewport_width: mobile.viewportWidth,
+        desktop_timeline_height: authenticated.timelinePanelHeight,
+        mobile_timeline_height: mobile.timelinePanelHeight
       },
       checks
     };
