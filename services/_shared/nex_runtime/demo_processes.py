@@ -259,4 +259,3 @@ def demo_process_manifest_projection(
         ),
         "in_test_function_calls_admitted": False,
     }
-
