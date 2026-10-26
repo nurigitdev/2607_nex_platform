@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import nex_ae_api.auth_sessions as ae_auth_sessions
+import nex_ae_api.route_auth as ae_route_auth
 from fastapi import FastAPI, Header, Request
 from fastapi.testclient import TestClient
-
-import nex_ae_api.route_auth as ae_route_auth
 from nex_ae_api.auth_guard import BrowserAuthError
 from nex_ae_api.auth_sessions import AUTH_SESSION_MODE_OA, SESSION_COOKIE_NAME
 from nex_ae_api.route_auth import (
     AeFacadeRouteAuthContext,
     authorize_ae_facade_route_request,
 )
-from nex_runtime import DEFAULT_USER_SCOPE, issue_mock_service_token, issue_mock_user_token
+from nex_runtime import (
+    DEFAULT_USER_SCOPE,
+    issue_mock_service_token,
+    issue_mock_user_token,
+)
 
 
 def test_facade_route_auth_accepts_service_claim_and_user_claim() -> None:
@@ -133,6 +137,54 @@ def test_facade_route_auth_accepts_oa_backed_browser_cookie() -> None:
     assert accepted.json()["subject_ref"] == {"type": "oa.user", "id": "user-oa"}
     assert rejected.status_code == 401
     assert rejected.json()["error_code"] == "ae.oa_session_inactive"
+
+
+def test_facade_route_auth_uses_runtime_oa_session_mode(
+    monkeypatch,
+) -> None:
+    class FakeOaSessionClient:
+        def introspect_session(self, session_id: str, **kwargs):
+            assert session_id == "oa-session-runtime"
+            return {
+                "active": True,
+                "inactive_reason": None,
+                "session": {
+                    "browser_session_schema_version": "oa_browser_session.v1",
+                    "session_id": session_id,
+                    "status": "ACTIVE",
+                    "issuer": "nex-oa",
+                    "audience": "nex-ae-api",
+                    "token_use": "user",
+                    "tenant_ref": {"type": "oa.tenant", "id": "tenant-runtime"},
+                    "subject_ref": {"type": "oa.user", "id": "user-runtime"},
+                    "scopes": [DEFAULT_USER_SCOPE],
+                    "roles": ["employee"],
+                    "issued_at": "2026-08-12T12:00:00Z",
+                    "expires_at": "2026-08-12T13:00:00Z",
+                    "auth_time": "2026-08-12T12:00:00Z",
+                },
+            }
+
+    monkeypatch.setenv("NEX_AE_AUTH_SESSION_MODE", AUTH_SESSION_MODE_OA)
+    monkeypatch.setattr(
+        ae_auth_sessions,
+        "build_default_oa_user_session_client",
+        FakeOaSessionClient,
+    )
+    app = FastAPI()
+
+    @app.get("/guard")
+    def guarded(request: Request, authorization: str | None = Header(default=None)):
+        result = authorize_ae_facade_route_request(request, authorization)
+        return result.to_wire() if hasattr(result, "to_wire") else result
+
+    client = TestClient(app)
+    client.cookies.set(SESSION_COOKIE_NAME, "oa-session-runtime")
+    response = client.get("/guard")
+
+    assert response.status_code == 200
+    assert response.json()["auth_mode"] == "browser_user"
+    assert response.json()["tenant_ref"]["id"] == "tenant-runtime"
 
 
 def test_facade_route_auth_maps_browser_context_build_failure(monkeypatch) -> None:

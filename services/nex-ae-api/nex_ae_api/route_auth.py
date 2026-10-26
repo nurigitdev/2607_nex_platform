@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -22,6 +23,7 @@ from nex_ae_api.auth_guard import (
     build_browser_user_auth_context,
 )
 from nex_ae_api.auth_sessions import (
+    AUTH_SESSION_MODE_ENV,
     SESSION_COOKIE_NAME,
     BrowserSessionFacadeError,
     validate_browser_session_credentials,
@@ -108,7 +110,7 @@ def authorize_ae_facade_route_request(
         request_id=request_id_from_headers(request),
         trace_id=trace_id_from_headers(request),
         oa_session_client=oa_session_client,
-        session_mode=session_mode,
+        session_mode=session_mode or os.getenv(AUTH_SESSION_MODE_ENV),
     )
     if not isinstance(user_result, BrowserSessionFacadeError):
         try:
