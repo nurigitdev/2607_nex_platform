@@ -13,6 +13,7 @@ AE_OUTBOUND_TOKEN_ENV_BY_AUDIENCE = {
     "nex-ag": "NEX_AE_TO_AG_SERVICE_TOKEN",
     "nex-wc": "NEX_AE_TO_WC_SERVICE_TOKEN",
     "nex-eos": "NEX_AE_TO_EOS_SERVICE_TOKEN",
+    "nex-wa": "NEX_AE_TO_WA_SERVICE_TOKEN",
 }
 
 

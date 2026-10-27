@@ -5,7 +5,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy import text
@@ -28,11 +28,21 @@ class WorkspaceResultPublicationError(Exception):
         return self.detail
 
 
+class AgentResultCompletionNotifier(Protocol):
+    def notify_agent_result(self, *, tenant_id: str, result_id: str) -> object: ...
+
+
 class SqlAlchemyWorkspaceResultPublisher:
     """Publishes an IA AgentResult into its owner-private workspace atomically."""
 
-    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        completion_notifier: AgentResultCompletionNotifier | None = None,
+    ) -> None:
         self._session_factory = session_factory
+        self._completion_notifier = completion_notifier
 
     def publish(
         self,
@@ -59,12 +69,14 @@ class SqlAlchemyWorkspaceResultPublisher:
                 if record["delivery_state"] == "ACKNOWLEDGED":
                     _require_replay_state(record, existing_activity, activity)
                     session.commit()
-                    return _publication_projection(
+                    projection = _publication_projection(
                         record,
                         activity_id=activity["activity_id"],
                         created=False,
                         replayed=True,
                     )
+                    self._notify(record)
+                    return projection
                 if record["delivery_state"] not in {"PENDING", "RETRY_PENDING"}:
                     raise WorkspaceResultPublicationError(
                         "ae.workspace_result_delivery_state_invalid",
@@ -152,12 +164,14 @@ class SqlAlchemyWorkspaceResultPublisher:
                         True,
                     )
                 session.commit()
-                return _publication_projection(
+                projection = _publication_projection(
                     record,
                     activity_id=activity["activity_id"],
                     created=created,
                     replayed=False,
                 )
+                self._notify(record)
+                return projection
         except WorkspaceResultPublicationError:
             raise
         except SQLAlchemyError as exc:
@@ -166,6 +180,17 @@ class SqlAlchemyWorkspaceResultPublisher:
                 "AE workspace result store is unavailable.",
                 True,
             ) from exc
+
+    def _notify(self, record: Mapping[str, Any]) -> None:
+        if self._completion_notifier is not None:
+            try:
+                self._completion_notifier.notify_agent_result(
+                    tenant_id=str(record["tenant_id"]),
+                    result_id=str(record["result_id"]),
+                )
+            except Exception:  # noqa: BLE001,S110 - post-commit best effort
+                # Source completion is authoritative; WA is reconciled separately.
+                pass
 
 
 class SqlAlchemyInstalledIaResultCloser:

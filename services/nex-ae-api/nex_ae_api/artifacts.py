@@ -1348,9 +1348,11 @@ class SqlAlchemyArtifactRecordStore:
         session_factory: sessionmaker[Session],
         *,
         rendered_storage: RenderedArtifactStorage | None = None,
+        ready_notifier: Any | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._rendered_storage = rendered_storage or InMemoryRenderedArtifactStorage()
+        self._ready_notifier = ready_notifier
         self.rendered_markdown = getattr(self._rendered_storage, "rendered_markdown", {})
         self.rendered_artifact_files = getattr(
             self._rendered_storage,
@@ -1839,7 +1841,17 @@ class SqlAlchemyArtifactRecordStore:
                     artifact_file,
                     payload,
                 )
-        return self.save(record)
+        saved = self.save(record)
+        if self._ready_notifier is not None:
+            try:
+                self._ready_notifier.notify_ready_artifact(
+                    saved,
+                    artifact_version_id=str(artifact_version["artifact_version_id"]),
+                )
+            except Exception:  # noqa: BLE001,S110 - post-commit best effort
+                # READY is authoritative; WA notification is best-effort.
+                pass
+        return saved
 
     def apply_lifecycle_action(
         self,

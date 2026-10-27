@@ -4,7 +4,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -22,6 +22,10 @@ class WorkResultPublicationError(Exception):
 
     def __str__(self) -> str:
         return self.detail
+
+
+class AgentResultCompletionNotifier(Protocol):
+    def notify_agent_result(self, *, tenant_id: str, result_id: str) -> object: ...
 
 
 class HttpWcWorkResultClient:
@@ -124,9 +128,11 @@ class SqlAlchemyWcWorkResultPublisher:
         self,
         session_factory: sessionmaker[Session],
         client: HttpWcWorkResultClient,
+        completion_notifier: AgentResultCompletionNotifier | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._client = client
+        self._completion_notifier = completion_notifier
 
     def publish(
         self,
@@ -148,6 +154,7 @@ class SqlAlchemyWcWorkResultPublisher:
                 False,
             )
         if record["state"] == "ACKNOWLEDGED":
+            self._notify(record)
             return _publication_result(record, acknowledged=True)
         if record["state"] not in {"PENDING", "RETRY_PENDING"}:
             raise WorkResultPublicationError(
@@ -229,7 +236,7 @@ class SqlAlchemyWcWorkResultPublisher:
             raise
         except SQLAlchemyError as exc:
             raise _store_unavailable() from exc
-        return {
+        result = {
             "schema_version": "ae_wc_work_result_publication.v1",
             "tenant_id": tenant_id,
             "delivery_id": delivery_id,
@@ -245,6 +252,19 @@ class SqlAlchemyWcWorkResultPublisher:
             ),
             "created": bool(accepted["created"]),
         }
+        self._notify(record)
+        return result
+
+    def _notify(self, record: Mapping[str, Any]) -> None:
+        if self._completion_notifier is not None:
+            try:
+                self._completion_notifier.notify_agent_result(
+                    tenant_id=str(record["tenant_id"]),
+                    result_id=str(record["result_id"]),
+                )
+            except Exception:  # noqa: BLE001,S110 - post-commit best effort
+                # Source completion is authoritative; WA is reconciled separately.
+                pass
 
 
 def build_wc_work_result(

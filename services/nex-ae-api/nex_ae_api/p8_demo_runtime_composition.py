@@ -8,6 +8,7 @@ from typing import Any
 
 from nex_runtime.demo_process_runtime import DemoProcessDatabaseResource
 
+from nex_ae_api.agent_results import SqlAlchemyAgentResultRepository
 from nex_ae_api.agent_runtime_dispatcher import (
     SqlAlchemyAgentRuntimeAssignmentSource,
     SqlAlchemyAgentRuntimeDispatcher,
@@ -30,7 +31,14 @@ from nex_ae_api.step_executors import (
     P5StepExecutionWorker,
     default_p6_executor_registry,
 )
-from nex_ae_api.workspace_result_publication import SqlAlchemyInstalledIaResultCloser
+from nex_ae_api.wa_completion_notifications import (
+    build_ae_wa_post_completion_notifier,
+)
+from nex_ae_api.wa_source_projections import SqlAlchemyAgentResultWaProjectionSource
+from nex_ae_api.workspace_result_publication import (
+    SqlAlchemyInstalledIaResultCloser,
+    SqlAlchemyWorkspaceResultPublisher,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -178,7 +186,13 @@ def build_installed_p8_runtime_composition(
         heartbeat_emitter=resource.heartbeat,
         executor_kinds=registry.registered_kinds,
         backend_profiles=registry.backend_profiles,
-        result_closer=SqlAlchemyInstalledIaResultCloser(resource.sessions),
+        result_closer=SqlAlchemyInstalledIaResultCloser(
+            resource.sessions,
+            publisher=SqlAlchemyWorkspaceResultPublisher(
+                resource.sessions,
+                completion_notifier=_optional_wa_notifier(resource, environ),
+            ),
+        ),
     )
 
 
@@ -228,6 +242,25 @@ def _controlled_skill_config(
         eos_base_url=_text(environ, "NEX_EOS_BASE_URL"),
         ae_to_oa_service_token=_text(environ, "NEX_AE_TO_OA_SERVICE_TOKEN"),
         ae_to_eos_service_token=_text(environ, "NEX_AE_TO_EOS_SERVICE_TOKEN"),
+    )
+
+
+def _optional_wa_notifier(
+    resource: DemoProcessDatabaseResource,
+    environ: Mapping[str, str],
+):
+    profile = str(
+        environ.get("NEX_SERVICE_TOKEN_ROLLOUT_PROFILE") or "TEST_MOCK"
+    ).strip().upper()
+    if profile != "TEST_MOCK" and not str(
+        environ.get("NEX_AE_TO_WA_SERVICE_TOKEN") or ""
+    ).strip():
+        return None
+    return build_ae_wa_post_completion_notifier(
+        agent_results=SqlAlchemyAgentResultWaProjectionSource(
+            SqlAlchemyAgentResultRepository(resource.sessions)
+        ),
+        environ=environ,
     )
 
 
