@@ -5,6 +5,11 @@ from .admission import (
     WaEvidenceAdmissionService,
     WorkAdmissionError,
 )
+from .agent_result_source import (
+    AeAgentResultSourceAdapter,
+    HttpAeAgentResultProjectionClient,
+    HttpEosProjectVerificationClient,
+)
 from .app import create_wa_app
 from .config import WaConfigurationError, WaSettings, load_wa_settings
 from .consumer import (
@@ -139,7 +144,10 @@ __all__ = (
     "WORK_EVIDENCE_CLASSIFICATIONS",
     "WORK_EVIDENCE_SOURCE_TYPES",
     "WORK_EVIDENCE_STATUSES",
+    "AeAgentResultSourceAdapter",
     "ControlledWaEvidenceSourceAdapter",
+    "HttpAeAgentResultProjectionClient",
+    "HttpEosProjectVerificationClient",
     "NormalizedEvidenceAdmission",
     "SqlAlchemyWaJobFenceStore",
     "SqlAlchemyWorkAssetRepository",
