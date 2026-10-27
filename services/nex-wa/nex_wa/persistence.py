@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .admission import WaEvidenceAdmissionService
 from .config import DATABASE_ENV, SERVICE_ID
+from .job_recovery import SqlAlchemyWaJobFenceStore
 from .work_assets import SqlAlchemyWorkAssetRepository
 from .work_evidence import SqlAlchemyWorkEvidenceRepository
 
@@ -57,6 +58,7 @@ class WaPersistenceRuntime:
     api_session_factory: sessionmaker[Session]
     worker_session_factory: sessionmaker[Session]
     job_queue: SqlAlchemyJobQueue
+    job_fence_store: SqlAlchemyWaJobFenceStore
     worker_heartbeat_store: SqlAlchemyWorkerHeartbeatStore
     work_evidence_repository: SqlAlchemyWorkEvidenceRepository
     work_asset_repository: SqlAlchemyWorkAssetRepository
@@ -120,6 +122,7 @@ class WaPersistenceRuntime:
             "api_pool": asdict(self.api_pool_settings),
             "worker_pool": asdict(self.worker_pool_settings),
             "job_queue": self.job_queue.__class__.__name__,
+            "job_fence_store": self.job_fence_store.__class__.__name__,
             "worker_heartbeat_store": self.worker_heartbeat_store.__class__.__name__,
             "work_evidence_repository": self.work_evidence_repository.__class__.__name__,
             "work_asset_repository": self.work_asset_repository.__class__.__name__,
@@ -183,6 +186,7 @@ def build_wa_persistence_runtime(
         api_session_factory=api_sessions,
         worker_session_factory=worker_sessions,
         job_queue=SqlAlchemyJobQueue(worker_sessions),
+        job_fence_store=SqlAlchemyWaJobFenceStore(worker_sessions),
         worker_heartbeat_store=SqlAlchemyWorkerHeartbeatStore(worker_sessions),
         work_evidence_repository=work_evidence_repository,
         work_asset_repository=work_asset_repository,

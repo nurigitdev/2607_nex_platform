@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -22,6 +22,7 @@ from .intake_contracts import (
     WaIntakeContractError,
     normalize_evidence_intake_request,
 )
+from .job_recovery import WaFencedJobQueue
 from .persistence import WaPersistenceRuntime
 from .source_adapters import (
     WaEvidenceSourceAdapterRegistry,
@@ -61,12 +62,35 @@ class WaEvidenceConsumerRuntime:
     def run_once(self, *, clock=None) -> WorkerJobExecution:
         self.require_ready()
         return run_wa_evidence_consumer_once(
-            queue=self.persistence.job_queue,
+            queue=self._fenced_queue(),
             registry=self.registry,
             heartbeat_emitter=self.heartbeat_emitter,
             service_log_emitter=self.service_log_emitter,
             worker_id=self.config.worker_id,
             clock=clock,
+        )
+
+    def recover_stale(
+        self,
+        *,
+        observed_at: str,
+        stale_after_seconds: int,
+        limit: int = 100,
+    ) -> tuple[dict[str, Any], ...]:
+        self.require_ready()
+        return self.persistence.job_fence_store.recover_stale(
+            observed_at=observed_at,
+            stale_after_seconds=stale_after_seconds,
+            limit=limit,
+        )
+
+    def _fenced_queue(self) -> JobQueue:
+        fence_store = getattr(self.persistence, "job_fence_store", None)
+        if fence_store is None:
+            return self.persistence.job_queue
+        return WaFencedJobQueue(
+            self.persistence.job_queue,
+            fence_store,
         )
 
     def stop(self, *, observed_at: str | None = None) -> tuple[dict[str, Any], ...]:

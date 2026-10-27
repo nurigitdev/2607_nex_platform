@@ -88,6 +88,7 @@ def test_settings_are_fail_closed_and_public_projection_is_safe() -> None:
         "profile": "test",
         "version": "2.1.0-p9-s01",
         "build_sha": "p9s01test",
+        "stale_job_seconds": 300,
         "database_env": "NEX_WA_DATABASE_URL",
     }
 

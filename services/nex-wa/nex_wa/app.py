@@ -17,7 +17,7 @@ from .intake_api import register_evidence_intake_routes
 from .persistence import WaPersistenceRuntime, build_wa_persistence_runtime
 
 SERVICE_SPEC = SERVICE_SPECS["nex-wa"]
-CONTRACT_CATALOG_VERSION = "p9-s08"
+CONTRACT_CATALOG_VERSION = "p9-s09"
 PersistenceBuilder = Callable[..., WaPersistenceRuntime]
 
 
