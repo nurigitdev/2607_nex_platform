@@ -9,6 +9,8 @@ from nex_runtime import (
     DatabasePoolSettings,
     DatabaseSettings,
     SqlAlchemyJobQueue,
+    SqlAlchemyOperationalEventStore,
+    SqlAlchemyServiceLogStore,
     SqlAlchemyUnitOfWork,
     SqlAlchemyWorkerHeartbeatStore,
     build_engine,
@@ -38,6 +40,8 @@ WA_REQUIRED_MIGRATIONS = (
     "2603_wa_work_evidence",
     "2604_wa_work_asset",
     "2605_wa_work_asset_evidence",
+    "2606_wa_operational_events",
+    "2607_wa_service_logs",
 )
 
 EngineFactory = Callable[..., Engine]
@@ -60,6 +64,8 @@ class WaPersistenceRuntime:
     job_queue: SqlAlchemyJobQueue
     job_fence_store: SqlAlchemyWaJobFenceStore
     worker_heartbeat_store: SqlAlchemyWorkerHeartbeatStore
+    operational_event_store: SqlAlchemyOperationalEventStore
+    service_log_store: SqlAlchemyServiceLogStore
     work_evidence_repository: SqlAlchemyWorkEvidenceRepository
     work_asset_repository: SqlAlchemyWorkAssetRepository
     evidence_admission_service: WaEvidenceAdmissionService
@@ -97,6 +103,8 @@ class WaPersistenceRuntime:
             "wa_work_evidence",
             "wa_work_asset",
             "wa_work_asset_evidence",
+            "service_operational_events",
+            "service_log_entries",
         )
         try:
             with self.worker_session_factory() as session:
@@ -124,6 +132,8 @@ class WaPersistenceRuntime:
             "job_queue": self.job_queue.__class__.__name__,
             "job_fence_store": self.job_fence_store.__class__.__name__,
             "worker_heartbeat_store": self.worker_heartbeat_store.__class__.__name__,
+            "operational_event_store": self.operational_event_store.__class__.__name__,
+            "service_log_store": self.service_log_store.__class__.__name__,
             "work_evidence_repository": self.work_evidence_repository.__class__.__name__,
             "work_asset_repository": self.work_asset_repository.__class__.__name__,
             "evidence_admission_service": self.evidence_admission_service.__class__.__name__,
@@ -188,6 +198,8 @@ def build_wa_persistence_runtime(
         job_queue=SqlAlchemyJobQueue(worker_sessions),
         job_fence_store=SqlAlchemyWaJobFenceStore(worker_sessions),
         worker_heartbeat_store=SqlAlchemyWorkerHeartbeatStore(worker_sessions),
+        operational_event_store=SqlAlchemyOperationalEventStore(api_sessions),
+        service_log_store=SqlAlchemyServiceLogStore(api_sessions),
         work_evidence_repository=work_evidence_repository,
         work_asset_repository=work_asset_repository,
         evidence_admission_service=WaEvidenceAdmissionService(

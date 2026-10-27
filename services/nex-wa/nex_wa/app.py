@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import FastAPI
 from nex_runtime import (
     SERVICE_SPECS,
+    OperationalEventEmitter,
     build_service_app,
     build_service_token_admission_runtime,
     register_service_job_control_routes,
@@ -15,11 +16,12 @@ from nex_runtime import (
 from .config import WaSettings, load_wa_settings
 from .intake import WaEvidenceIntakeService
 from .intake_api import register_evidence_intake_routes
+from .operations import SqlAlchemyWaOperationsSource, register_wa_operations_routes
 from .persistence import WaPersistenceRuntime, build_wa_persistence_runtime
 from .read_api import WaCoreReadService, register_core_read_routes
 
 SERVICE_SPEC = SERVICE_SPECS["nex-wa"]
-CONTRACT_CATALOG_VERSION = "p9-s23"
+CONTRACT_CATALOG_VERSION = "p9-s24"
 PersistenceBuilder = Callable[..., WaPersistenceRuntime]
 
 
@@ -65,6 +67,7 @@ def create_wa_app(
     app.state.wa_settings = resolved
     app.state.wa_service_token_admission = token_admission
     app.state.wa_persistence = persistence
+    app.state.nex_persistence = persistence
     app.state.wa_work_evidence_repository = (
         persistence.work_evidence_repository if persistence is not None else None
     )
@@ -83,8 +86,16 @@ def create_wa_app(
         else None
     )
     job_queue = getattr(persistence, "job_queue", None)
+    event_store = getattr(persistence, "operational_event_store", None)
+    event_emitter = (
+        OperationalEventEmitter(service_id=resolved.service_id, store=event_store)
+        if event_store is not None
+        else None
+    )
     app.state.wa_evidence_intake_service = (
-        WaEvidenceIntakeService(job_queue) if job_queue is not None else None
+        WaEvidenceIntakeService(job_queue, event_emitter=event_emitter)
+        if job_queue is not None
+        else None
     )
     if job_queue is not None:
         register_service_job_control_routes(
@@ -94,4 +105,12 @@ def create_wa_app(
         )
     register_evidence_intake_routes(app)
     register_core_read_routes(app)
+    register_wa_operations_routes(
+        app,
+        source=(
+            SqlAlchemyWaOperationsSource(persistence.api_session_factory)
+            if getattr(persistence, "api_session_factory", None) is not None
+            else None
+        ),
+    )
     return app

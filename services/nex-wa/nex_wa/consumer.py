@@ -7,6 +7,7 @@ from typing import Any
 from nex_runtime import (
     InMemoryServiceLogStore,
     JobQueue,
+    OperationalEventEmitter,
     ServiceLogEmitter,
     ServiceLogStore,
     WorkerBatchResult,
@@ -44,6 +45,7 @@ class WaEvidenceConsumerRuntime:
     config: WorkerRunnerConfig
     heartbeat_emitter: WorkerHeartbeatEmitter
     service_log_emitter: ServiceLogEmitter
+    operational_event_emitter: OperationalEventEmitter | None = None
 
     def readiness(self) -> dict[str, Any]:
         checks = (
@@ -66,6 +68,7 @@ class WaEvidenceConsumerRuntime:
             registry=self.registry,
             heartbeat_emitter=self.heartbeat_emitter,
             service_log_emitter=self.service_log_emitter,
+            operational_event_emitter=self.operational_event_emitter,
             worker_id=self.config.worker_id,
             clock=clock,
         )
@@ -78,11 +81,22 @@ class WaEvidenceConsumerRuntime:
         limit: int = 100,
     ) -> tuple[dict[str, Any], ...]:
         self.require_ready()
-        return self.persistence.job_fence_store.recover_stale(
+        recovered = self.persistence.job_fence_store.recover_stale(
             observed_at=observed_at,
             stale_after_seconds=stale_after_seconds,
             limit=limit,
         )
+        if self.operational_event_emitter is not None:
+            for item in recovered:
+                self.operational_event_emitter.safe_emit(
+                    event_type="wa.job.stale_recovered",
+                    severity="WARNING",
+                    message="WA stale Job was recovered.",
+                    subject_ref={"type": "job", "id": item["job_id"]},
+                    details={"status": item["status"], "action": item["action"]},
+                    created_at=observed_at,
+                )
+        return recovered
 
     def _fenced_queue(self) -> JobQueue:
         fence_store = getattr(self.persistence, "job_fence_store", None)
@@ -194,10 +208,11 @@ def run_wa_evidence_consumer_once(
     registry: WaEvidenceSourceAdapterRegistry,
     heartbeat_emitter: WorkerHeartbeatEmitter,
     service_log_emitter: ServiceLogEmitter | None = None,
+    operational_event_emitter: OperationalEventEmitter | None = None,
     worker_id: str = DEFAULT_WORKER_ID,
     clock=None,
 ) -> WorkerJobExecution:
-    return run_worker_once(
+    execution = run_worker_once(
         config=build_wa_evidence_consumer_config(worker_id=worker_id),
         queue=queue,
         heartbeat_emitter=heartbeat_emitter,
@@ -205,6 +220,12 @@ def run_wa_evidence_consumer_once(
         handler=lambda job: inspect_wa_evidence_job(job, registry=registry),
         clock=clock,
     )
+    _emit_execution_observability(
+        execution,
+        service_log_emitter=service_log_emitter,
+        operational_event_emitter=operational_event_emitter,
+    )
+    return execution
 
 
 def run_wa_evidence_consumer_batch(
@@ -213,12 +234,13 @@ def run_wa_evidence_consumer_batch(
     registry: WaEvidenceSourceAdapterRegistry,
     heartbeat_emitter: WorkerHeartbeatEmitter,
     service_log_emitter: ServiceLogEmitter | None = None,
+    operational_event_emitter: OperationalEventEmitter | None = None,
     worker_id: str = DEFAULT_WORKER_ID,
     max_jobs: int = 1,
     stop_on_failure: bool = True,
     clock=None,
 ) -> WorkerBatchResult:
-    return run_worker_batch(
+    result = run_worker_batch(
         config=build_wa_evidence_consumer_config(
             worker_id=worker_id,
             max_jobs=max_jobs,
@@ -230,6 +252,13 @@ def run_wa_evidence_consumer_batch(
         stop_on_failure=stop_on_failure,
         clock=clock,
     )
+    for execution in result.executions:
+        _emit_execution_observability(
+            execution,
+            service_log_emitter=service_log_emitter,
+            operational_event_emitter=operational_event_emitter,
+        )
+    return result
 
 
 def build_wa_evidence_consumer_runtime(
@@ -248,12 +277,73 @@ def build_wa_evidence_consumer_runtime(
     logger = ServiceLogEmitter(
         service_id=SERVICE_ID,
         logger_name=PROCESS_ID,
-        store=service_log_store or InMemoryServiceLogStore(),
+        store=(
+            service_log_store
+            or getattr(persistence, "service_log_store", None)
+            or InMemoryServiceLogStore()
+        ),
     )
+    event_store = getattr(persistence, "operational_event_store", None)
     return WaEvidenceConsumerRuntime(
         persistence=persistence,
         registry=registry,
         config=build_wa_evidence_consumer_config(worker_id=worker_id),
         heartbeat_emitter=heartbeat,
         service_log_emitter=logger,
+        operational_event_emitter=(
+            OperationalEventEmitter(service_id=SERVICE_ID, store=event_store)
+            if event_store is not None
+            else None
+        ),
     )
+
+
+def _emit_execution_observability(
+    execution: WorkerJobExecution,
+    *,
+    service_log_emitter: ServiceLogEmitter | None,
+    operational_event_emitter: OperationalEventEmitter | None,
+) -> None:
+    job = execution.completed_job or execution.job
+    if job is None:
+        return
+    payload = job.get("payload")
+    source_type = (
+        str(payload.get("source_type"))
+        if isinstance(payload, Mapping) and payload.get("source_type")
+        else "UNKNOWN"
+    )
+    error = job.get("error")
+    dead_lettered = bool(isinstance(error, Mapping) and error.get("dead_lettered"))
+    event_type = (
+        "wa.evidence.admitted"
+        if execution.status == "SUCCEEDED"
+        else "wa.job.dead_lettered"
+        if dead_lettered
+        else "wa.ingest.failed"
+    )
+    severity = "INFO" if execution.status == "SUCCEEDED" else "ERROR"
+    details = {"source_type": source_type, "status": execution.status}
+    if execution.error_code is not None:
+        details["error_code"] = execution.error_code
+    if operational_event_emitter is not None:
+        operational_event_emitter.safe_emit(
+            event_type=event_type,
+            severity=severity,
+            message="WA evidence consumer lifecycle changed.",
+            trace_id=str(job.get("trace_id") or "") or None,
+            request_id=str(job.get("request_id") or "") or None,
+            subject_ref={"type": "job", "id": str(job["job_id"])},
+            details=details,
+            created_at=str(job.get("updated_at") or job.get("created_at")),
+        )
+    if service_log_emitter is not None:
+        service_log_emitter.safe_emit(
+            severity=severity,
+            message="WA evidence consumer outcome recorded.",
+            trace_id=str(job.get("trace_id") or "") or None,
+            request_id=str(job.get("request_id") or "") or None,
+            job_id=str(job["job_id"]),
+            attributes=details,
+            observed_at=str(job.get("updated_at") or job.get("created_at")),
+        )

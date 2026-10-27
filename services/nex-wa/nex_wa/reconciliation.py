@@ -8,6 +8,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from nex_runtime import OperationalEventEmitter
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
 from .intake import WaEvidenceIntakeService
@@ -160,9 +161,11 @@ class WaAeReconciliationService:
         *,
         source: AeWaReconciliationSource,
         intake: WaEvidenceIntakeService,
+        event_emitter: OperationalEventEmitter | None = None,
     ) -> None:
         self._source = source
         self._intake = intake
+        self._event_emitter = event_emitter
 
     def run(
         self,
@@ -205,13 +208,27 @@ class WaAeReconciliationService:
             )
             for source_type in WA_EXTERNAL_INTAKE_SOURCE_TYPES
         )
-        return WaReconciliationResult(
+        result = WaReconciliationResult(
             tenant_id=tenant_id.strip(),
             mode=normalized_mode,
             created_after=created_after,
             created_before=created_before,
             sources=results,
         )
+        if self._event_emitter is not None:
+            self._event_emitter.safe_emit(
+                event_type="wa.reconciliation.completed",
+                severity="INFO",
+                message="WA bounded reconciliation completed.",
+                details={
+                    "mode": normalized_mode,
+                    "source_count": len(results),
+                    "jobs_admitted": sum(item.jobs_admitted for item in results),
+                    "jobs_reused": sum(item.jobs_reused for item in results),
+                    "complete": all(item.complete for item in results),
+                },
+            )
+        return result
 
     def _run_source(
         self,

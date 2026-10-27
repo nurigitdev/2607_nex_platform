@@ -10,8 +10,10 @@ from typing import Any
 import pytest
 from nex_runtime import (
     InMemoryJobQueue,
+    InMemoryOperationalEventStore,
     InMemoryServiceLogStore,
     InMemoryWorkerHeartbeatStore,
+    OperationalEventEmitter,
     ServiceLogEmitter,
     WorkerHeartbeatEmitter,
 )
@@ -23,7 +25,6 @@ from nex_wa import (
     WaEvidenceSourceAdapterRegistry,
     WaPersistenceRuntime,
     WaSourceAdapterError,
-    WaSourceNormalizedEnvelope,
     build_wa_evidence_consumer_config,
     build_wa_evidence_consumer_runtime,
     inspect_wa_evidence_job,
@@ -255,12 +256,17 @@ def test_consumer_claims_inspects_completes_and_emits_heartbeat_and_logs() -> No
     queue = InMemoryJobQueue()
     job = _queued_job(queue)
     heartbeat, heartbeat_store, logger, log_store = _emitters()
+    event_store = InMemoryOperationalEventStore()
 
     result = run_wa_evidence_consumer_once(
         queue=queue,
         registry=_full_registry(),
         heartbeat_emitter=heartbeat,
         service_log_emitter=logger,
+        operational_event_emitter=OperationalEventEmitter(
+            service_id="nex-wa",
+            store=event_store,
+        ),
         worker_id="wa-worker-test",
         clock=lambda: WIRE_NOW,
     )
@@ -278,7 +284,19 @@ def test_consumer_claims_inspects_completes_and_emits_heartbeat_and_logs() -> No
     heartbeat_record = heartbeat_store.get_heartbeat("nex-wa", "wa-worker-test")
     assert heartbeat_record is not None
     assert heartbeat_record["status"] == "IDLE"
-    assert len(log_store.entries) == 3
+    assert len(log_store.entries) == 4
+    outcome = next(
+        item
+        for item in log_store.entries.values()
+        if item["message"] == "WA evidence consumer outcome recorded."
+    )
+    assert outcome["attributes"] == {
+        "source_type": "AE_AGENT_RESULT",
+        "status": "SUCCEEDED",
+    }
+    assert event_store.list_events(limit=10)[0]["event_type"] == (
+        "wa.evidence.admitted"
+    )
 
 
 class _FailingAdapter:
@@ -411,6 +429,8 @@ def test_persistence_consumer_storage_readiness_checks_required_tables() -> None
         "wa_work_evidence",
         "wa_work_asset",
         "wa_work_asset_evidence",
+        "service_operational_events",
+        "service_log_entries",
     )
     with engine.begin() as connection:
         for table_name in required:

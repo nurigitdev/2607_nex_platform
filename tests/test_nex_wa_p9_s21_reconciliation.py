@@ -14,7 +14,12 @@ from nex_ae_api.wa_source_projections import (
     register_wa_agent_result_source_routes,
     register_wa_artifact_source_routes,
 )
-from nex_runtime import InMemoryJobQueue, issue_mock_service_token
+from nex_runtime import (
+    InMemoryJobQueue,
+    InMemoryOperationalEventStore,
+    OperationalEventEmitter,
+    issue_mock_service_token,
+)
 from nex_wa.intake import WaEvidenceIntakeService
 from nex_wa.reconciliation import (
     HttpAeWaReconciliationSource,
@@ -283,9 +288,14 @@ class _PagedSource:
 def test_missed_sources_reconcile_through_normal_identity_and_restart_reuses() -> None:
     queue = InMemoryJobQueue()
     source = _PagedSource()
+    event_store = InMemoryOperationalEventStore()
     service = WaAeReconciliationService(
         source=source,
         intake=WaEvidenceIntakeService(queue),
+        event_emitter=OperationalEventEmitter(
+            service_id="nex-wa",
+            store=event_store,
+        ),
     )
 
     first = service.run(
@@ -299,6 +309,9 @@ def test_missed_sources_reconcile_through_normal_identity_and_restart_reuses() -
     assert len(queue.list_jobs()) == 4
     assert sum(item.jobs_admitted for item in first.sources) == 4
     assert all(item.complete for item in first.sources)
+    assert event_store.list_events(limit=10)[0]["event_type"] == (
+        "wa.reconciliation.completed"
+    )
 
     restarted = WaAeReconciliationService(
         source=_PagedSource(),

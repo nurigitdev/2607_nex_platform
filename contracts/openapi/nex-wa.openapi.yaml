@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: NeX Work Asset API
-  version: 2.1.0-p9-s23
-  description: Protected WorkEvidence intake, privacy-scoped reads, and bounded Job recovery controls.
+  version: 2.1.0-p9-s24
+  description: Protected WorkEvidence intake, privacy-scoped reads, Job recovery, and bounded operations.
 servers:
   - url: http://127.0.0.1:8108
 tags:
@@ -192,6 +192,22 @@ paths:
         "401": {description: Service claim is missing or invalid.}
         "409": {description: Source Job is not a dead-letter.}
         "422": {description: Operator identity or reason is invalid.}
+  /internal/v1/operations/summary:
+    get:
+      operationId: getWaOperationsSummary
+      tags: [Operations]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call, work:operations:read]
+      x-nex-route-class: READ
+      responses:
+        "200":
+          description: Bounded queue, outcome, and consumer heartbeat metrics.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OperationsSummary"}
+        "401": {description: Service claim or scope is missing or invalid.}
+        "403": {description: Caller is not NeX-AG.}
+        "503": {description: Operational projection is unavailable.}
 components:
   securitySchemes:
     serviceBearer:
@@ -210,6 +226,17 @@ components:
       required: true
       schema: {type: string, minLength: 1, maxLength: 256}
   schemas:
+    OperationsSummary:
+      type: object
+      additionalProperties: false
+      required: [schema_version, service_id, observed_at, queue, outcomes, consumer]
+      properties:
+        schema_version: {const: wa_operations_summary.v1}
+        service_id: {const: nex-wa}
+        observed_at: {type: string, format: date-time}
+        queue: {type: object, additionalProperties: false, required: [queued, running, succeeded, failed, dead_lettered, oldest_runnable_age_seconds], properties: {queued: {type: integer, minimum: 0}, running: {type: integer, minimum: 0}, succeeded: {type: integer, minimum: 0}, failed: {type: integer, minimum: 0}, dead_lettered: {type: integer, minimum: 0}, oldest_runnable_age_seconds: {type: [number, "null"], minimum: 0}}}
+        outcomes: {type: object, additionalProperties: {type: integer, minimum: 0}}
+        consumer: {type: object, additionalProperties: true}
     EvidenceIntakeRequest:
       type: object
       additionalProperties: false

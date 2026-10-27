@@ -68,6 +68,13 @@ from .job_recovery import (
     WaJobRecoveryError,
     normalize_stale_job_seconds,
 )
+from .operations import (
+    WA_OPERATIONS_READ_SCOPE,
+    WA_OPERATIONS_SCHEMA,
+    SqlAlchemyWaOperationsSource,
+    WaOperationsError,
+    register_wa_operations_routes,
+)
 from .persistence import (
     WA_COMMON_RUNTIME_MIGRATIONS,
     WA_REQUIRED_MIGRATIONS,
@@ -141,6 +148,8 @@ __all__ = (
     "WA_EXTERNAL_INTAKE_SOURCE_TYPES",
     "WA_INTERNAL_SUPPORTING_SOURCE_TYPES",
     "WA_JOB_OWNERSHIP_LOST",
+    "WA_OPERATIONS_READ_SCOPE",
+    "WA_OPERATIONS_SCHEMA",
     "WA_READ_CALLERS",
     "WA_REQUIRED_MIGRATIONS",
     "WA_SOURCE_ENVELOPE_SCHEMA",
@@ -164,6 +173,7 @@ __all__ = (
     "HttpWcWorkResultProjectionClient",
     "NormalizedEvidenceAdmission",
     "SqlAlchemyWaJobFenceStore",
+    "SqlAlchemyWaOperationsSource",
     "SqlAlchemyWorkAssetRepository",
     "SqlAlchemyWorkEvidenceRepository",
     "WaConfigurationError",
@@ -182,6 +192,7 @@ __all__ = (
     "WaIntakeContractError",
     "WaJobClaim",
     "WaJobRecoveryError",
+    "WaOperationsError",
     "WaPersistenceError",
     "WaPersistenceRuntime",
     "WaReadError",
@@ -216,6 +227,7 @@ __all__ = (
     "package_readiness",
     "register_core_read_routes",
     "register_evidence_intake_routes",
+    "register_wa_operations_routes",
     "require_compatible_intake_replay",
     "require_matching_source_envelope",
     "run_wa_evidence_consumer_batch",
