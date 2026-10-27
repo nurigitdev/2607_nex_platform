@@ -1,19 +1,19 @@
 from __future__ import annotations
 
+import os
+import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-import os
 from pathlib import Path
-import subprocess
 from typing import Any, Protocol
 from urllib.request import urlopen
 
-from .runtime_profiles import runtime_profile_environment_overlay
 from .postgres_targets import (
     build_postgres_test_runtime_overlay,
-    service_ids_for_test_database_environments,
+    current_service_ids_for_test_database_environments,
 )
-from .service_endpoints import SERVICE_ENDPOINTS
+from .runtime_profiles import runtime_profile_environment_overlay
+from .service_endpoints import CURRENT_SERVICE_ENDPOINTS
 from .topology import PlatformRuntimeManifest, RuntimeProcess
 
 
@@ -90,7 +90,7 @@ def build_runtime_process_environment(
             for process in manifest.processes
             for name in process.environment_names
         )
-        service_ids = service_ids_for_test_database_environments(
+        service_ids = current_service_ids_for_test_database_environments(
             database_environment_names
         )
         if service_ids:
@@ -101,7 +101,8 @@ def build_runtime_process_environment(
                 )
             )
     endpoint_environment_names = {
-        service_id: config[0] for service_id, config in SERVICE_ENDPOINTS.items()
+        service_id: config[0]
+        for service_id, config in CURRENT_SERVICE_ENDPOINTS.items()
     }
     endpoint_environment_names["nex-ae-web"] = "NEX_AE_WEB_BASE_URL"
     for endpoint in manifest.endpoints:

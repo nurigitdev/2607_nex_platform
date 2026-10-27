@@ -145,10 +145,10 @@ def run_platform_production_responsibility_matrix(
     }
     database_ownership = {
         service_id: {
-            "owner": DATABASE_OWNER_BY_SERVICE.get(service_id),
-            "database_env": spec.database_env,
+            "owner": owner,
+            "database_env": SERVICE_SPECS[service_id].database_env,
         }
-        for service_id, spec in SERVICE_SPECS.items()
+        for service_id, owner in DATABASE_OWNER_BY_SERVICE.items()
     }
     accountable_owners = {
         owner for item in ASSIGNMENTS for owner in item.accountable

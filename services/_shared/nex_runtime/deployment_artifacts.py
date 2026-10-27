@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
-from pathlib import PurePosixPath
 import re
+from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Any
 
 from .topology import PlatformRuntimeManifest
-
 
 DEPLOYMENT_ARTIFACT_CATALOG_SCHEMA_VERSION = "deployment_artifact_catalog.v1"
 ARTIFACT_KINDS = ("python-service", "node-web")
@@ -89,30 +88,6 @@ DEFAULT_DEPLOYMENT_ARTIFACTS = (
         ("services/_shared/nex_runtime", "services/nex-ag/nex_ag"),
     ),
     DeploymentArtifactDefinition(
-        "nex-wc-runtime",
-        "nex-wc",
-        "python-service",
-        "wc-runtime",
-        "python-production",
-        ("services/_shared/nex_runtime", "services/nex-wc/nex_wc"),
-    ),
-    DeploymentArtifactDefinition(
-        "nex-eos-runtime",
-        "nex-eos",
-        "python-service",
-        "eos-runtime",
-        "python-production",
-        ("services/_shared/nex_runtime", "services/nex-eos/nex_eos"),
-    ),
-    DeploymentArtifactDefinition(
-        "nex-wa-runtime",
-        "nex-wa",
-        "python-service",
-        "wa-runtime",
-        "python-production",
-        ("services/_shared/nex_runtime", "services/nex-wa/nex_wa"),
-    ),
-    DeploymentArtifactDefinition(
         "nex-ae-web",
         "nex-ae-web",
         "node-web",
@@ -128,9 +103,6 @@ DEFAULT_PROCESS_ARTIFACT_BINDINGS = (
     ProcessArtifactBinding("nex-cx-api", "nex-cx-runtime", "api"),
     ProcessArtifactBinding("nex-ae-api", "nex-ae-runtime", "api"),
     ProcessArtifactBinding("nex-ag-api", "nex-ag-runtime", "api"),
-    ProcessArtifactBinding("nex-wc-api", "nex-wc-runtime", "api"),
-    ProcessArtifactBinding("nex-eos-api", "nex-eos-runtime", "api"),
-    ProcessArtifactBinding("nex-wa-api", "nex-wa-runtime", "api"),
     ProcessArtifactBinding("nex-ae-web", "nex-ae-web", "web"),
     ProcessArtifactBinding(
         "nex-ae-artifact-render-worker",
@@ -159,6 +131,48 @@ DEFAULT_PROCESS_ARTIFACT_BINDINGS = (
     ProcessArtifactBinding(
         "nex-cx-remediation-worker", "nex-cx-runtime", "remediation-worker"
     ),
+)
+
+P8_DEMO_DEPLOYMENT_ARTIFACTS = (
+    *DEFAULT_DEPLOYMENT_ARTIFACTS[:-1],
+    DeploymentArtifactDefinition(
+        "nex-wc-runtime",
+        "nex-wc",
+        "python-service",
+        "wc-runtime",
+        "python-production",
+        ("services/_shared/nex_runtime", "services/nex-wc/nex_wc"),
+    ),
+    DeploymentArtifactDefinition(
+        "nex-eos-runtime",
+        "nex-eos",
+        "python-service",
+        "eos-runtime",
+        "python-production",
+        ("services/_shared/nex_runtime", "services/nex-eos/nex_eos"),
+    ),
+    DEFAULT_DEPLOYMENT_ARTIFACTS[-1],
+)
+
+CURRENT_DEPLOYMENT_ARTIFACTS = (
+    *P8_DEMO_DEPLOYMENT_ARTIFACTS[:-1],
+    DeploymentArtifactDefinition(
+        "nex-wa-runtime",
+        "nex-wa",
+        "python-service",
+        "wa-runtime",
+        "python-production",
+        ("services/_shared/nex_runtime", "services/nex-wa/nex_wa"),
+    ),
+    P8_DEMO_DEPLOYMENT_ARTIFACTS[-1],
+)
+
+CURRENT_PROCESS_ARTIFACT_BINDINGS = (
+    *DEFAULT_PROCESS_ARTIFACT_BINDINGS[:5],
+    ProcessArtifactBinding("nex-wc-api", "nex-wc-runtime", "api"),
+    ProcessArtifactBinding("nex-eos-api", "nex-eos-runtime", "api"),
+    ProcessArtifactBinding("nex-wa-api", "nex-wa-runtime", "api"),
+    *DEFAULT_PROCESS_ARTIFACT_BINDINGS[5:],
     ProcessArtifactBinding(
         "nex-wa-evidence-consumer", "nex-wa-runtime", "evidence-consumer"
     ),
@@ -170,6 +184,17 @@ def build_default_deployment_artifact_catalog() -> DeploymentArtifactCatalog:
         schema_version=DEPLOYMENT_ARTIFACT_CATALOG_SCHEMA_VERSION,
         artifacts=DEFAULT_DEPLOYMENT_ARTIFACTS,
         process_bindings=DEFAULT_PROCESS_ARTIFACT_BINDINGS,
+    )
+    validate_deployment_artifact_catalog(catalog)
+    return catalog
+
+
+def build_current_deployment_artifact_catalog() -> DeploymentArtifactCatalog:
+    """Return the P9 deployment set: promoted P8-Demo artifacts plus NeX-WA."""
+    catalog = DeploymentArtifactCatalog(
+        schema_version=DEPLOYMENT_ARTIFACT_CATALOG_SCHEMA_VERSION,
+        artifacts=CURRENT_DEPLOYMENT_ARTIFACTS,
+        process_bindings=CURRENT_PROCESS_ARTIFACT_BINDINGS,
     )
     validate_deployment_artifact_catalog(catalog)
     return catalog

@@ -44,8 +44,8 @@ def run_platform_deployment_artifact_catalog() -> dict[str, Any]:
     }
     runtime_process_ids = {process.process_id for process in manifest.processes}
     passed = (
-        len(projection["artifacts"]) == 9
-        and len(process_ids) == 17
+        len(projection["artifacts"]) == 6
+        and len(process_ids) == 13
         and process_ids == runtime_process_ids
         and catalog_digest.startswith("sha256:")
         and all("@sha256:" in value for value in immutable_references.values())

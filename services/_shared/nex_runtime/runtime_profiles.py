@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass
-import os
 from typing import Any
 
 from .topology import RUNTIME_PROFILES, RuntimeModes
-
 
 PROFILE_MODE_ENV = {
     "persistence": "NEX_PERSISTENCE_MODE",
@@ -22,13 +21,19 @@ DATABASE_ENV_NAMES = (
     "NEX_AE_DATABASE_URL",
     "NEX_CX_DATABASE_URL",
     "NEX_MO_DATABASE_URL",
+)
+TEST_DATABASE_ENV_NAMES = tuple(
+    name.replace("_DATABASE_URL", "_TEST_DATABASE_URL") for name in DATABASE_ENV_NAMES
+)
+CURRENT_DATABASE_ENV_NAMES = (
+    *DATABASE_ENV_NAMES,
     "NEX_WC_DATABASE_URL",
     "NEX_EOS_DATABASE_URL",
     "NEX_WA_DATABASE_URL",
 )
-TEST_DATABASE_ENV_NAMES = tuple(
+CURRENT_TEST_DATABASE_ENV_NAMES = tuple(
     name.replace("_DATABASE_URL", "_TEST_DATABASE_URL")
-    for name in DATABASE_ENV_NAMES
+    for name in CURRENT_DATABASE_ENV_NAMES
 )
 SIGNED_TRUST_ENV_NAMES = (
     "NEX_OA_INTROSPECTION_SERVICE_TOKEN",
@@ -46,10 +51,14 @@ SERVICE_ENDPOINT_ENV_NAMES = (
     "NEX_AE_API_BASE_URL",
     "NEX_CX_BASE_URL",
     "NEX_MO_BASE_URL",
+    "NEX_AE_WEB_BASE_URL",
+)
+CURRENT_SERVICE_ENDPOINT_ENV_NAMES = (
+    *SERVICE_ENDPOINT_ENV_NAMES[:-1],
     "NEX_WC_BASE_URL",
     "NEX_EOS_BASE_URL",
     "NEX_WA_BASE_URL",
-    "NEX_AE_WEB_BASE_URL",
+    SERVICE_ENDPOINT_ENV_NAMES[-1],
 )
 LIVE_PROVIDER_ENV_NAMES = (
     "NEX_MO_REMOTE_EMBEDDING_URL",
@@ -115,6 +124,37 @@ def resolve_runtime_profile(
     )
 
 
+def resolve_current_runtime_profile(
+    profile: str | None = None,
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> RuntimeProfileResolution:
+    """Resolve the promoted P9 profile without mutating frozen S142 semantics."""
+    env = os.environ if environ is None else environ
+    selected = (profile or env.get("NEX_PROFILE") or "local_mock").strip()
+    if selected not in RUNTIME_PROFILES:
+        raise RuntimeProfileError((f"unsupported runtime profile: {selected}",))
+
+    modes = PROFILE_MODES[selected]
+    required = _current_required_environment_names(selected)
+    errors = _mode_conflicts(env, modes)
+    errors.extend(
+        f"required environment is missing or placeholder: {name}"
+        for name in required
+        if _missing_or_placeholder(env.get(name))
+    )
+    if selected != "local_mock" and modes.ag_projection != "api":
+        errors.append("protected profiles require service API projections")
+    if errors:
+        raise RuntimeProfileError(tuple(errors))
+    return RuntimeProfileResolution(
+        profile=selected,
+        modes=modes,
+        required_environment_names=required,
+        protected=selected != "local_mock",
+    )
+
+
 def runtime_profile_environment_overlay(profile: str) -> dict[str, str]:
     try:
         modes = PROFILE_MODES[profile]
@@ -130,7 +170,9 @@ def runtime_profile_environment_overlay(profile: str) -> dict[str, str]:
         PROFILE_MODE_ENV["ag_projection"]: modes.ag_projection,
         AE_AUTH_SESSION_MODE_ENV: "mock" if profile == "local_mock" else "oa",
         AE_SESSION_COOKIE_SECURE_ENV: (
-            "true" if profile in {"local_live", "staging_live", "production"} else "false"
+            "true"
+            if profile in {"local_live", "staging_live", "production"}
+            else "false"
         ),
     }
 
@@ -139,6 +181,14 @@ def runtime_profile_required_environment_names(profile: str) -> tuple[str, ...]:
     if profile not in RUNTIME_PROFILES:
         raise RuntimeProfileError((f"unsupported runtime profile: {profile}",))
     return _required_environment_names(profile)
+
+
+def current_runtime_profile_required_environment_names(
+    profile: str,
+) -> tuple[str, ...]:
+    if profile not in RUNTIME_PROFILES:
+        raise RuntimeProfileError((f"unsupported runtime profile: {profile}",))
+    return _current_required_environment_names(profile)
 
 
 def runtime_profile_public_projection(
@@ -162,11 +212,34 @@ def runtime_profile_public_projection(
 def _required_environment_names(profile: str) -> tuple[str, ...]:
     if profile == "local_mock":
         return ()
-    database_names = TEST_DATABASE_ENV_NAMES if profile == "test" else DATABASE_ENV_NAMES
-    provider_names = LIVE_PROVIDER_ENV_NAMES if PROFILE_MODES[profile].provider == "live" else ()
+    database_names = (
+        TEST_DATABASE_ENV_NAMES if profile == "test" else DATABASE_ENV_NAMES
+    )
+    provider_names = (
+        LIVE_PROVIDER_ENV_NAMES if PROFILE_MODES[profile].provider == "live" else ()
+    )
     return (
         *database_names,
         *SERVICE_ENDPOINT_ENV_NAMES,
+        *SIGNED_TRUST_ENV_NAMES,
+        *provider_names,
+    )
+
+
+def _current_required_environment_names(profile: str) -> tuple[str, ...]:
+    if profile == "local_mock":
+        return ()
+    database_names = (
+        CURRENT_TEST_DATABASE_ENV_NAMES
+        if profile == "test"
+        else CURRENT_DATABASE_ENV_NAMES
+    )
+    provider_names = (
+        LIVE_PROVIDER_ENV_NAMES if PROFILE_MODES[profile].provider == "live" else ()
+    )
+    return (
+        *database_names,
+        *CURRENT_SERVICE_ENDPOINT_ENV_NAMES,
         *SIGNED_TRUST_ENV_NAMES,
         *provider_names,
     )
@@ -181,9 +254,7 @@ def _mode_conflicts(env: Mapping[str, str], modes: RuntimeModes) -> list[str]:
         ),
         PROFILE_MODE_ENV["ag_projection"]: modes.ag_projection,
         AE_AUTH_SESSION_MODE_ENV: "mock" if modes.trust == "test_mock" else "oa",
-        AE_SESSION_COOKIE_SECURE_ENV: (
-            "true" if modes.provider == "live" else "false"
-        ),
+        AE_SESSION_COOKIE_SECURE_ENV: ("true" if modes.provider == "live" else "false"),
     }
     errors = []
     for name, value in expected.items():

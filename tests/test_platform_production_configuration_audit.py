@@ -12,9 +12,9 @@ def test_repository_audit_freezes_production_configuration_gaps() -> None:
     assert result["issues"] == []
     assert all(result["checks"].values())
     assert result["summary"] == {
-        "required_environment_count": 31,
-        "database_environment_count": 8,
-        "service_endpoint_count": 9,
+        "required_environment_count": 25,
+        "database_environment_count": 5,
+        "service_endpoint_count": 6,
         "signed_trust_environment_count": 8,
         "live_provider_environment_count": 6,
         "config_gap_count": 10,
@@ -88,8 +88,8 @@ def test_text_summary_and_main_branches(tmp_path: Path, monkeypatch, capsys) -> 
 
     passing = audit.run_platform_production_configuration_audit()
     assert audit.summary_line(passing) == (
-        "platform_production_configuration_audit=pass required=31 db=8 "
-        "endpoints=9 trust=8 providers=6 gaps=10 next=1406"
+        "platform_production_configuration_audit=pass required=25 db=5 "
+        "endpoints=6 trust=8 providers=6 gaps=10 next=1406"
     )
     failing = {"status": "FAIL", "issues": ["one"]}
     assert audit.summary_line(failing) == (

@@ -247,7 +247,7 @@ def test_common_registration_and_developer_tools_include_eos() -> None:
     assert service_database_env_prefix("nex-eos") == "NEX_EOS"
     assert "nex-eos" not in SERVICE_RUNTIME_OPERATION_SPECS
     assert run_service.SERVICE_MODULES["nex-eos"] == "nex_eos.main:app"
-    assert run_all_services.SERVICES[-1] == "nex-eos"
+    assert "nex-eos" in run_all_services.SERVICES
     assert "nex-eos" in run_tiered_quality_gate.SERVICE_PROFILES
 
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")

@@ -7,17 +7,21 @@ from typing import Any
 from .background_process import ENABLED_BACKGROUND_PROFILES
 from .deployment_artifacts import (
     DeploymentArtifactCatalog,
+    build_current_deployment_artifact_catalog,
     build_default_deployment_artifact_catalog,
     validate_deployment_artifact_catalog,
 )
-from .process_manifest import BACKGROUND_PROCESS_IDS, build_platform_runtime_manifest
+from .process_manifest import (
+    CURRENT_BACKGROUND_PROCESS_IDS,
+    build_current_platform_runtime_manifest,
+    build_platform_runtime_manifest,
+)
 from .topology import (
     RUNTIME_PROFILES,
     PlatformRuntimeManifest,
     RuntimeProcess,
     validate_runtime_manifest,
 )
-
 
 PACKAGED_ENTRYPOINTS_SCHEMA_VERSION = "packaged_entrypoints.v1"
 PACKAGED_BACKGROUND_MODULE = "nex_runtime.background_process"
@@ -33,6 +37,9 @@ _API_MODULES = {
     "nex-cx-api": "nex_cx.main:app",
     "nex-ae-api": "nex_ae_api.main:app",
     "nex-ag-api": "nex_ag.main:app",
+    "nex-wc-api": "nex_wc.main:app",
+    "nex-eos-api": "nex_eos.main:app",
+    "nex-wa-api": "nex_wa.main:app",
 }
 _JOB_CLAIMING_BACKGROUND_PROCESSES = {"nex-cx-ingestion-worker"}
 
@@ -59,7 +66,46 @@ def build_packaged_runtime_manifest(
     environ: Mapping[str, str] | None = None,
     python_executable: str = "python",
 ) -> PlatformRuntimeManifest:
-    source = build_platform_runtime_manifest(
+    return _build_packaged_runtime_manifest(
+        profile,
+        environ=environ,
+        python_executable=python_executable,
+        current=False,
+    )
+
+
+def build_current_packaged_runtime_manifest(
+    profile: str | None = None,
+    *,
+    environ: Mapping[str, str] | None = None,
+    python_executable: str = "python",
+) -> PlatformRuntimeManifest:
+    return _build_packaged_runtime_manifest(
+        profile,
+        environ=environ,
+        python_executable=python_executable,
+        current=True,
+    )
+
+
+def _build_packaged_runtime_manifest(
+    profile: str | None,
+    *,
+    environ: Mapping[str, str] | None,
+    python_executable: str,
+    current: bool,
+) -> PlatformRuntimeManifest:
+    manifest_builder = (
+        build_current_platform_runtime_manifest
+        if current
+        else build_platform_runtime_manifest
+    )
+    catalog_builder = (
+        build_current_deployment_artifact_catalog
+        if current
+        else build_default_deployment_artifact_catalog
+    )
+    source = manifest_builder(
         profile,
         environ=environ,
         python_executable=python_executable,
@@ -79,7 +125,7 @@ def build_packaged_runtime_manifest(
     validate_runtime_manifest(manifest)
     validate_packaged_entrypoints(
         manifest,
-        build_default_deployment_artifact_catalog(),
+        catalog_builder(),
     )
     return manifest
 
@@ -90,8 +136,7 @@ def build_packaged_entrypoint_definitions(
 ) -> tuple[PackagedEntrypointDefinition, ...]:
     artifact_catalog = catalog or build_default_deployment_artifact_catalog()
     bindings = {
-        binding.process_id: binding
-        for binding in artifact_catalog.process_bindings
+        binding.process_id: binding for binding in artifact_catalog.process_bindings
     }
     definitions = tuple(
         PackagedEntrypointDefinition(
@@ -123,9 +168,7 @@ def validate_packaged_entrypoints(
     artifact_owners = {
         artifact.artifact_id: artifact.owner for artifact in catalog.artifacts
     }
-    bindings = {
-        binding.process_id: binding for binding in catalog.process_bindings
-    }
+    bindings = {binding.process_id: binding for binding in catalog.process_bindings}
     entries = definitions
     if entries is None:
         entries = tuple(
@@ -150,7 +193,9 @@ def validate_packaged_entrypoints(
         observed_ids.add(entry.process_id)
         binding = bindings.get(entry.process_id)
         if binding is None:
-            errors.append(f"packaged entrypoint has no artifact binding: {entry.process_id}")
+            errors.append(
+                f"packaged entrypoint has no artifact binding: {entry.process_id}"
+            )
             continue
         if entry.artifact_id != binding.artifact_id:
             errors.append(f"packaged artifact binding drift: {entry.process_id}")
@@ -170,7 +215,11 @@ def validate_packaged_entrypoints(
         ):
             errors.append(f"source-tree packaged command: {entry.process_id}")
         process = next(
-            (item for item in manifest.processes if item.process_id == entry.process_id),
+            (
+                item
+                for item in manifest.processes
+                if item.process_id == entry.process_id
+            ),
             None,
         )
         if process is None or entry.command != process.command:
@@ -239,7 +288,7 @@ def _packaged_command(
         )
     if process.kind == "web":
         return ("npm", "start", "--silent")
-    if process.process_id in BACKGROUND_PROCESS_IDS:
+    if process.process_id in CURRENT_BACKGROUND_PROCESS_IDS:
         return (
             python_executable,
             "-m",
@@ -251,6 +300,8 @@ def _packaged_command(
     raise PackagedEntrypointError(
         f"unsupported packaged process command: {process.process_id}"
     )
+
+
 def _entrypoint_capability(process: RuntimeProcess) -> str:
     if process.kind == "api":
         return "request_serving"

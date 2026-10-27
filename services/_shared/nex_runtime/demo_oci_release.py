@@ -9,8 +9,8 @@ from .demo_processes import (
     build_demo_process_manifest,
 )
 from .deployment_artifacts import (
+    P8_DEMO_DEPLOYMENT_ARTIFACTS,
     DeploymentArtifactCatalog,
-    DeploymentArtifactDefinition,
     ProcessArtifactBinding,
     build_default_deployment_artifact_catalog,
     validate_deployment_artifact_catalog,
@@ -53,23 +53,11 @@ class DemoBackgroundContainerCheck:
 
 def build_demo_deployment_artifact_catalog() -> DeploymentArtifactCatalog:
     historical = build_default_deployment_artifact_catalog()
-    additions = (
-        DeploymentArtifactDefinition(
-            "nex-wc-runtime",
-            "nex-wc",
-            "python-service",
-            "wc-runtime",
-            "python-production",
-            ("services/_shared/nex_runtime", "services/nex-wc/nex_wc"),
-        ),
-        DeploymentArtifactDefinition(
-            "nex-eos-runtime",
-            "nex-eos",
-            "python-service",
-            "eos-runtime",
-            "python-production",
-            ("services/_shared/nex_runtime", "services/nex-eos/nex_eos"),
-        ),
+    historical_ids = {item.artifact_id for item in historical.artifacts}
+    additions = tuple(
+        item
+        for item in P8_DEMO_DEPLOYMENT_ARTIFACTS
+        if item.artifact_id not in historical_ids
     )
     entrypoint_ids = {
         "nex-ae-agent-runtime-worker": "agent-runtime-worker",

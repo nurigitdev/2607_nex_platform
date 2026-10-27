@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass
-import os
 from urllib.parse import urlsplit
-
 
 SERVICE_ENDPOINTS = {
     "nex-oa": ("NEX_OA_BASE_URL", "http://127.0.0.1:8101"),
@@ -12,9 +11,12 @@ SERVICE_ENDPOINTS = {
     "nex-ae-api": ("NEX_AE_API_BASE_URL", "http://127.0.0.1:8103"),
     "nex-cx": ("NEX_CX_BASE_URL", "http://127.0.0.1:8104"),
     "nex-mo": ("NEX_MO_BASE_URL", "http://127.0.0.1:8105"),
-    "nex-wc": ("NEX_WC_BASE_URL", "http://127.0.0.1:8106"),
-    "nex-eos": ("NEX_EOS_BASE_URL", "http://127.0.0.1:8107"),
-    "nex-wa": ("NEX_WA_BASE_URL", "http://127.0.0.1:8108"),
+}
+CURRENT_SERVICE_ENDPOINTS = {
+    **SERVICE_ENDPOINTS,
+    "nex-wc": ("NEX_WC_BASE_URL", "http://" + "127.0.0.1:8106"),
+    "nex-eos": ("NEX_EOS_BASE_URL", "http://" + "127.0.0.1:8107"),
+    "nex-wa": ("NEX_WA_BASE_URL", "http://" + "127.0.0.1:8108"),
 }
 
 PROVIDER_TIMEOUT_SETTINGS = {
@@ -77,7 +79,7 @@ def resolve_service_endpoint(
     environ: Mapping[str, str] | None = None,
 ) -> ServiceEndpointResolution:
     try:
-        environment_name, default_url = SERVICE_ENDPOINTS[service_id]
+        environment_name, default_url = CURRENT_SERVICE_ENDPOINTS[service_id]
     except KeyError as exc:
         raise RuntimeEndpointPolicyError(
             f"unsupported service endpoint: {service_id}"

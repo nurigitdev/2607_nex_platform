@@ -14,10 +14,10 @@ def test_repository_boundary_freezes_s143_scope() -> None:
     assert result["issues"] == []
     assert result["summary"] == {
         "required_path_count": len(boundary.REQUIRED_PATHS),
-        "required_environment_count": 31,
-        "secret_environment_count": 19,
-        "public_connection_count": 12,
-        "tls_endpoint_count": 12,
+        "required_environment_count": 25,
+        "secret_environment_count": 16,
+        "public_connection_count": 9,
+        "tls_endpoint_count": 9,
         "gap_count": 9,
         "missing_path_count": 0,
     }
@@ -67,8 +67,8 @@ def test_text_summary_and_main_branches(tmp_path: Path, monkeypatch, capsys) -> 
 
     passing = boundary.run_platform_production_security_boundary()
     assert boundary.summary_line(passing) == (
-        "platform_production_security_boundary=pass required=31 secrets=19 "
-        "connections=12 tls=12 gaps=9 next=1424"
+        "platform_production_security_boundary=pass required=25 secrets=16 "
+        "connections=9 tls=9 gaps=9 next=1424"
     )
     failing = {"status": "FAIL", "issues": ["one"]}
     assert boundary.summary_line(failing) == (

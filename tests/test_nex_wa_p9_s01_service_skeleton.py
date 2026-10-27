@@ -17,10 +17,13 @@ from nex_runtime import SERVICE_RUNTIME_OPERATION_SPECS, SERVICE_SPECS
 from nex_runtime.auth import KNOWN_SERVICE_IDS
 from nex_runtime.background_process import background_process_metadata
 from nex_runtime.database import service_database_env_prefix
-from nex_runtime.deployment_artifacts import build_default_deployment_artifact_catalog
-from nex_runtime.postgres_targets import POSTGRES_TEST_TARGETS
-from nex_runtime.process_manifest import build_platform_runtime_manifest
-from nex_runtime.service_endpoints import SERVICE_ENDPOINTS, resolve_service_endpoint
+from nex_runtime.deployment_artifacts import build_current_deployment_artifact_catalog
+from nex_runtime.postgres_targets import CURRENT_POSTGRES_TEST_TARGETS
+from nex_runtime.process_manifest import build_current_platform_runtime_manifest
+from nex_runtime.service_endpoints import (
+    CURRENT_SERVICE_ENDPOINTS,
+    resolve_service_endpoint,
+)
 from nex_runtime.service_logs import SERVICE_IDS as SERVICE_LOG_IDS
 from nex_runtime.signed_token_verifier import SIGNED_TOKEN_AUDIENCES
 from nex_runtime.worker_heartbeats import SERVICE_IDS as HEARTBEAT_SERVICE_IDS
@@ -174,10 +177,10 @@ def test_readiness_uses_exact_wa_database_environment_without_leaking_url(
 
 
 def test_all_first_class_registries_include_wa_without_partial_registration() -> None:
-    target_ids = {target.service_id for target in POSTGRES_TEST_TARGETS}
+    target_ids = {target.service_id for target in CURRENT_POSTGRES_TEST_TARGETS}
 
     assert set(SERVICE_SPECS) == PLATFORM_BACKEND_IDS
-    assert set(SERVICE_ENDPOINTS) == PLATFORM_BACKEND_IDS
+    assert set(CURRENT_SERVICE_ENDPOINTS) == PLATFORM_BACKEND_IDS
     assert target_ids == PLATFORM_BACKEND_IDS
     assert set(HEARTBEAT_SERVICE_IDS) == PLATFORM_BACKEND_IDS
     assert set(SERVICE_LOG_IDS) == PLATFORM_BACKEND_IDS
@@ -202,9 +205,11 @@ def test_endpoint_database_and_developer_tool_registration_is_exact() -> None:
 
 
 def test_runtime_and_deployment_catalog_register_both_wa_processes() -> None:
-    manifest = build_platform_runtime_manifest(environ={}, python_executable="python")
+    manifest = build_current_platform_runtime_manifest(
+        environ={}, python_executable="python"
+    )
     processes = {process.process_id: process for process in manifest.processes}
-    catalog = build_default_deployment_artifact_catalog()
+    catalog = build_current_deployment_artifact_catalog()
     bindings = {binding.process_id: binding for binding in catalog.process_bindings}
 
     assert processes["nex-wa-api"].port == 8108

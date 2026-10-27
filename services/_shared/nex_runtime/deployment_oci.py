@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
-from pathlib import Path
 import re
 import shutil
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from .deployment_artifacts import (
     DeploymentArtifactCatalog,
+    build_current_deployment_artifact_catalog,
     build_default_deployment_artifact_catalog,
 )
-
 
 OCI_BUILD_DEFINITIONS_SCHEMA_VERSION = "oci_build_definitions.v1"
 PYTHON_BASE_IMAGE = (
@@ -112,6 +112,10 @@ def build_default_oci_definitions(
     return result
 
 
+def build_current_oci_definitions() -> tuple[OciBuildDefinition, ...]:
+    return build_default_oci_definitions(build_current_deployment_artifact_catalog())
+
+
 def validate_oci_build_definitions(
     definitions: tuple[OciBuildDefinition, ...],
     catalog: DeploymentArtifactCatalog,
@@ -122,7 +126,9 @@ def validate_oci_build_definitions(
     targets: set[str] = set()
     for definition in definitions:
         if definition.artifact_id in definition_ids:
-            errors.append(f"duplicate OCI artifact definition: {definition.artifact_id}")
+            errors.append(
+                f"duplicate OCI artifact definition: {definition.artifact_id}"
+            )
         definition_ids.add(definition.artifact_id)
         if definition.artifact_id not in artifact_ids:
             errors.append(f"unknown OCI artifact definition: {definition.artifact_id}")
@@ -187,7 +193,9 @@ def validate_oci_containerfiles(
     if "--no-deps --require-hashes" not in python_text:
         errors.append("Python Containerfile does not enforce the production lock")
     if "--no-index --no-deps" not in python_text:
-        errors.append("Python Containerfile does not isolate runtime wheel installation")
+        errors.append(
+            "Python Containerfile does not isolate runtime wheel installation"
+        )
     node_text = by_path.get(NODE_CONTAINERFILE, "")
     if "npm ci --omit=dev --ignore-scripts" not in node_text:
         errors.append("Node Containerfile does not enforce npm ci")
@@ -253,7 +261,9 @@ def oci_build_context_digest(manifest: OciBuildContextManifest) -> str:
     return f"sha256:{hashlib.sha256(payload).hexdigest()}"
 
 
-def _copy_path(root: Path, destination: Path, source_value: str, target_value: str) -> None:
+def _copy_path(
+    root: Path, destination: Path, source_value: str, target_value: str
+) -> None:
     source = root / source_value
     target = destination / target_value
     if not source.exists():
