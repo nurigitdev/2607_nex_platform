@@ -23,6 +23,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .config import DATABASE_ENV, SERVICE_ID
+from .work_assets import SqlAlchemyWorkAssetRepository
 from .work_evidence import SqlAlchemyWorkEvidenceRepository
 
 WA_COMMON_RUNTIME_MIGRATIONS = (
@@ -33,6 +34,8 @@ WA_COMMON_RUNTIME_MIGRATIONS = (
 WA_REQUIRED_MIGRATIONS = (
     *WA_COMMON_RUNTIME_MIGRATIONS,
     "2603_wa_work_evidence",
+    "2604_wa_work_asset",
+    "2605_wa_work_asset_evidence",
 )
 
 EngineFactory = Callable[..., Engine]
@@ -55,6 +58,7 @@ class WaPersistenceRuntime:
     job_queue: SqlAlchemyJobQueue
     worker_heartbeat_store: SqlAlchemyWorkerHeartbeatStore
     work_evidence_repository: SqlAlchemyWorkEvidenceRepository
+    work_asset_repository: SqlAlchemyWorkAssetRepository
 
     def transaction(self) -> SqlAlchemyUnitOfWork:
         return build_unit_of_work(self.api_session_factory)
@@ -92,6 +96,7 @@ class WaPersistenceRuntime:
             "job_queue": self.job_queue.__class__.__name__,
             "worker_heartbeat_store": self.worker_heartbeat_store.__class__.__name__,
             "work_evidence_repository": self.work_evidence_repository.__class__.__name__,
+            "work_asset_repository": self.work_asset_repository.__class__.__name__,
         }
 
     def dispose(self) -> None:
@@ -151,4 +156,5 @@ def build_wa_persistence_runtime(
         job_queue=SqlAlchemyJobQueue(worker_sessions),
         worker_heartbeat_store=SqlAlchemyWorkerHeartbeatStore(worker_sessions),
         work_evidence_repository=SqlAlchemyWorkEvidenceRepository(api_sessions),
+        work_asset_repository=SqlAlchemyWorkAssetRepository(api_sessions),
     )

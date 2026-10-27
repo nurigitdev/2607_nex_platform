@@ -157,6 +157,7 @@ def test_readiness_uses_exact_wa_database_environment_without_leaking_url(
             environ=_environment(NEX_WA_DATABASE_URL=database_url),
             persistence_builder=lambda **_kwargs: SimpleNamespace(
                 work_evidence_repository=None,
+                work_asset_repository=None,
                 migration_readiness=lambda: {
                     "name": "wa_migrations",
                     "ok": True,

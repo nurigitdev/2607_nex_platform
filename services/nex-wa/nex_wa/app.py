@@ -15,7 +15,7 @@ from .config import WaSettings, load_wa_settings
 from .persistence import WaPersistenceRuntime, build_wa_persistence_runtime
 
 SERVICE_SPEC = SERVICE_SPECS["nex-wa"]
-CONTRACT_CATALOG_VERSION = "p9-s03"
+CONTRACT_CATALOG_VERSION = "p9-s04"
 PersistenceBuilder = Callable[..., WaPersistenceRuntime]
 
 
@@ -63,5 +63,8 @@ def create_wa_app(
     app.state.wa_persistence = persistence
     app.state.wa_work_evidence_repository = (
         persistence.work_evidence_repository if persistence is not None else None
+    )
+    app.state.wa_work_asset_repository = (
+        persistence.work_asset_repository if persistence is not None else None
     )
     return app
