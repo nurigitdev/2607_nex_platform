@@ -1,13 +1,14 @@
 openapi: 3.1.0
 info:
   title: NeX Work Asset API
-  version: 2.1.0-p9-s20
-  description: Protected WorkEvidence intake and privacy-scoped read surface.
+  version: 2.1.0-p9-s23
+  description: Protected WorkEvidence intake, privacy-scoped reads, and bounded Job recovery controls.
 servers:
   - url: http://127.0.0.1:8108
 tags:
   - name: Platform
   - name: Evidence
+  - name: Operations
 paths:
   /health:
     get:
@@ -124,6 +125,73 @@ paths:
         "401": {description: Service claim is missing or invalid.}
         "403": {description: Caller or detail scope is forbidden.}
         "404": {description: WorkAsset does not exist in the tenant.}
+  /internal/v1/jobs/{job_id}:
+    get:
+      operationId: getWaServiceJob
+      tags: [Operations]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      x-nex-route-class: READ
+      parameters:
+        - {$ref: "#/components/parameters/JobId"}
+      responses:
+        "200": {description: Bounded Job state without private payload.}
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: Job does not exist.}
+  /internal/v1/jobs/{job_id}/cancel:
+    post:
+      operationId: cancelWaServiceJob
+      tags: [Operations]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      x-nex-route-class: WRITE
+      parameters:
+        - {$ref: "#/components/parameters/JobId"}
+      responses:
+        "200": {description: Active Job was cancelled.}
+        "401": {description: Service claim is missing or invalid.}
+        "409": {description: Job state cannot be cancelled.}
+  /internal/v1/jobs/{job_id}/retry:
+    post:
+      operationId: retryWaServiceJob
+      tags: [Operations]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      x-nex-route-class: WRITE
+      parameters:
+        - {$ref: "#/components/parameters/JobId"}
+      responses:
+        "200": {description: Running Job was requeued or dead-lettered.}
+        "401": {description: Service claim is missing or invalid.}
+        "409": {description: Job state cannot be retried.}
+  /internal/v1/jobs/{job_id}/replay:
+    post:
+      operationId: replayWaServiceJob
+      tags: [Operations]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      x-nex-route-class: WRITE
+      parameters:
+        - {$ref: "#/components/parameters/JobId"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [replay_job_id, idempotency_key, requested_by, reason]
+              properties:
+                replay_job_id: {type: string, minLength: 1}
+                idempotency_key: {type: string, minLength: 1}
+                requested_by: {type: string, minLength: 1}
+                reason: {type: string, minLength: 1, maxLength: 512}
+                observed_at: {type: string, format: date-time}
+      responses:
+        "200": {description: A new replay Job with operator lineage was admitted.}
+        "401": {description: Service claim is missing or invalid.}
+        "409": {description: Source Job is not a dead-letter.}
+        "422": {description: Operator identity or reason is invalid.}
 components:
   securitySchemes:
     serviceBearer:
@@ -136,6 +204,11 @@ components:
       in: header
       required: true
       schema: {type: string, minLength: 1, maxLength: 128}
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 256}
   schemas:
     EvidenceIntakeRequest:
       type: object

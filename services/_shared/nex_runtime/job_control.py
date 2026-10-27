@@ -12,16 +12,15 @@ from nex_runtime.jobs import (
     FAILED,
     RUNNING,
     TERMINAL_JOB_STATUSES,
-    JobReplayDecision,
-    JobRetryPolicy,
     JobQueue,
     JobQueueError,
+    JobReplayDecision,
+    JobRetryPolicy,
     build_job_error,
     plan_dead_letter_replay,
     validate_common_job,
 )
 from nex_runtime.problem import problem_response
-
 
 SERVICE_JOB_CONTROL_SCHEMA_VERSION = "service_job_control.v1"
 
@@ -243,10 +242,20 @@ def project_service_job_control_job(
         "max_attempts": normalized["max_attempts"],
         "retryable": normalized["retryable"],
         "links": deepcopy(normalized["links"]),
-        "error": deepcopy(normalized.get("error")),
+        "error": _project_job_error(normalized.get("error")),
         "available_at": normalized.get("available_at"),
         "created_at": normalized["created_at"],
         "updated_at": normalized["updated_at"],
+    }
+
+
+def _project_job_error(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    return {
+        "error_code": str(value.get("error_code") or "job.failed"),
+        "retryable": bool(value.get("retryable", False)),
+        "dead_lettered": bool(value.get("dead_lettered", False)),
     }
 
 

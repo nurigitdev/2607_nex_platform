@@ -9,6 +9,7 @@ from nex_runtime import (
     SERVICE_SPECS,
     build_service_app,
     build_service_token_admission_runtime,
+    register_service_job_control_routes,
 )
 
 from .config import WaSettings, load_wa_settings
@@ -18,7 +19,7 @@ from .persistence import WaPersistenceRuntime, build_wa_persistence_runtime
 from .read_api import WaCoreReadService, register_core_read_routes
 
 SERVICE_SPEC = SERVICE_SPECS["nex-wa"]
-CONTRACT_CATALOG_VERSION = "p9-s21"
+CONTRACT_CATALOG_VERSION = "p9-s23"
 PersistenceBuilder = Callable[..., WaPersistenceRuntime]
 
 
@@ -85,6 +86,12 @@ def create_wa_app(
     app.state.wa_evidence_intake_service = (
         WaEvidenceIntakeService(job_queue) if job_queue is not None else None
     )
+    if job_queue is not None:
+        register_service_job_control_routes(
+            app,
+            service_id=resolved.service_id,
+            job_queue=job_queue,
+        )
     register_evidence_intake_routes(app)
     register_core_read_routes(app)
     return app
