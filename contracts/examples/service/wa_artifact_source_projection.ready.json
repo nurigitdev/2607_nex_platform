@@ -17,5 +17,6 @@
   "artifact_content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "created_at": "2026-10-28T01:00:00Z",
   "classification": "CONFIDENTIAL",
-  "producer_execution_ref": null
+  "producer_execution_ref": null,
+  "project_ref": null
 }

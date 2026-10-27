@@ -12,6 +12,12 @@ from .agent_result_source import (
     HttpWcWorkResultProjectionClient,
 )
 from .app import create_wa_app
+from .artifact_source import (
+    AeArtifactSourceAdapter,
+    HttpAeArtifactProjectionClient,
+    HttpEosHistoricalMembershipVerificationClient,
+    HttpOaHumanSubjectVerificationClient,
+)
 from .config import WaConfigurationError, WaSettings, load_wa_settings
 from .consumer import (
     DEFAULT_WORKER_ID,
@@ -146,9 +152,13 @@ __all__ = (
     "WORK_EVIDENCE_SOURCE_TYPES",
     "WORK_EVIDENCE_STATUSES",
     "AeAgentResultSourceAdapter",
+    "AeArtifactSourceAdapter",
     "ControlledWaEvidenceSourceAdapter",
     "HttpAeAgentResultProjectionClient",
+    "HttpAeArtifactProjectionClient",
+    "HttpEosHistoricalMembershipVerificationClient",
     "HttpEosProjectVerificationClient",
+    "HttpOaHumanSubjectVerificationClient",
     "HttpWcWorkResultProjectionClient",
     "NormalizedEvidenceAdmission",
     "SqlAlchemyWaJobFenceStore",

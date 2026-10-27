@@ -32,6 +32,7 @@ def _record(*, status: str = "READY", producer: str | None = None):
         },
         "workspace_ref": {"workspace_id": "workspace-001", "tenant_id": TENANT},
         "producer_execution_ref": producer,
+        "project_ref": None,
         "source_refs": [{"structured_draft_content_hash": "a" * 64}],
         "versions": [
             {
@@ -106,6 +107,7 @@ def test_exact_ready_version_projection_excludes_bytes_and_raw_content() -> None
     assert "private_claim" not in payload["owner_actor_ref"]
     assert payload["classification"] == "CONFIDENTIAL"
     assert payload["producer_execution_ref"] is None
+    assert payload["project_ref"] is None
     serialized = json.dumps(payload)
     assert "rendered" not in serialized
     assert "storage_ref" not in serialized

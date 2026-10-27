@@ -205,6 +205,9 @@ def build_artifact_wa_projection(
     producer_execution_ref = record.get("producer_execution_ref")
     if not isinstance(producer_execution_ref, str) or not producer_execution_ref:
         producer_execution_ref = None
+    project_ref = record.get("project_ref")
+    if not isinstance(project_ref, str) or not project_ref.strip():
+        project_ref = None
     return {
         "projection_schema_version": ARTIFACT_PROJECTION_SCHEMA_VERSION,
         "tenant_id": owner_actor_ref["tenant_id"],
@@ -218,6 +221,7 @@ def build_artifact_wa_projection(
         "created_at": str(version.get("created_at") or ""),
         "classification": DEFAULT_ARTIFACT_CLASSIFICATION,
         "producer_execution_ref": producer_execution_ref,
+        "project_ref": project_ref,
     }
 
 
