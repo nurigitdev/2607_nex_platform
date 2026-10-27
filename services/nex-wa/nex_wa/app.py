@@ -12,10 +12,12 @@ from nex_runtime import (
 )
 
 from .config import WaSettings, load_wa_settings
+from .intake import WaEvidenceIntakeService
+from .intake_api import register_evidence_intake_routes
 from .persistence import WaPersistenceRuntime, build_wa_persistence_runtime
 
 SERVICE_SPEC = SERVICE_SPECS["nex-wa"]
-CONTRACT_CATALOG_VERSION = "p9-s05"
+CONTRACT_CATALOG_VERSION = "p9-s07"
 PersistenceBuilder = Callable[..., WaPersistenceRuntime]
 
 
@@ -70,4 +72,9 @@ def create_wa_app(
     app.state.wa_evidence_admission_service = (
         persistence.evidence_admission_service if persistence is not None else None
     )
+    job_queue = getattr(persistence, "job_queue", None)
+    app.state.wa_evidence_intake_service = (
+        WaEvidenceIntakeService(job_queue) if job_queue is not None else None
+    )
+    register_evidence_intake_routes(app)
     return app

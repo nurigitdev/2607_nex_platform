@@ -16,7 +16,7 @@ from nex_wa import (
     WaPersistenceError,
     build_wa_persistence_runtime,
 )
-from nex_wa.app import create_wa_app
+from nex_wa.app import CONTRACT_CATALOG_VERSION, create_wa_app
 from run_migrations import load_migrations, run_service_migrations, service_database_env
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -330,5 +330,5 @@ def test_app_attaches_optional_runtime_and_migration_readiness() -> None:
     assert app.state.wa_persistence is runtime
     assert without_database.state.wa_persistence is None
     assert TestClient(app).get("/version").json()["contract_catalog_version"] == (
-        "p9-s05"
+        CONTRACT_CATALOG_VERSION
     )

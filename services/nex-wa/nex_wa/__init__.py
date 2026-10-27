@@ -26,6 +26,12 @@ from .intake_contracts import (
     normalize_evidence_intake_request,
     require_compatible_intake_replay,
 )
+from .intake import (
+    WA_EVIDENCE_INGEST_MAX_ATTEMPTS,
+    WA_EVIDENCE_INGEST_SCOPE,
+    WaEvidenceIntakeService,
+)
+from .intake_api import register_evidence_intake_routes
 from .persistence import (
     WA_COMMON_RUNTIME_MIGRATIONS,
     WA_REQUIRED_MIGRATIONS,
@@ -64,7 +70,9 @@ __all__ = (
     "WA_COMMON_RUNTIME_MIGRATIONS",
     "WA_ERROR_SCHEMA",
     "WA_EVIDENCE_INGEST_JOB_TYPE",
+    "WA_EVIDENCE_INGEST_MAX_ATTEMPTS",
     "WA_EVIDENCE_INGEST_NAMESPACE",
+    "WA_EVIDENCE_INGEST_SCOPE",
     "WA_EVIDENCE_INTAKE_ADMISSION_SCHEMA",
     "WA_EVIDENCE_INTAKE_REQUEST_SCHEMA",
     "WA_EXTERNAL_INTAKE_SOURCE_TYPES",
@@ -87,6 +95,7 @@ __all__ = (
     "WaEvidenceIntakeAdmission",
     "WaEvidenceIntakeIdentity",
     "WaEvidenceIntakeRequest",
+    "WaEvidenceIntakeService",
     "WaIntakeContractError",
     "WaPersistenceError",
     "WaPersistenceRuntime",
@@ -111,5 +120,6 @@ __all__ = (
     "deterministic_work_evidence_id",
     "load_wa_settings",
     "normalize_evidence_intake_request",
+    "register_evidence_intake_routes",
     "require_compatible_intake_replay",
 )
