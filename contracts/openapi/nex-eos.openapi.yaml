@@ -379,7 +379,7 @@ paths:
           description: Organization persistence is unavailable.
   /internal/v1/projects:verify-batch:
     post:
-      operationId: verifyEosProjectsBatch
+      operationId: PROJECT.PROJECT.VERIFY_BATCH
       tags: [Project]
       security:
         - serviceBearer: []
@@ -405,7 +405,7 @@ paths:
         "503": {description: "EOS Project authority is unavailable."}
   /internal/v1/project-memberships:verify-at:
     post:
-      operationId: verifyEosProjectMembershipAt
+      operationId: PROJECT.MEMBERSHIP.VERIFY_AT
       tags: [Project]
       security:
         - serviceBearer: []

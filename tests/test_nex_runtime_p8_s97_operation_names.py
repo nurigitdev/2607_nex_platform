@@ -116,6 +116,7 @@ def test_eos_project_openapi_uses_canonical_operation_ids() -> None:
         "PROJECT.PROJECT.GET",
         "PROJECT.PROJECT.LIST",
         "PROJECT.PROJECT.DEACTIVATE",
+        "PROJECT.PROJECT.VERIFY_BATCH",
         "PROJECT.MEMBERSHIP.ADD",
         "PROJECT.MEMBERSHIP.ADD_MANY",
         "PROJECT.MEMBERSHIP.REMOVE",

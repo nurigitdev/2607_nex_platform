@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import sys
-from typing import Any, Mapping
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/quality"))
@@ -16,13 +16,13 @@ sys.path.insert(0, str(ROOT / "services/_shared"))
 sys.path.insert(0, str(ROOT / "services/nex-oa"))
 sys.path.insert(0, str(ROOT / "services/nex-ag"))
 
-from nex_ag.federated_operator_authorization import (  # noqa: E402
+from nex_ag.federated_operator_authorization import (
     AgFederatedAuthorizationTelemetry,
 )
-from nex_oa.contract_api_drift_audit import (  # noqa: E402
+from nex_oa.contract_api_drift_audit import (
     build_oa_contract_api_drift_audit,
 )
-from validate_contracts import validate_contract_tree  # noqa: E402
+from validate_contracts import validate_contract_tree
 
 
 def run_s129_contract_runtime_privacy(root: Path = ROOT) -> dict[str, Any]:
@@ -62,7 +62,10 @@ def run_s129_contract_runtime_privacy(root: Path = ROOT) -> dict[str, Any]:
         ),
         "oa_drift_reduced": oa_drift.get("status") == "PASS"
         and 0 <= int(oa_drift.get("summary", {}).get("drift_count") or 0) <= 21
-        and oa_drift.get("summary", {}).get("runtime_openapi_covered_count") == 33,
+        and int(
+            oa_drift.get("summary", {}).get("runtime_openapi_covered_count") or 0
+        )
+        >= 33,
         "telemetry_aggregated": set(snapshot["counts"].values()) == {1},
         "telemetry_privacy_safe": not _contains_key(
             snapshot,

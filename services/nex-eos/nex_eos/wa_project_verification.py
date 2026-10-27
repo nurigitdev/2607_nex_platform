@@ -248,7 +248,11 @@ def register_wa_project_verification_routes(
     *,
     verifier: EosWaProjectVerifier | None,
 ) -> None:
-    @app.post("/internal/v1/projects:verify-batch", response_model=None)
+    @app.post(
+        "/internal/v1/projects:verify-batch",
+        response_model=None,
+        operation_id="PROJECT.PROJECT.VERIFY_BATCH",
+    )
     def verify_projects(
         payload: dict[str, Any],
         request: Request,
@@ -267,7 +271,11 @@ def register_wa_project_verification_routes(
             return _problem(request, exc)
         return _with_context(request, result)
 
-    @app.post("/internal/v1/project-memberships:verify-at", response_model=None)
+    @app.post(
+        "/internal/v1/project-memberships:verify-at",
+        response_model=None,
+        operation_id="PROJECT.MEMBERSHIP.VERIFY_AT",
+    )
     def verify_membership_at(
         payload: dict[str, Any],
         request: Request,

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import pytest
+import run_s129_contract_runtime_privacy as runner
 from fastapi import FastAPI, Header, Request
 from fastapi.testclient import TestClient
-import pytest
-
 from nex_ag.federated_operator_authorization import (
     AgFederatedAuthorizationTelemetry,
 )
@@ -18,7 +18,6 @@ from nex_ag.federated_operator_operations import (
 )
 from nex_ag.service_auth import authorize_ag_service_or_admin_request
 from nex_runtime import issue_mock_service_token
-import run_s129_contract_runtime_privacy as runner
 
 
 def _context(*, roles=None, scopes=None):

@@ -11,6 +11,7 @@ POST /internal/v1/project-memberships:verify-at
 caller = nex-wa
 audience = nex-eos
 scopes = service:call + project:verify
+operation ids = PROJECT.PROJECT.VERIFY_BATCH / PROJECT.MEMBERSHIP.VERIFY_AT
 ```
 
 Project verification distinguishes `VERIFIED`, `PROJECT_NOT_FOUND`,
