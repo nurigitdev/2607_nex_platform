@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/wa_artifact_source_projection.v1.schema.json",
+  "title": "WA Artifact Source Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "projection_schema_version",
+    "tenant_id",
+    "artifact_id",
+    "artifact_version_id",
+    "artifact_status",
+    "owner_actor_ref",
+    "workspace_ref",
+    "source_content_hash",
+    "artifact_content_hash",
+    "created_at",
+    "classification",
+    "producer_execution_ref"
+  ],
+  "properties": {
+    "projection_schema_version": {"const": "wa_artifact_source_projection.v1"},
+    "tenant_id": {"type": "string", "minLength": 1},
+    "artifact_id": {"type": "string", "minLength": 1},
+    "artifact_version_id": {"type": "string", "minLength": 1},
+    "artifact_status": {"const": "READY"},
+    "owner_actor_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_type", "actor_id", "tenant_id"],
+      "properties": {
+        "actor_type": {"type": "string", "minLength": 1},
+        "actor_id": {"type": "string", "minLength": 1},
+        "tenant_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "workspace_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workspace_id", "tenant_id"],
+      "properties": {
+        "workspace_id": {"type": "string", "minLength": 1},
+        "tenant_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "source_content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "artifact_content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "classification": {"enum": ["INTERNAL", "CONFIDENTIAL", "RESTRICTED"]},
+    "producer_execution_ref": {"type": ["string", "null"]}
+  }
+}

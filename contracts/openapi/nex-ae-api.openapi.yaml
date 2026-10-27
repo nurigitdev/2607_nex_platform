@@ -2480,6 +2480,38 @@ paths:
         "404": {description: AgentResult is absent in the tenant scope.}
         "409": {description: Authoritative result lineage is inconsistent.}
         "503": {description: AE persistence is unavailable.}
+  /internal/v1/wa-sources/artifacts/{artifact_id}/versions/{artifact_version_id}:
+    get:
+      operationId: getAeArtifactVersionWaSource
+      tags: [Work Sources]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call, "work:source:read"]
+      parameters:
+        - name: artifact_id
+          in: path
+          required: true
+          schema: {type: string, minLength: 1}
+        - name: artifact_version_id
+          in: path
+          required: true
+          schema: {type: string, minLength: 1}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1}
+      responses:
+        "200":
+          description: Safe exact Artifact version projection for NeX-WA.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaArtifactSourceProjection"
+        "400": {description: Tenant header is missing.}
+        "401": {description: Service token or required source-read scope is invalid.}
+        "403": {description: Caller service is denied.}
+        "404": {description: Artifact version is absent in the tenant scope.}
+        "409": {description: Artifact is not READY or lineage is inconsistent.}
+        "503": {description: AE persistence is unavailable.}
 components:
   securitySchemes:
     serviceBearer:
@@ -2513,6 +2545,9 @@ components:
         type: string
         format: uuid
   schemas:
+    WaArtifactSourceProjection:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/wa_artifact_source_projection.v1.schema.json
     WaAgentResultSourceProjection:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_ae_api/wa_agent_result_source_projection.v1.schema.json

@@ -32,7 +32,10 @@ from nex_ae_api.approval_decision_event_api import (
     register_approval_decision_event_routes,
 )
 from nex_ae_api.approval_facade import register_approval_facade_routes
-from nex_ae_api.artifacts import register_artifact_handoff_routes
+from nex_ae_api.artifacts import (
+    SqlAlchemyArtifactRecordStore,
+    register_artifact_handoff_routes,
+)
 from nex_ae_api.auth_sessions import register_auth_session_routes
 from nex_ae_api.chat import register_chat_routes
 from nex_ae_api.claim_handoff_api import register_claim_handoff_routes
@@ -71,7 +74,9 @@ from nex_ae_api.voucher_attachment_storage import VoucherAttachmentObjectGateway
 from nex_ae_api.voucher_attachments import SqlAlchemyVoucherAttachmentRepository
 from nex_ae_api.wa_source_projections import (
     SqlAlchemyAgentResultWaProjectionSource,
+    SqlAlchemyArtifactWaProjectionSource,
     register_wa_agent_result_source_routes,
+    register_wa_artifact_source_routes,
 )
 from nex_ae_api.work_result_event_api import register_work_result_event_routes
 from nex_ae_api.work_result_events import SqlAlchemyWorkResultEventService
@@ -156,6 +161,18 @@ register_wa_agent_result_source_routes(
     source=(
         SqlAlchemyAgentResultWaProjectionSource(
             SqlAlchemyAgentResultRepository(
+                SERVICE_PERSISTENCE.api_session_factory
+            )
+        )
+        if SERVICE_PERSISTENCE.api_session_factory is not None
+        else None
+    ),
+)
+register_wa_artifact_source_routes(
+    app,
+    source=(
+        SqlAlchemyArtifactWaProjectionSource(
+            SqlAlchemyArtifactRecordStore(
                 SERVICE_PERSISTENCE.api_session_factory
             )
         )

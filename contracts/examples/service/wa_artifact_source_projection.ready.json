@@ -1,0 +1,21 @@
+{
+  "projection_schema_version": "wa_artifact_source_projection.v1",
+  "tenant_id": "VO00",
+  "artifact_id": "artifact-001",
+  "artifact_version_id": "artifact-version-001",
+  "artifact_status": "READY",
+  "owner_actor_ref": {
+    "actor_type": "user",
+    "actor_id": "employee-001",
+    "tenant_id": "VO00"
+  },
+  "workspace_ref": {
+    "workspace_id": "workspace-001",
+    "tenant_id": "VO00"
+  },
+  "source_content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "artifact_content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "created_at": "2026-10-28T01:00:00Z",
+  "classification": "CONFIDENTIAL",
+  "producer_execution_ref": null
+}
