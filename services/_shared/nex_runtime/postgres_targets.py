@@ -70,6 +70,27 @@ POSTGRES_TEST_TARGETS = (
         "nex_ag_test",
         "nex_ag_user",
     ),
+    PostgresTestTarget(
+        "nex-wc",
+        "NEX_WC_TEST_DATABASE_URL",
+        "NEX_WC_DATABASE_URL",
+        "nex_wc_test",
+        "nex_wc_user",
+    ),
+    PostgresTestTarget(
+        "nex-eos",
+        "NEX_EOS_TEST_DATABASE_URL",
+        "NEX_EOS_DATABASE_URL",
+        "nex_eos_test",
+        "nex_eos_user",
+    ),
+    PostgresTestTarget(
+        "nex-wa",
+        "NEX_WA_TEST_DATABASE_URL",
+        "NEX_WA_DATABASE_URL",
+        "nex_wa_test",
+        "nex_wa_user",
+    ),
 )
 
 

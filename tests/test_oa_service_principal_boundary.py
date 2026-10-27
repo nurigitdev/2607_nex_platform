@@ -57,6 +57,7 @@ def test_s126_handoff_freezes_credential_and_storage_boundaries() -> None:
         "nex-mo",
         "nex-wc",
         "nex-eos",
+        "nex-wa",
     }
 
 

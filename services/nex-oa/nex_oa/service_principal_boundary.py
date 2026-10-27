@@ -15,6 +15,7 @@ KNOWN_SERVICE_IDS = frozenset(
         "nex-mo",
         "nex-wc",
         "nex-eos",
+        "nex-wa",
     }
 )
 MAX_CREDENTIAL_LIFETIME_DAYS = 90

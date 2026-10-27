@@ -89,6 +89,30 @@ DEFAULT_DEPLOYMENT_ARTIFACTS = (
         ("services/_shared/nex_runtime", "services/nex-ag/nex_ag"),
     ),
     DeploymentArtifactDefinition(
+        "nex-wc-runtime",
+        "nex-wc",
+        "python-service",
+        "wc-runtime",
+        "python-production",
+        ("services/_shared/nex_runtime", "services/nex-wc/nex_wc"),
+    ),
+    DeploymentArtifactDefinition(
+        "nex-eos-runtime",
+        "nex-eos",
+        "python-service",
+        "eos-runtime",
+        "python-production",
+        ("services/_shared/nex_runtime", "services/nex-eos/nex_eos"),
+    ),
+    DeploymentArtifactDefinition(
+        "nex-wa-runtime",
+        "nex-wa",
+        "python-service",
+        "wa-runtime",
+        "python-production",
+        ("services/_shared/nex_runtime", "services/nex-wa/nex_wa"),
+    ),
+    DeploymentArtifactDefinition(
         "nex-ae-web",
         "nex-ae-web",
         "node-web",
@@ -104,6 +128,9 @@ DEFAULT_PROCESS_ARTIFACT_BINDINGS = (
     ProcessArtifactBinding("nex-cx-api", "nex-cx-runtime", "api"),
     ProcessArtifactBinding("nex-ae-api", "nex-ae-runtime", "api"),
     ProcessArtifactBinding("nex-ag-api", "nex-ag-runtime", "api"),
+    ProcessArtifactBinding("nex-wc-api", "nex-wc-runtime", "api"),
+    ProcessArtifactBinding("nex-eos-api", "nex-eos-runtime", "api"),
+    ProcessArtifactBinding("nex-wa-api", "nex-wa-runtime", "api"),
     ProcessArtifactBinding("nex-ae-web", "nex-ae-web", "web"),
     ProcessArtifactBinding(
         "nex-ae-artifact-render-worker",
@@ -131,6 +158,9 @@ DEFAULT_PROCESS_ARTIFACT_BINDINGS = (
     ),
     ProcessArtifactBinding(
         "nex-cx-remediation-worker", "nex-cx-runtime", "remediation-worker"
+    ),
+    ProcessArtifactBinding(
+        "nex-wa-evidence-consumer", "nex-wa-runtime", "evidence-consumer"
     ),
 )
 

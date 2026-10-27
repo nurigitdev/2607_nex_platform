@@ -34,7 +34,7 @@ class FakeConnection:
         return FakeCursor()
 
 
-def test_service_specs_cover_seven_backend_services() -> None:
+def test_service_specs_cover_eight_backend_services() -> None:
     assert set(SERVICE_SPECS) == {
         "nex-oa",
         "nex-ag",
@@ -43,12 +43,15 @@ def test_service_specs_cover_seven_backend_services() -> None:
         "nex-mo",
         "nex-wc",
         "nex-eos",
+        "nex-wa",
     }
     assert SERVICE_SPECS["nex-oa"].default_port == 8101
     assert SERVICE_SPECS["nex-mo"].database_env == "NEX_MO_DATABASE_URL"
     assert SERVICE_SPECS["nex-wc"].database_env == "NEX_WC_DATABASE_URL"
     assert SERVICE_SPECS["nex-eos"].default_port == 8107
     assert SERVICE_SPECS["nex-eos"].database_env == "NEX_EOS_DATABASE_URL"
+    assert SERVICE_SPECS["nex-wa"].default_port == 8108
+    assert SERVICE_SPECS["nex-wa"].database_env == "NEX_WA_DATABASE_URL"
 
 
 def test_root_health_and_version_use_service_metadata(monkeypatch: pytest.MonkeyPatch) -> None:

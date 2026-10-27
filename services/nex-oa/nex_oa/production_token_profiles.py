@@ -23,6 +23,7 @@ TOKEN_AUDIENCES = frozenset(
         "nex-mo",
         "nex-wc",
         "nex-eos",
+        "nex-wa",
     }
 )
 COMMON_REQUIRED_HEADERS = ("alg", "typ", "kid")

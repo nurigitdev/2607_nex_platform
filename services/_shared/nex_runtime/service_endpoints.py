@@ -12,6 +12,9 @@ SERVICE_ENDPOINTS = {
     "nex-ae-api": ("NEX_AE_API_BASE_URL", "http://127.0.0.1:8103"),
     "nex-cx": ("NEX_CX_BASE_URL", "http://127.0.0.1:8104"),
     "nex-mo": ("NEX_MO_BASE_URL", "http://127.0.0.1:8105"),
+    "nex-wc": ("NEX_WC_BASE_URL", "http://127.0.0.1:8106"),
+    "nex-eos": ("NEX_EOS_BASE_URL", "http://127.0.0.1:8107"),
+    "nex-wa": ("NEX_WA_BASE_URL", "http://127.0.0.1:8108"),
 }
 
 PROVIDER_TIMEOUT_SETTINGS = {

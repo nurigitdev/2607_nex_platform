@@ -31,15 +31,15 @@ def test_local_mock_manifest_materializes_complete_process_topology() -> None:
     plan = build_runtime_startup_plan(manifest)
     validate_runtime_command_targets(manifest, ROOT)
 
-    assert len(manifest.endpoints) == 6
-    assert len(manifest.processes) == 13
-    assert [item.kind for item in manifest.processes].count("api") == 5
+    assert len(manifest.endpoints) == 9
+    assert len(manifest.processes) == 17
+    assert [item.kind for item in manifest.processes].count("api") == 8
     assert [item.kind for item in manifest.processes].count("web") == 1
-    assert [item.kind for item in manifest.processes].count("worker") == 5
+    assert [item.kind for item in manifest.processes].count("worker") == 6
     assert [item.kind for item in manifest.processes].count("daemon") == 2
     assert set(BACKGROUND_PROCESS_IDS).issubset(plan.ordered_process_ids)
     assert plan.layers[0] == ("nex-oa-api",)
-    assert plan.ordered_process_ids[-1] == "nex-ag-dispatch-daemon"
+    assert plan.ordered_process_ids[-1] == "nex-wa-evidence-consumer"
     assert all("command" not in item for item in projection["processes"])
 
 

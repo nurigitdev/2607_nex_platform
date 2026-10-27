@@ -23,7 +23,16 @@ P8_DEMO_DEPLOYMENT_BOUNDARY = "P8_DEMO"
 P8_DEMO_DEPLOYMENT_PROFILE = "staging_live"
 P8_DEMO_MAX_TOKEN_TTL_SECONDS = 86_400
 SIGNED_TOKEN_AUDIENCES = frozenset(
-    {"nex-oa", "nex-ag", "nex-ae-api", "nex-cx", "nex-mo", "nex-wc", "nex-eos"}
+    {
+        "nex-oa",
+        "nex-ag",
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+        "nex-wc",
+        "nex-eos",
+        "nex-wa",
+    }
 )
 JWKS_CACHE_TTL_SECONDS = 300
 MAX_JWKS_CACHE_TTL_SECONDS = 900

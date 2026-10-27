@@ -22,6 +22,7 @@ SERVICE_MODULES = {
     "nex-mo": "nex_mo.main:app",
     "nex-wc": "nex_wc.main:app",
     "nex-eos": "nex_eos.main:app",
+    "nex-wa": "nex_wa.main:app",
 }
 
 

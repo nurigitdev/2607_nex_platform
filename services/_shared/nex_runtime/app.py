@@ -89,10 +89,17 @@ SERVICE_SPECS: dict[str, ServiceSpec] = {
         database_env="NEX_EOS_DATABASE_URL",
         default_port=8107,
     ),
+    "nex-wa": ServiceSpec(
+        service_id="nex-wa",
+        package_name="nex_wa",
+        display_name="NeX Work Asset",
+        database_env="NEX_WA_DATABASE_URL",
+        default_port=8108,
+    ),
 }
 
 # Only services that expose the shared job-control and service-log APIs belong
-# in AG runtime operations. NeX-EOS joins this catalog when those APIs activate.
+# in AG runtime operations. NeX-EOS and NeX-WA join when those APIs activate.
 SERVICE_RUNTIME_OPERATION_SPECS: dict[str, ServiceSpec] = {
     service_id: SERVICE_SPECS[service_id]
     for service_id in (

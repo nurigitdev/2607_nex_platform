@@ -115,6 +115,14 @@ def run_platform_production_configuration_audit(
     root: Path = ROOT,
 ) -> dict[str, Any]:
     profile = _production_profile_evidence()
+    required_environment_count = len(
+        (
+            *DATABASE_ENV_NAMES,
+            *SERVICE_ENDPOINT_ENV_NAMES,
+            *SIGNED_TRUST_ENV_NAMES,
+            *LIVE_PROVIDER_ENV_NAMES,
+        )
+    )
     plan = _read_text(root / PLAN_PATH)
     gap_checks = {
         item.gap_id: {
@@ -134,8 +142,12 @@ def run_platform_production_configuration_audit(
             "trust": "signed",
             "ag_projection": "api",
         },
-        "required_environment_inventory_exact": profile["required_count"] == 25,
-        "missing_environment_fails_closed": profile["missing_error_count"] == 25,
+        "required_environment_inventory_exact": (
+            profile["required_count"] == required_environment_count
+        ),
+        "missing_environment_fails_closed": (
+            profile["missing_error_count"] == required_environment_count
+        ),
         "placeholder_fails_closed": profile["placeholder_rejected"] is True,
         "mode_conflict_fails_closed": profile["mode_conflict_rejected"] is True,
         "secure_cookie_selected": profile["secure_cookie"] == "true",

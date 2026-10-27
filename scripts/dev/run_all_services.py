@@ -17,6 +17,7 @@ SERVICES = [
     "nex-mo",
     "nex-wc",
     "nex-eos",
+    "nex-wa",
 ]
 
 

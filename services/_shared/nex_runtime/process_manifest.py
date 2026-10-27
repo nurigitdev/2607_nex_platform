@@ -33,6 +33,7 @@ BACKGROUND_PROCESS_IDS = (
     "nex-cx-async-generation-worker",
     "nex-cx-ingestion-worker",
     "nex-cx-remediation-worker",
+    "nex-wa-evidence-consumer",
 )
 SERVICE_DATABASE_INDEX = {
     "nex-oa": 0,
@@ -40,6 +41,9 @@ SERVICE_DATABASE_INDEX = {
     "nex-ae-api": 2,
     "nex-cx": 3,
     "nex-mo": 4,
+    "nex-wc": 5,
+    "nex-eos": 6,
+    "nex-wa": 7,
 }
 
 
@@ -107,6 +111,14 @@ def _runtime_processes(
         "nex-cx": ("nex-oa-api", "nex-mo-api"),
         "nex-ae-api": ("nex-oa-api", "nex-cx-api"),
         "nex-ag": ("nex-oa-api", "nex-ae-api", "nex-cx-api", "nex-mo-api"),
+        "nex-wc": ("nex-oa-api", "nex-ae-api"),
+        "nex-eos": ("nex-oa-api", "nex-ae-api", "nex-wc-api"),
+        "nex-wa": (
+            "nex-oa-api",
+            "nex-ae-api",
+            "nex-wc-api",
+            "nex-eos-api",
+        ),
     }
     api_processes = tuple(
         _api_process(
@@ -116,7 +128,16 @@ def _runtime_processes(
             resolution=resolution,
             python_executable=python_executable,
         )
-        for service_id in ("nex-oa", "nex-mo", "nex-cx", "nex-ae-api", "nex-ag")
+        for service_id in (
+            "nex-oa",
+            "nex-mo",
+            "nex-cx",
+            "nex-ae-api",
+            "nex-ag",
+            "nex-wc",
+            "nex-eos",
+            "nex-wa",
+        )
     )
     web_host, web_port = _network_address(endpoints["nex-ae-web"].base_url)
     web = RuntimeProcess(
@@ -223,6 +244,17 @@ def _background_process(
             "nex-cx",
             "worker",
             ("nex-cx-api", "nex-mo-api"),
+        ),
+        "nex-wa-evidence-consumer": (
+            "nex-wa",
+            "worker",
+            (
+                "nex-wa-api",
+                "nex-oa-api",
+                "nex-ae-api",
+                "nex-wc-api",
+                "nex-eos-api",
+            ),
         ),
     }[process_id]
     return RuntimeProcess(

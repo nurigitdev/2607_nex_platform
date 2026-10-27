@@ -49,14 +49,14 @@ def manifest(*, profile: str, environment_names: tuple[str, ...]):
     )
 
 
-def test_resolves_five_targets_and_projects_no_database_urls() -> None:
+def test_resolves_all_backend_targets_and_projects_no_database_urls() -> None:
     resolved = resolve_postgres_test_targets(valid_environment())
     projection = postgres_test_targets_public_projection(resolved)
 
     assert [item.target.service_id for item in resolved] == [
         item.service_id for item in POSTGRES_TEST_TARGETS
     ]
-    assert projection["service_count"] == 5
+    assert projection["service_count"] == 8
     assert projection["database_urls_exposed"] is False
     assert all(item["drivername"] == "postgresql+psycopg" for item in projection["targets"])
     assert "secret" not in str(projection)
@@ -71,7 +71,7 @@ def test_runtime_overlay_maps_test_urls_and_optional_vector_url() -> None:
 
     overlay = build_postgres_test_runtime_overlay(environ)
 
-    assert len(overlay) == 6
+    assert len(overlay) == 9
     for target in POSTGRES_TEST_TARGETS:
         assert overlay[target.runtime_database_env] == environ[target.test_database_env]
     assert overlay[CX_VECTOR_RUNTIME_DATABASE_ENV] == environ[CX_VECTOR_TEST_DATABASE_ENV]
@@ -184,13 +184,13 @@ def test_smoke_report_summary_and_main(monkeypatch, capsys) -> None:
 
     assert report["status"] == "PASS"
     assert smoke.summary_line(report) == (
-        "platform_postgres_test_targets=pass services=5 aliases=5 next=1325"
+        "platform_postgres_test_targets=pass services=8 aliases=8 next=1325"
     )
     assert smoke.summary_line({"status": "FAIL"}) == (
         "platform_postgres_test_targets=fail"
     )
     assert smoke.main(["--summary"]) == 0
-    assert "aliases=5" in capsys.readouterr().out
+    assert "aliases=8" in capsys.readouterr().out
     assert smoke.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
     monkeypatch.setattr(smoke, "build_report", lambda: {"status": "FAIL"})

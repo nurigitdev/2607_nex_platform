@@ -39,6 +39,7 @@ SERVICE_IDS = (
     "nex-mo",
     "nex-wc",
     "nex-eos",
+    "nex-wa",
 )
 
 DEFAULT_WORKER_STALE_AFTER_SECONDS = 60
