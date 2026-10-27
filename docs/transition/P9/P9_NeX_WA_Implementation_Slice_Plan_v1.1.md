@@ -1,13 +1,13 @@
 # P9 — NeX-WA (Work Asset)
 # Implementation Slice Plan v1.1
 
-**Status:** PRE-IMPLEMENTATION BASELINE / FOUNDATION-FOCUSED
+**Status:** PRE-IMPLEMENTATION BASELINE / P9-CA01 PASS / P9-S01 AUTHORIZED
 **Phase:** P9 — NeX-WA / Work Asset Foundation
 **Platform:** NeX Platform v2.1
 **Pre-Architecture:** `P9_NeX_WA_Pre_Architecture_Decision_v1.2.md`
 **Source Audit:** `P9_NeX_WA_Source_Audit_and_Gap_Analysis_v1.0.md`
-**Contract Closure:** `261027_P9_NeX_WA_Contract_Closure_v1.1.md`
-**SRS:** `261027_P9_NeX_WA_SRS_v1.1_PA_Harness_Invariant.md`
+**Contract Closure:** `P9_NeX_WA_Contract_Closure_v1.1.md`
+**SRS:** `P9_NeX_WA_SRS_v1.1.md`
 **P8 Predecessor:** `P8_Final_AsBuilt_Baseline_and_P9_Handoff_v1.2.md` + merged P8-DEMO baseline
 **Entry Branch:** `transition/p4-agent-runtime-foundation`
 **Entry HEAD:** `c3a1ea907387b67fe7a63407e4d668d13b1be8e7`
@@ -79,12 +79,12 @@ migration planning
 contract planning
 ```
 
-However production domain coding is gated.
+P9-CA01 has now closed the production-domain coding gate.
 
 ```text
-P9.2 domain coding
-= BLOCKED
-until P9-CA01 Frozen WA Reconciliation PASS
+P9-CA01 Frozen WA Reconciliation = PASS
+unresolved material conflict = 0
+P9.2 domain coding = AUTHORIZED
 ```
 
 This is inherited directly from Contract Closure v1.1 and SRS v1.1.
@@ -141,6 +141,14 @@ STOP
 → P9 Controlled Amendment
 → affected SRS / contract revalidation
 → resume only after closure
+```
+
+Recorded result:
+
+```text
+P9_CA01_Frozen_WA_Reconciliation_and_Coding_Entry_Gate_v1.0.md
+coding entry = PASS
+next Slice = P9-S01
 ```
 
 ---
@@ -573,7 +581,6 @@ source_type
 source_ref
 source_revision_ref
 source_hash
-evidence_role
 evidence_kind
 actor_type
 actor_ref
@@ -600,11 +607,11 @@ Constraints:
 ```text
 unique exact source revision
 HUMAN | AGENT
-PRIMARY | SUPPORTING
 ACTIVE | SUPERSEDED | INVALIDATED
 IA | CA | PA | EA when non-null
 no cross-tenant supersession
 no self-supersession
+no global evidence_role; relationship role belongs to binding
 ```
 
 Tests:
@@ -665,12 +672,17 @@ PRIMARY
 SUPPORTING
 ```
 
+`binding_role` is the sole PRIMARY/SUPPORTING source of truth.
+`wa_work_asset` does not duplicate `primary_evidence_id`.
+
 Enforce:
 
 ```text
 one ACTIVE WorkAsset has exactly one PRIMARY binding
 one evidence cannot duplicate same asset binding
 tenant alignment
+asset hash binds stable fields plus sorted evidence bindings
+exact replay preserves asset hash and version
 ```
 
 Deterministic IDs:
@@ -692,6 +704,8 @@ tenant mismatch
 deterministic asset IDs
 version increment
 supporting evidence fan-in
+same evidence with asset-relative binding roles under exact lineage
+no zero-primary ACTIVE asset
 ```
 
 Exit:
@@ -1517,7 +1531,7 @@ validate Agent type
 validate current P9 v1 authority profile
 verify Project where applicable
 normalize AGENT
-create/reuse PRIMARY WorkEvidence
+create/reuse AgentResult WorkEvidence
 derive/reuse Agent WorkAsset
 bind PRIMARY
 ```
@@ -1601,8 +1615,8 @@ Persist:
 
 ```text
 one Agent WorkAsset
-one PRIMARY AgentResult WorkEvidence
-zero/one SUPPORTING WC WorkResult WorkEvidence
+one AgentResult WorkEvidence bound PRIMARY
+zero/one WC WorkResult WorkEvidence bound SUPPORTING
 ```
 
 No independent WC Job.
@@ -2259,7 +2273,7 @@ Canonical journey:
 11. AE source projections re-read.
 12. Human owner verified through OA.
 13. Project verified through EOS where applicable.
-14. AgentResult becomes PRIMARY WorkEvidence.
+14. AgentResult WorkEvidence is bound PRIMARY.
 15. WC WorkResult is resolved by execution/claim lineage.
 16. WC WorkResult becomes SUPPORTING evidence.
 17. one AgentExecution -> one Agent WorkAsset.

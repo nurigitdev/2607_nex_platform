@@ -1,10 +1,10 @@
 # P9 NeX-WA Transition Baseline
 
-**Status:** P9 DESIGN SET REVIEWED / P9-CA01 REQUIRED / P9.2 CODING BLOCKED  
+**Status:** P9 DESIGN SET REVIEWED / P9-CA01 PASS / P9-S01 AUTHORIZED
 **Phase:** P9 - NeX-WA Work Evidence and Work Asset Foundation  
 **Platform:** NeX Platform v2.1  
 **Predecessor:** P8 v1.2 CLOSED / P9 ENTRY AUTHORIZED  
-**Current Entry Gate:** P9-CA01 Frozen WA Reconciliation  
+**Current Entry Gate:** P9-CA01 Frozen WA Reconciliation - PASS
 **Date:** 2026-10-27
 
 ## 1. Purpose
@@ -28,7 +28,7 @@ Read the P9 documents in this order:
 5. `P9_NeX_WA_Contract_Closure_v1.1.md`
 6. `P9_NeX_WA_SRS_v1.1.md`
 7. `P9_NeX_WA_Implementation_Slice_Plan_v1.1.md`
-8. the approved P9-CA01 Frozen WA reconciliation record, once created
+8. `P9_CA01_Frozen_WA_Reconciliation_and_Coding_Entry_Gate_v1.0.md`
 9. per-Slice As-Built records under `../../slices/`, in implementation order
 10. the final P9 As-Built and next-phase handoff, once created
 
@@ -66,10 +66,10 @@ P9 Controlled Amendment is required.
 
 ## 4. Mandatory P9-CA01 Entry Gate
 
-P9 SRS and Slice planning are complete enough to review, but P9.2 production
-domain coding is blocked until P9-CA01 passes.
+P9-CA01 has materialized the Frozen artifacts, completed semantic
+reconciliation, and authorized P9.2 production-domain coding.
 
-P9-CA01 SHALL materialize and reconcile:
+P9-CA01 materialized and reconciled:
 
 ```text
 ../../frozen/v2.1/10_PLATFORM_v2.1/02_DETAILED_DESIGN/
@@ -88,8 +88,8 @@ CONFLICT / CONTROLLED AMENDMENT REQUIRED
 NOT APPLICABLE TO P9 FOUNDATION
 ```
 
-P9-S01 may begin only after the reconciliation record declares coding entry
-`PASS` with no unresolved material conflict.
+The reconciliation record declares coding entry `PASS` with no unresolved
+material conflict. P9-S01 is authorized.
 
 ## 5. Canonical Implementation Sequence
 
@@ -173,12 +173,13 @@ P9 Source Audit                        = REVIEWED
 P9 Contract Closure v1.1               = REVIEWED
 P9 SRS v1.1                            = REVIEWED
 P9 Implementation Slice Plan v1.1      = REVIEWED
-P9-CA01 Frozen WA reconciliation       = NOT STARTED
-P9.2 production domain coding          = BLOCKED
+P9-CA01 Frozen WA reconciliation       = PASS
+P9.2 production domain coding          = AUTHORIZED
+Next Slice                             = P9-S01
 ```
 
-The next authorized activity is P9-CA01. No P9 production Slice begins before
-that gate closes.
+The next authorized activity is P9-S01. The completed P9-CA01 record remains a
+mandatory implementation input.
 
 ## 9. Maintenance Rule
 

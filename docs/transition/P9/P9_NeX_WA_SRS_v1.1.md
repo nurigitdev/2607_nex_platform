@@ -1,13 +1,13 @@
 # P9 — NeX-WA (Work Asset)
 # Software Requirements Specification v1.1
 
-**Document Status:** PRE-IMPLEMENTATION SRS v1.1 / CONTRACT CLOSURE v1.1 BACK-PROPAGATED
+**Document Status:** PRE-IMPLEMENTATION SRS v1.1 / P9-CA01 PASS / P9.2 CODING AUTHORIZED
 **Phase:** P9 — NeX-WA / Work Asset Foundation
 **Platform:** NeX Platform v2.1
 **Predecessor:** P8 CLOSED / P9 Entry Authorized
 **Pre-Architecture:** `P9_NeX_WA_Pre_Architecture_Decision_v1.2.md`
 **Source Audit:** `P9_NeX_WA_Source_Audit_and_Gap_Analysis_v1.0.md`
-**Contract Closure:** `261027_P9_NeX_WA_Contract_Closure_v1.1.md`
+**Contract Closure:** `P9_NeX_WA_Contract_Closure_v1.1.md`
 **Platform Repository:** `nurigitdev/2607_nex_platform`
 **Entry Branch:** `transition/p4-agent-runtime-foundation`
 **Entry HEAD:** `c3a1ea907387b67fe7a63407e4d668d13b1be8e7`
@@ -16,7 +16,7 @@
 **WA Development DB:** `nex_wa_dev`
 **WA Test DB:** `nex_wa_test`
 **WA Local API Port:** `8108`
-**Revision Note:** v1.1 back-propagates P9-CC-31~34: authoritative AgentResult completion barrier, WC supporting resolution by exact execution lineage, fenced stale-RUNNING recovery, and the Frozen-WA reconciliation gate. It also closes bounded privacy-read scopes, updates traceability/E2E acceptance, and adds a forward-compatibility invariant for future PA Scheduler/Harness execution-authority profiles.
+**Revision Note:** v1.1 back-propagates P9-CC-31~34: authoritative AgentResult completion barrier, WC supporting resolution by exact execution lineage, fenced stale-RUNNING recovery, and the Frozen-WA reconciliation gate. It also closes bounded privacy-read scopes, updates traceability/E2E acceptance, and adds a forward-compatibility invariant for future PA Scheduler/Harness execution-authority profiles. P9-CA01 records that gate as PASS and clarifies asset-relative binding roles, PRIMARY binding ownership, and WorkAsset semantic hashing before persistence implementation.
 **Date:** 2026-10-27
 
 ---
@@ -135,6 +135,15 @@ P9.2 production domain coding
 materialized Frozen/reference semantics가 ownership/SoR, identity, approval,
 result-publication completion, WorkEvidence 또는 WorkAsset semantics와 실제
 충돌하면 구현을 시작하지 않고 P9 Controlled Amendment를 수행한다.
+
+P9-CA01 결과:
+
+```text
+reconciliation record = P9_CA01_Frozen_WA_Reconciliation_and_Coding_Entry_Gate_v1.0.md
+materialization integrity = PASS
+unresolved material conflict = 0
+P9.2 production domain coding = AUTHORIZED
+```
 
 ---
 
@@ -1633,10 +1642,10 @@ A lineage mismatch SHALL fail closed.
 
 ## P9-FR-040 — Supporting-Only Semantics
 
-`WC_WORK_RESULT` SHALL be:
+`WC_WORK_RESULT` SHALL be attached with:
 
 ```text
-evidence_role = SUPPORTING
+binding_role = SUPPORTING
 ```
 
 in Foundation.
@@ -1737,7 +1746,6 @@ source_ref               VARCHAR NOT NULL
 source_revision_ref      VARCHAR NOT NULL
 source_hash              VARCHAR NOT NULL
 
-evidence_role            VARCHAR NOT NULL
 evidence_kind            VARCHAR NOT NULL
 
 actor_type               VARCHAR NOT NULL
@@ -1836,14 +1844,12 @@ EA
 
 ---
 
-## P9-DB-018 — Evidence Role Check
+## P9-DB-018 — Evidence Role Ownership
 
-Allowed:
+`wa_work_evidence` SHALL NOT persist a global `evidence_role`.
 
-```text
-PRIMARY
-SUPPORTING
-```
+`PRIMARY` / `SUPPORTING` is an asset-relative relationship and SHALL exist
+only as `wa_work_asset_evidence.binding_role`.
 
 ---
 
@@ -1880,7 +1886,6 @@ source_type
 source_ref
 source_revision_ref
 source_hash
-evidence_role
 evidence_kind
 actor_type
 actor_ref
@@ -1930,8 +1935,6 @@ actor_ref
 agent_type_snapshot
 
 project_ref
-
-primary_evidence_id
 
 occurred_at
 classification
@@ -1998,6 +2001,39 @@ artifact_version_id
 
 ---
 
+## P9-FR-053 — WorkAsset Hash Projection
+
+`asset_hash` SHALL bind canonical JSON containing:
+
+```text
+tenant_id
+work_asset_id
+asset_type
+actor_type
+actor_ref
+agent_type_snapshot
+project_ref
+occurred_at
+classification
+asset_status
+bindings[] sorted by binding_role then work_evidence_id
+  - work_evidence_id
+  - binding_role
+```
+
+`created_at`, `updated_at`, `version`, and `asset_hash` itself SHALL NOT be part
+of the semantic hash projection.
+
+---
+
+## P9-FR-054 — WorkAsset Version Stability
+
+A material asset or binding change SHALL recompute `asset_hash` and increment
+`version` exactly once in the same local unit of work. An exact semantic replay
+SHALL change neither the hash nor the version.
+
+---
+
 # 24. WorkAsset↔Evidence Binding
 
 ## P9-DB-040 — Binding Table
@@ -2023,11 +2059,19 @@ PRIMARY
 SUPPORTING
 ```
 
+`binding_role` is the sole source of truth for this relationship.
+
 ---
 
 ## P9-DB-042 — One Primary Evidence
 
 Every ACTIVE WorkAsset SHALL have exactly one PRIMARY binding.
+
+`wa_work_asset` SHALL NOT duplicate the relationship in a
+`primary_evidence_id` column. The ACTIVE WorkAsset and PRIMARY binding SHALL be
+created atomically; the database/repository boundary SHALL enforce at most one
+PRIMARY binding and the domain transaction SHALL reject zero-primary ACTIVE
+state.
 
 ---
 
@@ -2108,10 +2152,10 @@ The consumer SHALL:
 
 ```text
 1. verify AgentResult completion barrier
-2. create/reuse PRIMARY AgentResult WorkEvidence
+2. create/reuse AgentResult WorkEvidence
 3. resolve WC WorkResult by exact execution/claim lineage
-4. create/reuse SUPPORTING WorkResult WorkEvidence
-5. bind both to the same Agent WorkAsset
+4. create/reuse WorkResult WorkEvidence
+5. bind AgentResult as PRIMARY and WorkResult as SUPPORTING to the same Agent WorkAsset
 ```
 
 If WC is temporarily unavailable, the AgentResult intake Job is retryable.
@@ -2120,6 +2164,15 @@ If WC returns a lineage mismatch or conflicting semantic result, admission
 fails closed.
 
 WC WorkResult SHALL never create a second primary Agent WorkAsset.
+
+---
+
+## P9-FR-066 — Asset-Relative Evidence Role
+
+One immutable WorkEvidence MAY bind to more than one WorkAsset only when exact
+authoritative lineage proves each relationship. Its `binding_role` MAY differ
+per WorkAsset. Rebinding SHALL NOT change the evidence actor, source identity,
+or semantic hash, and SHALL NOT create Human effort credit.
 
 ---
 
@@ -3077,11 +3130,11 @@ Worker SHALL:
 8. verify Project in EOS when project_id exists
 9. normalize AGENT actor
 10. derive deterministic evidence ID
-11. create/reuse PRIMARY WorkEvidence
+11. create/reuse AgentResult WorkEvidence
 12. derive Agent WorkAsset from agent_execution_id
 13. bind PRIMARY evidence
 14. for CA/PA/EA resolve WC WorkResult by exact execution/claim lineage
-15. create/reuse SUPPORTING WC WorkEvidence
+15. create/reuse WC WorkResult WorkEvidence
 16. bind SUPPORTING evidence to the same WorkAsset
 ```
 
@@ -3126,7 +3179,7 @@ Worker SHALL:
 2. match tenant/result hash
 3. verify source_execution_ref
 4. verify Agent/claim-generation/assignment lineage
-5. create/reuse SUPPORTING WorkEvidence
+5. create/reuse WorkResult WorkEvidence
 6. bind to the already-created/reused Agent WorkAsset
 ```
 
@@ -3708,6 +3761,9 @@ P9.1 Source Audit/Contract Closure is already completed before this SRS.
 | CC-32 stale-job fencing/CAS | §§9–10, 47, 54 |
 | CC-33 WC supporting resolution | §§13, 19, 25, 42–43, 49, 52, 54 |
 | CC-34 Frozen-WA reconciliation gate | §2 / P9-GATE-001, §§55–58 |
+| CC-35 P9-CA01 reconciliation PASS | §2 / P9-GATE-001, §§55–58 |
+| CC-36 asset-relative binding role | §§21–25 / P9-DB-018, P9-FR-066 |
+| CC-37 PRIMARY/hash/version ownership | §§23–26 / P9-FR-053~054, P9-DB-042 |
 | Future Agent execution-authority compatibility | §15 / P9-FR-026, §59 |
 
 ---
@@ -3746,6 +3802,8 @@ WC supporting-resolution contract
 WorkEvidence schema
 WorkAsset schema
 binding schema
+binding-role ownership
+WorkAsset hash/version projection
 source equivalence
 Human/Agent normalization
 Project validation

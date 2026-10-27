@@ -1,7 +1,7 @@
 # P9 — NeX-WA (Work Asset)
 # Contract Closure v1.1
 
-**Status:** DESIGN CLOSURE / P9 SRS+PLAN ENTRY AUTHORIZED / P9.2 CODING GATED BY FROZEN-WA RECONCILIATION
+**Status:** DESIGN CLOSURE / P9-CA01 PASS / P9.2 CODING AUTHORIZED
 **Phase:** P9 — NeX-WA / Work Asset Foundation
 **Platform:** NeX Platform v2.1
 **Predecessor:** `P9_NeX_WA_Pre_Architecture_Decision_v1.2.md`
@@ -13,8 +13,8 @@
 **Audited Tree:** `7df03a1ff280baefbda4e56b1ff0e0818ef0bde3`
 **NSL Baseline:** v0.2.1, but P9 Foundation does not require NSL
 **Date:** 2026-10-27
-**Revision Note:** v1.1 adds authoritative completion-barrier admission for AgentResult, WC supporting-evidence discovery by exact execution lineage, fenced stale-RUNNING recovery, and a mandatory Frozen WA reconciliation gate before P9.2 domain coding.
-**Next:** P9 SRS / Implementation Slice Plan
+**Revision Note:** v1.1 adds authoritative completion-barrier admission for AgentResult, WC supporting-evidence discovery by exact execution lineage, fenced stale-RUNNING recovery, and a mandatory Frozen WA reconciliation gate before P9.2 domain coding. P9-CA01 subsequently materialized the Frozen artifacts, passed reconciliation, and clarified asset-relative evidence roles and WorkAsset hash ownership before migration work.
+**Next:** P9-S01 NeX-WA Service Identity / Repository Skeleton
 
 ---
 
@@ -98,7 +98,7 @@ The implementation SHALL follow this order of authority:
 
 ```text
 1. Current P8 executable source and frozen P8 As-Built invariants
-2. P9 Contract Closure v1.0
+2. This P9 Contract Closure v1.1
 3. P9 Pre-Architecture Decision v1.2
 4. P9 Source Audit v1.0
 5. Earlier Work Asset / Human Effort legacy references
@@ -121,9 +121,15 @@ The repository contains the legacy/frozen reference artifacts:
 Their binary existence is source-backed.
 
 Their full internal text was not materialized as part of the Source Audit.
+P9-CA01 subsequently materialized and reconciled both artifacts without
+modifying them. The approved record is:
 
-Therefore this Closure SHALL NOT invent or silently import requirements from
-those binary files.
+```text
+P9_CA01_Frozen_WA_Reconciliation_and_Coding_Entry_Gate_v1.0.md
+```
+
+This Closure SHALL NOT invent or silently import requirements from those
+binary files beyond the dispositions recorded by P9-CA01.
 
 If later materialization reveals a real contradiction with this Contract
 Closure:
@@ -188,6 +194,15 @@ If the materialized Frozen/reference documents contradict a closed ownership,
 SoR, identity, approval, result-publication, WorkEvidence or WorkAsset semantic
 in this Closure, implementation SHALL stop and a P9 Controlled Amendment SHALL
 be performed before coding continues.
+
+P9-CA01 result:
+
+```text
+materialization integrity = PASS
+semantic reconciliation   = PASS
+unresolved material conflict = 0
+P9.2 production domain coding = AUTHORIZED
+```
 
 ---
 
@@ -1223,7 +1238,6 @@ source_ref
 source_revision_ref
 source_hash
 
-evidence_role
 evidence_kind
 
 actor_type
@@ -1304,7 +1318,7 @@ A conflict SHALL NOT silently overwrite evidence.
 tenant
 source identity
 source hash
-evidence role/kind
+evidence kind
 actor identity
 agent type snapshot
 Project ref
@@ -1338,8 +1352,6 @@ actor_ref
 agent_type_snapshot
 
 project_ref
-
-primary_evidence_id
 
 occurred_at
 classification
@@ -1394,6 +1406,11 @@ SUPPORTING
 
 This relation is required to prevent double-counting while preserving lineage.
 
+`binding_role` is the sole canonical owner of `PRIMARY` / `SUPPORTING`
+semantics. WorkEvidence does not persist a global evidence role because one
+immutable evidence fact may be related to different WorkAssets with
+asset-relative roles when exact authoritative lineage proves the relation.
+
 ---
 
 # 59. One Primary Evidence Rule
@@ -1401,6 +1418,18 @@ This relation is required to prevent double-counting while preserving lineage.
 Each WorkAsset SHALL have exactly one PRIMARY evidence identity.
 
 Supporting evidence MAY be zero or more.
+
+The binding table is the source of truth for the PRIMARY identity.
+`wa_work_asset` SHALL NOT duplicate it as `primary_evidence_id`.
+
+An ACTIVE WorkAsset and its PRIMARY binding SHALL be created in the same local
+unit of work. A uniqueness constraint permits at most one PRIMARY binding per
+WorkAsset; the domain transaction prevents an ACTIVE WorkAsset with none.
+
+`asset_hash` SHALL bind the stable asset projection and the deterministically
+sorted set of `(work_evidence_id, binding_role)` tuples. Timestamps, the hash
+itself, and `version` are excluded. A material projection or binding change
+recomputes the hash and increments `version`; an exact replay changes neither.
 
 ---
 
@@ -2579,6 +2608,20 @@ P9 SRS and Slice planning may proceed, but P9.2 production domain coding is
 blocked until the Frozen Work Asset design/contracts are materialized,
 reconciled against the current P8/P9 baseline, and any material contradiction
 is either closed or handled through P9 Controlled Amendment.
+
+P9-CC-35
+P9-CA01 materialized both Frozen WA artifacts at their manifest-pinned hashes
+and found no unresolved material ownership, identity, approval, completion,
+WorkEvidence, or WorkAsset conflict. P9.2 coding entry is PASS.
+
+P9-CC-36
+PRIMARY/SUPPORTING is an asset-relative relationship owned only by
+`wa_work_asset_evidence.binding_role`; it is not a global WorkEvidence field.
+
+P9-CC-37
+The binding table is the PRIMARY evidence source of truth. WorkAsset does not
+duplicate `primary_evidence_id`, and its semantic hash binds the sorted
+evidence-binding set with replay-stable version behavior.
 ```
 
 ---
@@ -2658,16 +2701,16 @@ P9 Implementation Slice Plan
 P9.2 Foundation implementation preparation
 ```
 
-However:
+P9-CA01 has now recorded:
 
 ```text
-P9.2 production domain coding
-= NOT AUTHORIZED
-until Section 4.1 Frozen WA reconciliation gate passes.
+Frozen WA reconciliation = PASS
+unresolved material conflict = 0
+P9.2 production domain coding = AUTHORIZED
 ```
 
-After that gate passes, P9.2 implementation may begin without reopening this
-Closure unless the reconciliation identifies a material contradiction.
+P9.2 implementation may begin without reopening this Closure. A later material
+contradiction still requires the Controlled Amendment process.
 
 The first implementation work SHALL preserve the explicit small-scope boundary.
 
