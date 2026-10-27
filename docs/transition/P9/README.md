@@ -1,11 +1,11 @@
 # P9 NeX-WA Transition Baseline
 
-**Status:** P9 DESIGN SET REVIEWED / P9-CA01 PASS / P9-S01 AUTHORIZED
+**Status:** P9 FOUNDATION CLOSED / P9-CA04 PASS / FINAL AS-BUILT FROZEN
 **Phase:** P9 - NeX-WA Work Evidence and Work Asset Foundation  
 **Platform:** NeX Platform v2.1  
 **Predecessor:** P8 v1.2 CLOSED / P9 ENTRY AUTHORIZED  
-**Current Entry Gate:** P9-CA01 Frozen WA Reconciliation - PASS
-**Date:** 2026-10-27
+**Final Gate:** P9-CA04 Foundation Final Acceptance - PASS
+**Date:** 2026-10-28
 
 ## 1. Purpose
 
@@ -30,7 +30,7 @@ Read the P9 documents in this order:
 7. `P9_NeX_WA_Implementation_Slice_Plan_v1.1.md`
 8. `P9_CA01_Frozen_WA_Reconciliation_and_Coding_Entry_Gate_v1.0.md`
 9. per-Slice As-Built records under `../../slices/`, in implementation order
-10. the final P9 As-Built and next-phase handoff, once created
+10. `P9_Final_AsBuilt_Baseline_and_Next_Phase_Handoff_v1.0.md`
 
 The exact repository filenames above are canonical. Historical or descriptive
 references with a `261027_` prefix do not replace these actual filenames.
@@ -164,22 +164,23 @@ the mandatory Foundation path. Playwright is not required unless a WA browser
 UI is explicitly introduced. Actual PostgreSQL protection begins with P9-S02
 and remains mandatory for persistence and recovery closures.
 
-## 8. Current Entry Status
+## 8. Final Status
 
 ```text
 P8 Final As-Built v1.2                 = CLOSED
-P9 Pre-Architecture                    = REVIEWED
-P9 Source Audit                        = REVIEWED
-P9 Contract Closure v1.1               = REVIEWED
-P9 SRS v1.1                            = REVIEWED
-P9 Implementation Slice Plan v1.1      = REVIEWED
-P9-CA01 Frozen WA reconciliation       = PASS
-P9.2 production domain coding          = AUTHORIZED
-Next Slice                             = P9-S01
+P9-CA01 coding entry                    = PASS
+P9-CA02 core Foundation                 = PASS
+P9-CA03 source authority and privacy    = PASS
+P9-CA04 Foundation final acceptance     = PASS
+P9-S01 through P9-S31                   = COMPLETE
+P9.5 contribution candidate             = DEFERRED
+P9 Foundation                           = CLOSED
+Next phase                              = CONTROLLED DECISION REQUIRED
 ```
 
-The next authorized activity is P9-S01. The completed P9-CA01 record remains a
-mandatory implementation input.
+The final As-Built record is the mandatory handoff baseline. No next phase is
+implicitly authorized by P9 closure; its scope and entry gate require a
+separate controlled decision.
 
 ## 9. Maintenance Rule
 

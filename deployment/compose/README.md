@@ -190,8 +190,8 @@ managed TLS route `wa.nex-staging.test`, and owner-scoped OpenBao references
 for the WA database and WA outbound service tokens. AE receives its WA token
 through an OpenBao reference; no raw token or database URL is committed.
 
-The optional `p9-wa-readiness` profile runs the packaged consumer readiness
-check only. It is deliberately not represented as an active work-claiming
-daemon: installed consumer activation and restart behavior belong to P9-S27.
-This prevents deployment metadata from overstating a lifecycle-only shell as
-an operational evidence consumer.
+P9-S27 activated `nex-wa-evidence-consumer` as the installed work-claiming
+daemon. It runs `python -m nex_wa.consumer_main`, is supervised with
+`restart: unless-stopped`, and shares only the owner-scoped WA runtime image,
+secrets, and PostgreSQL queue. The same executable retains `--check` for
+readiness verification without claiming work.
