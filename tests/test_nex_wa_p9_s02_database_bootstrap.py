@@ -198,12 +198,16 @@ def test_runtime_separates_api_and_worker_pools_and_redacts_credentials() -> Non
     assert runtime.worker_pool_settings.pool_size == 3
     assert runtime.worker_pool_settings.max_overflow == 1
     assert runtime.worker_pool_settings.statement_timeout_ms == 45000
+    assert isinstance(runtime.intake_job_queue, SqlAlchemyJobQueue)
     assert isinstance(runtime.job_queue, SqlAlchemyJobQueue)
     assert isinstance(runtime.worker_heartbeat_store, SqlAlchemyWorkerHeartbeatStore)
     projection = runtime.public_projection()
     assert projection["database_env"] == "NEX_WA_DATABASE_URL"
     assert "unit-secret" not in str(projection)
     assert "***" in projection["redacted_database_url"]
+    assert runtime.intake_job_queue._session_factory is not (
+        runtime.job_queue._session_factory
+    )
 
     with runtime.transaction() as transaction:
         assert transaction.db is sessions[0]

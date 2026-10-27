@@ -61,6 +61,7 @@ class WaPersistenceRuntime:
     worker_engine: Engine
     api_session_factory: sessionmaker[Session]
     worker_session_factory: sessionmaker[Session]
+    intake_job_queue: SqlAlchemyJobQueue
     job_queue: SqlAlchemyJobQueue
     job_fence_store: SqlAlchemyWaJobFenceStore
     worker_heartbeat_store: SqlAlchemyWorkerHeartbeatStore
@@ -129,6 +130,7 @@ class WaPersistenceRuntime:
             "redacted_database_url": self.settings.redacted_database_url,
             "api_pool": asdict(self.api_pool_settings),
             "worker_pool": asdict(self.worker_pool_settings),
+            "intake_job_queue": self.intake_job_queue.__class__.__name__,
             "job_queue": self.job_queue.__class__.__name__,
             "job_fence_store": self.job_fence_store.__class__.__name__,
             "worker_heartbeat_store": self.worker_heartbeat_store.__class__.__name__,
@@ -195,6 +197,7 @@ def build_wa_persistence_runtime(
         worker_engine=worker_engine,
         api_session_factory=api_sessions,
         worker_session_factory=worker_sessions,
+        intake_job_queue=SqlAlchemyJobQueue(api_sessions),
         job_queue=SqlAlchemyJobQueue(worker_sessions),
         job_fence_store=SqlAlchemyWaJobFenceStore(worker_sessions),
         worker_heartbeat_store=SqlAlchemyWorkerHeartbeatStore(worker_sessions),

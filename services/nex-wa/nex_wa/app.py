@@ -86,6 +86,7 @@ def create_wa_app(
         else None
     )
     job_queue = getattr(persistence, "job_queue", None)
+    intake_job_queue = getattr(persistence, "intake_job_queue", job_queue)
     event_store = getattr(persistence, "operational_event_store", None)
     event_emitter = (
         OperationalEventEmitter(service_id=resolved.service_id, store=event_store)
@@ -93,8 +94,8 @@ def create_wa_app(
         else None
     )
     app.state.wa_evidence_intake_service = (
-        WaEvidenceIntakeService(job_queue, event_emitter=event_emitter)
-        if job_queue is not None
+        WaEvidenceIntakeService(intake_job_queue, event_emitter=event_emitter)
+        if intake_job_queue is not None
         else None
     )
     if job_queue is not None:

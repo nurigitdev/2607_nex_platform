@@ -113,11 +113,51 @@ class WaEvidenceIntakeService:
                 )
             raise
         except JobQueueError as exc:
+            recovered = self._recover_concurrent_replay(
+                exc,
+                request,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            if recovered is not None:
+                return recovered
             raise WaIntakeContractError(
                 "WA_INTAKE_STORE_UNAVAILABLE",
                 "evidence intake persistence is unavailable",
                 503,
             ) from exc
+
+    def _recover_concurrent_replay(
+        self,
+        error: JobQueueError,
+        request: WaEvidenceIntakeRequest,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> WaEvidenceIntakeAdmission | None:
+        if error.error_code != "job.duplicate_id":
+            return None
+        identity = build_evidence_intake_identity(request)
+        try:
+            existing = self._job_queue.get_job(identity.job_id)
+        except JobQueueError:
+            return None
+        if existing is None:
+            return None
+        self._require_stored_replay(existing, request)
+        self._emit(
+            "wa.evidence.reused",
+            request,
+            request_id=request_id,
+            trace_id=trace_id,
+            status="REUSED",
+        )
+        return build_evidence_intake_admission(
+            request,
+            request_id=request_id,
+            trace_id=trace_id,
+            idempotent_reuse=True,
+        )
 
     def _emit(
         self,
