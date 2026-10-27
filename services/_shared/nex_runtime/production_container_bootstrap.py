@@ -1,31 +1,38 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable, Mapping, Sequence
 import os
-from pathlib import Path
 import sys
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 
+from .demo_service_token_bootstrap import issue_demo_startup_service_tokens
 from .demo_trust import (
     DEMO_DEPLOYMENT_BOUNDARY,
     DEMO_OWNERS,
     DEMO_STARTUP_TOKEN_BOOTSTRAP_ENV,
     materialize_demo_owner_secrets,
 )
-from .demo_service_token_bootstrap import issue_demo_startup_service_tokens
 from .openbao_secret_resolver import (
     OpenBaoSecretResolver,
     OpenBaoSecretResolverError,
     build_openbao_secret_resolver,
+)
+from .p9_wa_trust import (
+    P9_WA_DEPLOYMENT_BOUNDARY,
+    P9_WA_OWNERS,
+    materialize_p9_wa_owner_secrets,
 )
 from .production_secret_materialization import (
     OwnerProductionSecretMaterialization,
     materialize_owner_production_secrets,
 )
 
-
 ROOT = Path(__file__).resolve().parents[3]
-ALLOWED_OWNERS = DEMO_OWNERS
+ALLOWED_OWNERS = (
+    *DEMO_OWNERS,
+    *(owner for owner in P9_WA_OWNERS if owner not in DEMO_OWNERS),
+)
 _PRIVATE_BOOTSTRAP_NAMES = (
     "NEX_OPENBAO_ROLE_ID_FILE",
     "NEX_OPENBAO_SECRET_ID_FILE",
@@ -57,11 +64,16 @@ def prepare_production_container_environment(
         )
     resolver = resolver_factory(environ)
     try:
-        if (
-            str(environ.get("NEX_DEPLOYMENT_BOUNDARY") or "").strip()
-            == DEMO_DEPLOYMENT_BOUNDARY
-        ):
+        boundary = str(environ.get("NEX_DEPLOYMENT_BOUNDARY") or "").strip()
+        if boundary == DEMO_DEPLOYMENT_BOUNDARY:
             materialization = materialize_demo_owner_secrets(
+                environ,
+                resolver,
+                owner=owner,
+                profile=profile,
+            )
+        elif boundary == P9_WA_DEPLOYMENT_BOUNDARY:
+            materialization = materialize_p9_wa_owner_secrets(
                 environ,
                 resolver,
                 owner=owner,
@@ -84,8 +96,7 @@ def prepare_production_container_environment(
                 process_environment.pop(name, None)
         resolver.revoke()
         if (
-            str(environ.get("NEX_DEPLOYMENT_BOUNDARY") or "").strip()
-            == DEMO_DEPLOYMENT_BOUNDARY
+            boundary == DEMO_DEPLOYMENT_BOUNDARY
             and str(environ.get(DEMO_STARTUP_TOKEN_BOOTSTRAP_ENV) or "").strip()
             == "true"
         ):

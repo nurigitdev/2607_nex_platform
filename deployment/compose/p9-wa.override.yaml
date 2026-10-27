@@ -1,0 +1,107 @@
+name: nex-platform-p9
+
+x-p9-wa-environment: &p9-wa-environment
+  NEX_PROFILE: staging_live
+  NEX_DEPLOYMENT_BOUNDARY: P9_WA
+  NEX_PERSISTENCE_MODE: postgres
+  NEX_MO_PROVIDER_MODE: live
+  NEX_SERVICE_TOKEN_ROLLOUT_PROFILE: SIGNED_ONLY
+  NEX_AG_OPERATIONS_SOURCE_MODE: api
+  NEX_AE_AUTH_SESSION_MODE: oa
+  NEX_AE_SESSION_COOKIE_SECURE: "true"
+  NEX_OPENBAO_ADDR: https://openbao:8200
+  NEX_OPENBAO_CA_CERT_FILE: /run/secrets/openbao_ca
+  NEX_OPENBAO_ROLE_ID_FILE: /run/secrets/openbao_role_id
+  NEX_OPENBAO_SECRET_ID_FILE: /run/secrets/openbao_secret_id
+  NEX_OPENBAO_SECRET_NAMESPACE: staging
+  NEX_OPENBAO_TIMEOUT_SECONDS: "10"
+  SSL_CERT_FILE: /run/secrets/platform_ca
+  REQUESTS_CA_BUNDLE: /run/secrets/platform_ca
+  NEX_CONFIG_GENERATION: config:p9-wa.1
+  NEX_SECRET_GENERATION: ${NEX_P9_SECRET_GENERATION:-secret:p9-wa.1}
+  NEX_TLS_GENERATION: ${NEX_P9_TLS_GENERATION:-tls:p9-wa.1}
+  NEX_TLS_TERMINATION_POLICY_REF: tls://openbao/nex-platform/staging/policy@v1
+  NEX_TLS_CERTIFICATE_REF: tls://openbao/nex-platform/staging/certificate@v1
+  NEX_TLS_TRUST_BUNDLE_REF: tls://openbao/nex-platform/staging/trust-bundle@v1
+  NEX_OA_BASE_URL: https://oa.nex-staging.test:8443
+  NEX_AE_API_BASE_URL: https://ae-api.nex-staging.test:8443
+  NEX_WC_BASE_URL: https://wc.nex-staging.test:8443
+  NEX_EOS_BASE_URL: https://eos.nex-staging.test:8443
+  NEX_WA_BASE_URL: https://wa.nex-staging.test:8443
+  NEX_WA_DATABASE_URL_REF: secret://openbao/nex-platform/staging/nex-wa/NEX_WA_DATABASE_URL@${NEX_P9_SECRET_VERSION:-v1}
+  NEX_WA_TO_AE_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-wa/NEX_WA_TO_AE_SERVICE_TOKEN@${NEX_P9_SECRET_VERSION:-v1}
+  NEX_WA_TO_WC_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-wa/NEX_WA_TO_WC_SERVICE_TOKEN@${NEX_P9_SECRET_VERSION:-v1}
+  NEX_WA_TO_OA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-wa/NEX_WA_TO_OA_SERVICE_TOKEN@${NEX_P9_SECRET_VERSION:-v1}
+  NEX_WA_TO_EOS_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-wa/NEX_WA_TO_EOS_SERVICE_TOKEN@${NEX_P9_SECRET_VERSION:-v1}
+
+services:
+  traefik:
+    volumes:
+      - ../compose/traefik/p9-wa-dynamic.yaml:/etc/traefik/dynamic.yaml:ro
+    networks:
+      service:
+        aliases: [wa.nex-staging.test]
+
+  nex-ae-api:
+    environment:
+      NEX_DEPLOYMENT_BOUNDARY: P9_WA
+      NEX_WA_BASE_URL: https://wa.nex-staging.test:8443
+      NEX_AE_TO_WA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_WA_SERVICE_TOKEN@${NEX_P9_SECRET_VERSION:-v1}
+
+  nex-wa:
+    image: ${NEX_WA_RUNTIME_IMAGE:?immutable WA image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-wa, --]
+    command: [python, -m, uvicorn, nex_wa.main:app, --host, 0.0.0.0, --port, "8108"]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    extra_hosts: [host.docker.internal:host-gateway]
+    environment: *p9-wa-environment
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: wa_role_id
+        target: openbao_role_id
+      - source: wa_secret_id
+        target: openbao_secret_id
+    networks: [service, control]
+    depends_on:
+      openbao: {condition: service_healthy}
+      traefik: {condition: service_healthy}
+      nex-oa: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8108/ready', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  nex-wa-evidence-consumer:
+    image: ${NEX_WA_RUNTIME_IMAGE:?immutable WA image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-wa, --]
+    command: [python, -m, nex_wa.consumer_main, --check]
+    profiles: [p9-wa-readiness]
+    restart: "no"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    extra_hosts: [host.docker.internal:host-gateway]
+    environment: *p9-wa-environment
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: wa_role_id
+        target: openbao_role_id
+      - source: wa_secret_id
+        target: openbao_secret_id
+    networks: [service, control]
+    depends_on:
+      nex-wa: {condition: service_healthy}
+
+secrets:
+  wa_role_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-wa.role-id"
+  wa_secret_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-wa.secret-id"

@@ -181,3 +181,17 @@ NEX_P8_DEMO_COMPOSE_RENDER=1 \
 This command renders and validates the topology; it does not start containers.
 OpenBao owner secrets and runtime lifecycle activation belong to subsequent
 P8-DEMO Slices.
+
+## P9 NeX-WA Override
+
+`p9-wa.override.yaml` is layered after the P8 Demo override. It adds the ninth
+immutable runtime image, the `nex-wa-api` service at internal port `8108`, the
+managed TLS route `wa.nex-staging.test`, and owner-scoped OpenBao references
+for the WA database and WA outbound service tokens. AE receives its WA token
+through an OpenBao reference; no raw token or database URL is committed.
+
+The optional `p9-wa-readiness` profile runs the packaged consumer readiness
+check only. It is deliberately not represented as an active work-claiming
+daemon: installed consumer activation and restart behavior belong to P9-S27.
+This prevents deployment metadata from overstating a lifecycle-only shell as
+an operational evidence consumer.

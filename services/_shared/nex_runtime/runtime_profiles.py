@@ -45,6 +45,14 @@ SIGNED_TRUST_ENV_NAMES = (
     "NEX_AG_TO_CX_SERVICE_TOKEN",
     "NEX_AG_TO_MO_SERVICE_TOKEN",
 )
+CURRENT_SIGNED_TRUST_ENV_NAMES = (
+    *SIGNED_TRUST_ENV_NAMES,
+    "NEX_AE_TO_WA_SERVICE_TOKEN",
+    "NEX_WA_TO_AE_SERVICE_TOKEN",
+    "NEX_WA_TO_WC_SERVICE_TOKEN",
+    "NEX_WA_TO_OA_SERVICE_TOKEN",
+    "NEX_WA_TO_EOS_SERVICE_TOKEN",
+)
 SERVICE_ENDPOINT_ENV_NAMES = (
     "NEX_OA_BASE_URL",
     "NEX_AG_BASE_URL",
@@ -240,7 +248,7 @@ def _current_required_environment_names(profile: str) -> tuple[str, ...]:
     return (
         *database_names,
         *CURRENT_SERVICE_ENDPOINT_ENV_NAMES,
-        *SIGNED_TRUST_ENV_NAMES,
+        *CURRENT_SIGNED_TRUST_ENV_NAMES,
         *provider_names,
     )
 

@@ -27,8 +27,8 @@ from nex_runtime.postgres_targets import (
 from nex_runtime.process_manifest import build_current_platform_runtime_manifest
 from nex_runtime.runtime_profiles import (
     CURRENT_SERVICE_ENDPOINT_ENV_NAMES,
+    CURRENT_SIGNED_TRUST_ENV_NAMES,
     CURRENT_TEST_DATABASE_ENV_NAMES,
-    SIGNED_TRUST_ENV_NAMES,
     RuntimeModes,
     RuntimeProfileError,
     current_runtime_profile_required_environment_names,
@@ -42,7 +42,7 @@ def _protected_test_environment() -> dict[str, str]:
     names = (
         *CURRENT_TEST_DATABASE_ENV_NAMES,
         *CURRENT_SERVICE_ENDPOINT_ENV_NAMES,
-        *SIGNED_TRUST_ENV_NAMES,
+        *CURRENT_SIGNED_TRUST_ENV_NAMES,
     )
     environment = {name: f"configured-{index}" for index, name in enumerate(names)}
     for index, name in enumerate(CURRENT_ARTIFACT_REFERENCE_ENVIRONMENTS.values()):
@@ -112,7 +112,7 @@ def test_current_protected_profile_and_environment_composition_are_complete() ->
     profile = resolve_current_runtime_profile("test", environ=environment)
     composition = resolve_current_environment_composition("test", environ=environment)
 
-    assert len(profile.required_environment_names) == 25
+    assert len(profile.required_environment_names) == 30
     assert current_runtime_profile_required_environment_names("test") == (
         profile.required_environment_names
     )
