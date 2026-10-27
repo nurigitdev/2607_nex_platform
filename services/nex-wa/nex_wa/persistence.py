@@ -23,11 +23,16 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .config import DATABASE_ENV, SERVICE_ID
+from .work_evidence import SqlAlchemyWorkEvidenceRepository
 
-WA_FOUNDATION_MIGRATIONS = (
+WA_COMMON_RUNTIME_MIGRATIONS = (
     "2600_wa_schema_migrations_baseline",
     "2601_wa_service_job_queue",
     "2602_wa_worker_heartbeat",
+)
+WA_REQUIRED_MIGRATIONS = (
+    *WA_COMMON_RUNTIME_MIGRATIONS,
+    "2603_wa_work_evidence",
 )
 
 EngineFactory = Callable[..., Engine]
@@ -49,6 +54,7 @@ class WaPersistenceRuntime:
     worker_session_factory: sessionmaker[Session]
     job_queue: SqlAlchemyJobQueue
     worker_heartbeat_store: SqlAlchemyWorkerHeartbeatStore
+    work_evidence_repository: SqlAlchemyWorkEvidenceRepository
 
     def transaction(self) -> SqlAlchemyUnitOfWork:
         return build_unit_of_work(self.api_session_factory)
@@ -67,12 +73,12 @@ class WaPersistenceRuntime:
                 "error_code": "WA_MIGRATION_READINESS_FAILED",
             }
         missing = tuple(
-            version for version in WA_FOUNDATION_MIGRATIONS if version not in applied
+            version for version in WA_REQUIRED_MIGRATIONS if version not in applied
         )
         return {
             "name": "wa_migrations",
             "ok": not missing,
-            "required_count": len(WA_FOUNDATION_MIGRATIONS),
+            "required_count": len(WA_REQUIRED_MIGRATIONS),
             "missing_versions": list(missing),
         }
 
@@ -85,6 +91,7 @@ class WaPersistenceRuntime:
             "worker_pool": asdict(self.worker_pool_settings),
             "job_queue": self.job_queue.__class__.__name__,
             "worker_heartbeat_store": self.worker_heartbeat_store.__class__.__name__,
+            "work_evidence_repository": self.work_evidence_repository.__class__.__name__,
         }
 
     def dispose(self) -> None:
@@ -143,4 +150,5 @@ def build_wa_persistence_runtime(
         worker_session_factory=worker_sessions,
         job_queue=SqlAlchemyJobQueue(worker_sessions),
         worker_heartbeat_store=SqlAlchemyWorkerHeartbeatStore(worker_sessions),
+        work_evidence_repository=SqlAlchemyWorkEvidenceRepository(api_sessions),
     )

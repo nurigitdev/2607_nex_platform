@@ -14,5 +14,8 @@ P9-S02 adds the owner-local migration ledger, shared JobQueue, worker heartbeat,
 and separate API/worker connection-pool runtime. WorkEvidence and WorkAsset
 behavior remains disabled until its owning slices.
 
+P9-S03 activates immutable WorkEvidence persistence with deterministic UUIDv5
+identity, canonical semantic hashing, and tenant-scoped supersession.
+
 P9-S01 registers only the service and process identities. WorkEvidence,
 WorkAsset, intake, and consumer behavior activate in later owning slices.

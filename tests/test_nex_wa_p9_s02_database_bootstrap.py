@@ -11,7 +11,8 @@ from nex_runtime.postgres_targets import (
     resolve_postgres_test_targets,
 )
 from nex_wa import (
-    WA_FOUNDATION_MIGRATIONS,
+    WA_COMMON_RUNTIME_MIGRATIONS,
+    WA_REQUIRED_MIGRATIONS,
     WaPersistenceError,
     build_wa_persistence_runtime,
 )
@@ -100,7 +101,7 @@ def test_migration_stream_and_common_runtime_contracts_are_frozen() -> None:
         == "NEX_WA_TEST_DATABASE_URL"
     )
     migrations = load_migrations("nex-wa")
-    assert tuple(item.version for item in migrations) == WA_FOUNDATION_MIGRATIONS
+    assert tuple(item.version for item in migrations) == WA_REQUIRED_MIGRATIONS
 
     wa_root = ROOT / "database/nex-wa/migrations"
     wc_root = ROOT / "database/nex-wc/migrations"
@@ -131,7 +132,10 @@ def test_migration_stream_and_common_runtime_contracts_are_frozen() -> None:
         wc_root / "0112_service_worker_heartbeat_foundation.sql",
         "service_worker_heartbeats",
     )
-    assert not any("wa_work_" in migration.sql for migration in migrations)
+    assert not any(
+        "wa_work_" in migration.sql
+        for migration in migrations[: len(WA_COMMON_RUNTIME_MIGRATIONS)]
+    )
 
 
 def test_migration_dry_run_is_deterministic_without_connecting() -> None:
@@ -143,8 +147,8 @@ def test_migration_dry_run_is_deterministic_without_connecting() -> None:
         connect=lambda *_args, **_kwargs: pytest.fail("dry-run must not connect"),
     )
 
-    assert result.planned == WA_FOUNDATION_MIGRATIONS
-    assert result.applied == WA_FOUNDATION_MIGRATIONS
+    assert result.planned == WA_REQUIRED_MIGRATIONS
+    assert result.applied == WA_REQUIRED_MIGRATIONS
     assert result.skipped == ()
 
 
@@ -224,8 +228,8 @@ def test_runtime_rolls_back_failed_unit_of_work() -> None:
 
 def test_migration_readiness_reports_current_missing_and_database_failure() -> None:
     sessions = [
-        _Session([(version,) for version in WA_FOUNDATION_MIGRATIONS]),
-        _Session([(WA_FOUNDATION_MIGRATIONS[0],)]),
+        _Session([(version,) for version in WA_REQUIRED_MIGRATIONS]),
+        _Session([(WA_REQUIRED_MIGRATIONS[0],)]),
         _Session(error=SQLAlchemyError("offline")),
     ]
 
@@ -242,7 +246,7 @@ def test_migration_readiness_reports_current_missing_and_database_failure() -> N
     runtime = runtime_for(sessions[1])
     missing = runtime.migration_readiness()
     assert missing["ok"] is False
-    assert missing["missing_versions"] == list(WA_FOUNDATION_MIGRATIONS[1:])
+    assert missing["missing_versions"] == list(WA_REQUIRED_MIGRATIONS[1:])
 
     runtime = runtime_for(sessions[2])
     assert runtime.migration_readiness() == {
@@ -302,7 +306,13 @@ def test_app_attaches_optional_runtime_and_migration_readiness() -> None:
     runtime = type(
         "Runtime",
         (),
-        {"migration_readiness": lambda self: {"name": "wa_migrations", "ok": True}},
+        {
+            "migration_readiness": lambda self: {
+                "name": "wa_migrations",
+                "ok": True,
+            },
+            "work_evidence_repository": None,
+        },
     )()
     app = create_wa_app(
         environ={
@@ -318,5 +328,5 @@ def test_app_attaches_optional_runtime_and_migration_readiness() -> None:
     assert app.state.wa_persistence is runtime
     assert without_database.state.wa_persistence is None
     assert TestClient(app).get("/version").json()["contract_catalog_version"] == (
-        "p9-s02"
+        "p9-s03"
     )

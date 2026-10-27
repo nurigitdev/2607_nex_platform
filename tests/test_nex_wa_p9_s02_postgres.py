@@ -9,7 +9,7 @@ import pytest
 from nex_runtime import WorkerHeartbeatEmitter, build_common_job
 from nex_runtime.database import psycopg_database_url
 from nex_runtime.postgres_targets import resolve_postgres_test_targets
-from nex_wa import WA_FOUNDATION_MIGRATIONS, build_wa_persistence_runtime
+from nex_wa import WA_REQUIRED_MIGRATIONS, build_wa_persistence_runtime
 from run_migrations import run_service_migrations
 from sqlalchemy import text
 
@@ -44,10 +44,10 @@ def test_actual_wa_postgres_bootstrap_queue_heartbeat_and_zero_residue() -> None
         database_url=database_url,
         profile="test",
     )
-    assert first.planned == WA_FOUNDATION_MIGRATIONS
-    assert {*first.applied, *first.skipped} == set(WA_FOUNDATION_MIGRATIONS)
+    assert first.planned == WA_REQUIRED_MIGRATIONS
+    assert {*first.applied, *first.skipped} == set(WA_REQUIRED_MIGRATIONS)
     assert repeat.applied == ()
-    assert repeat.skipped == WA_FOUNDATION_MIGRATIONS
+    assert repeat.skipped == WA_REQUIRED_MIGRATIONS
 
     runtime = build_wa_persistence_runtime(
         environ={
@@ -104,9 +104,8 @@ def test_actual_wa_postgres_bootstrap_queue_heartbeat_and_zero_residue() -> None
                     )
                 ).scalars()
             )
-        assert versions == WA_FOUNDATION_MIGRATIONS
+        assert versions == WA_REQUIRED_MIGRATIONS
         assert {"schema_migrations", "service_jobs", "service_worker_heartbeats"} <= tables
-        assert not any(name.startswith("wa_work_") for name in tables)
         assert runtime.migration_readiness()["ok"] is True
     finally:
         with runtime.api_engine.begin() as connection:
