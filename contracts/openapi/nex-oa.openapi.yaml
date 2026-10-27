@@ -121,6 +121,32 @@ paths:
         "400": {description: "Batch envelope or structural bounds are invalid."}
         "401": {description: "Service token is missing, invalid, or lacks required scope."}
         "503": {description: "OA authority or persistence is unavailable; retry the operation."}
+  /internal/v1/identity/subjects:verify-batch:
+    post:
+      operationId: verifyOaSubjectsBatch
+      tags: [Identity Lifecycle]
+      security:
+        - signedServiceBearer: []
+      x-nex-required-caller: nex-wa
+      x-nex-required-scopes: [service:call, identity:subject:verify]
+      x-nex-route-class: READ
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubjectVerificationRequest"
+      responses:
+        "200":
+          description: Human subjects were verified against OA authority.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubjectVerification"
+        "400": {description: "Batch envelope or structural bounds are invalid."}
+        "401": {description: "Service token is missing, invalid, or lacks required scope."}
+        "403": {description: "The admitted caller is not NeX-WA."}
+        "503": {description: "OA identity authority is unavailable; retry the operation."}
   /api/v1/auth/service-token:
     post:
       operationId: exchangeOaClientCredentialToken
@@ -971,6 +997,12 @@ components:
     EmployeeBatchResolution:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_oa/employee_batch_resolution.v1.schema.json
+    SubjectVerificationRequest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/subject_verification_request.v1.schema.json
+    SubjectVerification:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/subject_verification.v1.schema.json
     ServiceTokenExchangeRequest:
       type: object
       additionalProperties: false

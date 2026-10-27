@@ -1,6 +1,16 @@
 {
   "negative_examples": [
     {
+      "name": "oa_subject_verification_request_private_field",
+      "path": "tests/negative/auth/oa_subject_verification_request.private_field.json",
+      "schema": "schemas/service/nex_oa/subject_verification_request.v1.schema.json"
+    },
+    {
+      "name": "oa_subject_verification_identity_leak",
+      "path": "tests/negative/auth/oa_subject_verification.identity_leak.json",
+      "schema": "schemas/service/nex_oa/subject_verification.v1.schema.json"
+    },
+    {
       "name": "wa_source_normalized_envelope_raw_payload",
       "path": "tests/negative/service/wa_source_normalized_envelope.raw_payload.json",
       "schema": "schemas/service/nex_wa/wa_source_normalized_envelope.v1.schema.json"

@@ -1,0 +1,5 @@
+{
+  "tenant_id": "VO00",
+  "subject_ids": ["employee-1001"],
+  "password": "must-not-be-admitted"
+}

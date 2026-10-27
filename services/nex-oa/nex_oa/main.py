@@ -75,6 +75,10 @@ from nex_oa.sessions import (
 from nex_oa.signed_token_api import register_signed_token_routes
 from nex_oa.signed_token_repository import build_signed_token_repository_for_runtime
 from nex_oa.signing_key_service import OaSigningKeyService
+from nex_oa.subject_verification import (
+    OaHumanSubjectVerifier,
+    register_subject_verification_routes,
+)
 from nex_oa.subjects import (
     build_subject_registry_for_runtime,
     register_subject_registry_routes,
@@ -106,6 +110,10 @@ LOCAL_CREDENTIAL_REGISTRY = build_credential_registry_for_runtime(
 )
 EMPLOYEE_BATCH_RESOLVER = OaEmployeeBatchResolver(
     credential_registry=LOCAL_CREDENTIAL_REGISTRY,
+    membership_registry=TENANT_MEMBERSHIP_REGISTRY,
+)
+SUBJECT_VERIFIER = OaHumanSubjectVerifier(
+    subject_registry=SUBJECT_REGISTRY,
     membership_registry=TENANT_MEMBERSHIP_REGISTRY,
 )
 AUTHORIZATION_REPOSITORY = build_authorization_repository_for_runtime(
@@ -211,6 +219,7 @@ register_credential_security_routes(
 )
 register_identity_membership_routes(app, registry=TENANT_MEMBERSHIP_REGISTRY)
 register_employee_batch_resolution_routes(app, resolver=EMPLOYEE_BATCH_RESOLVER)
+register_subject_verification_routes(app, verifier=SUBJECT_VERIFIER)
 register_authorization_routes(app, service=AUTHORIZATION_SERVICE)
 register_identity_lifecycle_routes(app, service=IDENTITY_LIFECYCLE_SERVICE)
 register_service_principal_routes(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import run_oa_contract_api_drift_audit as runner
 from nex_oa.contract_api_drift_audit import (
     INVENTORY_BASELINE,
     _index_entries,
@@ -10,7 +11,6 @@ from nex_oa.contract_api_drift_audit import (
     _runtime_operations,
     build_oa_contract_api_drift_audit,
 )
-import run_oa_contract_api_drift_audit as runner
 
 
 def test_repository_contract_api_audit_confirms_known_drift() -> None:
@@ -33,7 +33,7 @@ def test_repository_contract_api_audit_confirms_known_drift() -> None:
         == summary["runtime_operation_count"]
     )
     assert summary["undocumented_openapi_operation_count"] == 0
-    assert summary["schema_count"] == 28
+    assert summary["schema_count"] == 30
     assert summary["positive_fixture_covered_count"] == summary["schema_count"]
     assert summary["negative_fixture_covered_count"] == summary["schema_count"]
     assert summary["drift_count"] == summary["missing_openapi_operation_count"]

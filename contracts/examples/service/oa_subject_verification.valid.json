@@ -1,0 +1,23 @@
+{
+  "verification_schema_version": "oa_subject_verification.v1",
+  "service_id": "nex-oa",
+  "tenant_id": "VO00",
+  "requested_count": 2,
+  "verified_count": 1,
+  "rejected_count": 1,
+  "results": [
+    {
+      "subject_id": "employee-1001",
+      "verification_status": "VERIFIED",
+      "subject_revision": 1,
+      "tenant_membership_revision": 1
+    },
+    {
+      "subject_id": "employee-1002",
+      "verification_status": "SUBJECT_NOT_FOUND"
+    }
+  ],
+  "verification_evidence_hash": "sha256:1909303dd74c866203a27a89dcae443e615eb90de962fa6c730be08db0e8ebd5",
+  "request_id": "req-p9-s14",
+  "trace_id": "1234567890abcdef1234567890abcdef"
+}
