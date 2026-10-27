@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from urllib.error import URLError
 
 import pytest
@@ -9,6 +10,7 @@ from nex_wa.agent_result_source import (
     HttpWcWorkResultProjectionClient,
 )
 from nex_wa.source_adapters import WaSourceAdapterError
+from nex_wa.work_evidence import deterministic_work_evidence_id
 from test_nex_wa_p9_s17_agent_result_admission import (
     AGENT,
     EXECUTION,
@@ -58,12 +60,39 @@ class _Admission:
     def __init__(self):
         self.single = []
         self.sets = []
+        self.evidence = {}
 
     def admit_normalized_evidence(self, evidence, asset):
         self.single.append((evidence, asset))
+        self._remember(evidence)
 
     def admit_normalized_evidence_set(self, evidence, asset):
         self.sets.append((evidence, asset))
+        for item in evidence:
+            self._remember(item)
+
+    def find_evidence(
+        self, *, tenant_id, source_type, source_ref, source_revision_ref
+    ):
+        return self.evidence.get(
+            (tenant_id, source_type, source_ref, source_revision_ref)
+        )
+
+    def _remember(self, evidence):
+        evidence_id = deterministic_work_evidence_id(
+            tenant_id=evidence.tenant_id,
+            source_type=evidence.source_type,
+            source_ref=evidence.source_ref,
+            source_revision_ref=evidence.source_revision_ref,
+        )
+        self.evidence[
+            (
+                evidence.tenant_id,
+                evidence.source_type,
+                evidence.source_ref,
+                evidence.source_revision_ref,
+            )
+        ] = SimpleNamespace(work_evidence_id=evidence_id)
 
 
 def _adapter(work_results):
@@ -96,7 +125,8 @@ def test_background_result_creates_one_asset_with_primary_and_supporting_evidenc
         "SUPPORTING",
     ]
     assert work_results.calls == [(TENANT, EXECUTION)]
-    assert evidence[1].source_ref == "wc-result-1"
+    assert evidence[1].source_ref == "work-1"
+    assert evidence[1].source_revision_ref == "wc-result-1"
     assert evidence[1].project_ref == PROJECT
 
 
@@ -105,6 +135,45 @@ def test_same_work_result_replay_keeps_exact_semantics() -> None:
     adapter.fetch(_request())
     adapter.fetch(_request())
     assert admission.sets[0] == admission.sets[1]
+
+
+def test_new_work_result_revision_supersedes_existing_supporting_evidence() -> None:
+    work_results = _WorkResults()
+    adapter, admission = _adapter(work_results)
+    adapter.fetch(_request())
+
+    first_supporting = admission.sets[0][0][1]
+    work_results.value = _work_result(
+        result_id="wc-result-2",
+        revision_no=2,
+        result_hash="sha256:" + "d" * 64,
+        submitted_at="2026-10-28T05:00:01Z",
+        supersedes_result_id="wc-result-1",
+        supersedes_revision_no=1,
+    )
+    adapter.fetch(_request())
+
+    corrected = admission.sets[1][0][1]
+    assert corrected.source_ref == first_supporting.source_ref == "work-1"
+    assert corrected.source_revision_ref == "wc-result-2"
+    assert corrected.supersedes_evidence_id == deterministic_work_evidence_id(
+        tenant_id=TENANT,
+        source_type="WC_WORK_RESULT",
+        source_ref="work-1",
+        source_revision_ref="wc-result-1",
+    )
+
+
+def test_reconciliation_accepts_latest_revision_without_local_predecessor() -> None:
+    latest = _work_result(
+        result_id="wc-result-2",
+        revision_no=2,
+        supersedes_result_id="wc-result-1",
+        supersedes_revision_no=1,
+    )
+    adapter, admission = _adapter(_WorkResults(latest))
+    adapter.fetch(_request())
+    assert admission.sets[0][0][1].supersedes_evidence_id is None
 
 
 def test_wc_unavailable_is_retryable_and_recovery_admits() -> None:
@@ -149,10 +218,17 @@ def test_wc_lineage_mismatch_fails_closed(field, value) -> None:
         ("result_id", None),
         ("result_hash", None),
         ("submitted_at", "invalid"),
+        ("supersedes_result_id", "wc-result-0"),
+        ("supersedes_revision_no", 0),
     ],
 )
 def test_wc_projection_shape_fails_closed(field, value) -> None:
-    adapter, admission = _adapter(_WorkResults(_work_result(**{field: value})))
+    values = {field: value}
+    if field == "supersedes_result_id":
+        values["supersedes_revision_no"] = 1
+    if field == "supersedes_revision_no":
+        values["supersedes_result_id"] = "wc-result-0"
+    adapter, admission = _adapter(_WorkResults(_work_result(**values)))
     with pytest.raises(WaSourceAdapterError):
         adapter.fetch(_request())
     assert admission.sets == []

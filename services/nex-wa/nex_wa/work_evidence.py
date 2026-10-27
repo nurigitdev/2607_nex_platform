@@ -303,6 +303,38 @@ class SqlAlchemyWorkEvidenceRepository:
                 503,
             ) from exc
 
+    def get_by_source_identity(
+        self,
+        *,
+        tenant_id: str,
+        source_type: str,
+        source_ref: str,
+        source_revision_ref: str,
+    ) -> WorkEvidenceRecord | None:
+        normalized = {
+            "tenant_id": _required_string(tenant_id, "tenant_id"),
+            "source_type": _choice(
+                source_type,
+                "source_type",
+                WORK_EVIDENCE_SOURCE_TYPES,
+            ),
+            "source_ref": _required_string(source_ref, "source_ref"),
+            "source_revision_ref": _required_string(
+                source_revision_ref,
+                "source_revision_ref",
+            ),
+        }
+        try:
+            with self._session_factory() as session:
+                row = session.execute(_SELECT_BY_SOURCE, normalized).mappings().first()
+                return _record_from_row(row) if row is not None else None
+        except SQLAlchemyError as exc:
+            raise WorkEvidenceError(
+                "WA_EVIDENCE_STORE_UNAVAILABLE",
+                "WorkEvidence persistence is unavailable",
+                503,
+            ) from exc
+
     def list_source_lineage(
         self,
         tenant_id: str,

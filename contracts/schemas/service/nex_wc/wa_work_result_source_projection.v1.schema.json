@@ -4,6 +4,10 @@
   "title": "WA WorkResult Source Projection",
   "type": "object",
   "additionalProperties": false,
+  "dependentRequired": {
+    "supersedes_result_id": ["supersedes_revision_no"],
+    "supersedes_revision_no": ["supersedes_result_id"]
+  },
   "required": [
     "projection_schema_version",
     "tenant_id",
@@ -30,6 +34,8 @@
     "claim_generation": {"type": "integer", "minimum": 1},
     "assignment_id": {"type": "string", "minLength": 1},
     "submitted_agent_id": {"type": "string", "minLength": 1},
-    "submitted_at": {"type": "string", "format": "date-time"}
+    "submitted_at": {"type": "string", "format": "date-time"},
+    "supersedes_result_id": {"type": "string", "minLength": 1},
+    "supersedes_revision_no": {"type": "integer", "minimum": 1}
   }
 }

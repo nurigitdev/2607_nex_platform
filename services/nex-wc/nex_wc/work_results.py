@@ -165,9 +165,11 @@ class InMemoryWorkResultRepository:
             ]
         records.sort(
             key=lambda record: (
+                int(record["work_result"].get("revision_no") or 0),
                 str(record["work_result"].get("submitted_at") or ""),
                 str(record["work_result"].get("result_id") or ""),
-            )
+            ),
+            reverse=True,
         )
         return records[:limit]
 
@@ -370,7 +372,8 @@ class SqlAlchemyWorkResultRepository:
                             f"SELECT {_RESULT_SOURCE_COLUMNS} FROM wc_work_result "
                             "WHERE tenant_id = :tenant_id "
                             "AND source_execution_ref = :source_execution_ref "
-                            "ORDER BY submitted_at, result_id LIMIT :limit"
+                            "ORDER BY revision_no DESC, submitted_at DESC, "
+                            "result_id DESC LIMIT :limit"
                         ),
                         {
                             "tenant_id": tenant_id,

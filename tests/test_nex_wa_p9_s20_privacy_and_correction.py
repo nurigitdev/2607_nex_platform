@@ -126,6 +126,24 @@ def test_correction_is_immutable_atomic_and_auditable(evidence_repository) -> No
     assert evidence_repository.invalidate(TENANT, correction.work_evidence_id) == invalidated
 
 
+def test_source_identity_lookup_is_tenant_and_revision_scoped(
+    evidence_repository,
+) -> None:
+    first = evidence_repository.create_or_get(_candidate())
+    assert evidence_repository.get_by_source_identity(
+        tenant_id=TENANT,
+        source_type=first.source_type,
+        source_ref=first.source_ref,
+        source_revision_ref=first.source_revision_ref,
+    ) == first
+    assert evidence_repository.get_by_source_identity(
+        tenant_id="OTHER",
+        source_type=first.source_type,
+        source_ref=first.source_ref,
+        source_revision_ref=first.source_revision_ref,
+    ) is None
+
+
 def test_correction_rejects_unrelated_target_and_hash_conflict(
     evidence_repository,
 ) -> None:

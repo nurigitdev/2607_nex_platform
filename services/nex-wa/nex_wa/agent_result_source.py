@@ -243,15 +243,22 @@ class AeAgentResultSourceAdapter:
                 status_code=409,
             )
         result_id = _text(supporting.get("result_id"), "WC result_id")
+        work_item_id = _text(supporting.get("work_item_id"), "WC work_item_id")
         revision = supporting.get("revision_no")
         if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
             raise _invalid("WC revision_no must be a positive integer")
+        supersedes_evidence_id = self._resolve_supporting_supersession(
+            request=request,
+            supporting=supporting,
+            work_item_id=work_item_id,
+            revision=revision,
+        )
         return WorkEvidenceInput(
             tenant_id=request.tenant_id,
             source_owner="nex-wc",
             source_type="WC_WORK_RESULT",
-            source_ref=result_id,
-            source_revision_ref=str(revision),
+            source_ref=work_item_id,
+            source_revision_ref=result_id,
             source_hash=_text(supporting.get("result_hash"), "WC result_hash"),
             evidence_kind="WORK_COORDINATION_RESULT",
             actor_type="AGENT",
@@ -261,7 +268,37 @@ class AeAgentResultSourceAdapter:
             occurred_at=_timestamp(supporting.get("submitted_at")),
             observed_at=_aware(self._clock(), "observed_at"),
             classification="INTERNAL",
+            supersedes_evidence_id=supersedes_evidence_id,
         )
+
+    def _resolve_supporting_supersession(
+        self,
+        *,
+        request: WaEvidenceIntakeRequest,
+        supporting: Mapping[str, Any],
+        work_item_id: str,
+        revision: int,
+    ) -> str | None:
+        previous_result = supporting.get("supersedes_result_id")
+        previous_revision = supporting.get("supersedes_revision_no")
+        if previous_result is None and previous_revision is None:
+            return None
+        if (
+            not isinstance(previous_result, str)
+            or not previous_result.strip()
+            or not isinstance(previous_revision, int)
+            or isinstance(previous_revision, bool)
+            or previous_revision < 1
+            or previous_revision >= revision
+        ):
+            raise _invalid("WC superseded revision identity is invalid")
+        existing = self._admission.find_evidence(
+            tenant_id=request.tenant_id,
+            source_type="WC_WORK_RESULT",
+            source_ref=work_item_id,
+            source_revision_ref=previous_result,
+        )
+        return None if existing is None else existing.work_evidence_id
 
     def _verify_project(self, tenant_id: str, project_id: str) -> None:
         if self._projects is None:

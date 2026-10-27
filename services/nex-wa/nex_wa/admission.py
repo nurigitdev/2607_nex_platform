@@ -59,6 +59,21 @@ class WaEvidenceAdmissionService:
         )
         self._concurrency_retries = concurrency_retries
 
+    def find_evidence(
+        self,
+        *,
+        tenant_id: str,
+        source_type: str,
+        source_ref: str,
+        source_revision_ref: str,
+    ) -> WorkEvidenceRecord | None:
+        return self._evidence_repository.get_by_source_identity(
+            tenant_id=tenant_id,
+            source_type=source_type,
+            source_ref=source_ref,
+            source_revision_ref=source_revision_ref,
+        )
+
     def admit_normalized_evidence(
         self,
         evidence: WorkEvidenceInput,

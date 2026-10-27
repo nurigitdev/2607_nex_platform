@@ -179,6 +179,53 @@ def test_duplicate_by_execution_is_ambiguous() -> None:
     assert response.json()["error_code"] == "wc.wa_source_result_ambiguous"
 
 
+def test_by_execution_selects_latest_revision_and_reports_predecessor() -> None:
+    previous = _record()
+    current = deepcopy(previous)
+    current["result_id"] = "result-002"
+    current["revision_no"] = 2
+    current["submitted_at"] = "2026-10-28T03:00:00Z"
+    current["work_result"].update(
+        {
+            "result_id": "result-002",
+            "revision_no": 2,
+            "submitted_at": "2026-10-28T03:00:00Z",
+        }
+    )
+    current["result_hash"] = semantic_sha256_hash_ref(current["work_result"])
+
+    response = _client([previous, current]).get(
+        f"/internal/v1/wa-sources/work-results/by-execution/{EXECUTION_ID}",
+        headers=_headers(),
+    )
+    assert response.status_code == 200
+    assert response.json()["result_id"] == "result-002"
+    assert response.json()["supersedes_result_id"] == RESULT_ID
+    assert response.json()["supersedes_revision_no"] == 1
+
+
+def test_by_execution_rejects_revisions_from_different_lineage() -> None:
+    previous = _record()
+    current = deepcopy(previous)
+    current["result_id"] = "result-002"
+    current["revision_no"] = 2
+    current["work_item_id"] = "55555555-5555-4555-8555-555555555555"
+    current["work_result"].update(
+        {
+            "result_id": "result-002",
+            "revision_no": 2,
+            "work_item_id": current["work_item_id"],
+        }
+    )
+    current["result_hash"] = semantic_sha256_hash_ref(current["work_result"])
+    response = _client([previous, current]).get(
+        f"/internal/v1/wa-sources/work-results/by-execution/{EXECUTION_ID}",
+        headers=_headers(),
+    )
+    assert response.status_code == 409
+    assert response.json()["error_code"] == "wc.wa_source_result_ambiguous"
+
+
 def test_routes_map_invalid_lineage_and_empty_execution_lookup() -> None:
     invalid = _record()
     invalid["claim_generation"] = 2

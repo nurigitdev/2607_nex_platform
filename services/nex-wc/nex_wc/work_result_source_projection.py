@@ -51,14 +51,26 @@ class WorkResultWaProjectionSource:
         )
         if not records:
             return None
-        if len(records) != 1:
-            raise WorkResultError(
-                "wc.wa_source_result_ambiguous",
-                "Multiple WorkResults reference the same AgentExecution.",
-            )
-        projection = build_work_result_wa_projection(records[0])
+        projections = sorted(
+            (build_work_result_wa_projection(record) for record in records),
+            key=lambda item: (
+                item["revision_no"],
+                item["submitted_at"],
+                item["result_id"],
+            ),
+            reverse=True,
+        )
+        projection = projections[0]
         if projection["source_execution_ref"] != agent_execution_id:
             raise _invalid("WorkResult execution lookup returned mismatched lineage.")
+        if len(projections) == 2:
+            previous = projections[1]
+            _require_revision_lineage(projection, previous)
+            projection = {
+                **projection,
+                "supersedes_result_id": previous["result_id"],
+                "supersedes_revision_no": previous["revision_no"],
+            }
         return projection
 
 
@@ -98,6 +110,31 @@ def build_work_result_wa_projection(record: Mapping[str, Any]) -> dict[str, Any]
         **expected,
         "result_hash": result_hash,
     }
+
+
+def _require_revision_lineage(
+    current: Mapping[str, Any],
+    previous: Mapping[str, Any],
+) -> None:
+    lineage_fields = (
+        "tenant_id",
+        "work_item_id",
+        "source_execution_ref",
+        "claim_id",
+        "claim_generation",
+        "assignment_id",
+        "submitted_agent_id",
+    )
+    if any(current[field] != previous[field] for field in lineage_fields):
+        raise WorkResultError(
+            "wc.wa_source_result_ambiguous",
+            "WorkResult revisions do not share one canonical execution lineage.",
+        )
+    if current["revision_no"] <= previous["revision_no"]:
+        raise WorkResultError(
+            "wc.wa_source_result_ambiguous",
+            "WorkResult revisions are not strictly ordered.",
+        )
 
 
 def register_wa_work_result_source_routes(

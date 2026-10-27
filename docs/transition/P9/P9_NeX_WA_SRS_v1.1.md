@@ -1638,6 +1638,13 @@ completed Agent execution.
 
 A lineage mismatch SHALL fail closed.
 
+For correction-aware resolution, `work_item_id` is the stable logical
+`WC_WORK_RESULT` source reference and `result_id` is its immutable source
+revision reference. When a previous revision exists, the projection MAY also
+return the bounded pair `supersedes_result_id` and `supersedes_revision_no`.
+Both values SHALL be present together and SHALL describe the immediately prior
+revision in the same execution, claim, assignment, and submitted-Agent lineage.
+
 ---
 
 ## P9-FR-040 — Supporting-Only Semantics
