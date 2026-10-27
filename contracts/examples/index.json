@@ -1389,6 +1389,11 @@
       "name": "wa_work_asset_evidence_lineage_mixed",
       "path": "examples/service/wa_work_asset_evidence_lineage.mixed.json",
       "schema": "schemas/service/nex_wa/wa_work_asset_evidence_lineage.v1.schema.json"
+    },
+    {
+      "name": "wa_agent_result_source_projection_acknowledged",
+      "path": "examples/service/wa_agent_result_source_projection.acknowledged.json",
+      "schema": "schemas/service/nex_ae_api/wa_agent_result_source_projection.v1.schema.json"
     }
   ]
 }

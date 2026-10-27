@@ -18,6 +18,7 @@ tags:
   - name: Runtime Policy
   - name: Approvals
   - name: Operations
+  - name: Work Sources
 paths:
   /health:
     get:
@@ -2451,6 +2452,34 @@ paths:
         "403": {description: Caller is not nex-wc}
         "409": {description: Handoff semantics or Agent scope conflict}
         "503": {description: AE Agent Runtime persistence unavailable}
+  /internal/v1/wa-sources/agent-results/{result_id}:
+    get:
+      operationId: getAeAgentResultWaSource
+      tags: [Work Sources]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call, "work:source:read"]
+      parameters:
+        - name: result_id
+          in: path
+          required: true
+          schema: {type: string, minLength: 1}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1}
+      responses:
+        "200":
+          description: Safe tenant-scoped AgentResult projection for NeX-WA.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaAgentResultSourceProjection"
+        "400": {description: Tenant header is missing.}
+        "401": {description: Service token or required source-read scope is invalid.}
+        "403": {description: Caller service is denied.}
+        "404": {description: AgentResult is absent in the tenant scope.}
+        "409": {description: Authoritative result lineage is inconsistent.}
+        "503": {description: AE persistence is unavailable.}
 components:
   securitySchemes:
     serviceBearer:
@@ -2484,6 +2513,9 @@ components:
         type: string
         format: uuid
   schemas:
+    WaAgentResultSourceProjection:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/wa_agent_result_source_projection.v1.schema.json
     WcApprovalDecision:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_wc/approval_decision.v1.schema.json

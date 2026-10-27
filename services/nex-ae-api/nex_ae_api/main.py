@@ -14,6 +14,7 @@ from nex_runtime.recovery import register_generation_recovery_policy_routes
 
 from nex_ae_api.agent_identity import SqlAlchemyAgentIdentityRegistry
 from nex_ae_api.agent_registry_api import register_agent_registry_routes
+from nex_ae_api.agent_results import SqlAlchemyAgentResultRepository
 from nex_ae_api.agent_runtime_foundation import attach_agent_runtime_foundation
 from nex_ae_api.agent_runtime_operations import (
     SqlAlchemyAgentRuntimeOperationsSource,
@@ -68,6 +69,10 @@ from nex_ae_api.uploads import register_upload_routes
 from nex_ae_api.voucher_attachment_api import register_voucher_attachment_routes
 from nex_ae_api.voucher_attachment_storage import VoucherAttachmentObjectGateway
 from nex_ae_api.voucher_attachments import SqlAlchemyVoucherAttachmentRepository
+from nex_ae_api.wa_source_projections import (
+    SqlAlchemyAgentResultWaProjectionSource,
+    register_wa_agent_result_source_routes,
+)
 from nex_ae_api.work_result_event_api import register_work_result_event_routes
 from nex_ae_api.work_result_events import SqlAlchemyWorkResultEventService
 from nex_ae_api.workspace import register_workspace_routes
@@ -141,6 +146,18 @@ register_interaction_agent_result_routes(
     source=(
         SqlAlchemyInteractionAgentResultSource(
             SERVICE_PERSISTENCE.api_session_factory
+        )
+        if SERVICE_PERSISTENCE.api_session_factory is not None
+        else None
+    ),
+)
+register_wa_agent_result_source_routes(
+    app,
+    source=(
+        SqlAlchemyAgentResultWaProjectionSource(
+            SqlAlchemyAgentResultRepository(
+                SERVICE_PERSISTENCE.api_session_factory
+            )
         )
         if SERVICE_PERSISTENCE.api_session_factory is not None
         else None
