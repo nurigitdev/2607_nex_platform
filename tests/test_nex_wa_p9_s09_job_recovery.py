@@ -236,3 +236,52 @@ def test_fenced_queue_retry_dead_letter_and_consumer_success(tmp_path: Path) -> 
     with pytest.raises(WaJobRecoveryError):
         fenced.complete_job("not-claimed", updated_at=NOW_WIRE)
     engine.dispose()
+
+
+def test_claim_capture_and_recovery_inputs_fail_closed(tmp_path: Path) -> None:
+    engine, queue, store = _stores(tmp_path)
+    fenced = WaFencedJobQueue(queue, store)
+    assert fenced.claim_next_job("idle-worker", updated_at=NOW_WIRE) is None
+    with pytest.raises(WaJobRecoveryError) as missing:
+        store.capture_claim("missing", worker_id="worker")
+    assert missing.value.error_code == WA_JOB_OWNERSHIP_LOST
+
+    queued = _enqueue(queue, suffix="capture")
+    with pytest.raises(WaJobRecoveryError):
+        store.capture_claim(queued["job_id"], worker_id="worker")
+    queue.claim_next_job("owner", updated_at=OLD_WIRE)
+    with pytest.raises(WaJobRecoveryError):
+        store.capture_claim(queued["job_id"], worker_id="other")
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE service_jobs SET locked_at=NULL WHERE job_id=:job_id"),
+            {"job_id": queued["job_id"]},
+        )
+    with pytest.raises(WaJobRecoveryError):
+        store.capture_claim(queued["job_id"], worker_id="owner")
+
+    for kwargs in (
+        {"observed_at": "invalid"},
+        {"observed_at": NOW_WIRE, "limit": True},
+        {"observed_at": NOW_WIRE, "limit": 501},
+    ):
+        with pytest.raises(WaJobRecoveryError):
+            store.recover_stale(**kwargs)  # type: ignore[arg-type]
+    assert store.recover_stale(observed_at=NOW, stale_after_seconds=60) == ()
+    engine.dispose()
+
+
+def test_fenced_queue_fail_and_delegate_surface(tmp_path: Path) -> None:
+    engine, queue, store = _stores(tmp_path)
+    fenced = WaFencedJobQueue(queue, store)
+    job = _enqueue(queue, suffix="failed")
+    assert fenced.get_job(job["job_id"])["status"] == "QUEUED"
+    assert len(fenced.list_jobs(status="QUEUED")) == 1
+    fenced.claim_next_job("failure-worker", updated_at=OLD_WIRE)
+    assert fenced.fail_job(job["job_id"], updated_at=NOW_WIRE)["status"] == "FAILED"
+
+    cancelled = _enqueue(queue, suffix="cancelled")
+    assert fenced.cancel_job(cancelled["job_id"], updated_at=NOW_WIRE)[
+        "status"
+    ] == "CANCELLED"
+    engine.dispose()

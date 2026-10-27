@@ -1374,6 +1374,21 @@
       "name": "eos_project_membership_add_many_result_partial",
       "path": "examples/service/eos_project_membership_add_many_result.partial.json",
       "schema": "schemas/service/nex_eos/project_membership_add_many_result.v1.schema.json"
+    },
+    {
+      "name": "wa_work_evidence_agent_result",
+      "path": "examples/service/wa_work_evidence.agent_result.json",
+      "schema": "schemas/service/nex_wa/wa_work_evidence.v1.schema.json"
+    },
+    {
+      "name": "wa_work_asset_agent_result",
+      "path": "examples/service/wa_work_asset.agent_result.json",
+      "schema": "schemas/service/nex_wa/wa_work_asset.v1.schema.json"
+    },
+    {
+      "name": "wa_work_asset_evidence_lineage_mixed",
+      "path": "examples/service/wa_work_asset_evidence_lineage.mixed.json",
+      "schema": "schemas/service/nex_wa/wa_work_asset_evidence_lineage.v1.schema.json"
     }
   ]
 }

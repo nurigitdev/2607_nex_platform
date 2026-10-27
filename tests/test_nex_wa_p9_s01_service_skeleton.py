@@ -120,7 +120,7 @@ def test_settings_reject_non_string_identity_value() -> None:
         load_wa_settings(environment)  # type: ignore[arg-type]
 
 
-def test_service_shell_has_protected_trust_and_no_domain_routes() -> None:
+def test_service_shell_has_protected_trust_and_admitted_core_routes() -> None:
     app = create_wa_app(environ=_environment())
     client = TestClient(app)
 
@@ -141,8 +141,11 @@ def test_service_shell_has_protected_trust_and_no_domain_routes() -> None:
         "/internal/v1/auth/service-claim",
         "/internal/v1/auth/service-claim/active",
         "/internal/v1/auth/service-token-runtime",
+        "/internal/v1/evidence-intake",
+        "/internal/v1/work-evidence/{work_evidence_id}",
+        "/internal/v1/work-assets/{work_asset_id}",
+        "/internal/v1/work-assets/{work_asset_id}/evidence",
     }.issubset(routes)
-    assert not any("work-evidence" in path or "work-assets" in path for path in routes)
 
 
 def test_readiness_uses_exact_wa_database_environment_without_leaking_url(

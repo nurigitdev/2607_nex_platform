@@ -10,12 +10,23 @@ The default endpoint is `http://127.0.0.1:8108`. Runtime persistence uses
 `NEX_WA_DATABASE_URL`; migration and protected test work use
 `NEX_WA_TEST_DATABASE_URL`.
 
-P9-S02 adds the owner-local migration ledger, shared JobQueue, worker heartbeat,
-and separate API/worker connection-pool runtime. WorkEvidence and WorkAsset
-behavior remains disabled until its owning slices.
+P9-S01 through P9-S10 activate the owner-local core foundation:
 
-P9-S03 activates immutable WorkEvidence persistence with deterministic UUIDv5
-identity, canonical semantic hashing, and tenant-scoped supersession.
+- immutable, tenant-scoped WorkEvidence;
+- versioned WorkAsset and evidence bindings;
+- local atomic evidence/asset admission;
+- protected, idempotent evidence intake through the shared JobQueue;
+- bounded source-adapter and consumer composition;
+- fenced stale-RUNNING recovery using worker heartbeats;
+- protected exact WorkEvidence, WorkAsset, and evidence-lineage reads.
 
-P9-S01 registers only the service and process identities. WorkEvidence,
-WorkAsset, intake, and consumer behavior activate in later owning slices.
+Consumer storage readiness can be checked without claiming work:
+
+```bash
+python -m nex_wa.consumer_main --check
+```
+
+Protected read scopes are `work:evidence:read` for exact WorkAsset and
+`work:evidence:detail:read` in addition for exact WorkEvidence and lineage.
+P9-S10 does not claim AE/WC source integration; those adapters activate in
+later P9 slices.

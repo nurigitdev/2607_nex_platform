@@ -1,0 +1,159 @@
+openapi: 3.1.0
+info:
+  title: NeX Work Asset API
+  version: 2.1.0-p9-s10
+  description: Protected WorkEvidence intake and exact core read surface.
+servers:
+  - url: http://127.0.0.1:8108
+tags:
+  - name: Platform
+  - name: Evidence
+paths:
+  /health:
+    get:
+      operationId: getWaHealth
+      tags: [Platform]
+      responses:
+        "200": {description: Process liveness is healthy.}
+  /ready:
+    get:
+      operationId: getWaReadiness
+      tags: [Platform]
+      responses:
+        "200": {description: Database and migration dependencies are ready.}
+        "503": {description: A required dependency is unavailable.}
+  /internal/v1/evidence-intake:
+    post:
+      operationId: admitWaEvidenceIntake
+      tags: [Evidence]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call, work:evidence:ingest]
+      x-nex-route-class: WRITE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/EvidenceIntakeRequest"}
+      responses:
+        "202": {description: Evidence intake Job was durably admitted.}
+        "400": {description: Intake request is invalid.}
+        "403": {description: Caller or scope is forbidden.}
+        "409": {description: Source identity conflicts with stored semantics.}
+        "503": {description: Intake persistence is unavailable.}
+  /internal/v1/work-evidence/{work_evidence_id}:
+    get:
+      operationId: getWaWorkEvidence
+      tags: [Evidence]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call, work:evidence:read, work:evidence:detail:read]
+      parameters:
+        - {$ref: "#/components/parameters/TenantId"}
+        - name: work_evidence_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Exact tenant-scoped WorkEvidence.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WorkEvidence"}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Caller or detail scope is forbidden.}
+        "404": {description: WorkEvidence does not exist in the tenant.}
+  /internal/v1/work-assets/{work_asset_id}:
+    get:
+      operationId: getWaWorkAsset
+      tags: [Evidence]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call, work:evidence:read]
+      parameters:
+        - {$ref: "#/components/parameters/TenantId"}
+        - name: work_asset_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Exact tenant-scoped WorkAsset.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WorkAsset"}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Caller or read scope is forbidden.}
+        "404": {description: WorkAsset does not exist in the tenant.}
+  /internal/v1/work-assets/{work_asset_id}/evidence:
+    get:
+      operationId: getWaWorkAssetEvidenceLineage
+      tags: [Evidence]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call, work:evidence:read, work:evidence:detail:read]
+      parameters:
+        - {$ref: "#/components/parameters/TenantId"}
+        - name: work_asset_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Ordered PRIMARY and SUPPORTING WorkEvidence lineage.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WorkAssetEvidenceLineage"}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Caller or detail scope is forbidden.}
+        "404": {description: WorkAsset does not exist in the tenant.}
+components:
+  securitySchemes:
+    serviceBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    TenantId:
+      name: X-NeX-Tenant-Id
+      in: header
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 128}
+  schemas:
+    EvidenceIntakeRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, source_type, source_ref, source_revision_ref, source_hash, occurred_at, correlation_id]
+      properties:
+        schema_version: {const: wa_evidence_intake_request.v1}
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        source_type: {enum: [AE_AGENT_RESULT, AE_ARTIFACT]}
+        source_ref: {type: string, minLength: 1, maxLength: 512}
+        source_revision_ref: {type: string, minLength: 1, maxLength: 256}
+        source_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        occurred_at: {type: string, format: date-time}
+        correlation_id: {type: string, minLength: 1, maxLength: 128}
+    WorkEvidence:
+      type: object
+      additionalProperties: true
+      required: [schema_version, tenant_id, work_evidence_id, evidence_hash]
+      properties:
+        schema_version: {const: wa_work_evidence.v1}
+        tenant_id: {type: string}
+        work_evidence_id: {type: string, format: uuid}
+        evidence_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+    WorkAsset:
+      type: object
+      additionalProperties: true
+      required: [schema_version, tenant_id, work_asset_id, asset_hash, bindings]
+      properties:
+        schema_version: {const: wa_work_asset.v1}
+        tenant_id: {type: string}
+        work_asset_id: {type: string, format: uuid}
+        asset_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        bindings: {type: array, items: {type: object}}
+    WorkAssetEvidenceLineage:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, work_asset_id, items]
+      properties:
+        schema_version: {const: wa_work_asset_evidence_lineage.v1}
+        tenant_id: {type: string}
+        work_asset_id: {type: string, format: uuid}
+        items: {type: array, items: {type: object}}

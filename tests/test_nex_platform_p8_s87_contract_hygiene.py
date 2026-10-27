@@ -12,12 +12,14 @@ CONTRACTS = ROOT / "contracts"
 
 def test_repository_p8_contract_hygiene_is_clean() -> None:
     summary = hygiene.validate_p8_contract_hygiene(ROOT, CONTRACTS)
+    inventory = hygiene.validate_contracts.contract_inventory_counts(CONTRACTS)
 
     assert summary.ok, summary.failures
     assert summary.schema_count >= 191
     assert summary.example_count >= 255
     assert summary.negative_example_count >= 221
-    assert summary.openapi_count == 9
+    assert inventory["openapi"] >= 9
+    assert summary.openapi_count == inventory["openapi"]
     assert summary.reference_count >= 1000
     assert summary.parity_count == 25
     assert summary.terminology_count >= 21

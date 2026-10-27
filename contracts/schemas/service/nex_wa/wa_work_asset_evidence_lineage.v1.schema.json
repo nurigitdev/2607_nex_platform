@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_wa/wa_work_asset_evidence_lineage.v1.schema.json",
+  "title": "NeX-WA WorkAsset Evidence Lineage v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "work_asset_id", "items"],
+  "properties": {
+    "schema_version": {"const": "wa_work_asset_evidence_lineage.v1"},
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "work_asset_id": {"type": "string", "format": "uuid"},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["binding_role", "binding_created_at", "evidence"],
+        "properties": {
+          "binding_role": {"enum": ["PRIMARY", "SUPPORTING"]},
+          "binding_created_at": {"type": "string", "format": "date-time"},
+          "evidence": {"$ref": "#/$defs/evidence"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "tenant_id", "work_evidence_id", "source_owner",
+        "source_type", "source_ref", "source_revision_ref", "source_hash",
+        "evidence_kind", "actor_type", "actor_ref", "agent_type_snapshot",
+        "project_ref", "occurred_at", "observed_at", "classification",
+        "evidence_status", "evidence_hash", "supersedes_evidence_id", "created_at"
+      ],
+      "properties": {
+        "schema_version": {"const": "wa_work_evidence.v1"},
+        "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "work_evidence_id": {"type": "string", "format": "uuid"},
+        "source_owner": {"type": "string", "minLength": 1, "maxLength": 128},
+        "source_type": {"enum": ["AE_AGENT_RESULT", "AE_ARTIFACT", "WC_WORK_RESULT"]},
+        "source_ref": {"type": "string", "minLength": 1, "maxLength": 512},
+        "source_revision_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+        "source_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "evidence_kind": {"type": "string", "minLength": 1, "maxLength": 128},
+        "actor_type": {"enum": ["HUMAN", "AGENT"]},
+        "actor_ref": {"type": "string", "minLength": 1, "maxLength": 512},
+        "agent_type_snapshot": {"type": ["string", "null"], "enum": ["IA", "CA", "PA", "EA", null]},
+        "project_ref": {"type": ["string", "null"], "format": "uuid"},
+        "occurred_at": {"type": "string", "format": "date-time"},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "classification": {"enum": ["INTERNAL", "CONFIDENTIAL", "RESTRICTED"]},
+        "evidence_status": {"enum": ["ACTIVE", "SUPERSEDED", "INVALIDATED"]},
+        "evidence_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "supersedes_evidence_id": {"type": ["string", "null"], "format": "uuid"},
+        "created_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}
