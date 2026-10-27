@@ -128,6 +128,9 @@ def test_background_result_creates_one_asset_with_primary_and_supporting_evidenc
     assert evidence[1].source_ref == "work-1"
     assert evidence[1].source_revision_ref == "wc-result-1"
     assert evidence[1].project_ref == PROJECT
+    assert evidence[0].classification == "CONFIDENTIAL"
+    assert evidence[1].classification == "CONFIDENTIAL"
+    assert asset.classification == "CONFIDENTIAL"
 
 
 def test_same_work_result_replay_keeps_exact_semantics() -> None:

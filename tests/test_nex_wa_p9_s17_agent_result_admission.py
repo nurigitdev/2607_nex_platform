@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from urllib.error import HTTPError, URLError
 from uuid import UUID
@@ -14,6 +15,8 @@ from nex_wa.agent_result_source import (
 from nex_wa.intake_contracts import normalize_evidence_intake_request
 from nex_wa.service_auth import resolve_wa_outbound_service_token
 from nex_wa.source_adapters import WaSourceAdapterError
+from nex_wa.work_assets import build_work_asset
+from nex_wa.work_evidence import build_work_evidence
 
 TENANT = "VO00"
 EXECUTION = "11111111-1111-4111-8111-111111111111"
@@ -143,6 +146,7 @@ def test_ia_post_ack_creates_one_primary_project_neutral_asset() -> None:
     assert evidence.project_ref is asset.project_ref is None
     assert asset.agent_execution_id == EXECUTION
     assert asset.bindings[0].binding_role == "PRIMARY"
+    assert evidence.classification == asset.classification == "CONFIDENTIAL"
     assert UUID(asset.bindings[0].work_evidence_id)
 
 
@@ -156,6 +160,34 @@ def test_claimed_background_profiles_require_and_verify_project(agent_type) -> N
     assert projects.calls == [(TENANT, PROJECT)]
     assert evidence.project_ref == asset.project_ref == PROJECT
     assert asset.agent_type_snapshot == agent_type
+    assert evidence.classification == asset.classification == "CONFIDENTIAL"
+
+
+def test_privacy_correction_preserves_ids_and_changes_only_semantic_hashes() -> None:
+    adapter, admission = _adapter(_projection())
+    adapter.fetch(_request())
+    evidence, asset = admission.calls[0]
+
+    corrected_evidence = build_work_evidence(evidence, created_at=NOW)
+    prior_evidence = build_work_evidence(
+        replace(evidence, classification="INTERNAL"),
+        created_at=NOW,
+    )
+    replayed_evidence = build_work_evidence(evidence, created_at=NOW)
+    assert corrected_evidence.work_evidence_id == prior_evidence.work_evidence_id
+    assert corrected_evidence.evidence_hash != prior_evidence.evidence_hash
+    assert corrected_evidence.evidence_hash == replayed_evidence.evidence_hash
+
+    corrected_asset = build_work_asset(asset, created_at=NOW, updated_at=NOW)
+    prior_asset = build_work_asset(
+        replace(asset, classification="INTERNAL"),
+        created_at=NOW,
+        updated_at=NOW,
+    )
+    replayed_asset = build_work_asset(asset, created_at=NOW, updated_at=NOW)
+    assert corrected_asset.work_asset_id == prior_asset.work_asset_id
+    assert corrected_asset.asset_hash != prior_asset.asset_hash
+    assert corrected_asset.asset_hash == replayed_asset.asset_hash
 
 
 def test_incomplete_result_is_typed_retry_and_never_admitted() -> None:

@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from time import time
+from typing import ClassVar
 from uuid import uuid4
 
 import pytest
@@ -221,7 +222,7 @@ class _WcWorkResultClient(_GetClient):
 
 
 class _AeReconciliationClient:
-    _PATHS = {
+    _PATHS: ClassVar[dict[str, str]] = {
         "AE_AGENT_RESULT": "/internal/v1/wa-sources/agent-results",
         "AE_ARTIFACT": "/internal/v1/wa-sources/artifacts",
     }
@@ -1333,6 +1334,22 @@ def test_p9_ca03_and_s29_actual_postgres_signed_canonical_foundation_e2e() -> No
                     .scalars()
                     .all()
                 )
+                evidence_classifications = connection.execute(
+                    text(
+                        "SELECT source_type, classification "
+                        "FROM wa_work_evidence WHERE tenant_id=:tenant "
+                        "ORDER BY source_type, source_ref"
+                    ),
+                    {"tenant": tenant_id},
+                ).all()
+                asset_classifications = connection.execute(
+                    text(
+                        "SELECT asset_type, classification "
+                        "FROM wa_work_asset WHERE tenant_id=:tenant "
+                        "ORDER BY asset_type, work_asset_id"
+                    ),
+                    {"tenant": tenant_id},
+                ).all()
                 forbidden_tables = connection.execute(
                     text(
                         "SELECT count(*) FROM information_schema.tables "
@@ -1356,6 +1373,17 @@ def test_p9_ca03_and_s29_actual_postgres_signed_canonical_foundation_e2e() -> No
                 )
             assert tuple(counts) == (4, 3, 3)
             assert roles == ["PRIMARY", "PRIMARY", "PRIMARY", "SUPPORTING"]
+            assert [tuple(row) for row in evidence_classifications] == [
+                ("AE_AGENT_RESULT", "CONFIDENTIAL"),
+                ("AE_ARTIFACT", "CONFIDENTIAL"),
+                ("AE_ARTIFACT", "CONFIDENTIAL"),
+                ("WC_WORK_RESULT", "CONFIDENTIAL"),
+            ]
+            assert [tuple(row) for row in asset_classifications] == [
+                ("AGENT_EXECUTION_RESULT", "CONFIDENTIAL"),
+                ("HUMAN_OWNED_ARTIFACT", "CONFIDENTIAL"),
+                ("HUMAN_OWNED_ARTIFACT", "CONFIDENTIAL"),
+            ]
             assert forbidden_tables == 0
 
             detail_path = f"/internal/v1/work-evidence/{evidence_id}"

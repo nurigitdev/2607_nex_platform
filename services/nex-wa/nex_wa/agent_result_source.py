@@ -19,6 +19,7 @@ from .work_evidence import WorkEvidenceInput, deterministic_work_evidence_id
 
 WORK_SOURCE_READ_SCOPE = "work:source:read"
 EOS_PROJECT_VERIFY_SCOPE = "project:verify"
+DEFAULT_AGENT_WORK_CLASSIFICATION = "CONFIDENTIAL"
 
 
 class AgentResultProjectionClient(Protocol):
@@ -159,7 +160,7 @@ class AeAgentResultSourceAdapter:
                 project_ref=project_ref,
                 occurred_at=occurred_at,
                 observed_at=_aware(self._clock(), "observed_at"),
-                classification="INTERNAL",
+                classification=DEFAULT_AGENT_WORK_CLASSIFICATION,
             )
         bindings = [WorkAssetBindingInput(evidence_id, "PRIMARY")]
         evidence = [primary]
@@ -192,7 +193,7 @@ class AeAgentResultSourceAdapter:
                 ),
                 project_ref=project_ref,
                 occurred_at=occurred_at,
-                classification="INTERNAL",
+                classification=DEFAULT_AGENT_WORK_CLASSIFICATION,
                 bindings=tuple(bindings),
             )
         if len(evidence) == 1:
@@ -267,7 +268,7 @@ class AeAgentResultSourceAdapter:
             project_ref=project_ref,
             occurred_at=_timestamp(supporting.get("submitted_at")),
             observed_at=_aware(self._clock(), "observed_at"),
-            classification="INTERNAL",
+            classification=DEFAULT_AGENT_WORK_CLASSIFICATION,
             supersedes_evidence_id=supersedes_evidence_id,
         )
 

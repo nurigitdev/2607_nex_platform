@@ -218,7 +218,11 @@ def test_artifact_projection_drift_fails_closed(overrides, error_code) -> None:
 
 
 def test_classification_is_never_below_confidential() -> None:
-    for source, expected in (("INTERNAL", "CONFIDENTIAL"), ("RESTRICTED", "RESTRICTED")):
+    for source, expected in (
+        ("INTERNAL", "CONFIDENTIAL"),
+        ("CONFIDENTIAL", "CONFIDENTIAL"),
+        ("RESTRICTED", "RESTRICTED"),
+    ):
         adapter, admission = _adapter(_projection(classification=source))
         adapter.fetch(_request())
         evidence, asset = admission.calls[0]
