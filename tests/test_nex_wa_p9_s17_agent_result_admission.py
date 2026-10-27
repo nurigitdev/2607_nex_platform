@@ -86,6 +86,23 @@ class _Projects:
         }
 
 
+class _WorkResults:
+    def fetch_by_execution(self, *, tenant_id, agent_execution_id):
+        return {
+            "tenant_id": tenant_id,
+            "result_id": "wc-result-1",
+            "work_item_id": "work-1",
+            "revision_no": 1,
+            "source_execution_ref": agent_execution_id,
+            "claim_id": "claim-1",
+            "claim_generation": 2,
+            "assignment_id": "assignment-1",
+            "submitted_agent_id": AGENT,
+            "submitted_at": "2026-10-28T04:59:01Z",
+            "result_hash": "sha256:" + "c" * 64,
+        }
+
+
 class _Admission:
     def __init__(self):
         self.calls = []
@@ -94,13 +111,22 @@ class _Admission:
         self.calls.append((evidence, asset))
         return object()
 
+    def admit_normalized_evidence_set(self, evidence, asset):
+        self.calls.append((evidence[0], asset))
+        return object()
 
-def _adapter(projection, *, projects=None):
+
+def _adapter(projection, *, projects=None, work_results=None):
     admission = _Admission()
     adapter = AeAgentResultSourceAdapter(
         source=_Source(projection),
         admission=admission,
         projects=projects,
+        work_results=(
+            work_results
+            if work_results is not None
+            else (_WorkResults() if projection.get("agent_type") != "IA" else None)
+        ),
         clock=lambda: NOW,
     )
     return adapter, admission

@@ -29,6 +29,12 @@ class ProjectVerificationClient(Protocol):
     def verify_project(self, *, tenant_id: str, project_id: str) -> Mapping[str, Any]: ...
 
 
+class WorkResultProjectionClient(Protocol):
+    def fetch_by_execution(
+        self, *, tenant_id: str, agent_execution_id: str
+    ) -> Mapping[str, Any]: ...
+
+
 class HttpAeAgentResultProjectionClient:
     def __init__(
         self, *, base_url: str, service_token: str, timeout_seconds: float = 15.0
@@ -77,6 +83,29 @@ class HttpEosProjectVerificationClient:
         )
 
 
+class HttpWcWorkResultProjectionClient:
+    def __init__(
+        self, *, base_url: str, service_token: str, timeout_seconds: float = 15.0
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._service_token = service_token
+        self._timeout_seconds = timeout_seconds
+
+    def fetch_by_execution(
+        self, *, tenant_id: str, agent_execution_id: str
+    ) -> Mapping[str, Any]:
+        return _request_json(
+            Request(
+                f"{self._base_url}/internal/v1/wa-sources/work-results/"
+                f"by-execution/{agent_execution_id}",
+                method="GET",
+                headers=_headers(self._service_token, tenant_id),
+            ),
+            timeout_seconds=self._timeout_seconds,
+            unavailable_code="WA_WC_SOURCE_UNAVAILABLE",
+        )
+
+
 class AeAgentResultSourceAdapter:
     source_type = "AE_AGENT_RESULT"
 
@@ -86,11 +115,13 @@ class AeAgentResultSourceAdapter:
         source: AgentResultProjectionClient,
         admission: WaEvidenceAdmissionService,
         projects: ProjectVerificationClient | None = None,
+        work_results: WorkResultProjectionClient | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._source = source
         self._admission = admission
         self._projects = projects
+        self._work_results = work_results
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def fetch(self, request: WaEvidenceIntakeRequest) -> WaSourceNormalizedEnvelope:
@@ -112,8 +143,7 @@ class AeAgentResultSourceAdapter:
             source_ref=request.source_ref,
             source_revision_ref=request.source_revision_ref,
         )
-        self._admission.admit_normalized_evidence(
-            WorkEvidenceInput(
+        primary = WorkEvidenceInput(
                 tenant_id=request.tenant_id,
                 source_owner="nex-ae-api",
                 source_type=request.source_type,
@@ -130,8 +160,28 @@ class AeAgentResultSourceAdapter:
                 occurred_at=occurred_at,
                 observed_at=_aware(self._clock(), "observed_at"),
                 classification="INTERNAL",
-            ),
-            WorkAssetInput(
+            )
+        bindings = [WorkAssetBindingInput(evidence_id, "PRIMARY")]
+        evidence = [primary]
+        if project_ref is not None:
+            supporting = self._supporting_evidence(
+                request=request,
+                projection=projection,
+                project_ref=project_ref,
+            )
+            evidence.append(supporting)
+            bindings.append(
+                WorkAssetBindingInput(
+                    deterministic_work_evidence_id(
+                        tenant_id=supporting.tenant_id,
+                        source_type=supporting.source_type,
+                        source_ref=supporting.source_ref,
+                        source_revision_ref=supporting.source_revision_ref,
+                    ),
+                    "SUPPORTING",
+                )
+            )
+        asset = WorkAssetInput(
                 tenant_id=request.tenant_id,
                 asset_type="AGENT_EXECUTION_RESULT",
                 agent_execution_id=request.source_ref,
@@ -143,9 +193,12 @@ class AeAgentResultSourceAdapter:
                 project_ref=project_ref,
                 occurred_at=occurred_at,
                 classification="INTERNAL",
-                bindings=(WorkAssetBindingInput(evidence_id, "PRIMARY"),),
-            ),
-        )
+                bindings=tuple(bindings),
+            )
+        if len(evidence) == 1:
+            self._admission.admit_normalized_evidence(primary, asset)
+        else:
+            self._admission.admit_normalized_evidence_set(tuple(evidence), asset)
         return WaSourceNormalizedEnvelope(
             schema_version=WA_SOURCE_ENVELOPE_SCHEMA,
             tenant_id=request.tenant_id,
@@ -155,6 +208,59 @@ class AeAgentResultSourceAdapter:
             source_revision_ref=request.source_revision_ref,
             source_hash=request.source_hash,
             occurred_at=request.occurred_at,
+        )
+
+    def _supporting_evidence(
+        self,
+        *,
+        request: WaEvidenceIntakeRequest,
+        projection: Mapping[str, Any],
+        project_ref: str,
+    ) -> WorkEvidenceInput:
+        if self._work_results is None:
+            raise WaSourceAdapterError(
+                "WA_WC_SOURCE_UNAVAILABLE",
+                "background AgentResult requires its WC WorkResult source",
+            )
+        supporting = self._work_results.fetch_by_execution(
+            tenant_id=request.tenant_id,
+            agent_execution_id=request.source_ref,
+        )
+        expected = {
+            "tenant_id": request.tenant_id,
+            "source_execution_ref": request.source_ref,
+            "work_item_id": projection.get("source_work_item_ref"),
+            "claim_id": projection.get("source_claim_ref"),
+            "claim_generation": projection.get("source_claim_generation"),
+            "assignment_id": projection.get("source_assignment_ref"),
+            "submitted_agent_id": projection.get("agent_id"),
+        }
+        if any(supporting.get(field) != value for field, value in expected.items()):
+            raise WaSourceAdapterError(
+                "WA_WC_SOURCE_LINEAGE_MISMATCH",
+                "WC WorkResult does not match AgentResult execution and claim lineage",
+                retryable=False,
+                status_code=409,
+            )
+        result_id = _text(supporting.get("result_id"), "WC result_id")
+        revision = supporting.get("revision_no")
+        if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+            raise _invalid("WC revision_no must be a positive integer")
+        return WorkEvidenceInput(
+            tenant_id=request.tenant_id,
+            source_owner="nex-wc",
+            source_type="WC_WORK_RESULT",
+            source_ref=result_id,
+            source_revision_ref=str(revision),
+            source_hash=_text(supporting.get("result_hash"), "WC result_hash"),
+            evidence_kind="WORK_COORDINATION_RESULT",
+            actor_type="AGENT",
+            actor_ref=_text(projection.get("agent_id"), "agent_id"),
+            agent_type_snapshot=_text(projection.get("agent_type"), "agent_type"),
+            project_ref=project_ref,
+            occurred_at=_timestamp(supporting.get("submitted_at")),
+            observed_at=_aware(self._clock(), "observed_at"),
+            classification="INTERNAL",
         )
 
     def _verify_project(self, tenant_id: str, project_id: str) -> None:

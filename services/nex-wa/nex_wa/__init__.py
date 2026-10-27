@@ -9,6 +9,7 @@ from .agent_result_source import (
     AeAgentResultSourceAdapter,
     HttpAeAgentResultProjectionClient,
     HttpEosProjectVerificationClient,
+    HttpWcWorkResultProjectionClient,
 )
 from .app import create_wa_app
 from .config import WaConfigurationError, WaSettings, load_wa_settings
@@ -148,6 +149,7 @@ __all__ = (
     "ControlledWaEvidenceSourceAdapter",
     "HttpAeAgentResultProjectionClient",
     "HttpEosProjectVerificationClient",
+    "HttpWcWorkResultProjectionClient",
     "NormalizedEvidenceAdmission",
     "SqlAlchemyWaJobFenceStore",
     "SqlAlchemyWorkAssetRepository",

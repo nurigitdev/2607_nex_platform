@@ -199,6 +199,42 @@ def test_admission_is_atomic_and_exact_replay_is_stable(local_runtime) -> None:
         )
 
 
+def test_evidence_set_admission_is_atomic_and_does_not_double_count(local_runtime) -> None:
+    service, sessions = local_runtime
+    primary = _evidence()
+    supporting = _evidence(
+        source_owner="nex-wc",
+        source_type="WC_WORK_RESULT",
+        source_ref="wc-result-500",
+        source_revision_ref="1",
+        source_hash="sha256:" + "6" * 64,
+        evidence_kind="WORK_COORDINATION_RESULT",
+    )
+    asset = _asset(_evidence_id(primary), supporting_id=_evidence_id(supporting))
+
+    first = service.admit_normalized_evidence_set((primary, supporting), asset)
+    replay = service.admit_normalized_evidence_set((primary, supporting), asset)
+    assert first == replay
+    with sessions() as session:
+        assert session.execute(text("SELECT count(*) FROM wa_work_asset")).scalar_one() == 1
+        assert session.execute(text("SELECT count(*) FROM wa_work_evidence")).scalar_one() == 2
+        roles = session.execute(
+            text("SELECT binding_role FROM wa_work_asset_evidence ORDER BY binding_role")
+        ).scalars().all()
+    assert roles == ["PRIMARY", "SUPPORTING"]
+
+
+def test_evidence_set_requires_items_and_same_asset_lineage(local_runtime) -> None:
+    service, _sessions = local_runtime
+    primary = _evidence()
+    asset = _asset(_evidence_id(primary))
+    with pytest.raises(WorkAdmissionError, match="must not be empty"):
+        service.admit_normalized_evidence_set((), asset)
+    unbound = _evidence(source_ref="other-execution")
+    with pytest.raises(WorkAdmissionError, match="must be bound"):
+        service.admit_normalized_evidence_set((primary, unbound), asset)
+
+
 def test_failure_after_commit_replay_does_not_duplicate(local_runtime) -> None:
     service, _sessions = local_runtime
     evidence = _evidence()

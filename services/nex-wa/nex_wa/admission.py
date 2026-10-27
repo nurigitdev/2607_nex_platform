@@ -84,6 +84,38 @@ class WaEvidenceAdmissionService:
                 if attempts_remaining == 0:
                     raise
 
+    def admit_normalized_evidence_set(
+        self,
+        evidence: tuple[WorkEvidenceInput, ...],
+        asset: WorkAssetInput,
+    ) -> NormalizedEvidenceAdmission:
+        if not evidence:
+            raise WorkAdmissionError(
+                "WA_ADMISSION_LINEAGE_INVALID",
+                "evidence set must not be empty",
+                409,
+            )
+        for item in evidence:
+            _require_same_admission_lineage(item, asset)
+        attempts_remaining = self._concurrency_retries
+        while True:
+            try:
+                return self._admit_set_once(evidence, asset)
+            except IntegrityError as exc:
+                attempts_remaining -= 1
+                if attempts_remaining == 0:
+                    raise WorkAdmissionError(
+                        "WA_ADMISSION_INTEGRITY_CONFLICT",
+                        "normalized evidence-set admission conflicted concurrently",
+                        409,
+                    ) from exc
+            except WorkAssetError as exc:
+                if exc.error_code != "WA_ASSET_CONCURRENT_UPDATE":
+                    raise
+                attempts_remaining -= 1
+                if attempts_remaining == 0:
+                    raise
+
     def _admit_once(
         self,
         evidence: WorkEvidenceInput,
@@ -109,6 +141,37 @@ class WaEvidenceAdmissionService:
             raise WorkAdmissionError(
                 "WA_ADMISSION_STORE_UNAVAILABLE",
                 "normalized evidence admission persistence is unavailable",
+                503,
+            ) from exc
+
+    def _admit_set_once(
+        self,
+        evidence: tuple[WorkEvidenceInput, ...],
+        asset: WorkAssetInput,
+    ) -> NormalizedEvidenceAdmission:
+        now = self._clock()
+        try:
+            with build_unit_of_work(self._session_factory) as transaction:
+                records = tuple(
+                    self._evidence_repository.create_or_get_in_session(
+                        transaction.db,
+                        item,
+                        created_at=now,
+                    )
+                    for item in evidence
+                )
+                asset_record = self._asset_repository.create_or_update_in_session(
+                    transaction.db,
+                    asset,
+                    updated_at=now,
+                )
+                return NormalizedEvidenceAdmission(records[0], asset_record)
+        except IntegrityError:
+            raise
+        except SQLAlchemyError as exc:
+            raise WorkAdmissionError(
+                "WA_ADMISSION_STORE_UNAVAILABLE",
+                "normalized evidence-set persistence is unavailable",
                 503,
             ) from exc
 
