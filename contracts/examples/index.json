@@ -1421,6 +1421,16 @@
       "schema": "schemas/service/nex_wa/wa_work_asset_evidence_lineage.v1.schema.json"
     },
     {
+      "name": "wa_work_asset_summary_agent_result",
+      "path": "examples/service/wa_work_asset_summary.agent_result.json",
+      "schema": "schemas/service/nex_wa/wa_work_asset_summary.v1.schema.json"
+    },
+    {
+      "name": "wa_work_evidence_audit_superseded",
+      "path": "examples/service/wa_work_evidence_audit.superseded.json",
+      "schema": "schemas/service/nex_wa/wa_work_evidence_audit.v1.schema.json"
+    },
+    {
       "name": "wa_agent_result_source_projection_acknowledged",
       "path": "examples/service/wa_agent_result_source_projection.acknowledged.json",
       "schema": "schemas/service/nex_ae_api/wa_agent_result_source_projection.v1.schema.json"
