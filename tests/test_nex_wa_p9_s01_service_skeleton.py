@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Self
 
 import nex_runtime.database as runtime_database
@@ -25,7 +26,6 @@ from nex_runtime.signed_token_verifier import SIGNED_TOKEN_AUDIENCES
 from nex_runtime.worker_heartbeats import SERVICE_IDS as HEARTBEAT_SERVICE_IDS
 from nex_wa import WaConfigurationError, load_wa_settings
 from nex_wa.app import CONTRACT_CATALOG_VERSION, SERVICE_SPEC, create_wa_app
-
 
 ROOT = Path(__file__).parents[1]
 PLATFORM_BACKEND_IDS = {
@@ -153,7 +153,15 @@ def test_readiness_uses_exact_wa_database_environment_without_leaking_url(
     database_url = "postgresql://nex_wa_user:private@localhost/nex_wa_test"
     monkeypatch.setattr(runtime_database.psycopg, "connect", fake_connect)
     response = TestClient(
-        create_wa_app(environ=_environment(NEX_WA_DATABASE_URL=database_url))
+        create_wa_app(
+            environ=_environment(NEX_WA_DATABASE_URL=database_url),
+            persistence_builder=lambda **_kwargs: SimpleNamespace(
+                migration_readiness=lambda: {
+                    "name": "wa_migrations",
+                    "ok": True,
+                }
+            ),  # type: ignore[arg-type]
+        )
     ).get("/ready")
 
     assert response.status_code == 200

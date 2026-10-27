@@ -23,6 +23,10 @@ consumer worker type       = wa.evidence_consumer
 The consumer is an idle process shell in this Slice. It imports and reports
 package readiness but cannot claim or process domain work before P9-S08.
 
+The owner-local migration stream is frozen before P9-S02 as
+`2600` baseline, `2601` common JobQueue, `2602` heartbeat, `2603`
+WorkEvidence, `2604` WorkAsset, and `2605` asset-evidence binding.
+
 ## Registry Reconciliation
 
 The current first-class backend set is frozen as:

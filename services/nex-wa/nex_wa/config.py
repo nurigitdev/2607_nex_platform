@@ -5,7 +5,6 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-
 SERVICE_ID = "nex-wa"
 DATABASE_ENV = "NEX_WA_DATABASE_URL"
 SUPPORTED_PROFILES = frozenset(

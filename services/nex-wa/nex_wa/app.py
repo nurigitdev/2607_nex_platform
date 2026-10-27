@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from typing import Any
 
 from fastapi import FastAPI
 from nex_runtime import (
@@ -11,16 +12,18 @@ from nex_runtime import (
 )
 
 from .config import WaSettings, load_wa_settings
-
+from .persistence import WaPersistenceRuntime, build_wa_persistence_runtime
 
 SERVICE_SPEC = SERVICE_SPECS["nex-wa"]
-CONTRACT_CATALOG_VERSION = "p9-s01"
+CONTRACT_CATALOG_VERSION = "p9-s02"
+PersistenceBuilder = Callable[..., WaPersistenceRuntime]
 
 
 def create_wa_app(
     *,
     environ: Mapping[str, str] | None = None,
     settings: WaSettings | None = None,
+    persistence_builder: PersistenceBuilder = build_wa_persistence_runtime,
 ) -> FastAPI:
     env = dict(os.environ if environ is None else environ)
     resolved = settings or load_wa_settings(env)
@@ -35,8 +38,17 @@ def create_wa_app(
         expected_audience=resolved.service_id,
         environ=env,
     )
+    persistence = (
+        persistence_builder(environ=env)
+        if env.get(resolved.database_env)
+        else None
+    )
+    readiness_checks: tuple[Callable[[], Mapping[str, Any]], ...] = (
+        (persistence.migration_readiness,) if persistence is not None else ()
+    )
     app = build_service_app(
         SERVICE_SPEC,
+        readiness_checks=readiness_checks,
         include_oa_mock_auth_routes=False,
         service_token_admission=token_admission,
         environ=env,
@@ -48,4 +60,5 @@ def create_wa_app(
     )
     app.state.wa_settings = resolved
     app.state.wa_service_token_admission = token_admission
+    app.state.wa_persistence = persistence
     return app
