@@ -76,6 +76,7 @@ from .persistence import (
     build_wa_persistence_runtime,
 )
 from .read_api import (
+    WA_EVIDENCE_AUDIT_READ_SCOPE,
     WA_EVIDENCE_DETAIL_READ_SCOPE,
     WA_EVIDENCE_READ_SCOPE,
     WA_READ_CALLERS,
@@ -128,6 +129,7 @@ __all__ = (
     "PROCESS_ID",
     "WA_COMMON_RUNTIME_MIGRATIONS",
     "WA_ERROR_SCHEMA",
+    "WA_EVIDENCE_AUDIT_READ_SCOPE",
     "WA_EVIDENCE_DETAIL_READ_SCOPE",
     "WA_EVIDENCE_INGEST_JOB_TYPE",
     "WA_EVIDENCE_INGEST_MAX_ATTEMPTS",

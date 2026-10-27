@@ -1,0 +1,18 @@
+{
+  "schema_version": "wa_work_asset_summary.v1",
+  "tenant_id": "VO00",
+  "work_asset_id": "33333333-3333-4333-8333-333333333333",
+  "asset_type": "AGENT_EXECUTION_RESULT",
+  "actor_type": "AGENT",
+  "actor_ref": "agent-001",
+  "agent_type_snapshot": "IA",
+  "project_ref": null,
+  "occurred_at": "2026-10-28T01:00:00Z",
+  "classification": "CONFIDENTIAL",
+  "asset_status": "ACTIVE",
+  "asset_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "version": 1,
+  "evidence_count": 2,
+  "created_at": "2026-10-28T01:01:00Z",
+  "updated_at": "2026-10-28T01:01:00Z"
+}

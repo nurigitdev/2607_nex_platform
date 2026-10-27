@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_wa/wa_work_asset_summary.v1.schema.json",
+  "title": "NeX-WA WorkAsset Summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "work_asset_id", "asset_type", "actor_type",
+    "actor_ref", "agent_type_snapshot", "project_ref", "occurred_at",
+    "classification", "asset_status", "asset_hash", "version", "evidence_count",
+    "created_at", "updated_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "wa_work_asset_summary.v1"},
+    "tenant_id": {"$ref": "#/$defs/id"},
+    "work_asset_id": {"type": "string", "format": "uuid"},
+    "asset_type": {"enum": ["AGENT_EXECUTION_RESULT", "HUMAN_OWNED_ARTIFACT"]},
+    "actor_type": {"enum": ["HUMAN", "AGENT"]},
+    "actor_ref": {"$ref": "#/$defs/id"},
+    "agent_type_snapshot": {"type": ["string", "null"], "enum": ["IA", "CA", "PA", "EA", null]},
+    "project_ref": {"type": ["string", "null"], "format": "uuid"},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "classification": {"enum": ["INTERNAL", "CONFIDENTIAL", "RESTRICTED"]},
+    "asset_status": {"enum": ["ACTIVE", "SUPERSEDED", "INVALIDATED"]},
+    "asset_hash": {"$ref": "#/$defs/hash"},
+    "version": {"type": "integer", "minimum": 1},
+    "evidence_count": {"type": "integer", "minimum": 0},
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 512},
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

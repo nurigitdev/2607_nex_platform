@@ -18,7 +18,7 @@ from .persistence import WaPersistenceRuntime, build_wa_persistence_runtime
 from .read_api import WaCoreReadService, register_core_read_routes
 
 SERVICE_SPEC = SERVICE_SPECS["nex-wa"]
-CONTRACT_CATALOG_VERSION = "p9-s10"
+CONTRACT_CATALOG_VERSION = "p9-s20"
 PersistenceBuilder = Callable[..., WaPersistenceRuntime]
 
 

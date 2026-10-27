@@ -217,8 +217,11 @@ class SqlAlchemyWorkEvidenceRepository:
         try:
             existing = self._select_by_source(session, record)
             if existing is not None:
-                return _reuse_or_conflict(existing, record)
-            self._require_supersession_target(session, record)
+                reused = _reuse_or_conflict(existing, record)
+                self._apply_supersession(session, reused)
+                session.commit()
+                return reused
+            self._apply_supersession(session, record)
             try:
                 session.execute(_INSERT_EVIDENCE, _database_params(session, record))
                 session.commit()
@@ -269,8 +272,10 @@ class SqlAlchemyWorkEvidenceRepository:
         )
         existing = self._select_by_source(session, record)
         if existing is not None:
-            return _reuse_or_conflict(existing, record)
-        self._require_supersession_target(session, record)
+            reused = _reuse_or_conflict(existing, record)
+            self._apply_supersession(session, reused)
+            return reused
+        self._apply_supersession(session, record)
         session.execute(_INSERT_EVIDENCE, _database_params(session, record))
         stored = self._select_by_id(
             session,
@@ -298,7 +303,84 @@ class SqlAlchemyWorkEvidenceRepository:
                 503,
             ) from exc
 
-    def _require_supersession_target(
+    def list_source_lineage(
+        self,
+        tenant_id: str,
+        work_evidence_id: str,
+    ) -> tuple[WorkEvidenceRecord, ...]:
+        normalized_tenant = _required_string(tenant_id, "tenant_id")
+        normalized_id = _required_uuid(work_evidence_id, "work_evidence_id")
+        try:
+            with self._session_factory() as session:
+                anchor = self._select_by_id(session, normalized_tenant, normalized_id)
+                if anchor is None:
+                    return ()
+                rows = session.execute(
+                    _SELECT_SOURCE_LINEAGE,
+                    {
+                        "tenant_id": normalized_tenant,
+                        "source_type": anchor.source_type,
+                        "source_ref": anchor.source_ref,
+                    },
+                ).mappings()
+                return _order_source_lineage(
+                    tuple(_record_from_row(row) for row in rows)
+                )
+        except SQLAlchemyError as exc:
+            raise WorkEvidenceError(
+                "WA_EVIDENCE_STORE_UNAVAILABLE",
+                "WorkEvidence persistence is unavailable",
+                503,
+            ) from exc
+
+    def invalidate(
+        self,
+        tenant_id: str,
+        work_evidence_id: str,
+    ) -> WorkEvidenceRecord:
+        normalized_tenant = _required_string(tenant_id, "tenant_id")
+        normalized_id = _required_uuid(work_evidence_id, "work_evidence_id")
+        session = self._session_factory()
+        try:
+            existing = self._select_by_id(session, normalized_tenant, normalized_id)
+            if existing is None:
+                raise WorkEvidenceError(
+                    "WA_EVIDENCE_NOT_FOUND",
+                    "WorkEvidence was not found",
+                    404,
+                )
+            if existing.evidence_status != "INVALIDATED":
+                session.execute(
+                    _UPDATE_EVIDENCE_STATUS,
+                    {
+                        "tenant_id": normalized_tenant,
+                        "work_evidence_id": _database_uuid(session, normalized_id),
+                        "evidence_status": "INVALIDATED",
+                    },
+                )
+                session.commit()
+            stored = self._select_by_id(session, normalized_tenant, normalized_id)
+            if stored is None:
+                raise WorkEvidenceError(
+                    "WA_EVIDENCE_STORE_UNAVAILABLE",
+                    "WorkEvidence was not readable after invalidation",
+                    503,
+                )
+            return stored
+        except WorkEvidenceError:
+            session.rollback()
+            raise
+        except SQLAlchemyError as exc:
+            session.rollback()
+            raise WorkEvidenceError(
+                "WA_EVIDENCE_STORE_UNAVAILABLE",
+                "WorkEvidence persistence is unavailable",
+                503,
+            ) from exc
+        finally:
+            session.close()
+
+    def _apply_supersession(
         self,
         session: Session,
         record: WorkEvidenceRecord,
@@ -315,6 +397,26 @@ class SqlAlchemyWorkEvidenceRepository:
                 "WA_SUPERSESSION_INVALID",
                 "superseded WorkEvidence must exist in the same tenant",
                 409,
+            )
+        if (
+            target.source_type != record.source_type
+            or target.source_ref != record.source_ref
+        ):
+            raise WorkEvidenceError(
+                "WA_SUPERSESSION_INVALID",
+                "superseded WorkEvidence must belong to the same source lineage",
+                409,
+            )
+        if target.evidence_status == "ACTIVE":
+            session.execute(
+                _UPDATE_EVIDENCE_STATUS,
+                {
+                    "tenant_id": record.tenant_id,
+                    "work_evidence_id": _database_uuid(
+                        session, target.work_evidence_id
+                    ),
+                    "evidence_status": "SUPERSEDED",
+                },
             )
 
     def _select_by_source(
@@ -387,6 +489,23 @@ _SELECT_BY_ID = text(
     WHERE tenant_id = :tenant_id AND work_evidence_id = :work_evidence_id
     """
 )
+_SELECT_SOURCE_LINEAGE = text(
+    f"""
+    SELECT {_SELECT_COLUMNS}
+    FROM {WORK_EVIDENCE_TABLE}
+    WHERE tenant_id = :tenant_id
+      AND source_type = :source_type
+      AND source_ref = :source_ref
+    ORDER BY created_at, work_evidence_id
+    """
+)
+_UPDATE_EVIDENCE_STATUS = text(
+    f"""
+    UPDATE {WORK_EVIDENCE_TABLE}
+    SET evidence_status = :evidence_status
+    WHERE tenant_id = :tenant_id AND work_evidence_id = :work_evidence_id
+    """
+)
 _INSERT_EVIDENCE = text(
     f"""
     INSERT INTO {WORK_EVIDENCE_TABLE} (
@@ -427,6 +546,30 @@ def _reuse_or_conflict(
         "source identity already exists with a different source hash",
         409,
     )
+
+
+def _order_source_lineage(
+    records: tuple[WorkEvidenceRecord, ...],
+) -> tuple[WorkEvidenceRecord, ...]:
+    by_parent: dict[str | None, list[WorkEvidenceRecord]] = {}
+    known_ids = {record.work_evidence_id for record in records}
+    for record in records:
+        parent = record.supersedes_evidence_id
+        if parent not in known_ids:
+            parent = None
+        by_parent.setdefault(parent, []).append(record)
+    for children in by_parent.values():
+        children.sort(key=lambda item: (item.created_at, item.work_evidence_id))
+
+    ordered: list[WorkEvidenceRecord] = []
+
+    def append_children(parent: str | None) -> None:
+        for child in by_parent.get(parent, ()):
+            ordered.append(child)
+            append_children(child.work_evidence_id)
+
+    append_children(None)
+    return tuple(ordered)
 
 
 def _database_params(session: Session, record: WorkEvidenceRecord) -> dict[str, Any]:

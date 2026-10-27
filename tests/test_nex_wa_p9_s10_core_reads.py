@@ -35,6 +35,10 @@ class _Repository:
     def get(self, tenant_id, record_id):
         return self.records.get((tenant_id, record_id))
 
+    def list_source_lineage(self, tenant_id, record_id):
+        record = self.get(tenant_id, record_id)
+        return () if record is None else (record,)
+
 
 def _records():
     primary = build_work_evidence(
@@ -159,9 +163,10 @@ def test_core_read_service_projects_exact_records_and_ordered_lineage() -> None:
     assert service.get_evidence(TENANT, primary.work_evidence_id)[
         "schema_version"
     ] == "wa_work_evidence.v1"
-    assert service.get_asset(TENANT, asset.work_asset_id)["bindings"][0][
-        "binding_role"
-    ] == "PRIMARY"
+    summary = service.get_asset(TENANT, asset.work_asset_id)
+    assert summary["schema_version"] == "wa_work_asset_summary.v1"
+    assert summary["evidence_count"] == 3
+    assert "bindings" not in summary
     lineage = service.get_asset_evidence(TENANT, asset.work_asset_id)
     assert [item["evidence"]["work_evidence_id"] for item in lineage["items"]] == [
         primary.work_evidence_id,
@@ -192,7 +197,8 @@ def test_protected_routes_enforce_basic_detail_caller_and_tenant_boundaries() ->
     )
 
     assert asset_response.status_code == 200
-    assert asset_response.json()["schema_version"] == "wa_work_asset.v1"
+    assert asset_response.json()["schema_version"] == "wa_work_asset_summary.v1"
+    assert "bindings" not in asset_response.json()
     assert evidence_denied.status_code == 403
     assert evidence_response.status_code == 200
     assert lineage_response.status_code == 200
@@ -259,6 +265,8 @@ def test_read_contract_fixtures_validate() -> None:
             "wa_work_asset_evidence_lineage.v1",
             "wa_work_asset_evidence_lineage.mixed",
         ),
+        ("wa_work_asset_summary.v1", "wa_work_asset_summary.agent_result"),
+        ("wa_work_evidence_audit.v1", "wa_work_evidence_audit.superseded"),
     ):
         schema = json.loads(
             (

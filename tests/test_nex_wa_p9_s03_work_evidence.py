@@ -182,6 +182,10 @@ def test_source_revision_and_same_tenant_supersession_create_new_evidence(
 
     assert correction.work_evidence_id != first.work_evidence_id
     assert correction.supersedes_evidence_id == first.work_evidence_id
+    assert repository.get("VO00", first.work_evidence_id).evidence_status == "SUPERSEDED"
+    assert [item.work_evidence_id for item in repository.list_source_lineage(
+        "VO00", correction.work_evidence_id
+    )] == [first.work_evidence_id, correction.work_evidence_id]
 
 
 def test_cross_tenant_and_self_supersession_fail_closed(
@@ -308,7 +312,7 @@ def test_concurrent_insert_winner_is_reused(monkeypatch: pytest.MonkeyPatch) -> 
         "_select_by_source",
         lambda *_args: next(existing),
     )
-    monkeypatch.setattr(repository, "_require_supersession_target", lambda *_args: None)
+    monkeypatch.setattr(repository, "_apply_supersession", lambda *_args: None)
 
     assert repository.create_or_get(candidate) == winner
 
@@ -347,7 +351,7 @@ def test_unresolved_integrity_and_missing_readback_fail_closed(
         monkeypatch.setattr(repository, "_select_by_source", lambda *_args: None)
         monkeypatch.setattr(
             repository,
-            "_require_supersession_target",
+            "_apply_supersession",
             lambda *_args: None,
         )
         monkeypatch.setattr(repository, "_select_by_id", lambda *_args: None)

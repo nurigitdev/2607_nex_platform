@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_wa/wa_work_evidence_audit.v1.schema.json",
+  "title": "NeX-WA WorkEvidence Audit v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "work_evidence_id", "source_type",
+    "source_ref", "replay_policy", "conflict_policy", "items"
+  ],
+  "properties": {
+    "schema_version": {"const": "wa_work_evidence_audit.v1"},
+    "tenant_id": {"$ref": "#/$defs/id"},
+    "work_evidence_id": {"type": "string", "format": "uuid"},
+    "source_type": {"enum": ["AE_AGENT_RESULT", "AE_ARTIFACT", "WC_WORK_RESULT"]},
+    "source_ref": {"$ref": "#/$defs/id"},
+    "replay_policy": {"const": "SAME_IDENTITY_SAME_HASH_REUSE"},
+    "conflict_policy": {"const": "SAME_IDENTITY_DIFFERENT_HASH_REJECT"},
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "work_evidence_id", "source_revision_ref", "source_hash",
+          "evidence_hash", "evidence_status", "supersedes_evidence_id",
+          "created_at"
+        ],
+        "properties": {
+          "work_evidence_id": {"type": "string", "format": "uuid"},
+          "source_revision_ref": {"$ref": "#/$defs/id"},
+          "source_hash": {"$ref": "#/$defs/hash"},
+          "evidence_hash": {"$ref": "#/$defs/hash"},
+          "evidence_status": {"enum": ["ACTIVE", "SUPERSEDED", "INVALIDATED"]},
+          "supersedes_evidence_id": {"type": ["string", "null"], "format": "uuid"},
+          "created_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 512},
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

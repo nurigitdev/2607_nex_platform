@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: NeX Work Asset API
-  version: 2.1.0-p9-s10
-  description: Protected WorkEvidence intake and exact core read surface.
+  version: 2.1.0-p9-s20
+  description: Protected WorkEvidence intake and privacy-scoped read surface.
 servers:
   - url: http://127.0.0.1:8108
 tags:
@@ -75,13 +75,34 @@ paths:
           schema: {type: string, format: uuid}
       responses:
         "200":
-          description: Exact tenant-scoped WorkAsset.
+          description: Bounded tenant-scoped WorkAsset summary without evidence lineage.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/WorkAsset"}
+              schema: {$ref: "#/components/schemas/WorkAssetSummary"}
         "401": {description: Service claim is missing or invalid.}
         "403": {description: Caller or read scope is forbidden.}
         "404": {description: WorkAsset does not exist in the tenant.}
+  /internal/v1/work-evidence/{work_evidence_id}/audit:
+    get:
+      operationId: getWaWorkEvidenceAudit
+      tags: [Evidence]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call, work:evidence:read, work:evidence:detail:read, work:evidence:audit:read]
+      parameters:
+        - {$ref: "#/components/parameters/TenantId"}
+        - name: work_evidence_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Bounded supersession, replay, and conflict-policy provenance.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WorkEvidenceAudit"}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Caller or audit scope is forbidden.}
+        "404": {description: WorkEvidence does not exist in the tenant.}
   /internal/v1/work-assets/{work_asset_id}/evidence:
     get:
       operationId: getWaWorkAssetEvidenceLineage
@@ -138,16 +159,16 @@ components:
         tenant_id: {type: string}
         work_evidence_id: {type: string, format: uuid}
         evidence_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
-    WorkAsset:
+    WorkAssetSummary:
       type: object
       additionalProperties: true
-      required: [schema_version, tenant_id, work_asset_id, asset_hash, bindings]
+      required: [schema_version, tenant_id, work_asset_id, asset_hash, evidence_count]
       properties:
-        schema_version: {const: wa_work_asset.v1}
+        schema_version: {const: wa_work_asset_summary.v1}
         tenant_id: {type: string}
         work_asset_id: {type: string, format: uuid}
         asset_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
-        bindings: {type: array, items: {type: object}}
+        evidence_count: {type: integer, minimum: 0}
     WorkAssetEvidenceLineage:
       type: object
       additionalProperties: false
@@ -157,3 +178,16 @@ components:
         tenant_id: {type: string}
         work_asset_id: {type: string, format: uuid}
         items: {type: array, items: {type: object}}
+    WorkEvidenceAudit:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, work_evidence_id, source_type, source_ref, replay_policy, conflict_policy, items]
+      properties:
+        schema_version: {const: wa_work_evidence_audit.v1}
+        tenant_id: {type: string}
+        work_evidence_id: {type: string, format: uuid}
+        source_type: {type: string}
+        source_ref: {type: string}
+        replay_policy: {const: SAME_IDENTITY_SAME_HASH_REUSE}
+        conflict_policy: {const: SAME_IDENTITY_DIFFERENT_HASH_REJECT}
+        items: {type: array, minItems: 1, items: {type: object}}
