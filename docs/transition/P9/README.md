@@ -1,6 +1,6 @@
 # P9 NeX-WA Transition Baseline
 
-**Status:** P9 FOUNDATION CLOSED / P9-CA04 PASS / FINAL AS-BUILT FROZEN
+**Status:** P9 FOUNDATION CLOSED / P9-CA04 PASS / P9-S31A PRIVACY CORRECTIVE CLOSURE PASS / FINAL AS-BUILT v1.1 FROZEN
 **Phase:** P9 - NeX-WA Work Evidence and Work Asset Foundation  
 **Platform:** NeX Platform v2.1  
 **Predecessor:** P8 v1.2 CLOSED / P9 ENTRY AUTHORIZED  
@@ -30,10 +30,13 @@ Read the P9 documents in this order:
 7. `P9_NeX_WA_Implementation_Slice_Plan_v1.1.md`
 8. `P9_CA01_Frozen_WA_Reconciliation_and_Coding_Entry_Gate_v1.0.md`
 9. per-Slice As-Built records under `../../slices/`, in implementation order
-10. `P9_Final_AsBuilt_Baseline_and_Next_Phase_Handoff_v1.0.md`
+10. `P9_NeX_WA_Privacy_Contract_Corrective_Closure_Work_Order_v1.0.md`
+11. `P9_Final_AsBuilt_Baseline_and_Next_Phase_Handoff_v1.1.md`
 
 The exact repository filenames above are canonical. Historical or descriptive
 references with a `261027_` prefix do not replace these actual filenames.
+`P9_Final_AsBuilt_Baseline_and_Next_Phase_Handoff_v1.0.md` remains the
+historical P9-S31 freeze; v1.1 is the corrected canonical handoff.
 
 ## 3. Document Roles and Authority
 
@@ -114,7 +117,9 @@ P9-S21..S25   reconciliation, replay, operations, trust, deployment
 P9-S26..S30   load, installed runtime, drift, protected E2E, reliability
               -> Full Gate / P9-CA04
 
-P9-S31        Final As-Built / Handoff Freeze
+P9-S31        Final As-Built / Handoff Freeze v1.0
+P9-S31A       Post-freeze privacy classification corrective closure
+              -> Final As-Built / Handoff Freeze v1.1
 ```
 
 P9.5 contribution-candidate Slices `P9-C01..P9-C03` are optional. They may be
@@ -141,6 +146,10 @@ Stale Job recovery invalidates the prior worker's settlement authority.
 Model output is not evidence authority.
 Foundation does not require NSL, WC Delegation, or an external broker.
 Golden C retains final MM, cost, accounting, and Project P/L authority.
+AgentResult and WC supporting evidence without a compatible authoritative
+source classification default to CONFIDENTIAL.
+Artifact classification is preserved or strengthened; WA never silently
+downgrades source sensitivity.
 ```
 
 ## 7. Initial Runtime and Environment
@@ -173,6 +182,8 @@ P9-CA02 core Foundation                 = PASS
 P9-CA03 source authority and privacy    = PASS
 P9-CA04 Foundation final acceptance     = PASS
 P9-S01 through P9-S31                   = COMPLETE
+P9-S31A privacy corrective closure      = PASS
+Final As-Built                          = v1.1 FROZEN
 P9.5 contribution candidate             = DEFERRED
 P9 Foundation                           = CLOSED
 Next phase                              = CONTROLLED DECISION REQUIRED
