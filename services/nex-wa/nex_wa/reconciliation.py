@@ -330,7 +330,7 @@ def _validate_page(
         or not isinstance(has_more, bool)
         or (has_more and (not isinstance(next_cursor, str) or not next_cursor))
         or (not has_more and next_cursor is not None)
-        or next_cursor == current_cursor
+        or (has_more and next_cursor == current_cursor)
     ):
         raise _invalid_page()
     normalized: list[dict[str, Any]] = []

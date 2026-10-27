@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from collections.abc import Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from time import time
 from uuid import uuid4
@@ -11,7 +14,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nex_ae_api.agent_results import SqlAlchemyAgentResultRepository
-from nex_ae_api.artifacts import SqlAlchemyArtifactRecordStore
+from nex_ae_api.artifacts import (
+    SqlAlchemyArtifactHandoffStore,
+    SqlAlchemyArtifactRecordStore,
+)
 from nex_ae_api.wa_source_projections import (
     SqlAlchemyAgentResultWaProjectionSource,
     SqlAlchemyArtifactWaProjectionSource,
@@ -48,14 +54,19 @@ from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from nex_wa import (
     WA_EVIDENCE_AUDIT_READ_SCOPE,
     WA_EVIDENCE_DETAIL_READ_SCOPE,
+    WA_EVIDENCE_INGEST_SCOPE,
     WA_EVIDENCE_READ_SCOPE,
     AeAgentResultSourceAdapter,
     AeArtifactSourceAdapter,
+    WaEvidenceSourceAdapterRegistry,
     WaSourceAdapterError,
+    build_wa_evidence_consumer_runtime,
     normalize_evidence_intake_request,
 )
 from nex_wa.app import create_wa_app
+from nex_wa.intake import WaEvidenceIntakeService
 from nex_wa.persistence import build_wa_persistence_runtime
+from nex_wa.reconciliation import WaAeReconciliationService
 from nex_wc.work_result_source_projection import (
     WorkResultWaProjectionSource,
     register_wa_work_result_source_routes,
@@ -66,8 +77,12 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.skipif(
-    os.getenv("NEX_WA_P9_CA03_POSTGRES_SMOKE") != "1",
-    reason="set NEX_WA_P9_CA03_POSTGRES_SMOKE=1 for the P9-CA03 protected smoke",
+    os.getenv("NEX_WA_P9_CA03_POSTGRES_SMOKE") != "1"
+    and os.getenv("NEX_WA_P9_S29_POSTGRES_E2E") != "1",
+    reason=(
+        "set NEX_WA_P9_CA03_POSTGRES_SMOKE=1 or "
+        "NEX_WA_P9_S29_POSTGRES_E2E=1 for the protected journey"
+    ),
 )
 
 SERVICE_IDS = ("nex-ae-api", "nex-wc", "nex-oa", "nex-eos", "nex-wa")
@@ -203,6 +218,37 @@ class _WcWorkResultClient(_GetClient):
             f"/internal/v1/wa-sources/work-results/by-execution/{agent_execution_id}",
             tenant_id,
         )
+
+
+class _AeReconciliationClient:
+    _PATHS = {
+        "AE_AGENT_RESULT": "/internal/v1/wa-sources/agent-results",
+        "AE_ARTIFACT": "/internal/v1/wa-sources/artifacts",
+    }
+
+    def __init__(self, client: TestClient, token: str) -> None:
+        self._client = client
+        self._token = token
+
+    def list_sources(self, **kwargs):
+        source_type = str(kwargs["source_type"])
+        params = {
+            "created_after": kwargs["created_after"],
+            "created_before": kwargs["created_before"],
+            "limit": kwargs["limit"],
+        }
+        if kwargs["cursor"] is not None:
+            params["cursor"] = kwargs["cursor"]
+        response = self._client.get(
+            self._PATHS[source_type],
+            params=params,
+            headers={
+                "Authorization": f"Bearer {self._token}",
+                "X-NeX-Tenant-Id": kwargs["tenant_id"],
+            },
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
 
 
 class _PostClient:
@@ -509,6 +555,85 @@ def _seed_ae(
         )
 
 
+def _clone_ready_artifact(
+    session_factory,
+    *,
+    ids: Mapping[str, str],
+    artifact_hash: str,
+    occurred_at: datetime,
+) -> None:
+    handoffs = SqlAlchemyArtifactHandoffStore(session_factory)
+    artifacts = SqlAlchemyArtifactRecordStore(session_factory)
+    source_handoff = handoffs.get(ids["handoff"])
+    source_artifact = artifacts.get(ids["artifact"])
+    assert source_handoff is not None
+    assert source_artifact is not None
+
+    clone_at = (occurred_at + timedelta(seconds=1)).isoformat()
+    cloned_handoff = deepcopy(source_handoff)
+    cloned_handoff.update(
+        {
+            "artifact_handoff_id": ids["missed_handoff"],
+            "artifact_request_id": ids["missed_artifact_request"],
+            "trace_id": uuid4().hex,
+            "request_id": f"request-{uuid4().hex}",
+            "chat_document_id": f"chat-{ids['missed_artifact']}",
+            "interaction_id": f"interaction-{ids['missed_artifact']}",
+            "cx_generation_id": f"generation-{ids['missed_artifact']}",
+            "structured_draft_id": f"draft-{ids['missed_artifact']}",
+            "artifact_title": "P9 S29 reconciliation evidence",
+            "created_at": clone_at,
+            "updated_at": clone_at,
+        }
+    )
+    handoffs.save(cloned_handoff)
+
+    cloned_artifact = deepcopy(source_artifact)
+    cloned_artifact.update(
+        {
+            "artifact_id": ids["missed_artifact"],
+            "current_version_id": ids["missed_artifact_version"],
+            "trace_id": uuid4().hex,
+            "request_id": f"request-{uuid4().hex}",
+            "chat_document_id": f"chat-{ids['missed_artifact']}",
+            "interaction_id": f"interaction-{ids['missed_artifact']}",
+            "display_title": "P9 S29 reconciliation evidence",
+            "handoff_ref": {
+                "artifact_handoff_id": ids["missed_handoff"],
+                "artifact_request_id": ids["missed_artifact_request"],
+            },
+            "created_at": clone_at,
+            "updated_at": clone_at,
+        }
+    )
+    cloned_artifact["source_refs"] = [
+        {
+            **source_ref,
+            "source_ref_id": f"source-{ids['missed_artifact']}",
+            "cx_generation_id": f"generation-{ids['missed_artifact']}",
+            "structured_draft_id": f"draft-{ids['missed_artifact']}",
+            "created_at": clone_at,
+        }
+        for source_ref in source_artifact["source_refs"]
+    ]
+    cloned_artifact["versions"] = [
+        {
+            **version,
+            "artifact_version_id": ids["missed_artifact_version"],
+            "artifact_id": ids["missed_artifact"],
+            "source_generation_id": f"generation-{ids['missed_artifact']}",
+            "source_structured_draft_id": f"draft-{ids['missed_artifact']}",
+            "artifact_content_hash": artifact_hash.removeprefix("sha256:"),
+            "created_at": clone_at,
+        }
+        for version in source_artifact["versions"]
+    ]
+    cloned_artifact["render_jobs"] = []
+    cloned_artifact["files"] = []
+    cloned_artifact["links"] = []
+    artifacts.save(cloned_artifact)
+
+
 def _seed_wc(
     engine,
     *,
@@ -669,23 +794,55 @@ def _cleanup(
             text("DELETE FROM wa_work_evidence WHERE tenant_id=:tenant"),
             {"tenant": tenant_id},
         )
+        connection.execute(
+            text(
+                "DELETE FROM service_log_entries WHERE trace_id IN "
+                "(SELECT trace_id FROM service_jobs "
+                " WHERE payload->>'tenant_id'=:tenant)"
+            ),
+            {"tenant": tenant_id},
+        )
+        connection.execute(
+            text(
+                "DELETE FROM service_operational_events WHERE trace_id IN "
+                "(SELECT trace_id FROM service_jobs "
+                " WHERE payload->>'tenant_id'=:tenant)"
+            ),
+            {"tenant": tenant_id},
+        )
+        connection.execute(
+            text("DELETE FROM service_jobs WHERE payload->>'tenant_id'=:tenant"),
+            {"tenant": tenant_id},
+        )
+        connection.execute(
+            text(
+                "DELETE FROM service_worker_heartbeats "
+                "WHERE service_id='nex-wa' AND worker_id LIKE :worker_prefix"
+            ),
+            {"worker_prefix": ids["worker_prefix"] + "%"},
+        )
     with engines["nex-ae-api"].begin() as connection:
-        connection.execute(
-            text("DELETE FROM ae_artifact_versions WHERE artifact_id=:artifact"),
-            {"artifact": ids["artifact"]},
-        )
-        connection.execute(
-            text("DELETE FROM ae_artifact_source_refs WHERE artifact_id=:artifact"),
-            {"artifact": ids["artifact"]},
-        )
-        connection.execute(
-            text("DELETE FROM ae_artifacts WHERE artifact_id=:artifact"),
-            {"artifact": ids["artifact"]},
-        )
-        connection.execute(
-            text("DELETE FROM ae_artifact_handoffs WHERE artifact_handoff_id=:handoff"),
-            {"handoff": ids["handoff"]},
-        )
+        for artifact_id in (ids["artifact"], ids["missed_artifact"]):
+            connection.execute(
+                text("DELETE FROM ae_artifact_versions WHERE artifact_id=:artifact"),
+                {"artifact": artifact_id},
+            )
+            connection.execute(
+                text("DELETE FROM ae_artifact_source_refs WHERE artifact_id=:artifact"),
+                {"artifact": artifact_id},
+            )
+            connection.execute(
+                text("DELETE FROM ae_artifacts WHERE artifact_id=:artifact"),
+                {"artifact": artifact_id},
+            )
+        for handoff_id in (ids["handoff"], ids["missed_handoff"]):
+            connection.execute(
+                text(
+                    "DELETE FROM ae_artifact_handoffs "
+                    "WHERE artifact_handoff_id=:handoff"
+                ),
+                {"handoff": handoff_id},
+            )
         connection.execute(
             text("DELETE FROM ae_result_delivery WHERE tenant_id=:tenant"),
             {"tenant": tenant_id},
@@ -728,7 +885,7 @@ def _cleanup(
             )
 
 
-def test_p9_ca03_actual_postgres_signed_source_authority_privacy_closure() -> None:
+def test_p9_ca03_and_s29_actual_postgres_signed_canonical_foundation_e2e() -> None:
     targets = {
         target.target.service_id: target
         for target in resolve_postgres_test_targets(os.environ, service_ids=SERVICE_IDS)
@@ -755,7 +912,7 @@ def test_p9_ca03_actual_postgres_signed_source_authority_privacy_closure() -> No
             )
 
     suffix = uuid4().hex
-    tenant_id = f"P9CA03-{suffix}"
+    tenant_id = f"P9S29-{suffix}"
     subject_id = f"employee-{suffix}"
     ids = {
         name: str(uuid4())
@@ -772,6 +929,7 @@ def test_p9_ca03_actual_postgres_signed_source_authority_privacy_closure() -> No
             "nvt_project",
             "project",
             "project_membership",
+            "missed_handoff",
         )
     }
     ids.update(
@@ -782,11 +940,16 @@ def test_p9_ca03_actual_postgres_signed_source_authority_privacy_closure() -> No
             "artifact_request": f"artifact-request-{suffix}",
             "handoff": f"handoff-{suffix}",
             "workspace": f"workspace-{suffix}",
+            "missed_artifact": f"artifact-missed-{suffix}",
+            "missed_artifact_version": f"artifact-version-missed-{suffix}",
+            "missed_artifact_request": f"artifact-request-missed-{suffix}",
+            "worker_prefix": f"p9-s29-worker-{suffix}-",
         }
     )
     occurred_at = datetime.now(UTC).replace(microsecond=0)
     agent_result_hash = "sha256:" + "8" * 64
     artifact_hash = "sha256:" + "9" * 64
+    missed_artifact_hash = "sha256:" + "a" * 64
     authority = _SignedAuthority()
     factories = {
         service_id: sessionmaker(
@@ -871,6 +1034,12 @@ def test_p9_ca03_actual_postgres_signed_source_authority_privacy_closure() -> No
             artifact_hash=artifact_hash,
             occurred_at=occurred_at,
         )
+        _clone_ready_artifact(
+            factories["nex-ae-api"],
+            ids=ids,
+            artifact_hash=missed_artifact_hash,
+            occurred_at=occurred_at,
+        )
 
         ae_app = FastAPI()
         _install_signed_admission(ae_app, authority, "nex-ae-api")
@@ -940,8 +1109,8 @@ def test_p9_ca03_actual_postgres_signed_source_authority_privacy_closure() -> No
 
         wa_environ = {
             "NEX_PROFILE": "test",
-            "NEX_VERSION": "2.1.0-p9-ca03",
-            "NEX_BUILD_SHA": "p9ca03postgres",
+            "NEX_VERSION": "2.1.0-p9-s29",
+            "NEX_BUILD_SHA": "p9s29postgres",
             "NEX_SERVICE_TOKEN_ROLLOUT_PROFILE": "TEST_MOCK",
             "NEX_WA_DATABASE_URL": targets["nex-wa"].database_url,
         }
@@ -984,13 +1153,12 @@ def test_p9_ca03_actual_postgres_signed_source_authority_privacy_closure() -> No
             connection.execute(
                 text(
                     "UPDATE ae_result_delivery SET state='ACKNOWLEDGED', attempt_no=1, "
-                    "latest_preflight_ref='preflight:p9-ca03', acknowledged_at=:now, "
+                    "latest_preflight_ref='preflight:p9-s29', acknowledged_at=:now, "
                     "updated_at=:now WHERE tenant_id=:tenant AND delivery_id=:delivery"
                 ),
                 {"now": occurred_at, "tenant": tenant_id, "delivery": ids["delivery"]},
             )
 
-        assert agent_adapter.fetch(agent_request).source_ref == ids["execution"]
         artifact_adapter = AeArtifactSourceAdapter(
             source=artifact_source,
             subjects=subject_source,
@@ -1010,43 +1178,22 @@ def test_p9_ca03_actual_postgres_signed_source_authority_privacy_closure() -> No
                 "correlation_id": f"corr-{ids['artifact']}",
             }
         )
-        assert artifact_adapter.fetch(artifact_request).source_ref == ids["artifact"]
-
-        with wa_runtime.api_engine.connect() as connection:
-            assert (
-                connection.execute(
-                    text(
-                        "SELECT count(*) FROM wa_work_evidence WHERE tenant_id=:tenant"
-                    ),
-                    {"tenant": tenant_id},
-                ).scalar_one()
-                == 3
-            )
-            assert (
-                connection.execute(
-                    text("SELECT count(*) FROM wa_work_asset WHERE tenant_id=:tenant"),
-                    {"tenant": tenant_id},
-                ).scalar_one()
-                == 2
-            )
-            roles = (
-                connection.execute(
-                    text(
-                        "SELECT binding_role FROM wa_work_asset_evidence "
-                        "WHERE tenant_id=:tenant ORDER BY binding_role"
-                    ),
-                    {"tenant": tenant_id},
-                )
-                .scalars()
-                .all()
-            )
-            assert roles == ["PRIMARY", "PRIMARY", "SUPPORTING"]
-
         wa_app = create_wa_app(
             environ=wa_environ,
             persistence_builder=lambda **_kwargs: wa_runtime,
         )
         _install_signed_admission(wa_app, authority, "nex-wa")
+        registry = WaEvidenceSourceAdapterRegistry(
+            {
+                "AE_AGENT_RESULT": agent_adapter,
+                "AE_ARTIFACT": artifact_adapter,
+            }
+        )
+        intake_token = authority.token(
+            "nex-ae-api",
+            "nex-wa",
+            (DEFAULT_SERVICE_SCOPE, WA_EVIDENCE_INGEST_SCOPE),
+        )
         read_token = authority.token(
             "nex-ae-api",
             "nex-wa",
@@ -1067,18 +1214,150 @@ def test_p9_ca03_actual_postgres_signed_source_authority_privacy_closure() -> No
             "nex-ae-api",
             (DEFAULT_SERVICE_SCOPE, WA_EVIDENCE_READ_SCOPE),
         )
-        with wa_runtime.api_engine.connect() as connection:
-            evidence_id = str(
-                connection.execute(
-                    text(
-                        "SELECT work_evidence_id FROM wa_work_evidence "
-                        "WHERE tenant_id=:tenant AND source_type='AE_ARTIFACT' "
-                        "AND source_ref=:source_ref"
-                    ),
-                    {"tenant": tenant_id, "source_ref": ids["artifact"]},
-                ).scalar_one()
-            )
         with TestClient(wa_app) as wa_client:
+            def notify(payload, request_suffix: str):
+                return wa_client.post(
+                    "/internal/v1/evidence-intake",
+                    json=payload,
+                    headers={
+                        "Authorization": f"Bearer {intake_token}",
+                        "X-Request-ID": f"p9-s29-{request_suffix}-{suffix}",
+                    },
+                )
+
+            agent_payload = agent_request.to_job_payload()
+            artifact_payload = artifact_request.to_job_payload()
+            agent_notification = notify(agent_payload, "agent")
+            artifact_notification = notify(artifact_payload, "artifact")
+            assert agent_notification.status_code == 202
+            assert artifact_notification.status_code == 202
+
+            replay = notify(agent_payload, "agent-replay")
+            conflict = notify(
+                {**agent_payload, "source_hash": "sha256:" + "f" * 64},
+                "agent-conflict",
+            )
+            assert replay.status_code == 202
+            assert replay.json()["job_id"] == agent_notification.json()["job_id"]
+            assert replay.json()["idempotent_reuse"] is True
+            assert conflict.status_code == 409
+            assert conflict.json()["error_code"] == "WA_SOURCE_IDEMPOTENCY_CONFLICT"
+
+            barrier = threading.Barrier(2)
+
+            def consume(index: int):
+                consumer = build_wa_evidence_consumer_runtime(
+                    persistence=wa_runtime,
+                    registry=registry,
+                    worker_id=f"{ids['worker_prefix']}{index}",
+                )
+                barrier.wait()
+                execution = consumer.run_once()
+                consumer.stop()
+                return execution
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                first_batch = tuple(executor.map(consume, (1, 2)))
+            assert {item.status for item in first_batch} == {"SUCCEEDED"}
+            assert len(
+                {
+                    str(item.job["job_id"])
+                    for item in first_batch
+                    if item.job is not None
+                }
+            ) == 2
+
+            reconciliation = WaAeReconciliationService(
+                source=_AeReconciliationClient(
+                    ae_client,
+                    authority.token("nex-wa", "nex-ae-api", source_scopes),
+                ),
+                intake=WaEvidenceIntakeService(wa_runtime.intake_job_queue),
+            ).run(
+                tenant_id=tenant_id,
+                created_after=(occurred_at - timedelta(minutes=1))
+                .isoformat()
+                .replace("+00:00", "Z"),
+                created_before=(occurred_at + timedelta(minutes=1))
+                .isoformat()
+                .replace("+00:00", "Z"),
+                mode="operator",
+                page_size=10,
+                max_pages_per_source=1,
+            )
+            assert sum(item.jobs_reused for item in reconciliation.sources) == 2
+            assert sum(item.jobs_admitted for item in reconciliation.sources) == 1
+
+            missed_payload = {
+                "schema_version": "wa_evidence_intake_request.v1",
+                "tenant_id": tenant_id,
+                "source_type": "AE_ARTIFACT",
+                "source_ref": ids["missed_artifact"],
+                "source_revision_ref": ids["missed_artifact_version"],
+                "source_hash": missed_artifact_hash,
+                "occurred_at": (occurred_at + timedelta(seconds=1)).isoformat(),
+                "correlation_id": f"corr-{ids['missed_artifact']}",
+            }
+            delayed_notification = notify(missed_payload, "artifact-delayed")
+            assert delayed_notification.status_code == 202
+            assert delayed_notification.json()["idempotent_reuse"] is True
+
+            recovery_consumer = build_wa_evidence_consumer_runtime(
+                persistence=wa_runtime,
+                registry=registry,
+                worker_id=f"{ids['worker_prefix']}reconciliation",
+            )
+            recovered = recovery_consumer.run_once()
+            recovery_consumer.stop()
+            assert recovered.status == "SUCCEEDED"
+
+            with wa_runtime.api_engine.connect() as connection:
+                counts = connection.execute(
+                    text(
+                        "SELECT "
+                        "(SELECT count(*) FROM wa_work_evidence WHERE tenant_id=:tenant), "
+                        "(SELECT count(*) FROM wa_work_asset WHERE tenant_id=:tenant), "
+                        "(SELECT count(*) FROM service_jobs "
+                        " WHERE payload->>'tenant_id'=:tenant AND status='SUCCEEDED')"
+                    ),
+                    {"tenant": tenant_id},
+                ).one()
+                roles = (
+                    connection.execute(
+                        text(
+                            "SELECT binding_role FROM wa_work_asset_evidence "
+                            "WHERE tenant_id=:tenant ORDER BY binding_role"
+                        ),
+                        {"tenant": tenant_id},
+                    )
+                    .scalars()
+                    .all()
+                )
+                forbidden_tables = connection.execute(
+                    text(
+                        "SELECT count(*) FROM information_schema.tables "
+                        "WHERE table_schema=current_schema() AND table_name LIKE 'wa_%' "
+                        "AND (table_name ILIKE '%approval%' "
+                        "OR table_name ILIKE '%delegation%' "
+                        "OR table_name ILIKE '%salary%' "
+                        "OR table_name ILIKE '%cost%' "
+                        "OR table_name ILIKE '%profit%')"
+                    )
+                ).scalar_one()
+                evidence_id = str(
+                    connection.execute(
+                        text(
+                            "SELECT work_evidence_id FROM wa_work_evidence "
+                            "WHERE tenant_id=:tenant AND source_type='AE_ARTIFACT' "
+                            "AND source_ref=:source_ref"
+                        ),
+                        {"tenant": tenant_id, "source_ref": ids["artifact"]},
+                    ).scalar_one()
+                )
+            assert tuple(counts) == (4, 3, 3)
+            assert roles == ["PRIMARY", "PRIMARY", "PRIMARY", "SUPPORTING"]
+            assert forbidden_tables == 0
+
             detail_path = f"/internal/v1/work-evidence/{evidence_id}"
             assert (
                 wa_client.get(
@@ -1120,6 +1399,11 @@ def test_p9_ca03_actual_postgres_signed_source_authority_privacy_closure() -> No
                 ).status_code
                 == 404
             )
+            print(
+                "p9_s29_canonical_e2e=pass services=5 signed_trust=pass "
+                "concurrent_claims=2 reconciliation_admitted=1 "
+                "evidence=4 assets=3 privacy=pass"
+            )
     finally:
         _cleanup(engines, tenant_id, ids)
         with engines["nex-wa"].connect() as connection:
@@ -1129,9 +1413,16 @@ def test_p9_ca03_actual_postgres_signed_source_authority_privacy_closure() -> No
                         "SELECT "
                         "(SELECT count(*) FROM wa_work_evidence WHERE tenant_id=:tenant) + "
                         "(SELECT count(*) FROM wa_work_asset WHERE tenant_id=:tenant) + "
-                        "(SELECT count(*) FROM wa_work_asset_evidence WHERE tenant_id=:tenant)"
+                        "(SELECT count(*) FROM wa_work_asset_evidence WHERE tenant_id=:tenant) + "
+                        "(SELECT count(*) FROM service_jobs "
+                        " WHERE payload->>'tenant_id'=:tenant) + "
+                        "(SELECT count(*) FROM service_worker_heartbeats "
+                        " WHERE worker_id LIKE :worker_prefix)"
                     ),
-                    {"tenant": tenant_id},
+                    {
+                        "tenant": tenant_id,
+                        "worker_prefix": ids["worker_prefix"] + "%",
+                    },
                 ).scalar_one()
                 == 0
             )

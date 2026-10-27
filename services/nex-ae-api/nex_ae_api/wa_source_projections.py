@@ -684,13 +684,18 @@ def _agent_result_reconciliation_item(value: Mapping[str, Any]) -> dict[str, Any
 
 
 def _artifact_reconciliation_item(value: Mapping[str, Any]) -> dict[str, Any]:
+    artifact_content_hash = str(value["artifact_content_hash"])
     return {
         "schema_version": "wa_evidence_intake_request.v1",
         "tenant_id": value["tenant_id"],
         "source_type": "AE_ARTIFACT",
         "source_ref": value["artifact_id"],
         "source_revision_ref": value["artifact_version_id"],
-        "source_hash": value["artifact_content_hash"],
+        "source_hash": (
+            artifact_content_hash
+            if artifact_content_hash.startswith("sha256:")
+            else f"sha256:{artifact_content_hash}"
+        ),
         "occurred_at": value["created_at"],
         "correlation_id": value["artifact_id"],
     }

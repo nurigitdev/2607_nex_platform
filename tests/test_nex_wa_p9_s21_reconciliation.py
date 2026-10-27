@@ -205,6 +205,7 @@ def test_artifact_listing_returns_ready_version_refs_and_hashes_only() -> None:
         "AE_ARTIFACT",
         "AE_ARTIFACT",
     ]
+    assert all(item["source_hash"].startswith("sha256:") for item in page["items"])
     assert "owner_actor_ref" not in page["items"][0]
     assert "content" not in str(page).lower()
 
@@ -326,6 +327,30 @@ def test_missed_sources_reconcile_through_normal_identity_and_restart_reuses() -
     )
     assert len(queue.list_jobs()) == 4
     assert sum(item.jobs_reused for item in restarted.sources) == 4
+
+
+def test_single_page_reconciliation_accepts_terminal_null_cursor() -> None:
+    class _SinglePageSource(_PagedSource):
+        def list_sources(self, **kwargs):
+            page = super().list_sources(**kwargs)
+            page["pagination"].update(has_more=False, next_cursor=None)
+            return page
+
+    result = WaAeReconciliationService(
+        source=_SinglePageSource(),
+        intake=WaEvidenceIntakeService(InMemoryJobQueue()),
+    ).run(
+        tenant_id=TENANT,
+        created_after=AFTER,
+        created_before=BEFORE,
+        mode="operator",
+        page_size=1,
+        max_pages_per_source=1,
+    )
+
+    assert all(item.complete for item in result.sources)
+    assert all(item.pages_scanned == 1 for item in result.sources)
+    assert all(item.next_cursor is None for item in result.sources)
 
 
 def test_reconciliation_stops_at_bound_and_rejects_invalid_pages() -> None:
