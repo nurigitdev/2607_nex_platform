@@ -320,5 +320,6 @@ def test_consumer_check_reports_ready_not_ready_and_disposes(capsys) -> None:
         persistence_builder=lambda **_: not_ready_runtime,
     ) == 1
     assert json.loads(capsys.readouterr().out)["readiness_status"] == "NOT_READY"
-    with pytest.raises(SystemExit):
-        main([], environ={}, persistence_builder=lambda **_: Runtime())
+    assert main([], environ={}, persistence_builder=lambda **_: Runtime()) == 2
+    blocked = json.loads(capsys.readouterr().out)
+    assert blocked["error_code"] == "WA_INSTALLED_CONSUMER_STARTUP_FAILED"

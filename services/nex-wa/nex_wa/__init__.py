@@ -37,6 +37,12 @@ from .intake import (
     WA_EVIDENCE_INGEST_SCOPE,
     WaEvidenceIntakeService,
 )
+from .installed_consumer import (
+    OA_SUBJECT_VERIFY_SCOPE,
+    WaInstalledConsumerProcess,
+    build_installed_consumer_process,
+    build_installed_source_registry,
+)
 from .intake_api import register_evidence_intake_routes
 from .intake_contracts import (
     WA_ERROR_SCHEMA,
@@ -134,6 +140,7 @@ __all__ = (
     "MAX_STALE_JOB_SECONDS",
     "MIN_STALE_JOB_SECONDS",
     "PROCESS_ID",
+    "OA_SUBJECT_VERIFY_SCOPE",
     "WA_COMMON_RUNTIME_MIGRATIONS",
     "WA_ERROR_SCHEMA",
     "WA_EVIDENCE_AUDIT_READ_SCOPE",
@@ -190,6 +197,7 @@ __all__ = (
     "WaEvidenceSourceAdapterRegistry",
     "WaFencedJobQueue",
     "WaIntakeContractError",
+    "WaInstalledConsumerProcess",
     "WaJobClaim",
     "WaJobRecoveryError",
     "WaOperationsError",
@@ -213,6 +221,8 @@ __all__ = (
     "build_wa_error_response",
     "build_wa_evidence_consumer_config",
     "build_wa_evidence_consumer_runtime",
+    "build_installed_consumer_process",
+    "build_installed_source_registry",
     "build_wa_persistence_runtime",
     "build_work_asset",
     "build_work_evidence",

@@ -210,7 +210,7 @@ def test_production_bootstrap_materializes_wa_and_scrubs_private_inputs() -> Non
     assert "NEX_OPENBAO_SECRET_ID_FILE" not in process_environment
 
 
-def test_p9_compose_adds_hardened_wa_api_and_readiness_only_consumer() -> None:
+def test_p9_compose_adds_hardened_wa_api_and_active_consumer() -> None:
     compose = _yaml("deployment/compose/p9-wa.override.yaml")
     services = compose["services"]
     wa = services["nex-wa"]
@@ -231,9 +231,9 @@ def test_p9_compose_adds_hardened_wa_api_and_readiness_only_consumer() -> None:
         if name.endswith("DATABASE_URL_REF") or "SERVICE_TOKEN_REF" in name
     )
 
-    assert consumer["profiles"] == ["p9-wa-readiness"]
-    assert consumer["command"] == ["python", "-m", "nex_wa.consumer_main", "--check"]
-    assert consumer["restart"] == "no"
+    assert "profiles" not in consumer
+    assert consumer["command"] == ["python", "-m", "nex_wa.consumer_main"]
+    assert consumer["restart"] == "unless-stopped"
     assert "ports" not in consumer
 
 

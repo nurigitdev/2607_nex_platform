@@ -28,6 +28,7 @@ x-p9-wa-environment: &p9-wa-environment
   NEX_WC_BASE_URL: https://wc.nex-staging.test:8443
   NEX_EOS_BASE_URL: https://eos.nex-staging.test:8443
   NEX_WA_BASE_URL: https://wa.nex-staging.test:8443
+  NEX_WA_WORKER_ID: nex-wa-evidence-consumer-001
   NEX_WA_DATABASE_URL_REF: secret://openbao/nex-platform/staging/nex-wa/NEX_WA_DATABASE_URL@${NEX_P9_SECRET_VERSION:-v1}
   NEX_WA_TO_AE_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-wa/NEX_WA_TO_AE_SERVICE_TOKEN@${NEX_P9_SECRET_VERSION:-v1}
   NEX_WA_TO_WC_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-wa/NEX_WA_TO_WC_SERVICE_TOKEN@${NEX_P9_SECRET_VERSION:-v1}
@@ -80,9 +81,8 @@ services:
   nex-wa-evidence-consumer:
     image: ${NEX_WA_RUNTIME_IMAGE:?immutable WA image is required}
     entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-wa, --]
-    command: [python, -m, nex_wa.consumer_main, --check]
-    profiles: [p9-wa-readiness]
-    restart: "no"
+    command: [python, -m, nex_wa.consumer_main]
+    restart: unless-stopped
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
@@ -99,6 +99,10 @@ services:
     networks: [service, control]
     depends_on:
       nex-wa: {condition: service_healthy}
+      nex-oa: {condition: service_healthy}
+      nex-ae-api: {condition: service_healthy}
+      nex-wc: {condition: service_healthy}
+      nex-eos: {condition: service_healthy}
 
 secrets:
   wa_role_id:

@@ -92,7 +92,7 @@ def test_current_packaged_entrypoints_reuse_promoted_service_modules() -> None:
     assert processes["nex-wa-api"].command[3] == "nex_wa.main:app"
     assert processes["nex-wa-evidence-consumer"].command[1:3] == (
         "-m",
-        "nex_runtime.background_process",
+        "nex_wa.consumer_main",
     )
 
 

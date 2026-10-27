@@ -41,7 +41,13 @@ _API_MODULES = {
     "nex-eos-api": "nex_eos.main:app",
     "nex-wa-api": "nex_wa.main:app",
 }
-_JOB_CLAIMING_BACKGROUND_PROCESSES = {"nex-cx-ingestion-worker"}
+_JOB_CLAIMING_BACKGROUND_PROCESSES = {
+    "nex-cx-ingestion-worker",
+    "nex-wa-evidence-consumer",
+}
+_DIRECT_BACKGROUND_MODULES = {
+    "nex-wa-evidence-consumer": "nex_wa.consumer_main",
+}
 
 
 class PackagedEntrypointError(ValueError):
@@ -224,12 +230,23 @@ def validate_packaged_entrypoints(
         )
         if process is None or entry.command != process.command:
             errors.append(f"packaged command drift: {entry.process_id}")
-        if entry.kind in {"worker", "daemon"} and (
-            len(entry.command) < 4
-            or entry.command[1:3] != ("-m", PACKAGED_BACKGROUND_MODULE)
-            or entry.command[3] != entry.process_id
-        ):
-            errors.append(f"invalid background packaged command: {entry.process_id}")
+        if entry.kind in {"worker", "daemon"}:
+            direct_module = _DIRECT_BACKGROUND_MODULES.get(entry.process_id)
+            if direct_module is not None:
+                valid = len(entry.command) >= 3 and entry.command[1:3] == (
+                    "-m",
+                    direct_module,
+                )
+            else:
+                valid = (
+                    len(entry.command) >= 4
+                    and entry.command[1:3] == ("-m", PACKAGED_BACKGROUND_MODULE)
+                    and entry.command[3] == entry.process_id
+                )
+            if not valid:
+                errors.append(
+                    f"invalid background packaged command: {entry.process_id}"
+                )
     for missing in sorted(expected_ids - observed_ids):
         errors.append(f"process has no packaged entrypoint: {missing}")
     for unknown in sorted(observed_ids - expected_ids):
@@ -288,6 +305,9 @@ def _packaged_command(
         )
     if process.kind == "web":
         return ("npm", "start", "--silent")
+    direct_module = _DIRECT_BACKGROUND_MODULES.get(process.process_id)
+    if direct_module is not None:
+        return (python_executable, "-m", direct_module)
     if process.process_id in CURRENT_BACKGROUND_PROCESS_IDS:
         return (
             python_executable,
