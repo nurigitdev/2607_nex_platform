@@ -313,6 +313,7 @@ def test_app_attaches_optional_runtime_and_migration_readiness() -> None:
             },
             "work_evidence_repository": None,
             "work_asset_repository": None,
+            "evidence_admission_service": None,
         },
     )()
     app = create_wa_app(
@@ -329,5 +330,5 @@ def test_app_attaches_optional_runtime_and_migration_readiness() -> None:
     assert app.state.wa_persistence is runtime
     assert without_database.state.wa_persistence is None
     assert TestClient(app).get("/version").json()["contract_catalog_version"] == (
-        "p9-s04"
+        "p9-s05"
     )

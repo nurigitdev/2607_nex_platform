@@ -161,10 +161,11 @@ def test_readiness_uses_exact_wa_database_environment_without_leaking_url(
             persistence_builder=lambda **_kwargs: SimpleNamespace(
                 work_evidence_repository=None,
                 work_asset_repository=None,
+                evidence_admission_service=None,
                 migration_readiness=lambda: {
                     "name": "wa_migrations",
                     "ok": True,
-                }
+                },
             ),  # type: ignore[arg-type]
         )
     ).get("/ready")

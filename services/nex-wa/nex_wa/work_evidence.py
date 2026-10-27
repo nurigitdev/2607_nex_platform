@@ -255,6 +255,36 @@ class SqlAlchemyWorkEvidenceRepository:
         finally:
             session.close()
 
+    def create_or_get_in_session(
+        self,
+        session: Session,
+        candidate: WorkEvidenceInput,
+        *,
+        created_at: datetime | None = None,
+    ) -> WorkEvidenceRecord:
+        """Persist through a caller-owned transaction without settling it."""
+        record = build_work_evidence(
+            candidate,
+            created_at=created_at or self._clock(),
+        )
+        existing = self._select_by_source(session, record)
+        if existing is not None:
+            return _reuse_or_conflict(existing, record)
+        self._require_supersession_target(session, record)
+        session.execute(_INSERT_EVIDENCE, _database_params(session, record))
+        stored = self._select_by_id(
+            session,
+            record.tenant_id,
+            record.work_evidence_id,
+        )
+        if stored is None:
+            raise WorkEvidenceError(
+                "WA_EVIDENCE_STORE_UNAVAILABLE",
+                "WorkEvidence was not readable before local commit",
+                503,
+            )
+        return stored
+
     def get(self, tenant_id: str, work_evidence_id: str) -> WorkEvidenceRecord | None:
         normalized_tenant = _required_string(tenant_id, "tenant_id")
         normalized_id = _required_uuid(work_evidence_id, "work_evidence_id")

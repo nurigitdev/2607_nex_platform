@@ -1,5 +1,10 @@
 """NeX Work Asset service."""
 
+from .admission import (
+    NormalizedEvidenceAdmission,
+    WaEvidenceAdmissionService,
+    WorkAdmissionError,
+)
 from .app import create_wa_app
 from .config import WaConfigurationError, WaSettings, load_wa_settings
 from .persistence import (
@@ -47,12 +52,15 @@ __all__ = (
     "WORK_EVIDENCE_CLASSIFICATIONS",
     "WORK_EVIDENCE_SOURCE_TYPES",
     "WORK_EVIDENCE_STATUSES",
+    "NormalizedEvidenceAdmission",
     "SqlAlchemyWorkAssetRepository",
     "SqlAlchemyWorkEvidenceRepository",
     "WaConfigurationError",
+    "WaEvidenceAdmissionService",
     "WaPersistenceError",
     "WaPersistenceRuntime",
     "WaSettings",
+    "WorkAdmissionError",
     "WorkAssetBindingInput",
     "WorkAssetBindingRecord",
     "WorkAssetError",

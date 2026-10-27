@@ -22,6 +22,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from .admission import WaEvidenceAdmissionService
 from .config import DATABASE_ENV, SERVICE_ID
 from .work_assets import SqlAlchemyWorkAssetRepository
 from .work_evidence import SqlAlchemyWorkEvidenceRepository
@@ -59,6 +60,7 @@ class WaPersistenceRuntime:
     worker_heartbeat_store: SqlAlchemyWorkerHeartbeatStore
     work_evidence_repository: SqlAlchemyWorkEvidenceRepository
     work_asset_repository: SqlAlchemyWorkAssetRepository
+    evidence_admission_service: WaEvidenceAdmissionService
 
     def transaction(self) -> SqlAlchemyUnitOfWork:
         return build_unit_of_work(self.api_session_factory)
@@ -97,6 +99,7 @@ class WaPersistenceRuntime:
             "worker_heartbeat_store": self.worker_heartbeat_store.__class__.__name__,
             "work_evidence_repository": self.work_evidence_repository.__class__.__name__,
             "work_asset_repository": self.work_asset_repository.__class__.__name__,
+            "evidence_admission_service": self.evidence_admission_service.__class__.__name__,
         }
 
     def dispose(self) -> None:
@@ -145,6 +148,8 @@ def build_wa_persistence_runtime(
             "NeX-WA persistence configuration is invalid"
         ) from exc
 
+    work_evidence_repository = SqlAlchemyWorkEvidenceRepository(api_sessions)
+    work_asset_repository = SqlAlchemyWorkAssetRepository(api_sessions)
     return WaPersistenceRuntime(
         settings=settings,
         api_pool_settings=api_pool,
@@ -155,6 +160,11 @@ def build_wa_persistence_runtime(
         worker_session_factory=worker_sessions,
         job_queue=SqlAlchemyJobQueue(worker_sessions),
         worker_heartbeat_store=SqlAlchemyWorkerHeartbeatStore(worker_sessions),
-        work_evidence_repository=SqlAlchemyWorkEvidenceRepository(api_sessions),
-        work_asset_repository=SqlAlchemyWorkAssetRepository(api_sessions),
+        work_evidence_repository=work_evidence_repository,
+        work_asset_repository=work_asset_repository,
+        evidence_admission_service=WaEvidenceAdmissionService(
+            api_sessions,
+            evidence_repository=work_evidence_repository,
+            asset_repository=work_asset_repository,
+        ),
     )

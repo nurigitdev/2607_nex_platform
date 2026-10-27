@@ -195,47 +195,14 @@ class SqlAlchemyWorkAssetRepository:
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def create_or_update(self, candidate: WorkAssetInput) -> WorkAssetRecord:
-        now = self._clock()
-        initial = build_work_asset(candidate, created_at=now, updated_at=now)
         session = self._session_factory()
         try:
-            self._require_evidence(session, initial)
-            existing = self._select_asset(session, initial.tenant_id, initial.work_asset_id)
-            if existing is not None and existing.asset_hash == initial.asset_hash:
-                return existing
-            if existing is None:
-                self._insert_asset(session, initial)
-                self._replace_bindings(session, initial)
-                session.commit()
-            else:
-                updated = build_work_asset(
-                    candidate,
-                    version=existing.version + 1,
-                    created_at=_parse_timestamp(existing.created_at),
-                    updated_at=now,
-                )
-                result = session.execute(
-                    _UPDATE_ASSET,
-                    {
-                        **_asset_database_params(session, updated),
-                        "expected_version": existing.version,
-                    },
-                )
-                if result.rowcount != 1:
-                    raise WorkAssetError(
-                        "WA_ASSET_CONCURRENT_UPDATE",
-                        "WorkAsset changed concurrently",
-                        409,
-                    )
-                self._replace_bindings(session, updated)
-                session.commit()
-            stored = self._select_asset(session, initial.tenant_id, initial.work_asset_id)
-            if stored is None:
-                raise WorkAssetError(
-                    "WA_ASSET_STORE_UNAVAILABLE",
-                    "WorkAsset was not readable after commit",
-                    503,
-                )
+            stored = self.create_or_update_in_session(
+                session,
+                candidate,
+                updated_at=self._clock(),
+            )
+            session.commit()
             return stored
         except WorkAssetError:
             session.rollback()
@@ -256,6 +223,58 @@ class SqlAlchemyWorkAssetRepository:
             ) from exc
         finally:
             session.close()
+
+    def create_or_update_in_session(
+        self,
+        session: Session,
+        candidate: WorkAssetInput,
+        *,
+        updated_at: datetime | None = None,
+    ) -> WorkAssetRecord:
+        """Persist through a caller-owned transaction without settling it."""
+        now = updated_at or self._clock()
+        initial = build_work_asset(candidate, created_at=now, updated_at=now)
+        self._require_evidence(session, initial)
+        existing = self._select_asset(session, initial.tenant_id, initial.work_asset_id)
+        if existing is not None and existing.asset_hash == initial.asset_hash:
+            return existing
+        stored = initial
+        if existing is None:
+            self._insert_asset(session, initial)
+            self._replace_bindings(session, initial)
+        else:
+            stored = build_work_asset(
+                candidate,
+                version=existing.version + 1,
+                created_at=_parse_timestamp(existing.created_at),
+                updated_at=now,
+            )
+            result = session.execute(
+                _UPDATE_ASSET,
+                {
+                    **_asset_database_params(session, stored),
+                    "expected_version": existing.version,
+                },
+            )
+            if result.rowcount != 1:
+                raise WorkAssetError(
+                    "WA_ASSET_CONCURRENT_UPDATE",
+                    "WorkAsset changed concurrently",
+                    409,
+                )
+            self._replace_bindings(session, stored)
+        readback = self._select_asset(
+            session,
+            initial.tenant_id,
+            initial.work_asset_id,
+        )
+        if readback is None:
+            raise WorkAssetError(
+                "WA_ASSET_STORE_UNAVAILABLE",
+                "WorkAsset was not readable before local commit",
+                503,
+            )
+        return readback
 
     def get(self, tenant_id: str, work_asset_id: str) -> WorkAssetRecord | None:
         normalized_tenant = _required_string(tenant_id, "tenant_id")
