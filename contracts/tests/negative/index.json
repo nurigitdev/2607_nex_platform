@@ -1,6 +1,11 @@
 {
   "negative_examples": [
     {
+      "name": "wa_source_normalized_envelope_raw_payload",
+      "path": "tests/negative/service/wa_source_normalized_envelope.raw_payload.json",
+      "schema": "schemas/service/nex_wa/wa_source_normalized_envelope.v1.schema.json"
+    },
+    {
       "name": "wa_evidence_intake_request_raw_prompt",
       "path": "tests/negative/service/wa_evidence_intake_request.raw_prompt.json",
       "schema": "schemas/service/nex_wa/wa_evidence_intake_request.v1.schema.json"

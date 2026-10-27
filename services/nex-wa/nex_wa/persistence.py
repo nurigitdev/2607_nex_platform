@@ -88,6 +88,30 @@ class WaPersistenceRuntime:
             "missing_versions": list(missing),
         }
 
+    def consumer_storage_readiness(self) -> dict[str, Any]:
+        required_tables = (
+            "service_jobs",
+            "service_worker_heartbeats",
+            "wa_work_evidence",
+            "wa_work_asset",
+            "wa_work_asset_evidence",
+        )
+        try:
+            with self.worker_session_factory() as session:
+                for table_name in required_tables:
+                    session.execute(text(f"SELECT 1 FROM {table_name} WHERE 1=0"))
+        except SQLAlchemyError:
+            return {
+                "name": "wa_consumer_storage",
+                "ok": False,
+                "error_code": "WA_CONSUMER_STORAGE_READINESS_FAILED",
+            }
+        return {
+            "name": "wa_consumer_storage",
+            "ok": True,
+            "required_tables": list(required_tables),
+        }
+
     def public_projection(self) -> dict[str, Any]:
         return {
             "service_id": self.settings.service_id,
