@@ -1,0 +1,7 @@
+{
+  "tenant_id": "VO00",
+  "project_id": "11111111-1111-4111-8111-111111111111",
+  "subject_id": "employee-1001",
+  "occurred_at": "2026-10-28T09:00:00Z",
+  "raw_payload": {"secret": true}
+}

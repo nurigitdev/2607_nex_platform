@@ -1,6 +1,26 @@
 {
   "negative_examples": [
     {
+      "name": "eos_project_verification_request_private_field",
+      "path": "tests/negative/service/eos_project_verification_request.private_field.json",
+      "schema": "schemas/service/nex_eos/project_verification_request.v1.schema.json"
+    },
+    {
+      "name": "eos_project_verification_project_name_leak",
+      "path": "tests/negative/service/eos_project_verification.project_name_leak.json",
+      "schema": "schemas/service/nex_eos/project_verification.v1.schema.json"
+    },
+    {
+      "name": "eos_project_membership_verification_request_private_field",
+      "path": "tests/negative/service/eos_project_membership_verification_request.private_field.json",
+      "schema": "schemas/service/nex_eos/project_membership_verification_request.v1.schema.json"
+    },
+    {
+      "name": "eos_project_membership_verification_subject_name_leak",
+      "path": "tests/negative/service/eos_project_membership_verification.subject_name_leak.json",
+      "schema": "schemas/service/nex_eos/project_membership_verification.v1.schema.json"
+    },
+    {
       "name": "oa_subject_verification_request_private_field",
       "path": "tests/negative/auth/oa_subject_verification_request.private_field.json",
       "schema": "schemas/service/nex_oa/subject_verification_request.v1.schema.json"

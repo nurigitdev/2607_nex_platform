@@ -12,6 +12,10 @@ from .dependencies import build_eos_dependencies
 from .organization_api import register_organization_routes
 from .project_api import register_project_routes
 from .voucher_api import register_voucher_command_routes
+from .wa_project_verification import (
+    EosWaProjectVerifier,
+    register_wa_project_verification_routes,
+)
 
 SERVICE_SPEC = SERVICE_SPECS["nex-eos"]
 CONTRACT_CATALOG_VERSION = "p8-s07"
@@ -68,4 +72,14 @@ def create_eos_app(
     register_approval_decision_routes(app)
     register_organization_routes(app)
     register_project_routes(app)
+    verifier = (
+        EosWaProjectVerifier(
+            projects=dependencies.projects,
+            memberships=dependencies.project_memberships,
+        )
+        if dependencies.projects is not None
+        and dependencies.project_memberships is not None
+        else None
+    )
+    register_wa_project_verification_routes(app, verifier=verifier)
     return app

@@ -1,0 +1,14 @@
+{
+  "verification_schema_version": "eos_project_membership_verification.v1",
+  "service_id": "nex-eos",
+  "tenant_id": "VO00",
+  "project_id": "11111111-1111-4111-8111-111111111111",
+  "subject_id": "employee-1001",
+  "occurred_at": "2026-10-28T09:00:00Z",
+  "membership_valid": false,
+  "verification_status": "MEMBERSHIP_NOT_FOUND",
+  "subject_name": "must-not-leak",
+  "verification_evidence_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "request_id": "req-negative",
+  "trace_id": "1234567890abcdef1234567890abcdef"
+}

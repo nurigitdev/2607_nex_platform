@@ -268,6 +268,27 @@ class SqlAlchemyEosProjectRepository:
             raise _persistence_error() from exc
         return dict(row) if row is not None else None
 
+    def find_project_tenants(
+        self,
+        *,
+        project_id: str,
+        limit: int = 2,
+    ) -> tuple[str, ...]:
+        statement = (
+            select(EOS_PROJECT_TABLE.c.tenant_id)
+            .where(
+                EOS_PROJECT_TABLE.c.project_id == _uuid("project_id", project_id)
+            )
+            .order_by(EOS_PROJECT_TABLE.c.tenant_id)
+            .limit(_bounded_limit(limit))
+        )
+        try:
+            with self._session_factory() as session:
+                rows = session.execute(statement).scalars().all()
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+        return tuple(str(item) for item in rows)
+
     def list_projects_for_nvt(
         self,
         *,

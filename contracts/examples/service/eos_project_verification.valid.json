@@ -1,0 +1,16 @@
+{
+  "verification_schema_version": "eos_project_verification.v1",
+  "service_id": "nex-eos",
+  "tenant_id": "VO00",
+  "requested_count": 1,
+  "verified_count": 1,
+  "rejected_count": 0,
+  "results": [{
+    "project_id": "11111111-1111-4111-8111-111111111111",
+    "verification_status": "VERIFIED",
+    "project_version": 1
+  }],
+  "verification_evidence_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "request_id": "req-p9-s15",
+  "trace_id": "1234567890abcdef1234567890abcdef"
+}

@@ -377,6 +377,58 @@ paths:
           description: Resolution input or policy is invalid.
         "503":
           description: Organization persistence is unavailable.
+  /internal/v1/projects:verify-batch:
+    post:
+      operationId: verifyEosProjectsBatch
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-caller: nex-wa
+      x-nex-required-scopes: [service:call, project:verify]
+      x-nex-route-class: READ
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectVerificationRequest"
+      responses:
+        "200":
+          description: Tenant-scoped Project identities were verified independently.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectVerification"
+        "400": {description: "Batch envelope or Project identity is invalid."}
+        "401": {description: "Service token is missing, invalid, or lacks scope."}
+        "403": {description: "The admitted caller is not NeX-WA."}
+        "503": {description: "EOS Project authority is unavailable."}
+  /internal/v1/project-memberships:verify-at:
+    post:
+      operationId: verifyEosProjectMembershipAt
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-caller: nex-wa
+      x-nex-required-scopes: [service:call, project:verify]
+      x-nex-route-class: READ
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectMembershipVerificationRequest"
+      responses:
+        "200":
+          description: Historical Project membership was verified at the event time.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMembershipVerification"
+        "400": {description: "Verification identity or occurred_at is invalid."}
+        "401": {description: "Service token is missing, invalid, or lacks scope."}
+        "403": {description: "The admitted caller is not NeX-WA."}
+        "503": {description: "EOS Project membership authority is unavailable."}
   /internal/v1/business-operations/{business_operation_id}:
     get:
       operationId: getEosBusinessOperation
@@ -462,3 +514,15 @@ components:
     NvtProjectUpdateCommand:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/nvt_project_update_command.v1.schema.json
+    ProjectVerificationRequest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/project_verification_request.v1.schema.json
+    ProjectVerification:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/project_verification.v1.schema.json
+    ProjectMembershipVerificationRequest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/project_membership_verification_request.v1.schema.json
+    ProjectMembershipVerification:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/project_membership_verification.v1.schema.json

@@ -177,6 +177,28 @@ class SqlAlchemyEosProjectMembershipRepository:
             raise _persistence_error() from exc
         return dict(row) if row is not None else None
 
+    def get_subject_membership(
+        self,
+        *,
+        tenant_id: str,
+        project_id: str,
+        subject_id: str,
+    ) -> dict[str, Any] | None:
+        statement = select(EOS_PROJECT_MEMBER_TABLE).where(
+            EOS_PROJECT_MEMBER_TABLE.c.tenant_id
+            == _scoped_id("tenant_id", tenant_id),
+            EOS_PROJECT_MEMBER_TABLE.c.project_id
+            == _uuid("project_id", project_id),
+            EOS_PROJECT_MEMBER_TABLE.c.subject_id
+            == _scoped_id("subject_id", subject_id),
+        )
+        try:
+            with self._session_factory() as session:
+                row = session.execute(statement).mappings().one_or_none()
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+        return dict(row) if row is not None else None
+
     def add_membership(self, value: ProjectMembershipInput) -> dict[str, Any]:
         try:
             with build_unit_of_work(self._session_factory) as transaction:

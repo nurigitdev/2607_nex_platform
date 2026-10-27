@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/project_membership_verification.v1.schema.json",
+  "title": "EOS Historical Project Membership Verification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verification_schema_version", "service_id", "tenant_id", "project_id",
+    "subject_id", "occurred_at", "membership_valid", "verification_status",
+    "verification_evidence_hash", "request_id", "trace_id"
+  ],
+  "properties": {
+    "verification_schema_version": {"const": "eos_project_membership_verification.v1"},
+    "service_id": {"const": "nex-eos"},
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "project_id": {"type": "string", "format": "uuid"},
+    "subject_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "membership_valid": {"type": "boolean"},
+    "verification_status": {
+      "enum": [
+        "VERIFIED", "PROJECT_NOT_FOUND", "PROJECT_INACTIVE", "TENANT_MISMATCH",
+        "MEMBERSHIP_NOT_FOUND", "MEMBERSHIP_NOT_YET_VALID", "MEMBERSHIP_EXPIRED"
+      ]
+    },
+    "project_version": {"type": "integer", "minimum": 1},
+    "project_membership_id": {"type": "string", "format": "uuid"},
+    "member_role": {"enum": ["OWNER", "MANAGER", "MEMBER", "VIEWER"]},
+    "version": {"type": "integer", "minimum": 1},
+    "valid_from": {"type": "string", "format": "date-time"},
+    "valid_to": {"type": ["string", "null"], "format": "date-time"},
+    "verification_evidence_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "trace_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verification_status": {"enum": ["VERIFIED", "MEMBERSHIP_NOT_YET_VALID", "MEMBERSHIP_EXPIRED"]}}},
+      "then": {"required": ["project_membership_id", "member_role", "version", "valid_from", "valid_to"]}
+    }
+  ]
+}

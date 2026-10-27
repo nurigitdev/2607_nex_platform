@@ -1,6 +1,26 @@
 {
   "examples": [
     {
+      "name": "eos_project_verification_request_valid",
+      "path": "examples/service/eos_project_verification_request.valid.json",
+      "schema": "schemas/service/nex_eos/project_verification_request.v1.schema.json"
+    },
+    {
+      "name": "eos_project_verification_valid",
+      "path": "examples/service/eos_project_verification.valid.json",
+      "schema": "schemas/service/nex_eos/project_verification.v1.schema.json"
+    },
+    {
+      "name": "eos_project_membership_verification_request_valid",
+      "path": "examples/service/eos_project_membership_verification_request.valid.json",
+      "schema": "schemas/service/nex_eos/project_membership_verification_request.v1.schema.json"
+    },
+    {
+      "name": "eos_project_membership_verification_valid",
+      "path": "examples/service/eos_project_membership_verification.valid.json",
+      "schema": "schemas/service/nex_eos/project_membership_verification.v1.schema.json"
+    },
+    {
       "name": "oa_subject_verification_request_valid",
       "path": "examples/service/oa_subject_verification_request.valid.json",
       "schema": "schemas/service/nex_oa/subject_verification_request.v1.schema.json"

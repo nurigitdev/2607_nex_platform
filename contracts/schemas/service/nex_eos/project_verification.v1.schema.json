@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/project_verification.v1.schema.json",
+  "title": "EOS Project Verification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verification_schema_version", "service_id", "tenant_id",
+    "requested_count", "verified_count", "rejected_count", "results",
+    "verification_evidence_hash", "request_id", "trace_id"
+  ],
+  "properties": {
+    "verification_schema_version": {"const": "eos_project_verification.v1"},
+    "service_id": {"const": "nex-eos"},
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "requested_count": {"type": "integer", "minimum": 1, "maximum": 50},
+    "verified_count": {"type": "integer", "minimum": 0, "maximum": 50},
+    "rejected_count": {"type": "integer", "minimum": 0, "maximum": 50},
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": {
+        "oneOf": [
+          {"$ref": "#/$defs/versioned"},
+          {"$ref": "#/$defs/unresolved"}
+        ]
+      }
+    },
+    "verification_evidence_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "trace_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"}
+  },
+  "$defs": {
+    "versioned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_id", "verification_status", "project_version"],
+      "properties": {
+        "project_id": {"type": "string", "format": "uuid"},
+        "verification_status": {"enum": ["VERIFIED", "PROJECT_INACTIVE"]},
+        "project_version": {"type": "integer", "minimum": 1}
+      }
+    },
+    "unresolved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_id", "verification_status"],
+      "properties": {
+        "project_id": {"type": "string", "format": "uuid"},
+        "verification_status": {"enum": ["PROJECT_NOT_FOUND", "TENANT_MISMATCH"]}
+      }
+    }
+  }
+}
