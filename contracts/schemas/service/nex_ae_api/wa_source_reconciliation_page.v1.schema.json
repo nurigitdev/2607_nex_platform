@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/wa_source_reconciliation_page.v1.schema.json",
+  "title": "WA Source Reconciliation Page",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_type",
+    "created_after",
+    "created_before",
+    "items",
+    "pagination"
+  ],
+  "properties": {
+    "schema_version": {"const": "wa_source_reconciliation_page.v1"},
+    "source_type": {"enum": ["AE_AGENT_RESULT", "AE_ARTIFACT"]},
+    "created_after": {"type": "string", "format": "date-time"},
+    "created_before": {"type": "string", "format": "date-time"},
+    "items": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {"$ref": "#/$defs/intakeItem"}
+    },
+    "pagination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["limit", "returned", "has_more", "next_cursor"],
+      "properties": {
+        "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+        "returned": {"type": "integer", "minimum": 0, "maximum": 100},
+        "has_more": {"type": "boolean"},
+        "next_cursor": {"type": ["string", "null"], "minLength": 1, "maxLength": 1024}
+      }
+    }
+  },
+  "$defs": {
+    "intakeItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "tenant_id",
+        "source_type",
+        "source_ref",
+        "source_revision_ref",
+        "source_hash",
+        "occurred_at",
+        "correlation_id"
+      ],
+      "properties": {
+        "schema_version": {"const": "wa_evidence_intake_request.v1"},
+        "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "source_type": {"enum": ["AE_AGENT_RESULT", "AE_ARTIFACT"]},
+        "source_ref": {"type": "string", "minLength": 1, "maxLength": 512},
+        "source_revision_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+        "source_hash": {"type": "string", "pattern": "^(sha256:)?[0-9a-f]{64}$"},
+        "occurred_at": {"type": "string", "format": "date-time"},
+        "correlation_id": {"type": "string", "minLength": 1, "maxLength": 128}
+      }
+    }
+  }
+}

@@ -2452,6 +2452,28 @@ paths:
         "403": {description: Caller is not nex-wc}
         "409": {description: Handoff semantics or Agent scope conflict}
         "503": {description: AE Agent Runtime persistence unavailable}
+  /internal/v1/wa-sources/agent-results:
+    get:
+      operationId: listAeAgentResultWaSources
+      tags: [Work Sources]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call, "work:source:read"]
+      parameters:
+        - {$ref: "#/components/parameters/WaSourceTenant"}
+        - {$ref: "#/components/parameters/WaSourceCreatedAfter"}
+        - {$ref: "#/components/parameters/WaSourceCreatedBefore"}
+        - {$ref: "#/components/parameters/WaSourceLimit"}
+        - {$ref: "#/components/parameters/WaSourceCursor"}
+      responses:
+        "200":
+          description: Bounded AgentResult refs and hashes for WA reconciliation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WaSourceReconciliationPage"}
+        "400": {description: "Bounded window, cursor, tenant, or limit is invalid."}
+        "401": {description: Service token or required source-read scope is invalid.}
+        "403": {description: Caller service is denied.}
+        "503": {description: AE persistence is unavailable.}
   /internal/v1/wa-sources/agent-results/{result_id}:
     get:
       operationId: getAeAgentResultWaSource
@@ -2479,6 +2501,28 @@ paths:
         "403": {description: Caller service is denied.}
         "404": {description: AgentResult is absent in the tenant scope.}
         "409": {description: Authoritative result lineage is inconsistent.}
+        "503": {description: AE persistence is unavailable.}
+  /internal/v1/wa-sources/artifacts:
+    get:
+      operationId: listAeArtifactWaSources
+      tags: [Work Sources]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call, "work:source:read"]
+      parameters:
+        - {$ref: "#/components/parameters/WaSourceTenant"}
+        - {$ref: "#/components/parameters/WaSourceCreatedAfter"}
+        - {$ref: "#/components/parameters/WaSourceCreatedBefore"}
+        - {$ref: "#/components/parameters/WaSourceLimit"}
+        - {$ref: "#/components/parameters/WaSourceCursor"}
+      responses:
+        "200":
+          description: Bounded READY Artifact refs and hashes for WA reconciliation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WaSourceReconciliationPage"}
+        "400": {description: "Bounded window, cursor, tenant, or limit is invalid."}
+        "401": {description: Service token or required source-read scope is invalid.}
+        "403": {description: Caller service is denied.}
         "503": {description: AE persistence is unavailable.}
   /internal/v1/wa-sources/artifacts/{artifact_id}/versions/{artifact_version_id}:
     get:
@@ -2519,6 +2563,31 @@ components:
       scheme: bearer
       bearerFormat: RS256 at+jwt
   parameters:
+    WaSourceTenant:
+      name: X-NeX-Tenant-Id
+      in: header
+      required: true
+      schema: {type: string, minLength: 1}
+    WaSourceCreatedAfter:
+      name: created_after
+      in: query
+      required: true
+      schema: {type: string, format: date-time}
+    WaSourceCreatedBefore:
+      name: created_before
+      in: query
+      required: true
+      schema: {type: string, format: date-time}
+    WaSourceLimit:
+      name: limit
+      in: query
+      required: false
+      schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+    WaSourceCursor:
+      name: cursor
+      in: query
+      required: false
+      schema: {type: string, minLength: 1, maxLength: 1024}
     ApprovalWorkItemId:
       name: approval_work_item_id
       in: path
@@ -2545,6 +2614,9 @@ components:
         type: string
         format: uuid
   schemas:
+    WaSourceReconciliationPage:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/wa_source_reconciliation_page.v1.schema.json
     WaArtifactSourceProjection:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_ae_api/wa_artifact_source_projection.v1.schema.json

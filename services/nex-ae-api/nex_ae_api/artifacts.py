@@ -1380,6 +1380,88 @@ class SqlAlchemyArtifactRecordStore:
                 retryable=True,
             ) from exc
 
+    def list_versions_for_wa_reconciliation(
+        self,
+        *,
+        tenant_id: str,
+        created_after: datetime,
+        created_before: datetime,
+        cursor_created_at: datetime | None,
+        cursor_version_id: str | None,
+        limit: int,
+    ) -> list[tuple[str, str]]:
+        """Return bounded READY Artifact/version identities for WA recovery."""
+
+        try:
+            with self._session_factory() as session:
+                dialect = _dialect_name(session)
+                params: dict[str, Any] = {
+                    "tenant_id": tenant_id,
+                    "created_after": _wa_reconciliation_boundary(
+                        created_after, dialect
+                    ),
+                    "created_before": _wa_reconciliation_boundary(
+                        created_before, dialect
+                    ),
+                    "limit": limit,
+                }
+                cursor_clause = ""
+                if cursor_created_at is not None and cursor_version_id is not None:
+                    cursor_clause = """
+                      AND (
+                          version.created_at > :cursor_created_at
+                          OR (
+                              version.created_at = :cursor_created_at
+                              AND version.artifact_version_id > :cursor_version_id
+                          )
+                      )
+                    """
+                    params.update(
+                        {
+                            "cursor_created_at": _wa_reconciliation_boundary(
+                                cursor_created_at, dialect
+                            ),
+                            "cursor_version_id": cursor_version_id,
+                        }
+                    )
+                rows = (
+                    session.execute(
+                        text(
+                            """
+                            SELECT artifact.artifact_id,
+                                   version.artifact_version_id
+                            FROM ae_artifact_versions AS version
+                            JOIN ae_artifacts AS artifact
+                              ON artifact.artifact_id = version.artifact_id
+                            WHERE artifact.tenant_id = :tenant_id
+                              AND artifact.artifact_status = 'READY'
+                              AND version.created_at > :created_after
+                              AND version.created_at <= :created_before
+                            """
+                            + cursor_clause
+                            + """
+                            ORDER BY version.created_at ASC,
+                                     version.artifact_version_id ASC
+                            LIMIT :limit
+                            """
+                        ),
+                        params,
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [
+                (str(row["artifact_id"]), str(row["artifact_version_id"]))
+                for row in rows
+            ]
+        except SQLAlchemyError as exc:
+            raise ArtifactHandoffError(
+                status_code=503,
+                error_code="ae.artifact_store_unavailable",
+                detail="AE artifact store is unavailable.",
+                retryable=True,
+            ) from exc
+
     def get(self, artifact_id: str) -> dict[str, Any] | None:
         try:
             with self._session_factory() as session:
@@ -13314,6 +13396,15 @@ def _datetime_value(value: Any) -> str:
     if hasattr(value, "isoformat"):
         return value.isoformat().replace("+00:00", "Z")
     return str(value)
+
+
+def _wa_reconciliation_boundary(
+    value: datetime, dialect_name: str
+) -> datetime | str:
+    normalized = value.astimezone(UTC)
+    if dialect_name == "sqlite":
+        return normalized.isoformat().replace("+00:00", "Z")
+    return normalized
 
 
 def _nullable_datetime_value(value: Any) -> str | None:

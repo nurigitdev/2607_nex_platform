@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import base64
+import binascii
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
-from fastapi import FastAPI, Header, Request
+from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
@@ -23,6 +28,9 @@ WORK_SOURCE_READ_SCOPE = "work:source:read"
 AGENT_RESULT_PROJECTION_SCHEMA_VERSION = "wa_agent_result_source_projection.v1"
 ARTIFACT_PROJECTION_SCHEMA_VERSION = "wa_artifact_source_projection.v1"
 DEFAULT_ARTIFACT_CLASSIFICATION = "CONFIDENTIAL"
+WA_RECONCILIATION_PAGE_SCHEMA_VERSION = "wa_source_reconciliation_page.v1"
+DEFAULT_RECONCILIATION_PAGE_SIZE = 50
+MAX_RECONCILIATION_PAGE_SIZE = 100
 
 
 @dataclass(frozen=True)
@@ -30,14 +38,26 @@ class WaSourceProjectionError(Exception):
     error_code: str
     detail: str
     retryable: bool = False
+    status_code: int = 409
 
     def __str__(self) -> str:
         return self.detail
 
 
 class AgentResultWaProjectionSource(Protocol):
-    def get_projection(self, *, tenant_id: str, result_id: str) -> dict[str, Any] | None:
-        ...
+    def get_projection(
+        self, *, tenant_id: str, result_id: str
+    ) -> dict[str, Any] | None: ...
+
+    def list_projections(
+        self,
+        *,
+        tenant_id: str,
+        created_after: str,
+        created_before: str,
+        limit: int,
+        cursor: str | None,
+    ) -> dict[str, Any]: ...
 
 
 class ArtifactWaProjectionSource(Protocol):
@@ -49,12 +69,24 @@ class ArtifactWaProjectionSource(Protocol):
         artifact_version_id: str,
     ) -> dict[str, Any] | None: ...
 
+    def list_projections(
+        self,
+        *,
+        tenant_id: str,
+        created_after: str,
+        created_before: str,
+        limit: int,
+        cursor: str | None,
+    ) -> dict[str, Any]: ...
+
 
 class SqlAlchemyAgentResultWaProjectionSource:
     def __init__(self, repository: SqlAlchemyAgentResultRepository) -> None:
         self._repository = repository
 
-    def get_projection(self, *, tenant_id: str, result_id: str) -> dict[str, Any] | None:
+    def get_projection(
+        self, *, tenant_id: str, result_id: str
+    ) -> dict[str, Any] | None:
         try:
             aggregate = self._repository.get(tenant_id, result_id)
         except AgentResultError as exc:
@@ -66,6 +98,51 @@ class SqlAlchemyAgentResultWaProjectionSource:
         if aggregate is None:
             return None
         return build_agent_result_wa_projection(aggregate)
+
+    def list_projections(
+        self,
+        *,
+        tenant_id: str,
+        created_after: str,
+        created_before: str,
+        limit: int,
+        cursor: str | None,
+    ) -> dict[str, Any]:
+        window = _reconciliation_window(
+            source_type="AE_AGENT_RESULT",
+            created_after=created_after,
+            created_before=created_before,
+            limit=limit,
+            cursor=cursor,
+        )
+        try:
+            aggregates = self._repository.list_for_wa_reconciliation(
+                tenant_id=tenant_id,
+                created_after=window["created_after"],
+                created_before=window["created_before"],
+                cursor_created_at=window["cursor_created_at"],
+                cursor_result_id=window["cursor_identity"],
+                limit=window["limit"] + 1,
+            )
+        except AgentResultError as exc:
+            raise WaSourceProjectionError(
+                exc.error_code,
+                exc.detail,
+                exc.retryable,
+                503 if exc.retryable else 409,
+            ) from exc
+        items = [
+            _agent_result_reconciliation_item(
+                build_agent_result_wa_projection(aggregate)
+            )
+            for aggregate in aggregates
+        ]
+        return _reconciliation_page(
+            source_type="AE_AGENT_RESULT",
+            items=items,
+            window=window,
+            identity_field="source_revision_ref",
+        )
 
 
 class SqlAlchemyArtifactWaProjectionSource:
@@ -92,6 +169,60 @@ class SqlAlchemyArtifactWaProjectionSource:
         return build_artifact_wa_projection(
             record,
             artifact_version_id=artifact_version_id,
+        )
+
+    def list_projections(
+        self,
+        *,
+        tenant_id: str,
+        created_after: str,
+        created_before: str,
+        limit: int,
+        cursor: str | None,
+    ) -> dict[str, Any]:
+        window = _reconciliation_window(
+            source_type="AE_ARTIFACT",
+            created_after=created_after,
+            created_before=created_before,
+            limit=limit,
+            cursor=cursor,
+        )
+        try:
+            identities = self._repository.list_versions_for_wa_reconciliation(
+                tenant_id=tenant_id,
+                created_after=window["created_after"],
+                created_before=window["created_before"],
+                cursor_created_at=window["cursor_created_at"],
+                cursor_version_id=window["cursor_identity"],
+                limit=window["limit"] + 1,
+            )
+            items: list[dict[str, Any]] = []
+            for artifact_id, artifact_version_id in identities:
+                projection = self.get_projection(
+                    tenant_id=tenant_id,
+                    artifact_id=artifact_id,
+                    artifact_version_id=artifact_version_id,
+                )
+                if projection is None:
+                    raise WaSourceProjectionError(
+                        "ae.wa_source_artifact_reconciliation_drift",
+                        "Artifact reconciliation identity disappeared during projection.",
+                        True,
+                        503,
+                    )
+                items.append(_artifact_reconciliation_item(projection))
+        except ArtifactHandoffError as exc:
+            raise WaSourceProjectionError(
+                exc.error_code,
+                exc.detail,
+                exc.retryable,
+                503 if exc.retryable else 409,
+            ) from exc
+        return _reconciliation_page(
+            source_type="AE_ARTIFACT",
+            items=items,
+            window=window,
+            identity_field="source_revision_ref",
         )
 
 
@@ -233,6 +364,31 @@ def register_wa_agent_result_source_routes(
     app.state.ae_wa_agent_result_source = source
 
     @app.get(
+        "/internal/v1/wa-sources/agent-results",
+        response_model=None,
+    )
+    def list_wa_agent_result_sources(
+        request: Request,
+        created_after: str = Query(...),
+        created_before: str = Query(...),
+        limit: int = Query(DEFAULT_RECONCILIATION_PAGE_SIZE),
+        cursor: str | None = Query(default=None),
+        authorization: str | None = Header(default=None),
+        tenant_id: str | None = Header(default=None, alias="X-NeX-Tenant-Id"),
+    ):
+        return _list_wa_sources(
+            request=request,
+            authorization=authorization,
+            tenant_id=tenant_id,
+            source=source,
+            created_after=created_after,
+            created_before=created_before,
+            limit=limit,
+            cursor=cursor,
+            unavailable_detail="AE WA AgentResult listing is unavailable.",
+        )
+
+    @app.get(
         "/internal/v1/wa-sources/agent-results/{result_id}",
         response_model=None,
     )
@@ -268,7 +424,7 @@ def register_wa_agent_result_source_routes(
         except WaSourceProjectionError as exc:
             return _problem(
                 request,
-                503 if exc.retryable else 409,
+                503 if exc.retryable else exc.status_code,
                 exc.error_code,
                 exc.detail,
                 retryable=exc.retryable,
@@ -289,6 +445,31 @@ def register_wa_artifact_source_routes(
     source: ArtifactWaProjectionSource | None,
 ) -> None:
     app.state.ae_wa_artifact_source = source
+
+    @app.get(
+        "/internal/v1/wa-sources/artifacts",
+        response_model=None,
+    )
+    def list_wa_artifact_sources(
+        request: Request,
+        created_after: str = Query(...),
+        created_before: str = Query(...),
+        limit: int = Query(DEFAULT_RECONCILIATION_PAGE_SIZE),
+        cursor: str | None = Query(default=None),
+        authorization: str | None = Header(default=None),
+        tenant_id: str | None = Header(default=None, alias="X-NeX-Tenant-Id"),
+    ):
+        return _list_wa_sources(
+            request=request,
+            authorization=authorization,
+            tenant_id=tenant_id,
+            source=source,
+            created_after=created_after,
+            created_before=created_before,
+            limit=limit,
+            cursor=cursor,
+            unavailable_detail="AE WA Artifact listing is unavailable.",
+        )
 
     @app.get(
         "/internal/v1/wa-sources/artifacts/{artifact_id}/versions/{artifact_version_id}",
@@ -328,7 +509,7 @@ def register_wa_artifact_source_routes(
         except WaSourceProjectionError as exc:
             return _problem(
                 request,
-                503 if exc.retryable else 409,
+                503 if exc.retryable else exc.status_code,
                 exc.error_code,
                 exc.detail,
                 retryable=exc.retryable,
@@ -365,6 +546,267 @@ def _admit_wa_source_request(
     return admitted
 
 
+def _list_wa_sources(
+    *,
+    request: Request,
+    authorization: str | None,
+    tenant_id: str | None,
+    source: AgentResultWaProjectionSource | ArtifactWaProjectionSource | None,
+    created_after: str,
+    created_before: str,
+    limit: int,
+    cursor: str | None,
+    unavailable_detail: str,
+) -> dict[str, Any] | JSONResponse:
+    admitted = _admit_wa_source_request(request, authorization)
+    if isinstance(admitted, JSONResponse):
+        return admitted
+    if tenant_id is None or not tenant_id.strip():
+        return _problem(
+            request,
+            400,
+            "ae.wa_source_tenant_required",
+            "WA source projection requires X-NeX-Tenant-Id.",
+        )
+    if source is None:
+        return _problem(
+            request,
+            503,
+            "ae.wa_source_unavailable",
+            unavailable_detail,
+            retryable=True,
+        )
+    try:
+        return source.list_projections(
+            tenant_id=tenant_id.strip(),
+            created_after=created_after,
+            created_before=created_before,
+            limit=limit,
+            cursor=cursor,
+        )
+    except WaSourceProjectionError as exc:
+        return _problem(
+            request,
+            503 if exc.retryable else exc.status_code,
+            exc.error_code,
+            exc.detail,
+            retryable=exc.retryable,
+        )
+
+
+def _reconciliation_window(
+    *,
+    source_type: str,
+    created_after: str,
+    created_before: str,
+    limit: int,
+    cursor: str | None,
+) -> dict[str, Any]:
+    after = _reconciliation_timestamp(created_after, "created_after")
+    before = _reconciliation_timestamp(created_before, "created_before")
+    if after >= before:
+        raise _invalid_reconciliation_window(
+            "created_after must be earlier than created_before."
+        )
+    if (
+        isinstance(limit, bool)
+        or not isinstance(limit, int)
+        or limit < 1
+        or limit > MAX_RECONCILIATION_PAGE_SIZE
+    ):
+        raise _invalid_reconciliation_window(
+            f"limit must be between 1 and {MAX_RECONCILIATION_PAGE_SIZE}."
+        )
+    anchor = _decode_reconciliation_cursor(
+        cursor,
+        source_type=source_type,
+        created_after=after,
+        created_before=before,
+    )
+    return {
+        "source_type": source_type,
+        "created_after": after,
+        "created_before": before,
+        "created_after_wire": _wire_timestamp(after),
+        "created_before_wire": _wire_timestamp(before),
+        "limit": limit,
+        "cursor_created_at": None if anchor is None else anchor[0],
+        "cursor_identity": None if anchor is None else anchor[1],
+    }
+
+
+def _reconciliation_page(
+    *,
+    source_type: str,
+    items: list[dict[str, Any]],
+    window: Mapping[str, Any],
+    identity_field: str,
+) -> dict[str, Any]:
+    limit = int(window["limit"])
+    has_more = len(items) > limit
+    selected = items[:limit]
+    next_cursor = None
+    if has_more and selected:
+        last = selected[-1]
+        next_cursor = _encode_reconciliation_cursor(
+            source_type=source_type,
+            created_after=window["created_after"],
+            created_before=window["created_before"],
+            created_at=_reconciliation_timestamp(last["occurred_at"], "occurred_at"),
+            identity=str(last[identity_field]),
+        )
+    return {
+        "schema_version": WA_RECONCILIATION_PAGE_SCHEMA_VERSION,
+        "source_type": source_type,
+        "created_after": window["created_after_wire"],
+        "created_before": window["created_before_wire"],
+        "items": selected,
+        "pagination": {
+            "limit": limit,
+            "returned": len(selected),
+            "has_more": has_more,
+            "next_cursor": next_cursor,
+        },
+    }
+
+
+def _agent_result_reconciliation_item(value: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": "wa_evidence_intake_request.v1",
+        "tenant_id": value["tenant_id"],
+        "source_type": "AE_AGENT_RESULT",
+        "source_ref": value["agent_execution_id"],
+        "source_revision_ref": value["result_id"],
+        "source_hash": value["result_hash"],
+        "occurred_at": value["created_at"],
+        "correlation_id": value["agent_execution_id"],
+    }
+
+
+def _artifact_reconciliation_item(value: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": "wa_evidence_intake_request.v1",
+        "tenant_id": value["tenant_id"],
+        "source_type": "AE_ARTIFACT",
+        "source_ref": value["artifact_id"],
+        "source_revision_ref": value["artifact_version_id"],
+        "source_hash": value["artifact_content_hash"],
+        "occurred_at": value["created_at"],
+        "correlation_id": value["artifact_id"],
+    }
+
+
+def _encode_reconciliation_cursor(
+    *,
+    source_type: str,
+    created_after: datetime,
+    created_before: datetime,
+    created_at: datetime,
+    identity: str,
+) -> str:
+    payload = json.dumps(
+        {
+            "created_after": _wire_timestamp(created_after),
+            "created_at": _wire_timestamp(created_at),
+            "created_before": _wire_timestamp(created_before),
+            "identity": identity,
+            "source_type": source_type,
+            "version": 1,
+        },
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_reconciliation_cursor(
+    value: str | None,
+    *,
+    source_type: str,
+    created_after: datetime,
+    created_before: datetime,
+) -> tuple[datetime, str] | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip() or len(value) > 1024:
+        raise _invalid_reconciliation_cursor()
+    normalized = value.strip()
+    try:
+        decoded = base64.b64decode(
+            normalized + "=" * (-len(normalized) % 4),
+            altchars=b"-_",
+            validate=True,
+        ).decode("utf-8")
+        payload = json.loads(decoded)
+    except (
+        binascii.Error,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        ValueError,
+    ) as exc:
+        raise _invalid_reconciliation_cursor() from exc
+    expected_fields = {
+        "created_after",
+        "created_at",
+        "created_before",
+        "identity",
+        "source_type",
+        "version",
+    }
+    if not isinstance(payload, Mapping) or set(payload) != expected_fields:
+        raise _invalid_reconciliation_cursor()
+    if (
+        payload.get("version") != 1
+        or payload.get("source_type") != source_type
+        or payload.get("created_after") != _wire_timestamp(created_after)
+        or payload.get("created_before") != _wire_timestamp(created_before)
+        or not isinstance(payload.get("identity"), str)
+        or not payload["identity"]
+    ):
+        raise _invalid_reconciliation_cursor()
+    created_at = _reconciliation_timestamp(payload["created_at"], "cursor")
+    if not created_after < created_at <= created_before:
+        raise _invalid_reconciliation_cursor()
+    return created_at, payload["identity"]
+
+
+def _reconciliation_timestamp(value: object, field: str) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise _invalid_reconciliation_window(f"{field} must be an RFC3339 timestamp.")
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise _invalid_reconciliation_window(
+            f"{field} must be an RFC3339 timestamp."
+        ) from exc
+    if parsed.tzinfo is None:
+        raise _invalid_reconciliation_window(f"{field} must include a timezone.")
+    return parsed.astimezone(UTC)
+
+
+def _wire_timestamp(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _invalid_reconciliation_window(detail: str) -> WaSourceProjectionError:
+    return WaSourceProjectionError(
+        "ae.wa_reconciliation_window_invalid",
+        detail,
+        False,
+        400,
+    )
+
+
+def _invalid_reconciliation_cursor() -> WaSourceProjectionError:
+    return WaSourceProjectionError(
+        "ae.wa_reconciliation_cursor_invalid",
+        "WA reconciliation cursor is invalid for this bounded source window.",
+        False,
+        400,
+    )
+
+
 def _bounded_refs(value: object) -> list[str]:
     if not isinstance(value, list):
         raise WaSourceProjectionError(
@@ -397,8 +839,7 @@ def _tenant_exact_ref(
     fields: tuple[str, ...],
 ) -> dict[str, Any]:
     if not isinstance(value, dict) or any(
-        not isinstance(value.get(field), str) or not value[field]
-        for field in fields
+        not isinstance(value.get(field), str) or not value[field] for field in fields
     ):
         raise _invalid_artifact_projection(
             f"Artifact {label} reference must contain exact bounded lineage."

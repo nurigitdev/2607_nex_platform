@@ -36,6 +36,11 @@
       "schema": "schemas/service/nex_wa/wa_source_normalized_envelope.v1.schema.json"
     },
     {
+      "name": "wa_source_reconciliation_page_agent_result",
+      "path": "examples/service/wa_source_reconciliation_page.agent_result.json",
+      "schema": "schemas/service/nex_ae_api/wa_source_reconciliation_page.v1.schema.json"
+    },
+    {
       "name": "wa_evidence_intake_request_agent_result",
       "path": "examples/service/wa_evidence_intake_request.agent_result.json",
       "schema": "schemas/service/nex_wa/wa_evidence_intake_request.v1.schema.json"

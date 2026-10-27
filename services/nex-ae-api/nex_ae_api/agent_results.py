@@ -410,6 +410,100 @@ class SqlAlchemyAgentResultRepository:
                 True,
             ) from exc
 
+    def list_for_wa_reconciliation(
+        self,
+        *,
+        tenant_id: str,
+        created_after: datetime,
+        created_before: datetime,
+        cursor_created_at: datetime | None,
+        cursor_result_id: str | None,
+        limit: int,
+    ) -> list[AgentResultAggregate]:
+        """Return a bounded, stable page of WA-admissible AgentResults."""
+
+        try:
+            with self._session_factory() as session:
+                dialect = _dialect_name(session)
+                params: dict[str, Any] = {
+                    "tenant_id": tenant_id,
+                    "created_after": _reconciliation_boundary(created_after, dialect),
+                    "created_before": _reconciliation_boundary(created_before, dialect),
+                    "limit": limit,
+                }
+                cursor_clause = ""
+                if cursor_created_at is not None and cursor_result_id is not None:
+                    cursor_clause = """
+                              AND (
+                                  result.created_at > :cursor_created_at
+                                  OR (
+                                      result.created_at = :cursor_created_at
+                                      AND CAST(result.result_id AS TEXT) > :cursor_result_id
+                                  )
+                              )
+                    """
+                    params.update(
+                        {
+                            "cursor_created_at": _reconciliation_boundary(
+                                cursor_created_at, dialect
+                            ),
+                            "cursor_result_id": cursor_result_id,
+                        }
+                    )
+                rows = (
+                    session.execute(
+                        text(
+                            """
+                            SELECT result.result_id
+                            FROM ae_agent_result AS result
+                            JOIN ae_agent_execution AS execution
+                              ON execution.tenant_id = result.tenant_id
+                             AND execution.agent_execution_id = result.agent_execution_id
+                            JOIN ae_result_delivery AS delivery
+                              ON delivery.tenant_id = result.tenant_id
+                             AND delivery.result_id = result.result_id
+                            WHERE result.tenant_id = :tenant_id
+                              AND result.created_at > :created_after
+                              AND result.created_at <= :created_before
+                              AND result.status IN ('SUCCEEDED', 'PARTIAL')
+                              AND execution.state = 'SUCCEEDED'
+                              AND delivery.required = true
+                              AND delivery.state = 'ACKNOWLEDGED'
+                              AND (
+                                  (result.agent_type = 'IA'
+                                   AND delivery.target_type = 'WORKSPACE_RESULT')
+                                  OR
+                                  (result.agent_type IN ('CA', 'PA', 'EA')
+                                   AND delivery.target_type = 'WC_WORK_RESULT')
+                              )
+                            """
+                            + cursor_clause
+                            + """
+                            ORDER BY result.created_at ASC,
+                                     CAST(result.result_id AS TEXT) ASC
+                            LIMIT :limit
+                            """
+                        ),
+                        params,
+                    )
+                    .mappings()
+                    .all()
+                )
+                aggregates: list[AgentResultAggregate] = []
+                for row in rows:
+                    aggregate = self.get(tenant_id, str(row["result_id"]))
+                    if aggregate is not None:
+                        aggregates.append(aggregate)
+                return aggregates
+        except AgentResultError:
+            raise
+        except SQLAlchemyError as exc:
+            raise AgentResultError(
+                "ae.agent_result_store_unavailable",
+                "AE AgentResult store is unavailable.",
+                True,
+            ) from exc
+
     def _insert_delivery(self, session: Session, delivery: Mapping[str, Any]) -> None:
         session.execute(text(_DELIVERY_INSERT_SQL), delivery)
 
@@ -976,6 +1070,13 @@ def _timestamp(field: str, value: object) -> str:
     if parsed.tzinfo is None:
         raise _invalid(f"{field} must include a timezone.")
     return parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _reconciliation_boundary(value: datetime, dialect_name: str) -> datetime | str:
+    normalized = value.astimezone(UTC)
+    if dialect_name == "sqlite":
+        return normalized.isoformat().replace("+00:00", "Z")
+    return normalized
 
 
 def _datetime_value(value: object) -> str:
