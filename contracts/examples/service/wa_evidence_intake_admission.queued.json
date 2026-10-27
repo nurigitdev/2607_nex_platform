@@ -1,0 +1,12 @@
+{
+  "schema_version": "wa_evidence_intake_admission.v1",
+  "job_id": "930cc597-42d1-55dc-a816-8b0acef0a4b5",
+  "job_type": "WA_EVIDENCE_INGEST",
+  "status": "QUEUED",
+  "source_type": "AE_AGENT_RESULT",
+  "source_ref": "agent-execution-9001",
+  "source_revision_ref": "result-1",
+  "idempotent_reuse": false,
+  "request_id": "req-p9-s06-001",
+  "trace_id": "trace-p9-s06-001"
+}

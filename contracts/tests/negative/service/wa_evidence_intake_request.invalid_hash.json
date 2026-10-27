@@ -1,0 +1,10 @@
+{
+  "schema_version": "wa_evidence_intake_request.v1",
+  "tenant_id": "VO00",
+  "source_type": "AE_ARTIFACT",
+  "source_ref": "artifact-9001",
+  "source_revision_ref": "version-1",
+  "source_hash": "sha256:NOT-A-DIGEST",
+  "occurred_at": "2026-10-27T09:00:00Z",
+  "correlation_id": "corr-p9-s06-003"
+}

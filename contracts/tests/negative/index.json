@@ -1,6 +1,21 @@
 {
   "negative_examples": [
     {
+      "name": "wa_evidence_intake_request_raw_prompt",
+      "path": "tests/negative/service/wa_evidence_intake_request.raw_prompt.json",
+      "schema": "schemas/service/nex_wa/wa_evidence_intake_request.v1.schema.json"
+    },
+    {
+      "name": "wa_evidence_intake_request_unsupported_source",
+      "path": "tests/negative/service/wa_evidence_intake_request.unsupported_source.json",
+      "schema": "schemas/service/nex_wa/wa_evidence_intake_request.v1.schema.json"
+    },
+    {
+      "name": "wa_evidence_intake_request_invalid_hash",
+      "path": "tests/negative/service/wa_evidence_intake_request.invalid_hash.json",
+      "schema": "schemas/service/nex_wa/wa_evidence_intake_request.v1.schema.json"
+    },
+    {
       "name": "eos_voucher_draft_list_request_missing_project",
       "path": "tests/negative/service/eos_voucher_draft_list_request.missing_project.json",
       "schema": "schemas/service/nex_eos/voucher_draft_list_request.v1.schema.json"

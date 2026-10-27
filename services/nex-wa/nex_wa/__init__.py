@@ -7,6 +7,25 @@ from .admission import (
 )
 from .app import create_wa_app
 from .config import WaConfigurationError, WaSettings, load_wa_settings
+from .intake_contracts import (
+    WA_ERROR_SCHEMA,
+    WA_EVIDENCE_INGEST_JOB_TYPE,
+    WA_EVIDENCE_INGEST_NAMESPACE,
+    WA_EVIDENCE_INTAKE_ADMISSION_SCHEMA,
+    WA_EVIDENCE_INTAKE_REQUEST_SCHEMA,
+    WA_EXTERNAL_INTAKE_SOURCE_TYPES,
+    WA_INTERNAL_SUPPORTING_SOURCE_TYPES,
+    WaErrorResponse,
+    WaEvidenceIntakeAdmission,
+    WaEvidenceIntakeIdentity,
+    WaEvidenceIntakeRequest,
+    WaIntakeContractError,
+    build_evidence_intake_admission,
+    build_evidence_intake_identity,
+    build_wa_error_response,
+    normalize_evidence_intake_request,
+    require_compatible_intake_replay,
+)
 from .persistence import (
     WA_COMMON_RUNTIME_MIGRATIONS,
     WA_REQUIRED_MIGRATIONS,
@@ -43,6 +62,13 @@ from .work_evidence import (
 
 __all__ = (
     "WA_COMMON_RUNTIME_MIGRATIONS",
+    "WA_ERROR_SCHEMA",
+    "WA_EVIDENCE_INGEST_JOB_TYPE",
+    "WA_EVIDENCE_INGEST_NAMESPACE",
+    "WA_EVIDENCE_INTAKE_ADMISSION_SCHEMA",
+    "WA_EVIDENCE_INTAKE_REQUEST_SCHEMA",
+    "WA_EXTERNAL_INTAKE_SOURCE_TYPES",
+    "WA_INTERNAL_SUPPORTING_SOURCE_TYPES",
     "WA_REQUIRED_MIGRATIONS",
     "WORK_ASSET_BINDING_ROLES",
     "WORK_ASSET_STATUSES",
@@ -57,6 +83,11 @@ __all__ = (
     "SqlAlchemyWorkEvidenceRepository",
     "WaConfigurationError",
     "WaEvidenceAdmissionService",
+    "WaErrorResponse",
+    "WaEvidenceIntakeAdmission",
+    "WaEvidenceIntakeIdentity",
+    "WaEvidenceIntakeRequest",
+    "WaIntakeContractError",
     "WaPersistenceError",
     "WaPersistenceRuntime",
     "WaSettings",
@@ -70,10 +101,15 @@ __all__ = (
     "WorkEvidenceInput",
     "WorkEvidenceRecord",
     "build_wa_persistence_runtime",
+    "build_evidence_intake_admission",
+    "build_evidence_intake_identity",
+    "build_wa_error_response",
     "build_work_asset",
     "build_work_evidence",
     "create_wa_app",
     "deterministic_work_asset_id",
     "deterministic_work_evidence_id",
     "load_wa_settings",
+    "normalize_evidence_intake_request",
+    "require_compatible_intake_replay",
 )

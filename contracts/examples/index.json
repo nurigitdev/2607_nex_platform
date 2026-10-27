@@ -1,6 +1,21 @@
 {
   "examples": [
     {
+      "name": "wa_evidence_intake_request_agent_result",
+      "path": "examples/service/wa_evidence_intake_request.agent_result.json",
+      "schema": "schemas/service/nex_wa/wa_evidence_intake_request.v1.schema.json"
+    },
+    {
+      "name": "wa_evidence_intake_admission_queued",
+      "path": "examples/service/wa_evidence_intake_admission.queued.json",
+      "schema": "schemas/service/nex_wa/wa_evidence_intake_admission.v1.schema.json"
+    },
+    {
+      "name": "wa_error_idempotency_conflict",
+      "path": "examples/service/wa_error.idempotency_conflict.json",
+      "schema": "schemas/service/nex_wa/wa_error.v1.schema.json"
+    },
+    {
       "name": "nsl_voucher_read_artifact_admission_pass",
       "path": "examples/common/nsl_voucher_read_artifact_admission.pass.json",
       "schema": "schemas/common/nsl_voucher_read_artifact_admission.v1.schema.json"

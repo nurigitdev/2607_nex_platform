@@ -1,0 +1,7 @@
+{
+  "schema_version": "wa_error.v1",
+  "error_code": "WA_SOURCE_IDEMPOTENCY_CONFLICT",
+  "detail": "source identity was reused with a different source hash",
+  "request_id": "req-p9-s06-002",
+  "trace_id": "trace-p9-s06-002"
+}
