@@ -2457,6 +2457,7 @@ paths:
       operationId: listAeAgentResultWaSources
       tags: [Work Sources]
       security: [{serviceBearer: []}]
+      x-nex-required-caller: nex-wa
       x-nex-required-scopes: [service:call, "work:source:read"]
       parameters:
         - {$ref: "#/components/parameters/WaSourceTenant"}
@@ -2479,6 +2480,7 @@ paths:
       operationId: getAeAgentResultWaSource
       tags: [Work Sources]
       security: [{serviceBearer: []}]
+      x-nex-required-caller: nex-wa
       x-nex-required-scopes: [service:call, "work:source:read"]
       parameters:
         - name: result_id
@@ -2507,6 +2509,7 @@ paths:
       operationId: listAeArtifactWaSources
       tags: [Work Sources]
       security: [{serviceBearer: []}]
+      x-nex-required-caller: nex-wa
       x-nex-required-scopes: [service:call, "work:source:read"]
       parameters:
         - {$ref: "#/components/parameters/WaSourceTenant"}
@@ -2529,6 +2532,7 @@ paths:
       operationId: getAeArtifactVersionWaSource
       tags: [Work Sources]
       security: [{serviceBearer: []}]
+      x-nex-required-caller: nex-wa
       x-nex-required-scopes: [service:call, "work:source:read"]
       parameters:
         - name: artifact_id

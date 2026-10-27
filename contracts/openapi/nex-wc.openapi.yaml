@@ -208,6 +208,7 @@ paths:
     get:
       operationId: getWcWorkResultWaSource
       security: [{serviceBearer: []}]
+      x-nex-required-caller: nex-wa
       x-nex-required-scopes: [service:call, "work:source:read"]
       x-nex-allowed-service-ids: [nex-wa]
       parameters:
@@ -229,6 +230,7 @@ paths:
     get:
       operationId: getWcWorkResultWaSourceByExecution
       security: [{serviceBearer: []}]
+      x-nex-required-caller: nex-wa
       x-nex-required-scopes: [service:call, "work:source:read"]
       x-nex-allowed-service-ids: [nex-wa]
       parameters:

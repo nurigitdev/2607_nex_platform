@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX Work Asset API
-  version: 2.1.0-p9-s24
+  version: 2.1.0-p9-s28
   description: Protected WorkEvidence intake, privacy-scoped reads, Job recovery, and bounded operations.
 servers:
   - url: http://127.0.0.1:8108
@@ -28,6 +28,7 @@ paths:
       operationId: admitWaEvidenceIntake
       tags: [Evidence]
       security: [{serviceBearer: []}]
+      x-nex-required-caller: nex-ae-api
       x-nex-required-scopes: [service:call, work:evidence:ingest]
       x-nex-route-class: WRITE
       requestBody:

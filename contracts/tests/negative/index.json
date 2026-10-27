@@ -36,6 +36,21 @@
       "schema": "schemas/service/nex_wa/wa_source_normalized_envelope.v1.schema.json"
     },
     {
+      "name": "wa_agent_result_source_projection_raw_result",
+      "path": "tests/negative/service/wa_agent_result_source_projection.raw_result.json",
+      "schema": "schemas/service/nex_ae_api/wa_agent_result_source_projection.v1.schema.json"
+    },
+    {
+      "name": "wa_artifact_source_projection_raw_bytes",
+      "path": "tests/negative/service/wa_artifact_source_projection.raw_bytes.json",
+      "schema": "schemas/service/nex_ae_api/wa_artifact_source_projection.v1.schema.json"
+    },
+    {
+      "name": "wa_work_result_source_projection_raw_payload",
+      "path": "tests/negative/service/wa_work_result_source_projection.raw_payload.json",
+      "schema": "schemas/service/nex_wc/wa_work_result_source_projection.v1.schema.json"
+    },
+    {
       "name": "wa_evidence_intake_request_raw_prompt",
       "path": "tests/negative/service/wa_evidence_intake_request.raw_prompt.json",
       "schema": "schemas/service/nex_wa/wa_evidence_intake_request.v1.schema.json"
