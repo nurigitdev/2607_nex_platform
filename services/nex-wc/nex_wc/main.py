@@ -38,6 +38,10 @@ from nex_wc.work_items import (
 )
 from nex_wc.work_result_api import register_work_result_routes
 from nex_wc.work_result_delivery import HttpWorkResultEventClient
+from nex_wc.work_result_source_projection import (
+    WorkResultWaProjectionSource,
+    register_wa_work_result_source_routes,
+)
 from nex_wc.work_results import (
     InMemoryWorkResultRepository,
     SqlAlchemyWorkResultRepository,
@@ -144,6 +148,10 @@ register_service_log_retention_routes(
 register_work_item_routes(app, service=WORK_ITEMS)
 register_coordination_routes(app, service=COORDINATION)
 register_work_result_routes(app, service=WORK_RESULTS)
+register_wa_work_result_source_routes(
+    app,
+    source=WorkResultWaProjectionSource(WORK_RESULT_REPOSITORY),
+)
 register_approval_routes(
     app,
     inbox_service=APPROVAL_INBOX,

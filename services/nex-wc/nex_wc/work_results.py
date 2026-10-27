@@ -80,6 +80,14 @@ class WorkResultError(Exception):
 
 
 class WorkResultRepository(Protocol):
+    def get_result_source(
+        self, *, tenant_id: str, result_id: str
+    ) -> Mapping[str, Any] | None: ...
+
+    def list_result_sources_by_execution(
+        self, *, tenant_id: str, source_execution_ref: str, limit: int
+    ) -> Sequence[Mapping[str, Any]]: ...
+
     def get_submission_context(
         self, *, tenant_id: str, work_item_id: str
     ) -> Mapping[str, Any] | None: ...
@@ -136,6 +144,32 @@ class InMemoryWorkResultRepository:
             )
             assignment = self._coordination._assignments.get((tenant_id, work_item_id))
             return _submission_context(record, claim, assignment)
+
+    def get_result_source(
+        self, *, tenant_id: str, result_id: str
+    ) -> Mapping[str, Any] | None:
+        with self._lock:
+            record = self._results.get((tenant_id, result_id))
+            return None if record is None else copy.deepcopy(record)
+
+    def list_result_sources_by_execution(
+        self, *, tenant_id: str, source_execution_ref: str, limit: int
+    ) -> Sequence[Mapping[str, Any]]:
+        with self._lock:
+            records = [
+                copy.deepcopy(record)
+                for (record_tenant, _), record in self._results.items()
+                if record_tenant == tenant_id
+                and record["work_result"].get("source_execution_ref")
+                == source_execution_ref
+            ]
+        records.sort(
+            key=lambda record: (
+                str(record["work_result"].get("submitted_at") or ""),
+                str(record["work_result"].get("result_id") or ""),
+            )
+        )
+        return records[:limit]
 
     def commit_result(
         self,
@@ -302,6 +336,52 @@ class SqlAlchemyWorkResultRepository:
                 return _load_submission_context(
                     session, tenant_id=tenant_id, work_item_id=work_item_id
                 )
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
+    def get_result_source(
+        self, *, tenant_id: str, result_id: str
+    ) -> Mapping[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = (
+                    session.execute(
+                        text(
+                            f"SELECT {_RESULT_SOURCE_COLUMNS} FROM wc_work_result "
+                            "WHERE tenant_id = :tenant_id AND result_id = :result_id"
+                        ),
+                        {"tenant_id": tenant_id, "result_id": result_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+                return None if row is None else _result_source_from_row(row)
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
+    def list_result_sources_by_execution(
+        self, *, tenant_id: str, source_execution_ref: str, limit: int
+    ) -> Sequence[Mapping[str, Any]]:
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            f"SELECT {_RESULT_SOURCE_COLUMNS} FROM wc_work_result "
+                            "WHERE tenant_id = :tenant_id "
+                            "AND source_execution_ref = :source_execution_ref "
+                            "ORDER BY submitted_at, result_id LIMIT :limit"
+                        ),
+                        {
+                            "tenant_id": tenant_id,
+                            "source_execution_ref": source_execution_ref,
+                            "limit": limit,
+                        },
+                    )
+                    .mappings()
+                    .all()
+                )
+                return [_result_source_from_row(row) for row in rows]
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
 
@@ -867,6 +947,29 @@ def _outbox_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _result_source_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    raw_payload = row["result_payload"]
+    payload = (
+        json.loads(raw_payload)
+        if isinstance(raw_payload, str)
+        else copy.deepcopy(dict(raw_payload))
+    )
+    return {
+        "tenant_id": row["tenant_id"],
+        "result_id": str(row["result_id"]),
+        "work_item_id": str(row["work_item_id"]),
+        "revision_no": int(row["revision_no"]),
+        "result_hash": row["result_hash"],
+        "source_execution_ref": row["source_execution_ref"],
+        "claim_id": str(row["claim_id"]),
+        "claim_generation": int(row["claim_generation"]),
+        "assignment_id": str(row["assignment_id"]),
+        "submitted_agent_id": str(row["submitted_agent_id"]),
+        "submitted_at": _time(row["submitted_at"]),
+        "work_result": payload,
+    }
+
+
 def _require_same_result(
     existing: Mapping[str, Any], result_hash: str, work_item_id: str
 ) -> None:
@@ -999,6 +1102,12 @@ _RESULT_INSERT_SQL = """
         :submitted_agent_id, :authorization_revision_hash,
         :authorization_checked_at, :submitted_at
     )
+"""
+
+_RESULT_SOURCE_COLUMNS = """
+    tenant_id, result_id, work_item_id, revision_no, result_hash,
+    result_payload, source_execution_ref, claim_id, claim_generation,
+    assignment_id, submitted_agent_id, submitted_at
 """
 
 _WORK_UPDATE_SQL = """

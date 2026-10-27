@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_wc/wa_work_result_source_projection.v1.schema.json",
+  "title": "WA WorkResult Source Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "projection_schema_version",
+    "tenant_id",
+    "result_id",
+    "work_item_id",
+    "revision_no",
+    "result_hash",
+    "source_execution_ref",
+    "claim_id",
+    "claim_generation",
+    "assignment_id",
+    "submitted_agent_id",
+    "submitted_at"
+  ],
+  "properties": {
+    "projection_schema_version": {"const": "wa_work_result_source_projection.v1"},
+    "tenant_id": {"type": "string", "minLength": 1},
+    "result_id": {"type": "string", "minLength": 1},
+    "work_item_id": {"type": "string", "minLength": 1},
+    "revision_no": {"type": "integer", "minimum": 1},
+    "result_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "source_execution_ref": {"type": "string", "minLength": 1},
+    "claim_id": {"type": "string", "minLength": 1},
+    "claim_generation": {"type": "integer", "minimum": 1},
+    "assignment_id": {"type": "string", "minLength": 1},
+    "submitted_agent_id": {"type": "string", "minLength": 1},
+    "submitted_at": {"type": "string", "format": "date-time"}
+  }
+}

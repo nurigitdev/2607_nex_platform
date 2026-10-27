@@ -204,6 +204,48 @@ paths:
         "404": {description: WorkItem not found}
         "409": {description: "Stale Claim, Assignment, version, or semantic conflict"}
         "503": {description: OA authorization or WC persistence unavailable}
+  /internal/v1/wa-sources/work-results/{result_id}:
+    get:
+      operationId: getWcWorkResultWaSource
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call, "work:source:read"]
+      x-nex-allowed-service-ids: [nex-wa]
+      parameters:
+        - {name: result_id, in: path, required: true, schema: {type: string, minLength: 1}}
+        - {$ref: "#/components/parameters/TenantIdHeader"}
+      responses:
+        "200":
+          description: Safe exact WorkResult supporting projection.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WaWorkResultSourceProjection"}
+        "400": {description: Tenant header is missing.}
+        "401": {description: Service token or required scope is invalid.}
+        "403": {description: Caller service is denied.}
+        "404": {description: WorkResult is absent in the tenant scope.}
+        "409": {description: WorkResult lineage is inconsistent.}
+        "503": {description: WC persistence is unavailable.}
+  /internal/v1/wa-sources/work-results/by-execution/{agent_execution_id}:
+    get:
+      operationId: getWcWorkResultWaSourceByExecution
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call, "work:source:read"]
+      x-nex-allowed-service-ids: [nex-wa]
+      parameters:
+        - {name: agent_execution_id, in: path, required: true, schema: {type: string, minLength: 1}}
+        - {$ref: "#/components/parameters/TenantIdHeader"}
+      responses:
+        "200":
+          description: Unique WorkResult supporting projection for AgentExecution.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WaWorkResultSourceProjection"}
+        "400": {description: Tenant header is missing.}
+        "401": {description: Service token or required scope is invalid.}
+        "403": {description: Caller service is denied.}
+        "404": {description: WorkResult is absent in the tenant scope.}
+        "409": {description: Lookup is ambiguous or lineage is inconsistent.}
+        "503": {description: WC persistence is unavailable.}
 components:
   securitySchemes:
     serviceBearer:
@@ -231,6 +273,9 @@ components:
       required: true
       schema: {type: string, minLength: 1, maxLength: 128}
   schemas:
+    WaWorkResultSourceProjection:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_wc/wa_work_result_source_projection.v1.schema.json
     ApprovalDecision:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_wc/approval_decision.v1.schema.json

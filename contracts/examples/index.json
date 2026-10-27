@@ -1399,6 +1399,11 @@
       "name": "wa_artifact_source_projection_ready",
       "path": "examples/service/wa_artifact_source_projection.ready.json",
       "schema": "schemas/service/nex_ae_api/wa_artifact_source_projection.v1.schema.json"
+    },
+    {
+      "name": "wa_work_result_source_projection_valid",
+      "path": "examples/service/wa_work_result_source_projection.valid.json",
+      "schema": "schemas/service/nex_wc/wa_work_result_source_projection.v1.schema.json"
     }
   ]
 }
