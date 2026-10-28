@@ -25,6 +25,12 @@ from nex_runtime.demo_trust import (
     DEMO_TLS_HOSTS,
     demo_trust_projection,
 )
+from nex_runtime.openbao_provisioning import (
+    OpenBaoProvisioningSession,
+    provision_openbao_environment,
+    reactivate_openbao_after_restart,
+    verify_openbao_runtime_resolution,
+)
 from nex_runtime.openbao_secret_resolver import (
     OpenBaoSecretResolverError,
     build_openbao_secret_resolver,
@@ -34,8 +40,6 @@ from nex_runtime.production_secret_materialization import (
 )
 from nex_runtime.s143_staging import (
     OpenBaoAdminClient,
-    configure_openbao_staging,
-    initialize_openbao,
     prepare_staging_runtime_directory,
     refresh_openbao_approle_credentials,
     write_openbao_secret_generation,
@@ -81,6 +85,10 @@ def run_p8_demo_trust_admission(
                 **env,
                 **image_environment,
                 "NEX_S143_RUNTIME_DIR": str(runtime_dir),
+                "NEX_P8_DEMO_SEMANTIC_CALIBRATION_POLICIES_JSON": str(
+                    env.get("NEX_P8_DEMO_SEMANTIC_CALIBRATION_POLICIES_JSON")
+                    or "[]"
+                ),
                 "NEX_P8_DEMO_SECRET_VERSION": "v1",
                 "NEX_P8_DEMO_SECRET_GENERATION": "secret:p8-demo.1",
                 "NEX_P8_DEMO_TLS_GENERATION": "tls:p8-demo.1",
@@ -101,11 +109,9 @@ def run_p8_demo_trust_admission(
                     "https://127.0.0.1:8200",
                     ca_certificate_file=runtime_dir / "tls/openbao-ca.crt",
                 )
-                bootstrap = initialize_openbao(client, runtime_dir)
                 secret_values = _synthetic_secret_values()
-                configured = configure_openbao_staging(
+                provisioning = provision_openbao_environment(
                     client,
-                    root_token=bootstrap.root_token,
                     root=root,
                     runtime_dir=runtime_dir,
                     secret_values=secret_values,
@@ -113,10 +119,23 @@ def run_p8_demo_trust_admission(
                     owners=DEMO_OWNERS,
                     subject_alt_names=DEMO_TLS_HOSTS,
                 )
-                initial = _resolve_generation(runtime_dir, version="v1")
+                initial = _resolve_generation(
+                    provisioning,
+                    runtime_dir,
+                    version="v1",
+                )
+                _compose(
+                    compose_environment,
+                    root=root,
+                    arguments=("restart", "openbao"),
+                )
+                restart_recovery = reactivate_openbao_after_restart(
+                    client,
+                    provisioning,
+                )
                 refresh_openbao_approle_credentials(
                     client,
-                    root_token=bootstrap.root_token,
+                    root_token=provisioning.root_token,
                     runtime_dir=runtime_dir,
                     owners=DEMO_OWNERS,
                 )
@@ -128,7 +147,7 @@ def run_p8_demo_trust_admission(
                 }
                 versions = write_openbao_secret_generation(
                     client,
-                    root_token=bootstrap.root_token,
+                    root_token=provisioning.root_token,
                     bindings=DEMO_SECRET_BINDINGS,
                     secret_values=rotated_values,
                 )
@@ -138,11 +157,15 @@ def run_p8_demo_trust_admission(
                     )
                 refresh_openbao_approle_credentials(
                     client,
-                    root_token=bootstrap.root_token,
+                    root_token=provisioning.root_token,
                     runtime_dir=runtime_dir,
                     owners=DEMO_OWNERS,
                 )
-                rotated = _resolve_generation(runtime_dir, version="v2")
+                rotated = _resolve_generation(
+                    provisioning,
+                    runtime_dir,
+                    version="v2",
+                )
                 certificate_hosts = _certificate_hosts(runtime_dir)
                 routed_hosts = set(DEMO_TLS_HOSTS)
                 if not routed_hosts.issubset(certificate_hosts) or (
@@ -155,12 +178,18 @@ def run_p8_demo_trust_admission(
                     "executed": True,
                     "openbao": {
                         "storage": "integrated-raft",
-                        "owner_count": configured["owner_count"],
-                        "secret_count": configured["secret_count"],
+                        "owner_count": len(provisioning.owners),
+                        "secret_count": provisioning.secret_count,
                         "generations_verified": [1, 2],
-                        "initial_owner_resolution_count": initial,
-                        "rotated_owner_resolution_count": rotated,
+                        "initial_owner_resolution_count": initial[
+                            "resolved_owner_count"
+                        ],
+                        "rotated_owner_resolution_count": rotated[
+                            "resolved_owner_count"
+                        ],
                         "cross_owner_access_denied": cross_owner_denied,
+                        "restart_recovery": restart_recovery,
+                        "dependency_readiness": rotated["dependency_readiness"],
                     },
                     "pki": {
                         "routed_tls_host_count": len(routed_hosts),
@@ -252,28 +281,22 @@ def _synthetic_secret_values() -> dict[str, str]:
     }
 
 
-def _resolve_generation(runtime_dir: Path, *, version: str) -> int:
-    resolved = 0
-    for owner in DEMO_OWNERS:
-        binding = next(item for item in DEMO_SECRET_BINDINGS if item.owner == owner)
-        resolver = build_openbao_secret_resolver(
-            _resolver_environment(runtime_dir, owner)
-        )
-        try:
-            resolver.resolve(
-                _reference(binding.owner, binding.target_environment_name, version),
-                context=SecretResolutionContext(
-                    owner=owner,
-                    target_environment_name=binding.target_environment_name,
-                    secret_generation=f"secret:p8-demo.{version[1:]}",
-                    reference_version=version,
-                ),
-            )
-            resolved += 1
-        finally:
-            with suppress(Exception):
-                resolver.revoke()
-    return resolved
+def _resolve_generation(
+    provisioning: OpenBaoProvisioningSession,
+    runtime_dir: Path,
+    *,
+    version: str,
+) -> dict[str, Any]:
+    return verify_openbao_runtime_resolution(
+        provisioning,
+        resolver_environments={
+            owner: _resolver_environment(runtime_dir, owner) for owner in DEMO_OWNERS
+        },
+        bindings=DEMO_SECRET_BINDINGS,
+        namespace="staging",
+        reference_version=version,
+        secret_generation=f"secret:p8-demo.{version[1:]}",
+    )
 
 
 def _cross_owner_denied(runtime_dir: Path) -> bool:
