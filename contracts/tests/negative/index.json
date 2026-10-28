@@ -1,6 +1,11 @@
 {
   "negative_examples": [
     {
+      "name": "platform_dependency_readiness_secret_leak",
+      "path": "tests/negative/common/platform_dependency_readiness.secret_leak.json",
+      "schema": "schemas/common/platform_dependency_readiness.v1.schema.json"
+    },
+    {
       "name": "eos_project_verification_request_private_field",
       "path": "tests/negative/service/eos_project_verification_request.private_field.json",
       "schema": "schemas/service/nex_eos/project_verification_request.v1.schema.json"

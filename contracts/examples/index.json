@@ -1,6 +1,11 @@
 {
   "examples": [
     {
+      "name": "platform_dependency_readiness_ready",
+      "path": "examples/common/platform_dependency_readiness.ready.json",
+      "schema": "schemas/common/platform_dependency_readiness.v1.schema.json"
+    },
+    {
       "name": "eos_project_verification_request_valid",
       "path": "examples/service/eos_project_verification_request.valid.json",
       "schema": "schemas/service/nex_eos/project_verification_request.v1.schema.json"

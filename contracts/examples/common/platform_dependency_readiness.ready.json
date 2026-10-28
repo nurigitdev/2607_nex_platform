@@ -1,0 +1,14 @@
+{
+  "schema_version": "platform_dependency_readiness.v1",
+  "dependency_id": "provider:generation",
+  "dependency_type": "MODEL_PROVIDER",
+  "owner": "nex-mo",
+  "required": true,
+  "configured": true,
+  "provisioned": true,
+  "reachable": true,
+  "authorized": true,
+  "ready": true,
+  "evidence_hash": "sha256:e6afd4df64b71fd68b57a2aad09bed42a5afd2945cdd8c6e075ff166115054a4",
+  "checked_at": "2026-10-28T09:00:00Z"
+}
