@@ -28,14 +28,14 @@
         }
       },
       "skill_artifact": {
-        "bundle_manifest_ref": "deployment-lock://p8-demo-nsl-runtime-bundle.v1",
-        "bundle_id": "p8-demo-nsl-v0.2.1-golden-a-v1",
+        "bundle_manifest_ref": "deployment-lock://ae-product-nsl-runtime-bundle.v1",
+        "bundle_id": "nex-product-nsl-v0.2.1-finance-voucher-draft-v1",
         "skill_id": "FINANCE.VOUCHER_DRAFT_CREATE",
         "exact_skill_version": "1.1.0",
         "skill_semantic_hash": "sha256:b6ba60f6ae681dc754b6d304fcf7c99794a48e88429c698afd9d12afcb90a8fc"
       },
-      "registration_hash": "sha256:2288fbfc775a3b0f0575f8826110bdab3c536f52f1ae1ae77ee1c85f3c87529f"
+      "registration_hash": "sha256:45b4c07317f9e78e1f23e793c1cdd29026f7b035d4287a2c00ed4c66c123b7dc"
     }
   ],
-  "registry_hash": "sha256:8e5a41db881e53ca79a94f71bf6c25b7fe58f7b01f9bf75dc26cdbc1e3a61755"
+  "registry_hash": "sha256:4ec6072f169c437116ee435213dc9f8a695be6661937bd0b117d1c74dd8c1938"
 }

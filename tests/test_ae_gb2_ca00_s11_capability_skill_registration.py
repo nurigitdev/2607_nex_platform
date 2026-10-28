@@ -88,7 +88,7 @@ def test_versioned_registry_is_canonical_capability_and_skill_source() -> None:
     assert registration.skill_artifact["skill_id"] == GOLDEN_A_NSL_SKILL_ID
     assert registration.capability_id != registration.skill_artifact["skill_id"]
     assert registration.skill_artifact["bundle_id"] == (
-        "p8-demo-nsl-v0.2.1-golden-a-v1"
+        "nex-product-nsl-v0.2.1-finance-voucher-draft-v1"
     )
     assert registration.source_identity == registry.source_identity
     assert registration.to_projection()["registration_hash"] == (

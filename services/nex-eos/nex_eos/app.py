@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from fastapi import FastAPI
 from nex_runtime import SERVICE_SPECS, build_service_app
 
+from .account_api import register_account_routes
 from .approval_decision_api import register_approval_decision_routes
 from .config import EosSettings, load_eos_settings
 from .dependencies import build_eos_dependencies
@@ -72,6 +73,7 @@ def create_eos_app(
     register_approval_decision_routes(app)
     register_organization_routes(app)
     register_project_routes(app)
+    register_account_routes(app)
     verifier = (
         EosWaProjectVerifier(
             projects=dependencies.projects,

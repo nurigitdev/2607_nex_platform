@@ -105,7 +105,13 @@ def build_demo_process_manifest() -> tuple[DemoProcessBinding, ...]:
             artifact_id="nex-ae-runtime",
             kind="worker",
             execution_model="INSTALLED_PROCESS",
-            command=("python", "-m", "nex_ae_api.demo_runtime", "worker"),
+            command=(
+                "python",
+                "-m",
+                "nex_ae_api.agent_runtime_process",
+                "--profile",
+                "staging_live",
+            ),
             database_environment="NEX_AE_DATABASE_URL",
             pool_workload="worker",
             health_contract="POSTGRESQL_HEARTBEAT",
@@ -113,7 +119,7 @@ def build_demo_process_manifest() -> tuple[DemoProcessBinding, ...]:
             restart_contract="LEASE_EXPIRY_AND_DURABLE_CHECKPOINT",
             required_for_release=True,
             source_modules=(
-                "nex_ae_api.demo_runtime",
+                "nex_ae_api.agent_runtime_process",
                 "nex_ae_api.agent_runtime_dispatcher",
                 "nex_ae_api.agent_runtime_worker",
             ),

@@ -217,7 +217,7 @@ services:
     <<: *p8-demo-service
     image: ${NEX_AE_RUNTIME_IMAGE:?immutable AE image is required}
     entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-ae-api, --]
-    command: [python, -m, nex_ae_api.demo_runtime, worker]
+    command: [python, -m, nex_ae_api.agent_runtime_process, --profile, staging_live]
     environment:
       <<: *p8-demo-common-environment
       NEX_AE_DATABASE_URL_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_DATABASE_URL@${NEX_P8_DEMO_SECRET_VERSION:-v1}
@@ -229,12 +229,11 @@ services:
       NEX_AE_TO_EOS_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_EOS_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
       NEX_AE_OBJECT_STORAGE_ACCESS_KEY_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_OBJECT_STORAGE_ACCESS_KEY@${NEX_P8_DEMO_SECRET_VERSION:-v1}
       NEX_AE_OBJECT_STORAGE_SECRET_KEY_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_OBJECT_STORAGE_SECRET_KEY@${NEX_P8_DEMO_SECRET_VERSION:-v1}
-      NEX_P8_DEMO_DOMAIN_CLAIMING_ENABLED: "true"
       NEX_AE_AGENT_WORKER_MODE: enabled
-      NEX_AE_AGENT_WORKER_ID: ae-demo-agent-runtime-1
+      NEX_AE_AGENT_WORKER_ID: ae-product-agent-runtime-1
       NEX_AE_AGENT_WORKER_EXECUTOR_KINDS: DETERMINISTIC_AGGREGATE,DETERMINISTIC_REPORT,LOCAL_SKILL,P4_CHAT_RAG_COMPATIBILITY
       NEX_AE_AGENT_WORKER_BACKEND_PROFILES: NSL_V02_IN_PROCESS
-      NEX_AE_DEMO_NSL_STATE_ROOT: /var/lib/nex-platform/ae-runtime/nsl
+      NEX_AE_NSL_STATE_ROOT: /var/lib/nex-platform/ae-runtime/nsl
       NEX_P8_DEMO_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_P8_DEMO_SERVICE_CREDENTIAL_ID@${NEX_P8_DEMO_SECRET_VERSION:-v1}
       NEX_P8_DEMO_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_P8_DEMO_SERVICE_CLIENT_SECRET@${NEX_P8_DEMO_SECRET_VERSION:-v1}
     secrets:

@@ -61,7 +61,11 @@ def test_source_check_uses_generic_product_factory_and_bounded_profile() -> None
             "DETERMINISTIC_REPORT",
         ],
         "backend_profiles": ["NSL_V01_PROCESS_ISOLATED"],
-        "database_environments": {"test": "NEX_AE_TEST_DATABASE_URL"},
+        "database_environments": {
+            "test": "NEX_AE_TEST_DATABASE_URL",
+            "staging_live": "NEX_AE_DATABASE_URL",
+            "production": "NEX_AE_DATABASE_URL",
+        },
         "work_capability": "job_claiming",
         "runtime_ready": False,
         "content_included": False,
@@ -153,8 +157,34 @@ def test_local_mock_check_is_package_only_and_execution_is_rejected() -> None:
 
     with pytest.raises(process.AgentRuntimeProcessError, match="package admission"):
         process.build_installed_agent_runtime_process("local_mock", environ={})
-    with pytest.raises(process.AgentRuntimeProcessError, match="unsupported"):
+    with pytest.raises(process.AgentRuntimeProcessError, match="unavailable"):
         process.build_installed_agent_runtime_process("production", environ={})
+
+
+def test_protected_profile_selects_product_executor_composition(monkeypatch) -> None:
+    engine = _sqlite_engine()
+    product_profile = process.build_deterministic_component_executor_profile()
+    observed = []
+    monkeypatch.setattr(
+        process,
+        "build_product_runtime_executor_profile",
+        lambda sessions, environ: observed.append((sessions, environ))
+        or product_profile,
+    )
+    installed = process.build_installed_agent_runtime_process(
+        "staging_live",
+        environ={"NEX_AE_DATABASE_URL": "sqlite+pysqlite:///:memory:"},
+        engine_factory=lambda *_args, **_kwargs: engine,
+        engine_checker=lambda _engine: True,
+        session_factory_builder=lambda value: sessionmaker(bind=value),
+    )
+    try:
+        assert installed.profile == "staging_live"
+        assert installed.database_environment == "NEX_AE_DATABASE_URL"
+        assert installed.composition.executor_profile is product_profile
+        assert len(observed) == 1
+    finally:
+        installed.close()
 
 
 def test_installed_loop_reports_work_idle_and_bounded_stop() -> None:

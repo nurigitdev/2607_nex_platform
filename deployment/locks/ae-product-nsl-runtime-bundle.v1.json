@@ -1,0 +1,25 @@
+{
+  "schema_version": "nex_nsl_runtime_bundle.v1",
+  "bundle_id": "nex-product-nsl-v0.2.1-finance-voucher-draft-v1",
+  "admitted_at": "2026-10-28T00:00:00Z",
+  "wheel": {
+    "filename": "nex_skill_language-0.2.1-py3-none-any.whl",
+    "sha256": "a89ce5fde1a32749565ba0906a2f1faf1d440ff6db2dfc07c0b2a581378507cb",
+    "admission_lock": "deployment/locks/nsl-v0.2.1-wheel.json"
+  },
+  "skill": {
+    "skill_id": "FINANCE.VOUCHER_DRAFT_CREATE",
+    "skill_version": "1.1.0",
+    "semantic_hash": "sha256:b6ba60f6ae681dc754b6d304fcf7c99794a48e88429c698afd9d12afcb90a8fc",
+    "source_directory": "examples/golden_a_voucher_draft",
+    "files": {
+      "README.md": "1f0c1b99a2e74776eeb6a4517ed49c0bc1914d334e66ab3e4562573b7803bb3d",
+      "context.json": "a3e532bf34fc38a153d3e540166437ff0ed59059e02c8d08e7d180c811a14962",
+      "controlled.profile.json": "da554570c916ec500f9b78ea05a1955de30e9109d2112a5269d3bf03c09eee20",
+      "golden_a_voucher_draft.ns": "e61fd564d5bd433568ba9f2a968c5d687343ca22758fa7614c9baf1cebaf86c4",
+      "input.json": "8550bdeb1844137cb12c031d3a8660c73eea6a94e814de21d6c7873cbc53aaed",
+      "principal_write.json": "e246107b085d692e728c2c01ae66432b4a55d8c05527db88a5987c02708eaac5",
+      "tools.json": "627ee3411ceea8a5252add6d2164d356ab51bf5af11c8d8172c36089204b1058"
+    }
+  }
+}

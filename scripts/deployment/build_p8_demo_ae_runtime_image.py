@@ -15,9 +15,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "services/_shared"))
 
-from nex_runtime.demo_nsl_bundle import (
-    load_demo_nsl_runtime_bundle,
-    verify_demo_nsl_runtime_bundle,
+from nex_runtime.nsl_runtime_bundle import (
+    load_nsl_runtime_bundle,
+    verify_nsl_runtime_bundle,
 )
 from nex_runtime.deployment_artifacts import build_default_deployment_artifact_catalog
 from nex_runtime.deployment_locks import (
@@ -31,7 +31,7 @@ from nex_runtime.deployment_oci import (
 )
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
-DEFAULT_MANIFEST = ROOT / "deployment/locks/p8-demo-nsl-runtime-bundle.v1.json"
+DEFAULT_MANIFEST = ROOT / "deployment/locks/ae-product-nsl-runtime-bundle.v1.json"
 DEFAULT_WHEEL = (
     ROOT
     / "reports/deployment/p8-nsl-v0.2.1-wheel"
@@ -56,14 +56,12 @@ def build_p8_demo_ae_runtime_image(
     build_current_base: bool = False,
     execute: bool,
 ) -> dict[str, Any]:
-    bundle = load_demo_nsl_runtime_bundle(manifest_path)
+    bundle = load_nsl_runtime_bundle(manifest_path)
     skill_root = nsl_source / bundle.skill_source_directory
-    readiness = verify_demo_nsl_runtime_bundle(
+    readiness = verify_nsl_runtime_bundle(
         bundle,
         wheel_path=wheel_path,
         skill_root=skill_root,
-        demo_fixture_path=ROOT / bundle.demo_fixture_path,
-        base_fixture_path=ROOT / bundle.base_fixture_path,
     )
     if not execute:
         return _record(
@@ -199,7 +197,6 @@ def _stage_context(
 ) -> None:
     (context / "wheel").mkdir()
     (context / "skill").mkdir()
-    (context / "fixtures").mkdir()
     (context / "config").mkdir()
     (context / "locks").mkdir()
     shutil.copy2(
@@ -212,14 +209,6 @@ def _stage_context(
         target = context / "skill" / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-    shutil.copy2(
-        ROOT / bundle.demo_fixture_path,
-        context / "fixtures/p8_demo_vo00_fixture.v1.json",
-    )
-    shutil.copy2(
-        ROOT / bundle.base_fixture_path,
-        context / "fixtures/p8_golden_a_fixture.v1.json",
-    )
     shutil.copy2(
         ROOT / "deployment/environments/finance-golden-a-vo00.v1.json",
         context / "config/finance-golden-a-vo00.v1.json",
@@ -238,7 +227,7 @@ def _stage_context(
     )
     shutil.copy2(
         manifest_path,
-        context / "locks/p8-demo-nsl-runtime-bundle.v1.json",
+        context / "locks/ae-product-nsl-runtime-bundle.v1.json",
     )
 
 

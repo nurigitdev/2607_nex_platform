@@ -164,6 +164,31 @@ class SqlAlchemyEosAccountRepository:
             raise _persistence_error() from exc
         return dict(row) if row is not None else None
 
+    def get_effective_account_by_code(
+        self,
+        *,
+        tenant_id: str,
+        account_code: str,
+        effective_at: date,
+    ) -> dict[str, Any] | None:
+        effective_at = _date("effective_at", effective_at)
+        statement = select(EOS_ACCOUNT_TABLE).where(
+            EOS_ACCOUNT_TABLE.c.tenant_id == _scoped_id("tenant_id", tenant_id),
+            EOS_ACCOUNT_TABLE.c.account_code == _code(account_code),
+            EOS_ACCOUNT_TABLE.c.status == "ACTIVE",
+            EOS_ACCOUNT_TABLE.c.effective_from <= effective_at,
+            (
+                EOS_ACCOUNT_TABLE.c.effective_until.is_(None)
+                | (EOS_ACCOUNT_TABLE.c.effective_until > effective_at)
+            ),
+        )
+        try:
+            with self._session_factory() as session:
+                row = session.execute(statement).mappings().one_or_none()
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+        return dict(row) if row is not None else None
+
 
 def _uuid(field_name: str, value: object) -> str:
     try:

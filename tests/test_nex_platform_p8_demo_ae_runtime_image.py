@@ -14,7 +14,7 @@ def test_demo_ae_runtime_containerfile_admits_every_embedded_asset_path() -> Non
     )
 
     assert (
-        "NEX_AE_DEMO_PLATFORM_LOCK=/app/deployment/p8-demo/locks/python-production.lock"
+        "NEX_AE_NSL_PLATFORM_LOCK=/app/deployment/product/locks/python-production.lock"
     ) in source
     assert (
         "install -d -o 65532 -g 65532 -m 0700 /var/lib/nex-platform/ae-runtime/nsl"
@@ -24,6 +24,10 @@ def test_demo_ae_runtime_containerfile_admits_every_embedded_asset_path() -> Non
     assert "NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH=" in source
     assert "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH=" in source
     assert "assert all(Path(os.environ[name]).exists() for name in names)" in source
+    assert "nex_ae_api.agent_runtime_process" in source
+    assert "nex_ae_api.demo_runtime" not in source
+    assert "NEX_AE_DEMO_" not in source
+    assert "COPY --chown=65532:65532 fixtures" not in source
 
 
 def test_demo_ae_runtime_image_dry_run_requires_locked_bundle() -> None:

@@ -31,6 +31,9 @@ from nex_ae_api.agent_runtime_worker import (
     restore_agent_runtime_worker_signal_handlers,
 )
 from nex_ae_api.nsl_backend_profiles import NSL_V01_PROCESS_ISOLATED_BACKEND
+from nex_ae_api.product_runtime_profile import (
+    build_product_runtime_executor_profile,
+)
 from nex_ae_api.runtime_composition import (
     InstalledRuntimeComposition,
     RuntimeExecutorProfile,
@@ -47,8 +50,12 @@ PROCESS_SCHEMA_VERSION = "ae_agent_runtime_process.v1"
 PROCESS_READINESS_SCHEMA_VERSION = "ae_agent_runtime_process_readiness.v1"
 PROCESS_RUN_SCHEMA_VERSION = "ae_agent_runtime_process_run.v1"
 DEFAULT_WORKER_ID = "ae-agent-runtime-worker-1"
-SUPPORTED_PROFILES = ("local_mock", "test")
-DATABASE_ENVIRONMENTS = {"test": "NEX_AE_TEST_DATABASE_URL"}
+SUPPORTED_PROFILES = ("local_mock", "test", "staging_live", "production")
+DATABASE_ENVIRONMENTS = {
+    "test": "NEX_AE_TEST_DATABASE_URL",
+    "staging_live": "NEX_AE_DATABASE_URL",
+    "production": "NEX_AE_DATABASE_URL",
+}
 REQUIRED_TABLES = frozenset(
     {
         "ae_executable_plan",
@@ -194,7 +201,7 @@ def build_installed_agent_runtime_process(
     if selected not in DATABASE_ENVIRONMENTS:
         raise AgentRuntimeProcessError(
             "local_mock provides package admission only; protected execution "
-            "requires the test profile"
+            "requires a database-backed profile"
         )
     env = os.environ if environ is None else environ
     database_environment = DATABASE_ENVIRONMENTS[selected]
@@ -224,14 +231,19 @@ def build_installed_agent_runtime_process(
                 "evidence_classification": "PROTECTED_COMPONENT",
             },
         )
+        selected_executor_profile = executor_profile
+        if selected_executor_profile is None:
+            selected_executor_profile = (
+                build_product_runtime_executor_profile(sessions, env)
+                if selected in {"staging_live", "production"}
+                else build_deterministic_component_executor_profile()
+            )
         composition = build_installed_runtime_composition(
             sessions=sessions,
             heartbeat_emitter=heartbeat,
             worker_id=worker_id,
             environ=env,
-            executor_profile=(
-                executor_profile or build_deterministic_component_executor_profile()
-            ),
+            executor_profile=selected_executor_profile,
         )
         return InstalledAgentRuntimeProcess(
             profile=selected,
