@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -22,44 +23,29 @@ from sqlalchemy.orm import sessionmaker
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_installed_runtime_cycle_projects_canonical_worker_counters(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    captured: dict[str, object] = {}
-
-    def run_worker(**values: object) -> dict[str, object]:
-        captured.update(values)
-        return {
-            "claimed_count": 1,
+def test_installed_runtime_cycle_projects_canonical_worker_counters() -> None:
+    installed = SimpleNamespace(
+        run_cycle=lambda: {
+            "status": "WORK",
+            "domain_claiming_enabled": True,
+            "composition_mode": "GENERIC_INSTALLED_RUNTIME",
+            "execution_count": 1,
             "succeeded_count": 1,
             "failed_count": 0,
             "stop_reason": "MAX_CYCLES",
-        }
-
-    monkeypatch.setattr(
-        composition,
-        "AgentRuntimeWorkerLifecycle",
-        lambda **values: SimpleNamespace(**values),
-    )
-    monkeypatch.setattr(composition, "run_bounded_agent_runtime_worker", run_worker)
-    runtime = composition.InstalledP8RuntimeComposition(
-        controlled_skill=SimpleNamespace(package_readiness={"status": "PASS"}),
-        assignment_source=object(),
-        handler=object(),
-        worker_config=SimpleNamespace(profile=object()),
-        heartbeat_emitter=SimpleNamespace(store=object()),
-        executor_kinds=("LOCAL_SKILL",),
-        backend_profiles=("NSL_V02_IN_PROCESS",),
-        result_closer=SimpleNamespace(
-            close_ready=lambda **_values: {
+            "result_closure": {
                 "candidate_count": 1,
                 "finalized_count": 1,
                 "published_count": 1,
                 "replayed_count": 0,
                 "failed_count": 0,
                 "failures": [],
-            }
-        ),
+            },
+        },
+    )
+    runtime = composition.InstalledP8RuntimeComposition(
+        controlled_skill=SimpleNamespace(package_readiness={"status": "PASS"}),
+        installed_runtime=installed,
     )
 
     result = runtime.run_cycle()
@@ -81,45 +67,31 @@ def test_installed_runtime_cycle_projects_canonical_worker_counters(
             "failures": [],
         },
     }
-    assert captured["max_cycles"] == 1
-    assert captured["stop_on_failure"] is False
-    assert captured["in_process_package_readiness"] == {"status": "PASS"}
 
 
-def test_installed_runtime_cycle_reports_idle(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        composition,
-        "AgentRuntimeWorkerLifecycle",
-        lambda **values: SimpleNamespace(**values),
-    )
-    monkeypatch.setattr(
-        composition,
-        "run_bounded_agent_runtime_worker",
-        lambda **_values: {
-            "claimed_count": 0,
+def test_installed_runtime_cycle_reports_idle() -> None:
+    installed = SimpleNamespace(
+        run_cycle=lambda: {
+            "status": "IDLE",
+            "domain_claiming_enabled": True,
+            "composition_mode": "GENERIC_INSTALLED_RUNTIME",
+            "execution_count": 0,
             "succeeded_count": 0,
             "failed_count": 0,
             "stop_reason": "MAX_CYCLES",
-        },
-    )
-    runtime = composition.InstalledP8RuntimeComposition(
-        controlled_skill=SimpleNamespace(package_readiness={"status": "PASS"}),
-        assignment_source=object(),
-        handler=object(),
-        worker_config=SimpleNamespace(profile=object()),
-        heartbeat_emitter=SimpleNamespace(store=object()),
-        executor_kinds=("LOCAL_SKILL",),
-        backend_profiles=("NSL_V02_IN_PROCESS",),
-        result_closer=SimpleNamespace(
-            close_ready=lambda **_values: {
+            "result_closure": {
                 "candidate_count": 0,
                 "finalized_count": 0,
                 "published_count": 0,
                 "replayed_count": 0,
                 "failed_count": 0,
                 "failures": [],
-            }
-        ),
+            },
+        }
+    )
+    runtime = composition.InstalledP8RuntimeComposition(
+        controlled_skill=SimpleNamespace(package_readiness={"status": "PASS"}),
+        installed_runtime=installed,
     )
 
     assert runtime.run_cycle()["status"] == "IDLE"
@@ -165,6 +137,12 @@ def test_composition_reuses_existing_dispatcher_worker_and_executor_registry(
     runtime = composition.build_installed_p8_runtime_composition(resource, {})
 
     assert isinstance(runtime.handler, composition.InstalledP8StepAssignmentHandler)
+    assert isinstance(
+        runtime.installed_runtime, composition.InstalledRuntimeComposition
+    )
+    assert runtime.assignment_source is runtime.installed_runtime.assignment_source
+    assert runtime.heartbeat_emitter is resource.heartbeat
+    assert runtime.result_closer is runtime.installed_runtime.result_closer
     assert runtime.worker_config.mode == "enabled"
     assert runtime.worker_config.profile.worker_id == "ae-demo-agent-runtime-1"
     assert runtime.worker_config.profile.supported_executor_kinds == (
@@ -180,6 +158,82 @@ def test_composition_reuses_existing_dispatcher_worker_and_executor_registry(
         "P4_CHAT_RAG_COMPATIBILITY",
     )
     assert runtime.backend_profiles == ("NSL_V02_IN_PROCESS",)
+
+
+def test_demo_composition_is_a_thin_generic_factory_adapter() -> None:
+    source = inspect.getsource(composition)
+
+    assert "build_installed_runtime_composition(" in source
+    for orchestration_owner in (
+        "SqlAlchemyRuntimeJobQueue",
+        "SqlAlchemyMultiStepEngine",
+        "SqlAlchemyAgentRuntimeDispatcher",
+        "SqlAlchemyAgentRuntimeAssignmentSource",
+        "P5StepExecutionWorker",
+        "AgentRuntimeWorkerLifecycle",
+        "run_bounded_agent_runtime_worker",
+        "SqlAlchemyInstalledIaResultCloser",
+        "SqlAlchemyWorkspaceResultPublisher",
+    ):
+        assert orchestration_owner not in source
+
+
+def test_demo_controlled_skill_config_resolves_adapter_owned_paths(
+    tmp_path: Path,
+) -> None:
+    paths = {
+        "NEX_AE_DEMO_NSL_BUNDLE_MANIFEST": tmp_path / "manifest.json",
+        "NEX_AE_DEMO_NSL_WHEEL": tmp_path / "runtime.whl",
+        "NEX_AE_DEMO_PLATFORM_LOCK": tmp_path / "platform.lock",
+        "NEX_AE_DEMO_NSL_SKILL_ROOT": tmp_path / "skill",
+        "NEX_AE_DEMO_FIXTURE": tmp_path / "demo.json",
+        "NEX_AE_DEMO_BASE_FIXTURE": tmp_path / "base.json",
+    }
+    for path in paths.values():
+        path.mkdir() if path.name == "skill" else path.write_text("{}")
+    state_root = tmp_path / "state-not-created"
+    environ = {
+        **{name: str(path) for name, path in paths.items()},
+        "NEX_AE_DEMO_NSL_STATE_ROOT": str(state_root),
+        "NEX_OA_BASE_URL": "http://oa.example",
+        "NEX_EOS_BASE_URL": "http://eos.example",
+        "NEX_AE_TO_OA_SERVICE_TOKEN": "oa-token",
+        "NEX_AE_TO_EOS_SERVICE_TOKEN": "eos-token",
+    }
+
+    config = composition._controlled_skill_config(environ)
+
+    assert config.manifest_path == paths["NEX_AE_DEMO_NSL_BUNDLE_MANIFEST"]
+    assert config.wheel_path == paths["NEX_AE_DEMO_NSL_WHEEL"]
+    assert config.platform_lock_path == paths["NEX_AE_DEMO_PLATFORM_LOCK"]
+    assert config.skill_root == paths["NEX_AE_DEMO_NSL_SKILL_ROOT"]
+    assert config.demo_fixture_path == paths["NEX_AE_DEMO_FIXTURE"]
+    assert config.base_fixture_path == paths["NEX_AE_DEMO_BASE_FIXTURE"]
+    assert config.state_root == state_root
+    assert config.oa_base_url == "http://oa.example"
+    assert config.eos_base_url == "http://eos.example"
+
+
+def test_demo_adapter_helpers_fail_closed_and_preserve_optional_wa_boundary(
+    tmp_path: Path,
+) -> None:
+    existing = tmp_path / "existing.json"
+    existing.write_text("{}")
+    missing = tmp_path / "missing.json"
+
+    assert composition._path({}, "PATH", existing) == existing
+    assert composition._path({}, "PATH", missing, require_existing=False) == missing
+    with pytest.raises(ValueError, match="PATH is unavailable"):
+        composition._path({}, "PATH", missing)
+    with pytest.raises(ValueError, match="TOKEN is required"):
+        composition._text({}, "TOKEN")
+    assert (
+        composition._optional_wa_notifier(
+            SimpleNamespace(sessions=object()),
+            {"NEX_SERVICE_TOKEN_ROLLOUT_PROFILE": "STAGING"},
+        )
+        is None
+    )
 
 
 def test_installed_handler_schedules_successor_after_terminal_outcome() -> None:
@@ -206,8 +260,9 @@ def test_installed_handler_schedules_successor_after_terminal_outcome() -> None:
         )
     )
     engine = SimpleNamespace(
-        schedule_next=lambda **values: scheduled.append(values)
-        or {"runtime_job_id": "job-2"}
+        schedule_next=lambda **values: (
+            scheduled.append(values) or {"runtime_job_id": "job-2"}
+        )
     )
     handler = composition.InstalledP8StepAssignmentHandler(worker, engine)
 
