@@ -2,24 +2,32 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from nex_ae_api.domain_intent_activators import DomainIntentActivatorRegistry
+from nex_ae_api.domain_intent_activators import (
+    DomainIntentActivatorRegistration,
+    DomainIntentActivatorRegistry,
+)
+from nex_ae_api.finance_golden_a_activation import (
+    GoldenAFinanceIntentActivator,
+    load_golden_a_finance_authority_source,
+)
+from nex_ae_api.golden_a_planning import GOLDEN_A_CAPABILITY_ID
 
 
 def build_domain_intent_activator_registry(
     environ: Mapping[str, str],
 ) -> DomainIntentActivatorRegistry:
-    """Build the installed product registry.
+    """Build activators from admitted product authority sources."""
 
-    Golden A remains behind its explicit P8 Demo environment switch until S10
-    promotes its authoritative bindings out of fixture-backed compatibility.
-    """
-
-    from nex_ae_api.p8_demo_semantic_activation import (
-        build_p8_demo_intent_activators,
-    )
-
-    return DomainIntentActivatorRegistry.from_mapping(
-        build_p8_demo_intent_activators(environ),
-        version="p8-demo-golden-a.v1",
-        source_identity="nex-ae:p8-demo-semantic-activation",
+    authority_source = load_golden_a_finance_authority_source(environ)
+    if authority_source is None:
+        return DomainIntentActivatorRegistry()
+    return DomainIntentActivatorRegistry.from_registrations(
+        (
+            DomainIntentActivatorRegistration(
+                capability_id=GOLDEN_A_CAPABILITY_ID,
+                version="finance-golden-a.v1",
+                source_identity=authority_source.source_identity,
+                activator=GoldenAFinanceIntentActivator(authority_source),
+            ),
+        )
     )

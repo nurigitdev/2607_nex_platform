@@ -133,10 +133,11 @@ change.
 | Module or edge | Class | Product import? | Demo import? | Promote? | Historical retention? |
 |---|---:|---:|---:|---:|---:|
 | `services/nex-ae-api/nex_ae_api/p8_demo_runtime_composition.py` | `D` | no | yes | extract generic AE factory in S03 | yes |
-| `services/nex-ae-api/nex_ae_api/p8_demo_controlled_skill.py` | `D` | no | yes | productize finance activator in S10 | yes |
-| `services/nex-ae-api/nex_ae_api/p8_demo_semantic_activation.py` | `D` | compatibility builder only | yes | productize finance activator in S10 | yes |
+| `services/nex-ae-api/nex_ae_api/p8_demo_controlled_skill.py` | `D` | no | yes | historical controlled-WRITE worker compatibility after S10 | yes |
+| `services/nex-ae-api/nex_ae_api/p8_demo_semantic_activation.py` | `D` | no | yes | historical compatibility retained after S10 | yes |
 | `services/nex-ae-api/nex_ae_api/domain_intent_activators.py` | `P` | yes | no | canonical registry added in S09 | no |
-| `services/nex-ae-api/nex_ae_api/domain_intent_products.py` | `P` | yes | compatibility registration until S10 | canonical product builder added in S09 | no |
+| `services/nex-ae-api/nex_ae_api/domain_intent_products.py` | `P` | yes | no | canonical finance registration completed in S10 | no |
+| `services/nex-ae-api/nex_ae_api/finance_golden_a_activation.py` | `P` | yes | no | versioned finance authority source and activator added in S10 | no |
 | `services/nex-ae-api/nex_ae_api/demo_runtime.py` | `D` | no | yes | replace entrypoint in S05 | yes |
 | `services/nex-wc/nex_wc/demo_runtime.py` | `D` | no | yes | replace entrypoint in S06 | yes |
 | `services/nex-eos/nex_eos/demo_runtime.py` | `D` | no | yes | replace entrypoint in S07 | yes |
@@ -161,8 +162,10 @@ change.
 | `scripts/smoke/run_p8_demo_s10b_installed_runtime.py` | `T` | forbidden | smoke only | evidence source only | yes |
 | `scripts/deployment/run_p8_demo_s10_installed_domain_acceptance.py` | `T` | forbidden | acceptance only | provisioning evidence only | yes |
 
-The `X` row is the only known direct demo dependency from a product runtime
-module in this inventory. S09-S10 own its removal; S01 does not mask it.
+The previously identified direct Demo dependency is closed. S09 removed the
+semantic core import and S10 replaced the compatibility registration with the
+canonical finance authority source. Demo fixture loading remains confined to
+historical compatibility and worker execution boundaries.
 
 ## 7. Dependency Ownership Inventory
 

@@ -442,6 +442,7 @@ DomainIntentActivatorRegistry
 
 S10
 Golden A Product Activator
+-> CLOSED; tenant-scoped versioned finance authority profile, no generic Demo fixture dependency
 
 S12
 Golden Journey Testing Contract

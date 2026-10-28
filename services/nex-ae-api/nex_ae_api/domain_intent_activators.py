@@ -14,6 +14,7 @@ class DomainIntentActivator(Protocol):
         *,
         candidate: Mapping[str, Any],
         work_intent: Mapping[str, Any],
+        tenant_id: str,
         principal_id: str,
         resolved_at: str,
     ) -> Any: ...

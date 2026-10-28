@@ -27,6 +27,12 @@ from nex_ae_api.voucher_attachment_manifest import (
 
 GOLDEN_A_FIXTURE_SCHEMA_VERSION = "p8_golden_a_fixture.v1"
 GOLDEN_A_PLANNING_SCHEMA_VERSION = "p8.golden_a_planning_activation.v1"
+GOLDEN_A_AUTHORITY_PROFILE_SCHEMA_VERSION = (
+    "ae.finance_golden_a_authority_profile.v1"
+)
+GOLDEN_A_PRODUCT_ACTIVATION_SCHEMA_VERSION = (
+    "ae.finance_golden_a_activation.v1"
+)
 GOLDEN_A_CAPABILITY_ID = "FINANCE.CREATE_VOUCHER_DRAFT"
 GOLDEN_A_NSL_SKILL_ID = "FINANCE.VOUCHER_DRAFT_CREATE"
 GOLDEN_A_INPUT_CONTRACT = "contract://nex/eos/create-voucher-draft-command/v1"
@@ -58,7 +64,19 @@ def build_golden_a_planning_capability(
     fixture: Mapping[str, Any],
 ) -> dict[str, Any]:
     record = _fixture_projection(fixture)
-    admission = record["admission"]
+    return _build_golden_a_planning_capability(record["admission"])
+
+
+def build_golden_a_product_capability(
+    authority_profile: Mapping[str, Any],
+) -> dict[str, Any]:
+    record = _authority_profile_projection(authority_profile)
+    return _build_golden_a_planning_capability(record["admission"])
+
+
+def _build_golden_a_planning_capability(
+    admission: Mapping[str, Any],
+) -> dict[str, Any]:
     return build_local_skill_capability(
         skill_id=admission["skill_id"],
         capability_id=admission["capability_id"],
@@ -156,6 +174,41 @@ def bind_golden_a_planning_candidate(
     candidate: Mapping[str, Any],
 ) -> dict[str, Any]:
     record = _fixture_projection(fixture)
+    return _bind_golden_a_candidate(
+        record=record,
+        candidate=candidate,
+        schema_version=GOLDEN_A_PLANNING_SCHEMA_VERSION,
+        source_name="fixture_ref",
+        source_ref=_fixture_ref(record),
+        capability=_build_golden_a_planning_capability(record["admission"]),
+    )
+
+
+def bind_golden_a_product_candidate(
+    *,
+    authority_profile: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+) -> dict[str, Any]:
+    record = _authority_profile_projection(authority_profile)
+    return _bind_golden_a_candidate(
+        record=record,
+        candidate=candidate,
+        schema_version=GOLDEN_A_PRODUCT_ACTIVATION_SCHEMA_VERSION,
+        source_name="authority_ref",
+        source_ref=_authority_profile_ref(record),
+        capability=_build_golden_a_planning_capability(record["admission"]),
+    )
+
+
+def _bind_golden_a_candidate(
+    *,
+    record: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    schema_version: str,
+    source_name: str,
+    source_ref: Mapping[str, str],
+    capability: Mapping[str, Any],
+) -> dict[str, Any]:
     normalized = parse_intent_candidate(canonical_json(dict(candidate)))
     candidate_hash = semantic_sha256_hash_ref(normalized)
     if normalized["intent_label"] != GOLDEN_A_CAPABILITY_ID:
@@ -190,11 +243,11 @@ def bind_golden_a_planning_candidate(
     if failure_code is not None:
         return _finish(
             {
-                "schema_version": GOLDEN_A_PLANNING_SCHEMA_VERSION,
+                "schema_version": schema_version,
                 "directive": "CLARIFICATION_REQUIRED",
                 "failure_code": failure_code,
                 "candidate_hash": candidate_hash,
-                "fixture_ref": _fixture_ref(record),
+                source_name: dict(source_ref),
                 "clarification": {
                     "reasons": _unique(reasons),
                     "questions": _unique(questions),
@@ -204,15 +257,14 @@ def bind_golden_a_planning_candidate(
         )
 
     assert project is not None
-    capability = build_golden_a_planning_capability(fixture)
     binding = _authoritative_binding(record, project, capability)
     return _finish(
         {
-            "schema_version": GOLDEN_A_PLANNING_SCHEMA_VERSION,
+            "schema_version": schema_version,
             "directive": "CONTINUE",
             "failure_code": None,
             "candidate_hash": candidate_hash,
-            "fixture_ref": _fixture_ref(record),
+            source_name: dict(source_ref),
             "clarification": {"reasons": [], "questions": []},
             "authoritative_binding": binding,
         }
@@ -363,15 +415,7 @@ def _fixture_projection(fixture: Mapping[str, Any]) -> dict[str, Any]:
         scenario = record["scenario"]
     except (KeyError, TypeError) as exc:
         raise _fixture_error("Golden A fixture is missing planning data.") from exc
-    if (
-        admission.get("activation_state") != "LOCKED_PENDING_P8_S64"
-        or admission.get("skill_id") != GOLDEN_A_NSL_SKILL_ID
-        or admission.get("capability_id") != GOLDEN_A_CAPABILITY_ID
-        or admission.get("tool_id") != GOLDEN_A_CAPABILITY_ID
-        or admission.get("executor_kind") != "LOCAL_SKILL"
-        or admission.get("operation_semantics") != "WRITE"
-        or admission.get("backend_profile") != NSL_V02_IN_PROCESS_BACKEND
-    ):
+    if not _is_golden_a_admission(admission):
         raise _fixture_error("Golden A WRITE admission does not match P8-S64.")
     account_by_id = {item.get("account_id"): item for item in accounts}
     if len(account_by_id) != len(accounts) or not {
@@ -406,6 +450,113 @@ def _fixture_projection(fixture: Mapping[str, Any]) -> dict[str, Any]:
         "admission": admission,
         "scenario": scenario,
     }
+
+
+def _authority_profile_projection(
+    authority_profile: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(authority_profile, Mapping):
+        raise _profile_error("Golden A authority profile must be an object.")
+    profile = deepcopy(dict(authority_profile))
+    if profile.get("schema_version") != GOLDEN_A_AUTHORITY_PROFILE_SCHEMA_VERSION:
+        raise _profile_error("Golden A authority profile version is unsupported.")
+    supplied_hash = profile.get("profile_hash")
+    try:
+        validate_hash_ref(supplied_hash)
+    except ValueError as exc:
+        raise _profile_error("Golden A authority profile hash is invalid.") from exc
+    hash_input = deepcopy(profile)
+    hash_input.pop("profile_hash", None)
+    if semantic_sha256_hash_ref(hash_input) != supplied_hash:
+        raise _profile_error(
+            "Golden A authority profile hash does not match its content."
+        )
+    try:
+        profile_id = profile["profile_id"]
+        profile_version = profile["profile_version"]
+        tenant_id = profile["tenant_id"]
+        principals = tuple(profile["authorized_principal_ids"])
+        projects = tuple(profile["projects"])
+        accounts = tuple(profile["accounts"])
+        policy = profile["voucher_line_policy"]
+        admission = profile["admission"]
+        scenario = profile["protected_input"]
+    except (KeyError, TypeError) as exc:
+        raise _profile_error(
+            "Golden A authority profile is missing product binding data."
+        ) from exc
+    if (
+        not isinstance(profile_id, str)
+        or not profile_id
+        or not isinstance(profile_version, int)
+        or profile_version < 1
+        or not isinstance(tenant_id, str)
+        or not tenant_id
+        or not principals
+        or any(not isinstance(item, str) or not item for item in principals)
+        or len(set(principals)) != len(principals)
+    ):
+        raise _profile_error("Golden A authority profile identity is invalid.")
+    project_ids = [item.get("project_id") for item in projects]
+    project_codes = [item.get("project_code") for item in projects]
+    if (
+        not projects
+        or any(not value for value in (*project_ids, *project_codes))
+        or len(set(project_ids)) != len(project_ids)
+        or len(set(project_codes)) != len(project_codes)
+    ):
+        raise _profile_error("Golden A project authority mapping is invalid.")
+    account_by_id = {item.get("account_id"): item for item in accounts}
+    if len(account_by_id) != len(accounts) or not {
+        policy.get("debit_account_id"),
+        policy.get("credit_account_id"),
+    }.issubset(account_by_id):
+        raise _profile_error("Golden A account authority mapping is invalid.")
+    if not _is_golden_a_admission(admission):
+        raise _profile_error("Golden A product admission is invalid.")
+    if scenario.get("requester_subject_id") not in principals:
+        raise _profile_error("Golden A protected requester is not authorized.")
+    if any(
+        scenario.get(name) != policy.get(name)
+        for name in (
+            "currency",
+            "voucher_type",
+            "economic_category",
+            "settlement_method",
+        )
+    ):
+        raise _profile_error("Golden A protected input does not match its policy.")
+    try:
+        scenario_date = date.fromisoformat(scenario["transaction_date"])
+        policy_date = date.fromisoformat(policy["effective_from"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise _profile_error("Golden A authority dates are invalid.") from exc
+    if scenario_date < policy_date:
+        raise _profile_error("Golden A line policy is not yet effective.")
+    return {
+        "profile_id": profile_id,
+        "profile_version": str(profile_version),
+        "profile_hash": supplied_hash,
+        "tenant_id": tenant_id,
+        "authorized_principal_ids": principals,
+        "projects": projects,
+        "accounts": account_by_id,
+        "voucher_line_policy": policy,
+        "admission": admission,
+        "scenario": scenario,
+    }
+
+
+def _is_golden_a_admission(admission: Mapping[str, Any]) -> bool:
+    return (
+        admission.get("activation_state") == "LOCKED_PENDING_P8_S64"
+        and admission.get("skill_id") == GOLDEN_A_NSL_SKILL_ID
+        and admission.get("capability_id") == GOLDEN_A_CAPABILITY_ID
+        and admission.get("tool_id") == GOLDEN_A_CAPABILITY_ID
+        and admission.get("executor_kind") == "LOCAL_SKILL"
+        and admission.get("operation_semantics") == "WRITE"
+        and admission.get("backend_profile") == NSL_V02_IN_PROCESS_BACKEND
+    )
 
 
 def _resolve_project_candidate(
@@ -568,6 +719,15 @@ def _fixture_ref(record: Mapping[str, Any]) -> dict[str, str]:
     }
 
 
+def _authority_profile_ref(record: Mapping[str, Any]) -> dict[str, str]:
+    return {
+        "profile_id": record["profile_id"],
+        "profile_version": record["profile_version"],
+        "profile_hash": record["profile_hash"],
+        "tenant_id": record["tenant_id"],
+    }
+
+
 def _require_activation_integrity(
     activation: Mapping[str, Any], *, candidate_hash: str
 ) -> None:
@@ -608,3 +768,7 @@ def _unique(values: Sequence[str]) -> list[str]:
 
 def _fixture_error(detail: str) -> GoldenAPlanningError:
     return GoldenAPlanningError("P8_GOLDEN_A_FIXTURE_INVALID", detail)
+
+
+def _profile_error(detail: str) -> GoldenAPlanningError:
+    return GoldenAPlanningError("FINANCE_AUTHORITY_PROFILE_INVALID", detail)

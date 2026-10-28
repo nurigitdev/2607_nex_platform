@@ -30,11 +30,10 @@ semantic SHA-256 helper and are stable across input order and replay.
 product builder. It no longer imports `p8_demo_semantic_activation` or knows
 how a domain activator is constructed.
 
-The product builder temporarily adapts the explicitly enabled P8 Demo Golden A
-activator into a versioned registration. This preserves installed compatibility
-without making fixture loading part of generic semantic admission. Moving the
-finance activator and its authoritative bindings out of the Demo module remains
-the bounded responsibility of S10.
+At the S09 checkpoint the product builder temporarily adapted the explicitly
+enabled P8 Demo Golden A activator. S10 subsequently replaced that adapter with
+the canonical finance authority source; this paragraph records the historical
+S09 boundary rather than the current product composition.
 
 ## Verification
 

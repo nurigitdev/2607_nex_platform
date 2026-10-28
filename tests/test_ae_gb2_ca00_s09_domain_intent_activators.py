@@ -12,10 +12,6 @@ from nex_ae_api.domain_intent_activators import (
 from nex_ae_api.domain_intent_products import (
     build_domain_intent_activator_registry,
 )
-from nex_ae_api.golden_a_planning import GOLDEN_A_CAPABILITY_ID
-from nex_ae_api.p8_demo_semantic_activation import (
-    P8_DEMO_GOLDEN_A_ADMISSION_ENV,
-)
 from nex_runtime.semantic_hashes import validate_hash_ref
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -139,7 +135,7 @@ def test_registration_rejects_noncanonical_metadata(overrides, error_code) -> No
     assert raised.value.error_code == error_code
 
 
-def test_mapping_builder_and_product_builder_preserve_explicit_golden_a() -> None:
+def test_mapping_builder_and_product_builder_preserve_empty_default() -> None:
     mapped = DomainIntentActivatorRegistry.from_mapping(
         {"FINANCE.CREATE": _EchoActivator()},
         version="1.0",
@@ -147,22 +143,6 @@ def test_mapping_builder_and_product_builder_preserve_explicit_golden_a() -> Non
     )
     assert mapped.resolve("FINANCE.CREATE", required=True) is not None
     assert build_domain_intent_activator_registry({}).registrations == ()
-
-    product = build_domain_intent_activator_registry(
-        {
-            P8_DEMO_GOLDEN_A_ADMISSION_ENV: "true",
-            "NEX_AE_DEMO_FIXTURE": str(
-                ROOT / "scripts/deployment/data/p8_demo_vo00_fixture.v1.json"
-            ),
-            "NEX_AE_DEMO_BASE_FIXTURE": str(
-                ROOT / "scripts/smoke/data/p8_golden_a_fixture.v1.json"
-            ),
-        }
-    )
-    golden_a = product.resolve(GOLDEN_A_CAPABILITY_ID, required=True)
-    assert golden_a is not None
-    assert golden_a.version == "p8-demo-golden-a.v1"
-
 
 def test_semantic_admission_depends_only_on_canonical_registry_boundary() -> None:
     source = (

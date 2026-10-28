@@ -200,6 +200,7 @@ def _stage_context(
     (context / "wheel").mkdir()
     (context / "skill").mkdir()
     (context / "fixtures").mkdir()
+    (context / "config").mkdir()
     (context / "locks").mkdir()
     shutil.copy2(
         ROOT / "deployment/oci/p8-demo-ae-runtime.Containerfile",
@@ -218,6 +219,10 @@ def _stage_context(
     shutil.copy2(
         ROOT / bundle.base_fixture_path,
         context / "fixtures/p8_golden_a_fixture.v1.json",
+    )
+    shutil.copy2(
+        ROOT / "deployment/environments/finance-golden-a-vo00.v1.json",
+        context / "config/finance-golden-a-vo00.v1.json",
     )
     shutil.copy2(
         ROOT / bundle.admission_lock,

@@ -446,6 +446,7 @@ class DeterministicCandidateAdmissionService:
                 activated = registration.activator.activate(
                     candidate=intent_candidate,
                     work_intent=work_intent,
+                    tenant_id=request.tenant_id,
                     principal_id=request.owner_subject_id,
                     resolved_at=now,
                 )
