@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 import os
+from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from threading import Lock
 from time import perf_counter
-from typing import Any, Callable, Mapping
+from typing import Any
 
 from nex_mo.provider_readiness import (
     REQUIRED_PROVIDER_CAPABILITIES,
@@ -18,7 +19,6 @@ from nex_mo.provider_readiness_plan import (
 )
 from nex_mo.provider_transport import HttpRequester
 
-
 PROVIDER_READINESS_TTL_ENV = "NEX_MO_PROVIDER_READINESS_TTL_SECONDS"
 DEFAULT_PROVIDER_READINESS_TTL_SECONDS = 30
 MAX_PROVIDER_READINESS_TTL_SECONDS = 300
@@ -29,12 +29,14 @@ class ProviderReadinessService:
         self,
         *,
         environ: Mapping[str, str] | None = None,
+        required_capabilities: tuple[str, ...] = REQUIRED_PROVIDER_CAPABILITIES,
         store: InMemoryProviderReadinessStore | None = None,
         requester: HttpRequester | None = None,
         now: Callable[[], datetime] | None = None,
         latency_clock: Callable[[], float] = perf_counter,
     ) -> None:
         self._environ = environ
+        self._required_capabilities = required_capabilities
         self._store = store or InMemoryProviderReadinessStore()
         self._requester = requester
         self._now = now or (lambda: datetime.now(UTC))
@@ -46,13 +48,19 @@ class ProviderReadinessService:
         try:
             observed_at = self._now()
             _iso_timestamp(observed_at)
-        except Exception:
-            return failed_provider_readiness_check(checked_at=datetime.now(UTC))
+        except Exception:  # noqa: BLE001 - readiness must fail closed
+            return failed_provider_readiness_check(
+                checked_at=datetime.now(UTC),
+                required_capabilities=self._required_capabilities,
+            )
         try:
             with self._lock:
                 env = dict(os.environ if self._environ is None else self._environ)
                 ttl_seconds = provider_readiness_ttl_seconds(env)
-                plan = build_provider_readiness_probe_plan(env)
+                plan = build_provider_readiness_probe_plan(
+                    env,
+                    required_capabilities=self._required_capabilities,
+                )
                 identity = _private_plan_identity(plan)
                 if identity != self._configuration_identity:
                     self._store.clear()
@@ -68,8 +76,11 @@ class ProviderReadinessService:
                     now=observed_at,
                     force_refresh=force_refresh,
                 )
-        except Exception:
-            return failed_provider_readiness_check(checked_at=observed_at)
+        except Exception:  # noqa: BLE001 - readiness must fail closed
+            return failed_provider_readiness_check(
+                checked_at=observed_at,
+                required_capabilities=self._required_capabilities,
+            )
         return project_provider_readiness_check(snapshot)
 
     def clear(self) -> None:
@@ -94,7 +105,11 @@ def project_provider_readiness_check(
     }
 
 
-def failed_provider_readiness_check(*, checked_at: datetime) -> dict[str, Any]:
+def failed_provider_readiness_check(
+    *,
+    checked_at: datetime,
+    required_capabilities: tuple[str, ...] = REQUIRED_PROVIDER_CAPABILITIES,
+) -> dict[str, Any]:
     return {
         "name": "provider_routes",
         "ok": False,
@@ -104,9 +119,9 @@ def failed_provider_readiness_check(*, checked_at: datetime) -> dict[str, Any]:
         "checked_at": _iso_timestamp(checked_at),
         "expires_at": _iso_timestamp(checked_at),
         "cache_status": "MISS",
-        "required_capabilities": list(REQUIRED_PROVIDER_CAPABILITIES),
+        "required_capabilities": list(required_capabilities),
         "summary": {
-            "required_count": len(REQUIRED_PROVIDER_CAPABILITIES),
+            "required_count": len(required_capabilities),
             "route_count": 0,
             "status_counts": {
                 "READY": 0,

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -19,12 +18,24 @@ from run_p8_demo_external_dependencies import (
 def _provider_evidence() -> dict:
     return {
         "status": "PASS",
+        "canonical_admission": {
+            "schema_version": "model_provider_admission.v1",
+            "admission_status": "ADMITTED",
+            "readiness_status": "READY",
+            "profile": "rag",
+            "dependency_readiness": [],
+            "failure_code": None,
+        },
         "checks": [
             {
                 "capability": "embedding",
                 "status": "PASS",
                 "configured": True,
                 "authorization_configured": True,
+                "authorized": True,
+                "model_identity_admitted": True,
+                "bounded_request_succeeded": True,
+                "timeout_policy_valid": True,
                 "response_observed": True,
                 "request_shape": "openai_embeddings",
                 "expected_models": ["embedding-model"],
@@ -35,6 +46,10 @@ def _provider_evidence() -> dict:
                 "status": "PASS",
                 "configured": True,
                 "authorization_configured": True,
+                "authorized": True,
+                "model_identity_admitted": True,
+                "bounded_request_succeeded": True,
+                "timeout_policy_valid": True,
                 "response_observed": True,
                 "request_shape": "rerank",
                 "expected_models": ["reranker-model"],
@@ -45,6 +60,10 @@ def _provider_evidence() -> dict:
                 "status": "PASS",
                 "configured": True,
                 "authorization_configured": True,
+                "authorized": True,
+                "model_identity_admitted": True,
+                "bounded_request_succeeded": True,
+                "timeout_policy_valid": True,
                 "response_observed": True,
                 "request_shape": "openai_models",
                 "expected_models": ["generation-model"],

@@ -5,7 +5,6 @@ from typing import Any
 
 from .semantic_hashes import semantic_sha256_hash_ref
 
-
 DEMO_EXTERNAL_DEPENDENCY_SCHEMA_VERSION = "p8_demo_external_dependencies.v1"
 DEMO_PROVIDER_CAPABILITIES = ("embedding", "reranking", "generation")
 
@@ -46,6 +45,18 @@ def admit_demo_external_dependencies(
 def _admit_providers(evidence: Mapping[str, Any]) -> dict[str, Any]:
     if evidence.get("status") != "PASS":
         raise DemoExternalDependencyError("Demo live provider preflight did not pass")
+    canonical = _mapping(
+        evidence.get("canonical_admission"),
+        "Demo canonical provider admission evidence",
+    )
+    if (
+        canonical.get("admission_status") != "ADMITTED"
+        or canonical.get("readiness_status") != "READY"
+        or canonical.get("profile") != "rag"
+    ):
+        raise DemoExternalDependencyError(
+            "Demo canonical provider admission did not pass"
+        )
     raw_checks = evidence.get("checks")
     if not isinstance(raw_checks, list):
         raise DemoExternalDependencyError("Demo live provider checks are invalid")
@@ -68,7 +79,10 @@ def _admit_providers(evidence: Mapping[str, Any]) -> dict[str, Any]:
         if (
             check.get("status") != "PASS"
             or check.get("configured") is not True
-            or check.get("authorization_configured") is not True
+            or check.get("authorized") is not True
+            or check.get("model_identity_admitted") is not True
+            or check.get("bounded_request_succeeded") is not True
+            or check.get("timeout_policy_valid") is not True
             or check.get("response_observed") is not True
             or not isinstance(expected_models, list)
             or not expected_models
