@@ -324,6 +324,13 @@ def _common_post_pytest_commands(
             )
         )
     commands.append((python_bin, "scripts/quality/validate_contracts.py"))
+    commands.append(
+        (
+            python_bin,
+            "scripts/quality/run_golden_journey_transition_audit.py",
+            "--summary",
+        )
+    )
     return tuple(commands)
 
 

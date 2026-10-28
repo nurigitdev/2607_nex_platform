@@ -29,6 +29,7 @@ mkdir -p "$REPORT_DIR"
   "$BRANCH_COVERAGE_MIN"
 
 "$PYTHON_BIN" scripts/quality/validate_contracts.py
+"$PYTHON_BIN" scripts/quality/run_golden_journey_transition_audit.py --summary
 
 "$PYTHON_BIN" scripts/smoke/run_ae_web_static_browser_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_retrieval_quality_warning_smoke.py --summary

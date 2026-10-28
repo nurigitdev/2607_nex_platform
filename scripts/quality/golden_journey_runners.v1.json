@@ -1,0 +1,40 @@
+{
+  "schema_version": "golden_journey_runner_registry.v1",
+  "runners": [
+    {
+      "path": "scripts/deployment/run_p8_demo_s11_chairman_golden_journey.py",
+      "evidence_class": "GOLDEN_JOURNEY",
+      "enforce_transition_boundary": true
+    },
+    {
+      "path": "scripts/smoke/run_ae_web_golden_journey_state.py",
+      "evidence_class": "COMPONENT",
+      "enforce_transition_boundary": false
+    },
+    {
+      "path": "scripts/smoke/run_ae_web_korean_golden_journey_boundary.py",
+      "evidence_class": "COMPONENT",
+      "enforce_transition_boundary": false
+    },
+    {
+      "path": "scripts/smoke/run_ae_web_korean_golden_journey_playwright_acceptance.py",
+      "evidence_class": "PROTECTED_COMPONENT",
+      "enforce_transition_boundary": false
+    },
+    {
+      "path": "scripts/smoke/run_p8_s65_golden_a_approval_journey.py",
+      "evidence_class": "PROTECTED_COMPONENT",
+      "enforce_transition_boundary": false
+    },
+    {
+      "path": "scripts/smoke/run_p8_s66_golden_a_eos_commit_journey.py",
+      "evidence_class": "PROTECTED_COMPONENT",
+      "enforce_transition_boundary": false
+    },
+    {
+      "path": "scripts/smoke/run_s139_ae_web_korean_golden_journey_closure.py",
+      "evidence_class": "EVIDENCE_AGGREGATOR",
+      "enforce_transition_boundary": false
+    }
+  ]
+}

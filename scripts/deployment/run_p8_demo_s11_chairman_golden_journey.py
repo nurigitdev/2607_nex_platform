@@ -58,6 +58,12 @@ GOLDEN_PROMPT = (
 )
 MODEL_PROFILE = "general-llm-default"
 MODEL_REF = "Qwen3.5-4B"
+GOLDEN_JOURNEY_EVIDENCE_CONTRACT = {
+    "platform_integrated": True,
+    "runtime_transition_fixture": False,
+    "manual_domain_transition": False,
+    "installed_process_continuity": True,
+}
 
 
 class P8DemoS11Error(RuntimeError):
@@ -120,6 +126,7 @@ def _source_admission(root: Path) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
         "slice": "P8-DEMO-S11",
+        **GOLDEN_JOURNEY_EVIDENCE_CONTRACT,
         "source_admitted": True,
         "installed_prerequisite": s10["source_admitted"],
         "actual_postgres_required": True,

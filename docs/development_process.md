@@ -81,6 +81,30 @@ The rollback path is always the unchanged
 `scripts/quality/run_quality_gate.sh`; the tiered runner is not a dependency of
 the Full Gate.
 
+### Golden Journey Transition Boundary
+
+A test may claim `GOLDEN_JOURNEY` evidence only when the user or business
+request enters through a public Platform API or browser and every subsequent
+runtime transition is performed by an installed Platform process or admitted
+Platform API. Before the request, authoritative identity, project, business
+master, and external dependency fixtures may be prepared. After the request,
+the runner is limited to public API/browser actions, polling, assertions,
+declared process restarts, and cleanup.
+
+Golden Journey runners must not directly schedule runtime jobs, advance agent
+execution state, create WC work/approval state, acknowledge result delivery,
+submit work results, mutate EOS transaction/outbox state, or write WA evidence.
+Read-only SQL assertions and post-run `DELETE` cleanup remain allowed; direct
+`INSERT`, `UPDATE`, or `MERGE` against runtime-transition tables does not.
+
+Canonical runner classifications are registered in
+`scripts/quality/golden_journey_runners.v1.json`. Every Slice, Checkpoint, and
+Full Gate executes `scripts/quality/run_golden_journey_transition_audit.py`.
+The audit fails on unregistered Journey runners, forbidden domain imports,
+manual transition calls, forbidden SQL mutation, or missing canonical evidence
+metadata. The full contract is recorded in
+[Golden Journey Platform Integration Testing Contract](testing/Golden_Journey_Platform_Integration_Testing_Contract_v1.0.md).
+
 ## Slice Start Checklist
 
 Before adding source code in a slice:
