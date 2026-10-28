@@ -29,8 +29,33 @@ PACKAGED_ENTRYPOINT_CAPABILITIES = (
     "request_serving",
     "static_serving",
     "job_claiming",
+    "event_delivering",
+    "outbox_publishing",
+    "scheduled_maintenance",
     "lifecycle_only",
 )
+PACKAGED_DOMAIN_WORK_CAPABILITIES = (
+    "job_claiming",
+    "event_delivering",
+    "outbox_publishing",
+    "scheduled_maintenance",
+)
+PACKAGED_DOMAIN_PROCESS_CAPABILITIES = (
+    ("nex-cx-ingestion-worker", "job_claiming"),
+    ("nex-wa-evidence-consumer", "job_claiming"),
+    ("nex-ae-agent-runtime-worker", "job_claiming"),
+    ("nex-wc-event-delivery-worker", "event_delivering"),
+    ("nex-eos-outbox-publisher", "outbox_publishing"),
+)
+_CAPABILITY_PROCESS_KINDS = {
+    "request_serving": ("api",),
+    "static_serving": ("web",),
+    "job_claiming": ("worker",),
+    "event_delivering": ("worker",),
+    "outbox_publishing": ("worker",),
+    "scheduled_maintenance": ("daemon",),
+    "lifecycle_only": ("worker", "daemon"),
+}
 _API_MODULES = {
     "nex-oa-api": "nex_oa.main:app",
     "nex-mo-api": "nex_mo.main:app",
@@ -41,10 +66,7 @@ _API_MODULES = {
     "nex-eos-api": "nex_eos.main:app",
     "nex-wa-api": "nex_wa.main:app",
 }
-_JOB_CLAIMING_BACKGROUND_PROCESSES = {
-    "nex-cx-ingestion-worker",
-    "nex-wa-evidence-consumer",
-}
+_DOMAIN_PROCESS_CAPABILITY_BY_ID = dict(PACKAGED_DOMAIN_PROCESS_CAPABILITIES)
 _DIRECT_BACKGROUND_MODULES = {
     "nex-wa-evidence-consumer": "nex_wa.consumer_main",
 }
@@ -64,6 +86,14 @@ class PackagedEntrypointDefinition:
     command: tuple[str, ...]
     capability: str
     admitted_profiles: tuple[str, ...]
+
+
+def packaged_capability_enables_domain_work(capability: str) -> bool:
+    if capability not in PACKAGED_ENTRYPOINT_CAPABILITIES:
+        raise PackagedEntrypointError(
+            f"unsupported packaged capability: {capability}"
+        )
+    return capability in PACKAGED_DOMAIN_WORK_CAPABILITIES
 
 
 def build_packaged_runtime_manifest(
@@ -209,8 +239,22 @@ def validate_packaged_entrypoints(
             errors.append(f"packaged semantic entrypoint drift: {entry.process_id}")
         if artifact_owners.get(entry.artifact_id) != entry.owner:
             errors.append(f"packaged entrypoint owner drift: {entry.process_id}")
-        if entry.capability not in PACKAGED_ENTRYPOINT_CAPABILITIES:
+        capability_known = entry.capability in PACKAGED_ENTRYPOINT_CAPABILITIES
+        if not capability_known:
             errors.append(f"unsupported packaged capability: {entry.process_id}")
+        else:
+            allowed_kinds = _CAPABILITY_PROCESS_KINDS[entry.capability]
+            if entry.kind not in allowed_kinds:
+                errors.append(
+                    f"packaged capability process kind drift: {entry.process_id}"
+                )
+            if entry.capability in PACKAGED_DOMAIN_WORK_CAPABILITIES and (
+                _DOMAIN_PROCESS_CAPABILITY_BY_ID.get(entry.process_id)
+                != entry.capability
+            ):
+                errors.append(
+                    f"domain-work loop is not admitted: {entry.process_id}"
+                )
         if not entry.admitted_profiles or any(
             profile not in RUNTIME_PROFILES for profile in entry.admitted_profiles
         ):
@@ -230,6 +274,8 @@ def validate_packaged_entrypoints(
         )
         if process is None or entry.command != process.command:
             errors.append(f"packaged command drift: {entry.process_id}")
+        elif entry.capability != _entrypoint_capability(process):
+            errors.append(f"packaged capability binding drift: {entry.process_id}")
         if entry.kind in {"worker", "daemon"}:
             direct_module = _DIRECT_BACKGROUND_MODULES.get(entry.process_id)
             if direct_module is not None:
@@ -269,6 +315,9 @@ def packaged_entrypoints_projection(
                 "kind": entry.kind,
                 "command": list(entry.command),
                 "capability": entry.capability,
+                "domain_work_enabled": packaged_capability_enables_domain_work(
+                    entry.capability
+                ),
                 "admitted_profiles": list(entry.admitted_profiles),
             }
             for entry in definitions
@@ -280,9 +329,29 @@ def packaged_entrypoints_projection(
         "job_claiming_background_count": sum(
             entry.capability == "job_claiming" for entry in definitions
         ),
+        "event_delivering_background_count": sum(
+            entry.capability == "event_delivering" for entry in definitions
+        ),
+        "outbox_publishing_background_count": sum(
+            entry.capability == "outbox_publishing" for entry in definitions
+        ),
+        "scheduled_maintenance_background_count": sum(
+            entry.capability == "scheduled_maintenance" for entry in definitions
+        ),
+        "domain_work_background_count": sum(
+            entry.kind in {"worker", "daemon"}
+            and packaged_capability_enables_domain_work(entry.capability)
+            for entry in definitions
+        ),
         "lifecycle_only_background_count": sum(
             entry.capability == "lifecycle_only" for entry in definitions
         ),
+        "capability_counts": {
+            capability: sum(
+                entry.capability == capability for entry in definitions
+            )
+            for capability in PACKAGED_ENTRYPOINT_CAPABILITIES
+        },
     }
 
 
@@ -327,8 +396,9 @@ def _entrypoint_capability(process: RuntimeProcess) -> str:
         return "request_serving"
     if process.kind == "web":
         return "static_serving"
-    if process.process_id in _JOB_CLAIMING_BACKGROUND_PROCESSES:
-        return "job_claiming"
+    domain_capability = _DOMAIN_PROCESS_CAPABILITY_BY_ID.get(process.process_id)
+    if domain_capability is not None:
+        return domain_capability
     return "lifecycle_only"
 
 

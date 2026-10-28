@@ -304,6 +304,8 @@ from .process_manifest import (
 )
 from .deployment_entrypoints import (
     PACKAGED_BACKGROUND_MODULE,
+    PACKAGED_DOMAIN_PROCESS_CAPABILITIES,
+    PACKAGED_DOMAIN_WORK_CAPABILITIES,
     PACKAGED_ENTRYPOINT_CAPABILITIES,
     PACKAGED_ENTRYPOINTS_SCHEMA_VERSION,
     PackagedEntrypointDefinition,
@@ -311,6 +313,7 @@ from .deployment_entrypoints import (
     build_current_packaged_runtime_manifest,
     build_packaged_entrypoint_definitions,
     build_packaged_runtime_manifest,
+    packaged_capability_enables_domain_work,
     packaged_entrypoints_projection,
     validate_packaged_entrypoints,
 )
@@ -711,6 +714,8 @@ __all__ = [
     "NODE_CONTAINERFILE",
     "OCI_BUILD_DEFINITIONS_SCHEMA_VERSION",
     "PACKAGED_BACKGROUND_MODULE",
+    "PACKAGED_DOMAIN_PROCESS_CAPABILITIES",
+    "PACKAGED_DOMAIN_WORK_CAPABILITIES",
     "PACKAGED_ENTRYPOINT_CAPABILITIES",
     "PACKAGED_ENTRYPOINTS_SCHEMA_VERSION",
     "PACKAGED_LIFECYCLE_SCHEMA_VERSION",
@@ -730,6 +735,7 @@ __all__ = [
     "OciContextFile",
     "PackagedEntrypointDefinition",
     "PackagedEntrypointError",
+    "packaged_capability_enables_domain_work",
     "PackagedDeploymentLifecycleError",
     "PackagedDeploymentLifecyclePlan",
     "PackagedMigrationStep",
