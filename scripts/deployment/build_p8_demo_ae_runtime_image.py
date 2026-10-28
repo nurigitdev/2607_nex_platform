@@ -225,6 +225,10 @@ def _stage_context(
         context / "config/finance-golden-a-vo00.v1.json",
     )
     shutil.copy2(
+        ROOT / "deployment/environments/ae-product-capability-registry.v1.json",
+        context / "config/ae-product-capability-registry.v1.json",
+    )
+    shutil.copy2(
         ROOT / bundle.admission_lock,
         context / "locks/nsl-v0.2.1-wheel.json",
     )

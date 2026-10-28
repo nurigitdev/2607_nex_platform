@@ -47,8 +47,13 @@ from nex_ae_api.plan_validation import (
     validate_agent_plan,
 )
 from nex_ae_api.planning_capabilities import (
+    DEFAULT_P5_CAPABILITIES,
     SqlAlchemyCapabilitySnapshotRepository,
     build_capability_snapshot,
+)
+from nex_ae_api.product_capabilities import (
+    ProductCapabilityRegistry,
+    load_product_capability_registry,
 )
 from nex_ae_api.semantic_candidate_evidence import (
     InMemorySemanticCandidateStorage,
@@ -217,6 +222,11 @@ class SemanticCandidateAdmissionRuntime:
         user_prompt = _request_text(payload, "user_message", 65_536)
         snapshot = self.service.capabilities.get_latest(tenant_id=tenant_id)
         if snapshot is None:
+            product_capabilities = getattr(
+                self.service,
+                "product_capability_registry",
+                ProductCapabilityRegistry(),
+            )
             snapshot = build_capability_snapshot(
                 tenant_id=tenant_id,
                 capability_snapshot_id=str(
@@ -227,6 +237,9 @@ class SemanticCandidateAdmissionRuntime:
                 ),
                 snapshot_version=1,
                 created_at=_timestamp(self.service.clock()),
+                capabilities=product_capabilities.merge_capabilities(
+                    DEFAULT_P5_CAPABILITIES
+                ),
             )
         resolver = _ChatTrustedContextResolver(
             tenant_id=tenant_id,
@@ -306,6 +319,9 @@ class DeterministicCandidateAdmissionService:
     executions: Any = field(repr=False)
     domain_intent_activator_registry: DomainIntentActivatorRegistry = field(
         default_factory=DomainIntentActivatorRegistry, repr=False
+    )
+    product_capability_registry: ProductCapabilityRegistry = field(
+        default_factory=ProductCapabilityRegistry, repr=False
     )
     clock: Callable[[], datetime] = field(default=lambda: datetime.now(UTC), repr=False)
 
@@ -999,6 +1015,7 @@ def attach_semantic_candidate_admission(
         )
     client = build_default_ae_mo_generation_client(environ)
     calibrations = SemanticCalibrationRegistry.from_environment(environ)
+    product_capabilities = load_product_capability_registry(resolved_environ)
     service = DeterministicCandidateAdmissionService(
         mode=mode,
         admission=admission,
@@ -1015,8 +1032,10 @@ def attach_semantic_candidate_admission(
         executable_plans=SqlAlchemyExecutablePlanRepository(session_factory),
         executions=SqlAlchemyAgentExecutionRepository(session_factory),
         domain_intent_activator_registry=build_domain_intent_activator_registry(
-            resolved_environ
+            resolved_environ,
+            product_capability_registry=product_capabilities,
         ),
+        product_capability_registry=product_capabilities,
     )
     runtime = SemanticCandidateAdmissionRuntime(
         mode=mode,

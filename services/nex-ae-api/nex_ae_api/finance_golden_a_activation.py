@@ -11,15 +11,12 @@ from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_
 from nex_ae_api.agent_context import TrustedContextResolution
 from nex_ae_api.golden_a_planning import (
     GOLDEN_A_AUTHORITY_PROFILE_SCHEMA_VERSION,
-    GoldenAPlanningError,
     activate_golden_a_work_intent,
     bind_golden_a_product_candidate,
-    build_golden_a_product_capability,
+    validate_golden_a_product_authority_profile,
 )
 
-FINANCE_GOLDEN_A_PROFILE_PATH_ENV = (
-    "NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH"
-)
+FINANCE_GOLDEN_A_PROFILE_PATH_ENV = "NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH"
 
 
 @dataclass(frozen=True)
@@ -52,10 +49,10 @@ class VersionedGoldenAFinanceAuthoritySource:
         profile = dict(self.profile)
         validate_golden_a_finance_profile(profile)
         try:
-            build_golden_a_product_capability(profile)
-        except GoldenAPlanningError as exc:
+            validate_golden_a_product_authority_profile(profile)
+        except ValueError as exc:
             raise FinanceGoldenAActivationError(
-                exc.error_code,
+                str(getattr(exc, "error_code", "FINANCE_AUTHORITY_PROFILE_INVALID")),
                 str(exc),
             ) from exc
         object.__setattr__(self, "profile", profile)
@@ -121,6 +118,7 @@ class FinanceGoldenAActivationResult:
 @dataclass(frozen=True)
 class GoldenAFinanceIntentActivator:
     authority_source: GoldenAFinanceAuthoritySource = field(repr=False)
+    capability: Mapping[str, Any] = field(repr=False)
 
     def activate(
         self,
@@ -139,6 +137,7 @@ class GoldenAFinanceIntentActivator:
         activation = bind_golden_a_product_candidate(
             authority_profile=profile,
             candidate=candidate,
+            capability=self.capability,
         )
         activated = activate_golden_a_work_intent(
             work_intent,
@@ -173,8 +172,7 @@ class GoldenAFinanceContextResolver:
                     "selector_id": "E1",
                     "resource_ref": project_ref,
                     "source_ref": (
-                        "finance-authority-project:"
-                        + str(project_ref["resource_id"])
+                        "finance-authority-project:" + str(project_ref["resource_id"])
                     ),
                     "resolved_at": self.resolved_at,
                 },
@@ -187,8 +185,7 @@ class GoldenAFinanceContextResolver:
                 {
                     "kind": "FINANCE_AUTHORITY_PROFILE",
                     "source_ref": (
-                        "finance-authority-profile:"
-                        + str(profile_ref["profile_id"])
+                        "finance-authority-profile:" + str(profile_ref["profile_id"])
                     ),
                     "source_version": str(profile_ref["profile_version"]),
                     "content_hash": profile_ref["profile_hash"],

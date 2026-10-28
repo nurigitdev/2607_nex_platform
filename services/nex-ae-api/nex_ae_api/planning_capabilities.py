@@ -283,6 +283,12 @@ def validate_capability_snapshot_contract(
     return _validate_snapshot(value)
 
 
+def validate_capability_contract(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate one capability descriptor without manufacturing a snapshot."""
+
+    return _validate_capability(value)
+
+
 def _validate_snapshot(value: Mapping[str, Any]) -> dict[str, Any]:
     try:
         record = json.loads(canonical_json(dict(value)))

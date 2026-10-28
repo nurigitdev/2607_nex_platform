@@ -2,7 +2,7 @@
   "schema_version": "ae.finance_golden_a_authority_profile.v1",
   "profile_id": "finance-golden-a-vo00",
   "profile_version": 1,
-  "profile_hash": "sha256:682d60b1d0681aa5b9d0eb503779b99f81b2dff76ee6a3ffd0f70308cce7c906",
+  "profile_hash": "sha256:4e3de25734ac2576ffe39ad3423df7efc62213e35176469008574eda7095327b",
   "tenant_id": "VO00",
   "authorized_principal_ids": [
     "employee-1001"
@@ -51,18 +51,6 @@
       "DEBIT",
       "CREDIT"
     ]
-  },
-  "admission": {
-    "agent_id": "IA.GOLDEN_A",
-    "capability_id": "FINANCE.CREATE_VOUCHER_DRAFT",
-    "skill_id": "FINANCE.VOUCHER_DRAFT_CREATE",
-    "exact_skill_version": "1.1.0",
-    "skill_semantic_hash": "sha256:b6ba60f6ae681dc754b6d304fcf7c99794a48e88429c698afd9d12afcb90a8fc",
-    "executor_kind": "LOCAL_SKILL",
-    "operation_semantics": "WRITE",
-    "backend_profile": "NSL_V02_IN_PROCESS",
-    "tool_id": "FINANCE.CREATE_VOUCHER_DRAFT",
-    "activation_state": "LOCKED_PENDING_P8_S64"
   },
   "protected_input": {
     "requester_subject_id": "employee-1001",

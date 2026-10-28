@@ -19,6 +19,7 @@ from nex_ae_api.planning_capabilities import (
     DEFAULT_P5_CAPABILITIES,
     build_capability_snapshot,
     build_local_skill_capability,
+    validate_capability_contract,
 )
 from nex_ae_api.voucher_attachment_manifest import (
     bind_manifest_to_governed_payload,
@@ -27,12 +28,8 @@ from nex_ae_api.voucher_attachment_manifest import (
 
 GOLDEN_A_FIXTURE_SCHEMA_VERSION = "p8_golden_a_fixture.v1"
 GOLDEN_A_PLANNING_SCHEMA_VERSION = "p8.golden_a_planning_activation.v1"
-GOLDEN_A_AUTHORITY_PROFILE_SCHEMA_VERSION = (
-    "ae.finance_golden_a_authority_profile.v1"
-)
-GOLDEN_A_PRODUCT_ACTIVATION_SCHEMA_VERSION = (
-    "ae.finance_golden_a_activation.v1"
-)
+GOLDEN_A_AUTHORITY_PROFILE_SCHEMA_VERSION = "ae.finance_golden_a_authority_profile.v1"
+GOLDEN_A_PRODUCT_ACTIVATION_SCHEMA_VERSION = "ae.finance_golden_a_activation.v1"
 GOLDEN_A_CAPABILITY_ID = "FINANCE.CREATE_VOUCHER_DRAFT"
 GOLDEN_A_NSL_SKILL_ID = "FINANCE.VOUCHER_DRAFT_CREATE"
 GOLDEN_A_INPUT_CONTRACT = "contract://nex/eos/create-voucher-draft-command/v1"
@@ -64,13 +61,6 @@ def build_golden_a_planning_capability(
     fixture: Mapping[str, Any],
 ) -> dict[str, Any]:
     record = _fixture_projection(fixture)
-    return _build_golden_a_planning_capability(record["admission"])
-
-
-def build_golden_a_product_capability(
-    authority_profile: Mapping[str, Any],
-) -> dict[str, Any]:
-    record = _authority_profile_projection(authority_profile)
     return _build_golden_a_planning_capability(record["admission"])
 
 
@@ -188,6 +178,7 @@ def bind_golden_a_product_candidate(
     *,
     authority_profile: Mapping[str, Any],
     candidate: Mapping[str, Any],
+    capability: Mapping[str, Any],
 ) -> dict[str, Any]:
     record = _authority_profile_projection(authority_profile)
     return _bind_golden_a_candidate(
@@ -196,8 +187,16 @@ def bind_golden_a_product_candidate(
         schema_version=GOLDEN_A_PRODUCT_ACTIVATION_SCHEMA_VERSION,
         source_name="authority_ref",
         source_ref=_authority_profile_ref(record),
-        capability=_build_golden_a_planning_capability(record["admission"]),
+        capability=_validate_golden_a_product_capability(capability),
     )
+
+
+def validate_golden_a_product_authority_profile(
+    authority_profile: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate product business authority without admitting a capability."""
+
+    return _authority_profile_projection(authority_profile)
 
 
 def _bind_golden_a_candidate(
@@ -479,7 +478,6 @@ def _authority_profile_projection(
         projects = tuple(profile["projects"])
         accounts = tuple(profile["accounts"])
         policy = profile["voucher_line_policy"]
-        admission = profile["admission"]
         scenario = profile["protected_input"]
     except (KeyError, TypeError) as exc:
         raise _profile_error(
@@ -512,8 +510,10 @@ def _authority_profile_projection(
         policy.get("credit_account_id"),
     }.issubset(account_by_id):
         raise _profile_error("Golden A account authority mapping is invalid.")
-    if not _is_golden_a_admission(admission):
-        raise _profile_error("Golden A product admission is invalid.")
+    if "admission" in profile:
+        raise _profile_error(
+            "Golden A business authority must not define capability admission."
+        )
     if scenario.get("requester_subject_id") not in principals:
         raise _profile_error("Golden A protected requester is not authorized.")
     if any(
@@ -542,7 +542,6 @@ def _authority_profile_projection(
         "projects": projects,
         "accounts": account_by_id,
         "voucher_line_policy": policy,
-        "admission": admission,
         "scenario": scenario,
     }
 
@@ -557,6 +556,26 @@ def _is_golden_a_admission(admission: Mapping[str, Any]) -> bool:
         and admission.get("operation_semantics") == "WRITE"
         and admission.get("backend_profile") == NSL_V02_IN_PROCESS_BACKEND
     )
+
+
+def _validate_golden_a_product_capability(
+    capability: Mapping[str, Any],
+) -> dict[str, Any]:
+    try:
+        normalized = validate_capability_contract(capability)
+    except Exception as exc:
+        raise _profile_error("Golden A product capability is invalid.") from exc
+    binding = normalized.get("local_skill_binding")
+    if (
+        normalized.get("capability_id") != GOLDEN_A_CAPABILITY_ID
+        or normalized.get("executor_kind") != "LOCAL_SKILL"
+        or normalized.get("operation_semantics") != "WRITE"
+        or not isinstance(binding, Mapping)
+        or binding.get("skill_id") != GOLDEN_A_NSL_SKILL_ID
+        or binding.get("backend_profile") != NSL_V02_IN_PROCESS_BACKEND
+    ):
+        raise _profile_error("Golden A product capability registration is invalid.")
+    return normalized
 
 
 def _resolve_project_candidate(
@@ -648,7 +667,7 @@ def _authoritative_binding(
             "skill_semantic_hash": capability["local_skill_binding"][
                 "skill_semantic_hash"
             ],
-            "tool_id": record["admission"]["tool_id"],
+            "tool_id": capability["capability_id"],
             "executor_kind": capability["executor_kind"],
             "backend_profile": capability["local_skill_binding"]["backend_profile"],
         },

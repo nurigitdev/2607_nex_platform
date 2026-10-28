@@ -16,18 +16,38 @@ from nex_ae_api.golden_a_planning import (
     GOLDEN_A_NSL_SKILL_ID,
     bind_golden_a_product_candidate,
 )
+from nex_ae_api.product_capabilities import (
+    PRODUCT_CAPABILITY_REGISTRY_PATH_ENV,
+    load_product_capability_registry,
+)
 from nex_ae_api.work_intent import build_work_intent_from_decision
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
 ROOT = Path(__file__).resolve().parents[1]
-PROFILE_PATH = (
-    ROOT / "deployment/environments/finance-golden-a-vo00.v1.json"
+PROFILE_PATH = ROOT / "deployment/environments/finance-golden-a-vo00.v1.json"
+CAPABILITY_REGISTRY_PATH = (
+    ROOT / "deployment/environments/ae-product-capability-registry.v1.json"
 )
 NOW = "2026-10-28T09:00:00Z"
 
 
 def _profile() -> dict:
     return json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
+
+
+def _product_environ() -> dict[str, str]:
+    return {
+        FINANCE_GOLDEN_A_PROFILE_PATH_ENV: str(PROFILE_PATH),
+        PRODUCT_CAPABILITY_REGISTRY_PATH_ENV: str(CAPABILITY_REGISTRY_PATH),
+    }
+
+
+def _capability() -> dict:
+    registration = load_product_capability_registry(_product_environ()).resolve(
+        GOLDEN_A_CAPABILITY_ID, required=True
+    )
+    assert registration is not None
+    return dict(registration.capability)
 
 
 def _candidate(*, project: str = "PROJECT-A-2") -> dict:
@@ -87,16 +107,14 @@ def _rehash(profile: dict) -> dict:
 
 
 def test_product_registry_resolves_finance_capability_with_distinct_skill() -> None:
-    registry = build_domain_intent_activator_registry(
-        {FINANCE_GOLDEN_A_PROFILE_PATH_ENV: str(PROFILE_PATH)}
-    )
+    registry = build_domain_intent_activator_registry(_product_environ())
     registration = registry.resolve(GOLDEN_A_CAPABILITY_ID, required=True)
 
     assert registration is not None
     assert registration.version == "finance-golden-a.v1"
-    assert "finance-golden-a-vo00" in registration.source_identity
+    assert registration.source_identity.startswith("nex-ae:finance-golden-a:v1:")
     activation = bind_golden_a_product_candidate(
-        authority_profile=_profile(), candidate=_candidate()
+        authority_profile=_profile(), candidate=_candidate(), capability=_capability()
     )
     capability = activation["authoritative_binding"]["capability_ref"]
     assert capability["capability_id"] == GOLDEN_A_CAPABILITY_ID
@@ -105,9 +123,9 @@ def test_product_registry_resolves_finance_capability_with_distinct_skill() -> N
 
 
 def test_product_activation_is_tenant_scoped_and_replay_deterministic() -> None:
-    registration = build_domain_intent_activator_registry(
-        {FINANCE_GOLDEN_A_PROFILE_PATH_ENV: str(PROFILE_PATH)}
-    ).resolve(GOLDEN_A_CAPABILITY_ID, required=True)
+    registration = build_domain_intent_activator_registry(_product_environ()).resolve(
+        GOLDEN_A_CAPABILITY_ID, required=True
+    )
     assert registration is not None
 
     first = registration.activator.activate(
@@ -155,7 +173,9 @@ def test_product_authority_scope_mismatch_fails_closed(
 
 def test_project_and_account_authority_mismatches_fail_closed() -> None:
     unknown_project = bind_golden_a_product_candidate(
-        authority_profile=_profile(), candidate=_candidate(project="PROJECT-X")
+        authority_profile=_profile(),
+        candidate=_candidate(project="PROJECT-X"),
+        capability=_capability(),
     )
     assert unknown_project["directive"] == "CLARIFICATION_REQUIRED"
     assert unknown_project["failure_code"] == "PROJECT_CANDIDATE_NOT_FOUND"
@@ -200,12 +220,18 @@ def test_product_profile_hash_and_file_admission_fail_closed(tmp_path: Path) -> 
 
     with pytest.raises(FinanceGoldenAActivationError) as raised:
         build_domain_intent_activator_registry(
-            {FINANCE_GOLDEN_A_PROFILE_PATH_ENV: str(path)}
+            {
+                **_product_environ(),
+                FINANCE_GOLDEN_A_PROFILE_PATH_ENV: str(path),
+            }
         )
     assert raised.value.error_code == "FINANCE_AUTHORITY_PROFILE_INVALID"
 
     with pytest.raises(FinanceGoldenAActivationError) as raised:
         build_domain_intent_activator_registry(
-            {FINANCE_GOLDEN_A_PROFILE_PATH_ENV: str(tmp_path / "missing.json")}
+            {
+                **_product_environ(),
+                FINANCE_GOLDEN_A_PROFILE_PATH_ENV: str(tmp_path / "missing.json"),
+            }
         )
     assert raised.value.error_code == "FINANCE_AUTHORITY_SOURCE_UNAVAILABLE"

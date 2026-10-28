@@ -28,14 +28,18 @@ sys.path[:0] = [
 
 import run_p8_demo_s10_installed_domain_acceptance as installed
 import run_p8_demo_s10b_installed_runtime as composed
-from nex_ae_api.golden_a_planning import (
-    GOLDEN_A_CAPABILITY_ID,
-    build_golden_a_capability_snapshot,
+from nex_ae_api.golden_a_planning import GOLDEN_A_CAPABILITY_ID
+from nex_ae_api.planning_capabilities import (
+    DEFAULT_P5_CAPABILITIES,
+    SqlAlchemyCapabilitySnapshotRepository,
+    build_capability_snapshot,
 )
-from nex_ae_api.planning_capabilities import SqlAlchemyCapabilitySnapshotRepository
+from nex_ae_api.product_capabilities import (
+    PRODUCT_CAPABILITY_REGISTRY_PATH_ENV,
+    load_product_capability_registry,
+)
 from nex_oa.credentials import hash_password, password_hash_algorithm
 from nex_runtime.demo_database import resolve_demo_database_targets
-from nex_runtime.demo_fixture import load_demo_business_fixture
 from nex_runtime.demo_trust import DEMO_TRUST_GRANTS
 
 EXECUTION_ENV = "NEX_P8_DEMO_S11_LIVE"
@@ -75,7 +79,13 @@ def run_p8_demo_s11_chairman_golden_journey(
         runner = protected_runner or _execute_protected_acceptance
         protected = dict(runner(env, root=root))
         return {**source, **protected, "executed": True}
-    except (OSError, TypeError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        RuntimeError,
+        subprocess.SubprocessError,
+    ) as exc:
         return {
             **source,
             "status": "FAIL",
@@ -90,7 +100,9 @@ def _source_admission(root: Path) -> dict[str, Any]:
     s10 = installed._source_admission(root)
     if not PLAYWRIGHT_RUNNER.is_file():
         raise P8DemoS11Error("S11 Playwright runner is missing")
-    package = json.loads((root / "apps/nex-ae-web/package.json").read_text(encoding="utf-8"))
+    package = json.loads(
+        (root / "apps/nex-ae-web/package.json").read_text(encoding="utf-8")
+    )
     if "smoke:p8-demo-s11-chairman-golden-journey" not in package.get("scripts", {}):
         raise P8DemoS11Error("S11 Playwright command is not registered")
     ae_oa_grants = tuple(
@@ -124,7 +136,9 @@ def _source_admission(root: Path) -> dict[str, Any]:
     }
 
 
-def _execute_protected_acceptance(env: Mapping[str, str], *, root: Path) -> dict[str, Any]:
+def _execute_protected_acceptance(
+    env: Mapping[str, str], *, root: Path
+) -> dict[str, Any]:
     targets = resolve_demo_database_targets(env)
     urls = {target.target.service_id: target.database_url for target in targets}
     engines = {
@@ -199,8 +213,7 @@ def _execute_protected_acceptance(env: Mapping[str, str], *, root: Path) -> dict
                     browser.get("observations", {}).get("failed_stage") or "none"
                 )
                 directive = str(
-                    browser.get("observations", {}).get("failure_directive")
-                    or "none"
+                    browser.get("observations", {}).get("failure_directive") or "none"
                 )
                 raise P8DemoS11Error(
                     "installed Chairman browser journey failed at "
@@ -214,7 +227,9 @@ def _execute_protected_acceptance(env: Mapping[str, str], *, root: Path) -> dict
                 )
             interaction_id = str(runtime.get("interaction_id") or "")
             if not interaction_id:
-                raise P8DemoS11Error("installed browser journey omitted interaction lineage")
+                raise P8DemoS11Error(
+                    "installed browser journey omitted interaction lineage"
+                )
             database = _database_acceptance_projection(
                 engines,
                 interaction_id=interaction_id,
@@ -237,7 +252,9 @@ def _execute_protected_acceptance(env: Mapping[str, str], *, root: Path) -> dict
             live_state.update(
                 interaction_id=interaction_id,
                 result_hash=str(runtime["result_projection"]["result"]["result_hash"]),
-                business_refs=tuple(runtime["result_projection"]["result"]["business_refs"]),
+                business_refs=tuple(
+                    runtime["result_projection"]["result"]["business_refs"]
+                ),
             )
             return {
                 "status": "PASS",
@@ -257,7 +274,9 @@ def _execute_protected_acceptance(env: Mapping[str, str], *, root: Path) -> dict
         def post_restart_hook(**_: Any) -> Mapping[str, Any]:
             interaction_id = str(live_state.get("interaction_id") or "")
             if not interaction_id:
-                raise P8DemoS11Error("post-restart acceptance has no interaction lineage")
+                raise P8DemoS11Error(
+                    "post-restart acceptance has no interaction lineage"
+                )
             recovered = _run_playwright(
                 runtime_env,
                 requester_password=requester_password,
@@ -265,7 +284,11 @@ def _execute_protected_acceptance(env: Mapping[str, str], *, root: Path) -> dict
                 recovery_interaction_id=interaction_id,
             )
             runtime = recovered.get("runtime")
-            projection = runtime.get("result_projection") if isinstance(runtime, Mapping) else None
+            projection = (
+                runtime.get("result_projection")
+                if isinstance(runtime, Mapping)
+                else None
+            )
             database = _database_acceptance_projection(
                 engines,
                 interaction_id=interaction_id,
@@ -330,9 +353,7 @@ def _execute_protected_acceptance(env: Mapping[str, str], *, root: Path) -> dict
                 _assert_zero_journey_residue(engines)
             finally:
                 if credential_snapshot:
-                    _restore_demo_credentials(
-                        engines["nex-oa"], credential_snapshot
-                    )
+                    _restore_demo_credentials(engines["nex-oa"], credential_snapshot)
         finally:
             for engine in engines.values():
                 engine.dispose()
@@ -389,17 +410,23 @@ def _prepare_screenshot_directory(directory: Path) -> None:
 
 
 def _activate_golden_a_capability(engine: Any, *, root: Path) -> dict[str, Any]:
-    _, fixture = load_demo_business_fixture(
-        root / "scripts/deployment/data/p8_demo_vo00_fixture.v1.json",
-        base_fixture_path=root / "scripts/smoke/data/p8_golden_a_fixture.v1.json",
+    registry = load_product_capability_registry(
+        {
+            PRODUCT_CAPABILITY_REGISTRY_PATH_ENV: str(
+                root / "deployment/environments/ae-product-capability-registry.v1.json"
+            )
+        }
     )
-    snapshot = build_golden_a_capability_snapshot(
-        fixture,
+    registration = registry.resolve(GOLDEN_A_CAPABILITY_ID, required=True)
+    assert registration is not None
+    snapshot = build_capability_snapshot(
+        tenant_id=TENANT_ID,
         capability_snapshot_id=str(
             uuid5(NAMESPACE_URL, "nex:p8-demo-s11:golden-a-capability:VO00:v1")
         ),
         snapshot_version=1,
         created_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        capabilities=registry.merge_capabilities(DEFAULT_P5_CAPABILITIES),
     )
     repository = SqlAlchemyCapabilitySnapshotRepository(
         sessionmaker(bind=engine, expire_on_commit=False)
@@ -433,7 +460,9 @@ def _failed_browser_checks(evidence: Mapping[str, Any]) -> tuple[str, ...]:
 
 def _browser_terminal_summary(evidence: Mapping[str, Any]) -> dict[str, Any]:
     runtime = evidence.get("runtime")
-    projection = runtime.get("result_projection") if isinstance(runtime, Mapping) else None
+    projection = (
+        runtime.get("result_projection") if isinstance(runtime, Mapping) else None
+    )
     result = projection.get("result") if isinstance(projection, Mapping) else None
     delivery = result.get("delivery") if isinstance(result, Mapping) else None
     business_refs = result.get("business_refs") if isinstance(result, Mapping) else None
@@ -450,9 +479,7 @@ def _browser_terminal_summary(evidence: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _failed_step_summary(
-    engine: Any, *, interaction_id: str
-) -> tuple[str, ...]:
+def _failed_step_summary(engine: Any, *, interaction_id: str) -> tuple[str, ...]:
     with engine.connect() as connection:
         rows = list(
             connection.execute(
@@ -547,15 +574,19 @@ def _rotate_demo_credentials(
     snapshots: list[dict[str, Any]] = []
     with engine.begin() as connection:
         for employee_id, password in passwords.items():
-            row = connection.execute(
-                text(
-                    "SELECT credential_id, password_hash, password_hash_algorithm, "
-                    "status, failed_attempt_count, locked_at, password_changed_at, "
-                    "updated_at FROM oa_local_credentials "
-                    "WHERE tenant_id=:tenant AND normalized_employee_id=:employee"
-                ),
-                {"tenant": TENANT_ID, "employee": employee_id.lower()},
-            ).mappings().one_or_none()
+            row = (
+                connection.execute(
+                    text(
+                        "SELECT credential_id, password_hash, password_hash_algorithm, "
+                        "status, failed_attempt_count, locked_at, password_changed_at, "
+                        "updated_at FROM oa_local_credentials "
+                        "WHERE tenant_id=:tenant AND normalized_employee_id=:employee"
+                    ),
+                    {"tenant": TENANT_ID, "employee": employee_id.lower()},
+                )
+                .mappings()
+                .one_or_none()
+            )
             if row is None:
                 raise P8DemoS11Error("Demo employee credential is missing")
             snapshots.append(dict(row))
@@ -709,14 +740,18 @@ def _assert_zero_journey_residue(engines: Mapping[str, Any]) -> None:
     with engines["nex-wc"].connect() as connection:
         wc_count = int(
             connection.execute(
-                text("SELECT count(*) FROM wc_approval_work_item WHERE tenant_id=:tenant"),
+                text(
+                    "SELECT count(*) FROM wc_approval_work_item WHERE tenant_id=:tenant"
+                ),
                 {"tenant": TENANT_ID},
             ).scalar_one()
         )
     with engines["nex-eos"].connect() as connection:
         eos_count = int(
             connection.execute(
-                text("SELECT count(*) FROM eos_business_operation WHERE tenant_id=:tenant"),
+                text(
+                    "SELECT count(*) FROM eos_business_operation WHERE tenant_id=:tenant"
+                ),
                 {"tenant": TENANT_ID},
             ).scalar_one()
         )
