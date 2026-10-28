@@ -331,6 +331,13 @@ def _common_post_pytest_commands(
             "--summary",
         )
     )
+    commands.append(
+        (
+            python_bin,
+            "scripts/quality/run_demo_product_dependency_audit.py",
+            "--summary",
+        )
+    )
     return tuple(commands)
 
 
