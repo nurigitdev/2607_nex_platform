@@ -40,6 +40,7 @@ CURRENT_BACKGROUND_PROCESS_IDS = (
     *BACKGROUND_PROCESS_IDS,
     "nex-wa-evidence-consumer",
     "nex-ae-agent-runtime-worker",
+    "nex-wc-event-delivery-worker",
 )
 HISTORICAL_SERVICE_IDS = (
     "nex-oa",
@@ -327,6 +328,15 @@ def _background_process(
                 "nex-mo-api",
                 "nex-wc-api",
                 "nex-eos-api",
+            ),
+        ),
+        "nex-wc-event-delivery-worker": (
+            "nex-wc",
+            "worker",
+            (
+                "nex-wc-api",
+                "nex-ae-api",
+                "nex-oa-api",
             ),
         ),
     }[process_id]
