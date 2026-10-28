@@ -2,28 +2,31 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable, Mapping, Sequence
 import json
-from pathlib import Path
 import signal
 import sys
 import time
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 from typing import Any, TextIO
-
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "services" / "_shared"))
 
-from nex_runtime.process_manifest import (  # noqa: E402
+from nex_runtime.process_manifest import (
+    build_current_platform_runtime_manifest,
     build_platform_runtime_manifest,
     validate_runtime_command_targets,
 )
-from nex_runtime.runtime_orchestrator import (  # noqa: E402
+from nex_runtime.runtime_orchestrator import (
     RuntimeOrchestrationError,
     RuntimeOrchestrator,
     SubprocessRuntimeLauncher,
 )
-from nex_runtime.topology import RUNTIME_PROFILES, runtime_manifest_public_projection  # noqa: E402
+from nex_runtime.topology import (
+    RUNTIME_PROFILES,
+    runtime_manifest_public_projection,
+)
 
 
 def build_platform_orchestrator(
@@ -34,6 +37,26 @@ def build_platform_orchestrator(
     launcher: Any | None = None,
 ) -> RuntimeOrchestrator:
     manifest = build_platform_runtime_manifest(
+        profile,
+        environ=environ,
+        python_executable=sys.executable,
+    )
+    validate_runtime_command_targets(manifest, root)
+    return RuntimeOrchestrator(
+        manifest,
+        launcher=launcher or SubprocessRuntimeLauncher(root),
+        environ=environ,
+    )
+
+
+def build_current_platform_orchestrator(
+    profile: str,
+    *,
+    environ: Mapping[str, str] | None = None,
+    root: Path = ROOT,
+    launcher: Any | None = None,
+) -> RuntimeOrchestrator:
+    manifest = build_current_platform_runtime_manifest(
         profile,
         environ=environ,
         python_executable=sys.executable,
@@ -77,12 +100,21 @@ def run_platform_session(
 def main(argv: Sequence[str] | None = None, *, out: TextIO | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the NeX platform topology.")
     parser.add_argument("--profile", choices=RUNTIME_PROFILES, default="local_mock")
+    parser.add_argument(
+        "--topology",
+        choices=("current", "historical"),
+        default="current",
+    )
     parser.add_argument("--run-seconds", type=float)
     parser.add_argument("--check-config", action="store_true")
     args = parser.parse_args(argv)
     stream = out or sys.stdout
     try:
-        orchestrator = build_platform_orchestrator(args.profile)
+        orchestrator = (
+            build_current_platform_orchestrator(args.profile)
+            if args.topology == "current"
+            else build_platform_orchestrator(args.profile)
+        )
         if args.check_config:
             print(
                 json.dumps(

@@ -43,6 +43,39 @@ CURRENT_BACKGROUND_PROCESS_IDS = (
     "nex-wc-event-delivery-worker",
     "nex-eos-outbox-publisher",
 )
+CURRENT_BACKGROUND_ENVIRONMENT_NAMES = {
+    "nex-wa-evidence-consumer": (
+        "NEX_AE_API_BASE_URL",
+        "NEX_WC_BASE_URL",
+        "NEX_OA_BASE_URL",
+        "NEX_EOS_BASE_URL",
+        "NEX_WA_TO_AE_SERVICE_TOKEN",
+        "NEX_WA_TO_WC_SERVICE_TOKEN",
+        "NEX_WA_TO_OA_SERVICE_TOKEN",
+        "NEX_WA_TO_EOS_SERVICE_TOKEN",
+        "NEX_WA_WORKER_ID",
+    ),
+    "nex-ae-agent-runtime-worker": (
+        "NEX_AE_AGENT_WORKER_ID",
+        "NEX_AE_AGENT_WORKER_EXECUTOR_KINDS",
+        "NEX_AE_AGENT_WORKER_BACKEND_PROFILES",
+    ),
+    "nex-wc-event-delivery-worker": (
+        "NEX_WC_AE_BASE_URL",
+        "NEX_WC_TO_AE_SERVICE_TOKEN",
+        "NEX_WC_EVENT_DELIVERY_WORKER_ID",
+        "NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS",
+        "NEX_WC_AE_APPROVAL_TIMEOUT_SECONDS",
+        "NEX_WC_EVENT_DELIVERY_POLL_SECONDS",
+    ),
+    "nex-eos-outbox-publisher": (
+        "NEX_AE_API_BASE_URL",
+        "NEX_EOS_TO_AE_SERVICE_TOKEN",
+        "NEX_EOS_OUTBOX_PUBLISHER_WORKER_ID",
+        "NEX_EOS_AE_OUTBOX_TIMEOUT_SECONDS",
+        "NEX_EOS_OUTBOX_PUBLISH_POLL_SECONDS",
+    ),
+}
 HISTORICAL_SERVICE_IDS = (
     "nex-oa",
     "nex-mo",
@@ -362,9 +395,14 @@ def _background_process(
             resolution.profile,
         ),
         dependencies=dependencies,
-        environment_names=(
-            "NEX_PROFILE",
-            _database_environment(owner, resolution.profile, current=current),
+        environment_names=tuple(
+            dict.fromkeys(
+                (
+                    "NEX_PROFILE",
+                    _database_environment(owner, resolution.profile, current=current),
+                    *CURRENT_BACKGROUND_ENVIRONMENT_NAMES.get(process_id, ()),
+                )
+            )
         ),
     )
 

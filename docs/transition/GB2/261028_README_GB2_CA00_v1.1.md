@@ -434,6 +434,7 @@ EOS Outbox Publisher Promotion
 S08
 Current Platform Topology Closure
 → 9 artifacts / 20 processes
+→ CLOSED; current CLI default, protected 8-DB topology acceptance
 
 S09
 DomainIntentActivatorRegistry

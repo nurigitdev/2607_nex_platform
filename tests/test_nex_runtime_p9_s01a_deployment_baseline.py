@@ -133,7 +133,7 @@ def test_current_protected_profile_and_environment_composition_are_complete() ->
     profile = resolve_current_runtime_profile("test", environ=environment)
     composition = resolve_current_environment_composition("test", environ=environment)
 
-    assert len(profile.required_environment_names) == 30
+    assert len(profile.required_environment_names) == 33
     assert current_runtime_profile_required_environment_names("test") == (
         profile.required_environment_names
     )

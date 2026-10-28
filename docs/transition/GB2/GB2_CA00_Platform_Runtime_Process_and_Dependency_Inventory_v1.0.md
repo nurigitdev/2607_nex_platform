@@ -191,7 +191,8 @@ Frozen promotion ownership:
 4. S06 promotes WC delivery using its existing handoff, result, and approval
    delivery components.
 5. S07 promotes EOS publication using its existing outbox publisher.
-6. S08 closes the canonical `9 artifacts / 20 processes` topology.
+6. S08 closed the canonical `9 artifacts / 20 processes` topology and made
+   the current manifest the default `scripts/dev/run_platform.py` topology.
 
 Explicit non-goals for S01-S08:
 
@@ -207,7 +208,7 @@ Explicit non-goals for S01-S08:
 
 | Check | Result |
 |---|---|
-| Current manifest count is source-backed | `20` installed processes after S07 |
+| Current manifest count is source-backed | `20` installed processes, closed by S08 |
 | Target additions are unambiguous | AE worker, WC worker, EOS publisher |
 | Target process count is exact | `20` installed processes |
 | Current and target artifact count is exact | `9` artifacts |
@@ -216,3 +217,7 @@ Explicit non-goals for S01-S08:
 | Demo/product/test/historical/invalid classifications are explicit | PASS |
 | New migration, table, and public API are excluded | PASS |
 | S02 Runtime Process Capability Taxonomy | AUTHORIZED |
+| Current CLI defaults to the 20-process topology | PASS |
+| Historical 13-process CLI topology remains explicit | `--topology historical` |
+| Current protected environment contract | `8 DB + 10 endpoint + 15 signed trust = 33` |
+| Protected current-topology acceptance | `8 DB / 11 background / 8 API / 3 work-loop`, PASS |
