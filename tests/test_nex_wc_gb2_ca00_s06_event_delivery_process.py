@@ -126,21 +126,18 @@ def test_environment_and_numeric_guards_fail_closed() -> None:
     assert process._required_environment({}, "WORKER", "worker-1") == "worker-1"
     for value in ("bad", "0", "121"):
         with pytest.raises(process.WcEventDeliveryProcessError):
-            process._bounded_float(
-                value, "TIMEOUT", minimum=0.001, maximum=120
-            )
-    assert process._bounded_float(
-        "12.5", "TIMEOUT", minimum=0.001, maximum=120
-    ) == 12.5
+            process._bounded_float(value, "TIMEOUT", minimum=0.001, maximum=120)
+    assert process._bounded_float("12.5", "TIMEOUT", minimum=0.001, maximum=120) == 12.5
 
 
 @pytest.mark.parametrize("value", ["wc.local", "ftp://wc.local", "http:///missing"])
 def test_ae_base_url_requires_http_endpoint(value) -> None:
     with pytest.raises(process.WcEventDeliveryProcessError):
         process._ae_base_url({"NEX_WC_AE_BASE_URL": value})
-    assert process._ae_base_url(
-        {"NEX_WC_AE_BASE_URL": "https://ae.local/"}
-    ) == "https://ae.local"
+    assert (
+        process._ae_base_url({"NEX_WC_AE_BASE_URL": "https://ae.local/"})
+        == "https://ae.local"
+    )
 
 
 def test_builder_rejects_package_only_and_missing_transport() -> None:
@@ -150,6 +147,12 @@ def test_builder_rejects_package_only_and_missing_transport() -> None:
         process.build_installed_wc_event_delivery_process(
             "test", environ={"NEX_WC_TEST_DATABASE_URL": "sqlite+pysqlite://"}
         )
+
+
+@pytest.mark.parametrize("profile", ["staging_live", "production"])
+def test_protected_profiles_use_owner_local_database_environment(profile) -> None:
+    assert process._profile(profile) == profile
+    assert process.DATABASE_ENVIRONMENTS[profile] == "NEX_WC_DATABASE_URL"
 
 
 def test_builder_assembles_existing_components_and_disposes_on_check_failure() -> None:
@@ -309,9 +312,7 @@ def test_run_once_reuses_all_delivery_paths(monkeypatch) -> None:
 def test_run_once_preserves_retry_and_wraps_approval_failure(monkeypatch) -> None:
     installed = _installed()
     monkeypatch.setattr(process, "enqueue_pending_handoffs", lambda **_kwargs: [])
-    monkeypatch.setattr(
-        process, "enqueue_pending_result_events", lambda **_kwargs: []
-    )
+    monkeypatch.setattr(process, "enqueue_pending_result_events", lambda **_kwargs: [])
     monkeypatch.setattr(
         process,
         "run_worker_once",
@@ -358,9 +359,7 @@ def test_delivery_job_routes_by_persisted_event_type(monkeypatch) -> None:
                 "('bad','e3','UNKNOWN')"
             )
         )
-    installed = _installed(
-        sessions=sessionmaker(bind=engine, expire_on_commit=False)
-    )
+    installed = _installed(sessions=sessionmaker(bind=engine, expire_on_commit=False))
     monkeypatch.setattr(
         process,
         "run_handoff_delivery_job",
@@ -378,9 +377,7 @@ def test_delivery_job_routes_by_persisted_event_type(monkeypatch) -> None:
         {"payload": {"outbox_id": "result", "event_id": "e2"}}
     ) == {"path": "result"}
     with pytest.raises(process.WcEventDeliveryProcessError, match="unsupported"):
-        installed._deliver_job(
-            {"payload": {"outbox_id": "bad", "event_id": "e3"}}
-        )
+        installed._deliver_job({"payload": {"outbox_id": "bad", "event_id": "e3"}})
     with pytest.raises(process.WcEventDeliveryProcessError, match="payload"):
         installed._deliver_job({"payload": "bad"})
     installed.close()
@@ -392,9 +389,7 @@ def test_queue_projection_counts_only_delivery_work() -> None:
         connection.execute(
             text("CREATE TABLE service_jobs (job_type TEXT, status TEXT)")
         )
-        connection.execute(
-            text("CREATE TABLE wc_event_outbox (delivery_state TEXT)")
-        )
+        connection.execute(text("CREATE TABLE wc_event_outbox (delivery_state TEXT)"))
         connection.execute(
             text("CREATE TABLE wc_approval_outbox (delivery_state TEXT)")
         )
@@ -404,12 +399,8 @@ def test_queue_projection_counts_only_delivery_work() -> None:
                 "('WC_EVENT_DELIVERY','QUEUED'),('OTHER','QUEUED')"
             )
         )
-        connection.execute(
-            text("INSERT INTO wc_event_outbox VALUES ('ENQUEUED')")
-        )
-        connection.execute(
-            text("INSERT INTO wc_approval_outbox VALUES ('PENDING')")
-        )
+        connection.execute(text("INSERT INTO wc_event_outbox VALUES ('ENQUEUED')"))
+        connection.execute(text("INSERT INTO wc_approval_outbox VALUES ('PENDING')"))
     installed = _installed(sessions=sessionmaker(bind=engine))
     projection = installed.queue_projection(probe="RECOVERY")
     assert projection["active_job_count"] == 1
@@ -449,9 +440,7 @@ def test_process_loop_emits_lifecycle_and_failure_counts() -> None:
 
 def test_process_loop_validates_limits_readiness_and_wraps_failures() -> None:
     with pytest.raises(process.WcEventDeliveryProcessError, match="max_cycles"):
-        process.run_installed_wc_event_delivery_process(
-            _LoopProcess(), max_cycles=0
-        )
+        process.run_installed_wc_event_delivery_process(_LoopProcess(), max_cycles=0)
     with pytest.raises(process.WcEventDeliveryProcessError, match="not ready"):
         process.run_installed_wc_event_delivery_process(
             _LoopProcess(ready=False), max_cycles=1
@@ -485,9 +474,12 @@ def test_live_check_closes_runtime_and_local_check_stays_offline() -> None:
     assert process.build_live_check("local_mock")["runtime_ready"] is False
     fake = _LoopProcess()
     fake.readiness = lambda: {"status": "PASS", "readiness_status": "READY"}
-    assert process.build_live_check(
-        "test", process_builder=lambda *_args, **_kwargs: fake
-    )["status"] == "PASS"
+    assert (
+        process.build_live_check(
+            "test", process_builder=lambda *_args, **_kwargs: fake
+        )["status"]
+        == "PASS"
+    )
     assert fake.closed is True
 
 
@@ -503,9 +495,7 @@ def test_run_live_restores_signal_handlers_and_closes(monkeypatch) -> None:
         "run_installed_wc_event_delivery_process",
         lambda *_args, **_kwargs: {"status": "STOPPED"},
     )
-    result = process.run_live(
-        "test", process_builder=lambda *_args, **_kwargs: fake
-    )
+    result = process.run_live("test", process_builder=lambda *_args, **_kwargs: fake)
     assert result["status"] == "STOPPED"
     assert restored == [{1: "old"}]
     assert fake.closed is True
@@ -577,3 +567,22 @@ def test_main_check_run_and_blocked_paths_do_not_expose_secrets() -> None:
         == 2
     )
     assert json.loads(output.getvalue())["detail"] == "plain configuration failure"
+
+
+def test_main_package_check_keeps_staging_command_offline() -> None:
+    output = StringIO()
+    assert (
+        process.main(
+            ["--profile", "staging_live", "--check"],
+            environ={"NEX_RUNTIME_CHECK_MODE": "PACKAGE"},
+            stdout=output,
+            live_check=lambda *_args, **_kwargs: pytest.fail(
+                "package admission must not contact the database"
+            ),
+        )
+        == 0
+    )
+    record = json.loads(output.getvalue())
+    assert record["package_ready"] is True
+    assert record["runtime_ready"] is False
+    assert record["database"] == {"status": "NOT_REQUESTED"}

@@ -29,6 +29,10 @@ from nex_runtime import (
     required_database_url,
     run_worker_once,
 )
+from nex_runtime.runtime_package_admission import (
+    build_runtime_package_check,
+    runtime_package_check_requested,
+)
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -60,8 +64,12 @@ PROCESS_SCHEMA_VERSION = "wc_event_delivery_process.v1"
 PROCESS_READINESS_SCHEMA_VERSION = "wc_event_delivery_readiness.v1"
 PROCESS_RUN_SCHEMA_VERSION = "wc_event_delivery_run.v1"
 DEFAULT_WORKER_ID = "wc-event-delivery-worker-1"
-SUPPORTED_PROFILES = ("local_mock", "test")
-DATABASE_ENVIRONMENTS = {"test": "NEX_WC_TEST_DATABASE_URL"}
+SUPPORTED_PROFILES = ("local_mock", "test", "staging_live", "production")
+DATABASE_ENVIRONMENTS = {
+    "test": "NEX_WC_TEST_DATABASE_URL",
+    "staging_live": "NEX_WC_DATABASE_URL",
+    "production": "NEX_WC_DATABASE_URL",
+}
 REQUIRED_TABLES = frozenset(
     {
         "schema_migrations",
@@ -220,9 +228,7 @@ class InstalledWcEventDeliveryProcess:
     def _deliver_job(self, job: Mapping[str, Any]) -> dict[str, Any]:
         payload = job.get("payload")
         if not isinstance(payload, Mapping):
-            raise WcEventDeliveryProcessError(
-                "WC delivery job payload is invalid"
-            )
+            raise WcEventDeliveryProcessError("WC delivery job payload is invalid")
         with self.sessions() as session:
             event_type = session.execute(
                 text(
@@ -242,9 +248,7 @@ class InstalledWcEventDeliveryProcess:
             return run_work_result_delivery_job(
                 job, store=self.work_results, client=self.result_client
             )
-        raise WcEventDeliveryProcessError(
-            "WC delivery event type is unsupported"
-        )
+        raise WcEventDeliveryProcessError("WC delivery event type is unsupported")
 
     def close(self) -> None:
         self.engine.dispose()
@@ -402,14 +406,10 @@ def run_installed_wc_event_delivery_process(
         or not isinstance(max_cycles, int)
         or not 1 <= max_cycles <= 100_000
     ):
-        raise WcEventDeliveryProcessError(
-            "max_cycles must be between 1 and 100000"
-        )
+        raise WcEventDeliveryProcessError("max_cycles must be between 1 and 100000")
     readiness = process.readiness()
     if readiness["readiness_status"] != "READY":
-        raise WcEventDeliveryProcessError(
-            "WC event-delivery process is not ready"
-        )
+        raise WcEventDeliveryProcessError("WC event-delivery process is not ready")
     stop = should_stop or (lambda: False)
     stream = out or sys.stdout
     started_at = _timestamp(clock())
@@ -419,9 +419,7 @@ def run_installed_wc_event_delivery_process(
     work_cycles = 0
     failed_count = 0
     try:
-        while not stop() and (
-            max_cycles is None or completed_cycles < max_cycles
-        ):
+        while not stop() and (max_cycles is None or completed_cycles < max_cycles):
             result = process.run_once()
             completed_cycles += 1
             work_cycles += result["status"] == "WORK"
@@ -435,9 +433,7 @@ def run_installed_wc_event_delivery_process(
                     "failed_count": result["failed_count"],
                 },
             )
-            if not stop() and (
-                max_cycles is None or completed_cycles < max_cycles
-            ):
+            if not stop() and (max_cycles is None or completed_cycles < max_cycles):
                 sleeper(process.poll_interval_seconds)
     except Exception as exc:
         process.heartbeat.safe_emit(
@@ -533,9 +529,7 @@ def main(
     live_run: Callable[..., Mapping[str, Any]] = run_live,
 ) -> int:
     env = os.environ if environ is None else environ
-    parser = argparse.ArgumentParser(
-        description="NeX WC event-delivery worker process"
-    )
+    parser = argparse.ArgumentParser(description="NeX WC event-delivery worker process")
     parser.add_argument(
         "--profile",
         choices=SUPPORTED_PROFILES,
@@ -546,18 +540,21 @@ def main(
     args = parser.parse_args(list(argv) if argv is not None else None)
     output = stdout or sys.stdout
     try:
-        record = (
-            dict(live_check(args.profile, environ=env))
-            if args.check
-            else dict(
-                live_run(
-                    args.profile,
-                    environ=env,
-                    max_cycles=args.max_cycles,
-                    out=output,
+        if args.check and runtime_package_check_requested(env):
+            record = build_runtime_package_check(build_source_check())
+        else:
+            record = (
+                dict(live_check(args.profile, environ=env))
+                if args.check
+                else dict(
+                    live_run(
+                        args.profile,
+                        environ=env,
+                        max_cycles=args.max_cycles,
+                        out=output,
+                    )
                 )
             )
-        )
         code = 0 if record.get("status") in {"PASS", "STOPPED"} else 2
     except (WcEventDeliveryProcessError, ValueError) as exc:
         detail = str(exc)
@@ -601,9 +598,7 @@ def _database_readiness(
                 else ()
             )
             identity = (
-                session.execute(
-                    text("SELECT current_database(), current_user")
-                ).one()
+                session.execute(text("SELECT current_database(), current_user")).one()
                 if bind.dialect.name == "postgresql"
                 else ("sqlite", "sqlite")
             )
@@ -624,8 +619,7 @@ def _database_readiness(
         "database_user": str(identity[1]),
         "migration_count": len(applied_migrations),
         "expected_migration_count": len(expected_migrations),
-        "migrations_current": not missing_migrations
-        and not unexpected_migrations,
+        "migrations_current": not missing_migrations and not unexpected_migrations,
         "missing_migrations": list(missing_migrations),
         "unexpected_migrations": list(unexpected_migrations),
         "observed_tables": list(observed_tables),
@@ -636,9 +630,7 @@ def _database_readiness(
 def _profile(value: object) -> str:
     selected = str(value).strip()
     if selected not in SUPPORTED_PROFILES:
-        raise WcEventDeliveryProcessError(
-            "unsupported WC event-delivery profile"
-        )
+        raise WcEventDeliveryProcessError("unsupported WC event-delivery profile")
     return selected
 
 
@@ -655,9 +647,7 @@ def _ae_base_url(environ: Mapping[str, str]) -> str:
     value = _required_environment(environ, "NEX_WC_AE_BASE_URL")
     parsed = urlsplit(value)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise WcEventDeliveryProcessError(
-            "NEX_WC_AE_BASE_URL must be an HTTP(S) URL"
-        )
+        raise WcEventDeliveryProcessError("NEX_WC_AE_BASE_URL must be an HTTP(S) URL")
     return value.rstrip("/")
 
 

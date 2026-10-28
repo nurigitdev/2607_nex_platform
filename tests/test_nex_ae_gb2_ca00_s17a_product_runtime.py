@@ -5,6 +5,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import UUID
 
 import nex_ae_api.product_controlled_skill as controlled
 import nex_ae_api.product_runtime_profile as profile
@@ -18,12 +19,12 @@ from nex_ae_api.product_controlled_skill import (
     _product_handlers,
 )
 from nex_ae_api.step_executors import LocalSkillExecutorDependencies
-from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from nex_runtime.nsl_runtime_bundle import (
     NslRuntimeBundleError,
     load_nsl_runtime_bundle,
     verify_nsl_runtime_bundle,
 )
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from run_product_runtime_deployment_audit import (
     ACTIVE_DEPLOYMENT_PATHS,
     PRODUCT_RUNTIME_PATHS,
@@ -290,6 +291,50 @@ def test_product_runtime_loads_admitted_package_and_registry(tmp_path: Path) -> 
         runtime.execute()
 
 
+def test_product_initial_uses_canonical_context_provenance() -> None:
+    observed: dict[str, object] = {}
+
+    class BindingRepository:
+        def bind_request(self, **values):
+            observed.update(values)
+            raise RuntimeError("stop after provenance capture")
+
+    runtime = object.__new__(ProductControlledSkillRuntime)
+    runtime._resolve_authority = lambda _context: SimpleNamespace(  # type: ignore[method-assign]
+        context_projection={},
+        canonical_write_payload={"tenant_id": "VO00"},
+    )
+    dependencies = SimpleNamespace(
+        artifact_gateway=SimpleNamespace(
+            resolve_verified=lambda **_values: {"artifact_ref": "artifact:1"}
+        ),
+        binding_repository=BindingRepository(),
+    )
+    context = StepExecutionContext(
+        job={"tenant_id": "VO00"},
+        attempt={},
+        step={
+            "executable_step_id": "50000000-0000-4000-8000-000000000010",
+            "skill_binding": {
+                "skill_id": "FINANCE.VOUCHER_DRAFT_CREATE",
+                "exact_skill_version": "1.1.0",
+                "skill_semantic_hash": "sha256:" + "1" * 64,
+                "runtime_contract_ref": "contract://nex/example/v1",
+                "trust_policy_id": "policy-1",
+            },
+        },
+        dependency_results=(),
+        existing_result=None,
+    )
+
+    with pytest.raises(controlled.P5StepExecutorError):
+        runtime.initial(context, dependencies)
+
+    assert observed["input_provenance"] == {
+        "canonical_write_payload": "CONTEXT"
+    }
+
+
 def test_product_authority_resolves_persisted_intent_oa_and_eos(
     tmp_path: Path,
 ) -> None:
@@ -359,7 +404,6 @@ def test_product_authority_resolves_persisted_intent_oa_and_eos(
         effective_authorization=lambda **_values: {
             "roles": ["employee"],
             "scopes": ["finance:voucher-draft:create"],
-            "org_scope_refs": ["org:finance"],
             "revision_hash": revision,
         }
     )
@@ -387,11 +431,22 @@ def test_product_authority_resolves_persisted_intent_oa_and_eos(
 
     assert authority.project_id == project["project_id"]
     assert authority.agent_id == agent_id
-    assert authority.org_scope_refs == ("org:finance",)
+    assert authority.org_scope_refs == ()
     assert authority.execution_binding.input_document["amount"]["amount"] == (
         "125000.00"
     )
     assert authority.canonical_write_payload["attachments"] == []
+
+
+def test_persisted_identifier_comparison_normalizes_postgresql_uuid() -> None:
+    identifier = UUID("30000000-0000-4000-8000-000000000010")
+
+    assert controlled._same_persisted_identifier(str(identifier), identifier)
+    assert controlled._same_persisted_identifier(" employee-1001 ", "employee-1001")
+    assert not controlled._same_persisted_identifier(str(identifier), UUID(int=0))
+    assert not controlled._same_persisted_identifier("", identifier)
+    assert not controlled._same_persisted_identifier(None, identifier)
+    assert not controlled._same_persisted_identifier(str(identifier), None)
 
 
 @pytest.mark.parametrize(
@@ -460,6 +515,8 @@ def test_product_input_and_authority_guards_fail_closed() -> None:
         )
     with pytest.raises(controlled.ProductControlledSkillError, match="string set"):
         controlled._string_tuple(["valid", ""])
+    with pytest.raises(controlled.ProductControlledSkillError, match="string set"):
+        controlled._string_tuple(None)
 
 
 def test_product_bundle_and_http_authority_adapters(monkeypatch) -> None:

@@ -63,9 +63,11 @@ from nex_runtime.demo_database import (
     inspect_demo_database_targets,
     resolve_demo_database_targets,
 )
-from nex_runtime.demo_domain_activation import demo_domain_activation_projection
-from nex_runtime.demo_domain_installation import (
+from nex_runtime.demo_domain_activation import (
     DEMO_DOMAIN_PROCESSES,
+    demo_domain_activation_projection,
+)
+from nex_runtime.demo_domain_installation import (
     DEMO_DOMAIN_WORKERS,
     admit_demo_domain_runtime_evidence,
     configure_demo_runtime_approles,
@@ -189,6 +191,7 @@ def _execute_protected_acceptance(
     live_hook: Callable[..., Mapping[str, Any]] | None = None,
     restart_services: Sequence[str] = DEMO_DOMAIN_PROCESSES,
     post_restart_hook: Callable[..., Mapping[str, Any]] | None = None,
+    worker_inventory: Mapping[str, tuple[str, str, str]] = DEMO_DOMAIN_WORKERS,
 ) -> dict[str, Any]:
     admitted_restart_services = tuple(dict.fromkeys(restart_services))
     if not admitted_restart_services:
@@ -354,7 +357,9 @@ def _execute_protected_acceptance(
                 object_credentials=object_credentials,
             )
             readiness = _service_readiness(runtime_dir)
-            initial_heartbeats = _wait_for_heartbeats(urls)
+            initial_heartbeats = _wait_for_heartbeats(
+                urls, worker_inventory=worker_inventory
+            )
             materials = {item.owner: item for item in provisioned.materials}
             token_runtimes = _signed_token_runtime_acceptance(
                 runtime_dir, materials=materials
@@ -387,6 +392,7 @@ def _execute_protected_acceptance(
             restarted_heartbeats = _wait_for_heartbeats(
                 urls,
                 previous=initial_heartbeats,
+                worker_inventory=worker_inventory,
             )
             post_restart_acceptance = None
             if post_restart_hook is not None:
@@ -413,6 +419,7 @@ def _execute_protected_acceptance(
                 restarted_heartbeats=restarted_heartbeats,
                 token_runtimes=token_runtimes,
                 bootstrap_log_counts=bootstrap_counts,
+                worker_inventory=worker_inventory,
             )
             post_counts = _pending_domain_counts(urls)
             if post_counts != queue_counts:
@@ -716,19 +723,20 @@ def _wait_for_heartbeats(
     *,
     previous: Mapping[str, Mapping[str, Any]] | None = None,
     timeout_seconds: float = 60.0,
+    worker_inventory: Mapping[str, tuple[str, str, str]] = DEMO_DOMAIN_WORKERS,
 ) -> dict[str, dict[str, Any]]:
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
-        observed = _heartbeats(urls)
+        observed = _heartbeats(urls, worker_inventory=worker_inventory)
         if (
-            len(observed) == len(DEMO_DOMAIN_WORKERS)
+            len(observed) == len(worker_inventory)
             and all(item.get("status") == "IDLE" for item in observed.values())
             and (
                 previous is None
                 or all(
                     observed[process]["observed_at"]
                     != previous[process]["observed_at"]
-                    for process in DEMO_DOMAIN_WORKERS
+                    for process in worker_inventory
                 )
             )
         ):
@@ -737,9 +745,13 @@ def _wait_for_heartbeats(
     raise P8DemoS10AcceptanceError("Demo domain worker heartbeat timed out")
 
 
-def _heartbeats(urls: Mapping[str, str]) -> dict[str, dict[str, Any]]:
+def _heartbeats(
+    urls: Mapping[str, str],
+    *,
+    worker_inventory: Mapping[str, tuple[str, str, str]] = DEMO_DOMAIN_WORKERS,
+) -> dict[str, dict[str, Any]]:
     result = {}
-    for process_id, (service_id, worker_id, worker_type) in DEMO_DOMAIN_WORKERS.items():
+    for process_id, (service_id, worker_id, worker_type) in worker_inventory.items():
         engine = create_engine(urls[service_id], poolclass=NullPool)
         try:
             with engine.connect() as connection:

@@ -16,10 +16,14 @@ from .deployment_artifacts import (
     validate_deployment_artifact_catalog,
 )
 from .deployment_image_build import OciImageBuildRecord
+from .runtime_package_admission import (
+    RUNTIME_CHECK_MODE_ENV,
+    RUNTIME_PACKAGE_CHECK_MODE,
+)
 
 DEMO_OCI_RELEASE_SCHEMA_VERSION = "p8_demo_oci_release.v1"
-DEMO_PACKAGE_CHECK_MODE_ENV = "NEX_DEMO_RUNTIME_CHECK_MODE"
-DEMO_PACKAGE_CHECK_MODE = "PACKAGE"
+DEMO_PACKAGE_CHECK_MODE_ENV = RUNTIME_CHECK_MODE_ENV
+DEMO_PACKAGE_CHECK_MODE = RUNTIME_PACKAGE_CHECK_MODE
 DEMO_BACKGROUND_PROCESS_IDS = (
     "nex-ae-agent-runtime-worker",
     "nex-wc-event-delivery-worker",
@@ -102,7 +106,13 @@ def build_demo_packaged_entrypoints() -> tuple[DemoPackagedEntrypoint, ...]:
             continue
         command = tuple(binding.command or ())
         if binding.kind == "api":
-            command = (*command, "--host", "0.0.0.0", "--port", str(ports[binding.process_id]))
+            command = (
+                *command,
+                "--host",
+                "0.0.0.0",
+                "--port",
+                str(ports[binding.process_id]),
+            )
         entries.append(
             DemoPackagedEntrypoint(
                 binding.process_id,
@@ -176,7 +186,10 @@ def validate_demo_oci_release(
         errors.append("Demo OCI manifest digests must be unique")
     if len(image_ids) != len(set(image_ids)):
         errors.append("Demo OCI image IDs must be unique")
-    if tuple(item.process_id for item in background_checks) != DEMO_BACKGROUND_PROCESS_IDS:
+    if (
+        tuple(item.process_id for item in background_checks)
+        != DEMO_BACKGROUND_PROCESS_IDS
+    ):
         errors.append("Demo OCI background package-check coverage drift")
     background_entries = {
         item.process_id: item for item in entries if item.kind == "worker"
@@ -189,7 +202,9 @@ def validate_demo_oci_release(
         if check.command != (*entry.command, "--check"):
             errors.append(f"Demo OCI background command drift: {check.process_id}")
         if not check.package_ready or check.runtime_ready or check.secret_included:
-            errors.append(f"Demo OCI background package-check invalid: {check.process_id}")
+            errors.append(
+                f"Demo OCI background package-check invalid: {check.process_id}"
+            )
     if errors:
         raise DemoOciReleaseError("; ".join(errors))
 
@@ -203,7 +218,9 @@ def _validate_demo_packaged_entrypoints(
         if item.execution_model == "INSTALLED_PROCESS"
     }
     errors: list[str] = []
-    if len(entries) != len(installed) or {item.process_id for item in entries} != set(installed):
+    if len(entries) != len(installed) or {item.process_id for item in entries} != set(
+        installed
+    ):
         errors.append("Demo packaged process coverage drift")
     for entry in entries:
         source = installed.get(entry.process_id)

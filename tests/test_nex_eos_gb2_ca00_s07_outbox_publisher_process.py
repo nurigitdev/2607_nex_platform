@@ -145,30 +145,25 @@ def test_environment_and_numeric_guards_fail_closed() -> None:
     assert process._required_environment({}, "WORKER", "worker-1") == "worker-1"
     for value in ("bad", "0", "121"):
         with pytest.raises(process.EosOutboxPublisherProcessError):
-            process._bounded_float(
-                value, "TIMEOUT", minimum=0.001, maximum=120
-            )
-    assert process._bounded_float(
-        "12.5", "TIMEOUT", minimum=0.001, maximum=120
-    ) == 12.5
+            process._bounded_float(value, "TIMEOUT", minimum=0.001, maximum=120)
+    assert process._bounded_float("12.5", "TIMEOUT", minimum=0.001, maximum=120) == 12.5
 
 
 @pytest.mark.parametrize("value", ["ae.local", "ftp://ae.local", "http:///missing"])
 def test_ae_base_url_requires_http_endpoint(value) -> None:
     with pytest.raises(process.EosOutboxPublisherProcessError):
         process._ae_base_url({"NEX_AE_API_BASE_URL": value})
-    assert process._ae_base_url(
-        {"NEX_AE_API_BASE_URL": "https://ae.local/"}
-    ) == "https://ae.local"
+    assert (
+        process._ae_base_url({"NEX_AE_API_BASE_URL": "https://ae.local/"})
+        == "https://ae.local"
+    )
 
 
 def test_builder_rejects_package_only_and_missing_transport() -> None:
     with pytest.raises(
         process.EosOutboxPublisherProcessError, match="package admission"
     ):
-        process.build_installed_eos_outbox_publisher_process(
-            "local_mock", environ={}
-        )
+        process.build_installed_eos_outbox_publisher_process("local_mock", environ={})
     with pytest.raises(
         process.EosOutboxPublisherProcessError, match="NEX_AE_API_BASE_URL"
     ):
@@ -177,9 +172,13 @@ def test_builder_rejects_package_only_and_missing_transport() -> None:
         )
 
 
-def test_builder_assembles_existing_components_and_disposes_on_check_failure() -> (
-    None
-):
+@pytest.mark.parametrize("profile", ["staging_live", "production"])
+def test_protected_profiles_use_owner_local_database_environment(profile) -> None:
+    assert process._profile(profile) == profile
+    assert process.DATABASE_ENVIRONMENTS[profile] == "NEX_EOS_DATABASE_URL"
+
+
+def test_builder_assembles_existing_components_and_disposes_on_check_failure() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     env = {
         "NEX_EOS_TEST_DATABASE_URL": "sqlite+pysqlite:///:memory:",
@@ -325,11 +324,7 @@ def test_run_once_reports_idle_success_and_retry() -> None:
 def test_run_once_wraps_publication_error() -> None:
     installed = _installed(
         publisher=_Publisher(
-            [
-                EosOutboxPublicationError(
-                    "EOS_OUTBOX_INVALID", "bad", retryable=False
-                )
-            ]
+            [EosOutboxPublicationError("EOS_OUTBOX_INVALID", "bad", retryable=False)]
         )
     )
     with pytest.raises(process.EosOutboxPublisherProcessError, match="publication"):
@@ -343,8 +338,7 @@ def test_queue_projection_counts_publication_state() -> None:
         connection.execute(text("CREATE TABLE eos_outbox (delivery_state TEXT)"))
         connection.execute(
             text(
-                "INSERT INTO eos_outbox VALUES "
-                "('PENDING'),('PUBLISHED'),('PUBLISHED')"
+                "INSERT INTO eos_outbox VALUES ('PENDING'),('PUBLISHED'),('PUBLISHED')"
             )
         )
     installed = _installed(sessions=sessionmaker(bind=engine))
@@ -386,9 +380,7 @@ def test_process_loop_emits_lifecycle_and_failure_counts() -> None:
 
 def test_process_loop_validates_limits_readiness_and_wraps_failures() -> None:
     with pytest.raises(process.EosOutboxPublisherProcessError, match="max_cycles"):
-        process.run_installed_eos_outbox_publisher_process(
-            _LoopProcess(), max_cycles=0
-        )
+        process.run_installed_eos_outbox_publisher_process(_LoopProcess(), max_cycles=0)
     with pytest.raises(process.EosOutboxPublisherProcessError, match="not ready"):
         process.run_installed_eos_outbox_publisher_process(
             _LoopProcess(ready=False), max_cycles=1
@@ -422,9 +414,12 @@ def test_live_check_closes_runtime_and_local_check_stays_offline() -> None:
     assert process.build_live_check("local_mock")["runtime_ready"] is False
     fake = _LoopProcess()
     fake.readiness = lambda: {"status": "PASS", "readiness_status": "READY"}
-    assert process.build_live_check(
-        "test", process_builder=lambda *_args, **_kwargs: fake
-    )["status"] == "PASS"
+    assert (
+        process.build_live_check(
+            "test", process_builder=lambda *_args, **_kwargs: fake
+        )["status"]
+        == "PASS"
+    )
     assert fake.closed is True
 
 
@@ -440,9 +435,7 @@ def test_run_live_restores_signal_handlers_and_closes(monkeypatch) -> None:
         "run_installed_eos_outbox_publisher_process",
         lambda *_args, **_kwargs: {"status": "STOPPED"},
     )
-    result = process.run_live(
-        "test", process_builder=lambda *_args, **_kwargs: fake
-    )
+    result = process.run_live("test", process_builder=lambda *_args, **_kwargs: fake)
     assert result["status"] == "STOPPED"
     assert restored == [{1: "old"}]
     assert fake.closed is True
@@ -514,3 +507,22 @@ def test_main_check_run_and_blocked_paths_do_not_expose_secrets() -> None:
         == 2
     )
     assert json.loads(output.getvalue())["detail"] == "plain configuration failure"
+
+
+def test_main_package_check_keeps_staging_command_offline() -> None:
+    output = StringIO()
+    assert (
+        process.main(
+            ["--profile", "staging_live", "--check"],
+            environ={"NEX_RUNTIME_CHECK_MODE": "PACKAGE"},
+            stdout=output,
+            live_check=lambda *_args, **_kwargs: pytest.fail(
+                "package admission must not contact the database"
+            ),
+        )
+        == 0
+    )
+    record = json.loads(output.getvalue())
+    assert record["package_ready"] is True
+    assert record["runtime_ready"] is False
+    assert record["database"] == {"status": "NOT_REQUESTED"}

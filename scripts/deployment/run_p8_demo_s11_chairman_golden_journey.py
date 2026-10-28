@@ -144,7 +144,12 @@ def _source_admission(root: Path) -> dict[str, Any]:
 
 
 def _execute_protected_acceptance(
-    env: Mapping[str, str], *, root: Path
+    env: Mapping[str, str],
+    *,
+    root: Path,
+    worker_inventory: Mapping[str, tuple[str, str, str]] = (
+        installed.DEMO_DOMAIN_WORKERS
+    ),
 ) -> dict[str, Any]:
     targets = resolve_demo_database_targets(env)
     urls = {target.target.service_id: target.database_url for target in targets}
@@ -342,6 +347,7 @@ def _execute_protected_acceptance(
             live_hook=live_hook,
             restart_services=("nex-ae-api", *installed.DEMO_DOMAIN_PROCESSES),
             post_restart_hook=post_restart_hook,
+            worker_inventory=worker_inventory,
         )
         result = {
             **installed_result,

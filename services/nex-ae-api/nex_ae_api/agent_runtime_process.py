@@ -19,6 +19,10 @@ from nex_runtime import (
     database_pool_settings,
     required_database_url,
 )
+from nex_runtime.runtime_package_admission import (
+    build_runtime_package_check,
+    runtime_package_check_requested,
+)
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -87,9 +91,7 @@ class InstalledAgentRuntimeProcess:
         database = _database_readiness(self.sessions)
         worker = build_agent_runtime_worker_check(
             self.composition.worker_config,
-            available_executor_kinds=(
-                self.composition.executor_profile.executor_kinds
-            ),
+            available_executor_kinds=(self.composition.executor_profile.executor_kinds),
             available_backend_profiles=(
                 self.composition.executor_profile.backend_profiles
             ),
@@ -115,9 +117,7 @@ class InstalledAgentRuntimeProcess:
             "configured_backend_profiles_available": not worker.get(
                 "missing_backend_profiles", ["unknown"]
             ),
-            "package_readiness_satisfied": worker.get(
-                "in_process_package_status"
-            )
+            "package_readiness_satisfied": worker.get("in_process_package_status")
             in {"NOT_CONFIGURED", "PASS"},
         }
         ready = all(checks.values())
@@ -132,9 +132,7 @@ class InstalledAgentRuntimeProcess:
             "checks": checks,
             "database": database,
             "worker": worker,
-            "executor_kinds": list(
-                self.composition.executor_profile.executor_kinds
-            ),
+            "executor_kinds": list(self.composition.executor_profile.executor_kinds),
             "backend_profiles": list(
                 self.composition.executor_profile.backend_profiles
             ),
@@ -161,8 +159,7 @@ def build_deterministic_component_executor_profile() -> RuntimeExecutorProfile:
     return RuntimeExecutorProfile(
         registry=registry,
         executor_backends={
-            kind: NSL_V01_PROCESS_ISOLATED_BACKEND
-            for kind in registry.registered_kinds
+            kind: NSL_V01_PROCESS_ISOLATED_BACKEND for kind in registry.registered_kinds
         },
     )
 
@@ -395,18 +392,21 @@ def main(
     args = parser.parse_args(list(argv) if argv is not None else None)
     output = stdout or sys.stdout
     try:
-        record = (
-            dict(live_check(args.profile, environ=env))
-            if args.check
-            else dict(
-                live_run(
-                    args.profile,
-                    environ=env,
-                    max_cycles=args.max_cycles,
-                    out=output,
+        if args.check and runtime_package_check_requested(env):
+            record = build_runtime_package_check(build_source_check())
+        else:
+            record = (
+                dict(live_check(args.profile, environ=env))
+                if args.check
+                else dict(
+                    live_run(
+                        args.profile,
+                        environ=env,
+                        max_cycles=args.max_cycles,
+                        out=output,
+                    )
                 )
             )
-        )
         code = 0 if record.get("status") in {"PASS", "STOPPED"} else 2
     except (AgentRuntimeProcessError, ValueError) as exc:
         record = {

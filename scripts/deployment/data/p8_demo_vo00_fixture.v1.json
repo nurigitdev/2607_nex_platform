@@ -1,10 +1,10 @@
 {
   "schema_version": "p8_demo_fixture.v1",
   "fixture_id": "p8-demo-vo00-v1",
-  "fixture_hash": "sha256:20da3835c8dfa83eb573ac63cd9fd46ba93c94b099e65ae240d9e69a39138599",
+  "fixture_hash": "sha256:862eb33d352c443d34d0a36bbcb683e581cae4564b15df29056fcd4d835b3e60",
   "base_fixture": {
     "path": "scripts/smoke/data/p8_golden_a_fixture.v1.json",
-    "fixture_hash": "sha256:601e096a6f97a93f3f2ffa44b18dddc8bbf8b37531cc21e9ffd171e868c2b4ac"
+    "fixture_hash": "sha256:1caa4810bfbdebe3977480617dce90fc36eca080c8d5a474db0da67dcd4b00ec"
   },
   "tenant": {
     "tenant_id": "VO00",

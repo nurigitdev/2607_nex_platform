@@ -1,7 +1,7 @@
 {
   "schema_version": "p8_golden_a_fixture.v1",
   "fixture_id": "p8-golden-a-voucher-draft-v1",
-  "fixture_hash": "sha256:601e096a6f97a93f3f2ffa44b18dddc8bbf8b37531cc21e9ffd171e868c2b4ac",
+  "fixture_hash": "sha256:1caa4810bfbdebe3977480617dce90fc36eca080c8d5a474db0da67dcd4b00ec",
   "tenant": {
     "tenant_id": "p8-golden-a",
     "display_name": "P8 Golden A"
@@ -16,7 +16,8 @@
       "scopes": [
         "workspace:use",
         "nsl:skill:execute",
-        "finance:voucher-draft:create"
+        "finance:voucher-draft:create",
+        "project:project:read"
       ]
     },
     {

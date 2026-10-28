@@ -133,8 +133,8 @@ services:
       NEX_P8_DEMO_STARTUP_TOKEN_BOOTSTRAP: "true"
       NEX_AE_AGENT_RUNTIME_MODE: required
       NEX_AE_PLANNING_MODE: required
-      NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH: /app/deployment/p8-demo/config/finance-golden-a-vo00.v1.json
-      NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH: /app/deployment/p8-demo/config/ae-product-capability-registry.v1.json
+      NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH: /app/deployment/product/config/finance-golden-a-vo00.v1.json
+      NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH: /app/deployment/product/config/ae-product-capability-registry.v1.json
       NEX_AE_P65_SEMANTIC_CALIBRATION_POLICIES_JSON: ${NEX_P8_DEMO_SEMANTIC_CALIBRATION_POLICIES_JSON:?semantic calibration policies are required}
       NEX_AE_TO_MO_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_MO_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
       NEX_AE_TO_AG_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_AG_SERVICE_TOKEN@${NEX_P8_DEMO_SECRET_VERSION:-v1}
@@ -257,10 +257,10 @@ services:
     <<: *p8-demo-service
     image: ${NEX_WC_RUNTIME_IMAGE:?immutable WC image is required}
     entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-wc, --]
-    command: [python, -m, nex_wc.demo_runtime, events]
+    command: [python, -m, nex_wc.event_delivery_process, --profile, staging_live]
     environment:
       <<: *p8-demo-wc-environment
-      NEX_P8_DEMO_DOMAIN_CLAIMING_ENABLED: "true"
+      NEX_WC_EVENT_DELIVERY_WORKER_ID: wc-event-delivery-worker-1
     secrets:
       - openbao_ca
       - platform_ca
@@ -278,10 +278,10 @@ services:
     <<: *p8-demo-service
     image: ${NEX_EOS_RUNTIME_IMAGE:?immutable EOS image is required}
     entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-eos, --]
-    command: [python, -m, nex_eos.demo_runtime, outbox]
+    command: [python, -m, nex_eos.outbox_publisher_process, --profile, staging_live]
     environment:
       <<: *p8-demo-eos-environment
-      NEX_P8_DEMO_DOMAIN_CLAIMING_ENABLED: "true"
+      NEX_EOS_OUTBOX_PUBLISHER_WORKER_ID: eos-outbox-publisher-1
     secrets:
       - openbao_ca
       - platform_ca

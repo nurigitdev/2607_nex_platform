@@ -168,8 +168,9 @@ def test_protected_profile_selects_product_executor_composition(monkeypatch) -> 
     monkeypatch.setattr(
         process,
         "build_product_runtime_executor_profile",
-        lambda sessions, environ: observed.append((sessions, environ))
-        or product_profile,
+        lambda sessions, environ: (
+            observed.append((sessions, environ)) or product_profile
+        ),
     )
     installed = process.build_installed_agent_runtime_process(
         "staging_live",
@@ -374,6 +375,25 @@ def test_main_check_run_and_blocked_paths_do_not_expose_secrets() -> None:
     blocked = json.loads(output.getvalue())
     assert blocked["status"] == "BLOCKED"
     assert blocked["secret_included"] is False
+
+
+def test_main_package_check_keeps_staging_command_offline() -> None:
+    output = StringIO()
+    assert (
+        process.main(
+            ["--profile", "staging_live", "--check"],
+            environ={"NEX_RUNTIME_CHECK_MODE": "PACKAGE"},
+            stdout=output,
+            live_check=lambda *_args, **_kwargs: pytest.fail(
+                "package admission must not contact the database"
+            ),
+        )
+        == 0
+    )
+    record = json.loads(output.getvalue())
+    assert record["package_ready"] is True
+    assert record["runtime_ready"] is False
+    assert record["database"] == {"status": "NOT_REQUESTED"}
 
 
 def test_database_check_wraps_unavailable_schema() -> None:

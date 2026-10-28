@@ -4,7 +4,6 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
 from urllib.parse import quote
 
-from .demo_domain_activation import DEMO_DOMAIN_PROCESSES
 from .demo_trust import DEMO_OWNERS
 from .semantic_hashes import semantic_sha256_hash_ref
 
@@ -106,15 +105,16 @@ def admit_demo_domain_runtime_evidence(
     restarted_heartbeats: Mapping[str, Mapping[str, Any]],
     token_runtimes: Mapping[str, Mapping[str, Any]],
     bootstrap_log_counts: Mapping[str, int],
+    worker_inventory: Mapping[str, tuple[str, str, str]] = DEMO_DOMAIN_WORKERS,
 ) -> dict[str, Any]:
-    expected_processes = set(DEMO_DOMAIN_PROCESSES)
+    expected_processes = set(worker_inventory)
     if set(initial_heartbeats) != expected_processes or set(
         restarted_heartbeats
     ) != expected_processes:
         raise DemoDomainInstallationError(
             "Demo domain heartbeat process coverage is incomplete"
         )
-    for process_id, expected in DEMO_DOMAIN_WORKERS.items():
+    for process_id, expected in worker_inventory.items():
         initial = initial_heartbeats[process_id]
         restarted = restarted_heartbeats[process_id]
         identity = tuple(

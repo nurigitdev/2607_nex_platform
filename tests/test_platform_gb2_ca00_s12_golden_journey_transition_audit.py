@@ -66,8 +66,8 @@ def test_repository_registry_and_canonical_runner_pass() -> None:
     evidence = audit.audit_repository(ROOT)
 
     assert evidence["status"] == "PASS"
-    assert evidence["registered_runner_count"] == 7
-    assert evidence["discovered_runner_count"] == 7
+    assert evidence["registered_runner_count"] == 8
+    assert evidence["discovered_runner_count"] == 8
     assert evidence["enforced_runner_count"] == 1
     assert evidence["evidence_contract"] == audit.EVIDENCE_CONTRACT
     assert evidence["findings"] == []

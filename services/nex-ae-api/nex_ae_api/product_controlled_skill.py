@@ -231,7 +231,7 @@ class ProductControlledSkillRuntime:
                         authority.canonical_write_payload
                     )
                 },
-                input_provenance={"canonical_write_payload": "AUTHORITATIVE"},
+                input_provenance={"canonical_write_payload": "CONTEXT"},
                 now=now,
             )
             skill_binding = bound["binding"]
@@ -496,7 +496,7 @@ class ProductControlledSkillRuntime:
             ),
             precondition_evidence_ref=f"product-authority:{authority_hash}",
         )
-        org_scope_refs = _string_tuple(authorization.get("org_scope_refs"))
+        org_scope_refs = _string_tuple(authorization.get("org_scope_refs", ()))
         projection = build_context_projection(
             agent_context_ref=persisted["context_ref"],
             agent_context_hash=persisted["context_hash"],
@@ -846,9 +846,15 @@ def _persisted_execution_context(
     identity = context.get("identity")
     if (
         not isinstance(identity, Mapping)
-        or identity.get("principal_id") != row["principal_id"]
-        or identity.get("agent_id") != row["agent_id"]
-        or intent.get("execution_id") != execution_id
+        or not _same_persisted_identifier(
+            identity.get("principal_id"), row["principal_id"]
+        )
+        or not _same_persisted_identifier(
+            identity.get("agent_id"), row["agent_id"]
+        )
+        or not _same_persisted_identifier(
+            intent.get("execution_id"), execution_id
+        )
     ):
         raise ProductControlledSkillError(
             "Persisted AgentContext and WorkIntent lineage is invalid."
@@ -862,6 +868,15 @@ def _persisted_execution_context(
         "agent_id": str(row["agent_id"]),
         "work_intent": intent,
     }
+
+
+def _same_persisted_identifier(document_value: Any, stored_value: Any) -> bool:
+    return (
+        isinstance(document_value, str)
+        and bool(document_value.strip())
+        and stored_value is not None
+        and document_value.strip() == str(stored_value)
+    )
 
 
 def _product_business_request(work_intent: Mapping[str, Any]) -> dict[str, Any]:
