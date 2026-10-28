@@ -38,7 +38,7 @@ The following block is normative and is checked against the repository source.
 {
   "schema_version": "gb2_platformization_inventory.v1",
   "current_artifact_count": 9,
-  "current_installed_process_count": 19,
+  "current_installed_process_count": 20,
   "target_artifact_count": 9,
   "target_installed_process_count": 20,
   "promotion_process_ids": [
@@ -48,7 +48,8 @@ The following block is normative and is checked against the repository source.
   ],
   "current_promoted_process_ids": [
     "nex-ae-agent-runtime-worker",
-    "nex-wc-event-delivery-worker"
+    "nex-wc-event-delivery-worker",
+    "nex-eos-outbox-publisher"
   ],
   "embedded_component_ids": [
     "nex-ae-agent-runtime-dispatcher"
@@ -69,8 +70,8 @@ Counting rules:
 - The three promotion targets reuse `nex-ae-runtime`, `nex-wc-runtime`, and
   `nex-eos-runtime`; no tenth artifact is introduced.
 - `current_promoted_process_ids` records the cumulative GB2 promotion state;
-  after S06, two targets are current and one target remains.
-- `nex-wa-evidence-consumer` is already canonical in the current 19-process
+  after S07, all three promotion targets are current.
+- `nex-wa-evidence-consumer` is already canonical in the current 20-process
   Platform. It is a reference implementation, not a GB2 promotion target.
 
 ## 4. Artifact Ownership Freeze
@@ -89,7 +90,7 @@ Counting rules:
 
 Canonical artifact ownership is defined by
 `services/_shared/nex_runtime/deployment_artifacts.py`. The current catalog has
-nine artifacts and nineteen process bindings after S06.
+nine artifacts and twenty process bindings after S07.
 
 ## 5. Process Inventory
 
@@ -119,7 +120,7 @@ the current manifest has no HTTP probe and S02 must not silently reinterpret a
 | `nex-wa-evidence-consumer` | WA | `nex-wa-runtime` | `nex_wa.consumer_main` | installed worker | WA | WA, OA, AE, WC, EOS | owner process lifecycle | `job_claiming` | durable cursor/idempotency | `P -> P` |
 | `nex-ae-agent-runtime-worker` | AE | `nex-ae-runtime` | `nex_ae_api.agent_runtime_process` | installed worker | AE | AE, OA, CX, MO, WC, EOS | PostgreSQL heartbeat | `job_claiming` | lease expiry and durable checkpoint | `P -> P` |
 | `nex-wc-event-delivery-worker` | WC | `nex-wc-runtime` | `nex_wc.event_delivery_process` | installed worker | WC | WC, AE, OA | PostgreSQL heartbeat | `event_delivering` | job retry and outbox replay | `P -> P` |
-| `nex-eos-outbox-publisher` | EOS | `nex-eos-runtime` | canonical entrypoint due S07 | installed worker | EOS | EOS, AE, WC, OA | PostgreSQL heartbeat | S02 taxonomy: outbox publication | outbox replay | `D -> P` |
+| `nex-eos-outbox-publisher` | EOS | `nex-eos-runtime` | `nex_eos.outbox_publisher_process` | installed worker | EOS | EOS, AE, OA | PostgreSQL heartbeat | `outbox_publishing` | outbox retry and replay | `P -> P` |
 
 The exact target dependency lists for the three promoted processes may be
 reduced during S05-S07, but ownership, artifact placement, durable database,
@@ -206,7 +207,7 @@ Explicit non-goals for S01-S08:
 
 | Check | Result |
 |---|---|
-| Current manifest count is source-backed | `19` installed processes after S06 |
+| Current manifest count is source-backed | `20` installed processes after S07 |
 | Target additions are unambiguous | AE worker, WC worker, EOS publisher |
 | Target process count is exact | `20` installed processes |
 | Current and target artifact count is exact | `9` artifacts |

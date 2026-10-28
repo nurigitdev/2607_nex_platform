@@ -182,6 +182,9 @@ CURRENT_PROCESS_ARTIFACT_BINDINGS = (
     ProcessArtifactBinding(
         "nex-wc-event-delivery-worker", "nex-wc-runtime", "event-delivery-worker"
     ),
+    ProcessArtifactBinding(
+        "nex-eos-outbox-publisher", "nex-eos-runtime", "outbox-publisher"
+    ),
 )
 
 

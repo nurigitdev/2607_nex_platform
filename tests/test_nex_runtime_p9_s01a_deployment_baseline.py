@@ -64,7 +64,7 @@ def test_deployment_baselines_are_additive_and_exact() -> None:
     assert len(current.artifacts) == 9
     assert demo_ids - historical_ids == {"nex-wc-runtime", "nex-eos-runtime"}
     assert current_ids - demo_ids == {"nex-wa-runtime"}
-    assert len(current.process_bindings) == 19
+    assert len(current.process_bindings) == 20
 
 
 def test_current_runtime_and_catalog_have_exact_process_coverage() -> None:
@@ -77,12 +77,13 @@ def test_current_runtime_and_catalog_have_exact_process_coverage() -> None:
 
     process_ids = {item.process_id for item in manifest.processes}
     assert len(manifest.endpoints) == 9
-    assert len(process_ids) == 19
+    assert len(process_ids) == 20
     assert {item.process_id for item in catalog.process_bindings} == process_ids
     assert {"nex-wc-api", "nex-eos-api", "nex-wa-api"}.issubset(process_ids)
     assert "nex-wa-evidence-consumer" in process_ids
     assert "nex-ae-agent-runtime-worker" in process_ids
     assert "nex-wc-event-delivery-worker" in process_ids
+    assert "nex-eos-outbox-publisher" in process_ids
 
 
 def test_current_packaged_entrypoints_reuse_promoted_service_modules() -> None:
@@ -105,6 +106,12 @@ def test_current_packaged_entrypoints_reuse_promoted_service_modules() -> None:
     assert processes["nex-wc-event-delivery-worker"].command[1:] == (
         "-m",
         "nex_wc.event_delivery_process",
+        "--profile",
+        "local_mock",
+    )
+    assert processes["nex-eos-outbox-publisher"].command[1:] == (
+        "-m",
+        "nex_eos.outbox_publisher_process",
         "--profile",
         "local_mock",
     )

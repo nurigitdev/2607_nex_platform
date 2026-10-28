@@ -22,6 +22,7 @@ PROMOTION_PROCESS_IDS = {
 CURRENT_PROMOTED_PROCESS_IDS = {
     "nex-ae-agent-runtime-worker",
     "nex-wc-event-delivery-worker",
+    "nex-eos-outbox-publisher",
 }
 REQUIRED_REFERENCES = (
     "services/nex-ae-api/nex_ae_api/p8_demo_runtime_composition.py",
@@ -91,7 +92,7 @@ def test_inventory_counts_match_current_and_demo_source_manifests() -> None:
     }
 
     assert contract["current_artifact_count"] == len(catalog.artifacts) == 9
-    assert contract["current_installed_process_count"] == len(current_ids) == 19
+    assert contract["current_installed_process_count"] == len(current_ids) == 20
     assert set(contract["promotion_process_ids"]) == PROMOTION_PROCESS_IDS
     assert set(contract["current_promoted_process_ids"]) == (
         CURRENT_PROMOTED_PROCESS_IDS

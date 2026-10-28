@@ -71,6 +71,7 @@ _DIRECT_BACKGROUND_MODULES = {
     "nex-wa-evidence-consumer": "nex_wa.consumer_main",
     "nex-ae-agent-runtime-worker": "nex_ae_api.agent_runtime_process",
     "nex-wc-event-delivery-worker": "nex_wc.event_delivery_process",
+    "nex-eos-outbox-publisher": "nex_eos.outbox_publisher_process",
 }
 
 
@@ -382,6 +383,7 @@ def _packaged_command(
         if process.process_id in {
             "nex-ae-agent-runtime-worker",
             "nex-wc-event-delivery-worker",
+            "nex-eos-outbox-publisher",
         }:
             return (*command, "--profile", profile)
         return command
