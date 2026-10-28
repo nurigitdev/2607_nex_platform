@@ -24,6 +24,10 @@ from nex_ae_api.context_candidate_generation import (
     LiveContextCandidateService,
     context_candidate_hints,
 )
+from nex_ae_api.domain_intent_activators import DomainIntentActivatorRegistry
+from nex_ae_api.domain_intent_products import (
+    build_domain_intent_activator_registry,
+)
 from nex_ae_api.executable_plans import (
     SqlAlchemyExecutablePlanRepository,
     compile_executable_plan,
@@ -300,8 +304,8 @@ class DeterministicCandidateAdmissionService:
     validations: Any = field(repr=False)
     executable_plans: Any = field(repr=False)
     executions: Any = field(repr=False)
-    domain_intent_activators: Mapping[str, Any] = field(
-        default_factory=dict, repr=False
+    domain_intent_activator_registry: DomainIntentActivatorRegistry = field(
+        default_factory=DomainIntentActivatorRegistry, repr=False
     )
     clock: Callable[[], datetime] = field(default=lambda: datetime.now(UTC), repr=False)
 
@@ -434,12 +438,12 @@ class DeterministicCandidateAdmissionService:
                 )
         assert work_intent is not None
         context_resolver = request.context_resolver
-        activator = self.domain_intent_activators.get(
-            str(work_intent.get("intent_label") or "")
+        registration = self.domain_intent_activator_registry.resolve(
+            str(work_intent.get("intent_label") or ""), required=False
         )
-        if activator is not None:
+        if registration is not None:
             try:
-                activated = activator.activate(
+                activated = registration.activator.activate(
                     candidate=intent_candidate,
                     work_intent=work_intent,
                     principal_id=request.owner_subject_id,
@@ -994,10 +998,6 @@ def attach_semantic_candidate_admission(
         )
     client = build_default_ae_mo_generation_client(environ)
     calibrations = SemanticCalibrationRegistry.from_environment(environ)
-    from nex_ae_api.p8_demo_semantic_activation import (
-        build_p8_demo_intent_activators,
-    )
-
     service = DeterministicCandidateAdmissionService(
         mode=mode,
         admission=admission,
@@ -1013,7 +1013,7 @@ def attach_semantic_candidate_admission(
         validations=SqlAlchemyPlanValidationRepository(session_factory),
         executable_plans=SqlAlchemyExecutablePlanRepository(session_factory),
         executions=SqlAlchemyAgentExecutionRepository(session_factory),
-        domain_intent_activators=build_p8_demo_intent_activators(
+        domain_intent_activator_registry=build_domain_intent_activator_registry(
             resolved_environ
         ),
     )

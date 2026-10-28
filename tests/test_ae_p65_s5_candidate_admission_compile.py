@@ -10,6 +10,7 @@ import pytest
 from nex_ae_api.agent_context import TrustedContextResolution
 from nex_ae_api.agent_execution import AgentRuntimeAdmission
 from nex_ae_api.context_candidate_generation import LiveContextCandidateService
+from nex_ae_api.domain_intent_activators import DomainIntentActivatorRegistry
 from nex_ae_api.intent_candidate_generation import LiveIntentCandidateService
 from nex_ae_api.mo_generation_client import (
     AeMoGenerationReadiness,
@@ -333,10 +334,14 @@ def _components(
         validations=validations,
         executable_plans=executable_plans,
         executions=executions,
-        domain_intent_activators=(
-            {}
-            if domain_activator is None
-            else {"analyze_project_budget": domain_activator}
+        domain_intent_activator_registry=DomainIntentActivatorRegistry.from_mapping(
+            (
+                {}
+                if domain_activator is None
+                else {"analyze_project_budget": domain_activator}
+            ),
+            version="test.v1",
+            source_identity="test:p65-candidate-admission",
         ),
         clock=lambda: datetime(2026, 10, 17, 2, 0, tzinfo=UTC),
     )

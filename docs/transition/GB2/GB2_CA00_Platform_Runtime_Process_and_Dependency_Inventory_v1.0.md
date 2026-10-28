@@ -134,7 +134,9 @@ change.
 |---|---:|---:|---:|---:|---:|
 | `services/nex-ae-api/nex_ae_api/p8_demo_runtime_composition.py` | `D` | no | yes | extract generic AE factory in S03 | yes |
 | `services/nex-ae-api/nex_ae_api/p8_demo_controlled_skill.py` | `D` | no | yes | productize finance activator in S10 | yes |
-| `services/nex-ae-api/nex_ae_api/p8_demo_semantic_activation.py` | `D` | yes, invalid edge | yes | replace with registry in S09-S10 | yes |
+| `services/nex-ae-api/nex_ae_api/p8_demo_semantic_activation.py` | `D` | compatibility builder only | yes | productize finance activator in S10 | yes |
+| `services/nex-ae-api/nex_ae_api/domain_intent_activators.py` | `P` | yes | no | canonical registry added in S09 | no |
+| `services/nex-ae-api/nex_ae_api/domain_intent_products.py` | `P` | yes | compatibility registration until S10 | canonical product builder added in S09 | no |
 | `services/nex-ae-api/nex_ae_api/demo_runtime.py` | `D` | no | yes | replace entrypoint in S05 | yes |
 | `services/nex-wc/nex_wc/demo_runtime.py` | `D` | no | yes | replace entrypoint in S06 | yes |
 | `services/nex-eos/nex_eos/demo_runtime.py` | `D` | no | yes | replace entrypoint in S07 | yes |
@@ -144,10 +146,10 @@ change.
 | `services/nex-ae-api/nex_ae_api/agent_runtime_dispatcher.py` | `P` | yes | yes | reuse unchanged | no |
 | `services/nex-ae-api/nex_ae_api/agent_runtime_worker.py` | `P` | yes | yes | reuse unchanged | no |
 | `services/nex-ae-api/nex_ae_api/multi_step_engine.py` | `P` | yes | yes | reuse unchanged | no |
-| `services/nex-ae-api/nex_ae_api/semantic_candidate_admission.py` | `P` | yes | yes | retain; remove demo edge | no |
+| `services/nex-ae-api/nex_ae_api/semantic_candidate_admission.py` | `P` | yes | no | registry-bound in S09 | no |
 | `services/nex-ae-api/nex_ae_api/nsl_approval_resume.py` | `P` | yes | yes | reuse unchanged | no |
 | `services/nex-ae-api/nex_ae_api/workspace_result_publication.py` | `P` | yes | yes | reuse unchanged | no |
-| product import edge `semantic_candidate_admission -> p8_demo_semantic_activation` | `X` | yes | n/a | remove in S09-S10 | record resolution |
+| product import edge `semantic_candidate_admission -> DomainIntentActivatorRegistry` | `P` | yes | no | direct Demo edge removed in S09 | resolved |
 | `services/nex-wc/nex_wc/handoff_delivery.py` | `P` | library/API boundary | yes | compose in S06 | no |
 | `services/nex-wc/nex_wc/work_result_delivery.py` | `P` | library/API boundary | yes | compose in S06 | no |
 | `services/nex-wc/nex_wc/approval_event_delivery.py` | `P` | library/API boundary | yes | compose in S06 | no |

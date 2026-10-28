@@ -438,6 +438,7 @@ Current Platform Topology Closure
 
 S09
 DomainIntentActivatorRegistry
+→ CLOSED; deterministic registry and domain-agnostic semantic admission
 
 S10
 Golden A Product Activator

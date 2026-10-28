@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import nex_ae_api.semantic_candidate_admission as admission_module
 import pytest
 from nex_ae_api.agent_context import ContextBuildRequest
+from nex_ae_api.domain_intent_activators import DomainIntentActivatorRegistry
 from nex_ae_api.semantic_candidate_admission import (
     SemanticCandidateAdmissionError,
     SemanticCandidateAdmissionResult,
@@ -81,6 +82,10 @@ def test_required_attachment_accepts_durable_private_storage(tmp_path) -> None:
     )
     assert runtime.available is True
     assert isinstance(runtime.service.candidate_storage, LocalSemanticCandidateStorage)
+    assert isinstance(
+        runtime.service.domain_intent_activator_registry,
+        DomainIntentActivatorRegistry,
+    )
 
 
 @pytest.mark.parametrize(
