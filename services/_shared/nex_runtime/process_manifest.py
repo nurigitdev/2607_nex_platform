@@ -36,7 +36,11 @@ BACKGROUND_PROCESS_IDS = (
     "nex-cx-ingestion-worker",
     "nex-cx-remediation-worker",
 )
-CURRENT_BACKGROUND_PROCESS_IDS = (*BACKGROUND_PROCESS_IDS, "nex-wa-evidence-consumer")
+CURRENT_BACKGROUND_PROCESS_IDS = (
+    *BACKGROUND_PROCESS_IDS,
+    "nex-wa-evidence-consumer",
+    "nex-ae-agent-runtime-worker",
+)
 HISTORICAL_SERVICE_IDS = (
     "nex-oa",
     "nex-mo",
@@ -309,6 +313,18 @@ def _background_process(
                 "nex-wa-api",
                 "nex-oa-api",
                 "nex-ae-api",
+                "nex-wc-api",
+                "nex-eos-api",
+            ),
+        ),
+        "nex-ae-agent-runtime-worker": (
+            "nex-ae-api",
+            "worker",
+            (
+                "nex-ae-api",
+                "nex-oa-api",
+                "nex-cx-api",
+                "nex-mo-api",
                 "nex-wc-api",
                 "nex-eos-api",
             ),

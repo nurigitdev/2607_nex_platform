@@ -176,6 +176,9 @@ CURRENT_PROCESS_ARTIFACT_BINDINGS = (
     ProcessArtifactBinding(
         "nex-wa-evidence-consumer", "nex-wa-runtime", "evidence-consumer"
     ),
+    ProcessArtifactBinding(
+        "nex-ae-agent-runtime-worker", "nex-ae-runtime", "agent-runtime-worker"
+    ),
 )
 
 

@@ -108,10 +108,10 @@ def test_historical_and_current_manifests_remain_compatible() -> None:
     assert historical_projection["job_claiming_background_count"] == 1
     assert historical_projection["lifecycle_only_background_count"] == 6
 
-    assert current_projection["entrypoint_count"] == 17
-    assert current_projection["background_entrypoint_count"] == 8
-    assert current_projection["domain_work_background_count"] == 2
-    assert current_projection["job_claiming_background_count"] == 2
+    assert current_projection["entrypoint_count"] == 18
+    assert current_projection["background_entrypoint_count"] == 9
+    assert current_projection["domain_work_background_count"] == 3
+    assert current_projection["job_claiming_background_count"] == 3
     assert current_projection["lifecycle_only_background_count"] == 6
     assert current_projection["event_delivering_background_count"] == 0
     assert current_projection["outbox_publishing_background_count"] == 0
@@ -119,7 +119,7 @@ def test_historical_and_current_manifests_remain_compatible() -> None:
     assert current_projection["capability_counts"] == {
         "request_serving": 8,
         "static_serving": 1,
-        "job_claiming": 2,
+        "job_claiming": 3,
         "event_delivering": 0,
         "outbox_publishing": 0,
         "scheduled_maintenance": 0,

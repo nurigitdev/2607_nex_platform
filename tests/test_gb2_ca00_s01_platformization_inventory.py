@@ -8,7 +8,6 @@ from nex_runtime.demo_processes import build_demo_process_manifest
 from nex_runtime.deployment_artifacts import build_current_deployment_artifact_catalog
 from nex_runtime.process_manifest import build_current_platform_runtime_manifest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = (
     ROOT
@@ -20,6 +19,7 @@ PROMOTION_PROCESS_IDS = {
     "nex-wc-event-delivery-worker",
     "nex-eos-outbox-publisher",
 }
+CURRENT_PROMOTED_PROCESS_IDS = {"nex-ae-agent-runtime-worker"}
 REQUIRED_REFERENCES = (
     "services/nex-ae-api/nex_ae_api/p8_demo_runtime_composition.py",
     "services/nex-ae-api/nex_ae_api/p8_demo_controlled_skill.py",
@@ -88,13 +88,17 @@ def test_inventory_counts_match_current_and_demo_source_manifests() -> None:
     }
 
     assert contract["current_artifact_count"] == len(catalog.artifacts) == 9
-    assert contract["current_installed_process_count"] == len(current_ids) == 17
+    assert contract["current_installed_process_count"] == len(current_ids) == 18
     assert set(contract["promotion_process_ids"]) == PROMOTION_PROCESS_IDS
-    assert PROMOTION_PROCESS_IDS.isdisjoint(current_ids)
+    assert set(contract["current_promoted_process_ids"]) == (
+        CURRENT_PROMOTED_PROCESS_IDS
+    )
+    assert PROMOTION_PROCESS_IDS & current_ids == CURRENT_PROMOTED_PROCESS_IDS
     assert PROMOTION_PROCESS_IDS.issubset(demo_installed_ids)
     assert contract["target_artifact_count"] == 9
+    remaining_promotions = PROMOTION_PROCESS_IDS - current_ids
     assert contract["target_installed_process_count"] == (
-        len(current_ids) + len(PROMOTION_PROCESS_IDS)
+        len(current_ids) + len(remaining_promotions)
     ) == 20
     assert contract["embedded_component_ids"] == [
         "nex-ae-agent-runtime-dispatcher"

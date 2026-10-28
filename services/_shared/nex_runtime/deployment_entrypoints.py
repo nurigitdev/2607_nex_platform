@@ -69,6 +69,7 @@ _API_MODULES = {
 _DOMAIN_PROCESS_CAPABILITY_BY_ID = dict(PACKAGED_DOMAIN_PROCESS_CAPABILITIES)
 _DIRECT_BACKGROUND_MODULES = {
     "nex-wa-evidence-consumer": "nex_wa.consumer_main",
+    "nex-ae-agent-runtime-worker": "nex_ae_api.agent_runtime_process",
 }
 
 
@@ -376,7 +377,10 @@ def _packaged_command(
         return ("npm", "start", "--silent")
     direct_module = _DIRECT_BACKGROUND_MODULES.get(process.process_id)
     if direct_module is not None:
-        return (python_executable, "-m", direct_module)
+        command = (python_executable, "-m", direct_module)
+        if process.process_id == "nex-ae-agent-runtime-worker":
+            return (*command, "--profile", profile)
+        return command
     if process.process_id in CURRENT_BACKGROUND_PROCESS_IDS:
         return (
             python_executable,
