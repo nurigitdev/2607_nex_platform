@@ -134,19 +134,47 @@ def test_demo_object_storage_bootstrap_provisions_two_private_owners(
 ) -> None:
     calls: list[tuple[str, str]] = []
 
+    class Denied(Exception):
+        def __init__(self):
+            self.response = {"ResponseMetadata": {"HTTPStatusCode": 403}}
+
+    class Client:
+        def __init__(self, bucket):
+            self.bucket = bucket
+
+        def head_bucket(self, *, Bucket):
+            if Bucket != self.bucket:
+                raise Denied()
+            return {}
+
     @dataclass(frozen=True)
     class Receipt:
         bucket: str
 
         def evidence(self):
-            return {"bucket": self.bucket, "status": "READY"}
+            return {
+                "schema_version": "private_bucket_bootstrap.v1",
+                "status": "VERIFIED",
+                "bucket_ref": "b" * 64,
+                "created": True,
+                "versioning_enabled": True,
+                "encryption_algorithm": "AES256",
+                "lifecycle_rule_count": 3,
+                "policy_digest": "a" * 64,
+            }
 
     class Iam:
         def provision_bucket_owner(self, *, access_key, secret_key, bucket, **_):
             assert access_key.endswith("-access")
-            assert secret_key.endswith("-secret")
+            assert secret_key.endswith("-secret-value")
             calls.append((access_key, bucket))
-            return {"status": "PROVISIONED", "root_credential_reused": False}
+            return {
+                "schema_version": "rustfs_bucket_owner_provision.v1",
+                "status": "PROVISIONED",
+                "policy_name": f"{bucket}-rw",
+                "bucket_scope_count": 1,
+                "root_credential_reused": False,
+            }
 
     result = acceptance._provision_demo_object_storage(
         runtime_dir=tmp_path,
@@ -154,11 +182,11 @@ def test_demo_object_storage_bootstrap_provisions_two_private_owners(
         root_secret="root-secret-value",
         object_credentials={
             "NEX_AE_OBJECT_STORAGE_ACCESS_KEY": "ae-access",
-            "NEX_AE_OBJECT_STORAGE_SECRET_KEY": "ae-secret",
+            "NEX_AE_OBJECT_STORAGE_SECRET_KEY": "ae-private-secret-value",
             "NEX_CX_OBJECT_STORAGE_ACCESS_KEY": "cx-access",
-            "NEX_CX_OBJECT_STORAGE_SECRET_KEY": "cx-secret",
+            "NEX_CX_OBJECT_STORAGE_SECRET_KEY": "cx-private-secret-value",
         },
-        client_builder=lambda settings: {"owner": settings.owner},
+        client_builder=lambda settings: Client(settings.bucket),
         bucket_bootstrap=lambda _client, *, bucket: Receipt(bucket),
         iam_factory=lambda *_args, **_kwargs: Iam(),
     )

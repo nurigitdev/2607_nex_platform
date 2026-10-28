@@ -78,6 +78,11 @@ from nex_runtime.demo_trust import (
 )
 from nex_runtime.object_storage import ObjectStorageSettings, build_s3_client
 from nex_runtime.object_storage_lifecycle import bootstrap_private_bucket
+from nex_runtime.object_storage_provisioning import (
+    OBJECT_STORAGE_OWNER_SPECS,
+    ObjectStorageOwnerCredential,
+    provision_object_storage_environment,
+)
 from nex_runtime.rustfs_iam import RustfsAdminClient
 from nex_runtime.s143_staging import (
     OpenBaoAdminClient,
@@ -842,49 +847,57 @@ def _provision_demo_object_storage(
 ) -> dict[str, Any]:
     endpoint = "https://object.nex-staging.test:8443"
     ca_bundle = str(runtime_dir / "tls/platform-ca.crt")
-    buckets = ("nex-ae-private", "nex-cx-private")
     with _object_hostname_loopback():
         root_client = client_builder(
             ObjectStorageSettings(
                 owner="bootstrap",
                 endpoint_url=endpoint,
-                bucket=buckets[0],
+                bucket=OBJECT_STORAGE_OWNER_SPECS[0].bucket,
                 access_key=root_access,
                 secret_key=root_secret,
                 ca_bundle=ca_bundle,
             )
         )
-        bucket_receipts = [
-            bucket_bootstrap(root_client, bucket=bucket).evidence()
-            for bucket in buckets
-        ]
         iam = iam_factory(
             endpoint,
             access_key=root_access,
             secret_key=root_secret,
             ca_bundle=ca_bundle,
         )
-        iam_receipts = [
-            iam.provision_bucket_owner(
-                access_key=object_credentials[f"NEX_{owner}_OBJECT_STORAGE_ACCESS_KEY"],
-                secret_key=object_credentials[f"NEX_{owner}_OBJECT_STORAGE_SECRET_KEY"],
-                bucket=bucket,
-                policy_name=policy,
+        owner_clients = {}
+        credentials = []
+        for spec in OBJECT_STORAGE_OWNER_SPECS:
+            prefix = "AE" if spec.owner == "nex-ae-api" else "CX"
+            access_key = object_credentials[
+                f"NEX_{prefix}_OBJECT_STORAGE_ACCESS_KEY"
+            ]
+            secret_key = object_credentials[
+                f"NEX_{prefix}_OBJECT_STORAGE_SECRET_KEY"
+            ]
+            owner_clients[spec.owner] = client_builder(
+                ObjectStorageSettings(
+                    owner=spec.owner,
+                    endpoint_url=endpoint,
+                    bucket=spec.bucket,
+                    access_key=access_key,
+                    secret_key=secret_key,
+                    ca_bundle=ca_bundle,
+                )
             )
-            for owner, bucket, policy in (
-                ("AE", "nex-ae-private", "nex-ae-private-rw"),
-                ("CX", "nex-cx-private", "nex-cx-private-rw"),
+            credentials.append(
+                ObjectStorageOwnerCredential(
+                    owner=spec.owner,
+                    access_key=access_key,
+                    secret_key=secret_key,
+                )
             )
-        ]
-    return {
-        "status": "PASS",
-        "bucket_count": len(bucket_receipts),
-        "owner_identity_count": len(iam_receipts),
-        "bucket_receipts": bucket_receipts,
-        "iam_receipts": iam_receipts,
-        "root_credential_reused_by_service": False,
-        "secret_included": False,
-    }
+        return provision_object_storage_environment(
+            root_client,
+            iam,
+            owner_clients=owner_clients,
+            credentials=tuple(credentials),
+            bucket_bootstrap=bucket_bootstrap,
+        )
 
 
 @contextmanager

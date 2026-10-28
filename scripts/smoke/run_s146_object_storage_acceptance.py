@@ -43,7 +43,6 @@ from nex_runtime.object_storage import (
     build_s3_client,
 )
 from nex_runtime.object_storage_lifecycle import (
-    bootstrap_private_bucket,
     restore_object_version,
 )
 from nex_runtime.object_storage_migration import (
@@ -51,6 +50,11 @@ from nex_runtime.object_storage_migration import (
     assess_migration_cutover,
     build_migration_inventory,
     copy_and_verify_migration,
+)
+from nex_runtime.object_storage_provisioning import (
+    ObjectStorageOwnerCredential,
+    provision_object_storage_environment,
+    verify_object_storage_runtime_readiness,
 )
 from nex_runtime.production_configuration import (
     load_production_configuration_manifest,
@@ -260,30 +264,12 @@ def _execute_protected_acceptance(
                 ca_bundle=ca_bundle,
             )
             root_client = root_store.client
-            bucket_receipts = [
-                bootstrap_private_bucket(root_client, bucket=bucket).evidence()
-                for bucket in (CX_BUCKET, AE_BUCKET)
-            ]
             iam = RustfsAdminClient(
                 endpoint,
                 access_key=root_access,
                 secret_key=root_secret,
                 ca_bundle=ca_bundle,
             )
-            iam_receipts = [
-                iam.provision_bucket_owner(
-                    access_key=cx_access,
-                    secret_key=cx_secret,
-                    bucket=CX_BUCKET,
-                    policy_name="nex-cx-private-rw",
-                ),
-                iam.provision_bucket_owner(
-                    access_key=ae_access,
-                    secret_key=ae_secret,
-                    bucket=AE_BUCKET,
-                    policy_name="nex-ae-private-rw",
-                ),
-            ]
             cx_store = _object_store(
                 "nex-cx",
                 endpoint,
@@ -300,12 +286,31 @@ def _execute_protected_acceptance(
                 ae_secret,
                 ca_bundle=ca_bundle,
             )
+            object_storage = provision_object_storage_environment(
+                root_client,
+                iam,
+                owner_clients={
+                    "nex-ae-api": ae_store.client,
+                    "nex-cx": cx_store.client,
+                },
+                credentials=(
+                    ObjectStorageOwnerCredential(
+                        owner="nex-ae-api",
+                        access_key=ae_access,
+                        secret_key=ae_secret,
+                    ),
+                    ObjectStorageOwnerCredential(
+                        owner="nex-cx",
+                        access_key=cx_access,
+                        secret_key=cx_secret,
+                    ),
+                ),
+            )
             adapter = _adapter_acceptance(cx_store, ae_store)
             migration_evidence = _migration_acceptance(
                 runtime_dir, cx_store, ae_store
             )
             restore = _restore_acceptance(cx_store)
-            isolation = _cross_bucket_isolation(cx_store, ae_store)
             tls_route = _tls_route_acceptance(runtime_dir)
             posture = _container_posture(
                 compose_environment,
@@ -326,6 +331,12 @@ def _execute_protected_acceptance(
             )
             if not _adapter_restart_read(cx_store, ae_store, adapter):
                 raise S146AcceptanceError("restart recovery verification failed")
+            restart_readiness = verify_object_storage_runtime_readiness(
+                {
+                    "nex-ae-api": ae_store.client,
+                    "nex-cx": cx_store.client,
+                }
+            )
             cleanup = _cleanup_buckets(root_client, (CX_BUCKET, AE_BUCKET))
             result = {
                 "evidence_schema_version": SCHEMA_VERSION,
@@ -344,11 +355,16 @@ def _execute_protected_acceptance(
                     "root_credentials_materialized_before_rustfs_start": True,
                 },
                 "rustfs": {
-                    "bucket_receipts": bucket_receipts,
-                    "iam_receipts": iam_receipts,
+                    "bucket_receipts": object_storage["bucket_receipts"],
+                    "iam_receipts": object_storage["iam_receipts"],
                     "tls_route": tls_route,
                     "container_posture": posture,
-                    "cross_bucket_denied": isolation,
+                    "cross_bucket_denied": object_storage[
+                        "cross_bucket_denied"
+                    ],
+                    "dependency_readiness": restart_readiness[
+                        "dependency_readiness"
+                    ],
                     "restart_recovery_verified": True,
                 },
                 "adapters": adapter["evidence"],
@@ -602,32 +618,6 @@ def _restore_acceptance(store: S3ObjectStore) -> dict[str, Any]:
         "delete_marker_created": bool(deleted.get("DeleteMarker")),
         "receipt": receipt.evidence(),
     }
-
-
-def _cross_bucket_isolation(
-    cx_store: S3ObjectStore, ae_store: S3ObjectStore
-) -> dict[str, bool]:
-    result = {
-        "cx_to_ae_denied": _access_denied(cx_store.client, AE_BUCKET),
-        "ae_to_cx_denied": _access_denied(ae_store.client, CX_BUCKET),
-    }
-    if not all(result.values()):
-        raise S146AcceptanceError("cross-bucket isolation failed")
-    return result
-
-
-def _access_denied(client: Any, bucket: str) -> bool:
-    try:
-        client.head_bucket(Bucket=bucket)
-    except Exception as exc:  # noqa: BLE001 - boto clients expose status on generated exceptions
-        response = getattr(exc, "response", {})
-        metadata = response.get("ResponseMetadata", {}) if isinstance(response, Mapping) else {}
-        error = response.get("Error", {}) if isinstance(response, Mapping) else {}
-        return metadata.get("HTTPStatusCode") in {401, 403} or error.get("Code") in {
-            "AccessDenied",
-            "InvalidAccessKeyId",
-        }
-    return False
 
 
 def _postgres_metadata_probe(env: Mapping[str, str]) -> dict[str, Any]:
