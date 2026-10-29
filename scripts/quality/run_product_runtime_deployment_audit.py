@@ -14,10 +14,42 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT = ROOT / "reports/quality/gb2-ca00-s17a-product-runtime.json"
 
 ACTIVE_DEPLOYMENT_PATHS = (
-    "deployment/compose/p8-demo.override.yaml",
-    "deployment/oci/p8-demo-ae-runtime.Containerfile",
-    "scripts/deployment/build_p8_demo_ae_runtime_image.py",
+    "deployment/compose/canonical-platform.override.yaml",
+    "deployment/oci/canonical-platform-ae-runtime.Containerfile",
+    "scripts/deployment/build_canonical_platform_ae_runtime_image.py",
 )
+CANONICAL_DEPLOYMENT_ENTRYPOINTS = (
+    "scripts/deployment/build_canonical_platform_images.py",
+    "scripts/deployment/build_canonical_platform_ae_runtime_image.py",
+    "scripts/deployment/check_canonical_platform_compose.py",
+    "scripts/deployment/run_canonical_platform_external_dependencies.py",
+    "scripts/deployment/run_canonical_platform_migrations.py",
+    "scripts/deployment/run_canonical_platform_trust_admission.py",
+    "scripts/deployment/run_canonical_platform_installed_acceptance.py",
+    "scripts/deployment/run_canonical_platform_golden_journey.py",
+)
+LEGACY_DEPLOYMENT_WRAPPERS = {
+    "scripts/deployment/build_p8_demo_images.py": "build_canonical_platform_images",
+    "scripts/deployment/build_p8_demo_ae_runtime_image.py": (
+        "build_canonical_platform_ae_runtime_image"
+    ),
+    "scripts/deployment/check_p8_demo_compose.py": ("check_canonical_platform_compose"),
+    "scripts/deployment/run_p8_demo_external_dependencies.py": (
+        "run_canonical_platform_external_dependencies"
+    ),
+    "scripts/deployment/run_p8_demo_migrations.py": (
+        "run_canonical_platform_migrations"
+    ),
+    "scripts/deployment/run_p8_demo_trust_admission.py": (
+        "run_canonical_platform_trust_admission"
+    ),
+    "scripts/deployment/run_p8_demo_s10_installed_domain_acceptance.py": (
+        "run_canonical_platform_installed_acceptance"
+    ),
+    "scripts/deployment/run_p8_demo_s11_chairman_golden_journey.py": (
+        "run_canonical_platform_golden_journey"
+    ),
+}
 PRODUCT_RUNTIME_PATHS = (
     "services/nex-ae-api/nex_ae_api/agent_runtime_process.py",
     "services/nex-ae-api/nex_ae_api/product_runtime_profile.py",
@@ -29,7 +61,12 @@ def audit_product_runtime_deployment(root: Path = ROOT) -> dict[str, Any]:
     issues: list[str] = []
     sources = {
         relative: (root / relative).read_text(encoding="utf-8")
-        for relative in (*ACTIVE_DEPLOYMENT_PATHS, *PRODUCT_RUNTIME_PATHS)
+        for relative in (
+            *ACTIVE_DEPLOYMENT_PATHS,
+            *CANONICAL_DEPLOYMENT_ENTRYPOINTS,
+            *LEGACY_DEPLOYMENT_WRAPPERS,
+            *PRODUCT_RUNTIME_PATHS,
+        )
     }
     for relative in ACTIVE_DEPLOYMENT_PATHS:
         source = sources[relative]
@@ -41,6 +78,15 @@ def audit_product_runtime_deployment(root: Path = ROOT) -> dict[str, Any]:
         source = sources[relative]
         if "nex_ae_api.demo_runtime" in source or "NEX_AE_DEMO_" in source:
             issues.append(f"product runtime depends on Demo boundary: {relative}")
+    for relative in CANONICAL_DEPLOYMENT_ENTRYPOINTS:
+        if not sources[relative].strip():
+            issues.append(f"canonical deployment entrypoint is empty: {relative}")
+    for relative, target in LEGACY_DEPLOYMENT_WRAPPERS.items():
+        source = sources[relative]
+        if f'_TARGET = "{target}"' not in source:
+            issues.append(f"legacy deployment wrapper target drift: {relative}")
+        if "sys.modules[__name__] = importlib.import_module(_TARGET)" not in source:
+            issues.append(f"legacy deployment wrapper is not transparent: {relative}")
     controlled_runtime = sources[
         "services/nex-ae-api/nex_ae_api/product_controlled_skill.py"
     ]
@@ -57,7 +103,7 @@ def audit_product_runtime_deployment(root: Path = ROOT) -> dict[str, Any]:
         issues.append("product runtime reads protected fixture-like business input")
 
     compose = yaml.safe_load(
-        sources["deployment/compose/p8-demo.override.yaml"]
+        sources["deployment/compose/canonical-platform.override.yaml"]
     )
     worker = compose["services"]["nex-ae-agent-runtime-worker"]
     expected_command = [
@@ -82,7 +128,7 @@ def audit_product_runtime_deployment(root: Path = ROOT) -> dict[str, Any]:
     ]:
         issues.append("AE worker product executor profile is incomplete")
 
-    container = sources["deployment/oci/p8-demo-ae-runtime.Containerfile"]
+    container = sources["deployment/oci/canonical-platform-ae-runtime.Containerfile"]
     if "COPY --chown=65532:65532 fixtures" in container:
         issues.append("business fixtures are packaged into the product runtime image")
     if "NEX_AE_NSL_BUNDLE_MANIFEST" not in container:
@@ -98,8 +144,7 @@ def audit_product_runtime_deployment(root: Path = ROOT) -> dict[str, Any]:
         issues.append("product NSL bundle contains a business fixture")
     registry = json.loads(
         (
-            root
-            / "deployment/environments/ae-product-capability-registry.v1.json"
+            root / "deployment/environments/ae-product-capability-registry.v1.json"
         ).read_text(encoding="utf-8")
     )
     artifact = registry["registrations"][0]["skill_artifact"]
@@ -123,6 +168,8 @@ def audit_product_runtime_deployment(root: Path = ROOT) -> dict[str, Any]:
             "EOS",
         ],
         "active_deployment_paths": list(ACTIVE_DEPLOYMENT_PATHS),
+        "canonical_deployment_entrypoints": list(CANONICAL_DEPLOYMENT_ENTRYPOINTS),
+        "legacy_deployment_wrappers": dict(LEGACY_DEPLOYMENT_WRAPPERS),
         "recorded_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "secret_included": False,
     }

@@ -5,14 +5,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-import run_p8_demo_s11_chairman_golden_journey as acceptance
+import run_canonical_platform_golden_journey as acceptance
 from sqlalchemy import create_engine, text
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_s11_source_admission_is_protected_and_provider_scoped() -> None:
-    result = acceptance.run_p8_demo_s11_chairman_golden_journey(
+    result = acceptance.run_canonical_platform_golden_journey(
         {}, execute=False, root=ROOT
     )
 
@@ -46,10 +46,7 @@ def test_s11_source_admission_runs_in_a_standalone_process(tmp_path: Path) -> No
     completed = subprocess.run(
         [
             sys.executable,
-            str(
-                ROOT
-                / "scripts/deployment/run_p8_demo_s11_chairman_golden_journey.py"
-            ),
+            str(ROOT / "scripts/deployment/run_canonical_platform_golden_journey.py"),
             "--summary",
             "--report",
             str(report),
@@ -78,16 +75,16 @@ def test_s11_execution_is_double_opt_in_and_contains_failure() -> None:
             "actual_playwright": True,
         }
 
-    skipped = acceptance.run_p8_demo_s11_chairman_golden_journey(
+    skipped = acceptance.run_canonical_platform_golden_journey(
         {}, execute=True, root=ROOT, protected_runner=runner
     )
-    passed = acceptance.run_p8_demo_s11_chairman_golden_journey(
+    passed = acceptance.run_canonical_platform_golden_journey(
         {acceptance.EXECUTION_ENV: "1"},
         execute=True,
         root=ROOT,
         protected_runner=runner,
     )
-    failed = acceptance.run_p8_demo_s11_chairman_golden_journey(
+    failed = acceptance.run_canonical_platform_golden_journey(
         {acceptance.EXECUTION_ENV: "1"},
         execute=True,
         root=ROOT,
@@ -113,9 +110,7 @@ def test_s11_calibration_is_exact_for_all_three_semantic_stages() -> None:
         "CONTEXT",
         "PLAN",
     ]
-    assert {policy["model_profile"] for policy in policies} == {
-        "general-llm-default"
-    }
+    assert {policy["model_profile"] for policy in policies} == {"general-llm-default"}
     assert {policy["model_ref"] for policy in policies} == {"Qwen3.5-4B"}
     assert {policy["minimum_confidence"] for policy in policies} == {0.5}
 
@@ -143,8 +138,7 @@ def test_s11_activates_existing_golden_a_local_skill_capability() -> None:
         assert (
             connection.execute(
                 text(
-                    "SELECT count(*) FROM ae_capability_snapshot "
-                    "WHERE tenant_id='VO00'"
+                    "SELECT count(*) FROM ae_capability_snapshot WHERE tenant_id='VO00'"
                 )
             ).scalar_one()
             == 1
@@ -193,9 +187,9 @@ def test_s11_public_browser_projection_strips_runtime_lineage() -> None:
         "delivery_state": "none",
         "business_ref_count": 0,
     }
-    assert acceptance._safe_diagnostic_value("eos.write_outcome-requires_reconciliation") == (
+    assert acceptance._safe_diagnostic_value(
         "eos.write_outcome-requires_reconciliation"
-    )
+    ) == ("eos.write_outcome-requires_reconciliation")
     assert acceptance._safe_diagnostic_value("not safe/value") == "invalid"
     assert acceptance._safe_diagnostic_value(None) == "none"
     assert "provider=true" in acceptance.summary_line(
@@ -233,23 +227,16 @@ def test_s11_fixture_visibility_uses_canonical_eos_project_member_table() -> Non
             "eos_account",
             "eos_org_unit",
         ):
-            connection.execute(
-                text(f"CREATE TABLE {table} (tenant_id TEXT NOT NULL)")
-            )
+            connection.execute(text(f"CREATE TABLE {table} (tenant_id TEXT NOT NULL)"))
         connection.execute(text("INSERT INTO eos_nvt_project VALUES ('VO00')"))
-        connection.execute(
-            text("INSERT INTO eos_project VALUES ('VO00'), ('VO00')")
-        )
+        connection.execute(text("INSERT INTO eos_project VALUES ('VO00'), ('VO00')"))
         connection.execute(
             text("INSERT INTO eos_project_member VALUES ('VO00'), ('VO00')")
         )
-        connection.execute(
-            text("INSERT INTO eos_account VALUES ('VO00'), ('VO00')")
-        )
+        connection.execute(text("INSERT INTO eos_account VALUES ('VO00'), ('VO00')"))
         connection.execute(
             text(
-                "INSERT INTO eos_org_unit VALUES "
-                "('VO00'), ('VO00'), ('VO00'), ('VO00')"
+                "INSERT INTO eos_org_unit VALUES ('VO00'), ('VO00'), ('VO00'), ('VO00')"
             )
         )
 
@@ -292,16 +279,14 @@ def test_s11_failed_step_summary_is_bounded_and_public() -> None:
                 "INSERT INTO ae_step_result VALUES "
                 "('VO00', 'execution-1', 'E1', 'BLOCKED', "
                 "'eos.write_outcome_requires_reconciliation', "
-                "'{\"commit_state\":\"COMMITTED\","
-                "\"verification_status\":\"FAILED\","
-                "\"approval_status\":\"VALID\","
-                "\"reason_code\":\"APPROVAL_VALID\"}')"
+                '\'{"commit_state":"COMMITTED",'
+                '"verification_status":"FAILED",'
+                '"approval_status":"VALID",'
+                '"reason_code":"APPROVAL_VALID"}\')'
             )
         )
 
-    assert acceptance._failed_step_summary(
-        engine, interaction_id="interaction-1"
-    ) == (
+    assert acceptance._failed_step_summary(engine, interaction_id="interaction-1") == (
         (
             "E1:BLOCKED:eos.write_outcome_requires_reconciliation:COMMITTED:FAILED:"
             "VALID:APPROVAL_VALID"

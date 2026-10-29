@@ -26,6 +26,7 @@
     "smoke:p8-s102-demo-playwright": "node scripts/runP8S102DemoPlaywrightSmoke.mjs",
     "smoke:p8-s112-project-membership-playwright": "node scripts/runP8S112ProjectMembershipPlaywrightSmoke.mjs",
     "smoke:p8-demo-s11-chairman-golden-journey": "node scripts/runP8DemoS11ChairmanGoldenJourney.mjs",
+    "smoke:canonical-platform-s11-chairman-golden-journey": "node scripts/runP8DemoS11ChairmanGoldenJourney.mjs",
     "smoke:voucher-attachment-playwright": "node scripts/runVoucherAttachmentPlaywrightSmoke.mjs --summary",
     "smoke:playwright-readiness": "node scripts/runCredentialLoginPlaywrightReadiness.mjs --summary",
     "test": "node --test test/*.test.mjs"

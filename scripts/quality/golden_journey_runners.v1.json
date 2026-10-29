@@ -2,6 +2,11 @@
   "schema_version": "golden_journey_runner_registry.v1",
   "runners": [
     {
+      "path": "scripts/deployment/run_canonical_platform_golden_journey.py",
+      "evidence_class": "INSTALLED_PLATFORM",
+      "enforce_transition_boundary": false
+    },
+    {
       "path": "scripts/deployment/run_gb2_ca00_s18_installed_current_platform_golden_journey.py",
       "evidence_class": "GOLDEN_JOURNEY",
       "enforce_transition_boundary": true

@@ -13,13 +13,11 @@ from .current_topology_closure import (
 from .deployment_artifacts import build_current_deployment_artifact_catalog
 from .deployment_entrypoints import build_current_packaged_runtime_manifest
 
-CURRENT_PLATFORM_INSTALLATION_SCHEMA_VERSION = (
-    "gb2_current_platform_installation.v1"
-)
+CURRENT_PLATFORM_INSTALLATION_SCHEMA_VERSION = "gb2_current_platform_installation.v1"
 CURRENT_COMPOSE_PATHS = (
     "deployment/compose/s143-staging.compose.yaml",
     "deployment/compose/s146-object-storage.override.yaml",
-    "deployment/compose/p8-demo.override.yaml",
+    "deployment/compose/canonical-platform.override.yaml",
     "deployment/compose/p9-wa.override.yaml",
 )
 CURRENT_JOURNEY_PROCESS_TO_SERVICE = {
@@ -102,9 +100,8 @@ def admit_current_platform_installation(root: Path) -> dict[str, Any]:
             for process_id, service_id in required_processes.items()
         ),
         "product_runtime_commands_only": all(
-            "demo_runtime" not in json.dumps(
-                services[service_id].get("command") or (), sort_keys=True
-            )
+            "demo_runtime"
+            not in json.dumps(services[service_id].get("command") or (), sort_keys=True)
             for service_id in required_processes.values()
         ),
         "product_ae_worker_profile": _product_ae_worker_profile(
@@ -180,9 +177,7 @@ def _deep_merge(base: object, overlay: object) -> object:
     return merged
 
 
-def _compose_command_matches(
-    packaged: tuple[str, ...], compose: object
-) -> bool:
+def _compose_command_matches(packaged: tuple[str, ...], compose: object) -> bool:
     if packaged[:2] == ("npm", "start") and compose is None:
         return True
     if not isinstance(compose, list) or not all(
@@ -223,8 +218,5 @@ def _product_ae_image_contract_not_overridden(service: Mapping[str, Any]) -> boo
         environment.get("NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH")
         == "/app/deployment/product/config/finance-golden-a-vo00.v1.json"
         and environment.get("NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH")
-        == (
-            "/app/deployment/product/config/"
-            "ae-product-capability-registry.v1.json"
-        )
+        == ("/app/deployment/product/config/ae-product-capability-registry.v1.json")
     )

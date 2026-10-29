@@ -205,7 +205,7 @@ def test_generic_attachment_has_no_demo_fixture_dependency() -> None:
     ):
         assert forbidden not in sources
 
-    compose = (ROOT / "deployment/compose/p8-demo.override.yaml").read_text(
+    compose = (ROOT / "deployment/compose/canonical-platform.override.yaml").read_text(
         encoding="utf-8"
     )
     assert FINANCE_GOLDEN_A_PROFILE_PATH_ENV in compose

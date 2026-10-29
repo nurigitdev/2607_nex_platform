@@ -124,7 +124,9 @@ def test_provisioning_delegates_to_existing_s143_and_s144_owners(
         object(),
         root=ROOT,
         runtime_dir=tmp_path,
-        secret_values={binding.target_environment_name: "private" for binding in BINDINGS},
+        secret_values={
+            binding.target_environment_name: "private" for binding in BINDINGS
+        },
         bindings=BINDINGS,
         owners=OWNERS,
         subject_alt_names=("oa.nex-staging.test",),
@@ -151,7 +153,9 @@ def test_provisioning_without_trust_keeps_runtime_boundary_separate(
     monkeypatch.setattr(
         provisioning,
         "initialize_openbao",
-        lambda client, runtime_dir: SimpleNamespace(root_token="root-token", unseal_key="key"),
+        lambda client, runtime_dir: SimpleNamespace(
+            root_token="root-token", unseal_key="key"
+        ),
     )
     monkeypatch.setattr(
         provisioning,
@@ -168,7 +172,9 @@ def test_provisioning_without_trust_keeps_runtime_boundary_separate(
         object(),
         root=ROOT,
         runtime_dir=tmp_path,
-        secret_values={binding.target_environment_name: "private" for binding in BINDINGS},
+        secret_values={
+            binding.target_environment_name: "private" for binding in BINDINGS
+        },
         bindings=BINDINGS,
         owners=OWNERS,
         subject_alt_names=("oa.nex-staging.test",),
@@ -179,7 +185,9 @@ def test_provisioning_without_trust_keeps_runtime_boundary_separate(
     assert result.trust_configured is False
 
 
-def test_runtime_resolution_authenticates_each_owner_after_restart_and_revokes() -> None:
+def test_runtime_resolution_authenticates_each_owner_after_restart_and_revokes() -> (
+    None
+):
     first: list[Resolver] = []
     restarted: list[Resolver] = []
 
@@ -216,9 +224,10 @@ def test_runtime_resolution_authenticates_each_owner_after_restart_and_revokes()
     assert initial["resolved_owner_count"] == 2
     assert initial["dependency_readiness"]["ready"] is True
     assert initial["dependency_readiness"]["authorized"] is True
-    assert initial["dependency_readiness"]["evidence_hash"] == after_restart[
-        "dependency_readiness"
-    ]["evidence_hash"]
+    assert (
+        initial["dependency_readiness"]["evidence_hash"]
+        == after_restart["dependency_readiness"]["evidence_hash"]
+    )
     assert all(item.revoked for item in (*first, *restarted))
     assert first[0].references == [
         "secret://openbao/nex-platform/staging/nex-oa/NEX_OA_DATABASE_URL@v1"
@@ -477,7 +486,9 @@ def test_provisioning_rejects_invalid_safe_projection(
     monkeypatch.setattr(
         provisioning,
         "initialize_openbao",
-        lambda client, runtime_dir: SimpleNamespace(root_token="root", unseal_key="key"),
+        lambda client, runtime_dir: SimpleNamespace(
+            root_token="root", unseal_key="key"
+        ),
     )
     monkeypatch.setattr(
         provisioning, "configure_openbao_staging", lambda client, **kwargs: configured
@@ -499,9 +510,9 @@ def test_provisioning_rejects_invalid_safe_projection(
 
 
 def test_p8_demo_is_a_consumer_of_canonical_provisioning() -> None:
-    source = (ROOT / "scripts/deployment/run_p8_demo_trust_admission.py").read_text(
-        encoding="utf-8"
-    )
+    source = (
+        ROOT / "scripts/deployment/run_canonical_platform_trust_admission.py"
+    ).read_text(encoding="utf-8")
 
     assert "from nex_runtime.openbao_provisioning import" in source
     assert "provision_openbao_environment(" in source

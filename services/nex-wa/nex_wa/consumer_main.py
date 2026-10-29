@@ -6,20 +6,38 @@ import os
 import signal
 import sys
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Callable, TextIO
+from typing import Any, TextIO
+
+from nex_runtime.runtime_package_admission import (
+    build_runtime_package_check,
+    runtime_package_check_requested,
+)
 
 from .installed_consumer import (
     WaInstalledConsumerProcess,
     build_installed_consumer_process,
 )
-
 from .persistence import (
     WaPersistenceError,
     WaPersistenceRuntime,
     build_wa_persistence_runtime,
 )
+
+
+def build_source_check() -> dict[str, Any]:
+    return {
+        "schema_version": "nex_wa_evidence_consumer_process.v1",
+        "status": "PASS",
+        "service_id": "nex-wa",
+        "process_id": "nex-wa-evidence-consumer",
+        "module": "nex_wa.consumer_main",
+        "work_capability": "job_claiming",
+        "runtime_ready": False,
+        "content_included": False,
+        "secret_included": False,
+    }
 
 
 def check_consumer_readiness(
@@ -72,6 +90,15 @@ def main(
     parser.add_argument("--max-cycles", type=int)
     args = parser.parse_args(argv)
     env = os.environ if environ is None else environ
+    if args.check and runtime_package_check_requested(env):
+        print(
+            json.dumps(
+                build_runtime_package_check(build_source_check()),
+                ensure_ascii=True,
+                sort_keys=True,
+            )
+        )
+        return 0
     if args.check:
         result = check_consumer_readiness(
             env,

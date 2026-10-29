@@ -190,7 +190,7 @@ def test_demo_fixture_mutation_cannot_change_registered_capability() -> None:
     assert fixture["admission"]["skill_id"] != registration.skill_artifact["skill_id"]
 
     source = (
-        ROOT / "scripts/deployment/run_p8_demo_s11_chairman_golden_journey.py"
+        ROOT / "scripts/deployment/run_canonical_platform_golden_journey.py"
     ).read_text(encoding="utf-8")
     activation_source = source[source.index("def _activate_golden_a_capability") :]
     assert "load_demo_business_fixture" not in activation_source
@@ -302,9 +302,7 @@ def test_registration_contract_shape_failures_are_rejected(tmp_path: Path) -> No
     cases.append(_rehash_registry(non_mapping))
 
     non_local = deepcopy(_registry_payload())
-    non_local["registrations"][0]["capability"] = deepcopy(
-        DEFAULT_P5_CAPABILITIES[0]
-    )
+    non_local["registrations"][0]["capability"] = deepcopy(DEFAULT_P5_CAPABILITIES[0])
     cases.append(_rehash_registry(non_local, registration=True))
 
     bad_artifact = deepcopy(_registry_payload())
@@ -312,9 +310,9 @@ def test_registration_contract_shape_failures_are_rejected(tmp_path: Path) -> No
     cases.append(_rehash_registry(bad_artifact, registration=True))
 
     bad_skill_hash = deepcopy(_registry_payload())
-    bad_skill_hash["registrations"][0]["skill_artifact"][
-        "skill_semantic_hash"
-    ] = "invalid"
+    bad_skill_hash["registrations"][0]["skill_artifact"]["skill_semantic_hash"] = (
+        "invalid"
+    )
     cases.append(_rehash_registry(bad_skill_hash, registration=True))
 
     bad_registration_hash = deepcopy(_registry_payload())

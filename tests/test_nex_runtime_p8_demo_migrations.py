@@ -46,7 +46,9 @@ def _inspections(*, state: str = "MIGRATION_REQUIRED"):
                 applied_migrations=("0001",) if state == "CURRENT" else (),
                 missing_migrations=() if state == "CURRENT" else ("0001",),
                 extra_migrations=("9999",) if state == "DRIFT" else (),
-                source_inventory_hash=f"sha256:{target.service_id.encode().hex():0<64}"[:71],
+                source_inventory_hash=f"sha256:{target.service_id.encode().hex():0<64}"[
+                    :71
+                ],
             )
         )
     return tuple(records)
@@ -121,7 +123,9 @@ class _Cursor:
         return [(item,) for item in self.inspection.applied_migrations]
 
 
-def test_demo_migration_execution_is_ordered_current_and_redacted(tmp_path: Path) -> None:
+def test_demo_migration_execution_is_ordered_current_and_redacted(
+    tmp_path: Path,
+) -> None:
     targets = resolve_demo_database_targets(_environment())
     before = _inspections()
     after = _inspections(state="CURRENT")
@@ -158,11 +162,19 @@ def test_demo_migration_execution_is_ordered_current_and_redacted(tmp_path: Path
     ("mutation", "code"),
     (
         (lambda values: values.update(confirmation="wrong"), "confirmation_invalid"),
-        (lambda values: values.update(targets=values["targets"][:-1]), "database_set_incomplete"),
-        (lambda values: values.update(inspections=values["inspections"][:-1]), "inspection_set_incomplete"),
+        (
+            lambda values: values.update(targets=values["targets"][:-1]),
+            "database_set_incomplete",
+        ),
+        (
+            lambda values: values.update(inspections=values["inspections"][:-1]),
+            "inspection_set_incomplete",
+        ),
     ),
 )
-def test_demo_migration_admission_fails_closed(tmp_path: Path, mutation, code: str) -> None:
+def test_demo_migration_admission_fails_closed(
+    tmp_path: Path, mutation, code: str
+) -> None:
     before = _inspections()
     values = {
         "targets": resolve_demo_database_targets(_environment()),
@@ -180,11 +192,17 @@ def test_demo_migration_admission_fails_closed(tmp_path: Path, mutation, code: s
         )
 
 
-def test_demo_migration_rejects_drift_backup_mismatch_and_bad_runner(tmp_path: Path) -> None:
+def test_demo_migration_rejects_drift_backup_mismatch_and_bad_runner(
+    tmp_path: Path,
+) -> None:
     targets = resolve_demo_database_targets(_environment())
     before = list(_inspections())
     drifted = DemoDatabaseInspection(
-        **{**before[0].__dict__, "migration_state": "DRIFT", "extra_migrations": ("9999",)}
+        **{
+            **before[0].__dict__,
+            "migration_state": "DRIFT",
+            "extra_migrations": ("9999",),
+        }
     )
     with pytest.raises(DemoDatabaseGuardError, match="drift_not_admitted"):
         execute_demo_migration_closure(
@@ -306,15 +324,17 @@ def test_demo_migration_allows_canonical_partial_resume(tmp_path: Path) -> None:
 
 
 def _load_script():
-    path = ROOT / "scripts/deployment/run_p8_demo_migrations.py"
-    spec = importlib.util.spec_from_file_location("p8_demo_migrations", path)
+    path = ROOT / "scripts/deployment/run_canonical_platform_migrations.py"
+    spec = importlib.util.spec_from_file_location("canonical_platform_migrations", path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def test_demo_migration_cli_summary_report_and_error(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_demo_migration_cli_summary_report_and_error(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
     module = _load_script()
     report = {
         "status": "PASS",
@@ -323,26 +343,45 @@ def test_demo_migration_cli_summary_report_and_error(tmp_path: Path, monkeypatch
         "backup_id": "backup",
         "services": [{"applied": ["0001"]}],
     }
-    monkeypatch.setattr(module, "run_demo_migrations", lambda *_args, **_kwargs: report)
+    monkeypatch.setattr(
+        module,
+        "run_canonical_platform_migrations",
+        lambda *_args, **_kwargs: report,
+    )
     output = tmp_path / "report.json"
-    assert module.main([
-        "--backup-manifest", str(tmp_path / "backup.json"),
-        "--confirmation", DEMO_MIGRATION_CONFIRMATION,
-        "--report", str(output),
-        "--summary",
-    ]) == 0
+    assert (
+        module.main(
+            [
+                "--backup-manifest",
+                str(tmp_path / "backup.json"),
+                "--confirmation",
+                DEMO_MIGRATION_CONFIRMATION,
+                "--report",
+                str(output),
+                "--summary",
+            ]
+        )
+        == 0
+    )
     assert json.loads(output.read_text(encoding="utf-8")) == report
     assert "current=7" in capsys.readouterr().out
 
     monkeypatch.setattr(
         module,
-        "run_demo_migrations",
+        "run_canonical_platform_migrations",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             DemoDatabaseGuardError("safe_failure")
         ),
     )
-    assert module.main([
-        "--backup-manifest", str(tmp_path / "backup.json"),
-        "--confirmation", DEMO_MIGRATION_CONFIRMATION,
-    ]) == 1
+    assert (
+        module.main(
+            [
+                "--backup-manifest",
+                str(tmp_path / "backup.json"),
+                "--confirmation",
+                DEMO_MIGRATION_CONFIRMATION,
+            ]
+        )
+        == 1
+    )
     assert "safe_failure" in capsys.readouterr().err

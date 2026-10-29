@@ -3,15 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-import build_p8_demo_ae_runtime_image as build
+import build_canonical_platform_ae_runtime_image as build
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_demo_ae_runtime_containerfile_admits_every_embedded_asset_path() -> None:
-    source = (ROOT / "deployment/oci/p8-demo-ae-runtime.Containerfile").read_text(
-        encoding="utf-8"
-    )
+    source = (
+        ROOT / "deployment/oci/canonical-platform-ae-runtime.Containerfile"
+    ).read_text(encoding="utf-8")
 
     assert (
         "NEX_AE_NSL_PLATFORM_LOCK=/app/deployment/product/locks/python-production.lock"
@@ -31,7 +31,7 @@ def test_demo_ae_runtime_containerfile_admits_every_embedded_asset_path() -> Non
 
 
 def test_demo_ae_runtime_image_dry_run_requires_locked_bundle() -> None:
-    result = build.build_p8_demo_ae_runtime_image(
+    result = build.build_canonical_platform_ae_runtime_image(
         base_image="nex-platform-demo/nex-ae-runtime:prior",
         output_image="nex-platform-demo/nex-ae-runtime:p8-demo-s10b",
         execute=False,

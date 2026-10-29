@@ -5,7 +5,7 @@ import subprocess
 from dataclasses import replace
 from pathlib import Path
 
-import build_p8_demo_images as build
+import build_canonical_platform_images as build
 import nex_runtime.demo_oci_release as demo_oci
 import pytest
 from nex_runtime.demo_oci_release import (
@@ -20,44 +20,74 @@ from nex_runtime.demo_oci_release import (
     build_demo_packaged_entrypoints,
     validate_demo_oci_release,
 )
-from nex_runtime.deployment_image_build import OciImageBuildRecord
+from nex_runtime.deployment_artifacts import build_current_deployment_artifact_catalog
+from nex_runtime.deployment_entrypoints import (
+    build_current_packaged_runtime_manifest,
+    build_packaged_entrypoint_definitions,
+)
+from nex_runtime.deployment_image_build import (
+    OciImageBuildRecord,
+    packaged_image_default_command,
+)
 from nex_runtime.deployment_locks import (
     build_deployment_build_inputs,
     deployment_build_inputs_digest,
 )
 from nex_runtime.deployment_oci import (
+    build_current_oci_definitions,
     build_default_oci_definitions,
     validate_oci_containerfiles,
+)
+from nex_runtime.process_manifest import (
+    BACKGROUND_PROCESS_IDS,
+    CURRENT_BACKGROUND_PROCESS_IDS,
+)
+from nex_runtime.runtime_package_admission import (
+    RUNTIME_CHECK_MODE_ENV,
+    RUNTIME_PACKAGE_CHECK_MODE,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
 REVISION = "b" * 40
 
 
-def test_demo_catalog_and_packaged_entrypoints_cover_exact_release() -> None:
-    catalog = build_demo_deployment_artifact_catalog()
-    entries = build_demo_packaged_entrypoints()
-
-    assert {item.artifact_id for item in catalog.artifacts} == set(
-        DEMO_APPLICATION_ARTIFACTS
+def test_canonical_catalog_and_packaged_entrypoints_cover_exact_release() -> None:
+    catalog = build_current_deployment_artifact_catalog()
+    manifest = build_current_packaged_runtime_manifest(
+        "local_mock", environ={}, python_executable="python"
     )
-    assert len(catalog.artifacts) == 8
-    assert len(entries) == 11
-    assert {
-        item.process_id for item in entries if item.kind == "worker"
-    } == set(DEMO_BACKGROUND_PROCESS_IDS)
-    assert next(item for item in entries if item.process_id == "nex-wc-api").command[-1] == "8106"
-    assert next(item for item in entries if item.process_id == "nex-eos-api").command[-1] == "8107"
+    entries = build_packaged_entrypoint_definitions(manifest, catalog)
 
-    definitions = build_default_oci_definitions(catalog)
+    assert len(catalog.artifacts) == 9
+    assert len(entries) == 20
+    assert {
+        item.process_id for item in entries if item.kind in {"worker", "daemon"}
+    } == set(CURRENT_BACKGROUND_PROCESS_IDS)
+    assert (
+        next(item for item in entries if item.process_id == "nex-wc-api").command[-1]
+        == "8106"
+    )
+    assert (
+        next(item for item in entries if item.process_id == "nex-eos-api").command[-1]
+        == "8107"
+    )
+
+    definitions = build_current_oci_definitions()
     validate_oci_containerfiles(ROOT, definitions)
-    assert {item.target for item in definitions} >= {"wc-runtime", "eos-runtime"}
+    assert {item.target for item in definitions} >= {
+        "wc-runtime",
+        "eos-runtime",
+        "wa-runtime",
+    }
 
 
 def test_protected_runner_requires_double_opt_in() -> None:
-    assert build.run_p8_demo_image_build({}, execute=True)["status"] == "SKIPPED"
     assert (
-        build.run_p8_demo_image_build(
+        build.run_canonical_platform_image_build({}, execute=True)["status"]
+        == "SKIPPED"
+    )
+    assert (
+        build.run_canonical_platform_image_build(
             {build.EXECUTION_ENV: "1"}, execute=False
         )["status"]
         == "SKIPPED"
@@ -67,11 +97,11 @@ def test_protected_runner_requires_double_opt_in() -> None:
 def test_protected_runner_contains_failures(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         build,
-        "_execute_p8_demo_image_build",
+        "_execute_canonical_platform_image_build",
         lambda *_args: (_ for _ in ()).throw(ValueError("private")),
     )
 
-    result = build.run_p8_demo_image_build(
+    result = build.run_canonical_platform_image_build(
         {build.EXECUTION_ENV: "1"}, execute=True
     )
 
@@ -83,27 +113,28 @@ def test_protected_runner_contains_failures(monkeypatch: pytest.MonkeyPatch) -> 
 def test_build_rejects_dirty_or_context_contaminated_source(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(
-        build, "_git_metadata", lambda *_args: (REVISION, False, 0)
-    )
+    monkeypatch.setattr(build, "_git_metadata", lambda *_args: (REVISION, False, 0))
 
     with pytest.raises(
         build.image_build.PlatformImageBuildError,
         match="clean tracked and build-context sources",
     ):
-        build._execute_p8_demo_image_build(ROOT, tmp_path / "report.json")
+        build._execute_canonical_platform_image_build(ROOT, tmp_path / "report.json")
 
 
-def test_full_demo_build_orchestration_with_fake_docker(
+def test_full_canonical_build_orchestration_with_fake_docker(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    catalog = build_demo_deployment_artifact_catalog()
-    definitions = build_default_oci_definitions(catalog)
+    catalog = build_current_deployment_artifact_catalog()
+    definitions = build_current_oci_definitions()
     inputs = build_deployment_build_inputs(ROOT, catalog=catalog)
     inputs_digest = deployment_build_inputs_digest(inputs)
-    entries = build_demo_packaged_entrypoints()
+    manifest = build_current_packaged_runtime_manifest(
+        "local_mock", environ={}, python_executable="python"
+    )
+    entries = build_packaged_entrypoint_definitions(manifest, catalog)
     default_commands = {
-        item.artifact_id: item.command
+        item.artifact_id: packaged_image_default_command(item)
         for item in entries
         if item.kind in {"api", "web"}
     }
@@ -161,23 +192,31 @@ def test_full_demo_build_orchestration_with_fake_docker(
     def fake_capture(command, *, cwd, operation):
         del cwd
         process_id = next(
-            (item for item in DEMO_BACKGROUND_PROCESS_IDS if item in operation),
+            (item for item in CURRENT_BACKGROUND_PROCESS_IDS if item in operation),
             None,
         )
         assert process_id is not None
-        assert f"{DEMO_PACKAGE_CHECK_MODE_ENV}={DEMO_PACKAGE_CHECK_MODE}" in command
+        package_check = process_id not in BACKGROUND_PROCESS_IDS
+        if package_check:
+            assert f"{RUNTIME_CHECK_MODE_ENV}={RUNTIME_PACKAGE_CHECK_MODE}" in command
+            payload = {
+                "process_id": process_id,
+                "package_ready": True,
+                "runtime_ready": False,
+                "secret_included": False,
+            }
+        else:
+            payload = {
+                "process_id": process_id,
+                "profile": "local_mock",
+                "persistence_mode": "memory",
+                "lifecycle_ready": True,
+                "work_claiming_enabled": False,
+            }
         return subprocess.CompletedProcess(
             command,
             0,
-            json.dumps(
-                {
-                    "process_id": process_id,
-                    "package_ready": True,
-                    "runtime_ready": False,
-                    "secret_included": False,
-                }
-            )
-            + "\n",
+            json.dumps(payload) + "\n",
             "",
         )
 
@@ -187,14 +226,16 @@ def test_full_demo_build_orchestration_with_fake_docker(
     )
     monkeypatch.setattr(build.image_build, "_run_capture", fake_capture)
 
-    result = build._execute_p8_demo_image_build(ROOT, tmp_path / "report.json")
+    result = build._execute_canonical_platform_image_build(
+        ROOT, tmp_path / "report.json"
+    )
 
     assert result["status"] == "PASS"
     assert result["summary"] == {
-        "artifact_count": 8,
-        "manifest_digest_count": 8,
-        "non_root_image_count": 8,
-        "background_check_count": 3,
+        "artifact_count": 9,
+        "manifest_digest_count": 9,
+        "non_root_image_count": 9,
+        "background_check_count": 11,
         "release_set_ready": True,
     }
     assert result["excluded_untracked_count"] == 1
@@ -264,8 +305,7 @@ def _record(artifact_id: str, index: int) -> OciImageBuildRecord:
 
 def test_demo_release_validation_exercises_record_and_check_guards() -> None:
     artifact_ids = [
-        item.artifact_id
-        for item in build_demo_deployment_artifact_catalog().artifacts
+        item.artifact_id for item in build_demo_deployment_artifact_catalog().artifacts
     ]
     records = [
         _record(artifact_id, index + 1)
@@ -333,9 +373,7 @@ def test_demo_catalog_and_entrypoint_internal_guards(
         build_demo_deployment_artifact_catalog()
 
     valid = build_demo_packaged_entrypoints()
-    unknown = DemoPackagedEntrypoint(
-        "unknown", "unknown", "unknown", "worker", ()
-    )
+    unknown = DemoPackagedEntrypoint("unknown", "unknown", "unknown", "worker", ())
     wrong = DemoPackagedEntrypoint(
         valid[0].process_id,
         valid[0].artifact_id,
@@ -363,12 +401,13 @@ def test_demo_catalog_and_entrypoint_internal_guards(
 )
 def test_non_root_user_guard(user: str, expected: bool) -> None:
     assert demo_oci._non_root_user(user) is expected
+    assert build._non_root_user(user) is expected
 
 
 def test_git_metadata_allows_only_untracked_outside_build_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    definitions = build_default_oci_definitions(build_demo_deployment_artifact_catalog())
+    definitions = build_current_oci_definitions()
 
     def capture(command, *, cwd, operation):
         del cwd, operation
@@ -397,31 +436,29 @@ def test_runner_report_summary_and_main(
     passing = {
         "status": "PASS",
         "summary": {
-            "artifact_count": 8,
-            "manifest_digest_count": 8,
-            "non_root_image_count": 8,
-            "background_check_count": 3,
+            "artifact_count": 9,
+            "manifest_digest_count": 9,
+            "non_root_image_count": 9,
+            "background_check_count": 11,
             "release_set_ready": True,
         },
     }
     assert build.summary_line({"status": "SKIPPED"}).endswith("skipped")
-    assert "issues=1" in build.summary_line(
-        {"status": "FAIL", "issues": ["x"]}
-    )
-    assert "artifacts=8" in build.summary_line(passing)
+    assert "issues=1" in build.summary_line({"status": "FAIL", "issues": ["x"]})
+    assert "artifacts=9" in build.summary_line(passing)
 
     build._write_report(report, passing)
     assert json.loads(report.read_text(encoding="utf-8")) == passing
 
     monkeypatch.setattr(
-        build, "run_p8_demo_image_build", lambda **_kwargs: passing
+        build, "run_canonical_platform_image_build", lambda **_kwargs: passing
     )
     assert build.main(["--report", str(report), "--summary"]) == 0
-    assert "p8_demo_oci_image_build=pass" in capsys.readouterr().out
+    assert "canonical_platform_oci_image_build=pass" in capsys.readouterr().out
 
     monkeypatch.setattr(
         build,
-        "run_p8_demo_image_build",
+        "run_canonical_platform_image_build",
         lambda **_kwargs: {"status": "SKIPPED"},
     )
     assert build.main(["--report", str(report)]) == 0
@@ -429,7 +466,7 @@ def test_runner_report_summary_and_main(
 
     monkeypatch.setattr(
         build,
-        "run_p8_demo_image_build",
+        "run_canonical_platform_image_build",
         lambda **_kwargs: {"status": "FAIL"},
     )
     assert build.main(["--report", str(report)]) == 1

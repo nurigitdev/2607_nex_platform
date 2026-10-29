@@ -3,14 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-import run_p8_demo_external_dependencies as runner
+import run_canonical_platform_external_dependencies as runner
 from nex_runtime.demo_external_dependencies import (
     DemoExternalDependencyError,
     admit_demo_external_dependencies,
 )
-from run_p8_demo_external_dependencies import (
+from run_canonical_platform_external_dependencies import (
     _assert_redacted,
-    run_p8_demo_external_dependencies,
+    run_canonical_platform_external_dependencies,
     summary_line,
 )
 
@@ -105,9 +105,7 @@ def _object_evidence() -> dict:
 
 
 def test_admission_combines_actual_provider_and_rustfs_evidence() -> None:
-    result = admit_demo_external_dependencies(
-        _provider_evidence(), _object_evidence()
-    )
+    result = admit_demo_external_dependencies(_provider_evidence(), _object_evidence())
 
     assert result["status"] == "PASS"
     assert result["provider"]["capability_count"] == 3
@@ -202,7 +200,7 @@ def test_runner_is_protected_redacted_and_writes_evidence(tmp_path: Path) -> Non
         return _object_evidence()
 
     report = tmp_path / "evidence.json"
-    result = run_p8_demo_external_dependencies(
+    result = run_canonical_platform_external_dependencies(
         {
             "NEX_P8_DEMO_EXTERNAL_DEPENDENCIES": "1",
             "NEX_MO_VLLM_API_KEY": "private-generation-key",
@@ -217,15 +215,19 @@ def test_runner_is_protected_redacted_and_writes_evidence(tmp_path: Path) -> Non
     assert provider_calls[0]["NEX_MO_LIVE_PREFLIGHT"] == "1"
     assert object_calls[0]["NEX_S146_PROTECTED_ACCEPTANCE"] == "1"
     assert "private-generation-key" not in report.read_text(encoding="utf-8")
-    assert summary_line(result).startswith("p8_demo_external_dependencies=pass")
+    assert summary_line(result).startswith(
+        "canonical_platform_external_dependencies=pass"
+    )
 
 
 def test_runner_skip_failure_and_redaction_guards(tmp_path: Path) -> None:
-    skipped = run_p8_demo_external_dependencies({}, report_path=tmp_path / "skip")
+    skipped = run_canonical_platform_external_dependencies(
+        {}, report_path=tmp_path / "skip"
+    )
     assert skipped["status"] == "SKIPPED"
-    assert summary_line(skipped) == "p8_demo_external_dependencies=skipped"
+    assert summary_line(skipped) == "canonical_platform_external_dependencies=skipped"
 
-    failed = run_p8_demo_external_dependencies(
+    failed = run_canonical_platform_external_dependencies(
         {"NEX_P8_DEMO_EXTERNAL_DEPENDENCIES": "1"},
         execute=True,
         provider_runner=lambda _: (_ for _ in ()).throw(RuntimeError("private")),
@@ -238,9 +240,7 @@ def test_runner_skip_failure_and_redaction_guards(tmp_path: Path) -> None:
     with pytest.raises(DemoExternalDependencyError, match="protected material"):
         _assert_redacted(
             {"value": "https://private-provider.example/v1"},
-            {
-                "NEX_MO_VLLM_BASE_URL": "https://private-provider.example/v1"
-            },
+            {"NEX_MO_VLLM_BASE_URL": "https://private-provider.example/v1"},
         )
 
 
@@ -268,12 +268,16 @@ def test_default_rustfs_adapter_forwards_protected_execution(monkeypatch) -> Non
         ("FAIL", ["--execute"], 1),
     ),
 )
-def test_cli_main_status_mapping(monkeypatch, capsys, tmp_path, status, arguments, expected) -> None:
+def test_cli_main_status_mapping(
+    monkeypatch, capsys, tmp_path, status, arguments, expected
+) -> None:
     monkeypatch.setattr(
         runner,
-        "run_p8_demo_external_dependencies",
+        "run_canonical_platform_external_dependencies",
         lambda **kwargs: {"status": status},
     )
 
-    assert runner.main([*arguments, "--output", str(tmp_path / "result.json")]) == expected
+    assert (
+        runner.main([*arguments, "--output", str(tmp_path / "result.json")]) == expected
+    )
     assert status.lower() in capsys.readouterr().out.lower()

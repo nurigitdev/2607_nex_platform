@@ -1,5 +1,11 @@
 # P8 Chairman Demo Release Runbook
 
+> Historical baseline: this runbook preserves the original Chairman Demo
+> procedure. Current deployments must use
+> `docs/runbooks/canonical_platform_deployment.md`. Former P8 deployment
+> commands are compatibility wrappers and the old Compose/OCI path names are
+> no longer active deployment sources.
+
 ## Release Boundary
 
 This runbook operates the single-host P8 Chairman Demo release for tenant

@@ -123,15 +123,14 @@ def test_provisions_source_backed_buckets_iam_and_runtime_readiness() -> None:
 
 def test_restart_readiness_rechecks_owner_access_and_isolation() -> None:
     owner_clients = clients()
-    first = verify_object_storage_runtime_readiness(
-        owner_clients, checked_at=NOW
-    )
+    first = verify_object_storage_runtime_readiness(owner_clients, checked_at=NOW)
     restarted = verify_object_storage_runtime_readiness(owner_clients)
 
     assert first["status"] == restarted["status"] == "READY"
-    assert first["dependency_readiness"][0]["evidence_hash"] == restarted[
-        "dependency_readiness"
-    ][0]["evidence_hash"]
+    assert (
+        first["dependency_readiness"][0]["evidence_hash"]
+        == restarted["dependency_readiness"][0]["evidence_hash"]
+    )
     assert all(len(client.calls) == 4 for client in owner_clients.values())
 
 
@@ -143,7 +142,9 @@ def test_owner_order_and_credential_repr_are_deterministic_and_secret_free() -> 
     )
     credential = credentials()[0]
 
-    assert [item["dependency_id"] for item in reversed_result["dependency_readiness"]] == [
+    assert [
+        item["dependency_id"] for item in reversed_result["dependency_readiness"]
+    ] == [
         "object-storage:ae",
         "object-storage:cx",
     ]
@@ -334,7 +335,7 @@ def test_provisioning_sanitizes_and_rejects_invalid_receipts(
 def test_demo_and_s146_runners_consume_canonical_object_storage_operation() -> None:
     root = Path(provisioning.__file__).resolve().parents[3]
     demo = (
-        root / "scripts/deployment/run_p8_demo_s10_installed_domain_acceptance.py"
+        root / "scripts/deployment/run_canonical_platform_installed_acceptance.py"
     ).read_text(encoding="utf-8")
     protected = (
         root / "scripts/smoke/run_s146_object_storage_acceptance.py"

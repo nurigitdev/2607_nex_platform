@@ -25,10 +25,10 @@
   },
   "demo_fixture": {
     "path": "scripts/deployment/data/p8_demo_vo00_fixture.v1.json",
-    "sha256": "d094efd8f14ac43a5bc5b41b691da9fbdd7b47a5b1073e39718ae8c72fd32ddf"
+    "sha256": "0f89450532fd51601d6d40572405acc905a59665c3a2f2918198bdebf6665932"
   },
   "base_fixture": {
     "path": "scripts/smoke/data/p8_golden_a_fixture.v1.json",
-    "sha256": "27b97c6037d9d767e51c94c3c93b513d76c0bb7ce047c7d095eb6e7af5b26448"
+    "sha256": "f0fb317589c0b7a5ef3f9c930b17960f7fcf7556f4c556f857738aace3e357d4"
   }
 }

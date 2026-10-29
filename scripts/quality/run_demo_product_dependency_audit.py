@@ -42,12 +42,12 @@ class CompatibilityEdge:
 COMPATIBILITY_EDGES = (
     CompatibilityEdge(
         "openbao_canonical_readiness",
-        "scripts/deployment/run_p8_demo_trust_admission.py",
+        "scripts/deployment/run_canonical_platform_trust_admission.py",
         ("nex_runtime.openbao_provisioning.provision_openbao_environment",),
     ),
     CompatibilityEdge(
         "object_storage_canonical_readiness",
-        "scripts/deployment/run_p8_demo_s10_installed_domain_acceptance.py",
+        "scripts/deployment/run_canonical_platform_installed_acceptance.py",
         (
             (
                 "nex_runtime.object_storage_provisioning."
@@ -78,19 +78,13 @@ COMPATIBILITY_EDGES = (
     CompatibilityEdge(
         "s10c_result_closure",
         "scripts/smoke/run_p8_demo_s10c_installed_result_closure.py",
-        (
-            (
-                "run_p8_demo_s10b_installed_runtime."
-                "run_p8_demo_s10b_installed_runtime"
-            ),
-        ),
+        (("run_p8_demo_s10b_installed_runtime.run_p8_demo_s10b_installed_runtime"),),
     ),
     CompatibilityEdge(
-        "s11_golden_a_product_registry",
-        "scripts/deployment/run_p8_demo_s11_chairman_golden_journey.py",
+        "canonical_golden_a_product_registry",
+        "scripts/deployment/run_canonical_platform_golden_journey.py",
         (
-            "run_p8_demo_s10_installed_domain_acceptance",
-            "run_p8_demo_s10b_installed_runtime",
+            "run_canonical_platform_installed_acceptance",
             "nex_ae_api.product_capabilities.load_product_capability_registry",
         ),
     ),
@@ -202,7 +196,7 @@ def audit_repository(root: Path = ROOT) -> dict[str, Any]:
             "S10B": edge_status.get("s10b_installed_runtime") == "PASS"
             and edge_status.get("s10b_generic_runtime_composition") == "PASS",
             "S10C": edge_status.get("s10c_result_closure") == "PASS",
-            "S11": edge_status.get("s11_golden_a_product_registry") == "PASS",
+            "S11": edge_status.get("canonical_golden_a_product_registry") == "PASS",
         },
         "findings": [asdict(item) for item in findings],
         "content_included": False,
@@ -230,9 +224,7 @@ def _parse_source(
         return None
 
 
-def _forbidden_import_findings(
-    tree: ast.AST, relative: str
-) -> list[AuditFinding]:
+def _forbidden_import_findings(tree: ast.AST, relative: str) -> list[AuditFinding]:
     findings = []
     for node in ast.walk(tree):
         if not isinstance(node, (ast.Import, ast.ImportFrom)):

@@ -27,6 +27,8 @@ from nex_runtime.nsl_runtime_bundle import (
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from run_product_runtime_deployment_audit import (
     ACTIVE_DEPLOYMENT_PATHS,
+    CANONICAL_DEPLOYMENT_ENTRYPOINTS,
+    LEGACY_DEPLOYMENT_WRAPPERS,
     PRODUCT_RUNTIME_PATHS,
     audit_product_runtime_deployment,
 )
@@ -58,9 +60,7 @@ def _parameters(amount: str = "125000.00") -> list[dict[str, str]]:
 def _work_intent(execution_id: str, amount: str = "125000.00") -> dict:
     value = {
         "execution_id": execution_id,
-        "entity_selectors": [
-            {"entity_type": "PROJECT", "raw_text": "PROJECT-A-2"}
-        ],
+        "entity_selectors": [{"entity_type": "PROJECT", "raw_text": "PROJECT-A-2"}],
         "parameter_candidates": _parameters(amount),
         "constraints": [],
     }
@@ -142,15 +142,14 @@ def test_product_business_binding_uses_registry_and_authority_not_fixture() -> N
 
     assert product["project"]["project_code"] == "PROJECT-A-2"
     assert product["canonical_payload"]["tenant_id"] == "VO00"
-    assert product["canonical_payload"]["lines"][0]["signed_amount"] == (
-        "125000.00"
-    )
+    assert product["canonical_payload"]["lines"][0]["signed_amount"] == ("125000.00")
     assert product["canonical_payload"]["transaction_date"] == "2026-10-28"
     assert product["accounts"][0]["account_code"] == "TRAVEL"
     assert product["accounts"][1]["account_code"] == "CASH"
-    assert handlers["PROJECT.GET_PROJECT"](
-        {"project_code": "PROJECT-A-2"}
-    )["status"] == "ACTIVE"
+    assert (
+        handlers["PROJECT.GET_PROJECT"]({"project_code": "PROJECT-A-2"})["status"]
+        == "ACTIVE"
+    )
     with pytest.raises(Exception, match="authoritative product binding"):
         handlers["PROJECT.GET_PROJECT"]({"project_code": "DRIFT"})
 
@@ -242,6 +241,8 @@ def test_product_runtime_deployment_audit_passes_and_detects_residue(
         (tmp_path / relative).mkdir(parents=True, exist_ok=True)
     for relative in (
         *ACTIVE_DEPLOYMENT_PATHS,
+        *CANONICAL_DEPLOYMENT_ENTRYPOINTS,
+        *LEGACY_DEPLOYMENT_WRAPPERS,
         *PRODUCT_RUNTIME_PATHS,
         "deployment/locks/ae-product-nsl-runtime-bundle.v1.json",
         "deployment/environments/ae-product-capability-registry.v1.json",
@@ -249,7 +250,7 @@ def test_product_runtime_deployment_audit_passes_and_detects_residue(
         target = tmp_path / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes((ROOT / relative).read_bytes())
-    compose = tmp_path / "deployment/compose/p8-demo.override.yaml"
+    compose = tmp_path / "deployment/compose/canonical-platform.override.yaml"
     compose.write_text(
         compose.read_text(encoding="utf-8").replace(
             "nex_ae_api.agent_runtime_process", "nex_ae_api.demo_runtime"
@@ -266,8 +267,7 @@ def test_product_runtime_type_is_explicitly_fixture_free() -> None:
     annotations = ProductControlledSkillRuntime.__init__.__annotations__
     assert "demo_fixture" not in repr(annotations)
     source = (
-        ROOT
-        / "services/nex-ae-api/nex_ae_api/product_controlled_skill.py"
+        ROOT / "services/nex-ae-api/nex_ae_api/product_controlled_skill.py"
     ).read_text(encoding="utf-8")
     assert "finance_golden_a_activation" not in source
     assert "authority_profile_path" not in source
@@ -330,9 +330,7 @@ def test_product_initial_uses_canonical_context_provenance() -> None:
     with pytest.raises(controlled.P5StepExecutorError):
         runtime.initial(context, dependencies)
 
-    assert observed["input_provenance"] == {
-        "canonical_write_payload": "CONTEXT"
-    }
+    assert observed["input_provenance"] == {"canonical_write_payload": "CONTEXT"}
 
 
 def test_product_authority_resolves_persisted_intent_oa_and_eos(
@@ -586,9 +584,12 @@ def test_product_bundle_and_http_authority_adapters(monkeypatch) -> None:
         base_url="https://eos.example/", service_token="eos-token"
     )
 
-    assert oa.effective_authorization(
-        tenant_id="VO00", subject_id="employee-1001"
-    )["active"] is True
+    assert (
+        oa.effective_authorization(tenant_id="VO00", subject_id="employee-1001")[
+            "active"
+        ]
+        is True
+    )
     resolved = eos.resolve(
         tenant_id="VO00",
         subject_id="employee-1001",

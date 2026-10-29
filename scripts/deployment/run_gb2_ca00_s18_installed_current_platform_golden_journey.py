@@ -16,7 +16,7 @@ sys.path[:0] = [
     str(ROOT / "scripts/deployment"),
 ]
 
-import run_p8_demo_s11_chairman_golden_journey as compatibility_journey
+import run_canonical_platform_golden_journey as canonical_journey
 from nex_runtime.current_platform_installation import (
     CURRENT_JOURNEY_WORKERS,
     admit_current_platform_installation,
@@ -52,7 +52,7 @@ def run_installed_current_platform_continuity(
         return {**source, "status": "SOURCE_ADMITTED", "executed": False}
     try:
         runner = protected_runner or (
-            lambda values: compatibility_journey._execute_protected_acceptance(
+            lambda values: canonical_journey.execute_canonical_platform_golden_journey(
                 values,
                 root=root,
                 worker_inventory=CURRENT_JOURNEY_WORKERS,
@@ -117,12 +117,8 @@ def _source_admission(root: Path) -> dict[str, Any]:
 def _continuity_checks(evidence: Mapping[str, Any]) -> dict[str, bool]:
     extended = evidence.get("extended_acceptance")
     restarted = evidence.get("post_restart_acceptance")
-    extended_checks = (
-        extended.get("checks") if isinstance(extended, Mapping) else None
-    )
-    restart_checks = (
-        restarted.get("checks") if isinstance(restarted, Mapping) else None
-    )
+    extended_checks = extended.get("checks") if isinstance(extended, Mapping) else None
+    restart_checks = restarted.get("checks") if isinstance(restarted, Mapping) else None
     return {
         "installed_acceptance_passed": evidence.get("status") == "PASS",
         "actual_postgres": evidence.get("actual_postgres") is True,
@@ -172,9 +168,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--summary", action="store_true")
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     args = parser.parse_args(argv)
-    result = run_installed_current_platform_continuity(
-        os.environ, execute=args.execute
-    )
+    result = run_installed_current_platform_continuity(os.environ, execute=args.execute)
     _write_report(args.report, result)
     print(summary_line(result) if args.summary else json.dumps(result, indent=2))
     return 0 if result.get("status") in {"PASS", "SOURCE_ADMITTED"} else 1

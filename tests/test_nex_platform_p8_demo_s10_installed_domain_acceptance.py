@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-import run_p8_demo_s10_installed_domain_acceptance as acceptance
+import run_canonical_platform_installed_acceptance as acceptance
 from sqlalchemy import create_engine, text
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,7 +26,7 @@ def _urls() -> dict[str, str]:
 
 
 def test_s10_source_admission_is_non_executing_and_business_neutral() -> None:
-    result = acceptance.run_p8_demo_s10_installed_domain_acceptance(
+    result = acceptance.run_canonical_platform_installed_acceptance(
         {}, execute=False, root=ROOT
     )
 
@@ -44,7 +44,10 @@ def test_s10_source_admission_runs_in_a_standalone_python_process(
     completed = subprocess.run(
         [
             sys.executable,
-            str(ROOT / "scripts/deployment/run_p8_demo_s10_installed_domain_acceptance.py"),
+            str(
+                ROOT
+                / "scripts/deployment/run_canonical_platform_installed_acceptance.py"
+            ),
             "--summary",
             "--report",
             str(report),
@@ -56,7 +59,7 @@ def test_s10_source_admission_runs_in_a_standalone_python_process(
     )
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert "p8_demo_s10_installed_domain=source_admitted" in completed.stdout
+    assert "canonical_platform_installed_acceptance=source_admitted" in completed.stdout
     assert json.loads(report.read_text(encoding="utf-8"))["source_admitted"] is True
 
 
@@ -72,16 +75,16 @@ def test_s10_execution_requires_both_switches_and_contains_failures() -> None:
             "domain_acceptance": {"process_count": 3, "signed_service_count": 4},
         }
 
-    skipped = acceptance.run_p8_demo_s10_installed_domain_acceptance(
+    skipped = acceptance.run_canonical_platform_installed_acceptance(
         {}, execute=True, root=ROOT, protected_runner=runner
     )
-    passed = acceptance.run_p8_demo_s10_installed_domain_acceptance(
+    passed = acceptance.run_canonical_platform_installed_acceptance(
         {acceptance.EXECUTION_ENV: "1"},
         execute=True,
         root=ROOT,
         protected_runner=runner,
     )
-    failed = acceptance.run_p8_demo_s10_installed_domain_acceptance(
+    failed = acceptance.run_canonical_platform_installed_acceptance(
         {acceptance.EXECUTION_ENV: "1"},
         execute=True,
         root=ROOT,
@@ -203,12 +206,11 @@ def test_demo_object_storage_bootstrap_provisions_two_private_owners(
 def test_partial_oa_trust_cleanup_is_exact_and_residue_free() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     with engine.begin() as connection:
-        connection.execute(text("CREATE TABLE oa_signing_keys (key_id TEXT PRIMARY KEY)"))
         connection.execute(
-            text(
-                "CREATE TABLE oa_service_principals "
-                "(principal_id TEXT PRIMARY KEY)"
-            )
+            text("CREATE TABLE oa_signing_keys (key_id TEXT PRIMARY KEY)")
+        )
+        connection.execute(
+            text("CREATE TABLE oa_service_principals (principal_id TEXT PRIMARY KEY)")
         )
         connection.execute(
             text(
@@ -237,13 +239,22 @@ def test_partial_oa_trust_cleanup_is_exact_and_residue_free() -> None:
     )
 
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT key_id FROM oa_signing_keys")).scalar_one() == "keep-key"
-        assert connection.execute(
-            text("SELECT principal_id FROM oa_service_principals")
-        ).scalar_one() == "keep"
-        assert connection.execute(
-            text("SELECT credential_id FROM oa_service_creds")
-        ).scalar_one() == "keep-cred"
+        assert (
+            connection.execute(text("SELECT key_id FROM oa_signing_keys")).scalar_one()
+            == "keep-key"
+        )
+        assert (
+            connection.execute(
+                text("SELECT principal_id FROM oa_service_principals")
+            ).scalar_one()
+            == "keep"
+        )
+        assert (
+            connection.execute(
+                text("SELECT credential_id FROM oa_service_creds")
+            ).scalar_one()
+            == "keep-cred"
+        )
     engine.dispose()
 
 

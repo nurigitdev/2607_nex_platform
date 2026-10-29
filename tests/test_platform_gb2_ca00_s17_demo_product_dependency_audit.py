@@ -49,7 +49,9 @@ def test_forbidden_product_imports_fail_closed(tmp_path: Path) -> None:
 def test_explicit_demo_wrapper_may_retain_historical_import(tmp_path: Path) -> None:
     _write_valid_repository(tmp_path)
     wrapper = tmp_path / next(iter(sorted(audit.EXPLICIT_DEMO_WRAPPERS)))
-    wrapper.write_text("from nex_runtime.demo_processes import manifest\n", encoding="utf-8")
+    wrapper.write_text(
+        "from nex_runtime.demo_processes import manifest\n", encoding="utf-8"
+    )
 
     evidence = audit.audit_repository(tmp_path)
 

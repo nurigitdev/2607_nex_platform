@@ -157,34 +157,36 @@ image layers, reports, and application containers. Slice 1461 proves the
 protected OpenBao materialization, RustFS IAM/bucket bootstrap, CX/AE
 cross-bucket denial, restart, lifecycle, restore, and cleanup execution.
 
-## P8 Chairman Demo Override
+## Canonical Platform Override
 
-`p8-demo.override.yaml` is layered after the immutable S143 base and S146
-object-storage override. It adds WC, EOS, the AE Agent Runtime worker, WC event
-delivery worker, and EOS outbox publisher. The application set is exactly eight
-immutable images; worker containers reuse their owner image.
+`canonical-platform.override.yaml` is layered after the immutable S143 base and
+S146 object-storage override. It adds WC, EOS, the AE Agent Runtime worker, WC
+event delivery worker, and EOS outbox publisher. The P9 WA override then adds
+the ninth immutable image and WA evidence consumer; worker containers reuse
+their owner image.
 
 The override uses `restart: unless-stopped`, adds WC/EOS AppRole secret-file
 inputs, defines the internal identity network needed by the S146 route set, and
-mounts `traefik/p8-demo-dynamic.yaml`. Only Traefik publishes application
+mounts `traefik/canonical-platform-dynamic.yaml`. Only Traefik publishes application
 ingress. WC, EOS, workers, PostgreSQL, OpenBao control traffic, and RustFS have
 no direct public application port.
 
 Render the protected topology from the admitted S06 image report with:
 
 ```bash
-NEX_P8_DEMO_COMPOSE_RENDER=1 \
-./.venv/bin/python scripts/deployment/check_p8_demo_compose.py \
+NEX_CANONICAL_PLATFORM_COMPOSE_RENDER=1 \
+./.venv/bin/python scripts/deployment/check_canonical_platform_compose.py \
   --execute --summary
 ```
 
 This command renders and validates the topology; it does not start containers.
-OpenBao owner secrets and runtime lifecycle activation belong to subsequent
-P8-DEMO Slices.
+The former `p8-demo` Compose and command names remain only as compatibility
+wrappers for historical automation. New deployment automation must use the
+canonical entrypoints.
 
 ## P9 NeX-WA Override
 
-`p9-wa.override.yaml` is layered after the P8 Demo override. It adds the ninth
+`p9-wa.override.yaml` is layered after the Canonical Platform override. It adds the ninth
 immutable runtime image, the `nex-wa-api` service at internal port `8108`, the
 managed TLS route `wa.nex-staging.test`, and owner-scoped OpenBao references
 for the WA database and WA outbound service tokens. AE receives its WA token

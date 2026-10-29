@@ -4,7 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 
-import check_p8_demo_compose as check
+import check_canonical_platform_compose as check
 import pytest
 import yaml
 from nex_runtime import demo_compose
@@ -61,6 +61,22 @@ def _release_report() -> dict:
     }
 
 
+def _canonical_release_report() -> dict:
+    report = _release_report()
+    digest = "sha256:" + "9" * 64
+    report["image_build"]["artifacts"].insert(
+        -1,
+        {
+            "artifact_id": "nex-wa-runtime",
+            "image_reference": f"local/nex-wa-runtime@{digest}",
+            "image_id": digest,
+            "manifest_digest": digest,
+            "local_tag": "canonical/nex-wa-runtime:current",
+        },
+    )
+    return report
+
+
 def _rendered() -> dict:
     references = _references()
     artifact_by_process = {
@@ -94,6 +110,22 @@ def _rendered() -> dict:
     return {"name": "nex-platform-p8-demo", "services": services}
 
 
+def _canonical_rendered() -> dict:
+    rendered = _rendered()
+    reference = "local/nex-wa-runtime@sha256:" + "9" * 64
+    rendered["name"] = "nex-platform-canonical"
+    rendered["services"].update(
+        {
+            "nex-wa": {"image": reference, "restart": "unless-stopped"},
+            "nex-wa-evidence-consumer": {
+                "image": reference,
+                "restart": "unless-stopped",
+            },
+        }
+    )
+    return rendered
+
+
 def test_demo_compose_sources_are_exact_and_secret_free() -> None:
     result = admit_demo_compose_sources(ROOT)
 
@@ -107,9 +139,7 @@ def test_demo_compose_sources_are_exact_and_secret_free() -> None:
 
 def test_rendered_compose_and_release_report_admission() -> None:
     references = _references()
-    result = admit_rendered_demo_compose(
-        _rendered(), image_references=references
-    )
+    result = admit_rendered_demo_compose(_rendered(), image_references=references)
     environment = image_environment_from_release_report(_release_report())
 
     assert result["status"] == "PASS"
@@ -184,6 +214,30 @@ def test_release_report_rejects_failure_and_coverage_drift() -> None:
         image_environment_from_release_report(report)
 
 
+def test_canonical_compose_environment_translates_legacy_calibration() -> None:
+    assert (
+        check._canonical_environment({check.LEGACY_CALIBRATION_ENV: "legacy"})[
+            check.CALIBRATION_ENV
+        ]
+        == "legacy"
+    )
+    assert (
+        check._canonical_environment(
+            {
+                check.CALIBRATION_ENV: "canonical",
+                check.LEGACY_CALIBRATION_ENV: "legacy",
+            }
+        )[check.CALIBRATION_ENV]
+        == "canonical"
+    )
+    assert (
+        check._canonical_environment({}, default_calibration="[]")[
+            check.CALIBRATION_ENV
+        ]
+        == "[]"
+    )
+
+
 def test_installed_runtime_report_replaces_only_the_ae_image() -> None:
     image_id = "sha256:" + "a" * 64
     report = {
@@ -202,9 +256,7 @@ def test_installed_runtime_report_replaces_only_the_ae_image() -> None:
         _release_report(), report
     )
 
-    assert environment["NEX_AE_RUNTIME_IMAGE"] == (
-        f"demo/nex-ae-runtime@{image_id}"
-    )
+    assert environment["NEX_AE_RUNTIME_IMAGE"] == (f"demo/nex-ae-runtime@{image_id}")
     wc_digest = _references()["nex-wc-runtime"].rsplit("@", 1)[1]
     assert environment["NEX_WC_RUNTIME_IMAGE"] == f"demo/nex-wc-runtime@{wc_digest}"
 
@@ -224,7 +276,9 @@ def test_installed_runtime_report_replaces_only_the_ae_image() -> None:
         ),
     ),
 )
-def test_installed_runtime_report_rejects_provenance_drift(mutation, message: str) -> None:
+def test_installed_runtime_report_rejects_provenance_drift(
+    mutation, message: str
+) -> None:
     image_id = "sha256:" + "a" * 64
     report = {
         "status": "PASS",
@@ -282,7 +336,11 @@ def test_source_admission_contains_yaml_and_policy_drift(
     monkeypatch.setattr(
         demo_compose,
         "_read_text",
-        lambda path: "[invalid" if path.name == "p8-demo.override.yaml" else original(path),
+        lambda path: (
+            "[invalid"
+            if path.name == "canonical-platform.override.yaml"
+            else original(path)
+        ),
     )
     with pytest.raises(DemoComposeError, match="invalid YAML"):
         admit_demo_compose_sources(ROOT)
@@ -296,10 +354,12 @@ def test_source_admission_reports_all_security_and_route_drift(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     overlay = yaml.safe_load(
-        (ROOT / "deployment/compose/p8-demo.override.yaml").read_text(encoding="utf-8")
+        (ROOT / "deployment/compose/canonical-platform.override.yaml").read_text(
+            encoding="utf-8"
+        )
     )
     dynamic = yaml.safe_load(
-        (ROOT / "deployment/compose/traefik/p8-demo-dynamic.yaml").read_text(
+        (ROOT / "deployment/compose/traefik/canonical-platform-dynamic.yaml").read_text(
             encoding="utf-8"
         )
     )
@@ -333,7 +393,7 @@ def test_source_admission_reports_all_security_and_route_drift(
     }
 
     def source(path: Path) -> str:
-        value = overlay if path.name == "p8-demo.override.yaml" else dynamic
+        value = overlay if path.name == "canonical-platform.override.yaml" else dynamic
         return yaml.safe_dump(value, sort_keys=False)
 
     monkeypatch.setattr(demo_compose, "_read_text", source)
@@ -370,17 +430,17 @@ def test_protected_render_runner_with_fake_compose(
     tmp_path: Path,
 ) -> None:
     image_report = tmp_path / "images.json"
-    image_report.write_text(json.dumps(_release_report()), encoding="utf-8")
+    image_report.write_text(json.dumps(_canonical_release_report()), encoding="utf-8")
 
     def execute(command, **kwargs):
         assert command[:2] == ("docker", "compose")
         assert kwargs["env"]["NEX_WC_RUNTIME_IMAGE"].startswith("local/")
         return subprocess.CompletedProcess(
-            command, 0, yaml.safe_dump(_rendered()), ""
+            command, 0, yaml.safe_dump(_canonical_rendered()), ""
         )
 
-    source = check.check_p8_demo_compose({}, execute=False, root=ROOT)
-    result = check.check_p8_demo_compose(
+    source = check.check_canonical_platform_compose({}, execute=False, root=ROOT)
+    result = check.check_canonical_platform_compose(
         {check.EXECUTION_ENV: "1"},
         execute=True,
         root=ROOT,
@@ -390,7 +450,7 @@ def test_protected_render_runner_with_fake_compose(
 
     assert source["status"] == "SOURCE_ADMITTED"
     assert result["status"] == "PASS"
-    assert result["render"]["service_count"] == 15
+    assert result["render"]["service_count"] == 17
     assert result["secret_included"] is False
 
 
@@ -401,7 +461,7 @@ def test_render_runner_contains_failures_and_cli(
 ) -> None:
     image_report = tmp_path / "images.json"
     image_report.write_text("{}", encoding="utf-8")
-    result = check.check_p8_demo_compose(
+    result = check.check_canonical_platform_compose(
         {check.EXECUTION_ENV: "1"},
         execute=True,
         root=ROOT,
@@ -409,11 +469,11 @@ def test_render_runner_contains_failures_and_cli(
     )
     assert result["status"] == "FAIL"
     assert result["secret_included"] is False
-    assert "p8_demo_compose=fail" in check.summary_line(result)
+    assert "canonical_platform_compose=fail" in check.summary_line(result)
 
     passing_images = tmp_path / "passing-images.json"
-    passing_images.write_text(json.dumps(_release_report()), encoding="utf-8")
-    failed_render = check.check_p8_demo_compose(
+    passing_images.write_text(json.dumps(_canonical_release_report()), encoding="utf-8")
+    failed_render = check.check_canonical_platform_compose(
         {check.EXECUTION_ENV: "1"},
         execute=True,
         root=ROOT,
@@ -427,10 +487,12 @@ def test_render_runner_contains_failures_and_cli(
     passing = {
         "status": "PASS",
         "rendered": True,
-        "render": {"service_count": 15, "image_count": 8},
+        "render": {"service_count": 17, "image_count": 9},
     }
-    monkeypatch.setattr(check, "check_p8_demo_compose", lambda **_kwargs: passing)
+    monkeypatch.setattr(
+        check, "check_canonical_platform_compose", lambda **_kwargs: passing
+    )
     report = tmp_path / "report.json"
     assert check.main(["--report", str(report), "--summary"]) == 0
-    assert "p8_demo_compose=pass" in capsys.readouterr().out
+    assert "canonical_platform_compose=pass" in capsys.readouterr().out
     assert json.loads(report.read_text(encoding="utf-8")) == passing

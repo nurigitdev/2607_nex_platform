@@ -79,8 +79,8 @@ class DemoComposeError(ValueError):
 def admit_demo_compose_sources(
     root: Path,
     *,
-    overlay_path: str = "deployment/compose/p8-demo.override.yaml",
-    dynamic_path: str = "deployment/compose/traefik/p8-demo-dynamic.yaml",
+    overlay_path: str = "deployment/compose/canonical-platform.override.yaml",
+    dynamic_path: str = "deployment/compose/traefik/canonical-platform-dynamic.yaml",
 ) -> dict[str, Any]:
     overlay_text = _read_text(root / overlay_path)
     dynamic_text = _read_text(root / dynamic_path)
@@ -88,7 +88,7 @@ def admit_demo_compose_sources(
     dynamic = _load_mapping(dynamic_text, "Demo Traefik configuration")
     services = _mapping(overlay.get("services"), "Demo Compose services")
     errors: list[str] = []
-    if overlay.get("name") != "nex-platform-p8-demo":
+    if overlay.get("name") != "nex-platform-canonical":
         errors.append("Demo Compose project name drift")
     for service_id in DEMO_ADDED_SERVICE_IDS:
         service = _mapping(services.get(service_id), f"service {service_id}")
@@ -107,9 +107,11 @@ def admit_demo_compose_sources(
     }
     for process_id, binding in manifest.items():
         service = _mapping(services.get(process_id), f"service {process_id}")
-        if tuple(str(item) for item in service.get("command") or ()) != tuple(
-            binding.command or ()
-        ) and binding.kind == "worker":
+        if (
+            tuple(str(item) for item in service.get("command") or ())
+            != tuple(binding.command or ())
+            and binding.kind == "worker"
+        ):
             errors.append(f"Demo worker command drift: {process_id}")
     overlay_images = json.dumps(services, sort_keys=True)
     for artifact_id in ("nex-wc-runtime", "nex-eos-runtime"):
@@ -129,7 +131,7 @@ def admit_demo_compose_sources(
     for name, expected in _AE_REQUIRED_PLANNING_ENVIRONMENT.items():
         if ae_environment.get(name) != expected:
             errors.append(f"Demo AE planning profile drift: {name}")
-    if "NEX_P8_DEMO_SEMANTIC_CALIBRATION_POLICIES_JSON" not in str(
+    if "NEX_CANONICAL_PLATFORM_SEMANTIC_CALIBRATION_POLICIES_JSON" not in str(
         ae_environment.get("NEX_AE_P65_SEMANTIC_CALIBRATION_POLICIES_JSON") or ""
     ):
         errors.append("Demo AE semantic calibration input missing")
@@ -190,14 +192,13 @@ def admit_rendered_demo_compose(
     services = _mapping(rendered.get("services"), "rendered services")
     expected_runtime = set(DEMO_INSTALLED_PROCESS_IDS)
     expected_services = set(DEMO_COMPOSE_SERVICE_BY_PROCESS.values())
-    if set(DEMO_COMPOSE_SERVICE_BY_PROCESS) != expected_runtime or not expected_services.issubset(
-        services
-    ):
+    if set(
+        DEMO_COMPOSE_SERVICE_BY_PROCESS
+    ) != expected_runtime or not expected_services.issubset(services):
         raise DemoComposeError("rendered installed process coverage is incomplete")
     expected_images = set(_IMAGE_ENV_BY_ARTIFACT)
     if set(image_references) != expected_images or any(
-        _IMMUTABLE_IMAGE.fullmatch(value) is None
-        for value in image_references.values()
+        _IMMUTABLE_IMAGE.fullmatch(value) is None for value in image_references.values()
     ):
         raise DemoComposeError("rendered image release set is incomplete or mutable")
     observed_images = {
@@ -207,7 +208,9 @@ def admit_rendered_demo_compose(
     }
     if not set(image_references.values()).issubset(observed_images):
         raise DemoComposeError("rendered image references drift")
-    payload = json.dumps(rendered, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+    payload = json.dumps(
+        rendered, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+    )
     if "nuri1004" in payload or "_TEST_DATABASE_URL" in payload:
         raise DemoComposeError("rendered Compose exposes forbidden database input")
     for process_id in (
@@ -269,8 +272,7 @@ def image_environment_from_installed_runtime_reports(
         (
             item
             for item in artifacts.values()
-            if isinstance(item, Mapping)
-            and item.get("artifact_id") == "nex-ae-runtime"
+            if isinstance(item, Mapping) and item.get("artifact_id") == "nex-ae-runtime"
         ),
         None,
     )
@@ -311,9 +313,13 @@ def image_environment_from_installed_runtime_reports(
     if _SHA256.fullmatch(image_id) is None or len(references) != 1:
         raise DemoComposeError("installed AE runtime image identity is invalid")
     reference = references[0]
-    if _IMMUTABLE_IMAGE.fullmatch(reference) is None or not reference.endswith(image_id):
+    if _IMMUTABLE_IMAGE.fullmatch(reference) is None or not reference.endswith(
+        image_id
+    ):
         raise DemoComposeError("installed AE runtime image reference is mutable")
-    output_repository = str(ae_runtime_report.get("output_image") or "").split(":", 1)[0]
+    output_repository = str(ae_runtime_report.get("output_image") or "").split(":", 1)[
+        0
+    ]
     if not output_repository or not reference.startswith(f"{output_repository}@"):
         raise DemoComposeError("installed AE runtime repository drift")
     environment["NEX_AE_RUNTIME_IMAGE"] = reference
@@ -328,9 +334,7 @@ def _load_mapping(value: str, label: str) -> dict[str, Any]:
     return _mapping(payload, label)
 
 
-def _mapping(
-    value: object, label: str, *, sequence: bool = False
-) -> dict[Any, Any]:
+def _mapping(value: object, label: str, *, sequence: bool = False) -> dict[Any, Any]:
     if sequence:
         if not isinstance(value, list):
             raise DemoComposeError(f"{label} must be an array")
@@ -344,7 +348,9 @@ def _read_text(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise DemoComposeError(f"required Demo Compose source is missing: {path.name}") from exc
+        raise DemoComposeError(
+            f"required Demo Compose source is missing: {path.name}"
+        ) from exc
 
 
 def _digest(value: str) -> str:
