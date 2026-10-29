@@ -7,10 +7,13 @@ from typing import Any
 
 from nex_oa.production_token_profiles import (
     ACCESS_TOKEN_TYPE,
+    CANONICAL_PLATFORM_DEPLOYMENT_BOUNDARY,
+    CANONICAL_PLATFORM_DEPLOYMENT_PROFILE,
     P8_DEMO_DEPLOYMENT_BOUNDARY,
     P8_DEMO_DEPLOYMENT_PROFILE,
     P8_DEMO_SERVICE_ACCESS_PROFILE,
     PRODUCTION_TOKEN_ISSUER,
+    STARTUP_SERVICE_ACCESS_PROFILE,
     ProductionTokenProfile,
     get_production_token_profile,
     validate_production_token_shape,
@@ -19,7 +22,6 @@ from nex_oa.service_principal_service import OaServicePrincipalService
 from nex_oa.signed_tokens import OaSignedTokenError
 from nex_oa.signing_key_service import OaSigningKeyService
 from nex_oa.token_signing import OaRsaSigningProvider, encode_signed_jwt
-
 
 OA_TOKEN_RESPONSE_SCHEMA_VERSION = "oa_token_response.v1"
 
@@ -95,6 +97,11 @@ class OaClientCredentialTokenExchangeService:
                 deployment_boundary=P8_DEMO_DEPLOYMENT_BOUNDARY,
                 deployment_profile=P8_DEMO_DEPLOYMENT_PROFILE,
             )
+        elif self.token_profile.name == STARTUP_SERVICE_ACCESS_PROFILE:
+            claims.update(
+                deployment_boundary=CANONICAL_PLATFORM_DEPLOYMENT_BOUNDARY,
+                deployment_profile=CANONICAL_PLATFORM_DEPLOYMENT_PROFILE,
+            )
         errors = validate_production_token_shape(
             self.token_profile.name,
             headers=headers,
@@ -124,6 +131,21 @@ class OaClientCredentialTokenExchangeService:
 def service_token_exchange_profile_for_environment(
     environ: Mapping[str, str],
 ) -> ProductionTokenProfile:
+    canonical = str(
+        environ.get("NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE") or ""
+    ).strip()
+    if canonical:
+        if canonical != "STARTUP_24H":
+            raise ValueError("startup service-token profile is unsupported")
+        if (
+            str(environ.get("NEX_PROFILE") or "").strip()
+            != CANONICAL_PLATFORM_DEPLOYMENT_PROFILE
+            or str(environ.get("NEX_DEPLOYMENT_BOUNDARY") or "").strip()
+            != CANONICAL_PLATFORM_DEPLOYMENT_BOUNDARY
+        ):
+            raise ValueError("startup service-token profile boundary is invalid")
+        return get_production_token_profile(STARTUP_SERVICE_ACCESS_PROFILE)
+
     requested = str(
         environ.get("NEX_P8_DEMO_SERVICE_TOKEN_PROFILE") or ""
     ).strip()

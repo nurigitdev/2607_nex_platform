@@ -73,9 +73,9 @@ def check_canonical_platform_compose(
                 "-f",
                 str(root / OBJECT_COMPOSE.relative_to(ROOT)),
                 "-f",
-                str(root / CANONICAL_COMPOSE.relative_to(ROOT)),
-                "-f",
                 str(root / WA_COMPOSE.relative_to(ROOT)),
+                "-f",
+                str(root / CANONICAL_COMPOSE.relative_to(ROOT)),
                 "config",
                 "--format",
                 "yaml",
@@ -187,12 +187,40 @@ def _admit_rendered_canonical_compose(
     serialized = json.dumps(rendered, sort_keys=True)
     if "nuri1004" in serialized or "_TEST_DATABASE_URL" in serialized:
         raise ValueError("canonical Compose exposes forbidden database input")
+    if "NEX_P8_DEMO_" in serialized or "p8_demo_" in serialized:
+        raise ValueError("canonical Compose retains an active P8 Demo contract")
+    runtime_services = (
+        "nex-oa",
+        "nex-ag",
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+        "nex-wc",
+        "nex-eos",
+        "nex-wa",
+        "nex-ae-agent-runtime-worker",
+        "nex-wc-event-delivery-worker",
+        "nex-eos-outbox-publisher",
+        "nex-wa-evidence-consumer",
+    )
+    for service_id in runtime_services:
+        service = services.get(service_id)
+        environment = (
+            service.get("environment") if isinstance(service, Mapping) else None
+        )
+        if (
+            not isinstance(environment, Mapping)
+            or environment.get("NEX_DEPLOYMENT_BOUNDARY") != "CANONICAL_PLATFORM"
+            or environment.get("NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE") != "STARTUP_24H"
+        ):
+            raise ValueError(f"canonical environment contract drift: {service_id}")
     return {
         "schema_version": SCHEMA_VERSION,
         "status": "PASS",
         "service_count": len(services),
         "image_count": len(image_references),
         "installed_process_count": 20,
+        "canonical_runtime_environment_count": len(runtime_services),
         "secret_included": False,
         "database_url_included": False,
     }

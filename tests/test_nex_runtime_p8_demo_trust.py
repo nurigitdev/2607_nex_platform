@@ -254,10 +254,10 @@ def test_source_admission_and_skip_are_metadata_only(tmp_path: Path) -> None:
     skipped = run_p8_demo_trust_admission({}, root=ROOT)
 
     assert source["source_admitted"] is True
-    assert source["compose_source_count"] == 3
+    assert source["compose_source_count"] == 4
     assert skipped["status"] == "SOURCE_ADMITTED"
     assert skipped["executed"] is False
-    assert "owners=7" in summary_line(skipped)
+    assert "owners=8" in summary_line(skipped)
 
     for relative in (
         "deployment/compose/s143-staging.compose.yaml",

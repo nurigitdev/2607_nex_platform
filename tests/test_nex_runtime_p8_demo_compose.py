@@ -123,6 +123,24 @@ def _canonical_rendered() -> dict:
             },
         }
     )
+    for service_id in (
+        "nex-oa",
+        "nex-ag",
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+        "nex-wc",
+        "nex-eos",
+        "nex-wa",
+        "nex-ae-agent-runtime-worker",
+        "nex-wc-event-delivery-worker",
+        "nex-eos-outbox-publisher",
+        "nex-wa-evidence-consumer",
+    ):
+        rendered["services"][service_id]["environment"] = {
+            "NEX_DEPLOYMENT_BOUNDARY": "CANONICAL_PLATFORM",
+            "NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE": "STARTUP_24H",
+        }
     return rendered
 
 

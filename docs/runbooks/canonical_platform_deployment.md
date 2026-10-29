@@ -12,8 +12,37 @@ processes. Compose is layered in this order:
 
 1. `deployment/compose/s143-staging.compose.yaml`
 2. `deployment/compose/s146-object-storage.override.yaml`
-3. `deployment/compose/canonical-platform.override.yaml`
-4. `deployment/compose/p9-wa.override.yaml`
+3. `deployment/compose/p9-wa.override.yaml`
+4. `deployment/compose/canonical-platform.override.yaml`
+
+The canonical overlay is deliberately last. It owns the final deployment
+boundary and startup trust profile for every API and background process,
+including the WA API and evidence consumer added by the P9 layer.
+
+## Environment And Trust Contract
+
+The active runtime contract is independent of the historical P8-DEMO release:
+
+- `NEX_DEPLOYMENT_BOUNDARY=CANONICAL_PLATFORM`
+- `NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE=STARTUP_24H`
+- `NEX_STARTUP_SERVICE_TOKEN_BOOTSTRAP=true`
+- `NEX_SERVICE_CREDENTIAL_ID_REF` and
+  `NEX_SERVICE_CLIENT_SECRET_REF` resolve owner-scoped bootstrap credentials
+  from OpenBao.
+- `NEX_CANONICAL_PLATFORM_SECRET_VERSION`,
+  `NEX_CANONICAL_PLATFORM_SECRET_GENERATION`, and
+  `NEX_CANONICAL_PLATFORM_TLS_GENERATION` select canonical generations.
+
+OA issues audience-scoped signed service tokens at process startup. Tokens are
+bounded to 24 hours and are reacquired after a restart; the bootstrap client
+credential remains owner-scoped and has a separately bounded lifetime. Raw
+credentials and issued tokens must not appear in Compose, reports, or command
+arguments.
+
+The canonical overlay must contain no active `NEX_P8_DEMO_*` environment name
+or `p8_demo_*` resource. Historical command wrappers may translate legacy
+operator input at their compatibility boundary, but new automation must use
+only the canonical names above.
 
 ## Build And Admission
 

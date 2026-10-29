@@ -64,10 +64,12 @@ def _audit_source(tmp_path: Path, source: str) -> dict:
 
 def test_repository_registry_and_canonical_runner_pass() -> None:
     evidence = audit.audit_repository(ROOT)
+    registry = json.loads((ROOT / audit.DEFAULT_REGISTRY).read_text(encoding="utf-8"))
+    expected_runner_count = len(registry["runners"])
 
     assert evidence["status"] == "PASS"
-    assert evidence["registered_runner_count"] == 8
-    assert evidence["discovered_runner_count"] == 8
+    assert evidence["registered_runner_count"] == expected_runner_count
+    assert evidence["discovered_runner_count"] == expected_runner_count
     assert evidence["enforced_runner_count"] == 1
     assert evidence["evidence_contract"] == audit.EVIDENCE_CONTRACT
     assert evidence["findings"] == []

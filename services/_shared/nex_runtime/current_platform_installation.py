@@ -17,8 +17,8 @@ CURRENT_PLATFORM_INSTALLATION_SCHEMA_VERSION = "gb2_current_platform_installatio
 CURRENT_COMPOSE_PATHS = (
     "deployment/compose/s143-staging.compose.yaml",
     "deployment/compose/s146-object-storage.override.yaml",
-    "deployment/compose/canonical-platform.override.yaml",
     "deployment/compose/p9-wa.override.yaml",
+    "deployment/compose/canonical-platform.override.yaml",
 )
 CURRENT_JOURNEY_PROCESS_TO_SERVICE = {
     "nex-oa-api": "nex-oa",
@@ -109,6 +109,10 @@ def admit_current_platform_installation(root: Path) -> dict[str, Any]:
         ),
         "product_ae_image_contract_not_overridden": (
             _product_ae_image_contract_not_overridden(services["nex-ae-api"])
+        ),
+        "canonical_environment_contract": _canonical_environment_contract(
+            services,
+            root=root,
         ),
         "canonical_dependency_boundaries_present": all(
             (root / path).is_file()
@@ -219,4 +223,46 @@ def _product_ae_image_contract_not_overridden(service: Mapping[str, Any]) -> boo
         == "/app/deployment/product/config/finance-golden-a-vo00.v1.json"
         and environment.get("NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH")
         == ("/app/deployment/product/config/ae-product-capability-registry.v1.json")
+    )
+
+
+def _canonical_environment_contract(
+    services: Mapping[str, Any],
+    *,
+    root: Path,
+) -> bool:
+    overlay = (root / "deployment/compose/canonical-platform.override.yaml").read_text(
+        encoding="utf-8"
+    )
+    if "NEX_P8_DEMO_" in overlay or "p8_demo_" in overlay:
+        return False
+    required_names = (
+        "NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE",
+        "NEX_STARTUP_SERVICE_TOKEN_BOOTSTRAP",
+        "NEX_CANONICAL_PLATFORM_SECRET_VERSION",
+        "NEX_SERVICE_CREDENTIAL_ID_REF",
+        "NEX_SERVICE_CLIENT_SECRET_REF",
+    )
+    if not all(name in overlay for name in required_names):
+        return False
+    runtime_services = (
+        "nex-oa",
+        "nex-ag",
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+        "nex-wc",
+        "nex-eos",
+        "nex-wa",
+        "nex-ae-agent-runtime-worker",
+        "nex-wc-event-delivery-worker",
+        "nex-eos-outbox-publisher",
+        "nex-wa-evidence-consumer",
+    )
+    return all(
+        isinstance(services.get(service_id), Mapping)
+        and isinstance(services[service_id].get("environment"), Mapping)
+        and services[service_id]["environment"].get("NEX_DEPLOYMENT_BOUNDARY")
+        == "CANONICAL_PLATFORM"
+        for service_id in runtime_services
     )

@@ -467,6 +467,7 @@ def build_service_token_admission_runtime(
             clock=clock,
         ),
         clock=clock,
+        allow_startup_profile=_startup_service_token_profile_enabled(env),
         allow_p8_demo_profile=_p8_demo_service_token_profile_enabled(env),
     )
     authorization_token = env.get("NEX_OA_INTROSPECTION_SERVICE_TOKEN")
@@ -764,6 +765,23 @@ def _p8_demo_service_token_profile_enabled(environ: Mapping[str, str]) -> bool:
         or str(environ.get("NEX_DEPLOYMENT_BOUNDARY") or "").strip() != "P8_DEMO"
     ):
         raise ValueError("P8 Demo service-token profile boundary is invalid")
+    return True
+
+
+def _startup_service_token_profile_enabled(environ: Mapping[str, str]) -> bool:
+    requested = str(
+        environ.get("NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE") or ""
+    ).strip()
+    if not requested:
+        return False
+    if requested != "STARTUP_24H":
+        raise ValueError("startup service-token profile is unsupported")
+    if (
+        str(environ.get("NEX_PROFILE") or "").strip() != "staging_live"
+        or str(environ.get("NEX_DEPLOYMENT_BOUNDARY") or "").strip()
+        != "CANONICAL_PLATFORM"
+    ):
+        raise ValueError("startup service-token profile boundary is invalid")
     return True
 
 

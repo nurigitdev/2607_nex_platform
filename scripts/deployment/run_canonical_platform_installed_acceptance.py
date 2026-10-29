@@ -35,13 +35,14 @@ for relative in (
     "services/nex-mo",
     "services/nex-wc",
     "services/nex-eos",
+    "services/nex-wa",
 ):
     path = ROOT / relative
     sys.path.insert(0, str(path))
 
-from nex_oa.demo_service_principal_provisioning import (
-    demo_service_principal_specs,
-    provision_demo_service_principals,
+from nex_oa.canonical_service_principal_provisioning import (
+    canonical_service_principal_specs,
+    provision_canonical_service_principals,
 )
 from nex_oa.openbao_transit_keys import (
     OpenBaoTransitKeyProvisioner,
@@ -55,6 +56,12 @@ from nex_oa.service_principal_service import OaServicePrincipalService
 from nex_oa.signed_token_repository import SqlAlchemyOaSignedTokenRepository
 from nex_oa.signing_key_policy import MINIMUM_PUBLICATION_LEAD_SECONDS
 from nex_oa.signing_key_service import OaSigningKeyService
+from nex_runtime.canonical_platform_trust import (
+    CANONICAL_PLATFORM_OWNERS,
+    CANONICAL_PLATFORM_SECRET_BINDINGS,
+    CANONICAL_PLATFORM_TLS_HOSTS,
+    configure_canonical_runtime_approles,
+)
 from nex_runtime.current_platform_installation import (
     admit_current_platform_installation,
 )
@@ -70,13 +77,6 @@ from nex_runtime.demo_domain_activation import (
 from nex_runtime.demo_domain_installation import (
     DEMO_DOMAIN_WORKERS,
     admit_demo_domain_runtime_evidence,
-    configure_demo_runtime_approles,
-)
-from nex_runtime.demo_service_token_bootstrap import DEMO_TOKEN_TTL_SECONDS
-from nex_runtime.demo_trust import (
-    DEMO_OWNERS,
-    DEMO_SECRET_BINDINGS,
-    DEMO_TLS_HOSTS,
 )
 from nex_runtime.deployment_environments import (
     CURRENT_ARTIFACT_REFERENCE_ENVIRONMENTS,
@@ -101,6 +101,9 @@ from nex_runtime.s144_staging import (
     configure_openbao_s144_trust,
     refresh_openbao_s144_transit_credentials,
 )
+from nex_runtime.startup_service_token_bootstrap import (
+    STARTUP_SERVICE_TOKEN_TTL_SECONDS,
+)
 
 EXECUTION_ENV = "NEX_CANONICAL_PLATFORM_INSTALLED_ACCEPTANCE"
 LEGACY_EXECUTION_ENV = "NEX_P8_DEMO_S10_LIVE"
@@ -119,8 +122,8 @@ DEFAULT_REPORT = (
 COMPOSE_FILES = (
     ROOT / "deployment/compose/s143-staging.compose.yaml",
     ROOT / "deployment/compose/s146-object-storage.override.yaml",
-    ROOT / "deployment/compose/canonical-platform.override.yaml",
     ROOT / "deployment/compose/p9-wa.override.yaml",
+    ROOT / "deployment/compose/canonical-platform.override.yaml",
 )
 PROJECT_NAME = "nex-platform-canonical"
 DOMAIN_SERVICES = (
@@ -130,6 +133,9 @@ DOMAIN_SERVICES = (
     "nex-eos",
     *DEMO_DOMAIN_PROCESSES,
 )
+# Historical P8 acceptance imports this inventory name through the compatibility
+# wrapper. The active canonical runner uses the canonical inventory above.
+DEMO_SECRET_BINDINGS = CANONICAL_PLATFORM_SECRET_BINDINGS
 
 
 class CanonicalPlatformInstalledAcceptanceError(RuntimeError):
@@ -186,7 +192,7 @@ def _source_admission(root: Path) -> dict[str, Any]:
         )
     return {
         "schema_version": SCHEMA_VERSION,
-        "slice": "GB2-CA00-S18A",
+        "slice": "GB2-CA00-S18B",
         "source_admitted": True,
         "compose_source": compose,
         "domain_activation": activation,
@@ -237,7 +243,8 @@ def execute_canonical_platform_acceptance(
         )
 
     client_secrets = {
-        spec.owner: secrets.token_urlsafe(36) for spec in demo_service_principal_specs()
+        spec.owner: secrets.token_urlsafe(36)
+        for spec in canonical_service_principal_specs()
     }
     root_access = f"P8S10ROOT{secrets.token_hex(8)}"
     root_secret = secrets.token_urlsafe(36)
@@ -262,13 +269,13 @@ def execute_canonical_platform_acceptance(
     oa_engine: Any = None
     with TemporaryDirectory(prefix="nex-canonical-platform-s10-") as temporary:
         runtime_dir = Path(temporary) / "runtime"
-        prepare_staging_runtime_directory(runtime_dir, owners=DEMO_OWNERS)
+        prepare_staging_runtime_directory(runtime_dir, owners=CANONICAL_PLATFORM_OWNERS)
         runtime_env = {
             **env,
             **image_environment,
             "NEX_S143_RUNTIME_DIR": str(runtime_dir),
             "NEX_S143_SECRET_VERSION": "v1",
-            "NEX_P8_DEMO_SECRET_VERSION": "v1",
+            "NEX_CANONICAL_PLATFORM_SECRET_VERSION": "v1",
             CALIBRATION_ENV: str(
                 env.get(CALIBRATION_ENV) or env.get(LEGACY_CALIBRATION_ENV) or "[]"
             ),
@@ -306,20 +313,20 @@ def execute_canonical_platform_acceptance(
                 root=root,
                 runtime_dir=runtime_dir,
                 secret_values=secret_values,
-                bindings=DEMO_SECRET_BINDINGS,
-                owners=DEMO_OWNERS,
-                subject_alt_names=DEMO_TLS_HOSTS,
+                bindings=CANONICAL_PLATFORM_SECRET_BINDINGS,
+                owners=CANONICAL_PLATFORM_OWNERS,
+                subject_alt_names=CANONICAL_PLATFORM_TLS_HOSTS,
             )
-            approles = configure_demo_runtime_approles(
+            approles = configure_canonical_runtime_approles(
                 admin,
                 root_token=bootstrap.root_token,
-                owners=DEMO_OWNERS,
+                owners=CANONICAL_PLATFORM_OWNERS,
             )
             refresh_openbao_approle_credentials(
                 admin,
                 root_token=bootstrap.root_token,
                 runtime_dir=runtime_dir,
-                owners=DEMO_OWNERS,
+                owners=CANONICAL_PLATFORM_OWNERS,
             )
             configure_openbao_s144_trust(admin, root_token=bootstrap.root_token)
             refresh_openbao_s144_transit_credentials(
@@ -471,7 +478,7 @@ def execute_canonical_platform_acceptance(
                     "release_set_digest"
                 ],
                 "ae_runtime_image_id": ae_image_report["image"]["image_id"],
-                "startup_token_ttl_seconds": DEMO_TOKEN_TTL_SECONDS,
+                "startup_token_ttl_seconds": STARTUP_SERVICE_TOKEN_TTL_SECONDS,
                 "provider_contacted": False,
                 "database_mutation_added": False,
                 "secret_included": False,
@@ -528,9 +535,12 @@ def _secret_values(
     )
     for name in provider_names:
         values[name] = str(env.get(name) or f"unused-{name.lower()}-p8-s10")
-    for binding in DEMO_SECRET_BINDINGS:
+    for binding in CANONICAL_PLATFORM_SECRET_BINDINGS:
         values.setdefault(binding.target_environment_name, secrets.token_urlsafe(32))
-    expected = {binding.target_environment_name for binding in DEMO_SECRET_BINDINGS}
+    expected = {
+        binding.target_environment_name
+        for binding in CANONICAL_PLATFORM_SECRET_BINDINGS
+    }
     if set(values) != expected:
         raise CanonicalPlatformInstalledAcceptanceError(
             "Demo secret value coverage drift"
@@ -550,7 +560,7 @@ def _provision_oa_trust(
     principals = OaServicePrincipalService(
         SqlAlchemyOaServicePrincipalRepository(factory)
     )
-    specs = demo_service_principal_specs()
+    specs = canonical_service_principal_specs()
     existing_principal_ids = _existing_demo_principal_ids(engine, specs=specs)
     created_principal_ids = tuple(
         spec.principal_id
@@ -575,7 +585,7 @@ def _provision_oa_trust(
         )
     key_id = f"canonical-platform-s10-{secrets.token_hex(8)}"
     try:
-        provisioned = provision_demo_service_principals(
+        provisioned = provision_canonical_service_principals(
             principals,
             generation=generation,
             client_secrets=client_secrets,

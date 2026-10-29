@@ -5,10 +5,13 @@ from dataclasses import asdict, dataclass
 from types import MappingProxyType
 from typing import Any
 
-
 PRODUCTION_TOKEN_ISSUER = "urn:nex-platform:oa"
 ACCESS_TOKEN_TYPE = "at+jwt"
 DEFAULT_TOKEN_TTL_SECONDS = 300
+STARTUP_SERVICE_TOKEN_TTL_SECONDS = 86_400
+STARTUP_SERVICE_ACCESS_PROFILE = "startup_service_access"
+CANONICAL_PLATFORM_DEPLOYMENT_BOUNDARY = "CANONICAL_PLATFORM"
+CANONICAL_PLATFORM_DEPLOYMENT_PROFILE = "staging_live"
 P8_DEMO_TOKEN_TTL_SECONDS = 86_400
 P8_DEMO_SERVICE_ACCESS_PROFILE = "p8_demo_service_access"
 P8_DEMO_DEPLOYMENT_BOUNDARY = "P8_DEMO"
@@ -105,6 +108,30 @@ _P8_DEMO_SERVICE_ACCESS = ProductionTokenProfile(
         "azp",
     ),
 )
+_STARTUP_SERVICE_ACCESS = ProductionTokenProfile(
+    name=STARTUP_SERVICE_ACCESS_PROFILE,
+    subject_kind="service_principal",
+    default_ttl_seconds=STARTUP_SERVICE_TOKEN_TTL_SECONDS,
+    maximum_ttl_seconds=STARTUP_SERVICE_TOKEN_TTL_SECONDS,
+    maximum_clock_skew_seconds=MAX_CLOCK_SKEW_SECONDS,
+    required_headers=COMMON_REQUIRED_HEADERS,
+    required_claims=COMMON_REQUIRED_CLAIMS,
+    profile_claims=(
+        "service_id",
+        "credential_id",
+        "credential_revision",
+        "deployment_boundary",
+        "deployment_profile",
+    ),
+    forbidden_claims=(
+        *SENSITIVE_FORBIDDEN_CLAIMS,
+        "tenant_id",
+        "user_id",
+        "session_ref",
+        "authorization_revision",
+        "azp",
+    ),
+)
 _DELEGATED_USER_ACCESS = ProductionTokenProfile(
     name="delegated_user_access",
     subject_kind="tenant_user",
@@ -135,7 +162,12 @@ PRODUCTION_TOKEN_PROFILES: Mapping[str, ProductionTokenProfile] = MappingProxyTy
     }
 )
 ADDITIVE_DEPLOYMENT_TOKEN_PROFILES: Mapping[str, ProductionTokenProfile] = (
-    MappingProxyType({_P8_DEMO_SERVICE_ACCESS.name: _P8_DEMO_SERVICE_ACCESS})
+    MappingProxyType(
+        {
+            _STARTUP_SERVICE_ACCESS.name: _STARTUP_SERVICE_ACCESS,
+            _P8_DEMO_SERVICE_ACCESS.name: _P8_DEMO_SERVICE_ACCESS,
+        }
+    )
 )
 
 
@@ -249,7 +281,11 @@ def _validate_profile_claims(
     claims: Mapping[str, Any],
     errors: list[str],
 ) -> None:
-    if profile.name in {"service_access", P8_DEMO_SERVICE_ACCESS_PROFILE}:
+    if profile.name in {
+        "service_access",
+        STARTUP_SERVICE_ACCESS_PROFILE,
+        P8_DEMO_SERVICE_ACCESS_PROFILE,
+    }:
         _validate_string_claims(claims, ("service_id", "credential_id"), errors)
         service_id = claims.get("service_id")
         if _nonempty_string(service_id) and service_id not in TOKEN_AUDIENCES:
@@ -260,7 +296,18 @@ def _validate_profile_claims(
             claims["credential_revision"]
         ):
             errors.append("claim_credential_revision_invalid")
-        if profile.name == P8_DEMO_SERVICE_ACCESS_PROFILE:
+        if profile.name == STARTUP_SERVICE_ACCESS_PROFILE:
+            if (
+                claims.get("deployment_boundary")
+                != CANONICAL_PLATFORM_DEPLOYMENT_BOUNDARY
+            ):
+                errors.append("claim_deployment_boundary_invalid")
+            if (
+                claims.get("deployment_profile")
+                != CANONICAL_PLATFORM_DEPLOYMENT_PROFILE
+            ):
+                errors.append("claim_deployment_profile_invalid")
+        elif profile.name == P8_DEMO_SERVICE_ACCESS_PROFILE:
             if claims.get("deployment_boundary") != P8_DEMO_DEPLOYMENT_BOUNDARY:
                 errors.append("claim_deployment_boundary_invalid")
             if claims.get("deployment_profile") != P8_DEMO_DEPLOYMENT_PROFILE:

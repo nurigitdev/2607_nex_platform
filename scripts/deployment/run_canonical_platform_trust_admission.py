@@ -18,11 +18,13 @@ from cryptography import x509
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "services" / "_shared"))
 
-from nex_runtime.demo_trust import (
-    DEMO_OWNERS,
-    DEMO_SECRET_BINDINGS,
-    DEMO_TLS_HOSTS,
-    demo_trust_projection,
+from nex_runtime.canonical_platform_trust import (
+    CANONICAL_PLATFORM_OWNERS,
+    CANONICAL_PLATFORM_SECRET_BINDINGS,
+    CANONICAL_PLATFORM_TLS_HOSTS,
+    SERVICE_CLIENT_SECRET_ENV,
+    SERVICE_CREDENTIAL_ID_ENV,
+    canonical_platform_trust_projection,
 )
 from nex_runtime.deployment_environments import (
     CURRENT_ARTIFACT_REFERENCE_ENVIRONMENTS,
@@ -54,6 +56,7 @@ LEGACY_CALIBRATION_ENV = "NEX_P8_DEMO_SEMANTIC_CALIBRATION_POLICIES_JSON"
 SCHEMA_VERSION = "canonical_platform_trust_admission.v1"
 BASE_COMPOSE = "deployment/compose/s143-staging.compose.yaml"
 OBJECT_COMPOSE = "deployment/compose/s146-object-storage.override.yaml"
+WA_COMPOSE = "deployment/compose/p9-wa.override.yaml"
 CANONICAL_COMPOSE = "deployment/compose/canonical-platform.override.yaml"
 DEFAULT_IMAGE_REPORT = (
     ROOT / "reports/deployment/canonical-platform-oci-image-build.json"
@@ -62,7 +65,7 @@ DEFAULT_REPORT = ROOT / "reports/deployment/canonical-platform-trust-admission.j
 PROJECT_NAME = "nex-platform-canonical-trust"
 
 
-class DemoTrustAdmissionError(RuntimeError):
+class CanonicalPlatformTrustAdmissionError(RuntimeError):
     pass
 
 
@@ -74,7 +77,7 @@ def run_canonical_platform_trust_admission(
     image_report_path: Path = DEFAULT_IMAGE_REPORT,
 ) -> dict[str, Any]:
     env = dict(os.environ if environ is None else environ)
-    inventory = demo_trust_projection()
+    inventory = canonical_platform_trust_projection()
     source = _source_admission(root, inventory=inventory)
     if not execute or not _execution_enabled(env):
         return {**source, "status": "SOURCE_ADMITTED", "executed": False}
@@ -87,7 +90,9 @@ def run_canonical_platform_trust_admission(
         image_environment = _image_environment_from_release_report(image_report)
         with TemporaryDirectory(prefix="nex-canonical-platform-s08-") as temporary:
             runtime_dir = Path(temporary) / "runtime"
-            prepare_staging_runtime_directory(runtime_dir, owners=DEMO_OWNERS)
+            prepare_staging_runtime_directory(
+                runtime_dir, owners=CANONICAL_PLATFORM_OWNERS
+            )
             compose_environment = {
                 **env,
                 **image_environment,
@@ -95,7 +100,7 @@ def run_canonical_platform_trust_admission(
                 CALIBRATION_ENV: str(
                     env.get(CALIBRATION_ENV) or env.get(LEGACY_CALIBRATION_ENV) or "[]"
                 ),
-                "NEX_P8_DEMO_SECRET_VERSION": "v1",
+                "NEX_CANONICAL_PLATFORM_SECRET_VERSION": "v1",
                 "NEX_CANONICAL_PLATFORM_SECRET_GENERATION": (
                     "secret:canonical-platform.1"
                 ),
@@ -123,9 +128,9 @@ def run_canonical_platform_trust_admission(
                     root=root,
                     runtime_dir=runtime_dir,
                     secret_values=secret_values,
-                    bindings=DEMO_SECRET_BINDINGS,
-                    owners=DEMO_OWNERS,
-                    subject_alt_names=DEMO_TLS_HOSTS,
+                    bindings=CANONICAL_PLATFORM_SECRET_BINDINGS,
+                    owners=CANONICAL_PLATFORM_OWNERS,
+                    subject_alt_names=CANONICAL_PLATFORM_TLS_HOSTS,
                 )
                 initial = _resolve_generation(
                     provisioning,
@@ -145,7 +150,7 @@ def run_canonical_platform_trust_admission(
                     client,
                     root_token=provisioning.root_token,
                     runtime_dir=runtime_dir,
-                    owners=DEMO_OWNERS,
+                    owners=CANONICAL_PLATFORM_OWNERS,
                 )
                 cross_owner_denied = _cross_owner_denied(runtime_dir)
 
@@ -156,18 +161,18 @@ def run_canonical_platform_trust_admission(
                 versions = write_openbao_secret_generation(
                     client,
                     root_token=provisioning.root_token,
-                    bindings=DEMO_SECRET_BINDINGS,
+                    bindings=CANONICAL_PLATFORM_SECRET_BINDINGS,
                     secret_values=rotated_values,
                 )
                 if set(versions.values()) != {2}:
-                    raise DemoTrustAdmissionError(
-                        "OpenBao Demo secret generation did not rotate atomically"
+                    raise CanonicalPlatformTrustAdmissionError(
+                        "OpenBao canonical Platform secret generation did not rotate atomically"
                     )
                 refresh_openbao_approle_credentials(
                     client,
                     root_token=provisioning.root_token,
                     runtime_dir=runtime_dir,
-                    owners=DEMO_OWNERS,
+                    owners=CANONICAL_PLATFORM_OWNERS,
                 )
                 rotated = _resolve_generation(
                     provisioning,
@@ -175,11 +180,13 @@ def run_canonical_platform_trust_admission(
                     version="v2",
                 )
                 certificate_hosts = _certificate_hosts(runtime_dir)
-                routed_hosts = set(DEMO_TLS_HOSTS)
+                routed_hosts = set(CANONICAL_PLATFORM_TLS_HOSTS)
                 if not routed_hosts.issubset(certificate_hosts) or (
                     certificate_hosts - routed_hosts
                 ) - {"nex-staging.test"}:
-                    raise DemoTrustAdmissionError("Demo PKI SAN coverage drift")
+                    raise CanonicalPlatformTrustAdmissionError(
+                        "canonical Platform PKI SAN coverage drift"
+                    )
                 result = {
                     **source,
                     "status": "PASS",
@@ -242,9 +249,9 @@ def run_canonical_platform_trust_admission(
 
 
 def _source_admission(root: Path, *, inventory: Mapping[str, Any]) -> dict[str, Any]:
-    paths = (BASE_COMPOSE, OBJECT_COMPOSE, CANONICAL_COMPOSE)
+    paths = (BASE_COMPOSE, OBJECT_COMPOSE, WA_COMPOSE, CANONICAL_COMPOSE)
     if not all((root / path).is_file() for path in paths):
-        raise DemoTrustAdmissionError(
+        raise CanonicalPlatformTrustAdmissionError(
             "Canonical Platform Compose source is unavailable"
         )
     compose_text = "\n".join(
@@ -253,14 +260,29 @@ def _source_admission(root: Path, *, inventory: Mapping[str, Any]) -> dict[str, 
     required = tuple(
         f"{binding.source_environment_name}: secret://openbao/"
         f"nex-platform/staging/{binding.owner}/{binding.target_environment_name}@"
-        for binding in DEMO_SECRET_BINDINGS
+        for binding in CANONICAL_PLATFORM_SECRET_BINDINGS
     )
     missing = [
         value.split(":", 1)[0] for value in required if value not in compose_text
     ]
     if missing:
-        raise DemoTrustAdmissionError(
+        raise CanonicalPlatformTrustAdmissionError(
             f"Canonical Platform OpenBao reference coverage drift: {missing[0]}"
+        )
+    canonical_text = (root / CANONICAL_COMPOSE).read_text(encoding="utf-8")
+    startup_references = tuple(
+        f"secret://openbao/nex-platform/staging/{owner}/{target}@"
+        for owner in CANONICAL_PLATFORM_OWNERS
+        if owner != "nex-oa"
+        for target in (SERVICE_CREDENTIAL_ID_ENV, SERVICE_CLIENT_SECRET_ENV)
+    )
+    if not all(reference in canonical_text for reference in startup_references):
+        raise CanonicalPlatformTrustAdmissionError(
+            "Canonical Platform startup credential reference coverage drift"
+        )
+    if "NEX_P8_DEMO_" in canonical_text or "p8_demo_" in canonical_text:
+        raise CanonicalPlatformTrustAdmissionError(
+            "Canonical Platform Compose retains an active P8 Demo contract"
         )
     if any(
         marker in compose_text
@@ -270,12 +292,12 @@ def _source_admission(root: Path, *, inventory: Mapping[str, Any]) -> dict[str, 
             "NEX_EOS_TEST_DATABASE_URL",
         )
     ):
-        raise DemoTrustAdmissionError(
+        raise CanonicalPlatformTrustAdmissionError(
             "Canonical Platform Compose contains a forbidden secret input"
         )
     return {
         "schema_version": SCHEMA_VERSION,
-        "slice": "GB2-CA00-S18A",
+        "slice": "GB2-CA00-S18B",
         "inventory": dict(inventory),
         "compose_source_count": len(paths),
         "source_admitted": True,
@@ -287,7 +309,7 @@ def _source_admission(root: Path, *, inventory: Mapping[str, Any]) -> dict[str, 
 def _synthetic_secret_values() -> dict[str, str]:
     return {
         binding.target_environment_name: f"canonical-platform-{secrets.token_urlsafe(32)}"
-        for binding in DEMO_SECRET_BINDINGS
+        for binding in CANONICAL_PLATFORM_SECRET_BINDINGS
     }
 
 
@@ -300,9 +322,10 @@ def _resolve_generation(
     return verify_openbao_runtime_resolution(
         provisioning,
         resolver_environments={
-            owner: _resolver_environment(runtime_dir, owner) for owner in DEMO_OWNERS
+            owner: _resolver_environment(runtime_dir, owner)
+            for owner in CANONICAL_PLATFORM_OWNERS
         },
-        bindings=DEMO_SECRET_BINDINGS,
+        bindings=CANONICAL_PLATFORM_SECRET_BINDINGS,
         namespace="staging",
         reference_version=version,
         secret_generation=f"secret:canonical-platform.{version[1:]}",
@@ -314,7 +337,9 @@ def _cross_owner_denied(runtime_dir: Path) -> bool:
     resolver = build_openbao_secret_resolver(
         _resolver_environment(runtime_dir, "nex-oa")
     )
-    binding = next(item for item in DEMO_SECRET_BINDINGS if item.owner == "nex-mo")
+    binding = next(
+        item for item in CANONICAL_PLATFORM_SECRET_BINDINGS if item.owner == "nex-mo"
+    )
     try:
         resolver.resolve(
             _reference(binding.owner, binding.target_environment_name, "v1"),
@@ -330,7 +355,7 @@ def _cross_owner_denied(runtime_dir: Path) -> bool:
     finally:
         with suppress(Exception):
             resolver.revoke()
-    raise DemoTrustAdmissionError(refresh_error)
+    raise CanonicalPlatformTrustAdmissionError(refresh_error)
 
 
 def _resolver_environment(runtime_dir: Path, owner: str) -> dict[str, str]:
@@ -368,7 +393,7 @@ def _compose(
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     command = ["docker", "compose", "-p", PROJECT_NAME]
-    for path in (BASE_COMPOSE, OBJECT_COMPOSE, CANONICAL_COMPOSE):
+    for path in (BASE_COMPOSE, OBJECT_COMPOSE, WA_COMPOSE, CANONICAL_COMPOSE):
         command.extend(("-f", str(root / path)))
     completed = subprocess.run(
         (*command, *arguments),
@@ -389,7 +414,7 @@ def _compose(
             ),
             "no Docker output",
         )
-        raise DemoTrustAdmissionError(
+        raise CanonicalPlatformTrustAdmissionError(
             f"Canonical Platform OpenBao Compose failed: {detail}"
         )
     return completed
@@ -400,7 +425,7 @@ def _assert_redacted(
 ) -> None:
     serialized = json.dumps(result, sort_keys=True)
     if any(value in serialized for values in secret_sets for value in values.values()):
-        raise DemoTrustAdmissionError(
+        raise CanonicalPlatformTrustAdmissionError(
             "raw secret leaked into Canonical Platform trust evidence"
         )
 
@@ -423,7 +448,9 @@ def _image_environment_from_release_report(
 ) -> dict[str, str]:
     artifacts = (report.get("image_build") or {}).get("artifacts")
     if report.get("status") != "PASS" or not isinstance(artifacts, list):
-        raise DemoTrustAdmissionError("canonical image release is not passing")
+        raise CanonicalPlatformTrustAdmissionError(
+            "canonical image release is not passing"
+        )
     records = {
         str(item.get("artifact_id")): str(item.get("image_reference"))
         for item in artifacts
@@ -435,7 +462,9 @@ def _image_environment_from_release_report(
         if artifact_id != "nex-wa-runtime"
     }
     if not set(expected).issubset(records):
-        raise DemoTrustAdmissionError("canonical core image coverage drift")
+        raise CanonicalPlatformTrustAdmissionError(
+            "canonical core image coverage drift"
+        )
     return {
         environment_name: records[artifact_id]
         for artifact_id, environment_name in expected.items()
@@ -453,6 +482,7 @@ def summary_line(result: Mapping[str, Any]) -> str:
     )
 
 
+DemoTrustAdmissionError = CanonicalPlatformTrustAdmissionError
 run_p8_demo_trust_admission = run_canonical_platform_trust_admission
 
 

@@ -47,8 +47,8 @@ from nex_eos import (
     EOS_VOUCHER_DRAFT_TABLE,
 )
 from nex_oa.credentials import hash_password, password_hash_algorithm
+from nex_runtime.canonical_platform_trust import CANONICAL_PLATFORM_TRUST_GRANTS
 from nex_runtime.demo_database import resolve_demo_database_targets
-from nex_runtime.demo_trust import DEMO_TRUST_GRANTS
 
 EXECUTION_ENV = "NEX_CANONICAL_PLATFORM_GOLDEN_JOURNEY"
 LEGACY_EXECUTION_ENV = "NEX_P8_DEMO_S11_LIVE"
@@ -56,9 +56,9 @@ CALIBRATION_ENV = "NEX_CANONICAL_PLATFORM_SEMANTIC_CALIBRATION_POLICIES_JSON"
 SCHEMA_VERSION = "canonical_platform_golden_journey.v1"
 DEFAULT_REPORT = ROOT / "reports/deployment/canonical-platform-golden-journey.json"
 PLAYWRIGHT_RUNNER = (
-    ROOT / "apps/nex-ae-web/scripts/runP8DemoS11ChairmanGoldenJourney.mjs"
+    ROOT / "apps/nex-ae-web/scripts/runCanonicalPlatformGoldenJourney.mjs"
 )
-SCREENSHOT_ENV = "NEX_P8_DEMO_S11_SCREENSHOT_DIR"
+SCREENSHOT_ENV = "NEX_CANONICAL_PLATFORM_GOLDEN_SCREENSHOT_DIR"
 TENANT_ID = "VO00"
 REQUESTER_EMPLOYEE_ID = "1001"
 APPROVER_EMPLOYEE_ID = "2001"
@@ -167,7 +167,7 @@ def _source_admission(root: Path) -> dict[str, Any]:
         )
     ae_oa_grants = tuple(
         grant
-        for grant in DEMO_TRUST_GRANTS
+        for grant in CANONICAL_PLATFORM_TRUST_GRANTS
         if grant.owner == "nex-ae-api" and grant.audience == "nex-oa"
     )
     if len(ae_oa_grants) != 1 or not {
@@ -179,7 +179,7 @@ def _source_admission(root: Path) -> dict[str, Any]:
         )
     return {
         "schema_version": SCHEMA_VERSION,
-        "slice": "GB2-CA00-S18A",
+        "slice": "GB2-CA00-S18B",
         **GOLDEN_JOURNEY_EVIDENCE_CONTRACT,
         "source_admitted": True,
         "installed_prerequisite": s10["source_admitted"],
@@ -437,21 +437,23 @@ def _run_playwright(
 ) -> dict[str, Any]:
     child_env = {
         **env,
-        "NEX_P8_DEMO_S11_WEB_URL": "https://ae.nex-staging.test:8443",
-        "NEX_P8_DEMO_S11_TENANT_ID": TENANT_ID,
-        "NEX_P8_DEMO_S11_REQUESTER_EMPLOYEE_ID": REQUESTER_EMPLOYEE_ID,
-        "NEX_P8_DEMO_S11_REQUESTER_PASSWORD": requester_password,
-        "NEX_P8_DEMO_S11_APPROVER_EMPLOYEE_ID": APPROVER_EMPLOYEE_ID,
-        "NEX_P8_DEMO_S11_APPROVER_PASSWORD": approver_password,
-        "NEX_P8_DEMO_S11_PROMPT": GOLDEN_PROMPT,
-        "NEX_P8_DEMO_S11_TIMEOUT_MS": "300000",
+        "NEX_CANONICAL_PLATFORM_GOLDEN_WEB_URL": "https://ae.nex-staging.test:8443",
+        "NEX_CANONICAL_PLATFORM_GOLDEN_TENANT_ID": TENANT_ID,
+        "NEX_CANONICAL_PLATFORM_GOLDEN_REQUESTER_EMPLOYEE_ID": REQUESTER_EMPLOYEE_ID,
+        "NEX_CANONICAL_PLATFORM_GOLDEN_REQUESTER_PASSWORD": requester_password,
+        "NEX_CANONICAL_PLATFORM_GOLDEN_APPROVER_EMPLOYEE_ID": APPROVER_EMPLOYEE_ID,
+        "NEX_CANONICAL_PLATFORM_GOLDEN_APPROVER_PASSWORD": approver_password,
+        "NEX_CANONICAL_PLATFORM_GOLDEN_PROMPT": GOLDEN_PROMPT,
+        "NEX_CANONICAL_PLATFORM_GOLDEN_TIMEOUT_MS": "300000",
         "NEX_PLAYWRIGHT_CHROMIUM_EXECUTABLE": env.get(
             "NEX_PLAYWRIGHT_CHROMIUM_EXECUTABLE", "/usr/bin/google-chrome"
         ),
     }
     arguments = ["node", str(PLAYWRIGHT_RUNNER)]
     if recovery_interaction_id is not None:
-        child_env["NEX_P8_DEMO_S11_RECOVERY_INTERACTION_ID"] = recovery_interaction_id
+        child_env["NEX_CANONICAL_PLATFORM_GOLDEN_RECOVERY_INTERACTION_ID"] = (
+            recovery_interaction_id
+        )
         arguments.append("--recovery")
     completed = subprocess.run(
         arguments,
