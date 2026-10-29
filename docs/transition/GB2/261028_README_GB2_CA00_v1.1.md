@@ -1,6 +1,6 @@
 # GB2-CA00 — Platform Runtime Internalization & Smoke-to-Product Promotion
 
-**Status:** PRE-IMPLEMENTATION DOCUMENT SET / v1.1 / GB2-CA00A RECONCILED
+**Status:** FINAL DOCUMENT SET / v1.1 / GB2-CA00 CLOSED / GOLDEN B v2 AUTHORIZED
 **Program:** NeX Platform v2.1
 **Gate:** GB2-CA00
 **Successor:** Golden B v2 — Manufacturing Delegation Full Journey
@@ -127,6 +127,20 @@ Final As-Built
 를 정의한다.
 
 이 문서가 **How / In What Order**에 해당한다.
+
+---
+
+## 4) Final As-Built and Golden B v2 Entry Handoff
+
+```text
+GB2_CA00_Final_AsBuilt_and_Golden_B_v2_Entry_Handoff_v1.0.md
+```
+
+마지막으로 이 문서를 읽는다.
+
+이 문서는 S01~S20의 실제 실행 기준선, 9개 artifact와 20개 process,
+protected installed E2E, negative/restart acceptance, Full Gate 결과를
+동결하고 Golden B v2 구현 착수를 승인한다.
 
 ---
 
@@ -456,6 +470,7 @@ Installed Current-Platform Continuity E2E
 
 S20
 GB2-CA00 Final As-Built / Golden B v2 Entry Authorization
+-> CLOSED; exact executable baseline and protected evidence frozen
 ```
 
 ---
@@ -706,6 +721,9 @@ Consistency_Closure_v1.0.md
 3.
 261028_GB2_CA00_Platform_Runtime_Internalization_
 Implementation_Slice_Plan_v1.1.md
+
+4.
+GB2_CA00_Final_AsBuilt_and_Golden_B_v2_Entry_Handoff_v1.0.md
 ```
 
 Optional context:
@@ -717,7 +735,7 @@ Full_Journey_Design_Draft_v0.1.md
 P9_Final_AsBuilt_Baseline_and_Next_Phase_Handoff_v1.1.md
 ```
 
-The optional context does not override the three GB2-CA00 normative working
+The optional context does not override the four GB2-CA00 normative working
 documents.
 
 ---
